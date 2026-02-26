@@ -1,0 +1,81 @@
+name: Auto Version
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'VERSION'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    # Skip if the commit was made by the version bot (prevents infinite loops)
+    if: "!contains(github.event.head_commit.message, '[auto-version]')"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Determine bump type from commit messages
+        id: bump
+        run: |
+          # Read current version
+          CURRENT=$(cat VERSION | tr -d '[:space:]')
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          # Look at all commits in this push to decide bump type
+          COMMITS="${{ github.event.head_commit.message }}"
+
+          if echo "$COMMITS" | grep -qiE '(BREAKING CHANGE|^major:)'; then
+            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$COMMITS" | grep -qiE '(^feat|^feature|^minor:)'; then
+            MINOR=$((MINOR + 1)); PATCH=0
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            PATCH=$((PATCH + 1))
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          echo "Bumping version: $CURRENT → $NEW (${GITHUB_OUTPUT##*type=})"
+
+      - name: Update VERSION file
+        run: |
+          echo "${{ steps.bump.outputs.new }}" > VERSION
+
+      - name: Update main.go default version
+        run: |
+          # Update the fallback version in main.go to match VERSION
+          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.bump.outputs.new }}\"/" cmd/server/main.go
+
+      - name: Commit and push version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION cmd/server/main.go
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new }} [auto-version]"
+          git push
+
+      - name: Create tag for main branch releases
+        if: github.ref == 'refs/heads/main'
+        run: |
+          TAG="v${{ steps.bump.outputs.new }}"
+          if ! git tag -l "$TAG" | grep -q "$TAG"; then
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+            echo "Created tag $TAG"
+          else
+            echo "Tag $TAG already exists — skipping"
+          fi
