@@ -1,2 +1,38 @@
-# Auto detect text files and perform LF normalization
+# Default: auto-detect text files and normalize to LF in the repo
 * text=auto
+
+# Shell scripts MUST use LF — CRLF breaks bash on Linux/macOS/WSL
+*.sh text eol=lf
+
+# Go source files — LF only
+*.go text eol=lf
+
+# Web source files — LF only
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+
+# Deployment / config files — LF only
+Dockerfile        text eol=lf
+*.service         text eol=lf
+*.conf            text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+
+# Binary files — no line ending conversion
+*.exe  binary
+*.dll  binary
+*.so   binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary
