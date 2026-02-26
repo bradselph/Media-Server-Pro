@@ -1,0 +1,579 @@
+import {type FormEvent, useEffect, useState} from 'react'
+import {Link} from 'react-router-dom'
+import {useAuthStore} from '@/stores/authStore'
+import {useThemeStore} from '@/stores/themeStore'
+import {authApi, permissionsApi as permApi, preferencesApi, storageApi, watchHistoryApi} from '@/api/endpoints'
+import {ApiError} from '@/api/client'
+import {useToast} from '@/components/Toast'
+import type {PermissionsInfo, StorageUsage, UserPreferences, WatchHistoryEntry} from '@/api/types'
+import '@/styles/profile.css'
+
+function formatDate(timestamp: string | undefined): string {
+    if (!timestamp) return 'N/A'
+    const date = new Date(timestamp)
+    return date.toLocaleDateString(undefined, {year: 'numeric', month: 'long', day: 'numeric'})
+}
+
+function formatDuration(seconds: number): string {
+    if (!seconds || seconds <= 0) return '0m'
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (h > 0) return `${h}h ${m}m`
+    return `${m}m`
+}
+
+function cleanFileName(path: string): string {
+    const name = path.split('/').pop()?.split('\\').pop() || path
+    return name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+export function ProfilePage() {
+    const {user, checkSession} = useAuthStore()
+    const {theme, setTheme} = useThemeStore()
+    const {showToast} = useToast()
+
+    const [preferences, setPreferences] = useState<UserPreferences | null>(null)
+    const [prefsError, setPrefsError] = useState(false)
+    const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([])
+    const [watchHistoryError, setWatchHistoryError] = useState(false)
+    const [prefsLoading, setPrefsLoading] = useState(true)
+    const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null)
+    const [permissions, setPermissions] = useState<PermissionsInfo | null>(null)
+
+    // Password form state
+    const [currentPassword, setCurrentPassword] = useState('')
+    const [newPassword, setNewPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
+    const [passwordError, setPasswordError] = useState('')
+    const [passwordSubmitting, setPasswordSubmitting] = useState(false)
+
+    // Preferences form state
+    const [prefsSubmitting, setPrefsSubmitting] = useState(false)
+
+    // Delete account form state
+    const [deletePassword, setDeletePassword] = useState('')
+    const [deleteError, setDeleteError] = useState('')
+    const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+    useEffect(() => {
+        loadPreferences()
+        loadWatchHistory()
+        loadStorageAndPermissions()
+    }, [])
+
+    async function loadStorageAndPermissions() {
+        try {
+            const [storage, perms] = await Promise.all([storageApi.getUsage(), permApi.get()])
+            setStorageUsage(storage)
+            setPermissions(perms)
+        } catch {
+            // non-critical — silently ignore
+        }
+    }
+
+    async function loadPreferences() {
+        try {
+            const prefs = await preferencesApi.get()
+            setPreferences(prefs)
+            if (prefs.theme && prefs.theme !== 'auto') {
+                setTheme(prefs.theme as 'light' | 'dark')
+            }
+        } catch (err) {
+            // 404 means no preferences saved yet (new user) — not an error
+            if (!(err instanceof ApiError && err.status === 404)) {
+                setPrefsError(true)
+            }
+        } finally {
+            setPrefsLoading(false)
+        }
+    }
+
+    async function loadWatchHistory() {
+        try {
+            const history = await watchHistoryApi.list()
+            setWatchHistory(Array.isArray(history) ? history : [])
+        } catch {
+            setWatchHistoryError(true)
+        }
+    }
+
+    async function handlePasswordSubmit(e: FormEvent) {
+        e.preventDefault()
+        setPasswordError('')
+
+        if (newPassword.length < 8) {
+            setPasswordError('Password must be at least 8 characters')
+            return
+        }
+        if (newPassword !== confirmPassword) {
+            setPasswordError('Passwords do not match')
+            return
+        }
+
+        setPasswordSubmitting(true)
+        try {
+            await authApi.changePassword(currentPassword, newPassword)
+            showToast('Password changed successfully', 'success')
+            setCurrentPassword('')
+            setNewPassword('')
+            setConfirmPassword('')
+        } catch (err: unknown) {
+            if (err instanceof ApiError) {
+                setPasswordError(err.message)
+            } else {
+                setPasswordError('Failed to change password')
+            }
+        } finally {
+            setPasswordSubmitting(false)
+        }
+    }
+
+    async function handlePreferencesSubmit(e: FormEvent) {
+        e.preventDefault()
+        if (!preferences) return
+
+        setPrefsSubmitting(true)
+        try {
+            await preferencesApi.update(preferences)
+            if (preferences.theme && preferences.theme !== 'auto') {
+                setTheme(preferences.theme as 'light' | 'dark')
+            }
+            // Sync equalizer band count to localStorage so useEqualizer picks it up on next player load.
+            if (preferences.equalizer_preset === '10' || preferences.equalizer_preset === '31') {
+                try {
+                    const raw = localStorage.getItem('media_streamer_settings')
+                    const stored: Record<string, unknown> = raw ? JSON.parse(raw) : {}
+                    localStorage.setItem('media_streamer_settings', JSON.stringify({...stored, eqBands: preferences.equalizer_preset}))
+                } catch { /* storage full or unavailable */ }
+            }
+            await checkSession()
+            showToast('Preferences saved', 'success')
+        } catch {
+            showToast('Failed to save preferences', 'error')
+        } finally {
+            setPrefsSubmitting(false)
+        }
+    }
+
+    function updatePref<K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) {
+        setPreferences(prev => prev ? {...prev, [key]: value} : null)
+    }
+
+    async function handleDeleteHistoryItem(path: string) {
+        try {
+            await watchHistoryApi.delete(path)
+            setWatchHistory(prev => prev.filter(e => e.media_path !== path))
+        } catch {
+            showToast('Failed to remove history entry', 'error')
+        }
+    }
+
+    async function handleDeleteAccount(e: React.FormEvent) {
+        e.preventDefault()
+        setDeleteError('')
+        setDeleteSubmitting(true)
+        try {
+            await authApi.deleteAccount(deletePassword)
+            showToast('Account deleted', 'success')
+            // Server will have logged us out; redirect to home
+            window.location.href = '/'
+        } catch (err: unknown) {
+            if (err instanceof ApiError) {
+                setDeleteError(err.message)
+            } else {
+                setDeleteError('Failed to delete account')
+            }
+        } finally {
+            setDeleteSubmitting(false)
+        }
+    }
+
+    if (!user) {
+        return <div className="loading-screen">Loading...</div>
+    }
+
+    return (
+        <div className="profile-page">
+            <div className="profile-header">
+                <div>
+                    <h1>User Profile</h1>
+                    <p className="profile-subtitle">Manage your account settings and preferences</p>
+                </div>
+                <Link to="/" className="back-link">Back to Library</Link>
+            </div>
+
+            <div className="profile-grid">
+                {/* Account Info Card */}
+                <div className="profile-card">
+                    <h2>Account Information</h2>
+                    <div className="info-grid">
+                        <div className="info-item">
+                            <span className="info-label">Username</span>
+                            <span className="info-value">{user.username}</span>
+                        </div>
+                        <div className="info-item">
+                            <span className="info-label">Account Type</span>
+                            <span className="info-value role-badge">{user.role}</span>
+                        </div>
+                        <div className="info-item">
+                            <span className="info-label">Member Since</span>
+                            <span className="info-value">{formatDate(user.created_at)}</span>
+                        </div>
+                        <div className="info-item">
+                            <span className="info-label">Last Login</span>
+                            <span className="info-value">{formatDate(user.last_login)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Storage Usage Card */}
+                {storageUsage && (
+                    <div className="profile-card">
+                        <h2>Storage Usage</h2>
+                        <div className="info-grid">
+                            <div className="info-item">
+                                <span className="info-label">Used</span>
+                                <span className="info-value">{storageUsage.used_gb.toFixed(2)} GB</span>
+                            </div>
+                            <div className="info-item">
+                                <span className="info-label">Quota</span>
+                                <span className="info-value">
+                                    {storageUsage.quota_gb > 0 ? `${storageUsage.quota_gb} GB` : 'Unlimited'}
+                                </span>
+                            </div>
+                        </div>
+                        <div style={{marginTop: 12}}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                marginBottom: 4,
+                                fontSize: 13
+                            }}>
+                                <span style={{color: 'var(--text-muted)'}}>
+                                    {storageUsage.used_bytes.toLocaleString()} bytes used
+                                </span>
+                                <span style={{color: 'var(--text-color)'}}>{storageUsage.percentage.toFixed(1)}%</span>
+                            </div>
+                            <div style={{
+                                background: 'var(--border-color)',
+                                borderRadius: 4,
+                                height: 8,
+                                overflow: 'hidden'
+                            }}>
+                                <div style={{
+                                    width: `${Math.min(storageUsage.percentage, 100)}%`,
+                                    height: '100%',
+                                    background: storageUsage.percentage > 90 ? '#ef4444' : storageUsage.percentage > 70 ? '#f59e0b' : 'var(--accent-color, #667eea)',
+                                    borderRadius: 4,
+                                    transition: 'width 0.3s ease',
+                                }}/>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Permissions Card */}
+                {permissions && (
+                    <div className="profile-card">
+                        <h2>My Permissions</h2>
+                        <div className="info-grid">
+                            {([
+                                {label: 'Stream', value: permissions.capabilities.canStream},
+                                {label: 'Download', value: permissions.capabilities.canDownload},
+                                {label: 'Upload', value: permissions.capabilities.canUpload},
+                                {label: 'Create Playlists', value: permissions.capabilities.canCreatePlaylists},
+                                {label: 'View Mature', value: permissions.capabilities.canViewMature},
+                                ...(permissions.capabilities.canDelete !== undefined ? [{
+                                    label: 'Delete',
+                                    value: permissions.capabilities.canDelete
+                                }] : []),
+                                ...(permissions.capabilities.canManage !== undefined ? [{
+                                    label: 'Manage',
+                                    value: permissions.capabilities.canManage
+                                }] : []),
+                            ] as Array<{ label: string; value: boolean | undefined }>).map(({label, value}) => (
+                                <div key={label} className="info-item">
+                                    <span className="info-label">{label}</span>
+                                    <span className="info-value" style={{color: value ? '#10b981' : '#ef4444'}}>
+                                        <i className={`bi bi-${value ? 'check-circle-fill' : 'x-circle-fill'}`}/> {value ? 'Yes' : 'No'}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                        {permissions.limits && (
+                            <div className="info-grid"
+                                 style={{marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-color)'}}>
+                                <div className="info-item">
+                                    <span className="info-label">Storage Quota</span>
+                                    <span className="info-value">
+                                        {permissions.limits.storage_quota > 0
+                                            ? `${(permissions.limits.storage_quota / 1073741824).toFixed(0)} GB`
+                                            : 'Unlimited'}
+                                    </span>
+                                </div>
+                                <div className="info-item">
+                                    <span className="info-label">Concurrent Streams</span>
+                                    <span className="info-value">{permissions.limits.concurrent_streams}</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Change Password Card */}
+                <div className="profile-card">
+                    <h2>Change Password</h2>
+                    {passwordError && <div className="form-error">{passwordError}</div>}
+                    <form onSubmit={handlePasswordSubmit}>
+                        <div className="form-group">
+                            <label htmlFor="current-password">Current Password</label>
+                            <input
+                                id="current-password"
+                                type="password"
+                                value={currentPassword}
+                                onChange={e => setCurrentPassword(e.target.value)}
+                                required
+                                autoComplete="current-password"
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="new-password">New Password</label>
+                            <input
+                                id="new-password"
+                                type="password"
+                                value={newPassword}
+                                onChange={e => setNewPassword(e.target.value)}
+                                required
+                                minLength={8}
+                                autoComplete="new-password"
+                            />
+                            <span className="form-hint">Must be at least 8 characters</span>
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="confirm-password">Confirm New Password</label>
+                            <input
+                                id="confirm-password"
+                                type="password"
+                                value={confirmPassword}
+                                onChange={e => setConfirmPassword(e.target.value)}
+                                required
+                                autoComplete="new-password"
+                            />
+                        </div>
+                        <button type="submit" className="btn btn-primary" disabled={passwordSubmitting}>
+                            {passwordSubmitting ? 'Changing...' : 'Change Password'}
+                        </button>
+                    </form>
+                </div>
+
+                {/* Preferences Card */}
+                <div className="profile-card">
+                    <h2>Preferences</h2>
+                    {prefsLoading ? (
+                        <p>Loading preferences...</p>
+                    ) : prefsError ? (
+                        <p style={{color: 'var(--error-color, #dc3545)'}}>Failed to load preferences. Please refresh the
+                            page.</p>
+                    ) : (
+                        <form onSubmit={handlePreferencesSubmit}>
+                            <div className="form-group">
+                                <label htmlFor="default-quality">Default Video Quality</label>
+                                <select
+                                    id="default-quality"
+                                    value={preferences?.default_quality || 'auto'}
+                                    onChange={e => updatePref('default_quality', e.target.value)}
+                                >
+                                    <option value="auto">Auto</option>
+                                    <option value="low">Low (360p)</option>
+                                    <option value="medium">Medium (480p)</option>
+                                    <option value="high">High (720p)</option>
+                                    <option value="ultra">Ultra (1080p)</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label htmlFor="theme-preference">Theme</label>
+                                <select
+                                    id="theme-preference"
+                                    value={preferences?.theme || theme}
+                                    onChange={e => updatePref('theme', e.target.value as UserPreferences['theme'])}
+                                >
+                                    <option value="auto">Auto (System)</option>
+                                    <option value="light">Light</option>
+                                    <option value="dark">Dark</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label htmlFor="eq-bands">Equalizer Bands</label>
+                                <select
+                                    id="eq-bands"
+                                    value={preferences?.equalizer_preset || '10'}
+                                    onChange={e => updatePref('equalizer_preset', e.target.value)}
+                                >
+                                    <option value="10">10-Band (Standard)</option>
+                                    <option value="31">31-Band (Professional)</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label htmlFor="items-per-page">Items Per Page</label>
+                                <select
+                                    id="items-per-page"
+                                    value={preferences?.items_per_page ?? 24}
+                                    onChange={e => updatePref('items_per_page', Number(e.target.value))}
+                                >
+                                    <option value={12}>12</option>
+                                    <option value={24}>24 (default)</option>
+                                    <option value={48}>48</option>
+                                    <option value={96}>96</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label htmlFor="playback-speed">Default Playback Speed</label>
+                                <select
+                                    id="playback-speed"
+                                    value={preferences?.playback_speed ?? 1}
+                                    onChange={e => updatePref('playback_speed', Number(e.target.value))}
+                                >
+                                    <option value={0.5}>0.5×</option>
+                                    <option value={0.75}>0.75×</option>
+                                    <option value={1}>1× (normal)</option>
+                                    <option value={1.25}>1.25×</option>
+                                    <option value={1.5}>1.5×</option>
+                                    <option value={2}>2×</option>
+                                </select>
+                            </div>
+
+                            <div className="checkbox-group">
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={preferences?.auto_play ?? false}
+                                        onChange={e => updatePref('auto_play', e.target.checked)}
+                                    />
+                                    Autoplay next track
+                                </label>
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={preferences?.resume_playback ?? true}
+                                        onChange={e => updatePref('resume_playback', e.target.checked)}
+                                    />
+                                    Resume playback position
+                                </label>
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={preferences?.show_analytics ?? false}
+                                        onChange={e => updatePref('show_analytics', e.target.checked)}
+                                    />
+                                    Show analytics bar
+                                </label>
+                            </div>
+
+                            <div className="content-settings">
+                                <h3>Content Settings</h3>
+                                <label className="checkbox-label mature-checkbox">
+                                    <input
+                                        type="checkbox"
+                                        checked={preferences?.show_mature ?? false}
+                                        onChange={e => updatePref('show_mature', e.target.checked)}
+                                    />
+                                    Allow mature content (18+)
+                                </label>
+                            </div>
+
+                            <button type="submit" className="btn btn-primary" disabled={prefsSubmitting}>
+                                {prefsSubmitting ? 'Saving...' : 'Save Preferences'}
+                            </button>
+                        </form>
+                    )}
+                </div>
+
+                {/* Watch History Card */}
+                <div className="profile-card">
+                    <h2>Watch History</h2>
+                    {watchHistoryError ? (
+                        <p className="empty-state" style={{color: 'var(--error-color, #dc3545)'}}>Failed to load watch
+                            history</p>
+                    ) : watchHistory.length === 0 ? (
+                        <p className="empty-state">No watch history yet</p>
+                    ) : (
+                        <div className="history-list">
+                            {watchHistory.map((entry, i) => (
+                                <div key={`${entry.media_path}-${i}`} className="history-item">
+                                    <div className="history-info">
+                                        <Link
+                                            to={`/player?path=${encodeURIComponent(entry.media_path)}`}
+                                            className="history-title"
+                                        >
+                                            {cleanFileName(entry.media_path)}
+                                        </Link>
+                                        <span className="history-meta">
+                      {formatDuration(entry.duration)} &middot; {Math.round(entry.progress * 100)}% watched
+                    </span>
+                                    </div>
+                                    <span className="history-date">{formatDate(entry.watched_at)}</span>
+                                    <button
+                                        className="btn btn-sm btn-danger"
+                                        onClick={() => handleDeleteHistoryItem(entry.media_path)}
+                                        title="Remove from history"
+                                    >
+                                        <i className="bi bi-x"/>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Delete Account Card */}
+                {user.role !== 'admin' && (
+                    <div className="profile-card profile-card-danger">
+                        <h2>Danger Zone</h2>
+                        {!showDeleteConfirm ? (
+                            <div>
+                                <p className="form-hint">Permanently delete your account and all associated data.</p>
+                                <button className="btn btn-danger" onClick={() => setShowDeleteConfirm(true)}>
+                                    Delete Account
+                                </button>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleDeleteAccount}>
+                                <p className="form-hint">Enter your password to confirm account deletion. This cannot be
+                                    undone.</p>
+                                {deleteError && <div className="form-error">{deleteError}</div>}
+                                <div className="form-group">
+                                    <label htmlFor="delete-password">Confirm Password</label>
+                                    <input
+                                        id="delete-password"
+                                        type="password"
+                                        value={deletePassword}
+                                        onChange={e => setDeletePassword(e.target.value)}
+                                        required
+                                        autoComplete="current-password"
+                                    />
+                                </div>
+                                <div style={{display: 'flex', gap: 8}}>
+                                    <button type="submit" className="btn btn-danger" disabled={deleteSubmitting}>
+                                        {deleteSubmitting ? 'Deleting...' : 'Confirm Delete'}
+                                    </button>
+                                    <button type="button" className="btn" onClick={() => {
+                                        setShowDeleteConfirm(false);
+                                        setDeletePassword('');
+                                        setDeleteError('')
+                                    }}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
