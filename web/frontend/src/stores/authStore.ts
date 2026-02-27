@@ -50,7 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             })
         } catch (err) {
             // IC-08: preserve auth state on transient errors; only clear on explicit 401
-            const status = (err as {response?: {status?: number}})?.response?.status
+            const status = (err as { response?: { status?: number } })?.response?.status
             if (status === 401) {
                 set({
                     user: null,

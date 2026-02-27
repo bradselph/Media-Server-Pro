@@ -251,12 +251,6 @@ func (h *Handler) CleanHLSStaleLocks(c *gin.Context) {
 	writeSuccess(c, map[string]int{"removed": removed})
 }
 
-// TODO(api-contract): RESPONSE MISMATCH — CleanHLSInactive returns { removed: N, threshold: "24h0m0s" }
-// (lines 275-278) but frontend adminApi.cleanHLSInactive() types the return as Promise<void>
-// (web/frontend/src/api/endpoints.ts). Frontend callers cannot inspect how many jobs were removed.
-// Change frontend return type to Promise<{ removed: number; threshold: string }> to match.
-// Frontend: web/frontend/src/api/endpoints.ts adminApi.cleanHLSInactive().
-//
 // CleanHLSInactive removes inactive HLS content
 func (h *Handler) CleanHLSInactive(c *gin.Context) {
 	threshold := 24 * time.Hour

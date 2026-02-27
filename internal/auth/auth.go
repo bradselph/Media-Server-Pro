@@ -121,16 +121,8 @@ func (m *Module) Start(ctx context.Context) error {
 	}
 
 	m.log.Info("Using MySQL repositories for auth")
-	userRepo, err := mysql.NewUserRepository(m.dbModule.DB())
-	if err != nil {
-		return fmt.Errorf("failed to create MySQL user repository: %w", err)
-	}
-	sessionRepo, err := mysql.NewSessionRepository(m.dbModule.DB())
-	if err != nil {
-		return fmt.Errorf("failed to create MySQL session repository: %w", err)
-	}
-	m.userRepo = userRepo
-	m.sessionRepo = sessionRepo
+	m.userRepo = mysql.NewUserRepository(m.dbModule.GORM())
+	m.sessionRepo = mysql.NewSessionRepository(m.dbModule.GORM())
 
 	// Load users and sessions into cache from repositories
 	users, err := m.userRepo.List(ctx)

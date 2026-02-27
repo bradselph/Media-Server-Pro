@@ -146,7 +146,7 @@ func (m *Module) Start(_ context.Context) error {
 	if !m.dbModule.IsConnected() {
 		return fmt.Errorf("database is not connected")
 	}
-	m.metadataRepo = mysql.NewMediaMetadataRepository(m.dbModule.DB())
+	m.metadataRepo = mysql.NewMediaMetadataRepository(m.dbModule.GORM())
 	m.log.Info("Using MySQL repository for media metadata")
 
 	// Check for ffprobe

@@ -155,13 +155,6 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 	writeSuccess(c, settings)
 }
 
-// TODO(api-contract): AUTH REQUIREMENT MISMATCH — GetStorageUsage is protected by requireAuth()
-// (api/routes/routes.go:239). Frontend storageApi.getUsage() (web/frontend/src/api/endpoints.ts)
-// makes no attempt to ensure the user is authenticated before calling. If called from an
-// unauthenticated context the backend returns 401 Unauthorized. Frontend components rendering
-// storage usage must guard against 401 by checking authentication state first.
-// Frontend: web/frontend/src/api/endpoints.ts storageApi.getUsage().
-//
 // GetStorageUsage returns storage usage information for the current user.
 func (h *Handler) GetStorageUsage(c *gin.Context) {
 	session := getSession(c)

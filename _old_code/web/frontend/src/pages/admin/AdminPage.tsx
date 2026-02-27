@@ -2906,7 +2906,8 @@ function UpdatesTab() {
                         fontSize: 13,
                     }}>
                         {sourceStatus.updates_available
-                            ? <>New commits available on <code>{activeBranch}</code> — remote HEAD: <code>{sourceStatus.remote_commit}</code></>
+                            ? <>New commits available on <code>{activeBranch}</code> — remote
+                                HEAD: <code>{sourceStatus.remote_commit}</code></>
                             : <>Repository is up to date with the <code>{activeBranch}</code> branch.</>}
                     </div>
                 )}

@@ -549,7 +549,14 @@ export const adminApi = {
         api.post<{ fixed: boolean; message?: string }>('/api/admin/validator/fix', {path}),
 
     getValidatorStats: () =>
-        api.get<{ total: number; validated: number; needs_fix: number; fixed: number; failed: number; unsupported: number }>('/api/admin/validator/stats'),
+        api.get<{
+            total: number;
+            validated: number;
+            needs_fix: number;
+            fixed: number;
+            failed: number;
+            unsupported: number
+        }>('/api/admin/validator/stats'),
 
     // AdminListMedia only supports search/page/limit — other filters (sort, type, category) are ignored.
     listMedia: (params?: { page?: number; limit?: number; search?: string }) => {

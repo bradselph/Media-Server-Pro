@@ -68,8 +68,13 @@ func (m *Module) Start(ctx context.Context) error {
 	dsnCfg.Timeout = cfg.Database.Timeout
 	// TLSMode: "" / "false" = no TLS; "skip-verify" = TLS without cert check;
 	// "true" = TLS with system CA. Required for many hosted/remote database providers.
+	// Note: driverMysql.NewConfig() defaults TLSConfig to "preferred", which
+	// causes failures when the server does not support TLS at all. We must
+	// explicitly set "false" when the user has not requested TLS.
 	if cfg.Database.TLSMode != "" && cfg.Database.TLSMode != "false" {
 		dsnCfg.TLSConfig = cfg.Database.TLSMode
+	} else {
+		dsnCfg.TLSConfig = "false"
 	}
 	dsn := dsnCfg.FormatDSN()
 
@@ -194,11 +199,8 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// DB returns the underlying *sql.DB connection.
-// Note: repository implementations are split between raw sql.DB (media_metadata,
-// scan_result), GORM via gorm.Open(*sql.DB) (user, session), and direct *gorm.DB
-// via GORM() (analytics, audit_log, playlist, etc.). Future work: standardize all
-// repositories on a single approach to simplify the architecture.
+// DB returns the underlying *sql.DB connection for use with database/sql callers
+// (e.g. migrations, health checks). All repository implementations now use GORM().
 func (m *Module) DB() *sql.DB {
 	return m.sqlDB
 }

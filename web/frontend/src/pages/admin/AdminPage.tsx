@@ -65,7 +65,7 @@ function DashboardTab() {
         refetchInterval: 60000,
     })
 
-    async function handleAction(fn: () => Promise<void>, successMsg: string) {
+    async function handleAction(fn: () => Promise<unknown>, successMsg: string) {
         setActionMsg(null)
         try {
             await fn()
@@ -2328,7 +2328,7 @@ function ContentReviewTab() {
         queryFn: () => adminApi.getReviewQueue(),
     })
 
-    async function handleBatchAction(action: string) {
+    async function handleBatchAction(action: 'approve' | 'reject') {
         const paths = selected.size > 0 ? Array.from(selected) : queue.map(i => i.media_path)
         if (!paths.length || !window.confirm(`Apply "${action}" to ${paths.length} item(s)?`)) return
         try {
@@ -2906,7 +2906,8 @@ function UpdatesTab() {
                         fontSize: 13,
                     }}>
                         {sourceStatus.updates_available
-                            ? <>New commits available on <code>{activeBranch}</code> — remote HEAD: <code>{sourceStatus.remote_commit}</code></>
+                            ? <>New commits available on <code>{activeBranch}</code> — remote
+                                HEAD: <code>{sourceStatus.remote_commit}</code></>
                             : <>Repository is up to date with the <code>{activeBranch}</code> branch.</>}
                     </div>
                 )}

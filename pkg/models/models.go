@@ -466,11 +466,11 @@ func (AnalyticsEvent) TableName() string {
 
 // ViewStats holds view statistics for a media item
 type ViewStats struct {
-	TotalViews       int       `json:"total_views"`
-	CompletionRate   float64   `json:"completion_rate"`
-	LastViewed       time.Time `json:"last_viewed"`
+	TotalViews     int       `json:"total_views"`
+	CompletionRate float64   `json:"completion_rate"`
+	LastViewed     time.Time `json:"last_viewed"`
 	// IC-01: fields below always return zero — analytics module does not yet compute them
-	UniqueViewers    int     `json:"unique_viewers"`    // requires per-view user tracking
+	UniqueViewers    int     `json:"unique_viewers"`     // requires per-view user tracking
 	AvgWatchDuration float64 `json:"avg_watch_duration"` // requires watch time aggregation
 	PeakConcurrent   int     `json:"peak_concurrent"`    // requires real-time concurrency tracking
 }

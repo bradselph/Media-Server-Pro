@@ -10,16 +10,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// UserRepositoryGORM implements repositories.UserRepository using GORM
-type UserRepositoryGORM struct {
+// UserRepository implements repositories.UserRepository using GORM
+type UserRepository struct {
 	db        *gorm.DB
 	prefsRepo repositories.UserPreferencesRepository
 	permsRepo repositories.UserPermissionsRepository
 }
 
-// NewUserRepositoryGORM creates a new GORM-backed user repository
-func NewUserRepositoryGORM(db *gorm.DB) repositories.UserRepository {
-	return &UserRepositoryGORM{
+// NewUserRepository creates a new GORM-backed user repository
+func NewUserRepository(db *gorm.DB) repositories.UserRepository {
+	return &UserRepository{
 		db:        db,
 		prefsRepo: NewUserPreferencesRepository(db),
 		permsRepo: NewUserPermissionsRepository(db),
@@ -27,7 +27,7 @@ func NewUserRepositoryGORM(db *gorm.DB) repositories.UserRepository {
 }
 
 // Create inserts a new user with permissions and preferences
-func (r *UserRepositoryGORM) Create(ctx context.Context, user *models.User) error {
+func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Create user record
 		if err := tx.Create(user).Error; err != nil {
@@ -51,7 +51,7 @@ func (r *UserRepositoryGORM) Create(ctx context.Context, user *models.User) erro
 }
 
 // GetByUsername retrieves a user by username with all related data
-func (r *UserRepositoryGORM) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
 	var user models.User
 	err := r.db.WithContext(ctx).First(&user, "username = ?", username).Error
 	if err != nil {
@@ -74,7 +74,7 @@ func (r *UserRepositoryGORM) GetByUsername(ctx context.Context, username string)
 }
 
 // GetByID retrieves a user by ID with all related data
-func (r *UserRepositoryGORM) GetByID(ctx context.Context, id string) (*models.User, error) {
+func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, error) {
 	var user models.User
 	err := r.db.WithContext(ctx).First(&user, "id = ?", id).Error
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *UserRepositoryGORM) GetByID(ctx context.Context, id string) (*models.Us
 }
 
 // Update updates an existing user and related data
-func (r *UserRepositoryGORM) Update(ctx context.Context, user *models.User) error {
+func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Update user record
 		if err := tx.Save(user).Error; err != nil {
@@ -126,12 +126,12 @@ func (r *UserRepositoryGORM) Update(ctx context.Context, user *models.User) erro
 // Delete removes a user. Related records (permissions, preferences, sessions)
 // are automatically removed via ON DELETE CASCADE foreign key constraints
 // defined in the database schema.
-func (r *UserRepositoryGORM) Delete(ctx context.Context, id string) error {
+func (r *UserRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id).Error
 }
 
 // List retrieves all users
-func (r *UserRepositoryGORM) List(ctx context.Context) ([]*models.User, error) {
+func (r *UserRepository) List(ctx context.Context) ([]*models.User, error) {
 	var users []*models.User
 	err := r.db.WithContext(ctx).Find(&users).Error
 	if err != nil {

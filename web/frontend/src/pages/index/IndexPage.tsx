@@ -834,7 +834,8 @@ export function IndexPage() {
                         <span><i
                             className="bi bi-people-fill"/> {(analytics.unique_clients ?? 0).toLocaleString()} listeners</span>
                         <span><i className="bi bi-lightning-fill"/> {analytics.active_sessions} active</span>
-                        <span><i className="bi bi-eye-fill"/> {(analytics.total_views ?? 0).toLocaleString()} views</span>
+                        <span><i
+                            className="bi bi-eye-fill"/> {(analytics.total_views ?? 0).toLocaleString()} views</span>
                     </div>
                 )}
             </div>

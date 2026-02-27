@@ -5,8 +5,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	cryptorand "crypto/rand"
 	"crypto/md5"
+	cryptorand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -1644,7 +1644,7 @@ func (h *Handler) getUserStorageQuota(userType string) int64 {
 		"basic":    1 * 1024 * 1024 * 1024,   // 1 GB
 		"standard": 10 * 1024 * 1024 * 1024,  // 10 GB
 		"premium":  100 * 1024 * 1024 * 1024, // 100 GB
-		"admin":    -1,                        // unlimited
+		"admin":    -1,                       // unlimited
 	}
 	if q, ok := quotas[userType]; ok {
 		return q
