@@ -2,241 +2,164 @@ package mysql
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
-	"media-server-pro/internal/logger"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	"media-server-pro/internal/repositories"
 )
 
-// ScanResultRepository implements MySQL storage for scan results
-type ScanResultRepository struct {
-	db  *sql.DB
-	log *logger.Logger
+// scanResultRow maps to the scan_results table.
+type scanResultRow struct {
+	Path           string     `gorm:"column:path;primaryKey"`
+	IsMature       bool       `gorm:"column:is_mature"`
+	Confidence     float64    `gorm:"column:confidence"`
+	AutoFlagged    bool       `gorm:"column:auto_flagged"`
+	NeedsReview    bool       `gorm:"column:needs_review"`
+	ScannedAt      time.Time  `gorm:"column:scanned_at"`
+	ReviewedBy     *string    `gorm:"column:reviewed_by"`
+	ReviewedAt     *time.Time `gorm:"column:reviewed_at"`
+	ReviewDecision *string    `gorm:"column:review_decision"`
 }
 
-// NewScanResultRepository creates a new MySQL scan result repository
-func NewScanResultRepository(db *sql.DB) repositories.ScanResultRepository {
-	return &ScanResultRepository{
-		db:  db,
-		log: logger.New("scan-result-repo"),
-	}
+func (scanResultRow) TableName() string { return "scan_results" }
+
+// scanReasonRow maps to the scan_reasons table.
+type scanReasonRow struct {
+	Path   string `gorm:"column:path;primaryKey"`
+	Reason string `gorm:"column:reason;primaryKey"`
+}
+
+func (scanReasonRow) TableName() string { return "scan_reasons" }
+
+// ScanResultRepository implements MySQL storage for scan results using GORM
+type ScanResultRepository struct {
+	db *gorm.DB
+}
+
+// NewScanResultRepository creates a new GORM-backed scan result repository
+func NewScanResultRepository(db *gorm.DB) repositories.ScanResultRepository {
+	return &ScanResultRepository{db: db}
 }
 
 // Save stores or updates a scan result
 func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.ScanResult) error {
-	// Begin transaction for atomic save of result + reasons
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			r.log.Warn("Failed to rollback transaction: %v", err)
-		}
-	}()
-
-	// Convert RFC3339 datetime to MySQL format
-	scannedAt, err := parseTimeToMySQL(result.ScannedAt)
-	if err != nil {
-		r.log.Warn("Failed to parse scanned_at datetime, using NOW(): %v", err)
-		scannedAt = time.Now()
-	}
-
-	// Parse ReviewedAt if present
-	var reviewedAtValue sql.NullTime
-	if result.ReviewedAt != "" {
-		reviewedAt, err := parseTimeToMySQL(result.ReviewedAt)
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Parse scanned_at
+		scannedAt, err := time.Parse(time.RFC3339, result.ScannedAt)
 		if err != nil {
-			r.log.Warn("Failed to parse reviewed_at datetime: %v", err)
-		} else {
-			reviewedAtValue = sql.NullTime{Time: reviewedAt, Valid: true}
+			scannedAt = time.Now()
 		}
-	}
 
-	// Upsert scan result
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO scan_results
-			(path, is_mature, confidence, auto_flagged, needs_review, scanned_at,
-			 reviewed_by, reviewed_at, review_decision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON DUPLICATE KEY UPDATE
-			is_mature = VALUES(is_mature),
-			confidence = VALUES(confidence),
-			auto_flagged = VALUES(auto_flagged),
-			needs_review = VALUES(needs_review),
-			scanned_at = VALUES(scanned_at),
-			reviewed_by = VALUES(reviewed_by),
-			reviewed_at = VALUES(reviewed_at),
-			review_decision = VALUES(review_decision)
-	`,
-		result.Path,
-		result.IsMature,
-		result.Confidence,
-		result.AutoFlagged,
-		result.NeedsReview,
-		scannedAt,
-		nullString(result.ReviewedBy),
-		reviewedAtValue,
-		nullString(result.ReviewDecision),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to save scan result: %w", err)
-	}
-
-	// Delete old reasons and insert new ones
-	_, err = tx.ExecContext(ctx, "DELETE FROM scan_reasons WHERE path = ?", result.Path)
-	if err != nil {
-		return fmt.Errorf("failed to delete old reasons: %w", err)
-	}
-
-	// Insert new reasons
-	if len(result.Reasons) > 0 {
-		for _, reason := range result.Reasons {
-			_, err = tx.ExecContext(ctx,
-				"INSERT INTO scan_reasons (path, reason) VALUES (?, ?)",
-				result.Path, reason)
-			if err != nil {
-				return fmt.Errorf("failed to insert reason: %w", err)
+		// Parse reviewed_at
+		var reviewedAt *time.Time
+		if result.ReviewedAt != "" {
+			if t, err := time.Parse(time.RFC3339, result.ReviewedAt); err == nil {
+				reviewedAt = &t
 			}
 		}
-	}
 
-	// Commit transaction
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
+		row := scanResultRow{
+			Path:        result.Path,
+			IsMature:    result.IsMature,
+			Confidence:  result.Confidence,
+			AutoFlagged: result.AutoFlagged,
+			NeedsReview: result.NeedsReview,
+			ScannedAt:   scannedAt,
+			ReviewedBy:  nilIfEmpty(result.ReviewedBy),
+			ReviewedAt:  reviewedAt,
+			ReviewDecision: nilIfEmpty(result.ReviewDecision),
+		}
 
-	r.log.Debug("Saved scan result for: %s (mature: %v, confidence: %.2f)",
-		result.Path, result.IsMature, result.Confidence)
-	return nil
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "path"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"is_mature", "confidence", "auto_flagged", "needs_review",
+				"scanned_at", "reviewed_by", "reviewed_at", "review_decision",
+			}),
+		}).Create(&row).Error; err != nil {
+			return fmt.Errorf("failed to save scan result: %w", err)
+		}
+
+		// Replace reasons: delete old, insert new
+		if err := tx.Where("path = ?", result.Path).Delete(&scanReasonRow{}).Error; err != nil {
+			return fmt.Errorf("failed to delete old reasons: %w", err)
+		}
+
+		if len(result.Reasons) > 0 {
+			reasons := make([]scanReasonRow, len(result.Reasons))
+			for i, reason := range result.Reasons {
+				reasons[i] = scanReasonRow{Path: result.Path, Reason: reason}
+			}
+			if err := tx.Create(&reasons).Error; err != nil {
+				return fmt.Errorf("failed to insert reasons: %w", err)
+			}
+		}
+
+		return nil
+	})
 }
 
 // Get retrieves a scan result by path
 func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositories.ScanResult, error) {
-	result := &repositories.ScanResult{Path: path}
-
-	var reviewedBy, reviewDecision sql.NullString
-	var scannedAt time.Time
-	var reviewedAt sql.NullTime
-
-	err := r.db.QueryRowContext(ctx, `
-		SELECT is_mature, confidence, auto_flagged, needs_review, scanned_at,
-		       reviewed_by, reviewed_at, review_decision
-		FROM scan_results
-		WHERE path = ?
-	`, path).Scan(
-		&result.IsMature,
-		&result.Confidence,
-		&result.AutoFlagged,
-		&result.NeedsReview,
-		&scannedAt,
-		&reviewedBy,
-		&reviewedAt,
-		&reviewDecision,
-	)
-
-	if errors.Is(err, sql.ErrNoRows) {
+	var row scanResultRow
+	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
 		return nil, fmt.Errorf("scan result not found: %s", path)
 	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to query scan result: %w", err)
-	}
 
-	// Format TIMESTAMP fields as RFC3339 strings
-	result.ScannedAt = scannedAt.Format(time.RFC3339)
-
-	// Set nullable fields
-	if reviewedBy.Valid {
-		result.ReviewedBy = reviewedBy.String
-	}
-	if reviewedAt.Valid {
-		result.ReviewedAt = reviewedAt.Time.Format(time.RFC3339)
-	}
-	if reviewDecision.Valid {
-		result.ReviewDecision = reviewDecision.String
-	}
+	result := r.rowToResult(&row)
 
 	// Get reasons
-	rows, err := r.db.QueryContext(ctx,
-		"SELECT reason FROM scan_reasons WHERE path = ?", path)
-	if err != nil {
+	var reasons []scanReasonRow
+	if err := r.db.WithContext(ctx).Where("path = ?", path).Find(&reasons).Error; err != nil {
 		return nil, fmt.Errorf("failed to query reasons: %w", err)
 	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			r.log.Warn("Failed to close rows: %v", err)
-		}
-	}()
-
-	result.Reasons = []string{}
-	for rows.Next() {
-		var reason string
-		if err := rows.Scan(&reason); err != nil {
-			return nil, fmt.Errorf("failed to scan reason: %w", err)
-		}
-		result.Reasons = append(result.Reasons, reason)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate reason rows: %w", err)
+	result.Reasons = make([]string, len(reasons))
+	for i, rr := range reasons {
+		result.Reasons[i] = rr.Reason
 	}
 
 	return result, nil
 }
 
-// GetPendingReview retrieves all scan results that need review
+// GetPendingReview retrieves all scan results that need review.
+// Uses a batch WHERE IN query for reasons to avoid N+1.
 func (r *ScanResultRepository) GetPendingReview(ctx context.Context) ([]*repositories.ScanResult, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT path, is_mature, confidence, auto_flagged, needs_review, scanned_at
-		FROM scan_results
-		WHERE needs_review = TRUE
-		ORDER BY scanned_at DESC
-	`)
-	if err != nil {
+	var rows []scanResultRow
+	if err := r.db.WithContext(ctx).
+		Where("needs_review = ?", true).
+		Order("scanned_at DESC").
+		Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to query pending reviews: %w", err)
 	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			r.log.Warn("Failed to close rows: %v", err)
-		}
-	}()
 
-	var results []*repositories.ScanResult
-	for rows.Next() {
-		result := &repositories.ScanResult{}
-		var scannedAt time.Time
-		err := rows.Scan(
-			&result.Path,
-			&result.IsMature,
-			&result.Confidence,
-			&result.AutoFlagged,
-			&result.NeedsReview,
-			&scannedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
-		}
-		result.ScannedAt = scannedAt.Format(time.RFC3339)
-
-		// Get reasons for this result
-		reasonRows, err := r.db.QueryContext(ctx,
-			"SELECT reason FROM scan_reasons WHERE path = ?", result.Path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query reasons: %w", err)
-		}
-
-		reasons, err := r.scanReasons(reasonRows)
-		if err != nil {
-			return nil, err
-		}
-		result.Reasons = reasons
-
-		results = append(results, result)
+	if len(rows) == 0 {
+		return nil, nil
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate scan result rows: %w", err)
+
+	// Collect paths for batch reason loading
+	paths := make([]string, len(rows))
+	resultMap := make(map[string]*repositories.ScanResult, len(rows))
+	results := make([]*repositories.ScanResult, len(rows))
+
+	for i := range rows {
+		result := r.rowToResult(&rows[i])
+		result.Reasons = []string{}
+		paths[i] = rows[i].Path
+		resultMap[rows[i].Path] = result
+		results[i] = result
+	}
+
+	// Batch load all reasons with WHERE IN (fixes N+1)
+	var allReasons []scanReasonRow
+	if err := r.db.WithContext(ctx).Where("path IN ?", paths).Find(&allReasons).Error; err == nil {
+		for _, rr := range allReasons {
+			if result, ok := resultMap[rr.Path]; ok {
+				result.Reasons = append(result.Reasons, rr.Reason)
+			}
+		}
 	}
 
 	return results, nil
@@ -244,52 +167,54 @@ func (r *ScanResultRepository) GetPendingReview(ctx context.Context) ([]*reposit
 
 // MarkReviewed updates a scan result with review information
 func (r *ScanResultRepository) MarkReviewed(ctx context.Context, path, reviewedBy, decision string) error {
-	reviewedAt := time.Now() // Pass time.Time directly for MySQL
+	now := time.Now()
+	result := r.db.WithContext(ctx).
+		Model(&scanResultRow{}).
+		Where("path = ?", path).
+		Updates(map[string]interface{}{
+			"needs_review":    false,
+			"reviewed_by":     reviewedBy,
+			"reviewed_at":     now,
+			"review_decision": decision,
+		})
 
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE scan_results
-		SET needs_review = FALSE,
-		    reviewed_by = ?,
-		    reviewed_at = ?,
-		    review_decision = ?
-		WHERE path = ?
-	`, reviewedBy, reviewedAt, decision, path)
-
-	if err != nil {
-		return fmt.Errorf("failed to mark as reviewed: %w", err)
+	if result.Error != nil {
+		return fmt.Errorf("failed to mark as reviewed: %w", result.Error)
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if result.RowsAffected == 0 {
 		return fmt.Errorf("scan result not found: %s", path)
 	}
-
-	r.log.Info("Marked scan result as reviewed: %s (decision: %s)", path, decision)
 	return nil
 }
 
-// scanReasons reads all reason strings from the provided rows, closing them properly.
-func (r *ScanResultRepository) scanReasons(rows *sql.Rows) ([]string, error) {
-	defer func() {
-		if err := rows.Close(); err != nil {
-			r.log.Warn("Failed to close reason rows: %v", err)
-		}
-	}()
+// rowToResult converts a GORM row to a repository ScanResult.
+func (r *ScanResultRepository) rowToResult(row *scanResultRow) *repositories.ScanResult {
+	result := &repositories.ScanResult{
+		Path:        row.Path,
+		IsMature:    row.IsMature,
+		Confidence:  row.Confidence,
+		AutoFlagged: row.AutoFlagged,
+		NeedsReview: row.NeedsReview,
+		ScannedAt:   row.ScannedAt.Format(time.RFC3339),
+	}
 
-	var reasons []string
-	for rows.Next() {
-		var reason string
-		if err := rows.Scan(&reason); err != nil {
-			return nil, fmt.Errorf("failed to scan reason: %w", err)
-		}
-		reasons = append(reasons, reason)
+	if row.ReviewedBy != nil {
+		result.ReviewedBy = *row.ReviewedBy
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate reason rows: %w", err)
+	if row.ReviewedAt != nil {
+		result.ReviewedAt = row.ReviewedAt.Format(time.RFC3339)
 	}
-	return reasons, nil
+	if row.ReviewDecision != nil {
+		result.ReviewDecision = *row.ReviewDecision
+	}
+
+	return result
+}
+
+// nilIfEmpty returns nil for empty strings, or a pointer to the string.
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

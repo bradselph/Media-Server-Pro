@@ -233,7 +233,7 @@ func (s *MatureScanner) Start(ctx context.Context) error {
 	if s.dbModule == nil || !s.dbModule.IsConnected() {
 		return fmt.Errorf("database is not connected")
 	}
-	s.scanRepo = mysql.NewScanResultRepository(s.dbModule.DB())
+	s.scanRepo = mysql.NewScanResultRepository(s.dbModule.GORM())
 	s.log.Info("Using MySQL repository for scan results")
 
 	// Log configuration
