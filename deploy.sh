@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
-# deploy.sh — Build locally and deploy to VPS via SSH + systemd.
+# deploy.sh — Deploy Media Server Pro to a VPS via git clone/pull + remote build.
 #
 # Usage:
-#   ./deploy.sh                         # build + scp + restart
-#   ./deploy.sh --no-build              # scp existing binary + restart
-#   ./deploy.sh --full                  # build with React frontend
+#   ./deploy.sh                         # pull latest + build + restart
+#   ./deploy.sh --full                  # also rebuild React frontend
 #   ./deploy.sh --branch main           # deploy specific branch
-#   ./deploy.sh --dry-run               # preview commands without executing
+#   ./deploy.sh --setup                 # first-time VPS setup (install deps, clone repo)
 #   ./deploy.sh --fix-env               # patch .env on VPS (port, host, TLS)
 #   ./deploy.sh --rollback              # restore server.bak on VPS
+#   ./deploy.sh --dry-run               # preview commands without executing
 #   ./deploy.sh --help                  # show help
 #
-# Environment variables:
-#   VPS_HOST     SSH host          (default: your-vps-ip)
-#   VPS_USER     SSH user          (default: root)
-#   VPS_PORT     SSH port          (default: 22)
-#   KEY_FILE     SSH private key   (default: ~/.ssh/id_ed25519)
-#   DEPLOY_DIR   Remote app dir    (default: /opt/media-server)
-#   SERVICE      systemd service   (default: media-server)
+# Environment variables (set in shell or .deploy.env):
+#   VPS_HOST       SSH host          (required)
+#   VPS_USER       SSH user          (default: root)
+#   VPS_PORT       SSH port          (default: 22)
+#   KEY_FILE       SSH private key   (default: ~/.ssh/id_ed25519)
+#   DEPLOY_DIR     Remote app dir    (default: /opt/media-server)
+#   SERVICE        systemd service   (default: media-server)
+#   GITHUB_TOKEN   GitHub PAT        (required for private repos)
+#   REPO_URL       Repository URL    (default: github.com/bradselph/Media-Server-Pro.git)
 
 set -euo pipefail
 
@@ -30,28 +32,34 @@ success() { echo -e "${GREEN}[deploy]${RESET} $*"; }
 warn()    { echo -e "${YELLOW}[deploy]${RESET} $*"; }
 die()     { echo -e "${RED}[deploy] ERROR:${RESET} $*" >&2; exit 1; }
 
+# ── Load .deploy.env if present ──────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
+
 # ── Defaults ──────────────────────────────────────────────────────────────────
-VPS_HOST="${VPS_HOST:-your-vps-ip}"
+VPS_HOST="${VPS_HOST:-}"
 VPS_USER="${VPS_USER:-root}"
 VPS_PORT="${VPS_PORT:-22}"
 KEY_FILE="${KEY_FILE:-$HOME/.ssh/id_ed25519}"
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/media-server}"
 SERVICE="${SERVICE:-media-server}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+REPO_URL="${REPO_URL:-github.com/bradselph/Media-Server-Pro.git}"
 
 BUILD_REACT=false
-NO_BUILD=false
 DRY_RUN=false
 FIX_ENV=false
 ROLLBACK=false
-BRANCH=""
+SETUP=false
+BRANCH="main"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --full)       BUILD_REACT=true ; shift ;;
-    --no-build)   NO_BUILD=true    ; shift ;;
     --dry-run)    DRY_RUN=true     ; shift ;;
     --fix-env)    FIX_ENV=true     ; shift ;;
     --rollback)   ROLLBACK=true    ; shift ;;
+    --setup)      SETUP=true       ; shift ;;
     --branch)     BRANCH="$2"      ; shift 2 ;;
     --help|-h)
       sed -n '/^# Usage:/,/^[^#]/p' "$0" | head -n -1
@@ -61,14 +69,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BINARY="$SCRIPT_DIR/server"
+[[ -z "$VPS_HOST" ]] && die "VPS_HOST is not set. Export it or add to .deploy.env"
+[[ -z "$GITHUB_TOKEN" ]] && die "GITHUB_TOKEN is not set. Export it or add to .deploy.env"
 
 # SSH options
 SSH_OPTS=(-p "$VPS_PORT" -i "$KEY_FILE" -o "StrictHostKeyChecking=accept-new" -o "BatchMode=yes")
 
 vps() { ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "$@"; }
-scp_up() { scp -P "$VPS_PORT" -i "$KEY_FILE" -o "StrictHostKeyChecking=accept-new" "$@"; }
 
 run_or_dry() {
   if $DRY_RUN; then
@@ -78,10 +85,13 @@ run_or_dry() {
   fi
 }
 
-echo -e "\n${BOLD}=== Media Server Pro 4 — Deploy ===${RESET}\n"
+CLONE_URL="https://${GITHUB_TOKEN}@${REPO_URL}"
+
+echo -e "\n${BOLD}=== Media Server Pro — Deploy ===${RESET}\n"
 info "VPS        : $VPS_USER@$VPS_HOST:$VPS_PORT"
 info "Deploy dir : $DEPLOY_DIR"
 info "Service    : $SERVICE"
+info "Branch     : $BRANCH"
 $DRY_RUN && warn "DRY RUN — no commands will execute"
 echo ""
 
@@ -97,6 +107,85 @@ if $ROLLBACK; then
     chmod +x '$DEPLOY_DIR/server'
     sudo systemctl start '$SERVICE'
     echo 'Rollback complete'
+  "
+  exit 0
+fi
+
+# ── First-time setup ─────────────────────────────────────────────────────────
+if $SETUP; then
+  info "Running first-time VPS setup..."
+  run_or_dry vps "
+    set -euo pipefail
+
+    # Install Go (if not present)
+    if ! command -v go &>/dev/null; then
+      echo '[setup] Installing Go...'
+      curl -fsSL https://go.dev/dl/go1.24.1.linux-amd64.tar.gz -o /tmp/go.tar.gz
+      sudo rm -rf /usr/local/go
+      sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+      rm /tmp/go.tar.gz
+      echo 'export PATH=\$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh
+      export PATH=\$PATH:/usr/local/go/bin
+      echo \"[setup] Go \$(go version) installed\"
+    else
+      echo \"[setup] Go already installed: \$(go version)\"
+    fi
+
+    # Install Node.js (if not present, for React builds)
+    if ! command -v node &>/dev/null; then
+      echo '[setup] Installing Node.js 22...'
+      curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+      echo \"[setup] Node \$(node --version) installed\"
+    else
+      echo \"[setup] Node already installed: \$(node --version)\"
+    fi
+
+    # Install ffmpeg (if not present)
+    if ! command -v ffmpeg &>/dev/null; then
+      echo '[setup] Installing ffmpeg...'
+      sudo apt-get install -y ffmpeg
+    else
+      echo \"[setup] ffmpeg already installed\"
+    fi
+
+    # Create service user (if not exists)
+    if ! id mediaserver &>/dev/null; then
+      echo '[setup] Creating mediaserver user...'
+      sudo useradd -r -s /usr/sbin/nologin -d '$DEPLOY_DIR' mediaserver
+    fi
+
+    # Clone repository
+    if [ ! -d '$DEPLOY_DIR/.git' ]; then
+      echo '[setup] Cloning repository...'
+      sudo mkdir -p '$(dirname "$DEPLOY_DIR")'
+      git clone '$CLONE_URL' '$DEPLOY_DIR'
+    else
+      echo '[setup] Repository already cloned'
+    fi
+
+    # Copy .env template if no .env exists
+    if [ ! -f '$DEPLOY_DIR/.env' ]; then
+      cp '$DEPLOY_DIR/.env.example' '$DEPLOY_DIR/.env'
+      echo '[setup] Created .env from template — edit it with your settings!'
+    fi
+
+    # Install systemd service
+    if [ -f '$DEPLOY_DIR/systemd/media-server.service' ]; then
+      sudo cp '$DEPLOY_DIR/systemd/media-server.service' '/etc/systemd/system/$SERVICE.service'
+      sudo systemctl daemon-reload
+      sudo systemctl enable '$SERVICE'
+      echo '[setup] systemd service installed and enabled'
+    fi
+
+    # Set ownership
+    sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'
+
+    echo ''
+    echo '[setup] Done! Next steps:'
+    echo '  1. Edit $DEPLOY_DIR/.env with your database credentials and settings'
+    echo '  2. Run: ./deploy.sh              (to build and start)'
+    echo '  3. Run: ./deploy.sh --fix-env    (to auto-patch common settings)'
   "
   exit 0
 fi
@@ -126,62 +215,77 @@ if $FIX_ENV; then
   echo ""
 fi
 
-# ── Branch checkout ───────────────────────────────────────────────────────────
-if [[ -n "$BRANCH" ]]; then
-  info "Checking out branch: $BRANCH"
-  run_or_dry git fetch origin "$BRANCH"
-  run_or_dry git checkout "$BRANCH"
-  run_or_dry git pull origin "$BRANCH"
-fi
+# ── Pull latest code ─────────────────────────────────────────────────────────
+info "Pulling latest code on VPS (branch: $BRANCH)..."
+run_or_dry vps "
+  set -euo pipefail
+  export PATH=\$PATH:/usr/local/go/bin
 
-# ── Build ─────────────────────────────────────────────────────────────────────
-if ! $NO_BUILD; then
-  cd "$SCRIPT_DIR"
+  cd '$DEPLOY_DIR'
 
-  if $BUILD_REACT; then
-    info "Building React frontend..."
-    (cd web/frontend && npm ci && npm run build) || die "React build failed"
-    success "React bundle built → web/static/react/"
-  fi
+  # Ensure the remote URL uses the token
+  git remote set-url origin '$CLONE_URL'
 
-  info "Downloading Go modules..."
-  go mod download || die "go mod download failed"
+  git fetch origin '$BRANCH'
+  git checkout '$BRANCH'
+  git reset --hard 'origin/$BRANCH'
 
-  info "Building server binary (linux/amd64)..."
-  GOOS=linux GOARCH=amd64 go build \
-    -ldflags "-X main.Version=$(cat VERSION 2>/dev/null || echo 4.0.0) -X main.BuildDate=$(date +%Y-%m-%d)" \
-    -o "$BINARY" ./cmd/server || die "Go build failed"
-  success "Binary built → $BINARY"
+  echo \"[deploy] HEAD is now: \$(git log --oneline -1)\"
+"
+
+# ── Build on VPS ──────────────────────────────────────────────────────────────
+info "Building on VPS..."
+REACT_BUILD_CMD=""
+if $BUILD_REACT; then
+  REACT_BUILD_CMD="
+  echo '[deploy] Building React frontend...'
+  cd web/frontend
+  npm ci
+  npm run build
+  cd ../..
+  echo '[deploy] React build complete'
+  "
 else
-  [[ -f "$BINARY" ]] || die "Binary $BINARY not found. Run without --no-build first."
+  REACT_BUILD_CMD="echo '[deploy] Skipping React build (use --full to include)'"
 fi
 
-# ── Deploy ────────────────────────────────────────────────────────────────────
-info "Stopping service on VPS..."
-run_or_dry vps "sudo systemctl stop '$SERVICE' 2>/dev/null || true; echo 'Service stopped'"
+run_or_dry vps "
+  set -euo pipefail
+  export PATH=\$PATH:/usr/local/go/bin:/usr/local/bin
 
-# Backup old binary
-run_or_dry vps "[ -f '$DEPLOY_DIR/server' ] && cp '$DEPLOY_DIR/server' '$DEPLOY_DIR/server.bak' && echo 'Backed up server → server.bak' || true"
+  cd '$DEPLOY_DIR'
 
-info "Uploading binary..."
-if ! $DRY_RUN; then
-  scp_up "$BINARY" "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/server"
-fi
+  # React frontend (optional)
+  $REACT_BUILD_CMD
 
-info "Ensuring binary is executable..."
-run_or_dry vps "chmod +x '$DEPLOY_DIR/server'"
+  # Stop service before replacing binary
+  sudo systemctl stop '$SERVICE' 2>/dev/null || true
 
-# Upload systemd unit if present
-if [[ -f "$SCRIPT_DIR/systemd/media-server.service" ]]; then
-  info "Uploading systemd unit file..."
-  if ! $DRY_RUN; then
-    scp_up "$SCRIPT_DIR/systemd/media-server.service" \
-      "$VPS_USER@$VPS_HOST:/tmp/media-server.service"
-    vps "sudo mv /tmp/media-server.service /etc/systemd/system/$SERVICE.service && sudo systemctl daemon-reload"
+  # Backup old binary
+  [ -f server ] && cp server server.bak && echo '[deploy] Backed up server -> server.bak'
+
+  # Build Go binary
+  echo '[deploy] Building Go binary...'
+  VERSION=\$(cat VERSION 2>/dev/null || echo 4.0.0)
+  go build \\
+    -ldflags \"-X main.Version=\$VERSION -X main.BuildDate=\$(date +%Y-%m-%d)\" \\
+    -o server ./cmd/server
+
+  echo '[deploy] Build complete'
+"
+
+# ── Update systemd unit if changed ────────────────────────────────────────────
+run_or_dry vps "
+  if [ -f '$DEPLOY_DIR/systemd/media-server.service' ]; then
+    sudo cp '$DEPLOY_DIR/systemd/media-server.service' '/etc/systemd/system/$SERVICE.service'
+    sudo systemctl daemon-reload
   fi
-fi
+"
 
-# ── Start & health check ──────────────────────────────────────────────────────
+# ── Fix ownership ─────────────────────────────────────────────────────────────
+run_or_dry vps "sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'"
+
+# ── Start & health check ─────────────────────────────────────────────────────
 info "Starting $SERVICE..."
 run_or_dry vps "
   set -euo pipefail
@@ -195,8 +299,9 @@ run_or_dry vps "
     # Rollback on failure
     if [ -f '$DEPLOY_DIR/server.bak' ]; then
       echo '[deploy] Rolling back...'
-      mv '$DEPLOY_DIR/server.bak' '$DEPLOY_DIR/server'
-      chmod +x '$DEPLOY_DIR/server'
+      cd '$DEPLOY_DIR'
+      mv server.bak server
+      chmod +x server
       sudo systemctl start '$SERVICE' && echo '[deploy] Rollback succeeded' || echo '[deploy] Rollback also failed'
     fi
     exit 1

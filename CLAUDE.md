@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Media Server Pro 4 is a modular, fault-tolerant media streaming server written in Go with a Gin HTTP framework. It
+Media Server Pro is a modular, fault-tolerant media streaming server written in Go with a Gin HTTP framework. It
 provides video/audio streaming with HLS adaptive streaming, thumbnail generation, analytics, user authentication,
 mature content scanning, and an admin panel. The frontend is a React 19 + TypeScript + Vite SPA served from
 `web/static/react/`.

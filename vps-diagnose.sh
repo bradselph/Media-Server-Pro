@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vps-diagnose.sh — Full VPS diagnostic for Media Server Pro 3.
+# vps-diagnose.sh — Full VPS diagnostic for Media Server Pro.
 # Designed for Claude Code to run remotely and identify issues automatically.
 #
 # Usage:

@@ -60,9 +60,9 @@ func main() {
 
 	if *showVer {
 		if BuildDate != "" {
-			fmt.Printf("Media Server Pro 4 v%s (built %s)\n", Version, BuildDate)
+			fmt.Printf("Media Server Pro v%s (built %s)\n", Version, BuildDate)
 		} else {
-			fmt.Printf("Media Server Pro 4 v%s\n", Version)
+			fmt.Printf("Media Server Pro v%s\n", Version)
 		}
 		os.Exit(0)
 	}

@@ -1,6 +1,6 @@
 import {type ChangeEvent, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
-import {Link, useNavigate} from 'react-router-dom'
+import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -607,18 +607,66 @@ export function IndexPage() {
     const serverSettings = useSettingsStore((s) => s.serverSettings)
     const uploadsEnabled = serverSettings?.uploads?.enabled ?? true
 
-    // Filters state
-    const [mediaType, setMediaType] = useState('all')
-    const [sortBy, setSortBy] = useState('date')
-    const [sortOrder, setSortOrder] = useState('desc')
-    const [category, setCategory] = useState('all')
-    const [search, setSearch] = useState('')
-    const [searchInput, setSearchInput] = useState('')
-    const [page, setPage] = useState(1)
-    // User preference takes priority over global server setting
-    const [limit, setLimit] = useState(() =>
-        user?.preferences?.items_per_page || serverSettings?.ui?.items_per_page || 24
-    )
+    // Pagination & filter state persisted in URL so back-navigation restores position
+    const [searchParams, setSearchParams] = useSearchParams()
+    const defaultLimit = user?.preferences?.items_per_page || serverSettings?.ui?.items_per_page || 24
+
+    const page = Math.max(1, Number(searchParams.get('page')) || 1)
+    const limit = Number(searchParams.get('limit')) || defaultLimit
+    const mediaType = searchParams.get('type') || 'all'
+    const sortBy = searchParams.get('sort') || 'date'
+    const sortOrder = searchParams.get('order') || 'desc'
+    const category = searchParams.get('category') || 'all'
+    const search = searchParams.get('q') || ''
+    const [searchInput, setSearchInput] = useState(search)
+
+    // Helper: update URL params (replace: true to avoid flooding browser history)
+    const updateParams = useCallback((updates: Record<string, string | number | null>) => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev)
+            for (const [key, value] of Object.entries(updates)) {
+                if (value === null || value === '') {
+                    next.delete(key)
+                } else {
+                    next.set(key, String(value))
+                }
+            }
+            // Clean defaults out of URL to keep it tidy
+            if (next.get('page') === '1') next.delete('page')
+            if (next.get('type') === 'all') next.delete('type')
+            if (next.get('sort') === 'date') next.delete('sort')
+            if (next.get('order') === 'desc') next.delete('order')
+            if (next.get('category') === 'all') next.delete('category')
+            if (next.get('limit') === String(defaultLimit)) next.delete('limit')
+            return next
+        }, {replace: true})
+    }, [setSearchParams, defaultLimit])
+
+    const setPage = useCallback((v: number | ((prev: number) => number)) => {
+        const newPage = typeof v === 'function' ? v(page) : v
+        updateParams({page: newPage})
+    }, [page, updateParams])
+
+    const setLimit = useCallback((v: number) => {
+        updateParams({limit: v, page: null})
+    }, [updateParams])
+
+    const setMediaType = useCallback((v: string) => {
+        updateParams({type: v, page: null})
+    }, [updateParams])
+
+    const setSortBy = useCallback((v: string) => {
+        updateParams({sort: v, page: null})
+    }, [updateParams])
+
+    const setSortOrder = useCallback((v: string) => {
+        updateParams({order: v, page: null})
+    }, [updateParams])
+
+    const setCategory = useCallback((v: string) => {
+        updateParams({category: v, page: null})
+    }, [updateParams])
+
     const [showFilters, setShowFilters] = useState(true)
 
     // Playlist store — shuffle, repeat, and queue management
@@ -640,19 +688,13 @@ export function IndexPage() {
         return () => clearTimeout(t)
     }, [playlistError])
 
-    // Debounced search
+    // Debounced search — syncs typed input to URL param
     useEffect(() => {
         const t = setTimeout(() => {
-            setSearch(searchInput)
-            setPage(1)
+            updateParams({q: searchInput || null, page: null})
         }, 400)
         return () => clearTimeout(t)
-    }, [searchInput])
-
-    // Reset page on filter change
-    useEffect(() => {
-        setPage(1)
-    }, [mediaType, sortBy, sortOrder, category])
+    }, [searchInput, updateParams])
 
     // Media list query
     const {data: mediaData, isLoading: mediaLoading} = useQuery({
@@ -1120,10 +1162,7 @@ export function IndexPage() {
                                     id="per-page"
                                     className="pagination-select"
                                     value={limit}
-                                    onChange={e => {
-                                        setLimit(Number(e.target.value));
-                                        setPage(1)
-                                    }}
+                                    onChange={e => setLimit(Number(e.target.value))}
                                 >
                                     <option value="12">12</option>
                                     <option value="24">24</option>

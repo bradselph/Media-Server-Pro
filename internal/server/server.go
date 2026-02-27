@@ -88,7 +88,7 @@ func New(opts Options) (*Server, error) {
 	log := logger.New("server")
 
 	log.Info(logSeparator)
-	log.Info("    Media Server Pro 4 (Gin Edition)")
+	log.Info("    Media Server Pro")
 	log.Info(logSeparator)
 	log.Info("Initializing server...")
 
