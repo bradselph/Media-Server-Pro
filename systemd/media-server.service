@@ -1,0 +1,46 @@
+[Unit]
+Description=Media Server Pro 4
+Documentation=https://github.com/bradselph/Media-Server-Pro-4
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=mediaserver
+Group=mediaserver
+WorkingDirectory=/opt/media-server
+
+# Load all configuration from .env
+EnvironmentFile=/opt/media-server/.env
+
+ExecStart=/opt/media-server/server
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+# Graceful shutdown timeout (match SERVER_SHUTDOWN_TIMEOUT in .env)
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+
+# Watchdog — systemd kills and restarts if process deadlocks
+WatchdogSec=60
+
+# Resource limits
+LimitNOFILE=65536
+
+# Standard output to journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=media-server
+
+[Install]
+WantedBy=multi-user.target

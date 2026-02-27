@@ -1,0 +1,214 @@
+import {type RefObject, useCallback, useEffect, useRef, useState} from 'react'
+
+interface HLSQuality {
+    index: number
+    height: number
+    bitrate: number
+    name: string
+}
+
+interface UseHLSResult {
+    qualities: HLSQuality[]
+    currentQuality: number
+    selectQuality: (index: number) => void
+    isLoading: boolean
+    error: string | null
+}
+
+function getQualityName(height: number): string {
+    if (height >= 2160) return '4K'
+    if (height >= 1440) return '1440p'
+    if (height >= 1080) return '1080p'
+    if (height >= 720) return '720p'
+    if (height >= 480) return '480p'
+    if (height >= 360) return '360p'
+    return `${height}p`
+}
+
+export function useHLS(
+    mediaRef: RefObject<HTMLMediaElement | null>,
+    hlsUrl: string | null,
+    onFallback?: () => void,
+): UseHLSResult {
+    const hlsRef = useRef<import('hls.js').default | null>(null)
+    const [qualities, setQualities] = useState<HLSQuality[]>([])
+    const [currentQuality, setCurrentQuality] = useState(-1)
+    const [isLoading, setIsLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const networkRetryCount = useRef(0)
+    const mediaRetryCount = useRef(0)
+
+    const selectQuality = useCallback((index: number) => {
+        if (hlsRef.current) {
+            hlsRef.current.currentLevel = index
+            setCurrentQuality(index)
+        }
+    }, [])
+
+    useEffect(() => {
+        if (!hlsUrl || !mediaRef.current) {
+            setQualities([])
+            setCurrentQuality(-1)
+            setIsLoading(false)
+            setError(null)
+            return
+        }
+
+        const el = mediaRef.current
+
+        // Safari native HLS support
+        if (el.canPlayType('application/vnd.apple.mpegurl')) {
+            el.src = hlsUrl
+            setIsLoading(false)
+            return
+        }
+
+        let cancelled = false
+
+        async function initHLS() {
+            let Hls: typeof import('hls.js')['default']
+            try {
+                Hls = (await import('hls.js')).default
+            } catch {
+                if (!cancelled) {
+                    setError('Failed to load HLS player')
+                    onFallback?.()
+                }
+                return
+            }
+            if (cancelled || !Hls.isSupported()) {
+                if (!Hls.isSupported()) {
+                    setError('HLS not supported in this browser')
+                    onFallback?.()
+                }
+                return
+            }
+
+            // Destroy previous instance
+            if (hlsRef.current) {
+                hlsRef.current.destroy()
+                hlsRef.current = null
+            }
+
+            setIsLoading(true)
+            setError(null)
+            networkRetryCount.current = 0
+            mediaRetryCount.current = 0
+
+            const hls = new Hls({
+                debug: false,
+                enableWorker: true,
+                lowLatencyMode: false,
+                backBufferLength: 90,
+                maxBufferLength: 60,
+                maxMaxBufferLength: 120,
+                maxBufferSize: 60 * 1000 * 1000,
+                maxBufferHole: 0.5,
+                highBufferWatchdogPeriod: 3,
+                nudgeOffset: 0.1,
+                nudgeMaxRetry: 5,
+                maxFragLookUpTolerance: 0.25,
+                liveSyncDurationCount: 3,
+                liveMaxLatencyDurationCount: 10,
+                manifestLoadingTimeOut: 20000,
+                manifestLoadingMaxRetry: 4,
+                manifestLoadingRetryDelay: 1000,
+                levelLoadingTimeOut: 20000,
+                levelLoadingMaxRetry: 4,
+                levelLoadingRetryDelay: 1000,
+                fragLoadingTimeOut: 30000,
+                fragLoadingMaxRetry: 6,
+                fragLoadingRetryDelay: 1000,
+                startFragPrefetch: true,
+                testBandwidth: true,
+            })
+
+            hlsRef.current = hls
+
+            hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+                if (cancelled) return
+                const q: HLSQuality[] = data.levels.map((level, i) => ({
+                    index: i,
+                    height: level.height,
+                    bitrate: level.bitrate,
+                    name: getQualityName(level.height),
+                }))
+                setQualities(q)
+                setCurrentQuality(-1) // auto
+                setIsLoading(false)
+            })
+
+            hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+                if (!cancelled) setCurrentQuality(data.level)
+            })
+
+            hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+                if (cancelled) return
+                const stats = data.frag.stats
+                if (stats.loaded && stats.loading.end && stats.loading.start) {
+                    const loadTime = stats.loading.end - stats.loading.start
+                    if (loadTime > 0) {
+                        const bandwidth = (stats.loaded * 8) / (loadTime / 1000)
+                        if (bandwidth < 1_000_000) {
+                            hls.config.maxBufferLength = 30
+                        } else if (bandwidth < 3_000_000) {
+                            hls.config.maxBufferLength = 45
+                        } else {
+                            hls.config.maxBufferLength = 60
+                        }
+                    }
+                }
+            })
+
+            hls.on(Hls.Events.ERROR, (_event, data) => {
+                if (cancelled) return
+                if (!data.fatal) return
+
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                    networkRetryCount.current++
+                    if (networkRetryCount.current <= 3) {
+                        const delay = Math.min(1000 * Math.pow(2, networkRetryCount.current - 1), 8000)
+                        setTimeout(() => {
+                            if (!cancelled && hlsRef.current) {
+                                hlsRef.current.startLoad()
+                            }
+                        }, delay)
+                        return
+                    }
+                }
+
+                if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                    mediaRetryCount.current++
+                    if (mediaRetryCount.current <= 2) {
+                        hls.recoverMediaError()
+                        return
+                    }
+                }
+
+                // All retries exhausted — fallback
+                setError('HLS playback failed, falling back to direct streaming')
+                hls.destroy()
+                hlsRef.current = null
+                onFallback?.()
+            })
+
+            hls.loadSource(hlsUrl!)
+            hls.attachMedia(el)
+        }
+
+        initHLS()
+
+        return () => {
+            cancelled = true
+            if (hlsRef.current) {
+                hlsRef.current.destroy()
+                hlsRef.current = null
+            }
+            setQualities([])
+            setCurrentQuality(-1)
+            setIsLoading(false)
+        }
+    }, [hlsUrl, mediaRef, onFallback])
+
+    return {qualities, currentQuality, selectQuality, isLoading, error}
+}

@@ -1,0 +1,604 @@
+package handlers
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/auth"
+	"media-server-pro/pkg/models"
+)
+
+// Login authenticates a user or admin using the same endpoint
+func (h *Handler) Login(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	adminSession, adminErr := h.auth.AdminAuthenticate(c.Request.Context(),
+		req.Username,
+		req.Password,
+		c.ClientIP(),
+		c.Request.UserAgent(),
+	)
+
+	if adminErr != nil {
+		if errors.Is(adminErr, auth.ErrAccountLocked) {
+			writeError(c, http.StatusTooManyRequests, "Too many failed login attempts. Please try again later.")
+			return
+		}
+		if errors.Is(adminErr, auth.ErrAdminWrongPassword) {
+			writeError(c, http.StatusUnauthorized, "Invalid credentials")
+			return
+		}
+		if !errors.Is(adminErr, auth.ErrNotAdminUsername) {
+			writeError(c, http.StatusUnauthorized, "Invalid credentials")
+			return
+		}
+	} else {
+		session, sessErr := h.auth.CreateSessionForUser(
+			c.Request.Context(),
+			adminSession.Username,
+			c.ClientIP(),
+			c.Request.UserAgent(),
+		)
+		if sessErr != nil {
+			h.log.Error("Failed to create admin session: %v", sessErr)
+			writeError(c, http.StatusInternalServerError, "Failed to create session")
+			return
+		}
+
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "session_id",
+			Value:    session.ID,
+			Path:     "/",
+			Expires:  session.ExpiresAt,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   isSecureRequest(c.Request),
+		})
+		writeSuccess(c, map[string]interface{}{
+			"session_id": session.ID,
+			"username":   session.Username,
+			"role":       session.Role,
+			"is_admin":   session.Role == models.RoleAdmin,
+			"expires_at": session.ExpiresAt,
+		})
+		return
+	}
+
+	session, err := h.auth.Authenticate(c.Request.Context(),
+		req.Username,
+		req.Password,
+		c.ClientIP(),
+		c.Request.UserAgent(),
+	)
+	if err != nil {
+		if errors.Is(err, auth.ErrAccountLocked) {
+			writeError(c, http.StatusTooManyRequests, "Too many failed login attempts. Please try again later.")
+			return
+		}
+		writeError(c, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
+
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session_id",
+		Value:    session.ID,
+		Path:     "/",
+		Expires:  session.ExpiresAt,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isSecureRequest(c.Request),
+	})
+
+	writeSuccess(c, map[string]interface{}{
+		"session_id": session.ID,
+		"username":   session.Username,
+		"role":       session.Role,
+		"is_admin":   false,
+		"expires_at": session.ExpiresAt,
+	})
+}
+
+// Logout invalidates a session (both regular and admin)
+func (h *Handler) Logout(c *gin.Context) {
+	cookie, err := c.Request.Cookie("session_id")
+	if err == nil {
+		if logoutErr := h.auth.Logout(c.Request.Context(), cookie.Value); logoutErr != nil {
+			h.log.Warn("Failed to logout session: %v", logoutErr)
+		}
+	}
+
+	adminCookie, err := c.Request.Cookie("admin_session")
+	if err == nil {
+		if logoutErr := h.auth.LogoutAdmin(c.Request.Context(), adminCookie.Value); logoutErr != nil {
+			h.log.Warn("Failed to logout admin session: %v", logoutErr)
+		}
+	}
+
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session_id",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isSecureRequest(c.Request),
+	})
+
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "admin_session",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isSecureRequest(c.Request),
+	})
+
+	writeSuccess(c, nil)
+}
+
+// CheckSession returns the current session status
+func (h *Handler) CheckSession(c *gin.Context) {
+	cfg := h.media.GetConfig()
+	allowGuests := cfg.Auth.AllowGuests
+
+	user := getUser(c)
+	if user == nil {
+		writeSuccess(c, map[string]interface{}{
+			"authenticated": false,
+			"allow_guests":  allowGuests,
+		})
+		return
+	}
+
+	writeSuccess(c, map[string]interface{}{
+		"authenticated": true,
+		"allow_guests":  allowGuests,
+		"user":          user,
+	})
+}
+
+// Register creates a new user account
+func (h *Handler) Register(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	req.Username = strings.TrimSpace(req.Username)
+	req.Email = strings.TrimSpace(req.Email)
+	if len(req.Username) < 3 || len(req.Username) > 64 {
+		writeError(c, http.StatusBadRequest, "Username must be between 3 and 64 characters")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeError(c, http.StatusBadRequest, "Password must be at least 8 characters")
+		return
+	}
+	for _, ch := range req.Username {
+		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_' && ch != '-' {
+			writeError(c, http.StatusBadRequest, "Username may only contain letters, numbers, underscores, and hyphens")
+			return
+		}
+	}
+	if req.Email != "" && !strings.Contains(req.Email, "@") {
+		writeError(c, http.StatusBadRequest, "Invalid email address")
+		return
+	}
+
+	user, err := h.auth.CreateUser(c.Request.Context(), req.Username, req.Password, req.Email, "standard", models.RoleViewer)
+	if err != nil {
+		if errors.Is(err, auth.ErrUserExists) {
+			writeError(c, http.StatusConflict, "Username is already taken")
+			return
+		}
+		h.log.Error("Failed to create user %s: %v", req.Username, err)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	session, authErr := h.auth.CreateSessionForUser(c.Request.Context(),
+		req.Username,
+		c.ClientIP(),
+		c.Request.UserAgent(),
+	)
+	if authErr != nil {
+		h.log.Error("Failed to create session for new user %s: %v", req.Username, authErr)
+		writeError(c, http.StatusInternalServerError, "Account created but login failed")
+		return
+	}
+
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session_id",
+		Value:    session.ID,
+		Path:     "/",
+		Expires:  session.ExpiresAt,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isSecureRequest(c.Request),
+	})
+
+	writeSuccess(c, user)
+}
+
+// GetPreferences returns the current user's preferences
+func (h *Handler) GetPreferences(c *gin.Context) {
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	var user *models.User
+	if session.Role == models.RoleAdmin {
+		if dbUser, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
+			user = dbUser
+		}
+	}
+
+	if user == nil {
+		user = getUser(c)
+	}
+	if user == nil {
+		var err error
+		user, err = h.auth.GetUserByID(c.Request.Context(), session.UserID)
+		if err != nil {
+			writeError(c, http.StatusNotFound, errUserNotFound)
+			return
+		}
+	}
+
+	writeSuccess(c, user.Preferences)
+}
+
+// UpdatePreferences updates the current user's preferences
+func (h *Handler) UpdatePreferences(c *gin.Context) {
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	var incoming map[string]interface{}
+	if err := json.NewDecoder(c.Request.Body).Decode(&incoming); err != nil {
+		h.log.Error("Failed to decode preferences JSON for user %s: %v", session.Username, err)
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	if session.Role == models.RoleAdmin {
+		if _, err := h.auth.GetUser(c.Request.Context(), session.Username); err != nil {
+			randomPassword, pwdErr := h.auth.GenerateSecurePassword(32)
+			if pwdErr != nil {
+				h.log.Error("Failed to generate password for admin user record: %v", pwdErr)
+				randomPassword = "FALLBACK_UNUSED_PASSWORD_" + generateRandomString(24)
+			}
+			if _, createErr := h.auth.CreateUser(c.Request.Context(), session.Username, randomPassword, "", "admin", models.RoleAdmin); createErr != nil {
+				h.log.Warn("Could not create admin user record for preferences: %v", createErr)
+			}
+		}
+	}
+
+	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
+	if err != nil {
+		writeError(c, http.StatusNotFound, errUserNotFound)
+		return
+	}
+	prefs := user.Preferences
+
+	if v, ok := incoming["theme"].(string); ok {
+		prefs.Theme = v
+	}
+	if v, ok := incoming["view_mode"].(string); ok {
+		prefs.ViewMode = v
+	}
+	if v, ok := incoming["default_quality"].(string); ok {
+		prefs.DefaultQuality = v
+	}
+	if v, ok := incoming["auto_play"].(bool); ok {
+		prefs.AutoPlay = v
+	}
+	if v, ok := incoming["autoplay"].(bool); ok {
+		prefs.AutoPlay = v
+	}
+	if v, ok := incoming["playback_speed"].(float64); ok {
+		prefs.PlaybackSpeed = v
+	}
+	if v, ok := incoming["volume"].(float64); ok {
+		prefs.Volume = v
+	}
+	if showMature, ok := incoming["show_mature"].(bool); ok {
+		prefs.ShowMature = showMature
+		prefs.MaturePreferenceSet = true
+	}
+	if v, ok := incoming["language"].(string); ok {
+		prefs.Language = v
+	}
+	if v, ok := incoming["equalizer_preset"].(string); ok {
+		prefs.EqualizerPreset = v
+	} else if v, ok := incoming["equalizer_bands"].(string); ok {
+		prefs.EqualizerPreset = v
+	}
+	if v, ok := incoming["resume_playback"].(bool); ok {
+		prefs.ResumePlayback = v
+	}
+	if v, ok := incoming["show_analytics"].(bool); ok {
+		prefs.ShowAnalytics = v
+	}
+	if v, ok := incoming["items_per_page"].(float64); ok {
+		prefs.ItemsPerPage = int(v)
+	}
+	if v, ok := incoming["sort_by"].(string); ok {
+		prefs.SortBy = v
+	}
+	if v, ok := incoming["sort_order"].(string); ok {
+		prefs.SortOrder = v
+	}
+	if v, ok := incoming["filter_category"].(string); ok {
+		prefs.FilterCategory = v
+	}
+	if v, ok := incoming["filter_media_type"].(string); ok {
+		prefs.FilterMediaType = v
+	}
+	if v, ok := incoming["custom_eq_presets"].(map[string]interface{}); ok {
+		prefs.CustomEQPresets = v
+	}
+
+	h.log.Debug("Updating preferences for user %s: show_mature=%v, mature_preference_set=%v", session.Username, prefs.ShowMature, prefs.MaturePreferenceSet)
+
+	if err := h.auth.UpdateUserPreferences(c.Request.Context(), session.Username, prefs); err != nil {
+		h.log.Error("Failed to update preferences for user %s: %v", session.Username, err)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	writeSuccess(c, prefs)
+}
+
+// GetWatchHistory returns the current user's watch history
+func (h *Handler) GetWatchHistory(c *gin.Context) {
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	user := getUser(c)
+	if user == nil {
+		var err error
+		user, err = h.auth.GetUserByID(c.Request.Context(), session.UserID)
+		if err != nil {
+			writeError(c, http.StatusNotFound, errUserNotFound)
+			return
+		}
+	}
+
+	history := user.WatchHistory
+	if pathFilter := c.Query("path"); pathFilter != "" {
+		var matched []models.WatchHistoryItem
+		for _, item := range history {
+			if item.MediaPath == pathFilter {
+				matched = append(matched, item)
+				break
+			}
+		}
+		if matched == nil {
+			matched = []models.WatchHistoryItem{}
+		}
+		writeSuccess(c, matched)
+		return
+	}
+
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit < len(history) {
+			history = history[:limit]
+		}
+	}
+
+	writeSuccess(c, history)
+}
+
+// ClearWatchHistory clears the user's watch history.
+func (h *Handler) ClearWatchHistory(c *gin.Context) {
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	if mediaPath := c.Query("path"); mediaPath != "" {
+		if err := h.auth.RemoveWatchHistoryItem(c.Request.Context(), session.Username, mediaPath); err != nil {
+			h.log.Error("%v", err)
+			writeError(c, http.StatusInternalServerError, "Internal server error")
+			return
+		}
+		h.media.ClearPlaybackPosition(c.Request.Context(), mediaPath, session.UserID)
+		writeSuccess(c, map[string]string{"status": "removed"})
+		return
+	}
+
+	if err := h.auth.ClearWatchHistory(c.Request.Context(), session.Username); err != nil {
+		h.log.Error("%v", err)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	h.media.ClearAllPlaybackPositions(session.UserID)
+
+	writeSuccess(c, map[string]string{"status": "cleared"})
+}
+
+// GetPermissions returns the current user's permissions and capabilities
+func (h *Handler) GetPermissions(c *gin.Context) {
+	session := getSession(c)
+
+	if session == nil {
+		writeSuccess(c, map[string]interface{}{
+			"authenticated":         false,
+			"show_mature":           false,
+			"mature_preference_set": false,
+			"capabilities": map[string]bool{
+				"canUpload":          false,
+				"canDownload":        false,
+				"canCreatePlaylists": false,
+				"canViewMature":      false,
+				"canStream":          false,
+				"canDelete":          false,
+				"canManage":          false,
+			},
+		})
+		return
+	}
+
+	user, err := h.auth.GetUserByID(c.Request.Context(), session.UserID)
+	if err != nil {
+		writeError(c, http.StatusNotFound, errUserNotFound)
+		return
+	}
+
+	writeSuccess(c, map[string]interface{}{
+		"authenticated":         true,
+		"username":              user.Username,
+		"role":                  user.Role,
+		"user_type":             user.Type,
+		"show_mature":           user.Preferences.ShowMature,
+		"mature_preference_set": user.Preferences.MaturePreferenceSet,
+		"capabilities": map[string]bool{
+			"canUpload":          user.Permissions.CanUpload,
+			"canDownload":        user.Permissions.CanDownload,
+			"canCreatePlaylists": user.Permissions.CanCreatePlaylists,
+			"canViewMature":      user.Permissions.CanViewMature,
+			"canStream":          user.Permissions.CanStream,
+			"canDelete":          user.Permissions.CanDelete,
+			"canManage":          user.Permissions.CanManage,
+		},
+		"limits": map[string]interface{}{
+			"storage_quota":      h.getUserStorageQuota(user.Type),
+			"concurrent_streams": h.getUserStreamLimit(user.Type),
+		},
+	})
+}
+
+// ChangePassword allows a user to change their own password.
+func (h *Handler) ChangePassword(c *gin.Context) {
+	user := getUser(c)
+	if user == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		writeError(c, http.StatusBadRequest, "Current and new password required")
+		return
+	}
+
+	if len(req.NewPassword) < 8 {
+		writeError(c, http.StatusBadRequest, "New password must be at least 8 characters")
+		return
+	}
+
+	if user.Role == models.RoleAdmin && user.ID == "admin" {
+		if err := h.auth.ChangeAdminPassword(c.Request.Context(), req.CurrentPassword, req.NewPassword); err != nil {
+			writeError(c, http.StatusUnauthorized, "Current password is incorrect")
+			return
+		}
+		writeSuccess(c, map[string]string{"status": "password_changed"})
+		return
+	}
+
+	if h.auth.VerifyPassword(user.Username, req.CurrentPassword) != nil {
+		writeError(c, http.StatusUnauthorized, "Current password is incorrect")
+		return
+	}
+
+	if err := h.auth.SetPassword(c.Request.Context(), user.Username, req.NewPassword); err != nil {
+		h.log.Error("%v", err)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	writeSuccess(c, map[string]string{"status": "password_changed"})
+}
+
+// DeleteAccount allows an authenticated user to permanently delete their own account.
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	user := getUser(c)
+	if user == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	if user.Role == "admin" {
+		writeError(c, http.StatusForbidden, "Admin accounts cannot be deleted via this endpoint")
+		return
+	}
+
+	var req struct {
+		Password string `json:"password"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	if req.Password == "" {
+		writeError(c, http.StatusBadRequest, "Password confirmation required")
+		return
+	}
+
+	if h.auth.VerifyPassword(user.Username, req.Password) != nil {
+		writeError(c, http.StatusUnauthorized, "Incorrect password")
+		return
+	}
+
+	session := getSession(c)
+	if session != nil {
+		if err := h.auth.Logout(c.Request.Context(), session.ID); err != nil {
+			h.log.Warn("Failed to invalidate session before account deletion for %s: %v", user.Username, err)
+		}
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "session_id",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   isSecureRequest(c.Request),
+		})
+	}
+
+	if err := h.auth.DeleteUser(c.Request.Context(), user.Username); err != nil {
+		h.log.Error("Failed to delete account: %v", err)
+		writeError(c, http.StatusInternalServerError, "Failed to delete account")
+		return
+	}
+
+	h.log.Info("User %s deleted their account", user.Username)
+	writeSuccess(c, map[string]string{"status": "account_deleted", "message": "Your account has been permanently deleted"})
+}
