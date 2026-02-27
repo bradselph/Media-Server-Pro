@@ -149,14 +149,6 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 	writeSuccess(c, map[string]string{"message": "Source removed"})
 }
 
-// TODO(api-contract): RESPONSE TYPE MISMATCH — CacheRemoteMedia returns the cached media object
-// (the result of h.remote.CacheMedia()) via writeSuccess(c, cached). The frontend
-// adminApi.cacheRemoteMedia() (web/frontend/src/api/endpoints.ts) types the return as
-// Promise<void>, discarding the cached media item returned by the backend. If callers need to
-// use the cached item (e.g., to update the UI), they will get undefined instead of the object.
-// Change the frontend return type to Promise<RemoteMediaItem> to match the actual response.
-// Frontend: web/frontend/src/api/endpoints.ts adminApi.cacheRemoteMedia().
-//
 // CacheRemoteMedia caches a remote media file locally
 func (h *Handler) CacheRemoteMedia(c *gin.Context) {
 	if !h.checkRemoteMediaEnabled(c) {

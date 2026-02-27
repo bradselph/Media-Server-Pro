@@ -17,6 +17,7 @@ config.json
 /logs/
 /videos/
 /music/
+/hls_cache/
 
 *.mp4
 *.mkv

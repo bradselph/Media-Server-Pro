@@ -116,19 +116,6 @@ func (h *Handler) GetTopMedia(c *gin.Context) {
 	writeSuccess(c, enriched)
 }
 
-// TODO(api-contract): RESPONSE MISMATCH — SubmitEvent returns { status: "recorded" } (line 167)
-// but the frontend analyticsApi.trackEvent() types the return as Promise<void>
-// (web/frontend/src/api/endpoints.ts). The void type causes the returned status field to be
-// silently discarded. Not a runtime break, but the TypeScript type is inaccurate.
-// Frontend: web/frontend/src/api/endpoints.ts analyticsApi.trackEvent().
-//
-// TODO(api-contract): MISSING FIELD — The frontend trackEvent() call sends a `duration` top-level
-// field (endpoints.ts), and the backend request struct correctly reads it (json:"duration").
-// However, the request type in endpoints.ts declares `duration?: number` as optional, and the
-// backend only copies it into `req.Data` if non-zero (analytics.go:132-138). If the frontend
-// sends duration:0 the backend silently drops it. Callers relying on duration:0 being recorded
-// must send it inside the `data` map directly. Frontend: endpoints.ts analyticsApi.trackEvent().
-//
 // SubmitEvent receives and processes analytics events from clients
 func (h *Handler) SubmitEvent(c *gin.Context) {
 	var req struct {

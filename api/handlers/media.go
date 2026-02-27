@@ -165,13 +165,6 @@ func (h *Handler) GetMediaStats(c *gin.Context) {
 	writeSuccess(c, stats)
 }
 
-// TODO(api-contract): RESPONSE MISMATCH — ScanMedia returns { message: "Scan started" } (line 175)
-// but frontend adminApi.scanMedia() types the return as Promise<void>
-// (web/frontend/src/api/endpoints.ts). The message is silently discarded. No runtime break, but
-// the TypeScript return type is inaccurate and callers cannot confirm the scan was triggered.
-// Change frontend return type to Promise<{ message: string }>.
-// Frontend: web/frontend/src/api/endpoints.ts adminApi.scanMedia().
-//
 // ScanMedia initiates a media scan
 func (h *Handler) ScanMedia(c *gin.Context) {
 	go func() {
@@ -321,14 +314,6 @@ func (h *Handler) GetPlaybackPosition(c *gin.Context) {
 	writeSuccess(c, map[string]float64{"position": position})
 }
 
-// TODO(api-contract): AUTH ASYMMETRY — POST /api/playback has no requireAuth() middleware
-// (api/routes/routes.go:220), so unauthenticated callers succeed but position is NOT persisted
-// to the database (session is nil → userID="" → skips UpdatePlaybackPosition and AddToWatchHistory).
-// GET /api/playback DOES require auth (routes.go:219). Frontend callers using trackPosition()
-// without an authenticated session will get a 200 response but no data will be saved.
-// Document this to prevent confusion about "position saved" confirmation for guests.
-// Frontend: web/frontend/src/api/endpoints.ts watchHistoryApi.trackPosition().
-//
 // TrackPlayback records playback position
 func (h *Handler) TrackPlayback(c *gin.Context) {
 	var req struct {

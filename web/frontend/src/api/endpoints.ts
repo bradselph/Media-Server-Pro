@@ -59,16 +59,13 @@ import type {
     UploadResult,
     User,
     UserPreferences,
+    ValidationResult,
+    ValidatorStats,
     WatchHistoryEntry,
 } from './types'
 
 // ── Feature 1: Storage Usage & Permissions ──
 
-// TODO(api-contract): AUTH MISMATCH — storageApi.getUsage() calls GET /api/storage-usage with no
-// special headers; backend route (routes.go:239) applies requireAuth() middleware, meaning guests
-// receive 401 Unauthorized. Frontend callers must ensure the user is authenticated before calling
-// this, or handle the 401 gracefully. Any unauthenticated component rendering storage usage will
-// always fail. Backend: api/routes/routes.go:239, Handler: api/handlers/system.go:159.
 export const storageApi = {
     getUsage: () =>
         api.get<StorageUsage>('/api/storage-usage'),
@@ -209,11 +206,6 @@ export const playlistApi = {
     get: (id: string) =>
         api.get<Playlist>(`/api/playlists/${encodeURIComponent(id)}`),
 
-    // TODO(api-contract): PARTIAL BODY MISMATCH — frontend sends only {name} but backend handler
-    // (api/handlers/playlists.go:41-56) also accepts `description` and `is_public` fields. The
-    // backend defaults description to "" and is_public to false when omitted — not a runtime break
-    // but creates playlists with no description or public flag even when desired. Callers that need
-    // to set these must pass them explicitly. Backend struct: playlists.go:42-47.
     create: (name: string, description?: string, is_public?: boolean) =>
         api.post<Playlist>('/api/playlists', {name, ...(description !== undefined && {description}), ...(is_public !== undefined && {is_public})}),
 
@@ -223,27 +215,11 @@ export const playlistApi = {
     update: (id: string, data: { name?: string; description?: string; is_public?: boolean }) =>
         api.put<Playlist>(`/api/playlists/${encodeURIComponent(id)}`, data),
 
-    // TODO(api-contract): FIELD NAME MISMATCH — frontend sends `PlaylistItem` which includes
-    // `media_path` and `title` (types.ts:224-231). Backend AddPlaylistItem handler
-    // (api/handlers/playlists.go:174-179) also reads `path` and `name` as fallback aliases.
-    // The `media_id` field is accepted by the backend but is optional — it is not populated by
-    // the frontend's PlaylistItem shape when built from a MediaItem. If `media_id` is empty the
-    // backend still inserts the item using `media_path`. No runtime break, but `media_id` field
-    // in DB will be empty. Backend: api/handlers/playlists.go:173-198.
     addItem: (id: string, item: Omit<PlaylistItem, 'position'>) =>
         api.post<void>(`/api/playlists/${encodeURIComponent(id)}/items`, item),
 
-    // TODO(api-contract): PARAMETER LOCATION CONTRACT — frontend sends `media_path` as a JSON
-    // request body via DELETE. Backend RemovePlaylistItem (api/handlers/playlists.go:202-243)
-    // first attempts to decode a JSON body for `media_path`, `item_id`, or `path`, then falls
-    // back to query params `media_path` and `path`. The client.ts api.delete() DOES support a
-    // body (client.ts:85-89). This works at runtime, but note that some HTTP intermediaries
-    // (proxies, load balancers) may strip DELETE request bodies per RFC 9110. If the body is
-    // stripped, the fallback query-param path will not carry the value either, causing a 400.
-    // Consider using query param as primary: api.delete(`...?media_path=${encodeURIComponent(path)}`).
-    // Backend: api/handlers/playlists.go:212-235.
     removeItem: (id: string, path: string) =>
-        api.delete<void>(`/api/playlists/${encodeURIComponent(id)}/items`, {media_path: path}),
+        api.delete<void>(`/api/playlists/${encodeURIComponent(id)}/items?media_path=${encodeURIComponent(path)}`),
 
     // Feature 3: Playlist export — returns Blob for file download
     export: (id: string, format: 'json' | 'm3u' | 'm3u8'): Promise<Blob> =>
@@ -257,21 +233,6 @@ export const analyticsApi = {
     getSummary: () =>
         api.get<AnalyticsSummary>('/api/analytics'),
 
-    // TODO(api-contract): RESPONSE MISMATCH — frontend types this as Promise<void> but backend
-    // SubmitEvent handler (api/handlers/analytics.go:167) returns
-    // { status: "recorded" } wrapped in the success envelope. The void type means callers
-    // cannot read the confirmation status. Not a runtime error (data is discarded), but the
-    // type declaration is inaccurate. Change return type to Promise<{ status: string }> to match
-    // actual backend response. Backend: api/handlers/analytics.go:167.
-    //
-    // TODO(api-contract): FIELD NAME MISMATCH — frontend sends `session_id` in the event body,
-    // but backend SubmitEvent (api/handlers/analytics.go:122-126) ignores the body's `session_id`
-    // in favour of the session from context when available (session.ID overrides body session_id
-    // only when the body session_id is empty). The `session_id` field in the request struct IS
-    // read (analytics.go:124), so this matches. However the frontend TrackEvent type does NOT
-    // include `session_id` as a sendable field — body session_id will always be empty, causing
-    // the backend to use the cookie session. If the frontend ever needs to send an explicit
-    // session_id, the type definition must be updated. Backend: api/handlers/analytics.go:124-148.
     trackEvent: (event: { type: string; media_id: string; duration?: number; data?: Record<string, unknown> }) =>
         api.post<{ status: string }>('/api/analytics/events', event),
 }
@@ -287,26 +248,9 @@ export const watchHistoryApi = {
     getEntry: (path: string) =>
         api.get<WatchHistoryEntry[]>(`/api/watch-history?path=${encodeURIComponent(path)}`),
 
-    // TODO(api-contract): AUTH REQUIREMENT MISMATCH — getPosition() calls GET /api/playback
-    // which requires requireAuth() middleware (routes.go:219). If called for a guest user
-    // (not authenticated) the backend returns 401. Frontend callers must guard this call with
-    // an auth check before invocation. Backend: api/routes/routes.go:219,
-    // api/handlers/media.go:301-315.
     getPosition: (path: string) =>
         api.get<{ position: number }>(`/api/playback?path=${encodeURIComponent(path)}`),
 
-    // TODO(api-contract): RESPONSE MISMATCH — frontend types this as Promise<void> but backend
-    // TrackPlayback handler (api/handlers/media.go:363) returns null data wrapped in the success
-    // envelope: writeSuccess(c, nil). The void type is effectively correct since nil data
-    // deserialises to undefined/null, but the response envelope is still present (not 204). The
-    // client.ts correctly unwraps the envelope, returning null which TypeScript accepts as void.
-    // No runtime break, but the contract is fragile. Backend: api/handlers/media.go:363.
-    //
-    // TODO(api-contract): AUTH ASYMMETRY — POST /api/playback has NO requireAuth() in routes.go:220.
-    // Unauthenticated users can post playback positions. Backend correctly handles this (no session
-    // → userID="" → skips DB write, only calls analytics). This is intentional for anonymous
-    // analytics, but differs from GET /api/playback which REQUIRES auth. Frontend should not
-    // expect position data to be persisted for unauthenticated calls. Backend: api/routes/routes.go:220.
     trackPosition: (path: string, position: number, duration: number) =>
         api.post<void>('/api/playback', {path, position, duration}),
 
@@ -413,14 +357,6 @@ export const adminApi = {
         }>('/api/admin/update/status'),
 
     // Synchronous — blocks until install completes. Returns final UpdateStatus (stage, progress, error).
-    // TODO(api-contract): RESPONSE STATUS MISMATCH — applyUpdate() expects a 200 response but
-    // ApplySourceUpdate (api/handlers/admin.go:677) returns HTTP 202 Accepted for the source
-    // variant. The binary ApplyUpdate (admin.go:638-653) returns 200 via writeSuccess(). These
-    // are two different endpoints, but if the frontend ever routes to the wrong one it will
-    // receive 202, which client.ts still parses correctly (202 is not 204 and is not an error).
-    // However started_at is typed as `string` (non-optional) but the backend UpdateStatus struct
-    // may emit a zero-time value ("0001-01-01T00:00:00Z") when idle. Guard with
-    // `if (!status.started_at.startsWith('0001'))` before displaying. Backend: admin.go:638-654.
     applyUpdate: () =>
         api.post<{
             stage: string
@@ -438,16 +374,8 @@ export const adminApi = {
             remote_commit: string
         }>('/api/admin/update/source/check'),
 
-    // TODO(api-contract): HTTP STATUS CODE MISMATCH — applySourceUpdate() uses api.post<>() which
-    // calls apiRequest() in client.ts. apiRequest() only short-circuits on 204 (returns undefined).
-    // The backend ApplySourceUpdate handler (api/handlers/admin.go:677) returns HTTP 202 Accepted
-    // via `c.JSON(http.StatusAccepted, ...)` — NOT via writeSuccess(). client.ts does NOT treat
-    // 202 as an error (no special handling), so it reads the body as JSON and processes the
-    // success envelope normally. The returned `started_at` field from UpdateStatus struct may be
-    // zero ("0001-01-01T00:00:00Z") when the build hasn't begun yet — callers must guard this.
-    // Backend: api/handlers/admin.go:677.
+    // Returns 202 Accepted immediately; poll getSourceUpdateProgress() every 2s for live status
     applySourceUpdate: () =>
-        // Returns 202 Accepted immediately; poll getSourceUpdateProgress() every 2s for live status
         api.post<{
             stage: string
             progress: number
@@ -484,13 +412,6 @@ export const adminApi = {
     listUsers: () =>
         api.get<AdminUser[]>('/api/admin/users'),
 
-    // TODO(api-contract): FIELD NAME MISMATCH — frontend sends `role` as 'admin'|'viewer' but
-    // backend AdminCreateUser handler (api/handlers/admin.go:122-168) reads `role` as
-    // models.UserRole type which IS "admin"|"viewer" — this aligns. However, the backend also
-    // defaults `type` to "standard" if empty (admin.go:151-153). The frontend `type` field maps
-    // to backend `req.Type` (json:"type"). Verify that callers always supply `type` when creating
-    // non-standard users; omitting it silently creates a "standard" user regardless of intent.
-    // Backend: api/handlers/admin.go:122-168.
     createUser: (data: {
         username: string;
         password: string;
@@ -567,12 +488,6 @@ export const adminApi = {
         api.post<void>(`/api/admin/tasks/${encodeURIComponent(id)}/stop`),
 
     // Media management
-    // TODO(api-contract): RESPONSE MISMATCH — scanMedia() types the return as void but backend
-    // ScanMedia handler (api/handlers/media.go:169-176) returns { message: "Scan started" }
-    // wrapped in the success envelope. The void typing discards this acknowledgement. No runtime
-    // break (envelope is parsed, data discarded), but callers cannot confirm the scan started.
-    // Change return type to Promise<{ message: string }> to match backend response shape.
-    // Backend: api/handlers/media.go:169-176.
     scanMedia: () =>
         api.post<{ message: string }>('/api/admin/media/scan'),
 
@@ -581,13 +496,6 @@ export const adminApi = {
     listBackups: () =>
         api.get<BackupEntry[]>('/api/admin/backups/v2'),
 
-    // TODO(api-contract): FIELD NAME MISMATCH — frontend sends `backup_type` but backend
-    // CreateBackupV2 handler (api/handlers/admin_backups.go:22-43) reads `backup_type` via
-    // struct tag `json:"backup_type"` — this matches. However, the backend does NOT validate
-    // `backup_type` values; any string is passed to h.backup.CreateBackup(). If the backup
-    // module only accepts "full"|"config"|"media" etc., invalid values may silently fail or
-    // create malformed backups. No frontend validation exists either. Both sides should validate
-    // the allowed backup_type values. Backend: api/handlers/admin_backups.go:22-43.
     createBackup: (description?: string, backupType?: string) =>
         api.post<BackupEntry>('/api/admin/backups/v2', {
             description: description ?? '',
@@ -610,16 +518,6 @@ export const adminApi = {
     getReviewQueue: () =>
         api.get<ScanResultItem[]>('/api/admin/scanner/queue'),
 
-    // TODO(api-contract): RESPONSE MISMATCH — batchReview() types the return as void but backend
-    // BatchReviewAction handler (api/handlers/admin_scanner.go:108-153) returns
-    // { updated: number, total: number } wrapped in the success envelope. Frontend callers cannot
-    // inspect how many items were successfully updated versus failed. Change return type to
-    // Promise<{ updated: number; total: number }> to match actual backend response shape.
-    // Backend: api/handlers/admin_scanner.go:149-152.
-    //
-    // TODO(api-contract): ACTION VALUE CONTRACT — batchReview() accepts any `action: string` but
-    // backend only accepts "approve" or "reject" (admin_scanner.go:118). Sending any other string
-    // causes a 400 Bad Request. The frontend type should be narrowed to 'approve' | 'reject'.
     batchReview: (action: 'approve' | 'reject', paths: string[]) =>
         api.post<{ updated: number; total: number }>('/api/admin/scanner/queue', {action, paths}),
 
@@ -642,18 +540,6 @@ export const adminApi = {
     cleanHLSStaleLocks: () =>
         api.post<void>('/api/admin/hls/clean/locks'),
 
-    // TODO(api-contract): RESPONSE MISMATCH — cleanHLSInactive() types the return as void but
-    // backend CleanHLSInactive handler (api/handlers/hls.go:255-279) returns
-    // { removed: number, threshold: string } wrapped in the success envelope. Frontend callers
-    // cannot inspect how many inactive jobs were removed. Change return type to
-    // Promise<{ removed: number; threshold: string }> to match actual backend response shape.
-    // Backend: api/handlers/hls.go:275-278.
-    //
-    // TODO(api-contract): DUAL FIELD NAME — frontend sends `max_age_hours` but backend
-    // CleanHLSInactive (api/handlers/hls.go:259-268) reads BOTH `max_age_hours` AND
-    // `threshold_hours` (whichever is non-zero first). The frontend only sends `max_age_hours`,
-    // which is the primary field — this matches. No break, but the dual-alias is not documented
-    // in the frontend type. Backend: api/handlers/hls.go:262-265.
     cleanHLSInactive: (maxAge?: number) =>
         api.post<{
             removed: number;
@@ -661,41 +547,14 @@ export const adminApi = {
         }>('/api/admin/hls/clean/inactive', maxAge !== undefined ? {max_age_hours: maxAge} : {}),
 
     // Validator
-    // TODO(api-contract): RESPONSE SHAPE UNKNOWN — validateMedia() types the return as
-    // { valid: boolean; errors?: string[] } but the actual response shape is determined by
-    // h.validator.ValidateFile() which returns its own result type (api/handlers/admin_validator.go:19-27).
-    // The validator module's ValidateFile result struct is not defined in this file's scope.
-    // If the validator returns a different shape (e.g., { valid: bool, message: string, details: [] })
-    // the frontend type will silently misalign. Verify against internal/validator package's
-    // result type. Backend: api/handlers/admin_validator.go:19-27.
     validateMedia: (path: string) =>
-        api.post<{ valid: boolean; errors?: string[] }>('/api/admin/validator/validate', {path}),
+        api.post<ValidationResult>('/api/admin/validator/validate', {path}),
 
-    // TODO(api-contract): RESPONSE SHAPE UNKNOWN — fixMedia() types the return as
-    // { fixed: boolean; message?: string } but the actual shape comes from h.validator.FixFile()
-    // (api/handlers/admin_validator.go:30-47). The FixFile result struct is not defined in this
-    // file's scope. If the validator module returns a different shape the frontend type will
-    // silently misalign. Verify against internal/validator package's fix result type.
-    // Backend: api/handlers/admin_validator.go:30-47.
     fixMedia: (path: string) =>
-        api.post<{ fixed: boolean; message?: string }>('/api/admin/validator/fix', {path}),
+        api.post<ValidationResult>('/api/admin/validator/fix', {path}),
 
-    // TODO(api-contract): RESPONSE SHAPE UNKNOWN — getValidatorStats() types the return with
-    // specific fields { total, validated, needs_fix, fixed, failed, unsupported } but the actual
-    // shape is whatever h.validator.GetStats() returns (api/handlers/admin_validator.go:50-53).
-    // The validator Stats struct is not inspected in this audit. If the actual Go struct differs
-    // (e.g., uses snake_case "needs_repair" instead of "needs_fix", or omits "unsupported"),
-    // the TypeScript type will silently misalign. Verify against internal/validator stats struct.
-    // Backend: api/handlers/admin_validator.go:50-53.
     getValidatorStats: () =>
-        api.get<{
-            total: number;
-            validated: number;
-            needs_fix: number;
-            fixed: number;
-            failed: number;
-            unsupported: number
-        }>('/api/admin/validator/stats'),
+        api.get<ValidatorStats>('/api/admin/validator/stats'),
 
     // AdminListMedia only supports search/page/limit — other filters (sort, type, category) are ignored.
     listMedia: (params?: { page?: number; limit?: number; search?: string }) => {
@@ -716,12 +575,6 @@ export const adminApi = {
     bulkMedia: (paths: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
         api.post<{ success: number; failed: number; errors: string[] }>('/api/admin/media/bulk', {paths, action, data}),
 
-    // DailyStats.date is a "YYYY-MM-DD" string. Route requires admin auth.
-    // TODO(api-contract): ROUTE OWNERSHIP — getDailyStats() is defined on adminApi but calls
-    // GET /api/analytics/daily which is a route in the non-admin api group requiring adminAuth()
-    // (routes.go:277). The route is protected: non-admin sessions receive 401. This is correct
-    // behaviour but the route lives outside /api/admin/ which is semantically confusing and
-    // inconsistent with the adminApi grouping. Backend: api/routes/routes.go:277.
     getDailyStats: (days?: number) =>
         api.get<DailyStats[]>(`/api/analytics/daily${days ? `?days=${days}` : ''}`),
 
@@ -743,16 +596,6 @@ export const adminApi = {
     getRemoteSources: () =>
         api.get<RemoteSourceState[]>('/api/admin/remote/sources'),
 
-    // Returns RemoteSource (not RemoteSourceState) — wrap in {source, status:"idle",...} before adding to list.
-    // TODO(api-contract): RESPONSE TYPE MISMATCH — createRemoteSource() types the return as
-    // RemoteSource (types.ts:524-530) which has { name, url, username?, password?, enabled }.
-    // Backend CreateRemoteSource handler (api/handlers/admin_remote.go:22-51) decodes the request
-    // into a config.RemoteSource struct and returns that struct via writeSuccess(c, source).
-    // The config.RemoteSource struct may have additional fields not present in the frontend
-    // RemoteSource type (e.g., internal config options). The returned object is used to build
-    // a RemoteSourceState locally on the frontend. If config.RemoteSource has extra fields they
-    // are silently discarded. Verify config.RemoteSource field set matches RemoteSource type.
-    // Backend: api/handlers/admin_remote.go:22-51, internal/config/config.go (RemoteSource struct).
     createRemoteSource: (data: { name: string; url: string; username?: string; password?: string }) =>
         api.post<RemoteSource>('/api/admin/remote/sources', {...data, enabled: true}),
 
@@ -870,11 +713,6 @@ export const adminApi = {
     getCategoryStats: () =>
         api.get<CategoryStats>('/api/admin/categorizer/stats'),
 
-    // TODO(api-contract): RESPONSE MISMATCH — setMediaCategory() types the return as void but
-    // backend SetMediaCategory handler (api/handlers/admin_categorizer.go:69-81) returns
-    // { message: "Category set" } wrapped in the success envelope. Frontend callers cannot
-    // read the confirmation. Change return type to Promise<{ message: string }>.
-    // Backend: api/handlers/admin_categorizer.go:79-80.
     setMediaCategory: (path: string, category: string) =>
         api.post<{ message: string }>('/api/admin/categorizer/set', {path, category}),
 
@@ -885,11 +723,6 @@ export const adminApi = {
         api.post<{ removed: number }>('/api/admin/categorizer/clean'),
 
     // Feature 12: Auto-discovery
-    // TODO(api-contract): FIELD NAME MISMATCH — discoveryScan() sends `{ directory }` but backend
-    // DiscoverMedia handler (api/handlers/admin_discovery.go:12-29) reads `req.Directory` via
-    // struct tag `json:"directory"` — this matches. However, the backend passes the raw directory
-    // string to h.autodiscovery.ScanDirectory() without path validation or sanitisation. Callers
-    // should only pass directory strings they control. Backend: api/handlers/admin_discovery.go:12-29.
     discoveryScan: (directory: string) =>
         api.post<DiscoverySuggestion[]>('/api/admin/discovery/scan', {directory}),
 
@@ -910,12 +743,6 @@ export const adminApi = {
     getSourceMedia: (source: string) =>
         api.get<RemoteMediaItem[]>(`/api/admin/remote/sources/${encodeURIComponent(source)}/media`),
 
-    // TODO(api-contract): RESPONSE TYPE MISMATCH — cacheRemoteMedia() types the return as void
-    // but backend CacheRemoteMedia handler (api/handlers/admin_remote.go:153-173) returns the
-    // cached media object via writeSuccess(c, cached). The actual return type is the remote
-    // module's cached media item struct. Frontend callers cannot inspect the cached result.
-    // Change return type to Promise<RemoteMediaItem> (or the appropriate cached type) to match
-    // actual backend response shape. Backend: api/handlers/admin_remote.go:171-173.
     cacheRemoteMedia: (url: string, sourceName: string) =>
         api.post<RemoteMediaItem>('/api/admin/remote/cache', {url, source_name: sourceName}),
 }

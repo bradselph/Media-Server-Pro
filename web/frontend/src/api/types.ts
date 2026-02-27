@@ -731,6 +731,37 @@ export interface CategoryStats {
     manual_overrides: number
 }
 
+// ── Feature 11b: Media Validator ──
+
+// Matches internal/validator ValidationResult JSON tags
+export interface ValidationResult {
+    path: string
+    status: string
+    validated_at: string
+    duration: number
+    video_codec?: string
+    audio_codec?: string
+    width?: number
+    height?: number
+    bitrate?: number
+    container?: string
+    issues?: string[]
+    fixed_path?: string
+    error?: string
+    video_supported: boolean
+    audio_supported: boolean
+}
+
+// Matches internal/validator Stats JSON tags
+export interface ValidatorStats {
+    total: number
+    validated: number
+    needs_fix: number
+    fixed: number
+    failed: number
+    unsupported: number
+}
+
 // ── Feature 12: Auto-Discovery ──
 
 // Matches pkg/models AutoDiscoverySuggestion JSON tags

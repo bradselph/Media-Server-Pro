@@ -65,13 +65,6 @@ func (h *Handler) GetCategoryStats(c *gin.Context) {
 	writeSuccess(c, stats)
 }
 
-// TODO(api-contract): RESPONSE MISMATCH — SetMediaCategory returns { message: "Category set" }
-// (line 79-80) wrapped in the success envelope. Frontend adminApi.setMediaCategory()
-// (web/frontend/src/api/endpoints.ts) types the return as Promise<void>, silently discarding
-// the response message. Change the frontend return type to Promise<{ message: string }> to
-// accurately reflect the backend response. This is non-breaking but the frontend type is wrong.
-// Frontend: web/frontend/src/api/endpoints.ts adminApi.setMediaCategory().
-//
 // SetMediaCategory manually sets a category for a file
 func (h *Handler) SetMediaCategory(c *gin.Context) {
 	var req struct {
