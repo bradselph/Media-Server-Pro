@@ -800,6 +800,7 @@ export function IndexPage() {
                 media_id: nowPlaying.id,
                 media_path: nowPlaying.path,
                 title: nowPlaying.name,
+                added_at: new Date().toISOString(),
             })
             queryClient.invalidateQueries({queryKey: ['playlists']})
         } catch (err) {

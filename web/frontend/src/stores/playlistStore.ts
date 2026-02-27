@@ -183,6 +183,7 @@ export const usePlaylistStore = create<PlaylistState>()(
                     media_path: path,
                     title: titles?.[i] || path.split('/').pop()?.replace(/\.[^.]+$/, '') || path,
                     position: i,
+                    added_at: new Date().toISOString(),
                 }))
                 set({
                     currentPlaylist: items,
