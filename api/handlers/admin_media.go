@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strconv"
 
@@ -53,10 +52,9 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 
 // AdminUpdateMedia updates media metadata
 func (h *Handler) AdminUpdateMedia(c *gin.Context) {
-	rawPath := c.Param("path")
-	path, err := url.PathUnescape(rawPath)
-	if err != nil || path == "" {
-		writeError(c, http.StatusBadRequest, errPathParamRequired)
+	id := c.Param("id")
+	path, ok := h.resolveMediaByID(c, id)
+	if !ok {
 		return
 	}
 
@@ -166,10 +164,9 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 
 // AdminDeleteMedia deletes a media file
 func (h *Handler) AdminDeleteMedia(c *gin.Context) {
-	rawPath := c.Param("path")
-	path, err := url.PathUnescape(rawPath)
-	if err != nil || path == "" {
-		writeError(c, http.StatusBadRequest, errPathParamRequired)
+	id := c.Param("id")
+	path, ok := h.resolveMediaByID(c, id)
+	if !ok {
 		return
 	}
 
@@ -186,7 +183,7 @@ func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 // AdminBulkMedia performs a bulk action (delete or update) on multiple media files.
 func (h *Handler) AdminBulkMedia(c *gin.Context) {
 	var req struct {
-		Paths  []string               `json:"paths"`
+		IDs    []string               `json:"ids"`
 		Action string                 `json:"action"`
 		Data   map[string]interface{} `json:"data"`
 	}
@@ -195,12 +192,12 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		return
 	}
 
-	if len(req.Paths) == 0 {
-		writeError(c, http.StatusBadRequest, "paths must not be empty")
+	if len(req.IDs) == 0 {
+		writeError(c, http.StatusBadRequest, "ids must not be empty")
 		return
 	}
-	if len(req.Paths) > 500 {
-		writeError(c, http.StatusBadRequest, "too many paths (max 500)")
+	if len(req.IDs) > 500 {
+		writeError(c, http.StatusBadRequest, "too many ids (max 500)")
 		return
 	}
 	if req.Action != "delete" && req.Action != "update" {
@@ -212,16 +209,24 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 	errs := make([]string, 0)
 	clientIP := c.ClientIP()
 
-	for _, path := range req.Paths {
-		if path == "" {
+	for _, id := range req.IDs {
+		if id == "" {
 			continue
 		}
+		item, lookupErr := h.media.GetMediaByID(id)
+		if lookupErr != nil || item == nil {
+			failedCount++
+			errs = append(errs, fmt.Sprintf("%s: media not found", id))
+			continue
+		}
+		path := item.Path
+
 		var opErr error
 		switch req.Action {
 		case "delete":
 			opErr = h.media.DeleteMedia(c.Request.Context(), path)
 			if opErr == nil {
-				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_delete_media", path, nil, clientIP, true)
+				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_delete_media", id, nil, clientIP, true)
 			}
 		case "update":
 			updates := make(map[string]interface{})
@@ -237,13 +242,13 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 			}
 			opErr = h.media.UpdateMetadata(path, updates)
 			if opErr == nil {
-				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_update_media", path, nil, clientIP, true)
+				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_update_media", id, nil, clientIP, true)
 			}
 		}
 		if opErr != nil {
-			h.log.Error("bulk %s %s: %v", req.Action, path, opErr)
+			h.log.Error("bulk %s %s: %v", req.Action, id, opErr)
 			failedCount++
-			errs = append(errs, fmt.Sprintf("%s: %v", path, opErr))
+			errs = append(errs, fmt.Sprintf("%s: %v", id, opErr))
 		} else {
 			successCount++
 		}

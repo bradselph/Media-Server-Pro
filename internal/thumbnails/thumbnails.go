@@ -256,13 +256,13 @@ func (m *Module) worker(id int) {
 }
 
 // GenerateThumbnail queues async thumbnail generation (generates all preview thumbnails)
-func (m *Module) GenerateThumbnail(mediaPath string, isAudio bool) (string, error) {
+func (m *Module) GenerateThumbnail(mediaId string, isAudio bool) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg not available")
 	}
 
 	cfg := m.config.Get()
-	outputPath := m.getThumbnailPath(mediaPath)
+	outputPath := m.getThumbnailPath(mediaId)
 
 	// Check if already exists
 	if _, err := os.Stat(outputPath); err == nil {
@@ -272,7 +272,7 @@ func (m *Module) GenerateThumbnail(mediaPath string, isAudio bool) (string, erro
 
 	// For videos, generate multiple preview thumbnails
 	if !isAudio {
-		return m.GeneratePreviewThumbnails(mediaPath)
+		return m.GeneratePreviewThumbnails(mediaId)
 	}
 
 	// For audio, just generate one waveform.
@@ -283,7 +283,7 @@ func (m *Module) GenerateThumbnail(mediaPath string, isAudio bool) (string, erro
 	}
 
 	job := &ThumbnailJob{
-		MediaPath:  mediaPath,
+		MediaPath:    mediaId,
 		OutputPath: outputPath,
 		Width:      cfg.Thumbnails.Width,
 		Height:     cfg.Thumbnails.Height,
@@ -299,7 +299,7 @@ func (m *Module) GenerateThumbnail(mediaPath string, isAudio bool) (string, erro
 	// Try to queue job
 	select {
 	case m.jobQueue <- job:
-		m.log.Debug("Queued thumbnail generation for: %s", mediaPath)
+		m.log.Debug("Queued thumbnail generation for: %s", mediaId)
 		return outputPath, ErrThumbnailPending
 	default:
 		// Queue full - clear inFlight, decrement pending, generate synchronously
@@ -307,13 +307,13 @@ func (m *Module) GenerateThumbnail(mediaPath string, isAudio bool) (string, erro
 		m.statsMu.Lock()
 		m.stats.Pending--
 		m.statsMu.Unlock()
-		m.log.Warn("Job queue full, generating thumbnail synchronously: %s", mediaPath)
+		m.log.Warn("Job queue full, generating thumbnail synchronously: %s", mediaId)
 		return outputPath, m.generateThumbnail(job)
 	}
 }
 
 // GeneratePreviewThumbnails generates multiple thumbnails at different timestamps for hover preview
-func (m *Module) GeneratePreviewThumbnails(mediaPath string) (string, error) {
+func (m *Module) GeneratePreviewThumbnails(mediaId string) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg not available")
 	}
@@ -325,13 +325,13 @@ func (m *Module) GeneratePreviewThumbnails(mediaPath string) (string, error) {
 	}
 
 	// Check if all previews already exist
-	if m.HasAllPreviewThumbnails(mediaPath) {
-		m.log.Debug("All preview thumbnails already exist for: %s", mediaPath)
-		return m.getThumbnailPath(mediaPath), nil
+	if m.HasAllPreviewThumbnails(mediaId) {
+		m.log.Debug("All preview thumbnails already exist for: %s", mediaId)
+		return m.getThumbnailPath(mediaId), nil
 	}
 
 	// Get video duration to calculate timestamps
-	duration, err := m.getMediaDuration(mediaPath)
+	duration, err := m.getMediaDuration(mediaId)
 	if err != nil {
 		duration = 600.0 // Default to 10 minutes if we can't get duration
 	}
@@ -343,13 +343,13 @@ func (m *Module) GeneratePreviewThumbnails(mediaPath string) (string, error) {
 	usableDuration := endOffset - startOffset
 
 	// Generate main thumbnail first (index 0)
-	mainPath := m.getThumbnailPath(mediaPath)
+	mainPath := m.getThumbnailPath(mediaId)
 	if _, err := os.Stat(mainPath); os.IsNotExist(err) {
 		// Only queue if not already in-flight
 		if _, loaded := m.inFlight.LoadOrStore(mainPath, struct{}{}); !loaded {
 			mainTimestamp := startOffset + (usableDuration / 2) // Middle of video for main thumbnail
 			mainJob := &ThumbnailJob{
-				MediaPath:  mediaPath,
+				MediaPath:    mediaId,
 				OutputPath: mainPath,
 				Width:      cfg.Thumbnails.Width,
 				Height:     cfg.Thumbnails.Height,
@@ -363,13 +363,13 @@ func (m *Module) GeneratePreviewThumbnails(mediaPath string) (string, error) {
 
 			select {
 			case m.jobQueue <- mainJob:
-				m.log.Debug("Queued main thumbnail for: %s", mediaPath)
+				m.log.Debug("Queued main thumbnail for: %s", mediaId)
 			default:
 				m.inFlight.Delete(mainPath)
 				m.statsMu.Lock()
 				m.stats.Pending--
 				m.statsMu.Unlock()
-				m.log.Debug("Job queue full, skipping main thumbnail for: %s", mediaPath)
+				m.log.Debug("Job queue full, skipping main thumbnail for: %s", mediaId)
 			}
 		}
 	}
@@ -377,7 +377,7 @@ func (m *Module) GeneratePreviewThumbnails(mediaPath string) (string, error) {
 	// Generate preview thumbnails (index 1+, stored as hash_preview_N.jpg)
 previewLoop:
 	for i := 0; i < previewCount; i++ {
-		hash := md5.Sum([]byte(mediaPath))
+		hash := md5.Sum([]byte(mediaId))
 		hashStr := hex.EncodeToString(hash[:])
 		filename := fmt.Sprintf("%s_preview_%d.jpg", hashStr, i)
 		outputPath := filepath.Join(m.thumbnailDir, filename)
@@ -400,7 +400,7 @@ previewLoop:
 		}
 
 		job := &ThumbnailJob{
-			MediaPath:  mediaPath,
+			MediaPath:    mediaId,
 			OutputPath: outputPath,
 			Width:      cfg.Thumbnails.Width,
 			Height:     cfg.Thumbnails.Height,
@@ -416,7 +416,7 @@ previewLoop:
 		// Try to queue job
 		select {
 		case m.jobQueue <- job:
-			m.log.Debug("Queued preview thumbnail %d/%d for: %s (timestamp: %.2fs)", i+1, previewCount, mediaPath, timestamp)
+			m.log.Debug("Queued preview thumbnail %d/%d for: %s (timestamp: %.2fs)", i+1, previewCount, mediaId, timestamp)
 		default:
 			m.inFlight.Delete(outputPath)
 			m.statsMu.Lock()
@@ -424,7 +424,7 @@ previewLoop:
 			m.statsMu.Unlock()
 			cfg := m.config.Get()
 			m.log.Warn("Job queue full (%d jobs), skipped %d remaining preview thumbnails for: %s - Consider increasing Thumbnails.QueueSize (current: %d) or WorkerCount (current: %d)",
-				cfg.Thumbnails.QueueSize, previewCount-i, mediaPath, cfg.Thumbnails.QueueSize, cfg.Thumbnails.WorkerCount)
+				cfg.Thumbnails.QueueSize, previewCount-i, mediaId, cfg.Thumbnails.QueueSize, cfg.Thumbnails.WorkerCount)
 			break previewLoop
 		}
 	}

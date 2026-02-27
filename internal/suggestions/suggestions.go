@@ -29,7 +29,7 @@ func pathToID(path string) string {
 
 // ViewHistory tracks a user's viewing history
 type ViewHistory struct {
-	MediaPath   string     `json:"media_path"`
+	MediaPath   string     `json:"-"`
 	Category    string     `json:"category"`
 	MediaType   string     `json:"media_type"`
 	ViewCount   int        `json:"view_count"`
@@ -153,7 +153,7 @@ func (m *Module) Health() models.HealthStatus {
 }
 
 // RecordView records a view for a user
-func (m *Module) RecordView(userID, mediaPath, category, mediaType string, duration float64) {
+func (m *Module) RecordView(userID, mediaId, category, mediaType string, duration float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -171,7 +171,7 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 	// Update or add view history entry
 	found := false
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaPath {
+		if vh.MediaPath == mediaId {
 			profile.ViewHistory[i].ViewCount++
 			profile.ViewHistory[i].TotalTime += duration
 			profile.ViewHistory[i].LastViewed = time.Now()
@@ -182,7 +182,7 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 
 	if !found {
 		profile.ViewHistory = append(profile.ViewHistory, ViewHistory{
-			MediaPath:  mediaPath,
+			MediaPath:  mediaId,
 			Category:   category,
 			MediaType:  mediaType,
 			ViewCount:  1,
@@ -203,11 +203,11 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 	profile.TotalWatchTime += duration
 	profile.LastUpdated = time.Now()
 
-	m.log.Debug("Recorded view for user %s: %s (category: %s)", userID, mediaPath, category)
+	m.log.Debug("Recorded view for user %s: %s (category: %s)", userID, mediaId, category)
 }
 
 // RecordCompletion marks a media item as completed
-func (m *Module) RecordCompletion(userID, mediaPath string) {
+func (m *Module) RecordCompletion(userID, mediaId string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -217,7 +217,7 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 	}
 
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaPath {
+		if vh.MediaPath == mediaId {
 			completedAt := time.Now()
 			profile.ViewHistory[i].CompletedAt = &completedAt
 			break
@@ -226,7 +226,7 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 }
 
 // RecordRating records a user rating for a media item
-func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
+func (m *Module) RecordRating(userID, mediaId string, rating float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -236,13 +236,13 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 	}
 
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaPath {
+		if vh.MediaPath == mediaId {
 			profile.ViewHistory[i].Rating = rating
 			break
 		}
 	}
 
-	m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
+	m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaId, userID)
 }
 
 // UpdateMediaData atomically replaces the in-memory media catalogue used for suggestions.

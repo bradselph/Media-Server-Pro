@@ -720,13 +720,13 @@ func parseFFmpegTime(timeStr string) float64 {
 
 // getMediaDuration uses ffmpeg-go's Probe to get media duration in seconds.
 // Falls back to raw ffprobe if the ffmpeg-go probe fails.
-func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64 {
+func (m *Module) getMediaDuration(ctx context.Context, mediaId string) float64 {
 	if m.ffprobePath == "" && m.ffmpegPath == "" {
 		return 0
 	}
 
 	// Use ffmpeg-go Probe for duration detection
-	probeJSON, err := ffmpeg.Probe(mediaPath)
+	probeJSON, err := ffmpeg.Probe(mediaId)
 	if err == nil {
 		duration := m.parseProbeDuration(probeJSON)
 		if duration > 0 {
@@ -747,7 +747,7 @@ func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
-		mediaPath,
+		mediaId,
 	)
 	output, err := cmd.Output()
 	if err != nil {
@@ -779,13 +779,13 @@ func (m *Module) parseProbeDuration(probeJSON string) float64 {
 // getSourceHeight probes the source media file and returns the video stream height in pixels.
 // Returns 0 if the height cannot be determined (ffprobe unavailable, not a video file, etc.).
 // Uses ffmpeg-go's Probe first, then falls back to raw ffprobe if that fails.
-func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
+func (m *Module) getSourceHeight(ctx context.Context, mediaId string) int {
 	if m.ffmpegPath == "" && m.ffprobePath == "" {
 		return 0
 	}
 
 	// ffmpeg-go Probe returns format + streams JSON in one call (same probe used for duration).
-	probeJSON, err := ffmpeg.Probe(mediaPath)
+	probeJSON, err := ffmpeg.Probe(mediaId)
 	if err == nil {
 		if h := m.parseProbeHeight(probeJSON); h > 0 {
 			return h
@@ -805,11 +805,11 @@ func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
 		"-print_format", "json",
 		"-show_streams",
 		"-select_streams", "v:0",
-		mediaPath,
+		mediaId,
 	)
 	output, err := cmd.Output()
 	if err != nil {
-		m.log.Debug("ffprobe stream info failed for %s: %v", filepath.Base(mediaPath), err)
+		m.log.Debug("ffprobe stream info failed for %s: %v", filepath.Base(mediaId), err)
 		return 0
 	}
 
@@ -936,7 +936,7 @@ func (m *Module) GetJobStatus(jobID string) (*models.HLSJob, error) {
 	return job, nil
 }
 
-// GetJobByMediaPath returns job for a media file
+// GetJobByMediaPath returns job for a media file by its path
 func (m *Module) GetJobByMediaPath(mediaPath string) (*models.HLSJob, error) {
 	hash := md5.Sum([]byte(mediaPath))
 	jobID := hex.EncodeToString(hash[:])

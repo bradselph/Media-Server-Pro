@@ -449,6 +449,7 @@ export interface ScannerStats {
 // Matches backend models.MatureReviewItem JSON
 export interface ScanResultItem {
     id: string
+    name: string
     detected_at: string
     confidence: number
     reasons: string[] | null
@@ -721,6 +722,8 @@ export interface DetectedMediaInfo {
 }
 
 export interface CategorizedItem {
+    id: string
+    name: string
     category: string
     confidence: number
     detected_info?: DetectedMediaInfo

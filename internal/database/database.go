@@ -83,12 +83,12 @@ func (m *Module) Start(ctx context.Context) error {
 		cfg.Database.Username, cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
 	m.log.Info("Connecting to: %s", safeDSN)
 
-	// Configure GORM logger
+	// Configure GORM logger — use Error level to avoid leaking paths via slow-query logs
 	gormLog := gormlogger.New(
 		&gormLogWriter{log: m.log},
 		gormlogger.Config{
-			SlowThreshold:             200 * time.Millisecond,
-			LogLevel:                  gormlogger.Warn,
+			SlowThreshold:             500 * time.Millisecond,
+			LogLevel:                  gormlogger.Error,
 			IgnoreRecordNotFoundError: true,
 			Colorful:                  false,
 		},

@@ -3,8 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"net/url"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -107,7 +105,7 @@ func (h *Handler) GetReviewQueue(c *gin.Context) {
 func (h *Handler) BatchReviewAction(c *gin.Context) {
 	var req struct {
 		Action string   `json:"action"`
-		Paths  []string `json:"paths"`
+		IDs    []string `json:"ids"`
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
@@ -120,15 +118,20 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 	}
 
 	updated := 0
-	for _, path := range req.Paths {
-		var err error
+	for _, id := range req.IDs {
+		item, err := h.media.GetMediaByID(id)
+		if err != nil || item == nil {
+			continue
+		}
+		path := item.Path
+
 		if req.Action == "approve" {
 			err = h.scanner.ApproveContent(c.Request.Context(), path)
 			if err == nil {
 				result, ok := h.scanner.GetScanResult(path)
 				if ok {
 					if setErr := h.media.SetMatureFlag(path, true, result.Confidence, result.Reasons); setErr != nil {
-						h.log.Error("Failed to update media library mature flag for %s: %v", path, setErr)
+						h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
 					}
 				}
 			}
@@ -136,7 +139,7 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 			err = h.scanner.RejectContent(c.Request.Context(), path)
 			if err == nil {
 				if setErr := h.media.SetMatureFlag(path, false, 0, nil); setErr != nil {
-					h.log.Error("Failed to update media library mature flag for %s: %v", path, setErr)
+					h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
 				}
 			}
 		}
@@ -147,7 +150,7 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 
 	writeSuccess(c, map[string]interface{}{
 		"updated": updated,
-		"total":   len(req.Paths),
+		"total":   len(req.IDs),
 	})
 }
 
@@ -161,10 +164,9 @@ func (h *Handler) ClearReviewQueue(c *gin.Context) {
 
 // ApproveContent approves content from the review queue
 func (h *Handler) ApproveContent(c *gin.Context) {
-	rawPath := strings.TrimPrefix(c.Param("path"), "/")
-	path, err := url.PathUnescape(rawPath)
-	if err != nil || path == "" {
-		writeError(c, http.StatusBadRequest, errPathParamRequired)
+	id := c.Param("id")
+	path, ok := h.resolveMediaByID(c, id)
+	if !ok {
 		return
 	}
 
@@ -173,8 +175,8 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 		return
 	}
 
-	result, ok := h.scanner.GetScanResult(path)
-	if ok {
+	result, found := h.scanner.GetScanResult(path)
+	if found {
 		if err := h.media.SetMatureFlag(path, true, result.Confidence, result.Reasons); err != nil {
 			h.log.Error("Failed to update media library mature flag: %v", err)
 		}
@@ -185,10 +187,9 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 
 // RejectContent rejects content from the review queue
 func (h *Handler) RejectContent(c *gin.Context) {
-	rawPath := strings.TrimPrefix(c.Param("path"), "/")
-	path, err := url.PathUnescape(rawPath)
-	if err != nil || path == "" {
-		writeError(c, http.StatusBadRequest, errPathParamRequired)
+	id := c.Param("id")
+	path, ok := h.resolveMediaByID(c, id)
+	if !ok {
 		return
 	}
 

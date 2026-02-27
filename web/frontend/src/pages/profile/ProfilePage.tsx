@@ -164,10 +164,10 @@ export function ProfilePage() {
         setPreferences(prev => prev ? {...prev, [key]: value} : null)
     }
 
-    async function handleDeleteHistoryItem(path: string) {
+    async function handleDeleteHistoryItem(mediaId: string) {
         try {
-            await watchHistoryApi.delete(path)
-            setWatchHistory(prev => prev.filter(e => e.media_path !== path))
+            await watchHistoryApi.delete(mediaId)
+            setWatchHistory(prev => prev.filter(e => e.media_id !== mediaId))
         } catch {
             showToast('Failed to remove history entry', 'error')
         }
@@ -508,13 +508,13 @@ export function ProfilePage() {
                     ) : (
                         <div className="history-list">
                             {watchHistory.map((entry, i) => (
-                                <div key={`${entry.media_path}-${i}`} className="history-item">
+                                <div key={`${entry.media_id}-${i}`} className="history-item">
                                     <div className="history-info">
                                         <Link
-                                            to={`/player?path=${encodeURIComponent(entry.media_path)}`}
+                                            to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                                             className="history-title"
                                         >
-                                            {cleanFileName(entry.media_path)}
+                                            {cleanFileName(entry.media_id)}
                                         </Link>
                                         <span className="history-meta">
                       {formatDuration(entry.duration)} &middot; {Math.round(entry.progress * 100)}% watched
@@ -523,7 +523,7 @@ export function ProfilePage() {
                                     <span className="history-date">{formatDate(entry.watched_at)}</span>
                                     <button
                                         className="btn btn-sm btn-danger"
-                                        onClick={() => handleDeleteHistoryItem(entry.media_path)}
+                                        onClick={() => handleDeleteHistoryItem(entry.media_id)}
                                         title="Remove from history"
                                     >
                                         <i className="bi bi-x"/>

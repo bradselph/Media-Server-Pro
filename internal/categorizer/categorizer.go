@@ -6,6 +6,8 @@ package categorizer
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -39,6 +41,8 @@ const (
 
 // CategorizedItem represents a categorized media item
 type CategorizedItem struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
 	Path           string     `json:"-"`
 	Category       Category   `json:"category"`
 	Confidence     float64    `json:"confidence"`
@@ -193,7 +197,10 @@ func (m *Module) CategorizeFile(path string) *CategorizedItem {
 		return existing
 	}
 
+	h := md5.Sum([]byte(path))
 	item := &CategorizedItem{
+		ID:            hex.EncodeToString(h[:]),
+		Name:          filepath.Base(path),
 		Path:          path,
 		CategorizedAt: time.Now(),
 	}
@@ -220,6 +227,8 @@ func copyItem(src *CategorizedItem) *CategorizedItem {
 		return nil
 	}
 	dst := &CategorizedItem{
+		ID:             src.ID,
+		Name:           src.Name,
 		Path:           src.Path,
 		Category:       src.Category,
 		Confidence:     src.Confidence,
@@ -510,7 +519,10 @@ func (m *Module) SetCategory(path string, category Category) {
 
 	item, ok := m.items[path]
 	if !ok {
+		h := md5.Sum([]byte(path))
 		item = &CategorizedItem{
+			ID:            hex.EncodeToString(h[:]),
+			Name:          filepath.Base(path),
 			Path:          path,
 			CategorizedAt: time.Now(),
 		}

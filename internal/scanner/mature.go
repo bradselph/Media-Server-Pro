@@ -3,6 +3,8 @@ package scanner
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -189,9 +191,9 @@ type MatureScanner struct {
 	healthy     bool
 	healthMsg   string
 	healthMu    sync.RWMutex
-	scanRepo   repositories.ScanResultRepository // Repository for persistent scan results
-	repoDown   atomic.Bool                       // Set true after consecutive repo failures to suppress spam
-	repoErrors atomic.Int32                      // Consecutive repo error count
+	scanRepo    repositories.ScanResultRepository // Repository for persistent scan results
+	repoDown    atomic.Bool                       // Set true after consecutive repo failures to suppress spam
+	repoErrors  atomic.Int32                      // Consecutive repo error count
 }
 
 // ScanResult holds the result of scanning a file
@@ -749,8 +751,10 @@ func (s *MatureScanner) isAllowedExtension(ext string) bool {
 // The underlying scan result (with needs_review=true) is already persisted to MySQL
 // via scanRepo.Save() when ScanFile is called.
 func (s *MatureScanner) addToReviewQueue(result *ScanResult) {
+	h := md5.Sum([]byte(result.Path))
 	item := &models.MatureReviewItem{
-		ID:         result.Path, // Use path as ID
+		ID:         hex.EncodeToString(h[:]),
+		Name:       filepath.Base(result.Path),
 		MediaPath:  result.Path,
 		DetectedAt: result.ScannedAt,
 		Confidence: result.Confidence,
@@ -927,8 +931,10 @@ func (s *MatureScanner) loadReviewQueue() error {
 
 	for _, r := range pending {
 		scannedAt, _ := time.Parse(time.RFC3339, r.ScannedAt)
+		h := md5.Sum([]byte(r.Path))
 		s.reviewQueue[r.Path] = &models.MatureReviewItem{
-			ID:         r.Path,
+			ID:         hex.EncodeToString(h[:]),
+			Name:       filepath.Base(r.Path),
 			MediaPath:  r.Path,
 			DetectedAt: scannedAt,
 			Confidence: r.Confidence,

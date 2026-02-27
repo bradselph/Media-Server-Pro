@@ -53,6 +53,76 @@ ROLLBACK=false
 SETUP=false
 BRANCH="main"
 
+BUILD_REACT=false
+DRY_RUN=false
+FIX_ENV=false
+ROLLBACK=false
+SETUP=false
+BRANCH="main"
+
+# ── SSH auth setup ────────────────────────────────────────────────────────────
+# Generates key if missing, strips any passphrase (needed for BatchMode=yes),
+# converts path for Windows OpenSSH, and installs the public key on the VPS
+# the first time (one-time password prompt).
+setup_ssh_auth() {
+  # 1. Generate key if missing
+  if [[ ! -f "$KEY_FILE" ]]; then
+    info "Generating SSH key at $KEY_FILE..."
+    mkdir -p "$(dirname "$KEY_FILE")"
+    ssh-keygen -t ed25519 -f "$KEY_FILE" -N "" -C "mediaserver-deploy"
+    echo ""
+  fi
+
+  # 2. Remove passphrase if the key has one — BatchMode=yes cannot prompt for it
+  if ! ssh-keygen -y -P "" -f "$KEY_FILE" &>/dev/null; then
+    warn "SSH key has a passphrase — removing it for automated deploys."
+    echo "    Enter the CURRENT key passphrase when prompted:"
+    ssh-keygen -p -f "$KEY_FILE" -N ""
+    echo ""
+    info "Passphrase removed."
+  fi
+
+  # 3. Convert POSIX path to Windows path for Git Bash / Windows OpenSSH
+  #    (Git Bash reports HOME as /c/Users/... but ssh.exe needs C:/Users/...)
+  KEY_FILE_SSH="$KEY_FILE"
+  if command -v cygpath &>/dev/null 2>&1; then
+    KEY_FILE_SSH="$(cygpath -m "$KEY_FILE" 2>/dev/null || echo "$KEY_FILE")"
+  fi
+
+  SSH_OPTS=(-i "$KEY_FILE_SSH" -p "$VPS_PORT" -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=8)
+
+  # 4. Test key auth; install on VPS if not yet authorised (one-time password prompt)
+  if ! ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "exit 0" 2>/dev/null; then
+    info "Key not yet authorised on VPS — installing it now."
+    echo "    Enter the VPS password when prompted (one time only)."
+    echo ""
+
+    local pub_key
+    pub_key="$(cat "${KEY_FILE}.pub")"
+
+    if command -v ssh-copy-id &>/dev/null; then
+      ssh-copy-id -i "${KEY_FILE}.pub" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST"
+    else
+      ssh -p "$VPS_PORT" \
+          -o StrictHostKeyChecking=accept-new \
+          -o ConnectTimeout=10 \
+          "$VPS_USER@$VPS_HOST" \
+          "mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
+           echo '$pub_key' >> ~/.ssh/authorized_keys && \
+           chmod 600 ~/.ssh/authorized_keys && \
+           echo 'Key installed OK.'"
+    fi
+
+    # Verify the key now works
+    if ! ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "exit 0" 2>/dev/null; then
+      die "SSH key auth still failing after install. Try manually: ssh -i \"$KEY_FILE_SSH\" $VPS_USER@$VPS_HOST"
+    fi
+
+    success "SSH key installed — future runs will connect without a password."
+    echo ""
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --full)       BUILD_REACT=true ; shift ;;
@@ -72,10 +142,10 @@ done
 [[ -z "$VPS_HOST" ]] && die "VPS_HOST is not set. Export it or add to .deploy.env"
 [[ -z "$GITHUB_TOKEN" ]] && die "GITHUB_TOKEN is not set. Export it or add to .deploy.env"
 
-# SSH options
-SSH_OPTS=(-p "$VPS_PORT" -i "$KEY_FILE" -o "StrictHostKeyChecking=accept-new" -o "BatchMode=yes")
-
-vps() { ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "$@"; }
+# SSH_OPTS and vps() are initialised by setup_ssh_auth() below.
+# Declare them here so other functions can reference them before the call.
+SSH_OPTS=()
+vps() { ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" -- "$@"; }
 
 run_or_dry() {
   if $DRY_RUN; then
@@ -94,6 +164,11 @@ info "Service    : $SERVICE"
 info "Branch     : $BRANCH"
 $DRY_RUN && warn "DRY RUN — no commands will execute"
 echo ""
+
+# Ensure SSH key is ready and authorised (skipped for dry-runs that never SSH)
+if ! $DRY_RUN; then
+  setup_ssh_auth
+fi
 
 # ── Rollback ──────────────────────────────────────────────────────────────────
 if $ROLLBACK; then
@@ -120,7 +195,7 @@ if $SETUP; then
     # Install Go (if not present)
     if ! command -v go &>/dev/null; then
       echo '[setup] Installing Go...'
-      curl -fsSL https://go.dev/dl/go1.24.1.linux-amd64.tar.gz -o /tmp/go.tar.gz
+      curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -o /tmp/go.tar.gz
       sudo rm -rf /usr/local/go
       sudo tar -C /usr/local -xzf /tmp/go.tar.gz
       rm /tmp/go.tar.gz
@@ -133,8 +208,8 @@ if $SETUP; then
 
     # Install Node.js (if not present, for React builds)
     if ! command -v node &>/dev/null; then
-      echo '[setup] Installing Node.js 22...'
-      curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+      echo '[setup] Installing Node.js ${NODE_MAJOR}...'
+      curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash -
       sudo apt-get install -y nodejs
       echo \"[setup] Node \$(node --version) installed\"
     else
@@ -221,6 +296,14 @@ run_or_dry vps "
   set -euo pipefail
   export PATH=\$PATH:/usr/local/go/bin
 
+  # Clone if the directory doesn't exist yet
+  if [ ! -d '$DEPLOY_DIR/.git' ]; then
+    echo '[deploy] Deploy directory not found — cloning repository...'
+    mkdir -p '$DEPLOY_DIR'
+    git clone --branch '$BRANCH' '$CLONE_URL' '$DEPLOY_DIR'
+    echo '[deploy] Clone complete'
+  fi
+
   cd '$DEPLOY_DIR'
 
   # Ensure the remote URL uses the token
@@ -233,7 +316,99 @@ run_or_dry vps "
   echo \"[deploy] HEAD is now: \$(git log --oneline -1)\"
 "
 
-# ── Build on VPS ──────────────────────────────────────────────────────────────
+# ── Ensure dependencies are installed on VPS ─────────────────────────────────
+GO_VERSION="1.26.0"
+NODE_MAJOR="22"
+
+info "Checking dependencies on VPS..."
+run_or_dry vps "
+  set -euo pipefail
+  export PATH=\$PATH:/usr/local/go/bin
+
+  # ── apt packages (git, curl, build-essential, ffmpeg) ─────────────────────
+  MISSING_APT=()
+  for pkg in git curl build-essential ffmpeg; do
+    dpkg -s \"\$pkg\" &>/dev/null || MISSING_APT+=(\"\$pkg\")
+  done
+  if [ \${#MISSING_APT[@]} -gt 0 ]; then
+    echo '[deps] Installing apt packages: '\${MISSING_APT[*]}
+    sudo apt-get update -qq
+    sudo apt-get install -y \"\${MISSING_APT[@]}\"
+  else
+    echo '[deps] apt packages already installed'
+  fi
+
+  # ffprobe ships with ffmpeg — verify it is present
+  if command -v ffprobe &>/dev/null; then
+    echo \"[deps] ffprobe: \$(ffprobe -version 2>&1 | head -1)\"
+  else
+    echo '[deps] WARNING: ffprobe not found even after ffmpeg install'
+  fi
+
+  # ── Go ─────────────────────────────────────────────────────────────────────
+  NEED_GO=false
+  if ! command -v go &>/dev/null; then
+    NEED_GO=true
+    echo '[deps] Go not found — installing...'
+  elif [ \"\$(go version 2>/dev/null | grep -oP 'go[0-9]+\.[0-9]+\.[0-9]+')\" != 'go$GO_VERSION' ]; then
+    NEED_GO=true
+    echo \"[deps] Go version mismatch — upgrading to $GO_VERSION...\"
+  else
+    echo \"[deps] Go $GO_VERSION already installed\"
+  fi
+
+  if \$NEED_GO; then
+    ARCH=\$(dpkg --print-architecture 2>/dev/null || uname -m)
+    case \"\$ARCH\" in
+      amd64|x86_64)  GO_ARCH=amd64 ;;
+      arm64|aarch64) GO_ARCH=arm64 ;;
+      armv6l|armv7l) GO_ARCH=armv6l ;;
+      *)             GO_ARCH=amd64 ;;
+    esac
+    GO_TAR=\"go${GO_VERSION}.linux-\${GO_ARCH}.tar.gz\"
+    echo \"[deps] Downloading \$GO_TAR...\"
+    curl -fsSL \"https://go.dev/dl/\$GO_TAR\" -o /tmp/go.tar.gz
+    sudo rm -rf /usr/local/go
+    sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+    rm /tmp/go.tar.gz
+    echo 'export PATH=\$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh > /dev/null
+    export PATH=\$PATH:/usr/local/go/bin
+    echo \"[deps] Installed \$(go version)\"
+  fi
+
+  # ── Node.js + npm ──────────────────────────────────────────────────────────
+  NEED_NODE=false
+  if ! command -v node &>/dev/null; then
+    NEED_NODE=true
+    echo '[deps] Node.js not found — installing...'
+  else
+    NODE_MAJOR_INSTALLED=\$(node --version | grep -oP '(?<=v)\d+')
+    if [ \"\$NODE_MAJOR_INSTALLED\" -lt '$NODE_MAJOR' ]; then
+      NEED_NODE=true
+      echo \"[deps] Node.js \$(node --version) is too old — upgrading to $NODE_MAJOR...\"
+    else
+      echo \"[deps] Node.js \$(node --version) already installed\"
+    fi
+  fi
+
+  if \$NEED_NODE; then
+    curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash - 2>/dev/null
+    sudo apt-get install -y nodejs
+    echo \"[deps] Installed Node \$(node --version) / npm \$(npm --version)\"
+  fi
+
+  # ── Vite (global, so 'vite' works in PATH during CI-style builds) ──────────
+  if ! command -v vite &>/dev/null; then
+    echo '[deps] Installing Vite globally...'
+    sudo npm install -g vite 2>/dev/null
+    echo \"[deps] Vite \$(vite --version 2>/dev/null || echo installed)\"
+  else
+    echo \"[deps] Vite already installed: \$(vite --version 2>/dev/null || echo ok)\"
+  fi
+"
+
+# ── Build on VPS
+
 info "Building on VPS..."
 REACT_BUILD_CMD=""
 if $BUILD_REACT; then

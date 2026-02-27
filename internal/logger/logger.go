@@ -136,7 +136,7 @@ func Init(cfg Config) error {
 				return
 			}
 			logFile := filepath.Join(cfg.LogDir, fmt.Sprintf("server_%s.log", time.Now().Format("2006-01-02")))
-			f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
 			if err != nil {
 				initErr = fmt.Errorf("failed to open log file: %w", err)
 				return
@@ -162,7 +162,7 @@ func EnableFileLogging(logDir string, maxSize int64, maxBackups int) error {
 	}
 
 	logFile := filepath.Join(logDir, fmt.Sprintf("server_%s.log", time.Now().Format("2006-01-02")))
-	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
 	if err != nil {
 		return fmt.Errorf("failed to open log file %s: %w", logFile, err)
 	}
@@ -384,7 +384,7 @@ func (l *Logger) rotateIfNeeded() {
 	}
 
 	// Open a new log file
-	f, err := os.OpenFile(currentPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(currentPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
 	if err != nil {
 		// Fall back to writing without file
 		l.fileOutput = nil

@@ -539,14 +539,14 @@ export const adminApi = {
     getReviewQueue: () =>
         api.get<ScanResultItem[]>('/api/admin/scanner/queue'),
 
-    batchReview: (action: 'approve' | 'reject', paths: string[]) =>
-        api.post<{ updated: number; total: number }>('/api/admin/scanner/queue', {action, paths}),
+    batchReview: (action: 'approve' | 'reject', ids: string[]) =>
+        api.post<{ updated: number; total: number }>('/api/admin/scanner/queue', {action, ids}),
 
     clearReviewQueue: () =>
         api.delete<void>('/api/admin/scanner/queue'),
 
-    approveContent: (path: string) =>
-        api.post<void>(`/api/admin/scanner/approve/${path.split('/').map(encodeURIComponent).join('/')}`),
+    approveContent: (id: string) =>
+        api.post<void>(`/api/admin/scanner/approve/${encodeURIComponent(id)}`),
 
     // HLS admin
     getHLSStats: () =>
@@ -586,16 +586,16 @@ export const adminApi = {
 
     // On success returns the updated MediaItem; on lookup failure returns { message, path } instead.
     // Callers should check for `.id` before treating result as a full MediaItem.
-    updateMedia: (path: string, data: Partial<Pick<MediaItem, 'name' | 'category' | 'tags' | 'is_mature'>>) =>
-        api.put<MediaItem>(`/api/admin/media/${path.split('/').map(encodeURIComponent).join('/')}`, data),
+    updateMedia: (id: string, data: Partial<Pick<MediaItem, 'name' | 'category' | 'tags' | 'is_mature'>>) =>
+        api.put<MediaItem>(`/api/admin/media/${encodeURIComponent(id)}`, data),
 
-    deleteMedia: (path: string) =>
-        api.delete<void>(`/api/admin/media/${path.split('/').map(encodeURIComponent).join('/')}`),
+    deleteMedia: (id: string) =>
+        api.delete<void>(`/api/admin/media/${encodeURIComponent(id)}`),
 
-    // Bulk action on multiple files. action="delete" removes files; action="update" applies data fields.
-    // Returns { success, failed, errors[] }. Max 500 paths per call.
-    bulkMedia: (paths: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
-        api.post<{ success: number; failed: number; errors: string[] }>('/api/admin/media/bulk', {paths, action, data}),
+    // Bulk action on multiple media items. action="delete" removes files; action="update" applies data fields.
+    // Returns { success, failed, errors[] }. Max 500 ids per call.
+    bulkMedia: (ids: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
+        api.post<{ success: number; failed: number; errors: string[] }>('/api/admin/media/bulk', {ids, action, data}),
 
     getDailyStats: (days?: number) =>
         api.get<DailyStats[]>(`/api/analytics/daily${days ? `?days=${days}` : ''}`),
@@ -689,9 +689,8 @@ export const adminApi = {
     getSuggestionStats: () =>
         api.get<SuggestionStats>('/api/admin/suggestions/stats'),
 
-    // POST /api/admin/scanner/reject/{path:.*} — backend registered as POST (not DELETE)
-    rejectContent: (path: string) =>
-        api.post<void>(`/api/admin/scanner/reject/${path.split('/').map(encodeURIComponent).join('/')}`),
+    rejectContent: (id: string) =>
+        api.post<void>(`/api/admin/scanner/reject/${encodeURIComponent(id)}`),
 
     // Feature 10: Security
     getSecurityStats: () =>

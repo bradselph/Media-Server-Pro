@@ -589,7 +589,7 @@ function MediaTab() {
     const [debouncedMediaSearch, setDebouncedMediaSearch] = useState('')
     const [mediaPage, setMediaPage] = useState(1)
     const [editItem, setEditItem] = useState<{
-        path: string;
+        id: string;
         name: string;
         category: string;
         is_mature: boolean
@@ -690,7 +690,7 @@ function MediaTab() {
     async function handleSaveEdit() {
         if (!editItem) return
         try {
-            await adminApi.updateMedia(editItem.path, {
+            await adminApi.updateMedia(editItem.id, {
                 name: editItem.name,
                 category: editItem.category,
                 is_mature: editItem.is_mature
@@ -751,29 +751,29 @@ function MediaTab() {
         }
     }
 
-    const allSelected = mediaItems.length > 0 && mediaItems.every(i => selected.has(i.path))
+    const allSelected = mediaItems.length > 0 && mediaItems.every(i => selected.has(i.id))
 
     function toggleSelectAll() {
         if (allSelected) {
             setSelected(prev => {
                 const next = new Set(prev)
-                mediaItems.forEach(i => next.delete(i.path))
+                mediaItems.forEach(i => next.delete(i.id))
                 return next
             })
         } else {
             setSelected(prev => {
                 const next = new Set(prev)
-                mediaItems.forEach(i => next.add(i.path))
+                mediaItems.forEach(i => next.add(i.id))
                 return next
             })
         }
     }
 
-    function toggleSelect(path: string) {
+    function toggleSelect(id: string) {
         setSelected(prev => {
             const next = new Set(prev)
-            if (next.has(path)) next.delete(path)
-            else next.add(path)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
             return next
         })
     }
@@ -945,11 +945,11 @@ function MediaTab() {
                         </thead>
                         <tbody>
                         {mediaItems.map(item => (
-                            <tr key={item.path}
-                                style={selected.has(item.path) ? {background: 'color-mix(in srgb, var(--accent-color) 8%, transparent)'} : undefined}>
+                            <tr key={item.id}
+                                style={selected.has(item.id) ? {background: 'color-mix(in srgb, var(--accent-color) 8%, transparent)'} : undefined}>
                                 <td>
-                                    <input type="checkbox" checked={selected.has(item.path)}
-                                           onChange={() => toggleSelect(item.path)}/>
+                                    <input type="checkbox" checked={selected.has(item.id)}
+                                           onChange={() => toggleSelect(item.id)}/>
                                 </td>
                                 <td style={{
                                     maxWidth: 240,
@@ -965,7 +965,7 @@ function MediaTab() {
                                     <div style={{display: 'flex', gap: 4}}>
                                         <button className="admin-btn" style={{padding: '3px 8px', fontSize: 12}}
                                                 onClick={() => setEditItem({
-                                                    path: item.path,
+                                                    id: item.id,
                                                     name: item.name,
                                                     category: item.category || '',
                                                     is_mature: item.is_mature
@@ -974,7 +974,7 @@ function MediaTab() {
                                         </button>
                                         <button className="admin-btn admin-btn-danger"
                                                 style={{padding: '3px 8px', fontSize: 12}}
-                                                onClick={() => handleDeleteMedia(item.path, item.name)}>
+                                                onClick={() => handleDeleteMedia(item.id, item.name)}>
                                             <i className="bi bi-trash-fill"/>
                                         </button>
                                     </div>
@@ -1307,8 +1307,8 @@ function StreamingTab() {
                                     textOverflow: 'ellipsis',
                                     whiteSpace: 'nowrap'
                                 }}
-                                    title={job.media_path}>
-                                    {job.media_path.split('/').pop()?.split('\\').pop() ?? job.media_path}
+                                    title={job.id}>
+                                    {job.id}
                                 </td>
                                 <td>
                     <span
@@ -1576,9 +1576,7 @@ function AnalyticsTab() {
                                 <tr key={item.media_id}>
                                     <td>{i + 1}</td>
                                     <td>
-                                        {/* Use media_path (actual file path) if available; fall
-                                          * back to media_id (MD5 hash) only when lookup failed */}
-                                        <a href={`/player?path=${encodeURIComponent(item.media_path ?? item.media_id)}`}
+                                        <a href={`/player?id=${encodeURIComponent(item.media_id)}`}
                                            style={{color: 'var(--text-primary)'}}>
                                             {item.filename}
                                         </a>
@@ -2329,12 +2327,12 @@ function ContentReviewTab() {
     })
 
     async function handleBatchAction(action: 'approve' | 'reject') {
-        const paths = selected.size > 0 ? Array.from(selected) : queue.map(i => i.media_path)
-        if (!paths.length || !window.confirm(`Apply "${action}" to ${paths.length} item(s)?`)) return
+        const ids = selected.size > 0 ? Array.from(selected) : queue.map(i => i.id)
+        if (!ids.length || !window.confirm(`Apply "${action}" to ${ids.length} item(s)?`)) return
         try {
-            await adminApi.batchReview(action, paths)
+            await adminApi.batchReview(action, ids)
             setSelected(new Set())
-            setMsg({type: 'success', text: `"${action}" applied to ${paths.length} item(s).`})
+            setMsg({type: 'success', text: `"${action}" applied to ${ids.length} item(s).`})
             await queryClient.invalidateQueries({queryKey: ['review-queue']})
         } catch (err) {
             setMsg({type: 'error', text: errMsg(err)})
@@ -2415,7 +2413,7 @@ function ContentReviewTab() {
                         <tr>
                             <th>
                                 <input type="checkbox"
-                                       onChange={e => setSelected(e.target.checked ? new Set(queue.map(i => i.media_path)) : new Set())}/>
+                                       onChange={e => setSelected(e.target.checked ? new Set(queue.map(i => i.id)) : new Set())}/>
                             </th>
                             <th>File</th>
                             <th>Detected</th>
@@ -2426,11 +2424,11 @@ function ContentReviewTab() {
                         </thead>
                         <tbody>
                         {queue.map(item => (
-                            <tr key={item.media_path}>
-                                <td><input type="checkbox" checked={selected.has(item.media_path)} onChange={() => {
+                            <tr key={item.id}>
+                                <td><input type="checkbox" checked={selected.has(item.id)} onChange={() => {
                                     const next = new Set(selected)
-                                    if (next.has(item.media_path)) next.delete(item.media_path)
-                                    else next.add(item.media_path)
+                                    if (next.has(item.id)) next.delete(item.id)
+                                    else next.add(item.id)
                                     setSelected(next)
                                 }}/></td>
                                 <td style={{
@@ -2439,7 +2437,7 @@ function ContentReviewTab() {
                                     textOverflow: 'ellipsis',
                                     whiteSpace: 'nowrap'
                                 }}>
-                                    {item.media_path.split(/[/\\]/).pop()}
+                                    {item.name}
                                 </td>
                                 <td style={{fontSize: 11, color: 'var(--text-muted)'}}>
                                     {item.detected_at ? new Date(item.detected_at).toLocaleDateString() : '—'}
@@ -2460,32 +2458,32 @@ function ContentReviewTab() {
                                     <div style={{display: 'flex', gap: 6}}>
                                         <button className="admin-btn admin-btn-success" style={{padding: '3px 7px'}}
                                                 title="Not mature"
-                                                disabled={processingPaths.has(item.media_path)}
+                                                disabled={processingPaths.has(item.id)}
                                                 onClick={() => {
-                                                    setProcessingPaths(prev => new Set(prev).add(item.media_path))
-                                                    adminApi.batchReview('reject', [item.media_path])
+                                                    setProcessingPaths(prev => new Set(prev).add(item.id))
+                                                    adminApi.batchReview('reject', [item.id])
                                                         .then(() => void queryClient.invalidateQueries({queryKey: ['review-queue']}))
                                                         .catch(err => setMsg({type: 'error', text: errMsg(err)}))
                                                         .finally(() => setProcessingPaths(prev => {
                                                             const next = new Set(prev);
-                                                            next.delete(item.media_path);
+                                                            next.delete(item.id);
                                                             return next
                                                         }))
                                                 }}>
-                                            {processingPaths.has(item.media_path) ?
+                                            {processingPaths.has(item.id) ?
                                                 <i className="bi bi-arrow-repeat"/> : <i className="bi bi-check-lg"/>}
                                         </button>
                                         <button className="admin-btn admin-btn-warning" style={{padding: '3px 7px'}}
                                                 title="Confirm mature"
-                                                disabled={processingPaths.has(item.media_path)}
+                                                disabled={processingPaths.has(item.id)}
                                                 onClick={() => {
-                                                    setProcessingPaths(prev => new Set(prev).add(item.media_path))
-                                                    adminApi.batchReview('approve', [item.media_path])
+                                                    setProcessingPaths(prev => new Set(prev).add(item.id))
+                                                    adminApi.batchReview('approve', [item.id])
                                                         .then(() => void queryClient.invalidateQueries({queryKey: ['review-queue']}))
                                                         .catch(err => setMsg({type: 'error', text: errMsg(err)}))
                                                         .finally(() => setProcessingPaths(prev => {
                                                             const next = new Set(prev);
-                                                            next.delete(item.media_path);
+                                                            next.delete(item.id);
                                                             return next
                                                         }))
                                                 }}>
@@ -2493,16 +2491,16 @@ function ContentReviewTab() {
                                         </button>
                                         <button className="admin-btn admin-btn-danger" style={{padding: '3px 7px'}}
                                                 title="Reject and remove from library"
-                                                disabled={processingPaths.has(item.media_path)}
+                                                disabled={processingPaths.has(item.id)}
                                                 onClick={() => {
-                                                    if (!window.confirm(`Remove "${item.media_path.split(/[/\\]/).pop()}" from library?`)) return
-                                                    setProcessingPaths(prev => new Set(prev).add(item.media_path))
-                                                    adminApi.rejectContent(item.media_path)
+                                                    if (!window.confirm(`Remove "${item.name}" from library?`)) return
+                                                    setProcessingPaths(prev => new Set(prev).add(item.id))
+                                                    adminApi.rejectContent(item.id)
                                                         .then(() => void queryClient.invalidateQueries({queryKey: ['review-queue']}))
                                                         .catch(err => setMsg({type: 'error', text: errMsg(err)}))
                                                         .finally(() => setProcessingPaths(prev => {
                                                             const next = new Set(prev);
-                                                            next.delete(item.media_path);
+                                                            next.delete(item.id);
                                                             return next
                                                         }))
                                                 }}>
@@ -3726,13 +3724,13 @@ function CategorizerTab() {
                                     </td>
                                 </tr>
                             ) : browseResults.map(item => (
-                                <tr key={item.path}>
+                                <tr key={item.id}>
                                     <td style={{
                                         maxWidth: 200,
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
                                         whiteSpace: 'nowrap'
-                                    }} title={item.path}>{item.path.split(/[\\/]/).pop()}</td>
+                                    }} title={item.name}>{item.name}</td>
                                     <td>{item.category}</td>
                                     <td>{(item.confidence * 100).toFixed(0)}%</td>
                                     <td>{item.manual_override ? 'Yes' : 'No'}</td>

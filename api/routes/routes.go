@@ -390,10 +390,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.GET(pathScannerQueue, h.GetReviewQueue)
 	adminGrp.POST(pathScannerQueue, h.BatchReviewAction)
 	adminGrp.DELETE(pathScannerQueue, h.ClearReviewQueue)
-	// Wildcard paths: gorilla /{path:.*} becomes gin /*path
-	// Handlers must call strings.TrimPrefix(c.Param("path"), "/") to strip the leading slash.
-	adminGrp.POST("/scanner/approve/*path", h.ApproveContent)
-	adminGrp.POST("/scanner/reject/*path", h.RejectContent)
+	adminGrp.POST("/scanner/approve/:id", h.ApproveContent)
+	adminGrp.POST("/scanner/reject/:id", h.RejectContent)
 
 	// Thumbnail admin routes
 	adminGrp.POST("/thumbnails/generate", h.GenerateThumbnail)
@@ -463,13 +461,11 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.POST("/remote/cache", h.CacheRemoteMedia)
 	adminGrp.POST("/remote/cache/clean", h.CleanRemoteCache)
 
-	// Admin media management routes — /bulk must be registered before the *path wildcard
+	// Admin media management routes
 	adminGrp.GET(pathMedia, h.AdminListMedia)
 	adminGrp.POST(pathMedia+"/bulk", h.AdminBulkMedia)
-	// Wildcard: gorilla /{path:.*} → gin /*path
-	// Handlers use strings.TrimPrefix(c.Param("path"), "/") to get the bare path.
-	adminGrp.PUT(pathMedia+"/*path", h.AdminUpdateMedia)
-	adminGrp.DELETE(pathMedia+"/*path", h.AdminDeleteMedia)
+	adminGrp.PUT(pathMedia+"/:id", h.AdminUpdateMedia)
+	adminGrp.DELETE(pathMedia+"/:id", h.AdminDeleteMedia)
 
 	// Static file serving and template routes (using embedded filesystem)
 	web.RegisterStaticRoutes(r, cfg.Get().Directories.Thumbnails)

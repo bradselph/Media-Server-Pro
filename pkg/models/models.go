@@ -531,6 +531,7 @@ type StreamSession struct {
 // MatureReviewItem represents an item in the mature content review queue
 type MatureReviewItem struct {
 	ID         string     `json:"id"`
+	Name       string     `json:"name"`
 	MediaPath  string     `json:"-"`
 	DetectedAt time.Time  `json:"detected_at"`
 	Confidence float64    `json:"confidence"`
