@@ -1,0 +1,4373 @@
+openapi: 3.0.3
+info:
+  title: Media Server Pro 4 API
+  description: >
+    Modular media streaming server providing video/audio streaming with HLS
+    adaptive streaming, thumbnail generation, analytics, user authentication,
+    mature content scanning, and admin management.
+  version: 0.0.2
+  license:
+    name: Proprietary
+
+servers:
+  - url: /
+    description: Same-origin server
+
+tags:
+  - name: auth
+    description: Authentication and session management
+  - name: media
+    description: Media library browsing
+  - name: streaming
+    description: Direct media streaming and download
+  - name: hls
+    description: HLS adaptive streaming
+  - name: playback
+    description: Playback position tracking
+  - name: playlists
+    description: User playlist management
+  - name: analytics
+    description: Analytics and event tracking
+  - name: watch-history
+    description: User watch history
+  - name: suggestions
+    description: Content recommendations
+  - name: upload
+    description: Media file uploads
+  - name: preferences
+    description: User preferences
+  - name: permissions
+    description: User permissions and capabilities
+  - name: settings
+    description: Public server settings
+  - name: age-gate
+    description: Age verification gate
+  - name: ratings
+    description: Media ratings
+  - name: thumbnails
+    description: Thumbnail serving and generation
+  - name: storage
+    description: Storage usage
+  - name: system
+    description: System health and metrics
+  - name: admin-dashboard
+    description: Admin dashboard and system info
+  - name: admin-users
+    description: Admin user management
+  - name: admin-media
+    description: Admin media management
+  - name: admin-tasks
+    description: Admin background task management
+  - name: admin-config
+    description: Admin configuration
+  - name: admin-audit
+    description: Admin audit log and server logs
+  - name: admin-backups
+    description: Admin backup management (v2)
+  - name: admin-scanner
+    description: Admin mature content scanner
+  - name: admin-hls
+    description: Admin HLS management
+  - name: admin-thumbnails
+    description: Admin thumbnail management
+  - name: admin-validator
+    description: Admin media file validator
+  - name: admin-playlists
+    description: Admin playlist management
+  - name: admin-security
+    description: Admin IP security management
+  - name: admin-categorizer
+    description: Admin media categorization
+  - name: admin-discovery
+    description: Admin auto-discovery
+  - name: admin-suggestions
+    description: Admin suggestion stats
+  - name: admin-remote
+    description: Admin remote media sources
+  - name: admin-updates
+    description: Admin update management
+  - name: admin-database
+    description: Admin database management
+  - name: admin-analytics
+    description: Admin analytics detail and export
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session_id
+
+  schemas:
+    APIEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          description: Response payload (type varies by endpoint)
+        error:
+          type: string
+      required: [success]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        role:
+          type: string
+          enum: [admin, viewer]
+        type:
+          type: string
+        email:
+          type: string
+        enabled:
+          type: boolean
+        permissions:
+          $ref: '#/components/schemas/UserPermissions'
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+        storage_used:
+          type: integer
+          format: int64
+        active_streams:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+        watch_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/WatchHistoryEntry'
+
+    UserPermissions:
+      type: object
+      properties:
+        can_stream:
+          type: boolean
+        can_download:
+          type: boolean
+        can_upload:
+          type: boolean
+        can_delete:
+          type: boolean
+        can_manage:
+          type: boolean
+        can_view_mature:
+          type: boolean
+        can_create_playlists:
+          type: boolean
+
+    UserPreferences:
+      type: object
+      properties:
+        theme:
+          type: string
+          enum: [light, dark, auto]
+        default_quality:
+          type: string
+        show_mature:
+          type: boolean
+        mature_preference_set:
+          type: boolean
+        auto_play:
+          type: boolean
+        equalizer_preset:
+          type: string
+        resume_playback:
+          type: boolean
+        show_analytics:
+          type: boolean
+        items_per_page:
+          type: integer
+        view_mode:
+          type: string
+        playback_speed:
+          type: number
+        volume:
+          type: number
+        language:
+          type: string
+        sort_by:
+          type: string
+        sort_order:
+          type: string
+        filter_category:
+          type: string
+        filter_media_type:
+          type: string
+        custom_eq_presets:
+          type: object
+          additionalProperties: true
+
+    LoginResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+        is_admin:
+          type: boolean
+        username:
+          type: string
+        role:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    SessionCheckResponse:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        allow_guests:
+          type: boolean
+        user:
+          $ref: '#/components/schemas/User'
+
+    MediaItem:
+      type: object
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [video, audio, unknown]
+        size:
+          type: integer
+          format: int64
+        duration:
+          type: number
+        width:
+          type: integer
+        height:
+          type: integer
+        bitrate:
+          type: integer
+        codec:
+          type: string
+        container:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        thumbnail_url:
+          type: string
+        date_added:
+          type: string
+          format: date-time
+        date_modified:
+          type: string
+          format: date-time
+        views:
+          type: integer
+        last_played:
+          type: string
+          format: date-time
+        is_mature:
+          type: boolean
+        mature_score:
+          type: number
+        is_remote:
+          type: boolean
+        remote_url:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    MediaListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MediaItem'
+        total_items:
+          type: integer
+        total_pages:
+          type: integer
+        scanning:
+          type: boolean
+
+    MediaCategory:
+      type: object
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+        count:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+
+    MediaStats:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        video_count:
+          type: integer
+        audio_count:
+          type: integer
+        total_size:
+          type: integer
+          format: int64
+        last_scan:
+          type: string
+          format: date-time
+
+    HLSCapabilities:
+      type: object
+      properties:
+        available:
+          type: boolean
+        ffmpeg_found:
+          type: boolean
+        qualities:
+          type: array
+          items:
+            type: string
+
+    HLSAvailability:
+      type: object
+      properties:
+        available:
+          type: boolean
+        hls_url:
+          type: string
+        id:
+          type: string
+        job_id:
+          type: string
+        media_path:
+          type: string
+        status:
+          type: string
+        progress:
+          type: number
+        qualities:
+          type: array
+          items:
+            type: string
+        started_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+
+    HLSJob:
+      type: object
+      properties:
+        id:
+          type: string
+        media_path:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        progress:
+          type: number
+        qualities:
+          type: array
+          items:
+            type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        hls_url:
+          type: string
+        available:
+          type: boolean
+        error:
+          type: string
+        fail_count:
+          type: integer
+
+    Playlist:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        user_id:
+          type: string
+        items:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/PlaylistItem'
+        created_at:
+          type: string
+          format: date-time
+        modified_at:
+          type: string
+          format: date-time
+        is_public:
+          type: boolean
+        cover_image:
+          type: string
+
+    PlaylistItem:
+      type: object
+      properties:
+        id:
+          type: string
+        playlist_id:
+          type: string
+        media_id:
+          type: string
+        media_path:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+        added_at:
+          type: string
+          format: date-time
+
+    AnalyticsSummary:
+      type: object
+      properties:
+        analytics_disabled:
+          type: boolean
+        total_events:
+          type: integer
+        active_sessions:
+          type: integer
+        today_views:
+          type: integer
+        total_views:
+          type: integer
+        total_media:
+          type: integer
+        unique_clients:
+          type: integer
+        top_viewed:
+          type: array
+          items:
+            type: object
+            properties:
+              media_id:
+                type: string
+              filename:
+                type: string
+              views:
+                type: integer
+        recent_activity:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              media_id:
+                type: string
+              filename:
+                type: string
+              timestamp:
+                type: integer
+
+    AnalyticsEvent:
+      type: object
+      properties:
+        type:
+          type: string
+        media_id:
+          type: string
+        user_id:
+          type: string
+        session_id:
+          type: string
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          type: object
+          additionalProperties: true
+
+    WatchHistoryEntry:
+      type: object
+      properties:
+        media_id:
+          type: string
+        media_path:
+          type: string
+        position:
+          type: number
+        duration:
+          type: number
+        progress:
+          type: number
+        watched_at:
+          type: string
+          format: date-time
+        completed:
+          type: boolean
+
+    Suggestion:
+      type: object
+      properties:
+        media_path:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+        media_type:
+          type: string
+        score:
+          type: number
+        reasons:
+          type: array
+          items:
+            type: string
+        thumbnail_url:
+          type: string
+
+    ServerSettings:
+      type: object
+      properties:
+        thumbnails:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            autoGenerate:
+              type: boolean
+            width:
+              type: integer
+            height:
+              type: integer
+            video_preview_count:
+              type: integer
+        streaming:
+          type: object
+          properties:
+            mobileOptimization:
+              type: boolean
+        analytics:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+        features:
+          type: object
+          properties:
+            enableThumbnails:
+              type: boolean
+            enableHLS:
+              type: boolean
+            enableAnalytics:
+              type: boolean
+            analytics_tracking:
+              type: boolean
+        uploads:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            maxFileSize:
+              type: integer
+              format: int64
+        admin:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+        ui:
+          type: object
+          properties:
+            items_per_page:
+              type: integer
+            mobile_items_per_page:
+              type: integer
+            mobile_grid_columns:
+              type: integer
+        age_gate:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+
+    AgeGateStatus:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        verified:
+          type: boolean
+
+    StorageUsage:
+      type: object
+      properties:
+        used_bytes:
+          type: integer
+          format: int64
+        used_gb:
+          type: number
+        quota_gb:
+          type: integer
+          format: int64
+        percentage:
+          type: number
+        user_type:
+          type: string
+        is_authenticated:
+          type: boolean
+
+    PermissionsInfo:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        username:
+          type: string
+        role:
+          type: string
+        user_type:
+          type: string
+        show_mature:
+          type: boolean
+        mature_preference_set:
+          type: boolean
+        capabilities:
+          type: object
+          properties:
+            canUpload:
+              type: boolean
+            canDownload:
+              type: boolean
+            canCreatePlaylists:
+              type: boolean
+            canViewMature:
+              type: boolean
+            canStream:
+              type: boolean
+            canDelete:
+              type: boolean
+            canManage:
+              type: boolean
+        limits:
+          type: object
+          properties:
+            storage_quota:
+              type: integer
+              format: int64
+            concurrent_streams:
+              type: integer
+
+    UploadResult:
+      type: object
+      properties:
+        uploaded:
+          type: array
+          items:
+            type: object
+            properties:
+              filename:
+                type: string
+              size:
+                type: integer
+                format: int64
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              filename:
+                type: string
+              error:
+                type: string
+
+    UploadProgress:
+      type: object
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+        size:
+          type: integer
+          format: int64
+        uploaded:
+          type: integer
+          format: int64
+        progress:
+          type: number
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        user_id:
+          type: string
+        dest_path:
+          type: string
+
+    AdminStats:
+      type: object
+      properties:
+        total_videos:
+          type: integer
+        total_audio:
+          type: integer
+        active_sessions:
+          type: integer
+        total_users:
+          type: integer
+        disk_usage:
+          type: integer
+          format: int64
+        disk_total:
+          type: integer
+          format: int64
+        disk_free:
+          type: integer
+          format: int64
+        hls_jobs_running:
+          type: integer
+        hls_jobs_completed:
+          type: integer
+        server_uptime:
+          type: integer
+          format: int64
+        total_views:
+          type: integer
+
+    SystemInfo:
+      type: object
+      properties:
+        version:
+          type: string
+        build_date:
+          type: string
+        os:
+          type: string
+        arch:
+          type: string
+        go_version:
+          type: string
+        cpu_count:
+          type: integer
+        memory_used:
+          type: integer
+          format: int64
+        memory_total:
+          type: integer
+          format: int64
+        uptime:
+          type: integer
+          format: int64
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleHealth'
+
+    ModuleHealth:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [healthy, unhealthy, degraded, failed, disabled]
+        message:
+          type: string
+        last_check:
+          type: string
+          format: date-time
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        username:
+          type: string
+        user_id:
+          type: string
+        action:
+          type: string
+        resource:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        ip_address:
+          type: string
+        success:
+          type: boolean
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+        level:
+          type: string
+        module:
+          type: string
+        message:
+          type: string
+        raw:
+          type: string
+
+    ScheduledTask:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        schedule:
+          type: string
+        last_run:
+          type: string
+          format: date-time
+        next_run:
+          type: string
+          format: date-time
+        enabled:
+          type: boolean
+        running:
+          type: boolean
+        last_error:
+          type: string
+
+    BackupEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+        size:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        type:
+          type: string
+        description:
+          type: string
+
+    ScannerStats:
+      type: object
+      properties:
+        total_scanned:
+          type: integer
+        mature_count:
+          type: integer
+        auto_flagged:
+          type: integer
+        pending_review:
+          type: integer
+
+    ScanResultItem:
+      type: object
+      properties:
+        id:
+          type: string
+        media_path:
+          type: string
+        detected_at:
+          type: string
+          format: date-time
+        confidence:
+          type: number
+        reasons:
+          type: array
+          nullable: true
+          items:
+            type: string
+        reviewed_by:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+        decision:
+          type: string
+
+    HLSStats:
+      type: object
+      properties:
+        total_jobs:
+          type: integer
+        running_jobs:
+          type: integer
+        completed_jobs:
+          type: integer
+        failed_jobs:
+          type: integer
+        pending_jobs:
+          type: integer
+        cache_size_bytes:
+          type: integer
+          format: int64
+        cache_dir:
+          type: string
+
+    HLSValidationResult:
+      type: object
+      properties:
+        job_id:
+          type: string
+        valid:
+          type: boolean
+        variant_count:
+          type: integer
+        segment_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+    ThumbnailStats:
+      type: object
+      properties:
+        total_thumbnails:
+          type: integer
+        total_size_mb:
+          type: number
+        pending_generation:
+          type: integer
+        generation_errors:
+          type: integer
+
+    ValidationResult:
+      type: object
+      properties:
+        path:
+          type: string
+        status:
+          type: string
+        validated_at:
+          type: string
+          format: date-time
+        duration:
+          type: number
+        video_codec:
+          type: string
+        audio_codec:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+        bitrate:
+          type: integer
+        container:
+          type: string
+        issues:
+          type: array
+          items:
+            type: string
+        fixed_path:
+          type: string
+        error:
+          type: string
+        video_supported:
+          type: boolean
+        audio_supported:
+          type: boolean
+
+    ValidatorStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        validated:
+          type: integer
+        needs_fix:
+          type: integer
+        fixed:
+          type: integer
+        failed:
+          type: integer
+        unsupported:
+          type: integer
+
+    DatabaseStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        host:
+          type: string
+        database:
+          type: string
+        schema_version:
+          type: integer
+        repository_type:
+          type: string
+        message:
+          type: string
+        checked_at:
+          type: string
+          format: date-time
+
+    QueryResult:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: array
+            items: {}
+        rows_affected:
+          type: integer
+        message:
+          type: string
+        truncated:
+          type: boolean
+        error:
+          type: string
+
+    DailyStats:
+      type: object
+      properties:
+        date:
+          type: string
+        total_views:
+          type: integer
+        unique_users:
+          type: integer
+        total_watch_time:
+          type: number
+        new_users:
+          type: integer
+        top_media:
+          type: array
+          items:
+            type: string
+
+    TopMediaItem:
+      type: object
+      properties:
+        media_id:
+          type: string
+        filename:
+          type: string
+        views:
+          type: integer
+        media_path:
+          type: string
+
+    EventTypeCounts:
+      type: object
+      additionalProperties:
+        type: integer
+
+    EventStats:
+      type: object
+      properties:
+        total_events:
+          type: integer
+        event_counts:
+          type: object
+          additionalProperties:
+            type: integer
+        hourly_events:
+          type: array
+          items:
+            type: integer
+
+    AdminPlaylistStats:
+      type: object
+      properties:
+        total_playlists:
+          type: integer
+        public_playlists:
+          type: integer
+        total_items:
+          type: integer
+
+    SecurityStats:
+      type: object
+      properties:
+        banned_ips:
+          type: integer
+        whitelisted_ips:
+          type: integer
+        blacklisted_ips:
+          type: integer
+        active_rate_limits:
+          type: integer
+        total_blocks_today:
+          type: integer
+
+    IPEntry:
+      type: object
+      properties:
+        ip:
+          type: string
+        comment:
+          type: string
+        added_by:
+          type: string
+        added_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    BannedIP:
+      type: object
+      properties:
+        ip:
+          type: string
+        banned_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+
+    CategorizedItem:
+      type: object
+      properties:
+        path:
+          type: string
+        category:
+          type: string
+        confidence:
+          type: number
+        detected_info:
+          type: object
+          additionalProperties: true
+        categorized_at:
+          type: string
+          format: date-time
+        manual_override:
+          type: boolean
+
+    CategoryStats:
+      type: object
+      properties:
+        total_items:
+          type: integer
+        by_category:
+          type: object
+          additionalProperties:
+            type: integer
+        manual_overrides:
+          type: integer
+
+    DiscoverySuggestion:
+      type: object
+      properties:
+        original_path:
+          type: string
+        suggested_name:
+          type: string
+        suggested_path:
+          type: string
+        type:
+          type: string
+        confidence:
+          type: number
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    SuggestionStats:
+      type: object
+      properties:
+        total_profiles:
+          type: integer
+        total_media:
+          type: integer
+        total_views:
+          type: integer
+        total_watch_time:
+          type: number
+
+    RemoteSource:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        enabled:
+          type: boolean
+
+    RemoteSourceState:
+      type: object
+      properties:
+        source:
+          $ref: '#/components/schemas/RemoteSource'
+        status:
+          type: string
+        last_sync:
+          type: string
+          format: date-time
+        media_count:
+          type: integer
+        error:
+          type: string
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/RemoteMediaItem'
+
+    RemoteMediaItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+        url:
+          type: string
+        source_name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        content_type:
+          type: string
+        duration:
+          type: number
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        cached_at:
+          type: string
+          format: date-time
+
+    RemoteStats:
+      type: object
+      properties:
+        source_count:
+          type: integer
+        cached_item_count:
+          type: integer
+        total_media_count:
+          type: integer
+        cache_size:
+          type: integer
+          format: int64
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+              media_count:
+                type: integer
+              last_sync:
+                type: string
+                format: date-time
+              error:
+                type: string
+
+    BulkResult:
+      type: object
+      properties:
+        success:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+paths:
+  # ─── Direct routes (not under /api) ───
+
+  /health:
+    get:
+      tags: [system]
+      summary: Health check
+      description: Returns 200 when healthy, 503 when degraded. No auth required.
+      responses:
+        '200':
+          description: Healthy
+        '503':
+          description: Degraded
+
+  /metrics:
+    get:
+      tags: [system]
+      summary: Prometheus metrics
+      security:
+        - sessionCookie: []
+      description: Admin-only. Returns text/plain Prometheus metrics.
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /media:
+    get:
+      tags: [streaming]
+      summary: Stream a media file
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: quality
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Media stream with Range support
+        '206':
+          description: Partial content
+
+  /download:
+    get:
+      tags: [streaming]
+      summary: Download a media file
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File download
+
+  /hls/{id}/master.m3u8:
+    get:
+      tags: [hls]
+      summary: Serve HLS master playlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: HLS master playlist
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+
+  /hls/{id}/{quality}/playlist.m3u8:
+    get:
+      tags: [hls]
+      summary: Serve HLS variant playlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: quality
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: HLS variant playlist
+
+  /hls/{id}/{quality}/{segment}:
+    get:
+      tags: [hls]
+      summary: Serve HLS segment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: quality
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: segment
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MPEG-TS segment
+
+  /thumbnail:
+    get:
+      tags: [thumbnails]
+      summary: Get thumbnail for media path
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [placeholder, audio_placeholder, censored]
+      responses:
+        '200':
+          description: JPEG image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+
+  /thumbnails/{filename}:
+    get:
+      tags: [thumbnails]
+      summary: Serve thumbnail file by name
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: JPEG/PNG image
+
+  /remote/stream:
+    get:
+      tags: [streaming]
+      summary: Proxy remote media stream
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Proxied media stream
+
+  # ─── API routes (/api) ───
+
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResponse'
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout
+      responses:
+        '200':
+          description: Logged out
+
+  /api/auth/register:
+    post:
+      tags: [auth]
+      summary: Register new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 64
+                password:
+                  type: string
+                  minLength: 8
+                email:
+                  type: string
+      responses:
+        '200':
+          description: User created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+
+  /api/auth/session:
+    get:
+      tags: [auth]
+      summary: Check session status
+      responses:
+        '200':
+          description: Session info
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SessionCheckResponse'
+
+  /api/auth/change-password:
+    post:
+      tags: [auth]
+      summary: Change own password
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password changed
+
+  /api/auth/delete-account:
+    post:
+      tags: [auth]
+      summary: Delete own account
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Account deleted
+
+  /api/permissions:
+    get:
+      tags: [permissions]
+      summary: Get permissions and capabilities
+      responses:
+        '200':
+          description: Permissions info
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PermissionsInfo'
+
+  /api/storage-usage:
+    get:
+      tags: [storage]
+      summary: Get storage usage
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Storage usage
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/StorageUsage'
+
+  /api/server-settings:
+    get:
+      tags: [settings]
+      summary: Get public server settings
+      responses:
+        '200':
+          description: Server settings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ServerSettings'
+
+  /api/age-gate/status:
+    get:
+      tags: [age-gate]
+      summary: Get age gate status
+      responses:
+        '200':
+          description: Age gate status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AgeGateStatus'
+
+  /api/age-verify:
+    post:
+      tags: [age-gate]
+      summary: Verify age
+      responses:
+        '200':
+          description: Verified
+
+  /api/preferences:
+    get:
+      tags: [preferences]
+      summary: Get user preferences
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: User preferences
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserPreferences'
+    post:
+      tags: [preferences]
+      summary: Update user preferences (partial merge)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPreferences'
+      responses:
+        '200':
+          description: Updated preferences
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserPreferences'
+
+  /api/media:
+    get:
+      tags: [media]
+      summary: List media items
+      parameters:
+        - name: sort
+          in: query
+          schema:
+            type: string
+        - name: sort_order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 500
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            maximum: 50000
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: tags
+          in: query
+          schema:
+            type: string
+          description: Comma-separated tags
+        - name: is_mature
+          in: query
+          schema:
+            type: string
+            enum: ['true', 'false']
+      responses:
+        '200':
+          description: Media list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MediaListResponse'
+
+  /api/media/stats:
+    get:
+      tags: [media]
+      summary: Get media statistics
+      responses:
+        '200':
+          description: Media stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MediaStats'
+
+  /api/media/categories:
+    get:
+      tags: [media]
+      summary: Get media categories
+      responses:
+        '200':
+          description: Categories
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MediaCategory'
+
+  /api/media/{id}:
+    get:
+      tags: [media]
+      summary: Get single media item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Media item
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MediaItem'
+
+  /api/playback:
+    get:
+      tags: [playback]
+      summary: Get playback position
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Playback position
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          position:
+                            type: number
+    post:
+      tags: [playback]
+      summary: Track playback position
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, position, duration]
+              properties:
+                path:
+                  type: string
+                position:
+                  type: number
+                duration:
+                  type: number
+      responses:
+        '200':
+          description: Tracked
+
+  /api/hls/capabilities:
+    get:
+      tags: [hls]
+      summary: Get HLS capabilities
+      responses:
+        '200':
+          description: HLS capabilities
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HLSCapabilities'
+
+  /api/hls/check:
+    get:
+      tags: [hls]
+      summary: Check HLS availability for media path
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: HLS availability
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HLSAvailability'
+
+  /api/hls/generate:
+    post:
+      tags: [hls]
+      summary: Generate HLS for media
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                quality:
+                  type: string
+                qualities:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: HLS job started
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HLSJob'
+
+  /api/hls/status/{id}:
+    get:
+      tags: [hls]
+      summary: Get HLS job status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: HLS job status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HLSJob'
+
+  /api/playlists:
+    get:
+      tags: [playlists]
+      summary: List user playlists
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Playlists
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Playlist'
+    post:
+      tags: [playlists]
+      summary: Create playlist
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                is_public:
+                  type: boolean
+      responses:
+        '200':
+          description: Created playlist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Playlist'
+
+  /api/playlists/{id}:
+    get:
+      tags: [playlists]
+      summary: Get playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Playlist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Playlist'
+    put:
+      tags: [playlists]
+      summary: Update playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                is_public:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated playlist
+    delete:
+      tags: [playlists]
+      summary: Delete playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted
+
+  /api/playlists/{id}/export:
+    get:
+      tags: [playlists]
+      summary: Export playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, m3u, m3u8]
+            default: json
+      responses:
+        '200':
+          description: Playlist export file
+
+  /api/playlists/{id}/items:
+    post:
+      tags: [playlists]
+      summary: Add item to playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                media_id:
+                  type: string
+                media_path:
+                  type: string
+                title:
+                  type: string
+                path:
+                  type: string
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Item added
+    delete:
+      tags: [playlists]
+      summary: Remove item from playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: media_path
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Item removed
+
+  /api/analytics:
+    get:
+      tags: [analytics]
+      summary: Get analytics summary (admin only)
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Analytics summary
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AnalyticsSummary'
+
+  /api/analytics/events:
+    post:
+      tags: [analytics]
+      summary: Submit analytics event
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, media_id]
+              properties:
+                type:
+                  type: string
+                media_id:
+                  type: string
+                session_id:
+                  type: string
+                duration:
+                  type: number
+                data:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Event recorded
+
+  /api/analytics/daily:
+    get:
+      tags: [admin-analytics]
+      summary: Get daily statistics (admin only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        '200':
+          description: Daily stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DailyStats'
+
+  /api/analytics/top:
+    get:
+      tags: [admin-analytics]
+      summary: Get top media (admin only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 10
+      responses:
+        '200':
+          description: Top media
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TopMediaItem'
+
+  /api/analytics/events/stats:
+    get:
+      tags: [admin-analytics]
+      summary: Get event statistics (admin only)
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Event stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/EventStats'
+
+  /api/analytics/events/by-type:
+    get:
+      tags: [admin-analytics]
+      summary: Get events by type (admin only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AnalyticsEvent'
+
+  /api/analytics/events/by-media:
+    get:
+      tags: [admin-analytics]
+      summary: Get events by media (admin only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: media_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AnalyticsEvent'
+
+  /api/analytics/events/counts:
+    get:
+      tags: [admin-analytics]
+      summary: Get event type counts (admin only)
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Event counts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/EventTypeCounts'
+
+  /api/watch-history:
+    get:
+      tags: [watch-history]
+      summary: Get watch history
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+          description: Filter to single item
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Watch history
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WatchHistoryEntry'
+    delete:
+      tags: [watch-history]
+      summary: Clear watch history (or delete single item)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+          description: If provided, deletes single item; otherwise clears all.
+      responses:
+        '200':
+          description: History cleared/removed
+
+  /api/thumbnails/previews:
+    get:
+      tags: [thumbnails]
+      summary: Get thumbnail preview URLs
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Preview URLs
+
+  /api/suggestions:
+    get:
+      tags: [suggestions]
+      summary: Get content suggestions
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Suggestion'
+
+  /api/suggestions/trending:
+    get:
+      tags: [suggestions]
+      summary: Get trending content
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Trending suggestions
+
+  /api/suggestions/similar:
+    get:
+      tags: [suggestions]
+      summary: Get similar media
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Similar media
+
+  /api/suggestions/continue:
+    get:
+      tags: [suggestions]
+      summary: Get continue watching
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Continue watching items
+
+  /api/suggestions/personalized:
+    get:
+      tags: [suggestions]
+      summary: Get personalized suggestions
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Personalized suggestions
+
+  /api/ratings:
+    post:
+      tags: [ratings]
+      summary: Record media rating
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, rating]
+              properties:
+                path:
+                  type: string
+                rating:
+                  type: number
+      responses:
+        '200':
+          description: Rating recorded
+
+  /api/upload:
+    post:
+      tags: [upload]
+      summary: Upload media files
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                category:
+                  type: string
+      responses:
+        '200':
+          description: Upload result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UploadResult'
+
+  /api/upload/{id}/progress:
+    get:
+      tags: [upload]
+      summary: Get upload progress
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Upload progress
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UploadProgress'
+
+  # ─── Admin routes (/api/admin) ───
+
+  /api/admin/stats:
+    get:
+      tags: [admin-dashboard]
+      summary: Get admin dashboard stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Admin stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AdminStats'
+
+  /api/admin/system:
+    get:
+      tags: [admin-dashboard]
+      summary: Get system info
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: System info
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SystemInfo'
+
+  /api/admin/cache/clear:
+    post:
+      tags: [admin-dashboard]
+      summary: Clear media cache and rescan
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Cache cleared
+
+  /api/admin/server/restart:
+    post:
+      tags: [admin-dashboard]
+      summary: Restart server
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Restart initiated
+
+  /api/admin/server/shutdown:
+    post:
+      tags: [admin-dashboard]
+      summary: Shutdown server
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Shutdown initiated
+
+  /api/admin/update/check:
+    get:
+      tags: [admin-updates]
+      summary: Check for binary updates
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Update check result
+
+  /api/admin/update/status:
+    get:
+      tags: [admin-updates]
+      summary: Get update status
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Update status
+
+  /api/admin/update/apply:
+    post:
+      tags: [admin-updates]
+      summary: Apply binary update
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Update applied
+
+  /api/admin/update/source/check:
+    get:
+      tags: [admin-updates]
+      summary: Check for source updates
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Source update check
+
+  /api/admin/update/source/apply:
+    post:
+      tags: [admin-updates]
+      summary: Apply source update (async)
+      security:
+        - sessionCookie: []
+      responses:
+        '202':
+          description: Source update started
+
+  /api/admin/update/source/progress:
+    get:
+      tags: [admin-updates]
+      summary: Get source update progress
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Build progress
+
+  /api/admin/update/config:
+    get:
+      tags: [admin-updates]
+      summary: Get update config
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Update config
+    put:
+      tags: [admin-updates]
+      summary: Set update config
+      security:
+        - sessionCookie: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                update_method:
+                  type: string
+                  enum: [source, binary]
+                branch:
+                  type: string
+      responses:
+        '200':
+          description: Updated config
+
+  /api/admin/users:
+    get:
+      tags: [admin-users]
+      summary: List all users
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+    post:
+      tags: [admin-users]
+      summary: Create user
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                email:
+                  type: string
+                type:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, viewer]
+      responses:
+        '200':
+          description: User created
+
+  /api/admin/users/bulk:
+    post:
+      tags: [admin-users]
+      summary: Bulk action on users
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [usernames, action]
+              properties:
+                usernames:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 200
+                action:
+                  type: string
+                  enum: [delete, enable, disable]
+      responses:
+        '200':
+          description: Bulk result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BulkResult'
+
+  /api/admin/users/{username}:
+    get:
+      tags: [admin-users]
+      summary: Get user details
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User
+    put:
+      tags: [admin-users]
+      summary: Update user
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated user
+    delete:
+      tags: [admin-users]
+      summary: Delete user
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User deleted
+
+  /api/admin/users/{username}/password:
+    post:
+      tags: [admin-users]
+      summary: Change user password (admin)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties:
+                new_password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password changed
+
+  /api/admin/change-password:
+    post:
+      tags: [admin-users]
+      summary: Change admin password
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password changed
+
+  /api/admin/audit-log:
+    get:
+      tags: [admin-audit]
+      summary: Get audit log
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditLogEntry'
+
+  /api/admin/audit-log/export:
+    get:
+      tags: [admin-audit]
+      summary: Export audit log as CSV
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /api/admin/logs:
+    get:
+      tags: [admin-audit]
+      summary: Get server logs
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+            maximum: 2000
+        - name: level
+          in: query
+          schema:
+            type: string
+        - name: module
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Log entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntry'
+
+  /api/admin/analytics/export:
+    get:
+      tags: [admin-analytics]
+      summary: Export analytics as CSV
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: CSV file download
+
+  /api/admin/config:
+    get:
+      tags: [admin-config]
+      summary: Get server configuration
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Configuration map
+    put:
+      tags: [admin-config]
+      summary: Update server configuration
+      security:
+        - sessionCookie: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated configuration
+
+  /api/admin/tasks:
+    get:
+      tags: [admin-tasks]
+      summary: List background tasks
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ScheduledTask'
+
+  /api/admin/tasks/{id}/run:
+    post:
+      tags: [admin-tasks]
+      summary: Run task immediately
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task started
+
+  /api/admin/tasks/{id}/enable:
+    post:
+      tags: [admin-tasks]
+      summary: Enable task
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task enabled
+
+  /api/admin/tasks/{id}/disable:
+    post:
+      tags: [admin-tasks]
+      summary: Disable task
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task disabled
+
+  /api/admin/tasks/{id}/stop:
+    post:
+      tags: [admin-tasks]
+      summary: Stop running task
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task stopped
+
+  /api/admin/media:
+    get:
+      tags: [admin-media]
+      summary: List media (admin)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Media items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MediaItem'
+
+  /api/admin/media/scan:
+    post:
+      tags: [admin-media]
+      summary: Trigger media scan
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Scan started
+
+  /api/admin/media/bulk:
+    post:
+      tags: [admin-media]
+      summary: Bulk media action
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paths, action]
+              properties:
+                paths:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 500
+                action:
+                  type: string
+                  enum: [delete, update]
+                data:
+                  type: object
+                  properties:
+                    category:
+                      type: string
+                    is_mature:
+                      type: boolean
+      responses:
+        '200':
+          description: Bulk result
+
+  /api/admin/backups/v2:
+    get:
+      tags: [admin-backups]
+      summary: List backups
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Backups
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BackupEntry'
+    post:
+      tags: [admin-backups]
+      summary: Create backup
+      security:
+        - sessionCookie: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                backup_type:
+                  type: string
+                  default: full
+      responses:
+        '200':
+          description: Backup created
+
+  /api/admin/backups/v2/{id}/restore:
+    post:
+      tags: [admin-backups]
+      summary: Restore backup
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Backup restored
+
+  /api/admin/backups/v2/{id}:
+    delete:
+      tags: [admin-backups]
+      summary: Delete backup
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Backup deleted
+
+  /api/admin/scanner/scan:
+    post:
+      tags: [admin-scanner]
+      summary: Run content scan
+      security:
+        - sessionCookie: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path:
+                  type: string
+                auto_apply:
+                  type: boolean
+                scan_metadata:
+                  type: boolean
+      responses:
+        '200':
+          description: Scan results
+
+  /api/admin/scanner/stats:
+    get:
+      tags: [admin-scanner]
+      summary: Get scanner stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Scanner stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ScannerStats'
+
+  /api/admin/scanner/queue:
+    get:
+      tags: [admin-scanner]
+      summary: Get review queue
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Review queue
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ScanResultItem'
+    post:
+      tags: [admin-scanner]
+      summary: Batch review action
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, paths]
+              properties:
+                action:
+                  type: string
+                  enum: [approve, reject]
+                paths:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Batch result
+    delete:
+      tags: [admin-scanner]
+      summary: Clear review queue
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Queue cleared
+
+  /api/admin/hls/stats:
+    get:
+      tags: [admin-hls]
+      summary: Get HLS stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: HLS stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HLSStats'
+
+  /api/admin/hls/jobs:
+    get:
+      tags: [admin-hls]
+      summary: List HLS jobs
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: HLS jobs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HLSJob'
+
+  /api/admin/hls/jobs/{id}:
+    delete:
+      tags: [admin-hls]
+      summary: Delete HLS job
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job deleted
+
+  /api/admin/hls/validate/{id}:
+    get:
+      tags: [admin-hls]
+      summary: Validate HLS job
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HLSValidationResult'
+
+  /api/admin/hls/clean/locks:
+    post:
+      tags: [admin-hls]
+      summary: Clean stale HLS locks
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Locks removed
+
+  /api/admin/hls/clean/inactive:
+    post:
+      tags: [admin-hls]
+      summary: Clean inactive HLS content
+      security:
+        - sessionCookie: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                max_age_hours:
+                  type: integer
+                threshold_hours:
+                  type: integer
+      responses:
+        '200':
+          description: Inactive content removed
+
+  /api/admin/thumbnails/generate:
+    post:
+      tags: [admin-thumbnails]
+      summary: Generate thumbnail
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                is_audio:
+                  type: boolean
+      responses:
+        '200':
+          description: Thumbnail generated
+
+  /api/admin/thumbnails/stats:
+    get:
+      tags: [admin-thumbnails]
+      summary: Get thumbnail stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Thumbnail stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ThumbnailStats'
+
+  /api/admin/validator/validate:
+    post:
+      tags: [admin-validator]
+      summary: Validate media file
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ValidationResult'
+
+  /api/admin/validator/fix:
+    post:
+      tags: [admin-validator]
+      summary: Fix media file
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+      responses:
+        '200':
+          description: Fix result
+
+  /api/admin/validator/stats:
+    get:
+      tags: [admin-validator]
+      summary: Get validator stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Validator stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ValidatorStats'
+
+  /api/admin/database/status:
+    get:
+      tags: [admin-database]
+      summary: Get database status
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Database status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DatabaseStatus'
+
+  /api/admin/database/query:
+    post:
+      tags: [admin-database]
+      summary: Execute SQL query
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+      responses:
+        '200':
+          description: Query result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QueryResult'
+
+  /api/admin/playlists:
+    get:
+      tags: [admin-playlists]
+      summary: List all playlists (admin)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Playlists
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Playlist'
+
+  /api/admin/playlists/stats:
+    get:
+      tags: [admin-playlists]
+      summary: Get playlist stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Playlist stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AdminPlaylistStats'
+
+  /api/admin/playlists/bulk:
+    post:
+      tags: [admin-playlists]
+      summary: Bulk delete playlists
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 500
+      responses:
+        '200':
+          description: Bulk result
+
+  /api/admin/playlists/{id}:
+    delete:
+      tags: [admin-playlists]
+      summary: Delete playlist (admin)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Playlist deleted
+
+  /api/admin/security/stats:
+    get:
+      tags: [admin-security]
+      summary: Get security stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Security stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SecurityStats'
+
+  /api/admin/security/whitelist:
+    get:
+      tags: [admin-security]
+      summary: Get IP whitelist
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Whitelist entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/IPEntry'
+    post:
+      tags: [admin-security]
+      summary: Add IP to whitelist
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip]
+              properties:
+                ip:
+                  type: string
+                comment:
+                  type: string
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Added
+    delete:
+      tags: [admin-security]
+      summary: Remove IP from whitelist
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip]
+              properties:
+                ip:
+                  type: string
+      responses:
+        '200':
+          description: Removed
+
+  /api/admin/security/blacklist:
+    get:
+      tags: [admin-security]
+      summary: Get IP blacklist
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Blacklist entries
+    post:
+      tags: [admin-security]
+      summary: Add IP to blacklist
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip]
+              properties:
+                ip:
+                  type: string
+                comment:
+                  type: string
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Added
+    delete:
+      tags: [admin-security]
+      summary: Remove IP from blacklist
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip]
+              properties:
+                ip:
+                  type: string
+      responses:
+        '200':
+          description: Removed
+
+  /api/admin/security/banned:
+    get:
+      tags: [admin-security]
+      summary: Get banned IPs
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Banned IPs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BannedIP'
+
+  /api/admin/security/ban:
+    post:
+      tags: [admin-security]
+      summary: Ban IP
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip]
+              properties:
+                ip:
+                  type: string
+                duration_minutes:
+                  type: integer
+                  default: 15
+      responses:
+        '200':
+          description: IP banned
+
+  /api/admin/security/unban:
+    post:
+      tags: [admin-security]
+      summary: Unban IP
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip]
+              properties:
+                ip:
+                  type: string
+      responses:
+        '200':
+          description: IP unbanned
+
+  /api/admin/categorizer/file:
+    post:
+      tags: [admin-categorizer]
+      summary: Categorize single file
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+      responses:
+        '200':
+          description: Categorization result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CategorizedItem'
+
+  /api/admin/categorizer/directory:
+    post:
+      tags: [admin-categorizer]
+      summary: Categorize directory
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [directory]
+              properties:
+                directory:
+                  type: string
+      responses:
+        '200':
+          description: Categorization results
+
+  /api/admin/categorizer/stats:
+    get:
+      tags: [admin-categorizer]
+      summary: Get category stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Category stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CategoryStats'
+
+  /api/admin/categorizer/set:
+    post:
+      tags: [admin-categorizer]
+      summary: Set media category
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, category]
+              properties:
+                path:
+                  type: string
+                category:
+                  type: string
+      responses:
+        '200':
+          description: Category set
+
+  /api/admin/categorizer/by-category:
+    get:
+      tags: [admin-categorizer]
+      summary: Get media by category
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: category
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Items in category
+
+  /api/admin/categorizer/clean:
+    post:
+      tags: [admin-categorizer]
+      summary: Clean stale categories
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Stale categories removed
+
+  /api/admin/discovery/scan:
+    post:
+      tags: [admin-discovery]
+      summary: Scan directory for discovery
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [directory]
+              properties:
+                directory:
+                  type: string
+      responses:
+        '200':
+          description: Discovery results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DiscoverySuggestion'
+
+  /api/admin/discovery/suggestions:
+    get:
+      tags: [admin-discovery]
+      summary: Get discovery suggestions
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Suggestions
+
+  /api/admin/discovery/apply:
+    post:
+      tags: [admin-discovery]
+      summary: Apply discovery suggestion
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [original_path]
+              properties:
+                original_path:
+                  type: string
+      responses:
+        '200':
+          description: Suggestion applied
+
+  /api/admin/suggestions/stats:
+    get:
+      tags: [admin-suggestions]
+      summary: Get suggestion stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Suggestion stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SuggestionStats'
+
+  /api/admin/remote/sources:
+    get:
+      tags: [admin-remote]
+      summary: Get remote sources
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Remote sources
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RemoteSourceState'
+    post:
+      tags: [admin-remote]
+      summary: Create remote source
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, url]
+              properties:
+                name:
+                  type: string
+                url:
+                  type: string
+                username:
+                  type: string
+                password:
+                  type: string
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Source created
+
+  /api/admin/remote/sources/{source}:
+    delete:
+      tags: [admin-remote]
+      summary: Delete remote source
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Source deleted
+
+  /api/admin/remote/sources/{source}/sync:
+    post:
+      tags: [admin-remote]
+      summary: Sync remote source
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Sync started
+
+  /api/admin/remote/sources/{source}/media:
+    get:
+      tags: [admin-remote]
+      summary: Get media from source
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Source media
+
+  /api/admin/remote/stats:
+    get:
+      tags: [admin-remote]
+      summary: Get remote stats
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Remote stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RemoteStats'
+
+  /api/admin/remote/media:
+    get:
+      tags: [admin-remote]
+      summary: Get all remote media
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Remote media
+
+  /api/admin/remote/cache:
+    post:
+      tags: [admin-remote]
+      summary: Cache remote media
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                source_name:
+                  type: string
+      responses:
+        '200':
+          description: Media cached
+
+  /api/admin/remote/cache/clean:
+    post:
+      tags: [admin-remote]
+      summary: Clean remote cache
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Cache cleaned

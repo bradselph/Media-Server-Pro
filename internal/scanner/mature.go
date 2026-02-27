@@ -559,7 +559,7 @@ var maturePatterns = []struct {
 	{regexp.MustCompile(`(?i)\b(jav|av)[\-_ ]?\d+\b`), 0.75, "JAV-style ID pattern"},
 
 	// Studio code patterns (increased from 0.10 to 0.15)
-	{regexp.MustCompile(`(?i)\b[a-z]{2,5}[\-]?\d{3,5}\b`), 0.15, "Studio content code pattern"},
+	{regexp.MustCompile(`(?i)\b[a-z]{2,5}\-?\d{3,5}\b`), 0.15, "Studio content code pattern"},
 
 	// Performer name patterns with explicit context (increased from 0.85 to 0.90)
 	{regexp.MustCompile(`(?i)\b(creampie|gangbang|anal|oral|facial|dp|pov)[\-_ ](compilation|comp|mix|best)\b`), 0.90, "Explicit compilation"},
@@ -575,8 +575,8 @@ var maturePatterns = []struct {
 	{regexp.MustCompile(`(?i)\b(cam[\-_ ]?(show|girl|model|session)|web[\-_ ]?cam[\-_ ]?(show|session))\b`), 0.55, "Cam show content"},
 
 	// Adult content release group tags (increased from 0.85 to 0.90)
-	{regexp.MustCompile(`(?i)\[(sexart|metart|femjoy|hegre|x-?art|nubile|twistys)\]`), 0.90, "Adult studio tag"},
-	{regexp.MustCompile(`(?i)\[(brazzers|bangbros|realitykings|naughtyamerica|blacked|tushy)\]`), 0.90, "Adult studio tag"},
+	{regexp.MustCompile(`(?i)\[(sexart|metart|femjoy|hegre|x-?art|nubile|twistys)]`), 0.90, "Adult studio tag"},
+	{regexp.MustCompile(`(?i)\[(brazzers|bangbros|realitykings|naughtyamerica|blacked|tushy)]`), 0.90, "Adult studio tag"},
 
 	// Short abbreviations with word boundaries (increased from 0.55 to 0.60, 0.70 to 0.75)
 	{regexp.MustCompile(`(?i)(^|[\-_ .])dp([\-_ .]|$)`), 0.60, "DP abbreviation"},
