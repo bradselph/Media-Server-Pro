@@ -22,6 +22,15 @@ success() { echo -e "${GREEN}[run]${RESET} $*"; }
 warn()    { echo -e "${YELLOW}[run]${RESET} $*"; }
 die()     { echo -e "${RED}[run] ERROR:${RESET} $*" >&2; exit 1; }
 
+# ── Logging setup ─────────────────────────────────────────────────────────────
+# Tee ALL output (build steps + server stdout/stderr) to a timestamped log file.
+# The server's internal file logger additionally writes structured logs to
+# logs/server_YYYY-MM-DD.log once its config is loaded.
+mkdir -p logs
+RUN_LOG="logs/run_$(date +%Y-%m-%d_%H-%M-%S).log"
+exec > >(tee -a "$RUN_LOG") 2>&1
+echo "[run] Session log: $RUN_LOG"
+
 # ── Flags ─────────────────────────────────────────────────────────────────────
 BUILD_REACT=true
 BUILD_TOOLS=false
@@ -91,9 +100,11 @@ if $START_SERVER; then
   echo ""
   success "All builds complete. Starting server (log-level=${LOG_LEVEL})..."
   echo ""
-  # exec replaces this shell so the server owns stdout/stderr from the very
-  # first log line — nothing is buffered or dropped before the handoff.
-  exec ./server -log-level "$LOG_LEVEL" "${SERVER_ARGS[@]}"
+  # Run without exec so the tee session above continues capturing server
+  # stdout/stderr (panics, startup errors, runtime logs) into $RUN_LOG.
+  # The server's internal logger also writes to logs/server_YYYY-MM-DD.log
+  # once its config is loaded, giving a second copy for structured review.
+  ./server -log-level "$LOG_LEVEL" "${SERVER_ARGS[@]}"
 else
   echo ""
   success "All builds complete (--no-start: server not launched)."

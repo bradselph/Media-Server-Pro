@@ -144,8 +144,12 @@ export function ProfilePage() {
                 try {
                     const raw = localStorage.getItem('media_streamer_settings')
                     const stored: Record<string, unknown> = raw ? JSON.parse(raw) : {}
-                    localStorage.setItem('media_streamer_settings', JSON.stringify({...stored, eqBands: preferences.equalizer_preset}))
-                } catch { /* storage full or unavailable */ }
+                    localStorage.setItem('media_streamer_settings', JSON.stringify({
+                        ...stored,
+                        eqBands: preferences.equalizer_preset
+                    }))
+                } catch { /* storage full or unavailable */
+                }
             }
             await checkSession()
             showToast('Preferences saved', 'success')

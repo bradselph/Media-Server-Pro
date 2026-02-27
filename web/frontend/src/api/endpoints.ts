@@ -214,8 +214,8 @@ export const playlistApi = {
     // backend defaults description to "" and is_public to false when omitted — not a runtime break
     // but creates playlists with no description or public flag even when desired. Callers that need
     // to set these must pass them explicitly. Backend struct: playlists.go:42-47.
-    create: (name: string) =>
-        api.post<Playlist>('/api/playlists', {name}),
+    create: (name: string, description?: string, is_public?: boolean) =>
+        api.post<Playlist>('/api/playlists', {name, ...(description !== undefined && {description}), ...(is_public !== undefined && {is_public})}),
 
     delete: (id: string) =>
         api.delete<void>(`/api/playlists/${encodeURIComponent(id)}`),
@@ -273,7 +273,7 @@ export const analyticsApi = {
     // the backend to use the cookie session. If the frontend ever needs to send an explicit
     // session_id, the type definition must be updated. Backend: api/handlers/analytics.go:124-148.
     trackEvent: (event: { type: string; media_id: string; duration?: number; data?: Record<string, unknown> }) =>
-        api.post<void>('/api/analytics/events', event),
+        api.post<{ status: string }>('/api/analytics/events', event),
 }
 
 // ── Watch History ──
@@ -574,7 +574,7 @@ export const adminApi = {
     // Change return type to Promise<{ message: string }> to match backend response shape.
     // Backend: api/handlers/media.go:169-176.
     scanMedia: () =>
-        api.post<void>('/api/admin/media/scan'),
+        api.post<{ message: string }>('/api/admin/media/scan'),
 
     // Backups (v2 — uses backup module, supports delete and type selection)
     // Backend also sends files[], errors[], version — extra fields ignored by frontend type.
@@ -620,8 +620,8 @@ export const adminApi = {
     // TODO(api-contract): ACTION VALUE CONTRACT — batchReview() accepts any `action: string` but
     // backend only accepts "approve" or "reject" (admin_scanner.go:118). Sending any other string
     // causes a 400 Bad Request. The frontend type should be narrowed to 'approve' | 'reject'.
-    batchReview: (action: string, paths: string[]) =>
-        api.post<void>('/api/admin/scanner/queue', {action, paths}),
+    batchReview: (action: 'approve' | 'reject', paths: string[]) =>
+        api.post<{ updated: number; total: number }>('/api/admin/scanner/queue', {action, paths}),
 
     clearReviewQueue: () =>
         api.delete<void>('/api/admin/scanner/queue'),
@@ -655,7 +655,10 @@ export const adminApi = {
     // which is the primary field — this matches. No break, but the dual-alias is not documented
     // in the frontend type. Backend: api/handlers/hls.go:262-265.
     cleanHLSInactive: (maxAge?: number) =>
-        api.post<void>('/api/admin/hls/clean/inactive', maxAge !== undefined ? {max_age_hours: maxAge} : {}),
+        api.post<{
+            removed: number;
+            threshold: string
+        }>('/api/admin/hls/clean/inactive', maxAge !== undefined ? {max_age_hours: maxAge} : {}),
 
     // Validator
     // TODO(api-contract): RESPONSE SHAPE UNKNOWN — validateMedia() types the return as
@@ -685,7 +688,14 @@ export const adminApi = {
     // the TypeScript type will silently misalign. Verify against internal/validator stats struct.
     // Backend: api/handlers/admin_validator.go:50-53.
     getValidatorStats: () =>
-        api.get<{ total: number; validated: number; needs_fix: number; fixed: number; failed: number; unsupported: number }>('/api/admin/validator/stats'),
+        api.get<{
+            total: number;
+            validated: number;
+            needs_fix: number;
+            fixed: number;
+            failed: number;
+            unsupported: number
+        }>('/api/admin/validator/stats'),
 
     // AdminListMedia only supports search/page/limit — other filters (sort, type, category) are ignored.
     listMedia: (params?: { page?: number; limit?: number; search?: string }) => {
@@ -866,7 +876,7 @@ export const adminApi = {
     // read the confirmation. Change return type to Promise<{ message: string }>.
     // Backend: api/handlers/admin_categorizer.go:79-80.
     setMediaCategory: (path: string, category: string) =>
-        api.post<void>('/api/admin/categorizer/set', {path, category}),
+        api.post<{ message: string }>('/api/admin/categorizer/set', {path, category}),
 
     getByCategory: (category: string) =>
         api.get<CategorizedItem[]>(`/api/admin/categorizer/by-category?category=${encodeURIComponent(category)}`),
@@ -907,5 +917,5 @@ export const adminApi = {
     // Change return type to Promise<RemoteMediaItem> (or the appropriate cached type) to match
     // actual backend response shape. Backend: api/handlers/admin_remote.go:171-173.
     cacheRemoteMedia: (url: string, sourceName: string) =>
-        api.post<void>('/api/admin/remote/cache', {url, source_name: sourceName}),
+        api.post<RemoteMediaItem>('/api/admin/remote/cache', {url, source_name: sourceName}),
 }

@@ -105,22 +105,12 @@ func New(opts Options) (*Server, error) {
 		log.Warn("Failed to load config, using defaults: %v", err)
 	}
 
-	// Validate configuration
-	if errs := cfgMgr.Validate(); len(errs) > 0 {
-		for _, err := range errs {
-			log.Error("Configuration error: %v", err)
-		}
-		return nil, fmt.Errorf("configuration validation failed with %d errors", len(errs))
-	}
-
-	// Now that config is loaded, re-initialize logger with config-based file logging.
-	// The logger.Init sync.Once has already run, so we apply file logging settings directly.
+	// Enable file logging immediately after config load — BEFORE validation — so that
+	// config errors, panics, and all startup messages are captured on disk.
 	appCfg := cfgMgr.Get()
 
-	// Apply JSON format setting if configured (LOG_FORMAT=json or config.json logging.format=json)
 	if appCfg.Logging.Format == "json" {
 		logger.SetJSONFormat(true)
-		log.Info("JSON log format enabled")
 	}
 
 	if appCfg.Logging.FileEnabled {
@@ -134,6 +124,14 @@ func New(opts Options) (*Server, error) {
 			log.Info("File logging enabled: directory=%s, max_size=%dMB, max_backups=%d",
 				logDir, appCfg.Logging.MaxFileSize/(1024*1024), appCfg.Logging.MaxBackups)
 		}
+	}
+
+	// Validate configuration (errors are now written to disk if file logging is enabled)
+	if errs := cfgMgr.Validate(); len(errs) > 0 {
+		for _, err := range errs {
+			log.Error("Configuration error: %v", err)
+		}
+		return nil, fmt.Errorf("configuration validation failed with %d errors", len(errs))
 	}
 
 	// Create necessary directories
@@ -239,9 +237,10 @@ func (s *Server) setupRouter() {
 	s.setupBaseRoutes()
 }
 
-// setupBaseRoutes registers core routes that are always available
+// setupBaseRoutes registers core routes that are always available.
+// /health is intentionally excluded here — it is registered by api/routes/routes.go
+// so the full GetHealth handler (which checks only critical modules) is used.
 func (s *Server) setupBaseRoutes() {
-	s.engine.GET("/health", s.handleHealth)
 	s.engine.GET("/api/status", s.handleStatus)
 	s.engine.GET("/api/modules", s.handleModules)
 	s.engine.GET("/api/modules/:name/health", s.handleModuleHealth)

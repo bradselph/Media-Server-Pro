@@ -223,7 +223,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// without an auth guard; frontend callers should not rely on position being persisted for
 	// unauthenticated users. Frontend: web/frontend/src/api/endpoints.ts watchHistoryApi.trackPosition().
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
-	api.POST("/playback", h.TrackPlayback)
+	api.POST("/playback", requireAuth(), h.TrackPlayback)
 
 	// HLS API routes
 	api.GET("/hls/capabilities", h.GetHLSCapabilities) // Check if HLS transcoding is available
