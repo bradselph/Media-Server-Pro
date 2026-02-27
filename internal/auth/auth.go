@@ -297,52 +297,21 @@ func (m *Module) cleanupExpiredSessions() {
 	}
 }
 
-// CleanupExpiredSessions removes expired sessions from storage and cache (public method for background tasks)
+// CleanupExpiredSessions removes expired sessions from storage and cache (public method for background tasks).
+// Delegates to the private method to avoid code duplication.
 func (m *Module) CleanupExpiredSessions(ctx context.Context) error {
-	// Use repository to delete expired sessions
 	if err := m.sessionRepo.DeleteExpired(ctx); err != nil {
 		return err
 	}
-
-	// Clean up in-memory cache
-	m.sessionsMu.Lock()
-	now := time.Now()
-	expired := 0
-
-	for id, session := range m.sessions {
-		if session.ExpiresAt.Before(now) {
-			delete(m.sessions, id)
-			expired++
-		}
-	}
-
-	for id, session := range m.adminSessions {
-		if session.ExpiresAt.Before(now) {
-			delete(m.adminSessions, id)
-			expired++
-		}
-	}
-	m.sessionsMu.Unlock()
-
-	if expired > 0 {
-		m.log.Debug("Cleaned up %d expired sessions from cache", expired)
-	}
-
-	// Also cleanup old login attempts
-	m.attemptsMu.Lock()
-	cfg := m.config.Get()
-	for ip, attempt := range m.loginAttempts {
-		if time.Since(attempt.FirstTry) > cfg.Auth.LockoutDuration*2 {
-			delete(m.loginAttempts, ip)
-		}
-	}
-	m.attemptsMu.Unlock()
-
+	m.cleanupExpiredSessions()
 	return nil
 }
 
 // CreateUser creates a new user
 func (m *Module) CreateUser(ctx context.Context, username, password, email, userType string, role models.UserRole) (*models.User, error) {
+	if len(password) < 8 {
+		return nil, fmt.Errorf("password must be at least 8 characters")
+	}
 
 	// Check cache for existing user first
 	m.usersMu.RLock()
@@ -505,6 +474,10 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 		return err
 	}
 
+	// Capture the old state to detect security-relevant changes
+	wasEnabled := user.Enabled
+	oldRole := user.Role
+
 	// Work on a copy so we never mutate the cached pointer while unlocked
 	userCopy := *user
 	user = &userCopy
@@ -537,6 +510,9 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 		}
 	}
 	if password, ok := updates["password"].(string); ok && password != "" {
+		if len(password) < 8 {
+			return fmt.Errorf("password must be at least 8 characters")
+		}
 		salt := generateSalt()
 		hash, err := bcrypt.GenerateFromPassword([]byte(password+salt), bcrypt.DefaultCost)
 		if err == nil {
@@ -577,6 +553,37 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	m.usersMu.Lock()
 	m.users[username] = user
 	m.usersMu.Unlock()
+
+	// Invalidate sessions if the user was disabled or demoted from admin.
+	// This ensures a disabled/demoted user cannot continue using existing sessions.
+	userDisabled := wasEnabled && !user.Enabled
+	roleDemoted := oldRole == models.RoleAdmin && user.Role != models.RoleAdmin
+	if userDisabled || roleDemoted {
+		evicted := 0
+		m.sessionsMu.Lock()
+		for id, session := range m.sessions {
+			if session.Username == username {
+				delete(m.sessions, id)
+				_ = m.sessionRepo.Delete(ctx, id)
+				evicted++
+			}
+		}
+		for id, session := range m.adminSessions {
+			if session.Username == username {
+				delete(m.adminSessions, id)
+				_ = m.sessionRepo.Delete(ctx, id)
+				evicted++
+			}
+		}
+		m.sessionsMu.Unlock()
+		if evicted > 0 {
+			reason := "disabled"
+			if roleDemoted {
+				reason = "role demoted from admin"
+			}
+			m.log.Info("Evicted %d sessions for user %s (%s)", evicted, username, reason)
+		}
+	}
 
 	m.log.Info("Updated user: %s", username)
 	return nil
@@ -1000,29 +1007,35 @@ func (m *Module) clearAttempts(ip string) {
 
 // UpdatePassword updates a user's password
 func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newPassword string) error {
-	m.usersMu.Lock()
-
-	user, exists := m.users[username]
-	if !exists {
-		m.usersMu.Unlock()
-		return ErrUserNotFound
+	if len(newPassword) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
 	}
 
-	// Verify old password
-	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(oldPassword+user.Salt))
-	if err != nil {
-		m.usersMu.Unlock()
+	// Read lock to verify old password
+	m.usersMu.RLock()
+	user, exists := m.users[username]
+	if !exists {
+		m.usersMu.RUnlock()
+		return ErrUserNotFound
+	}
+	currentHash := user.PasswordHash
+	currentSalt := user.Salt
+	m.usersMu.RUnlock()
+
+	// Verify old password (outside lock — bcrypt is expensive)
+	if err := bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(oldPassword+currentSalt)); err != nil {
 		return ErrInvalidCredentials
 	}
 
-	// Hash new password
+	// Hash new password (outside lock — bcrypt is expensive)
 	salt := generateSalt()
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword+salt), bcrypt.DefaultCost)
 	if err != nil {
-		m.usersMu.Unlock()
 		return fmt.Errorf(errHashPasswordFmt, err)
 	}
 
+	// Take write lock only for the brief cache update
+	m.usersMu.Lock()
 	user.PasswordHash = string(hash)
 	user.Salt = salt
 	m.usersMu.Unlock()
@@ -1040,22 +1053,27 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 
 // SetPassword sets a user's password (admin action, no old password required)
 func (m *Module) SetPassword(ctx context.Context, username, newPassword string) error {
-	m.usersMu.Lock()
+	if len(newPassword) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
+	}
 
+	// Verify user exists with read lock
+	m.usersMu.RLock()
 	user, exists := m.users[username]
+	m.usersMu.RUnlock()
 	if !exists {
-		m.usersMu.Unlock()
 		return ErrUserNotFound
 	}
 
-	// Hash new password
+	// Hash new password (outside lock — bcrypt is expensive)
 	salt := generateSalt()
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword+salt), bcrypt.DefaultCost)
 	if err != nil {
-		m.usersMu.Unlock()
 		return fmt.Errorf(errHashPasswordFmt, err)
 	}
 
+	// Take write lock only for the brief cache update
+	m.usersMu.Lock()
 	user.PasswordHash = string(hash)
 	user.Salt = salt
 	m.usersMu.Unlock()

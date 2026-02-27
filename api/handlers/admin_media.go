@@ -54,9 +54,8 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 // AdminUpdateMedia updates media metadata
 func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 	rawPath := c.Param("path")
-	path, _ := url.PathUnescape(rawPath)
-
-	if path == "" {
+	path, err := url.PathUnescape(rawPath)
+	if err != nil || path == "" {
 		writeError(c, http.StatusBadRequest, errPathParamRequired)
 		return
 	}
@@ -168,9 +167,8 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 // AdminDeleteMedia deletes a media file
 func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 	rawPath := c.Param("path")
-	path, _ := url.PathUnescape(rawPath)
-
-	if path == "" {
+	path, err := url.PathUnescape(rawPath)
+	if err != nil || path == "" {
 		writeError(c, http.StatusBadRequest, errPathParamRequired)
 		return
 	}
@@ -211,7 +209,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 	}
 
 	var successCount, failedCount int
-	var errs []string
+	errs := make([]string, 0)
 	clientIP := c.ClientIP()
 
 	for _, path := range req.Paths {
@@ -251,9 +249,6 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		}
 	}
 
-	if errs == nil {
-		errs = []string{}
-	}
 	writeSuccess(c, map[string]interface{}{
 		"success": successCount,
 		"failed":  failedCount,

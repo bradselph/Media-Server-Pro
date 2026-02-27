@@ -246,7 +246,7 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 		return
 	}
 
-	c.Header(headerContentDisposition, "attachment; filename=\""+pathBase(filename)+"\"")
+	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))
 	c.Header(headerContentType, "text/csv")
 	http.ServeFile(c.Writer, c.Request, filename)
 }

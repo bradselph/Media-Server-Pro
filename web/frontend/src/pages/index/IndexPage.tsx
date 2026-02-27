@@ -697,7 +697,7 @@ export function IndexPage() {
     }, [searchInput, updateParams])
 
     // Media list query
-    const {data: mediaData, isLoading: mediaLoading} = useQuery({
+    const {data: mediaData, isLoading: mediaLoading, error: mediaError} = useQuery({
         queryKey: ['media', {page, limit, type: mediaType, sort: sortBy, order: sortOrder, category, search}],
         queryFn: () => mediaApi.list({
             page,
@@ -1113,7 +1113,15 @@ export function IndexPage() {
 
             {/* Media Grid */}
             <div className="media-section">
-                {mediaLoading ? (
+                {mediaError ? (
+                    <div className="empty-state">
+                        <h3>Failed to load media</h3>
+                        <p>{mediaError instanceof Error ? mediaError.message : 'An unexpected error occurred.'}</p>
+                        <button className="controls-btn" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
+                            <i className="bi bi-arrow-clockwise"/> Retry
+                        </button>
+                    </div>
+                ) : mediaLoading ? (
                     <div className="loading-state"><i className="bi bi-film"/> Loading your media library...</div>
                 ) : items.length === 0 && mediaData?.scanning ? (
                     <div className="loading-state">

@@ -41,6 +41,9 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 			if err == nil {
 				c.Set("session", session)
 				c.Set("user", user)
+			} else {
+				// Clear stale/expired cookie so the browser stops resending it
+				c.SetCookie("session_id", "", -1, "/", "", false, true)
 			}
 		}
 		c.Next()
@@ -67,7 +70,7 @@ func adminAuth(_ *auth.Module) gin.HandlerFunc {
 	}
 }
 
-// requireAuth requires an authenticated, non-expired session.
+// requireAuth requires an authenticated, non-expired session with an enabled user.
 func requireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionVal, exists := c.Get("session")
@@ -81,6 +84,14 @@ func requireAuth() gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Unauthorized"})
 			c.Abort()
 			return
+		}
+		// Reject disabled users even if they hold a valid session
+		if userVal, ok := c.Get("user"); ok {
+			if user, ok := userVal.(*models.User); ok && !user.Enabled {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Account disabled"})
+				c.Abort()
+				return
+			}
 		}
 		c.Next()
 	}

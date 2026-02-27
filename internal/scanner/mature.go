@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"media-server-pro/internal/config"
@@ -188,9 +189,9 @@ type MatureScanner struct {
 	healthy     bool
 	healthMsg   string
 	healthMu    sync.RWMutex
-	scanRepo    repositories.ScanResultRepository // Repository for persistent scan results
-	repoDown    bool                              // Set true after consecutive repo failures to suppress spam
-	repoErrors  int                               // Consecutive repo error count
+	scanRepo   repositories.ScanResultRepository // Repository for persistent scan results
+	repoDown   atomic.Bool                       // Set true after consecutive repo failures to suppress spam
+	repoErrors atomic.Int32                      // Consecutive repo error count
 }
 
 // ScanResult holds the result of scanning a file
@@ -301,8 +302,8 @@ func (s *MatureScanner) Health() models.HealthStatus {
 
 // ResetRepoState clears the repo-down flag so the next scan cycle retries DB saves.
 func (s *MatureScanner) ResetRepoState() {
-	s.repoDown = false
-	s.repoErrors = 0
+	s.repoDown.Store(false)
+	s.repoErrors.Store(0)
 }
 
 // ScanFile scans a file for mature content and persists the result.
@@ -313,19 +314,19 @@ func (s *MatureScanner) ScanFile(path string) *ScanResult {
 	}
 
 	// Save to repository for persistent cache (skip if repo is down to avoid log spam)
-	if s.scanRepo != nil && !s.repoDown {
+	if s.scanRepo != nil && !s.repoDown.Load() {
 		repoResult := s.convertScannerToRepo(result)
 		if err := s.scanRepo.Save(context.Background(), repoResult); err != nil {
-			s.repoErrors++
-			if s.repoErrors <= 1 {
+			errCount := s.repoErrors.Add(1)
+			if errCount <= 1 {
 				s.log.Error("Failed to save scan result to repository: %v", err)
 			}
-			if s.repoErrors >= 3 {
-				s.log.Error("Repository unavailable after %d consecutive errors, skipping repo saves for this scan cycle", s.repoErrors)
-				s.repoDown = true
+			if errCount >= 3 {
+				s.log.Error("Repository unavailable after %d consecutive errors, skipping repo saves for this scan cycle", errCount)
+				s.repoDown.Store(true)
 			}
 		} else {
-			s.repoErrors = 0
+			s.repoErrors.Store(0)
 		}
 	}
 

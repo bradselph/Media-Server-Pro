@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -106,7 +107,10 @@ func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.Sc
 func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositories.ScanResult, error) {
 	var row scanResultRow
 	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
-		return nil, fmt.Errorf("scan result not found: %s", path)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("scan result not found: %s", path)
+		}
+		return nil, fmt.Errorf("failed to query scan result: %w", err)
 	}
 
 	result := r.rowToResult(&row)

@@ -162,7 +162,11 @@ func (h *Handler) ClearReviewQueue(c *gin.Context) {
 // ApproveContent approves content from the review queue
 func (h *Handler) ApproveContent(c *gin.Context) {
 	rawPath := strings.TrimPrefix(c.Param("path"), "/")
-	path, _ := url.PathUnescape(rawPath)
+	path, err := url.PathUnescape(rawPath)
+	if err != nil || path == "" {
+		writeError(c, http.StatusBadRequest, errPathParamRequired)
+		return
+	}
 
 	if err := h.scanner.ApproveContent(c.Request.Context(), path); err != nil {
 		writeError(c, http.StatusNotFound, "Item not found in review queue")
@@ -182,7 +186,11 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 // RejectContent rejects content from the review queue
 func (h *Handler) RejectContent(c *gin.Context) {
 	rawPath := strings.TrimPrefix(c.Param("path"), "/")
-	path, _ := url.PathUnescape(rawPath)
+	path, err := url.PathUnescape(rawPath)
+	if err != nil || path == "" {
+		writeError(c, http.StatusBadRequest, errPathParamRequired)
+		return
+	}
 
 	if err := h.scanner.RejectContent(c.Request.Context(), path); err != nil {
 		writeError(c, http.StatusNotFound, "Item not found in review queue")

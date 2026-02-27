@@ -101,8 +101,6 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 	updatedPlaylist, err := h.playlist.GetPlaylistForUser(id, session.UserID)
 	if err != nil {
 		h.log.Warn("UpdatePlaylist: update succeeded but failed to fetch updated playlist %s: %v", id, err)
-		writeSuccess(c, nil)
-		return
 	}
 	writeSuccess(c, updatedPlaylist)
 }
@@ -148,7 +146,7 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 
 	if (format == "m3u" || format == "m3u8") && export.M3UContent != "" {
 		ext := format
-		c.Header(headerContentDisposition, "attachment; filename=\""+export.Name+"."+ext+"\"")
+		c.Header(headerContentDisposition, safeContentDisposition(export.Name+"."+ext))
 		c.Header(headerContentType, "audio/x-mpegurl")
 		if _, err := c.Writer.Write([]byte(export.M3UContent)); err != nil {
 			h.log.Error("Failed to write M3U content: %v", err)
@@ -156,7 +154,7 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 		return
 	}
 
-	c.Header(headerContentDisposition, "attachment; filename=\""+export.Name+".json\"")
+	c.Header(headerContentDisposition, safeContentDisposition(export.Name+".json"))
 	writeSuccess(c, export)
 }
 

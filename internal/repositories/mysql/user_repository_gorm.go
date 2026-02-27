@@ -3,6 +3,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 
 	"media-server-pro/internal/repositories"
 	"media-server-pro/pkg/models"
@@ -55,6 +56,9 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 	var user models.User
 	err := r.db.WithContext(ctx).First(&user, "username = ?", username).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, repositories.ErrUserNotFound
+		}
 		return nil, err
 	}
 
@@ -78,6 +82,9 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 	var user models.User
 	err := r.db.WithContext(ctx).First(&user, "id = ?", id).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, repositories.ErrUserNotFound
+		}
 		return nil, err
 	}
 

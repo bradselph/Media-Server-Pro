@@ -56,9 +56,8 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 // DismissDiscoverySuggestion removes a suggestion without applying it
 func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
 	rawPath := strings.TrimPrefix(c.Param("path"), "/")
-	path, _ := url.PathUnescape(rawPath)
-
-	if path == "" {
+	path, err := url.PathUnescape(rawPath)
+	if err != nil || path == "" {
 		writeError(c, http.StatusBadRequest, errPathParamRequired)
 		return
 	}

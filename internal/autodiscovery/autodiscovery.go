@@ -405,19 +405,47 @@ func (m *Module) ApplySuggestion(originalPath string) error {
 		return nil // No suggestion for this file
 	}
 
-	// Ensure destination directory exists
-	if suggestion.SuggestedPath != "" {
-		if err := os.MkdirAll(suggestion.SuggestedPath, 0755); err != nil {
-			return err
-		}
-	}
-
 	// Determine final path
 	destDir := suggestion.SuggestedPath
 	if destDir == "" {
 		destDir = filepath.Dir(originalPath)
 	}
 	destPath := filepath.Join(destDir, suggestion.SuggestedName)
+
+	// Resolve to absolute paths to prevent path traversal via ../ in suggestion data
+	absDestPath, err := filepath.Abs(destPath)
+	if err != nil {
+		return fmt.Errorf("invalid destination path: %w", err)
+	}
+
+	// Validate destination is within an allowed media directory
+	cfg := m.config.Get()
+	allowedDirs := []string{cfg.Directories.Videos, cfg.Directories.Music}
+	// Also allow the source file's parent directory (in-place rename)
+	allowedDirs = append(allowedDirs, filepath.Dir(originalPath))
+
+	inAllowed := false
+	for _, dir := range allowedDirs {
+		absDir, err := filepath.Abs(dir)
+		if err != nil {
+			continue
+		}
+		// Ensure trailing separator for proper prefix matching
+		if strings.HasPrefix(absDestPath, absDir+string(filepath.Separator)) || absDestPath == absDir {
+			inAllowed = true
+			break
+		}
+	}
+	if !inAllowed {
+		return fmt.Errorf("destination path %s is outside allowed media directories", absDestPath)
+	}
+
+	// Ensure destination directory exists
+	if suggestion.SuggestedPath != "" {
+		if err := os.MkdirAll(suggestion.SuggestedPath, 0755); err != nil {
+			return err
+		}
+	}
 
 	// Verify source file exists before attempting rename
 	if _, err := os.Stat(originalPath); err != nil {

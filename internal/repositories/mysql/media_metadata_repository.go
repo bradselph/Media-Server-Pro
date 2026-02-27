@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -119,7 +120,10 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 func (r *MediaMetadataRepository) Get(ctx context.Context, path string) (*repositories.MediaMetadata, error) {
 	var row mediaMetadataRow
 	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
-		return nil, fmt.Errorf("media metadata not found: %s", path)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("media metadata not found: %s", path)
+		}
+		return nil, fmt.Errorf("failed to query media metadata: %w", err)
 	}
 
 	metadata := r.rowToMetadata(&row)
@@ -204,7 +208,10 @@ func (r *MediaMetadataRepository) GetPlaybackPosition(ctx context.Context, path,
 		Where("path = ? AND user_id = ?", path, userID).
 		First(&row).Error
 	if err != nil {
-		return 0, nil // No position stored
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil // No position stored — this is expected
+		}
+		return 0, fmt.Errorf("failed to query playback position: %w", err)
 	}
 	return row.Position, nil
 }

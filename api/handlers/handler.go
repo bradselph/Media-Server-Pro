@@ -176,6 +176,20 @@ func writeError(c *gin.Context, status int, message string) {
 	c.JSON(status, models.APIResponse{Success: false, Error: message})
 }
 
+// safeContentDisposition returns a Content-Disposition header value with the
+// filename sanitized to prevent header injection. Characters that could break
+// the header (quotes, backslashes, newlines, control chars) are removed.
+func safeContentDisposition(filename string) string {
+	var safe strings.Builder
+	for _, r := range filename {
+		if r == '"' || r == '\\' || r == '\n' || r == '\r' || r < 0x20 {
+			continue
+		}
+		safe.WriteRune(r)
+	}
+	return fmt.Sprintf("attachment; filename=\"%s\"", safe.String())
+}
+
 // isClientDisconnect returns true for network errors that indicate the client
 // closed the connection (broken pipe, connection reset, i/o timeout on write).
 func isClientDisconnect(err error) bool {

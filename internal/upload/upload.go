@@ -160,10 +160,16 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category st
 		mediaType = "audio"
 	}
 
+	// Sanitize userID to prevent path traversal (e.g. "../../../etc")
+	safeUserID := filepath.Base(userID)
+	if safeUserID == "" || safeUserID == "." || safeUserID == ".." {
+		return nil, fmt.Errorf("invalid user ID")
+	}
+
 	// Build destination directory
-	destDir := filepath.Join(m.uploadDir, userID)
+	destDir := filepath.Join(m.uploadDir, safeUserID)
 	if category != "" {
-		destDir = filepath.Join(m.uploadDir, userID, m.sanitizeCategory(category))
+		destDir = filepath.Join(m.uploadDir, safeUserID, m.sanitizeCategory(category))
 	}
 
 	if err := os.MkdirAll(destDir, 0755); err != nil {
