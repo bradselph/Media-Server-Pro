@@ -160,6 +160,15 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 	writeSuccess(c, export)
 }
 
+// TODO(api-contract): FIELD NAME MISMATCH — Frontend playlistApi.addItem() sends a PlaylistItem
+// object (types.ts:223-232) containing `media_path` and `title`. The backend AddPlaylistItem
+// handler reads `media_path` (json:"media_path") and falls back to `path` (json:"path") and
+// `name` (json:"name") as aliases. The frontend PlaylistItem type uses `media_path` and `title`
+// which maps correctly to the backend struct fields. However, the `media_id` field in the
+// frontend PlaylistItem is optional (`id?`), and when missing the backend stores an empty
+// media_id string in the DB. This may cause issues in media_id-based lookups later.
+// Frontend: web/frontend/src/api/endpoints.ts playlistApi.addItem().
+//
 // AddPlaylistItem adds an item to a playlist
 func (h *Handler) AddPlaylistItem(c *gin.Context) {
 	playlistID := c.Param("id")
@@ -199,6 +208,16 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 	writeSuccess(c, nil)
 }
 
+// TODO(api-contract): PARAMETER LOCATION CONTRACT — Frontend playlistApi.removeItem() sends
+// `media_path` in the DELETE request body via api.delete(url, {media_path: path})
+// (web/frontend/src/api/endpoints.ts). The backend handler first tries to decode the JSON body,
+// then falls back to query params `media_path` and `path`. The body approach works unless HTTP
+// intermediaries strip DELETE bodies per RFC 9110 §9.3.5. If a proxy strips the body, the
+// backend sees no media_path from query params either, and returns 400 Bad Request.
+// Consider changing the frontend call to use a query parameter as the primary mechanism:
+// api.delete(`/api/playlists/${id}/items?media_path=${encodeURIComponent(path)}`)
+// Frontend: web/frontend/src/api/endpoints.ts playlistApi.removeItem().
+//
 // RemovePlaylistItem removes an item from a playlist
 func (h *Handler) RemovePlaylistItem(c *gin.Context) {
 	playlistID := c.Param("id")

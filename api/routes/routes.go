@@ -216,6 +216,12 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.GET(pathMedia+"/:id", h.GetMedia)
 
 	// Playback
+	// TODO(api-contract): AUTH ASYMMETRY — GET /playback requires requireAuth() but POST /playback
+	// has no auth middleware. This means unauthenticated users can POST playback positions (data
+	// silently dropped by handler when session is nil) but cannot GET saved positions (401 returned).
+	// Frontend watchHistoryApi.trackPosition() (web/frontend/src/api/endpoints.ts) calls POST
+	// without an auth guard; frontend callers should not rely on position being persisted for
+	// unauthenticated users. Frontend: web/frontend/src/api/endpoints.ts watchHistoryApi.trackPosition().
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
 	api.POST("/playback", h.TrackPlayback)
 
@@ -236,6 +242,11 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 
 	// Storage usage requires authentication to prevent resource exhaustion attacks
 	// and information leakage to anonymous users
+	// TODO(api-contract): AUTH REQUIREMENT NOT COMMUNICATED TO FRONTEND — GET /storage-usage
+	// requires requireAuth() but frontend storageApi.getUsage()
+	// (web/frontend/src/api/endpoints.ts) makes no auth check before calling. If rendered for
+	// unauthenticated users the request returns 401. All frontend components calling getUsage()
+	// must check authentication state first. Frontend: web/frontend/src/api/endpoints.ts storageApi.getUsage().
 	api.GET("/storage-usage", requireAuth(), h.GetStorageUsage)
 
 	// Server settings returns only public feature flags and UI config; no auth required.
@@ -273,6 +284,14 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// Analytics routes
 	// POST /analytics/events — user auth (users submit their own events)
 	// Aggregate analytics endpoints — admin-only (cross-user sensitive stats)
+	// TODO(api-contract): ROUTE GROUP INCONSISTENCY — Admin-gated analytics routes (/analytics/daily,
+	// /analytics/top, /analytics/events/stats, /analytics/events/by-type, /analytics/events/by-media,
+	// /analytics/events/counts) are registered under the /api group (not /api/admin group), but they
+	// all require adminAuth(). Frontend calls to these endpoints are grouped under adminApi
+	// (web/frontend/src/api/endpoints.ts:574-625). This is functional but semantically inconsistent —
+	// these endpoints could be confused with public analytics routes. Any new developer may call these
+	// without an admin session and receive 401 unexpectedly. Consider moving them under /api/admin
+	// for clearer ownership. Frontend: web/frontend/src/api/endpoints.ts adminApi.getDailyStats() et al.
 	api.GET("/analytics", adminAuth(authModule), h.GetAnalyticsSummary) // ST-01: analytics summary is server-wide data
 	api.GET("/analytics/daily", adminAuth(authModule), h.GetDailyStats)
 	api.GET("/analytics/top", adminAuth(authModule), h.GetTopMedia)

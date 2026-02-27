@@ -1534,12 +1534,12 @@ func (m *Manager) Validate() []error {
 		errors = append(errors, fmt.Errorf("chunk_size too small: %d", m.config.Streaming.DefaultChunkSize))
 	}
 
-	// Validate admin config
+	// Validate admin config (warn only — missing credentials make the account inaccessible but don't prevent startup)
 	if m.config.Admin.Enabled && m.config.Admin.Username == "" {
-		errors = append(errors, fmt.Errorf("admin enabled but no username specified"))
+		m.log.Warn("admin enabled but no username specified — admin login will fail until ADMIN_USERNAME is set")
 	}
 	if m.config.Admin.Enabled && m.config.Admin.PasswordHash == "" {
-		errors = append(errors, fmt.Errorf("admin enabled but no password hash - account will be inaccessible"))
+		m.log.Warn("admin enabled but no password hash — admin login will fail until ADMIN_PASSWORD_HASH is set")
 	}
 
 	// Validate rate limiting

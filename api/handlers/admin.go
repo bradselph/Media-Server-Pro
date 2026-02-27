@@ -118,6 +118,13 @@ func (h *Handler) AdminListUsers(c *gin.Context) {
 	writeSuccess(c, users)
 }
 
+// TODO(api-contract): SILENT DEFAULT — AdminCreateUser defaults `type` to "standard" when the
+// request body omits the `type` field (line 151-153). Frontend adminApi.createUser() passes
+// `type` as an optional field (web/frontend/src/api/endpoints.ts). If a caller creates a user
+// without specifying `type`, the backend silently assigns "standard". Callers that intend to
+// create "basic" or "premium" users must explicitly include the `type` field in the request.
+// Frontend: web/frontend/src/api/endpoints.ts adminApi.createUser().
+//
 // AdminCreateUser creates a user
 func (h *Handler) AdminCreateUser(c *gin.Context) {
 	var req struct {
@@ -653,6 +660,15 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 	writeSuccess(c, status)
 }
 
+// TODO(api-contract): HTTP STATUS CODE MISMATCH — ApplySourceUpdate returns HTTP 202 Accepted
+// via c.JSON(http.StatusAccepted, ...) (line 677), NOT via writeSuccess() which would return 200.
+// Frontend adminApi.applySourceUpdate() (web/frontend/src/api/endpoints.ts) uses api.post<>()
+// which calls apiRequest(). apiRequest() in client.ts does NOT have special 202 handling
+// (only 204 is special-cased). It reads the body and processes the success envelope, which works
+// at runtime since the backend still returns a valid JSON envelope. However callers cannot
+// detect that the operation is async (202 vs 200) from the response status alone.
+// Frontend: web/frontend/src/api/endpoints.ts adminApi.applySourceUpdate().
+//
 // ApplySourceUpdate starts an async source build.
 func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 	if h.updater.IsBuildRunning() {

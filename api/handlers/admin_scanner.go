@@ -104,6 +104,17 @@ func (h *Handler) GetReviewQueue(c *gin.Context) {
 	writeSuccess(c, queue)
 }
 
+// TODO(api-contract): RESPONSE MISMATCH — BatchReviewAction returns { updated: N, total: N }
+// (lines 149-152) but frontend adminApi.batchReview() types the return as Promise<void>
+// (web/frontend/src/api/endpoints.ts). Frontend callers cannot inspect the update count.
+// Change frontend return type to Promise<{ updated: number; total: number }> to match.
+// Frontend: web/frontend/src/api/endpoints.ts adminApi.batchReview().
+//
+// TODO(api-contract): ACTION VALUE MISMATCH — Backend validates action as "approve" or "reject"
+// only (line 118). Frontend adminApi.batchReview() accepts any `action: string` with no type
+// narrowing — sending any other value returns 400 Bad Request. Frontend type should be
+// narrowed to 'approve' | 'reject'. Frontend: web/frontend/src/api/endpoints.ts adminApi.batchReview().
+//
 // BatchReviewAction applies approve/reject action to multiple review queue items
 func (h *Handler) BatchReviewAction(c *gin.Context) {
 	var req struct {
