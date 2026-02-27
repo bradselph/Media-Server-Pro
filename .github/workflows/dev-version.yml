@@ -1,0 +1,52 @@
+name: Dev Patch Version
+
+on:
+  push:
+    branches: [ development ]
+    paths-ignore:
+      - 'VERSION'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: write
+
+jobs:
+  bump-patch:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[auto-version]')"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Bump PATCH version
+        id: bump
+        run: |
+          CURRENT=$(cat VERSION | tr -d '[:space:]')
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          echo "Bumping patch: $CURRENT → $NEW"
+
+      - name: Update VERSION file
+        run: echo "${{ steps.bump.outputs.new }}" > VERSION
+
+      - name: Update main.go fallback version
+        run: |
+          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.bump.outputs.new }}\"/" cmd/server/main.go
+
+      - name: Commit and push patch bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION cmd/server/main.go
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: bump patch to ${{ steps.bump.outputs.new }} [auto-version]"
+          git push

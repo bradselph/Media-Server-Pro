@@ -1,0 +1,44 @@
+name: Sync Development After Release
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  sync-development:
+    runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.message, '[auto-version]')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Merge main into development
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Ensure we have the latest of both branches
+          git fetch origin main development
+
+          git checkout development
+          git pull origin development
+
+          # Merge the release bump commit from main into development.
+          # This should always be conflict-free: the only thing that changed on
+          # main after the PR merge is VERSION and main.go (both set by the bot).
+          if git merge origin/main --no-ff -m "chore: sync development with main after release [auto-version]"; then
+            git push origin development
+            echo "Development synced successfully."
+          else
+            echo "::error::Merge conflict while syncing development with main."
+            echo "::error::Resolve manually: git checkout development && git merge origin/main"
+            git merge --abort
+            exit 1
+          fi

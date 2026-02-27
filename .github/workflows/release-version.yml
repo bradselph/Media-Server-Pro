@@ -1,0 +1,122 @@
+name: Release Version
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'VERSION'
+      - 'CHANGELOG.md'
+
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
+permissions:
+  contents: write
+
+jobs:
+  bump-release:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      !contains(github.event.head_commit.message, '[auto-version]')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Determine bump type and new version
+        id: bump
+        run: |
+          CURRENT=$(cat VERSION | tr -d '[:space:]')
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual dispatch: use the selected bump type
+            BUMP_TYPE="${{ github.event.inputs.bump_type }}"
+          else
+            # Automatic: inspect the merge commit message
+            MERGE_MSG="${{ github.event.head_commit.message }}"
+            if echo "$MERGE_MSG" | grep -qiE '(BREAKING CHANGE:|^major:)'; then
+              BUMP_TYPE="major"
+            else
+              # Default on every merge to main is a minor bump
+              BUMP_TYPE="minor"
+            fi
+          fi
+
+          case "$BUMP_TYPE" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          echo "type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
+          echo "Bumping $BUMP_TYPE: $CURRENT → $NEW"
+
+      - name: Update VERSION file
+        run: echo "${{ steps.bump.outputs.new }}" > VERSION
+
+      - name: Update main.go fallback version
+        run: |
+          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.bump.outputs.new }}\"/" cmd/server/main.go
+
+      - name: Generate CHANGELOG entry
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" | grep -v '\[auto-version\]')
+          else
+            COMMITS=$(git log --pretty=format:"- %s" | grep -v '\[auto-version\]')
+          fi
+
+          DATE=$(date +%Y-%m-%d)
+          VERSION="${{ steps.bump.outputs.new }}"
+          BUMP_TYPE="${{ steps.bump.outputs.type }}"
+
+          # Build new entry
+          NEW_ENTRY="## [${VERSION}] - ${DATE} (${BUMP_TYPE})\n\n${COMMITS}\n"
+
+          if [ -f CHANGELOG.md ]; then
+            # Prepend new entry after the first line (the # Changelog heading)
+            HEADING=$(head -1 CHANGELOG.md)
+            REST=$(tail -n +2 CHANGELOG.md)
+            printf '%s\n\n%b\n%s' "$HEADING" "$NEW_ENTRY" "$REST" > CHANGELOG.md
+          else
+            printf '# Changelog\n\n%b' "$NEW_ENTRY" > CHANGELOG.md
+          fi
+
+      - name: Commit and push release bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION cmd/server/main.go CHANGELOG.md
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: release ${{ steps.bump.outputs.new }} (${{ steps.bump.outputs.type }} bump) [auto-version]"
+          git push
+
+      - name: Create release tag
+        run: |
+          TAG="v${{ steps.bump.outputs.new }}"
+          if ! git tag -l "$TAG" | grep -q "^${TAG}$"; then
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+            echo "Created tag $TAG"
+          else
+            echo "Tag $TAG already exists — skipping"
+          fi
