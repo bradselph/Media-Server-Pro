@@ -1,0 +1,744 @@
+/**
+ * Shared TypeScript types matching the Go backend's JSON response shapes.
+ * Derived from pkg/models/models.go and api/handlers/handlers.go.
+ */
+
+// ── Auth ──
+
+export interface User {
+    id: string
+    username: string
+    // Backend UserRole values: "admin" | "viewer" (not "user")
+    role: 'admin' | 'viewer'
+    // Backend json:"type" (no omitempty) — always present; default "standard"
+    type: string
+    email?: string
+    enabled: boolean
+    permissions: UserPermissions
+    preferences: UserPreferences
+    // Backend json:"storage_used" (no omitempty) — always present; 0 if unset
+    storage_used: number
+    // Backend json:"active_streams" (no omitempty) — always present; 0 if unset
+    active_streams: number
+    // Backend json:"created_at" (no omitempty, gorm autoCreateTime) — always present
+    created_at: string
+    last_login?: string
+    // Backend json:"watch_history,omitempty" — only present when non-empty
+    watch_history?: WatchHistoryEntry[]
+}
+
+export interface UserPermissions {
+    can_stream: boolean
+    can_download: boolean
+    can_upload: boolean
+    can_delete: boolean
+    can_manage: boolean
+    can_view_mature: boolean
+    can_create_playlists: boolean
+}
+
+export interface UserPreferences {
+    theme: 'light' | 'dark' | 'auto'
+    default_quality: string
+    show_mature: boolean
+    // All fields below have no omitempty in the backend — always present in responses
+    mature_preference_set: boolean
+    // Backend field is "auto_play" (canonical); backend also accepts "autoplay" alias on write
+    auto_play: boolean
+    // Backend serializes as "equalizer_preset"; also accepted as "equalizer_bands" on write
+    equalizer_preset: string
+    resume_playback: boolean
+    show_analytics: boolean
+    items_per_page: number
+    view_mode: string
+    playback_speed: number
+    volume: number
+    language: string
+    sort_by: string
+    sort_order: string
+    filter_category: string
+    filter_media_type: string
+    // custom_eq_presets has omitempty — only present when non-empty
+    custom_eq_presets?: Record<string, unknown>
+}
+
+// GET /api/auth/session response — session check envelope (not a Session object)
+// Admin branch returns full permissions (all true) and default preferences — fixed to match makeSessionAuth.
+export interface SessionCheckResponse {
+    authenticated: boolean
+    allow_guests: boolean
+    user?: User
+}
+
+// Both admin and user login branches always return role and expires_at (RFC3339 string).
+export interface LoginResponse {
+    session_id: string
+    is_admin: boolean
+    username: string
+    role: string
+    expires_at: string
+}
+
+// ── Media ──
+
+// Backend models.MediaCategory JSON fields (from pkg/models/models.go)
+export interface MediaCategory {
+    name: string
+    display_name: string
+    count: number
+    tags?: string[]
+}
+
+// Backend models.MediaItem JSON fields (from pkg/models/models.go)
+// size/bitrate are int64 on the backend — safe in practice (< 2^53 for any real media file).
+// date_added/date_modified are RFC3339 strings — use new Date(item.date_added), never parseInt.
+export interface MediaItem {
+    id: string
+    path: string
+    // Backend uses "name" not "title" or "filename"
+    name: string
+    type: 'video' | 'audio' | 'unknown'
+    size: number
+    duration: number
+    width?: number
+    height?: number
+    bitrate?: number
+    codec?: string
+    // Backend uses "container" not "format"
+    container?: string
+    category?: string
+    tags?: string[]
+    thumbnail_url?: string
+    // Backend uses "date_added" and "date_modified" not "created_at"/"modified_at"
+    date_added: string
+    date_modified: string
+    views: number
+    last_played?: string
+    is_mature: boolean
+    mature_score?: number
+    // Backend json:"is_remote" (no omitempty) — always present; false for local files
+    is_remote: boolean
+    remote_url?: string
+    metadata?: Record<string, string>
+}
+
+// Handler now guarantees items is [] not null (nil guard added to ListMedia handler).
+export interface MediaListResponse {
+    items: MediaItem[]
+    total_items: number
+    total_pages: number
+    // Note: backend does not return page or per_page — track these client-side
+    // scanning is always present — true while the server's initial media scan is still running
+    scanning: boolean
+}
+
+export interface MediaListParams {
+    page?: number
+    limit?: number
+    sort?: string
+    // Backend query param is "sort_order" not "order"
+    sort_order?: string
+    type?: string
+    category?: string
+    search?: string
+    // DEPRECATED: IC-12 — duplicate of is_mature below; the backend filter param is is_mature
+    mature?: string
+    // Comma-separated tag filter (e.g. "comedy,drama")
+    tags?: string
+    // Filter by mature flag: "true" or "false"
+    is_mature?: string
+}
+
+// Matches internal/media/discovery.go Stats struct JSON tags
+export interface MediaStats {
+    total_count: number
+    video_count: number
+    audio_count: number
+    total_size: number
+    last_scan: string
+}
+
+// ── HLS ──
+
+export interface HLSCapabilities {
+    available: boolean
+    ffmpeg_found: boolean
+    qualities: string[]
+}
+
+// CheckHLSAvailability handler always returns all fields below (none are conditionally omitted).
+// qualities is guaranteed [] not null (nil guard added to handler).
+export interface HLSAvailability {
+    available: boolean
+    hls_url: string
+    id: string
+    job_id: string   // alias for id — backend sends both
+    media_path: string
+    status: string
+    progress: number
+    qualities: string[]
+    started_at: string
+    error: string
+}
+
+// All handler responses nil-guard qualities to [] — never null.
+// started_at is always present (time.Time → RFC3339 string).
+// completed_at is conditionally present (only when job finished).
+// error: GetHLSStatus and GenerateHLS always include it; ListHLSJobs serializes
+// models.HLSJob directly which has json:"error,omitempty" — absent when empty.
+export interface HLSJob {
+    id: string
+    media_path: string
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+    progress: number
+    qualities: string[]
+    started_at: string
+    completed_at?: string
+    hls_url?: string
+    available?: boolean
+    error?: string
+    fail_count?: number
+}
+
+// ── Playlists ──
+
+// Backend models.Playlist JSON fields
+// items may be null when not preloaded — callers must guard: (playlist.items ?? []).map(...)
+export interface Playlist {
+    id: string
+    name: string
+    description?: string
+    // Backend uses "user_id" not "owner"
+    user_id: string
+    items: PlaylistItem[] | null
+    created_at: string
+    // Backend uses "modified_at" not "updated_at"
+    modified_at: string
+    // Backend json:"is_public" has no omitempty — always present (true or false)
+    is_public: boolean
+    cover_image?: string
+}
+
+// Backend models.PlaylistItem JSON fields
+export interface PlaylistItem {
+    id?: string
+    playlist_id?: string
+    media_id: string
+    // Backend uses "media_path" not "path"
+    media_path: string
+    title: string
+    position: number
+    added_at?: string
+}
+
+// ── Analytics ──
+
+export interface AnalyticsEvent {
+    type: string
+    media_id?: string
+    user_id?: string
+    session_id?: string
+    // Backend models.AnalyticsEvent.IPAddress string json:"ip_address" (no omitempty) — always present
+    ip_address: string
+    // Backend models.AnalyticsEvent.UserAgent string json:"user_agent" (no omitempty) — always present
+    user_agent: string
+    timestamp: string
+    data?: Record<string, unknown>
+}
+
+// Backend GetAnalyticsSummary returns this shape (from handlers.go)
+// When analytics is disabled, only analytics_disabled:true is present; all numeric fields absent.
+// Guard: always check !summary.analytics_disabled before accessing numeric fields.
+export interface AnalyticsSummary {
+    analytics_disabled?: boolean
+    total_events?: number
+    active_sessions?: number
+    today_views?: number
+    total_views?: number
+    total_media?: number
+    unique_clients?: number
+    top_viewed?: Array<{ media_id: string; filename: string; views: number }>
+    recent_activity?: Array<{ type: string; media_id: string; filename: string; timestamp: number }>
+}
+
+// ── Watch History ──
+
+// Backend models.WatchHistoryItem JSON fields
+export interface WatchHistoryEntry {
+    // Backend models.WatchHistoryItem.MediaID string json:"media_id" (no omitempty) — always present
+    media_id: string
+    media_path: string
+    position: number
+    duration: number
+    // Backend uses "progress" (float ratio 0-1) not "completion"
+    progress: number
+    // Backend uses "watched_at" not "last_watched"
+    watched_at: string
+    completed: boolean
+}
+
+// ── Server Settings ──
+// Matches api/handlers/system.go GetServerSettings response shape
+
+export interface ServerSettings {
+    thumbnails: {
+        enabled: boolean
+        autoGenerate: boolean
+        width: number
+        height: number
+        video_preview_count: number
+    }
+    streaming: {
+        mobileOptimization: boolean
+    }
+    analytics: {
+        enabled: boolean
+    }
+    features: {
+        enableThumbnails: boolean
+        enableHLS: boolean
+        enableAnalytics: boolean
+        analytics_tracking: boolean
+    }
+    uploads: {
+        enabled: boolean
+        maxFileSize: number
+    }
+    admin: {
+        enabled: boolean
+    }
+    ui: {
+        items_per_page: number
+        mobile_items_per_page: number
+        mobile_grid_columns: number
+    }
+    age_gate: {
+        enabled: boolean
+    }
+}
+
+// ── Age Gate ──
+
+export interface AgeGateStatus {
+    enabled: boolean
+    verified: boolean
+}
+
+// ── Suggestions ──
+
+// Backend suggestions.Suggestion JSON fields (internal/suggestions/suggestions.go)
+export interface Suggestion {
+    // Backend uses "media_path" not "path" or "media_id"
+    media_path: string
+    title: string
+    category?: string
+    media_type?: string
+    score?: number
+    reasons?: string[]
+    thumbnail_url?: string
+}
+
+// ── Admin ──
+
+// disk_usage/disk_total/disk_free are uint64 bytes — safe in practice (< 9 PB).
+// disk_usage = used bytes (not a ratio); use (disk_usage / disk_total * 100) for percentage.
+export interface AdminStats {
+    total_videos: number
+    total_audio: number
+    active_sessions: number
+    total_users: number
+    disk_usage: number
+    disk_total: number
+    disk_free: number
+    hls_jobs_running: number
+    hls_jobs_completed: number
+    server_uptime: number
+    total_views: number
+}
+
+// Matches AdminGetSystemInfo response (handlers.go). uptime is seconds since server start.
+// memory_total = runtime.MemStats.Sys (Go runtime reservation from OS, not total installed RAM).
+// memory_used = runtime.MemStats.Alloc (bytes currently in use by Go heap).
+export interface SystemInfo {
+    version: string
+    build_date: string
+    os: string
+    arch: string
+    go_version: string
+    cpu_count: number
+    memory_used: number
+    memory_total: number
+    uptime: number
+    modules: ModuleHealth[]
+}
+
+export interface ModuleHealth {
+    name: string
+    // Backend constants: "healthy" | "unhealthy". "degraded"/"failed"/"disabled" kept for display logic.
+    status: 'healthy' | 'unhealthy' | 'degraded' | 'failed' | 'disabled'
+    message?: string
+    last_check?: string
+}
+
+// DEPRECATED: R-06 — identical to User with no additional fields; all callers could use User
+// directly. Safe to replace AdminUser with User throughout endpoints.ts and delete this type.
+export interface AdminUser extends User {
+    // same as User but all fields present
+}
+
+// Backend models.AuditLogEntry JSON fields
+export interface AuditLogEntry {
+    id: string
+    timestamp: string
+    // Backend uses "username" not "admin"
+    username: string
+    user_id: string
+    action: string
+    // Backend uses "resource" not "target"
+    resource: string
+    details?: Record<string, unknown>
+    // Backend uses "ip_address" not "ip"
+    ip_address?: string
+    // Backend models.AuditLogEntry.Success bool json:"success" (no omitempty) — always present
+    success: boolean
+}
+
+export interface LogEntry {
+    timestamp: string
+    level: string
+    module: string
+    message: string
+    // Backend parseLogLine always includes unparsed "raw" line
+    raw?: string
+}
+
+export interface ServerConfig {
+    [key: string]: unknown
+}
+
+// tasks.TaskInfo.LastError has json:"last_error,omitempty" — absent when no error, optional is correct.
+export interface ScheduledTask {
+    id: string
+    name: string
+    description: string
+    schedule: string   // backend json:"schedule" (was incorrectly "interval")
+    last_run: string   // always present; zero value "0001-01-01T00:00:00Z" = never run
+    next_run: string
+    enabled: boolean
+    running: boolean
+    last_error?: string
+}
+
+// Matches backend models.BackupInfo JSON tags.
+// created_at is RFC3339 — use new Date(entry.created_at). type defaults to "full" if not specified.
+export interface BackupEntry {
+    id: string
+    filename: string
+    size: number
+    created_at: string
+    type: string
+    // Backend json:"description,omitempty" — absent when empty
+    description?: string
+}
+
+export interface ScannerStats {
+    total_scanned: number
+    mature_count: number
+    auto_flagged: number
+    pending_review: number
+}
+
+// Matches backend models.MatureReviewItem JSON
+export interface ScanResultItem {
+    id: string
+    media_path: string   // backend field name (NOT "path")
+    detected_at: string
+    confidence: number
+    reasons: string[] | null
+    reviewed_by?: string
+    reviewed_at?: string
+    decision?: string
+}
+
+// Matches api/handlers/system.go AdminGetDatabaseStatus response
+export interface DatabaseStatus {
+    connected: boolean
+    host: string
+    database: string
+    schema_version: number
+    repository_type: string
+    message?: string
+    checked_at?: string
+}
+
+export interface QueryResult {
+    columns?: string[]
+    rows?: unknown[][]
+    rows_affected?: number
+    message?: string
+    error?: string
+}
+
+// ── HLS Admin Stats ──
+
+export interface HLSStats {
+    total_jobs: number
+    running_jobs: number
+    completed_jobs: number
+    failed_jobs: number
+    pending_jobs: number
+    cache_size_bytes: number
+    cache_dir: string
+}
+
+// ── Analytics ──
+
+// Matches pkg/models/models.go DailyStats. date is a "YYYY-MM-DD" date string.
+export interface DailyStats {
+    date: string
+    total_views: number
+    // Backend models.DailyStats.UniqueUsers int json:"unique_users" (no omitempty) — always present
+    unique_users: number
+    // Backend models.DailyStats.TotalWatchTime float64 json:"total_watch_time" (no omitempty) — always present
+    total_watch_time: number
+    // Backend models.DailyStats.NewUsers int json:"new_users" (no omitempty) — always present
+    new_users: number
+    // Backend models.DailyStats.TopMedia []string json:"top_media" (no omitempty) — always present (empty slice, not null)
+    top_media: string[]
+}
+
+export interface TopMediaItem {
+    media_id: string
+    filename: string
+    views: number
+    // Backend enriches with actual file path when media lookup succeeds (omitempty)
+    media_path?: string
+}
+
+export interface EventTypeCounts {
+    [eventType: string]: number
+}
+
+// ── Remote Sources ──
+
+export interface RemoteSource {
+    name: string
+    url: string
+    username?: string
+    password?: string
+    enabled: boolean
+}
+
+// Matches internal/remote/remote.go MediaItem struct (distinct from models.MediaItem)
+export interface RemoteMediaItem {
+    id: string
+    name: string
+    path: string
+    url: string
+    source_name: string
+    size: number
+    content_type: string
+    duration?: number
+    metadata?: Record<string, string>
+    cached_at?: string
+}
+
+export interface RemoteSourceState {
+    source: RemoteSource
+    status: string       // "idle" | "syncing" | "error"
+    // last_sync is always an ISO timestamp string; zero value is "0001-01-01T00:00:00Z" (never synced)
+    last_sync: string
+    media_count: number
+    error?: string
+    media?: RemoteMediaItem[]
+}
+
+export interface RemoteStats {
+    source_count: number
+    cached_item_count: number
+    total_media_count: number
+    cache_size: number  // backend json tag is "cache_size" (remote.Stats.CacheSize)
+    sources: Array<{
+        name: string
+        status: string
+        media_count: number
+        last_sync: string
+        error?: string
+    }>
+}
+
+// ── Feature 1: Storage & Permissions ──
+
+export interface StorageUsage {
+    used_bytes: number
+    used_gb: number
+    quota_gb: number
+    percentage: number
+    user_type: string
+    is_authenticated: boolean
+}
+
+export interface PermissionsInfo {
+    authenticated: boolean
+    username?: string
+    role?: string
+    user_type?: string
+    show_mature: boolean
+    mature_preference_set: boolean
+    capabilities: {
+        canUpload: boolean
+        canDownload: boolean
+        canCreatePlaylists: boolean
+        canViewMature: boolean
+        canStream: boolean
+        canDelete?: boolean
+        canManage?: boolean
+    }
+    limits?: {
+        storage_quota: number
+        concurrent_streams: number
+    }
+}
+
+// ── Feature 2: Ratings ──
+
+// DEPRECATED: DC-06 — ratingsApi.record() accepts (path, rating) inline; this type is never
+// imported or used. Safe to delete.
+export interface RatingRequest {
+    path: string
+    rating: number
+}
+
+// ── Feature 4: Upload ──
+
+export interface UploadResult {
+    uploaded: Array<{ filename: string; size: number }>
+    errors: Array<{ filename: string; error: string }>
+}
+
+export interface UploadProgress {
+    id: string
+    filename: string
+    size: number
+    uploaded: number
+    progress: number
+    status: string
+    started_at: string
+    completed_at?: string
+    error: string
+    user_id: string
+    dest_path: string
+}
+
+// ── Feature 5: Analytics Detail ──
+
+// Backend analytics.EventStats shape (handlers.go GetEventStats)
+export interface EventStats {
+    total_events: number
+    event_counts: Record<string, number>
+    hourly_events: number[]
+}
+
+// DEPRECATED: DC-05 — GetEventTypeCounts now returns map[string]int (Record<string,number>);
+// this interface was for a previous array-based response that no longer exists. Safe to delete.
+export interface EventsByTypeEntry {
+    type: string
+    count: number
+    last_at?: string
+}
+
+// ── Feature 6: Admin Playlists ──
+// AdminListPlaylists returns []*models.Playlist — reuse Playlist type directly (see above).
+// AdminPlaylistEntry is intentionally removed; use Playlist[] for admin playlist lists.
+
+// Backend playlist.Stats shape
+export interface AdminPlaylistStats {
+    total_playlists: number
+    public_playlists: number
+    total_items: number
+}
+
+// ── Feature 7: Thumbnail Stats ──
+
+export interface ThumbnailStats {
+    total_thumbnails: number
+    total_size_mb: number
+    pending_generation: number
+    generation_errors: number
+}
+
+// ── Feature 8: HLS Validation ──
+
+// Matches internal/hls ValidationResult JSON tags
+export interface HLSValidationResult {
+    job_id: string
+    valid: boolean
+    variant_count: number
+    segment_count: number
+    errors: string[]
+}
+
+// ── Feature 9: Suggestion Stats ──
+
+// Matches internal/suggestions SuggestionStats JSON tags
+export interface SuggestionStats {
+    total_profiles: number
+    total_media: number
+    total_views: number
+    total_watch_time: number
+}
+
+// ── Feature 10: Security ──
+
+export interface SecurityStats {
+    banned_ips: number
+    whitelisted_ips: number
+    blacklisted_ips: number
+    active_rate_limits: number
+    total_blocks_today: number
+}
+
+export interface IPEntry {
+    ip: string
+    comment?: string
+    added_by?: string
+    added_at: string
+    expires_at?: string
+}
+
+export interface BannedIP {
+    ip: string
+    banned_at: string
+    expires_at?: string
+    reason: string
+}
+
+// ── Feature 11: Categorizer ──
+
+export interface CategorizedItem {
+    path: string
+    category: string
+    confidence: number
+    detected_info?: Record<string, unknown>
+    categorized_at: string
+    manual_override: boolean
+}
+
+// Matches internal/categorizer CategoryStats JSON tags
+export interface CategoryStats {
+    total_items: number
+    by_category: Record<string, number>
+    manual_overrides: number
+}
+
+// ── Feature 12: Auto-Discovery ──
+
+// Matches pkg/models AutoDiscoverySuggestion JSON tags
+export interface DiscoverySuggestion {
+    original_path: string
+    suggested_name: string
+    suggested_path: string
+    type: string
+    confidence: number
+    metadata?: Record<string, string>
+}
