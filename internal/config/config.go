@@ -41,6 +41,14 @@ type Config struct {
 	Database      DatabaseConfig      `json:"database"`
 	Updater       UpdaterConfig       `json:"updater"`
 	AgeGate       AgeGateConfig       `json:"age_gate"`
+	UI            UIConfig            `json:"ui"`
+}
+
+// UIConfig holds frontend display defaults
+type UIConfig struct {
+	ItemsPerPage       int `json:"items_per_page"`
+	MobileItemsPerPage int `json:"mobile_items_per_page"`
+	MobileGridColumns  int `json:"mobile_grid_columns"`
 }
 
 // AgeGateConfig holds age verification gate settings.
@@ -201,6 +209,8 @@ type AdminConfig struct {
 	Username       string        `json:"username"`
 	PasswordHash   string        `json:"password_hash"`
 	SessionTimeout time.Duration `json:"session_timeout"`
+	QueryTimeout   time.Duration `json:"query_timeout"`
+	MaxQueryRows   int           `json:"max_query_rows"`
 }
 
 // AuthConfig holds user authentication settings
@@ -438,6 +448,8 @@ func DefaultConfig() *Config {
 			Enabled:        true,
 			Username:       "admin",
 			SessionTimeout: 24 * time.Hour,
+			QueryTimeout:   30 * time.Second,
+			MaxQueryRows:   1000,
 		},
 		Auth: AuthConfig{
 			Enabled:          true,
@@ -531,6 +543,11 @@ func DefaultConfig() *Config {
 			IPVerifyTTL:  24 * time.Hour,
 			CookieName:   "age_verified",
 			CookieMaxAge: 365 * 24 * 60 * 60, // 1 year
+		},
+		UI: UIConfig{
+			ItemsPerPage:       48,
+			MobileItemsPerPage: 24,
+			MobileGridColumns:  2,
 		},
 	}
 }

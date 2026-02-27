@@ -13,7 +13,7 @@ VPS_HOST="${VPS_HOST:-66.179.136.144}"
 VPS_USER="${VPS_USER:-root}"
 VPS_PORT="${VPS_PORT:-22}"
 KEY_FILE="${KEY_FILE:-$HOME/.ssh/ED_25519}"
-DEPLOY_DIR="${DEPLOY_DIR:-/home/Media-Server-Pro-3}"
+DEPLOY_DIR="${DEPLOY_DIR:-/home/Media-Server-Pro}"
 
 if [[ $# -eq 0 ]]; then
   echo "Usage: $0 <command>"

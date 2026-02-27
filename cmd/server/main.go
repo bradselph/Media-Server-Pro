@@ -88,7 +88,7 @@ func main() {
 		BuildDate:  BuildDate,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create server: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to create server: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -253,7 +253,7 @@ func main() {
 // mustRegister registers a module and exits on failure.
 func mustRegister(srv *server.Server, module server.Module) {
 	if err := srv.RegisterModule(module); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to register module %s: %v\n", module.Name(), err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to register module %s: %v\n", module.Name(), err)
 		os.Exit(1)
 	}
 }

@@ -174,7 +174,7 @@ func GinCompression() gin.HandlerFunc {
 		gz := gzipWriterPool.Get().(*gzip.Writer)
 		defer gzipWriterPool.Put(gz)
 		gz.Reset(c.Writer)
-		defer gz.Close()
+		defer func() { _ = gz.Close() }()
 		c.Header("Content-Encoding", "gzip")
 		c.Header("Vary", "Accept-Encoding")
 		c.Writer.Header().Del("Content-Length")

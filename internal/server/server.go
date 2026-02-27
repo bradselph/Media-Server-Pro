@@ -22,10 +22,7 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-const (
-	logSeparator    = "=============================================="
-	contentTypeJSON = "application/json"
-)
+const logSeparator = "=============================================="
 
 // Module represents a server component that can be started and stopped
 type Module interface {

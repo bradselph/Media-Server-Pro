@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -196,6 +195,3 @@ func (h *Handler) RejectContent(c *gin.Context) {
 
 	writeSuccess(c, nil)
 }
-
-// ensure json import is used (ScanContent uses it via ShouldBindJSON fallback)
-var _ = json.Marshal

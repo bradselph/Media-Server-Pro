@@ -14,6 +14,7 @@ import type {
     AuditLogEntry,
     BackupEntry,
     BannedIP,
+    CachedMediaResult,
     CategorizedItem,
     CategoryStats,
     DailyStats,
@@ -53,6 +54,7 @@ import type {
     Suggestion,
     SuggestionStats,
     SystemInfo,
+    ThumbnailPreviews,
     ThumbnailStats,
     TopMediaItem,
     UploadProgress,
@@ -174,8 +176,14 @@ export const mediaApi = {
     getDownloadUrl: (path: string) =>
         `/download?path=${encodeURIComponent(path)}`,
 
+    getRemoteStreamUrl: (url: string, source?: string) =>
+        `/remote/stream?url=${encodeURIComponent(url)}${source ? `&source=${encodeURIComponent(source)}` : ''}`,
+
     getThumbnailUrl: (path: string) =>
         `/thumbnail?path=${encodeURIComponent(path)}`,
+
+    getThumbnailPreviews: (path: string) =>
+        api.get<ThumbnailPreviews>(`/api/thumbnails/previews?path=${encodeURIComponent(path)}`),
 }
 
 // ── HLS ──
@@ -222,8 +230,17 @@ export const playlistApi = {
         api.delete<void>(`/api/playlists/${encodeURIComponent(id)}/items?media_path=${encodeURIComponent(path)}`),
 
     // Feature 3: Playlist export — returns Blob for file download
+    // For m3u/m3u8: raw text. For json: backend wraps in {success:true, data:...} envelope.
     export: (id: string, format: 'json' | 'm3u' | 'm3u8'): Promise<Blob> =>
-        fetch(`/api/playlists/${encodeURIComponent(id)}/export?format=${format}`, {credentials: 'include'}).then(r => r.blob()),
+        fetch(`/api/playlists/${encodeURIComponent(id)}/export?format=${format}`, {credentials: 'include'}).then(async r => {
+            if (!r.ok) throw new Error(`Export failed: ${r.status} ${r.statusText}`)
+            if (format === 'json') {
+                const json = await r.json()
+                const data = json.data ?? json
+                return new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'})
+            }
+            return r.blob()
+        }),
 }
 
 // ── Analytics ──
@@ -512,8 +529,12 @@ export const adminApi = {
     getScannerStats: () =>
         api.get<ScannerStats>('/api/admin/scanner/stats'),
 
-    runScan: () =>
-        api.post<void>('/api/admin/scanner/scan'),
+    runScan: (path?: string, autoApply?: boolean) =>
+        api.post<void>('/api/admin/scanner/scan', {
+            path: path ?? '',
+            auto_apply: autoApply ?? false,
+            scan_metadata: false,
+        }),
 
     getReviewQueue: () =>
         api.get<ScanResultItem[]>('/api/admin/scanner/queue'),
@@ -540,6 +561,7 @@ export const adminApi = {
     cleanHLSStaleLocks: () =>
         api.post<void>('/api/admin/hls/clean/locks'),
 
+    // threshold is Go time.Duration.String() format (e.g. "24h0m0s"), not ISO 8601
     cleanHLSInactive: (maxAge?: number) =>
         api.post<{
             removed: number;
@@ -614,7 +636,10 @@ export const adminApi = {
 
     // Feature 5: Analytics detail + export
     exportAnalytics: (): Promise<Blob> =>
-        fetch('/api/admin/analytics/export', {credentials: 'include'}).then(r => r.blob()),
+        fetch('/api/admin/analytics/export', {credentials: 'include'}).then(r => {
+            if (!r.ok) throw new Error(`Export failed: ${r.status} ${r.statusText}`)
+            return r.blob()
+        }),
 
     // Route is /api/analytics/events/stats (not /api/admin/...) but requires admin auth.
     getEventStats: () =>
@@ -686,8 +711,13 @@ export const adminApi = {
     getBlacklist: () =>
         api.get<IPEntry[]>('/api/admin/security/blacklist'),
 
+    // expires_at must be RFC3339 format (e.g. "2026-02-27T15:04:05Z") or omitted
     addToBlacklist: (ip: string, comment?: string, expiresAt?: string) =>
-        api.post<void>('/api/admin/security/blacklist', {ip, comment, expires_at: expiresAt}),
+        api.post<void>('/api/admin/security/blacklist', {
+            ip,
+            comment,
+            ...(expiresAt ? {expires_at: new Date(expiresAt).toISOString()} : {}),
+        }),
 
     // Backend: DELETE /security/blacklist (no path var) — reads IP from request body
     removeFromBlacklist: (ip: string) =>
@@ -744,5 +774,5 @@ export const adminApi = {
         api.get<RemoteMediaItem[]>(`/api/admin/remote/sources/${encodeURIComponent(source)}/media`),
 
     cacheRemoteMedia: (url: string, sourceName: string) =>
-        api.post<RemoteMediaItem>('/api/admin/remote/cache', {url, source_name: sourceName}),
+        api.post<CachedMediaResult>('/api/admin/remote/cache', {url, source_name: sourceName}),
 }

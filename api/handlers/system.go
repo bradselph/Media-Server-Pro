@@ -143,9 +143,9 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enabled": cfg.Admin.Enabled,
 		},
 		"ui": map[string]interface{}{
-			"items_per_page":        48,
-			"mobile_items_per_page": 24,
-			"mobile_grid_columns":   2,
+			"items_per_page":        cfg.UI.ItemsPerPage,
+			"mobile_items_per_page": cfg.UI.MobileItemsPerPage,
+			"mobile_grid_columns":   cfg.UI.MobileGridColumns,
 		},
 		"age_gate": map[string]interface{}{
 			"enabled": cfg.AgeGate.Enabled,
@@ -309,7 +309,11 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		strings.HasPrefix(strings.ToUpper(query), "DESCRIBE") ||
 		strings.HasPrefix(strings.ToUpper(query), "EXPLAIN")
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	queryTimeout := h.media.GetConfig().Admin.QueryTimeout
+	if queryTimeout <= 0 {
+		queryTimeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), queryTimeout)
 	defer cancel()
 	db := h.database.DB()
 
@@ -336,7 +340,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 			return
 		}
 
-		const maxRows = 1000
+		maxRows := h.media.GetConfig().Admin.MaxQueryRows
+		if maxRows <= 0 {
+			maxRows = 1000
+		}
 		var results [][]interface{}
 		for rows.Next() && len(results) < maxRows {
 			values := make([]interface{}, len(columns))

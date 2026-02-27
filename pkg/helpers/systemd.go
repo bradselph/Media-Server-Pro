@@ -30,7 +30,7 @@ func SDNotify(state string) error {
 	if err != nil {
 		return fmt.Errorf("sd_notify: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_, err = fmt.Fprint(conn, state)
 	return err
 }

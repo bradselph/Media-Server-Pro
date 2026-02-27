@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -39,7 +40,7 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 		if item.ThumbnailURL == "" {
 			if !h.thumbnails.HasThumbnail(item.Path) {
 				isAudio := item.Type == "audio"
-				if _, err := h.thumbnails.GenerateThumbnail(item.Path, isAudio); err != nil && err != thumbnails.ErrThumbnailPending {
+				if _, err := h.thumbnails.GenerateThumbnail(item.Path, isAudio); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 				}
 			}

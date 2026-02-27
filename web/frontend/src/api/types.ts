@@ -161,9 +161,16 @@ export interface MediaStats {
 // ── HLS ──
 
 export interface HLSCapabilities {
+    enabled: boolean
     available: boolean
     ffmpeg_found: boolean
+    ffprobe_found: boolean
+    ffmpeg_path?: string
+    healthy: boolean
+    message: string
     qualities: string[]
+    auto_generate: boolean
+    max_concurrent: number
 }
 
 // CheckHLSAvailability handler always returns all fields below (none are conditionally omitted).
@@ -195,7 +202,8 @@ export interface HLSJob {
     started_at: string
     completed_at?: string
     hls_url?: string
-    available?: boolean
+    available: boolean
+    output_dir?: string
     error?: string
     fail_count?: number
 }
@@ -228,19 +236,18 @@ export interface PlaylistItem {
     media_path: string
     title: string
     position: number
-    added_at?: string
+    added_at: string
 }
 
 // ── Analytics ──
 
 export interface AnalyticsEvent {
+    id: string
     type: string
     media_id?: string
     user_id?: string
     session_id?: string
-    // Backend models.AnalyticsEvent.IPAddress string json:"ip_address" (no omitempty) — always present
     ip_address: string
-    // Backend models.AnalyticsEvent.UserAgent string json:"user_agent" (no omitempty) — always present
     user_agent: string
     timestamp: string
     data?: Record<string, unknown>
@@ -331,10 +338,10 @@ export interface Suggestion {
     // Backend uses "media_path" not "path" or "media_id"
     media_path: string
     title: string
-    category?: string
-    media_type?: string
-    score?: number
-    reasons?: string[]
+    category: string
+    media_type: string
+    score: number
+    reasons: string[] | null
     thumbnail_url?: string
 }
 
@@ -467,8 +474,8 @@ export interface DatabaseStatus {
     database: string
     schema_version: number
     repository_type: string
-    message?: string
-    checked_at?: string
+    message: string
+    checked_at: string
 }
 
 export interface QueryResult {
@@ -477,6 +484,7 @@ export interface QueryResult {
     rows_affected?: number
     message?: string
     error?: string
+    truncated?: boolean
 }
 
 // ── HLS Admin Stats ──
@@ -625,9 +633,9 @@ export interface UploadProgress {
     status: string
     started_at: string
     completed_at?: string
-    error: string
+    error?: string
     user_id: string
-    dest_path: string
+    dest_path?: string
 }
 
 // ── Feature 5: Analytics Detail ──
@@ -670,12 +678,13 @@ export interface ThumbnailStats {
 // ── Feature 8: HLS Validation ──
 
 // Matches internal/hls ValidationResult JSON tags
+// errors uses omitempty — absent when validation passes. Callers must guard: (result.errors ?? [])
 export interface HLSValidationResult {
     job_id: string
     valid: boolean
     variant_count: number
     segment_count: number
-    errors: string[]
+    errors?: string[]
 }
 
 // ── Feature 9: Suggestion Stats ──
@@ -715,11 +724,22 @@ export interface BannedIP {
 
 // ── Feature 11: Categorizer ──
 
+// Matches internal/categorizer MediaInfo struct
+export interface DetectedMediaInfo {
+    title: string
+    year: string
+    season: string
+    episode: string
+    resolution: string
+    source: string
+    audio_format: string
+}
+
 export interface CategorizedItem {
     path: string
     category: string
     confidence: number
-    detected_info?: Record<string, unknown>
+    detected_info?: DetectedMediaInfo
     categorized_at: string
     manual_override: boolean
 }
@@ -760,6 +780,26 @@ export interface ValidatorStats {
     fixed: number
     failed: number
     unsupported: number
+}
+
+// ── Cached Remote Media ──
+
+// Matches internal/remote CachedMedia struct returned by CacheRemoteMedia handler
+export interface CachedMediaResult {
+    remote_url: string
+    local_path: string
+    size: number
+    content_type: string
+    cached_at: string
+    last_access: string
+    hits: number
+}
+
+// ── Thumbnail Previews ──
+
+// Matches api/handlers/thumbnails.go GetThumbnailPreviews response
+export interface ThumbnailPreviews {
+    previews: string[]
 }
 
 // ── Feature 12: Auto-Discovery ──
