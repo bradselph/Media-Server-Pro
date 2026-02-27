@@ -660,7 +660,7 @@ func (m *Module) Authenticate(ctx context.Context, username, password, ipAddress
 		user, err = m.userRepo.GetByUsername(ctx, username)
 		if err != nil {
 			// Perform dummy bcrypt comparison to prevent timing-based username enumeration
-			bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 			m.recordFailedAttempt(ipAddress)
 			m.log.Debug("Login failed - user not found: %s", username)
 			return nil, ErrInvalidCredentials
@@ -871,7 +871,7 @@ func (m *Module) AdminAuthenticate(ctx context.Context, username, password, ipAd
 	// through normal user auth instead of being blocked.
 	if !cfg.Admin.Enabled || cfg.Admin.PasswordHash == "" || username != cfg.Admin.Username {
 		// Perform dummy bcrypt comparison to prevent timing-based username enumeration
-		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return nil, ErrNotAdminUsername
 	}
 

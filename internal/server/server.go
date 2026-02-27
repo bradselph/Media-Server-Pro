@@ -22,10 +22,7 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-const (
-	logSeparator    = "=============================================="
-	contentTypeJSON = "application/json"
-)
+const logSeparator = "=============================================="
 
 // Module represents a server component that can be started and stopped
 type Module interface {
@@ -91,7 +88,7 @@ func New(opts Options) (*Server, error) {
 	log := logger.New("server")
 
 	log.Info(logSeparator)
-	log.Info("    Media Server Pro 4 (Gin Edition)")
+	log.Info("    Media Server Pro")
 	log.Info(logSeparator)
 	log.Info("Initializing server...")
 

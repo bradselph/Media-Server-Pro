@@ -232,6 +232,7 @@ export function PlayerPage() {
                     qualities: hls.qualities ?? [],
                     started_at: hls.started_at ?? '',
                     error: hls.error ?? '',
+                    available: false,
                 })
                 setHlsPolling(true)
             }

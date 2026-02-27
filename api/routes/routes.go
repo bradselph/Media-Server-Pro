@@ -145,6 +145,22 @@ func hashFNV1a(data []byte) string {
 func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, securityModule *security.Module, cfg *config.Manager, ageGate *middleware.AgeGate) {
 	log := logger.New("routes")
 
+	// Request ID for tracing
+	r.Use(middleware.GinRequestID())
+
+	// Security headers (CSP, HSTS, X-Frame-Options, etc.)
+	secCfg := cfg.Get().Security
+	r.Use(middleware.GinSecurityHeaders(secCfg.CSPPolicy, secCfg.HSTSMaxAge))
+
+	// CORS — only applied when explicitly configured
+	if secCfg.CORSEnabled && len(secCfg.CORSOrigins) > 0 {
+		r.Use(middleware.GinCORS(
+			secCfg.CORSOrigins,
+			[]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			[]string{"Content-Type", "Authorization", "X-Requested-With"},
+		))
+	}
+
 	// Apply compression middleware for all responses (except media streams).
 	// gin-contrib/gzip skips paths that start with the excluded prefixes.
 	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{
@@ -201,7 +217,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// /metrics is for Prometheus scraping — admin-protected, no frontend caller by design
 	r.GET("/metrics", adminAuth(authModule), h.GetMetrics)
 
-	// Remote streaming (public, with optional auth)
+	// Remote streaming (public, with optional auth) — frontend uses mediaApi.getRemoteStreamUrl()
 	r.GET("/remote/stream", h.StreamRemoteMedia)
 
 	// -----------------------------------------------------------------------
@@ -243,8 +259,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.GET("/server-settings", h.GetServerSettings)
 
 	// Age gate — public, no auth required (must be accessible before user logs in)
-	api.GET("/age-gate/status", func(c *gin.Context) { ageGate.StatusHandler(c.Writer, c.Request) })
-	api.POST("/age-verify", func(c *gin.Context) { ageGate.VerifyHandler(c.Writer, c.Request) })
+	api.GET("/age-gate/status", ageGate.GinStatusHandler())
+	api.POST("/age-verify", ageGate.GinVerifyHandler())
 
 	// User preferences routes (protected)
 	api.GET("/preferences", requireAuth(), h.GetPreferences)
@@ -282,7 +298,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.GET("/analytics/events/by-media", adminAuth(authModule), h.GetEventsByMedia)
 	api.GET("/analytics/events/counts", adminAuth(authModule), h.GetEventTypeCounts)
 
-	// Thumbnail previews (public)
+	// Thumbnail previews (public) — frontend uses mediaApi.getThumbnailPreviews()
 	api.GET("/thumbnails/previews", h.GetThumbnailPreviews)
 
 	// Suggestions routes (public)

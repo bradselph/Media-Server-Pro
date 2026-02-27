@@ -59,7 +59,7 @@ FRONTEND_DIR="$SCRIPT_DIR/web/frontend"
 
 cd "$SCRIPT_DIR"
 
-echo -e "\n${BOLD}=== Media Server Pro 4 — Build & Run ===${RESET}\n"
+echo -e "\n${BOLD}=== Media Server Pro — Build & Run ===${RESET}\n"
 
 # ── Step 1: React frontend ────────────────────────────────────────────────────
 if $BUILD_REACT; then

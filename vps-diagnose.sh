@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vps-diagnose.sh — Full VPS diagnostic for Media Server Pro 3.
+# vps-diagnose.sh — Full VPS diagnostic for Media Server Pro.
 # Designed for Claude Code to run remotely and identify issues automatically.
 #
 # Usage:
@@ -14,7 +14,7 @@ VPS_HOST="${VPS_HOST:-66.179.136.144}"
 VPS_USER="${VPS_USER:-root}"
 VPS_PORT="${VPS_PORT:-22}"
 KEY_FILE="${KEY_FILE:-$HOME/.ssh/ED_25519}"
-DEPLOY_DIR="${DEPLOY_DIR:-/home/Media-Server-Pro-3}"
+DEPLOY_DIR="${DEPLOY_DIR:-/home/Media-Server-Pro}"
 SERVICE="${SERVICE:-mediaserver}"
 
 QUICK=false
@@ -50,7 +50,7 @@ if $QUICK; then exit 0; fi
 # ── Runtime environment ───────────────────────────────────────────────────────
 sep "RUNTIME CHECKS (binary, port, config)"
 vps bash -s -- "$DEPLOY_DIR" <<'REMOTE'
-DEPLOY="${1:-/home/Media-Server-Pro-3}"
+DEPLOY="${1:-/home/Media-Server-Pro}"
 
 echo "=== Binary ==="
 ls -lh $DEPLOY/server 2>/dev/null || echo "ERROR: server binary missing"
@@ -111,7 +111,7 @@ REMOTE
 if $THUMBNAILS || ! $QUICK; then
 sep "THUMBNAILS"
 vps bash -s -- "$DEPLOY_DIR" "$SERVICE" <<'REMOTE'
-DEPLOY="${1:-/home/Media-Server-Pro-3}"
+DEPLOY="${1:-/home/Media-Server-Pro}"
 SERVICE_NAME="${2:-mediaserver}"
 THUMB_DIR=$(grep -oP '(?<=THUMBNAILS_DIR=)\S+' $DEPLOY/.env 2>/dev/null || echo "$DEPLOY/thumbnails")
 
@@ -143,7 +143,7 @@ REMOTE
 
 sep "HTTP HEALTH CHECK"
 vps bash -s -- "$DEPLOY_DIR" <<'REMOTE'
-DEPLOY="${1:-/home/Media-Server-Pro-3}"
+DEPLOY="${1:-/home/Media-Server-Pro}"
 PORT="$(grep -oP '(?<=^SERVER_PORT=)\d+' "$DEPLOY/.env" 2>/dev/null | head -1 || echo 8080)"
 HEALTH_URL="http://127.0.0.1:${PORT}/health"
 

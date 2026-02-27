@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Media Server Pro 4 API
+  title: Media Server Pro API
   description: >
     Modular media streaming server providing video/audio streaming with HLS
     adaptive streaming, thumbnail generation, analytics, user authentication,

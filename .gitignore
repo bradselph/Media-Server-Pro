@@ -4,6 +4,7 @@
 
 config.json
 .env
+.deploy.env
 
 /web/static/react/
 /web/frontend/node_modules/

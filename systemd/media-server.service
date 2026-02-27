@@ -1,6 +1,6 @@
 [Unit]
-Description=Media Server Pro 4
-Documentation=https://github.com/bradselph/Media-Server-Pro-4
+Description=Media Server Pro
+Documentation=https://github.com/bradselph/Media-Server-Pro
 After=network.target mysql.service
 Wants=mysql.service
 

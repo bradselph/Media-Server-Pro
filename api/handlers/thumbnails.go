@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -107,7 +108,7 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 			strings.HasSuffix(strings.ToLower(path), ".ogg")
 
 		_, err := h.thumbnails.GenerateThumbnailSync(path, isAudio)
-		if err != nil && err != thumbnails.ErrThumbnailPending {
+		if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 			h.log.Error("Failed to generate thumbnail for %s: %v", path, err)
 			writeError(c, http.StatusNotFound, "Thumbnail generation failed")
 			return

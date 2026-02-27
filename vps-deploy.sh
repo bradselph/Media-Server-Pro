@@ -20,14 +20,14 @@
 #   VPS_USER          SSH user (default: root)
 #   VPS_PORT          SSH port (default: 22)
 #   KEY_FILE          SSH key path (default: $HOME/.ssh/ED_25519)
-#   DEPLOY_DIR        Project directory on VPS (default: /home/Media-Server-Pro-3)
-#                     For fresh installs via install.sh use: DEPLOY_DIR=/home/mediaserver/app
-#   SERVICE           Systemd service name (default: mediaserver)
+#   DEPLOY_DIR        Project directory on VPS (default: /home/Media-Server-Pro)
+#                     For fresh installs via install.sh use: DEPLOY_DIR=/home/media-server-pro
+#   SERVICE           Systemd service name (default: mediaserverpro)
 #   GITHUB_TOKEN      GitHub PAT for private repo access (optional)
 #   GITHUB_USERNAME   GitHub username paired with token (optional)
 #
 # Fresh install (install.sh) users — override defaults:
-#   DEPLOY_DIR=/home/mediaserver/app ./vps-deploy.sh
+#   DEPLOY_DIR=/home/media-server-pro ./vps-deploy.sh
 
 set -euo pipefail
 
@@ -46,8 +46,8 @@ VPS_HOST="${VPS_HOST:-66.179.136.144}"
 VPS_USER="${VPS_USER:-root}"
 VPS_PORT="${VPS_PORT:-22}"
 KEY_FILE="${KEY_FILE:-$HOME/.ssh/ED_25519}"
-DEPLOY_DIR="${DEPLOY_DIR:-/home/Media-Server-Pro-3}"
-SERVICE="${SERVICE:-mediaserver}"
+DEPLOY_DIR="${DEPLOY_DIR:-/home/Media-Server-Pro}"
+SERVICE="${SERVICE:-mediaserverpro}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 GITHUB_USERNAME="${GITHUB_USERNAME:-}"
 
@@ -76,7 +76,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo -e "\n${BOLD}=== Media Server Pro 3 — VPS Deploy ===${RESET}\n"
+echo -e "\n${BOLD}=== Media Server Pro — VPS Deploy ===${RESET}\n"
 info "VPS        : $VPS_USER@$VPS_HOST:$VPS_PORT"
 info "App dir    : $DEPLOY_DIR"
 info "Service    : $SERVICE"
@@ -108,9 +108,9 @@ if $FIX_ENV; then
   run_vps "
 ENV_FILE=$DEPLOY_DIR/.env
 if grep -q '^SERVER_PORT=' \"\$ENV_FILE\" 2>/dev/null; then
-  sed -i 's/^SERVER_PORT=.*/SERVER_PORT=8080/' \"\$ENV_FILE\"
+  sed -i 's/^SERVER_PORT=.*/SERVER_PORT=3000/' \"\$ENV_FILE\"
 else
-  echo 'SERVER_PORT=8080' >> \"\$ENV_FILE\"
+  echo 'SERVER_PORT=3000' >> \"\$ENV_FILE\"
 fi
 if grep -q '^SERVER_HOST=' \"\$ENV_FILE\" 2>/dev/null; then
   sed -i 's/^SERVER_HOST=.*/SERVER_HOST=127.0.0.1/' \"\$ENV_FILE\"
@@ -177,9 +177,9 @@ fi
 
 TAG_OPT='$TAG_OPT'
 if [ -n \"\$TAG_OPT\" ]; then
-  API_URL=\"https://api.github.com/repos/bradselph/Media-Server-Pro-3/releases/tags/\$TAG_OPT\"
+  API_URL=\"https://api.github.com/repos/bradselph/Media-Server-Pro/releases/tags/\$TAG_OPT\"
 else
-  API_URL='https://api.github.com/repos/bradselph/Media-Server-Pro-3/releases/latest'
+  API_URL='https://api.github.com/repos/bradselph/Media-Server-Pro/releases/latest'
 fi
 
 echo \"[deploy] Fetching release info from \$API_URL\"

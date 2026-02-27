@@ -27,7 +27,7 @@ const (
 	GitHubOwner = "bradselph"
 
 	// GitHubRepo is the repository name
-	GitHubRepo = "Media-Server-Pro-3"
+	GitHubRepo = "Media-Server-Pro"
 
 	// GitHubAPI is the GitHub API base URL
 	GitHubAPI = "https://api.github.com"
