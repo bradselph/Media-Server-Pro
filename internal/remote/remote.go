@@ -65,7 +65,7 @@ type SourceState struct {
 type MediaItem struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
-	Path        string            `json:"path"`
+	Path        string            `json:"-"`
 	URL         string            `json:"url"`
 	SourceName  string            `json:"source_name"`
 	Size        int64             `json:"size"`
@@ -78,7 +78,7 @@ type MediaItem struct {
 // CachedMedia represents cached remote media
 type CachedMedia struct {
 	RemoteURL   string    `json:"remote_url"`
-	LocalPath   string    `json:"local_path"`
+	LocalPath   string    `json:"-"`
 	Size        int64     `json:"size"`
 	ContentType string    `json:"content_type"`
 	CachedAt    time.Time `json:"cached_at"`

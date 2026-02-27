@@ -39,7 +39,7 @@ const (
 
 // CategorizedItem represents a categorized media item
 type CategorizedItem struct {
-	Path           string     `json:"path"`
+	Path           string     `json:"-"`
 	Category       Category   `json:"category"`
 	Confidence     float64    `json:"confidence"`
 	DetectedInfo   *MediaInfo `json:"detected_info,omitempty"`

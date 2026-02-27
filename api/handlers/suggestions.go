@@ -39,9 +39,9 @@ func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
 
 // GetSimilarMedia returns similar media to a given item
 func (h *Handler) GetSimilarMedia(c *gin.Context) {
-	path := c.Query("path")
-	if path == "" {
-		writeError(c, http.StatusBadRequest, errPathRequired)
+	id := c.Query("id")
+	absPath, ok := h.resolveMediaByID(c, id)
+	if !ok {
 		return
 	}
 
@@ -50,7 +50,7 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 		limit = l
 	}
 
-	similar := h.suggestions.GetSimilarMedia(path, limit)
+	similar := h.suggestions.GetSimilarMedia(absPath, limit)
 	h.enrichSuggestionThumbnails(similar)
 	writeSuccess(c, similar)
 }
@@ -100,7 +100,7 @@ func (h *Handler) RecordRating(c *gin.Context) {
 	}
 
 	var req struct {
-		Path   string  `json:"path"`
+		ID     string  `json:"id"`
 		Rating float64 `json:"rating"`
 	}
 	if c.ShouldBindJSON(&req) != nil {
@@ -108,7 +108,12 @@ func (h *Handler) RecordRating(c *gin.Context) {
 		return
 	}
 
-	h.suggestions.RecordRating(session.UserID, req.Path, req.Rating)
+	absPath, ok := h.resolveMediaByID(c, req.ID)
+	if !ok {
+		return
+	}
+
+	h.suggestions.RecordRating(session.UserID, absPath, req.Rating)
 	writeSuccess(c, nil)
 }
 

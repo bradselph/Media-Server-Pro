@@ -392,10 +392,10 @@ func (h *Handler) GetWatchHistory(c *gin.Context) {
 	}
 
 	history := user.WatchHistory
-	if pathFilter := c.Query("path"); pathFilter != "" {
+	if idFilter := c.Query("id"); idFilter != "" {
 		var matched []models.WatchHistoryItem
 		for _, item := range history {
-			if item.MediaPath == pathFilter {
+			if item.MediaID == idFilter {
 				matched = append(matched, item)
 				break
 			}
@@ -424,13 +424,19 @@ func (h *Handler) ClearWatchHistory(c *gin.Context) {
 		return
 	}
 
-	if mediaPath := c.Query("path"); mediaPath != "" {
-		if err := h.auth.RemoveWatchHistoryItem(c.Request.Context(), session.Username, mediaPath); err != nil {
+	if mediaID := c.Query("id"); mediaID != "" {
+		// Resolve ID to path for internal operations
+		item, err := h.media.GetMediaByID(mediaID)
+		if err != nil {
+			writeError(c, http.StatusNotFound, errMediaNotFound)
+			return
+		}
+		if err := h.auth.RemoveWatchHistoryItem(c.Request.Context(), session.Username, item.Path); err != nil {
 			h.log.Error("%v", err)
 			writeError(c, http.StatusInternalServerError, "Internal server error")
 			return
 		}
-		h.media.ClearPlaybackPosition(c.Request.Context(), mediaPath, session.UserID)
+		h.media.ClearPlaybackPosition(c.Request.Context(), item.Path, session.UserID)
 		writeSuccess(c, map[string]string{"status": "removed"})
 		return
 	}

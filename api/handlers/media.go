@@ -1,11 +1,8 @@
 package handlers
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -132,17 +129,10 @@ func (h *Handler) ListMedia(c *gin.Context) {
 func (h *Handler) GetMedia(c *gin.Context) {
 	id := c.Param("id")
 
-	if decoded, err := url.PathUnescape(id); err == nil {
-		id = decoded
-	}
-
-	item, err := h.media.GetMedia(id)
+	item, err := h.media.GetMediaByID(id)
 	if err != nil {
-		item, err = h.media.GetMediaByID(id)
-		if err != nil {
-			writeError(c, http.StatusNotFound, "Media not found")
-			return
-		}
+		writeError(c, http.StatusNotFound, errMediaNotFound)
+		return
 	}
 
 	if item.ThumbnailURL == "" {
@@ -183,13 +173,8 @@ func (h *Handler) GetCategories(c *gin.Context) {
 
 // StreamMedia streams a media file
 func (h *Handler) StreamMedia(c *gin.Context) {
-	path := c.Query("path")
-	if path == "" {
-		writeError(c, http.StatusBadRequest, errPathRequired)
-		return
-	}
-
-	absPath, ok := h.resolveAndValidatePath(c, path, h.allowedMediaDirs())
+	id := c.Query("id")
+	absPath, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return
 	}
@@ -268,13 +253,8 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		}
 	}
 
-	path := c.Query("path")
-	if path == "" {
-		writeError(c, http.StatusBadRequest, errPathRequired)
-		return
-	}
-
-	absPath, ok := h.resolveAndValidatePath(c, path, h.allowedMediaDirs())
+	id := c.Query("id")
+	absPath, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return
 	}
@@ -299,9 +279,9 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 
 // GetPlaybackPosition returns the saved playback position for the current user.
 func (h *Handler) GetPlaybackPosition(c *gin.Context) {
-	path := c.Query("path")
-	if path == "" {
-		writeError(c, http.StatusBadRequest, errPathParamRequired)
+	id := c.Query("id")
+	absPath, ok := h.resolveMediaByID(c, id)
+	if !ok {
 		return
 	}
 
@@ -310,19 +290,24 @@ func (h *Handler) GetPlaybackPosition(c *gin.Context) {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
-	position := h.media.GetPlaybackPosition(c.Request.Context(), path, session.UserID)
+	position := h.media.GetPlaybackPosition(c.Request.Context(), absPath, session.UserID)
 	writeSuccess(c, map[string]float64{"position": position})
 }
 
 // TrackPlayback records playback position
 func (h *Handler) TrackPlayback(c *gin.Context) {
 	var req struct {
-		Path     string  `json:"path"`
+		ID       string  `json:"id"`
 		Position float64 `json:"position"`
 		Duration float64 `json:"duration"`
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	absPath, ok := h.resolveMediaByID(c, req.ID)
+	if !ok {
 		return
 	}
 
@@ -335,15 +320,14 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 	}
 
 	if userID != "" {
-		if err := h.media.UpdatePlaybackPosition(c.Request.Context(), req.Path, userID, req.Position); err != nil {
-			h.log.Warn("Failed to update playback position for %s: %v", req.Path, err)
+		if err := h.media.UpdatePlaybackPosition(c.Request.Context(), absPath, userID, req.Position); err != nil {
+			h.log.Warn("Failed to update playback position for media %s: %v", req.ID, err)
 		}
 
 		if req.Duration > 0 && username != "" {
-			pathHash := md5.Sum([]byte(req.Path))
 			item := models.WatchHistoryItem{
-				MediaPath: req.Path,
-				MediaID:   hex.EncodeToString(pathHash[:]),
+				MediaPath: absPath,
+				MediaID:   req.ID,
 				Position:  req.Position,
 				Duration:  req.Duration,
 				WatchedAt: time.Now(),
@@ -351,13 +335,13 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 			item.Progress = req.Position / req.Duration
 			item.Completed = item.Progress >= 0.9
 			if err := h.auth.AddToWatchHistory(c.Request.Context(), username, item); err != nil {
-				h.log.Debug("Watch history update skipped for %s: %v", req.Path, err)
+				h.log.Debug("Watch history update skipped for media %s: %v", req.ID, err)
 			}
 		}
 	}
 
 	if h.analytics != nil {
-		h.analytics.TrackPlayback(c.Request.Context(), req.Path, userID, sessionID, req.Position, req.Duration)
+		h.analytics.TrackPlayback(c.Request.Context(), absPath, userID, sessionID, req.Position, req.Duration)
 	}
 
 	writeSuccess(c, nil)

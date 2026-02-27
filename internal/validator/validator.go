@@ -54,7 +54,7 @@ const (
 
 // ValidationResult holds the result of validating a media file
 type ValidationResult struct {
-	Path           string           `json:"path"`
+	Path           string           `json:"-"`
 	Status         ValidationStatus `json:"status"`
 	ValidatedAt    time.Time        `json:"validated_at"`
 	Duration       float64          `json:"duration"`
@@ -65,7 +65,7 @@ type ValidationResult struct {
 	Bitrate        int64            `json:"bitrate,omitempty"`
 	Container      string           `json:"container,omitempty"`
 	Issues         []string         `json:"issues,omitempty"`
-	FixedPath      string           `json:"fixed_path,omitempty"`
+	FixedPath      string           `json:"-"`
 	Error          string           `json:"error,omitempty"`
 	VideoSupported bool             `json:"video_supported"`
 	AudioSupported bool             `json:"audio_supported"`

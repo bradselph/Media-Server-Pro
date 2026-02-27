@@ -64,7 +64,7 @@ type Progress struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 	Error       string     `json:"error,omitempty"`
 	UserID      string     `json:"user_id"`
-	DestPath    string     `json:"dest_path,omitempty"`
+	DestPath    string     `json:"-"`
 }
 
 // Result contains the result of an upload.

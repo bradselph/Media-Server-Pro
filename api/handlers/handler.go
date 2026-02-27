@@ -41,12 +41,13 @@ import (
 
 // Error message constants to avoid duplication.
 const (
-	errPathRequired      = "Path required"
+	errIDRequired        = "Media ID required"
 	errFileNotFound      = "File not found"
 	errInvalidRequest    = "Invalid request"
 	errNotAuthenticated  = "Not authenticated"
 	errUserNotFound      = "User not found"
-	errPathParamRequired = "path parameter required"
+	errMediaNotFound     = "Media not found"
+	errPathParamRequired = "path parameter required" // admin route params only
 )
 
 // HTTP header name constants to avoid duplication.
@@ -359,6 +360,23 @@ func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
 func (h *Handler) allowedMediaDirs() []string {
 	cfg := h.media.GetConfig()
 	return []string{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads}
+}
+
+// resolveMediaByID looks up a media item by its opaque ID and returns the
+// server-side file path. The ID is an MD5 hash of the path, generated during
+// media scanning. Returns the absolute path and true on success, or writes an
+// error response and returns ("", false) on failure.
+func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
+	if id == "" {
+		writeError(c, http.StatusBadRequest, errIDRequired)
+		return "", false
+	}
+	item, err := h.media.GetMediaByID(id)
+	if err != nil {
+		writeError(c, http.StatusNotFound, errMediaNotFound)
+		return "", false
+	}
+	return item.Path, true
 }
 
 // getUserStorageQuota returns storage quota for user type

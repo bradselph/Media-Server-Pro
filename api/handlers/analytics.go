@@ -98,18 +98,13 @@ func (h *Handler) GetTopMedia(c *gin.Context) {
 	enriched := make([]map[string]interface{}, 0, len(top))
 	for _, item := range top {
 		filename := item.MediaID
-		mediaPath := ""
 		if mediaItem, err := h.media.GetMedia(item.MediaID); err == nil && mediaItem != nil {
 			filename = mediaItem.Name
-			mediaPath = mediaItem.Path
 		}
 		entry := map[string]interface{}{
 			"media_id": item.MediaID,
 			"filename": filename,
 			"views":    item.Views,
-		}
-		if mediaPath != "" {
-			entry["media_path"] = mediaPath
 		}
 		enriched = append(enriched, entry)
 	}

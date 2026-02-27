@@ -94,7 +94,6 @@ export interface MediaCategory {
 // date_added/date_modified are RFC3339 strings — use new Date(item.date_added), never parseInt.
 export interface MediaItem {
     id: string
-    path: string
     // Backend uses "name" not "title" or "filename"
     name: string
     type: 'video' | 'audio' | 'unknown'
@@ -165,7 +164,6 @@ export interface HLSCapabilities {
     available: boolean
     ffmpeg_found: boolean
     ffprobe_found: boolean
-    ffmpeg_path?: string
     healthy: boolean
     message: string
     qualities: string[]
@@ -180,7 +178,6 @@ export interface HLSAvailability {
     hls_url: string
     id: string
     job_id: string   // alias for id — backend sends both
-    media_path: string
     status: string
     progress: number
     qualities: string[]
@@ -195,7 +192,6 @@ export interface HLSAvailability {
 // models.HLSJob directly which has json:"error,omitempty" — absent when empty.
 export interface HLSJob {
     id: string
-    media_path: string
     status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
     progress: number
     qualities: string[]
@@ -203,7 +199,6 @@ export interface HLSJob {
     completed_at?: string
     hls_url?: string
     available: boolean
-    output_dir?: string
     error?: string
     fail_count?: number
 }
@@ -232,8 +227,6 @@ export interface PlaylistItem {
     id?: string
     playlist_id?: string
     media_id: string
-    // Backend uses "media_path" not "path"
-    media_path: string
     title: string
     position: number
     added_at: string
@@ -274,7 +267,6 @@ export interface AnalyticsSummary {
 export interface WatchHistoryEntry {
     // Backend models.WatchHistoryItem.MediaID string json:"media_id" (no omitempty) — always present
     media_id: string
-    media_path: string
     position: number
     duration: number
     // Backend uses "progress" (float ratio 0-1) not "completion"
@@ -335,8 +327,7 @@ export interface AgeGateStatus {
 
 // Backend suggestions.Suggestion JSON fields (internal/suggestions/suggestions.go)
 export interface Suggestion {
-    // Backend uses "media_path" not "path" or "media_id"
-    media_path: string
+    media_id: string
     title: string
     category: string
     media_type: string
@@ -458,7 +449,6 @@ export interface ScannerStats {
 // Matches backend models.MatureReviewItem JSON
 export interface ScanResultItem {
     id: string
-    media_path: string   // backend field name (NOT "path")
     detected_at: string
     confidence: number
     reasons: string[] | null
@@ -496,7 +486,6 @@ export interface HLSStats {
     failed_jobs: number
     pending_jobs: number
     cache_size_bytes: number
-    cache_dir: string
 }
 
 // ── Analytics ──
@@ -519,8 +508,6 @@ export interface TopMediaItem {
     media_id: string
     filename: string
     views: number
-    // Backend enriches with actual file path when media lookup succeeds (omitempty)
-    media_path?: string
 }
 
 export interface EventTypeCounts {
@@ -541,7 +528,6 @@ export interface RemoteSource {
 export interface RemoteMediaItem {
     id: string
     name: string
-    path: string
     url: string
     source_name: string
     size: number
@@ -610,10 +596,10 @@ export interface PermissionsInfo {
 
 // ── Feature 2: Ratings ──
 
-// DEPRECATED: DC-06 — ratingsApi.record() accepts (path, rating) inline; this type is never
+// DEPRECATED: DC-06 — ratingsApi.record() accepts (id, rating) inline; this type is never
 // imported or used. Safe to delete.
 export interface RatingRequest {
-    path: string
+    id: string
     rating: number
 }
 
@@ -635,7 +621,6 @@ export interface UploadProgress {
     completed_at?: string
     error?: string
     user_id: string
-    dest_path?: string
 }
 
 // ── Feature 5: Analytics Detail ──
@@ -736,7 +721,6 @@ export interface DetectedMediaInfo {
 }
 
 export interface CategorizedItem {
-    path: string
     category: string
     confidence: number
     detected_info?: DetectedMediaInfo
@@ -755,7 +739,6 @@ export interface CategoryStats {
 
 // Matches internal/validator ValidationResult JSON tags
 export interface ValidationResult {
-    path: string
     status: string
     validated_at: string
     duration: number
@@ -766,7 +749,6 @@ export interface ValidationResult {
     bitrate?: number
     container?: string
     issues?: string[]
-    fixed_path?: string
     error?: string
     video_supported: boolean
     audio_supported: boolean
@@ -787,7 +769,6 @@ export interface ValidatorStats {
 // Matches internal/remote CachedMedia struct returned by CacheRemoteMedia handler
 export interface CachedMediaResult {
     remote_url: string
-    local_path: string
     size: number
     content_type: string
     cached_at: string
@@ -806,9 +787,7 @@ export interface ThumbnailPreviews {
 
 // Matches pkg/models AutoDiscoverySuggestion JSON tags
 export interface DiscoverySuggestion {
-    original_path: string
     suggested_name: string
-    suggested_path: string
     type: string
     confidence: number
     metadata?: Record<string, string>

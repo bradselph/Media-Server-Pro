@@ -481,9 +481,7 @@ func (m *Module) GetConfigMap() map[string]interface{} {
 			"enable_ip_blacklist": cfg.Security.EnableIPBlacklist,
 		},
 		"directories": map[string]interface{}{
-			"videos":    cfg.Directories.Videos,
-			"data":      cfg.Directories.Data,
-			"hls_cache": cfg.Directories.HLSCache,
+			"configured": true,
 		},
 		"hls": map[string]interface{}{
 			"enabled":          cfg.HLS.Enabled,

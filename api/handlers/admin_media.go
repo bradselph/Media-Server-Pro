@@ -160,7 +160,7 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 	if updatedItem, err := h.media.GetMedia(path); err == nil && updatedItem != nil {
 		writeSuccess(c, updatedItem)
 	} else {
-		writeSuccess(c, map[string]string{"message": "Media updated", "path": path})
+		writeSuccess(c, map[string]string{"message": "Media updated"})
 	}
 }
 
