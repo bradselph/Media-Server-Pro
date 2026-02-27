@@ -35,7 +35,7 @@ type Capabilities struct {
 	Available     bool     `json:"available"`
 	FFmpegFound   bool     `json:"ffmpeg_found"`
 	FFprobeFound  bool     `json:"ffprobe_found"`
-	FFmpegPath    string   `json:"ffmpeg_path,omitempty"`
+	FFmpegPath    string   `json:"-"`
 	Healthy       bool     `json:"healthy"`
 	Message       string   `json:"message"`
 	Qualities     []string `json:"qualities"`
@@ -1725,7 +1725,7 @@ type Stats struct {
 	FailedJobs    int    `json:"failed_jobs"`
 	PendingJobs   int    `json:"pending_jobs"`
 	CacheSize     int64  `json:"cache_size_bytes"`
-	CacheDir      string `json:"cache_dir"`
+	CacheDir      string `json:"-"`
 }
 
 func (m *Module) calculateCacheSize() int64 {

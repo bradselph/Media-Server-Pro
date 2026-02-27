@@ -16,10 +16,12 @@ const (
 	MediaTypeUnknown MediaType = "unknown" // DEPRECATED: S-04 — never assigned; unmatched files are dropped not catalogued — safe to delete
 )
 
-// MediaItem represents a media file with metadata
+// MediaItem represents a media file with metadata.
+// Path is excluded from JSON serialization to prevent leaking filesystem paths to clients.
+// Clients should reference media items by their ID (MD5 hash of path).
 type MediaItem struct {
 	ID           string     `json:"id"`
-	Path         string     `json:"path"`
+	Path         string     `json:"-"`
 	Name         string     `json:"name"`
 	Type         MediaType  `json:"type"`
 	Size         int64      `json:"size"`
@@ -261,7 +263,7 @@ func (p *UserPreferences) UnmarshalJSON(data []byte) error {
 // WatchHistoryItem represents an item in watch history
 type WatchHistoryItem struct {
 	MediaID   string    `json:"media_id"`
-	MediaPath string    `json:"media_path"`
+	MediaPath string    `json:"-"`
 	Position  float64   `json:"position"`
 	Duration  float64   `json:"duration"`
 	Progress  float64   `json:"progress"`
@@ -435,7 +437,7 @@ type PlaylistItem struct {
 	ID         string    `json:"id,omitempty" db:"id" gorm:"primaryKey;size:255"`
 	PlaylistID string    `json:"playlist_id,omitempty" db:"playlist_id" gorm:"size:255;not null;index"`
 	MediaID    string    `json:"media_id" db:"media_id" gorm:"size:255;not null"`
-	MediaPath  string    `json:"media_path" db:"media_path" gorm:"size:1024;not null"`
+	MediaPath  string    `json:"-" db:"media_path" gorm:"size:1024;not null"`
 	Title      string    `json:"title" db:"title" gorm:"size:500"`
 	Position   int       `json:"position" db:"position" gorm:"default:0"`
 	AddedAt    time.Time `json:"added_at" db:"added_at" gorm:"autoCreateTime"`
@@ -488,8 +490,8 @@ type DailyStats struct {
 // HLSJob represents an HLS transcoding job
 type HLSJob struct {
 	ID          string     `json:"id"`
-	MediaPath   string     `json:"media_path"`
-	OutputDir   string     `json:"output_dir"`
+	MediaPath   string     `json:"-"`
+	OutputDir   string     `json:"-"`
 	Status      HLSStatus  `json:"status"`
 	Progress    float64    `json:"progress"`
 	Qualities   []string   `json:"qualities"`
@@ -529,7 +531,7 @@ type StreamSession struct {
 // MatureReviewItem represents an item in the mature content review queue
 type MatureReviewItem struct {
 	ID         string     `json:"id"`
-	MediaPath  string     `json:"media_path"`
+	MediaPath  string     `json:"-"`
 	DetectedAt time.Time  `json:"detected_at"`
 	Confidence float64    `json:"confidence"`
 	Reasons    []string   `json:"reasons"`
@@ -612,9 +614,9 @@ type APIResponse struct {
 
 // AutoDiscoverySuggestion represents a naming suggestion
 type AutoDiscoverySuggestion struct {
-	OriginalPath  string            `json:"original_path"`
+	OriginalPath  string            `json:"-"`
 	SuggestedName string            `json:"suggested_name"`
-	SuggestedPath string            `json:"suggested_path"`
+	SuggestedPath string            `json:"-"`
 	Type          string            `json:"type"` // movie, tv_episode, music
 	Confidence    float64           `json:"confidence"`
 	Metadata      map[string]string `json:"metadata,omitempty"`

@@ -3,6 +3,8 @@ package suggestions
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"math/rand"
@@ -18,6 +20,12 @@ import (
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
+
+// pathToID computes the MD5 hash of a path, matching models.MediaItem.ID generation.
+func pathToID(path string) string {
+	h := md5.Sum([]byte(path))
+	return hex.EncodeToString(h[:])
+}
 
 // ViewHistory tracks a user's viewing history
 type ViewHistory struct {
@@ -42,9 +50,11 @@ type UserProfile struct {
 	LastUpdated     time.Time          `json:"last_updated"`
 }
 
-// Suggestion represents a content recommendation
+// Suggestion represents a content recommendation.
+// MediaPath is excluded from JSON to prevent leaking filesystem paths. Use MediaID instead.
 type Suggestion struct {
-	MediaPath    string   `json:"media_path"`
+	MediaID      string   `json:"media_id"`
+	MediaPath    string   `json:"-"`
 	Title        string   `json:"title"`
 	Category     string   `json:"category"`
 	MediaType    string   `json:"media_type"`
@@ -298,6 +308,7 @@ func (m *Module) GetSuggestions(userID string, limit int) []*Suggestion {
 
 		if score > 0 {
 			suggestions = append(suggestions, &Suggestion{
+				MediaID:   pathToID(media.Path),
 				MediaPath: media.Path,
 				Title:     media.Title,
 				Category:  media.Category,
@@ -472,6 +483,7 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 		score *= 1.0 + (rand.Float64()*0.40 - 0.20)
 
 		suggestions = append(suggestions, &Suggestion{
+			MediaID:   pathToID(media.Path),
 			MediaPath: media.Path,
 			Title:     media.Title,
 			Category:  media.Category,
@@ -517,6 +529,7 @@ func (m *Module) GetSimilarMedia(mediaPath string, limit int) []*Suggestion {
 
 		if score > 0 {
 			suggestions = append(suggestions, &Suggestion{
+				MediaID:   pathToID(media.Path),
 				MediaPath: media.Path,
 				Title:     media.Title,
 				Category:  media.Category,
@@ -624,6 +637,7 @@ func (m *Module) GetContinueWatching(userID string, limit int) []*Suggestion {
 		}
 
 		suggestions = append(suggestions, &Suggestion{
+			MediaID:   pathToID(vh.MediaPath),
 			MediaPath: vh.MediaPath,
 			Title:     title,
 			Category:  vh.Category,

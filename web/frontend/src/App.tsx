@@ -60,6 +60,7 @@ export default function App() {
                                         {/* Public routes */}
                                         <Route path="/" element={<IndexPage/>}/>
                                         <Route path="/login" element={<LoginPage/>}/>
+                                        <Route path="/admin-login" element={<LoginPage/>}/>
                                         <Route path="/signup" element={<SignupPage/>}/>
                                         <Route path="/player" element={<PlayerPage/>}/>
 
