@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0] - 2026-02-28 (minor)
+
+- Merge pull request #14 from bradselph/development
+- Fix vite.config.ts TS error: import defineConfig from vitest/config
+- Fix deploy: commit package-lock.json to ensure reproducible npm builds
+
+
 ## [0.10.0] - 2026-02-28 (minor)
 
 - Merge pull request #13 from bradselph/development
