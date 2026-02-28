@@ -8,6 +8,83 @@ interface State {
     error: Error | null
 }
 
+// ── SectionErrorBoundary ──────────────────────────────────────────────────────
+
+interface SectionProps {
+    children: ReactNode
+    /** Optional label shown in the error card header. */
+    title?: string
+}
+
+interface SectionState {
+    error: Error | null
+}
+
+/**
+ * Inline error boundary for isolating individual page sections.
+ *
+ * Shows a compact, self-contained error card instead of taking over the full
+ * page. "Retry" resets the boundary state so the child can re-mount — no page
+ * reload is needed. Use this to protect sidebar panels, admin tabs, or any
+ * UI section whose failure should not break the surrounding page:
+ *
+ *   <SectionErrorBoundary title="Similar media">
+ *     <SimilarVideosPanel />
+ *   </SectionErrorBoundary>
+ */
+export class SectionErrorBoundary extends Component<SectionProps, SectionState> {
+    state: SectionState = {error: null}
+
+    static getDerivedStateFromError(error: Error): SectionState {
+        return {error}
+    }
+
+    handleRetry = () => {
+        this.setState({error: null})
+    }
+
+    render() {
+        if (this.state.error) {
+            return (
+                <div style={{
+                    padding: 16,
+                    border: '1px solid var(--border-color, #2a2a2a)',
+                    borderRadius: 8,
+                    background: 'var(--bg-secondary, #1a1a1a)',
+                    color: 'var(--text-color, #e0e0e0)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    alignItems: 'flex-start',
+                }}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: 8, color: '#ef4444'}}>
+                        <i className="bi bi-exclamation-triangle-fill"/>
+                        <strong>{this.props.title ?? 'Section unavailable'}</strong>
+                    </div>
+                    <p style={{margin: 0, fontSize: 13, color: 'var(--text-muted, #888)'}}>
+                        {this.state.error.message || 'An unexpected error occurred in this section.'}
+                    </p>
+                    <button
+                        onClick={this.handleRetry}
+                        style={{
+                            padding: '4px 12px',
+                            background: 'transparent',
+                            color: '#667eea',
+                            border: '1px solid #667eea',
+                            borderRadius: 4,
+                            cursor: 'pointer',
+                            fontSize: 13,
+                        }}
+                    >
+                        <i className="bi bi-arrow-clockwise"/> Retry
+                    </button>
+                </div>
+            )
+        }
+        return this.props.children
+    }
+}
+
 /**
  * Catches render errors from lazy-loaded pages and shows a recovery UI.
  * Must be a class component — hooks cannot catch render-phase errors.

@@ -3,6 +3,7 @@ import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useQuery} from '@tanstack/react-query'
 import {useAuthStore} from '@/stores/authStore'
 import {useToast} from '@/components/Toast'
+import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {useHLS} from '@/hooks/useHLS'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useEqualizer} from '@/hooks/useEqualizer'
@@ -984,6 +985,7 @@ export function PlayerPage() {
                     </div>
 
                     {/* Sidebar */}
+                    <SectionErrorBoundary title="Sidebar unavailable">
                     <div className="player-sidebar">
                         <div className="player-sidebar-card">
                             <h3><i className="bi bi-play-fill"/> Similar Media</h3>
@@ -1030,6 +1032,7 @@ export function PlayerPage() {
                             </div>
                         )}
                     </div>
+                    </SectionErrorBoundary>
                 </div>
             </div>
         </div>
