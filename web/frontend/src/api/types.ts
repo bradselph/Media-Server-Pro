@@ -383,12 +383,6 @@ export interface ModuleHealth {
     last_check?: string
 }
 
-// DEPRECATED: R-06 — identical to User with no additional fields; all callers could use User
-// directly. Safe to replace AdminUser with User throughout endpoints.ts and delete this type.
-export interface AdminUser extends User {
-    // same as User but all fields present
-}
-
 // Backend models.AuditLogEntry JSON fields
 export interface AuditLogEntry {
     id: string
@@ -602,13 +596,6 @@ export interface PermissionsInfo {
 
 // ── Feature 2: Ratings ──
 
-// DEPRECATED: DC-06 — ratingsApi.record() accepts (id, rating) inline; this type is never
-// imported or used. Safe to delete.
-export interface RatingRequest {
-    id: string
-    rating: number
-}
-
 // ── Feature 4: Upload ──
 
 export interface UploadResult {
@@ -636,14 +623,6 @@ export interface EventStats {
     total_events: number
     event_counts: Record<string, number>
     hourly_events: number[]
-}
-
-// DEPRECATED: DC-05 — GetEventTypeCounts now returns map[string]int (Record<string,number>);
-// this interface was for a previous array-based response that no longer exists. Safe to delete.
-export interface EventsByTypeEntry {
-    type: string
-    count: number
-    last_at?: string
 }
 
 // ── Feature 6: Admin Playlists ──
