@@ -50,6 +50,17 @@ func (h *Handler) GetHealth(c *gin.Context) {
 	}
 
 	c.Header("Cache-Control", "no-cache, no-store")
+
+	// Only expose module details and version to authenticated users
+	user := getUser(c)
+	if user == nil {
+		c.JSON(httpCode, map[string]interface{}{
+			"status":    status,
+			"timestamp": time.Now().Unix(),
+		})
+		return
+	}
+
 	resp := map[string]interface{}{
 		"status":    status,
 		"version":   h.version,

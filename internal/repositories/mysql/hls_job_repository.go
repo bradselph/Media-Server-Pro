@@ -1,0 +1,135 @@
+package mysql
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
+	"media-server-pro/internal/repositories"
+	"media-server-pro/pkg/models"
+)
+
+type hlsJobRow struct {
+	ID          string     `gorm:"column:id;primaryKey"`
+	MediaPath   string     `gorm:"column:media_path"`
+	OutputDir   string     `gorm:"column:output_dir"`
+	Status      string     `gorm:"column:status"`
+	Progress    float64    `gorm:"column:progress"`
+	Qualities   string     `gorm:"column:qualities;type:json"`
+	StartedAt   time.Time  `gorm:"column:started_at"`
+	CompletedAt *time.Time `gorm:"column:completed_at"`
+	Error       *string    `gorm:"column:error_message"`
+	FailCount   int        `gorm:"column:fail_count"`
+	HLSUrl      *string    `gorm:"column:hls_url"`
+	Available   bool       `gorm:"column:available"`
+}
+
+func (hlsJobRow) TableName() string { return "hls_jobs" }
+
+type HLSJobRepository struct {
+	db *gorm.DB
+}
+
+func NewHLSJobRepository(db *gorm.DB) repositories.HLSJobRepository {
+	return &HLSJobRepository{db: db}
+}
+
+func (r *HLSJobRepository) Save(ctx context.Context, job *models.HLSJob) error {
+	row := r.jobToRow(job)
+	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"media_path", "output_dir", "status", "progress", "qualities",
+			"started_at", "completed_at", "error_message", "fail_count",
+			"hls_url", "available",
+		}),
+	}).Create(&row).Error; err != nil {
+		return fmt.Errorf("failed to save HLS job: %w", err)
+	}
+	return nil
+}
+
+func (r *HLSJobRepository) Get(ctx context.Context, id string) (*models.HLSJob, error) {
+	var row hlsJobRow
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get HLS job: %w", err)
+	}
+	return r.rowToJob(&row), nil
+}
+
+func (r *HLSJobRepository) Delete(ctx context.Context, id string) error {
+	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&hlsJobRow{}).Error; err != nil {
+		return fmt.Errorf("failed to delete HLS job: %w", err)
+	}
+	return nil
+}
+
+func (r *HLSJobRepository) List(ctx context.Context) ([]*models.HLSJob, error) {
+	var rows []hlsJobRow
+	if err := r.db.WithContext(ctx).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("failed to list HLS jobs: %w", err)
+	}
+	jobs := make([]*models.HLSJob, len(rows))
+	for i := range rows {
+		jobs[i] = r.rowToJob(&rows[i])
+	}
+	return jobs, nil
+}
+
+func (r *HLSJobRepository) jobToRow(job *models.HLSJob) hlsJobRow {
+	qualJSON, _ := json.Marshal(job.Qualities)
+	row := hlsJobRow{
+		ID:        job.ID,
+		MediaPath: job.MediaPath,
+		OutputDir: job.OutputDir,
+		Status:    string(job.Status),
+		Progress:  job.Progress,
+		Qualities: string(qualJSON),
+		StartedAt: job.StartedAt,
+		FailCount: job.FailCount,
+		Available: job.Available,
+	}
+	if job.CompletedAt != nil {
+		row.CompletedAt = job.CompletedAt
+	}
+	if job.Error != "" {
+		row.Error = &job.Error
+	}
+	if job.HLSUrl != "" {
+		row.HLSUrl = &job.HLSUrl
+	}
+	return row
+}
+
+func (r *HLSJobRepository) rowToJob(row *hlsJobRow) *models.HLSJob {
+	job := &models.HLSJob{
+		ID:          row.ID,
+		MediaPath:   row.MediaPath,
+		OutputDir:   row.OutputDir,
+		Status:      models.HLSStatus(row.Status),
+		Progress:    row.Progress,
+		StartedAt:   row.StartedAt,
+		CompletedAt: row.CompletedAt,
+		FailCount:   row.FailCount,
+		Available:   row.Available,
+	}
+	if row.Error != nil {
+		job.Error = *row.Error
+	}
+	if row.HLSUrl != nil {
+		job.HLSUrl = *row.HLSUrl
+	}
+	_ = json.Unmarshal([]byte(row.Qualities), &job.Qualities)
+	if job.Qualities == nil {
+		job.Qualities = []string{}
+	}
+	return job
+}

@@ -33,7 +33,11 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 	}
 
 	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-	if err == nil && !user.Permissions.CanCreatePlaylists {
+	if err != nil || user == nil {
+		writeError(c, http.StatusInternalServerError, "Failed to retrieve user permissions")
+		return
+	}
+	if !user.Permissions.CanCreatePlaylists {
 		writeError(c, http.StatusForbidden, "Playlist creation not allowed for your user type")
 		return
 	}

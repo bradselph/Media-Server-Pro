@@ -216,6 +216,139 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 				PRIMARY KEY (path, reason(191)),
 				FOREIGN KEY (path) REFERENCES scan_results(path) ON DELETE CASCADE
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"categorized_items", `
+			CREATE TABLE IF NOT EXISTS categorized_items (
+				path            VARCHAR(500) PRIMARY KEY,
+				id              VARCHAR(64)  NOT NULL,
+				name            VARCHAR(255) NOT NULL,
+				category        VARCHAR(50)  NOT NULL DEFAULT 'uncategorized',
+				confidence      FLOAT        DEFAULT 0.0,
+				detected_title  VARCHAR(255),
+				detected_year   INT,
+				detected_season INT,
+				detected_episode INT,
+				detected_show   VARCHAR(255),
+				detected_artist VARCHAR(255),
+				detected_album  VARCHAR(255),
+				categorized_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				manual_override BOOLEAN      DEFAULT FALSE,
+				INDEX idx_category (category),
+				INDEX idx_id       (id)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"hls_jobs", `
+			CREATE TABLE IF NOT EXISTS hls_jobs (
+				id            VARCHAR(64)  PRIMARY KEY,
+				media_path    VARCHAR(500) NOT NULL,
+				output_dir    VARCHAR(500),
+				status        VARCHAR(50)  NOT NULL DEFAULT 'pending',
+				progress      FLOAT        DEFAULT 0.0,
+				qualities     JSON,
+				started_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				completed_at  TIMESTAMP    NULL,
+				error_message TEXT,
+				fail_count    INT          DEFAULT 0,
+				hls_url       VARCHAR(1024),
+				available     BOOLEAN      DEFAULT FALSE,
+				INDEX idx_media_path (media_path),
+				INDEX idx_status     (status)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"validation_results", `
+			CREATE TABLE IF NOT EXISTS validation_results (
+				path            VARCHAR(500) PRIMARY KEY,
+				status          VARCHAR(50)  NOT NULL DEFAULT 'pending',
+				validated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				duration        FLOAT        DEFAULT 0.0,
+				video_codec     VARCHAR(100),
+				audio_codec     VARCHAR(100),
+				width           INT          DEFAULT 0,
+				height          INT          DEFAULT 0,
+				bitrate         BIGINT       DEFAULT 0,
+				container       VARCHAR(100),
+				issues          JSON,
+				error_message   TEXT,
+				video_supported BOOLEAN      DEFAULT FALSE,
+				audio_supported BOOLEAN      DEFAULT FALSE
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"suggestion_profiles", `
+			CREATE TABLE IF NOT EXISTS suggestion_profiles (
+				user_id          VARCHAR(255) PRIMARY KEY,
+				category_scores  JSON,
+				type_preferences JSON,
+				total_views      INT     DEFAULT 0,
+				total_watch_time FLOAT   DEFAULT 0.0,
+				last_updated     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"suggestion_view_history", `
+			CREATE TABLE IF NOT EXISTS suggestion_view_history (
+				user_id      VARCHAR(255),
+				media_path   VARCHAR(500),
+				category     VARCHAR(100),
+				media_type   VARCHAR(50),
+				view_count   INT       DEFAULT 0,
+				total_time   FLOAT     DEFAULT 0.0,
+				last_viewed  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				completed_at TIMESTAMP NULL,
+				rating       FLOAT     DEFAULT 0.0,
+				PRIMARY KEY (user_id, media_path(255))
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"autodiscovery_suggestions", `
+			CREATE TABLE IF NOT EXISTS autodiscovery_suggestions (
+				original_path  VARCHAR(500) PRIMARY KEY,
+				suggested_name VARCHAR(500),
+				suggested_path VARCHAR(500),
+				type           VARCHAR(50),
+				confidence     FLOAT   DEFAULT 0.0,
+				metadata       JSON
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"ip_list_config", `
+			CREATE TABLE IF NOT EXISTS ip_list_config (
+				list_type VARCHAR(20)  PRIMARY KEY,
+				name      VARCHAR(100) NOT NULL,
+				enabled   BOOLEAN      DEFAULT FALSE
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"ip_list_entries", `
+			CREATE TABLE IF NOT EXISTS ip_list_entries (
+				list_type  VARCHAR(20),
+				ip_value   VARCHAR(100),
+				comment    TEXT,
+				added_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				added_by   VARCHAR(255),
+				expires_at TIMESTAMP NULL,
+				PRIMARY KEY (list_type, ip_value),
+				FOREIGN KEY (list_type) REFERENCES ip_list_config(list_type) ON DELETE CASCADE
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"remote_cache_entries", `
+			CREATE TABLE IF NOT EXISTS remote_cache_entries (
+				remote_url   VARCHAR(500) PRIMARY KEY,
+				local_path   VARCHAR(500),
+				file_size    BIGINT    DEFAULT 0,
+				content_type VARCHAR(100),
+				cached_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				last_access  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				hits         INT       DEFAULT 0
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"backup_manifests", `
+			CREATE TABLE IF NOT EXISTS backup_manifests (
+				id          VARCHAR(255) PRIMARY KEY,
+				filename    VARCHAR(500) NOT NULL,
+				created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				size        BIGINT       DEFAULT 0,
+				type        VARCHAR(50),
+				description TEXT,
+				files       JSON,
+				errors      JSON,
+				version     VARCHAR(50)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	}
 
 	for _, t := range tables {

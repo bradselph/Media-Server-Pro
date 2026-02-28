@@ -46,7 +46,7 @@ SERVICE="${SERVICE:-media-server}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 REPO_URL="${REPO_URL:-github.com/bradselph/Media-Server-Pro.git}"
 
-BUILD_REACT=false
+BUILD_REACT=true
 DRY_RUN=false
 FIX_ENV=false
 ROLLBACK=false
@@ -125,7 +125,7 @@ setup_ssh_auth() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --full)       BUILD_REACT=true ; shift ;;
+    --full)       : ; shift ;;          # no-op: React is always built
     --dry-run)    DRY_RUN=true     ; shift ;;
     --fix-env)    FIX_ENV=true     ; shift ;;
     --rollback)   ROLLBACK=true    ; shift ;;
@@ -410,19 +410,6 @@ run_or_dry vps "
 # ── Build on VPS
 
 info "Building on VPS..."
-REACT_BUILD_CMD=""
-if $BUILD_REACT; then
-  REACT_BUILD_CMD="
-  echo '[deploy] Building React frontend...'
-  cd web/frontend
-  npm ci
-  npm run build
-  cd ../..
-  echo '[deploy] React build complete'
-  "
-else
-  REACT_BUILD_CMD="echo '[deploy] Skipping React build (use --full to include)'"
-fi
 
 run_or_dry vps "
   set -euo pipefail
@@ -430,8 +417,19 @@ run_or_dry vps "
 
   cd '$DEPLOY_DIR'
 
-  # React frontend (optional)
-  $REACT_BUILD_CMD
+  # ── React frontend (always built before Go binary) ─────────────────────────
+  echo '[deploy] Building React frontend...'
+  cd web/frontend
+  if [ -f package-lock.json ]; then
+    echo '[deploy] package-lock.json found — using npm ci'
+    npm ci
+  else
+    echo '[deploy] No package-lock.json — using npm install'
+    npm install
+  fi
+  npm run build
+  cd ../..
+  echo '[deploy] React build complete'
 
   # Stop service before replacing binary
   sudo systemctl stop '$SERVICE' 2>/dev/null || true
@@ -458,7 +456,14 @@ run_or_dry vps "
 "
 
 # ── Fix ownership ─────────────────────────────────────────────────────────────
-run_or_dry vps "sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'"
+run_or_dry vps "
+  # Create the service user if it doesn't exist yet
+  if ! id mediaserver &>/dev/null; then
+    echo '[deploy] Creating mediaserver system user...'
+    sudo useradd -r -s /usr/sbin/nologin -d '$DEPLOY_DIR' mediaserver
+  fi
+  sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'
+"
 
 # ── Start & health check ─────────────────────────────────────────────────────
 info "Starting $SERVICE..."

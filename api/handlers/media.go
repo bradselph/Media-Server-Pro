@@ -62,11 +62,11 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	allItems := h.media.ListMedia(filterNoPagination)
 
 	session := getSession(c)
-	hideMature := false
+	hideMature := true // Default: hide mature content for unauthenticated users
 	if session != nil {
 		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-		if err != nil || user == nil || !user.Preferences.ShowMature {
-			hideMature = true
+		if err == nil && user != nil && user.Preferences.ShowMature {
+			hideMature = false
 		}
 	}
 
@@ -133,6 +133,20 @@ func (h *Handler) GetMedia(c *gin.Context) {
 	if err != nil {
 		writeError(c, http.StatusNotFound, errMediaNotFound)
 		return
+	}
+
+	// Check mature content access before returning individual item
+	if item.IsMature {
+		session := getSession(c)
+		if session == nil {
+			writeError(c, http.StatusForbidden, "This content is marked as mature (18+). Please log in to access it.")
+			return
+		}
+		user := getUser(c)
+		if user == nil || !user.Preferences.ShowMature {
+			writeError(c, http.StatusForbidden, "This content is marked as mature (18+). Enable mature content in your preferences to access it.")
+			return
+		}
 	}
 
 	if item.ThumbnailURL == "" {
@@ -247,7 +261,11 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 
 	if session != nil {
 		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-		if err == nil && !user.Permissions.CanDownload {
+		if err != nil || user == nil {
+			writeError(c, http.StatusInternalServerError, "Failed to retrieve user permissions")
+			return
+		}
+		if !user.Permissions.CanDownload {
 			writeError(c, http.StatusForbidden, "Download not allowed for your user type")
 			return
 		}

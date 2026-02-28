@@ -43,7 +43,8 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 				c.Set("user", user)
 			} else {
 				// Clear stale/expired cookie so the browser stops resending it
-				c.SetCookie("session_id", "", -1, "/", "", false, true)
+				secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+				c.SetCookie("session_id", "", -1, "/", "", secure, true)
 			}
 		}
 		c.Next()
@@ -228,8 +229,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// /metrics is for Prometheus scraping — admin-protected, no frontend caller by design
 	r.GET("/metrics", adminAuth(authModule), h.GetMetrics)
 
-	// Remote streaming (public, with optional auth) — frontend uses mediaApi.getRemoteStreamUrl()
-	r.GET("/remote/stream", h.StreamRemoteMedia)
+	// Remote streaming — frontend uses mediaApi.getRemoteStreamUrl()
+	r.GET("/remote/stream", requireAuth(), h.StreamRemoteMedia)
 
 	// -----------------------------------------------------------------------
 	// API routes group (/api)
@@ -247,9 +248,9 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.POST("/playback", requireAuth(), h.TrackPlayback)
 
 	// HLS API routes
-	api.GET("/hls/capabilities", h.GetHLSCapabilities) // Check if HLS transcoding is available
-	api.GET("/hls/check", h.CheckHLSAvailability)      // Check availability by path with auto-generate
-	api.POST("/hls/generate", h.GenerateHLS)
+	api.GET("/hls/capabilities", h.GetHLSCapabilities)                // Check if HLS transcoding is available
+	api.GET("/hls/check", requireAuth(), h.CheckHLSAvailability)      // Check availability by path with auto-generate
+	api.POST("/hls/generate", requireAuth(), h.GenerateHLS)           // Trigger HLS transcoding
 	api.GET("/hls/status/:id", h.GetHLSStatus)
 
 	// Auth routes (public)
