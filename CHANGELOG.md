@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.9.0] - 2026-02-28 (minor)
+
+- Merge pull request #12 from bradselph/development
+- Add home section visibility preferences and fix suggestion rendering
+- Fix thumbnail URL format: use ?id= instead of ?path=
+- REC-01: Add frontend test infrastructure (Vitest + testing-library)
+- REC-01 + REC-16 fix: Add test infrastructure and fix scanner boundary patterns
+- REC-15: Add SectionErrorBoundary for per-section error isolation
+- REC-14: Add signal/AbortController support to API client wrappers
+- Add Docker and Docker Compose for containerized development (REC-18)
+- Add CI workflow: build, vet, test, security, frontend checks (REC-13)
+- Evict stale suggestion profiles to prevent unbounded memory growth (REC-06)
+- Replace strings.Contains keyword matching with word-boundary regex (REC-16)
+- Add SHA256 checksum verification to binary updater (REC-12)
+- Limit ETag buffering to 64 KB per response (REC-04)
+- Fix thumbnail inFlight leak: timestamp values + stale-entry eviction (REC-20)
+- Fix task scheduler race: set loopRunning under write lock in Start (REC-05)
+- Add Makefile for build automation (REC-17)
+
+
 ## [0.8.0] - 2026-02-28 (minor)
 
 - Merge pull request #11 from bradselph/development
