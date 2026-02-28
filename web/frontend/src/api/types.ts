@@ -60,6 +60,10 @@ export interface UserPreferences {
     filter_media_type: string
     // custom_eq_presets has omitempty — only present when non-empty
     custom_eq_presets?: Record<string, unknown>
+    // Home section visibility (default true = show section)
+    show_continue_watching: boolean
+    show_recommended: boolean
+    show_trending: boolean
 }
 
 // GET /api/auth/session response — session check envelope (not a Session object)

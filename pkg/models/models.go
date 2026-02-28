@@ -192,6 +192,10 @@ type UserPreferences struct {
 	FilterCategory      string                 `json:"filter_category" db:"filter_category" gorm:"size:100"`
 	FilterMediaType     string                 `json:"filter_media_type" db:"filter_media_type" gorm:"size:50"`
 	CustomEQPresets     map[string]interface{} `json:"custom_eq_presets,omitempty" db:"custom_eq_presets" gorm:"type:json;serializer:json"`
+	// Home section visibility — default true (show all sections)
+	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"default:true"`
+	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"default:true"`
+	ShowTrending         bool `json:"show_trending" db:"show_trending" gorm:"default:true"`
 }
 
 // TableName specifies the table name for GORM
@@ -337,6 +341,9 @@ func (p *UserPreferences) Validate() {
 	if p.SortOrder != "asc" && p.SortOrder != "desc" && p.SortOrder != "" {
 		p.SortOrder = "asc"
 	}
+
+	// Home section visibility toggles have no invalid values (they are booleans).
+	// Nothing to clamp or validate here — the zero value (false) is intentional when set.
 
 	// Truncate long strings to prevent abuse
 	if len(p.DefaultQuality) > 50 {

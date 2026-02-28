@@ -496,6 +496,37 @@ export function ProfilePage() {
                                 </label>
                             </div>
 
+                            <div className="content-settings">
+                                <h3>Home Page Sections</h3>
+                                <p style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 8}}>
+                                    Choose which sections appear on your home page.
+                                </p>
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={preferences?.show_continue_watching ?? true}
+                                        onChange={e => updatePref('show_continue_watching', e.target.checked)}
+                                    />
+                                    Continue Watching
+                                </label>
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={preferences?.show_recommended ?? true}
+                                        onChange={e => updatePref('show_recommended', e.target.checked)}
+                                    />
+                                    Recommended For You
+                                </label>
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={preferences?.show_trending ?? true}
+                                        onChange={e => updatePref('show_trending', e.target.checked)}
+                                    />
+                                    Trending
+                                </label>
+                            </div>
+
                             <button type="submit" className="btn btn-primary" disabled={prefsSubmitting}>
                                 {prefsSubmitting ? 'Saving...' : 'Save Preferences'}
                             </button>
