@@ -129,6 +129,9 @@ export interface MediaListResponse {
     // Note: backend does not return page or per_page — track these client-side
     // scanning is always present — true while the server's initial media scan is still running
     scanning: boolean
+    // initializing is present (and true) only while the first-ever scan is still running.
+    // Once the initial scan completes, this field is omitted.
+    initializing?: boolean
 }
 
 export interface MediaListParams {
@@ -267,6 +270,8 @@ export interface AnalyticsSummary {
 export interface WatchHistoryEntry {
     // Backend models.WatchHistoryItem.MediaID string json:"media_id" (no omitempty) — always present
     media_id: string
+    // Backend json:"media_name,omitempty" — human-readable filename, populated by GetWatchHistory
+    media_name?: string
     position: number
     duration: number
     // Backend uses "progress" (float ratio 0-1) not "completion"
@@ -376,12 +381,6 @@ export interface ModuleHealth {
     status: 'healthy' | 'unhealthy' | 'degraded' | 'failed' | 'disabled'
     message?: string
     last_check?: string
-}
-
-// DEPRECATED: R-06 — identical to User with no additional fields; all callers could use User
-// directly. Safe to replace AdminUser with User throughout endpoints.ts and delete this type.
-export interface AdminUser extends User {
-    // same as User but all fields present
 }
 
 // Backend models.AuditLogEntry JSON fields
@@ -597,13 +596,6 @@ export interface PermissionsInfo {
 
 // ── Feature 2: Ratings ──
 
-// DEPRECATED: DC-06 — ratingsApi.record() accepts (id, rating) inline; this type is never
-// imported or used. Safe to delete.
-export interface RatingRequest {
-    id: string
-    rating: number
-}
-
 // ── Feature 4: Upload ──
 
 export interface UploadResult {
@@ -631,14 +623,6 @@ export interface EventStats {
     total_events: number
     event_counts: Record<string, number>
     hourly_events: number[]
-}
-
-// DEPRECATED: DC-05 — GetEventTypeCounts now returns map[string]int (Record<string,number>);
-// this interface was for a previous array-based response that no longer exists. Safe to delete.
-export interface EventsByTypeEntry {
-    type: string
-    count: number
-    last_at?: string
 }
 
 // ── Feature 6: Admin Playlists ──

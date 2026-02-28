@@ -87,12 +87,13 @@ type Module struct {
 	healthMu     sync.RWMutex
 	scanTicker   *time.Ticker
 	scanDone     chan struct{}
-	scanCtx      context.Context    // Cancelled on shutdown; used by background saves
-	scanCancel   context.CancelFunc // Cancels background scans on shutdown
-	version      int64
-	lastScan     time.Time
-	ffprobeAvail bool
-	ffprobePath  string // absolute path, set by checkFFProbe for use under systemd
+	scanCtx         context.Context    // Cancelled on shutdown; used by background saves
+	scanCancel      context.CancelFunc // Cancels background scans on shutdown
+	version         int64
+	lastScan        time.Time
+	initialScanDone bool // true after the first scan attempt completes (success or failure)
+	ffprobeAvail    bool
+	ffprobePath     string // absolute path, set by checkFFProbe for use under systemd
 }
 
 // Metadata holds extended metadata for a media item
@@ -196,10 +197,12 @@ func (m *Module) Start(_ context.Context) error {
 			m.log.Error("Initial scan failed: %v", err)
 			m.healthMu.Lock()
 			m.healthMsg = fmt.Sprintf("Scan failed: %v (retrying on next interval)", err)
+			m.initialScanDone = true // Mark ready even on failure so handlers stop returning 503
 			m.healthMu.Unlock()
 		} else {
 			m.healthMu.Lock()
 			m.healthMsg = fmt.Sprintf("Running (%d items)", len(m.media))
+			m.initialScanDone = true
 			m.healthMu.Unlock()
 			m.log.Info("Initial media scan completed with %d items", len(m.media))
 		}
@@ -267,6 +270,15 @@ func (m *Module) IsScanning() bool {
 	m.healthMu.RLock()
 	defer m.healthMu.RUnlock()
 	return m.scanning
+}
+
+// IsReady reports whether the initial media scan has completed at least once.
+// Before this returns true, the mediaByID map is empty and all ID-based lookups
+// will fail. Handlers use this to return 503 "initializing" instead of 404.
+func (m *Module) IsReady() bool {
+	m.healthMu.RLock()
+	defer m.healthMu.RUnlock()
+	return m.initialScanDone
 }
 
 // checkFFProbe checks if ffprobe is available

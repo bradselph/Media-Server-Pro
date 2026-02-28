@@ -46,14 +46,9 @@ SERVICE="${SERVICE:-media-server}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 REPO_URL="${REPO_URL:-github.com/bradselph/Media-Server-Pro.git}"
 
-BUILD_REACT=true
-DRY_RUN=false
-FIX_ENV=false
-ROLLBACK=false
-SETUP=false
-BRANCH="main"
+GO_VERSION="1.26.0"
+NODE_MAJOR="22"
 
-BUILD_REACT=false
 DRY_RUN=false
 FIX_ENV=false
 ROLLBACK=false
@@ -125,7 +120,7 @@ setup_ssh_auth() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --full)       : ; shift ;;          # no-op: React is always built
+    --full)       shift ;;              # React is always built; kept for backwards compat
     --dry-run)    DRY_RUN=true     ; shift ;;
     --fix-env)    FIX_ENV=true     ; shift ;;
     --rollback)   ROLLBACK=true    ; shift ;;
@@ -191,70 +186,81 @@ if $SETUP; then
   info "Running first-time VPS setup..."
   run_or_dry vps "
     set -euo pipefail
+    export PATH=\$PATH:/usr/local/go/bin
 
-    # Install Go (if not present)
+    # ── System packages ──────────────────────────────────────────────────────
+    echo '[setup] Updating apt and installing base packages...'
+    sudo apt-get update -qq
+    sudo apt-get install -y git curl build-essential ffmpeg
+
+    # ── Go ────────────────────────────────────────────────────────────────────
     if ! command -v go &>/dev/null; then
-      echo '[setup] Installing Go...'
-      curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -o /tmp/go.tar.gz
+      echo '[setup] Installing Go ${GO_VERSION}...'
+      ARCH=\$(dpkg --print-architecture 2>/dev/null || uname -m)
+      case \"\$ARCH\" in
+        amd64|x86_64)  GO_ARCH=amd64 ;;
+        arm64|aarch64) GO_ARCH=arm64 ;;
+        *)             GO_ARCH=amd64 ;;
+      esac
+      curl -fsSL \"https://go.dev/dl/go${GO_VERSION}.linux-\${GO_ARCH}.tar.gz\" -o /tmp/go.tar.gz
       sudo rm -rf /usr/local/go
       sudo tar -C /usr/local -xzf /tmp/go.tar.gz
       rm /tmp/go.tar.gz
-      echo 'export PATH=\$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh
+      echo 'export PATH=\$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh > /dev/null
       export PATH=\$PATH:/usr/local/go/bin
       echo \"[setup] Go \$(go version) installed\"
     else
       echo \"[setup] Go already installed: \$(go version)\"
     fi
 
-    # Install Node.js (if not present, for React builds)
+    # ── Node.js ──────────────────────────────────────────────────────────────
     if ! command -v node &>/dev/null; then
       echo '[setup] Installing Node.js ${NODE_MAJOR}...'
-      curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash -
+      curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash - 2>/dev/null
       sudo apt-get install -y nodejs
       echo \"[setup] Node \$(node --version) installed\"
     else
       echo \"[setup] Node already installed: \$(node --version)\"
     fi
 
-    # Install ffmpeg (if not present)
-    if ! command -v ffmpeg &>/dev/null; then
-      echo '[setup] Installing ffmpeg...'
-      sudo apt-get install -y ffmpeg
+    # ── Service user ─────────────────────────────────────────────────────────
+    if ! id mediaserver &>/dev/null 2>&1; then
+      echo '[setup] Creating mediaserver system user...'
+      sudo useradd -r -s /usr/sbin/nologin -d '$DEPLOY_DIR' -m mediaserver
     else
-      echo \"[setup] ffmpeg already installed\"
+      echo '[setup] mediaserver user already exists'
     fi
 
-    # Create service user (if not exists)
-    if ! id mediaserver &>/dev/null; then
-      echo '[setup] Creating mediaserver user...'
-      sudo useradd -r -s /usr/sbin/nologin -d '$DEPLOY_DIR' mediaserver
-    fi
-
-    # Clone repository
+    # ── Clone repository ─────────────────────────────────────────────────────
     if [ ! -d '$DEPLOY_DIR/.git' ]; then
       echo '[setup] Cloning repository...'
       sudo mkdir -p '$(dirname "$DEPLOY_DIR")'
-      git clone '$CLONE_URL' '$DEPLOY_DIR'
+      sudo git clone --branch '$BRANCH' '$CLONE_URL' '$DEPLOY_DIR'
     else
       echo '[setup] Repository already cloned'
     fi
 
-    # Copy .env template if no .env exists
+    # ── Create required data directories ─────────────────────────────────────
+    echo '[setup] Creating data directories...'
+    sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,uploads,cache/hls,cache/remote,logs,data,backups}
+
+    # ── Copy .env template ───────────────────────────────────────────────────
     if [ ! -f '$DEPLOY_DIR/.env' ]; then
-      cp '$DEPLOY_DIR/.env.example' '$DEPLOY_DIR/.env'
+      sudo cp '$DEPLOY_DIR/.env.example' '$DEPLOY_DIR/.env'
+      sudo chmod 600 '$DEPLOY_DIR/.env'
       echo '[setup] Created .env from template — edit it with your settings!'
     fi
 
-    # Install systemd service
+    # ── Set ownership ────────────────────────────────────────────────────────
+    sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'
+
+    # ── Install systemd service ──────────────────────────────────────────────
     if [ -f '$DEPLOY_DIR/systemd/media-server.service' ]; then
       sudo cp '$DEPLOY_DIR/systemd/media-server.service' '/etc/systemd/system/$SERVICE.service'
       sudo systemctl daemon-reload
       sudo systemctl enable '$SERVICE'
       echo '[setup] systemd service installed and enabled'
     fi
-
-    # Set ownership
-    sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'
 
     echo ''
     echo '[setup] Done! Next steps:'
@@ -317,9 +323,6 @@ run_or_dry vps "
 "
 
 # ── Ensure dependencies are installed on VPS ─────────────────────────────────
-GO_VERSION="1.26.0"
-NODE_MAJOR="22"
-
 info "Checking dependencies on VPS..."
 run_or_dry vps "
   set -euo pipefail
@@ -455,13 +458,20 @@ run_or_dry vps "
   fi
 "
 
-# ── Fix ownership ─────────────────────────────────────────────────────────────
+# ── Ensure service user and directories ───────────────────────────────────────
 run_or_dry vps "
   # Create the service user if it doesn't exist yet
-  if ! id mediaserver &>/dev/null; then
+  if ! id mediaserver &>/dev/null 2>&1; then
     echo '[deploy] Creating mediaserver system user...'
-    sudo useradd -r -s /usr/sbin/nologin -d '$DEPLOY_DIR' mediaserver
+    sudo useradd -r -s /usr/sbin/nologin -d '$DEPLOY_DIR' -m mediaserver
   fi
+
+  # Ensure data directories exist
+  sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,uploads,cache/hls,cache/remote,logs,data,backups}
+
+  # Secure .env file permissions
+  [ -f '$DEPLOY_DIR/.env' ] && sudo chmod 600 '$DEPLOY_DIR/.env'
+
   sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'
 "
 
@@ -487,21 +497,25 @@ run_or_dry vps "
     exit 1
   fi
 
-  # Poll health endpoint for up to 30s
+  # Poll health endpoint until fully ready (200) or timeout after 90s.
+  # The server returns 503 while the initial media scan is in progress;
+  # we wait for 200 to ensure media is ready before declaring success.
   PORT=\$(grep -o 'SERVER_PORT=[0-9]*' '$DEPLOY_DIR/.env' 2>/dev/null | cut -d= -f2 || echo 8080)
   HEALTH_URL=\"http://127.0.0.1:\${PORT}/health\"
-  echo \"[deploy] Polling \$HEALTH_URL...\"
+  echo \"[deploy] Polling \$HEALTH_URL (waiting for media scan to complete)...\"
   OK=false
-  for i in \$(seq 1 15); do
+  for i in \$(seq 1 30); do
     CODE=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \"\$HEALTH_URL\" 2>/dev/null || echo 000)
-    if [ \"\$CODE\" = '200' ] || [ \"\$CODE\" = '503' ]; then
-      echo \"[deploy] Health check: HTTP \$CODE\"
+    if [ \"\$CODE\" = '200' ]; then
+      echo \"[deploy] Health check: HTTP 200 — server ready\"
       OK=true
       break
+    elif [ \"\$CODE\" = '503' ]; then
+      echo \"[deploy] Health check: HTTP 503 — still initializing (\${i}/30)\"
     fi
-    sleep 2
+    sleep 3
   done
-  \$OK || echo '[deploy] WARNING: health endpoint timed out — check logs'
+  \$OK || echo '[deploy] WARNING: health endpoint did not reach 200 — check logs: journalctl -u $SERVICE -n 50'
 "
 
 # ── Summary ───────────────────────────────────────────────────────────────────

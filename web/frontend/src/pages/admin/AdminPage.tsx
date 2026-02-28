@@ -6,7 +6,6 @@ import {useAuthStore} from '@/stores/authStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import type {
     AdminPlaylistStats,
-    AdminUser,
     BannedIP,
     CategorizedItem,
     CategoryStats,
@@ -23,6 +22,7 @@ import type {
     SecurityStats,
     SuggestionStats,
     ThumbnailStats,
+    User,
 } from '@/api/types'
 import '@/styles/admin.css'
 
@@ -277,7 +277,7 @@ function CreateUserModal({onClose, onCreated}: { onClose: () => void; onCreated:
     )
 }
 
-function EditUserModal({user, onClose, onSaved}: { user: AdminUser; onClose: () => void; onSaved: () => void }) {
+function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => void; onSaved: () => void }) {
     const [role, setRole] = useState<'admin' | 'viewer'>(user.role)
     const [enabled, setEnabled] = useState(user.enabled)
     const [newPassword, setNewPassword] = useState('')
@@ -377,7 +377,7 @@ function EditUserModal({user, onClose, onSaved}: { user: AdminUser; onClose: () 
 function UsersTab() {
     const queryClient = useQueryClient()
     const [showCreate, setShowCreate] = useState(false)
-    const [editUser, setEditUser] = useState<AdminUser | null>(null)
+    const [editUser, setEditUser] = useState<User | null>(null)
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [bulkWorking, setBulkWorking] = useState(false)
@@ -398,7 +398,7 @@ function UsersTab() {
         }
     }
 
-    async function handleToggle(user: AdminUser) {
+    async function handleToggle(user: User) {
         try {
             await adminApi.updateUser(user.username, {enabled: !user.enabled})
             await queryClient.invalidateQueries({queryKey: ['admin-users']})

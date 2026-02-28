@@ -7,7 +7,6 @@ import {api} from './client'
 import type {
     AdminPlaylistStats,
     AdminStats,
-    AdminUser,
     AgeGateStatus,
     AnalyticsEvent,
     AnalyticsSummary,
@@ -427,7 +426,7 @@ export const adminApi = {
 
     // Users
     listUsers: () =>
-        api.get<AdminUser[]>('/api/admin/users'),
+        api.get<User[]>('/api/admin/users'),
 
     createUser: (data: {
         username: string;
@@ -436,13 +435,13 @@ export const adminApi = {
         role?: 'admin' | 'viewer';
         type?: string
     }) =>
-        api.post<AdminUser>('/api/admin/users', data),
+        api.post<User>('/api/admin/users', data),
 
     getUser: (username: string) =>
-        api.get<AdminUser>(`/api/admin/users/${encodeURIComponent(username)}`),
+        api.get<User>(`/api/admin/users/${encodeURIComponent(username)}`),
 
-    updateUser: (username: string, data: Partial<AdminUser>) =>
-        api.put<AdminUser>(`/api/admin/users/${encodeURIComponent(username)}`, data),
+    updateUser: (username: string, data: Partial<User>) =>
+        api.put<User>(`/api/admin/users/${encodeURIComponent(username)}`, data),
 
     deleteUser: (username: string) =>
         api.delete<void>(`/api/admin/users/${encodeURIComponent(username)}`),
@@ -462,12 +461,6 @@ export const adminApi = {
     getAuditLog: () =>
         api.get<AuditLogEntry[]>('/api/admin/audit-log'),
 
-    // DEPRECATED: R-08 — returns a raw string, not a Promise, breaking the typed API pattern.
-    // Use exportAuditLogUrl() instead, which makes the return type explicit.
-    exportAuditLog: () =>
-        '/api/admin/audit-log/export',
-
-    // R-08: explicit URL helper — callers use this as an <a href> or window.open() target
     exportAuditLogUrl: (): string =>
         '/api/admin/audit-log/export',
 

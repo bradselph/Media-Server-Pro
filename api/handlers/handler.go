@@ -245,6 +245,44 @@ func randIntn(n int) int {
 	return int(nBig.Int64())
 }
 
+// requireAdmin checks that the admin module is available. Returns false (and writes
+// a 503 error) if the module failed to initialise. Use at the top of handlers that
+// call h.admin methods other than LogAction.
+func (h *Handler) requireAdmin(c *gin.Context) bool {
+	if h.admin == nil {
+		writeError(c, http.StatusServiceUnavailable, "Admin module is not available")
+		return false
+	}
+	return true
+}
+
+// requirePlaylist checks that the playlist module is available. Returns false
+// (and writes a 503 error) if the module failed to initialise.
+func (h *Handler) requirePlaylist(c *gin.Context) bool {
+	if h.playlist == nil {
+		writeError(c, http.StatusServiceUnavailable, "Playlist feature is not available")
+		return false
+	}
+	return true
+}
+
+// logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
+// is best-effort — if the admin module is unavailable the action is silently
+// skipped so that the primary operation (user create, media delete, etc.) still
+// succeeds.
+func (h *Handler) logAdminAction(c *gin.Context, userID, username, action, target string, details map[string]interface{}) {
+	if h.admin != nil {
+		h.admin.LogAction(c.Request.Context(), userID, username, action, target, details, c.ClientIP(), true)
+	}
+}
+
+// logAdminActionResult is like logAdminAction but lets the caller specify success/failure.
+func (h *Handler) logAdminActionResult(c *gin.Context, userID, username, action, target string, details map[string]interface{}, success bool) {
+	if h.admin != nil {
+		h.admin.LogAction(c.Request.Context(), userID, username, action, target, details, c.ClientIP(), success)
+	}
+}
+
 // resolveAndValidatePath resolves a file path against allowed directories, prevents path
 // traversal, and verifies the file exists. Returns the absolute path and true on success,
 // or writes an error response and returns ("", false) on failure.
@@ -366,6 +404,10 @@ func (h *Handler) allowedMediaDirs() []string {
 // server-side file path. The ID is an MD5 hash of the path, generated during
 // media scanning. Returns the absolute path and true on success, or writes an
 // error response and returns ("", false) on failure.
+//
+// If the initial media scan has not yet completed (server just started), returns
+// 503 instead of 404 so clients know to retry rather than treating the item as
+// permanently missing.
 func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 	if id == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
@@ -373,6 +415,10 @@ func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 	}
 	item, err := h.media.GetMediaByID(id)
 	if err != nil {
+		if !h.media.IsReady() {
+			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+			return "", false
+		}
 		writeError(c, http.StatusNotFound, errMediaNotFound)
 		return "", false
 	}

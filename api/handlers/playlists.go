@@ -11,6 +11,9 @@ import (
 
 // ListPlaylists returns user's playlists
 func (h *Handler) ListPlaylists(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	session := getSession(c)
 	if session == nil {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
@@ -26,6 +29,9 @@ func (h *Handler) ListPlaylists(c *gin.Context) {
 
 // CreatePlaylist creates a new playlist
 func (h *Handler) CreatePlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	session := getSession(c)
 	if session == nil {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
@@ -64,6 +70,9 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 
 // GetPlaylist returns a playlist
 func (h *Handler) GetPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	id := c.Param("id")
 
 	session := getSession(c)
@@ -83,6 +92,9 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 
 // UpdatePlaylist updates playlist metadata (name, description, is_public, cover_image)
 func (h *Handler) UpdatePlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	id := c.Param("id")
 
 	session := getSession(c)
@@ -111,6 +123,9 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 
 // DeletePlaylist deletes a playlist
 func (h *Handler) DeletePlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	id := c.Param("id")
 
 	session := getSession(c)
@@ -129,6 +144,9 @@ func (h *Handler) DeletePlaylist(c *gin.Context) {
 
 // ExportPlaylist exports a playlist in JSON format
 func (h *Handler) ExportPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	id := c.Param("id")
 
 	session := getSession(c)
@@ -164,6 +182,9 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 
 // AddPlaylistItem adds an item to a playlist
 func (h *Handler) AddPlaylistItem(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	playlistID := c.Param("id")
 
 	session := getSession(c)
@@ -207,6 +228,9 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 
 // RemovePlaylistItem removes an item from a playlist
 func (h *Handler) RemovePlaylistItem(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	playlistID := c.Param("id")
 
 	session := getSession(c)
