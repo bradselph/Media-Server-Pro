@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0] - 2026-02-28 (minor)
+
+- Merge pull request #7 from bradselph/development
+- Remove deprecated frontend types and consolidate AdminUser → User
+- Fix authStore 401 detection to match ApiError class shape
+- Add nil guards for optional admin/playlist modules to prevent panics
+- Fix media-not-found on deploy, improve startup readiness, enrich watch history
+
+
 ## [0.3.0] - 2026-02-28 (minor)
 
 - Merge pull request #6 from bradselph/development
