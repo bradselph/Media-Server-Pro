@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0] - 2026-02-28 (minor)
+
+- Merge pull request #8 from bradselph/development
+- Add nil guards for all optional modules to prevent nil pointer panics
+
+
 ## [0.4.0] - 2026-02-28 (minor)
 
 - Merge pull request #7 from bradselph/development
