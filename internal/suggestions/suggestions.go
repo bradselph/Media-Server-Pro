@@ -78,6 +78,10 @@ type Module struct {
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
+	// ctx/cancel drive the background profile-eviction goroutine.
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // MediaInfo holds information about a media file for suggestions
@@ -108,6 +112,11 @@ func (m *Module) Name() string {
 	return "suggestions"
 }
 
+// profileEvictAfter is how long a user profile may remain unused before it is
+// evicted from the in-memory map.  Profiles are persisted to MySQL so eviction
+// only removes the in-memory copy; the data is reloaded on the next access.
+const profileEvictAfter = 30 * 24 * time.Hour // 30 days
+
 // Start initializes the module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting suggestions module...")
@@ -118,6 +127,14 @@ func (m *Module) Start(_ context.Context) error {
 	if err := m.loadProfiles(); err != nil {
 		m.log.Warn("Failed to load user profiles: %v", err)
 	}
+
+	// Start background profile-eviction goroutine so that profiles for
+	// long-inactive or deleted users do not accumulate indefinitely.
+	bgCtx, cancel := context.WithCancel(context.Background())
+	m.ctx = bgCtx
+	m.cancel = cancel
+	m.wg.Add(1)
+	go m.evictStaleProfiles(bgCtx)
 
 	m.healthMu.Lock()
 	m.healthy = true
@@ -131,6 +148,12 @@ func (m *Module) Start(_ context.Context) error {
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping suggestions module...")
 
+	// Signal and wait for background goroutines.
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.wg.Wait()
+
 	// Save profiles
 	if err := m.saveProfiles(); err != nil {
 		m.log.Error("Failed to save user profiles: %v", err)
@@ -141,6 +164,35 @@ func (m *Module) Stop(_ context.Context) error {
 	m.healthMsg = "Stopped"
 	m.healthMu.Unlock()
 	return nil
+}
+
+// evictStaleProfiles removes in-memory profiles that have not been updated
+// within profileEvictAfter.  The profiles remain persisted in MySQL; they will
+// be reloaded on the next access if the user becomes active again.
+func (m *Module) evictStaleProfiles(ctx context.Context) {
+	defer m.wg.Done()
+	ticker := time.NewTicker(6 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cutoff := time.Now().Add(-profileEvictAfter)
+			m.mu.Lock()
+			evicted := 0
+			for id, profile := range m.profiles {
+				if profile.LastUpdated.Before(cutoff) {
+					delete(m.profiles, id)
+					evicted++
+				}
+			}
+			m.mu.Unlock()
+			if evicted > 0 {
+				m.log.Info("Evicted %d stale user profiles (inactive > %v)", evicted, profileEvictAfter)
+			}
+		}
+	}
 }
 
 // Health returns the module health status
