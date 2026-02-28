@@ -366,6 +366,10 @@ func (h *Handler) allowedMediaDirs() []string {
 // server-side file path. The ID is an MD5 hash of the path, generated during
 // media scanning. Returns the absolute path and true on success, or writes an
 // error response and returns ("", false) on failure.
+//
+// If the initial media scan has not yet completed (server just started), returns
+// 503 instead of 404 so clients know to retry rather than treating the item as
+// permanently missing.
 func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 	if id == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
@@ -373,6 +377,10 @@ func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 	}
 	item, err := h.media.GetMediaByID(id)
 	if err != nil {
+		if !h.media.IsReady() {
+			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+			return "", false
+		}
 		writeError(c, http.StatusNotFound, errMediaNotFound)
 		return "", false
 	}

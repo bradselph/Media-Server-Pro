@@ -1,8 +1,8 @@
 [Unit]
 Description=Media Server Pro
 Documentation=https://github.com/bradselph/Media-Server-Pro
-After=network.target mysql.service
-Wants=mysql.service
+After=network-online.target mysql.service
+Wants=network-online.target mysql.service
 
 [Service]
 Type=simple
@@ -29,10 +29,8 @@ TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ProtectHome=read-only
-
-# Watchdog — systemd kills and restarts if process deadlocks
-WatchdogSec=60
+# ProtectHome=true would block media dirs under /home — leave unset
+# so the service can read media from any path configured in .env
 
 # Resource limits
 LimitNOFILE=65536

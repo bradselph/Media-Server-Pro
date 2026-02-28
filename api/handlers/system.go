@@ -42,6 +42,12 @@ func (h *Handler) GetHealth(c *gin.Context) {
 		}
 	}
 
+	// If the media module hasn't finished its initial scan, report as initializing.
+	// This causes the deploy.sh health poll to keep waiting until media is ready.
+	if !h.media.IsReady() {
+		problems = append(problems, "media: initial scan in progress")
+	}
+
 	status := "ok"
 	httpCode := http.StatusOK
 	if len(problems) > 0 {

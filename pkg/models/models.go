@@ -263,6 +263,7 @@ func (p *UserPreferences) UnmarshalJSON(data []byte) error {
 // WatchHistoryItem represents an item in watch history
 type WatchHistoryItem struct {
 	MediaID   string    `json:"media_id"`
+	MediaName string    `json:"media_name,omitempty"`
 	MediaPath string    `json:"-"`
 	Position  float64   `json:"position"`
 	Duration  float64   `json:"duration"`

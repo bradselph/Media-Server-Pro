@@ -22,9 +22,15 @@ function formatDuration(seconds: number): string {
     return `${m}m`
 }
 
-function cleanFileName(path: string): string {
-    const name = path.split('/').pop()?.split('\\').pop() || path
-    return name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+function cleanFileName(name: string): string {
+    const base = name.split('/').pop()?.split('\\').pop() || name
+    return base.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function displayMediaName(entry: { media_name?: string; media_id: string }): string {
+    if (entry.media_name) return cleanFileName(entry.media_name)
+    // Fallback: truncated MD5 hash for legacy entries without media_name
+    return entry.media_id.slice(0, 8) + '…'
 }
 
 export function ProfilePage() {
@@ -514,7 +520,7 @@ export function ProfilePage() {
                                             to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                                             className="history-title"
                                         >
-                                            {cleanFileName(entry.media_id)}
+                                            {displayMediaName(entry)}
                                         </Link>
                                         <span className="history-meta">
                       {formatDuration(entry.duration)} &middot; {Math.round(entry.progress * 100)}% watched

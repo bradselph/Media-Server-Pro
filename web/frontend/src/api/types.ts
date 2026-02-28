@@ -129,6 +129,9 @@ export interface MediaListResponse {
     // Note: backend does not return page or per_page — track these client-side
     // scanning is always present — true while the server's initial media scan is still running
     scanning: boolean
+    // initializing is present (and true) only while the first-ever scan is still running.
+    // Once the initial scan completes, this field is omitted.
+    initializing?: boolean
 }
 
 export interface MediaListParams {
@@ -267,6 +270,8 @@ export interface AnalyticsSummary {
 export interface WatchHistoryEntry {
     // Backend models.WatchHistoryItem.MediaID string json:"media_id" (no omitempty) — always present
     media_id: string
+    // Backend json:"media_name,omitempty" — human-readable filename, populated by GetWatchHistory
+    media_name?: string
     position: number
     duration: number
     // Backend uses "progress" (float ratio 0-1) not "completion"

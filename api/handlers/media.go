@@ -117,12 +117,16 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		}
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	resp := map[string]interface{}{
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
 		"scanning":    h.media.IsScanning(),
-	})
+	}
+	if !h.media.IsReady() {
+		resp["initializing"] = true
+	}
+	writeSuccess(c, resp)
 }
 
 // GetMedia returns a single media item
@@ -131,6 +135,10 @@ func (h *Handler) GetMedia(c *gin.Context) {
 
 	item, err := h.media.GetMediaByID(id)
 	if err != nil {
+		if !h.media.IsReady() {
+			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+			return
+		}
 		writeError(c, http.StatusNotFound, errMediaNotFound)
 		return
 	}
@@ -343,9 +351,14 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 		}
 
 		if req.Duration > 0 && username != "" {
+			var mediaName string
+			if mi, err := h.media.GetMedia(absPath); err == nil {
+				mediaName = mi.Name
+			}
 			item := models.WatchHistoryItem{
 				MediaPath: absPath,
 				MediaID:   req.ID,
+				MediaName: mediaName,
 				Position:  req.Position,
 				Duration:  req.Duration,
 				WatchedAt: time.Now(),
