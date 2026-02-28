@@ -77,7 +77,7 @@ export function useHLS(
                 return
             }
             if (cancelled || !Hls.isSupported()) {
-                if (!Hls.isSupported()) {
+                if (!cancelled && !Hls.isSupported()) {
                     setError('HLS not supported in this browser')
                     onFallback?.()
                 }
