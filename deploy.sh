@@ -256,7 +256,8 @@ if $SETUP; then
 
     # ── Install systemd service ──────────────────────────────────────────────
     if [ -f '$DEPLOY_DIR/systemd/media-server.service' ]; then
-      sudo cp '$DEPLOY_DIR/systemd/media-server.service' '/etc/systemd/system/$SERVICE.service'
+      sed 's|__DEPLOY_DIR__|$DEPLOY_DIR|g' '$DEPLOY_DIR/systemd/media-server.service' \
+        | sudo tee '/etc/systemd/system/$SERVICE.service' > /dev/null
       sudo systemctl daemon-reload
       sudo systemctl enable '$SERVICE'
       echo '[setup] systemd service installed and enabled'
@@ -453,7 +454,8 @@ run_or_dry vps "
 # ── Update systemd unit if changed ────────────────────────────────────────────
 run_or_dry vps "
   if [ -f '$DEPLOY_DIR/systemd/media-server.service' ]; then
-    sudo cp '$DEPLOY_DIR/systemd/media-server.service' '/etc/systemd/system/$SERVICE.service'
+    sed 's|__DEPLOY_DIR__|$DEPLOY_DIR|g' '$DEPLOY_DIR/systemd/media-server.service' \
+      | sudo tee '/etc/systemd/system/$SERVICE.service' > /dev/null
     sudo systemctl daemon-reload
   fi
 "
