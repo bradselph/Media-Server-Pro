@@ -28,6 +28,12 @@ interface ApiEnvelope<T> {
 /**
  * Core fetch wrapper that unwraps the Go API envelope.
  * Returns the unwrapped `data` field on success, throws `ApiError` on failure.
+ *
+ * Pass `options.signal` to support request cancellation via AbortController.
+ * TanStack Query propagates its own AbortSignal automatically when you
+ * forward `signal` from the queryFn argument:
+ *
+ *   useQuery({ queryFn: ({ signal }) => api.get<T>(url, { signal }) })
  */
 export async function apiRequest<T>(
     url: string,
@@ -66,36 +72,48 @@ export async function apiRequest<T>(
 
 /**
  * Convenience wrappers for common HTTP methods.
+ *
+ * All methods accept an optional `options` parameter (a subset of `RequestInit`)
+ * to allow passing an `AbortSignal` for request cancellation. This integrates
+ * with TanStack Query's automatic signal propagation:
+ *
+ *   useQuery({ queryFn: ({ signal }) => api.get<T>(url, { signal }) })
+ *   useMutation({ mutationFn: (body) => api.post<T>(url, body, { signal }) })
  */
 export const api = {
-    get: <T>(url: string) => apiRequest<T>(url),
+    get: <T>(url: string, options?: Pick<RequestInit, 'signal'>) =>
+        apiRequest<T>(url, options),
 
-    post: <T>(url: string, body?: unknown) =>
+    post: <T>(url: string, body?: unknown, options?: Pick<RequestInit, 'signal'>) =>
         apiRequest<T>(url, {
             method: 'POST',
             body: body !== undefined ? JSON.stringify(body) : undefined,
+            ...options,
         }),
 
-    put: <T>(url: string, body?: unknown) =>
+    put: <T>(url: string, body?: unknown, options?: Pick<RequestInit, 'signal'>) =>
         apiRequest<T>(url, {
             method: 'PUT',
             body: body !== undefined ? JSON.stringify(body) : undefined,
+            ...options,
         }),
 
-    delete: <T>(url: string, body?: unknown) =>
+    delete: <T>(url: string, body?: unknown, options?: Pick<RequestInit, 'signal'>) =>
         apiRequest<T>(url, {
             method: 'DELETE',
             body: body !== undefined ? JSON.stringify(body) : undefined,
+            ...options,
         }),
 
     /**
      * POST with FormData (for file uploads). Does NOT set Content-Type header
      * so the browser can set the multipart boundary automatically.
      */
-    upload: <T>(url: string, formData: FormData) =>
+    upload: <T>(url: string, formData: FormData, options?: Pick<RequestInit, 'signal'>) =>
         apiRequest<T>(url, {
             method: 'POST',
             body: formData,
             headers: {}, // Override Content-Type to let browser set multipart boundary
+            ...options,
         }),
 }
