@@ -297,6 +297,9 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.GET("/playlists/:id/export", requireAuth(), h.ExportPlaylist)
 	api.POST("/playlists/:id/items", requireAuth(), h.AddPlaylistItem)
 	api.DELETE("/playlists/:id/items", requireAuth(), h.RemovePlaylistItem)
+	api.PUT("/playlists/:id/reorder", requireAuth(), h.ReorderPlaylistItems)
+	api.DELETE("/playlists/:id/clear", requireAuth(), h.ClearPlaylist)
+	api.POST("/playlists/:id/copy", requireAuth(), h.CopyPlaylist)
 
 	// Analytics routes
 	// POST /analytics/events — user auth (users submit their own events)

@@ -228,6 +228,92 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 	writeSuccess(c, nil)
 }
 
+// ReorderPlaylistItems reorders items in a playlist
+func (h *Handler) ReorderPlaylistItems(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
+	playlistID := c.Param("id")
+
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	var req struct {
+		Positions []int `json:"positions"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	if err := h.playlist.ReorderItems(c.Request.Context(), playlistID, session.UserID, req.Positions); err != nil {
+		writeError(c, http.StatusForbidden, "Cannot reorder playlist items")
+		return
+	}
+
+	writeSuccess(c, nil)
+}
+
+// ClearPlaylist removes all items from a playlist
+func (h *Handler) ClearPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
+	playlistID := c.Param("id")
+
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	if err := h.playlist.ClearPlaylist(c.Request.Context(), playlistID, session.UserID); err != nil {
+		writeError(c, http.StatusForbidden, "Cannot clear playlist")
+		return
+	}
+
+	writeSuccess(c, nil)
+}
+
+// CopyPlaylist duplicates a playlist with a new name
+func (h *Handler) CopyPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
+	sourceID := c.Param("id")
+
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	if req.Name == "" {
+		writeError(c, http.StatusBadRequest, "Playlist name required")
+		return
+	}
+
+	pl, err := h.playlist.CopyPlaylist(c.Request.Context(), sourceID, session.UserID, req.Name)
+	if err != nil {
+		h.log.Error("%v", err)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	writeSuccess(c, pl)
+}
+
 // RemovePlaylistItem removes an item from a playlist
 func (h *Handler) RemovePlaylistItem(c *gin.Context) {
 	if !h.requirePlaylist(c) {
