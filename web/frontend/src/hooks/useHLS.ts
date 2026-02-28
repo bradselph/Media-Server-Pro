@@ -38,6 +38,11 @@ export function useHLS(
     const networkRetryCount = useRef(0)
     const mediaRetryCount = useRef(0)
 
+    // Stable ref for onFallback so the effect doesn't re-run when the
+    // consumer passes a new function reference on each render.
+    const onFallbackRef = useRef(onFallback)
+    onFallbackRef.current = onFallback
+
     const selectQuality = useCallback((index: number) => {
         if (hlsRef.current) {
             hlsRef.current.currentLevel = index
@@ -72,14 +77,14 @@ export function useHLS(
             } catch {
                 if (!cancelled) {
                     setError('Failed to load HLS player')
-                    onFallback?.()
+                    onFallbackRef.current?.()
                 }
                 return
             }
             if (cancelled || !Hls.isSupported()) {
                 if (!cancelled && !Hls.isSupported()) {
                     setError('HLS not supported in this browser')
-                    onFallback?.()
+                    onFallbackRef.current?.()
                 }
                 return
             }
@@ -180,16 +185,23 @@ export function useHLS(
                 if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                     mediaRetryCount.current++
                     if (mediaRetryCount.current <= 2) {
+                        // Per hls.js docs: swap audio codec before second recovery
+                        // attempt to handle AAC/MP3 codec mismatch issues.
+                        if (mediaRetryCount.current === 2) {
+                            hls.swapAudioCodec()
+                        }
                         hls.recoverMediaError()
                         return
                     }
                 }
 
                 // All retries exhausted — fallback
-                setError('HLS playback failed, falling back to direct streaming')
-                hls.destroy()
-                hlsRef.current = null
-                onFallback?.()
+                if (!cancelled) {
+                    setError('HLS playback failed, falling back to direct streaming')
+                    hls.destroy()
+                    hlsRef.current = null
+                    onFallbackRef.current?.()
+                }
             })
 
             hls.loadSource(hlsUrl!)
@@ -208,7 +220,7 @@ export function useHLS(
             setCurrentQuality(-1)
             setIsLoading(false)
         }
-    }, [hlsUrl, mediaRef, onFallback])
+    }, [hlsUrl, mediaRef])
 
     return {qualities, currentQuality, selectQuality, isLoading, error}
 }
