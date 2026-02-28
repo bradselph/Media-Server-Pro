@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -211,7 +212,8 @@ func main() {
 	ageGate := middleware.NewAgeGate(appCfg.AgeGate)
 
 	// ── Register background tasks ──────────────────────────────────────────
-	registerTasks(tasksModule, mediaModule, scannerModule, cfg, log)
+	registerTasks(tasksModule, mediaModule, scannerModule, thumbnailsModule,
+		authModule, backupModule, suggestionsModule, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
 	h := handlers.NewHandler(handlers.HandlerDeps{
@@ -263,6 +265,10 @@ func registerTasks(
 	scheduler *tasks.Module,
 	mediaModule *media.Module,
 	scannerModule *scanner.Module,
+	thumbnailsModule *thumbnails.Module,
+	authModule *auth.Module,
+	backupModule *backup.Module,
+	suggestionsModule *suggestions.Module,
 	cfg *config.Manager,
 	log *logger.Logger,
 ) {
@@ -273,7 +279,27 @@ func registerTasks(
 		"Scans configured directories for new and removed media files",
 		1*time.Hour,
 		func(ctx context.Context) error {
-			return mediaModule.Scan()
+			if err := mediaModule.Scan(); err != nil {
+				return err
+			}
+			// Feed updated media catalog to suggestions module
+			if suggestionsModule != nil {
+				items := mediaModule.ListMedia(media.Filter{})
+				mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
+				for _, item := range items {
+					mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
+						Path:      item.Path,
+						Title:     item.Name,
+						Category:  item.Category,
+						MediaType: string(item.Type),
+						Tags:      item.Tags,
+						Views:     item.Views,
+						AddedAt:   item.DateAdded,
+					})
+				}
+				suggestionsModule.UpdateMediaData(mediaInfos)
+			}
+			return nil
 		},
 	)
 
@@ -285,6 +311,67 @@ func registerTasks(
 		24*time.Hour,
 		func(ctx context.Context) error {
 			return mediaModule.Scan()
+		},
+	)
+
+	// Thumbnail generation — generates missing thumbnails every 30m
+	scheduler.RegisterTask(
+		"thumbnail-generation",
+		"Thumbnail Generation",
+		"Generates missing thumbnails for media files",
+		30*time.Minute,
+		func(ctx context.Context) error {
+			items := mediaModule.ListMedia(media.Filter{})
+			queued := 0
+			for _, item := range items {
+				if ctx.Err() != nil {
+					break
+				}
+				if !thumbnailsModule.HasThumbnail(item.Path) {
+					isAudio := item.Type == "audio"
+					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, isAudio); err != nil {
+						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
+							log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
+						}
+					} else {
+						queued++
+					}
+				}
+			}
+			if queued > 0 {
+				log.Info("Queued %d thumbnail generation jobs", queued)
+			}
+			return nil
+		},
+	)
+
+	// Session cleanup — removes expired sessions every hour
+	scheduler.RegisterTask(
+		"session-cleanup",
+		"Session Cleanup",
+		"Removes expired user sessions from the database",
+		1*time.Hour,
+		func(ctx context.Context) error {
+			return authModule.CleanupExpiredSessions(ctx)
+		},
+	)
+
+	// Backup cleanup — removes old backups beyond configured retention every 24h
+	scheduler.RegisterTask(
+		"backup-cleanup",
+		"Backup Cleanup",
+		"Removes old backups beyond the configured retention count",
+		24*time.Hour,
+		func(ctx context.Context) error {
+			if backupModule == nil {
+				return nil
+			}
+			const keepCount = 10
+			removed, err := backupModule.CleanOldBackups(keepCount)
+			if removed > 0 {
+				log.Info("Cleaned %d old backups (keeping %d)", removed, keepCount)
+			}
+			return err
 		},
 	)
 
