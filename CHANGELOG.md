@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0] - 2026-02-28 (minor)
+
+- Merge pull request #10 from bradselph/development
+- Fix systemd service: substitute DEPLOY_DIR at install time, move StartLimit to [Unit]
+- Fix useHLS: don't call setError/onFallback when component unmounted
+
+
 ## [0.6.0] - 2026-02-28 (minor)
 
 - Merge pull request #9 from bradselph/development
