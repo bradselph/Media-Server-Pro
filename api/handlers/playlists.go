@@ -115,8 +115,10 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 	}
 
 	updatedPlaylist, err := h.playlist.GetPlaylistForUser(id, session.UserID)
-	if err != nil {
+	if err != nil || updatedPlaylist == nil {
 		h.log.Warn("UpdatePlaylist: update succeeded but failed to fetch updated playlist %s: %v", id, err)
+		writeSuccess(c, map[string]string{"message": "Playlist updated"})
+		return
 	}
 	writeSuccess(c, updatedPlaylist)
 }

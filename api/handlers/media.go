@@ -238,7 +238,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 
 	if h.suggestions != nil && userID != "" {
-		if item, err := h.media.GetMedia(absPath); err == nil {
+		if item, err := h.media.GetMedia(absPath); err == nil && item != nil {
 			h.suggestions.RecordView(userID, absPath, item.Category, string(item.Type), 0)
 		}
 	}

@@ -14,6 +14,9 @@ import (
 
 // GenerateThumbnail generates a thumbnail for a media file
 func (h *Handler) GenerateThumbnail(c *gin.Context) {
+	if !h.requireThumbnails(c) {
+		return
+	}
 	var req struct {
 		ID      string `json:"id"`
 		IsAudio bool   `json:"is_audio"`
@@ -42,6 +45,9 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 
 // GetThumbnail returns a thumbnail image.
 func (h *Handler) GetThumbnail(c *gin.Context) {
+	if !h.requireThumbnails(c) {
+		return
+	}
 	thumbnailType := c.Query("type")
 
 	if thumbnailType == "placeholder" || thumbnailType == "audio_placeholder" || thumbnailType == "censored" {
@@ -121,6 +127,9 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 
 // ServeThumbnailFile serves a thumbnail image file by filename from the thumbnails directory
 func (h *Handler) ServeThumbnailFile(c *gin.Context) {
+	if !h.requireThumbnails(c) {
+		return
+	}
 	filename := c.Param("filename")
 
 	if filename == "" {
@@ -149,6 +158,9 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 
 // GetThumbnailPreviews returns the preview thumbnail URLs for a media file
 func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
+	if !h.requireThumbnails(c) {
+		return
+	}
 	id := c.Query("id")
 	path, ok := h.resolveMediaByID(c, id)
 	if !ok {
@@ -169,6 +181,9 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 
 // GetThumbnailStats returns thumbnail generation stats
 func (h *Handler) GetThumbnailStats(c *gin.Context) {
+	if !h.requireThumbnails(c) {
+		return
+	}
 	stats := h.thumbnails.GetStats()
 	writeSuccess(c, map[string]interface{}{
 		"total_thumbnails":   stats.Generated,

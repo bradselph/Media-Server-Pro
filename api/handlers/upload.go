@@ -96,6 +96,11 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
 			continue
 		}
+		if result == nil {
+			h.log.Error("Upload returned nil result for %s", fh.Filename)
+			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
+			continue
+		}
 		uploaded = append(uploaded, uploadedEntry{Filename: result.Filename, Size: result.Size})
 		totalAdded += result.Size
 

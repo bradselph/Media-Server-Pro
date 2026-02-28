@@ -31,7 +31,8 @@ func (h *Handler) CreateBackupV2(c *gin.Context) {
 		BackupType  string `json:"backup_type"`
 	}
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-		h.log.Debug("CreateBackupV2: could not decode request body: %v", err)
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
 	}
 
 	if req.BackupType == "" {

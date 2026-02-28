@@ -701,6 +701,7 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 		status, err := h.updater.SourceUpdate(ctx)
 		if err != nil {
 			h.log.Error("Source update failed: %v", err)
+			return
 		}
 		if h.admin != nil {
 			h.admin.LogAction(context.Background(), "admin", "admin", "apply_source_update",
