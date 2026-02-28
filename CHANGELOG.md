@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0] - 2026-02-28 (minor)
+
+- Merge pull request #13 from bradselph/development
+- Update deploy.sh
+- Implement stable UUID-based media IDs (decouple ID from file path)
+
+
 ## [0.9.0] - 2026-02-28 (minor)
 
 - Merge pull request #12 from bradselph/development
