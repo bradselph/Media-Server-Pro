@@ -152,6 +152,47 @@ var mediumConfidenceKeywords = []string{
 	"pleasure", "satisfaction", "desire",
 }
 
+// compiledKeywordPatterns holds pre-compiled word-boundary regexp patterns for
+// each keyword list so that scanning uses true word-boundary matching instead
+// of strings.Contains().  Patterns are built once at package init time.
+// Word-boundary matching prevents false positives like "ass" matching "class".
+var (
+	compiledHighConf []*compiledKeyword
+	compiledMedConf  []*compiledKeyword
+)
+
+type compiledKeyword struct {
+	raw     string
+	pattern *regexp.Regexp
+}
+
+// buildKeywordPatterns compiles a keyword list into word-boundary regexp patterns.
+// Keywords that contain spaces are treated as phrase matches (the whole phrase must
+// appear as a distinct token sequence).  Single words use \b anchors.
+func buildKeywordPatterns(keywords []string) []*compiledKeyword {
+	compiled := make([]*compiledKeyword, 0, len(keywords))
+	for _, kw := range keywords {
+		// Escape any regex meta-characters in the keyword itself.
+		escaped := regexp.QuoteMeta(strings.ToLower(kw))
+		// Use \b word boundaries; replace escaped spaces with flexible whitespace
+		// matchers so "lap dance" matches "lap-dance", "lapdance", etc. only if
+		// the surrounding characters are non-word.
+		pattern := `(?i)\b` + strings.ReplaceAll(escaped, `\ `, `[\s_\-]?`) + `\b`
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			// Fallback to literal substring if the pattern is somehow invalid.
+			re = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(kw))
+		}
+		compiled = append(compiled, &compiledKeyword{raw: kw, pattern: re})
+	}
+	return compiled
+}
+
+func init() {
+	compiledHighConf = buildKeywordPatterns(highConfidenceKeywords)
+	compiledMedConf = buildKeywordPatterns(mediumConfidenceKeywords)
+}
+
 // Directory patterns that may indicate mature content.
 // NOTE: These are matched with strings.Contains() against directory paths,
 // so avoid short/generic words like "av" (matches "avatars"), "hot" (matches
@@ -485,31 +526,33 @@ func scanConfigKeywords(filename string, keywords []string, boost float64, label
 	return confidence
 }
 
-// scanHighConfidenceKeywords checks the filename against high-confidence keywords.
-// A single high-confidence keyword should be sufficient to auto-flag content as mature.
-// Increased boost to 0.90 (from 0.85) so a single match exceeds the 0.35 threshold.
+// scanHighConfidenceKeywords checks the filename against high-confidence keywords
+// using pre-compiled word-boundary regex patterns to avoid false positives such
+// as "ass" matching "class" or "breast" matching "abreast".
+// A single high-confidence match is enough to flag content as mature.
 func scanHighConfidenceKeywords(filename string, result *ScanResult) float64 {
 	var confidence float64
-	for _, keyword := range highConfidenceKeywords {
-		if strings.Contains(filename, keyword) {
+	lower := strings.ToLower(filename)
+	for _, ck := range compiledHighConf {
+		if ck.pattern.MatchString(lower) {
 			confidence += 0.90
-			result.HighConfMatches = append(result.HighConfMatches, keyword)
-			result.Reasons = append(result.Reasons, "HIGH-CONF keyword: "+keyword)
+			result.HighConfMatches = append(result.HighConfMatches, ck.raw)
+			result.Reasons = append(result.Reasons, "HIGH-CONF keyword: "+ck.raw)
 		}
 	}
 	return confidence
 }
 
-// scanMediumConfidenceKeywords checks the filename against medium-confidence keywords.
-// Increased boost to 0.40 (from 0.35) for stricter detection.
-// Just one medium match (0.40) exceeds the 0.15 threshold for review.
+// scanMediumConfidenceKeywords checks the filename against medium-confidence keywords
+// using pre-compiled word-boundary regex patterns.
 func scanMediumConfidenceKeywords(filename string, result *ScanResult) float64 {
 	var confidence float64
-	for _, keyword := range mediumConfidenceKeywords {
-		if strings.Contains(filename, keyword) {
+	lower := strings.ToLower(filename)
+	for _, ck := range compiledMedConf {
+		if ck.pattern.MatchString(lower) {
 			confidence += 0.40
-			result.MedConfMatches = append(result.MedConfMatches, keyword)
-			result.Reasons = append(result.Reasons, "MED-CONF keyword: "+keyword)
+			result.MedConfMatches = append(result.MedConfMatches, ck.raw)
+			result.Reasons = append(result.Reasons, "MED-CONF keyword: "+ck.raw)
 		}
 	}
 	return confidence
