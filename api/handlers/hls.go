@@ -183,6 +183,8 @@ func (h *Handler) ServeMasterPlaylist(c *gin.Context) {
 		return
 	}
 
+	h.hls.RecordAccess(jobID)
+
 	if err := h.hls.ServeMasterPlaylist(c.Writer, c.Request, jobID); err != nil {
 		writeError(c, http.StatusNotFound, "HLS playlist not found")
 		return
@@ -206,6 +208,8 @@ func (h *Handler) ServeVariantPlaylist(c *gin.Context) {
 	if !h.checkMatureAccess(c, job.MediaPath) {
 		return
 	}
+
+	h.hls.RecordAccess(jobID)
 
 	if err := h.hls.ServeVariantPlaylist(c.Writer, c.Request, jobID, quality); err != nil {
 		writeError(c, http.StatusNotFound, "HLS variant playlist not found")
@@ -231,6 +235,8 @@ func (h *Handler) ServeSegment(c *gin.Context) {
 	if !h.checkMatureAccess(c, job.MediaPath) {
 		return
 	}
+
+	h.hls.RecordAccess(jobID)
 
 	if err := h.hls.ServeSegment(c.Writer, c.Request, jobID, quality, segment); err != nil {
 		writeError(c, http.StatusNotFound, "HLS segment not found")
