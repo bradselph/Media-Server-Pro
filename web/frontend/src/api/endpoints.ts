@@ -37,6 +37,7 @@ import type {
     MediaStats,
     PermissionsInfo,
     Playlist,
+    PlaylistItem,
     QueryResult,
     RemoteMediaItem,
     RemoteSource,
@@ -222,7 +223,7 @@ export const playlistApi = {
     update: (id: string, data: { name?: string; description?: string; is_public?: boolean }) =>
         api.put<Playlist>(`/api/playlists/${encodeURIComponent(id)}`, data),
 
-    addItem: (id: string, item: { media_id: string; title?: string }) =>
+    addItem: (id: string, item: Pick<PlaylistItem, 'media_id' | 'title'>) =>
         api.post<void>(`/api/playlists/${encodeURIComponent(id)}/items`, item),
 
     removeItem: (id: string, mediaId: string) =>
