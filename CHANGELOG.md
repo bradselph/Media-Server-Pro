@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0] - 2026-02-28 (minor)
+
+- Merge pull request #9 from bradselph/development
+- Add requireThumbnails guard; fix nil panics in thumbnails and backups
+- Fix nil dereference bugs in media and upload handlers
+- Fix nil dereference in ApplySourceUpdate goroutine
+- Fix: Security/Debug - Harden path resolution in resolveRelativePath and log symlink errors
+- Fix: Bug - UpdatePlaylist returns null data when post-update fetch fails
+- Fix: Bug - nil pointer panic in UpdatePreferences when GetUser returns (nil, nil)
+
+
 ## [0.5.0] - 2026-02-28 (minor)
 
 - Merge pull request #8 from bradselph/development
