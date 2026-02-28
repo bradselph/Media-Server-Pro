@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0] - 2026-02-28 (minor)
+
+- Merge pull request #11 from bradselph/development
+- Add frontend API endpoints for playlist reorder, clear, and copy
+- Add 15-second timeout to all ffmpeg.Probe calls
+- Improve useHLS: swapAudioCodec recovery, stable onFallback ref, cancelled guard
+- Wire security whitelist/blacklist enable flags to runtime config updates
+- Add admin endpoints for active streams, uploads, and user sessions
+- Add ReorderPlaylistItems, ClearPlaylist, CopyPlaylist handlers and routes
+- Fix analytics.TrackView to record views for authenticated users
+- Wire suggestions.RecordCompletion when playback finishes
+- Add HLS RecordAccess calls when serving playlists and segments
+- Add missing background tasks and skip partial downloads in media scanner
+
+
 ## [0.7.0] - 2026-02-28 (minor)
 
 - Merge pull request #10 from bradselph/development
