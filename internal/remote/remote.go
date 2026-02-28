@@ -22,8 +22,10 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/repositories"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
+	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
@@ -39,6 +41,7 @@ const (
 type Module struct {
 	config     *config.Manager
 	log        *logger.Logger
+	dbModule   *database.Module
 	repo       repositories.RemoteCacheRepository
 	httpClient *http.Client
 	sources    map[string]*SourceState
@@ -89,11 +92,11 @@ type CachedMedia struct {
 }
 
 // NewModule creates a new remote media module
-func NewModule(cfg *config.Manager, repo repositories.RemoteCacheRepository) *Module {
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	return &Module{
-		config: cfg,
-		log:    logger.New("remote"),
-		repo:   repo,
+		config:   cfg,
+		log:      logger.New("remote"),
+		dbModule: dbModule,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -126,6 +129,8 @@ func (m *Module) Name() string {
 // Start initializes the remote media module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting remote media module...")
+
+	m.repo = mysqlrepo.NewRemoteCacheRepository(m.dbModule.GORM())
 
 	cfg := m.config.Get()
 	if !cfg.RemoteMedia.Enabled {

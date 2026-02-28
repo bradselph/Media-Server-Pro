@@ -19,8 +19,10 @@ import (
 	"golang.org/x/text/language"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/repositories"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
+	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
@@ -66,6 +68,7 @@ type MediaInfo struct {
 type Module struct {
 	config    *config.Manager
 	log       *logger.Logger
+	dbModule  *database.Module
 	repo      repositories.CategorizedItemRepository
 	items     map[string]*CategorizedItem
 	mu        sync.RWMutex
@@ -88,11 +91,11 @@ type categoryPatterns struct {
 }
 
 // NewModule creates a new categorizer module
-func NewModule(cfg *config.Manager, repo repositories.CategorizedItemRepository) *Module {
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	return &Module{
 		config:   cfg,
 		log:      logger.New("categorizer"),
-		repo:     repo,
+		dbModule: dbModule,
 		items:    make(map[string]*CategorizedItem),
 		patterns: compilePatterns(),
 	}
@@ -147,6 +150,8 @@ func (m *Module) Name() string {
 // Start initializes the module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting categorizer module...")
+
+	m.repo = mysqlrepo.NewCategorizedItemRepository(m.dbModule.GORM())
 
 	if err := m.loadItems(); err != nil {
 		m.log.Warn("Failed to load categorized items: %v", err)

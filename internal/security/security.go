@@ -13,8 +13,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/repositories"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
+	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
@@ -46,6 +48,7 @@ func init() {
 type Module struct {
 	config           *config.Manager
 	log              *logger.Logger
+	dbModule         *database.Module
 	repo             repositories.IPListRepository
 	whitelist        *IPList
 	blacklist        *IPList
@@ -117,11 +120,11 @@ type Stats struct {
 }
 
 // NewModule creates a new security module
-func NewModule(cfg *config.Manager, repo repositories.IPListRepository) *Module {
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	return &Module{
-		config: cfg,
-		log:    logger.New("security"),
-		repo:   repo,
+		config:   cfg,
+		log:      logger.New("security"),
+		dbModule: dbModule,
 		whitelist: &IPList{
 			Name:    "whitelist",
 			Enabled: false,
@@ -150,6 +153,8 @@ func (m *Module) Name() string {
 // Start initializes the security module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting security module...")
+
+	m.repo = mysqlrepo.NewIPListRepository(m.dbModule.GORM())
 
 	// Load IP lists
 	if err := m.loadIPLists(); err != nil {
