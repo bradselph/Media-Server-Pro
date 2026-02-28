@@ -3,24 +3,24 @@ Description=Media Server Pro
 Documentation=https://github.com/bradselph/Media-Server-Pro
 After=network-online.target mysql.service
 Wants=network-online.target mysql.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
 User=mediaserver
 Group=mediaserver
-WorkingDirectory=/opt/media-server
+WorkingDirectory=__DEPLOY_DIR__
 
 # Load all configuration from .env
-EnvironmentFile=/opt/media-server/.env
+EnvironmentFile=__DEPLOY_DIR__/.env
 
-ExecStart=/opt/media-server/server
+ExecStart=__DEPLOY_DIR__/server
 ExecReload=/bin/kill -HUP $MAINPID
 
 # Restart policy
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=3
 
 # Graceful shutdown timeout (match SERVER_SHUTDOWN_TIMEOUT in .env)
 TimeoutStopSec=30
