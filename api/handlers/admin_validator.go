@@ -8,6 +8,9 @@ import (
 
 // ValidateMedia validates a media file
 func (h *Handler) ValidateMedia(c *gin.Context) {
+	if !h.requireValidator(c) {
+		return
+	}
 	var req struct {
 		Path string `json:"path"`
 	}
@@ -28,6 +31,9 @@ func (h *Handler) ValidateMedia(c *gin.Context) {
 
 // FixMedia attempts to fix an invalid media file
 func (h *Handler) FixMedia(c *gin.Context) {
+	if !h.requireValidator(c) {
+		return
+	}
 	var req struct {
 		Path string `json:"path"`
 	}
@@ -48,6 +54,9 @@ func (h *Handler) FixMedia(c *gin.Context) {
 
 // GetValidatorStats returns validator statistics
 func (h *Handler) GetValidatorStats(c *gin.Context) {
+	if !h.requireValidator(c) {
+		return
+	}
 	stats := h.validator.GetStats()
 	writeSuccess(c, stats)
 }

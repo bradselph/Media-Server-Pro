@@ -9,6 +9,9 @@ import (
 
 // ListBackupsV2 lists backups using the backup module
 func (h *Handler) ListBackupsV2(c *gin.Context) {
+	if !h.requireBackup(c) {
+		return
+	}
 	backups, err := h.backup.ListBackups()
 	if err != nil {
 		h.log.Error("%v", err)
@@ -20,6 +23,9 @@ func (h *Handler) ListBackupsV2(c *gin.Context) {
 
 // CreateBackupV2 creates a backup using the backup module
 func (h *Handler) CreateBackupV2(c *gin.Context) {
+	if !h.requireBackup(c) {
+		return
+	}
 	var req struct {
 		Description string `json:"description"`
 		BackupType  string `json:"backup_type"`
@@ -44,6 +50,9 @@ func (h *Handler) CreateBackupV2(c *gin.Context) {
 
 // RestoreBackup restores from a backup (v2 API - by ID path param)
 func (h *Handler) RestoreBackup(c *gin.Context) {
+	if !h.requireBackup(c) {
+		return
+	}
 	backupID := c.Param("id")
 
 	if err := h.backup.RestoreBackup(backupID); err != nil {
@@ -57,6 +66,9 @@ func (h *Handler) RestoreBackup(c *gin.Context) {
 
 // DeleteBackup deletes a backup
 func (h *Handler) DeleteBackup(c *gin.Context) {
+	if !h.requireBackup(c) {
+		return
+	}
 	backupID := c.Param("id")
 
 	if err := h.backup.DeleteBackup(backupID); err != nil {

@@ -11,6 +11,9 @@ import (
 
 // ScanContent scans media files for mature content
 func (h *Handler) ScanContent(c *gin.Context) {
+	if !h.requireScanner(c) {
+		return
+	}
 	var req struct {
 		Path         string `json:"path"`
 		AutoApply    bool   `json:"auto_apply"`
@@ -91,18 +94,27 @@ func (h *Handler) ScanContent(c *gin.Context) {
 
 // GetScannerStats returns scanner statistics
 func (h *Handler) GetScannerStats(c *gin.Context) {
+	if !h.requireScanner(c) {
+		return
+	}
 	stats := h.scanner.GetStats()
 	writeSuccess(c, stats)
 }
 
 // GetReviewQueue returns items pending review as a flat array
 func (h *Handler) GetReviewQueue(c *gin.Context) {
+	if !h.requireScanner(c) {
+		return
+	}
 	queue := h.scanner.GetReviewQueue()
 	writeSuccess(c, queue)
 }
 
 // BatchReviewAction applies approve/reject action to multiple review queue items
 func (h *Handler) BatchReviewAction(c *gin.Context) {
+	if !h.requireScanner(c) {
+		return
+	}
 	var req struct {
 		Action string   `json:"action"`
 		IDs    []string `json:"ids"`
@@ -156,6 +168,9 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 
 // ClearReviewQueue clears all items from the scanner review queue
 func (h *Handler) ClearReviewQueue(c *gin.Context) {
+	if !h.requireScanner(c) {
+		return
+	}
 	h.scanner.ClearReviewQueue()
 	writeSuccess(c, map[string]interface{}{
 		"message": "Review queue cleared",
@@ -164,6 +179,9 @@ func (h *Handler) ClearReviewQueue(c *gin.Context) {
 
 // ApproveContent approves content from the review queue
 func (h *Handler) ApproveContent(c *gin.Context) {
+	if !h.requireScanner(c) {
+		return
+	}
 	id := c.Param("id")
 	path, ok := h.resolveMediaByID(c, id)
 	if !ok {
@@ -187,6 +205,9 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 
 // RejectContent rejects content from the review queue
 func (h *Handler) RejectContent(c *gin.Context) {
+	if !h.requireScanner(c) {
+		return
+	}
 	id := c.Param("id")
 	path, ok := h.resolveMediaByID(c, id)
 	if !ok {

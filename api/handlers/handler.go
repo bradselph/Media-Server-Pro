@@ -266,6 +266,87 @@ func (h *Handler) requirePlaylist(c *gin.Context) bool {
 	return true
 }
 
+// requireHLS checks that the HLS module is available.
+func (h *Handler) requireHLS(c *gin.Context) bool {
+	if h.hls == nil {
+		writeError(c, http.StatusServiceUnavailable, "HLS feature is not available")
+		return false
+	}
+	return true
+}
+
+// requireSuggestions checks that the suggestions module is available.
+func (h *Handler) requireSuggestions(c *gin.Context) bool {
+	if h.suggestions == nil {
+		writeError(c, http.StatusServiceUnavailable, "Suggestions feature is not available")
+		return false
+	}
+	return true
+}
+
+// requireScanner checks that the scanner module is available.
+func (h *Handler) requireScanner(c *gin.Context) bool {
+	if h.scanner == nil {
+		writeError(c, http.StatusServiceUnavailable, "Scanner is not available")
+		return false
+	}
+	return true
+}
+
+// requireValidator checks that the validator module is available.
+func (h *Handler) requireValidator(c *gin.Context) bool {
+	if h.validator == nil {
+		writeError(c, http.StatusServiceUnavailable, "Validator is not available")
+		return false
+	}
+	return true
+}
+
+// requireBackup checks that the backup module is available.
+func (h *Handler) requireBackup(c *gin.Context) bool {
+	if h.backup == nil {
+		writeError(c, http.StatusServiceUnavailable, "Backup feature is not available")
+		return false
+	}
+	return true
+}
+
+// requireCategorizer checks that the categorizer module is available.
+func (h *Handler) requireCategorizer(c *gin.Context) bool {
+	if h.categorizer == nil {
+		writeError(c, http.StatusServiceUnavailable, "Categorizer is not available")
+		return false
+	}
+	return true
+}
+
+// requireAutodiscovery checks that the autodiscovery module is available.
+func (h *Handler) requireAutodiscovery(c *gin.Context) bool {
+	if h.autodiscovery == nil {
+		writeError(c, http.StatusServiceUnavailable, "Auto-discovery is not available")
+		return false
+	}
+	return true
+}
+
+// requireUpdater checks that the updater module is available.
+func (h *Handler) requireUpdater(c *gin.Context) bool {
+	if h.updater == nil {
+		writeError(c, http.StatusServiceUnavailable, "Updater is not available")
+		return false
+	}
+	return true
+}
+
+// requireUpload checks that the upload module is available.
+func (h *Handler) requireUpload(c *gin.Context) bool {
+	if h.upload == nil {
+		writeError(c, http.StatusServiceUnavailable, "Upload feature is not available")
+		return false
+	}
+	return true
+}
+
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
 // is best-effort — if the admin module is unavailable the action is silently
 // skipped so that the primary operation (user create, media delete, etc.) still
@@ -477,6 +558,10 @@ func (h *Handler) getUserType(cfg *config.Config, user *models.User) *config.Use
 
 // checkRemoteMediaEnabled returns true if remote media feature is enabled
 func (h *Handler) checkRemoteMediaEnabled(c *gin.Context) bool {
+	if h.remote == nil {
+		writeError(c, http.StatusServiceUnavailable, "Remote media is not available")
+		return false
+	}
 	cfg := h.media.GetConfig()
 	if !cfg.Features.EnableRemoteMedia || !cfg.RemoteMedia.Enabled {
 		writeError(c, http.StatusNotFound, "Remote media feature is disabled")

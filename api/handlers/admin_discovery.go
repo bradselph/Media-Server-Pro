@@ -10,6 +10,9 @@ import (
 
 // DiscoverMedia discovers and suggests organization for media files
 func (h *Handler) DiscoverMedia(c *gin.Context) {
+	if !h.requireAutodiscovery(c) {
+		return
+	}
 	var req struct {
 		Directory string `json:"directory"`
 	}
@@ -30,12 +33,18 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 
 // GetDiscoverySuggestions returns organization suggestions
 func (h *Handler) GetDiscoverySuggestions(c *gin.Context) {
+	if !h.requireAutodiscovery(c) {
+		return
+	}
 	discoverySuggestions := h.autodiscovery.GetSuggestions()
 	writeSuccess(c, discoverySuggestions)
 }
 
 // ApplyDiscoverySuggestion applies a suggested organization
 func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
+	if !h.requireAutodiscovery(c) {
+		return
+	}
 	var req struct {
 		OriginalPath string `json:"original_path"`
 	}
@@ -55,6 +64,9 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 
 // DismissDiscoverySuggestion removes a suggestion without applying it
 func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
+	if !h.requireAutodiscovery(c) {
+		return
+	}
 	rawPath := strings.TrimPrefix(c.Param("path"), "/")
 	path, err := url.PathUnescape(rawPath)
 	if err != nil || path == "" {

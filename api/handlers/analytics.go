@@ -220,6 +220,10 @@ func (h *Handler) GetEventTypeCounts(c *gin.Context) {
 
 // AdminExportAnalytics exports analytics data as a CSV file download.
 func (h *Handler) AdminExportAnalytics(c *gin.Context) {
+	if h.analytics == nil {
+		writeError(c, http.StatusServiceUnavailable, "Analytics is not available")
+		return
+	}
 	endDate := time.Now()
 	startDate := endDate.AddDate(0, -1, 0)
 

@@ -10,6 +10,9 @@ import (
 
 // UploadMedia handles media file upload
 func (h *Handler) UploadMedia(c *gin.Context) {
+	if !h.requireUpload(c) {
+		return
+	}
 	session := getSession(c)
 	if session == nil {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
@@ -96,7 +99,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		uploaded = append(uploaded, uploadedEntry{Filename: result.Filename, Size: result.Size})
 		totalAdded += result.Size
 
-		if cfg.Uploads.ScanForMature && result.Path != "" {
+		if cfg.Uploads.ScanForMature && result.Path != "" && h.scanner != nil {
 			if scanResult := h.scanner.ScanFile(result.Path); scanResult != nil && scanResult.IsMature && cfg.MatureScanner.AutoFlag {
 				if _, err := h.media.GetMedia(result.Path); err == nil {
 					updates := map[string]interface{}{"is_mature": true}
@@ -130,6 +133,9 @@ var _ = (*scanner.ScanResult)(nil)
 
 // GetUploadProgress returns upload progress
 func (h *Handler) GetUploadProgress(c *gin.Context) {
+	if !h.requireUpload(c) {
+		return
+	}
 	uploadID := c.Param("id")
 
 	progress, ok := h.upload.GetProgress(uploadID)
