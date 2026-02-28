@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -54,7 +55,7 @@ const (
 
 // ValidationResult holds the result of validating a media file
 type ValidationResult struct {
-	Path           string           `json:"path"`
+	Path           string           `json:"-"`
 	Status         ValidationStatus `json:"status"`
 	ValidatedAt    time.Time        `json:"validated_at"`
 	Duration       float64          `json:"duration"`
@@ -65,7 +66,7 @@ type ValidationResult struct {
 	Bitrate        int64            `json:"bitrate,omitempty"`
 	Container      string           `json:"container,omitempty"`
 	Issues         []string         `json:"issues,omitempty"`
-	FixedPath      string           `json:"fixed_path,omitempty"`
+	FixedPath      string           `json:"-"`
 	Error          string           `json:"error,omitempty"`
 	VideoSupported bool             `json:"video_supported"`
 	AudioSupported bool             `json:"audio_supported"`
@@ -75,26 +76,26 @@ type ValidationResult struct {
 type Module struct {
 	config      *config.Manager
 	log         *logger.Logger
+	repo        repositories.ValidationResultRepository
 	results     map[string]*ValidationResult
 	mu          sync.RWMutex
 	fixing      map[string]bool // tracks paths currently being fixed
 	fixingMu    sync.Mutex
 	ffprobePath string
 	ffmpegPath  string
-	dataDir     string
 	healthy     bool
 	healthMsg   string
 	healthMu    sync.RWMutex
 }
 
 // NewModule creates a new validator module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.ValidationResultRepository) *Module {
 	return &Module{
 		config:  cfg,
 		log:     logger.New("validator"),
+		repo:    repo,
 		results: make(map[string]*ValidationResult),
 		fixing:  make(map[string]bool),
-		dataDir: cfg.Get().Directories.Data,
 	}
 }
 
@@ -359,15 +360,16 @@ func (m *Module) checkCodecSupport(result *ValidationResult) {
 	}
 }
 
-// storeResult saves a validation result and persists to disk to prevent data loss.
+// storeResult saves a validation result and persists to the database immediately.
 func (m *Module) storeResult(result *ValidationResult) {
 	m.mu.Lock()
 	m.results[result.Path] = result
 	m.mu.Unlock()
 
 	// Persist immediately to prevent data loss on crash
-	if err := m.saveResults(); err != nil {
-		m.log.Error("Failed to save validation results: %v", err)
+	rec := m.resultToRecord(result)
+	if err := m.repo.Upsert(context.Background(), rec); err != nil {
+		m.log.Error("Failed to save validation result: %v", err)
 	}
 }
 
@@ -559,38 +561,67 @@ func (m *Module) ClearResult(path string) {
 	delete(m.results, path)
 }
 
-// Persistence functions
+// Persistence — reads/writes via MySQL repository
+
 func (m *Module) loadResults() error {
-	path := filepath.Join(m.dataDir, "validation_results.json")
-	data, err := os.ReadFile(path)
+	records, err := m.repo.List(context.Background())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return json.Unmarshal(data, &m.results)
+	for _, rec := range records {
+		result := &ValidationResult{
+			Path:           rec.Path,
+			Status:         ValidationStatus(rec.Status),
+			ValidatedAt:    rec.ValidatedAt,
+			Duration:       rec.Duration,
+			VideoCodec:     rec.VideoCodec,
+			AudioCodec:     rec.AudioCodec,
+			Width:          rec.Width,
+			Height:         rec.Height,
+			Bitrate:        rec.Bitrate,
+			Container:      rec.Container,
+			Issues:         rec.Issues,
+			Error:          rec.Error,
+			VideoSupported: rec.VideoSupported,
+			AudioSupported: rec.AudioSupported,
+		}
+		m.results[rec.Path] = result
+	}
+	return nil
 }
 
 func (m *Module) saveResults() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	data, err := json.MarshalIndent(m.results, "", "  ")
-	if err != nil {
-		return err
+	ctx := context.Background()
+	for _, result := range m.results {
+		if err := m.repo.Upsert(ctx, m.resultToRecord(result)); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
-	path := filepath.Join(m.dataDir, "validation_results.json")
-	tempPath := path + ".tmp"
-
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
+func (m *Module) resultToRecord(result *ValidationResult) *repositories.ValidationResultRecord {
+	return &repositories.ValidationResultRecord{
+		Path:           result.Path,
+		Status:         string(result.Status),
+		ValidatedAt:    result.ValidatedAt,
+		Duration:       result.Duration,
+		VideoCodec:     result.VideoCodec,
+		AudioCodec:     result.AudioCodec,
+		Width:          result.Width,
+		Height:         result.Height,
+		Bitrate:        result.Bitrate,
+		Container:      result.Container,
+		Issues:         result.Issues,
+		Error:          result.Error,
+		VideoSupported: result.VideoSupported,
+		AudioSupported: result.AudioSupported,
 	}
-
-	return os.Rename(tempPath, path)
 }

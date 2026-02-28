@@ -767,7 +767,7 @@ func (m *Manager) save() error {
 
 	// Write to temp file first for atomic write
 	tempPath := m.configPath + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+	if err := os.WriteFile(tempPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write temp config: %w", err)
 	}
 

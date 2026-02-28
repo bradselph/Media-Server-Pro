@@ -14,9 +14,9 @@ import '@/styles/player.css'
 // ── Similar Media Item ────────────────────────────────────────────────────────
 
 function SimilarItem({entry}: { entry: Suggestion }) {
-    const name = entry.title || formatTitle(entry.media_path.split(/[\\/]/).pop() ?? '')
+    const name = entry.title || formatTitle(entry.media_id)
     return (
-        <Link to={`/player?path=${encodeURIComponent(entry.media_path)}`} className="related-item">
+        <Link to={`/player?id=${encodeURIComponent(entry.media_id)}`} className="related-item">
             {entry.thumbnail_url ? (
                 <img
                     className="related-thumb"
@@ -48,7 +48,7 @@ function SimilarItem({entry}: { entry: Suggestion }) {
 export function PlayerPage() {
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
-    const mediaPath = searchParams.get('path') ?? ''
+    const mediaId = searchParams.get('id') ?? ''
     const permissions = useAuthStore((s) => s.permissions)
     const user = useAuthStore((s) => s.user)
     const {showToast} = useToast()
@@ -97,11 +97,11 @@ export function PlayerPage() {
 
     const handleRate = useCallback((rating: number) => {
         setUserRating(rating)
-        if (mediaPath) {
-            ratingsApi.record(mediaPath, rating).catch(() => {
+        if (mediaId) {
+            ratingsApi.record(mediaId, rating).catch(() => {
             })
         }
-    }, [mediaPath])
+    }, [mediaId])
 
     // Controls visibility timeout
     const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -226,7 +226,7 @@ export function PlayerPage() {
             } else if (hls.job_id && hls.status === 'running') {
                 setHlsJob({
                     id: hls.job_id,
-                    media_path: mediaPath,
+                    // HLS job status (media_path removed from API)
                     status: 'running',
                     progress: hls.progress ?? 0,
                     qualities: hls.qualities ?? [],
@@ -956,14 +956,14 @@ export function PlayerPage() {
                             </div>
                             <div className="media-action-buttons">
                                 {permissions.can_download && (
-                                    <a href={mediaApi.getDownloadUrl(media.path)} className="media-action-btn">
+                                    <a href={mediaApi.getDownloadUrl(media.id)} className="media-action-btn">
                                         <i className="bi bi-download"/> Download
                                     </a>
                                 )}
                                 <button
                                     className="media-action-btn"
                                     onClick={() => {
-                                        const url = `${window.location.origin}/player?path=${encodeURIComponent(media.path)}`
+                                        const url = `${window.location.origin}/player?id=${encodeURIComponent(media.id)}`
                                         navigator.clipboard.writeText(url).then(
                                             () => showToast('Link copied to clipboard', 'success'),
                                             () => showToast('Could not copy link', 'error'),
@@ -992,7 +992,7 @@ export function PlayerPage() {
                             ) : related.length === 0 ? (
                                 <p style={{color: 'var(--text-muted)', fontSize: 13}}>No similar media found.</p>
                             ) : (
-                                related.map(entry => <SimilarItem key={entry.media_path} entry={entry}/>)
+                                related.map(entry => <SimilarItem key={entry.media_id} entry={entry}/>)
                             )}
                         </div>
 

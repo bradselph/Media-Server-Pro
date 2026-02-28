@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -31,13 +32,14 @@ const (
 	errSourceNotFoundFmt = "source not found: %s"
 	errCloseResponseFmt  = "Failed to close response body: %v"
 	headerUserAgent      = "User-Agent"
-	userAgentValue       = "MediaServerPro/3.0"
+	userAgentValue       = "MediaServerPro/4.0"
 )
 
 // Module handles remote media sources
 type Module struct {
 	config     *config.Manager
 	log        *logger.Logger
+	repo       repositories.RemoteCacheRepository
 	httpClient *http.Client
 	sources    map[string]*SourceState
 	mediaCache map[string]*CachedMedia
@@ -65,7 +67,7 @@ type SourceState struct {
 type MediaItem struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
-	Path        string            `json:"path"`
+	Path        string            `json:"-"`
 	URL         string            `json:"url"`
 	SourceName  string            `json:"source_name"`
 	Size        int64             `json:"size"`
@@ -78,7 +80,7 @@ type MediaItem struct {
 // CachedMedia represents cached remote media
 type CachedMedia struct {
 	RemoteURL   string    `json:"remote_url"`
-	LocalPath   string    `json:"local_path"`
+	LocalPath   string    `json:"-"`
 	Size        int64     `json:"size"`
 	ContentType string    `json:"content_type"`
 	CachedAt    time.Time `json:"cached_at"`
@@ -87,10 +89,11 @@ type CachedMedia struct {
 }
 
 // NewModule creates a new remote media module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.RemoteCacheRepository) *Module {
 	return &Module{
 		config: cfg,
 		log:    logger.New("remote"),
+		repo:   repo,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -268,6 +271,11 @@ func (m *Module) syncSource(sourceName string) error {
 
 // discoverMedia discovers media files from a remote source
 func (m *Module) discoverMedia(source config.RemoteSource) ([]*MediaItem, error) {
+	// Validate URL against SSRF before making the request
+	if err := validateURL(source.URL); err != nil {
+		return nil, fmt.Errorf("SSRF check failed for source %s: %w", source.Name, err)
+	}
+
 	// Create request
 	req, err := http.NewRequest("GET", source.URL, nil)
 	if err != nil {
@@ -409,6 +417,11 @@ func (m *Module) GetAllRemoteMedia() []*MediaItem {
 
 // StreamRemote streams a remote media file
 func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL string, sourceName string) error {
+	// Validate URL against SSRF before streaming
+	if err := validateURL(remoteURL); err != nil {
+		return fmt.Errorf("SSRF check failed: %w", err)
+	}
+
 	m.log.Debug("Streaming remote: %s from %s", remoteURL, sourceName)
 
 	// Get source config for auth
@@ -558,6 +571,11 @@ func (m *Module) getCachedMedia(remoteURL string) *CachedMedia {
 
 // CacheMedia downloads and caches a remote media file
 func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) {
+	// Validate URL against SSRF before downloading
+	if err := validateURL(remoteURL); err != nil {
+		return nil, fmt.Errorf("SSRF check failed: %w", err)
+	}
+
 	m.log.Info("Caching remote media: %s", remoteURL)
 
 	// Get source config
@@ -735,16 +753,24 @@ type SourceStats struct {
 // Cache management
 
 func (m *Module) loadCacheIndex() {
-	path := filepath.Join(m.cacheDir, "cache_index.json")
-	data, err := os.ReadFile(path)
+	records, err := m.repo.List(context.Background())
 	if err != nil {
+		m.log.Warn("Failed to load cache index from DB: %v", err)
 		return
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := json.Unmarshal(data, &m.mediaCache); err != nil {
-		m.log.Warn("Failed to parse cache index (may be corrupted): %v", err)
+	for _, rec := range records {
+		m.mediaCache[rec.RemoteURL] = &CachedMedia{
+			RemoteURL:   rec.RemoteURL,
+			LocalPath:   rec.LocalPath,
+			Size:        rec.Size,
+			ContentType: rec.ContentType,
+			CachedAt:    rec.CachedAt,
+			LastAccess:  rec.LastAccess,
+			Hits:        rec.Hits,
+		}
 	}
 }
 
@@ -752,14 +778,20 @@ func (m *Module) saveCacheIndex() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	data, err := json.MarshalIndent(m.mediaCache, "", "  ")
-	if err != nil {
-		return
-	}
-
-	path := filepath.Join(m.cacheDir, "cache_index.json")
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		m.log.Warn("Failed to save cache index: %v", err)
+	ctx := context.Background()
+	for _, cached := range m.mediaCache {
+		rec := &repositories.RemoteCacheRecord{
+			RemoteURL:   cached.RemoteURL,
+			LocalPath:   cached.LocalPath,
+			Size:        cached.Size,
+			ContentType: cached.ContentType,
+			CachedAt:    cached.CachedAt,
+			LastAccess:  cached.LastAccess,
+			Hits:        cached.Hits,
+		}
+		if err := m.repo.Save(ctx, rec); err != nil {
+			m.log.Warn("Failed to save cache entry: %v", err)
+		}
 	}
 }
 
@@ -830,6 +862,40 @@ func (m *Module) CleanCache() int {
 
 	m.log.Info("Cleaned %d cached items (TTL + LRU)", removed)
 	return removed
+}
+
+// validateURL checks that the given URL does not point to a private, loopback,
+// or link-local address. This prevents SSRF when the remote module fetches
+// user-configured source URLs.
+func validateURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("URL has no host")
+	}
+
+	// Resolve hostname to IPs and check each one
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		// If DNS lookup fails, try parsing as literal IP
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return fmt.Errorf("cannot resolve host: %s", host)
+		}
+		ips = []net.IP{ip}
+	}
+
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return fmt.Errorf("URL resolves to private/loopback address: %s", ip)
+		}
+	}
+
+	return nil
 }
 
 // Helper functions

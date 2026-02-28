@@ -4,7 +4,7 @@ import {hlsApi, mediaApi, watchHistoryApi} from '@/api/endpoints'
 
 interface PlaybackState {
     isPlaying: boolean
-    currentMediaPath: string | null
+    currentMediaId: string | null
     currentMediaTitle: string
     currentMediaType: 'video' | 'audio' | null
     currentVolume: number
@@ -15,7 +15,7 @@ interface PlaybackState {
     hlsEnabled: boolean
     hlsUrl: string | null
 
-    playMedia: (path: string, type?: 'video' | 'audio') => Promise<void>
+    playMedia: (id: string, title?: string, type?: 'video' | 'audio') => Promise<void>
     togglePlayPause: () => void
     setPlaying: (playing: boolean) => void
     setVolume: (volume: number) => void
@@ -32,7 +32,7 @@ export const usePlaybackStore = create<PlaybackState>()(
     persist(
         (set, get) => ({
             isPlaying: false,
-            currentMediaPath: null,
+            currentMediaId: null,
             currentMediaTitle: '',
             currentMediaType: null,
             currentVolume: 0.8,
@@ -43,15 +43,13 @@ export const usePlaybackStore = create<PlaybackState>()(
             hlsEnabled: false,
             hlsUrl: null,
 
-            playMedia: async (path: string, type?: 'video' | 'audio') => {
-                // Use caller-supplied type when available; fall back to extension heuristic for prev/next nav
-                const isVideo = type ? type === 'video' : /\.(mp4|mkv|avi|webm|mov|wmv)$/i.test(path)
-                const title = path.split('/').pop()?.split('\\').pop()?.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ') || path
+            playMedia: async (id: string, title?: string, type?: 'video' | 'audio') => {
+                const displayTitle = title || id
 
                 set({
-                    currentMediaPath: path,
-                    currentMediaTitle: title,
-                    currentMediaType: type ?? (isVideo ? 'video' : 'audio'),
+                    currentMediaId: id,
+                    currentMediaTitle: displayTitle,
+                    currentMediaType: type ?? 'video',
                     isPlaying: true,
                     currentTime: 0,
                     duration: 0,
@@ -59,15 +57,16 @@ export const usePlaybackStore = create<PlaybackState>()(
                 })
 
                 // Check HLS availability for video files
+                const isVideo = type ? type === 'video' : true
                 if (isVideo) {
                     try {
-                        const hlsInfo = await hlsApi.check(path)
+                        const hlsInfo = await hlsApi.check(id)
                         if (hlsInfo.available && hlsInfo.hls_url) {
                             set({hlsEnabled: true, hlsUrl: hlsInfo.hls_url})
                         } else {
                             set({hlsEnabled: false, hlsUrl: null})
                             // Trigger background HLS generation
-                            hlsApi.generate(path).catch(() => {
+                            hlsApi.generate(id).catch(() => {
                             })
                         }
                     } catch {
@@ -79,7 +78,7 @@ export const usePlaybackStore = create<PlaybackState>()(
 
                 // Track playback
                 try {
-                    watchHistoryApi.trackPosition(path, 0, 0).catch(() => {
+                    watchHistoryApi.trackPosition(id, 0, 0).catch(() => {
                     })
                 } catch {
                     // Tracking is non-critical
@@ -109,13 +108,13 @@ export const usePlaybackStore = create<PlaybackState>()(
             stopPlayback: () => {
                 // Save position before stopping
                 const state = get()
-                if (state.currentMediaPath && state.currentTime > 0) {
-                    watchHistoryApi.trackPosition(state.currentMediaPath, state.currentTime, state.duration).catch(() => {
+                if (state.currentMediaId && state.currentTime > 0) {
+                    watchHistoryApi.trackPosition(state.currentMediaId, state.currentTime, state.duration).catch(() => {
                     })
                 }
                 set({
                     isPlaying: false,
-                    currentMediaPath: null,
+                    currentMediaId: null,
                     currentMediaTitle: '',
                     currentMediaType: null,
                     currentTime: 0,
@@ -135,7 +134,7 @@ export const usePlaybackStore = create<PlaybackState>()(
     ),
 )
 
-// Helper: get the streaming URL for a media path
-export function getStreamUrl(path: string): string {
-    return mediaApi.getStreamUrl(path)
+// Helper: get the streaming URL for a media ID
+export function getStreamUrl(id: string): string {
+    return mediaApi.getStreamUrl(id)
 }

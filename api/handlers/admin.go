@@ -306,7 +306,7 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 	}
 
 	var successCount, failedCount int
-	var errs []string
+	errs := make([]string, 0)
 	clientIP := c.ClientIP()
 
 	for _, username := range req.Usernames {
@@ -340,9 +340,6 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		}
 	}
 
-	if errs == nil {
-		errs = []string{}
-	}
 	writeSuccess(c, map[string]interface{}{
 		"success": successCount,
 		"failed":  failedCount,

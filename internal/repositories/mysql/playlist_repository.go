@@ -75,19 +75,7 @@ func (r *PlaylistRepository) ListByUser(ctx context.Context, userID string) ([]*
 		return nil, err
 	}
 
-	// Load items for each playlist
-	for _, playlist := range playlists {
-		var items []models.PlaylistItem
-		err = r.db.WithContext(ctx).
-			Where("playlist_id = ?", playlist.ID).
-			Order("position ASC").
-			Find(&items).Error
-		if err == nil {
-			playlist.Items = items
-		}
-	}
-
-	return playlists, nil
+	return r.batchLoadItems(ctx, playlists)
 }
 
 // ListAll retrieves all playlists with their items (used for cache population on startup)
@@ -100,14 +88,37 @@ func (r *PlaylistRepository) ListAll(ctx context.Context) ([]*models.Playlist, e
 		return nil, err
 	}
 
-	for _, playlist := range playlists {
-		var items []models.PlaylistItem
-		err = r.db.WithContext(ctx).
-			Where("playlist_id = ?", playlist.ID).
-			Order("position ASC").
-			Find(&items).Error
-		if err == nil {
-			playlist.Items = items
+	return r.batchLoadItems(ctx, playlists)
+}
+
+// batchLoadItems loads items for all playlists in a single query (fixes N+1).
+func (r *PlaylistRepository) batchLoadItems(ctx context.Context, playlists []*models.Playlist) ([]*models.Playlist, error) {
+	if len(playlists) == 0 {
+		return playlists, nil
+	}
+
+	// Collect playlist IDs
+	ids := make([]string, len(playlists))
+	playlistMap := make(map[string]*models.Playlist, len(playlists))
+	for i, p := range playlists {
+		ids[i] = p.ID
+		p.Items = []models.PlaylistItem{} // initialize to empty slice
+		playlistMap[p.ID] = p
+	}
+
+	// Single batch query for all items
+	var allItems []models.PlaylistItem
+	if err := r.db.WithContext(ctx).
+		Where("playlist_id IN ?", ids).
+		Order("position ASC").
+		Find(&allItems).Error; err != nil {
+		return playlists, nil // return playlists with empty items on error
+	}
+
+	// Distribute items to their playlists
+	for _, item := range allItems {
+		if p, ok := playlistMap[item.PlaylistID]; ok {
+			p.Items = append(p.Items, item)
 		}
 	}
 

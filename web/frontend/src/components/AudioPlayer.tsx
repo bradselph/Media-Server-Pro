@@ -17,7 +17,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
     const [audioReady, setAudioReady] = useState(false)
 
     const {
-        isPlaying, currentMediaPath, currentMediaTitle, currentMediaType,
+        isPlaying, currentMediaId, currentMediaTitle, currentMediaType,
         currentVolume, isMuted, currentTime, duration, playbackSpeed,
         hlsEnabled, hlsUrl,
         setPlaying, setVolume, toggleMute, setCurrentTime, setDuration,
@@ -39,7 +39,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
 
     // Media position tracking
     const {resumeInfo, acceptResume, declineResume} = useMediaPosition(
-        currentMediaPath,
+        currentMediaId,
         audioRef.current,
     )
 
@@ -54,18 +54,18 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
     // Update audio source when media changes
     useEffect(() => {
         const audio = audioRef.current
-        if (!audio || !currentMediaPath) return
+        if (!audio || !currentMediaId) return
 
         if (!hlsEnabled) {
-            audio.src = getStreamUrl(currentMediaPath)
+            audio.src = getStreamUrl(currentMediaId)
         }
         // HLS source is set by the useHLS hook
-    }, [currentMediaPath, hlsEnabled])
+    }, [currentMediaId, hlsEnabled])
 
     // Sync play/pause state
     useEffect(() => {
         const audio = audioRef.current
-        if (!audio || !currentMediaPath) return
+        if (!audio || !currentMediaId) return
 
         if (isPlaying) {
             audio.play().catch(() => {
@@ -74,7 +74,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
         } else {
             audio.pause()
         }
-    }, [isPlaying, currentMediaPath, setPlaying])
+    }, [isPlaying, currentMediaId, setPlaying])
 
     // Sync volume
     useEffect(() => {
@@ -153,12 +153,12 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
     }, [playNext])
 
     const handleDownload = useCallback(() => {
-        if (!currentMediaPath) return
+        if (!currentMediaId) return
         const a = document.createElement('a')
-        a.href = `/download?path=${encodeURIComponent(currentMediaPath)}`
+        a.href = `/download?id=${encodeURIComponent(currentMediaId)}`
         a.download = ''
         a.click()
-    }, [currentMediaPath])
+    }, [currentMediaId])
 
     function formatTime(seconds: number): string {
         if (!seconds || !isFinite(seconds)) return '0:00'
@@ -169,7 +169,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
-    if (!currentMediaPath) return <audio ref={audioRef} preload="auto"/>
+    if (!currentMediaId) return <audio ref={audioRef} preload="auto"/>
 
     return (
         <>

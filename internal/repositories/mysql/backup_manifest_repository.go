@@ -1,0 +1,122 @@
+package mysql
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
+	"media-server-pro/internal/repositories"
+)
+
+type backupManifestRow struct {
+	ID          string    `gorm:"column:id;primaryKey"`
+	Filename    string    `gorm:"column:filename"`
+	CreatedAt   time.Time `gorm:"column:created_at"`
+	Size        int64     `gorm:"column:size"`
+	Type        *string   `gorm:"column:type"`
+	Description *string   `gorm:"column:description"`
+	Files       string    `gorm:"column:files;type:json"`
+	Errors      string    `gorm:"column:errors;type:json"`
+	Version     *string   `gorm:"column:version"`
+}
+
+func (backupManifestRow) TableName() string { return "backup_manifests" }
+
+type BackupManifestRepository struct {
+	db *gorm.DB
+}
+
+func NewBackupManifestRepository(db *gorm.DB) repositories.BackupManifestRepository {
+	return &BackupManifestRepository{db: db}
+}
+
+func (r *BackupManifestRepository) Save(ctx context.Context, manifest *repositories.BackupManifestRecord) error {
+	filesJSON, _ := json.Marshal(manifest.Files)
+	errorsJSON, _ := json.Marshal(manifest.Errors)
+	row := backupManifestRow{
+		ID:        manifest.ID,
+		Filename:  manifest.Filename,
+		CreatedAt: manifest.CreatedAt,
+		Size:      manifest.Size,
+		Files:     string(filesJSON),
+		Errors:    string(errorsJSON),
+	}
+	if manifest.Type != "" {
+		row.Type = &manifest.Type
+	}
+	if manifest.Description != "" {
+		row.Description = &manifest.Description
+	}
+	if manifest.Version != "" {
+		row.Version = &manifest.Version
+	}
+	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"filename", "created_at", "size", "type", "description", "files", "errors", "version"}),
+	}).Create(&row).Error; err != nil {
+		return fmt.Errorf("failed to save backup manifest: %w", err)
+	}
+	return nil
+}
+
+func (r *BackupManifestRepository) Get(ctx context.Context, id string) (*repositories.BackupManifestRecord, error) {
+	var row backupManifestRow
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get backup manifest: %w", err)
+	}
+	return r.rowToRecord(&row), nil
+}
+
+func (r *BackupManifestRepository) Delete(ctx context.Context, id string) error {
+	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&backupManifestRow{}).Error; err != nil {
+		return fmt.Errorf("failed to delete backup manifest: %w", err)
+	}
+	return nil
+}
+
+func (r *BackupManifestRepository) List(ctx context.Context) ([]*repositories.BackupManifestRecord, error) {
+	var rows []backupManifestRow
+	if err := r.db.WithContext(ctx).Order("created_at DESC").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("failed to list backup manifests: %w", err)
+	}
+	records := make([]*repositories.BackupManifestRecord, len(rows))
+	for i := range rows {
+		records[i] = r.rowToRecord(&rows[i])
+	}
+	return records, nil
+}
+
+func (r *BackupManifestRepository) rowToRecord(row *backupManifestRow) *repositories.BackupManifestRecord {
+	rec := &repositories.BackupManifestRecord{
+		ID:        row.ID,
+		Filename:  row.Filename,
+		CreatedAt: row.CreatedAt,
+		Size:      row.Size,
+	}
+	if row.Type != nil {
+		rec.Type = *row.Type
+	}
+	if row.Description != nil {
+		rec.Description = *row.Description
+	}
+	if row.Version != nil {
+		rec.Version = *row.Version
+	}
+	_ = json.Unmarshal([]byte(row.Files), &rec.Files)
+	_ = json.Unmarshal([]byte(row.Errors), &rec.Errors)
+	if rec.Files == nil {
+		rec.Files = []string{}
+	}
+	if rec.Errors == nil {
+		rec.Errors = []string{}
+	}
+	return rec
+}

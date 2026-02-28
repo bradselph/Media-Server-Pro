@@ -41,6 +41,10 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 			if err == nil {
 				c.Set("session", session)
 				c.Set("user", user)
+			} else {
+				// Clear stale/expired cookie so the browser stops resending it
+				secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+				c.SetCookie("session_id", "", -1, "/", "", secure, true)
 			}
 		}
 		c.Next()
@@ -67,7 +71,7 @@ func adminAuth(_ *auth.Module) gin.HandlerFunc {
 	}
 }
 
-// requireAuth requires an authenticated, non-expired session.
+// requireAuth requires an authenticated, non-expired session with an enabled user.
 func requireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionVal, exists := c.Get("session")
@@ -81,6 +85,14 @@ func requireAuth() gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Unauthorized"})
 			c.Abort()
 			return
+		}
+		// Reject disabled users even if they hold a valid session
+		if userVal, ok := c.Get("user"); ok {
+			if user, ok := userVal.(*models.User); ok && !user.Enabled {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Account disabled"})
+				c.Abort()
+				return
+			}
 		}
 		c.Next()
 	}
@@ -217,8 +229,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// /metrics is for Prometheus scraping — admin-protected, no frontend caller by design
 	r.GET("/metrics", adminAuth(authModule), h.GetMetrics)
 
-	// Remote streaming (public, with optional auth) — frontend uses mediaApi.getRemoteStreamUrl()
-	r.GET("/remote/stream", h.StreamRemoteMedia)
+	// Remote streaming — frontend uses mediaApi.getRemoteStreamUrl()
+	r.GET("/remote/stream", requireAuth(), h.StreamRemoteMedia)
 
 	// -----------------------------------------------------------------------
 	// API routes group (/api)
@@ -236,9 +248,9 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.POST("/playback", requireAuth(), h.TrackPlayback)
 
 	// HLS API routes
-	api.GET("/hls/capabilities", h.GetHLSCapabilities) // Check if HLS transcoding is available
-	api.GET("/hls/check", h.CheckHLSAvailability)      // Check availability by path with auto-generate
-	api.POST("/hls/generate", h.GenerateHLS)
+	api.GET("/hls/capabilities", h.GetHLSCapabilities)                // Check if HLS transcoding is available
+	api.GET("/hls/check", requireAuth(), h.CheckHLSAvailability)      // Check availability by path with auto-generate
+	api.POST("/hls/generate", requireAuth(), h.GenerateHLS)           // Trigger HLS transcoding
 	api.GET("/hls/status/:id", h.GetHLSStatus)
 
 	// Auth routes (public)
@@ -379,10 +391,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.GET(pathScannerQueue, h.GetReviewQueue)
 	adminGrp.POST(pathScannerQueue, h.BatchReviewAction)
 	adminGrp.DELETE(pathScannerQueue, h.ClearReviewQueue)
-	// Wildcard paths: gorilla /{path:.*} becomes gin /*path
-	// Handlers must call strings.TrimPrefix(c.Param("path"), "/") to strip the leading slash.
-	adminGrp.POST("/scanner/approve/*path", h.ApproveContent)
-	adminGrp.POST("/scanner/reject/*path", h.RejectContent)
+	adminGrp.POST("/scanner/approve/:id", h.ApproveContent)
+	adminGrp.POST("/scanner/reject/:id", h.RejectContent)
 
 	// Thumbnail admin routes
 	adminGrp.POST("/thumbnails/generate", h.GenerateThumbnail)
@@ -452,13 +462,11 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.POST("/remote/cache", h.CacheRemoteMedia)
 	adminGrp.POST("/remote/cache/clean", h.CleanRemoteCache)
 
-	// Admin media management routes — /bulk must be registered before the *path wildcard
+	// Admin media management routes
 	adminGrp.GET(pathMedia, h.AdminListMedia)
 	adminGrp.POST(pathMedia+"/bulk", h.AdminBulkMedia)
-	// Wildcard: gorilla /{path:.*} → gin /*path
-	// Handlers use strings.TrimPrefix(c.Param("path"), "/") to get the bare path.
-	adminGrp.PUT(pathMedia+"/*path", h.AdminUpdateMedia)
-	adminGrp.DELETE(pathMedia+"/*path", h.AdminDeleteMedia)
+	adminGrp.PUT(pathMedia+"/:id", h.AdminUpdateMedia)
+	adminGrp.DELETE(pathMedia+"/:id", h.AdminDeleteMedia)
 
 	// Static file serving and template routes (using embedded filesystem)
 	web.RegisterStaticRoutes(r, cfg.Get().Directories.Thumbnails)

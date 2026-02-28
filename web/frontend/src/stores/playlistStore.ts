@@ -36,7 +36,7 @@ interface PlaylistState {
     togglePlaylistVisible: () => void
 
     // Batch operations
-    setPlaylistFromPaths: (paths: string[], titles?: string[]) => void
+    setPlaylistFromIds: (ids: string[], titles?: string[]) => void
 }
 
 
@@ -147,7 +147,7 @@ export const usePlaylistStore = create<PlaylistState>()(
                     }
                 }
                 set({currentIndex: nextIndex})
-                return currentPlaylist[nextIndex]?.media_path || null
+                return currentPlaylist[nextIndex]?.media_id || null
             },
 
             playPrevious: () => {
@@ -161,7 +161,7 @@ export const usePlaylistStore = create<PlaylistState>()(
                     else prevIndex = 0
                 }
                 set({currentIndex: prevIndex})
-                return currentPlaylist[prevIndex]?.media_path || null
+                return currentPlaylist[prevIndex]?.media_id || null
             },
 
             toggleShuffle: () => set(s => ({shuffleMode: !s.shuffleMode})),
@@ -177,11 +177,10 @@ export const usePlaylistStore = create<PlaylistState>()(
             setPlaylistVisible: (visible: boolean) => set({playlistVisible: visible}),
             togglePlaylistVisible: () => set(s => ({playlistVisible: !s.playlistVisible})),
 
-            setPlaylistFromPaths: (paths: string[], titles?: string[]) => {
-                const items: PlaylistItem[] = paths.map((path, i) => ({
-                    media_id: '',
-                    media_path: path,
-                    title: titles?.[i] || path.split('/').pop()?.replace(/\.[^.]+$/, '') || path,
+            setPlaylistFromIds: (ids: string[], titles?: string[]) => {
+                const items: PlaylistItem[] = ids.map((id, i) => ({
+                    media_id: id,
+                    title: titles?.[i] || id,
                     position: i,
                     added_at: new Date().toISOString(),
                 }))

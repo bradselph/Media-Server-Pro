@@ -15,7 +15,7 @@ import (
 // GenerateThumbnail generates a thumbnail for a media file
 func (h *Handler) GenerateThumbnail(c *gin.Context) {
 	var req struct {
-		Path    string `json:"path"`
+		ID      string `json:"id"`
 		IsAudio bool   `json:"is_audio"`
 	}
 	if c.ShouldBindJSON(&req) != nil {
@@ -23,7 +23,12 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 		return
 	}
 
-	thumbnailPath, err := h.thumbnails.GenerateThumbnail(req.Path, req.IsAudio)
+	absPath, ok := h.resolveMediaByID(c, req.ID)
+	if !ok {
+		return
+	}
+
+	_, err := h.thumbnails.GenerateThumbnail(absPath, req.IsAudio)
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
@@ -31,8 +36,7 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 	}
 
 	writeSuccess(c, map[string]string{
-		"message":        "Thumbnail generated",
-		"thumbnail_path": thumbnailPath,
+		"message": "Thumbnail generated",
 	})
 }
 
@@ -57,28 +61,9 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		return
 	}
 
-	path := c.Query("path")
-	if path == "" {
-		writeError(c, http.StatusBadRequest, errPathRequired)
-		return
-	}
-
-	cfg := h.media.GetConfig()
-	validPath := false
-	for _, dir := range []string{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads} {
-		if dir == "" {
-			continue
-		}
-		cleanDir := filepath.Clean(dir)
-		cleanPath := filepath.Clean(path)
-		if cleanPath == cleanDir || strings.HasPrefix(cleanPath, cleanDir+string(os.PathSeparator)) {
-			validPath = true
-			break
-		}
-	}
-	if !validPath {
-		h.log.Warn("Thumbnail request for path outside media directories: %s", path)
-		writeError(c, http.StatusForbidden, "Invalid media path")
+	id := c.Query("id")
+	path, ok := h.resolveMediaByID(c, id)
+	if !ok {
 		return
 	}
 
@@ -164,9 +149,9 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 
 // GetThumbnailPreviews returns the preview thumbnail URLs for a media file
 func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
-	path := c.Query("path")
-	if path == "" {
-		writeError(c, http.StatusBadRequest, errPathRequired)
+	id := c.Query("id")
+	path, ok := h.resolveMediaByID(c, id)
+	if !ok {
 		return
 	}
 

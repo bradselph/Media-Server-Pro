@@ -259,7 +259,7 @@ function MediaCard({
 
     function goToPlayer() {
         if (restricted) return
-        navigate(`/player?path=${encodeURIComponent(item.path)}`)
+        navigate(`/player?id=${encodeURIComponent(item.id)}`)
     }
 
     return (
@@ -310,7 +310,7 @@ function MediaCard({
                         <i className="bi bi-play-fill"/> Play
                     </button>
                     {canDownload && !restricted && (
-                        <a href={mediaApi.getDownloadUrl(item.path)} download style={{flex: 1}}>
+                        <a href={mediaApi.getDownloadUrl(item.id)} download style={{flex: 1}}>
                             <button className="media-card-btn" style={{width: '100%'}}><i className="bi bi-download"/>
                             </button>
                         </a>
@@ -363,7 +363,7 @@ function InlinePlayer({
         if (!nowPlaying) return
         const el = activeRef.current
         if (!el) return
-        el.src = mediaApi.getStreamUrl(nowPlaying.path)
+        el.src = mediaApi.getStreamUrl(nowPlaying.id)
         el.volume = volume
         el.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false))
     }, [nowPlaying]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -382,14 +382,14 @@ function InlinePlayer({
 
     function handlePrev() {
         if (!nowPlaying || !playlist.length) return
-        const idx = playlist.findIndex(i => i.path === nowPlaying.path)
+        const idx = playlist.findIndex(i => i.id === nowPlaying.id)
         const prev = idx > 0 ? playlist[idx - 1] : playlist[playlist.length - 1]
         onEnded(prev)
     }
 
     function handleNext() {
         if (!nowPlaying || !playlist.length) return
-        const idx = playlist.findIndex(i => i.path === nowPlaying.path)
+        const idx = playlist.findIndex(i => i.id === nowPlaying.id)
         const next = idx < playlist.length - 1 ? playlist[idx + 1] : null
         onEnded(next)
     }
@@ -507,7 +507,7 @@ function InlinePlayer({
                             <i className="bi bi-sliders"/>
                         </button>
                     )}
-                    <Link to={`/player?path=${encodeURIComponent(nowPlaying.path)}`} className="player-btn"
+                    <Link to={`/player?id=${encodeURIComponent(nowPlaying.id)}`} className="player-btn"
                           title="Open full player">
                         <i className="bi bi-box-arrow-up-right"/>
                     </Link>
@@ -697,7 +697,7 @@ export function IndexPage() {
     }, [searchInput, updateParams])
 
     // Media list query
-    const {data: mediaData, isLoading: mediaLoading} = useQuery({
+    const {data: mediaData, isLoading: mediaLoading, error: mediaError} = useQuery({
         queryKey: ['media', {page, limit, type: mediaType, sort: sortBy, order: sortOrder, category, search}],
         queryFn: () => mediaApi.list({
             page,
@@ -840,9 +840,7 @@ export function IndexPage() {
         try {
             await playlistApi.addItem(playlistId, {
                 media_id: nowPlaying.id,
-                media_path: nowPlaying.path,
                 title: nowPlaying.name,
-                added_at: new Date().toISOString(),
             })
             queryClient.invalidateQueries({queryKey: ['playlists']})
         } catch (err) {
@@ -947,9 +945,9 @@ export function IndexPage() {
                     <div className="continue-watching-row">
                         {continueWatching.map(entry => (
                             <Link
-                                key={entry.media_path}
+                                key={entry.media_id}
                                 className="continue-card"
-                                to={`/player?path=${encodeURIComponent(entry.media_path)}`}
+                                to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 {entry.thumbnail_url && (
                                     <img src={entry.thumbnail_url} alt="" style={{
@@ -961,7 +959,7 @@ export function IndexPage() {
                                     }}/>
                                 )}
                                 <div
-                                    className="continue-card-name">{entry.title || formatTitle(entry.media_path.split(/[\\/]/).pop() ?? '')}</div>
+                                    className="continue-card-name">{entry.title || entry.media_id}</div>
                                 <div className="continue-card-meta"><i className="bi bi-play-circle"/> Continue</div>
                             </Link>
                         ))}
@@ -976,9 +974,9 @@ export function IndexPage() {
                     <div className="continue-watching-row">
                         {suggestions.map(entry => (
                             <Link
-                                key={entry.media_path}
+                                key={entry.media_id}
                                 className="continue-card"
-                                to={`/player?path=${encodeURIComponent(entry.media_path)}`}
+                                to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 {entry.thumbnail_url && (
                                     <img src={entry.thumbnail_url} alt="" style={{
@@ -990,7 +988,7 @@ export function IndexPage() {
                                     }}/>
                                 )}
                                 <div
-                                    className="continue-card-name">{entry.title || formatTitle(entry.media_path.split(/[\\/]/).pop() ?? '')}</div>
+                                    className="continue-card-name">{entry.title || entry.media_id}</div>
                                 {entry.score != null && (
                                     <div className="continue-card-meta"><i
                                         className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
@@ -1008,9 +1006,9 @@ export function IndexPage() {
                     <div className="continue-watching-row">
                         {trending.map(entry => (
                             <Link
-                                key={entry.media_path}
+                                key={entry.media_id}
                                 className="continue-card"
-                                to={`/player?path=${encodeURIComponent(entry.media_path)}`}
+                                to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 {entry.thumbnail_url && (
                                     <img src={entry.thumbnail_url} alt="" style={{
@@ -1022,7 +1020,7 @@ export function IndexPage() {
                                     }}/>
                                 )}
                                 <div
-                                    className="continue-card-name">{entry.title || formatTitle(entry.media_path.split(/[\\/]/).pop() ?? '')}</div>
+                                    className="continue-card-name">{entry.title || entry.media_id}</div>
                                 <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
                             </Link>
                         ))}
@@ -1037,8 +1035,8 @@ export function IndexPage() {
                     <div className="continue-watching-row">
                         {personalized.map(entry => (
                             <Link
-                                key={entry.media_path}
-                                to={`/player?path=${encodeURIComponent(entry.media_path)}`}
+                                key={entry.media_id}
+                                to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                                 className="continue-card"
                             >
                                 {entry.thumbnail_url && (
@@ -1051,7 +1049,7 @@ export function IndexPage() {
                                     }}/>
                                 )}
                                 <div
-                                    className="continue-card-name">{entry.title || formatTitle(entry.media_path.split(/[\\/]/).pop() ?? '')}</div>
+                                    className="continue-card-name">{entry.title || entry.media_id}</div>
                                 <div className="continue-card-meta"><i className="bi bi-person-hearts"/> For You</div>
                             </Link>
                         ))}
@@ -1113,7 +1111,15 @@ export function IndexPage() {
 
             {/* Media Grid */}
             <div className="media-section">
-                {mediaLoading ? (
+                {mediaError ? (
+                    <div className="empty-state">
+                        <h3>Failed to load media</h3>
+                        <p>{mediaError instanceof Error ? mediaError.message : 'An unexpected error occurred.'}</p>
+                        <button className="controls-btn" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
+                            <i className="bi bi-arrow-clockwise"/> Retry
+                        </button>
+                    </div>
+                ) : mediaLoading ? (
                     <div className="loading-state"><i className="bi bi-film"/> Loading your media library...</div>
                 ) : items.length === 0 && mediaData?.scanning ? (
                     <div className="loading-state">
@@ -1132,9 +1138,9 @@ export function IndexPage() {
                     <div className="media-grid">
                         {items.map(item => (
                             <MediaCard
-                                key={item.id || item.path}
+                                key={item.id}
                                 item={item}
-                                isPlaying={nowPlaying?.path === item.path}
+                                isPlaying={nowPlaying?.id === item.id}
                                 onPlay={handlePlay}
                                 canDownload={permissions.can_download}
                                 canViewMature={permissions.can_view_mature}

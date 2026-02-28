@@ -20,7 +20,7 @@ function formatTime(seconds: number): string {
 }
 
 export function useMediaPosition(
-    mediaPath: string | null,
+    mediaId: string | null,
     mediaElement: HTMLMediaElement | null,
 ): UseMediaPositionResult {
     const [resumeInfo, setResumeInfo] = useState<ResumeInfo | null>(null)
@@ -29,17 +29,17 @@ export function useMediaPosition(
 
     // Load position on media change
     useEffect(() => {
-        if (!mediaPath) {
+        if (!mediaId) {
             setResumeInfo(null)
             return
         }
 
-        const path = mediaPath  // narrow string | null → string for closure
+        const id = mediaId  // narrow string | null → string for closure
         let cancelled = false
 
         async function checkResume() {
             try {
-                const entries = await watchHistoryApi.getEntry(path)
+                const entries = await watchHistoryApi.getEntry(id)
                 if (cancelled) return
 
                 const entry = Array.isArray(entries) && entries.length > 0 ? entries[0] : null
@@ -58,9 +58,6 @@ export function useMediaPosition(
                         formattedTime: formatTime(position),
                     })
 
-                    // IC-13: set timer unconditionally here; cleanup cancels it via clearTimeout.
-                    // Redundant cancelled-flag check inside the callback removed — cleanup is the
-                    // single authoritative cancellation point.
                     autoDeclineTimer.current = setTimeout(() => {
                         setResumeInfo(null)
                     }, 10000)
@@ -75,18 +72,18 @@ export function useMediaPosition(
             cancelled = true
             if (autoDeclineTimer.current) clearTimeout(autoDeclineTimer.current)
         }
-    }, [mediaPath])
+    }, [mediaId])
 
     // Track position every 15s while playing
     useEffect(() => {
-        if (!mediaPath || !mediaElement) return
+        if (!mediaId || !mediaElement) return
 
         function trackPosition() {
-            if (!mediaElement || mediaElement.paused || !mediaPath) return
+            if (!mediaElement || mediaElement.paused || !mediaId) return
             const currentTime = mediaElement.currentTime
             const duration = mediaElement.duration
             if (currentTime > 0 && duration > 0) {
-                watchHistoryApi.trackPosition(mediaPath, currentTime, duration).catch(() => {
+                watchHistoryApi.trackPosition(mediaId, currentTime, duration).catch(() => {
                 })
             }
         }
@@ -96,8 +93,8 @@ export function useMediaPosition(
         // Save on pause
         const handlePause = () => trackPosition()
         const handleEnded = () => {
-            if (mediaPath && mediaElement) {
-                watchHistoryApi.trackPosition(mediaPath, mediaElement.duration, mediaElement.duration).catch(() => {
+            if (mediaId && mediaElement) {
+                watchHistoryApi.trackPosition(mediaId, mediaElement.duration, mediaElement.duration).catch(() => {
                 })
             }
         }
@@ -110,7 +107,7 @@ export function useMediaPosition(
             mediaElement.removeEventListener('pause', handlePause)
             mediaElement.removeEventListener('ended', handleEnded)
         }
-    }, [mediaPath, mediaElement])
+    }, [mediaId, mediaElement])
 
     const acceptResume = useCallback(() => {
         if (resumeInfo && mediaElement) {
@@ -126,14 +123,11 @@ export function useMediaPosition(
     }, [])
 
     const savePosition = useCallback((currentTime: number, duration: number) => {
-        if (mediaPath && currentTime > 0 && duration > 0) {
-            watchHistoryApi.trackPosition(mediaPath, currentTime, duration).catch(() => {
+        if (mediaId && currentTime > 0 && duration > 0) {
+            watchHistoryApi.trackPosition(mediaId, currentTime, duration).catch(() => {
             })
         }
-    }, [mediaPath])
+    }, [mediaId])
 
-    // DEPRECATED: R-07 — savePosition is exported but has no consumer; PlayerPage position
-    // tracking is handled entirely by the interval/pause/ended listeners above. Safe to remove
-    // once ST-03 (consolidate PlayerPage position tracking) is addressed.
     return {resumeInfo, acceptResume, declineResume, savePosition}
 }

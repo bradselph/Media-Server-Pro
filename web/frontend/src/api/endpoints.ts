@@ -81,8 +81,8 @@ export const permissionsApi = {
 // ── Feature 2: Ratings ──
 
 export const ratingsApi = {
-    record: (path: string, rating: number) =>
-        api.post<void>('/api/ratings', {path, rating}),
+    record: (id: string, rating: number) =>
+        api.post<void>('/api/ratings', {id, rating}),
 }
 
 // ── Feature 4: Upload API ──
@@ -170,20 +170,20 @@ export const mediaApi = {
     getCategories: () =>
         api.get<MediaCategory[]>('/api/media/categories'),
 
-    getStreamUrl: (path: string) =>
-        `/media?path=${encodeURIComponent(path)}`,
+    getStreamUrl: (id: string) =>
+        `/media?id=${encodeURIComponent(id)}`,
 
-    getDownloadUrl: (path: string) =>
-        `/download?path=${encodeURIComponent(path)}`,
+    getDownloadUrl: (id: string) =>
+        `/download?id=${encodeURIComponent(id)}`,
 
     getRemoteStreamUrl: (url: string, source?: string) =>
         `/remote/stream?url=${encodeURIComponent(url)}${source ? `&source=${encodeURIComponent(source)}` : ''}`,
 
-    getThumbnailUrl: (path: string) =>
-        `/thumbnail?path=${encodeURIComponent(path)}`,
+    getThumbnailUrl: (id: string) =>
+        `/thumbnail?id=${encodeURIComponent(id)}`,
 
-    getThumbnailPreviews: (path: string) =>
-        api.get<ThumbnailPreviews>(`/api/thumbnails/previews?path=${encodeURIComponent(path)}`),
+    getThumbnailPreviews: (id: string) =>
+        api.get<ThumbnailPreviews>(`/api/thumbnails/previews?id=${encodeURIComponent(id)}`),
 }
 
 // ── HLS ──
@@ -192,11 +192,11 @@ export const hlsApi = {
     getCapabilities: () =>
         api.get<HLSCapabilities>('/api/hls/capabilities'),
 
-    check: (path: string) =>
-        api.get<HLSAvailability>(`/api/hls/check?path=${encodeURIComponent(path)}`),
+    check: (id: string) =>
+        api.get<HLSAvailability>(`/api/hls/check?id=${encodeURIComponent(id)}`),
 
-    generate: (path: string, quality?: string) =>
-        api.post<HLSJob>('/api/hls/generate', {path, quality}),
+    generate: (id: string, quality?: string) =>
+        api.post<HLSJob>('/api/hls/generate', {id, quality}),
 
     getStatus: (id: string) =>
         api.get<HLSJob>(`/api/hls/status/${encodeURIComponent(id)}`),
@@ -223,11 +223,11 @@ export const playlistApi = {
     update: (id: string, data: { name?: string; description?: string; is_public?: boolean }) =>
         api.put<Playlist>(`/api/playlists/${encodeURIComponent(id)}`, data),
 
-    addItem: (id: string, item: Omit<PlaylistItem, 'position'>) =>
+    addItem: (id: string, item: { media_id: string; title?: string }) =>
         api.post<void>(`/api/playlists/${encodeURIComponent(id)}/items`, item),
 
-    removeItem: (id: string, path: string) =>
-        api.delete<void>(`/api/playlists/${encodeURIComponent(id)}/items?media_path=${encodeURIComponent(path)}`),
+    removeItem: (id: string, mediaId: string) =>
+        api.delete<void>(`/api/playlists/${encodeURIComponent(id)}/items?media_id=${encodeURIComponent(mediaId)}`),
 
     // Feature 3: Playlist export — returns Blob for file download
     // For m3u/m3u8: raw text. For json: backend wraps in {success:true, data:...} envelope.
@@ -260,22 +260,22 @@ export const watchHistoryApi = {
     list: () =>
         api.get<WatchHistoryEntry[]>('/api/watch-history'),
 
-    // Returns single-element array for the specific file, or empty array if not found.
+    // Returns single-element array for the specific media, or empty array if not found.
     // More efficient than list() for resume-position lookups.
-    getEntry: (path: string) =>
-        api.get<WatchHistoryEntry[]>(`/api/watch-history?path=${encodeURIComponent(path)}`),
+    getEntry: (id: string) =>
+        api.get<WatchHistoryEntry[]>(`/api/watch-history?id=${encodeURIComponent(id)}`),
 
-    getPosition: (path: string) =>
-        api.get<{ position: number }>(`/api/playback?path=${encodeURIComponent(path)}`),
+    getPosition: (id: string) =>
+        api.get<{ position: number }>(`/api/playback?id=${encodeURIComponent(id)}`),
 
-    trackPosition: (path: string, position: number, duration: number) =>
-        api.post<void>('/api/playback', {path, position, duration}),
+    trackPosition: (id: string, position: number, duration: number) =>
+        api.post<void>('/api/playback', {id, position, duration}),
 
-    // DELETE /api/watch-history?path= removes one item; without path removes all history.
-    // Guard against empty path to prevent accidentally clearing all history.
-    delete: (path: string) => {
-        if (!path) throw new Error('watchHistoryApi.delete: path must not be empty')
-        return api.delete<void>(`/api/watch-history?path=${encodeURIComponent(path)}`)
+    // DELETE /api/watch-history?id= removes one item; without id removes all history.
+    // Guard against empty id to prevent accidentally clearing all history.
+    delete: (id: string) => {
+        if (!id) throw new Error('watchHistoryApi.delete: id must not be empty')
+        return api.delete<void>(`/api/watch-history?id=${encodeURIComponent(id)}`)
     },
 
     // Backend DELETE /api/watch-history clears all history (no /all suffix route exists)
@@ -311,9 +311,9 @@ export const suggestionsApi = {
     getTrending: () =>
         api.get<Suggestion[]>('/api/suggestions/trending'),
 
-    // Returns Suggestion[] similar to the given media path (public)
-    getSimilar: (path: string) =>
-        api.get<Suggestion[]>(`/api/suggestions/similar?path=${encodeURIComponent(path)}`),
+    // Returns Suggestion[] similar to the given media ID (public)
+    getSimilar: (id: string) =>
+        api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
 
     // Returns Suggestion[] (media_path, title, thumbnail_url, score) — not WatchHistoryEntry
     getContinueWatching: () =>
@@ -539,14 +539,14 @@ export const adminApi = {
     getReviewQueue: () =>
         api.get<ScanResultItem[]>('/api/admin/scanner/queue'),
 
-    batchReview: (action: 'approve' | 'reject', paths: string[]) =>
-        api.post<{ updated: number; total: number }>('/api/admin/scanner/queue', {action, paths}),
+    batchReview: (action: 'approve' | 'reject', ids: string[]) =>
+        api.post<{ updated: number; total: number }>('/api/admin/scanner/queue', {action, ids}),
 
     clearReviewQueue: () =>
         api.delete<void>('/api/admin/scanner/queue'),
 
-    approveContent: (path: string) =>
-        api.post<void>(`/api/admin/scanner/approve/${path.split('/').map(encodeURIComponent).join('/')}`),
+    approveContent: (id: string) =>
+        api.post<void>(`/api/admin/scanner/approve/${encodeURIComponent(id)}`),
 
     // HLS admin
     getHLSStats: () =>
@@ -586,21 +586,20 @@ export const adminApi = {
 
     // On success returns the updated MediaItem; on lookup failure returns { message, path } instead.
     // Callers should check for `.id` before treating result as a full MediaItem.
-    updateMedia: (path: string, data: Partial<Pick<MediaItem, 'name' | 'category' | 'tags' | 'is_mature'>>) =>
-        api.put<MediaItem>(`/api/admin/media/${path.split('/').map(encodeURIComponent).join('/')}`, data),
+    updateMedia: (id: string, data: Partial<Pick<MediaItem, 'name' | 'category' | 'tags' | 'is_mature'>>) =>
+        api.put<MediaItem>(`/api/admin/media/${encodeURIComponent(id)}`, data),
 
-    deleteMedia: (path: string) =>
-        api.delete<void>(`/api/admin/media/${path.split('/').map(encodeURIComponent).join('/')}`),
+    deleteMedia: (id: string) =>
+        api.delete<void>(`/api/admin/media/${encodeURIComponent(id)}`),
 
-    // Bulk action on multiple files. action="delete" removes files; action="update" applies data fields.
-    // Returns { success, failed, errors[] }. Max 500 paths per call.
-    bulkMedia: (paths: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
-        api.post<{ success: number; failed: number; errors: string[] }>('/api/admin/media/bulk', {paths, action, data}),
+    // Bulk action on multiple media items. action="delete" removes files; action="update" applies data fields.
+    // Returns { success, failed, errors[] }. Max 500 ids per call.
+    bulkMedia: (ids: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
+        api.post<{ success: number; failed: number; errors: string[] }>('/api/admin/media/bulk', {ids, action, data}),
 
     getDailyStats: (days?: number) =>
         api.get<DailyStats[]>(`/api/analytics/daily${days ? `?days=${days}` : ''}`),
 
-    // media_path is optional — guard with `if (item.media_path)` before building player URLs.
     getTopMedia: (limit?: number) =>
         api.get<TopMediaItem[]>(`/api/analytics/top${limit ? `?limit=${limit}` : ''}`),
 
@@ -676,8 +675,8 @@ export const adminApi = {
         api.post<{ success: number; failed: number; errors: string[] }>('/api/admin/playlists/bulk', {ids}),
 
     // Feature 7: Thumbnail admin
-    generateThumbnail: (path: string, isAudio?: boolean) =>
-        api.post<void>('/api/admin/thumbnails/generate', {path, is_audio: isAudio ?? false}),
+    generateThumbnail: (id: string, isAudio?: boolean) =>
+        api.post<void>('/api/admin/thumbnails/generate', {id, is_audio: isAudio ?? false}),
 
     getThumbnailStats: () =>
         api.get<ThumbnailStats>('/api/admin/thumbnails/stats'),
@@ -690,9 +689,8 @@ export const adminApi = {
     getSuggestionStats: () =>
         api.get<SuggestionStats>('/api/admin/suggestions/stats'),
 
-    // POST /api/admin/scanner/reject/{path:.*} — backend registered as POST (not DELETE)
-    rejectContent: (path: string) =>
-        api.post<void>(`/api/admin/scanner/reject/${path.split('/').map(encodeURIComponent).join('/')}`),
+    rejectContent: (id: string) =>
+        api.post<void>(`/api/admin/scanner/reject/${encodeURIComponent(id)}`),
 
     // Feature 10: Security
     getSecurityStats: () =>

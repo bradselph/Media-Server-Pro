@@ -3,25 +3,31 @@ package suggestions
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/md5"
+	"encoding/hex"
 	"math"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
 
+// pathToID computes the MD5 hash of a path, matching models.MediaItem.ID generation.
+func pathToID(path string) string {
+	h := md5.Sum([]byte(path))
+	return hex.EncodeToString(h[:])
+}
+
 // ViewHistory tracks a user's viewing history
 type ViewHistory struct {
-	MediaPath   string     `json:"media_path"`
+	MediaPath   string     `json:"-"`
 	Category    string     `json:"category"`
 	MediaType   string     `json:"media_type"`
 	ViewCount   int        `json:"view_count"`
@@ -42,9 +48,11 @@ type UserProfile struct {
 	LastUpdated     time.Time          `json:"last_updated"`
 }
 
-// Suggestion represents a content recommendation
+// Suggestion represents a content recommendation.
+// MediaPath is excluded from JSON to prevent leaking filesystem paths. Use MediaID instead.
 type Suggestion struct {
-	MediaPath    string   `json:"media_path"`
+	MediaID      string   `json:"media_id"`
+	MediaPath    string   `json:"-"`
 	Title        string   `json:"title"`
 	Category     string   `json:"category"`
 	MediaType    string   `json:"media_type"`
@@ -56,14 +64,14 @@ type Suggestion struct {
 // Module handles content suggestions. RecordView is called from the streaming
 // handler (StreamMedia) on each authenticated playback event, integrating
 // analytics view events with the suggestion engine for personalized recommendations.
-// Suggestion data is stored in a JSON file in the data directory.
+// Suggestion data is stored in MySQL via the SuggestionProfileRepository.
 type Module struct {
 	config    *config.Manager
 	log       *logger.Logger
+	repo      repositories.SuggestionProfileRepository
 	profiles  map[string]*UserProfile
 	mediaData map[string]*MediaInfo
 	mu        sync.RWMutex
-	dataDir   string
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
@@ -82,13 +90,13 @@ type MediaInfo struct {
 }
 
 // NewModule creates a new suggestions module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.SuggestionProfileRepository) *Module {
 	return &Module{
 		config:    cfg,
 		log:       logger.New("suggestions"),
+		repo:      repo,
 		profiles:  make(map[string]*UserProfile),
 		mediaData: make(map[string]*MediaInfo),
-		dataDir:   cfg.Get().Directories.Data,
 	}
 }
 
@@ -143,7 +151,7 @@ func (m *Module) Health() models.HealthStatus {
 }
 
 // RecordView records a view for a user
-func (m *Module) RecordView(userID, mediaPath, category, mediaType string, duration float64) {
+func (m *Module) RecordView(userID, mediaId, category, mediaType string, duration float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -161,7 +169,7 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 	// Update or add view history entry
 	found := false
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaPath {
+		if vh.MediaPath == mediaId {
 			profile.ViewHistory[i].ViewCount++
 			profile.ViewHistory[i].TotalTime += duration
 			profile.ViewHistory[i].LastViewed = time.Now()
@@ -172,7 +180,7 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 
 	if !found {
 		profile.ViewHistory = append(profile.ViewHistory, ViewHistory{
-			MediaPath:  mediaPath,
+			MediaPath:  mediaId,
 			Category:   category,
 			MediaType:  mediaType,
 			ViewCount:  1,
@@ -193,11 +201,11 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 	profile.TotalWatchTime += duration
 	profile.LastUpdated = time.Now()
 
-	m.log.Debug("Recorded view for user %s: %s (category: %s)", userID, mediaPath, category)
+	m.log.Debug("Recorded view for user %s: %s (category: %s)", userID, mediaId, category)
 }
 
 // RecordCompletion marks a media item as completed
-func (m *Module) RecordCompletion(userID, mediaPath string) {
+func (m *Module) RecordCompletion(userID, mediaId string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -207,7 +215,7 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 	}
 
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaPath {
+		if vh.MediaPath == mediaId {
 			completedAt := time.Now()
 			profile.ViewHistory[i].CompletedAt = &completedAt
 			break
@@ -216,7 +224,7 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 }
 
 // RecordRating records a user rating for a media item
-func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
+func (m *Module) RecordRating(userID, mediaId string, rating float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -226,13 +234,13 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 	}
 
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaPath {
+		if vh.MediaPath == mediaId {
 			profile.ViewHistory[i].Rating = rating
 			break
 		}
 	}
 
-	m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
+	m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaId, userID)
 }
 
 // UpdateMediaData atomically replaces the in-memory media catalogue used for suggestions.
@@ -298,6 +306,7 @@ func (m *Module) GetSuggestions(userID string, limit int) []*Suggestion {
 
 		if score > 0 {
 			suggestions = append(suggestions, &Suggestion{
+				MediaID:   pathToID(media.Path),
 				MediaPath: media.Path,
 				Title:     media.Title,
 				Category:  media.Category,
@@ -472,6 +481,7 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 		score *= 1.0 + (rand.Float64()*0.40 - 0.20)
 
 		suggestions = append(suggestions, &Suggestion{
+			MediaID:   pathToID(media.Path),
 			MediaPath: media.Path,
 			Title:     media.Title,
 			Category:  media.Category,
@@ -517,6 +527,7 @@ func (m *Module) GetSimilarMedia(mediaPath string, limit int) []*Suggestion {
 
 		if score > 0 {
 			suggestions = append(suggestions, &Suggestion{
+				MediaID:   pathToID(media.Path),
 				MediaPath: media.Path,
 				Title:     media.Title,
 				Category:  media.Category,
@@ -624,6 +635,7 @@ func (m *Module) GetContinueWatching(userID string, limit int) []*Suggestion {
 		}
 
 		suggestions = append(suggestions, &Suggestion{
+			MediaID:   pathToID(vh.MediaPath),
 			MediaPath: vh.MediaPath,
 			Title:     title,
 			Category:  vh.Category,
@@ -678,38 +690,82 @@ type SuggestionStats struct {
 	TotalWatchTime float64 `json:"total_watch_time"`
 }
 
-// Persistence functions
+// Persistence — reads/writes via MySQL repository
+
 func (m *Module) loadProfiles() error {
-	path := filepath.Join(m.dataDir, "user_profiles.json")
-	data, err := os.ReadFile(path)
+	profiles, err := m.repo.ListProfiles(context.Background())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return json.Unmarshal(data, &m.profiles)
+	for _, rec := range profiles {
+		profile := &UserProfile{
+			UserID:          rec.UserID,
+			CategoryScores:  rec.CategoryScores,
+			TypePreferences: rec.TypePreferences,
+			TotalViews:      rec.TotalViews,
+			TotalWatchTime:  rec.TotalWatchTime,
+			LastUpdated:     rec.LastUpdated,
+		}
+		// Load view history for this user
+		history, err := m.repo.GetViewHistory(context.Background(), rec.UserID)
+		if err == nil {
+			for _, h := range history {
+				vh := ViewHistory{
+					MediaPath: h.MediaPath,
+					Category:  h.Category,
+					MediaType: h.MediaType,
+					ViewCount: h.ViewCount,
+					TotalTime: h.TotalTime,
+					LastViewed: h.LastViewed,
+					CompletedAt: h.CompletedAt,
+					Rating:    h.Rating,
+				}
+				profile.ViewHistory = append(profile.ViewHistory, vh)
+			}
+		}
+		m.profiles[rec.UserID] = profile
+	}
+	return nil
 }
 
 func (m *Module) saveProfiles() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	data, err := json.MarshalIndent(m.profiles, "", "  ")
-	if err != nil {
-		return err
+	ctx := context.Background()
+	for _, profile := range m.profiles {
+		rec := &repositories.SuggestionProfileRecord{
+			UserID:          profile.UserID,
+			CategoryScores:  profile.CategoryScores,
+			TypePreferences: profile.TypePreferences,
+			TotalViews:      profile.TotalViews,
+			TotalWatchTime:  profile.TotalWatchTime,
+			LastUpdated:     profile.LastUpdated,
+		}
+		if err := m.repo.SaveProfile(ctx, rec); err != nil {
+			return err
+		}
+		// Save view history
+		for i := range profile.ViewHistory {
+			vh := &profile.ViewHistory[i]
+			entry := &repositories.ViewHistoryRecord{
+				MediaPath:   vh.MediaPath,
+				Category:    vh.Category,
+				MediaType:   vh.MediaType,
+				ViewCount:   vh.ViewCount,
+				TotalTime:   vh.TotalTime,
+				LastViewed:  vh.LastViewed,
+				CompletedAt: vh.CompletedAt,
+				Rating:      vh.Rating,
+			}
+			if err := m.repo.SaveViewHistory(ctx, profile.UserID, entry); err != nil {
+				return err
+			}
+		}
 	}
-
-	path := filepath.Join(m.dataDir, "user_profiles.json")
-	tempPath := path + ".tmp"
-
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
-	}
-
-	return os.Rename(tempPath, path)
+	return nil
 }

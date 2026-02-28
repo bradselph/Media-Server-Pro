@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -37,41 +38,34 @@ func RegisterStaticRoutes(r *gin.Engine, thumbnailDir string) {
 	}
 
 	// All routes serve the React SPA. React Router handles client-side routing.
-	r.GET("/", ginServeReactApp())
-	r.GET("/login", ginServeReactApp())
-	r.GET("/signup", ginServeReactApp())
-	r.GET("/admin-login", ginServeReactApp())
-	r.GET("/profile", ginRequireEitherCookie("session_id", "admin_session", "/login", ginServeReactApp()))
-	r.GET("/player", ginServeReactApp())
-	r.GET("/admin", ginRequireSessionCookie("admin_session", "/admin-login", ginServeReactApp()))
+	spaHandler := ginServeReactApp()
+	r.GET("/", spaHandler)
+	r.GET("/login", spaHandler)
+	r.GET("/signup", spaHandler)
+	r.GET("/admin-login", spaHandler)
+	r.GET("/profile", spaHandler)
+	r.GET("/player", spaHandler)
+	r.GET("/admin", spaHandler)
+
+	// SPA catch-all: any path not matching an API/static/media route serves the
+	// React app so that client-side routing (React Router) works on page refresh.
+	r.NoRoute(func(c *gin.Context) {
+		p := c.Request.URL.Path
+		// Only serve the SPA for paths that are NOT API, static assets, or media streams.
+		if strings.HasPrefix(p, "/api/") ||
+			strings.HasPrefix(p, "/web/static/") ||
+			strings.HasPrefix(p, "/media") ||
+			strings.HasPrefix(p, "/download") ||
+			strings.HasPrefix(p, "/thumbnail") ||
+			strings.HasPrefix(p, "/hls/") ||
+			strings.HasPrefix(p, "/remote/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+			return
+		}
+		spaHandler(c)
+	})
 
 	log.Info("Web routes registered")
-}
-
-// ginRequireSessionCookie wraps a handler so that requests without the named cookie
-// are redirected to redirectTo instead.
-func ginRequireSessionCookie(cookieName, redirectTo string, next gin.HandlerFunc) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if _, err := c.Cookie(cookieName); err != nil {
-			c.Redirect(http.StatusFound, redirectTo)
-			return
-		}
-		next(c)
-	}
-}
-
-// ginRequireEitherCookie wraps a handler so that requests without at least one of
-// the named cookies are redirected to redirectTo.
-func ginRequireEitherCookie(cookie1, cookie2, redirectTo string, next gin.HandlerFunc) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		_, err1 := c.Cookie(cookie1)
-		_, err2 := c.Cookie(cookie2)
-		if err1 != nil && err2 != nil {
-			c.Redirect(http.StatusFound, redirectTo)
-			return
-		}
-		next(c)
-	}
 }
 
 // ginServeReactApp returns a gin handler that serves the React SPA's index.html.

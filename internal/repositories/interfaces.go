@@ -153,3 +153,177 @@ type AuditLogFilter struct {
 	Limit     int
 	Offset    int
 }
+
+// CategorizedItemRepository provides categorized media item storage
+type CategorizedItemRepository interface {
+	Upsert(ctx context.Context, item *CategorizedItemRecord) error
+	Get(ctx context.Context, path string) (*CategorizedItemRecord, error)
+	Delete(ctx context.Context, path string) error
+	List(ctx context.Context) ([]*CategorizedItemRecord, error)
+}
+
+// CategorizedItemRecord represents a categorized media item in the database
+type CategorizedItemRecord struct {
+	Path           string
+	ID             string
+	Name           string
+	Category       string
+	Confidence     float64
+	DetectedTitle  string
+	DetectedYear   int
+	DetectedSeason int
+	DetectedEpisode int
+	DetectedShow   string
+	DetectedArtist string
+	DetectedAlbum  string
+	CategorizedAt  time.Time
+	ManualOverride bool
+}
+
+// HLSJobRepository provides HLS job persistence
+type HLSJobRepository interface {
+	Save(ctx context.Context, job *models.HLSJob) error
+	Get(ctx context.Context, id string) (*models.HLSJob, error)
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context) ([]*models.HLSJob, error)
+}
+
+// ValidationResultRepository provides media validation result storage
+type ValidationResultRepository interface {
+	Upsert(ctx context.Context, result *ValidationResultRecord) error
+	Get(ctx context.Context, path string) (*ValidationResultRecord, error)
+	Delete(ctx context.Context, path string) error
+	List(ctx context.Context) ([]*ValidationResultRecord, error)
+}
+
+// ValidationResultRecord represents a media validation result in the database
+type ValidationResultRecord struct {
+	Path           string
+	Status         string
+	ValidatedAt    time.Time
+	Duration       float64
+	VideoCodec     string
+	AudioCodec     string
+	Width          int
+	Height         int
+	Bitrate        int64
+	Container      string
+	Issues         []string
+	Error          string
+	VideoSupported bool
+	AudioSupported bool
+}
+
+// SuggestionProfileRepository provides user suggestion profile storage
+type SuggestionProfileRepository interface {
+	SaveProfile(ctx context.Context, profile *SuggestionProfileRecord) error
+	GetProfile(ctx context.Context, userID string) (*SuggestionProfileRecord, error)
+	DeleteProfile(ctx context.Context, userID string) error
+	ListProfiles(ctx context.Context) ([]*SuggestionProfileRecord, error)
+	SaveViewHistory(ctx context.Context, userID string, entry *ViewHistoryRecord) error
+	GetViewHistory(ctx context.Context, userID string) ([]*ViewHistoryRecord, error)
+	DeleteViewHistory(ctx context.Context, userID string) error
+}
+
+// SuggestionProfileRecord represents a user's suggestion profile
+type SuggestionProfileRecord struct {
+	UserID          string
+	CategoryScores  map[string]float64
+	TypePreferences map[string]float64
+	TotalViews      int
+	TotalWatchTime  float64
+	LastUpdated     time.Time
+}
+
+// ViewHistoryRecord represents a single view history entry
+type ViewHistoryRecord struct {
+	UserID      string
+	MediaPath   string
+	Category    string
+	MediaType   string
+	ViewCount   int
+	TotalTime   float64
+	LastViewed  time.Time
+	CompletedAt *time.Time
+	Rating      float64
+}
+
+// AutoDiscoverySuggestionRepository provides file rename suggestion storage
+type AutoDiscoverySuggestionRepository interface {
+	Save(ctx context.Context, suggestion *AutoDiscoveryRecord) error
+	Get(ctx context.Context, originalPath string) (*AutoDiscoveryRecord, error)
+	Delete(ctx context.Context, originalPath string) error
+	List(ctx context.Context) ([]*AutoDiscoveryRecord, error)
+	DeleteAll(ctx context.Context) error
+}
+
+// AutoDiscoveryRecord represents an auto-discovery file rename suggestion
+type AutoDiscoveryRecord struct {
+	OriginalPath  string
+	SuggestedName string
+	SuggestedPath string
+	Type          string
+	Confidence    float64
+	Metadata      map[string]string
+}
+
+// IPListRepository provides IP whitelist/blacklist storage
+type IPListRepository interface {
+	SaveListConfig(ctx context.Context, listType string, name string, enabled bool) error
+	GetListConfig(ctx context.Context, listType string) (name string, enabled bool, err error)
+	SaveEntries(ctx context.Context, listType string, entries []*IPEntryRecord) error
+	GetEntries(ctx context.Context, listType string) ([]*IPEntryRecord, error)
+	AddEntry(ctx context.Context, listType string, entry *IPEntryRecord) error
+	RemoveEntry(ctx context.Context, listType string, ipValue string) error
+	SetEnabled(ctx context.Context, listType string, enabled bool) error
+}
+
+// IPEntryRecord represents an IP list entry in the database
+type IPEntryRecord struct {
+	ListType  string
+	Value     string
+	Comment   string
+	AddedAt   time.Time
+	AddedBy   string
+	ExpiresAt *time.Time
+}
+
+// RemoteCacheRepository provides remote media cache index storage
+type RemoteCacheRepository interface {
+	Save(ctx context.Context, entry *RemoteCacheRecord) error
+	Get(ctx context.Context, remoteURL string) (*RemoteCacheRecord, error)
+	Delete(ctx context.Context, remoteURL string) error
+	List(ctx context.Context) ([]*RemoteCacheRecord, error)
+}
+
+// RemoteCacheRecord represents a cached remote media entry
+type RemoteCacheRecord struct {
+	RemoteURL   string
+	LocalPath   string
+	Size        int64
+	ContentType string
+	CachedAt    time.Time
+	LastAccess  time.Time
+	Hits        int
+}
+
+// BackupManifestRepository provides backup manifest storage
+type BackupManifestRepository interface {
+	Save(ctx context.Context, manifest *BackupManifestRecord) error
+	Get(ctx context.Context, id string) (*BackupManifestRecord, error)
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context) ([]*BackupManifestRecord, error)
+}
+
+// BackupManifestRecord represents a backup manifest in the database
+type BackupManifestRecord struct {
+	ID          string
+	Filename    string
+	CreatedAt   time.Time
+	Size        int64
+	Type        string
+	Description string
+	Files       []string
+	Errors      []string
+	Version     string
+}

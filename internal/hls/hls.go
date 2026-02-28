@@ -23,6 +23,7 @@ import (
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 
@@ -35,7 +36,7 @@ type Capabilities struct {
 	Available     bool     `json:"available"`
 	FFmpegFound   bool     `json:"ffmpeg_found"`
 	FFprobeFound  bool     `json:"ffprobe_found"`
-	FFmpegPath    string   `json:"ffmpeg_path,omitempty"`
+	FFmpegPath    string   `json:"-"`
 	Healthy       bool     `json:"healthy"`
 	Message       string   `json:"message"`
 	Qualities     []string `json:"qualities"`
@@ -53,6 +54,7 @@ const (
 type Module struct {
 	config        *config.Manager
 	log           *logger.Logger
+	repo          repositories.HLSJobRepository
 	jobs          map[string]*models.HLSJob
 	jobCancels    map[string]context.CancelFunc
 	jobsMu        sync.RWMutex
@@ -71,11 +73,12 @@ type Module struct {
 }
 
 // NewModule creates a new HLS module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.HLSJobRepository) *Module {
 	hlsCfg := cfg.Get().HLS
 	return &Module{
 		config:      cfg,
 		log:         logger.New("hls"),
+		repo:        repo,
 		jobs:        make(map[string]*models.HLSJob),
 		jobCancels:  make(map[string]context.CancelFunc),
 		transSem:    make(chan struct{}, hlsCfg.ConcurrentLimit),
@@ -720,13 +723,13 @@ func parseFFmpegTime(timeStr string) float64 {
 
 // getMediaDuration uses ffmpeg-go's Probe to get media duration in seconds.
 // Falls back to raw ffprobe if the ffmpeg-go probe fails.
-func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64 {
+func (m *Module) getMediaDuration(ctx context.Context, mediaId string) float64 {
 	if m.ffprobePath == "" && m.ffmpegPath == "" {
 		return 0
 	}
 
 	// Use ffmpeg-go Probe for duration detection
-	probeJSON, err := ffmpeg.Probe(mediaPath)
+	probeJSON, err := ffmpeg.Probe(mediaId)
 	if err == nil {
 		duration := m.parseProbeDuration(probeJSON)
 		if duration > 0 {
@@ -747,7 +750,7 @@ func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
-		mediaPath,
+		mediaId,
 	)
 	output, err := cmd.Output()
 	if err != nil {
@@ -779,13 +782,13 @@ func (m *Module) parseProbeDuration(probeJSON string) float64 {
 // getSourceHeight probes the source media file and returns the video stream height in pixels.
 // Returns 0 if the height cannot be determined (ffprobe unavailable, not a video file, etc.).
 // Uses ffmpeg-go's Probe first, then falls back to raw ffprobe if that fails.
-func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
+func (m *Module) getSourceHeight(ctx context.Context, mediaId string) int {
 	if m.ffmpegPath == "" && m.ffprobePath == "" {
 		return 0
 	}
 
 	// ffmpeg-go Probe returns format + streams JSON in one call (same probe used for duration).
-	probeJSON, err := ffmpeg.Probe(mediaPath)
+	probeJSON, err := ffmpeg.Probe(mediaId)
 	if err == nil {
 		if h := m.parseProbeHeight(probeJSON); h > 0 {
 			return h
@@ -805,11 +808,11 @@ func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
 		"-print_format", "json",
 		"-show_streams",
 		"-select_streams", "v:0",
-		mediaPath,
+		mediaId,
 	)
 	output, err := cmd.Output()
 	if err != nil {
-		m.log.Debug("ffprobe stream info failed for %s: %v", filepath.Base(mediaPath), err)
+		m.log.Debug("ffprobe stream info failed for %s: %v", filepath.Base(mediaId), err)
 		return 0
 	}
 
@@ -936,7 +939,7 @@ func (m *Module) GetJobStatus(jobID string) (*models.HLSJob, error) {
 	return job, nil
 }
 
-// GetJobByMediaPath returns job for a media file
+// GetJobByMediaPath returns job for a media file by its path
 func (m *Module) GetJobByMediaPath(mediaPath string) (*models.HLSJob, error) {
 	hash := md5.Sum([]byte(mediaPath))
 	jobID := hex.EncodeToString(hash[:])
@@ -1108,38 +1111,41 @@ func (m *Module) DeleteJob(jobID string) error {
 	return nil
 }
 
-// Persistence
+// Persistence — reads/writes via MySQL repository
+
 func (m *Module) loadJobs() error {
-	path := filepath.Join(m.cacheDir, "jobs.json")
-	data, err := os.ReadFile(path)
+	jobs, err := m.repo.List(context.Background())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
 
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()
 
-	return json.Unmarshal(data, &m.jobs)
+	for _, job := range jobs {
+		m.jobs[job.ID] = job
+	}
+	return nil
 }
 
 func (m *Module) saveJobs() error {
 	m.jobsMu.RLock()
 	defer m.jobsMu.RUnlock()
 
-	data, err := json.MarshalIndent(m.jobs, "", "  ")
-	if err != nil {
-		return err
+	ctx := context.Background()
+	for _, job := range m.jobs {
+		if err := m.repo.Save(ctx, job); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
-	path := filepath.Join(m.cacheDir, "jobs.json")
-	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
+// saveJob persists a single job to the database.
+func (m *Module) saveJob(job *models.HLSJob) {
+	if err := m.repo.Save(context.Background(), job); err != nil {
+		m.log.Error("Failed to persist HLS job %s: %v", job.ID, err)
 	}
-	return os.Rename(tempPath, path)
 }
 
 // SaveJobsToFile is a public wrapper for saveJobs() to allow external callers
@@ -1725,7 +1731,7 @@ type Stats struct {
 	FailedJobs    int    `json:"failed_jobs"`
 	PendingJobs   int    `json:"pending_jobs"`
 	CacheSize     int64  `json:"cache_size_bytes"`
-	CacheDir      string `json:"cache_dir"`
+	CacheDir      string `json:"-"`
 }
 
 func (m *Module) calculateCacheSize() int64 {

@@ -18,22 +18,17 @@ func (h *Handler) GetHLSCapabilities(c *gin.Context) {
 	writeSuccess(c, caps)
 }
 
-// CheckHLSAvailability checks HLS status by media path and auto-generates if configured
+// CheckHLSAvailability checks HLS status by media ID and auto-generates if configured
 func (h *Handler) CheckHLSAvailability(c *gin.Context) {
-	mediaPath := c.Query("path")
-	if mediaPath == "" {
-		writeError(c, http.StatusBadRequest, "path parameter required")
-		return
-	}
-
-	absPath, ok := h.resolveAndValidatePath(c, mediaPath, h.allowedMediaDirs())
+	id := c.Query("id")
+	absPath, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return
 	}
 
 	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), absPath)
 	if err != nil {
-		h.log.Debug("HLS check/generate failed for %s: %v", absPath, err)
+		h.log.Debug("HLS check/generate failed for media %s: %v", id, err)
 		writeError(c, http.StatusNotFound, "HLS stream not available")
 		return
 	}
@@ -45,7 +40,6 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 	response := map[string]interface{}{
 		"id":         job.ID,
 		"job_id":     job.ID,
-		"media_path": job.MediaPath,
 		"status":     job.Status,
 		"progress":   job.Progress,
 		"qualities":  checkQualities,
@@ -71,7 +65,7 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 // GenerateHLS starts HLS generation for a media file
 func (h *Handler) GenerateHLS(c *gin.Context) {
 	var req struct {
-		Path      string   `json:"path"`
+		ID        string   `json:"id"`
 		Qualities []string `json:"qualities"`
 		Quality   string   `json:"quality"`
 	}
@@ -84,7 +78,7 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 		req.Qualities = []string{req.Quality}
 	}
 
-	absPath, ok := h.resolveAndValidatePath(c, req.Path, h.allowedMediaDirs())
+	absPath, ok := h.resolveMediaByID(c, req.ID)
 	if !ok {
 		return
 	}
@@ -104,7 +98,6 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 		"job_id":     job.ID,
 		"id":         job.ID,
 		"status":     job.Status,
-		"media_path": job.MediaPath,
 		"progress":   job.Progress,
 		"qualities":  jobQualities,
 		"error":      job.Error,
@@ -138,7 +131,6 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 	}
 	response := map[string]interface{}{
 		"id":         job.ID,
-		"media_path": job.MediaPath,
 		"status":     job.Status,
 		"progress":   job.Progress,
 		"qualities":  statusQualities,

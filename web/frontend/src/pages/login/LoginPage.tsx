@@ -15,7 +15,9 @@ export function LoginPage() {
     const [error, setError] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
 
-    const redirectTo = searchParams.get('redirect') || '/'
+    // Validate redirect param to prevent open redirect attacks
+    const rawRedirect = searchParams.get('redirect') || '/'
+    const redirectTo = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : '/'
 
     async function handleSubmit(e: FormEvent) {
         e.preventDefault()

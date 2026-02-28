@@ -166,71 +166,9 @@ func New(opts Options) (*Server, error) {
 	return s, nil
 }
 
-// setupRouter configures the Gin engine with middleware
+// setupRouter configures the Gin engine base routes.
+// CORS and security headers are applied by api/routes/routes.go via the middleware package.
 func (s *Server) setupRouter() {
-	cfg := s.config.Get()
-
-	// CORS middleware
-	if cfg.Security.CORSEnabled {
-		allowAll := false
-		allowedOrigins := make(map[string]bool)
-		for _, o := range cfg.Security.CORSOrigins {
-			if o == "*" {
-				allowAll = true
-				break
-			}
-			allowedOrigins[o] = true
-		}
-		s.engine.Use(func(c *gin.Context) {
-			origin := c.GetHeader("Origin")
-			if allowAll || allowedOrigins[origin] {
-				if allowAll && origin != "" {
-					c.Header("Access-Control-Allow-Origin", origin)
-					c.Header("Vary", "Origin")
-				} else if allowAll {
-					c.Header("Access-Control-Allow-Origin", "*")
-					c.Header("Vary", "Origin")
-				} else {
-					c.Header("Access-Control-Allow-Origin", origin)
-					c.Header("Vary", "Origin")
-				}
-				c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-				c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-				c.Header("Access-Control-Max-Age", "86400")
-			}
-			if c.Request.Method == http.MethodOptions {
-				c.AbortWithStatus(http.StatusNoContent)
-				return
-			}
-			c.Next()
-		})
-	}
-
-	// Security headers middleware
-	if cfg.Security.CSPEnabled || cfg.Security.HSTSEnabled {
-		csp := ""
-		if cfg.Security.CSPEnabled {
-			csp = cfg.Security.CSPPolicy
-		}
-		hstsMaxAge := 0
-		if cfg.Security.HSTSEnabled {
-			hstsMaxAge = cfg.Security.HSTSMaxAge
-		}
-		s.engine.Use(func(c *gin.Context) {
-			c.Header("X-Content-Type-Options", "nosniff")
-			c.Header("X-Frame-Options", "DENY")
-			c.Header("X-XSS-Protection", "1; mode=block")
-			c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-			if csp != "" {
-				c.Header("Content-Security-Policy", csp)
-			}
-			if hstsMaxAge > 0 && (c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https") {
-				c.Header("Strict-Transport-Security", fmt.Sprintf("max-age=%d; includeSubDomains", hstsMaxAge))
-			}
-			c.Next()
-		})
-	}
-
 	s.setupBaseRoutes()
 }
 

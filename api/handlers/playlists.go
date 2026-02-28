@@ -33,7 +33,11 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 	}
 
 	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-	if err == nil && !user.Permissions.CanCreatePlaylists {
+	if err != nil || user == nil {
+		writeError(c, http.StatusInternalServerError, "Failed to retrieve user permissions")
+		return
+	}
+	if !user.Permissions.CanCreatePlaylists {
 		writeError(c, http.StatusForbidden, "Playlist creation not allowed for your user type")
 		return
 	}
@@ -101,8 +105,6 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 	updatedPlaylist, err := h.playlist.GetPlaylistForUser(id, session.UserID)
 	if err != nil {
 		h.log.Warn("UpdatePlaylist: update succeeded but failed to fetch updated playlist %s: %v", id, err)
-		writeSuccess(c, nil)
-		return
 	}
 	writeSuccess(c, updatedPlaylist)
 }
@@ -148,7 +150,7 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 
 	if (format == "m3u" || format == "m3u8") && export.M3UContent != "" {
 		ext := format
-		c.Header(headerContentDisposition, "attachment; filename=\""+export.Name+"."+ext+"\"")
+		c.Header(headerContentDisposition, safeContentDisposition(export.Name+"."+ext))
 		c.Header(headerContentType, "audio/x-mpegurl")
 		if _, err := c.Writer.Write([]byte(export.M3UContent)); err != nil {
 			h.log.Error("Failed to write M3U content: %v", err)
@@ -156,7 +158,7 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 		return
 	}
 
-	c.Header(headerContentDisposition, "attachment; filename=\""+export.Name+".json\"")
+	c.Header(headerContentDisposition, safeContentDisposition(export.Name+".json"))
 	writeSuccess(c, export)
 }
 
@@ -171,21 +173,25 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 	}
 
 	var req struct {
-		MediaID   string `json:"media_id"`
-		MediaPath string `json:"media_path"`
-		Title     string `json:"title"`
-		Path      string `json:"path"`
-		Name      string `json:"name"`
+		MediaID string `json:"media_id"`
+		Title   string `json:"title"`
+		Name    string `json:"name"`
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 
-	mediaPath := req.MediaPath
-	if mediaPath == "" {
-		mediaPath = req.Path
+	if req.MediaID == "" {
+		writeError(c, http.StatusBadRequest, errIDRequired)
+		return
 	}
+
+	mediaPath, ok := h.resolveMediaByID(c, req.MediaID)
+	if !ok {
+		return
+	}
+
 	title := req.Title
 	if title == "" {
 		title = req.Name
@@ -210,31 +216,27 @@ func (h *Handler) RemovePlaylistItem(c *gin.Context) {
 	}
 
 	var req struct {
-		ItemID    string `json:"item_id"`
-		MediaPath string `json:"media_path"`
-		Path      string `json:"path"`
+		ItemID  string `json:"item_id"`
+		MediaID string `json:"media_id"`
 	}
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-		req.MediaPath = c.Query("media_path")
-		if req.MediaPath == "" {
-			req.Path = c.Query("path")
+		req.MediaID = c.Query("media_id")
+		if req.MediaID == "" {
+			req.ItemID = c.Query("item_id")
 		}
 	}
 
-	mediaPath := req.MediaPath
-	if mediaPath == "" {
-		mediaPath = req.ItemID
+	// Resolve the identifier for removal — prefer media_id, fall back to item_id
+	removeKey := req.MediaID
+	if removeKey == "" {
+		removeKey = req.ItemID
 	}
-	if mediaPath == "" {
-		mediaPath = req.Path
-	}
-
-	if mediaPath == "" {
-		writeError(c, http.StatusBadRequest, "media_path, item_id, or path required")
+	if removeKey == "" {
+		writeError(c, http.StatusBadRequest, "media_id or item_id required")
 		return
 	}
 
-	if err := h.playlist.RemoveItem(c.Request.Context(), playlistID, session.UserID, mediaPath); err != nil {
+	if err := h.playlist.RemoveItem(c.Request.Context(), playlistID, session.UserID, removeKey); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot remove item from playlist")
 		return
 	}

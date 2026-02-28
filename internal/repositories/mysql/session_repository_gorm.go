@@ -3,6 +3,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"media-server-pro/internal/repositories"
@@ -31,6 +32,9 @@ func (r *SessionRepository) Get(ctx context.Context, id string) (*models.Session
 	var session models.Session
 	err := r.db.WithContext(ctx).First(&session, "id = ?", id).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, repositories.ErrSessionNotFound
+		}
 		return nil, err
 	}
 	return &session, nil
