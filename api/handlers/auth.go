@@ -298,7 +298,7 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 	}
 
 	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-	if err != nil {
+	if err != nil || user == nil {
 		writeError(c, http.StatusNotFound, errUserNotFound)
 		return
 	}
