@@ -376,6 +376,7 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 
 	realPath, err := filepath.EvalSymlinks(validPath)
 	if err != nil {
+		h.log.Debug("EvalSymlinks failed for %s (using raw path): %v", validPath, err)
 		realPath = validPath
 	}
 	absPath, err := filepath.Abs(realPath)
@@ -402,10 +403,13 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 	return absPath, true
 }
 
-// resolveRelativePath resolves a possibly-relative path against allowed directories.
+// resolveRelativePath resolves a relative path against the allowed directories.
+// Absolute paths are rejected: callers should only pass filename/relative paths;
+// absolute paths must go through resolveAndValidatePath which enforces dir checks.
 func (h *Handler) resolveRelativePath(path string, allowedDirs []string) string {
 	if filepath.IsAbs(path) {
-		return path
+		h.log.Warn("resolveRelativePath: rejecting absolute path input: %s", path)
+		return ""
 	}
 	for _, dir := range allowedDirs {
 		testPath := filepath.Join(dir, path)
