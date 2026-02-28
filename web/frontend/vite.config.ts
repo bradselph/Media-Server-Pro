@@ -5,6 +5,15 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
     plugins: [react()],
+    test: {
+        environment: 'jsdom',
+        globals: true,
+        setupFiles: ['./src/test/setup.ts'],
+        coverage: {
+            provider: 'v8',
+            reporter: ['text', 'lcov'],
+        },
+    },
     // Base path must match where Go serves the React bundle.
     // Files go to web/static/react/ (outDir below), which the Go server
     // serves at /web/static/react/ — so base must include that subdirectory.
