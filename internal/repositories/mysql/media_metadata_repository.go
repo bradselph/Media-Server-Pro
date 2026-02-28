@@ -15,6 +15,9 @@ import (
 // mediaMetadataRow maps to the media_metadata table.
 type mediaMetadataRow struct {
 	Path         string     `gorm:"column:path;primaryKey"`
+	// StableID is a UUID generated once per file and persisted so that the
+	// public MediaItem.ID survives path changes across server restarts.
+	StableID     string     `gorm:"column:stable_id"`
 	Views        int        `gorm:"column:views"`
 	LastPlayed   *time.Time `gorm:"column:last_played"`
 	DateAdded    time.Time  `gorm:"column:date_added"`
@@ -79,6 +82,7 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 
 		row := mediaMetadataRow{
 			Path:         path,
+			StableID:     metadata.StableID,
 			Views:        metadata.Views,
 			LastPlayed:   lastPlayed,
 			DateAdded:    dateAdded,
@@ -88,10 +92,19 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 			ProbeModTime: probeModTime,
 		}
 
+		// On conflict: always update operational fields but only set stable_id
+		// if the existing row doesn't already have one (preserve existing UUIDs).
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "path"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"views", "last_played", "is_mature", "mature_score", "category", "probe_mod_time",
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"views":          clause.Column{Table: "excluded", Name: "views"},
+				"last_played":    clause.Column{Table: "excluded", Name: "last_played"},
+				"is_mature":      clause.Column{Table: "excluded", Name: "is_mature"},
+				"mature_score":   clause.Column{Table: "excluded", Name: "mature_score"},
+				"category":       clause.Column{Table: "excluded", Name: "category"},
+				"probe_mod_time": clause.Column{Table: "excluded", Name: "probe_mod_time"},
+				// Only write stable_id when it's not already set
+				"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', excluded.stable_id, media_metadata.stable_id)"),
 			}),
 		}).Create(&row).Error; err != nil {
 			return fmt.Errorf("failed to upsert media metadata: %w", err)
@@ -220,6 +233,7 @@ func (r *MediaMetadataRepository) GetPlaybackPosition(ctx context.Context, path,
 func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *repositories.MediaMetadata {
 	metadata := &repositories.MediaMetadata{
 		Path:        row.Path,
+		StableID:    row.StableID,
 		Views:       row.Views,
 		DateAdded:   row.DateAdded.Format(time.RFC3339),
 		IsMature:    row.IsMature,

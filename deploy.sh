@@ -411,7 +411,7 @@ run_or_dry vps "
   fi
 "
 
-# ── Build on VPS
+# ── Build on VPS ──────────────────────────────────────────────────────────────
 
 info "Building on VPS..."
 
@@ -424,13 +424,18 @@ run_or_dry vps "
   # ── React frontend (always built before Go binary) ─────────────────────────
   echo '[deploy] Building React frontend...'
   cd web/frontend
+
   if [ -f package-lock.json ]; then
-    echo '[deploy] package-lock.json found — using npm ci'
-    npm ci
+    echo '[deploy] package-lock.json found — trying npm ci'
+    if ! npm ci 2>&1; then
+      echo '[deploy] npm ci failed (lock file out of sync) — falling back to npm install'
+      npm install
+    fi
   else
     echo '[deploy] No package-lock.json — using npm install'
     npm install
   fi
+
   npm run build
   cd ../..
   echo '[deploy] React build complete'

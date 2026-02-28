@@ -43,7 +43,7 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 				}
 			}
-			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.Path)
+			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.ID)
 		}
 	}
 
