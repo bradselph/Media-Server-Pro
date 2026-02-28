@@ -733,8 +733,8 @@ func (m *Module) getMediaDuration(ctx context.Context, mediaId string) float64 {
 		return 0
 	}
 
-	// Use ffmpeg-go Probe for duration detection
-	probeJSON, err := ffmpeg.Probe(mediaId)
+	// Use ffmpeg-go Probe with timeout for duration detection
+	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaId, 15*time.Second, nil)
 	if err == nil {
 		duration := m.parseProbeDuration(probeJSON)
 		if duration > 0 {
@@ -792,8 +792,8 @@ func (m *Module) getSourceHeight(ctx context.Context, mediaId string) int {
 		return 0
 	}
 
-	// ffmpeg-go Probe returns format + streams JSON in one call (same probe used for duration).
-	probeJSON, err := ffmpeg.Probe(mediaId)
+	// ffmpeg-go Probe with timeout returns format + streams JSON in one call.
+	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaId, 15*time.Second, nil)
 	if err == nil {
 		if h := m.parseProbeHeight(probeJSON); h > 0 {
 			return h

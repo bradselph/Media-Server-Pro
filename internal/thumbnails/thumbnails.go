@@ -733,10 +733,11 @@ func (m *Module) getMediaDuration(path string) (float64, error) {
 	// so this works under systemd (which strips PATH to a minimal set).
 	var probeJSON string
 	var err error
+	const probeTimeout = 15 * time.Second
 	if m.ffprobePath != "" {
-		probeJSON, err = ffmpeg.Probe(path, ffmpeg.KwArgs{"cmd": m.ffprobePath})
+		probeJSON, err = ffmpeg.ProbeWithTimeout(path, probeTimeout, ffmpeg.KwArgs{"cmd": m.ffprobePath})
 	} else {
-		probeJSON, err = ffmpeg.Probe(path)
+		probeJSON, err = ffmpeg.ProbeWithTimeout(path, probeTimeout, nil)
 	}
 	if err == nil {
 		duration := m.parseProbeDuration(probeJSON)
