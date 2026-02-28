@@ -14,12 +14,18 @@ import (
 
 // GetHLSCapabilities returns whether HLS transcoding is available and its configuration.
 func (h *Handler) GetHLSCapabilities(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	caps := h.hls.GetCapabilities()
 	writeSuccess(c, caps)
 }
 
 // CheckHLSAvailability checks HLS status by media ID and auto-generates if configured
 func (h *Handler) CheckHLSAvailability(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	id := c.Query("id")
 	absPath, ok := h.resolveMediaByID(c, id)
 	if !ok {
@@ -64,6 +70,9 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 
 // GenerateHLS starts HLS generation for a media file
 func (h *Handler) GenerateHLS(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	var req struct {
 		ID        string   `json:"id"`
 		Qualities []string `json:"qualities"`
@@ -117,6 +126,9 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 
 // GetHLSStatus returns HLS generation status by job ID.
 func (h *Handler) GetHLSStatus(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	jobID := c.Param("id")
 
 	job, err := h.hls.GetJobStatus(jobID)
@@ -156,6 +168,9 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 
 // ServeMasterPlaylist serves the HLS master playlist
 func (h *Handler) ServeMasterPlaylist(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	jobID := c.Param("id")
 
 	job, err := h.hls.GetJobStatus(jobID)
@@ -176,6 +191,9 @@ func (h *Handler) ServeMasterPlaylist(c *gin.Context) {
 
 // ServeVariantPlaylist serves an HLS variant playlist
 func (h *Handler) ServeVariantPlaylist(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	jobID := c.Param("id")
 	quality := c.Param("quality")
 
@@ -197,6 +215,9 @@ func (h *Handler) ServeVariantPlaylist(c *gin.Context) {
 
 // ServeSegment serves an HLS segment
 func (h *Handler) ServeSegment(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	jobID := c.Param("id")
 	quality := c.Param("quality")
 	segment := c.Param("segment")
@@ -219,12 +240,18 @@ func (h *Handler) ServeSegment(c *gin.Context) {
 
 // GetHLSStats returns HLS module statistics
 func (h *Handler) GetHLSStats(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	stats := h.hls.GetStats()
 	writeSuccess(c, stats)
 }
 
 // ValidateHLS validates an HLS job's playlists and segments
 func (h *Handler) ValidateHLS(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	jobID := c.Param("id")
 
 	result, err := h.hls.ValidateMasterPlaylist(jobID)
@@ -239,12 +266,18 @@ func (h *Handler) ValidateHLS(c *gin.Context) {
 
 // CleanHLSStaleLocks removes stale HLS generation locks
 func (h *Handler) CleanHLSStaleLocks(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	removed := h.hls.CleanStaleLocks()
 	writeSuccess(c, map[string]int{"removed": removed})
 }
 
 // CleanHLSInactive removes inactive HLS content
 func (h *Handler) CleanHLSInactive(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	threshold := 24 * time.Hour
 
 	var bodyReq struct {
@@ -272,6 +305,9 @@ func (h *Handler) CleanHLSInactive(c *gin.Context) {
 
 // ListHLSJobs returns all HLS jobs
 func (h *Handler) ListHLSJobs(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	jobs := h.hls.ListJobs()
 	for _, j := range jobs {
 		if j != nil && j.Qualities == nil {
@@ -283,6 +319,9 @@ func (h *Handler) ListHLSJobs(c *gin.Context) {
 
 // DeleteHLSJob removes an HLS job and its files
 func (h *Handler) DeleteHLSJob(c *gin.Context) {
+	if !h.requireHLS(c) {
+		return
+	}
 	jobID := c.Param("id")
 
 	if err := h.hls.DeleteJob(jobID); err != nil {

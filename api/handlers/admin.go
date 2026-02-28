@@ -33,7 +33,12 @@ func (h *Handler) AdminGetStats(c *gin.Context) {
 	adminStats := h.admin.GetServerStats()
 	mediaStats := h.media.GetStats()
 	streamStats := h.streaming.GetStats()
-	hlsStats := h.hls.GetStats()
+	var hlsRunning, hlsCompleted int
+	if h.hls != nil {
+		hlsStats := h.hls.GetStats()
+		hlsRunning = hlsStats.RunningJobs
+		hlsCompleted = hlsStats.CompletedJobs
+	}
 
 	totalUsers := len(h.auth.ListUsers(c.Request.Context()))
 
@@ -63,8 +68,8 @@ func (h *Handler) AdminGetStats(c *gin.Context) {
 		"disk_usage":         diskUsed,
 		"disk_total":         diskTotal,
 		"disk_free":          diskFree,
-		"hls_jobs_running":   hlsStats.RunningJobs,
-		"hls_jobs_completed": hlsStats.CompletedJobs,
+		"hls_jobs_running":   hlsRunning,
+		"hls_jobs_completed": hlsCompleted,
 		"server_uptime":      int64(adminStats.Uptime.Seconds()),
 		"total_views":        totalViews,
 	})
@@ -621,6 +626,9 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 
 // CheckForUpdates checks GitHub for new versions
 func (h *Handler) CheckForUpdates(c *gin.Context) {
+	if !h.requireUpdater(c) {
+		return
+	}
 	result, err := h.updater.CheckForUpdates()
 	if err != nil {
 		if result != nil {
@@ -637,6 +645,9 @@ func (h *Handler) CheckForUpdates(c *gin.Context) {
 
 // GetUpdateStatus returns the last update check result.
 func (h *Handler) GetUpdateStatus(c *gin.Context) {
+	if !h.requireUpdater(c) {
+		return
+	}
 	result := h.updater.GetLastCheck()
 	if result == nil {
 		version := h.updater.GetVersion()
@@ -655,6 +666,9 @@ func (h *Handler) GetUpdateStatus(c *gin.Context) {
 
 // ApplyUpdate downloads and installs an update
 func (h *Handler) ApplyUpdate(c *gin.Context) {
+	if !h.requireUpdater(c) {
+		return
+	}
 	if h.updater.IsUpdateRunning() {
 		writeError(c, http.StatusConflict, "A binary update is already in progress")
 		return
@@ -673,6 +687,9 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 
 // ApplySourceUpdate starts an async source build.
 func (h *Handler) ApplySourceUpdate(c *gin.Context) {
+	if !h.requireUpdater(c) {
+		return
+	}
 	if h.updater.IsBuildRunning() {
 		writeError(c, http.StatusConflict, "A source build is already in progress")
 		return
@@ -699,6 +716,9 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 
 // GetSourceUpdateProgress returns the live progress of a running source build.
 func (h *Handler) GetSourceUpdateProgress(c *gin.Context) {
+	if !h.requireUpdater(c) {
+		return
+	}
 	status := h.updater.GetActiveBuildStatus()
 	if status == nil {
 		writeSuccess(c, map[string]interface{}{
@@ -713,6 +733,9 @@ func (h *Handler) GetSourceUpdateProgress(c *gin.Context) {
 
 // CheckForSourceUpdates fetches remote git refs and reports whether new commits are available.
 func (h *Handler) CheckForSourceUpdates(c *gin.Context) {
+	if !h.requireUpdater(c) {
+		return
+	}
 	hasUpdates, remoteHash, err := h.updater.CheckForSourceUpdates(c.Request.Context())
 	if err != nil {
 		h.log.Error("Source update check failed: %v", err)

@@ -10,6 +10,9 @@ import (
 
 // CategorizeFile categorizes a single file and propagates the result to the media module.
 func (h *Handler) CategorizeFile(c *gin.Context) {
+	if !h.requireCategorizer(c) {
+		return
+	}
 	var req struct {
 		Path string `json:"path"`
 	}
@@ -31,6 +34,9 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 
 // CategorizeDirectory categorizes all files in a directory.
 func (h *Handler) CategorizeDirectory(c *gin.Context) {
+	if !h.requireCategorizer(c) {
+		return
+	}
 	var req struct {
 		Directory string `json:"directory"`
 	}
@@ -61,12 +67,18 @@ func (h *Handler) CategorizeDirectory(c *gin.Context) {
 
 // GetCategoryStats returns categorization statistics
 func (h *Handler) GetCategoryStats(c *gin.Context) {
+	if !h.requireCategorizer(c) {
+		return
+	}
 	stats := h.categorizer.GetStats()
 	writeSuccess(c, stats)
 }
 
 // SetMediaCategory manually sets a category for a file
 func (h *Handler) SetMediaCategory(c *gin.Context) {
+	if !h.requireCategorizer(c) {
+		return
+	}
 	var req struct {
 		Path     string               `json:"path"`
 		Category categorizer.Category `json:"category"`
@@ -82,6 +94,9 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 
 // GetByCategory returns all items in a category
 func (h *Handler) GetByCategory(c *gin.Context) {
+	if !h.requireCategorizer(c) {
+		return
+	}
 	category := categorizer.Category(c.Query("category"))
 	items := h.categorizer.GetByCategory(category)
 	writeSuccess(c, items)
@@ -89,6 +104,9 @@ func (h *Handler) GetByCategory(c *gin.Context) {
 
 // CleanStaleCategories removes entries for deleted files
 func (h *Handler) CleanStaleCategories(c *gin.Context) {
+	if !h.requireCategorizer(c) {
+		return
+	}
 	removed := h.categorizer.CleanStale()
 	writeSuccess(c, map[string]int{"removed": removed})
 }

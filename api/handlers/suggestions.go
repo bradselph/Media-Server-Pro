@@ -9,6 +9,9 @@ import (
 
 // GetSuggestions returns personalized content suggestions
 func (h *Handler) GetSuggestions(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	session := getSession(c)
 	var userID string
 	if session != nil {
@@ -27,6 +30,9 @@ func (h *Handler) GetSuggestions(c *gin.Context) {
 
 // GetTrendingSuggestions returns trending content
 func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	limit := 10
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
 		limit = l
@@ -39,6 +45,9 @@ func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
 
 // GetSimilarMedia returns similar media to a given item
 func (h *Handler) GetSimilarMedia(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	id := c.Query("id")
 	absPath, ok := h.resolveMediaByID(c, id)
 	if !ok {
@@ -57,6 +66,9 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 
 // GetContinueWatching returns items the user started but didn't finish
 func (h *Handler) GetContinueWatching(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	session := getSession(c)
 	if session == nil {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
@@ -75,6 +87,9 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 
 // GetPersonalizedSuggestions returns personalized suggestions (auth-gated alias for GetSuggestions).
 func (h *Handler) GetPersonalizedSuggestions(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	session := getSession(c)
 	if session == nil {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
@@ -93,6 +108,9 @@ func (h *Handler) GetPersonalizedSuggestions(c *gin.Context) {
 
 // RecordRating records a user rating for a media item
 func (h *Handler) RecordRating(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	session := getSession(c)
 	if session == nil {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
@@ -119,6 +137,9 @@ func (h *Handler) RecordRating(c *gin.Context) {
 
 // GetSuggestionStats returns suggestion module statistics
 func (h *Handler) GetSuggestionStats(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	stats := h.suggestions.GetStats()
 	writeSuccess(c, stats)
 }
