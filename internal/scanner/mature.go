@@ -166,22 +166,38 @@ type compiledKeyword struct {
 	pattern *regexp.Regexp
 }
 
-// buildKeywordPatterns compiles a keyword list into word-boundary regexp patterns.
-// Keywords that contain spaces are treated as phrase matches (the whole phrase must
-// appear as a distinct token sequence).  Single words use \b anchors.
+// buildKeywordPatterns compiles a keyword list into filename-aware boundary patterns.
+//
+// Two issues prevent standard \b from working correctly for filenames:
+//  1. regexp.QuoteMeta does not escape spaces, so the `\ ` → `[\s_\-]?` replacement
+//     never fired with the old code.
+//  2. Go's regexp \b treats underscore as a word character, so \bxxx\b fails to
+//     match "xxx_video.mp4" even though _ is used as a word separator in filenames.
+//
+// The fix uses explicit left/right boundary groups: `(?:^|[^a-z0-9])` and
+// `(?:[^a-z0-9]|$)`.  These treat any non-alphanumeric character (_, -, ., space,
+// and file-extension dots) as a token separator while still blocking substring
+// matches inside longer words (e.g. "ass" does not match inside "grasslands").
+//
+// Phrase keywords ("lap dance") have their spaces replaced with `[\s_\-]?` so they
+// match common filename variants: "lap dance", "lap-dance", "lap_dance", "lapdance".
 func buildKeywordPatterns(keywords []string) []*compiledKeyword {
 	compiled := make([]*compiledKeyword, 0, len(keywords))
 	for _, kw := range keywords {
-		// Escape any regex meta-characters in the keyword itself.
-		escaped := regexp.QuoteMeta(strings.ToLower(kw))
-		// Use \b word boundaries; replace escaped spaces with flexible whitespace
-		// matchers so "lap dance" matches "lap-dance", "lapdance", etc. only if
-		// the surrounding characters are non-word.
-		pattern := `(?i)\b` + strings.ReplaceAll(escaped, `\ `, `[\s_\-]?`) + `\b`
+		lower := strings.ToLower(kw)
+		// Escape regex metacharacters in the keyword.  Note: regexp.QuoteMeta does
+		// NOT escape spaces, so the literal space character is used below.
+		escaped := regexp.QuoteMeta(lower)
+		// Replace literal spaces with a flexible separator so phrase keywords match
+		// common filename representations with -, _, or no separator.
+		flexible := strings.ReplaceAll(escaped, " ", `[\s_\-]?`)
+		// Filename-aware boundary: non-alphanumeric character or start/end of string.
+		// This lets "xxx" match in "xxx_video.mp4" while blocking "ass" in "class".
+		pattern := `(?i)(?:^|[^a-z0-9])` + flexible + `(?:[^a-z0-9]|$)`
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			// Fallback to literal substring if the pattern is somehow invalid.
-			re = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(kw))
+			// Fallback to a simple case-insensitive literal if the pattern is invalid.
+			re = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(lower))
 		}
 		compiled = append(compiled, &compiledKeyword{raw: kw, pattern: re})
 	}
