@@ -22,31 +22,14 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Bump PATCH version
+      - name: Generate dev build label
         id: bump
         run: |
           CURRENT=$(cat VERSION | tr -d '[:space:]')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          DEV_VERSION="${CURRENT}-dev.${SHORT_SHA}"
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
-
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-          PATCH=$((PATCH + 1))
-
-          NEW="${MAJOR}.${MINOR}.${PATCH}"
-          echo "new=$NEW" >> "$GITHUB_OUTPUT"
-          echo "Bumping patch: $CURRENT → $NEW"
-
-      - name: Update VERSION file
-        run: echo "${{ steps.bump.outputs.new }}" > VERSION
-
-      - name: Update main.go fallback version
-        run: |
-          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.bump.outputs.new }}\"/" cmd/server/main.go
-
-      - name: Commit and push patch bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION cmd/server/main.go
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: bump patch to ${{ steps.bump.outputs.new }} [auto-version]"
-          git push
+          echo "new=$DEV_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Dev build label: $DEV_VERSION"
+          echo "## Dev Build Label" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${DEV_VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
