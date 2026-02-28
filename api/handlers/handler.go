@@ -347,6 +347,15 @@ func (h *Handler) requireUpload(c *gin.Context) bool {
 	return true
 }
 
+// requireThumbnails checks that the thumbnails module is available.
+func (h *Handler) requireThumbnails(c *gin.Context) bool {
+	if h.thumbnails == nil {
+		writeError(c, http.StatusServiceUnavailable, "Thumbnails feature is not available")
+		return false
+	}
+	return true
+}
+
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
 // is best-effort — if the admin module is unavailable the action is silently
 // skipped so that the primary operation (user create, media delete, etc.) still
@@ -576,6 +585,9 @@ func (h *Handler) checkRemoteMediaEnabled(c *gin.Context) bool {
 
 // enrichSuggestionThumbnails populates thumbnail URLs for suggestions
 func (h *Handler) enrichSuggestionThumbnails(items []*suggestions.Suggestion) {
+	if h.thumbnails == nil {
+		return
+	}
 	for _, item := range items {
 		if item.ThumbnailURL == "" {
 			if !h.thumbnails.HasThumbnail(item.MediaPath) {
