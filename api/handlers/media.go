@@ -368,6 +368,10 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 			if err := h.auth.AddToWatchHistory(c.Request.Context(), username, item); err != nil {
 				h.log.Debug("Watch history update skipped for media %s: %v", req.ID, err)
 			}
+
+			if item.Completed && h.suggestions != nil {
+				h.suggestions.RecordCompletion(userID, absPath)
+			}
 		}
 	}
 
