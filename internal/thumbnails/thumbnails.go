@@ -10,7 +10,6 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -687,9 +686,13 @@ func (m *Module) HasAllPreviewThumbnails(mediaPath string) bool {
 }
 
 // GetThumbnailURL returns the URL path for a thumbnail.
-// Uses the path-based endpoint so mature content checks are enforced on every access.
+// Uses the ID-based endpoint (/thumbnail?id=<md5hash>) so the handler can resolve
+// the media file and enforce mature content checks on every access.
+// The ID is the MD5 hash of the path, matching MediaItem.ID generation in media/discovery.go.
 func (m *Module) GetThumbnailURL(mediaPath string) string {
-	return "/thumbnail?path=" + url.QueryEscape(mediaPath)
+	h := md5.Sum([]byte(mediaPath))
+	id := hex.EncodeToString(h[:])
+	return "/thumbnail?id=" + id
 }
 
 // GetThumbnailDir returns the thumbnail directory path
