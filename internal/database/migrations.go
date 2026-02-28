@@ -379,6 +379,10 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 		{"user_preferences", "show_trending", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"analytics_events", "data", "JSON NULL"},
 		{"media_metadata", "probe_mod_time", "TIMESTAMP NULL DEFAULT NULL"},
+		// stable_id: UUID generated once per file path and persisted.
+		// NULL for rows created before this column was added; the media module
+		// generates and saves a UUID for any row missing one.
+		{"media_metadata", "stable_id", "VARCHAR(36) NULL"},
 	}
 
 	for _, col := range columns {
@@ -395,6 +399,8 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 	}{
 		{"analytics_events", "idx_timestamp",
 			"ALTER TABLE analytics_events ADD INDEX idx_timestamp (timestamp)"},
+		{"media_metadata", "idx_stable_id",
+			"ALTER TABLE media_metadata ADD UNIQUE INDEX idx_stable_id (stable_id)"},
 	}
 
 	for _, idx := range indexes {

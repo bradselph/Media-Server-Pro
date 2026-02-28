@@ -58,6 +58,12 @@ type ScanResultRepository interface {
 // MediaMetadata represents metadata stored for a media file
 type MediaMetadata struct {
 	Path        string
+	// StableID is a UUID generated on first scan and persisted in the DB.
+	// It serves as the public-facing MediaItem.ID, decoupling it from the
+	// filesystem path so that IDs survive renames, moves, and config changes.
+	// Empty string means the row predates stable-ID support; callers should
+	// treat a missing StableID as requiring a new UUID.
+	StableID    string
 	Views       int
 	LastPlayed  *string
 	DateAdded   string

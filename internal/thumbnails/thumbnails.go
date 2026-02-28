@@ -685,14 +685,12 @@ func (m *Module) HasAllPreviewThumbnails(mediaPath string) bool {
 	return true
 }
 
-// GetThumbnailURL returns the URL path for a thumbnail.
-// Uses the ID-based endpoint (/thumbnail?id=<md5hash>) so the handler can resolve
-// the media file and enforce mature content checks on every access.
-// The ID is the MD5 hash of the path, matching MediaItem.ID generation in media/discovery.go.
-func (m *Module) GetThumbnailURL(mediaPath string) string {
-	h := md5.Sum([]byte(mediaPath))
-	id := hex.EncodeToString(h[:])
-	return "/thumbnail?id=" + id
+// GetThumbnailURL returns the URL path for a thumbnail given the media's stable ID.
+// Uses the ID-based endpoint so the handler can resolve the media file and enforce
+// mature-content checks on every access. The stable ID is stored in the DB and
+// survives file renames/moves (see media/discovery.go createMediaItem).
+func (m *Module) GetThumbnailURL(mediaID string) string {
+	return "/thumbnail?id=" + mediaID
 }
 
 // GetThumbnailDir returns the thumbnail directory path

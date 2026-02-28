@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -104,6 +105,9 @@ type Module struct {
 
 // Metadata holds extended metadata for a media item
 type Metadata struct {
+	// StableID is a UUID generated on first scan and persisted in the DB.
+	// It is the public-facing MediaItem.ID, decoupled from the file path.
+	StableID      string             `json:"stable_id,omitempty"`
 	Views         int                `json:"views"`
 	LastPlayed    *time.Time         `json:"last_played,omitempty"`
 	DateAdded     time.Time          `json:"date_added"`
@@ -477,14 +481,12 @@ func (m *Module) scanDirectory(dir string, defaultType models.MediaType, result 
 	})
 }
 
-// createMediaItem creates a MediaItem from file info
+// createMediaItem creates a MediaItem from file info.
+// The MediaItem.ID is a stable UUID loaded from the database (generated on
+// first encounter and persisted). This decouples the public ID from the
+// filesystem path so that IDs survive file moves and config changes.
 func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models.MediaType) *models.MediaItem {
-	// Generate stable ID from path
-	hash := md5.Sum([]byte(path))
-	id := hex.EncodeToString(hash[:])
-
 	item := &models.MediaItem{
-		ID:           id,
 		Path:         path,
 		Name:         info.Name(),
 		Type:         mediaType,
@@ -493,7 +495,7 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		Metadata:     make(map[string]string),
 	}
 
-	// Get existing metadata
+	// Get existing metadata (includes StableID loaded from DB at startup)
 	m.metaMu.RLock()
 	meta, hasMeta := m.metadata[path]
 	m.metaMu.RUnlock()
@@ -505,29 +507,44 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		item.IsMature = meta.IsMature
 		item.MatureScore = meta.MatureScore
 		item.Tags = meta.Tags
+
+		if meta.StableID != "" {
+			item.ID = meta.StableID
+		}
 	} else {
 		now := time.Now()
 		item.DateAdded = now
-		// Create initial metadata entry
+		// Create initial in-memory metadata entry (StableID assigned below)
 		m.metaMu.Lock()
 		m.metadata[path] = &Metadata{
 			DateAdded:   now,
 			PlaybackPos: make(map[string]float64),
 			CustomMeta:  make(map[string]string),
 		}
+		meta = m.metadata[path]
+		m.metaMu.Unlock()
+	}
+
+	// Assign a stable UUID if not already set (new or pre-stable-ID file)
+	if item.ID == "" {
+		newID := uuid.New().String()
+		item.ID = newID
+		m.metaMu.Lock()
+		meta.StableID = newID
 		m.metaMu.Unlock()
 	}
 
 	// Auto-detect category
 	item.Category = m.detectCategory(path)
 
-	// Check whether a thumbnail already exists on disk and pre-populate the URL
-	// so handlers don't need an extra os.Stat on every API request.
+	// Check whether a thumbnail already exists on disk and pre-populate the URL.
+	// Thumbnail files are named MD5(path).jpg (internal detail); the public URL
+	// uses the stable ID so the handler can apply mature-content checks.
 	cfg := m.config.Get()
-	thumbHash := hex.EncodeToString(hash[:]) // same hash as ID
-	thumbFile := filepath.Join(cfg.Directories.Thumbnails, thumbHash+".jpg")
+	pathHash := md5.Sum([]byte(path))
+	thumbFile := filepath.Join(cfg.Directories.Thumbnails, hex.EncodeToString(pathHash[:])+".jpg")
 	if _, err := os.Stat(thumbFile); err == nil {
-		item.ThumbnailURL = "/thumbnails/" + thumbHash + ".jpg"
+		item.ThumbnailURL = "/thumbnail?id=" + item.ID
 	}
 
 	return item
@@ -1162,6 +1179,7 @@ func (m *Module) saveMetadata(ctx context.Context) error {
 // convertRepoToInternal converts repository metadata to internal format
 func (m *Module) convertRepoToInternal(repoMeta *repositories.MediaMetadata) *Metadata {
 	meta := &Metadata{
+		StableID:      repoMeta.StableID,
 		Views:         repoMeta.Views,
 		IsMature:      repoMeta.IsMature,
 		MatureScore:   repoMeta.MatureScore,
@@ -1198,6 +1216,7 @@ func (m *Module) convertRepoToInternal(repoMeta *repositories.MediaMetadata) *Me
 func (m *Module) convertInternalToRepo(path string, meta *Metadata) *repositories.MediaMetadata {
 	repoMeta := &repositories.MediaMetadata{
 		Path:        path,
+		StableID:    meta.StableID,
 		Views:       meta.Views,
 		DateAdded:   meta.DateAdded.Format(time.RFC3339),
 		IsMature:    meta.IsMature,

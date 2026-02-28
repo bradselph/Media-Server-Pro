@@ -113,7 +113,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 				}
 			}
-			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.Path)
+			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.ID)
 		}
 	}
 
@@ -165,7 +165,7 @@ func (h *Handler) GetMedia(c *gin.Context) {
 				h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 			}
 		}
-		item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.Path)
+		item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.ID)
 	}
 
 	writeSuccess(c, item)

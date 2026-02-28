@@ -583,7 +583,10 @@ func (h *Handler) checkRemoteMediaEnabled(c *gin.Context) bool {
 	return true
 }
 
-// enrichSuggestionThumbnails populates thumbnail URLs for suggestions
+// enrichSuggestionThumbnails populates thumbnail URLs for suggestions.
+// Uses the stable MediaID (UUID) for the public URL so thumbnails survive
+// file path changes. Falls back to queuing generation if the thumbnail file
+// doesn't exist yet on disk.
 func (h *Handler) enrichSuggestionThumbnails(items []*suggestions.Suggestion) {
 	if h.thumbnails == nil {
 		return
@@ -597,7 +600,8 @@ func (h *Handler) enrichSuggestionThumbnails(items []*suggestions.Suggestion) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.MediaPath, err)
 				}
 			}
-			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.MediaPath)
+			// Use stable MediaID so URL survives path changes
+			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.MediaID)
 		}
 	}
 }
