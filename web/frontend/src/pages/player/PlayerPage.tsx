@@ -108,9 +108,9 @@ export function PlayerPage() {
 
     // Fetch media item — mediaApi.get() handles URL encoding internally; do not pre-encode
     const {data: media, isLoading: mediaLoading, error: mediaError} = useQuery({
-        queryKey: ['media-item', mediaPath],
-        queryFn: () => mediaApi.get(mediaPath),
-        enabled: !!mediaPath,
+        queryKey: ['media-item', mediaId],
+        queryFn: () => mediaApi.get(mediaId),
+        enabled: !!mediaId,
     })
 
     // Stable fallback callback — must not be recreated on every render or
@@ -140,9 +140,9 @@ export function PlayerPage() {
 
     // Fetch similar media via suggestions engine (semantic similarity by category/tags/type)
     const {data: similarData = [], isLoading: relatedLoading} = useQuery({
-        queryKey: ['media-similar', mediaPath],
-        queryFn: () => suggestionsApi.getSimilar(mediaPath ?? ''),
-        enabled: !!mediaPath,
+        queryKey: ['media-similar', mediaId],
+        queryFn: () => suggestionsApi.getSimilar(mediaId ?? ''),
+        enabled: !!mediaId,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -162,7 +162,7 @@ export function PlayerPage() {
 
     // Load media when path changes
     useEffect(() => {
-        if (!mediaPath || !media) return
+        if (!mediaId || !media) return
         if (media.is_mature && !matureAccepted) return
 
         const el = media.type === 'video' ? videoRef.current : audioRef.current
@@ -179,7 +179,7 @@ export function PlayerPage() {
         setHlsPolling(false)
         setUserRating(0)
 
-        el.src = mediaApi.getStreamUrl(mediaPath)
+        el.src = mediaApi.getStreamUrl(mediaId)
         el.volume = volume
         el.loop = isLooping
         el.playbackRate = playbackRate
@@ -191,7 +191,7 @@ export function PlayerPage() {
         let positionFetchCancelled = false
         if (user) {
             const elRef = el
-            watchHistoryApi.getPosition(mediaPath)
+            watchHistoryApi.getPosition(mediaId)
                 .then(data => {
                     if (positionFetchCancelled) return
                     const pos = data?.position ?? 0
@@ -207,19 +207,19 @@ export function PlayerPage() {
                 })
         }
 
-        // Track analytics — use media.id (UUID), not mediaPath (file path)
+        // Track analytics — use media.id (UUID), not mediaId (file path)
         analyticsApi.trackEvent({type: 'view', media_id: media.id}).catch(() => {
         })
 
         return () => {
             positionFetchCancelled = true
         }
-    }, [mediaPath, media, matureAccepted]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [mediaId, media, matureAccepted]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Check HLS availability — show popup instead of auto-switching
     useEffect(() => {
-        if (!mediaPath || media?.type !== 'video' || !hlsEnabled) return
-        hlsApi.check(mediaPath).then(hls => {
+        if (!mediaId || media?.type !== 'video' || !hlsEnabled) return
+        hlsApi.check(mediaId).then(hls => {
             if (hls.available && hls.hls_url) {
                 setHlsAvailable(true)
                 setHlsReadyUrl(hls.hls_url)
@@ -238,7 +238,7 @@ export function PlayerPage() {
             }
         }).catch(() => {
         })
-    }, [mediaPath, media])
+    }, [mediaId, media])
 
     // HLS polling
     useEffect(() => {
@@ -265,14 +265,14 @@ export function PlayerPage() {
     // hls.destroy() clears el.src; without this the video element is left with no source.
     useEffect(() => {
         if (activeHlsUrl !== null) return
-        if (!mediaPath || !media) return
+        if (!mediaId || !media) return
         if (media.is_mature && !matureAccepted) return
         const el = media.type === 'video' ? videoRef.current : audioRef.current
         if (!el) return
         if (!el.src || el.src === '' || el.src === window.location.href) {
-            el.src = mediaApi.getStreamUrl(mediaPath)
+            el.src = mediaApi.getStreamUrl(mediaId)
         }
-    }, [activeHlsUrl, mediaPath, media, matureAccepted])
+    }, [activeHlsUrl, mediaId, media, matureAccepted])
 
     // Derived media type — declared here (before any useEffect that reads them)
     // so TypeScript block-scoping rules are satisfied.
@@ -314,18 +314,18 @@ export function PlayerPage() {
     // Save position when page is hidden (tab switch, browser close) so seeking then
     // closing without pausing still persists the watch position
     useEffect(() => {
-        if (!mediaPath) return
+        if (!mediaId) return
 
         function handleVisibilityChange() {
             if (document.visibilityState === 'hidden' && currentTimeRef.current > 0 && durationRef.current > 0) {
-                watchHistoryApi.trackPosition(mediaPath, currentTimeRef.current, durationRef.current).catch(() => {
+                watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
                 })
             }
         }
 
         document.addEventListener('visibilitychange', handleVisibilityChange)
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }, [mediaPath])
+    }, [mediaId])
 
     function getActiveEl() {
         if (!media) return null
@@ -373,8 +373,8 @@ export function PlayerPage() {
     function handlePause() {
         setIsPlaying(false)
         // Save position on pause so navigation away after pausing doesn't lose progress
-        if (mediaPath && currentTimeRef.current > 0 && durationRef.current > 0) {
-            watchHistoryApi.trackPosition(mediaPath, currentTimeRef.current, durationRef.current).catch(() => {
+        if (mediaId && currentTimeRef.current > 0 && durationRef.current > 0) {
+            watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
             })
         }
     }
@@ -413,8 +413,8 @@ export function PlayerPage() {
     function handleSeeked() {
         // Save position immediately after a seek so closing the tab/navigating away
         // doesn't lose the new position (periodic saves only fire during playback)
-        if (mediaPath && currentTimeRef.current > 5 && durationRef.current > 0) {
-            watchHistoryApi.trackPosition(mediaPath, currentTimeRef.current, durationRef.current).catch(() => {
+        if (mediaId && currentTimeRef.current > 5 && durationRef.current > 0) {
+            watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
             })
         }
     }
@@ -473,8 +473,8 @@ export function PlayerPage() {
 
     function handleEnded() {
         // Save watch position
-        if (mediaPath) {
-            watchHistoryApi.trackPosition(mediaPath, duration, duration).catch(() => {
+        if (mediaId) {
+            watchHistoryApi.trackPosition(mediaId, duration, duration).catch(() => {
             })
         }
     }
@@ -487,15 +487,15 @@ export function PlayerPage() {
     // Save position periodically — read from refs so the interval is not recreated on
     // every timeupdate tick (which would reset the timer and make it never fire)
     useEffect(() => {
-        if (!mediaPath || !isPlaying || !duration) return
+        if (!mediaId || !isPlaying || !duration) return
         const interval = setInterval(() => {
             if (durationRef.current > 0 && currentTimeRef.current > 0) {
-                watchHistoryApi.trackPosition(mediaPath, currentTimeRef.current, durationRef.current).catch(() => {
+                watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
                 })
             }
         }, 30000)
         return () => clearInterval(interval)
-    }, [mediaPath, isPlaying, duration])
+    }, [mediaId, isPlaying, duration])
 
     // Keyboard shortcuts — all handlers operate on the DOM element directly via
     // getActiveEl(), so this effect only needs to re-attach when the media type changes.
@@ -551,7 +551,7 @@ export function PlayerPage() {
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
-    if (!mediaPath) {
+    if (!mediaId) {
         return (
             <div className="player-page">
                 <div className="player-page-container">
@@ -560,7 +560,7 @@ export function PlayerPage() {
                             Library</Link>
                     </div>
                     <p style={{color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0'}}>
-                        No media path specified. <Link to="/">Go to library</Link>.
+                        No media ID specified. <Link to="/">Go to library</Link>.
                     </p>
                 </div>
             </div>

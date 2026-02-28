@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/repositories"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
+	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
@@ -68,6 +70,7 @@ type Suggestion struct {
 type Module struct {
 	config    *config.Manager
 	log       *logger.Logger
+	dbModule  *database.Module
 	repo      repositories.SuggestionProfileRepository
 	profiles  map[string]*UserProfile
 	mediaData map[string]*MediaInfo
@@ -90,11 +93,11 @@ type MediaInfo struct {
 }
 
 // NewModule creates a new suggestions module
-func NewModule(cfg *config.Manager, repo repositories.SuggestionProfileRepository) *Module {
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	return &Module{
 		config:    cfg,
 		log:       logger.New("suggestions"),
-		repo:      repo,
+		dbModule:  dbModule,
 		profiles:  make(map[string]*UserProfile),
 		mediaData: make(map[string]*MediaInfo),
 	}
@@ -108,6 +111,8 @@ func (m *Module) Name() string {
 // Start initializes the module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting suggestions module...")
+
+	m.repo = mysqlrepo.NewSuggestionProfileRepository(m.dbModule.GORM())
 
 	// Load existing profiles
 	if err := m.loadProfiles(); err != nil {

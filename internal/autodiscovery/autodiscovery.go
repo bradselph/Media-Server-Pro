@@ -15,8 +15,10 @@ import (
 	"golang.org/x/text/language"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/repositories"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
+	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
@@ -57,6 +59,7 @@ var (
 type Module struct {
 	config      *config.Manager
 	log         *logger.Logger
+	dbModule    *database.Module
 	repo        repositories.AutoDiscoverySuggestionRepository
 	suggestions map[string]*models.AutoDiscoverySuggestion
 	mu          sync.RWMutex
@@ -66,11 +69,11 @@ type Module struct {
 }
 
 // NewModule creates a new auto-discovery module
-func NewModule(cfg *config.Manager, repo repositories.AutoDiscoverySuggestionRepository) *Module {
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	return &Module{
 		config:      cfg,
 		log:         logger.New("autodiscovery"),
-		repo:        repo,
+		dbModule:    dbModule,
 		suggestions: make(map[string]*models.AutoDiscoverySuggestion),
 	}
 }
@@ -83,6 +86,8 @@ func (m *Module) Name() string {
 // Start initializes the module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting auto-discovery module...")
+
+	m.repo = mysqlrepo.NewAutoDiscoverySuggestionRepository(m.dbModule.GORM())
 
 	// Load existing suggestions
 	if err := m.loadSuggestions(); err != nil {

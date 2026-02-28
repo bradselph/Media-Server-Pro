@@ -15,8 +15,10 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/repositories"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
+	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
@@ -27,6 +29,7 @@ const manifestSuffix = "_manifest.json"
 type Module struct {
 	config    *config.Manager
 	log       *logger.Logger
+	dbModule  *database.Module
 	repo      repositories.BackupManifestRepository
 	backupDir string
 	dataDir   string
@@ -51,11 +54,11 @@ type Manifest struct {
 }
 
 // NewModule creates a new backup module
-func NewModule(cfg *config.Manager, repo repositories.BackupManifestRepository) *Module {
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	return &Module{
 		config:    cfg,
 		log:       logger.New("backup"),
-		repo:      repo,
+		dbModule:  dbModule,
 		backupDir: filepath.Join(cfg.Get().Directories.Data, "backups"),
 		dataDir:   cfg.Get().Directories.Data,
 	}
@@ -69,6 +72,8 @@ func (m *Module) Name() string {
 // Start initializes the backup module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting backup module...")
+
+	m.repo = mysqlrepo.NewBackupManifestRepository(m.dbModule.GORM())
 
 	// Ensure backup directory exists
 	if err := os.MkdirAll(m.backupDir, 0755); err != nil {

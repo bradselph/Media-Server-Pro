@@ -101,8 +101,8 @@ func main() {
 	dbModule := database.NewModule(cfg)
 	mustRegister(srv, dbModule)
 
-	// Security (critical)
-	securityModule := security.NewModule(cfg)
+	// Security (critical — requires database for IP list persistence)
+	securityModule := security.NewModule(cfg, dbModule)
 	mustRegister(srv, securityModule)
 
 	// Auth (critical — requires database)
@@ -144,7 +144,7 @@ func main() {
 	// ── Non-critical modules ───────────────────────────────────────────────
 
 	// HLS (non-critical — falls back gracefully if ffmpeg unavailable)
-	hlsModule := hls.NewModule(cfg)
+	hlsModule := hls.NewModule(cfg, dbModule)
 	mustRegister(srv, hlsModule)
 
 	// Analytics (non-critical — requires database)
@@ -178,32 +178,32 @@ func main() {
 	uploadModule := upload.NewModule(cfg)
 	mustRegister(srv, uploadModule)
 
-	// Validator (non-critical)
-	validatorModule := validator.NewModule(cfg)
+	// Validator (non-critical — requires database for validation results)
+	validatorModule := validator.NewModule(cfg, dbModule)
 	mustRegister(srv, validatorModule)
 
-	// Backup (non-critical)
-	backupModule := backup.NewModule(cfg)
+	// Backup (non-critical — requires database for manifest storage)
+	backupModule := backup.NewModule(cfg, dbModule)
 	mustRegister(srv, backupModule)
 
-	// Auto-discovery (non-critical)
-	autodiscoveryModule := autodiscovery.NewModule(cfg)
+	// Auto-discovery (non-critical — requires database for suggestion persistence)
+	autodiscoveryModule := autodiscovery.NewModule(cfg, dbModule)
 	mustRegister(srv, autodiscoveryModule)
 
-	// Suggestions (non-critical)
-	suggestionsModule := suggestions.NewModule(cfg)
+	// Suggestions (non-critical — requires database for user profiles)
+	suggestionsModule := suggestions.NewModule(cfg, dbModule)
 	mustRegister(srv, suggestionsModule)
 
-	// Categorizer (non-critical)
-	categorizerModule := categorizer.NewModule(cfg)
+	// Categorizer (non-critical — requires database for categorization data)
+	categorizerModule := categorizer.NewModule(cfg, dbModule)
 	mustRegister(srv, categorizerModule)
 
 	// Updater (non-critical — needs version string)
 	updaterModule := updater.NewModule(cfg, Version)
 	mustRegister(srv, updaterModule)
 
-	// Remote (non-critical)
-	remoteModule := remote.NewModule(cfg)
+	// Remote (non-critical — requires database for cache index)
+	remoteModule := remote.NewModule(cfg, dbModule)
 	mustRegister(srv, remoteModule)
 
 	// ── Age gate middleware ────────────────────────────────────────────────

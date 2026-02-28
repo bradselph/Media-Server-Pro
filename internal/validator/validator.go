@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/repositories"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
+	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 
@@ -76,6 +78,7 @@ type ValidationResult struct {
 type Module struct {
 	config      *config.Manager
 	log         *logger.Logger
+	dbModule    *database.Module
 	repo        repositories.ValidationResultRepository
 	results     map[string]*ValidationResult
 	mu          sync.RWMutex
@@ -89,13 +92,13 @@ type Module struct {
 }
 
 // NewModule creates a new validator module
-func NewModule(cfg *config.Manager, repo repositories.ValidationResultRepository) *Module {
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	return &Module{
-		config:  cfg,
-		log:     logger.New("validator"),
-		repo:    repo,
-		results: make(map[string]*ValidationResult),
-		fixing:  make(map[string]bool),
+		config:   cfg,
+		log:      logger.New("validator"),
+		dbModule: dbModule,
+		results:  make(map[string]*ValidationResult),
+		fixing:   make(map[string]bool),
 	}
 }
 
@@ -107,6 +110,8 @@ func (m *Module) Name() string {
 // Start initializes the validator module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting media validator module...")
+
+	m.repo = mysqlrepo.NewValidationResultRepository(m.dbModule.GORM())
 
 	// Check for ffprobe
 	ffprobePath, err := helpers.FindBinary("ffprobe")

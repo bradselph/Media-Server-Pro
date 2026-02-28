@@ -790,6 +790,7 @@ export interface ThumbnailPreviews {
 
 // Matches pkg/models AutoDiscoverySuggestion JSON tags
 export interface DiscoverySuggestion {
+    original_path: string
     suggested_name: string
     type: string
     confidence: number

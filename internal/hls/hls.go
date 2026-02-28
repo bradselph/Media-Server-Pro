@@ -22,8 +22,10 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/repositories"
+	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 
@@ -54,6 +56,7 @@ const (
 type Module struct {
 	config        *config.Manager
 	log           *logger.Logger
+	dbModule      *database.Module
 	repo          repositories.HLSJobRepository
 	jobs          map[string]*models.HLSJob
 	jobCancels    map[string]context.CancelFunc
@@ -73,12 +76,12 @@ type Module struct {
 }
 
 // NewModule creates a new HLS module
-func NewModule(cfg *config.Manager, repo repositories.HLSJobRepository) *Module {
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	hlsCfg := cfg.Get().HLS
 	return &Module{
 		config:      cfg,
 		log:         logger.New("hls"),
-		repo:        repo,
+		dbModule:    dbModule,
 		jobs:        make(map[string]*models.HLSJob),
 		jobCancels:  make(map[string]context.CancelFunc),
 		transSem:    make(chan struct{}, hlsCfg.ConcurrentLimit),
@@ -100,6 +103,8 @@ func (m *Module) Name() string {
 // allowing the server to run with direct streaming as a fallback.
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting HLS module...")
+
+	m.repo = mysqlrepo.NewHLSJobRepository(m.dbModule.GORM())
 
 	cfg := m.config.Get()
 
