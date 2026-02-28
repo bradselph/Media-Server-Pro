@@ -44,6 +44,12 @@ var audioExtensions = map[string]bool{
 	".ape": true, ".mka": true,
 }
 
+// Partial/incomplete download extensions to skip during scanning
+var partialDownloadExtensions = map[string]bool{
+	".filepart": true, ".part": true, ".crdownload": true,
+	".download": true, ".partial": true, ".tmp": true,
+}
+
 // Pre-compiled category detection patterns
 var (
 	// TV Show patterns
@@ -446,6 +452,12 @@ func (m *Module) scanDirectory(dir string, defaultType models.MediaType, result 
 		}
 
 		ext := strings.ToLower(filepath.Ext(path))
+
+		// Skip partial/incomplete downloads
+		if partialDownloadExtensions[ext] {
+			return nil
+		}
+
 		var mediaType models.MediaType
 
 		if videoExtensions[ext] {

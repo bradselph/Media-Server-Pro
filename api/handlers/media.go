@@ -233,7 +233,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 
 	rangeHeader := c.Request.Header.Get("Range")
 	isInitialRequest := rangeHeader == "" || strings.HasPrefix(rangeHeader, "bytes=0-")
-	if isInitialRequest && session == nil && h.analytics != nil {
+	if isInitialRequest && h.analytics != nil {
 		h.analytics.TrackView(c.Request.Context(), absPath, userID, sessionID, req.IPAddress, req.UserAgent)
 	}
 
@@ -367,6 +367,10 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 			item.Completed = item.Progress >= 0.9
 			if err := h.auth.AddToWatchHistory(c.Request.Context(), username, item); err != nil {
 				h.log.Debug("Watch history update skipped for media %s: %v", req.ID, err)
+			}
+
+			if item.Completed && h.suggestions != nil {
+				h.suggestions.RecordCompletion(userID, absPath)
 			}
 		}
 	}

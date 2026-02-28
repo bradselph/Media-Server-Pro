@@ -620,6 +620,13 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 		return
 	}
 
+	// Apply runtime config changes to in-memory modules
+	if h.security != nil {
+		updatedCfg := h.media.GetConfig()
+		h.security.SetWhitelistEnabled(updatedCfg.Security.EnableIPWhitelist)
+		h.security.SetBlacklistEnabled(updatedCfg.Security.EnableIPBlacklist)
+	}
+
 	h.logAdminAction(c, "admin", "admin", "update_config", "configuration", updates)
 	writeSuccess(c, h.admin.GetConfigMap())
 }
@@ -871,4 +878,32 @@ func (h *Handler) ShutdownServer(c *gin.Context) {
 		h.log.Info("Initiating server shutdown...")
 		os.Exit(0)
 	}()
+}
+
+// AdminGetActiveStreams returns the list of active streaming sessions.
+func (h *Handler) AdminGetActiveStreams(c *gin.Context) {
+	sessions := h.streaming.GetActiveSessions()
+	if sessions == nil {
+		sessions = []*models.StreamSession{}
+	}
+	writeSuccess(c, sessions)
+}
+
+// AdminGetActiveUploads returns the list of in-progress uploads.
+func (h *Handler) AdminGetActiveUploads(c *gin.Context) {
+	if !h.requireUpload(c) {
+		return
+	}
+	uploads := h.upload.GetActiveUploads()
+	writeSuccess(c, uploads)
+}
+
+// AdminGetUserSessions returns active sessions for a specific user.
+func (h *Handler) AdminGetUserSessions(c *gin.Context) {
+	username := c.Param("username")
+	sessions := h.auth.GetActiveSessions(username)
+	if sessions == nil {
+		sessions = []*models.Session{}
+	}
+	writeSuccess(c, sessions)
 }
