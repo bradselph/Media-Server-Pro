@@ -620,6 +620,13 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 		return
 	}
 
+	// Apply runtime config changes to in-memory modules
+	if h.security != nil {
+		updatedCfg := h.media.GetConfig()
+		h.security.SetWhitelistEnabled(updatedCfg.Security.EnableIPWhitelist)
+		h.security.SetBlacklistEnabled(updatedCfg.Security.EnableIPBlacklist)
+	}
+
 	h.logAdminAction(c, "admin", "admin", "update_config", "configuration", updates)
 	writeSuccess(c, h.admin.GetConfigMap())
 }
