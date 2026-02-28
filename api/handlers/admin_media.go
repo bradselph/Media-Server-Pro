@@ -153,7 +153,7 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 		}
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "update_media", path, nil, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "update_media", path, nil)
 
 	if updatedItem, err := h.media.GetMedia(path); err == nil && updatedItem != nil {
 		writeSuccess(c, updatedItem)
@@ -176,7 +176,7 @@ func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "delete_media", path, nil, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "delete_media", path, nil)
 	writeSuccess(c, map[string]string{"message": "Media deleted"})
 }
 
@@ -207,7 +207,6 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 
 	var successCount, failedCount int
 	errs := make([]string, 0)
-	clientIP := c.ClientIP()
 
 	for _, id := range req.IDs {
 		if id == "" {
@@ -226,7 +225,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		case "delete":
 			opErr = h.media.DeleteMedia(c.Request.Context(), path)
 			if opErr == nil {
-				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_delete_media", id, nil, clientIP, true)
+				h.logAdminAction(c, "admin", "admin", "bulk_delete_media", id, nil)
 			}
 		case "update":
 			updates := make(map[string]interface{})
@@ -242,7 +241,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 			}
 			opErr = h.media.UpdateMetadata(path, updates)
 			if opErr == nil {
-				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_update_media", id, nil, clientIP, true)
+				h.logAdminAction(c, "admin", "admin", "bulk_update_media", id, nil)
 			}
 		}
 		if opErr != nil {

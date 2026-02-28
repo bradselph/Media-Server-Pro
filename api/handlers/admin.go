@@ -27,6 +27,9 @@ import (
 
 // AdminGetStats returns admin statistics.
 func (h *Handler) AdminGetStats(c *gin.Context) {
+	if !h.requireAdmin(c) {
+		return
+	}
 	adminStats := h.admin.GetServerStats()
 	mediaStats := h.media.GetStats()
 	streamStats := h.streaming.GetStats()
@@ -69,12 +72,16 @@ func (h *Handler) AdminGetStats(c *gin.Context) {
 
 // AdminGetSystemInfo returns system information shaped for the frontend SystemInfo type.
 func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
+	if !h.requireAdmin(c) {
+		return
+	}
 	info := h.admin.GetSystemInfo()
 	uptimeSecs := h.admin.GetUptimeSecs()
 
 	type healthier interface {
 		Health() models.HealthStatus
 	}
+	// Build module list, skipping any that are nil (optional modules that failed to init)
 	allModules := []healthier{
 		h.security, h.database, h.auth, h.media, h.streaming, h.hls,
 		h.analytics, h.playlist, h.admin, h.tasks, h.upload, h.scanner,
@@ -89,6 +96,9 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 	}
 	moduleHealths := make([]moduleHealthItem, 0, len(allModules))
 	for _, p := range allModules {
+		if p == nil {
+			continue
+		}
 		hs := p.Health()
 		moduleHealths = append(moduleHealths, moduleHealthItem{
 			Name:      hs.Name,
@@ -162,7 +172,7 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "create_user", req.Username, nil, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "create_user", req.Username, nil)
 
 	writeSuccess(c, user)
 }
@@ -196,7 +206,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "update_user", username, updates, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "update_user", username, updates)
 
 	user, err := h.auth.GetUser(c.Request.Context(), username)
 	if err != nil {
@@ -216,7 +226,7 @@ func (h *Handler) AdminDeleteUser(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "delete_user", username, nil, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "delete_user", username, nil)
 	writeSuccess(c, nil)
 }
 
@@ -248,7 +258,7 @@ func (h *Handler) AdminChangePassword(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "change_password", username, nil, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "change_password", username, nil)
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -278,7 +288,7 @@ func (h *Handler) AdminChangeOwnPassword(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "change_admin_password", "", nil, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "change_admin_password", "", nil)
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -307,7 +317,6 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 
 	var successCount, failedCount int
 	errs := make([]string, 0)
-	clientIP := c.ClientIP()
 
 	for _, username := range req.Usernames {
 		if username == "" || username == "admin" {
@@ -318,17 +327,17 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		case "delete":
 			opErr = h.auth.DeleteUser(c.Request.Context(), username)
 			if opErr == nil {
-				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_delete_user", username, nil, clientIP, true)
+				h.logAdminAction(c, "admin", "admin", "bulk_delete_user", username, nil)
 			}
 		case "enable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": true})
 			if opErr == nil {
-				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_enable_user", username, nil, clientIP, true)
+				h.logAdminAction(c, "admin", "admin", "bulk_enable_user", username, nil)
 			}
 		case "disable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": false})
 			if opErr == nil {
-				h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_disable_user", username, nil, clientIP, true)
+				h.logAdminAction(c, "admin", "admin", "bulk_disable_user", username, nil)
 			}
 		}
 		if opErr != nil {
@@ -349,6 +358,9 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 
 // AdminGetAuditLog returns audit log
 func (h *Handler) AdminGetAuditLog(c *gin.Context) {
+	if !h.requireAdmin(c) {
+		return
+	}
 	limit := 100
 	offset := 0
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 1000 {
@@ -364,6 +376,9 @@ func (h *Handler) AdminGetAuditLog(c *gin.Context) {
 
 // AdminExportAuditLog exports the audit log as a CSV file download
 func (h *Handler) AdminExportAuditLog(c *gin.Context) {
+	if !h.requireAdmin(c) {
+		return
+	}
 	filename, err := h.admin.ExportAuditLog(c.Request.Context())
 	if err != nil {
 		h.log.Error("%v", err)
@@ -576,12 +591,18 @@ func (h *Handler) AdminStopTask(c *gin.Context) {
 
 // AdminGetConfig returns the current configuration
 func (h *Handler) AdminGetConfig(c *gin.Context) {
+	if !h.requireAdmin(c) {
+		return
+	}
 	cfg := h.admin.GetConfigMap()
 	writeSuccess(c, cfg)
 }
 
 // AdminUpdateConfig updates the configuration
 func (h *Handler) AdminUpdateConfig(c *gin.Context) {
+	if !h.requireAdmin(c) {
+		return
+	}
 	var updates map[string]interface{}
 	if json.NewDecoder(c.Request.Body).Decode(&updates) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
@@ -594,7 +615,7 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "update_config", "configuration", updates, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "update_config", "configuration", updates)
 	writeSuccess(c, h.admin.GetConfigMap())
 }
 
@@ -646,7 +667,7 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "apply_update", status.Stage, nil, c.ClientIP(), status.Error == "")
+	h.logAdminActionResult(c, "admin", "admin", "apply_update", status.Stage, nil, status.Error == "")
 	writeSuccess(c, status)
 }
 
@@ -664,8 +685,10 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 		if err != nil {
 			h.log.Error("Source update failed: %v", err)
 		}
-		h.admin.LogAction(context.Background(), "admin", "admin", "apply_source_update",
-			status.Stage, nil, clientIP, status.Error == "")
+		if h.admin != nil {
+			h.admin.LogAction(context.Background(), "admin", "admin", "apply_source_update",
+				status.Stage, nil, clientIP, status.Error == "")
+		}
 	}()
 	initial := h.updater.GetActiveBuildStatus()
 	if initial == nil {
@@ -748,9 +771,8 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 		return
 	}
 
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "update_updater_config", "updater_settings",
-		map[string]interface{}{"update_method": req.UpdateMethod, "branch": req.Branch},
-		c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "update_updater_config", "updater_settings",
+		map[string]interface{}{"update_method": req.UpdateMethod, "branch": req.Branch})
 
 	cfg := h.config.Get()
 	writeSuccess(c, map[string]interface{}{
@@ -762,7 +784,7 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 // RestartServer initiates a graceful server restart via self-exec.
 func (h *Handler) RestartServer(c *gin.Context) {
 	h.log.Warn("Server restart requested by admin")
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "restart_server", "initiated", nil, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "restart_server", "initiated", nil)
 
 	writeSuccess(c, map[string]interface{}{
 		"message": "Server restart initiated. The server will restart in a few seconds.",
@@ -813,7 +835,7 @@ func (h *Handler) RestartServer(c *gin.Context) {
 // ShutdownServer initiates a graceful server shutdown
 func (h *Handler) ShutdownServer(c *gin.Context) {
 	h.log.Warn("Server shutdown requested by admin")
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "shutdown_server", "initiated", nil, c.ClientIP(), true)
+	h.logAdminAction(c, "admin", "admin", "shutdown_server", "initiated", nil)
 
 	writeSuccess(c, map[string]interface{}{
 		"message": "Server shutdown initiated. The server will shut down in a few seconds.",

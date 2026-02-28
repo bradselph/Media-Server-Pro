@@ -13,6 +13,9 @@ import (
 
 // AdminListPlaylists returns all playlists for admin with optional search and pagination.
 func (h *Handler) AdminListPlaylists(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	all := h.playlist.ListAllPlaylists()
 
 	search := strings.ToLower(strings.TrimSpace(c.Query("search")))
@@ -58,12 +61,18 @@ func (h *Handler) AdminListPlaylists(c *gin.Context) {
 
 // AdminPlaylistStats returns playlist statistics
 func (h *Handler) AdminPlaylistStats(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	stats := h.playlist.GetStats()
 	writeSuccess(c, stats)
 }
 
 // AdminBulkDeletePlaylists deletes multiple playlists by ID.
 func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	var req struct {
 		IDs []string `json:"ids"`
 	}
@@ -96,8 +105,8 @@ func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
 	if errs == nil {
 		errs = []string{}
 	}
-	h.admin.LogAction(c.Request.Context(), "admin", "admin", "bulk_delete_playlists",
-		fmt.Sprintf("%d playlists", successCount), nil, c.ClientIP(), failedCount == 0)
+	h.logAdminActionResult(c, "admin", "admin", "bulk_delete_playlists",
+		fmt.Sprintf("%d playlists", successCount), nil, failedCount == 0)
 	writeSuccess(c, map[string]interface{}{
 		"success": successCount,
 		"failed":  failedCount,
@@ -107,6 +116,9 @@ func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
 
 // AdminDeletePlaylist deletes a playlist as admin
 func (h *Handler) AdminDeletePlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	playlistID := c.Param("id")
 
 	if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), playlistID); err != nil {
