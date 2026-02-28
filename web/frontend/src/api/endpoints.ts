@@ -228,6 +228,15 @@ export const playlistApi = {
     removeItem: (id: string, mediaId: string) =>
         api.delete<void>(`/api/playlists/${encodeURIComponent(id)}/items?media_id=${encodeURIComponent(mediaId)}`),
 
+    reorderItems: (id: string, positions: number[]) =>
+        api.put<void>(`/api/playlists/${encodeURIComponent(id)}/reorder`, {positions}),
+
+    clear: (id: string) =>
+        api.delete<void>(`/api/playlists/${encodeURIComponent(id)}/clear`),
+
+    copy: (id: string, name: string) =>
+        api.post<Playlist>(`/api/playlists/${encodeURIComponent(id)}/copy`, {name}),
+
     // Feature 3: Playlist export — returns Blob for file download
     // For m3u/m3u8: raw text. For json: backend wraps in {success:true, data:...} envelope.
     export: (id: string, format: 'json' | 'm3u' | 'm3u8'): Promise<Blob> =>
