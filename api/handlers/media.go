@@ -233,7 +233,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 
 	rangeHeader := c.Request.Header.Get("Range")
 	isInitialRequest := rangeHeader == "" || strings.HasPrefix(rangeHeader, "bytes=0-")
-	if isInitialRequest && session == nil && h.analytics != nil {
+	if isInitialRequest && h.analytics != nil {
 		h.analytics.TrackView(c.Request.Context(), absPath, userID, sessionID, req.IPAddress, req.UserAgent)
 	}
 
