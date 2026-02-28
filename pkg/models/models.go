@@ -615,7 +615,7 @@ type APIResponse struct {
 
 // AutoDiscoverySuggestion represents a naming suggestion
 type AutoDiscoverySuggestion struct {
-	OriginalPath  string            `json:"-"`
+	OriginalPath  string            `json:"original_path"`
 	SuggestedName string            `json:"suggested_name"`
 	SuggestedPath string            `json:"-"`
 	Type          string            `json:"type"` // movie, tv_episode, music

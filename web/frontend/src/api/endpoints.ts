@@ -37,7 +37,6 @@ import type {
     MediaStats,
     PermissionsInfo,
     Playlist,
-    PlaylistItem,
     QueryResult,
     RemoteMediaItem,
     RemoteSource,
