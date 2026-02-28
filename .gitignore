@@ -47,4 +47,4 @@ Thumbs.db
 *.sarif.json
 
 /vendor
-package-lock.json
+# package-lock.json tracked for reproducible builds — do not ignore
