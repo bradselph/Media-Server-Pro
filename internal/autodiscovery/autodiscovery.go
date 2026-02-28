@@ -3,7 +3,6 @@ package autodiscovery
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"golang.org/x/text/language"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -57,21 +57,21 @@ var (
 type Module struct {
 	config      *config.Manager
 	log         *logger.Logger
+	repo        repositories.AutoDiscoverySuggestionRepository
 	suggestions map[string]*models.AutoDiscoverySuggestion
 	mu          sync.RWMutex
-	dataDir     string
 	healthy     bool
 	healthMsg   string
 	healthMu    sync.RWMutex
 }
 
 // NewModule creates a new auto-discovery module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.AutoDiscoverySuggestionRepository) *Module {
 	return &Module{
 		config:      cfg,
 		log:         logger.New("autodiscovery"),
+		repo:        repo,
 		suggestions: make(map[string]*models.AutoDiscoverySuggestion),
-		dataDir:     cfg.Get().Directories.Data,
 	}
 }
 
@@ -531,36 +531,47 @@ func (m *Module) ClearAllSuggestions() {
 	}
 }
 
-// Persistence
+// Persistence — reads/writes via MySQL repository
+
 func (m *Module) loadSuggestions() error {
-	path := filepath.Join(m.dataDir, "suggestions.json")
-	data, err := os.ReadFile(path)
+	records, err := m.repo.List(context.Background())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return json.Unmarshal(data, &m.suggestions)
+	for _, rec := range records {
+		m.suggestions[rec.OriginalPath] = &models.AutoDiscoverySuggestion{
+			OriginalPath:  rec.OriginalPath,
+			SuggestedName: rec.SuggestedName,
+			SuggestedPath: rec.SuggestedPath,
+			Type:          rec.Type,
+			Confidence:    rec.Confidence,
+			Metadata:      rec.Metadata,
+		}
+	}
+	return nil
 }
 
 func (m *Module) saveSuggestions() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	data, err := json.MarshalIndent(m.suggestions, "", "  ")
-	if err != nil {
-		return err
+	ctx := context.Background()
+	for _, s := range m.suggestions {
+		rec := &repositories.AutoDiscoveryRecord{
+			OriginalPath:  s.OriginalPath,
+			SuggestedName: s.SuggestedName,
+			SuggestedPath: s.SuggestedPath,
+			Type:          s.Type,
+			Confidence:    s.Confidence,
+			Metadata:      s.Metadata,
+		}
+		if err := m.repo.Save(ctx, rec); err != nil {
+			return err
+		}
 	}
-
-	path := filepath.Join(m.dataDir, "suggestions.json")
-	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
-	}
-	return os.Rename(tempPath, path)
+	return nil
 }

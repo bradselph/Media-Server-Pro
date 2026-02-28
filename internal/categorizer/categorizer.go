@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,6 +19,7 @@ import (
 	"golang.org/x/text/language"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -66,9 +66,9 @@ type MediaInfo struct {
 type Module struct {
 	config    *config.Manager
 	log       *logger.Logger
+	repo      repositories.CategorizedItemRepository
 	items     map[string]*CategorizedItem
 	mu        sync.RWMutex
-	dataDir   string
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
@@ -88,12 +88,12 @@ type categoryPatterns struct {
 }
 
 // NewModule creates a new categorizer module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.CategorizedItemRepository) *Module {
 	return &Module{
 		config:   cfg,
 		log:      logger.New("categorizer"),
+		repo:     repo,
 		items:    make(map[string]*CategorizedItem),
-		dataDir:  cfg.Get().Directories.Data,
 		patterns: compilePatterns(),
 	}
 }
@@ -217,6 +217,7 @@ func (m *Module) CategorizeFile(path string) *CategorizedItem {
 	item.DetectedInfo = info
 
 	m.items[path] = item
+	m.saveItem(path, item)
 	// Return a copy to prevent caller from mutating the stored item
 	return copyItem(item)
 }
@@ -487,11 +488,7 @@ func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 		return results, err
 	}
 
-	// Save after bulk categorization
-	if err := m.saveItems(); err != nil {
-		m.log.Warn("Failed to save categorization items: %v", err)
-	}
-
+	// Items are persisted individually in CategorizeFile
 	return results, nil
 }
 
@@ -532,6 +529,7 @@ func (m *Module) SetCategory(path string, category Category) {
 	item.Category = category
 	item.ManualOverride = true
 	item.Confidence = 1.0
+	m.saveItem(path, item)
 
 	m.log.Info("Manually set category for %s: %s", path, category)
 }
@@ -584,39 +582,59 @@ func (m *Module) CleanStale() int {
 	defer m.mu.Unlock()
 
 	removed := 0
+	ctx := context.Background()
 	for path := range m.items {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			delete(m.items, path)
+			if err := m.repo.Delete(ctx, path); err != nil {
+				m.log.Warn("Failed to delete stale categorization entry from DB: %v", err)
+			}
 			removed++
 		}
 	}
 
 	if removed > 0 {
 		m.log.Info("Cleaned %d stale categorization entries", removed)
-		if err := m.saveItemsLocked(); err != nil {
-			m.log.Warn("Failed to save categorization items after cleanup: %v", err)
-		}
 	}
 
 	return removed
 }
 
-// Persistence
+// Persistence — reads/writes via MySQL repository
 
 func (m *Module) loadItems() error {
-	path := filepath.Join(m.dataDir, "categorization.json")
-	data, err := os.ReadFile(path)
+	records, err := m.repo.List(context.Background())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return json.Unmarshal(data, &m.items)
+	for _, rec := range records {
+		item := &CategorizedItem{
+			ID:             rec.ID,
+			Name:           rec.Name,
+			Path:           rec.Path,
+			Category:       Category(rec.Category),
+			Confidence:     rec.Confidence,
+			CategorizedAt:  rec.CategorizedAt,
+			ManualOverride: rec.ManualOverride,
+		}
+		if rec.DetectedTitle != "" || rec.DetectedYear != 0 || rec.DetectedArtist != "" {
+			item.DetectedInfo = &MediaInfo{
+				Title:    rec.DetectedTitle,
+				Year:     rec.DetectedYear,
+				Season:   rec.DetectedSeason,
+				Episode:  rec.DetectedEpisode,
+				ShowName: rec.DetectedShow,
+				Artist:   rec.DetectedArtist,
+				Album:    rec.DetectedAlbum,
+			}
+		}
+		m.items[rec.Path] = item
+	}
+	return nil
 }
 
 func (m *Module) saveItems() error {
@@ -625,19 +643,43 @@ func (m *Module) saveItems() error {
 	return m.saveItemsLocked()
 }
 
-// saveItemsLocked performs the save assuming the caller already holds mu (at least RLock).
+// saveItemsLocked persists all in-memory items to the database.
+// Caller must already hold mu (at least RLock).
 func (m *Module) saveItemsLocked() error {
-	data, err := json.MarshalIndent(m.items, "", "  ")
-	if err != nil {
-		return err
+	ctx := context.Background()
+	for path, item := range m.items {
+		if err := m.repo.Upsert(ctx, m.itemToRecord(path, item)); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
-	path := filepath.Join(m.dataDir, "categorization.json")
-	tempPath := path + ".tmp"
-
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
+// saveItem persists a single item to the database.
+func (m *Module) saveItem(path string, item *CategorizedItem) {
+	if err := m.repo.Upsert(context.Background(), m.itemToRecord(path, item)); err != nil {
+		m.log.Error("Failed to persist categorized item %s: %v", item.ID, err)
 	}
+}
 
-	return os.Rename(tempPath, path)
+func (m *Module) itemToRecord(path string, item *CategorizedItem) *repositories.CategorizedItemRecord {
+	rec := &repositories.CategorizedItemRecord{
+		Path:           path,
+		ID:             item.ID,
+		Name:           item.Name,
+		Category:       string(item.Category),
+		Confidence:     item.Confidence,
+		CategorizedAt:  item.CategorizedAt,
+		ManualOverride: item.ManualOverride,
+	}
+	if item.DetectedInfo != nil {
+		rec.DetectedTitle = item.DetectedInfo.Title
+		rec.DetectedYear = item.DetectedInfo.Year
+		rec.DetectedSeason = item.DetectedInfo.Season
+		rec.DetectedEpisode = item.DetectedInfo.Episode
+		rec.DetectedShow = item.DetectedInfo.ShowName
+		rec.DetectedArtist = item.DetectedInfo.Artist
+		rec.DetectedAlbum = item.DetectedInfo.Album
+	}
+	return rec
 }

@@ -5,17 +5,15 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"math"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -66,14 +64,14 @@ type Suggestion struct {
 // Module handles content suggestions. RecordView is called from the streaming
 // handler (StreamMedia) on each authenticated playback event, integrating
 // analytics view events with the suggestion engine for personalized recommendations.
-// Suggestion data is stored in a JSON file in the data directory.
+// Suggestion data is stored in MySQL via the SuggestionProfileRepository.
 type Module struct {
 	config    *config.Manager
 	log       *logger.Logger
+	repo      repositories.SuggestionProfileRepository
 	profiles  map[string]*UserProfile
 	mediaData map[string]*MediaInfo
 	mu        sync.RWMutex
-	dataDir   string
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
@@ -92,13 +90,13 @@ type MediaInfo struct {
 }
 
 // NewModule creates a new suggestions module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.SuggestionProfileRepository) *Module {
 	return &Module{
 		config:    cfg,
 		log:       logger.New("suggestions"),
+		repo:      repo,
 		profiles:  make(map[string]*UserProfile),
 		mediaData: make(map[string]*MediaInfo),
-		dataDir:   cfg.Get().Directories.Data,
 	}
 }
 
@@ -692,38 +690,82 @@ type SuggestionStats struct {
 	TotalWatchTime float64 `json:"total_watch_time"`
 }
 
-// Persistence functions
+// Persistence — reads/writes via MySQL repository
+
 func (m *Module) loadProfiles() error {
-	path := filepath.Join(m.dataDir, "user_profiles.json")
-	data, err := os.ReadFile(path)
+	profiles, err := m.repo.ListProfiles(context.Background())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return json.Unmarshal(data, &m.profiles)
+	for _, rec := range profiles {
+		profile := &UserProfile{
+			UserID:          rec.UserID,
+			CategoryScores:  rec.CategoryScores,
+			TypePreferences: rec.TypePreferences,
+			TotalViews:      rec.TotalViews,
+			TotalWatchTime:  rec.TotalWatchTime,
+			LastUpdated:     rec.LastUpdated,
+		}
+		// Load view history for this user
+		history, err := m.repo.GetViewHistory(context.Background(), rec.UserID)
+		if err == nil {
+			for _, h := range history {
+				vh := ViewHistory{
+					MediaPath: h.MediaPath,
+					Category:  h.Category,
+					MediaType: h.MediaType,
+					ViewCount: h.ViewCount,
+					TotalTime: h.TotalTime,
+					LastViewed: h.LastViewed,
+					CompletedAt: h.CompletedAt,
+					Rating:    h.Rating,
+				}
+				profile.ViewHistory = append(profile.ViewHistory, vh)
+			}
+		}
+		m.profiles[rec.UserID] = profile
+	}
+	return nil
 }
 
 func (m *Module) saveProfiles() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	data, err := json.MarshalIndent(m.profiles, "", "  ")
-	if err != nil {
-		return err
+	ctx := context.Background()
+	for _, profile := range m.profiles {
+		rec := &repositories.SuggestionProfileRecord{
+			UserID:          profile.UserID,
+			CategoryScores:  profile.CategoryScores,
+			TypePreferences: profile.TypePreferences,
+			TotalViews:      profile.TotalViews,
+			TotalWatchTime:  profile.TotalWatchTime,
+			LastUpdated:     profile.LastUpdated,
+		}
+		if err := m.repo.SaveProfile(ctx, rec); err != nil {
+			return err
+		}
+		// Save view history
+		for i := range profile.ViewHistory {
+			vh := &profile.ViewHistory[i]
+			entry := &repositories.ViewHistoryRecord{
+				MediaPath:   vh.MediaPath,
+				Category:    vh.Category,
+				MediaType:   vh.MediaType,
+				ViewCount:   vh.ViewCount,
+				TotalTime:   vh.TotalTime,
+				LastViewed:  vh.LastViewed,
+				CompletedAt: vh.CompletedAt,
+				Rating:      vh.Rating,
+			}
+			if err := m.repo.SaveViewHistory(ctx, profile.UserID, entry); err != nil {
+				return err
+			}
+		}
 	}
-
-	path := filepath.Join(m.dataDir, "user_profiles.json")
-	tempPath := path + ".tmp"
-
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
-	}
-
-	return os.Rename(tempPath, path)
+	return nil
 }

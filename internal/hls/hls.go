@@ -23,6 +23,7 @@ import (
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/logger"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 
@@ -53,6 +54,7 @@ const (
 type Module struct {
 	config        *config.Manager
 	log           *logger.Logger
+	repo          repositories.HLSJobRepository
 	jobs          map[string]*models.HLSJob
 	jobCancels    map[string]context.CancelFunc
 	jobsMu        sync.RWMutex
@@ -71,11 +73,12 @@ type Module struct {
 }
 
 // NewModule creates a new HLS module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.HLSJobRepository) *Module {
 	hlsCfg := cfg.Get().HLS
 	return &Module{
 		config:      cfg,
 		log:         logger.New("hls"),
+		repo:        repo,
 		jobs:        make(map[string]*models.HLSJob),
 		jobCancels:  make(map[string]context.CancelFunc),
 		transSem:    make(chan struct{}, hlsCfg.ConcurrentLimit),
@@ -1108,38 +1111,41 @@ func (m *Module) DeleteJob(jobID string) error {
 	return nil
 }
 
-// Persistence
+// Persistence — reads/writes via MySQL repository
+
 func (m *Module) loadJobs() error {
-	path := filepath.Join(m.cacheDir, "jobs.json")
-	data, err := os.ReadFile(path)
+	jobs, err := m.repo.List(context.Background())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
 
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()
 
-	return json.Unmarshal(data, &m.jobs)
+	for _, job := range jobs {
+		m.jobs[job.ID] = job
+	}
+	return nil
 }
 
 func (m *Module) saveJobs() error {
 	m.jobsMu.RLock()
 	defer m.jobsMu.RUnlock()
 
-	data, err := json.MarshalIndent(m.jobs, "", "  ")
-	if err != nil {
-		return err
+	ctx := context.Background()
+	for _, job := range m.jobs {
+		if err := m.repo.Save(ctx, job); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
-	path := filepath.Join(m.cacheDir, "jobs.json")
-	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
+// saveJob persists a single job to the database.
+func (m *Module) saveJob(job *models.HLSJob) {
+	if err := m.repo.Save(context.Background(), job); err != nil {
+		m.log.Error("Failed to persist HLS job %s: %v", job.ID, err)
 	}
-	return os.Rename(tempPath, path)
 }
 
 // SaveJobsToFile is a public wrapper for saveJobs() to allow external callers

@@ -3,12 +3,9 @@ package security
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -48,10 +46,10 @@ func init() {
 type Module struct {
 	config           *config.Manager
 	log              *logger.Logger
+	repo             repositories.IPListRepository
 	whitelist        *IPList
 	blacklist        *IPList
 	rateLimiter      *RateLimiter
-	dataDir          string
 	healthy          bool
 	healthMsg        string
 	totalBlocked     int64
@@ -119,11 +117,11 @@ type Stats struct {
 }
 
 // NewModule creates a new security module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.IPListRepository) *Module {
 	return &Module{
-		config:  cfg,
-		log:     logger.New("security"),
-		dataDir: cfg.Get().Directories.Data,
+		config: cfg,
+		log:    logger.New("security"),
+		repo:   repo,
 		whitelist: &IPList{
 			Name:    "whitelist",
 			Enabled: false,
@@ -493,38 +491,54 @@ func (m *Module) GetStats() Stats {
 	}
 }
 
-// Persistence
+// Persistence — reads/writes via MySQL repository
 
 func (m *Module) loadIPLists() error {
-	var loadErr error
+	ctx := context.Background()
 
-	// Load whitelist
-	whitelistPath := filepath.Join(m.dataDir, "whitelist.json")
-	if data, err := os.ReadFile(whitelistPath); err == nil {
-		if err := json.Unmarshal(data, m.whitelist); err != nil {
-			m.log.Warn("Failed to parse whitelist: %v", err)
-			loadErr = fmt.Errorf("corrupt whitelist: %w", err)
-		} else {
-			for i := range m.whitelist.Entries {
-				m.parseIPEntry(&m.whitelist.Entries[i])
+	// Load whitelist config
+	if name, enabled, err := m.repo.GetListConfig(ctx, "whitelist"); err == nil && name != "" {
+		m.whitelist.Name = name
+		m.whitelist.Enabled = enabled
+	}
+
+	// Load whitelist entries
+	if entries, err := m.repo.GetEntries(ctx, "whitelist"); err == nil {
+		for _, rec := range entries {
+			entry := IPEntry{
+				Value:     rec.Value,
+				Comment:   rec.Comment,
+				AddedAt:   rec.AddedAt,
+				AddedBy:   rec.AddedBy,
+				ExpiresAt: rec.ExpiresAt,
 			}
+			m.parseIPEntry(&entry)
+			m.whitelist.Entries = append(m.whitelist.Entries, entry)
 		}
 	}
 
-	// Load blacklist
-	blacklistPath := filepath.Join(m.dataDir, "blacklist.json")
-	if data, err := os.ReadFile(blacklistPath); err == nil {
-		if err := json.Unmarshal(data, m.blacklist); err != nil {
-			m.log.Warn("Failed to parse blacklist: %v", err)
-			loadErr = fmt.Errorf("corrupt blacklist: %w", err)
-		} else {
-			for i := range m.blacklist.Entries {
-				m.parseIPEntry(&m.blacklist.Entries[i])
+	// Load blacklist config
+	if name, enabled, err := m.repo.GetListConfig(ctx, "blacklist"); err == nil && name != "" {
+		m.blacklist.Name = name
+		m.blacklist.Enabled = enabled
+	}
+
+	// Load blacklist entries
+	if entries, err := m.repo.GetEntries(ctx, "blacklist"); err == nil {
+		for _, rec := range entries {
+			entry := IPEntry{
+				Value:     rec.Value,
+				Comment:   rec.Comment,
+				AddedAt:   rec.AddedAt,
+				AddedBy:   rec.AddedBy,
+				ExpiresAt: rec.ExpiresAt,
 			}
+			m.parseIPEntry(&entry)
+			m.blacklist.Entries = append(m.blacklist.Entries, entry)
 		}
 	}
 
-	return loadErr
+	return nil
 }
 
 func (m *Module) parseIPEntry(entry *IPEntry) {
@@ -538,42 +552,44 @@ func (m *Module) parseIPEntry(entry *IPEntry) {
 	}
 }
 
-// saveIPLists saves whitelist and blacklist to disk with secure permissions (0600)
+// saveIPLists persists whitelist and blacklist to the database
 func (m *Module) saveIPLists() error {
-	// Save whitelist (hold lock during marshal)
+	ctx := context.Background()
+
+	// Save whitelist
 	m.whitelist.mu.RLock()
-	whitelistData, err := json.MarshalIndent(m.whitelist, "", "  ")
-	m.whitelist.mu.RUnlock()
-	if err == nil {
-		whitelistPath := filepath.Join(m.dataDir, "whitelist.json")
-		tempPath := whitelistPath + ".tmp"
-		// Use 0600 permissions (read/write for owner only) for security-sensitive data
-		if err := os.WriteFile(tempPath, whitelistData, 0600); err != nil {
-			m.log.Error("Failed to save whitelist: %v", err)
-			return fmt.Errorf("failed to save whitelist: %w", err)
-		}
-		if err := os.Rename(tempPath, whitelistPath); err != nil {
-			m.log.Error("Failed to finalize whitelist save: %v", err)
-			return fmt.Errorf("failed to finalize whitelist: %w", err)
+	if err := m.repo.SaveListConfig(ctx, "whitelist", m.whitelist.Name, m.whitelist.Enabled); err != nil {
+		m.whitelist.mu.RUnlock()
+		return fmt.Errorf("failed to save whitelist config: %w", err)
+	}
+	entries := make([]*repositories.IPEntryRecord, len(m.whitelist.Entries))
+	for i, e := range m.whitelist.Entries {
+		entries[i] = &repositories.IPEntryRecord{
+			Value: e.Value, Comment: e.Comment, AddedAt: e.AddedAt,
+			AddedBy: e.AddedBy, ExpiresAt: e.ExpiresAt,
 		}
 	}
+	m.whitelist.mu.RUnlock()
+	if err := m.repo.SaveEntries(ctx, "whitelist", entries); err != nil {
+		return fmt.Errorf("failed to save whitelist entries: %w", err)
+	}
 
-	// Save blacklist (hold lock during marshal)
+	// Save blacklist
 	m.blacklist.mu.RLock()
-	blacklistData, err := json.MarshalIndent(m.blacklist, "", "  ")
+	if err := m.repo.SaveListConfig(ctx, "blacklist", m.blacklist.Name, m.blacklist.Enabled); err != nil {
+		m.blacklist.mu.RUnlock()
+		return fmt.Errorf("failed to save blacklist config: %w", err)
+	}
+	entries = make([]*repositories.IPEntryRecord, len(m.blacklist.Entries))
+	for i, e := range m.blacklist.Entries {
+		entries[i] = &repositories.IPEntryRecord{
+			Value: e.Value, Comment: e.Comment, AddedAt: e.AddedAt,
+			AddedBy: e.AddedBy, ExpiresAt: e.ExpiresAt,
+		}
+	}
 	m.blacklist.mu.RUnlock()
-	if err == nil {
-		blacklistPath := filepath.Join(m.dataDir, "blacklist.json")
-		tempPath := blacklistPath + ".tmp"
-		// Use 0600 permissions (read/write for owner only) for security-sensitive data
-		if err := os.WriteFile(tempPath, blacklistData, 0600); err != nil {
-			m.log.Error("Failed to save blacklist: %v", err)
-			return fmt.Errorf("failed to save blacklist: %w", err)
-		}
-		if err := os.Rename(tempPath, blacklistPath); err != nil {
-			m.log.Error("Failed to finalize blacklist save: %v", err)
-			return fmt.Errorf("failed to finalize blacklist: %w", err)
-		}
+	if err := m.repo.SaveEntries(ctx, "blacklist", entries); err != nil {
+		return fmt.Errorf("failed to save blacklist entries: %w", err)
 	}
 
 	return nil

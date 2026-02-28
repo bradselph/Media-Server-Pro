@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -38,6 +39,7 @@ const (
 type Module struct {
 	config     *config.Manager
 	log        *logger.Logger
+	repo       repositories.RemoteCacheRepository
 	httpClient *http.Client
 	sources    map[string]*SourceState
 	mediaCache map[string]*CachedMedia
@@ -87,10 +89,11 @@ type CachedMedia struct {
 }
 
 // NewModule creates a new remote media module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.RemoteCacheRepository) *Module {
 	return &Module{
 		config: cfg,
 		log:    logger.New("remote"),
+		repo:   repo,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -750,16 +753,24 @@ type SourceStats struct {
 // Cache management
 
 func (m *Module) loadCacheIndex() {
-	path := filepath.Join(m.cacheDir, "cache_index.json")
-	data, err := os.ReadFile(path)
+	records, err := m.repo.List(context.Background())
 	if err != nil {
+		m.log.Warn("Failed to load cache index from DB: %v", err)
 		return
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := json.Unmarshal(data, &m.mediaCache); err != nil {
-		m.log.Warn("Failed to parse cache index (may be corrupted): %v", err)
+	for _, rec := range records {
+		m.mediaCache[rec.RemoteURL] = &CachedMedia{
+			RemoteURL:   rec.RemoteURL,
+			LocalPath:   rec.LocalPath,
+			Size:        rec.Size,
+			ContentType: rec.ContentType,
+			CachedAt:    rec.CachedAt,
+			LastAccess:  rec.LastAccess,
+			Hits:        rec.Hits,
+		}
 	}
 }
 
@@ -767,14 +778,20 @@ func (m *Module) saveCacheIndex() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	data, err := json.MarshalIndent(m.mediaCache, "", "  ")
-	if err != nil {
-		return
-	}
-
-	path := filepath.Join(m.cacheDir, "cache_index.json")
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		m.log.Warn("Failed to save cache index: %v", err)
+	ctx := context.Background()
+	for _, cached := range m.mediaCache {
+		rec := &repositories.RemoteCacheRecord{
+			RemoteURL:   cached.RemoteURL,
+			LocalPath:   cached.LocalPath,
+			Size:        cached.Size,
+			ContentType: cached.ContentType,
+			CachedAt:    cached.CachedAt,
+			LastAccess:  cached.LastAccess,
+			Hits:        cached.Hits,
+		}
+		if err := m.repo.Save(ctx, rec); err != nil {
+			m.log.Warn("Failed to save cache entry: %v", err)
+		}
 	}
 }
 

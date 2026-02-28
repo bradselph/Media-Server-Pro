@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -26,6 +27,7 @@ const manifestSuffix = "_manifest.json"
 type Module struct {
 	config    *config.Manager
 	log       *logger.Logger
+	repo      repositories.BackupManifestRepository
 	backupDir string
 	dataDir   string
 	mu        sync.RWMutex
@@ -49,10 +51,11 @@ type Manifest struct {
 }
 
 // NewModule creates a new backup module
-func NewModule(cfg *config.Manager) *Module {
+func NewModule(cfg *config.Manager, repo repositories.BackupManifestRepository) *Module {
 	return &Module{
 		config:    cfg,
 		log:       logger.New("backup"),
+		repo:      repo,
 		backupDir: filepath.Join(cfg.Get().Directories.Data, "backups"),
 		dataDir:   cfg.Get().Directories.Data,
 	}
@@ -259,14 +262,20 @@ func (m *Module) addFileToZip(zipWriter *zip.Writer, filePath string, manifest *
 	return nil
 }
 
-// saveManifest saves manifest to a separate file
+// saveManifest saves manifest to the database
 func (m *Module) saveManifest(manifest *Manifest) error {
-	manifestPath := filepath.Join(m.backupDir, manifest.ID+manifestSuffix)
-	data, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return err
+	rec := &repositories.BackupManifestRecord{
+		ID:          manifest.ID,
+		Filename:    manifest.Filename,
+		CreatedAt:   manifest.CreatedAt,
+		Size:        manifest.Size,
+		Type:        manifest.Type,
+		Description: manifest.Description,
+		Files:       manifest.Files,
+		Errors:      manifest.Errors,
+		Version:     manifest.Version,
 	}
-	return os.WriteFile(manifestPath, data, 0644)
+	return m.repo.Save(context.Background(), rec)
 }
 
 // RestoreBackup restores from a backup. All modules maintain in-memory caches
