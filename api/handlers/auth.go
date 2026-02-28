@@ -361,6 +361,15 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 	if v, ok := incoming["custom_eq_presets"].(map[string]interface{}); ok {
 		prefs.CustomEQPresets = v
 	}
+	if v, ok := incoming["show_continue_watching"].(bool); ok {
+		prefs.ShowContinueWatching = v
+	}
+	if v, ok := incoming["show_recommended"].(bool); ok {
+		prefs.ShowRecommended = v
+	}
+	if v, ok := incoming["show_trending"].(bool); ok {
+		prefs.ShowTrending = v
+	}
 
 	h.log.Debug("Updating preferences for user %s: show_mature=%v, mature_preference_set=%v", session.Username, prefs.ShowMature, prefs.MaturePreferenceSet)
 

@@ -10,7 +10,6 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +49,10 @@ type Module struct {
 	// inFlight tracks output paths currently queued or being processed to
 	// prevent duplicate jobs when the background task and HTTP handlers both
 	// call GenerateThumbnail for the same file before it is written to disk.
-	inFlight sync.Map // map[outputPath string]struct{}
+	// The value stored is a time.Time (enqueue timestamp) so that a background
+	// cleanup goroutine can evict entries that are stale (e.g. from a worker
+	// that exited without completing its job during shutdown).
+	inFlight sync.Map // map[outputPath string]time.Time
 }
 
 // ThumbnailJob represents a thumbnail generation task
@@ -155,6 +157,14 @@ func (m *Module) Start(ctx context.Context) error {
 		go m.worker(i)
 	}
 
+	// Start a background goroutine to evict inFlight entries that have been
+	// stuck for more than 5 minutes.  This handles the case where a worker
+	// exits mid-job (e.g. during shutdown) and never calls inFlight.Delete,
+	// which would otherwise permanently block future thumbnail generation for
+	// the affected file.
+	m.wg.Add(1)
+	go m.evictStaleInFlight(workerCtx)
+
 	m.healthMu.Lock()
 	m.healthy = true
 	m.healthMsg = fmt.Sprintf("Running with %d workers, queue size %d", workerCount, queueSize)
@@ -162,6 +172,32 @@ func (m *Module) Start(ctx context.Context) error {
 
 	m.log.Info("✓ Thumbnail module started successfully")
 	return nil
+}
+
+// evictStaleInFlight scans the inFlight map every minute and removes entries
+// that have been pending for more than 5 minutes.  Stale entries arise when a
+// worker goroutine exits unexpectedly without completing its job (e.g. context
+// cancelled during a long ffmpeg run) and the deferred Delete never ran.
+func (m *Module) evictStaleInFlight(ctx context.Context) {
+	defer m.wg.Done()
+	const staleDuration = 5 * time.Minute
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cutoff := time.Now().Add(-staleDuration)
+			m.inFlight.Range(func(key, value any) bool {
+				if t, ok := value.(time.Time); ok && t.Before(cutoff) {
+					m.inFlight.Delete(key)
+					m.log.Warn("Evicted stale inFlight thumbnail entry: %v (queued %v ago)", key, time.Since(t))
+				}
+				return true
+			})
+		}
+	}
 }
 
 // Stop shuts down the module
@@ -278,7 +314,7 @@ func (m *Module) GenerateThumbnail(mediaId string, isAudio bool) (string, error)
 	// For audio, just generate one waveform.
 	// Guard against duplicate queuing: if another caller already queued this
 	// output path, skip silently and return ErrThumbnailPending.
-	if _, loaded := m.inFlight.LoadOrStore(outputPath, struct{}{}); loaded {
+	if _, loaded := m.inFlight.LoadOrStore(outputPath, time.Now()); loaded {
 		return outputPath, ErrThumbnailPending
 	}
 
@@ -346,7 +382,7 @@ func (m *Module) GeneratePreviewThumbnails(mediaId string) (string, error) {
 	mainPath := m.getThumbnailPath(mediaId)
 	if _, err := os.Stat(mainPath); os.IsNotExist(err) {
 		// Only queue if not already in-flight
-		if _, loaded := m.inFlight.LoadOrStore(mainPath, struct{}{}); !loaded {
+		if _, loaded := m.inFlight.LoadOrStore(mainPath, time.Now()); !loaded {
 			mainTimestamp := startOffset + (usableDuration / 2) // Middle of video for main thumbnail
 			mainJob := &ThumbnailJob{
 				MediaPath:    mediaId,
@@ -387,7 +423,7 @@ previewLoop:
 			m.log.Debug("Preview thumbnail %d already exists: %s", i, outputPath)
 			continue
 		}
-		if _, loaded := m.inFlight.LoadOrStore(outputPath, struct{}{}); loaded {
+		if _, loaded := m.inFlight.LoadOrStore(outputPath, time.Now()); loaded {
 			continue
 		}
 
@@ -650,9 +686,13 @@ func (m *Module) HasAllPreviewThumbnails(mediaPath string) bool {
 }
 
 // GetThumbnailURL returns the URL path for a thumbnail.
-// Uses the path-based endpoint so mature content checks are enforced on every access.
+// Uses the ID-based endpoint (/thumbnail?id=<md5hash>) so the handler can resolve
+// the media file and enforce mature content checks on every access.
+// The ID is the MD5 hash of the path, matching MediaItem.ID generation in media/discovery.go.
 func (m *Module) GetThumbnailURL(mediaPath string) string {
-	return "/thumbnail?path=" + url.QueryEscape(mediaPath)
+	h := md5.Sum([]byte(mediaPath))
+	id := hex.EncodeToString(h[:])
+	return "/thumbnail?id=" + id
 }
 
 // GetThumbnailDir returns the thumbnail directory path

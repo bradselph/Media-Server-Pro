@@ -88,12 +88,22 @@ func Compression(next http.Handler) http.Handler {
 	})
 }
 
-// etagResponseWriter buffers the response body so the ETag middleware can compute
-// a content-based hash after the handler runs.
+// etagMaxBufferSize is the maximum response size (in bytes) for which ETags are
+// computed by buffering the body.  Responses larger than this threshold bypass
+// ETag calculation to cap worst-case memory usage per request.  Typical JSON
+// API responses are well under 64 KB; media-list endpoints with 500 items may
+// reach a few hundred KB, so we skip ETags there and rely on Cache-Control.
+const etagMaxBufferSize = 64 * 1024 // 64 KB
+
+// etagResponseWriter buffers the response body (up to etagMaxBufferSize bytes)
+// so the ETag middleware can compute a content-based hash after the handler runs.
+// Writes beyond the size threshold are forwarded directly to the underlying
+// ResponseWriter without buffering; in that case the ETag header is omitted.
 type etagResponseWriter struct {
 	http.ResponseWriter
 	body       bytes.Buffer
 	statusCode int
+	overflow   bool // true once body exceeds etagMaxBufferSize
 }
 
 func (e *etagResponseWriter) WriteHeader(code int) {
@@ -101,14 +111,28 @@ func (e *etagResponseWriter) WriteHeader(code int) {
 }
 
 func (e *etagResponseWriter) Write(b []byte) (int, error) {
+	if e.overflow {
+		// Already flushed the buffered portion; write directly.
+		return e.ResponseWriter.Write(b)
+	}
+	if e.body.Len()+len(b) > etagMaxBufferSize {
+		// Threshold exceeded: flush what we have, mark overflow, write remainder.
+		e.overflow = true
+		e.ResponseWriter.WriteHeader(e.statusCode)
+		_, _ = e.ResponseWriter.Write(e.body.Bytes())
+		e.body.Reset()
+		return e.ResponseWriter.Write(b)
+	}
 	return e.body.Write(b)
 }
 
 // ETags middleware adds content-based ETag support for GET/HEAD requests on API
-// routes. It buffers the response body, computes an FNV-1a hash of the content,
-// and sets the ETag header. Clients that send a matching If-None-Match header
-// receive a 304 Not Modified without the response body. Only applied to
-// successful (2xx) responses.
+// routes.  It buffers the response body up to etagMaxBufferSize, computes an
+// FNV-1a hash, and sets the ETag header.  Clients that send a matching
+// If-None-Match header receive a 304 Not Modified without the response body.
+// Responses that exceed the size threshold are streamed without an ETag to
+// avoid large per-request memory allocations.  Only applied to successful (2xx)
+// responses.
 func ETags(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Only apply ETag logic to GET/HEAD requests on API routes
@@ -118,22 +142,22 @@ func ETags(next http.Handler) http.Handler {
 			return
 		}
 
-		// Buffer the response
 		bw := &etagResponseWriter{
 			ResponseWriter: w,
 			statusCode:     http.StatusOK,
 		}
 		next.ServeHTTP(bw, r)
 
-		// Compute ETag from actual response body
-		etag := `"` + hashBytes(bw.body.Bytes()) + `"`
+		if bw.overflow {
+			// Body was already written to the client; nothing more to do.
+			return
+		}
 
-		// Headers written by the handler are already on w.Header() because
-		// etagResponseWriter.Header() delegates to the underlying w.Header()
-		// (no override). No copy needed.
+		// Compute ETag from buffered body.
+		etag := `"` + hashBytes(bw.body.Bytes()) + `"`
 		w.Header().Set("ETag", etag)
 
-		// Honor If-None-Match: if the client already has this version, skip body
+		// Honor If-None-Match: if the client already has this version, skip body.
 		if match := r.Header.Get("If-None-Match"); match == etag {
 			w.WriteHeader(http.StatusNotModified)
 			return
@@ -193,7 +217,10 @@ func (g *ginGzipWriter) Write(data []byte) (int, error) {
 	return g.gzipWriter.Write(data)
 }
 
-// GinETags returns a gin middleware for ETag caching on API routes
+// GinETags returns a gin middleware for ETag caching on API routes.
+// Responses larger than etagMaxBufferSize are streamed without an ETag to
+// cap worst-case memory usage; this preserves caching for typical JSON
+// responses while avoiding per-request allocations for large payloads.
 func GinETags() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if (c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead) ||
@@ -201,10 +228,14 @@ func GinETags() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		// Use a buffered writer to capture response
 		bw := &ginETagWriter{ResponseWriter: c.Writer, statusCode: http.StatusOK}
 		c.Writer = bw
 		c.Next()
+
+		if bw.overflow {
+			// Body has already been flushed to the client; nothing left to do.
+			return
+		}
 
 		etag := `"` + hashBytes(bw.body.Bytes()) + `"`
 		c.Header("ETag", etag)
@@ -223,6 +254,7 @@ type ginETagWriter struct {
 	body       bytes.Buffer
 	statusCode int
 	written    bool
+	overflow   bool // true once body exceeds etagMaxBufferSize
 }
 
 func (e *ginETagWriter) WriteHeader(code int) {
@@ -230,6 +262,16 @@ func (e *ginETagWriter) WriteHeader(code int) {
 }
 
 func (e *ginETagWriter) Write(b []byte) (int, error) {
+	if e.overflow {
+		return e.ResponseWriter.Write(b)
+	}
+	if e.body.Len()+len(b) > etagMaxBufferSize {
+		e.overflow = true
+		e.ResponseWriter.WriteHeader(e.statusCode)
+		_, _ = e.ResponseWriter.Write(e.body.Bytes())
+		e.body.Reset()
+		return e.ResponseWriter.Write(b)
+	}
 	return e.body.Write(b)
 }
 

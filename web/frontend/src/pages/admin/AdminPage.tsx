@@ -3,6 +3,7 @@ import {Link, useLocation, useNavigate} from 'react-router-dom'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi, analyticsApi} from '@/api/endpoints'
 import {useAuthStore} from '@/stores/authStore'
+import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {useSettingsStore} from '@/stores/settingsStore'
 import type {
     AdminPlaylistStats,
@@ -3968,21 +3969,23 @@ export function AdminPage() {
             </div>
 
             <div className="admin-content">
-                {activeTab === 'dashboard' && <DashboardTab/>}
-                {activeTab === 'users' && <UsersTab/>}
-                {activeTab === 'media' && <MediaTab/>}
-                {activeTab === 'streaming' && <StreamingTab/>}
-                {activeTab === 'analytics' && <AnalyticsTab/>}
-                {activeTab === 'logs' && <LogsTab/>}
-                {activeTab === 'settings' && <SettingsTab/>}
-                {activeTab === 'remote' && <RemoteTab/>}
-                {activeTab === 'database' && <DatabaseTab/>}
-                {activeTab === 'content-review' && <ContentReviewTab/>}
-                {activeTab === 'playlists' && <PlaylistsTab/>}
-                {activeTab === 'security' && <SecurityTab/>}
-                {activeTab === 'categorizer' && <CategorizerTab/>}
-                {activeTab === 'discovery' && <DiscoveryTab/>}
-                {activeTab === 'updates' && <UpdatesTab/>}
+                <SectionErrorBoundary title="Admin panel section unavailable">
+                    {activeTab === 'dashboard' && <DashboardTab/>}
+                    {activeTab === 'users' && <UsersTab/>}
+                    {activeTab === 'media' && <MediaTab/>}
+                    {activeTab === 'streaming' && <StreamingTab/>}
+                    {activeTab === 'analytics' && <AnalyticsTab/>}
+                    {activeTab === 'logs' && <LogsTab/>}
+                    {activeTab === 'settings' && <SettingsTab/>}
+                    {activeTab === 'remote' && <RemoteTab/>}
+                    {activeTab === 'database' && <DatabaseTab/>}
+                    {activeTab === 'content-review' && <ContentReviewTab/>}
+                    {activeTab === 'playlists' && <PlaylistsTab/>}
+                    {activeTab === 'security' && <SecurityTab/>}
+                    {activeTab === 'categorizer' && <CategorizerTab/>}
+                    {activeTab === 'discovery' && <DiscoveryTab/>}
+                    {activeTab === 'updates' && <UpdatesTab/>}
+                </SectionErrorBoundary>
             </div>
         </div>
     )

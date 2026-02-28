@@ -93,15 +93,19 @@ func (m *Module) Start(_ context.Context) error {
 	m.cancel = cancel
 	m.done = taskCtx.Done()
 
-	// Start all enabled tasks
-	m.mu.RLock()
+	// Start all enabled tasks.
+	// Use a write lock so we can set loopRunning=true atomically before
+	// spawning goroutines.  This prevents EnableTask from racing Start and
+	// launching a duplicate runTaskLoop for the same task.
+	m.mu.Lock()
 	for _, task := range m.tasks {
 		if task.Enabled {
+			task.loopRunning = true
 			m.wg.Add(1)
 			go m.runTaskLoop(taskCtx, task)
 		}
 	}
-	m.mu.RUnlock()
+	m.mu.Unlock()
 
 	m.healthMu.Lock()
 	m.healthy = true

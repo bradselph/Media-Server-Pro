@@ -152,6 +152,63 @@ var mediumConfidenceKeywords = []string{
 	"pleasure", "satisfaction", "desire",
 }
 
+// compiledKeywordPatterns holds pre-compiled word-boundary regexp patterns for
+// each keyword list so that scanning uses true word-boundary matching instead
+// of strings.Contains().  Patterns are built once at package init time.
+// Word-boundary matching prevents false positives like "ass" matching "class".
+var (
+	compiledHighConf []*compiledKeyword
+	compiledMedConf  []*compiledKeyword
+)
+
+type compiledKeyword struct {
+	raw     string
+	pattern *regexp.Regexp
+}
+
+// buildKeywordPatterns compiles a keyword list into filename-aware boundary patterns.
+//
+// Two issues prevent standard \b from working correctly for filenames:
+//  1. regexp.QuoteMeta does not escape spaces, so the `\ ` → `[\s_\-]?` replacement
+//     never fired with the old code.
+//  2. Go's regexp \b treats underscore as a word character, so \bxxx\b fails to
+//     match "xxx_video.mp4" even though _ is used as a word separator in filenames.
+//
+// The fix uses explicit left/right boundary groups: `(?:^|[^a-z0-9])` and
+// `(?:[^a-z0-9]|$)`.  These treat any non-alphanumeric character (_, -, ., space,
+// and file-extension dots) as a token separator while still blocking substring
+// matches inside longer words (e.g. "ass" does not match inside "grasslands").
+//
+// Phrase keywords ("lap dance") have their spaces replaced with `[\s_\-]?` so they
+// match common filename variants: "lap dance", "lap-dance", "lap_dance", "lapdance".
+func buildKeywordPatterns(keywords []string) []*compiledKeyword {
+	compiled := make([]*compiledKeyword, 0, len(keywords))
+	for _, kw := range keywords {
+		lower := strings.ToLower(kw)
+		// Escape regex metacharacters in the keyword.  Note: regexp.QuoteMeta does
+		// NOT escape spaces, so the literal space character is used below.
+		escaped := regexp.QuoteMeta(lower)
+		// Replace literal spaces with a flexible separator so phrase keywords match
+		// common filename representations with -, _, or no separator.
+		flexible := strings.ReplaceAll(escaped, " ", `[\s_\-]?`)
+		// Filename-aware boundary: non-alphanumeric character or start/end of string.
+		// This lets "xxx" match in "xxx_video.mp4" while blocking "ass" in "class".
+		pattern := `(?i)(?:^|[^a-z0-9])` + flexible + `(?:[^a-z0-9]|$)`
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			// Fallback to a simple case-insensitive literal if the pattern is invalid.
+			re = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(lower))
+		}
+		compiled = append(compiled, &compiledKeyword{raw: kw, pattern: re})
+	}
+	return compiled
+}
+
+func init() {
+	compiledHighConf = buildKeywordPatterns(highConfidenceKeywords)
+	compiledMedConf = buildKeywordPatterns(mediumConfidenceKeywords)
+}
+
 // Directory patterns that may indicate mature content.
 // NOTE: These are matched with strings.Contains() against directory paths,
 // so avoid short/generic words like "av" (matches "avatars"), "hot" (matches
@@ -485,31 +542,33 @@ func scanConfigKeywords(filename string, keywords []string, boost float64, label
 	return confidence
 }
 
-// scanHighConfidenceKeywords checks the filename against high-confidence keywords.
-// A single high-confidence keyword should be sufficient to auto-flag content as mature.
-// Increased boost to 0.90 (from 0.85) so a single match exceeds the 0.35 threshold.
+// scanHighConfidenceKeywords checks the filename against high-confidence keywords
+// using pre-compiled word-boundary regex patterns to avoid false positives such
+// as "ass" matching "class" or "breast" matching "abreast".
+// A single high-confidence match is enough to flag content as mature.
 func scanHighConfidenceKeywords(filename string, result *ScanResult) float64 {
 	var confidence float64
-	for _, keyword := range highConfidenceKeywords {
-		if strings.Contains(filename, keyword) {
+	lower := strings.ToLower(filename)
+	for _, ck := range compiledHighConf {
+		if ck.pattern.MatchString(lower) {
 			confidence += 0.90
-			result.HighConfMatches = append(result.HighConfMatches, keyword)
-			result.Reasons = append(result.Reasons, "HIGH-CONF keyword: "+keyword)
+			result.HighConfMatches = append(result.HighConfMatches, ck.raw)
+			result.Reasons = append(result.Reasons, "HIGH-CONF keyword: "+ck.raw)
 		}
 	}
 	return confidence
 }
 
-// scanMediumConfidenceKeywords checks the filename against medium-confidence keywords.
-// Increased boost to 0.40 (from 0.35) for stricter detection.
-// Just one medium match (0.40) exceeds the 0.15 threshold for review.
+// scanMediumConfidenceKeywords checks the filename against medium-confidence keywords
+// using pre-compiled word-boundary regex patterns.
 func scanMediumConfidenceKeywords(filename string, result *ScanResult) float64 {
 	var confidence float64
-	for _, keyword := range mediumConfidenceKeywords {
-		if strings.Contains(filename, keyword) {
+	lower := strings.ToLower(filename)
+	for _, ck := range compiledMedConf {
+		if ck.pattern.MatchString(lower) {
 			confidence += 0.40
-			result.MedConfMatches = append(result.MedConfMatches, keyword)
-			result.Reasons = append(result.Reasons, "MED-CONF keyword: "+keyword)
+			result.MedConfMatches = append(result.MedConfMatches, ck.raw)
+			result.Reasons = append(result.Reasons, "MED-CONF keyword: "+ck.raw)
 		}
 	}
 	return confidence

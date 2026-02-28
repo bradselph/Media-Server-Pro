@@ -374,6 +374,9 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 		{"users", "watch_history", "JSON"},
 		{"users", "metadata", "JSON"},
 		{"user_preferences", "custom_eq_presets", "JSON"},
+		{"user_preferences", "show_continue_watching", "BOOLEAN NOT NULL DEFAULT TRUE"},
+		{"user_preferences", "show_recommended", "BOOLEAN NOT NULL DEFAULT TRUE"},
+		{"user_preferences", "show_trending", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"analytics_events", "data", "JSON NULL"},
 		{"media_metadata", "probe_mod_time", "TIMESTAMP NULL DEFAULT NULL"},
 	}

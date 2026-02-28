@@ -3,6 +3,8 @@ package updater
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -448,6 +450,18 @@ func (m *Module) ApplyUpdate(_ context.Context) (*UpdateStatus, error) {
 		}
 	}()
 
+	// Verify SHA256 checksum when a checksum file is available in the release.
+	// This guards against supply-chain attacks (compromised release) or
+	// network-level corruption (MITM even over HTTPS).
+	status.Stage = "verifying checksum"
+	status.Progress = 55
+	if verifyErr := m.verifyBinaryChecksum(lastCheck.LatestVersion, assetName, tmpFile); verifyErr != nil {
+		status.Error = fmt.Sprintf("Checksum verification failed: %v", verifyErr)
+		status.InProgress = false
+		m.log.Error("Binary update rejected: %v", verifyErr)
+		return status, verifyErr
+	}
+
 	status.Stage = "installing update"
 	status.Progress = 70
 
@@ -667,6 +681,117 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 
 	m.log.Info("Downloaded update to %s", tmpFile.Name())
 	return tmpFile.Name(), nil
+}
+
+// verifyBinaryChecksum downloads the SHA256SUMS file from the release and
+// verifies that the downloaded binary matches the published checksum.
+// If no SHA256SUMS asset is available in the release the check is skipped with
+// a warning (for backward compatibility with older releases that predate
+// checksum publishing).  A mismatch returns a non-nil error and the caller
+// must reject the update.
+func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) error {
+	// Try to fetch SHA256SUMS from the release.
+	checksumURL := fmt.Sprintf("%s/repos/%s/%s/releases/tags/v%s",
+		GitHubAPI, GitHubOwner, GitHubRepo, version)
+	req, err := http.NewRequest("GET", checksumURL, nil)
+	if err != nil {
+		return fmt.Errorf("build checksum request: %w", err)
+	}
+	if token := m.config.Get().Updater.GitHubToken; token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		m.log.Warn("Could not reach GitHub API for checksum lookup: %v — skipping integrity check", err)
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		m.log.Warn("GitHub API returned %d for release lookup — skipping checksum check", resp.StatusCode)
+		return nil
+	}
+
+	var release struct {
+		Assets []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		m.log.Warn("Failed to decode release JSON for checksum: %v — skipping", err)
+		return nil
+	}
+
+	// Look for an asset named "SHA256SUMS" or "checksums.txt".
+	var checksumURL2 string
+	for _, asset := range release.Assets {
+		lName := strings.ToLower(asset.Name)
+		if lName == "sha256sums" || lName == "sha256sums.txt" || lName == "checksums.txt" {
+			checksumURL2 = asset.BrowserDownloadURL
+			break
+		}
+	}
+	if checksumURL2 == "" {
+		m.log.Warn("No SHA256SUMS asset found in release v%s — skipping integrity check (add SHA256SUMS to future releases)", version)
+		return nil
+	}
+
+	// Download the checksum file.
+	cReq, err := http.NewRequest("GET", checksumURL2, nil)
+	if err != nil {
+		m.log.Warn("Could not build checksum download request: %v — skipping", err)
+		return nil
+	}
+	if token := m.config.Get().Updater.GitHubToken; token != "" {
+		cReq.Header.Set("Authorization", "Bearer "+token)
+	}
+	cResp, err := m.httpClient.Do(cReq)
+	if err != nil {
+		m.log.Warn("Could not download SHA256SUMS: %v — skipping integrity check", err)
+		return nil
+	}
+	defer func() { _ = cResp.Body.Close() }()
+	checksumData, err := io.ReadAll(io.LimitReader(cResp.Body, 1*1024*1024))
+	if err != nil {
+		m.log.Warn("Failed to read SHA256SUMS: %v — skipping", err)
+		return nil
+	}
+
+	// Parse lines of the form: <sha256hex>  <filename>
+	expectedHash := ""
+	for _, line := range strings.Split(string(checksumData), "\n") {
+		parts := strings.Fields(line)
+		if len(parts) == 2 && strings.EqualFold(parts[1], assetName) {
+			expectedHash = strings.ToLower(parts[0])
+			break
+		}
+	}
+	if expectedHash == "" {
+		m.log.Warn("Asset %q not found in SHA256SUMS — skipping integrity check", assetName)
+		return nil
+	}
+
+	// Compute SHA256 of the downloaded binary.
+	f, err := os.Open(binaryPath)
+	if err != nil {
+		return fmt.Errorf("open binary for hashing: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("hash binary: %w", err)
+	}
+	actualHash := hex.EncodeToString(h.Sum(nil))
+
+	if actualHash != expectedHash {
+		return fmt.Errorf("SHA256 mismatch for %s: expected %s, got %s — update rejected", assetName, expectedHash, actualHash)
+	}
+
+	m.log.Info("Binary integrity verified: SHA256 %s matches published checksum", actualHash[:16]+"…")
+	return nil
 }
 
 // isValidBinary checks the magic bytes of a file to confirm it is a native executable.

@@ -1,4 +1,4 @@
-import {type ChangeEvent, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
+import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
@@ -594,6 +594,50 @@ function UserMenu() {
     )
 }
 
+// ── SuggestionThumbnail ───────────────────────────────────────────────────────
+// Renders a suggestion card thumbnail. Falls back to a media-type-appropriate
+// placeholder if the URL is absent or fails to load (thumbnail still generating).
+
+const THUMB_STYLE: CSSProperties = {
+    width: '100%',
+    borderRadius: 4,
+    marginBottom: 6,
+    aspectRatio: '16/9',
+    objectFit: 'cover',
+    background: 'var(--card-bg, #1e1e2e)',
+}
+
+function SuggestionThumbnail({url, mediaType}: { url?: string; mediaType?: string }) {
+    const [failed, setFailed] = useState(false)
+    const isAudio = mediaType === 'audio'
+
+    if (!url || failed) {
+        // Placeholder: music note for audio, film frame for video
+        return (
+            <div style={{
+                ...THUMB_STYLE,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 32,
+                color: 'var(--text-muted, #666)',
+            }}>
+                <i className={isAudio ? 'bi bi-music-note-beamed' : 'bi bi-film'}/>
+            </div>
+        )
+    }
+
+    return (
+        <img
+            src={url}
+            alt=""
+            loading="lazy"
+            style={THUMB_STYLE}
+            onError={() => setFailed(true)}
+        />
+    )
+}
+
 // ── Main IndexPage ────────────────────────────────────────────────────────────
 
 export function IndexPage() {
@@ -723,11 +767,16 @@ export function IndexPage() {
         enabled: isAuthenticated,
     })
 
+    // Section visibility from user preferences — default true so sections show before prefs load
+    const showContinueWatching = user?.preferences?.show_continue_watching ?? true
+    const showRecommended = user?.preferences?.show_recommended ?? true
+    const showTrending = user?.preferences?.show_trending ?? true
+
     // Continue watching query — in-progress items for authenticated users
     const {data: continueWatching = []} = useQuery<Suggestion[]>({
         queryKey: ['continue-watching'],
         queryFn: () => suggestionsApi.getContinueWatching(),
-        enabled: isAuthenticated,
+        enabled: isAuthenticated && showContinueWatching,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -735,6 +784,7 @@ export function IndexPage() {
     const {data: suggestions = []} = useQuery<Suggestion[]>({
         queryKey: ['suggestions'],
         queryFn: () => suggestionsApi.get(),
+        enabled: showRecommended,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -742,17 +792,7 @@ export function IndexPage() {
     const {data: trending = []} = useQuery<Suggestion[]>({
         queryKey: ['suggestions-trending'],
         queryFn: () => suggestionsApi.getTrending(),
-        select: data => (data ?? []).slice(0, 8),
-    })
-
-    // DEPRECATED: D-08 — suggestionsApi.get() (above) already incorporates personalization for
-    // logged-in users. getPersonalized() hits the deprecated GetPersonalizedSuggestions handler
-    // (D-02) which uses the deprecated GetUserProfile backend method (DC-03). Disable once the
-    // "Just For You" section is merged into the main suggestions query.
-    const {data: personalized = []} = useQuery<Suggestion[]>({
-        queryKey: ['suggestions-personalized'],
-        queryFn: () => suggestionsApi.getPersonalized(8),
-        enabled: isAuthenticated,
+        enabled: showTrending,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -938,8 +978,8 @@ export function IndexPage() {
                 <UserMenu/>
             </div>
 
-            {/* Continue Watching */}
-            {continueWatching.length > 0 && (
+            {/* Continue Watching — only for authenticated users who haven't disabled it */}
+            {isAuthenticated && showContinueWatching && continueWatching.length > 0 && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-play-circle"/> Continue Watching</h3>
                     <div className="continue-watching-row">
@@ -949,17 +989,8 @@ export function IndexPage() {
                                 className="continue-card"
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
-                                {entry.thumbnail_url && (
-                                    <img src={entry.thumbnail_url} alt="" style={{
-                                        width: '100%',
-                                        borderRadius: 4,
-                                        marginBottom: 6,
-                                        aspectRatio: '16/9',
-                                        objectFit: 'cover'
-                                    }}/>
-                                )}
-                                <div
-                                    className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
+                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
                                 <div className="continue-card-meta"><i className="bi bi-play-circle"/> Continue</div>
                             </Link>
                         ))}
@@ -967,8 +998,8 @@ export function IndexPage() {
                 </div>
             )}
 
-            {/* Recommended For You */}
-            {suggestions.length > 0 && (
+            {/* Recommended For You — hidden when user disabled it */}
+            {showRecommended && suggestions.length > 0 && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-stars"/> Recommended For You</h3>
                     <div className="continue-watching-row">
@@ -978,17 +1009,8 @@ export function IndexPage() {
                                 className="continue-card"
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
-                                {entry.thumbnail_url && (
-                                    <img src={entry.thumbnail_url} alt="" style={{
-                                        width: '100%',
-                                        borderRadius: 4,
-                                        marginBottom: 6,
-                                        aspectRatio: '16/9',
-                                        objectFit: 'cover'
-                                    }}/>
-                                )}
-                                <div
-                                    className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
+                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
                                 {entry.score != null && (
                                     <div className="continue-card-meta"><i
                                         className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
@@ -999,8 +1021,8 @@ export function IndexPage() {
                 </div>
             )}
 
-            {/* Trending */}
-            {trending.length > 0 && (
+            {/* Trending — hidden when user disabled it */}
+            {showTrending && trending.length > 0 && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-fire"/> Trending</h3>
                     <div className="continue-watching-row">
@@ -1010,47 +1032,9 @@ export function IndexPage() {
                                 className="continue-card"
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
-                                {entry.thumbnail_url && (
-                                    <img src={entry.thumbnail_url} alt="" style={{
-                                        width: '100%',
-                                        borderRadius: 4,
-                                        marginBottom: 6,
-                                        aspectRatio: '16/9',
-                                        objectFit: 'cover'
-                                    }}/>
-                                )}
-                                <div
-                                    className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
+                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
                                 <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
-                            </Link>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Just For You — personalized auth-gated (Feature 2) */}
-            {isAuthenticated && personalized.length > 0 && (
-                <div className="continue-watching-section">
-                    <h3 className="section-heading"><i className="bi bi-person-hearts"/> Just For You</h3>
-                    <div className="continue-watching-row">
-                        {personalized.map(entry => (
-                            <Link
-                                key={entry.media_id}
-                                to={`/player?id=${encodeURIComponent(entry.media_id)}`}
-                                className="continue-card"
-                            >
-                                {entry.thumbnail_url && (
-                                    <img src={entry.thumbnail_url} alt={entry.title} style={{
-                                        width: '100%',
-                                        borderRadius: 4,
-                                        marginBottom: 6,
-                                        aspectRatio: '16/9',
-                                        objectFit: 'cover'
-                                    }}/>
-                                )}
-                                <div
-                                    className="continue-card-name">{entry.title || entry.media_id}</div>
-                                <div className="continue-card-meta"><i className="bi bi-person-hearts"/> For You</div>
                             </Link>
                         ))}
                     </div>
