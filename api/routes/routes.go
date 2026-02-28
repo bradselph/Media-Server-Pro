@@ -354,6 +354,10 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.POST("/server/restart", h.RestartServer)
 	adminGrp.POST("/server/shutdown", h.ShutdownServer)
 
+	// Active sessions and uploads
+	adminGrp.GET("/streams", h.AdminGetActiveStreams)
+	adminGrp.GET("/uploads/active", h.AdminGetActiveUploads)
+
 	// User management
 	adminGrp.GET("/users", h.AdminListUsers)
 	adminGrp.POST("/users", h.AdminCreateUser)
@@ -362,6 +366,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.PUT("/users/:username", h.AdminUpdateUser)
 	adminGrp.DELETE("/users/:username", h.AdminDeleteUser)
 	adminGrp.POST("/users/:username/password", h.AdminChangePassword)
+	adminGrp.GET("/users/:username/sessions", h.AdminGetUserSessions)
 	adminGrp.POST("/change-password", h.AdminChangeOwnPassword)
 	adminGrp.GET("/audit-log", h.AdminGetAuditLog)
 	adminGrp.GET("/audit-log/export", h.AdminExportAuditLog)
