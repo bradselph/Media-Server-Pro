@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0] - 2026-03-01 (minor)
+
+- Merge pull request #19 from bradselph/development
+- feat(admin): improve media management UX and fix update bugs
+- fix(types): correct DetectedMediaInfo to match backend categorizer.MediaInfo
+
+
 ## [0.15.0] - 2026-03-01 (minor)
 
 - Merge pull request #18 from bradselph/development
