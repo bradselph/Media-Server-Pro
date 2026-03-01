@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.17.0] - 2026-03-01 (minor)
+
+- Merge pull request #20 from bradselph/development
+- fix(admin): fix bulk category clearing, add missing endpoints and filters
+
+
 ## [0.16.0] - 2026-03-01 (minor)
 
 - Merge pull request #19 from bradselph/development
