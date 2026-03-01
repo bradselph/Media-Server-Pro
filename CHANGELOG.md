@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.14.0] - 2026-03-01 (minor)
+
+- Merge pull request #17 from bradselph/development
+- sort filter update
+
+
 ## [0.13.0] - 2026-03-01 (minor)
 
 - Merge pull request #16 from bradselph/development
