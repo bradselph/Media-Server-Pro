@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0] - 2026-03-01 (minor)
+
+- Merge pull request #21 from bradselph/development
+- feat(receiver): add master-slave media distribution system
+- fix(admin): security hardening, bulk tags, state bugs, case-insensitive filter
+
+
 ## [0.17.0] - 2026-03-01 (minor)
 
 - Merge pull request #20 from bradselph/development
