@@ -896,6 +896,12 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 			return items[i].Size < items[j].Size
 		case "views":
 			return items[i].Views < items[j].Views
+		case "duration":
+			return items[i].Duration < items[j].Duration
+		case "type":
+			return items[i].Type < items[j].Type
+		case "category":
+			return items[i].Category < items[j].Category
 		default:
 			return items[i].Name < items[j].Name
 		}

@@ -6,6 +6,7 @@ import {useAuthStore} from '@/stores/authStore'
 import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {useSettingsStore} from '@/stores/settingsStore'
 import type {
+    AdminMediaListResponse,
     AdminPlaylistStats,
     BannedIP,
     CategorizedItem,
@@ -375,6 +376,17 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
     )
 }
 
+type UserSortKey = 'username' | 'email' | 'role' | 'enabled' | 'last_login' | 'created_at'
+
+const USER_SORT_COLUMNS: ReadonlyArray<{key: UserSortKey; label: string}> = [
+    {key: 'username', label: 'Username'},
+    {key: 'email', label: 'Email'},
+    {key: 'role', label: 'Role'},
+    {key: 'enabled', label: 'Status'},
+    {key: 'last_login', label: 'Last Login'},
+    {key: 'created_at', label: 'Created'},
+]
+
 function UsersTab() {
     const queryClient = useQueryClient()
     const [showCreate, setShowCreate] = useState(false)
@@ -383,10 +395,54 @@ function UsersTab() {
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [bulkWorking, setBulkWorking] = useState(false)
 
+    // Sort and filter state
+    const [sortBy, setSortBy] = useState<UserSortKey>('username')
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+    const [filterRole, setFilterRole] = useState<string>('')
+    const [filterStatus, setFilterStatus] = useState<string>('')
+    const [userSearch, setUserSearch] = useState('')
+
     const {data: users = [], isLoading} = useQuery({
         queryKey: ['admin-users'],
         queryFn: () => adminApi.listUsers(),
     })
+
+    // Apply filters and sorting client-side
+    const filteredUsers = users.filter(u => {
+        if (filterRole && u.role !== filterRole) return false
+        if (filterStatus === 'enabled' && !u.enabled) return false
+        if (filterStatus === 'disabled' && u.enabled) return false
+        if (userSearch) {
+            const q = userSearch.toLowerCase()
+            if (!u.username.toLowerCase().includes(q) && !(u.email || '').toLowerCase().includes(q)) return false
+        }
+        return true
+    }).sort((a, b) => {
+        let cmp = 0
+        switch (sortBy) {
+            case 'username': cmp = a.username.localeCompare(b.username); break
+            case 'email': cmp = (a.email || '').localeCompare(b.email || ''); break
+            case 'role': cmp = a.role.localeCompare(b.role); break
+            case 'enabled': cmp = (a.enabled === b.enabled ? 0 : a.enabled ? -1 : 1); break
+            case 'last_login': cmp = (a.last_login || '').localeCompare(b.last_login || ''); break
+            case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break
+        }
+        return sortOrder === 'desc' ? -cmp : cmp
+    })
+
+    function handleSort(column: UserSortKey) {
+        if (sortBy === column) {
+            setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortBy(column)
+            setSortOrder('asc')
+        }
+    }
+
+    function sortIndicator(column: UserSortKey) {
+        if (sortBy !== column) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
+        return <span style={{marginLeft: 4}}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+    }
 
     async function handleDelete(username: string) {
         if (!window.confirm(`Delete user "${username}"? This cannot be undone.`)) return
@@ -429,7 +485,7 @@ function UsersTab() {
         }
     }
 
-    const selectableUsers = users.filter(u => u.username !== 'admin')
+    const selectableUsers = filteredUsers.filter(u => u.username !== 'admin')
     const allSelected = selectableUsers.length > 0 && selectableUsers.every(u => selected.has(u.username))
 
     function toggleSelectAll() {
@@ -448,6 +504,12 @@ function UsersTab() {
         }
     }
 
+    const thSortStyle: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
+    const selectStyle: React.CSSProperties = {
+        padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
+        background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13,
+    }
+
     return (
         <div>
             {msg && <div
@@ -456,6 +518,32 @@ function UsersTab() {
                 <button className="admin-btn admin-btn-primary" onClick={() => setShowCreate(true)}><i
                     className="bi bi-person-plus-fill"/> Create User
                 </button>
+            </div>
+
+            {/* Search and filter controls */}
+            <div style={{marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
+                <input type="text" placeholder="Search users..." value={userSearch}
+                       onChange={e => setUserSearch(e.target.value)}
+                       style={{...selectStyle, flex: 1, minWidth: 160}} />
+                <select value={filterRole} onChange={e => setFilterRole(e.target.value)} style={selectStyle}>
+                    <option value="">All Roles</option>
+                    <option value="admin">Admin</option>
+                    <option value="viewer">Viewer</option>
+                </select>
+                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
+                    <option value="">All Status</option>
+                    <option value="enabled">Active</option>
+                    <option value="disabled">Disabled</option>
+                </select>
+                {(filterRole || filterStatus || userSearch) && (
+                    <button className="admin-btn" style={{fontSize: 12, padding: '4px 10px'}}
+                            onClick={() => { setFilterRole(''); setFilterStatus(''); setUserSearch('') }}>
+                        <i className="bi bi-x-circle"/> Clear
+                    </button>
+                )}
+                <span style={{fontSize: 12, color: 'var(--text-muted)'}}>
+                    {filteredUsers.length} of {users.length} user{users.length !== 1 ? 's' : ''}
+                </span>
             </div>
 
             {selected.size > 0 && (
@@ -504,16 +592,16 @@ function UsersTab() {
                                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
                                        title={allSelected ? 'Deselect all' : 'Select all (except admin)'}/>
                             </th>
-                            <th>Username</th>
-                            <th>Email</th>
-                            <th>Role</th>
-                            <th>Status</th>
-                            <th>Last Login</th>
+                            {USER_SORT_COLUMNS.map(col => (
+                                <th key={col.key} style={thSortStyle} onClick={() => handleSort(col.key)}>
+                                    {col.label}{sortIndicator(col.key)}
+                                </th>
+                            ))}
                             <th>Actions</th>
                         </tr>
                         </thead>
                         <tbody>
-                        {users.map(user => (
+                        {filteredUsers.map(user => (
                             <tr key={user.id}
                                 style={selected.has(user.username) ? {background: 'color-mix(in srgb, var(--accent-color) 8%, transparent)'} : undefined}>
                                 <td>
@@ -536,6 +624,7 @@ function UsersTab() {
                     </span>
                                 </td>
                                 <td>{user.last_login ? new Date(user.last_login).toLocaleDateString() : '—'}</td>
+                                <td>{new Date(user.created_at).toLocaleDateString()}</td>
                                 <td>
                                     <div style={{display: 'flex', gap: 6}}>
                                         <button className="admin-btn" onClick={() => setEditUser(user)}>Edit</button>
@@ -548,6 +637,14 @@ function UsersTab() {
                                 </td>
                             </tr>
                         ))}
+                        {filteredUsers.length === 0 && (
+                            <tr>
+                                <td colSpan={USER_SORT_COLUMNS.length + 2}
+                                    style={{textAlign: 'center', color: 'var(--text-muted)', padding: '20px 0'}}>
+                                    No users found
+                                </td>
+                            </tr>
+                        )}
                         </tbody>
                     </table>
                 </div>
@@ -579,6 +676,29 @@ function UsersTab() {
 
 // ── Tab: Media ────────────────────────────────────────────────────────────────
 
+function formatDuration(secs: number): string {
+    if (!secs || secs <= 0) return '—'
+    const h = Math.floor(secs / 3600)
+    const m = Math.floor((secs % 3600) / 60)
+    const s = Math.floor(secs % 60)
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    return `${m}:${String(s).padStart(2, '0')}`
+}
+
+// Sortable column header definitions for the admin media table.
+const MEDIA_SORT_COLUMNS = [
+    {key: 'name', label: 'Name'},
+    {key: 'type', label: 'Type'},
+    {key: 'size', label: 'Size'},
+    {key: 'duration', label: 'Duration'},
+    {key: 'category', label: 'Category'},
+    {key: 'date_added', label: 'Date Added'},
+    {key: 'views', label: 'Views'},
+    {key: 'is_mature', label: 'Mature'},
+] as const
+
+type MediaSortKey = typeof MEDIA_SORT_COLUMNS[number]['key']
+
 function MediaTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -597,6 +717,15 @@ function MediaTab() {
     } | null>(null)
     const mediaLimit = 20
     const mediaSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    // Sort state
+    const [sortBy, setSortBy] = useState<MediaSortKey>('name')
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+
+    // Filter state
+    const [filterType, setFilterType] = useState<string>('')
+    const [filterCategory, setFilterCategory] = useState('')
+    const [filterMature, setFilterMature] = useState<string>('')
 
     // Bulk selection state
     const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -617,17 +746,41 @@ function MediaTab() {
         queryFn: async () => (await adminApi.listBackups()) ?? [],
     })
 
-    const {data: mediaItems = []} = useQuery<MediaItem[]>({
-        queryKey: ['admin-media', debouncedMediaSearch, mediaPage],
+    const emptyResponse: AdminMediaListResponse = {items: [], total_items: 0, total_pages: 1}
+    const {data: mediaResponse = emptyResponse} = useQuery<AdminMediaListResponse>({
+        queryKey: ['admin-media', debouncedMediaSearch, mediaPage, sortBy, sortOrder, filterType, filterCategory, filterMature],
         queryFn: async () => {
             const result = await adminApi.listMedia({
                 page: mediaPage,
                 limit: mediaLimit,
                 search: debouncedMediaSearch || undefined,
+                sort: sortBy || undefined,
+                sort_order: sortOrder || undefined,
+                type: filterType || undefined,
+                category: filterCategory || undefined,
+                is_mature: filterMature || undefined,
             })
-            return result ?? []
+            return result ?? emptyResponse
         },
     })
+    const mediaItems = mediaResponse.items ?? []
+    const totalItems = mediaResponse.total_items ?? 0
+    const totalPages = mediaResponse.total_pages ?? 1
+
+    function handleSort(column: MediaSortKey) {
+        if (sortBy === column) {
+            setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortBy(column)
+            setSortOrder('asc')
+        }
+        setMediaPage(1)
+    }
+
+    function sortIndicator(column: MediaSortKey) {
+        if (sortBy !== column) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
+        return <span style={{marginLeft: 4}}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+    }
 
     async function handleScanMedia() {
         setScanning(true)
@@ -779,6 +932,21 @@ function MediaTab() {
         })
     }
 
+    const selectStyle: React.CSSProperties = {
+        padding: '6px 10px',
+        border: '1px solid var(--border-color)',
+        borderRadius: 6,
+        background: 'var(--input-bg)',
+        color: 'var(--text-color)',
+        fontSize: 13,
+    }
+
+    const thSortStyle: React.CSSProperties = {
+        cursor: 'pointer',
+        userSelect: 'none',
+        whiteSpace: 'nowrap',
+    }
+
     return (
         <div>
             {msg && <div
@@ -798,8 +966,8 @@ function MediaTab() {
                     </button>
                 </div>
 
-                {/* Media browser */}
-                <div style={{marginTop: 16, display: 'flex', gap: 8, alignItems: 'center'}}>
+                {/* Search and filter controls */}
+                <div style={{marginTop: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
                     <input
                         type="text"
                         placeholder="Search media..."
@@ -810,6 +978,7 @@ function MediaTab() {
                         }}
                         style={{
                             flex: 1,
+                            minWidth: 180,
                             padding: '6px 10px',
                             border: '1px solid var(--border-color)',
                             borderRadius: 6,
@@ -818,7 +987,36 @@ function MediaTab() {
                             fontSize: 13
                         }}
                     />
+                    <select value={filterType} onChange={e => { setFilterType(e.target.value); setMediaPage(1) }} style={selectStyle}>
+                        <option value="">All Types</option>
+                        <option value="video">Video</option>
+                        <option value="audio">Audio</option>
+                    </select>
+                    <select value={filterMature} onChange={e => { setFilterMature(e.target.value); setMediaPage(1) }} style={selectStyle}>
+                        <option value="">All Content</option>
+                        <option value="true">Mature Only</option>
+                        <option value="false">Non-Mature Only</option>
+                    </select>
+                    <input
+                        type="text"
+                        placeholder="Filter category..."
+                        value={filterCategory}
+                        onChange={e => { setFilterCategory(e.target.value); setMediaPage(1) }}
+                        style={{...selectStyle, width: 140}}
+                    />
+                    {(filterType || filterCategory || filterMature || debouncedMediaSearch) && (
+                        <button className="admin-btn" style={{fontSize: 12, padding: '4px 10px'}}
+                                onClick={() => { setFilterType(''); setFilterCategory(''); setFilterMature(''); setMediaSearch(''); setMediaPage(1) }}>
+                            <i className="bi bi-x-circle"/> Clear Filters
+                        </button>
+                    )}
                 </div>
+
+                {totalItems > 0 && (
+                    <div style={{marginTop: 8, fontSize: 12, color: 'var(--text-muted)'}}>
+                        {totalItems.toLocaleString()} item{totalItems !== 1 ? 's' : ''} found
+                    </div>
+                )}
 
                 {selected.size > 0 && (
                     <div style={{
@@ -936,11 +1134,11 @@ function MediaTab() {
                                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
                                        title={allSelected ? 'Deselect all' : 'Select all on page'}/>
                             </th>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Category</th>
-                            <th>Mature</th>
-                            <th>Views</th>
+                            {MEDIA_SORT_COLUMNS.map(col => (
+                                <th key={col.key} style={thSortStyle} onClick={() => handleSort(col.key)}>
+                                    {col.label}{sortIndicator(col.key)}
+                                </th>
+                            ))}
                             <th>Actions</th>
                         </tr>
                         </thead>
@@ -959,9 +1157,12 @@ function MediaTab() {
                                     whiteSpace: 'nowrap'
                                 }}>{item.name}</td>
                                 <td>{item.type}</td>
+                                <td style={{whiteSpace: 'nowrap'}}>{formatBytes(item.size)}</td>
+                                <td style={{whiteSpace: 'nowrap'}}>{formatDuration(item.duration)}</td>
                                 <td>{item.category || '—'}</td>
-                                <td>{item.is_mature ? <span style={{color: '#ef4444'}}>Yes</span> : 'No'}</td>
+                                <td style={{whiteSpace: 'nowrap'}}>{new Date(item.date_added).toLocaleDateString()}</td>
                                 <td>{item.views}</td>
+                                <td>{item.is_mature ? <span style={{color: '#ef4444'}}>Yes</span> : 'No'}</td>
                                 <td>
                                     <div style={{display: 'flex', gap: 4}}>
                                         <button className="admin-btn" style={{padding: '3px 8px', fontSize: 12}}
@@ -984,7 +1185,7 @@ function MediaTab() {
                         ))}
                         {mediaItems.length === 0 && (
                             <tr>
-                                <td colSpan={7}
+                                <td colSpan={MEDIA_SORT_COLUMNS.length + 2}
                                     style={{textAlign: 'center', color: 'var(--text-muted)', padding: '20px 0'}}>No
                                     media found
                                 </td>
@@ -993,12 +1194,14 @@ function MediaTab() {
                         </tbody>
                     </table>
                 </div>
-                <div style={{display: 'flex', justifyContent: 'center', gap: 8, marginTop: 8}}>
+                <div style={{display: 'flex', justifyContent: 'center', gap: 8, marginTop: 8, alignItems: 'center'}}>
                     <button className="admin-btn" disabled={mediaPage <= 1} onClick={() => setMediaPage(p => p - 1)}>←
                         Prev
                     </button>
-                    <span style={{fontSize: 13, color: 'var(--text-muted)', padding: '4px 0'}}>Page {mediaPage}</span>
-                    <button className="admin-btn" disabled={mediaItems.length < mediaLimit}
+                    <span style={{fontSize: 13, color: 'var(--text-muted)', padding: '4px 0'}}>
+                        Page {mediaPage} of {totalPages}
+                    </span>
+                    <button className="admin-btn" disabled={mediaPage >= totalPages}
                             onClick={() => setMediaPage(p => p + 1)}>Next →
                     </button>
                 </div>
@@ -1013,44 +1216,80 @@ function MediaTab() {
                 </div>
                 {backups.length === 0 ? (
                     <p style={{color: 'var(--text-muted)', fontSize: 13}}>No backups found.</p>
-                ) : (
-                    <div className="admin-table-wrapper">
-                        <table className="admin-table">
-                            <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Size</th>
-                                <th>Created</th>
-                                <th>Actions</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {backups.map(b => (
-                                <tr key={b.id}>
-                                    <td>{b.filename}</td>
-                                    <td>{formatBytes(b.size)}</td>
-                                    <td>{new Date(b.created_at).toLocaleString()}</td>
-                                    <td>
-                                        <div style={{display: 'flex', gap: 6}}>
-                                            <button className="admin-btn admin-btn-warning"
-                                                    onClick={() => handleRestore(b.id, b.filename)}>Restore
-                                            </button>
-                                            <button className="admin-btn admin-btn-danger"
-                                                    onClick={() => handleDeleteBackup(b.id, b.filename)}>
-                                                <i className="bi bi-trash-fill"/>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                ) : <SortableBackupsTable backups={backups} onRestore={handleRestore} onDelete={handleDeleteBackup} />}
             </div>
 
             {/* Feature 7: Thumbnail Stats */}
             <ThumbnailStatsCard/>
+        </div>
+    )
+}
+
+// ── Sortable Backups Table ────────────────────────────────────────────────────
+
+type BackupSortKey = 'filename' | 'size' | 'created_at'
+function SortableBackupsTable({backups, onRestore, onDelete}: {
+    backups: Array<{id: string; filename: string; size: number; created_at: string}>;
+    onRestore: (id: string, filename: string) => void;
+    onDelete: (id: string, filename: string) => void;
+}) {
+    const [sortBy, setSortBy] = useState<BackupSortKey>('created_at')
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+    const sorted = [...backups].sort((a, b) => {
+        let cmp = 0
+        switch (sortBy) {
+            case 'filename': cmp = a.filename.localeCompare(b.filename); break
+            case 'size': cmp = a.size - b.size; break
+            case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break
+        }
+        return sortOrder === 'desc' ? -cmp : cmp
+    })
+
+    function handleSort(col: BackupSortKey) {
+        if (sortBy === col) setSortOrder(p => p === 'asc' ? 'desc' : 'asc')
+        else { setSortBy(col); setSortOrder('asc') }
+    }
+
+    function ind(col: BackupSortKey) {
+        if (sortBy !== col) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
+        return <span style={{marginLeft: 4}}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+    }
+
+    const thS: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
+
+    return (
+        <div className="admin-table-wrapper">
+            <table className="admin-table">
+                <thead>
+                <tr>
+                    <th style={thS} onClick={() => handleSort('filename')}>Name{ind('filename')}</th>
+                    <th style={thS} onClick={() => handleSort('size')}>Size{ind('size')}</th>
+                    <th style={thS} onClick={() => handleSort('created_at')}>Created{ind('created_at')}</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                {sorted.map(b => (
+                    <tr key={b.id}>
+                        <td>{b.filename}</td>
+                        <td>{formatBytes(b.size)}</td>
+                        <td>{new Date(b.created_at).toLocaleString()}</td>
+                        <td>
+                            <div style={{display: 'flex', gap: 6}}>
+                                <button className="admin-btn admin-btn-warning"
+                                        onClick={() => onRestore(b.id, b.filename)}>Restore
+                                </button>
+                                <button className="admin-btn admin-btn-danger"
+                                        onClick={() => onDelete(b.id, b.filename)}>
+                                    <i className="bi bi-trash-fill"/>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                ))}
+                </tbody>
+            </table>
         </div>
     )
 }
@@ -1142,12 +1381,17 @@ function ThumbnailStatsCard() {
 
 // ── Tab: Streaming ────────────────────────────────────────────────────────────
 
+type HLSSortKey = 'id' | 'status' | 'progress'
 function StreamingTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     // Feature 8: HLS validation
     const [validationResult, setValidationResult] = useState<HLSValidationResult | null>(null)
     const [validatingId, setValidatingId] = useState<string | null>(null)
+    // HLS sort/filter state
+    const [hlsSortBy, setHlsSortBy] = useState<HLSSortKey>('id')
+    const [hlsSortOrder, setHlsSortOrder] = useState<'asc' | 'desc'>('asc')
+    const [hlsFilterStatus, setHlsFilterStatus] = useState<string>('')
 
     const {data: tasks = []} = useQuery({
         queryKey: ['admin-tasks'],
@@ -1283,59 +1527,86 @@ function StreamingTab() {
             {/* HLS Jobs */}
             <div className="admin-card">
                 <h2>HLS Jobs</h2>
+                <div style={{marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center'}}>
+                    <select value={hlsFilterStatus} onChange={e => setHlsFilterStatus(e.target.value)}
+                            style={{padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
+                                    background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}>
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="running">Running</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    {hlsFilterStatus && (
+                        <button className="admin-btn" style={{fontSize: 12, padding: '4px 10px'}}
+                                onClick={() => setHlsFilterStatus('')}>
+                            <i className="bi bi-x-circle"/> Clear
+                        </button>
+                    )}
+                </div>
                 <div className="admin-table-wrapper">
                     <table className="admin-table">
                         <thead>
                         <tr>
-                            <th>File</th>
-                            <th>Status</th>
-                            <th>Progress</th>
+                            {(['id', 'status', 'progress'] as HLSSortKey[]).map(col => (
+                                <th key={col} style={{cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}}
+                                    onClick={() => { if (hlsSortBy === col) setHlsSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setHlsSortBy(col); setHlsSortOrder('asc') } }}>
+                                    {{id: 'File', status: 'Status', progress: 'Progress'}[col]}
+                                    {hlsSortBy === col ? <span style={{marginLeft: 4}}>{hlsSortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>}
+                                </th>
+                            ))}
                             <th>Qualities</th>
                             <th>Actions</th>
                         </tr>
                         </thead>
                         <tbody>
-                        {hlsJobs.length === 0 ? (
-                            <tr>
-                                <td colSpan={5} style={{textAlign: 'center', color: 'var(--text-muted)'}}>No HLS jobs
-                                </td>
-                            </tr>
-                        ) : hlsJobs.map(job => (
-                            <tr key={job.id}>
-                                <td style={{
-                                    maxWidth: 200,
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
-                                }}
-                                    title={job.id}>
-                                    {job.id}
-                                </td>
-                                <td>
-                    <span
-                        className={`status-badge status-${job.status === 'completed' ? 'enabled' : job.status === 'failed' ? 'error' : job.status === 'running' ? 'running' : 'disabled'}`}>
-                      {job.status}
-                    </span>
-                                </td>
-                                <td>{job.status === 'running' ? `${Math.round(job.progress)}%` : '—'}</td>
-                                <td>{job.qualities?.join(', ') || '—'}</td>
-                                <td>
-                                    <div style={{display: 'flex', gap: 6}}>
-                                        {job.status === 'completed' && (
-                                            <button className="admin-btn"
-                                                    onClick={() => handleValidateHLS(job.id)}
-                                                    disabled={validatingId === job.id}>
-                                                <i className="bi bi-check2-circle"/> {validatingId === job.id ? '...' : 'Validate'}
+                        {(() => {
+                            const filteredJobs = hlsJobs
+                                .filter(j => !hlsFilterStatus || j.status === hlsFilterStatus)
+                                .sort((a, b) => {
+                                    let cmp = 0
+                                    switch (hlsSortBy) {
+                                        case 'id': cmp = a.id.localeCompare(b.id); break
+                                        case 'status': cmp = a.status.localeCompare(b.status); break
+                                        case 'progress': cmp = a.progress - b.progress; break
+                                    }
+                                    return hlsSortOrder === 'desc' ? -cmp : cmp
+                                })
+                            return filteredJobs.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} style={{textAlign: 'center', color: 'var(--text-muted)'}}>No HLS jobs
+                                    </td>
+                                </tr>
+                            ) : filteredJobs.map(job => (
+                                <tr key={job.id}>
+                                    <td style={{maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}
+                                        title={job.id}>{job.id}</td>
+                                    <td>
+                                        <span className={`status-badge status-${job.status === 'completed' ? 'enabled' : job.status === 'failed' ? 'error' : job.status === 'running' ? 'running' : 'disabled'}`}>
+                                          {job.status}
+                                        </span>
+                                    </td>
+                                    <td>{job.status === 'running' ? `${Math.round(job.progress)}%` : '—'}</td>
+                                    <td>{job.qualities?.join(', ') || '—'}</td>
+                                    <td>
+                                        <div style={{display: 'flex', gap: 6}}>
+                                            {job.status === 'completed' && (
+                                                <button className="admin-btn"
+                                                        onClick={() => handleValidateHLS(job.id)}
+                                                        disabled={validatingId === job.id}>
+                                                    <i className="bi bi-check2-circle"/> {validatingId === job.id ? '...' : 'Validate'}
+                                                </button>
+                                            )}
+                                            <button className="admin-btn admin-btn-danger"
+                                                    onClick={() => handleDeleteHLSJob(job.id)}>
+                                                <i className="bi bi-trash"/> Delete
                                             </button>
-                                        )}
-                                        <button className="admin-btn admin-btn-danger"
-                                                onClick={() => handleDeleteHLSJob(job.id)}>
-                                            <i className="bi bi-trash"/> Delete
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        })()}
                         </tbody>
                     </table>
                 </div>
@@ -1348,11 +1619,10 @@ function StreamingTab() {
                     <table className="admin-table">
                         <thead>
                         <tr>
-                            <th>Task</th>
-                            <th>Interval</th>
-                            <th>Status</th>
-                            <th>Last Run</th>
-                            <th>Next Run</th>
+                            {(['name', 'schedule', 'status', 'last_run', 'next_run'] as const).map(col => {
+                                const labels: Record<string, string> = {name: 'Task', schedule: 'Interval', status: 'Status', last_run: 'Last Run', next_run: 'Next Run'}
+                                return <th key={col}>{labels[col]}</th>
+                            })}
                             <th>Actions</th>
                         </tr>
                         </thead>
@@ -1363,7 +1633,10 @@ function StreamingTab() {
                                     configured
                                 </td>
                             </tr>
-                        ) : tasks.map(task => (
+                        ) : [...tasks].sort((a, b) => {
+                            const statusOrder = (t: ScheduledTask) => t.running ? 0 : t.enabled ? 1 : 2
+                            return statusOrder(a) - statusOrder(b) || a.name.localeCompare(b.name)
+                        }).map(task => (
                             <tr key={task.id}>
                                 <td>
                                     <div style={{fontWeight: 500}}>{task.name}</div>
@@ -2090,7 +2363,7 @@ function RemoteTab() {
                         </tr>
                         </thead>
                         <tbody>
-                        {sources.map(s => (
+                        {[...sources].sort((a, b) => a.source.name.localeCompare(b.source.name)).map(s => (
                             <tr key={s.source.name}>
                                 <td><strong>{s.source.name}</strong></td>
                                 <td style={{
@@ -2181,7 +2454,7 @@ function RemoteTab() {
                                             media found
                                         </td>
                                     </tr>
-                                ) : browseMedia.map(item => (
+                                ) : [...browseMedia].sort((a, b) => a.name.localeCompare(b.name)).map(item => (
                                     <tr key={item.id}>
                                         <td style={{
                                             maxWidth: 200,
@@ -2310,12 +2583,16 @@ function DatabaseTab() {
 
 // ── Tab: Content Review ───────────────────────────────────────────────────────
 
+type ReviewSortKey = 'name' | 'detected_at' | 'confidence'
 function ContentReviewTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [scanning, setScanning] = useState(false)
     const [processingPaths, setProcessingPaths] = useState<Set<string>>(new Set())
+    const [reviewSortBy, setReviewSortBy] = useState<ReviewSortKey>('confidence')
+    const [reviewSortOrder, setReviewSortOrder] = useState<'asc' | 'desc'>('desc')
+    const [reviewSearch, setReviewSearch] = useState('')
 
     const {data: scanStats} = useQuery({
         queryKey: ['scanner-stats'],
@@ -2407,24 +2684,51 @@ function ContentReviewTab() {
                     <h3>Queue Empty</h3>
                     <p>No content pending review.</p>
                 </div>
-            ) : (
+            ) : (() => {
+                const sortedQueue = queue
+                    .filter(i => !reviewSearch || i.name.toLowerCase().includes(reviewSearch.toLowerCase()))
+                    .sort((a, b) => {
+                        let cmp = 0
+                        switch (reviewSortBy) {
+                            case 'name': cmp = a.name.localeCompare(b.name); break
+                            case 'detected_at': cmp = (a.detected_at || '').localeCompare(b.detected_at || ''); break
+                            case 'confidence': cmp = a.confidence - b.confidence; break
+                        }
+                        return reviewSortOrder === 'desc' ? -cmp : cmp
+                    })
+                const reviewThStyle: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
+                function reviewSortIndicator(col: ReviewSortKey) {
+                    if (reviewSortBy !== col) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
+                    return <span style={{marginLeft: 4}}>{reviewSortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+                }
+                function handleReviewSort(col: ReviewSortKey) {
+                    if (reviewSortBy === col) setReviewSortOrder(p => p === 'asc' ? 'desc' : 'asc')
+                    else { setReviewSortBy(col); setReviewSortOrder('asc') }
+                }
+                return (<>
+                <div style={{marginBottom: 8}}>
+                    <input type="text" placeholder="Search files..." value={reviewSearch}
+                           onChange={e => setReviewSearch(e.target.value)}
+                           style={{padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
+                                   background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13, width: '100%', maxWidth: 300}} />
+                </div>
                 <div className="admin-table-wrapper">
                     <table className="admin-table">
                         <thead>
                         <tr>
                             <th>
                                 <input type="checkbox"
-                                       onChange={e => setSelected(e.target.checked ? new Set(queue.map(i => i.id)) : new Set())}/>
+                                       onChange={e => setSelected(e.target.checked ? new Set(sortedQueue.map(i => i.id)) : new Set())}/>
                             </th>
-                            <th>File</th>
-                            <th>Detected</th>
-                            <th>Confidence</th>
+                            <th style={reviewThStyle} onClick={() => handleReviewSort('name')}>File{reviewSortIndicator('name')}</th>
+                            <th style={reviewThStyle} onClick={() => handleReviewSort('detected_at')}>Detected{reviewSortIndicator('detected_at')}</th>
+                            <th style={reviewThStyle} onClick={() => handleReviewSort('confidence')}>Confidence{reviewSortIndicator('confidence')}</th>
                             <th>Reasons</th>
                             <th>Actions</th>
                         </tr>
                         </thead>
                         <tbody>
-                        {queue.map(item => (
+                        {sortedQueue.map(item => (
                             <tr key={item.id}>
                                 <td><input type="checkbox" checked={selected.has(item.id)} onChange={() => {
                                     const next = new Set(selected)
@@ -2514,7 +2818,8 @@ function ContentReviewTab() {
                         </tbody>
                     </table>
                 </div>
-            )}
+                </>)
+            })()}
         </div>
     )
 }
@@ -2990,12 +3295,25 @@ function UpdatesTab() {
 
 // ── Tab: Playlists (Feature 6) ────────────────────────────────────────────────
 
+type PlaylistSortKey = 'name' | 'user_id' | 'items' | 'created_at' | 'is_public'
+
+const PLAYLIST_SORT_COLUMNS: ReadonlyArray<{key: PlaylistSortKey; label: string}> = [
+    {key: 'name', label: 'Name'},
+    {key: 'user_id', label: 'Owner'},
+    {key: 'items', label: 'Items'},
+    {key: 'is_public', label: 'Public'},
+    {key: 'created_at', label: 'Created'},
+]
+
 function PlaylistsTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [search, setSearch] = useState('')
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [bulkWorking, setBulkWorking] = useState(false)
+    const [sortBy, setSortBy] = useState<PlaylistSortKey>('name')
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+    const [filterVisibility, setFilterVisibility] = useState<string>('')
 
     const {data: playlists = []} = useQuery<Playlist[]>({
         queryKey: ['admin-playlists'],
@@ -3040,10 +3358,34 @@ function PlaylistsTab() {
         }
     }
 
-    const filtered = playlists.filter(p =>
-        !search || p.name.toLowerCase().includes(search.toLowerCase())
-    )
+    const filtered = playlists.filter(p => {
+        if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.user_id.toLowerCase().includes(search.toLowerCase())) return false
+        if (filterVisibility === 'public' && !p.is_public) return false
+        if (filterVisibility === 'private' && p.is_public) return false
+        return true
+    }).sort((a, b) => {
+        let cmp = 0
+        switch (sortBy) {
+            case 'name': cmp = a.name.localeCompare(b.name); break
+            case 'user_id': cmp = a.user_id.localeCompare(b.user_id); break
+            case 'items': cmp = (a.items?.length ?? 0) - (b.items?.length ?? 0); break
+            case 'is_public': cmp = (a.is_public === b.is_public ? 0 : a.is_public ? -1 : 1); break
+            case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break
+        }
+        return sortOrder === 'desc' ? -cmp : cmp
+    })
+
     const allSelected = filtered.length > 0 && filtered.every(p => selected.has(p.id))
+
+    function handleSort(column: PlaylistSortKey) {
+        if (sortBy === column) setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+        else { setSortBy(column); setSortOrder('asc') }
+    }
+
+    function sortIndicator(column: PlaylistSortKey) {
+        if (sortBy !== column) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
+        return <span style={{marginLeft: 4}}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+    }
 
     function toggleSelectAll() {
         if (allSelected) {
@@ -3060,6 +3402,12 @@ function PlaylistsTab() {
             })
         }
     }
+
+    const selectStyle: React.CSSProperties = {
+        padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
+        background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13,
+    }
+    const thSortStyle: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
 
     return (
         <div>
@@ -3082,22 +3430,28 @@ function PlaylistsTab() {
                 </div>
             )}
             <div className="admin-card">
-                <div style={{display: 'flex', gap: 8, marginBottom: 12}}>
+                <div style={{display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center'}}>
                     <input
                         type="search"
                         placeholder="Search playlists..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        style={{
-                            flex: 1,
-                            padding: '6px 10px',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: 6,
-                            background: 'var(--input-bg)',
-                            color: 'var(--text-color)',
-                            fontSize: 13
-                        }}
+                        style={{...selectStyle, flex: 1, minWidth: 160}}
                     />
+                    <select value={filterVisibility} onChange={e => setFilterVisibility(e.target.value)} style={selectStyle}>
+                        <option value="">All Visibility</option>
+                        <option value="public">Public Only</option>
+                        <option value="private">Private Only</option>
+                    </select>
+                    {(search || filterVisibility) && (
+                        <button className="admin-btn" style={{fontSize: 12, padding: '4px 10px'}}
+                                onClick={() => { setSearch(''); setFilterVisibility('') }}>
+                            <i className="bi bi-x-circle"/> Clear
+                        </button>
+                    )}
+                    <span style={{fontSize: 12, color: 'var(--text-muted)'}}>
+                        {filtered.length} of {playlists.length} playlist{playlists.length !== 1 ? 's' : ''}
+                    </span>
                 </div>
                 {selected.size > 0 && (
                     <div style={{
@@ -3126,17 +3480,18 @@ function PlaylistsTab() {
                             <th style={{width: 32}}>
                                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}/>
                             </th>
-                            <th>Name</th>
-                            <th>Owner</th>
-                            <th>Items</th>
-                            <th>Created</th>
+                            {PLAYLIST_SORT_COLUMNS.map(col => (
+                                <th key={col.key} style={thSortStyle} onClick={() => handleSort(col.key)}>
+                                    {col.label}{sortIndicator(col.key)}
+                                </th>
+                            ))}
                             <th>Actions</th>
                         </tr>
                         </thead>
                         <tbody>
                         {filtered.length === 0 ? (
                             <tr>
-                                <td colSpan={6} style={{textAlign: 'center', color: 'var(--text-muted)'}}>No playlists
+                                <td colSpan={PLAYLIST_SORT_COLUMNS.length + 2} style={{textAlign: 'center', color: 'var(--text-muted)'}}>No playlists
                                     found
                                 </td>
                             </tr>
@@ -3155,6 +3510,7 @@ function PlaylistsTab() {
                                 <td>{pl.name}</td>
                                 <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{pl.user_id}</td>
                                 <td>{pl.items?.length ?? 0}</td>
+                                <td>{pl.is_public ? 'Yes' : 'No'}</td>
                                 <td style={{
                                     fontSize: 12,
                                     color: 'var(--text-muted)'
@@ -3177,6 +3533,9 @@ function PlaylistsTab() {
 
 // ── Tab: Security (Feature 10) ────────────────────────────────────────────────
 
+type IPSortKey = 'ip' | 'comment' | 'added_at'
+type BanSortKey = 'ip' | 'reason' | 'banned_at' | 'expires_at'
+
 function SecurityTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -3190,6 +3549,15 @@ function SecurityTab() {
     // Ban state
     const [banIp, setBanIp] = useState('')
     const [banDuration, setBanDuration] = useState(60)
+
+    // Sort state for IP tables
+    const [wlSortBy, setWlSortBy] = useState<IPSortKey>('ip')
+    const [wlSortOrder, setWlSortOrder] = useState<'asc' | 'desc'>('asc')
+    const [blSortBy, setBlSortBy] = useState<IPSortKey>('ip')
+    const [blSortOrder, setBlSortOrder] = useState<'asc' | 'desc'>('asc')
+    const [banSortBy, setBanSortBy] = useState<BanSortKey>('banned_at')
+    const [banSortOrder, setBanSortOrder] = useState<'asc' | 'desc'>('desc')
+    const [ipSearch, setIpSearch] = useState('')
 
     const {data: secStats} = useQuery<SecurityStats>({
         queryKey: ['admin-security-stats'],
@@ -3281,6 +3649,14 @@ function SecurityTab() {
                 </div>
             )}
 
+            {/* IP search across all lists */}
+            <div style={{marginBottom: 16}}>
+                <input type="text" placeholder="Search IPs across all lists..." value={ipSearch}
+                       onChange={e => setIpSearch(e.target.value)}
+                       style={{width: '100%', maxWidth: 300, padding: '6px 10px', border: '1px solid var(--border-color)',
+                               borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}} />
+            </div>
+
             {/* Whitelist */}
             <div className="admin-card">
                 <h3>Whitelist <span
@@ -3288,53 +3664,56 @@ function SecurityTab() {
                 </h3>
                 <form onSubmit={handleAddWhitelist} style={{display: 'flex', gap: 8, marginBottom: 12}}>
                     <input type="text" value={wlIp} onChange={e => setWlIp(e.target.value)} placeholder="IP address"
-                           style={{
-                               flex: 1,
-                               padding: '6px 10px',
-                               border: '1px solid var(--border-color)',
-                               borderRadius: 6,
-                               background: 'var(--input-bg)',
-                               color: 'var(--text-color)',
-                               fontSize: 13
-                           }}/>
+                           style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
+                               background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
                     <input type="text" value={wlComment} onChange={e => setWlComment(e.target.value)}
-                           placeholder="Comment (optional)" style={{
-                        flex: 1,
-                        padding: '6px 10px',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 6,
-                        background: 'var(--input-bg)',
-                        color: 'var(--text-color)',
-                        fontSize: 13
-                    }}/>
+                           placeholder="Comment (optional)" style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)',
+                        borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
                     <button type="submit" className="admin-btn admin-btn-primary"><i className="bi bi-plus-lg"/> Add
                     </button>
                 </form>
-                {whitelist.length > 0 && (
+                {whitelist.length > 0 && (() => {
+                    const sortedWl = whitelist
+                        .filter(e => !ipSearch || e.ip.includes(ipSearch) || (e.comment || '').toLowerCase().includes(ipSearch.toLowerCase()))
+                        .sort((a, b) => {
+                            let cmp = 0
+                            switch (wlSortBy) {
+                                case 'ip': cmp = a.ip.localeCompare(b.ip); break
+                                case 'comment': cmp = (a.comment || '').localeCompare(b.comment || ''); break
+                                case 'added_at': cmp = a.added_at.localeCompare(b.added_at); break
+                            }
+                            return wlSortOrder === 'desc' ? -cmp : cmp
+                        })
+                    const thS: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
+                    function wlInd(col: IPSortKey) {
+                        if (wlSortBy !== col) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
+                        return <span style={{marginLeft: 4}}>{wlSortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+                    }
+                    function handleWlSort(col: IPSortKey) {
+                        if (wlSortBy === col) setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc')
+                        else { setWlSortBy(col); setWlSortOrder('asc') }
+                    }
+                    return (
                     <div className="admin-table-wrapper">
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th>IP</th>
-                                <th>Comment</th>
-                                <th>Added</th>
+                                <th style={thS} onClick={() => handleWlSort('ip')}>IP{wlInd('ip')}</th>
+                                <th style={thS} onClick={() => handleWlSort('comment')}>Comment{wlInd('comment')}</th>
+                                <th style={thS} onClick={() => handleWlSort('added_at')}>Added{wlInd('added_at')}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
                             <tbody>
-                            {whitelist.map(entry => (
+                            {sortedWl.map(entry => (
                                 <tr key={entry.ip}>
                                     <td><code>{entry.ip}</code></td>
                                     <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.comment || '—'}</td>
-                                    <td style={{
-                                        fontSize: 12,
-                                        color: 'var(--text-muted)'
-                                    }}>{new Date(entry.added_at).toLocaleDateString()}</td>
+                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(entry.added_at).toLocaleDateString()}</td>
                                     <td>
                                         <button className="admin-btn admin-btn-danger" style={{padding: '3px 8px'}}
                                                 onClick={() => adminApi.removeFromWhitelist(entry.ip).then(() => void queryClient.invalidateQueries({queryKey: ['admin-security-whitelist']})).catch(err => setMsg({
-                                                    type: 'error',
-                                                    text: errMsg(err)
+                                                    type: 'error', text: errMsg(err)
                                                 }))}>
                                             <i className="bi bi-trash-fill"/>
                                         </button>
@@ -3343,8 +3722,8 @@ function SecurityTab() {
                             ))}
                             </tbody>
                         </table>
-                    </div>
-                )}
+                    </div>)
+                })()}
             </div>
 
             {/* Blacklist */}
@@ -3354,53 +3733,56 @@ function SecurityTab() {
                 </h3>
                 <form onSubmit={handleAddBlacklist} style={{display: 'flex', gap: 8, marginBottom: 12}}>
                     <input type="text" value={blIp} onChange={e => setBlIp(e.target.value)} placeholder="IP address"
-                           style={{
-                               flex: 1,
-                               padding: '6px 10px',
-                               border: '1px solid var(--border-color)',
-                               borderRadius: 6,
-                               background: 'var(--input-bg)',
-                               color: 'var(--text-color)',
-                               fontSize: 13
-                           }}/>
+                           style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
+                               background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
                     <input type="text" value={blComment} onChange={e => setBlComment(e.target.value)}
-                           placeholder="Comment (optional)" style={{
-                        flex: 1,
-                        padding: '6px 10px',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 6,
-                        background: 'var(--input-bg)',
-                        color: 'var(--text-color)',
-                        fontSize: 13
-                    }}/>
+                           placeholder="Comment (optional)" style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)',
+                        borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
                     <button type="submit" className="admin-btn admin-btn-danger"><i className="bi bi-plus-lg"/> Block
                     </button>
                 </form>
-                {blacklist.length > 0 && (
+                {blacklist.length > 0 && (() => {
+                    const sortedBl = blacklist
+                        .filter(e => !ipSearch || e.ip.includes(ipSearch) || (e.comment || '').toLowerCase().includes(ipSearch.toLowerCase()))
+                        .sort((a, b) => {
+                            let cmp = 0
+                            switch (blSortBy) {
+                                case 'ip': cmp = a.ip.localeCompare(b.ip); break
+                                case 'comment': cmp = (a.comment || '').localeCompare(b.comment || ''); break
+                                case 'added_at': cmp = a.added_at.localeCompare(b.added_at); break
+                            }
+                            return blSortOrder === 'desc' ? -cmp : cmp
+                        })
+                    const thS: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
+                    function blInd(col: IPSortKey) {
+                        if (blSortBy !== col) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
+                        return <span style={{marginLeft: 4}}>{blSortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+                    }
+                    function handleBlSort(col: IPSortKey) {
+                        if (blSortBy === col) setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc')
+                        else { setBlSortBy(col); setBlSortOrder('asc') }
+                    }
+                    return (
                     <div className="admin-table-wrapper">
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th>IP</th>
-                                <th>Comment</th>
-                                <th>Added</th>
+                                <th style={thS} onClick={() => handleBlSort('ip')}>IP{blInd('ip')}</th>
+                                <th style={thS} onClick={() => handleBlSort('comment')}>Comment{blInd('comment')}</th>
+                                <th style={thS} onClick={() => handleBlSort('added_at')}>Added{blInd('added_at')}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
                             <tbody>
-                            {blacklist.map(entry => (
+                            {sortedBl.map(entry => (
                                 <tr key={entry.ip}>
                                     <td><code>{entry.ip}</code></td>
                                     <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.comment || '—'}</td>
-                                    <td style={{
-                                        fontSize: 12,
-                                        color: 'var(--text-muted)'
-                                    }}>{new Date(entry.added_at).toLocaleDateString()}</td>
+                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(entry.added_at).toLocaleDateString()}</td>
                                     <td>
                                         <button className="admin-btn admin-btn-success" style={{padding: '3px 8px'}}
                                                 onClick={() => adminApi.removeFromBlacklist(entry.ip).then(() => void queryClient.invalidateQueries({queryKey: ['admin-security-blacklist']})).catch(err => setMsg({
-                                                    type: 'error',
-                                                    text: errMsg(err)
+                                                    type: 'error', text: errMsg(err)
                                                 }))}>
                                             <i className="bi bi-check-lg"/> Unblock
                                         </button>
@@ -3409,37 +3791,20 @@ function SecurityTab() {
                             ))}
                             </tbody>
                         </table>
-                    </div>
-                )}
+                    </div>)
+                })()}
             </div>
 
             {/* Banned IPs */}
             <div className="admin-card">
-                <h3>Banned IPs <span style={{
-                    fontSize: 13,
-                    fontWeight: 400,
-                    color: 'var(--text-muted)'
-                }}>({bannedIPs.length} active)</span></h3>
+                <h3>Banned IPs <span style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>({bannedIPs.length} active)</span></h3>
                 <form onSubmit={handleBan} style={{display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap'}}>
                     <input type="text" value={banIp} onChange={e => setBanIp(e.target.value)} placeholder="IP address"
-                           style={{
-                               flex: 1,
-                               minWidth: 140,
-                               padding: '6px 10px',
-                               border: '1px solid var(--border-color)',
-                               borderRadius: 6,
-                               background: 'var(--input-bg)',
-                               color: 'var(--text-color)',
-                               fontSize: 13
-                           }}/>
+                           style={{flex: 1, minWidth: 140, padding: '6px 10px', border: '1px solid var(--border-color)',
+                               borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
                     <select value={banDuration} onChange={e => setBanDuration(Number(e.target.value))} style={{
-                        padding: '6px 10px',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 6,
-                        background: 'var(--input-bg)',
-                        color: 'var(--text-color)',
-                        fontSize: 13
-                    }}>
+                        padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
+                        background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}>
                         <option value={15}>15 min</option>
                         <option value={60}>1 hour</option>
                         <option value={1440}>24 hours</option>
@@ -3447,36 +3812,51 @@ function SecurityTab() {
                     </select>
                     <button type="submit" className="admin-btn admin-btn-danger"><i className="bi bi-ban"/> Ban</button>
                 </form>
-                {bannedIPs.length > 0 && (
+                {bannedIPs.length > 0 && (() => {
+                    const sortedBans = bannedIPs
+                        .filter(b => !ipSearch || b.ip.includes(ipSearch) || (b.reason || '').toLowerCase().includes(ipSearch.toLowerCase()))
+                        .sort((a, b) => {
+                            let cmp = 0
+                            switch (banSortBy) {
+                                case 'ip': cmp = a.ip.localeCompare(b.ip); break
+                                case 'reason': cmp = (a.reason || '').localeCompare(b.reason || ''); break
+                                case 'banned_at': cmp = a.banned_at.localeCompare(b.banned_at); break
+                                case 'expires_at': cmp = (a.expires_at || 'z').localeCompare(b.expires_at || 'z'); break
+                            }
+                            return banSortOrder === 'desc' ? -cmp : cmp
+                        })
+                    const thS: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
+                    function banInd(col: BanSortKey) {
+                        if (banSortBy !== col) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
+                        return <span style={{marginLeft: 4}}>{banSortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+                    }
+                    function handleBanSort(col: BanSortKey) {
+                        if (banSortBy === col) setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc')
+                        else { setBanSortBy(col); setBanSortOrder('asc') }
+                    }
+                    return (
                     <div className="admin-table-wrapper">
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th>IP</th>
-                                <th>Reason</th>
-                                <th>Banned At</th>
-                                <th>Expires</th>
+                                <th style={thS} onClick={() => handleBanSort('ip')}>IP{banInd('ip')}</th>
+                                <th style={thS} onClick={() => handleBanSort('reason')}>Reason{banInd('reason')}</th>
+                                <th style={thS} onClick={() => handleBanSort('banned_at')}>Banned At{banInd('banned_at')}</th>
+                                <th style={thS} onClick={() => handleBanSort('expires_at')}>Expires{banInd('expires_at')}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
                             <tbody>
-                            {bannedIPs.map(ban => (
+                            {sortedBans.map(ban => (
                                 <tr key={ban.ip}>
                                     <td><code>{ban.ip}</code></td>
                                     <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{ban.reason || '—'}</td>
-                                    <td style={{
-                                        fontSize: 12,
-                                        color: 'var(--text-muted)'
-                                    }}>{new Date(ban.banned_at).toLocaleString()}</td>
-                                    <td style={{
-                                        fontSize: 12,
-                                        color: 'var(--text-muted)'
-                                    }}>{ban.expires_at ? new Date(ban.expires_at).toLocaleString() : 'Permanent'}</td>
+                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(ban.banned_at).toLocaleString()}</td>
+                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{ban.expires_at ? new Date(ban.expires_at).toLocaleString() : 'Permanent'}</td>
                                     <td>
                                         <button className="admin-btn admin-btn-success" style={{padding: '3px 8px'}}
                                                 onClick={() => adminApi.unbanIP(ban.ip).then(() => void queryClient.invalidateQueries({queryKey: ['admin-security-banned']})).catch(err => setMsg({
-                                                    type: 'error',
-                                                    text: errMsg(err)
+                                                    type: 'error', text: errMsg(err)
                                                 }))}>
                                             <i className="bi bi-check-lg"/> Unban
                                         </button>
@@ -3485,8 +3865,8 @@ function SecurityTab() {
                             ))}
                             </tbody>
                         </table>
-                    </div>
-                )}
+                    </div>)
+                })()}
             </div>
         </div>
     )
@@ -3724,7 +4104,7 @@ function CategorizerTab() {
                                         in this category
                                     </td>
                                 </tr>
-                            ) : browseResults.map(item => (
+                            ) : [...browseResults].sort((a, b) => a.name.localeCompare(b.name)).map(item => (
                                 <tr key={item.id}>
                                     <td style={{
                                         maxWidth: 200,
@@ -3850,7 +4230,7 @@ function DiscoveryTab() {
                             </tr>
                             </thead>
                             <tbody>
-                            {suggestions.map(s => (
+                            {[...suggestions].sort((a, b) => b.confidence - a.confidence).map(s => (
                                 <tr key={s.original_path}>
                                     <td style={{
                                         maxWidth: 180,

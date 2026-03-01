@@ -1,4 +1,4 @@
-import {type FormEvent, useEffect, useState} from 'react'
+import {type FormEvent, useEffect, useMemo, useState} from 'react'
 import {Link} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
@@ -55,6 +55,11 @@ export function ProfilePage() {
 
     // Preferences form state
     const [prefsSubmitting, setPrefsSubmitting] = useState(false)
+
+    // Watch history sort/filter state
+    const [historySortBy, setHistorySortBy] = useState<'watched_at' | 'name' | 'duration' | 'progress'>('watched_at')
+    const [historySortDesc, setHistorySortDesc] = useState(true)
+    const [historySearch, setHistorySearch] = useState('')
 
     // Delete account form state
     const [deletePassword, setDeletePassword] = useState('')
@@ -198,6 +203,33 @@ export function ProfilePage() {
             setDeleteSubmitting(false)
         }
     }
+
+    const sortedHistory = useMemo(() => {
+        let items = [...watchHistory]
+        if (historySearch) {
+            const q = historySearch.toLowerCase()
+            items = items.filter(e => displayMediaName(e).toLowerCase().includes(q))
+        }
+        items.sort((a, b) => {
+            let cmp = 0
+            switch (historySortBy) {
+                case 'watched_at':
+                    cmp = new Date(a.watched_at).getTime() - new Date(b.watched_at).getTime()
+                    break
+                case 'name':
+                    cmp = displayMediaName(a).localeCompare(displayMediaName(b))
+                    break
+                case 'duration':
+                    cmp = (a.duration || 0) - (b.duration || 0)
+                    break
+                case 'progress':
+                    cmp = (a.progress || 0) - (b.progress || 0)
+                    break
+            }
+            return historySortDesc ? -cmp : cmp
+        })
+        return items
+    }, [watchHistory, historySortBy, historySortDesc, historySearch])
 
     if (!user) {
         return <div className="loading-screen">Loading...</div>
@@ -543,31 +575,64 @@ export function ProfilePage() {
                     ) : watchHistory.length === 0 ? (
                         <p className="empty-state">No watch history yet</p>
                     ) : (
-                        <div className="history-list">
-                            {watchHistory.map((entry, i) => (
-                                <div key={`${entry.media_id}-${i}`} className="history-item">
-                                    <div className="history-info">
-                                        <Link
-                                            to={`/player?id=${encodeURIComponent(entry.media_id)}`}
-                                            className="history-title"
-                                        >
-                                            {displayMediaName(entry)}
-                                        </Link>
-                                        <span className="history-meta">
-                      {formatDuration(entry.duration)} &middot; {Math.round(entry.progress * 100)}% watched
-                    </span>
-                                    </div>
-                                    <span className="history-date">{formatDate(entry.watched_at)}</span>
-                                    <button
-                                        className="btn btn-sm btn-danger"
-                                        onClick={() => handleDeleteHistoryItem(entry.media_id)}
-                                        title="Remove from history"
-                                    >
-                                        <i className="bi bi-x"/>
-                                    </button>
+                        <>
+                            <div style={{display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center'}}>
+                                <input
+                                    type="text"
+                                    placeholder="Search history..."
+                                    value={historySearch}
+                                    onChange={e => setHistorySearch(e.target.value)}
+                                    style={{flex: '1 1 160px', minWidth: 120, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-color)', fontSize: 13}}
+                                />
+                                <select
+                                    value={historySortBy}
+                                    onChange={e => setHistorySortBy(e.target.value as typeof historySortBy)}
+                                    style={{padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-color)', fontSize: 13}}
+                                >
+                                    <option value="watched_at">Date Watched</option>
+                                    <option value="name">Title</option>
+                                    <option value="duration">Duration</option>
+                                    <option value="progress">Progress</option>
+                                </select>
+                                <button
+                                    className="btn btn-sm"
+                                    onClick={() => setHistorySortDesc(d => !d)}
+                                    title={historySortDesc ? 'Descending' : 'Ascending'}
+                                    style={{padding: '6px 10px', fontSize: 13, minWidth: 32}}
+                                >
+                                    {historySortDesc ? '\u25BC' : '\u25B2'}
+                                </button>
+                            </div>
+                            {sortedHistory.length === 0 ? (
+                                <p className="empty-state">No matching history entries</p>
+                            ) : (
+                                <div className="history-list">
+                                    {sortedHistory.map((entry, i) => (
+                                        <div key={`${entry.media_id}-${i}`} className="history-item">
+                                            <div className="history-info">
+                                                <Link
+                                                    to={`/player?id=${encodeURIComponent(entry.media_id)}`}
+                                                    className="history-title"
+                                                >
+                                                    {displayMediaName(entry)}
+                                                </Link>
+                                                <span className="history-meta">
+                                                    {formatDuration(entry.duration)} &middot; {Math.round(entry.progress * 100)}% watched
+                                                </span>
+                                            </div>
+                                            <span className="history-date">{formatDate(entry.watched_at)}</span>
+                                            <button
+                                                className="btn btn-sm btn-danger"
+                                                onClick={() => handleDeleteHistoryItem(entry.media_id)}
+                                                title="Remove from history"
+                                            >
+                                                <i className="bi bi-x"/>
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            )}
+                        </>
                     )}
                 </div>
 

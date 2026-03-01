@@ -5,6 +5,8 @@
 
 import {api} from './client'
 import type {
+    AdminMediaListParams,
+    AdminMediaListResponse,
     AdminPlaylistStats,
     AdminStats,
     AgeGateStatus,
@@ -580,10 +582,28 @@ export const adminApi = {
     getValidatorStats: () =>
         api.get<ValidatorStats>('/api/admin/validator/stats'),
 
-    // AdminListMedia only supports search/page/limit — other filters (sort, type, category) are ignored.
-    listMedia: (params?: { page?: number; limit?: number; search?: string }) => {
-        const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString() : ''
-        return api.get<MediaItem[]>(`/api/admin/media${qs}`)
+    // AdminListMedia supports full sorting, filtering, and pagination — returns { items, total_items, total_pages }.
+    listMedia: (params?: AdminMediaListParams) => {
+        const searchParams = new URLSearchParams()
+        if (params) {
+            const {page, limit, sort_order, ...rest} = params
+            Object.entries(rest).forEach(([key, value]) => {
+                if (value !== undefined && value !== '') {
+                    searchParams.set(key, String(value))
+                }
+            })
+            if (limit !== undefined) {
+                searchParams.set('limit', String(limit))
+            }
+            if (page !== undefined) {
+                searchParams.set('page', String(page))
+            }
+            if (sort_order !== undefined && sort_order !== '') {
+                searchParams.set('sort_order', sort_order)
+            }
+        }
+        const qs = searchParams.toString()
+        return api.get<AdminMediaListResponse>(`/api/admin/media${qs ? `?${qs}` : ''}`)
     },
 
     // On success returns the updated MediaItem; on lookup failure returns { message, path } instead.
