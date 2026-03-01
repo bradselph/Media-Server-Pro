@@ -281,17 +281,7 @@ export function ProfilePage() {
                             <div className="info-item">
                                 <span className="info-label">Quota</span>
                                 <span className="info-value">
-                                    {/* TODO: API Contract Mismatch - StorageUsage.quota_gb (types.ts:606) is named
-                                        "gb" but the backend GetStorageUsage handler (api/handlers/system.go:230)
-                                        returns raw BYTES from getUserStorageQuota() (handler.go:527-544).
-                                        Example: a "basic" user has a 1GB quota but quota_gb = 1073741824 (bytes).
-                                        This line renders "1073741824 GB" instead of "1 GB".
-                                        The percentage field is also computed incorrectly server-side because
-                                        `usedGB / float64(storageQuotaGB)` divides GB by bytes (system.go:224).
-                                        Fix: either (a) fix the backend to divide storageQuotaGB by 1073741824
-                                        before emitting it, OR (b) add a client-side division here:
-                                        `${(storageUsage.quota_gb / 1073741824).toFixed(1)} GB` */}
-                                    {storageUsage.quota_gb > 0 ? `${storageUsage.quota_gb} GB` : 'Unlimited'}
+                                    {storageUsage.quota_gb > 0 ? `${storageUsage.quota_gb.toFixed(1)} GB` : 'Unlimited'}
                                 </span>
                             </div>
                         </div>

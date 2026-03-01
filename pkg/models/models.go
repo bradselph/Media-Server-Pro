@@ -523,8 +523,9 @@ const (
 	HLSStatusCancelled HLSStatus = "cancelled"
 )
 
-// DEPRECATED: S-01 — fully annotated but never instantiated by any module or handler;
-// the streaming module tracks counts internally without persisting session objects — safe to delete
+// StreamSession represents an active media streaming session.
+// Used by the streaming module (internal/streaming/streaming.go) and returned
+// by the GET /api/admin/streams endpoint.
 type StreamSession struct {
 	ID         string    `json:"id"`
 	MediaID    string    `json:"media_id"`

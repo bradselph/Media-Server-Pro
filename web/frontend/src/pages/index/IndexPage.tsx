@@ -760,19 +760,11 @@ export function IndexPage() {
         queryFn: () => mediaApi.getCategories(),
     })
 
-    // Analytics query
-    // TODO: API Contract Mismatch - analyticsApi.getSummary() calls GET /api/analytics
-    // (endpoints.ts:277) which requires adminAuth on the backend (api/routes/routes.go:311).
-    // This query is enabled for ALL authenticated users (enabled: isAuthenticated) but
-    // only admin users are authorized by the backend. Regular authenticated users will
-    // receive a 401 Unauthorized error on every page load, causing error noise in logs
-    // and a failed network request visible in browser DevTools.
-    // Fix: change `enabled: isAuthenticated` to `enabled: isAdmin` (where isAdmin is sourced
-    // from useAuthStore), so this query is only executed when the current user is an admin.
+    // Analytics query — admin-only endpoint, only execute when user is admin
     const {data: analytics} = useQuery<AnalyticsSummary>({
         queryKey: ['analytics-summary'],
         queryFn: () => analyticsApi.getSummary(),
-        enabled: isAuthenticated,
+        enabled: isAdmin,
     })
 
     // Section visibility from user preferences — default true so sections show before prefs load

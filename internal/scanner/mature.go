@@ -853,19 +853,41 @@ func (s *MatureScanner) ReviewItem(ctx context.Context, path, reviewerID, decisi
 	item.ReviewedAt = &now
 	item.Decision = decision
 
-	// Update the scan result in memory
-	if result, ok := s.results[path]; ok {
-		result.ReviewedBy = reviewerID
-		result.ReviewedAt = &now
-		result.ReviewDecision = decision
-
-		switch decision {
-		case "approve": // Mark as mature
-			result.IsMature = true
-		case "reject": // Mark as not mature
-			result.IsMature = false
-			result.AutoFlagged = false
+	// Ensure the scan result is in memory so callers (e.g. BatchReviewAction) can
+	// retrieve it via GetScanResult after the review.  On a fresh start loadResults
+	// is a no-op, so results may be absent even when the review queue was reloaded
+	// from the database — populate from DB in that case.
+	if _, inMem := s.results[path]; !inMem {
+		if s.scanRepo != nil {
+			if repoResult, err := s.scanRepo.Get(ctx, path); err == nil && repoResult != nil {
+				s.results[path] = s.convertRepoToScanner(repoResult)
+			} else {
+				s.results[path] = &ScanResult{
+					Path:      path,
+					ScannedAt: time.Now(),
+					Reasons:   []string{},
+				}
+			}
+		} else {
+			s.results[path] = &ScanResult{
+				Path:      path,
+				ScannedAt: time.Now(),
+				Reasons:   []string{},
+			}
 		}
+	}
+
+	result := s.results[path]
+	result.ReviewedBy = reviewerID
+	result.ReviewedAt = &now
+	result.ReviewDecision = decision
+
+	switch decision {
+	case "approve":
+		result.IsMature = true
+	case "reject":
+		result.IsMature = false
+		result.AutoFlagged = false
 	}
 
 	s.log.Info("Review decision for %s: %s by %s", path, decision, reviewerID)

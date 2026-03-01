@@ -736,7 +736,7 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 	}()
 	initial := h.updater.GetActiveBuildStatus()
 	if initial == nil {
-		initial = &updater.UpdateStatus{InProgress: true, Stage: "starting", Progress: 0}
+		initial = &updater.UpdateStatus{InProgress: true, Stage: "starting", Progress: 0, StartedAt: time.Now()}
 	}
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Data: initial})
 }

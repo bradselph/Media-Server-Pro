@@ -70,16 +70,7 @@ type UpdateCheckResult struct {
 	UpdateAvailable bool      `json:"update_available"`
 	ReleaseURL      string    `json:"release_url,omitempty"`
 	ReleaseNotes    string    `json:"release_notes,omitempty"`
-	// TODO: API Contract Mismatch - PublishedAt uses json:"published_at,omitempty" but
-	// Go's omitempty does NOT omit a zero time.Time value — only nil pointers and zero
-	// primitive types are omitted. When no release publish date is available, this field
-	// serializes as "published_at":"0001-01-01T00:00:00Z" (present, not absent).
-	// Frontend (web/frontend/src/api/endpoints.ts checkUpdates/getUpdateStatus) types
-	// published_at as optional (`published_at?: string`) expecting it to be absent when
-	// unavailable, but it will always be present as the zero-time string.
-	// Frontend callers checking `if (result.published_at)` will find it truthy for epoch date.
-	// Fix: change to *time.Time so nil pointer is correctly omitted by omitempty.
-	PublishedAt     time.Time `json:"published_at,omitempty"`
+	PublishedAt     *time.Time `json:"published_at,omitempty"`
 	CheckedAt       time.Time `json:"checked_at"`
 	Error           string    `json:"error,omitempty"`
 }
@@ -304,7 +295,10 @@ func (m *Module) CheckForUpdates() (*UpdateCheckResult, error) {
 	result.LatestVersion = latestVersion
 	result.ReleaseURL = release.HTMLURL
 	result.ReleaseNotes = release.Body
-	result.PublishedAt = release.PublishedAt
+	if !release.PublishedAt.IsZero() {
+		t := release.PublishedAt
+		result.PublishedAt = &t
+	}
 
 	// Compare versions
 	result.UpdateAvailable = isNewerVersion(latestVersion, m.currentVersion)

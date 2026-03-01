@@ -195,23 +195,10 @@ export const hlsApi = {
     getCapabilities: () =>
         api.get<HLSCapabilities>('/api/hls/capabilities'),
 
-    // TODO: API Contract Mismatch - Frontend sends query param `id` (endpoints.ts:199)
-    // but backend CheckHLSAvailability handler (api/handlers/hls.go:29) reads `c.Query("id")`.
-    // This is ALIGNED. However, the handler resolves the id via resolveMediaByID which expects
-    // a UUID (stable media ID). If a caller passes anything other than the stable UUID from
-    // MediaItem.id, this will return 404. No change needed if callers always use MediaItem.id.
     check: (id: string) =>
         api.get<HLSAvailability>(`/api/hls/check?id=${encodeURIComponent(id)}`),
 
-    // TODO: API Contract Mismatch - Frontend sends `{id, quality}` where quality is a single
-    // string (endpoints.ts:202) but backend GenerateHLS handler (api/handlers/hls.go:77-88)
-    // expects EITHER `id + qualities` ([]string) OR `id + quality` (string, normalized to
-    // []string internally). The frontend only sends `quality` (singular), which maps to the
-    // `quality` field in the backend struct — this is handled. However, the return type
-    // HLSJob interface does not include `job_id` as a separate field, yet the handler
-    // (hls.go:109) returns BOTH `"job_id": job.ID` and `"id": job.ID`. The TypeScript
-    // HLSJob type only has `id` (types.ts:237) — job_id is silently ignored by the client,
-    // which is fine since both map to the same value. No functional breakage.
+    // Backend accepts `quality` (string) or `qualities` ([]string); sending singular `quality` is handled.
     generate: (id: string, quality?: string) =>
         api.post<HLSJob>('/api/hls/generate', {id, quality}),
 
@@ -272,16 +259,6 @@ export const playlistApi = {
 // ── Analytics ──
 
 export const analyticsApi = {
-    // TODO: API Contract Mismatch - `getSummary` calls GET /api/analytics (endpoints.ts:277)
-    // but the backend route (api/routes/routes.go:311) registers this as:
-    //   api.GET("/analytics", adminAuth(authModule), h.GetAnalyticsSummary)
-    // — it requires adminAuth, not just requireAuth.
-    // IndexPage.tsx (line 766) calls this with `enabled: isAuthenticated` — meaning any
-    // authenticated regular user triggers this call and receives a 401 Unauthorized response.
-    // AdminPage.tsx (line 1754) correctly calls this only in the admin context.
-    // Fix: either (a) change the route to requireAuth() if summary data is intended for all users,
-    // OR (b) add `enabled: isAdmin` guard in IndexPage.tsx query (line 767) so only admins call it.
-    // Backend route: api/routes/routes.go:311. Frontend callers: IndexPage.tsx:766, AdminPage.tsx:1754.
     getSummary: () =>
         api.get<AnalyticsSummary>('/api/analytics'),
 
@@ -382,16 +359,6 @@ export const adminApi = {
         api.post<void>('/api/admin/cache/clear'),
 
     // checked_at is always populated by CheckForUpdates so non-nullable here is correct.
-    // Backend also sends published_at from UpdateCheckResult.
-    // TODO: API Contract Mismatch - `published_at?: string` is typed as optional (may be absent).
-    // The backend updater.UpdateCheckResult.PublishedAt has json:"published_at,omitempty"
-    // (internal/updater/updater.go:73). However, Go's omitempty on time.Time does NOT omit
-    // a zero time.Time value — Go only omits zero values for primitive types (int, string, bool)
-    // with omitempty; struct types (including time.Time) are never considered zero by reflect.
-    // Result: when a release has no published date, the frontend receives
-    // "published_at":"0001-01-01T00:00:00Z" (field IS present), not an absent field.
-    // Callers that check `if (status.published_at)` will find it truthy even for the epoch date.
-    // Fix: use *time.Time (pointer) with omitempty in the Go struct — nil pointer IS omitted.
     checkUpdates: () =>
         api.get<{
             update_available: boolean
@@ -404,19 +371,7 @@ export const adminApi = {
             error?: string
         }>('/api/admin/update/check'),
 
-    // checked_at is null before first check (handler.go:685 explicitly sets checked_at: nil);
-    // when a check has been run, checked_at is updater.UpdateCheckResult.CheckedAt serialized
-    // as RFC3339 string (time.Time json:"checked_at"). The string | null type is ALIGNED.
-    // Note: when result != nil (after first check), the full UpdateCheckResult struct is serialized
-    // and published_at uses json:"published_at,omitempty" (time.Time) — Go omitempty on time.Time
-    // does NOT omit zero value (omitempty only omits Go zero values for primitive types, not structs).
-    // published_at will serialize as "0001-01-01T00:00:00Z" when no release date exists, not absent.
-    // TODO: API Contract Mismatch - `published_at?: string` is typed as optional (endpoints.ts here)
-    // but the backend updater.UpdateCheckResult.PublishedAt has json:"published_at,omitempty"
-    // (internal/updater/updater.go:73). Go's omitempty on time.Time does NOT work as expected —
-    // a zero time.Time is NOT a Go zero value for struct types, so it will NOT be omitted.
-    // When no publish date exists, frontend receives "published_at":"0001-01-01T00:00:00Z" (present
-    // but misleading) rather than the field being absent. Callers must check for "0001" prefix.
+    // checked_at is null before first check; string after first check.
     getUpdateStatus: () =>
         api.get<{
             update_available: boolean
@@ -448,14 +403,6 @@ export const adminApi = {
         }>('/api/admin/update/source/check'),
 
     // Returns 202 Accepted immediately; poll getSourceUpdateProgress() every 2s for live status
-    // TODO: API Contract Mismatch - `started_at: string` is typed as required here, but
-    // when the source build has just started and GetActiveBuildStatus() returns nil,
-    // the handler (api/handlers/admin.go:737-742) creates an initial UpdateStatus with
-    // `{InProgress: true, Stage: "starting", Progress: 0}` — StartedAt is the zero value
-    // (time.Time{}), which serializes as "started_at":"0001-01-01T00:00:00Z" rather than
-    // the actual start time. Callers must guard: `if (status.started_at && !status.started_at.startsWith('0001'))`.
-    // Fix: set `StartedAt: time.Now()` when creating the initial UpdateStatus in the handler,
-    // OR change the type to `started_at?: string` and omit when zero.
     applySourceUpdate: () =>
         api.post<{
             stage: string
@@ -512,15 +459,7 @@ export const adminApi = {
     getUser: (username: string) =>
         api.get<User>(`/api/admin/users/${encodeURIComponent(username)}`),
 
-    // TODO: API Contract Mismatch - `updateUser` accepts `Partial<User>` (endpoints.ts:470)
-    // which includes ALL User fields (id, username, type, created_at, watch_history, etc.),
-    // but the backend AdminUpdateUser handler (api/handlers/admin.go:203-208) only reads
-    // four specific fields: role, enabled, email, permissions. All other fields in the
-    // Partial<User> payload are silently ignored. Callers may send fields like `type` or
-    // `storage_used` expecting them to be updated, but the backend will not apply them.
-    // Fix: narrow the parameter type to an explicit update DTO, e.g.:
-    //   data: { role?: string; enabled?: boolean; email?: string; permissions?: Partial<UserPermissions> }
-    updateUser: (username: string, data: Partial<User>) =>
+    updateUser: (username: string, data: { role?: string; enabled?: boolean; email?: string; permissions?: Partial<UserPermissions> }) =>
         api.put<User>(`/api/admin/users/${encodeURIComponent(username)}`, data),
 
     deleteUser: (username: string) =>
@@ -632,18 +571,6 @@ export const adminApi = {
     clearReviewQueue: () =>
         api.delete<void>('/api/admin/scanner/queue'),
 
-    // TODO: API Contract Mismatch - `approveContent` is defined here (endpoints.ts) but
-    // has NO callers in the frontend codebase. The admin scanner UI (AdminPage.tsx:2821)
-    // uses `adminApi.batchReview('approve', [item.id])` (POST /api/admin/scanner/queue)
-    // for individual approvals instead of calling this endpoint.
-    // Backend route: POST /api/admin/scanner/approve/:id (routes.go:415).
-    // The two paths are functionally equivalent but only batchReview is actually wired up.
-    // Current state: orphaned endpoint function — never called from web/frontend/src/.
-    // Fix: either call approveContent for single-item approvals and batchReview for bulk,
-    // OR remove this function since batchReview covers all cases.
-    approveContent: (id: string) =>
-        api.post<void>(`/api/admin/scanner/approve/${encodeURIComponent(id)}`),
-
     // HLS admin
     getHLSStats: () =>
         api.get<HLSStats>('/api/admin/hls/stats'),
@@ -711,15 +638,6 @@ export const adminApi = {
     bulkMedia: (ids: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
         api.post<{ success: number; failed: number; errors: string[] }>('/api/admin/media/bulk', {ids, action, data}),
 
-    // TODO: API Contract Mismatch - `getDailyStats` is defined here (endpoints.ts:697) but
-    // has NO callers in the frontend codebase. The backend route GET /api/analytics/daily
-    // (routes.go:312) requires adminAuth — only admins can call it. If a frontend component
-    // ever calls this outside an admin context, it will receive a 401 Unauthorized.
-    // Additionally, if called from a non-admin page (similar to the analyticsApi.getSummary issue
-    // in IndexPage.tsx), it would cause a 401 on every page load for authenticated non-admins.
-    // Current state: orphaned endpoint function — no callers found in web/frontend/src/.
-    // Fix: either wire this into AdminPage.tsx analytics tab, or remove the function to
-    // prevent accidental misuse.
     getDailyStats: (days?: number) =>
         api.get<DailyStats[]>(`/api/analytics/daily${days ? `?days=${days}` : ''}`),
 

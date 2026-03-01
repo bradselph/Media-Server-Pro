@@ -600,22 +600,11 @@ export interface RemoteStats {
 
 // ── Feature 1: Storage & Permissions ──
 
-// TODO: API Contract Mismatch - StorageUsage.quota_gb is misnamed.
-// Backend GetStorageUsage handler (api/handlers/system.go:230) emits:
-//   "quota_gb": storageQuotaGB   where storageQuotaGB = getUserStorageQuota(userType) in BYTES
-// getUserStorageQuota() (handler.go:527-544) returns int64 bytes: 1*1024*1024*1024 for "basic".
-// So quota_gb actually contains BYTES (e.g. 1073741824) not gigabytes.
-// used_gb is correctly computed as float64(totalSize)/(1024*1024*1024) — in GB.
-// percentage is computed as (usedGB / float64(storageQuotaGB)) * 100 which divides
-// GB by bytes — the result is ~10^9 times smaller than expected.
-// ProfilePage.tsx line 284 renders `${storageUsage.quota_gb} GB` — shows "1073741824 GB".
-// Fix: rename field to quota_bytes on both sides, OR fix the backend to divide by
-// (1024*1024*1024) before emitting as quota_gb. Whichever side changes, update the other.
 export interface StorageUsage {
     used_bytes: number
     used_gb: number
-    quota_gb: number   // TODO: API Contract Mismatch - actually contains BYTES not GB — see above
-    percentage: number // TODO: API Contract Mismatch - computed from usedGB/quotaBytes — always near zero; see system.go:224
+    quota_gb: number
+    percentage: number
     user_type: string
     is_authenticated: boolean
 }
