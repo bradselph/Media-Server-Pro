@@ -84,6 +84,19 @@ export interface LoginResponse {
 }
 
 // ── Media ──
+export interface UserSession {
+    id: string
+    user_id: string
+    username: string
+    role: string
+    created_at: string
+    expires_at: string
+    last_activity: string
+    ip_address: string
+    user_agent: string
+}
+
+// ── Media ──
 
 // Backend models.MediaCategory JSON fields (from pkg/models/models.go)
 export interface MediaCategory {
@@ -727,6 +740,9 @@ export interface DetectedMediaInfo {
     show_name?: string
     artist?: string
     album?: string
+    resolution?: string
+    source?: string
+    audio_format?: string
 }
 
 export interface CategorizedItem {
