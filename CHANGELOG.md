@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.0] - 2026-03-01 (minor)
+
+- Merge pull request #18 from bradselph/development
+- Update AdminPage.tsx
+
+
 ## [0.14.0] - 2026-03-01 (minor)
 
 - Merge pull request #17 from bradselph/development
