@@ -710,7 +710,7 @@ function MediaTab() {
     const [debouncedMediaSearch, setDebouncedMediaSearch] = useState('')
     const [mediaPage, setMediaPage] = useState(1)
     const [editItem, setEditItem] = useState<MediaItem | null>(null)
-    const mediaLimit = 20
+    const [mediaLimit, setMediaLimit] = useState(20)
     const mediaSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // Sort state
@@ -743,7 +743,7 @@ function MediaTab() {
 
     const emptyResponse: AdminMediaListResponse = {items: [], total_items: 0, total_pages: 1}
     const {data: mediaResponse = emptyResponse} = useQuery<AdminMediaListResponse>({
-        queryKey: ['admin-media', debouncedMediaSearch, mediaPage, sortBy, sortOrder, filterType, filterCategory, filterMature],
+        queryKey: ['admin-media', debouncedMediaSearch, mediaPage, mediaLimit, sortBy, sortOrder, filterType, filterCategory, filterMature],
         queryFn: async () => {
             const result = await adminApi.listMedia({
                 page: mediaPage,
@@ -842,6 +842,7 @@ function MediaTab() {
             await adminApi.updateMedia(editItem.id, {
                 name: editItem.name,
                 category: editItem.category,
+                tags: editItem.tags ?? [],
                 is_mature: editItem.is_mature
             })
             setEditItem(null)
@@ -999,6 +1000,12 @@ function MediaTab() {
                         onChange={e => { setFilterCategory(e.target.value); setMediaPage(1) }}
                         style={{...selectStyle, width: 140}}
                     />
+                    <select value={mediaLimit} onChange={e => { setMediaLimit(Number(e.target.value)); setMediaPage(1) }} style={selectStyle}>
+                        <option value={20}>20 per page</option>
+                        <option value={50}>50 per page</option>
+                        <option value={100}>100 per page</option>
+                        <option value={200}>200 per page</option>
+                    </select>
                     {(filterType || filterCategory || filterMature || debouncedMediaSearch) && (
                         <button className="admin-btn" style={{fontSize: 12, padding: '4px 10px'}}
                                 onClick={() => { setFilterType(''); setFilterCategory(''); setFilterMature(''); setMediaSearch(''); setMediaPage(1) }}>
@@ -1095,6 +1102,20 @@ function MediaTab() {
                             <label style={{fontSize: 13}}>Category
                                 <input value={editItem.category ?? ''}
                                        onChange={e => setEditItem({...editItem, category: e.target.value})}
+                                       style={{
+                                           display: 'block',
+                                           width: '100%',
+                                           marginTop: 4,
+                                           padding: '6px 8px',
+                                           border: '1px solid var(--border-color)',
+                                           borderRadius: 4,
+                                           background: 'var(--input-bg)',
+                                           color: 'var(--text-color)'
+                                       }}/>
+                            </label>
+                            <label style={{fontSize: 13}}>Tags (comma-separated)
+                                <input value={(editItem.tags ?? []).join(', ')}
+                                       onChange={e => setEditItem({...editItem, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)})}
                                        style={{
                                            display: 'block',
                                            width: '100%',

@@ -902,6 +902,11 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 			return items[i].Type < items[j].Type
 		case "category":
 			return items[i].Category < items[j].Category
+		case "is_mature":
+			if items[i].IsMature != items[j].IsMature {
+				return !items[i].IsMature // false < true: non-mature first in ascending
+			}
+			return items[i].Name < items[j].Name
 		default:
 			return items[i].Name < items[j].Name
 		}

@@ -56,6 +56,9 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 	// Apply pagination
 	limit := 50
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
+		if l > 1000 {
+			l = 1000
+		}
 		limit = l
 	}
 	totalPages := 1
@@ -159,7 +162,7 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 	if reqTags != nil {
 		updates["tags"] = reqTags
 	}
-	if reqCategory != "" {
+	if _, ok := rawBody["category"]; ok {
 		updates["category"] = reqCategory
 	}
 	if raw, ok := rawBody["is_mature"]; ok {

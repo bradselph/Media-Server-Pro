@@ -62,6 +62,7 @@ import type {
     UploadResult,
     User,
     UserPreferences,
+    UserSession,
     ValidationResult,
     ValidatorStats,
     WatchHistoryEntry,
@@ -461,6 +462,9 @@ export const adminApi = {
     // The built-in "admin" account is always skipped. Returns { success, failed, errors[] }.
     bulkUsers: (usernames: string[], action: 'delete' | 'enable' | 'disable') =>
         api.post<{ success: number; failed: number; errors: string[] }>('/api/admin/users/bulk', {usernames, action}),
+
+    getUserSessions: (username: string) =>
+        api.get<UserSession[]>(`/api/admin/users/${encodeURIComponent(username)}/sessions`),
 
     changeUserPassword: (username: string, newPassword: string) =>
         api.post<void>(`/api/admin/users/${encodeURIComponent(username)}/password`, {new_password: newPassword}),
