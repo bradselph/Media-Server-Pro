@@ -63,14 +63,14 @@ func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.Sc
 		}
 
 		row := scanResultRow{
-			Path:        result.Path,
-			IsMature:    result.IsMature,
-			Confidence:  result.Confidence,
-			AutoFlagged: result.AutoFlagged,
-			NeedsReview: result.NeedsReview,
-			ScannedAt:   scannedAt,
-			ReviewedBy:  nilIfEmpty(result.ReviewedBy),
-			ReviewedAt:  reviewedAt,
+			Path:           result.Path,
+			IsMature:       result.IsMature,
+			Confidence:     result.Confidence,
+			AutoFlagged:    result.AutoFlagged,
+			NeedsReview:    result.NeedsReview,
+			ScannedAt:      scannedAt,
+			ReviewedBy:     nilIfEmpty(result.ReviewedBy),
+			ReviewedAt:     reviewedAt,
 			ReviewDecision: nilIfEmpty(result.ReviewDecision),
 		}
 

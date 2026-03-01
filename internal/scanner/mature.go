@@ -3,8 +3,6 @@ package scanner
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
@@ -810,9 +810,8 @@ func (s *MatureScanner) isAllowedExtension(ext string) bool {
 // The underlying scan result (with needs_review=true) is already persisted to MySQL
 // via scanRepo.Save() when ScanFile is called.
 func (s *MatureScanner) addToReviewQueue(result *ScanResult) {
-	h := md5.Sum([]byte(result.Path))
 	item := &models.MatureReviewItem{
-		ID:         hex.EncodeToString(h[:]),
+		ID:         uuid.New().String(),
 		Name:       filepath.Base(result.Path),
 		MediaPath:  result.Path,
 		DetectedAt: result.ScannedAt,
@@ -990,9 +989,8 @@ func (s *MatureScanner) loadReviewQueue() error {
 
 	for _, r := range pending {
 		scannedAt, _ := time.Parse(time.RFC3339, r.ScannedAt)
-		h := md5.Sum([]byte(r.Path))
 		s.reviewQueue[r.Path] = &models.MatureReviewItem{
-			ID:         hex.EncodeToString(h[:]),
+			ID:         uuid.New().String(),
 			Name:       filepath.Base(r.Path),
 			MediaPath:  r.Path,
 			DetectedAt: scannedAt,

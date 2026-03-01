@@ -494,10 +494,10 @@ func (h *Handler) allowedMediaDirs() []string {
 	return []string{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads}
 }
 
-// resolveMediaByID looks up a media item by its opaque ID and returns the
-// server-side file path. The ID is an MD5 hash of the path, generated during
-// media scanning. Returns the absolute path and true on success, or writes an
-// error response and returns ("", false) on failure.
+// resolveMediaByID looks up a media item by its stable UUID and returns the
+// server-side file path. The UUID is generated once per file on first scan and
+// persisted in the database. Returns the absolute path and true on success, or
+// writes an error response and returns ("", false) on failure.
 //
 // If the initial media scan has not yet completed (server just started), returns
 // 503 instead of 404 so clients know to retry rather than treating the item as
@@ -593,10 +593,10 @@ func (h *Handler) enrichSuggestionThumbnails(items []*suggestions.Suggestion) {
 	}
 	for _, item := range items {
 		if item.ThumbnailURL == "" {
-			if !h.thumbnails.HasThumbnail(item.MediaPath) {
+			if !h.thumbnails.HasThumbnail(item.MediaID) {
 				ext := strings.ToLower(filepath.Ext(item.MediaPath))
 				isAudio := isAudioExtension(ext)
-				if _, err := h.thumbnails.GenerateThumbnail(item.MediaPath, isAudio); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
+				if _, err := h.thumbnails.GenerateThumbnail(item.MediaPath, item.MediaID, isAudio); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.MediaPath, err)
 				}
 			}

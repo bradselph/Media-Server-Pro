@@ -403,7 +403,7 @@ func (h *Handler) GetWatchHistory(c *gin.Context) {
 	history := user.WatchHistory
 
 	// Enrich entries with human-readable media names so the frontend
-	// doesn't need to resolve opaque MD5 IDs for display.
+	// doesn't need to resolve opaque UUIDs for display.
 	for i := range history {
 		if history[i].MediaName == "" {
 			if item, err := h.media.GetMediaByID(history[i].MediaID); err == nil {

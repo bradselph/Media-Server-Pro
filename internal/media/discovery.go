@@ -4,10 +4,11 @@ package media
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,44 +85,99 @@ type Module struct {
 	categories   map[string]*models.MediaCategory
 	metadata     map[string]*Metadata
 	metadataRepo repositories.MediaMetadataRepository
-	mu           sync.RWMutex
-	metaMu       sync.RWMutex
-	saveMu       sync.Mutex // serialises concurrent saveMetadata calls to prevent MySQL lock waits
-	dataDir      string
-	scanning     bool // protected by healthMu; true while Scan() is running
-	healthy      bool
-	healthMsg    string
-	healthMu     sync.RWMutex
-	scanTicker   *time.Ticker
-	scanDone     chan struct{}
-	scanCtx         context.Context    // Cancelled on shutdown; used by background saves
-	scanCancel      context.CancelFunc // Cancels background scans on shutdown
-	version         int64
-	lastScan        time.Time
-	initialScanDone bool // true after the first scan attempt completes (success or failure)
-	ffprobeAvail    bool
-	ffprobePath     string // absolute path, set by checkFFProbe for use under systemd
+	// fingerprintIndex maps content fingerprints to the metadata path that owns them.
+	// Built during loadMetadata and updated during scans so that createMediaItem can
+	// detect moved/renamed files by matching fingerprint instead of path.
+	fingerprintIndex map[string]string // fingerprint -> path
+	mu               sync.RWMutex
+	metaMu           sync.RWMutex
+	saveMu           sync.Mutex // serialises concurrent saveMetadata calls to prevent MySQL lock waits
+	dataDir          string
+	scanning         bool // protected by healthMu; true while Scan() is running
+	healthy          bool
+	healthMsg        string
+	healthMu         sync.RWMutex
+	scanTicker       *time.Ticker
+	scanDone         chan struct{}
+	scanCtx          context.Context    // Cancelled on shutdown; used by background saves
+	scanCancel       context.CancelFunc // Cancels background scans on shutdown
+	version          int64
+	lastScan         time.Time
+	initialScanDone  bool // true after the first scan attempt completes (success or failure)
+	ffprobeAvail     bool
+	ffprobePath      string // absolute path, set by checkFFProbe for use under systemd
 }
 
 // Metadata holds extended metadata for a media item
 type Metadata struct {
 	// StableID is a UUID generated on first scan and persisted in the DB.
 	// It is the public-facing MediaItem.ID, decoupled from the file path.
-	StableID      string             `json:"stable_id,omitempty"`
-	Views         int                `json:"views"`
-	LastPlayed    *time.Time         `json:"last_played,omitempty"`
-	DateAdded     time.Time          `json:"date_added"`
-	PlaybackPos   map[string]float64 `json:"playback_positions,omitempty"` // user -> position
-	IsMature      bool               `json:"is_mature"`
-	MatureScore   float64            `json:"mature_score"`
-	MatureReasons []string           `json:"mature_reasons,omitempty"`
-	Tags          []string           `json:"tags,omitempty"`
-	Category      string             `json:"category,omitempty"`
-	CustomMeta    map[string]string  `json:"custom_meta,omitempty"`
+	StableID string `json:"stable_id,omitempty"`
+	// ContentFingerprint is a SHA-256 of sampled file bytes.
+	// Used to detect moved/renamed files and find duplicates.
+	ContentFingerprint string             `json:"content_fingerprint,omitempty"`
+	Views              int                `json:"views"`
+	LastPlayed         *time.Time         `json:"last_played,omitempty"`
+	DateAdded          time.Time          `json:"date_added"`
+	PlaybackPos        map[string]float64 `json:"playback_positions,omitempty"` // user -> position
+	IsMature           bool               `json:"is_mature"`
+	MatureScore        float64            `json:"mature_score"`
+	MatureReasons      []string           `json:"mature_reasons,omitempty"`
+	Tags               []string           `json:"tags,omitempty"`
+	Category           string             `json:"category,omitempty"`
+	CustomMeta         map[string]string  `json:"custom_meta,omitempty"`
 	// ProbeModTime records the file mtime at the time ffprobe was last run.
 	// extractMetadata skips ffprobe when the file mtime hasn't advanced,
 	// making subsequent hourly scans near-instant for unchanged libraries.
 	ProbeModTime time.Time `json:"probe_mod_time,omitempty"`
+}
+
+// computeContentFingerprint computes a SHA-256 fingerprint of a media file.
+// It samples the first 64 KB, the last 64 KB, and the file size. This is fast
+// even for very large files (always reads at most 128 KB) while providing
+// strong collision resistance. Two files with identical fingerprints can be
+// treated as duplicates; a file that is moved or renamed keeps its fingerprint.
+func computeContentFingerprint(path string) (string, error) {
+	const sampleSize = 64 * 1024 // 64 KB
+
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return "", fmt.Errorf("stat %s: %w", path, err)
+	}
+
+	size := info.Size()
+	h := sha256.New()
+
+	// Write file size into the hash so that files with identical leading/trailing
+	// bytes but different lengths produce different fingerprints.
+	fmt.Fprintf(h, "size:%d\n", size)
+
+	// Read first 64 KB (or entire file if smaller)
+	head := make([]byte, sampleSize)
+	n, err := io.ReadFull(f, head)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return "", fmt.Errorf("read head of %s: %w", path, err)
+	}
+	h.Write(head[:n])
+
+	// Read last 64 KB if the file is larger than one sample
+	if size > int64(sampleSize) {
+		tail := make([]byte, sampleSize)
+		offset := size - int64(sampleSize)
+		n, err = f.ReadAt(tail, offset)
+		if err != nil && err != io.EOF {
+			return "", fmt.Errorf("read tail of %s: %w", path, err)
+		}
+		h.Write(tail[:n])
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // NewModule creates a new media module.
@@ -132,15 +188,16 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 	}
 
 	return &Module{
-		config:     cfg,
-		log:        logger.New("media"),
-		dbModule:   dbModule,
-		media:      make(map[string]*models.MediaItem),
-		mediaByID:  make(map[string]*models.MediaItem),
-		categories: make(map[string]*models.MediaCategory),
-		metadata:   make(map[string]*Metadata),
-		dataDir:    cfg.Get().Directories.Data,
-		scanDone:   make(chan struct{}),
+		config:           cfg,
+		log:              logger.New("media"),
+		dbModule:         dbModule,
+		media:            make(map[string]*models.MediaItem),
+		mediaByID:        make(map[string]*models.MediaItem),
+		categories:       make(map[string]*models.MediaCategory),
+		metadata:         make(map[string]*Metadata),
+		fingerprintIndex: make(map[string]string),
+		dataDir:          cfg.Get().Directories.Data,
+		scanDone:         make(chan struct{}),
 	}, nil
 }
 
@@ -500,6 +557,78 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	meta, hasMeta := m.metadata[path]
 	m.metaMu.RUnlock()
 
+	if !hasMeta {
+		// No metadata at this path. Compute a content fingerprint and check
+		// whether we already know this file under a different (old) path.
+		// This detects files that were moved or renamed between scans.
+		fp, fpErr := computeContentFingerprint(path)
+		if fpErr != nil {
+			m.log.Debug("Could not fingerprint %s: %v", path, fpErr)
+		}
+
+		if fp != "" {
+			m.metaMu.RLock()
+			oldPath, found := m.fingerprintIndex[fp]
+			var oldMeta *Metadata
+			if found && oldPath != path {
+				oldMeta = m.metadata[oldPath]
+			}
+			m.metaMu.RUnlock()
+
+			if oldMeta != nil {
+				// Migrate metadata from old path to new path (file was moved/renamed)
+				m.log.Info("Detected moved file: %s -> %s (fingerprint %s…)", oldPath, path, fp[:12])
+				m.metaMu.Lock()
+				m.metadata[path] = oldMeta
+				delete(m.metadata, oldPath)
+				m.fingerprintIndex[fp] = path
+				m.metaMu.Unlock()
+				meta = oldMeta
+				hasMeta = true
+			} else if found {
+				// Same file at same path — just use existing metadata normally.
+				// This happens when the fingerprint was computed for the first time
+				// on a file that already had metadata by path.
+			} else {
+				// Truly new file — record fingerprint for future move detection
+				m.log.Debug("New content fingerprint for %s: %s…", path, fp[:12])
+			}
+
+			// Store the fingerprint regardless (new or migrated)
+			if !hasMeta {
+				now := time.Now()
+				item.DateAdded = now
+				m.metaMu.Lock()
+				m.metadata[path] = &Metadata{
+					ContentFingerprint: fp,
+					DateAdded:          now,
+					PlaybackPos:        make(map[string]float64),
+					CustomMeta:         make(map[string]string),
+				}
+				meta = m.metadata[path]
+				m.fingerprintIndex[fp] = path
+				m.metaMu.Unlock()
+			} else if meta.ContentFingerprint == "" {
+				m.metaMu.Lock()
+				meta.ContentFingerprint = fp
+				m.fingerprintIndex[fp] = path
+				m.metaMu.Unlock()
+			}
+		} else {
+			// Fingerprint failed — create basic metadata entry
+			now := time.Now()
+			item.DateAdded = now
+			m.metaMu.Lock()
+			m.metadata[path] = &Metadata{
+				DateAdded:   now,
+				PlaybackPos: make(map[string]float64),
+				CustomMeta:  make(map[string]string),
+			}
+			meta = m.metadata[path]
+			m.metaMu.Unlock()
+		}
+	}
+
 	if hasMeta {
 		item.Views = meta.Views
 		item.LastPlayed = meta.LastPlayed
@@ -511,18 +640,16 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		if meta.StableID != "" {
 			item.ID = meta.StableID
 		}
-	} else {
-		now := time.Now()
-		item.DateAdded = now
-		// Create initial in-memory metadata entry (StableID assigned below)
-		m.metaMu.Lock()
-		m.metadata[path] = &Metadata{
-			DateAdded:   now,
-			PlaybackPos: make(map[string]float64),
-			CustomMeta:  make(map[string]string),
+
+		// Compute fingerprint for existing files that predate fingerprint support
+		if meta.ContentFingerprint == "" {
+			if fp, err := computeContentFingerprint(path); err == nil && fp != "" {
+				m.metaMu.Lock()
+				meta.ContentFingerprint = fp
+				m.fingerprintIndex[fp] = path
+				m.metaMu.Unlock()
+			}
 		}
-		meta = m.metadata[path]
-		m.metaMu.Unlock()
 	}
 
 	// Assign a stable UUID if not already set (new or pre-stable-ID file)
@@ -538,11 +665,10 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	item.Category = m.detectCategory(path)
 
 	// Check whether a thumbnail already exists on disk and pre-populate the URL.
-	// Thumbnail files are named MD5(path).jpg (internal detail); the public URL
-	// uses the stable ID so the handler can apply mature-content checks.
+	// Thumbnail files are named by stable UUID; the public URL uses the same ID
+	// so the handler can apply mature-content checks.
 	cfg := m.config.Get()
-	pathHash := md5.Sum([]byte(path))
-	thumbFile := filepath.Join(cfg.Directories.Thumbnails, hex.EncodeToString(pathHash[:])+".jpg")
+	thumbFile := filepath.Join(cfg.Directories.Thumbnails, item.ID+".jpg")
 	if _, err := os.Stat(thumbFile); err == nil {
 		item.ThumbnailURL = "/thumbnail?id=" + item.ID
 	}
@@ -1085,12 +1211,17 @@ func (m *Module) loadMetadata() error {
 	m.metaMu.Lock()
 	defer m.metaMu.Unlock()
 
-	// Convert repository metadata to internal format
+	// Convert repository metadata to internal format and build the fingerprint index
+	// so that createMediaItem can detect moved/renamed files by content fingerprint.
 	for path, repoMeta := range repoMetadata {
-		m.metadata[path] = m.convertRepoToInternal(repoMeta)
+		meta := m.convertRepoToInternal(repoMeta)
+		m.metadata[path] = meta
+		if meta.ContentFingerprint != "" {
+			m.fingerprintIndex[meta.ContentFingerprint] = path
+		}
 	}
 
-	m.log.Info("Loaded %d metadata entries from database", len(m.metadata))
+	m.log.Info("Loaded %d metadata entries from database (%d with fingerprints)", len(m.metadata), len(m.fingerprintIndex))
 	return nil
 }
 
@@ -1179,15 +1310,16 @@ func (m *Module) saveMetadata(ctx context.Context) error {
 // convertRepoToInternal converts repository metadata to internal format
 func (m *Module) convertRepoToInternal(repoMeta *repositories.MediaMetadata) *Metadata {
 	meta := &Metadata{
-		StableID:      repoMeta.StableID,
-		Views:         repoMeta.Views,
-		IsMature:      repoMeta.IsMature,
-		MatureScore:   repoMeta.MatureScore,
-		Tags:          repoMeta.Tags,
-		Category:      repoMeta.Category,
-		PlaybackPos:   make(map[string]float64),
-		CustomMeta:    make(map[string]string),
-		MatureReasons: []string{},
+		StableID:           repoMeta.StableID,
+		ContentFingerprint: repoMeta.ContentFingerprint,
+		Views:              repoMeta.Views,
+		IsMature:           repoMeta.IsMature,
+		MatureScore:        repoMeta.MatureScore,
+		Tags:               repoMeta.Tags,
+		Category:           repoMeta.Category,
+		PlaybackPos:        make(map[string]float64),
+		CustomMeta:         make(map[string]string),
+		MatureReasons:      []string{},
 	}
 
 	// Parse DateAdded
@@ -1215,14 +1347,15 @@ func (m *Module) convertRepoToInternal(repoMeta *repositories.MediaMetadata) *Me
 // convertInternalToRepo converts internal metadata to repository format
 func (m *Module) convertInternalToRepo(path string, meta *Metadata) *repositories.MediaMetadata {
 	repoMeta := &repositories.MediaMetadata{
-		Path:        path,
-		StableID:    meta.StableID,
-		Views:       meta.Views,
-		DateAdded:   meta.DateAdded.Format(time.RFC3339),
-		IsMature:    meta.IsMature,
-		MatureScore: meta.MatureScore,
-		Category:    meta.Category,
-		Tags:        meta.Tags,
+		Path:               path,
+		StableID:           meta.StableID,
+		ContentFingerprint: meta.ContentFingerprint,
+		Views:              meta.Views,
+		DateAdded:          meta.DateAdded.Format(time.RFC3339),
+		IsMature:           meta.IsMature,
+		MatureScore:        meta.MatureScore,
+		Category:           meta.Category,
+		Tags:               meta.Tags,
 	}
 	if !meta.ProbeModTime.IsZero() {
 		t := meta.ProbeModTime

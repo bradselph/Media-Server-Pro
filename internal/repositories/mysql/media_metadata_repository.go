@@ -14,17 +14,16 @@ import (
 
 // mediaMetadataRow maps to the media_metadata table.
 type mediaMetadataRow struct {
-	Path         string     `gorm:"column:path;primaryKey"`
-	// StableID is a UUID generated once per file and persisted so that the
-	// public MediaItem.ID survives path changes across server restarts.
-	StableID     string     `gorm:"column:stable_id"`
-	Views        int        `gorm:"column:views"`
-	LastPlayed   *time.Time `gorm:"column:last_played"`
-	DateAdded    time.Time  `gorm:"column:date_added"`
-	IsMature     bool       `gorm:"column:is_mature"`
-	MatureScore  float64    `gorm:"column:mature_score"`
-	Category     string     `gorm:"column:category"`
-	ProbeModTime *time.Time `gorm:"column:probe_mod_time"`
+	Path               string     `gorm:"column:path;primaryKey"`
+	StableID           string     `gorm:"column:stable_id"`
+	ContentFingerprint string     `gorm:"column:content_fingerprint"`
+	Views              int        `gorm:"column:views"`
+	LastPlayed         *time.Time `gorm:"column:last_played"`
+	DateAdded          time.Time  `gorm:"column:date_added"`
+	IsMature           bool       `gorm:"column:is_mature"`
+	MatureScore        float64    `gorm:"column:mature_score"`
+	Category           string     `gorm:"column:category"`
+	ProbeModTime       *time.Time `gorm:"column:probe_mod_time"`
 }
 
 func (mediaMetadataRow) TableName() string { return "media_metadata" }
@@ -81,15 +80,16 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 		}
 
 		row := mediaMetadataRow{
-			Path:         path,
-			StableID:     metadata.StableID,
-			Views:        metadata.Views,
-			LastPlayed:   lastPlayed,
-			DateAdded:    dateAdded,
-			IsMature:     metadata.IsMature,
-			MatureScore:  metadata.MatureScore,
-			Category:     metadata.Category,
-			ProbeModTime: probeModTime,
+			Path:               path,
+			StableID:           metadata.StableID,
+			ContentFingerprint: metadata.ContentFingerprint,
+			Views:              metadata.Views,
+			LastPlayed:         lastPlayed,
+			DateAdded:          dateAdded,
+			IsMature:           metadata.IsMature,
+			MatureScore:        metadata.MatureScore,
+			Category:           metadata.Category,
+			ProbeModTime:       probeModTime,
 		}
 
 		// On conflict: always update operational fields but only set stable_id
@@ -105,6 +105,8 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 				"probe_mod_time": clause.Column{Table: "excluded", Name: "probe_mod_time"},
 				// Only write stable_id when it's not already set
 				"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', excluded.stable_id, media_metadata.stable_id)"),
+				// Only write fingerprint when it's not already set
+				"content_fingerprint": gorm.Expr("IF(media_metadata.content_fingerprint IS NULL OR media_metadata.content_fingerprint = '', excluded.content_fingerprint, media_metadata.content_fingerprint)"),
 			}),
 		}).Create(&row).Error; err != nil {
 			return fmt.Errorf("failed to upsert media metadata: %w", err)
@@ -232,13 +234,14 @@ func (r *MediaMetadataRepository) GetPlaybackPosition(ctx context.Context, path,
 // rowToMetadata converts a GORM row to a repository MediaMetadata struct.
 func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *repositories.MediaMetadata {
 	metadata := &repositories.MediaMetadata{
-		Path:        row.Path,
-		StableID:    row.StableID,
-		Views:       row.Views,
-		DateAdded:   row.DateAdded.Format(time.RFC3339),
-		IsMature:    row.IsMature,
-		MatureScore: row.MatureScore,
-		Category:    row.Category,
+		Path:               row.Path,
+		StableID:           row.StableID,
+		ContentFingerprint: row.ContentFingerprint,
+		Views:              row.Views,
+		DateAdded:          row.DateAdded.Format(time.RFC3339),
+		IsMature:           row.IsMature,
+		MatureScore:        row.MatureScore,
+		Category:           row.Category,
 	}
 
 	if row.LastPlayed != nil {

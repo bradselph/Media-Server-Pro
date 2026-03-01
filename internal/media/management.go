@@ -3,8 +3,6 @@ package media
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,19 +46,15 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 		return "", fmt.Errorf("failed to rename: %w", err)
 	}
 
-	// Update in-memory indexes under mu
+	// Update in-memory indexes under mu.
+	// The stable UUID is preserved — it is decoupled from the path.
 	m.mu.Lock()
 	if item, exists := m.media[oldPath]; exists {
-		oldID := item.ID
 		item.Path = newPath
 		item.Name = newName
-		hash := md5.Sum([]byte(newPath))
-		item.ID = hex.EncodeToString(hash[:])
 		delete(m.media, oldPath)
 		m.media[newPath] = item
-		// Update ID index
-		delete(m.mediaByID, oldID)
-		m.mediaByID[item.ID] = item
+		// ID stays the same so mediaByID needs no update
 	}
 	m.mu.Unlock()
 
@@ -114,18 +108,14 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 		return "", fmt.Errorf("failed to move: %w", err)
 	}
 
-	// Update in-memory indexes under mu
+	// Update in-memory indexes under mu.
+	// The stable UUID is preserved — it is decoupled from the path.
 	m.mu.Lock()
 	if item, exists := m.media[oldPath]; exists {
-		oldID := item.ID
 		item.Path = newPath
-		hash := md5.Sum([]byte(newPath))
-		item.ID = hex.EncodeToString(hash[:])
 		delete(m.media, oldPath)
 		m.media[newPath] = item
-		// Update ID index
-		delete(m.mediaByID, oldID)
-		m.mediaByID[item.ID] = item
+		// ID stays the same so mediaByID needs no update
 
 		// Re-detect category based on new location
 		item.Category = m.detectCategory(newPath)

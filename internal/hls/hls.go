@@ -6,8 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -339,8 +337,10 @@ func (m *Module) cleanupOldSegments() {
 	}
 }
 
-// GenerateHLS starts HLS transcoding for a media file
-func (m *Module) GenerateHLS(ctx context.Context, mediaPath string, qualities []string) (*models.HLSJob, error) {
+// GenerateHLS starts HLS transcoding for a media file.
+// The mediaID (stable UUID) is used as the job ID so that HLS cache survives
+// file moves/renames. Callers must resolve the media UUID before calling this.
+func (m *Module) GenerateHLS(ctx context.Context, mediaPath string, mediaID string, qualities []string) (*models.HLSJob, error) {
 	// Check if HLS transcoding is available
 	if !m.IsAvailable() {
 		if m.ffmpegPath == "" {
@@ -349,9 +349,8 @@ func (m *Module) GenerateHLS(ctx context.Context, mediaPath string, qualities []
 		return nil, fmt.Errorf("HLS transcoding is disabled in server configuration")
 	}
 
-	// Generate job ID from path
-	hash := md5.Sum([]byte(mediaPath))
-	jobID := hex.EncodeToString(hash[:])
+	// Use the stable media UUID as the job ID
+	jobID := mediaID
 
 	// Verify file exists before acquiring lock
 	if _, err := os.Stat(mediaPath); err != nil {
@@ -944,11 +943,18 @@ func (m *Module) GetJobStatus(jobID string) (*models.HLSJob, error) {
 	return job, nil
 }
 
-// GetJobByMediaPath returns job for a media file by its path
+// GetJobByMediaPath returns job for a media file by its path.
+// Searches active jobs by MediaPath since job IDs are stable UUIDs, not
+// derived from the file path.
 func (m *Module) GetJobByMediaPath(mediaPath string) (*models.HLSJob, error) {
-	hash := md5.Sum([]byte(mediaPath))
-	jobID := hex.EncodeToString(hash[:])
-	return m.GetJobStatus(jobID)
+	m.jobsMu.RLock()
+	defer m.jobsMu.RUnlock()
+	for _, job := range m.jobs {
+		if job.MediaPath == mediaPath {
+			return job, nil
+		}
+	}
+	return nil, fmt.Errorf("HLS job not found for path: %s", mediaPath)
 }
 
 // HasHLS checks if completed HLS content exists for a media file (with disk verification)
@@ -965,10 +971,11 @@ func (m *Module) HasHLS(mediaPath string) bool {
 	return statErr == nil
 }
 
-// CheckOrGenerateHLS checks if HLS exists for media path, auto-generates if configured
-func (m *Module) CheckOrGenerateHLS(ctx context.Context, mediaPath string) (*models.HLSJob, error) {
-	// Try to get existing job
-	job, err := m.GetJobByMediaPath(mediaPath)
+// CheckOrGenerateHLS checks if HLS exists for media path, auto-generates if configured.
+// mediaID is the stable UUID used as the job key.
+func (m *Module) CheckOrGenerateHLS(ctx context.Context, mediaPath string, mediaID string) (*models.HLSJob, error) {
+	// Try to get existing job by stable UUID
+	job, err := m.GetJobStatus(mediaID)
 	if err == nil {
 		// For completed jobs, verify the master playlist actually exists on disk.
 		// In-memory state can be stale after a restart or if files were deleted.
@@ -997,7 +1004,7 @@ func (m *Module) CheckOrGenerateHLS(ctx context.Context, mediaPath string) (*mod
 
 	// Auto-generate HLS
 	m.log.Info("Auto-generating HLS for: %s", mediaPath)
-	job, err = m.GenerateHLS(ctx, mediaPath, nil)
+	job, err = m.GenerateHLS(ctx, mediaPath, mediaID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HLS generation: %w", err)
 	}

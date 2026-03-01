@@ -383,6 +383,9 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 		// NULL for rows created before this column was added; the media module
 		// generates and saves a UUID for any row missing one.
 		{"media_metadata", "stable_id", "VARCHAR(36) NULL"},
+		// content_fingerprint: SHA-256 of sampled file content (first + last 64KB + size).
+		// Used to detect moved/renamed files and duplicates without relying on paths.
+		{"media_metadata", "content_fingerprint", "VARCHAR(64) NULL"},
 	}
 
 	for _, col := range columns {
@@ -401,6 +404,8 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 			"ALTER TABLE analytics_events ADD INDEX idx_timestamp (timestamp)"},
 		{"media_metadata", "idx_stable_id",
 			"ALTER TABLE media_metadata ADD UNIQUE INDEX idx_stable_id (stable_id)"},
+		{"media_metadata", "idx_content_fingerprint",
+			"ALTER TABLE media_metadata ADD INDEX idx_content_fingerprint (content_fingerprint)"},
 	}
 
 	for _, idx := range indexes {

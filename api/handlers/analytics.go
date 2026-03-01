@@ -23,7 +23,8 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	topViewed := make([]map[string]interface{}, 0, len(topMedia))
 	for _, item := range topMedia {
 		filename := item.MediaID
-		if mediaItem, err := h.media.GetMedia(item.MediaID); err == nil && mediaItem != nil {
+		// Analytics keys are stable UUIDs — resolve to human-readable names.
+		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
 			filename = mediaItem.Name
 		}
 		topViewed = append(topViewed, map[string]interface{}{
@@ -37,7 +38,8 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	recentActivity := make([]map[string]interface{}, 0, len(recentEvents))
 	for _, event := range recentEvents {
 		filename := event.MediaID
-		if mediaItem, err := h.media.GetMedia(event.MediaID); err == nil && mediaItem != nil {
+		// Analytics keys are stable UUIDs — resolve to human-readable names.
+		if mediaItem, err := h.media.GetMediaByID(event.MediaID); err == nil && mediaItem != nil {
 			filename = mediaItem.Name
 		}
 		recentActivity = append(recentActivity, map[string]interface{}{
@@ -98,7 +100,8 @@ func (h *Handler) GetTopMedia(c *gin.Context) {
 	enriched := make([]map[string]interface{}, 0, len(top))
 	for _, item := range top {
 		filename := item.MediaID
-		if mediaItem, err := h.media.GetMedia(item.MediaID); err == nil && mediaItem != nil {
+		// Analytics keys are stable UUIDs — resolve to human-readable names.
+		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
 			filename = mediaItem.Name
 		}
 		entry := map[string]interface{}{
@@ -156,7 +159,11 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 	}
 
 	if req.Type == "complete" && h.suggestions != nil && req.MediaID != "" && userID != "" {
-		h.suggestions.RecordCompletion(userID, req.MediaID)
+		// Resolve UUID to filesystem path — RecordCompletion matches against
+		// ViewHistory.MediaPath which stores paths (set by RecordView).
+		if item, err := h.media.GetMediaByID(req.MediaID); err == nil {
+			h.suggestions.RecordCompletion(userID, item.Path)
+		}
 	}
 
 	writeSuccess(c, map[string]string{"status": "recorded"})
