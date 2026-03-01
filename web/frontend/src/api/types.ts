@@ -155,6 +155,26 @@ export interface MediaListParams {
     is_mature?: string
 }
 
+// Admin media list response — matches updated AdminListMedia handler returning pagination metadata.
+export interface AdminMediaListResponse {
+    items: MediaItem[]
+    total_items: number
+    total_pages: number
+}
+
+// Parameters for admin media listing — supports full sort/filter like the public endpoint.
+export interface AdminMediaListParams {
+    page?: number
+    limit?: number
+    sort?: string
+    sort_order?: string
+    type?: string
+    category?: string
+    search?: string
+    tags?: string
+    is_mature?: string
+}
+
 // Matches internal/media/discovery.go Stats struct JSON tags
 export interface MediaStats {
     total_count: number

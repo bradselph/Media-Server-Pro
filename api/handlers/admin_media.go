@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -16,23 +17,66 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-// AdminListMedia returns media items for admin management with optional search and pagination.
+// AdminListMedia returns media items for admin management with sorting, filtering, and pagination.
 func (h *Handler) AdminListMedia(c *gin.Context) {
-	filter := media.Filter{
-		Search: c.Query("search"),
+	sortBy := c.Query("sort")
+	if sortBy == "date" {
+		sortBy = "date_modified"
 	}
+
+	var tags []string
+	if t := c.Query("tags"); t != "" {
+		tags = strings.Split(t, ",")
+	}
+
+	var isMature *bool
+	if im := c.Query("is_mature"); im != "" {
+		v := im == "true" || im == "1"
+		isMature = &v
+	}
+
+	// Build filter without pagination to get total count
+	filterNoPagination := media.Filter{
+		Type:     models.MediaType(c.Query("type")),
+		Category: c.Query("category"),
+		Search:   c.Query("search"),
+		Tags:     tags,
+		IsMature: isMature,
+		SortBy:   sortBy,
+		SortDesc: c.Query("sort_order") == "desc",
+	}
+
+	allItems := h.media.ListMedia(filterNoPagination)
+	if allItems == nil {
+		allItems = make([]*models.MediaItem, 0)
+	}
+
+	totalItems := len(allItems)
+
+	// Apply pagination
 	limit := 50
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
 		limit = l
 	}
-	filter.Limit = limit
-	if p, err := strconv.Atoi(c.Query("page")); err == nil && p > 1 {
-		filter.Offset = (p - 1) * limit
+	totalPages := 1
+	if limit > 0 {
+		totalPages = (totalItems + limit - 1) / limit
+		if totalPages < 1 {
+			totalPages = 1
+		}
 	}
 
-	items := h.media.ListMedia(filter)
-	if items == nil {
-		items = make([]*models.MediaItem, 0)
+	items := allItems
+	if p, err := strconv.Atoi(c.Query("page")); err == nil && p > 1 {
+		offset := (p - 1) * limit
+		if offset >= len(items) {
+			items = []*models.MediaItem{}
+		} else {
+			items = items[offset:]
+		}
+	}
+	if limit > 0 && limit < len(items) {
+		items = items[:limit]
 	}
 
 	for _, item := range items {
@@ -47,7 +91,11 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 		}
 	}
 
-	writeSuccess(c, items)
+	writeSuccess(c, map[string]interface{}{
+		"items":       items,
+		"total_items": totalItems,
+		"total_pages": totalPages,
+	})
 }
 
 // AdminUpdateMedia updates media metadata

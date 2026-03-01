@@ -1061,6 +1061,7 @@ export function IndexPage() {
                             <option value="name">Sort by Name</option>
                             <option value="date">Sort by Date Added</option>
                             <option value="size">Sort by File Size</option>
+                            <option value="duration">Sort by Duration</option>
                             <option value="views">Sort by Views</option>
                         </select>
                     </div>
@@ -1248,7 +1249,7 @@ export function IndexPage() {
                                     No playlists yet
                                 </p>
                             ) : (
-                                playlists.map(pl => (
+                                [...playlists].sort((a, b) => a.name.localeCompare(b.name)).map(pl => (
                                     <div key={pl.id} className="playlist-item">
                                         <div style={{flex: 1, minWidth: 0}}>
                                             {renameId === pl.id ? (
