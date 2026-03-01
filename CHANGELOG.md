@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.0] - 2026-03-01 (minor)
+
+- Merge pull request #15 from bradselph/development
+- feat(media-id): Implement stable UUIDs and content fingerprinting
+
+
 ## [0.11.0] - 2026-02-28 (minor)
 
 - Merge pull request #14 from bradselph/development

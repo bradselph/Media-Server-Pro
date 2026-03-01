@@ -42,7 +42,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=4.1.0 -X main.BuildDate=2026-02-26" ./cmd/server
 var (
-	Version   = "0.11.0"
+	Version   = "0.12.0"
 	BuildDate = ""
 )
 
