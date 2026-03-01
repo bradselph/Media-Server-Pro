@@ -313,8 +313,14 @@ run_or_dry vps "
 
   cd '$DEPLOY_DIR'
 
-  # Ensure the remote URL uses the token
-  git remote set-url origin '$CLONE_URL'
+  # Remove any stale git lock files left by an interrupted operation
+  find .git -name '*.lock' -delete 2>/dev/null || true
+
+  # Ensure the remote URL uses the token (only update if it changed)
+  CURRENT_URL=\$(git remote get-url origin 2>/dev/null || echo '')
+  if [ \"\$CURRENT_URL\" != '$CLONE_URL' ]; then
+    git remote set-url origin '$CLONE_URL'
+  fi
 
   git fetch origin '$BRANCH'
   git checkout '$BRANCH'
