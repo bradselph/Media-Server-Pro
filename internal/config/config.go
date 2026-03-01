@@ -35,6 +35,7 @@ type Config struct {
 	Auth          AuthConfig          `json:"auth"`
 	HLS           HLSConfig           `json:"hls"`
 	RemoteMedia   RemoteMediaConfig   `json:"remote_media"`
+	Receiver      ReceiverConfig      `json:"receiver"`
 	MatureScanner MatureScannerConfig `json:"mature_scanner"`
 	Logging       LoggingConfig       `json:"logging"`
 	Features      FeaturesConfig      `json:"features"`
@@ -278,6 +279,20 @@ type RemoteSource struct {
 	Enabled  bool   `json:"enabled"`
 }
 
+// ReceiverConfig holds media receiver (master) settings.
+// When enabled, the server acts as a master that accepts media catalog
+// registrations from slave nodes and proxies media streams to users on demand.
+// No media files are stored on the master — all content is streamed in real-time
+// from the originating slave node.
+type ReceiverConfig struct {
+	Enabled       bool          `json:"enabled"`
+	APIKeys       []string      `json:"api_keys"`
+	ProxyTimeout  time.Duration `json:"proxy_timeout"`
+	HealthCheck   time.Duration `json:"health_check_interval"`
+	MaxProxyConns int           `json:"max_proxy_conns"`
+	BufferSize    int           `json:"buffer_size"`
+}
+
 // MatureScannerConfig holds content scanning settings
 type MatureScannerConfig struct {
 	Enabled                   bool     `json:"enabled"`
@@ -313,6 +328,7 @@ type FeaturesConfig struct {
 	EnableAdminPanel    bool `json:"enable_admin_panel"`
 	EnableSuggestions   bool `json:"enable_suggestions"`
 	EnableAutoDiscovery bool `json:"enable_auto_discovery"`
+	EnableReceiver      bool `json:"enable_receiver"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -489,6 +505,13 @@ func DefaultConfig() *Config {
 			CacheSize:    1024 * 1024 * 1024, // 1GB
 			CacheTTL:     7 * 24 * time.Hour, // 7 days
 		},
+		Receiver: ReceiverConfig{
+			Enabled:       false,
+			ProxyTimeout:  60 * time.Second,
+			HealthCheck:   30 * time.Second,
+			MaxProxyConns: 50,
+			BufferSize:    64 * 1024, // 64KB
+		},
 		MatureScanner: MatureScannerConfig{
 			Enabled:                   true,
 			AutoFlag:                  true,
@@ -519,6 +542,7 @@ func DefaultConfig() *Config {
 			EnableAdminPanel:    true,
 			EnableSuggestions:   true,
 			EnableAutoDiscovery: true,
+			EnableReceiver:      false,
 		},
 		Database: DatabaseConfig{
 			Enabled:         true, // MySQL is now required
@@ -967,6 +991,7 @@ func (m *Manager) applyEnvOverrides() {
 	m.applyFeatureEnvOverrides()
 	m.applyMatureScannerEnvOverrides()
 	m.applyRemoteMediaEnvOverrides()
+	m.applyReceiverEnvOverrides()
 	m.applyDatabaseEnvOverrides()
 	m.applyUpdaterEnvOverrides()
 	m.applyAgeGateEnvOverrides()
@@ -1339,6 +1364,9 @@ func (m *Manager) applyFeatureEnvOverrides() {
 	if val, ok := envGetBool("FEATURE_AUTO_DISCOVERY"); ok {
 		m.config.Features.EnableAutoDiscovery = val
 	}
+	if val, ok := envGetBool("FEATURE_RECEIVER"); ok {
+		m.config.Features.EnableReceiver = val
+	}
 }
 
 func (m *Manager) applyMatureScannerEnvOverrides() {
@@ -1380,6 +1408,24 @@ func (m *Manager) applyRemoteMediaEnvOverrides() {
 	}
 	if val, ok := envGetDuration(time.Hour, "REMOTE_MEDIA_CACHE_TTL_HOURS"); ok {
 		m.config.RemoteMedia.CacheTTL = val
+	}
+}
+
+func (m *Manager) applyReceiverEnvOverrides() {
+	if val, ok := envGetBool("RECEIVER_ENABLED"); ok {
+		m.config.Receiver.Enabled = val
+	}
+	if val := envGetStr("RECEIVER_API_KEY"); val != "" {
+		m.config.Receiver.APIKeys = []string{val}
+	}
+	if val, ok := envGetInt("RECEIVER_MAX_PROXY_CONNS"); ok {
+		m.config.Receiver.MaxProxyConns = val
+	}
+	if val, ok := envGetDuration(time.Second, "RECEIVER_PROXY_TIMEOUT_SECONDS"); ok {
+		m.config.Receiver.ProxyTimeout = val
+	}
+	if val, ok := envGetDuration(time.Second, "RECEIVER_HEALTH_CHECK_SECONDS"); ok {
+		m.config.Receiver.HealthCheck = val
 	}
 }
 

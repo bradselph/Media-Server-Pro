@@ -317,6 +317,50 @@ type RemoteCacheRecord struct {
 	Hits        int
 }
 
+// ReceiverSlaveRepository provides slave node registry storage
+type ReceiverSlaveRepository interface {
+	Upsert(ctx context.Context, slave *ReceiverSlaveRecord) error
+	Get(ctx context.Context, slaveID string) (*ReceiverSlaveRecord, error)
+	Delete(ctx context.Context, slaveID string) error
+	List(ctx context.Context) ([]*ReceiverSlaveRecord, error)
+}
+
+// ReceiverSlaveRecord represents a registered slave node
+type ReceiverSlaveRecord struct {
+	ID         string
+	Name       string
+	BaseURL    string
+	Status     string // online, offline, degraded
+	MediaCount int
+	LastSeen   time.Time
+	CreatedAt  time.Time
+}
+
+// ReceiverMediaRepository provides slave media catalog storage
+type ReceiverMediaRepository interface {
+	UpsertBatch(ctx context.Context, slaveID string, items []*ReceiverMediaRecord) error
+	Get(ctx context.Context, id string) (*ReceiverMediaRecord, error)
+	ListBySlave(ctx context.Context, slaveID string) ([]*ReceiverMediaRecord, error)
+	ListAll(ctx context.Context) ([]*ReceiverMediaRecord, error)
+	DeleteBySlave(ctx context.Context, slaveID string) error
+	Search(ctx context.Context, query string) ([]*ReceiverMediaRecord, error)
+}
+
+// ReceiverMediaRecord represents a media item from a slave node's catalog
+type ReceiverMediaRecord struct {
+	ID          string
+	SlaveID     string
+	RemotePath  string
+	Name        string
+	MediaType   string // video, audio
+	Size        int64
+	Duration    float64
+	ContentType string
+	Width       int
+	Height      int
+	UpdatedAt   time.Time
+}
+
 // BackupManifestRepository provides backup manifest storage
 type BackupManifestRepository interface {
 	Save(ctx context.Context, manifest *BackupManifestRecord) error
