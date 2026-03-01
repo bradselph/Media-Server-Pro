@@ -219,6 +219,18 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	}
 
 	usedGB := float64(totalSize) / (1024 * 1024 * 1024)
+	// TODO: API Contract Mismatch - `storageQuotaGB` variable name is misleading — it holds BYTES,
+	// not gigabytes. getUserStorageQuota() (handler.go:527-544) returns raw int64 bytes
+	// (e.g. 1*1024*1024*1024 = 1073741824 for "basic" user type).
+	// The field is then emitted as "quota_gb" in the response JSON below, but the value
+	// is in bytes, not GB. Frontend (web/frontend/src/pages/profile/ProfilePage.tsx:284)
+	// displays it as `${storageUsage.quota_gb} GB` which would render "1073741824 GB"
+	// instead of "1 GB" for a basic user.
+	// The percentage calculation on the line below is also wrong: `usedGB / float64(storageQuotaGB)`
+	// divides a float in GB by a value in bytes, giving a result ~10^9 times too small.
+	// Fix: divide storageQuotaGB by (1024*1024*1024) before using it here, OR rename the
+	// variable to storageQuotaBytes and add a separate quotaGB := float64(storageQuotaGB)/(1024*1024*1024)
+	// for the JSON field and percentage calculation.
 	percentage := 0.0
 	if storageQuotaGB > 0 {
 		percentage = (usedGB / float64(storageQuotaGB)) * 100
@@ -227,6 +239,14 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	storageInfo := map[string]interface{}{
 		"used_bytes":       totalSize,
 		"used_gb":          usedGB,
+		// TODO: API Contract Mismatch - "quota_gb" field name implies gigabytes, but
+		// storageQuotaGB contains raw BYTES from getUserStorageQuota() (handler.go:527-544).
+		// Callers (web/frontend/src/api/types.ts:606 StorageUsage.quota_gb: number) and
+		// (web/frontend/src/pages/profile/ProfilePage.tsx:284) treat this value as GB.
+		// ProfilePage.tsx line 284 renders `${storageUsage.quota_gb} GB` — a "basic" user
+		// would see "1073741824 GB" instead of "1 GB".
+		// Fix: replace `storageQuotaGB` with `float64(storageQuotaGB) / (1024 * 1024 * 1024)`
+		// so the emitted value is a float in gigabytes matching the field name and frontend usage.
 		"quota_gb":         storageQuotaGB,
 		"percentage":       percentage,
 		"user_type":        userType,

@@ -600,11 +600,22 @@ export interface RemoteStats {
 
 // ── Feature 1: Storage & Permissions ──
 
+// TODO: API Contract Mismatch - StorageUsage.quota_gb is misnamed.
+// Backend GetStorageUsage handler (api/handlers/system.go:230) emits:
+//   "quota_gb": storageQuotaGB   where storageQuotaGB = getUserStorageQuota(userType) in BYTES
+// getUserStorageQuota() (handler.go:527-544) returns int64 bytes: 1*1024*1024*1024 for "basic".
+// So quota_gb actually contains BYTES (e.g. 1073741824) not gigabytes.
+// used_gb is correctly computed as float64(totalSize)/(1024*1024*1024) — in GB.
+// percentage is computed as (usedGB / float64(storageQuotaGB)) * 100 which divides
+// GB by bytes — the result is ~10^9 times smaller than expected.
+// ProfilePage.tsx line 284 renders `${storageUsage.quota_gb} GB` — shows "1073741824 GB".
+// Fix: rename field to quota_bytes on both sides, OR fix the backend to divide by
+// (1024*1024*1024) before emitting as quota_gb. Whichever side changes, update the other.
 export interface StorageUsage {
     used_bytes: number
     used_gb: number
-    quota_gb: number
-    percentage: number
+    quota_gb: number   // TODO: API Contract Mismatch - actually contains BYTES not GB — see above
+    percentage: number // TODO: API Contract Mismatch - computed from usedGB/quotaBytes — always near zero; see system.go:224
     user_type: string
     is_authenticated: boolean
 }
@@ -737,8 +748,16 @@ export interface IPEntry {
 
 export interface BannedIP {
     ip: string
+    // TODO: API Contract Mismatch - BannedIP.banned_at is always the CURRENT time at the moment
+    // of the GET /api/admin/security/banned request, not the actual ban timestamp.
+    // The backend handler (api/handlers/admin_security.go:159) sets `BannedAt: time.Now()` on
+    // every response — the security module has no persistent ban timestamp storage.
+    // Treat this field as unreliable for displaying when an IP was actually banned.
     banned_at: string
     expires_at?: string
+    // TODO: API Contract Mismatch - BannedIP.reason is always "Rate limit violation" regardless
+    // of how the ban was created. The BanIP handler (admin_security.go:170-188) does not accept
+    // or persist a reason. Manually banned IPs show the same reason as auto-banned ones.
     reason: string
 }
 
