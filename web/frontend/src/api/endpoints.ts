@@ -52,6 +52,7 @@ import type {
     ServerSettings,
     SessionCheckResponse,
     StorageUsage,
+    StreamSession,
     Suggestion,
     SuggestionStats,
     SystemInfo,
@@ -472,9 +473,20 @@ export const adminApi = {
     changeAdminPassword: (current_password: string, new_password: string) =>
         api.post<void>('/api/admin/change-password', {current_password, new_password}),
 
+    getActiveStreams: () =>
+        api.get<StreamSession[]>('/api/admin/streams'),
+
+    getActiveUploads: () =>
+        api.get<UploadProgress[]>('/api/admin/uploads/active'),
+
     // Audit log
-    getAuditLog: () =>
-        api.get<AuditLogEntry[]>('/api/admin/audit-log'),
+    getAuditLog: (limit?: number, offset?: number) => {
+        const params = new URLSearchParams()
+        if (limit !== undefined) params.set('limit', String(limit))
+        if (offset !== undefined) params.set('offset', String(offset))
+        const qs = params.toString()
+        return api.get<AuditLogEntry[]>(`/api/admin/audit-log${qs ? `?${qs}` : ''}`)
+    },
 
     exportAuditLogUrl: (): string =>
         '/api/admin/audit-log/export',
