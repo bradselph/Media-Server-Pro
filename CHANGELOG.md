@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0] - 2026-03-01 (minor)
+
+- Merge pull request #16 from bradselph/development
+- fix(updater): backup only binary instead of entire deployment directory
+- Update deploy.sh
+
+
 ## [0.12.0] - 2026-03-01 (minor)
 
 - Merge pull request #15 from bradselph/development
