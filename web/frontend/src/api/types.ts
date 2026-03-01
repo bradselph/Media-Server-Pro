@@ -653,6 +653,19 @@ export interface UploadProgress {
     user_id: string
 }
 
+// Matches pkg/models StreamSession — returned by AdminGetActiveStreams
+export interface StreamSession {
+    id: string
+    media_id: string
+    user_id: string
+    ip_address: string
+    quality: string
+    position: number
+    started_at: string
+    last_update: string
+    bytes_sent: number
+}
+
 // ── Feature 5: Analytics Detail ──
 
 // Backend analytics.EventStats shape (handlers.go GetEventStats)
@@ -740,9 +753,6 @@ export interface DetectedMediaInfo {
     show_name?: string
     artist?: string
     album?: string
-    resolution?: string
-    source?: string
-    audio_format?: string
 }
 
 export interface CategorizedItem {

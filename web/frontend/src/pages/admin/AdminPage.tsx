@@ -693,6 +693,7 @@ const MEDIA_SORT_COLUMNS = [
     {key: 'duration', label: 'Duration'},
     {key: 'category', label: 'Category'},
     {key: 'date_added', label: 'Date Added'},
+    {key: 'date_modified', label: 'Modified'},
     {key: 'views', label: 'Views'},
     {key: 'is_mature', label: 'Mature'},
 ] as const
@@ -721,6 +722,7 @@ function MediaTab() {
     const [filterType, setFilterType] = useState<string>('')
     const [filterCategory, setFilterCategory] = useState('')
     const [filterMature, setFilterMature] = useState<string>('')
+    const [filterTags, setFilterTags] = useState('')
 
     // Bulk selection state
     const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -743,7 +745,7 @@ function MediaTab() {
 
     const emptyResponse: AdminMediaListResponse = {items: [], total_items: 0, total_pages: 1}
     const {data: mediaResponse = emptyResponse} = useQuery<AdminMediaListResponse>({
-        queryKey: ['admin-media', debouncedMediaSearch, mediaPage, mediaLimit, sortBy, sortOrder, filterType, filterCategory, filterMature],
+        queryKey: ['admin-media', debouncedMediaSearch, mediaPage, mediaLimit, sortBy, sortOrder, filterType, filterCategory, filterMature, filterTags],
         queryFn: async () => {
             const result = await adminApi.listMedia({
                 page: mediaPage,
@@ -754,6 +756,7 @@ function MediaTab() {
                 type: filterType || undefined,
                 category: filterCategory || undefined,
                 is_mature: filterMature || undefined,
+                tags: filterTags || undefined,
             })
             return result ?? emptyResponse
         },
@@ -1000,15 +1003,22 @@ function MediaTab() {
                         onChange={e => { setFilterCategory(e.target.value); setMediaPage(1) }}
                         style={{...selectStyle, width: 140}}
                     />
+                    <input
+                        type="text"
+                        placeholder="Filter tags..."
+                        value={filterTags}
+                        onChange={e => { setFilterTags(e.target.value); setMediaPage(1) }}
+                        style={{...selectStyle, width: 120}}
+                    />
                     <select value={mediaLimit} onChange={e => { setMediaLimit(Number(e.target.value)); setMediaPage(1) }} style={selectStyle}>
                         <option value={20}>20 per page</option>
                         <option value={50}>50 per page</option>
                         <option value={100}>100 per page</option>
                         <option value={200}>200 per page</option>
                     </select>
-                    {(filterType || filterCategory || filterMature || debouncedMediaSearch) && (
+                    {(filterType || filterCategory || filterMature || filterTags || debouncedMediaSearch) && (
                         <button className="admin-btn" style={{fontSize: 12, padding: '4px 10px'}}
-                                onClick={() => { setFilterType(''); setFilterCategory(''); setFilterMature(''); setMediaSearch(''); setMediaPage(1) }}>
+                                onClick={() => { setFilterType(''); setFilterCategory(''); setFilterMature(''); setFilterTags(''); setMediaSearch(''); setMediaPage(1) }}>
                             <i className="bi bi-x-circle"/> Clear Filters
                         </button>
                     )}

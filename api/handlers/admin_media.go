@@ -280,7 +280,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 			}
 		case "update":
 			updates := make(map[string]interface{})
-			if cat, ok := req.Data["category"].(string); ok && cat != "" {
+			if cat, ok := req.Data["category"].(string); ok {
 				updates["category"] = cat
 			}
 			if mature, ok := req.Data["is_mature"].(bool); ok {
