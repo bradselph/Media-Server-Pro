@@ -31,7 +31,7 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 		return
 	}
 
-	_, err := h.thumbnails.GenerateThumbnail(absPath, req.IsAudio)
+	_, err := h.thumbnails.GenerateThumbnail(absPath, req.ID, req.IsAudio)
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
@@ -91,14 +91,14 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		}
 	}
 
-	if !h.thumbnails.HasThumbnail(path) {
+	if !h.thumbnails.HasThumbnail(id) {
 		isAudio := strings.HasSuffix(strings.ToLower(path), ".mp3") ||
 			strings.HasSuffix(strings.ToLower(path), ".wav") ||
 			strings.HasSuffix(strings.ToLower(path), ".flac") ||
 			strings.HasSuffix(strings.ToLower(path), ".aac") ||
 			strings.HasSuffix(strings.ToLower(path), ".ogg")
 
-		_, err := h.thumbnails.GenerateThumbnailSync(path, isAudio)
+		_, err := h.thumbnails.GenerateThumbnailSync(path, id, isAudio)
 		if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 			h.log.Error("Failed to generate thumbnail for %s: %v", path, err)
 			writeError(c, http.StatusNotFound, "Thumbnail generation failed")
@@ -106,7 +106,7 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		}
 	}
 
-	thumbFilePath := h.thumbnails.GetThumbnailFilePath(path)
+	thumbFilePath := h.thumbnails.GetThumbnailFilePath(id)
 
 	if _, err := os.Stat(thumbFilePath); os.IsNotExist(err) {
 		h.log.Error("Thumbnail file does not exist: %s", thumbFilePath)
@@ -173,7 +173,7 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 		count = 3
 	}
 
-	urls := h.thumbnails.GetPreviewURLs(path, count)
+	urls := h.thumbnails.GetPreviewURLs(path, id, count)
 	writeSuccess(c, map[string]interface{}{
 		"previews": urls,
 	})

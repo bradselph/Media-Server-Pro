@@ -106,9 +106,9 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	for _, item := range items {
 		if item.ThumbnailURL == "" {
-			if !h.thumbnails.HasThumbnail(item.Path) {
+			if !h.thumbnails.HasThumbnail(item.ID) {
 				isAudio := item.Type == "audio"
-				_, err := h.thumbnails.GenerateThumbnail(item.Path, isAudio)
+				_, err := h.thumbnails.GenerateThumbnail(item.Path, item.ID, isAudio)
 				if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 				}
@@ -158,9 +158,9 @@ func (h *Handler) GetMedia(c *gin.Context) {
 	}
 
 	if item.ThumbnailURL == "" {
-		if !h.thumbnails.HasThumbnail(item.Path) {
+		if !h.thumbnails.HasThumbnail(item.ID) {
 			isAudio := item.Type == "audio"
-			_, err := h.thumbnails.GenerateThumbnail(item.Path, isAudio)
+			_, err := h.thumbnails.GenerateThumbnail(item.Path, item.ID, isAudio)
 			if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 				h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 			}
@@ -234,7 +234,8 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	rangeHeader := c.Request.Header.Get("Range")
 	isInitialRequest := rangeHeader == "" || strings.HasPrefix(rangeHeader, "bytes=0-")
 	if isInitialRequest && h.analytics != nil {
-		h.analytics.TrackView(c.Request.Context(), absPath, userID, sessionID, req.IPAddress, req.UserAgent)
+		// Use the stable UUID (id) so analytics keys match client-submitted events.
+		h.analytics.TrackView(c.Request.Context(), id, userID, sessionID, req.IPAddress, req.UserAgent)
 	}
 
 	if h.suggestions != nil && userID != "" {
@@ -376,7 +377,8 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 	}
 
 	if h.analytics != nil {
-		h.analytics.TrackPlayback(c.Request.Context(), absPath, userID, sessionID, req.Position, req.Duration)
+		// Use the stable UUID so analytics keys match client-submitted events.
+		h.analytics.TrackPlayback(c.Request.Context(), req.ID, userID, sessionID, req.Position, req.Duration)
 	}
 
 	writeSuccess(c, nil)

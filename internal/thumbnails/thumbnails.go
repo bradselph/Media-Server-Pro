@@ -3,8 +3,6 @@ package thumbnails
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -292,13 +290,15 @@ func (m *Module) worker(id int) {
 }
 
 // GenerateThumbnail queues async thumbnail generation (generates all preview thumbnails)
-func (m *Module) GenerateThumbnail(mediaId string, isAudio bool) (string, error) {
+// GenerateThumbnail generates a thumbnail for a media file.
+// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
+func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio bool) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg not available")
 	}
 
 	cfg := m.config.Get()
-	outputPath := m.getThumbnailPath(mediaId)
+	outputPath := m.getThumbnailPath(mediaID)
 
 	// Check if already exists
 	if _, err := os.Stat(outputPath); err == nil {
@@ -308,7 +308,7 @@ func (m *Module) GenerateThumbnail(mediaId string, isAudio bool) (string, error)
 
 	// For videos, generate multiple preview thumbnails
 	if !isAudio {
-		return m.GeneratePreviewThumbnails(mediaId)
+		return m.GeneratePreviewThumbnails(mediaPath, mediaID)
 	}
 
 	// For audio, just generate one waveform.
@@ -319,7 +319,7 @@ func (m *Module) GenerateThumbnail(mediaId string, isAudio bool) (string, error)
 	}
 
 	job := &ThumbnailJob{
-		MediaPath:    mediaId,
+		MediaPath:  mediaPath,
 		OutputPath: outputPath,
 		Width:      cfg.Thumbnails.Width,
 		Height:     cfg.Thumbnails.Height,
@@ -335,7 +335,7 @@ func (m *Module) GenerateThumbnail(mediaId string, isAudio bool) (string, error)
 	// Try to queue job
 	select {
 	case m.jobQueue <- job:
-		m.log.Debug("Queued thumbnail generation for: %s", mediaId)
+		m.log.Debug("Queued thumbnail generation for: %s", mediaPath)
 		return outputPath, ErrThumbnailPending
 	default:
 		// Queue full - clear inFlight, decrement pending, generate synchronously
@@ -343,13 +343,14 @@ func (m *Module) GenerateThumbnail(mediaId string, isAudio bool) (string, error)
 		m.statsMu.Lock()
 		m.stats.Pending--
 		m.statsMu.Unlock()
-		m.log.Warn("Job queue full, generating thumbnail synchronously: %s", mediaId)
+		m.log.Warn("Job queue full, generating thumbnail synchronously: %s", mediaPath)
 		return outputPath, m.generateThumbnail(job)
 	}
 }
 
-// GeneratePreviewThumbnails generates multiple thumbnails at different timestamps for hover preview
-func (m *Module) GeneratePreviewThumbnails(mediaId string) (string, error) {
+// GeneratePreviewThumbnails generates multiple thumbnails at different timestamps for hover preview.
+// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
+func (m *Module) GeneratePreviewThumbnails(mediaPath string, mediaID string) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg not available")
 	}
@@ -361,13 +362,13 @@ func (m *Module) GeneratePreviewThumbnails(mediaId string) (string, error) {
 	}
 
 	// Check if all previews already exist
-	if m.HasAllPreviewThumbnails(mediaId) {
-		m.log.Debug("All preview thumbnails already exist for: %s", mediaId)
-		return m.getThumbnailPath(mediaId), nil
+	if m.HasAllPreviewThumbnails(mediaID) {
+		m.log.Debug("All preview thumbnails already exist for: %s", mediaPath)
+		return m.getThumbnailPath(mediaID), nil
 	}
 
 	// Get video duration to calculate timestamps
-	duration, err := m.getMediaDuration(mediaId)
+	duration, err := m.getMediaDuration(mediaPath)
 	if err != nil {
 		duration = 600.0 // Default to 10 minutes if we can't get duration
 	}
@@ -379,13 +380,13 @@ func (m *Module) GeneratePreviewThumbnails(mediaId string) (string, error) {
 	usableDuration := endOffset - startOffset
 
 	// Generate main thumbnail first (index 0)
-	mainPath := m.getThumbnailPath(mediaId)
+	mainPath := m.getThumbnailPath(mediaID)
 	if _, err := os.Stat(mainPath); os.IsNotExist(err) {
 		// Only queue if not already in-flight
 		if _, loaded := m.inFlight.LoadOrStore(mainPath, time.Now()); !loaded {
 			mainTimestamp := startOffset + (usableDuration / 2) // Middle of video for main thumbnail
 			mainJob := &ThumbnailJob{
-				MediaPath:    mediaId,
+				MediaPath:  mediaPath,
 				OutputPath: mainPath,
 				Width:      cfg.Thumbnails.Width,
 				Height:     cfg.Thumbnails.Height,
@@ -399,23 +400,21 @@ func (m *Module) GeneratePreviewThumbnails(mediaId string) (string, error) {
 
 			select {
 			case m.jobQueue <- mainJob:
-				m.log.Debug("Queued main thumbnail for: %s", mediaId)
+				m.log.Debug("Queued main thumbnail for: %s", mediaPath)
 			default:
 				m.inFlight.Delete(mainPath)
 				m.statsMu.Lock()
 				m.stats.Pending--
 				m.statsMu.Unlock()
-				m.log.Debug("Job queue full, skipping main thumbnail for: %s", mediaId)
+				m.log.Debug("Job queue full, skipping main thumbnail for: %s", mediaPath)
 			}
 		}
 	}
 
-	// Generate preview thumbnails (index 1+, stored as hash_preview_N.jpg)
+	// Generate preview thumbnails (index 1+, stored as {uuid}_preview_N.jpg)
 previewLoop:
 	for i := 0; i < previewCount; i++ {
-		hash := md5.Sum([]byte(mediaId))
-		hashStr := hex.EncodeToString(hash[:])
-		filename := fmt.Sprintf("%s_preview_%d.jpg", hashStr, i)
+		filename := fmt.Sprintf("%s_preview_%d.jpg", mediaID, i)
 		outputPath := filepath.Join(m.thumbnailDir, filename)
 
 		// Skip if this specific thumbnail already exists on disk or in-flight
@@ -436,7 +435,7 @@ previewLoop:
 		}
 
 		job := &ThumbnailJob{
-			MediaPath:    mediaId,
+			MediaPath:  mediaPath,
 			OutputPath: outputPath,
 			Width:      cfg.Thumbnails.Width,
 			Height:     cfg.Thumbnails.Height,
@@ -452,7 +451,7 @@ previewLoop:
 		// Try to queue job
 		select {
 		case m.jobQueue <- job:
-			m.log.Debug("Queued preview thumbnail %d/%d for: %s (timestamp: %.2fs)", i+1, previewCount, mediaId, timestamp)
+			m.log.Debug("Queued preview thumbnail %d/%d for: %s (timestamp: %.2fs)", i+1, previewCount, mediaPath, timestamp)
 		default:
 			m.inFlight.Delete(outputPath)
 			m.statsMu.Lock()
@@ -460,7 +459,7 @@ previewLoop:
 			m.statsMu.Unlock()
 			cfg := m.config.Get()
 			m.log.Warn("Job queue full (%d jobs), skipped %d remaining preview thumbnails for: %s - Consider increasing Thumbnails.QueueSize (current: %d) or WorkerCount (current: %d)",
-				cfg.Thumbnails.QueueSize, previewCount-i, mediaId, cfg.Thumbnails.QueueSize, cfg.Thumbnails.WorkerCount)
+				cfg.Thumbnails.QueueSize, previewCount-i, mediaPath, cfg.Thumbnails.QueueSize, cfg.Thumbnails.WorkerCount)
 			break previewLoop
 		}
 	}
@@ -468,15 +467,16 @@ previewLoop:
 	return "", ErrThumbnailPending
 }
 
-// GenerateThumbnailSync generates a thumbnail synchronously
-func (m *Module) GenerateThumbnailSync(mediaPath string, isAudio bool) (string, error) {
+// GenerateThumbnailSync generates a thumbnail synchronously.
+// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
+func (m *Module) GenerateThumbnailSync(mediaPath string, mediaID string, isAudio bool) (string, error) {
 	if m.ffmpegPath == "" {
 		m.log.Error("Cannot generate thumbnail - FFmpeg not available")
 		return "", fmt.Errorf("ffmpeg not available")
 	}
 
 	cfg := m.config.Get()
-	outputPath := m.getThumbnailPath(mediaPath)
+	outputPath := m.getThumbnailPath(mediaID)
 
 	// Check if already exists
 	if _, err := os.Stat(outputPath); err == nil {
@@ -627,56 +627,52 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 	return nil
 }
 
-// getThumbnailPath generates the output path for a thumbnail (index 0 for main thumbnail)
-func (m *Module) getThumbnailPath(mediaPath string) string {
-	return m.getThumbnailPathByIndex(mediaPath, 0)
+// getThumbnailPath generates the output path for a thumbnail (index 0 for main thumbnail).
+// mediaID is the stable UUID used as the filename base.
+func (m *Module) getThumbnailPath(mediaID string) string {
+	return m.getThumbnailPathByIndex(mediaID, 0)
 }
 
-// getThumbnailPathByIndex generates the output path for a specific thumbnail index
-func (m *Module) getThumbnailPathByIndex(mediaPath string, index int) string {
-	hash := md5.Sum([]byte(mediaPath))
-	hashStr := hex.EncodeToString(hash[:])
+// getThumbnailPathByIndex generates the output path for a specific thumbnail index.
+// mediaID is the stable UUID; the on-disk filename is {uuid}.jpg or {uuid}_preview_N.jpg.
+func (m *Module) getThumbnailPathByIndex(mediaID string, index int) string {
 	if index == 0 {
-		filename := hashStr + ".jpg"
-		return filepath.Join(m.thumbnailDir, filename)
+		return filepath.Join(m.thumbnailDir, mediaID+".jpg")
 	}
-	// Use same naming as existing GetPreviewURLs for consistency
-	filename := fmt.Sprintf("%s_preview_%d.jpg", hashStr, index-1)
+	filename := fmt.Sprintf("%s_preview_%d.jpg", mediaID, index-1)
 	return filepath.Join(m.thumbnailDir, filename)
 }
 
-// GetThumbnailPath returns the thumbnail path (public version)
-func (m *Module) GetThumbnailPath(mediaPath string) string {
-	return m.getThumbnailPath(mediaPath)
+// GetThumbnailPath returns the thumbnail path for a media ID (public version)
+func (m *Module) GetThumbnailPath(mediaID string) string {
+	return m.getThumbnailPath(mediaID)
 }
 
-// GetThumbnailFilePath returns the absolute file path
-func (m *Module) GetThumbnailFilePath(mediaPath string) string {
-	return m.getThumbnailPath(mediaPath)
+// GetThumbnailFilePath returns the absolute file path for a media ID
+func (m *Module) GetThumbnailFilePath(mediaID string) string {
+	return m.getThumbnailPath(mediaID)
 }
 
-// HasThumbnail checks if a thumbnail exists
-func (m *Module) HasThumbnail(mediaPath string) bool {
-	path := m.getThumbnailPath(mediaPath)
+// HasThumbnail checks if a thumbnail exists for a media ID
+func (m *Module) HasThumbnail(mediaID string) bool {
+	path := m.getThumbnailPath(mediaID)
 	_, err := os.Stat(path)
 	return err == nil
 }
 
-// HasAllPreviewThumbnails checks if all preview thumbnails exist
-func (m *Module) HasAllPreviewThumbnails(mediaPath string) bool {
+// HasAllPreviewThumbnails checks if all preview thumbnails exist for a media ID
+func (m *Module) HasAllPreviewThumbnails(mediaID string) bool {
 	cfg := m.config.Get()
-	hash := md5.Sum([]byte(mediaPath))
-	hashStr := hex.EncodeToString(hash[:])
 
 	// Check main thumbnail
-	mainPath := filepath.Join(m.thumbnailDir, hashStr+".jpg")
+	mainPath := filepath.Join(m.thumbnailDir, mediaID+".jpg")
 	if _, err := os.Stat(mainPath); err != nil {
 		return false
 	}
 
 	// Check all preview thumbnails
 	for i := 0; i < cfg.Thumbnails.PreviewCount; i++ {
-		filename := fmt.Sprintf("%s_preview_%d.jpg", hashStr, i)
+		filename := fmt.Sprintf("%s_preview_%d.jpg", mediaID, i)
 		path := filepath.Join(m.thumbnailDir, filename)
 		if _, err := os.Stat(path); err != nil {
 			return false
@@ -839,7 +835,9 @@ func (m *Module) GetStats() Stats {
 }
 
 // GetPreviewURLs returns preview thumbnail URLs for a media file
-func (m *Module) GetPreviewURLs(mediaPath string, count int) []string {
+// GetPreviewURLs returns preview thumbnail URLs for a media file.
+// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
+func (m *Module) GetPreviewURLs(mediaPath string, mediaID string, count int) []string {
 	// Only generate previews for videos
 	if m.ffmpegPath == "" {
 		return []string{}
@@ -870,8 +868,6 @@ func (m *Module) GetPreviewURLs(mediaPath string, count int) []string {
 	}
 
 	urls := make([]string, 0, count)
-	hash := md5.Sum([]byte(mediaPath))
-	baseHash := hex.EncodeToString(hash[:])
 
 	// Calculate evenly distributed timestamps
 	// Skip first 5% and last 5% to avoid black frames
@@ -881,7 +877,7 @@ func (m *Module) GetPreviewURLs(mediaPath string, count int) []string {
 
 	for i := 0; i < count; i++ {
 		timestamp := startOffset + (float64(i) * interval)
-		previewFilename := fmt.Sprintf("%s_preview_%d.jpg", baseHash, i)
+		previewFilename := fmt.Sprintf("%s_preview_%d.jpg", mediaID, i)
 		previewPath := filepath.Join(m.thumbnailDir, previewFilename)
 		previewURL := "/thumbnails/" + previewFilename
 

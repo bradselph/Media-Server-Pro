@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/scanner"
+	"media-server-pro/pkg/models"
 )
 
 // ScanContent scans media files for mature content
@@ -101,13 +102,24 @@ func (h *Handler) GetScannerStats(c *gin.Context) {
 	writeSuccess(c, stats)
 }
 
-// GetReviewQueue returns items pending review as a flat array
+// GetReviewQueue returns items pending review as a flat array.
+// Enriches each item's ID with the media module's stable UUID so that
+// approve/reject handlers can resolve items via resolveMediaByID.
 func (h *Handler) GetReviewQueue(c *gin.Context) {
 	if !h.requireScanner(c) {
 		return
 	}
 	queue := h.scanner.GetReviewQueue()
-	writeSuccess(c, queue)
+	// Build response copies so we don't mutate the scanner's internal state.
+	enriched := make([]*models.MatureReviewItem, len(queue))
+	for i, item := range queue {
+		copy := *item // shallow copy
+		if mediaItem, err := h.media.GetMedia(item.MediaPath); err == nil && mediaItem != nil {
+			copy.ID = mediaItem.ID // Replace MD5 hash with stable UUID
+		}
+		enriched[i] = &copy
+	}
+	writeSuccess(c, enriched)
 }
 
 // BatchReviewAction applies approve/reject action to multiple review queue items

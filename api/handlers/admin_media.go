@@ -37,9 +37,9 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 
 	for _, item := range items {
 		if item.ThumbnailURL == "" {
-			if !h.thumbnails.HasThumbnail(item.Path) {
+			if !h.thumbnails.HasThumbnail(item.ID) {
 				isAudio := item.Type == "audio"
-				if _, err := h.thumbnails.GenerateThumbnail(item.Path, isAudio); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
+				if _, err := h.thumbnails.GenerateThumbnail(item.Path, item.ID, isAudio); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 				}
 			}

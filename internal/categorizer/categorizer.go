@@ -6,8 +6,6 @@ package categorizer
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -202,9 +201,8 @@ func (m *Module) CategorizeFile(path string) *CategorizedItem {
 		return existing
 	}
 
-	h := md5.Sum([]byte(path))
 	item := &CategorizedItem{
-		ID:            hex.EncodeToString(h[:]),
+		ID:            uuid.New().String(),
 		Name:          filepath.Base(path),
 		Path:          path,
 		CategorizedAt: time.Now(),
@@ -521,9 +519,8 @@ func (m *Module) SetCategory(path string, category Category) {
 
 	item, ok := m.items[path]
 	if !ok {
-		h := md5.Sum([]byte(path))
 		item = &CategorizedItem{
-			ID:            hex.EncodeToString(h[:]),
+			ID:            uuid.New().String(),
 			Name:          filepath.Base(path),
 			Path:          path,
 			CategorizedAt: time.Now(),

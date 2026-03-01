@@ -57,20 +57,24 @@ type ScanResultRepository interface {
 
 // MediaMetadata represents metadata stored for a media file
 type MediaMetadata struct {
-	Path        string
+	Path string
 	// StableID is a UUID generated on first scan and persisted in the DB.
 	// It serves as the public-facing MediaItem.ID, decoupling it from the
 	// filesystem path so that IDs survive renames, moves, and config changes.
 	// Empty string means the row predates stable-ID support; callers should
 	// treat a missing StableID as requiring a new UUID.
-	StableID    string
-	Views       int
-	LastPlayed  *string
-	DateAdded   string
-	IsMature    bool
-	MatureScore float64
-	Category    string
-	Tags        []string
+	StableID string
+	// ContentFingerprint is a SHA-256 hash of sampled file content
+	// (first 64KB + last 64KB + file size). Used to detect moved/renamed
+	// files and identify duplicates regardless of path or filename.
+	ContentFingerprint string
+	Views              int
+	LastPlayed         *string
+	DateAdded          string
+	IsMature           bool
+	MatureScore        float64
+	Category           string
+	Tags               []string
 	// ProbeModTime is the file mtime at the time ffprobe was last run.
 	// A zero value means the file has not been probed yet.
 	ProbeModTime *time.Time
@@ -170,20 +174,20 @@ type CategorizedItemRepository interface {
 
 // CategorizedItemRecord represents a categorized media item in the database
 type CategorizedItemRecord struct {
-	Path           string
-	ID             string
-	Name           string
-	Category       string
-	Confidence     float64
-	DetectedTitle  string
-	DetectedYear   int
-	DetectedSeason int
+	Path            string
+	ID              string
+	Name            string
+	Category        string
+	Confidence      float64
+	DetectedTitle   string
+	DetectedYear    int
+	DetectedSeason  int
 	DetectedEpisode int
-	DetectedShow   string
-	DetectedArtist string
-	DetectedAlbum  string
-	CategorizedAt  time.Time
-	ManualOverride bool
+	DetectedShow    string
+	DetectedArtist  string
+	DetectedAlbum   string
+	CategorizedAt   time.Time
+	ManualOverride  bool
 }
 
 // HLSJobRepository provides HLS job persistence

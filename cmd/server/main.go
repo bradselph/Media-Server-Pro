@@ -289,6 +289,7 @@ func registerTasks(
 				for _, item := range items {
 					mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
 						Path:      item.Path,
+						StableID:  item.ID,
 						Title:     item.Name,
 						Category:  item.Category,
 						MediaType: string(item.Type),
@@ -327,9 +328,9 @@ func registerTasks(
 				if ctx.Err() != nil {
 					break
 				}
-				if !thumbnailsModule.HasThumbnail(item.Path) {
+				if !thumbnailsModule.HasThumbnail(item.ID) {
 					isAudio := item.Type == "audio"
-					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, isAudio); err != nil {
+					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, item.ID, isAudio); err != nil {
 						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
 							log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
 						}

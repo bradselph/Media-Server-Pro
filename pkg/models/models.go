@@ -18,7 +18,8 @@ const (
 
 // MediaItem represents a media file with metadata.
 // Path is excluded from JSON serialization to prevent leaking filesystem paths to clients.
-// Clients should reference media items by their ID (MD5 hash of path).
+// Clients should reference media items by their stable UUID (generated once per file,
+// persisted in the database, and decoupled from the filesystem path).
 type MediaItem struct {
 	ID           string     `json:"id"`
 	Path         string     `json:"-"`

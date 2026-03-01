@@ -3,8 +3,6 @@ package suggestions
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"math"
 	"math/rand"
 	"sort"
@@ -20,12 +18,6 @@ import (
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
-
-// pathToID computes the MD5 hash of a path, matching models.MediaItem.ID generation.
-func pathToID(path string) string {
-	h := md5.Sum([]byte(path))
-	return hex.EncodeToString(h[:])
-}
 
 // ViewHistory tracks a user's viewing history
 type ViewHistory struct {
@@ -87,6 +79,7 @@ type Module struct {
 // MediaInfo holds information about a media file for suggestions
 type MediaInfo struct {
 	Path      string
+	StableID  string // UUID assigned by the media module; used as the public-facing MediaID
 	Title     string
 	Category  string
 	MediaType string
@@ -207,8 +200,9 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// RecordView records a view for a user
-func (m *Module) RecordView(userID, mediaId, category, mediaType string, duration float64) {
+// RecordView records a view for a user.
+// mediaPath is the filesystem path used to key ViewHistory entries.
+func (m *Module) RecordView(userID, mediaPath, category, mediaType string, duration float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -226,7 +220,7 @@ func (m *Module) RecordView(userID, mediaId, category, mediaType string, duratio
 	// Update or add view history entry
 	found := false
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaId {
+		if vh.MediaPath == mediaPath {
 			profile.ViewHistory[i].ViewCount++
 			profile.ViewHistory[i].TotalTime += duration
 			profile.ViewHistory[i].LastViewed = time.Now()
@@ -237,7 +231,7 @@ func (m *Module) RecordView(userID, mediaId, category, mediaType string, duratio
 
 	if !found {
 		profile.ViewHistory = append(profile.ViewHistory, ViewHistory{
-			MediaPath:  mediaId,
+			MediaPath:  mediaPath,
 			Category:   category,
 			MediaType:  mediaType,
 			ViewCount:  1,
@@ -258,11 +252,12 @@ func (m *Module) RecordView(userID, mediaId, category, mediaType string, duratio
 	profile.TotalWatchTime += duration
 	profile.LastUpdated = time.Now()
 
-	m.log.Debug("Recorded view for user %s: %s (category: %s)", userID, mediaId, category)
+	m.log.Debug("Recorded view for user %s: %s (category: %s)", userID, mediaPath, category)
 }
 
-// RecordCompletion marks a media item as completed
-func (m *Module) RecordCompletion(userID, mediaId string) {
+// RecordCompletion marks a media item as completed.
+// mediaPath is the filesystem path used to match ViewHistory entries.
+func (m *Module) RecordCompletion(userID, mediaPath string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -272,7 +267,7 @@ func (m *Module) RecordCompletion(userID, mediaId string) {
 	}
 
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaId {
+		if vh.MediaPath == mediaPath {
 			completedAt := time.Now()
 			profile.ViewHistory[i].CompletedAt = &completedAt
 			break
@@ -280,8 +275,9 @@ func (m *Module) RecordCompletion(userID, mediaId string) {
 	}
 }
 
-// RecordRating records a user rating for a media item
-func (m *Module) RecordRating(userID, mediaId string, rating float64) {
+// RecordRating records a user rating for a media item.
+// mediaPath is the filesystem path used to match ViewHistory entries.
+func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -291,13 +287,13 @@ func (m *Module) RecordRating(userID, mediaId string, rating float64) {
 	}
 
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaId {
+		if vh.MediaPath == mediaPath {
 			profile.ViewHistory[i].Rating = rating
 			break
 		}
 	}
 
-	m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaId, userID)
+	m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
 }
 
 // UpdateMediaData atomically replaces the in-memory media catalogue used for suggestions.
@@ -363,7 +359,7 @@ func (m *Module) GetSuggestions(userID string, limit int) []*Suggestion {
 
 		if score > 0 {
 			suggestions = append(suggestions, &Suggestion{
-				MediaID:   pathToID(media.Path),
+				MediaID:   media.StableID,
 				MediaPath: media.Path,
 				Title:     media.Title,
 				Category:  media.Category,
@@ -538,7 +534,7 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 		score *= 1.0 + (rand.Float64()*0.40 - 0.20)
 
 		suggestions = append(suggestions, &Suggestion{
-			MediaID:   pathToID(media.Path),
+			MediaID:   media.StableID,
 			MediaPath: media.Path,
 			Title:     media.Title,
 			Category:  media.Category,
@@ -584,7 +580,7 @@ func (m *Module) GetSimilarMedia(mediaPath string, limit int) []*Suggestion {
 
 		if score > 0 {
 			suggestions = append(suggestions, &Suggestion{
-				MediaID:   pathToID(media.Path),
+				MediaID:   media.StableID,
 				MediaPath: media.Path,
 				Title:     media.Title,
 				Category:  media.Category,
@@ -687,12 +683,18 @@ func (m *Module) GetContinueWatching(userID string, limit int) []*Suggestion {
 
 		media := m.mediaData[vh.MediaPath]
 		title := vh.MediaPath
+		mediaID := ""
 		if media != nil {
 			title = media.Title
+			mediaID = media.StableID
+		}
+		// Skip items we can't resolve to a stable ID (file may have been removed)
+		if mediaID == "" {
+			continue
 		}
 
 		suggestions = append(suggestions, &Suggestion{
-			MediaID:   pathToID(vh.MediaPath),
+			MediaID:   mediaID,
 			MediaPath: vh.MediaPath,
 			Title:     title,
 			Category:  vh.Category,
@@ -772,14 +774,14 @@ func (m *Module) loadProfiles() error {
 		if err == nil {
 			for _, h := range history {
 				vh := ViewHistory{
-					MediaPath: h.MediaPath,
-					Category:  h.Category,
-					MediaType: h.MediaType,
-					ViewCount: h.ViewCount,
-					TotalTime: h.TotalTime,
-					LastViewed: h.LastViewed,
+					MediaPath:   h.MediaPath,
+					Category:    h.Category,
+					MediaType:   h.MediaType,
+					ViewCount:   h.ViewCount,
+					TotalTime:   h.TotalTime,
+					LastViewed:  h.LastViewed,
 					CompletedAt: h.CompletedAt,
-					Rating:    h.Rating,
+					Rating:      h.Rating,
 				}
 				profile.ViewHistory = append(profile.ViewHistory, vh)
 			}

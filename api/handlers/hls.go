@@ -32,7 +32,7 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 		return
 	}
 
-	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), absPath)
+	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), absPath, id)
 	if err != nil {
 		h.log.Debug("HLS check/generate failed for media %s: %v", id, err)
 		writeError(c, http.StatusNotFound, "HLS stream not available")
@@ -92,7 +92,7 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 		return
 	}
 
-	job, err := h.hls.GenerateHLS(c.Request.Context(), absPath, req.Qualities)
+	job, err := h.hls.GenerateHLS(c.Request.Context(), absPath, req.ID, req.Qualities)
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
