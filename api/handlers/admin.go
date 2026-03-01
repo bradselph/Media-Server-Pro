@@ -798,8 +798,8 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 		UpdateMethod string `json:"update_method"`
 		Branch       string `json:"branch"`
 	}
-	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 

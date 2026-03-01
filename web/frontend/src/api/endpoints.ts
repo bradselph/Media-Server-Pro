@@ -425,13 +425,6 @@ export const adminApi = {
         }>('/api/admin/update/source/progress'),
 
     getUpdateConfig: () =>
-        // TODO: API Contract Mismatch - GetUpdateConfig handler (api/handlers/admin.go:780-793)
-        // applies defaults of "source" for update_method and "main" for branch when the config
-        // fields are empty. So the actual response always contains valid non-empty strings.
-        // However, the handler ONLY defaults when the raw config is empty — if a user saves
-        // an empty string via SetUpdateConfig (which validates, so it would not), the field
-        // could be empty. The handler defensive default means the type is accurate in practice,
-        // but callers should still guard against empty strings defensively.
         api.get<{
             update_method: 'source' | 'binary'
             branch: string
