@@ -709,12 +709,7 @@ function MediaTab() {
     const [mediaSearch, setMediaSearch] = useState('')
     const [debouncedMediaSearch, setDebouncedMediaSearch] = useState('')
     const [mediaPage, setMediaPage] = useState(1)
-    const [editItem, setEditItem] = useState<{
-        id: string;
-        name: string;
-        category: string;
-        is_mature: boolean
-    } | null>(null)
+    const [editItem, setEditItem] = useState<MediaItem | null>(null)
     const mediaLimit = 20
     const mediaSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1098,7 +1093,7 @@ function MediaTab() {
                                        }}/>
                             </label>
                             <label style={{fontSize: 13}}>Category
-                                <input value={editItem.category}
+                                <input value={editItem.category ?? ''}
                                        onChange={e => setEditItem({...editItem, category: e.target.value})}
                                        style={{
                                            display: 'block',
@@ -1166,12 +1161,7 @@ function MediaTab() {
                                 <td>
                                     <div style={{display: 'flex', gap: 4}}>
                                         <button className="admin-btn" style={{padding: '3px 8px', fontSize: 12}}
-                                                onClick={() => setEditItem({
-                                                    id: item.id,
-                                                    name: item.name,
-                                                    category: item.category || '',
-                                                    is_mature: item.is_mature
-                                                })}>
+                                                onClick={() => setEditItem(item)}>
                                             <i className="bi bi-pencil-fill"/>
                                         </button>
                                         <button className="admin-btn admin-btn-danger"
