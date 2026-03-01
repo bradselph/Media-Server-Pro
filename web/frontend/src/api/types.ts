@@ -718,15 +718,15 @@ export interface BannedIP {
 
 // ── Feature 11: Categorizer ──
 
-// Matches internal/categorizer MediaInfo struct
+// Matches internal/categorizer MediaInfo struct (all fields omitempty → optional)
 export interface DetectedMediaInfo {
-    title: string
-    year: string
-    season: string
-    episode: string
-    resolution: string
-    source: string
-    audio_format: string
+    title?: string
+    year?: number
+    season?: number
+    episode?: number
+    show_name?: string
+    artist?: string
+    album?: string
 }
 
 export interface CategorizedItem {
