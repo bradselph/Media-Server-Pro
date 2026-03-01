@@ -21,6 +21,7 @@ import (
 	"media-server-pro/internal/auth"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/updater"
+	"media-server-pro/internal/upload"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
@@ -199,10 +200,28 @@ func (h *Handler) AdminGetUser(c *gin.Context) {
 func (h *Handler) AdminUpdateUser(c *gin.Context) {
 	username := c.Param("username")
 
-	var updates map[string]interface{}
-	if json.NewDecoder(c.Request.Body).Decode(&updates) != nil {
+	var req struct {
+		Role        string                 `json:"role"`
+		Enabled     *bool                  `json:"enabled"`
+		Email       string                 `json:"email"`
+		Permissions map[string]interface{} `json:"permissions"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
+	}
+	updates := map[string]interface{}{}
+	if req.Role != "" {
+		updates["role"] = req.Role
+	}
+	if req.Enabled != nil {
+		updates["enabled"] = *req.Enabled
+	}
+	if req.Email != "" {
+		updates["email"] = req.Email
+	}
+	if req.Permissions != nil {
+		updates["permissions"] = req.Permissions
 	}
 
 	if err := h.auth.UpdateUser(c.Request.Context(), username, updates); err != nil {
@@ -891,10 +910,14 @@ func (h *Handler) AdminGetActiveStreams(c *gin.Context) {
 
 // AdminGetActiveUploads returns the list of in-progress uploads.
 func (h *Handler) AdminGetActiveUploads(c *gin.Context) {
-	if !h.requireUpload(c) {
+	if h.upload == nil {
+		writeSuccess(c, []*upload.Progress{})
 		return
 	}
 	uploads := h.upload.GetActiveUploads()
+	if uploads == nil {
+		uploads = []*upload.Progress{}
+	}
 	writeSuccess(c, uploads)
 }
 

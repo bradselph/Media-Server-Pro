@@ -949,7 +949,7 @@ func (f Filter) matches(item *models.MediaItem) bool {
 	if f.Type != "" && f.Type != models.MediaTypeUnknown && item.Type != f.Type {
 		return false
 	}
-	if f.Category != "" && item.Category != f.Category {
+	if f.Category != "" && !strings.EqualFold(item.Category, f.Category) {
 		return false
 	}
 	if !f.matchesSearch(item) {

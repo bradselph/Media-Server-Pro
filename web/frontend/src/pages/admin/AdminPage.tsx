@@ -282,6 +282,7 @@ function CreateUserModal({onClose, onCreated}: { onClose: () => void; onCreated:
 function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => void; onSaved: () => void }) {
     const [role, setRole] = useState<'admin' | 'viewer'>(user.role)
     const [enabled, setEnabled] = useState(user.enabled)
+    const [email, setEmail] = useState(user.email ?? '')
     const [newPassword, setNewPassword] = useState('')
     const [permissions, setPermissions] = useState({...user.permissions})
     const [error, setError] = useState('')
@@ -292,7 +293,7 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
         setError('')
         setLoading(true)
         try {
-            await adminApi.updateUser(user.username, {role, enabled, permissions})
+            await adminApi.updateUser(user.username, {role, enabled, permissions, email: email || undefined})
             if (newPassword) await adminApi.changeUserPassword(user.username, newPassword)
             onSaved()
         } catch (err) {
@@ -331,10 +332,16 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
                                 </select>
                             </div>
                         </div>
-                        <div className="admin-form-group" style={{marginBottom: 14}}>
-                            <label>New Password (blank to keep current)</label>
-                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
-                                   minLength={8}/>
+                        <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
+                            <div className="admin-form-group" style={{flex: 1}}>
+                                <label>Email</label>
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)}/>
+                            </div>
+                            <div className="admin-form-group" style={{flex: 1}}>
+                                <label>New Password (blank to keep current)</label>
+                                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                                       minLength={8}/>
+                            </div>
                         </div>
                         <div style={{marginBottom: 14}}>
                             <label style={{
@@ -737,6 +744,12 @@ function MediaTab() {
             if (mediaSearchTimer.current) clearTimeout(mediaSearchTimer.current)
         }
     }, [mediaSearch])
+
+    // Clear bulk selection whenever the visible result set changes to avoid
+    // acting on IDs that are no longer shown in the table.
+    useEffect(() => {
+        setSelected(new Set())
+    }, [debouncedMediaSearch, mediaPage, mediaLimit, sortBy, sortOrder, filterType, filterCategory, filterMature, filterTags])
 
     const {data: backups = []} = useQuery({
         queryKey: ['admin-backups'],
@@ -1187,6 +1200,7 @@ function MediaTab() {
                                 <td style={{whiteSpace: 'nowrap'}}>{formatDuration(item.duration)}</td>
                                 <td>{item.category || '—'}</td>
                                 <td style={{whiteSpace: 'nowrap'}}>{new Date(item.date_added).toLocaleDateString()}</td>
+                                <td style={{whiteSpace: 'nowrap'}}>{new Date(item.date_modified).toLocaleDateString()}</td>
                                 <td>{item.views}</td>
                                 <td>{item.is_mature ? <span style={{color: '#ef4444'}}>Yes</span> : 'No'}</td>
                                 <td>
