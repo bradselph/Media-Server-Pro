@@ -485,34 +485,21 @@ func (m *Module) ApplyUpdate(_ context.Context) (*UpdateStatus, error) {
 	return status, nil
 }
 
-// createBackup creates a backup of current installation
+// createBackup saves a copy of the running executable before an update.
+// Only the binary is backed up — config, data, and media files are not touched.
 func (m *Module) createBackup() (string, error) {
-	backupName := fmt.Sprintf("backup_%s_%s.tar.gz",
-		m.currentVersion,
-		time.Now().Format("20060102_150405"))
-	backupPath := filepath.Join(m.backupDir, backupName)
-
-	// Get executable path
 	execPath, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	execDir := filepath.Dir(execPath)
 
-	// Create tar.gz backup of important files
-	cmd := exec.Command("tar", "-czf", backupPath,
-		"-C", execDir,
-		".", // Current directory contents
-	)
-	if err := cmd.Run(); err != nil {
-		// tar may not be available on all systems (e.g. minimal Docker images, Windows).
-		// Fall back to backing up just the executable so the update can still proceed.
-		m.log.Warn("tar backup failed (%v) — falling back to executable-only backup", err)
-		execBackup := filepath.Join(m.backupDir, "media-server.backup")
-		if copyErr := copyFile(execPath, execBackup); copyErr != nil {
-			return "", fmt.Errorf("backup failed: %w", copyErr)
-		}
-		return execBackup, nil
+	backupName := fmt.Sprintf("server_%s_%s.backup",
+		m.currentVersion,
+		time.Now().Format("20060102_150405"))
+	backupPath := filepath.Join(m.backupDir, backupName)
+
+	if err := copyFile(execPath, backupPath); err != nil {
+		return "", fmt.Errorf("backup failed: %w", err)
 	}
 
 	m.log.Info("Created backup: %s", backupPath)
