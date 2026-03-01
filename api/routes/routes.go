@@ -182,6 +182,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 		"/thumbnail",
 		"/thumbnails/",
 		"/remote/stream",
+		"/receiver/stream",
 	})))
 
 	// Apply ETag caching for GET/HEAD /api/* JSON responses
@@ -231,6 +232,9 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 
 	// Remote streaming — frontend uses mediaApi.getRemoteStreamUrl()
 	r.GET("/remote/stream", requireAuth(), h.StreamRemoteMedia)
+
+	// Receiver proxy streaming — streams slave media to users
+	r.GET("/receiver/stream/:id", requireAuth(), h.ReceiverProxyStream)
 
 	// -----------------------------------------------------------------------
 	// API routes group (/api)
@@ -329,6 +333,15 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// Upload routes (protected)
 	api.POST("/upload", requireAuth(), h.UploadMedia)
 	api.GET("/upload/:id/progress", requireAuth(), h.GetUploadProgress)
+
+	// Receiver slave API routes (authenticated via X-API-Key, not session cookie)
+	api.POST("/receiver/register", h.ReceiverRegisterSlave)
+	api.POST("/receiver/catalog", h.ReceiverPushCatalog)
+	api.POST("/receiver/heartbeat", h.ReceiverHeartbeat)
+
+	// Receiver media browsing (user-facing, requires session auth)
+	api.GET("/receiver/media", requireAuth(), h.ReceiverListMedia)
+	api.GET("/receiver/media/:id", requireAuth(), h.ReceiverGetMedia)
 
 	// -----------------------------------------------------------------------
 	// Admin routes group (/api/admin)
@@ -469,6 +482,11 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.DELETE("/remote/sources/:source", h.DeleteRemoteSource)
 	adminGrp.POST("/remote/cache", h.CacheRemoteMedia)
 	adminGrp.POST("/remote/cache/clean", h.CleanRemoteCache)
+
+	// Receiver (master-slave proxy) routes (admin)
+	adminGrp.GET("/receiver/slaves", h.AdminReceiverListSlaves)
+	adminGrp.GET("/receiver/stats", h.AdminReceiverGetStats)
+	adminGrp.DELETE("/receiver/slaves/:id", h.AdminReceiverRemoveSlave)
 
 	// Admin media management routes
 	adminGrp.GET(pathMedia, h.AdminListMedia)

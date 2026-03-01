@@ -286,6 +286,18 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 			if mature, ok := req.Data["is_mature"].(bool); ok {
 				updates["is_mature"] = mature
 			}
+			if tagsRaw, ok := req.Data["tags"]; ok {
+				// JSON decoding yields []interface{}, not []string
+				if tv, ok := tagsRaw.([]interface{}); ok {
+					tags := make([]string, 0, len(tv))
+					for _, t := range tv {
+						if s, ok := t.(string); ok {
+							tags = append(tags, s)
+						}
+					}
+					updates["tags"] = tags
+				}
+			}
 			if len(updates) == 0 {
 				writeError(c, http.StatusBadRequest, "no valid fields in data for update action")
 				return

@@ -26,6 +26,7 @@ import (
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/playlist"
+	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
@@ -81,6 +82,7 @@ type Handler struct {
 	categorizer   *categorizer.Module
 	updater       *updater.Module
 	remote        *remote.Module
+	receiver      *receiver.Module
 	config        *config.Manager
 }
 
@@ -110,6 +112,7 @@ type HandlerDeps struct {
 	Categorizer   *categorizer.Module
 	Updater       *updater.Module
 	Remote        *remote.Module
+	Receiver      *receiver.Module
 }
 
 // NewHandler creates a new handler with dependencies.
@@ -143,6 +146,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		categorizer:   deps.Categorizer,
 		updater:       deps.Updater,
 		remote:        deps.Remote,
+		receiver:      deps.Receiver,
 		config:        deps.Config,
 	}
 }

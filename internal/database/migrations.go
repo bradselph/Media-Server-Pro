@@ -349,6 +349,35 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 				errors      JSON,
 				version     VARCHAR(50)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"receiver_slaves", `
+			CREATE TABLE IF NOT EXISTS receiver_slaves (
+				id          VARCHAR(255) PRIMARY KEY,
+				name        VARCHAR(255) NOT NULL,
+				base_url    VARCHAR(500) NOT NULL,
+				status      VARCHAR(50)  NOT NULL DEFAULT 'offline',
+				media_count INT          DEFAULT 0,
+				last_seen   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				INDEX idx_receiver_slaves_status (status)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"receiver_media", `
+			CREATE TABLE IF NOT EXISTS receiver_media (
+				id           VARCHAR(255) PRIMARY KEY,
+				slave_id     VARCHAR(255) NOT NULL,
+				remote_path  VARCHAR(500) NOT NULL,
+				name         VARCHAR(500) NOT NULL,
+				media_type   VARCHAR(50),
+				file_size    BIGINT       DEFAULT 0,
+				duration     DOUBLE       DEFAULT 0,
+				content_type VARCHAR(100),
+				width        INT          DEFAULT 0,
+				height       INT          DEFAULT 0,
+				updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_receiver_media_slave (slave_id),
+				INDEX idx_receiver_media_name (name(191))
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	}
 
 	for _, t := range tables {
