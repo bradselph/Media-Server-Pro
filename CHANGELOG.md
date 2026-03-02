@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.21.0] - 2026-03-02 (minor)
+
+- Merge pull request #24 from bradselph/development
+- feat(frontend): implement receiver tab and wire all remote/receiver APIs
+
+
+## [0.20.0] - 2026-03-02 (minor)
+
+- Merge pull request #23 from bradselph/development
+- feat(deploy): add remote media proxy and receiver setup to deploy.sh
+- fix(frontend): add missing UserPermissions import in endpoints.ts
+
+
+## [0.19.0] - 2026-03-02 (minor)
+
+- Merge pull request #22 from bradselph/development
+- fix(frontend): apply formatTitle to all suggestion/related media name displays
+- oops
+- removed
+- fix(mature): show blurred mature content to guests with sign-in gate
+- chore: remove old unused files and directories
+- fix(updater): source update now correctly checkouts configured branch
+- fix: API contract fixes, mature scanner persistence, and code cleanup
+- add todos
+
+
+## [0.18.0] - 2026-03-01 (minor)
+
+- Merge pull request #21 from bradselph/development
+- feat(receiver): add master-slave media distribution system
+- fix(admin): security hardening, bulk tags, state bugs, case-insensitive filter
+
+
 ## [0.17.0] - 2026-03-01 (minor)
 
 - Merge pull request #20 from bradselph/development
