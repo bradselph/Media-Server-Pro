@@ -163,11 +163,12 @@ run_or_dry() {
 save_to_deploy_env() {
   local key="$1" val="$2"
   local file="$SCRIPT_DIR/.deploy.env"
-  if [[ -f "$file" ]] && grep -q "^${key}=" "$file"; then
-    sed -i "s|^${key}=.*|${key}=${val}|" "$file"
-  else
-    echo "${key}=${val}" >> "$file"
-  fi
+  local tmp="${file}.tmp.$$"
+  # Filter out any existing line for this key, then append the new value.
+  # grep+rewrite is more reliable than sed -i on Windows/Git Bash.
+  { grep -v "^${key}=" "$file" 2>/dev/null || true; echo "${key}=${val}"; } > "$tmp" \
+    && mv "$tmp" "$file" \
+    || { rm -f "$tmp"; echo "${key}=${val}" >> "$file"; }
 }
 
 CLONE_URL="https://${GITHUB_TOKEN}@${REPO_URL}"
@@ -314,15 +315,15 @@ if $SETUP; then
     echo '  4. Run: ./deploy.sh --setup-receiver  (to configure master receiver for slave nodes)'
   "
 
-  # Fetch the generated API key back and save it to local .deploy.env
-  # so deploy-slave.sh can pick it up automatically.
+  # Save the API key locally so deploy-slave.sh can read it without copy-paste.
+  # NOTE: we do NOT auto-save MASTER_URL here because --setup doesn't know the
+  # public domain name — run --setup-receiver which handles it properly.
   if ! $DRY_RUN; then
     RECV_KEY=$(vps "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
     if [[ -n "$RECV_KEY" ]]; then
       save_to_deploy_env "RECEIVER_API_KEY" "$RECV_KEY"
-      [[ -z "$MASTER_URL" ]] && MASTER_URL="http://$VPS_HOST"
-      save_to_deploy_env "MASTER_URL" "$MASTER_URL"
-      success "Saved RECEIVER_API_KEY and MASTER_URL to .deploy.env"
+      success "Saved RECEIVER_API_KEY to .deploy.env"
+      info "Run ./deploy.sh --setup-receiver to configure the receiver and save MASTER_URL"
     fi
   fi
   exit 0
@@ -423,25 +424,30 @@ if $SETUP_RECEIVER; then
       echo \"[receiver] UFW: opened port \${APP_PORT}/tcp for slave → master catalog pushes\"
     fi
 
-    echo ''
-    echo '[receiver] Master receiver configured. Restart the service to apply:'
-    echo \"  sudo systemctl restart $SERVICE\"
+    echo '[receiver] Restarting service to apply changes...'
+    sudo systemctl restart '$SERVICE' && echo '[receiver] Service restarted OK' \
+      || echo '[receiver] WARNING: restart failed — run: sudo systemctl restart $SERVICE'
   "
 
-  # Fetch the API key from VPS and save to local .deploy.env so
-  # deploy-slave.sh --local works without any manual copy-paste.
+  # Fetch the API key and save both it and MASTER_URL to local .deploy.env
+  # so deploy-slave.sh --local reads them automatically with no copy-paste.
   if ! $DRY_RUN; then
     RECV_KEY=$(vps "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
     if [[ -n "$RECV_KEY" ]]; then
-      [[ -z "$MASTER_URL" ]] && MASTER_URL="http://$VPS_HOST"
+      # MASTER_URL: use what's already in .deploy.env/env if set, otherwise
+      # fall back to bare IP (user should override with their domain afterwards).
+      if [[ -z "$MASTER_URL" ]]; then
+        MASTER_URL="http://$VPS_HOST"
+        warn "MASTER_URL not set — using bare IP: $MASTER_URL"
+        warn "If behind nginx/CloudPanel set your domain:"
+        warn "  Add MASTER_URL=https://yourdomain.com to .deploy.env then re-run --setup-receiver"
+        echo ""
+      fi
       save_to_deploy_env "RECEIVER_API_KEY" "$RECV_KEY"
       save_to_deploy_env "MASTER_URL" "$MASTER_URL"
       success "Saved to .deploy.env:"
       info "  MASTER_URL=$MASTER_URL"
       info "  RECEIVER_API_KEY=$RECV_KEY"
-      echo ""
-      warn "If your master is behind a reverse proxy (nginx/CloudPanel), update MASTER_URL:"
-      warn "  echo 'MASTER_URL=https://yourdomain.com' >> .deploy.env"
       echo ""
       success "Start slave on this machine: ./deploy-slave.sh --local"
     fi
