@@ -34,7 +34,6 @@
 # Common optional config:
 #   SLAVE_ID           Unique slave ID       (default: hostname)
 #   SLAVE_NAME         Display name          (default: same as SLAVE_ID)
-#   LISTEN_ADDR        Port to listen on     (default: :9090)
 #   SCAN_INTERVAL      Catalog rescan rate   (default: 5m)
 #   HEARTBEAT_INTERVAL Keepalive ping rate   (default: 15s)
 
@@ -72,7 +71,6 @@ RECEIVER_API_KEY="${RECEIVER_API_KEY:-}"
 MEDIA_DIRS="${MEDIA_DIRS:-}"
 SLAVE_ID="${SLAVE_ID:-}"
 SLAVE_NAME="${SLAVE_NAME:-}"
-LISTEN_ADDR="${LISTEN_ADDR:-:9090}"
 SCAN_INTERVAL="${SCAN_INTERVAL:-5m}"
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-15s}"
 
@@ -135,7 +133,6 @@ if $LOCAL; then
   info "Master:     $MASTER_URL"
   info "Slave ID:   $LOCAL_ID"
   info "Media dirs: $MEDIA_DIRS"
-  info "Listen:     $LISTEN_ADDR"
   echo ""
 
   # Build the native binary for this platform
@@ -172,7 +169,6 @@ if $LOCAL; then
   SLAVE_ID="$LOCAL_ID" \
   SLAVE_NAME="$LOCAL_NAME" \
   MEDIA_DIRS="$MEDIA_DIRS" \
-  LISTEN_ADDR="$LISTEN_ADDR" \
   SCAN_INTERVAL="$SCAN_INTERVAL" \
   HEARTBEAT_INTERVAL="$HEARTBEAT_INTERVAL" \
     "$OUT" &
@@ -395,7 +391,6 @@ RECEIVER_API_KEY=$RECEIVER_API_KEY
 SLAVE_ID=$RESOLVED_ID
 SLAVE_NAME=$RESOLVED_NAME
 MEDIA_DIRS=$MEDIA_DIRS
-LISTEN_ADDR=$LISTEN_ADDR
 SCAN_INTERVAL=$SCAN_INTERVAL
 HEARTBEAT_INTERVAL=$HEARTBEAT_INTERVAL
 "
@@ -455,7 +450,6 @@ if $FIX_ENV; then
     ${MEDIA_DIRS:+patch_or_add MEDIA_DIRS '$MEDIA_DIRS'}
     ${SLAVE_ID:+patch_or_add SLAVE_ID '$SLAVE_ID'}
     ${SLAVE_NAME:+patch_or_add SLAVE_NAME '$SLAVE_NAME'}
-    patch_or_add LISTEN_ADDR '$LISTEN_ADDR'
     patch_or_add SCAN_INTERVAL '$SCAN_INTERVAL'
     patch_or_add HEARTBEAT_INTERVAL '$HEARTBEAT_INTERVAL'
     sudo systemctl restart '$SLAVE_SERVICE' 2>/dev/null || true

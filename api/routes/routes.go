@@ -236,6 +236,9 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// Receiver proxy streaming — streams slave media to users
 	r.GET("/receiver/stream/:id", requireAuth(), h.ReceiverProxyStream)
 
+	// Receiver WebSocket — slave nodes connect here (authenticated via X-API-Key / api_key query)
+	r.GET("/ws/receiver", h.ReceiverWebSocket)
+
 	// -----------------------------------------------------------------------
 	// API routes group (/api)
 	// -----------------------------------------------------------------------
@@ -338,6 +341,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.POST("/receiver/register", h.ReceiverRegisterSlave)
 	api.POST("/receiver/catalog", h.ReceiverPushCatalog)
 	api.POST("/receiver/heartbeat", h.ReceiverHeartbeat)
+	// Stream push — slave delivers file data in response to a WS stream_request
+	api.POST("/receiver/stream-push/:token", h.ReceiverStreamPush)
 
 	// Receiver media browsing (user-facing, requires session auth)
 	api.GET("/receiver/media", requireAuth(), h.ReceiverListMedia)

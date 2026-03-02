@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -103,17 +102,24 @@ type Module struct {
 	healthMsg    string
 	healthTicker *time.Ticker
 	healthDone   chan struct{}
+	// WebSocket connections from slaves (keyed by slave ID).
+	wsMu           sync.RWMutex
+	wsConns        map[string]*slaveWS
+	pendingMu      sync.Mutex
+	pendingStreams map[string]*PendingStream
 }
 
 // NewModule creates a new receiver module.
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	return &Module{
-		config:     cfg,
-		log:        logger.New("receiver"),
-		dbModule:   dbModule,
-		slaves:     make(map[string]*SlaveNode),
-		media:      make(map[string]*MediaItem),
-		healthDone: make(chan struct{}),
+		config:         cfg,
+		log:            logger.New("receiver"),
+		dbModule:       dbModule,
+		slaves:         make(map[string]*SlaveNode),
+		media:          make(map[string]*MediaItem),
+		healthDone:     make(chan struct{}),
+		wsConns:        make(map[string]*slaveWS),
+		pendingStreams: make(map[string]*PendingStream),
 	}
 }
 
@@ -479,8 +485,9 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
-// ProxyStream fetches the media stream from the originating slave and pipes it
-// to the client. Range requests are forwarded so seeking works correctly.
+// ProxyStream requests the media from the slave via its WebSocket connection
+// and waits for the slave to deliver the file data via a reverse HTTP POST.
+// Range requests are forwarded so seeking works correctly.
 func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID string) error {
 	item := m.GetMediaItem(mediaID)
 	if item == nil {
@@ -489,57 +496,66 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 	}
 
 	m.mu.RLock()
-	node, exists := m.slaves[item.SlaveID]
+	_, exists := m.slaves[item.SlaveID]
 	m.mu.RUnlock()
 	if !exists {
 		return fmt.Errorf("slave not found for media %s", mediaID)
 	}
 
-	// The slave serves files at /media?path=<path>
-	streamURL := node.BaseURL + "/media?path=" + url.QueryEscape(item.Path)
+	// Generate unique token for this stream request
+	token := uuid.New().String()
+	rangeHeader := r.Header.Get("Range")
 
+	// Send stream request to slave via WebSocket
+	ps, err := m.RequestStream(item.SlaveID, token, item.Path, rangeHeader)
+	if err != nil {
+		return fmt.Errorf("failed to request stream: %w", err)
+	}
+
+	// Wait for slave to deliver the data (timeout after 30s)
 	cfg := m.config.Get()
-	client := &http.Client{Timeout: cfg.Receiver.ProxyTimeout}
-
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, streamURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to build proxy request: %w", err)
+	timeout := cfg.Receiver.ProxyTimeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
 	}
 
-	if rng := r.Header.Get("Range"); rng != "" {
-		req.Header.Set("Range", rng)
-	}
-	req.Header.Set("User-Agent", "MediaServerPro/4.0 Receiver")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to connect to slave: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			m.log.Warn("Failed to close slave response body: %v", err)
+	select {
+	case delivery, ok := <-ps.Ready:
+		if !ok || delivery == nil {
+			return fmt.Errorf("stream delivery failed for %s", mediaID)
 		}
-	}()
-
-	// Forward safe response headers only.
-	blockedHeaders := map[string]bool{
-		"Set-Cookie":       true,
-		"Authorization":    true,
-		"Cookie":           true,
-		"Www-Authenticate": true,
-	}
-	for key, values := range resp.Header {
-		if blockedHeaders[key] {
-			continue
+		// Forward safe response headers only.
+		blockedHeaders := map[string]bool{
+			"Set-Cookie":       true,
+			"Authorization":    true,
+			"Cookie":           true,
+			"Www-Authenticate": true,
 		}
-		for _, v := range values {
-			w.Header().Add(key, v)
+		for key, values := range delivery.Headers {
+			if blockedHeaders[key] {
+				continue
+			}
+			for _, v := range values {
+				w.Header().Add(key, v)
+			}
 		}
-	}
+		w.WriteHeader(delivery.StatusCode)
+		_, copyErr := io.Copy(w, delivery.Body)
+		delivery.Body.Close()
+		return copyErr
 
-	w.WriteHeader(resp.StatusCode)
-	_, err = io.Copy(w, resp.Body)
-	return err
+	case <-time.After(timeout):
+		m.pendingMu.Lock()
+		delete(m.pendingStreams, token)
+		m.pendingMu.Unlock()
+		return fmt.Errorf("stream request timed out for %s", mediaID)
+
+	case <-r.Context().Done():
+		m.pendingMu.Lock()
+		delete(m.pendingStreams, token)
+		m.pendingMu.Unlock()
+		return r.Context().Err()
+	}
 }
 
 // --- Conversion helpers ---
