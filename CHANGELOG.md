@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0] - 2026-03-02 (minor)
+
+- Merge pull request #26 from bradselph/development
+- feat(slave): add deploy-slave.sh and systemd unit for slave receiver node
+- Merge branch 'main' into development
+
+
 ## [0.22.0] - 2026-03-02 (minor)
 
 - Merge pull request #25 from bradselph/development
