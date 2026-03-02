@@ -1349,40 +1349,41 @@ func (m *Manager) applyUploadsEnvOverrides() {
 }
 
 func (m *Manager) applyFeatureEnvOverrides() {
-	if val, ok := envGetBool("FEATURE_HLS"); ok {
+	// Accept both FEATURE_X (canonical) and FEATURES_X (common in older .env files).
+	if val, ok := envGetBool("FEATURE_HLS", "FEATURES_HLS"); ok {
 		m.config.Features.EnableHLS = val
 	}
-	if val, ok := envGetBool("FEATURE_ANALYTICS"); ok {
+	if val, ok := envGetBool("FEATURE_ANALYTICS", "FEATURES_ANALYTICS"); ok {
 		m.config.Features.EnableAnalytics = val
 	}
-	if val, ok := envGetBool("FEATURE_PLAYLISTS"); ok {
+	if val, ok := envGetBool("FEATURE_PLAYLISTS", "FEATURES_PLAYLISTS"); ok {
 		m.config.Features.EnablePlaylists = val
 	}
-	if val, ok := envGetBool("FEATURE_UPLOADS"); ok {
+	if val, ok := envGetBool("FEATURE_UPLOADS", "FEATURES_UPLOADS"); ok {
 		m.config.Features.EnableUploads = val
 	}
-	if val, ok := envGetBool("FEATURE_THUMBNAILS"); ok {
+	if val, ok := envGetBool("FEATURE_THUMBNAILS", "FEATURES_THUMBNAILS"); ok {
 		m.config.Features.EnableThumbnails = val
 	}
-	if val, ok := envGetBool("FEATURE_MATURE_SCANNER"); ok {
+	if val, ok := envGetBool("FEATURE_MATURE_SCANNER", "FEATURES_MATURE_SCANNER"); ok {
 		m.config.Features.EnableMatureScanner = val
 	}
-	if val, ok := envGetBool("FEATURE_REMOTE_MEDIA"); ok {
+	if val, ok := envGetBool("FEATURE_REMOTE_MEDIA", "FEATURES_REMOTE_MEDIA"); ok {
 		m.config.Features.EnableRemoteMedia = val
 	}
-	if val, ok := envGetBool("FEATURE_USER_AUTH"); ok {
+	if val, ok := envGetBool("FEATURE_USER_AUTH", "FEATURES_USER_AUTH"); ok {
 		m.config.Features.EnableUserAuth = val
 	}
-	if val, ok := envGetBool("FEATURE_ADMIN_PANEL"); ok {
+	if val, ok := envGetBool("FEATURE_ADMIN_PANEL", "FEATURES_ADMIN", "FEATURES_ADMIN_PANEL"); ok {
 		m.config.Features.EnableAdminPanel = val
 	}
-	if val, ok := envGetBool("FEATURE_SUGGESTIONS"); ok {
+	if val, ok := envGetBool("FEATURE_SUGGESTIONS", "FEATURES_SUGGESTIONS"); ok {
 		m.config.Features.EnableSuggestions = val
 	}
-	if val, ok := envGetBool("FEATURE_AUTO_DISCOVERY"); ok {
+	if val, ok := envGetBool("FEATURE_AUTO_DISCOVERY", "FEATURES_AUTO_DISCOVERY"); ok {
 		m.config.Features.EnableAutoDiscovery = val
 	}
-	if val, ok := envGetBool("FEATURE_RECEIVER"); ok {
+	if val, ok := envGetBool("FEATURE_RECEIVER", "FEATURES_RECEIVER"); ok {
 		m.config.Features.EnableReceiver = val
 	}
 }
@@ -1433,7 +1434,7 @@ func (m *Manager) applyReceiverEnvOverrides() {
 	if val, ok := envGetBool("RECEIVER_ENABLED"); ok {
 		m.config.Receiver.Enabled = val
 	}
-	if val := envGetStr("RECEIVER_API_KEY"); val != "" {
+	if val := envGetStr("RECEIVER_API_KEY", "RECEIVER_API_KEYS"); val != "" {
 		m.config.Receiver.APIKeys = []string{val}
 	}
 	if val, ok := envGetInt("RECEIVER_MAX_PROXY_CONNS"); ok {
