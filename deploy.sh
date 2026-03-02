@@ -357,12 +357,12 @@ if $FIX_ENV; then
     patch_or_add REMOTE_MEDIA_ENABLED false
     patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
     patch_or_add REMOTE_MEDIA_CACHE_SIZE_MB 1024
-    patch_or_add FEATURES_REMOTE_MEDIA false
+    patch_or_add FEATURE_REMOTE_MEDIA false
 
     # Receiver (master) settings — slave nodes POST their catalogs here
     echo '  [receiver / master node]'
     patch_or_add RECEIVER_ENABLED false
-    patch_or_add FEATURES_RECEIVER false
+    patch_or_add FEATURE_RECEIVER false
     # Generate API key only if not already set
     if ! grep -q '^RECEIVER_API_KEYS=.\+' \"\$ENV\"; then
       RECV_KEY=\$(openssl rand -hex 32 2>/dev/null || echo \"change-me-\$(date +%s)\")
@@ -394,9 +394,9 @@ if $SETUP_RECEIVER; then
 
     # Enable receiver and remote media proxy
     patch_or_add RECEIVER_ENABLED true
-    patch_or_add FEATURES_RECEIVER true
+    patch_or_add FEATURE_RECEIVER true
     patch_or_add REMOTE_MEDIA_ENABLED true
-    patch_or_add FEATURES_REMOTE_MEDIA true
+    patch_or_add FEATURE_REMOTE_MEDIA true
     patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
 
     # Generate API key if not already present
