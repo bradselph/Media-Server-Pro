@@ -93,6 +93,10 @@ if $BUILD_TOOLS; then
   info "Building media-doctor..."
   go build -o media-doctor ./cmd/media-doctor || die "media-doctor build failed"
   success "Tool built → ./media-doctor"
+
+  info "Building media-receiver (slave node)..."
+  go build -o media-receiver ./cmd/media-receiver || die "media-receiver build failed"
+  success "Tool built → ./media-receiver"
 fi
 
 # ── Step 5: Start server ──────────────────────────────────────────────────────

@@ -1253,8 +1253,26 @@ func (m *Manager) applyHLSEnvOverrides() {
 	if val, ok := envGetBool("HLS_AUTO_GENERATE"); ok {
 		m.config.HLS.AutoGenerate = val
 	}
-	if val, ok := envGetInt("HLS_CONCURRENT_LIMIT"); ok {
+	// Accept both HLS_CONCURRENT_LIMIT and the legacy alias HLS_MAX_CONCURRENT_JOBS
+	if val, ok := envGetInt("HLS_CONCURRENT_LIMIT", "HLS_MAX_CONCURRENT_JOBS"); ok {
 		m.config.HLS.ConcurrentLimit = val
+	}
+	// HLS_QUALITIES: comma-separated list of quality profile names to enable (e.g. "480p,720p,1080p")
+	// Filters the quality profiles loaded from config.json / defaults to only the listed names.
+	if raw := envGetStr("HLS_QUALITIES"); raw != "" {
+		nameSet := make(map[string]bool)
+		for _, name := range strings.Split(raw, ",") {
+			nameSet[strings.TrimSpace(name)] = true
+		}
+		filtered := make([]HLSQuality, 0, len(m.config.HLS.QualityProfiles))
+		for _, p := range m.config.HLS.QualityProfiles {
+			if nameSet[p.Name] {
+				filtered = append(filtered, p)
+			}
+		}
+		if len(filtered) > 0 {
+			m.config.HLS.QualityProfiles = filtered
+		}
 	}
 }
 

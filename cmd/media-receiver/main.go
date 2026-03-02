@@ -5,17 +5,19 @@
 // Usage:
 //
 //	media-receiver -master http://master:8080 -api-key YOUR_KEY -dirs ./videos,./music
-//	media-receiver -config slave-config.json
+//	media-receiver -master http://master:8080 -api-key YOUR_KEY -dirs ./videos -public-url http://192.168.1.50:9090
 //
 // Environment variables (override flags):
 //
-//	MASTER_URL       — master server URL
-//	RECEIVER_API_KEY — API key for authentication
-//	SLAVE_ID         — unique identifier for this slave
-//	SLAVE_NAME       — display name for this slave
-//	MEDIA_DIRS       — comma-separated list of media directories
-//	SCAN_INTERVAL    — rescan interval (e.g. "5m", "1h")
-//	LISTEN_ADDR      — address to listen on for media serving (e.g. ":9090")
+//	MASTER_URL          — master server URL
+//	RECEIVER_API_KEY    — API key for authentication
+//	SLAVE_ID            — unique identifier for this slave
+//	SLAVE_NAME          — display name for this slave
+//	MEDIA_DIRS          — comma-separated list of media directories
+//	SCAN_INTERVAL       — catalog rescan interval (e.g. "5m", "1h")
+//	HEARTBEAT_INTERVAL  — keepalive ping interval (e.g. "15s", "30s")
+//	LISTEN_ADDR         — address to listen on for media serving (e.g. ":9090")
+//	PUBLIC_URL          — publicly reachable URL of this slave (overrides hostname resolution)
 package main
 
 import (
@@ -28,6 +30,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,16 +50,20 @@ type catalogItem struct {
 	Size        int64   `json:"size"`
 	Duration    float64 `json:"duration"`
 	ContentType string  `json:"content_type"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
 }
 
 type slaveConfig struct {
-	MasterURL    string
-	APIKey       string
-	SlaveID      string
-	SlaveName    string
-	MediaDirs    []string
-	ScanInterval time.Duration
-	ListenAddr   string
+	MasterURL         string
+	APIKey            string
+	SlaveID           string
+	SlaveName         string
+	MediaDirs         []string
+	ScanInterval      time.Duration
+	HeartbeatInterval time.Duration
+	ListenAddr        string
+	PublicURL         string // externally reachable URL, e.g. "http://192.168.1.50:9090"
 }
 
 func main() {
@@ -75,13 +82,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	publicURL := cfg.PublicURL
+	if publicURL == "" {
+		publicURL = autoDetectPublicURL(cfg.ListenAddr, cfg.MasterURL)
+	}
+
 	fmt.Printf("Media Receiver (Slave) starting\n")
-	fmt.Printf("  Master:    %s\n", cfg.MasterURL)
-	fmt.Printf("  Slave ID:  %s\n", cfg.SlaveID)
-	fmt.Printf("  Name:      %s\n", cfg.SlaveName)
-	fmt.Printf("  Media:     %s\n", strings.Join(cfg.MediaDirs, ", "))
-	fmt.Printf("  Interval:  %s\n", cfg.ScanInterval)
-	fmt.Printf("  Listen:    %s\n", cfg.ListenAddr)
+	fmt.Printf("  Master:     %s\n", cfg.MasterURL)
+	fmt.Printf("  Slave ID:   %s\n", cfg.SlaveID)
+	fmt.Printf("  Name:       %s\n", cfg.SlaveName)
+	fmt.Printf("  Media:      %s\n", strings.Join(cfg.MediaDirs, ", "))
+	fmt.Printf("  Scan:       %s\n", cfg.ScanInterval)
+	fmt.Printf("  Heartbeat:  %s\n", cfg.HeartbeatInterval)
+	fmt.Printf("  Listen:     %s\n", cfg.ListenAddr)
+	fmt.Printf("  Public URL: %s\n", publicURL)
 	fmt.Println()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -119,9 +133,13 @@ func main() {
 
 	// Start periodic scan/push loop and heartbeat
 	scanTicker := time.NewTicker(cfg.ScanInterval)
-	heartbeatTicker := time.NewTicker(15 * time.Second)
+	heartbeatTicker := time.NewTicker(cfg.HeartbeatInterval)
 	defer scanTicker.Stop()
 	defer heartbeatTicker.Stop()
+
+	// consecutiveHeartbeatFailures tracks how many heartbeats in a row have failed.
+	// After 3 consecutive failures we attempt re-registration (master may have restarted).
+	consecutiveHeartbeatFailures := 0
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -132,17 +150,30 @@ func main() {
 			items := scanMediaDirs(cfg.MediaDirs)
 			if err := pushCatalog(cfg, items, true); err != nil {
 				fmt.Fprintf(os.Stderr, "Catalog push failed: %v\n", err)
-				// Try re-registering
+				// Try re-registering in case the master lost our registration
 				if err := registerWithMaster(cfg); err != nil {
 					fmt.Fprintf(os.Stderr, "Re-registration failed: %v\n", err)
 				}
 			} else {
+				consecutiveHeartbeatFailures = 0 // successful catalog push = master is alive
 				fmt.Printf("[%s] Pushed %d items to master\n", time.Now().Format("15:04:05"), len(items))
 			}
 
 		case <-heartbeatTicker.C:
 			if err := sendHeartbeat(cfg); err != nil {
-				fmt.Fprintf(os.Stderr, "Heartbeat failed: %v\n", err)
+				consecutiveHeartbeatFailures++
+				fmt.Fprintf(os.Stderr, "Heartbeat failed (%d): %v\n", consecutiveHeartbeatFailures, err)
+				// After 3 consecutive failures, try re-registering (master may have restarted)
+				if consecutiveHeartbeatFailures >= 3 {
+					fmt.Println("Re-registering with master after repeated heartbeat failures...")
+					if err := registerWithMaster(cfg); err != nil {
+						fmt.Fprintf(os.Stderr, "Re-registration failed: %v\n", err)
+					} else {
+						consecutiveHeartbeatFailures = 0
+					}
+				}
+			} else {
+				consecutiveHeartbeatFailures = 0
 			}
 
 		case sig := <-sigCh:
@@ -160,17 +191,21 @@ func parseFlags() *slaveConfig {
 	slaveID := flag.String("id", "", "Unique slave ID (defaults to hostname)")
 	slaveName := flag.String("name", "", "Display name for this slave")
 	dirs := flag.String("dirs", "", "Comma-separated media directories")
-	interval := flag.Duration("interval", 5*time.Minute, "Scan interval")
+	interval := flag.Duration("interval", 5*time.Minute, "Scan/catalog push interval")
+	heartbeat := flag.Duration("heartbeat", 15*time.Second, "Heartbeat ping interval to master")
 	listen := flag.String("listen", ":9090", "Listen address for media serving")
+	publicURL := flag.String("public-url", "", "Publicly reachable URL of this slave (e.g. http://192.168.1.50:9090)")
 	flag.Parse()
 
 	cfg := &slaveConfig{
-		MasterURL:    *master,
-		APIKey:       *apiKey,
-		SlaveID:      *slaveID,
-		SlaveName:    *slaveName,
-		ScanInterval: *interval,
-		ListenAddr:   *listen,
+		MasterURL:         *master,
+		APIKey:            *apiKey,
+		SlaveID:           *slaveID,
+		SlaveName:         *slaveName,
+		ScanInterval:      *interval,
+		HeartbeatInterval: *heartbeat,
+		ListenAddr:        *listen,
+		PublicURL:         *publicURL,
 	}
 
 	if *dirs != "" {
@@ -200,6 +235,14 @@ func parseFlags() *slaveConfig {
 	}
 	if v := os.Getenv("LISTEN_ADDR"); v != "" {
 		cfg.ListenAddr = v
+	}
+	if v := os.Getenv("PUBLIC_URL"); v != "" {
+		cfg.PublicURL = v
+	}
+	if v := os.Getenv("HEARTBEAT_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.HeartbeatInterval = d
+		}
 	}
 
 	// Defaults
@@ -309,10 +352,14 @@ func resolveAndValidate(path string, allowedDirs []string) (string, error) {
 }
 
 func registerWithMaster(cfg *slaveConfig) error {
+	baseURL := cfg.PublicURL
+	if baseURL == "" {
+		baseURL = autoDetectPublicURL(cfg.ListenAddr, cfg.MasterURL)
+	}
 	body := map[string]string{
 		"slave_id": cfg.SlaveID,
 		"name":     cfg.SlaveName,
-		"base_url": fmt.Sprintf("http://%s", resolveListenAddr(cfg.ListenAddr)),
+		"base_url": baseURL,
 	}
 	return postJSON(cfg, "/api/receiver/register", body)
 }
@@ -447,15 +494,41 @@ func generateFileID(path string) string {
 	return hex.EncodeToString(h[:16]) // 32-char hex ID
 }
 
-// resolveListenAddr resolves ":9090" to an externally reachable address.
-func resolveListenAddr(addr string) string {
-	if !strings.HasPrefix(addr, ":") {
-		return addr
+// autoDetectPublicURL builds the base URL that the master should use to reach this slave.
+// It extracts the port from listenAddr and determines the outbound IP by making a UDP
+// "connection" to the master — the OS picks which interface it would route through,
+// giving us the actual LAN/WAN IP without needing ifconfig or manual config.
+func autoDetectPublicURL(listenAddr, masterURL string) string {
+	// Extract port from listenAddr (e.g. ":9090" or "0.0.0.0:9090" → "9090")
+	_, port, err := net.SplitHostPort(listenAddr)
+	if err != nil || port == "" {
+		port = "9090"
 	}
 
-	hostname, _ := os.Hostname()
-	if hostname != "" {
-		return hostname + addr
+	// Derive the master's host:port for UDP dialing (strip scheme)
+	masterHost := strings.TrimPrefix(masterURL, "https://")
+	masterHost = strings.TrimPrefix(masterHost, "http://")
+	// Strip any path
+	if idx := strings.IndexByte(masterHost, '/'); idx >= 0 {
+		masterHost = masterHost[:idx]
 	}
-	return "localhost" + addr
+	// Ensure there's a port for the UDP dial target
+	if _, _, err := net.SplitHostPort(masterHost); err != nil {
+		masterHost = masterHost + ":80"
+	}
+
+	// UDP dial doesn't actually send anything — OS just selects the right interface
+	conn, err := net.Dial("udp", masterHost)
+	if err == nil {
+		defer conn.Close()
+		localIP := conn.LocalAddr().(*net.UDPAddr).IP.String()
+		return fmt.Sprintf("http://%s:%s", localIP, port)
+	}
+
+	// Fallback: use hostname
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "localhost"
+	}
+	return fmt.Sprintf("http://%s:%s", hostname, port)
 }

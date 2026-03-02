@@ -570,6 +570,10 @@ run_or_dry vps "
     -ldflags \"-X main.Version=\$VERSION -X main.BuildDate=\$(date +%Y-%m-%d)\" \\
     -o server ./cmd/server
 
+  # Build slave receiver binary
+  echo '[deploy] Building media-receiver (slave) binary...'
+  go build -o media-receiver ./cmd/media-receiver
+
   echo '[deploy] Build complete'
 "
 
