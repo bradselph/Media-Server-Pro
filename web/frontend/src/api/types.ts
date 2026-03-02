@@ -598,6 +598,42 @@ export interface RemoteStats {
     }>
 }
 
+// ── Receiver (master/slave) ──
+
+// Matches internal/receiver/receiver.go SlaveNode struct
+export interface SlaveNode {
+    id: string
+    name: string
+    base_url: string
+    // "online" | "offline" | "stale"
+    status: string
+    media_count: number
+    last_seen: string
+    registered_at: string
+}
+
+// Matches internal/receiver/receiver.go MediaItem struct
+export interface ReceiverMediaItem {
+    id: string
+    slave_id: string
+    slave_name?: string
+    path: string
+    name: string
+    media_type: string
+    size: number
+    duration: number
+    content_type: string
+    width: number
+    height: number
+}
+
+// Matches internal/receiver/receiver.go Stats struct
+export interface ReceiverStats {
+    slave_count: number
+    online_slaves: number
+    media_count: number
+}
+
 // ── Feature 1: Storage & Permissions ──
 
 export interface StorageUsage {

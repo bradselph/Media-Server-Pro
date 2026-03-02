@@ -1,7 +1,7 @@
 import {type FormEvent, useEffect, useRef, useState} from 'react'
 import {Link, useLocation, useNavigate} from 'react-router-dom'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
-import {adminApi, analyticsApi} from '@/api/endpoints'
+import {adminApi, analyticsApi, receiverApi} from '@/api/endpoints'
 import {useAuthStore} from '@/stores/authStore'
 import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -18,8 +18,11 @@ import type {
     MediaItem,
     Playlist,
     QueryResult,
+    ReceiverMediaItem,
+    ReceiverStats,
     RemoteMediaItem,
     RemoteSourceState,
+    SlaveNode,
     ScheduledTask,
     SecurityStats,
     SuggestionStats,
@@ -2522,6 +2525,265 @@ function RemoteTab() {
     )
 }
 
+// ── Tab: Receiver (master/slave node management) ──────────────────────────────
+
+function ReceiverTab() {
+    const queryClient = useQueryClient()
+    const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+    const [removingId, setRemovingId] = useState<string | null>(null)
+    const [browseSlaveId, setBrowseSlaveId] = useState<string | null>(null)
+    const [browseMedia, setBrowseMedia] = useState<ReceiverMediaItem[] | null>(null)
+    const [browseLoading, setBrowseLoading] = useState(false)
+
+    const {data: slaves, isLoading, isError} = useQuery<SlaveNode[]>({
+        queryKey: ['admin-receiver-slaves'],
+        queryFn: () => adminApi.getReceiverSlaves(),
+        refetchInterval: 10000,
+        retry: false,
+    })
+
+    const {data: stats} = useQuery<ReceiverStats>({
+        queryKey: ['admin-receiver-stats'],
+        queryFn: () => adminApi.getReceiverStats(),
+        refetchInterval: 10000,
+        retry: false,
+    })
+
+    async function handleRemove(id: string, name: string) {
+        if (!window.confirm(`Remove slave node "${name}"? It will need to re-register to reconnect.`)) return
+        setRemovingId(id)
+        setMsg(null)
+        try {
+            await adminApi.removeReceiverSlave(id)
+            setMsg({type: 'success', text: `Slave "${name}" removed`})
+            await queryClient.invalidateQueries({queryKey: ['admin-receiver-slaves']})
+            await queryClient.invalidateQueries({queryKey: ['admin-receiver-stats']})
+            if (browseSlaveId === id) {
+                setBrowseSlaveId(null)
+                setBrowseMedia(null)
+            }
+        } catch (err) {
+            setMsg({type: 'error', text: `Remove failed: ${errMsg(err)}`})
+        } finally {
+            setRemovingId(null)
+        }
+    }
+
+    async function handleBrowse(slave: SlaveNode) {
+        if (browseSlaveId === slave.id) {
+            setBrowseSlaveId(null)
+            setBrowseMedia(null)
+            return
+        }
+        setBrowseSlaveId(slave.id)
+        setBrowseLoading(true)
+        setBrowseMedia(null)
+        try {
+            const all = await receiverApi.listMedia()
+            setBrowseMedia(all.filter(m => m.slave_id === slave.id))
+        } catch (err) {
+            setMsg({type: 'error', text: `Browse failed: ${errMsg(err)}`})
+            setBrowseSlaveId(null)
+        } finally {
+            setBrowseLoading(false)
+        }
+    }
+
+    function statusBadge(status: string) {
+        const cls = status === 'online' ? 'badge-active' : status === 'stale' ? 'badge-mature' : 'badge-inactive'
+        const icon = status === 'online' ? 'bi-circle-fill' : status === 'stale' ? 'bi-exclamation-circle-fill' : 'bi-circle'
+        return <span className={`media-card-type-badge ${cls}`}><i className={`bi ${icon}`}/> {status}</span>
+    }
+
+    function relativeTime(iso: string): string {
+        const ms = Date.now() - new Date(iso).getTime()
+        if (ms < 0 || iso.startsWith('0001')) return 'never'
+        const s = Math.floor(ms / 1000)
+        if (s < 60) return `${s}s ago`
+        if (s < 3600) return `${Math.floor(s / 60)}m ago`
+        if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+        return `${Math.floor(s / 86400)}d ago`
+    }
+
+    const apiKey = '(set in RECEIVER_API_KEYS env var)'
+
+    return (
+        <div>
+            <h2 style={{margin: '0 0 4px 0', fontSize: 20}}><i className="bi bi-diagram-3-fill"/> Receiver — Slave Nodes</h2>
+            <p style={{margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: 13}}>
+                This server is the <strong>master</strong>. Slave nodes register here, push their media
+                catalogs, and their streams are proxied to users on demand. No media is stored locally —
+                streams pass through in real time.
+            </p>
+
+            {msg && (
+                <div className={`admin-alert admin-alert-${msg.type === 'success' ? 'success' : 'danger'}`}
+                     style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                    <span><i className={`bi ${msg.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}/> {msg.text}</span>
+                    <button onClick={() => setMsg(null)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7}}>×</button>
+                </div>
+            )}
+
+            {/* Stats */}
+            <div className="admin-stats-grid">
+                <div className="admin-stat-card">
+                    <span className="admin-stat-value">{stats?.slave_count ?? '—'}</span>
+                    <span className="admin-stat-label"><i className="bi bi-hdd-network"/> Total Slaves</span>
+                </div>
+                <div className="admin-stat-card">
+                    <span className="admin-stat-value" style={{color: '#10b981'}}>{stats?.online_slaves ?? '—'}</span>
+                    <span className="admin-stat-label"><i className="bi bi-circle-fill"/> Online</span>
+                </div>
+                <div className="admin-stat-card">
+                    <span className="admin-stat-value">{stats?.media_count ?? '—'}</span>
+                    <span className="admin-stat-label"><i className="bi bi-collection-fill"/> Total Media</span>
+                </div>
+            </div>
+
+            {/* Registration guide */}
+            <div className="admin-alert admin-alert-info" style={{marginBottom: 16}}>
+                <strong><i className="bi bi-info-circle-fill"/> How to register a slave node</strong>
+                <ol style={{margin: '8px 0 0 0', paddingLeft: 20, lineHeight: 1.8}}>
+                    <li>Deploy Media Server Pro on the slave, set <code>REMOTE_MEDIA_ENABLED=true</code>.</li>
+                    <li><code>POST /api/receiver/register</code> → <code>{`{"name":"slave-name","base_url":"http://slave-host:port"}`}</code> → returns <code>slave_id</code></li>
+                    <li><code>POST /api/receiver/catalog</code> with <code>X-API-Key: {apiKey}</code> header and <code>{`{"slave_id":"...","full":true,"items":[...]}`}</code></li>
+                    <li>Send periodic <code>POST /api/receiver/heartbeat</code> with <code>{`{"slave_id":"..."}`}</code></li>
+                </ol>
+            </div>
+
+            {/* Slave table */}
+            <div className="admin-card">
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+                    <h3 style={{margin: 0}}><i className="bi bi-hdd-network-fill"/> Registered Slaves</h3>
+                    <button className="admin-btn" style={{fontSize: 12, padding: '5px 10px'}}
+                            onClick={() => queryClient.invalidateQueries({queryKey: ['admin-receiver-slaves']})}>
+                        <i className="bi bi-arrow-clockwise"/> Refresh
+                    </button>
+                </div>
+
+                {isLoading && <p style={{color: 'var(--text-muted)', fontSize: 13}}><i className="bi bi-hourglass-split"/> Loading slaves…</p>}
+
+                {isError && (
+                    <div className="admin-alert admin-alert-warning">
+                        <i className="bi bi-exclamation-triangle-fill"/> Receiver feature may be disabled.
+                        Set <code>RECEIVER_ENABLED=true</code> and restart the service.
+                    </div>
+                )}
+
+                {!isLoading && !isError && (!slaves || slaves.length === 0) && (
+                    <div style={{textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)'}}>
+                        <i className="bi bi-hdd-network" style={{fontSize: 32, display: 'block', marginBottom: 8}}/>
+                        <p style={{margin: '0 0 4px 0'}}>No slave nodes registered yet.</p>
+                        <p style={{margin: 0, fontSize: 12}}>Run <code>./deploy.sh --setup-receiver</code> on this master, then configure your slave servers.</p>
+                    </div>
+                )}
+
+                {slaves && slaves.length > 0 && (
+                    <div className="admin-table-wrapper">
+                        <table className="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Base URL</th>
+                                    <th>Status</th>
+                                    <th>Media</th>
+                                    <th>Last Seen</th>
+                                    <th>Registered</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {slaves.map(slave => (
+                                    <>
+                                        <tr key={slave.id}>
+                                            <td>
+                                                <strong>{slave.name}</strong>
+                                                <br/>
+                                                <span style={{fontSize: 11, color: 'var(--text-muted)'}}>{slave.id}</span>
+                                            </td>
+                                            <td><a href={slave.base_url} target="_blank" rel="noreferrer">{slave.base_url}</a></td>
+                                            <td>{statusBadge(slave.status)}</td>
+                                            <td>{slave.media_count}</td>
+                                            <td>{relativeTime(slave.last_seen)}</td>
+                                            <td>{new Date(slave.registered_at).toLocaleDateString()}</td>
+                                            <td style={{display: 'flex', gap: 6, flexWrap: 'wrap'}}>
+                                                <button
+                                                    className="admin-btn"
+                                                    style={{fontSize: 12, padding: '4px 8px'}}
+                                                    onClick={() => handleBrowse(slave)}
+                                                    disabled={browseLoading && browseSlaveId === slave.id}
+                                                >
+                                                    <i className={`bi ${browseSlaveId === slave.id ? 'bi-chevron-up' : 'bi-folder2-open'}`}/>
+                                                    {browseSlaveId === slave.id ? ' Hide' : ' Browse'}
+                                                </button>
+                                                <button
+                                                    className="admin-btn admin-btn-danger"
+                                                    style={{fontSize: 12, padding: '4px 8px'}}
+                                                    onClick={() => handleRemove(slave.id, slave.name)}
+                                                    disabled={removingId === slave.id}
+                                                >
+                                                    {removingId === slave.id
+                                                        ? <><i className="bi bi-hourglass-split"/> Removing…</>
+                                                        : <><i className="bi bi-trash3-fill"/> Remove</>}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {browseSlaveId === slave.id && (
+                                            <tr key={`${slave.id}-browse`}>
+                                                <td colSpan={7} style={{padding: '12px 16px', background: 'var(--input-bg)'}}>
+                                                    {browseLoading && (
+                                                        <span style={{color: 'var(--text-muted)', fontSize: 13}}>
+                                                            <i className="bi bi-hourglass-split"/> Loading media…
+                                                        </span>
+                                                    )}
+                                                    {!browseLoading && browseMedia && browseMedia.length === 0 && (
+                                                        <span style={{color: 'var(--text-muted)', fontSize: 13}}>No media items in catalog yet.</span>
+                                                    )}
+                                                    {!browseLoading && browseMedia && browseMedia.length > 0 && (
+                                                        <div className="admin-table-wrapper" style={{maxHeight: 280, overflowY: 'auto'}}>
+                                                            <table className="admin-table" style={{fontSize: 12}}>
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>Name</th>
+                                                                        <th>Type</th>
+                                                                        <th>Size</th>
+                                                                        <th>Duration</th>
+                                                                        <th>Stream</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {browseMedia.map(m => (
+                                                                        <tr key={m.id}>
+                                                                            <td>{m.name}</td>
+                                                                            <td><span className={`media-card-type-badge badge-${m.media_type}`}>{m.media_type}</span></td>
+                                                                            <td>{formatBytes(m.size)}</td>
+                                                                            <td>{m.duration > 0 ? `${Math.floor(m.duration / 60)}:${String(Math.floor(m.duration % 60)).padStart(2, '0')}` : '—'}</td>
+                                                                            <td>
+                                                                                <a href={receiverApi.getStreamUrl(m.id)} target="_blank" rel="noreferrer"
+                                                                                   className="admin-btn" style={{fontSize: 11, padding: '3px 7px'}}>
+                                                                                    <i className="bi bi-play-fill"/> Play
+                                                                                </a>
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
+
 // ── Tab: Database ─────────────────────────────────────────────────────────────
 
 function DatabaseTab() {
@@ -4310,6 +4572,7 @@ type Tab =
     | 'logs'
     | 'settings'
     | 'remote'
+    | 'receiver'
     | 'database'
     | 'content-review'
     | 'playlists'
@@ -4318,7 +4581,7 @@ type Tab =
     | 'discovery'
     | 'updates'
 
-const VALID_TABS: Tab[] = ['dashboard', 'users', 'media', 'streaming', 'analytics', 'logs', 'settings', 'remote', 'database', 'content-review', 'playlists', 'security', 'categorizer', 'discovery', 'updates']
+const VALID_TABS: Tab[] = ['dashboard', 'users', 'media', 'streaming', 'analytics', 'logs', 'settings', 'remote', 'receiver', 'database', 'content-review', 'playlists', 'security', 'categorizer', 'discovery', 'updates']
 
 export function AdminPage() {
     const navigate = useNavigate()
@@ -4345,6 +4608,7 @@ export function AdminPage() {
         {id: 'logs', label: 'Logs', icon: 'bi-display'},
         {id: 'settings', label: 'Settings', icon: 'bi-gear-fill'},
         {id: 'remote', label: 'Remote Sources', icon: 'bi-cloud-arrow-down-fill'},
+        {id: 'receiver', label: 'Receiver', icon: 'bi-diagram-3-fill'},
         {id: 'database', label: 'Database', icon: 'bi-database-fill'},
         {id: 'content-review', label: 'Content Review', icon: 'bi-shield-fill'},
         {id: 'playlists', label: 'Playlists', icon: 'bi-collection-fill'},
@@ -4393,6 +4657,7 @@ export function AdminPage() {
                     {activeTab === 'logs' && <LogsTab/>}
                     {activeTab === 'settings' && <SettingsTab/>}
                     {activeTab === 'remote' && <RemoteTab/>}
+                    {activeTab === 'receiver' && <ReceiverTab/>}
                     {activeTab === 'database' && <DatabaseTab/>}
                     {activeTab === 'content-review' && <ContentReviewTab/>}
                     {activeTab === 'playlists' && <PlaylistsTab/>}
