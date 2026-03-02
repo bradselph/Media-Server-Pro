@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.22.0] - 2026-03-02 (minor)
+
+- Merge pull request #25 from bradselph/development
+- fix(security,hls,receiver): fix banned IP metadata, HLS env vars, and slave node improvements
+
+
 ## [0.21.0] - 2026-03-02 (minor)
 
 - Merge pull request #24 from bradselph/development
