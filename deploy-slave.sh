@@ -49,9 +49,13 @@ success() { echo -e "${GREEN}[slave]${RESET} $*"; }
 warn()    { echo -e "${YELLOW}[slave]${RESET} $*"; }
 die()     { echo -e "${RED}[slave] ERROR:${RESET} $*" >&2; exit 1; }
 
-# ── Load .slave.env if present ────────────────────────────────────────────────
+# ── Load config — .deploy.env first (master settings), then .slave.env (overrides) ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f "$SCRIPT_DIR/.slave.env" ]] && source "$SCRIPT_DIR/.slave.env"
+# .deploy.env is written by deploy.sh --setup-receiver and contains MASTER_URL
+# and RECEIVER_API_KEY so you never have to copy them manually.
+[[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
+# .slave.env can override anything from .deploy.env (slave-specific settings)
+[[ -f "$SCRIPT_DIR/.slave.env" ]]  && source "$SCRIPT_DIR/.slave.env"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SLAVE_HOST="${SLAVE_HOST:-}"

@@ -46,6 +46,10 @@ DEPLOY_DIR="${DEPLOY_DIR:-/opt/media-server}"
 SERVICE="${SERVICE:-media-server}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 REPO_URL="${REPO_URL:-github.com/bradselph/Media-Server-Pro.git}"
+# Public URL of the master (through nginx/CloudPanel — not the internal port).
+# Used to auto-configure deploy-slave.sh so it knows where to connect.
+# Example: MASTER_URL=https://yourdomain.com
+MASTER_URL="${MASTER_URL:-}"
 
 GO_VERSION="1.26.0"
 NODE_MAJOR="22"
@@ -150,6 +154,19 @@ run_or_dry() {
     info "[dry-run] $*"
   else
     "$@"
+  fi
+}
+
+# ── Persist a key=value into the local .deploy.env ───────────────────────────
+# Used after --setup / --setup-receiver to save the receiver API key and master
+# URL locally so deploy-slave.sh can read them without any manual copying.
+save_to_deploy_env() {
+  local key="$1" val="$2"
+  local file="$SCRIPT_DIR/.deploy.env"
+  if [[ -f "$file" ]] && grep -q "^${key}=" "$file"; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$file"
+  else
+    echo "${key}=${val}" >> "$file"
   fi
 }
 
@@ -296,6 +313,18 @@ if $SETUP; then
     echo '  3. Run: ./deploy.sh --fix-env    (to auto-patch common settings)'
     echo '  4. Run: ./deploy.sh --setup-receiver  (to configure master receiver for slave nodes)'
   "
+
+  # Fetch the generated API key back and save it to local .deploy.env
+  # so deploy-slave.sh can pick it up automatically.
+  if ! $DRY_RUN; then
+    RECV_KEY=$(vps "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
+    if [[ -n "$RECV_KEY" ]]; then
+      save_to_deploy_env "RECEIVER_API_KEY" "$RECV_KEY"
+      [[ -z "$MASTER_URL" ]] && MASTER_URL="http://$VPS_HOST"
+      save_to_deploy_env "MASTER_URL" "$MASTER_URL"
+      success "Saved RECEIVER_API_KEY and MASTER_URL to .deploy.env"
+    fi
+  fi
   exit 0
 fi
 
@@ -397,12 +426,26 @@ if $SETUP_RECEIVER; then
     echo ''
     echo '[receiver] Master receiver configured. Restart the service to apply:'
     echo \"  sudo systemctl restart $SERVICE\"
-    echo ''
-    echo '[receiver] Slave node .env settings:'
-    echo \"  REMOTE_MEDIA_ENABLED=true\"
-    echo \"  REMOTE_MEDIA_SOURCES=[{\\\"name\\\":\\\"master\\\",\\\"url\\\":\\\"http://<master-host>:\${APP_PORT}\\\",\\\"enabled\\\":true}]\"
-    echo \"  RECEIVER_API_KEYS=\$RECV_KEY\"
   "
+
+  # Fetch the API key from VPS and save to local .deploy.env so
+  # deploy-slave.sh --local works without any manual copy-paste.
+  if ! $DRY_RUN; then
+    RECV_KEY=$(vps "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
+    if [[ -n "$RECV_KEY" ]]; then
+      [[ -z "$MASTER_URL" ]] && MASTER_URL="http://$VPS_HOST"
+      save_to_deploy_env "RECEIVER_API_KEY" "$RECV_KEY"
+      save_to_deploy_env "MASTER_URL" "$MASTER_URL"
+      success "Saved to .deploy.env:"
+      info "  MASTER_URL=$MASTER_URL"
+      info "  RECEIVER_API_KEY=$RECV_KEY"
+      echo ""
+      warn "If your master is behind a reverse proxy (nginx/CloudPanel), update MASTER_URL:"
+      warn "  echo 'MASTER_URL=https://yourdomain.com' >> .deploy.env"
+      echo ""
+      success "Start slave on this machine: ./deploy-slave.sh --local"
+    fi
+  fi
   exit 0
 fi
 
