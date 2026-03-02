@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -203,4 +204,48 @@ func (h *Handler) AdminReceiverRemoveSlave(c *gin.Context) {
 	}
 
 	writeSuccess(c, gin.H{"message": "slave removed"})
+}
+
+// ReceiverWebSocket upgrades an HTTP connection to a WebSocket for a slave node.
+// GET /ws/receiver — slave authenticates via X-API-Key header or api_key query param.
+func (h *Handler) ReceiverWebSocket(c *gin.Context) {
+	if !h.checkReceiverEnabled(c) {
+		return
+	}
+	h.receiver.HandleWebSocket(c.Writer, c.Request)
+}
+
+// ReceiverStreamPush receives file data from a slave delivering a stream.
+// POST /api/receiver/stream-push/:token
+// The slave opens this connection in response to a stream_request sent over WebSocket.
+func (h *Handler) ReceiverStreamPush(c *gin.Context) {
+	token := c.Param("token")
+	if token == "" {
+		writeError(c, http.StatusBadRequest, "token required")
+		return
+	}
+
+	ps, ok := h.receiver.DeliverStream(token)
+	if !ok {
+		writeError(c, http.StatusNotFound, "no pending stream for token")
+		return
+	}
+
+	// Build the delivery with the slave's request headers and body
+	statusCode := http.StatusOK
+	if status := c.GetHeader("X-Stream-Status"); status != "" {
+		if parsed, err := strconv.Atoi(status); err == nil && parsed > 0 {
+			statusCode = parsed
+		}
+	}
+
+	delivery := &receiver.StreamDelivery{
+		StatusCode:  statusCode,
+		ContentType: c.GetHeader("Content-Type"),
+		Headers:     c.Request.Header.Clone(),
+		Body:        c.Request.Body,
+	}
+
+	// Signal the waiting proxy handler
+	ps.Ready <- delivery
 }

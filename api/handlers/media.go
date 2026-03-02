@@ -61,6 +61,37 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	allItems := h.media.ListMedia(filterNoPagination)
 
+	// Merge receiver (slave) media into the listing so users see one unified library.
+	// Receiver items are indistinguishable from local media to regular users.
+	if h.receiver != nil {
+		cfg := h.media.GetConfig()
+		if cfg.Features.EnableReceiver && cfg.Receiver.Enabled {
+			for _, ri := range h.receiver.GetAllMedia() {
+				item := &models.MediaItem{
+					ID:       ri.ID,
+					Name:     ri.Name,
+					Type:     models.MediaType(ri.MediaType),
+					Size:     ri.Size,
+					Duration: ri.Duration,
+					Width:    ri.Width,
+					Height:   ri.Height,
+					IsRemote: true,
+				}
+				// Apply the same filters as local media
+				if filterNoPagination.Type != "" && item.Type != filterNoPagination.Type {
+					continue
+				}
+				if filterNoPagination.Search != "" {
+					search := strings.ToLower(filterNoPagination.Search)
+					if !strings.Contains(strings.ToLower(item.Name), search) {
+						continue
+					}
+				}
+				allItems = append(allItems, item)
+			}
+		}
+	}
+
 	// Mature items are included in the listing for all users (guests and authenticated).
 	// The frontend blurs them and shows a login/enable gate overlay based on is_mature=true.
 	// Actual streaming/download of mature content is enforced in checkMatureAccess().
@@ -90,7 +121,8 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	}
 
 	for _, item := range items {
-		if item.ThumbnailURL == "" {
+		if item.ThumbnailURL == "" && item.Path != "" {
+			// Only generate thumbnails for local media (receiver items have no local path)
 			if !h.thumbnails.HasThumbnail(item.ID) {
 				isAudio := item.Type == "audio"
 				_, err := h.thumbnails.GenerateThumbnail(item.Path, item.ID, isAudio)
@@ -120,6 +152,22 @@ func (h *Handler) GetMedia(c *gin.Context) {
 
 	item, err := h.media.GetMediaByID(id)
 	if err != nil {
+		// Try receiver media — return it as a models.MediaItem so it's transparent
+		if h.receiver != nil {
+			if ri := h.receiver.GetMediaItem(id); ri != nil {
+				writeSuccess(c, &models.MediaItem{
+					ID:       ri.ID,
+					Name:     ri.Name,
+					Type:     models.MediaType(ri.MediaType),
+					Size:     ri.Size,
+					Duration: ri.Duration,
+					Width:    ri.Width,
+					Height:   ri.Height,
+					IsRemote: true,
+				})
+				return
+			}
+		}
 		if !h.media.IsReady() {
 			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
 			return
@@ -181,10 +229,35 @@ func (h *Handler) GetCategories(c *gin.Context) {
 // StreamMedia streams a media file
 func (h *Handler) StreamMedia(c *gin.Context) {
 	id := c.Query("id")
-	absPath, ok := h.resolveMediaByID(c, id)
-	if !ok {
+	if id == "" {
+		writeError(c, http.StatusBadRequest, errIDRequired)
 		return
 	}
+
+	// Try local media first
+	localItem, localErr := h.media.GetMediaByID(id)
+	if localErr != nil {
+		// Not found locally — try receiver media (slave-sourced).
+		// This makes slave media fully transparent — same URL pattern as local.
+		if h.receiver != nil {
+			if item := h.receiver.GetMediaItem(id); item != nil {
+				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
+					if !c.Writer.Written() && !isClientDisconnect(err) {
+						writeError(c, http.StatusBadGateway, "Stream proxy error")
+					}
+				}
+				return
+			}
+		}
+		// Neither local nor receiver — write appropriate error
+		if !h.media.IsReady() {
+			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+		} else {
+			writeError(c, http.StatusNotFound, errMediaNotFound)
+		}
+		return
+	}
+	absPath := localItem.Path
 
 	if !h.checkMatureAccess(c, absPath) {
 		return
@@ -266,10 +339,28 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	}
 
 	id := c.Query("id")
-	absPath, ok := h.resolveMediaByID(c, id)
-	if !ok {
+	if id == "" {
+		writeError(c, http.StatusBadRequest, errIDRequired)
 		return
 	}
+
+	localItem, localErr := h.media.GetMediaByID(id)
+	if localErr != nil {
+		// Not found locally — try receiver media for download too
+		if h.receiver != nil {
+			if item := h.receiver.GetMediaItem(id); item != nil {
+				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
+					if !c.Writer.Written() && !isClientDisconnect(err) {
+						writeError(c, http.StatusBadGateway, "Download proxy error")
+					}
+				}
+				return
+			}
+		}
+		writeError(c, http.StatusNotFound, errMediaNotFound)
+		return
+	}
+	absPath := localItem.Path
 
 	if !h.checkMatureAccess(c, absPath) {
 		return
