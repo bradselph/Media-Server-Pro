@@ -219,15 +219,16 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	}
 
 	usedGB := float64(totalSize) / (1024 * 1024 * 1024)
+	quotaGB := float64(storageQuotaGB) / (1024 * 1024 * 1024)
 	percentage := 0.0
-	if storageQuotaGB > 0 {
-		percentage = (usedGB / float64(storageQuotaGB)) * 100
+	if quotaGB > 0 {
+		percentage = (usedGB / quotaGB) * 100
 	}
 
 	storageInfo := map[string]interface{}{
 		"used_bytes":       totalSize,
 		"used_gb":          usedGB,
-		"quota_gb":         storageQuotaGB,
+		"quota_gb":         quotaGB,
 		"percentage":       percentage,
 		"user_type":        userType,
 		"is_authenticated": username != "",

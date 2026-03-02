@@ -281,7 +281,7 @@ export function ProfilePage() {
                             <div className="info-item">
                                 <span className="info-label">Quota</span>
                                 <span className="info-value">
-                                    {storageUsage.quota_gb > 0 ? `${storageUsage.quota_gb} GB` : 'Unlimited'}
+                                    {storageUsage.quota_gb > 0 ? `${storageUsage.quota_gb.toFixed(1)} GB` : 'Unlimited'}
                                 </span>
                             </div>
                         </div>

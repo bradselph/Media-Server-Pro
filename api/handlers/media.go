@@ -61,24 +61,9 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	allItems := h.media.ListMedia(filterNoPagination)
 
-	session := getSession(c)
-	hideMature := true // Default: hide mature content for unauthenticated users
-	if session != nil {
-		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-		if err == nil && user != nil && user.Preferences.ShowMature {
-			hideMature = false
-		}
-	}
-
-	if hideMature {
-		filtered := make([]*models.MediaItem, 0, len(allItems))
-		for _, item := range allItems {
-			if !item.IsMature {
-				filtered = append(filtered, item)
-			}
-		}
-		allItems = filtered
-	}
+	// Mature items are included in the listing for all users (guests and authenticated).
+	// The frontend blurs them and shows a login/enable gate overlay based on is_mature=true.
+	// Actual streaming/download of mature content is enforced in checkMatureAccess().
 
 	totalItems := len(allItems)
 	totalPages := 1

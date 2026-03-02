@@ -15,7 +15,7 @@ import '@/styles/player.css'
 // ── Similar Media Item ────────────────────────────────────────────────────────
 
 function SimilarItem({entry}: { entry: Suggestion }) {
-    const name = entry.title || formatTitle(entry.media_id)
+    const name = formatTitle(entry.title || entry.media_id)
     return (
         <Link to={`/player?id=${encodeURIComponent(entry.media_id)}`} className="related-item">
             {entry.thumbnail_url ? (

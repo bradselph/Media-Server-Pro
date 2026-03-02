@@ -155,9 +155,23 @@ func (h *Handler) GetBannedIPs(c *gin.Context) {
 	result := make([]bannedIP, 0, len(banned))
 	for ip, expiresAt := range banned {
 		entry := bannedIP{
-			IP:       ip,
+			IP: ip,
+			// TODO: API Contract Mismatch - BannedAt is always set to the CURRENT time (time.Now())
+			// rather than the actual time the IP was banned. Frontend BannedIP.banned_at (types.ts:741)
+			// and callers display this as the ban timestamp, but the value is always "just now" on
+			// every request, not the real ban time. This is a metadata accuracy issue, not a crash.
+			// Fix: the security module's GetBannedIPs() would need to return (ip, bannedAt, expiresAt)
+			// or a richer struct. Alternatively the internal security store would need to persist ban
+			// timestamps alongside expiry times. Current security module only stores expiry.
 			BannedAt: now,
-			Reason:   "Rate limit violation",
+			// TODO: API Contract Mismatch - Reason is always hardcoded as "Rate limit violation"
+			// for ALL banned IPs (api/handlers/admin_security.go:160), including IPs manually banned
+			// via POST /api/admin/security/ban (BanIP handler). Frontend displays this as the ban
+			// reason (types.ts BannedIP.reason: string). Admins who manually ban an IP will see
+			// "Rate limit violation" instead of "Manual ban" or any reason they might have intended.
+			// The BanIP handler at line 170 does not accept or store a reason field.
+			// Fix: add a reason to the BanIP request body and store it in the security module's ban map.
+			Reason: "Rate limit violation",
 		}
 		if !expiresAt.IsZero() {
 			entry.ExpiresAt = &expiresAt

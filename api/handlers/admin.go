@@ -736,7 +736,7 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 	}()
 	initial := h.updater.GetActiveBuildStatus()
 	if initial == nil {
-		initial = &updater.UpdateStatus{InProgress: true, Stage: "starting", Progress: 0}
+		initial = &updater.UpdateStatus{InProgress: true, Stage: "starting", Progress: 0, StartedAt: time.Now()}
 	}
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Data: initial})
 }
@@ -798,8 +798,8 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 		UpdateMethod string `json:"update_method"`
 		Branch       string `json:"branch"`
 	}
-	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 

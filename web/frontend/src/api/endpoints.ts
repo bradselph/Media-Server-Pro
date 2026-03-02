@@ -198,6 +198,7 @@ export const hlsApi = {
     check: (id: string) =>
         api.get<HLSAvailability>(`/api/hls/check?id=${encodeURIComponent(id)}`),
 
+    // Backend accepts `quality` (string) or `qualities` ([]string); sending singular `quality` is handled.
     generate: (id: string, quality?: string) =>
         api.post<HLSJob>('/api/hls/generate', {id, quality}),
 
@@ -258,7 +259,6 @@ export const playlistApi = {
 // ── Analytics ──
 
 export const analyticsApi = {
-    // Backend route is GET /api/analytics (not /api/analytics/summary)
     getSummary: () =>
         api.get<AnalyticsSummary>('/api/analytics'),
 
@@ -359,7 +359,6 @@ export const adminApi = {
         api.post<void>('/api/admin/cache/clear'),
 
     // checked_at is always populated by CheckForUpdates so non-nullable here is correct.
-    // Backend also sends published_at?: string (omitempty) from UpdateCheckResult.
     checkUpdates: () =>
         api.get<{
             update_available: boolean
@@ -372,7 +371,7 @@ export const adminApi = {
             error?: string
         }>('/api/admin/update/check'),
 
-    // checked_at is null before first check; latest_version is "" before first check.
+    // checked_at is null before first check; string after first check.
     getUpdateStatus: () =>
         api.get<{
             update_available: boolean
@@ -453,7 +452,7 @@ export const adminApi = {
     getUser: (username: string) =>
         api.get<User>(`/api/admin/users/${encodeURIComponent(username)}`),
 
-    updateUser: (username: string, data: Partial<User>) =>
+    updateUser: (username: string, data: { role?: string; enabled?: boolean; email?: string; permissions?: Partial<UserPermissions> }) =>
         api.put<User>(`/api/admin/users/${encodeURIComponent(username)}`, data),
 
     deleteUser: (username: string) =>
@@ -564,9 +563,6 @@ export const adminApi = {
 
     clearReviewQueue: () =>
         api.delete<void>('/api/admin/scanner/queue'),
-
-    approveContent: (id: string) =>
-        api.post<void>(`/api/admin/scanner/approve/${encodeURIComponent(id)}`),
 
     // HLS admin
     getHLSStats: () =>

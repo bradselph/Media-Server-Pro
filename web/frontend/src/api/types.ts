@@ -737,8 +737,16 @@ export interface IPEntry {
 
 export interface BannedIP {
     ip: string
+    // TODO: API Contract Mismatch - BannedIP.banned_at is always the CURRENT time at the moment
+    // of the GET /api/admin/security/banned request, not the actual ban timestamp.
+    // The backend handler (api/handlers/admin_security.go:159) sets `BannedAt: time.Now()` on
+    // every response — the security module has no persistent ban timestamp storage.
+    // Treat this field as unreliable for displaying when an IP was actually banned.
     banned_at: string
     expires_at?: string
+    // TODO: API Contract Mismatch - BannedIP.reason is always "Rate limit violation" regardless
+    // of how the ban was created. The BanIP handler (admin_security.go:170-188) does not accept
+    // or persist a reason. Manually banned IPs show the same reason as auto-banned ones.
     reason: string
 }
 

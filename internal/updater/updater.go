@@ -70,7 +70,7 @@ type UpdateCheckResult struct {
 	UpdateAvailable bool      `json:"update_available"`
 	ReleaseURL      string    `json:"release_url,omitempty"`
 	ReleaseNotes    string    `json:"release_notes,omitempty"`
-	PublishedAt     time.Time `json:"published_at,omitempty"`
+	PublishedAt     *time.Time `json:"published_at,omitempty"`
 	CheckedAt       time.Time `json:"checked_at"`
 	Error           string    `json:"error,omitempty"`
 }
@@ -295,7 +295,10 @@ func (m *Module) CheckForUpdates() (*UpdateCheckResult, error) {
 	result.LatestVersion = latestVersion
 	result.ReleaseURL = release.HTMLURL
 	result.ReleaseNotes = release.Body
-	result.PublishedAt = release.PublishedAt
+	if !release.PublishedAt.IsZero() {
+		t := release.PublishedAt
+		result.PublishedAt = &t
+	}
 
 	// Compare versions
 	result.UpdateAvailable = isNewerVersion(latestVersion, m.currentVersion)
@@ -968,10 +971,11 @@ func (m *Module) appDir() (string, error) {
 	return filepath.Dir(execPath), nil
 }
 
-// CheckForSourceUpdates fetches remote refs and reports whether the tracked
-// branch has commits that are not yet present locally.
+// CheckForSourceUpdates fetches remote refs for the configured branch and
+// reports whether the remote has commits not yet present locally.
 // Returns (updatesAvailable, remoteShortHash, error).
 func (m *Module) CheckForSourceUpdates(ctx context.Context) (bool, string, error) {
+	cfg := m.config.Get()
 	dir, err := m.appDir()
 	if err != nil {
 		return false, "", err
@@ -981,10 +985,15 @@ func (m *Module) CheckForSourceUpdates(ctx context.Context) (bool, string, error
 		return false, "", fmt.Errorf("not a git repository: %s", dir)
 	}
 
+	branch := cfg.Updater.Branch
+	if branch == "" {
+		branch = "main"
+	}
+
 	gitEnv := m.gitAuthEnv()
 
-	// Fetch remote refs (quiet — errors are surfaced below)
-	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "--quiet")
+	// Fetch only the configured branch
+	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "--quiet", "origin", branch)
 	fetchCmd.Env = gitEnv
 	if out, err := fetchCmd.CombinedOutput(); err != nil {
 		return false, "", fmt.Errorf("git fetch failed: %w\n%s", err, string(out))
@@ -996,10 +1005,10 @@ func (m *Module) CheckForSourceUpdates(ctx context.Context) (bool, string, error
 		return false, "", fmt.Errorf("git rev-parse HEAD failed: %w", err)
 	}
 
-	// Remote tracking branch commit
-	remoteOut, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "@{u}").Output()
+	// Remote branch commit
+	remoteOut, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
 	if err != nil {
-		return false, "", fmt.Errorf("git rev-parse @{u} failed (tracking branch not set?): %w", err)
+		return false, "", fmt.Errorf("git rev-parse origin/%s failed: %w", branch, err)
 	}
 
 	localHash := strings.TrimSpace(string(localOut))
@@ -1089,24 +1098,41 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 
 	gitEnv := m.gitAuthEnv()
 
-	// --- Step 1: git pull ---
+	// --- Step 1: fetch + checkout + reset ---
+	// Using fetch → checkout → reset --hard instead of plain "git pull" so that:
+	//  - The correct branch is always checked out (even if the repo has a different branch)
+	//  - No merge conflicts are possible (hard reset discards local state)
+	//  - config.json and other gitignored files are untouched
 	status.Stage = "pulling source"
 	status.Progress = 20
 	m.publishBuildStatus(status)
-	m.log.Info("Source update: git pull origin %s in %s", branch, dir)
+	m.log.Info("Source update: fetching origin/%s in %s", branch, dir)
 
-	pullCmd := exec.CommandContext(ctx, "git", "-C", dir, "pull", "origin", branch)
-	pullCmd.Env = gitEnv
-	pullOut, err := pullCmd.CombinedOutput()
+	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "origin", branch)
+	fetchCmd.Env = gitEnv
+	fetchOut, err := fetchCmd.CombinedOutput()
 	if err != nil {
-		status.Error = fmt.Sprintf("git pull failed: %v\n%s", err, string(pullOut))
+		status.Error = fmt.Sprintf("git fetch failed: %v\n%s", err, string(fetchOut))
 		status.InProgress = false
 		m.publishBuildStatus(status)
-		return status, fmt.Errorf("git pull: %w", err)
+		return status, fmt.Errorf("git fetch: %w", err)
 	}
-	m.log.Info("git pull: %s", strings.TrimSpace(string(pullOut)))
+	m.log.Info("git fetch: %s", strings.TrimSpace(string(fetchOut)))
 
-	if strings.Contains(string(pullOut), "Already up to date") {
+	// Switch to the target branch (create tracking branch if needed)
+	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, "origin/"+branch)
+	checkoutCmd.Env = gitEnv
+	if out, cerr := checkoutCmd.CombinedOutput(); cerr != nil {
+		status.Error = fmt.Sprintf("git checkout failed: %v\n%s", cerr, string(out))
+		status.InProgress = false
+		m.publishBuildStatus(status)
+		return status, fmt.Errorf("git checkout: %w", cerr)
+	}
+
+	// Check whether there are actually any new commits
+	localOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
+	remoteOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
+	if strings.TrimSpace(string(localOut)) == strings.TrimSpace(string(remoteOut)) {
 		m.log.Info("Source update: already up to date")
 		status.Stage = "already up to date"
 		status.Progress = 100

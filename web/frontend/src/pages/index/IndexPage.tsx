@@ -247,12 +247,14 @@ function MediaCard({
                        onPlay,
                        canDownload,
                        canViewMature,
+                       isAuthenticated,
                    }: {
     item: MediaItem
     isPlaying: boolean
     onPlay: (item: MediaItem) => void
     canDownload: boolean
     canViewMature: boolean
+    isAuthenticated: boolean
 }) {
     const navigate = useNavigate()
     const restricted = item.is_mature && !canViewMature
@@ -285,8 +287,15 @@ function MediaCard({
                     <div className="mature-gate-overlay">
                         <i className="bi bi-shield-lock-fill"/>
                         <span>18+ Content</span>
-                        <Link to="/login" className="mature-gate-login" onClick={(e) => e.stopPropagation()}>Sign in to
-                            view</Link>
+                        {isAuthenticated ? (
+                            <Link to="/profile" className="mature-gate-login" onClick={(e) => e.stopPropagation()}>
+                                Enable in profile settings
+                            </Link>
+                        ) : (
+                            <Link to="/login" className="mature-gate-login" onClick={(e) => e.stopPropagation()}>
+                                Sign in to view
+                            </Link>
+                        )}
                     </div>
                 )}
             </div>
@@ -305,7 +314,7 @@ function MediaCard({
                         className="media-card-btn media-card-btn-play"
                         onClick={() => !restricted && onPlay(item)}
                         disabled={restricted}
-                        title={restricted ? 'Sign in to play 18+ content' : undefined}
+                        title={restricted ? (isAuthenticated ? 'Enable mature content in profile settings' : 'Sign in to play 18+ content') : undefined}
                     >
                         <i className="bi bi-play-fill"/> Play
                     </button>
@@ -760,11 +769,11 @@ export function IndexPage() {
         queryFn: () => mediaApi.getCategories(),
     })
 
-    // Analytics query
+    // Analytics query — admin-only endpoint, only execute when user is admin
     const {data: analytics} = useQuery<AnalyticsSummary>({
         queryKey: ['analytics-summary'],
         queryFn: () => analyticsApi.getSummary(),
-        enabled: isAuthenticated,
+        enabled: isAdmin,
     })
 
     // Section visibility from user preferences — default true so sections show before prefs load
@@ -990,7 +999,7 @@ export function IndexPage() {
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
                                 <div className="continue-card-meta"><i className="bi bi-play-circle"/> Continue</div>
                             </Link>
                         ))}
@@ -1010,7 +1019,7 @@ export function IndexPage() {
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
                                 {entry.score != null && (
                                     <div className="continue-card-meta"><i
                                         className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
@@ -1033,7 +1042,7 @@ export function IndexPage() {
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
                                 <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
                             </Link>
                         ))}
@@ -1128,7 +1137,8 @@ export function IndexPage() {
                                 isPlaying={nowPlaying?.id === item.id}
                                 onPlay={handlePlay}
                                 canDownload={permissions.can_download}
-                                canViewMature={permissions.can_view_mature}
+                                canViewMature={permissions.can_view_mature && (user?.preferences?.show_mature === true)}
+                                isAuthenticated={isAuthenticated}
                             />
                         ))}
                     </div>
@@ -1183,7 +1193,7 @@ export function IndexPage() {
             {/* Inline Player */}
             <InlinePlayer
                 nowPlaying={nowPlaying}
-                playlist={items.filter(i => !i.is_mature || permissions.can_view_mature)}
+                playlist={items.filter(i => !i.is_mature || (permissions.can_view_mature && user?.preferences?.show_mature === true))}
                 onEnded={handlePlayerEnded}
             />
 
