@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.28.0] - 2026-03-02 (minor)
+
+- Merge pull request #31 from bradselph/development
+- fix: 413 stream push, URL source exposure, mature content for guests
+
+
 ## [0.27.0] - 2026-03-02 (minor)
 
 - Merge pull request #30 from bradselph/development
