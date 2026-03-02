@@ -424,6 +424,26 @@ if $SETUP_RECEIVER; then
       echo \"[receiver] UFW: opened port \${APP_PORT}/tcp for slave → master catalog pushes\"
     fi
 
+    # ── Nginx: allow unlimited body size for slave stream push ────────────
+    # Slave nodes POST entire media files to /api/receiver/stream-push/:token.
+    # Without this, nginx rejects large files with HTTP 413.
+    NGINX_CONF=\$(find /etc/nginx/sites-enabled/ -name '*.conf' -exec grep -l 'proxy_pass.*127.0.0.1.*\${APP_PORT}' {} \\; 2>/dev/null | head -1)
+    if [ -z \"\$NGINX_CONF\" ]; then
+      # Fallback: try any conf file that proxies to our port
+      NGINX_CONF=\$(find /etc/nginx/sites-enabled/ -name '*.conf' 2>/dev/null | head -1)
+    fi
+    if [ -n \"\$NGINX_CONF\" ] && ! grep -q 'client_max_body_size' \"\$NGINX_CONF\" 2>/dev/null; then
+      echo \"[receiver] Adding client_max_body_size 0 to \$NGINX_CONF\"
+      # Insert after the first proxy_pass line inside the location / block
+      sudo sed -i '/proxy_pass.*http:/a \\    client_max_body_size 0;' \"\$NGINX_CONF\"
+      sudo nginx -t 2>/dev/null && sudo systemctl reload nginx && echo '[receiver] nginx reloaded' \
+        || echo '[receiver] WARNING: nginx config test failed — check manually'
+    elif [ -n \"\$NGINX_CONF\" ]; then
+      echo '[receiver] client_max_body_size already configured in nginx'
+    else
+      echo '[receiver] WARNING: no nginx config found — add client_max_body_size 0 manually'
+    fi
+
     echo '[receiver] Restarting service to apply changes...'
     sudo systemctl restart '$SERVICE' && echo '[receiver] Service restarted OK' \
       || echo '[receiver] WARNING: restart failed — run: sudo systemctl restart $SERVICE'

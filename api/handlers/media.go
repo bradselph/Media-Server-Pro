@@ -184,7 +184,8 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		return
 	}
 
-	// Check mature content access before returning individual item
+	// Check mature content access before returning individual item (same 3-layer
+	// check as checkMatureAccess: session → permission → preference).
 	if item.IsMature {
 		session := getSession(c)
 		if session == nil {
@@ -192,7 +193,15 @@ func (h *Handler) GetMedia(c *gin.Context) {
 			return
 		}
 		user := getUser(c)
-		if user == nil || !user.Preferences.ShowMature {
+		if user == nil {
+			writeError(c, http.StatusForbidden, "This content is marked as mature (18+). Enable mature content in your preferences to access it.")
+			return
+		}
+		if !user.Permissions.CanViewMature {
+			writeError(c, http.StatusForbidden, "Your account does not have permission to view mature content (18+).")
+			return
+		}
+		if !user.Preferences.ShowMature {
 			writeError(c, http.StatusForbidden, "This content is marked as mature (18+). Enable mature content in your preferences to access it.")
 			return
 		}

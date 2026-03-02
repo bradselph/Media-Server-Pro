@@ -233,9 +233,6 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// Remote streaming — frontend uses mediaApi.getRemoteStreamUrl()
 	r.GET("/remote/stream", requireAuth(), h.StreamRemoteMedia)
 
-	// Receiver proxy streaming — streams slave media to users
-	r.GET("/receiver/stream/:id", requireAuth(), h.ReceiverProxyStream)
-
 	// Receiver WebSocket — slave nodes connect here (authenticated via X-API-Key / api_key query)
 	r.GET("/ws/receiver", h.ReceiverWebSocket)
 
