@@ -1,33 +1,40 @@
 #!/usr/bin/env bash
-# deploy-slave.sh — Build and deploy the media-receiver slave node to a remote device.
+# deploy-slave.sh — Build and deploy the media-receiver slave node.
 #
-# The slave binary is cross-compiled locally (no Go required on the slave) and
-# copied over SSH.  The slave device only needs: bash, systemd, scp/ssh access.
+# TWO MODES:
+#   --local   Build and run the slave on THIS machine (no SSH needed).
+#             Use this when the slave is the same machine you are on.
+#   (default) Cross-compile and deploy to a REMOTE Linux device over SSH.
+#             The slave device only needs: bash, systemd, scp/ssh access.
 #
 # Usage:
-#   ./deploy-slave.sh                    # build + copy binary + restart service
-#   ./deploy-slave.sh --setup            # first-time setup (user, dirs, .env, systemd)
-#   ./deploy-slave.sh --fix-env          # re-write .env on slave from current env vars
-#   ./deploy-slave.sh --rollback         # restore media-receiver.bak on slave
+#   ./deploy-slave.sh --local            # build + run slave on this machine
+#   ./deploy-slave.sh --local --stop     # stop the locally running slave
+#   ./deploy-slave.sh --setup            # first-time setup on a REMOTE device
+#   ./deploy-slave.sh                    # update binary on a REMOTE device
+#   ./deploy-slave.sh --fix-env          # re-write .env on remote slave
+#   ./deploy-slave.sh --rollback         # restore media-receiver.bak on remote slave
 #   ./deploy-slave.sh --dry-run          # print what would happen, do nothing
 #   ./deploy-slave.sh --help             # show this help
 #
-# Required (set in shell or .slave.env):
-#   SLAVE_HOST         SSH host of the slave device          (required)
-#   MASTER_URL         Full URL of the master server         (required for --setup / --fix-env)
-#   RECEIVER_API_KEY   API key copied from the master        (required for --setup / --fix-env)
-#   MEDIA_DIRS         Comma-separated media dirs on slave   (required for --setup / --fix-env)
+# Config (set in shell, .slave.env, or as flags — all modes):
+#   MASTER_URL         Full URL of the master server         (required)
+#   RECEIVER_API_KEY   API key copied from the master        (required)
+#   MEDIA_DIRS         Comma-separated media directories     (required)
 #
-# Optional:
+# Remote-only config:
+#   SLAVE_HOST         SSH host of the slave device          (required for remote)
 #   SLAVE_USER         SSH user              (default: pi)
 #   SLAVE_PORT         SSH port              (default: 22)
 #   KEY_FILE           SSH private key path  (default: ~/.ssh/id_ed25519)
 #   SLAVE_DIR          Install directory     (default: /opt/media-receiver)
 #   SLAVE_SERVICE      systemd unit name     (default: media-receiver)
-#   SLAVE_ID           Unique slave ID       (default: hostname of slave device)
-#   SLAVE_NAME         Display name          (default: same as SLAVE_ID)
 #   SLAVE_ARCH         Target arch           (default: auto-detect via uname -m)
-#   LISTEN_ADDR        Slave listen address  (default: :9090)
+#
+# Common optional config:
+#   SLAVE_ID           Unique slave ID       (default: hostname)
+#   SLAVE_NAME         Display name          (default: same as SLAVE_ID)
+#   LISTEN_ADDR        Port to listen on     (default: :9090)
 #   SCAN_INTERVAL      Catalog rescan rate   (default: 5m)
 #   HEARTBEAT_INTERVAL Keepalive ping rate   (default: 15s)
 
@@ -69,10 +76,14 @@ DRY_RUN=false
 SETUP=false
 FIX_ENV=false
 ROLLBACK=false
+LOCAL=false
+LOCAL_STOP=false
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --local)    LOCAL=true    ; shift ;;
+    --stop)     LOCAL_STOP=true ; shift ;;
     --setup)    SETUP=true    ; shift ;;
     --fix-env)  FIX_ENV=true  ; shift ;;
     --rollback) ROLLBACK=true ; shift ;;
@@ -84,6 +95,95 @@ while [[ $# -gt 0 ]]; do
     *) die "Unknown option: $1 (use --help)" ;;
   esac
 done
+
+# ── LOCAL MODE — run slave on this machine, no SSH ────────────────────────────
+if $LOCAL; then
+  [[ -z "$MASTER_URL" ]]       && die "MASTER_URL is required. Set it in .slave.env or export it."
+  [[ -z "$RECEIVER_API_KEY" ]] && die "RECEIVER_API_KEY is required. Set it in .slave.env or export it."
+  [[ -z "$MEDIA_DIRS" ]]       && die "MEDIA_DIRS is required. Set it in .slave.env or export it."
+
+  # Resolve SLAVE_ID
+  LOCAL_ID="${SLAVE_ID:-$(hostname -s 2>/dev/null || hostname)}"
+  LOCAL_NAME="${SLAVE_NAME:-$LOCAL_ID}"
+
+  # PID file for tracking the local process
+  PID_FILE="${SCRIPT_DIR}/.media-receiver.pid"
+
+  if $LOCAL_STOP; then
+    if [[ -f "$PID_FILE" ]]; then
+      PID=$(cat "$PID_FILE")
+      if kill -0 "$PID" 2>/dev/null; then
+        info "Stopping media-receiver (PID $PID)..."
+        kill "$PID"
+        rm -f "$PID_FILE"
+        success "Stopped."
+      else
+        warn "Process $PID not running. Removing stale PID file."
+        rm -f "$PID_FILE"
+      fi
+    else
+      warn "No PID file found — slave may not be running."
+    fi
+    exit 0
+  fi
+
+  echo -e "\n${BOLD}=== Media Server Pro — Slave (Local) ===${RESET}\n"
+  info "Master:     $MASTER_URL"
+  info "Slave ID:   $LOCAL_ID"
+  info "Media dirs: $MEDIA_DIRS"
+  info "Listen:     $LISTEN_ADDR"
+  echo ""
+
+  # Build the native binary for this platform
+  info "Building media-receiver..."
+  EXT=""
+  [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] && EXT=".exe"
+  OUT="${SCRIPT_DIR}/media-receiver${EXT}"
+  if ! $DRY_RUN; then
+    go build -o "$OUT" ./cmd/media-receiver
+    success "Built → $OUT"
+  else
+    info "[dry-run] go build -o $OUT ./cmd/media-receiver"
+  fi
+
+  # Stop any already-running instance
+  if [[ -f "$PID_FILE" ]]; then
+    OLD_PID=$(cat "$PID_FILE")
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+      info "Stopping previous instance (PID $OLD_PID)..."
+      kill "$OLD_PID" 2>/dev/null || true
+      sleep 1
+    fi
+    rm -f "$PID_FILE"
+  fi
+
+  if $DRY_RUN; then
+    info "[dry-run] Would start: MASTER_URL=$MASTER_URL RECEIVER_API_KEY=*** ... $OUT"
+    exit 0
+  fi
+
+  # Start in background, inherit stdout/stderr so output appears in terminal
+  MASTER_URL="$MASTER_URL" \
+  RECEIVER_API_KEY="$RECEIVER_API_KEY" \
+  SLAVE_ID="$LOCAL_ID" \
+  SLAVE_NAME="$LOCAL_NAME" \
+  MEDIA_DIRS="$MEDIA_DIRS" \
+  LISTEN_ADDR="$LISTEN_ADDR" \
+  SCAN_INTERVAL="$SCAN_INTERVAL" \
+  HEARTBEAT_INTERVAL="$HEARTBEAT_INTERVAL" \
+    "$OUT" &
+
+  echo $! > "$PID_FILE"
+  success "Started media-receiver (PID $(cat "$PID_FILE"))"
+  info "To stop: ./deploy-slave.sh --local --stop"
+  info "To follow output, re-run without backgrounding: remove the '&' from this script."
+  echo ""
+  echo "Press Ctrl+C to stop."
+  echo ""
+  # Wait so the user can see output and Ctrl+C cleanly
+  wait
+  exit 0
+fi
 
 [[ -z "$SLAVE_HOST" ]] && die "SLAVE_HOST is not set. Export it or add to .slave.env"
 
