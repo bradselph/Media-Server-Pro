@@ -46,6 +46,10 @@ DEPLOY_DIR="${DEPLOY_DIR:-/opt/media-server}"
 SERVICE="${SERVICE:-media-server}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 REPO_URL="${REPO_URL:-github.com/bradselph/Media-Server-Pro.git}"
+# Public URL of the master (through nginx/CloudPanel — not the internal port).
+# Used to auto-configure deploy-slave.sh so it knows where to connect.
+# Example: MASTER_URL=https://yourdomain.com
+MASTER_URL="${MASTER_URL:-}"
 
 GO_VERSION="1.26.0"
 NODE_MAJOR="22"
@@ -151,6 +155,20 @@ run_or_dry() {
   else
     "$@"
   fi
+}
+
+# ── Persist a key=value into the local .deploy.env ───────────────────────────
+# Used after --setup / --setup-receiver to save the receiver API key and master
+# URL locally so deploy-slave.sh can read them without any manual copying.
+save_to_deploy_env() {
+  local key="$1" val="$2"
+  local file="$SCRIPT_DIR/.deploy.env"
+  local tmp="${file}.tmp.$$"
+  # Filter out any existing line for this key, then append the new value.
+  # grep+rewrite is more reliable than sed -i on Windows/Git Bash.
+  { grep -v "^${key}=" "$file" 2>/dev/null || true; echo "${key}=${val}"; } > "$tmp" \
+    && mv "$tmp" "$file" \
+    || { rm -f "$tmp"; echo "${key}=${val}" >> "$file"; }
 }
 
 CLONE_URL="https://${GITHUB_TOKEN}@${REPO_URL}"
@@ -296,6 +314,18 @@ if $SETUP; then
     echo '  3. Run: ./deploy.sh --fix-env    (to auto-patch common settings)'
     echo '  4. Run: ./deploy.sh --setup-receiver  (to configure master receiver for slave nodes)'
   "
+
+  # Save the API key locally so deploy-slave.sh can read it without copy-paste.
+  # NOTE: we do NOT auto-save MASTER_URL here because --setup doesn't know the
+  # public domain name — run --setup-receiver which handles it properly.
+  if ! $DRY_RUN; then
+    RECV_KEY=$(vps "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
+    if [[ -n "$RECV_KEY" ]]; then
+      save_to_deploy_env "RECEIVER_API_KEY" "$RECV_KEY"
+      success "Saved RECEIVER_API_KEY to .deploy.env"
+      info "Run ./deploy.sh --setup-receiver to configure the receiver and save MASTER_URL"
+    fi
+  fi
   exit 0
 fi
 
@@ -394,15 +424,34 @@ if $SETUP_RECEIVER; then
       echo \"[receiver] UFW: opened port \${APP_PORT}/tcp for slave → master catalog pushes\"
     fi
 
-    echo ''
-    echo '[receiver] Master receiver configured. Restart the service to apply:'
-    echo \"  sudo systemctl restart $SERVICE\"
-    echo ''
-    echo '[receiver] Slave node .env settings:'
-    echo \"  REMOTE_MEDIA_ENABLED=true\"
-    echo \"  REMOTE_MEDIA_SOURCES=[{\\\"name\\\":\\\"master\\\",\\\"url\\\":\\\"http://<master-host>:\${APP_PORT}\\\",\\\"enabled\\\":true}]\"
-    echo \"  RECEIVER_API_KEYS=\$RECV_KEY\"
+    echo '[receiver] Restarting service to apply changes...'
+    sudo systemctl restart '$SERVICE' && echo '[receiver] Service restarted OK' \
+      || echo '[receiver] WARNING: restart failed — run: sudo systemctl restart $SERVICE'
   "
+
+  # Fetch the API key and save both it and MASTER_URL to local .deploy.env
+  # so deploy-slave.sh --local reads them automatically with no copy-paste.
+  if ! $DRY_RUN; then
+    RECV_KEY=$(vps "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
+    if [[ -n "$RECV_KEY" ]]; then
+      # MASTER_URL: use what's already in .deploy.env/env if set, otherwise
+      # fall back to bare IP (user should override with their domain afterwards).
+      if [[ -z "$MASTER_URL" ]]; then
+        MASTER_URL="http://$VPS_HOST"
+        warn "MASTER_URL not set — using bare IP: $MASTER_URL"
+        warn "If behind nginx/CloudPanel set your domain:"
+        warn "  Add MASTER_URL=https://yourdomain.com to .deploy.env then re-run --setup-receiver"
+        echo ""
+      fi
+      save_to_deploy_env "RECEIVER_API_KEY" "$RECV_KEY"
+      save_to_deploy_env "MASTER_URL" "$MASTER_URL"
+      success "Saved to .deploy.env:"
+      info "  MASTER_URL=$MASTER_URL"
+      info "  RECEIVER_API_KEY=$RECV_KEY"
+      echo ""
+      success "Start slave on this machine: ./deploy-slave.sh --local"
+    fi
+  fi
   exit 0
 fi
 

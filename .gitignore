@@ -5,6 +5,8 @@
 config.json
 .env
 .deploy.env
+.slave.env
+.media-receiver.pid
 
 /web/static/react/
 /node_modules/
