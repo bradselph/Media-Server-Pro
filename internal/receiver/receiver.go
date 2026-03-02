@@ -35,15 +35,16 @@ type RegisterRequest struct {
 
 // CatalogItem is a single media entry pushed by a slave node.
 type CatalogItem struct {
-	ID          string  `json:"id"`
-	Path        string  `json:"path"` // relative path served at slave's /media?path=<path>
-	Name        string  `json:"name"`
-	MediaType   string  `json:"media_type"`
-	Size        int64   `json:"size"`
-	Duration    float64 `json:"duration"`
-	ContentType string  `json:"content_type"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
+	ID                 string  `json:"id"`
+	Path               string  `json:"path"` // relative path served at slave's /media?path=<path>
+	Name               string  `json:"name"`
+	MediaType          string  `json:"media_type"`
+	Size               int64   `json:"size"`
+	Duration           float64 `json:"duration"`
+	ContentType        string  `json:"content_type"`
+	ContentFingerprint string  `json:"content_fingerprint,omitempty"`
+	Width              int     `json:"width"`
+	Height             int     `json:"height"`
 }
 
 // CatalogPushRequest is the body for POST /api/receiver/catalog.
@@ -67,17 +68,18 @@ type SlaveNode struct {
 
 // MediaItem represents a media entry from a slave's catalog.
 type MediaItem struct {
-	ID          string  `json:"id"`
-	SlaveID     string  `json:"slave_id"`
-	SlaveName   string  `json:"slave_name,omitempty"`
-	Path        string  `json:"path"`
-	Name        string  `json:"name"`
-	MediaType   string  `json:"media_type"`
-	Size        int64   `json:"size"`
-	Duration    float64 `json:"duration"`
-	ContentType string  `json:"content_type"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
+	ID                 string  `json:"id"`
+	SlaveID            string  `json:"slave_id"`
+	SlaveName          string  `json:"slave_name,omitempty"`
+	Path               string  `json:"path"`
+	Name               string  `json:"name"`
+	MediaType          string  `json:"media_type"`
+	Size               int64   `json:"size"`
+	Duration           float64 `json:"duration"`
+	ContentType        string  `json:"content_type"`
+	ContentFingerprint string  `json:"content_fingerprint,omitempty"`
+	Width              int     `json:"width"`
+	Height             int     `json:"height"`
 }
 
 // Stats summarises the receiver module state.
@@ -322,16 +324,17 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	records := make([]*repositories.ReceiverMediaRecord, len(req.Items))
 	for i, item := range req.Items {
 		records[i] = &repositories.ReceiverMediaRecord{
-			ID:          fmt.Sprintf("%s:%s", req.SlaveID, item.ID),
-			SlaveID:     req.SlaveID,
-			RemotePath:  item.Path,
-			Name:        item.Name,
-			MediaType:   item.MediaType,
-			Size:        item.Size,
-			Duration:    item.Duration,
-			ContentType: item.ContentType,
-			Width:       item.Width,
-			Height:      item.Height,
+			ID:                 fmt.Sprintf("%s:%s", req.SlaveID, item.ID),
+			SlaveID:            req.SlaveID,
+			RemotePath:         item.Path,
+			Name:               item.Name,
+			MediaType:          item.MediaType,
+			Size:               item.Size,
+			Duration:           item.Duration,
+			ContentType:        item.ContentType,
+			ContentFingerprint: item.ContentFingerprint,
+			Width:              item.Width,
+			Height:             item.Height,
 		}
 	}
 
@@ -586,15 +589,16 @@ func nodeToSlaveRecord(node *SlaveNode) *repositories.ReceiverSlaveRecord {
 
 func mediaRecordToItem(rec *repositories.ReceiverMediaRecord) *MediaItem {
 	return &MediaItem{
-		ID:          rec.ID,
-		SlaveID:     rec.SlaveID,
-		Path:        rec.RemotePath,
-		Name:        rec.Name,
-		MediaType:   rec.MediaType,
-		Size:        rec.Size,
-		Duration:    rec.Duration,
-		ContentType: rec.ContentType,
-		Width:       rec.Width,
-		Height:      rec.Height,
+		ID:                 rec.ID,
+		SlaveID:            rec.SlaveID,
+		Path:               rec.RemotePath,
+		Name:               rec.Name,
+		MediaType:          rec.MediaType,
+		Size:               rec.Size,
+		Duration:           rec.Duration,
+		ContentType:        rec.ContentType,
+		ContentFingerprint: rec.ContentFingerprint,
+		Width:              rec.Width,
+		Height:             rec.Height,
 	}
 }

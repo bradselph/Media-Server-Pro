@@ -105,17 +105,18 @@ func (r *ReceiverSlaveRepository) rowToSlaveRecord(row *receiverSlaveRow) *repos
 // --- Media Repository ---
 
 type receiverMediaRow struct {
-	ID          string  `gorm:"column:id;primaryKey"`
-	SlaveID     string  `gorm:"column:slave_id"`
-	RemotePath  string  `gorm:"column:remote_path"`
-	Name        string  `gorm:"column:name"`
-	MediaType   string  `gorm:"column:media_type"`
-	Size        int64   `gorm:"column:file_size"`
-	Duration    float64 `gorm:"column:duration"`
-	ContentType string  `gorm:"column:content_type"`
-	Width       int     `gorm:"column:width"`
-	Height      int     `gorm:"column:height"`
-	UpdatedAt   string  `gorm:"column:updated_at"`
+	ID                 string  `gorm:"column:id;primaryKey"`
+	SlaveID            string  `gorm:"column:slave_id"`
+	RemotePath         string  `gorm:"column:remote_path"`
+	Name               string  `gorm:"column:name"`
+	MediaType          string  `gorm:"column:media_type"`
+	Size               int64   `gorm:"column:file_size"`
+	Duration           float64 `gorm:"column:duration"`
+	ContentType        string  `gorm:"column:content_type"`
+	ContentFingerprint string  `gorm:"column:content_fingerprint"`
+	Width              int     `gorm:"column:width"`
+	Height             int     `gorm:"column:height"`
+	UpdatedAt          string  `gorm:"column:updated_at"`
 }
 
 func (receiverMediaRow) TableName() string { return "receiver_media" }
@@ -138,17 +139,18 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 	rows := make([]receiverMediaRow, len(items))
 	for i, item := range items {
 		rows[i] = receiverMediaRow{
-			ID:          item.ID,
-			SlaveID:     slaveID,
-			RemotePath:  item.RemotePath,
-			Name:        item.Name,
-			MediaType:   item.MediaType,
-			Size:        item.Size,
-			Duration:    item.Duration,
-			ContentType: item.ContentType,
-			Width:       item.Width,
-			Height:      item.Height,
-			UpdatedAt:   time.Now().Format("2006-01-02 15:04:05"),
+			ID:                 item.ID,
+			SlaveID:            slaveID,
+			RemotePath:         item.RemotePath,
+			Name:               item.Name,
+			MediaType:          item.MediaType,
+			Size:               item.Size,
+			Duration:           item.Duration,
+			ContentType:        item.ContentType,
+			ContentFingerprint: item.ContentFingerprint,
+			Width:              item.Width,
+			Height:             item.Height,
+			UpdatedAt:          time.Now().Format("2006-01-02 15:04:05"),
 		}
 	}
 
@@ -164,7 +166,7 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 			Columns: []clause.Column{{Name: "id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"remote_path", "name", "media_type", "file_size", "duration",
-				"content_type", "width", "height", "updated_at",
+				"content_type", "content_fingerprint", "width", "height", "updated_at",
 			}),
 		}).Create(&batch).Error; err != nil {
 			return fmt.Errorf("failed to upsert media batch: %w", err)
@@ -218,16 +220,17 @@ func (r *ReceiverMediaRepository) Search(ctx context.Context, query string) ([]*
 
 func (r *ReceiverMediaRepository) rowToMediaRecord(row *receiverMediaRow) *repositories.ReceiverMediaRecord {
 	rec := &repositories.ReceiverMediaRecord{
-		ID:          row.ID,
-		SlaveID:     row.SlaveID,
-		RemotePath:  row.RemotePath,
-		Name:        row.Name,
-		MediaType:   row.MediaType,
-		Size:        row.Size,
-		Duration:    row.Duration,
-		ContentType: row.ContentType,
-		Width:       row.Width,
-		Height:      row.Height,
+		ID:                 row.ID,
+		SlaveID:            row.SlaveID,
+		RemotePath:         row.RemotePath,
+		Name:               row.Name,
+		MediaType:          row.MediaType,
+		Size:               row.Size,
+		Duration:           row.Duration,
+		ContentType:        row.ContentType,
+		ContentFingerprint: row.ContentFingerprint,
+		Width:              row.Width,
+		Height:             row.Height,
 	}
 	if t, err := parseTime(row.UpdatedAt); err == nil {
 		rec.UpdatedAt = t

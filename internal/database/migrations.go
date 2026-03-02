@@ -415,6 +415,10 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 		// content_fingerprint: SHA-256 of sampled file content (first + last 64KB + size).
 		// Used to detect moved/renamed files and duplicates without relying on paths.
 		{"media_metadata", "content_fingerprint", "VARCHAR(64) NULL"},
+		// content_fingerprint on receiver_media: enables duplicate detection across
+		// local and slave media. Slave nodes compute the same fingerprint algorithm and
+		// push it in their catalog so the master can skip items that match local media.
+		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
 	}
 
 	for _, col := range columns {

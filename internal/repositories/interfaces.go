@@ -348,17 +348,18 @@ type ReceiverMediaRepository interface {
 
 // ReceiverMediaRecord represents a media item from a slave node's catalog
 type ReceiverMediaRecord struct {
-	ID          string
-	SlaveID     string
-	RemotePath  string
-	Name        string
-	MediaType   string // video, audio
-	Size        int64
-	Duration    float64
-	ContentType string
-	Width       int
-	Height      int
-	UpdatedAt   time.Time
+	ID                 string
+	SlaveID            string
+	RemotePath         string
+	Name               string
+	MediaType          string // video, audio
+	Size               int64
+	Duration           float64
+	ContentType        string
+	ContentFingerprint string
+	Width              int
+	Height             int
+	UpdatedAt          time.Time
 }
 
 // BackupManifestRepository provides backup manifest storage

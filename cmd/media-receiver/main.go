@@ -42,15 +42,16 @@ import (
 
 // catalogItem matches the receiver.CatalogItem struct on the master.
 type catalogItem struct {
-	ID          string  `json:"id"`
-	Path        string  `json:"path"`
-	Name        string  `json:"name"`
-	MediaType   string  `json:"media_type"`
-	Size        int64   `json:"size"`
-	Duration    float64 `json:"duration"`
-	ContentType string  `json:"content_type"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
+	ID                 string  `json:"id"`
+	Path               string  `json:"path"`
+	Name               string  `json:"name"`
+	MediaType          string  `json:"media_type"`
+	Size               int64   `json:"size"`
+	Duration           float64 `json:"duration"`
+	ContentType        string  `json:"content_type"`
+	ContentFingerprint string  `json:"content_fingerprint,omitempty"`
+	Width              int     `json:"width"`
+	Height             int     `json:"height"`
 }
 
 // wsMessage is the JSON envelope for WebSocket messages.
@@ -592,13 +593,16 @@ func scanMediaDirs(dirs []string) []catalogItem {
 				relPath = info.Name()
 			}
 
+			fp := computeContentFingerprint(path)
+
 			items = append(items, catalogItem{
-				ID:          id,
-				Path:        relPath,
-				Name:        info.Name(),
-				MediaType:   mediaType,
-				Size:        info.Size(),
-				ContentType: contentType,
+				ID:                 id,
+				Path:               relPath,
+				Name:               info.Name(),
+				MediaType:          mediaType,
+				Size:               info.Size(),
+				ContentType:        contentType,
+				ContentFingerprint: fp,
 			})
 
 			return nil
@@ -626,5 +630,51 @@ func classifyFile(name string) string {
 func generateFileID(path string) string {
 	h := sha256.Sum256([]byte(path))
 	return hex.EncodeToString(h[:16])
+}
+
+// computeContentFingerprint computes a SHA-256 fingerprint of a media file.
+// This MUST match the algorithm in internal/media/discovery.go so the master
+// can detect duplicates between local and slave media. It samples the first
+// 64 KB, the last 64 KB, and the file size — fast even for very large files.
+func computeContentFingerprint(path string) string {
+	const sampleSize = 64 * 1024 // 64 KB
+
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+
+	size := info.Size()
+	h := sha256.New()
+
+	// Write file size into the hash
+	fmt.Fprintf(h, "size:%d\n", size)
+
+	// Read first 64 KB (or entire file if smaller)
+	head := make([]byte, sampleSize)
+	n, err := io.ReadFull(f, head)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return ""
+	}
+	h.Write(head[:n])
+
+	// Read last 64 KB if the file is larger than one sample
+	if size > int64(sampleSize) {
+		tail := make([]byte, sampleSize)
+		offset := size - int64(sampleSize)
+		n, err = f.ReadAt(tail, offset)
+		if err != nil && err != io.EOF {
+			return ""
+		}
+		h.Write(tail[:n])
+	}
+
+	return hex.EncodeToString(h.Sum(nil))
 }
 
