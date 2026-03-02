@@ -999,7 +999,7 @@ export function IndexPage() {
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
                                 <div className="continue-card-meta"><i className="bi bi-play-circle"/> Continue</div>
                             </Link>
                         ))}
@@ -1019,7 +1019,7 @@ export function IndexPage() {
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
                                 {entry.score != null && (
                                     <div className="continue-card-meta"><i
                                         className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
@@ -1042,7 +1042,7 @@ export function IndexPage() {
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{entry.title || entry.media_id}</div>
+                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
                                 <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
                             </Link>
                         ))}
