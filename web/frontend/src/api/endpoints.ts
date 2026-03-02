@@ -62,6 +62,7 @@ import type {
     UploadProgress,
     UploadResult,
     User,
+    UserPermissions,
     UserPreferences,
     UserSession,
     ValidationResult,
