@@ -84,6 +84,32 @@
     font-weight: 600;
 }
 
+/* ── Sub-Tab Navigation (inside consolidated tabs) ── */
+.admin-subtab-nav {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.admin-subtab-btn {
+    padding: 8px 16px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.admin-subtab-btn:hover {
+    color: var(--text-color);
+}
+.admin-subtab-btn.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+    font-weight: 600;
+}
+
 /* ── Content Area ── */
 .admin-content {
     padding: 20px;
