@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.27.0] - 2026-03-02 (minor)
+
+- Merge pull request #30 from bradselph/development
+- feat(receiver): content fingerprint dedup for slave media
+
+
 ## [0.26.0] - 2026-03-02 (minor)
 
 - Merge pull request #29 from bradselph/development
