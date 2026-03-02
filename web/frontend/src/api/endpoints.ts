@@ -61,6 +61,9 @@ import type {
     TopMediaItem,
     UploadProgress,
     UploadResult,
+    ReceiverMediaItem,
+    ReceiverStats,
+    SlaveNode,
     User,
     UserPermissions,
     UserPreferences,
@@ -808,4 +811,26 @@ export const adminApi = {
 
     cacheRemoteMedia: (url: string, sourceName: string) =>
         api.post<CachedMediaResult>('/api/admin/remote/cache', {url, source_name: sourceName}),
+
+    // ── Receiver admin (master-side slave management) ──
+    getReceiverSlaves: () =>
+        api.get<SlaveNode[]>('/api/admin/receiver/slaves'),
+
+    getReceiverStats: () =>
+        api.get<ReceiverStats>('/api/admin/receiver/stats'),
+
+    removeReceiverSlave: (id: string) =>
+        api.delete<void>(`/api/admin/receiver/slaves/${encodeURIComponent(id)}`),
+}
+
+// ── Receiver media (user-facing, requires auth) ────────────────────────────
+export const receiverApi = {
+    listMedia: () =>
+        api.get<ReceiverMediaItem[]>('/api/receiver/media'),
+
+    getMedia: (id: string) =>
+        api.get<ReceiverMediaItem>(`/api/receiver/media/${encodeURIComponent(id)}`),
+
+    getStreamUrl: (id: string) =>
+        `/receiver/stream/${encodeURIComponent(id)}`,
 }
