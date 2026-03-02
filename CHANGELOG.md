@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.21.0] - 2026-03-02 (minor)
+
+- Merge pull request #24 from bradselph/development
+- feat(frontend): implement receiver tab and wire all remote/receiver APIs
+
+
 ## [0.20.0] - 2026-03-02 (minor)
 
 - Merge pull request #23 from bradselph/development
