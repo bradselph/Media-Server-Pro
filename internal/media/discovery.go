@@ -1001,6 +1001,19 @@ func (m *Module) GetCategories() []*models.MediaCategory {
 	return cats
 }
 
+// ContentFingerprints returns a snapshot of all known content fingerprints for
+// local media. Used by the handler to deduplicate receiver items that match
+// local files (same content on both master and slave).
+func (m *Module) ContentFingerprints() map[string]bool {
+	m.metaMu.RLock()
+	defer m.metaMu.RUnlock()
+	fps := make(map[string]bool, len(m.fingerprintIndex))
+	for fp := range m.fingerprintIndex {
+		fps[fp] = true
+	}
+	return fps
+}
+
 // GetStats returns media statistics
 func (m *Module) GetStats() Stats {
 	m.mu.RLock()

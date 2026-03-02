@@ -63,10 +63,18 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	// Merge receiver (slave) media into the listing so users see one unified library.
 	// Receiver items are indistinguishable from local media to regular users.
+	// Duplicate detection: skip receiver items whose content fingerprint matches a
+	// local item (same file exists on both master and slave — show only the local copy).
 	if h.receiver != nil {
 		cfg := h.media.GetConfig()
 		if cfg.Features.EnableReceiver && cfg.Receiver.Enabled {
+			localFingerprints := h.media.ContentFingerprints()
 			for _, ri := range h.receiver.GetAllMedia() {
+				// Skip duplicates: if the slave item has a fingerprint that matches
+				// a local file, the master already has this content — no need to list it twice.
+				if ri.ContentFingerprint != "" && localFingerprints[ri.ContentFingerprint] {
+					continue
+				}
 				item := &models.MediaItem{
 					ID:       ri.ID,
 					Name:     ri.Name,
