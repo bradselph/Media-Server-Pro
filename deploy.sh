@@ -6,7 +6,8 @@
 #   ./deploy.sh --full                  # also rebuild React frontend
 #   ./deploy.sh --branch main           # deploy specific branch
 #   ./deploy.sh --setup                 # first-time VPS setup (install deps, clone repo)
-#   ./deploy.sh --fix-env               # patch .env on VPS (port, host, TLS)
+#   ./deploy.sh --fix-env               # patch .env on VPS (port, host, TLS, remote media)
+#   ./deploy.sh --setup-receiver        # configure master receiver (API key, firewall, env)
 #   ./deploy.sh --rollback              # restore server.bak on VPS
 #   ./deploy.sh --dry-run               # preview commands without executing
 #   ./deploy.sh --help                  # show help
@@ -53,6 +54,7 @@ DRY_RUN=false
 FIX_ENV=false
 ROLLBACK=false
 SETUP=false
+SETUP_RECEIVER=false
 BRANCH="main"
 
 # ── SSH auth setup ────────────────────────────────────────────────────────────
@@ -120,11 +122,12 @@ setup_ssh_auth() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --full)       shift ;;              # React is always built; kept for backwards compat
-    --dry-run)    DRY_RUN=true     ; shift ;;
-    --fix-env)    FIX_ENV=true     ; shift ;;
-    --rollback)   ROLLBACK=true    ; shift ;;
-    --setup)      SETUP=true       ; shift ;;
+    --full)            shift ;;              # React is always built; kept for backwards compat
+    --dry-run)         DRY_RUN=true          ; shift ;;
+    --fix-env)         FIX_ENV=true          ; shift ;;
+    --rollback)        ROLLBACK=true         ; shift ;;
+    --setup)           SETUP=true            ; shift ;;
+    --setup-receiver)  SETUP_RECEIVER=true   ; shift ;;
     --branch)     BRANCH="$2"      ; shift 2 ;;
     --help|-h)
       sed -n '/^# Usage:/,/^[^#]/p' "$0" | head -n -1
@@ -191,7 +194,7 @@ if $SETUP; then
     # ── System packages ──────────────────────────────────────────────────────
     echo '[setup] Updating apt and installing base packages...'
     sudo apt-get update -qq
-    sudo apt-get install -y git curl build-essential ffmpeg
+    sudo apt-get install -y git curl build-essential ffmpeg ufw openssl
 
     # ── Go ────────────────────────────────────────────────────────────────────
     if ! command -v go &>/dev/null; then
@@ -242,7 +245,7 @@ if $SETUP; then
 
     # ── Create required data directories ─────────────────────────────────────
     echo '[setup] Creating data directories...'
-    sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,uploads,cache/hls,cache/remote,logs,data,backups}
+    sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,uploads,cache/hls,cache/remote,logs,data,data/remote_cache,backups}
 
     # ── Copy .env template ───────────────────────────────────────────────────
     if [ ! -f '$DEPLOY_DIR/.env' ]; then
@@ -263,11 +266,35 @@ if $SETUP; then
       echo '[setup] systemd service installed and enabled'
     fi
 
+    # ── Receiver API key ─────────────────────────────────────────────────────
+    # Generates a secure 256-bit key the first time so slave nodes can
+    # authenticate when pushing their media catalogs to this master.
+    if [ -f '$DEPLOY_DIR/.env' ] && ! grep -q '^RECEIVER_API_KEYS=.\+' '$DEPLOY_DIR/.env'; then
+      echo '[setup] Generating receiver API key...'
+      RECV_KEY=\$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || date +%s | sha256sum | head -c 32)
+      echo \"RECEIVER_API_KEYS=\$RECV_KEY\" | sudo tee -a '$DEPLOY_DIR/.env' > /dev/null
+      echo \"[setup] Receiver API key → \$RECV_KEY\"
+      echo '[setup] Keep this key secret — slave nodes need it to register with this master'
+    fi
+
+    # ── UFW firewall — open app port ─────────────────────────────────────────
+    if command -v ufw &>/dev/null; then
+      echo '[setup] Configuring UFW firewall...'
+      sudo ufw allow ssh 2>/dev/null || true
+      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 8080)
+      sudo ufw allow \"\${APP_PORT}/tcp\" 2>/dev/null || true
+      sudo ufw --force enable 2>/dev/null || true
+      echo \"[setup] UFW: opened port \${APP_PORT}/tcp for media proxy traffic\"
+    else
+      echo '[setup] WARNING: ufw not available — open port manually'
+    fi
+
     echo ''
     echo '[setup] Done! Next steps:'
     echo '  1. Edit $DEPLOY_DIR/.env with your database credentials and settings'
     echo '  2. Run: ./deploy.sh              (to build and start)'
     echo '  3. Run: ./deploy.sh --fix-env    (to auto-patch common settings)'
+    echo '  4. Run: ./deploy.sh --setup-receiver  (to configure master receiver for slave nodes)'
   "
   exit 0
 fi
@@ -288,13 +315,95 @@ if $FIX_ENV; then
     }
     patch_or_add SERVER_PORT 8080
     patch_or_add SERVER_HOST 127.0.0.1
+
     # Add TLS mode for remote databases
-    DB_HOST=\$(grep -o 'DATABASE_HOST=[^[:space:]]*' \"\$ENV\" 2>/dev/null | cut -d= -f2 || echo localhost)
+    DB_HOST=\$(grep -oP '(?<=^DATABASE_HOST=)\S+' \"\$ENV\" 2>/dev/null || echo localhost)
     if [ \"\$DB_HOST\" != 'localhost' ] && [ \"\$DB_HOST\" != '127.0.0.1' ]; then
       patch_or_add DATABASE_TLS_MODE skip-verify
     fi
+
+    # Remote media proxy settings
+    echo '  [remote media proxy]'
+    patch_or_add REMOTE_MEDIA_ENABLED false
+    patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
+    patch_or_add REMOTE_MEDIA_CACHE_SIZE_MB 1024
+    patch_or_add FEATURES_REMOTE_MEDIA false
+
+    # Receiver (master) settings — slave nodes POST their catalogs here
+    echo '  [receiver / master node]'
+    patch_or_add RECEIVER_ENABLED false
+    patch_or_add FEATURES_RECEIVER false
+    # Generate API key only if not already set
+    if ! grep -q '^RECEIVER_API_KEYS=.\+' \"\$ENV\"; then
+      RECV_KEY=\$(openssl rand -hex 32 2>/dev/null || echo \"change-me-\$(date +%s)\")
+      patch_or_add RECEIVER_API_KEYS \"\$RECV_KEY\"
+      echo \"  [IMPORTANT] New receiver API key written — give it to your slave nodes\"
+    fi
   "
   echo ""
+fi
+
+# ── Receiver / master-node setup ─────────────────────────────────────────────
+# Configures this VPS as the master that proxies media streams from slave nodes.
+# Slave nodes push their media catalogs via POST /api/receiver/catalog using
+# the API key; the master proxies streams to users in real-time (no files stored).
+if $SETUP_RECEIVER; then
+  info "Configuring master receiver..."
+  run_or_dry vps "
+    set -euo pipefail
+    ENV='$DEPLOY_DIR/.env'
+    patch_or_add() {
+      local key=\$1 val=\$2
+      if grep -q \"^\$key=\" \"\$ENV\" 2>/dev/null; then
+        sed -i \"s|^\$key=.*|\$key=\$val|\" \"\$ENV\"
+      else
+        echo \"\$key=\$val\" >> \"\$ENV\"
+      fi
+      echo \"  \$key=\$val\"
+    }
+
+    # Enable receiver and remote media proxy
+    patch_or_add RECEIVER_ENABLED true
+    patch_or_add FEATURES_RECEIVER true
+    patch_or_add REMOTE_MEDIA_ENABLED true
+    patch_or_add FEATURES_REMOTE_MEDIA true
+    patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
+
+    # Generate API key if not already present
+    if ! grep -q '^RECEIVER_API_KEYS=.\+' \"\$ENV\" 2>/dev/null; then
+      RECV_KEY=\$(openssl rand -hex 32)
+      patch_or_add RECEIVER_API_KEYS \"\$RECV_KEY\"
+      echo ''
+      echo '[receiver] *** Receiver API key generated ***'
+      echo \"[receiver] Key: \$RECV_KEY\"
+    else
+      RECV_KEY=\$(grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' \"\$ENV\" | head -1)
+      echo \"[receiver] Existing API key: \$RECV_KEY\"
+    fi
+
+    # Ensure cache directory exists
+    sudo mkdir -p '$DEPLOY_DIR/data/remote_cache'
+    sudo chown mediaserver:mediaserver '$DEPLOY_DIR/data/remote_cache' 2>/dev/null || true
+
+    # Open the server port in UFW so slave nodes can reach this master
+    APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' \"\$ENV\" 2>/dev/null || echo 8080)
+    if command -v ufw &>/dev/null; then
+      sudo ufw allow \"\${APP_PORT}/tcp\" 2>/dev/null || true
+      sudo ufw allow ssh 2>/dev/null || true
+      sudo ufw --force enable 2>/dev/null || true
+      echo \"[receiver] UFW: opened port \${APP_PORT}/tcp for slave → master catalog pushes\"
+    fi
+
+    echo ''
+    echo '[receiver] Master receiver configured. Restart the service to apply:'
+    echo \"  sudo systemctl restart $SERVICE\"
+    echo ''
+    echo '[receiver] Slave node .env settings:'
+    echo \"  REMOTE_MEDIA_ENABLED=true\"
+    echo \"  REMOTE_MEDIA_SOURCES=[{\\\"name\\\":\\\"master\\\",\\\"url\\\":\\\"http://<master-host>:\${APP_PORT}\\\",\\\"enabled\\\":true}]\"
+    echo \"  RECEIVER_API_KEYS=\$RECV_KEY\"
+  "
+  exit 0
 fi
 
 # ── Pull latest code ─────────────────────────────────────────────────────────
@@ -335,9 +444,11 @@ run_or_dry vps "
   set -euo pipefail
   export PATH=\$PATH:/usr/local/go/bin
 
-  # ── apt packages (git, curl, build-essential, ffmpeg) ─────────────────────
+  # ── apt packages ───────────────────────────────────────────────────────────
+  # ufw: firewall management (open proxy port for remote media / receiver)
+  # openssl: receiver API key generation
   MISSING_APT=()
-  for pkg in git curl build-essential ffmpeg; do
+  for pkg in git curl build-essential ffmpeg ufw openssl; do
     dpkg -s \"\$pkg\" &>/dev/null || MISSING_APT+=(\"\$pkg\")
   done
   if [ \${#MISSING_APT[@]} -gt 0 ]; then
@@ -479,8 +590,8 @@ run_or_dry vps "
     sudo useradd -r -s /usr/sbin/nologin -d '$DEPLOY_DIR' -m mediaserver
   fi
 
-  # Ensure data directories exist
-  sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,uploads,cache/hls,cache/remote,logs,data,backups}
+  # Ensure data directories exist (data/remote_cache used by the remote media proxy module)
+  sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,uploads,cache/hls,cache/remote,logs,data,data/remote_cache,backups}
 
   # Secure .env file permissions
   [ -f '$DEPLOY_DIR/.env' ] && sudo chmod 600 '$DEPLOY_DIR/.env'
