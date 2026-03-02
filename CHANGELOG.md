@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0] - 2026-03-02 (minor)
+
+- Merge pull request #23 from bradselph/development
+- feat(deploy): add remote media proxy and receiver setup to deploy.sh
+- fix(frontend): add missing UserPermissions import in endpoints.ts
+
+
 ## [0.19.0] - 2026-03-02 (minor)
 
 - Merge pull request #22 from bradselph/development
