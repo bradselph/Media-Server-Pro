@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.26.0] - 2026-03-02 (minor)
+
+- Merge pull request #29 from bradselph/development
+- feat(receiver): WebSocket tunnel for slave-master communication
+
+
 ## [0.25.0] - 2026-03-02 (minor)
 
 - Merge pull request #28 from bradselph/development
