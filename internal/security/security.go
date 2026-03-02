@@ -79,11 +79,18 @@ type IPEntry struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
+// BanRecord holds full metadata for a banned IP.
+type BanRecord struct {
+	ExpiresAt time.Time
+	BannedAt  time.Time
+	Reason    string
+}
+
 // RateLimiter implements sliding window rate limiting with burst detection
 type RateLimiter struct {
 	config      RateLimitConfig
 	clients     map[string]*ClientState
-	bannedIPs   map[string]time.Time
+	bannedIPs   map[string]BanRecord
 	mu          sync.RWMutex
 	cleanupTick *time.Ticker
 	stopCleanup chan struct{}
@@ -243,9 +250,9 @@ func (m *Module) IsBanned(ip string) bool {
 	return m.rateLimiter.IsBanned(ip)
 }
 
-// BanIP manually bans an IP
-func (m *Module) BanIP(ip string, duration time.Duration) {
-	m.rateLimiter.BanIP(ip, duration)
+// BanIP manually bans an IP with a reason
+func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
+	m.rateLimiter.BanIP(ip, duration, reason)
 }
 
 // UnbanIP removes a ban on an IP
@@ -253,8 +260,8 @@ func (m *Module) UnbanIP(ip string) {
 	m.rateLimiter.UnbanIP(ip)
 }
 
-// GetBannedIPs returns list of currently banned IPs
-func (m *Module) GetBannedIPs() map[string]time.Time {
+// GetBannedIPs returns list of currently banned IPs with full metadata
+func (m *Module) GetBannedIPs() map[string]BanRecord {
 	return m.rateLimiter.GetBannedIPs()
 }
 
@@ -607,7 +614,7 @@ func NewRateLimiter(config RateLimitConfig) *RateLimiter {
 	return &RateLimiter{
 		config:      config,
 		clients:     make(map[string]*ClientState),
-		bannedIPs:   make(map[string]time.Time),
+		bannedIPs:   make(map[string]BanRecord),
 		stopCleanup: make(chan struct{}),
 	}
 }
@@ -645,9 +652,9 @@ func (r *RateLimiter) CheckRequest(ip string) (allowed bool, remaining int, rese
 	burstStart := now.Add(-r.config.BurstWindow)
 
 	// Check if banned
-	if banExpires, banned := r.bannedIPs[ip]; banned {
-		if now.Before(banExpires) {
-			return false, 0, banExpires
+	if rec, banned := r.bannedIPs[ip]; banned {
+		if now.Before(rec.ExpiresAt) {
+			return false, 0, rec.ExpiresAt
 		}
 		delete(r.bannedIPs, ip)
 	}
@@ -708,7 +715,11 @@ func (r *RateLimiter) recordViolation(client *ClientState, ip string, now time.T
 
 	// Ban if too many violations
 	if client.Violations >= r.config.ViolationsForBan {
-		r.bannedIPs[ip] = now.Add(r.config.BanDuration)
+		r.bannedIPs[ip] = BanRecord{
+			ExpiresAt: now.Add(r.config.BanDuration),
+			BannedAt:  now,
+			Reason:    "Rate limit violation",
+		}
 		client.Violations = 0 // Reset for after ban expires
 	}
 }
@@ -718,17 +729,22 @@ func (r *RateLimiter) IsBanned(ip string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if banExpires, banned := r.bannedIPs[ip]; banned {
-		return time.Now().Before(banExpires)
+	if rec, banned := r.bannedIPs[ip]; banned {
+		return time.Now().Before(rec.ExpiresAt)
 	}
 	return false
 }
 
-// BanIP manually bans an IP
-func (r *RateLimiter) BanIP(ip string, duration time.Duration) {
+// BanIP manually bans an IP with a reason
+func (r *RateLimiter) BanIP(ip string, duration time.Duration, reason string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.bannedIPs[ip] = time.Now().Add(duration)
+	now := time.Now()
+	r.bannedIPs[ip] = BanRecord{
+		ExpiresAt: now.Add(duration),
+		BannedAt:  now,
+		Reason:    reason,
+	}
 }
 
 // UnbanIP removes a ban
@@ -738,16 +754,16 @@ func (r *RateLimiter) UnbanIP(ip string) {
 	delete(r.bannedIPs, ip)
 }
 
-// GetBannedIPs returns the list of banned IPs
-func (r *RateLimiter) GetBannedIPs() map[string]time.Time {
+// GetBannedIPs returns the list of currently active bans with full metadata
+func (r *RateLimiter) GetBannedIPs() map[string]BanRecord {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make(map[string]time.Time)
 	now := time.Now()
-	for ip, expires := range r.bannedIPs {
-		if now.Before(expires) {
-			result[ip] = expires
+	result := make(map[string]BanRecord)
+	for ip, rec := range r.bannedIPs {
+		if now.Before(rec.ExpiresAt) {
+			result[ip] = rec
 		}
 	}
 	return result
@@ -768,8 +784,8 @@ func (r *RateLimiter) cleanup() {
 	}
 
 	// Clean up expired bans
-	for ip, expires := range r.bannedIPs {
-		if now.After(expires) {
+	for ip, rec := range r.bannedIPs {
+		if now.After(rec.ExpiresAt) {
 			delete(r.bannedIPs, ip)
 		}
 	}
