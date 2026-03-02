@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.0] - 2026-03-02 (minor)
+
+- Merge pull request #27 from bradselph/development
+- fix(deploy): reliable .deploy.env update, auto-restart after setup-receiver, fix MASTER_URL
+- feat(deploy): auto-sync master URL and API key between deploy.sh and deploy-slave.sh
+- feat(slave): add --local mode to deploy-slave.sh for running on same machine
+
+
 ## [0.23.0] - 2026-03-02 (minor)
 
 - Merge pull request #26 from bradselph/development
