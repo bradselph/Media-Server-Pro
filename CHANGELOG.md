@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.25.0] - 2026-03-02 (minor)
+
+- Merge pull request #28 from bradselph/development
+- fix(config): accept both FEATURE_ and FEATURES_ env var names
+
+
 ## [0.24.0] - 2026-03-02 (minor)
 
 - Merge pull request #27 from bradselph/development
