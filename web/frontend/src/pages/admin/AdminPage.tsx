@@ -1,7 +1,7 @@
 import {type FormEvent, useEffect, useRef, useState} from 'react'
 import {Link, useLocation, useNavigate} from 'react-router-dom'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
-import {adminApi, analyticsApi, receiverApi} from '@/api/endpoints'
+import {adminApi, analyticsApi, mediaApi, receiverApi} from '@/api/endpoints'
 import {useAuthStore} from '@/stores/authStore'
 import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -2759,7 +2759,7 @@ function ReceiverTab() {
                                                                             <td>{formatBytes(m.size)}</td>
                                                                             <td>{m.duration > 0 ? `${Math.floor(m.duration / 60)}:${String(Math.floor(m.duration % 60)).padStart(2, '0')}` : '—'}</td>
                                                                             <td>
-                                                                                <a href={receiverApi.getStreamUrl(m.id)} target="_blank" rel="noreferrer"
+                                                                                <a href={mediaApi.getStreamUrl(m.id)} target="_blank" rel="noreferrer"
                                                                                    className="admin-btn" style={{fontSize: 11, padding: '3px 7px'}}>
                                                                                     <i className="bi bi-play-fill"/> Play
                                                                                 </a>

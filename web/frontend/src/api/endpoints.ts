@@ -823,14 +823,12 @@ export const adminApi = {
         api.delete<void>(`/api/admin/receiver/slaves/${encodeURIComponent(id)}`),
 }
 
-// ── Receiver media (user-facing, requires auth) ────────────────────────────
+// ── Receiver media (admin diagnostics only — regular users see receiver media
+// transparently in the main /api/media listing, streamed via /media?id=) ──────
 export const receiverApi = {
     listMedia: () =>
         api.get<ReceiverMediaItem[]>('/api/receiver/media'),
 
     getMedia: (id: string) =>
         api.get<ReceiverMediaItem>(`/api/receiver/media/${encodeURIComponent(id)}`),
-
-    getStreamUrl: (id: string) =>
-        `/receiver/stream/${encodeURIComponent(id)}`,
 }
