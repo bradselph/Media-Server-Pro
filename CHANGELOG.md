@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.32.0] - 2026-03-03 (minor)
+
+- Merge pull request #35 from bradselph/development
+- fix: migrate legacy receiver media IDs on startup
+- fix: opaque receiver media IDs and HTTP streaming fallback
+- fix: remove filesystem path from media search matching
+- fix: distinguish duplicate files from moved files during scan
+
+
 ## [0.31.0] - 2026-03-03 (minor)
 
 - Merge pull request #34 from bradselph/development
