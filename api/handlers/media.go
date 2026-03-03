@@ -65,6 +65,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	// Receiver items are indistinguishable from local media to regular users.
 	// Duplicate detection: skip receiver items whose content fingerprint matches a
 	// local item (same file exists on both master and slave — show only the local copy).
+	hasReceiverItems := false
 	if h.receiver != nil {
 		cfg := h.media.GetConfig()
 		if cfg.Features.EnableReceiver && cfg.Receiver.Enabled {
@@ -91,20 +92,23 @@ func (h *Handler) ListMedia(c *gin.Context) {
 					Duration: ri.Duration,
 					Width:    ri.Width,
 					Height:   ri.Height,
+					IsMature: h.isReceiverItemMature(ri.ContentFingerprint),
 				}
-				// Apply the same filters as local media
-				if filterNoPagination.Type != "" && item.Type != filterNoPagination.Type {
+				// Apply the exact same filter logic as local media (category,
+				// tags, search, type, is_mature — not just type+search).
+				if !filterNoPagination.Matches(item) {
 					continue
 				}
-				if filterNoPagination.Search != "" {
-					search := strings.ToLower(filterNoPagination.Search)
-					if !strings.Contains(strings.ToLower(item.Name), search) {
-						continue
-					}
-				}
 				allItems = append(allItems, item)
+				hasReceiverItems = true
 			}
 		}
+	}
+
+	// Re-sort the combined list so receiver items are interleaved correctly
+	// with local items instead of being appended at the end.
+	if hasReceiverItems {
+		filterNoPagination.SortItems(allItems)
 	}
 
 	// Mature content gate: determine whether the caller can see mature items.
