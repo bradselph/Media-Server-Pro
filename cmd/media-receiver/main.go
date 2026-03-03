@@ -7,6 +7,10 @@
 //
 //	media-receiver -master https://yourdomain.com -api-key YOUR_KEY -dirs ./videos,./music
 //
+// When run from the project root with no arguments, missing values are auto-discovered
+// from local config files (.deploy.env, .slave.env, .env, config.json). Explicit
+// flags and environment variables always take priority.
+//
 // Environment variables (override flags):
 //
 //	MASTER_URL          — master server URL
@@ -19,6 +23,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -127,28 +132,46 @@ var streamHTTPClient = &http.Client{
 var lastCatalogHash string
 
 func main() {
-	cfg := parseFlags()
+	cfg, disc := parseFlags()
 
 	if cfg.MasterURL == "" {
 		fmt.Fprintln(os.Stderr, "Error: master URL is required (-master or MASTER_URL)")
+		fmt.Fprintln(os.Stderr, "  Tip: run from the project root where .env or config.json lives for auto-discovery")
 		os.Exit(1)
 	}
 	if cfg.APIKey == "" {
 		fmt.Fprintln(os.Stderr, "Error: API key is required (-api-key or RECEIVER_API_KEY)")
+		fmt.Fprintln(os.Stderr, "  Tip: run from the project root where .deploy.env or .env lives for auto-discovery")
 		os.Exit(1)
 	}
 	if len(cfg.MediaDirs) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: at least one media directory required (-dirs or MEDIA_DIRS)")
+		fmt.Fprintln(os.Stderr, "  Tip: run from the project root where .env or config.json lives for auto-discovery")
 		os.Exit(1)
 	}
 
+	autoTag := func(discovered bool) string {
+		if discovered {
+			return " [auto]"
+		}
+		return ""
+	}
+
 	fmt.Printf("Media Receiver (Slave) starting\n")
-	fmt.Printf("  Master:     %s\n", cfg.MasterURL)
+	fmt.Printf("  Master:     %s%s\n", cfg.MasterURL, autoTag(disc.MasterURL))
+	keyPreview := cfg.APIKey
+	if len(keyPreview) > 4 {
+		keyPreview = keyPreview[:4] + "..."
+	}
+	fmt.Printf("  API Key:    %s%s\n", keyPreview, autoTag(disc.APIKey))
 	fmt.Printf("  Slave ID:   %s\n", cfg.SlaveID)
 	fmt.Printf("  Name:       %s\n", cfg.SlaveName)
-	fmt.Printf("  Media:      %s\n", strings.Join(cfg.MediaDirs, ", "))
+	fmt.Printf("  Media:      %s%s\n", strings.Join(cfg.MediaDirs, ", "), autoTag(disc.MediaDirs))
 	fmt.Printf("  Scan:       %s\n", cfg.ScanInterval)
 	fmt.Printf("  Heartbeat:  %s\n", cfg.HeartbeatInterval)
+	if disc.MasterURL || disc.APIKey || disc.MediaDirs {
+		fmt.Printf("  [auto] = auto-discovered from local config files\n")
+	}
 	fmt.Println()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -505,7 +528,7 @@ func maskKey(wsURL string) string {
 	return wsURL
 }
 
-func parseFlags() *slaveConfig {
+func parseFlags() (*slaveConfig, autoDiscovered) {
 	master := flag.String("master", "", "Master server URL (e.g. https://yourdomain.com)")
 	apiKey := flag.String("api-key", "", "API key for master authentication")
 	slaveID := flag.String("id", "", "Unique slave ID (defaults to hostname)")
@@ -555,6 +578,9 @@ func parseFlags() *slaveConfig {
 		}
 	}
 
+	// Auto-discover missing values from local config files
+	disc := autoDiscover(cfg)
+
 	// Defaults
 	if cfg.SlaveID == "" {
 		hostname, _ := os.Hostname()
@@ -572,7 +598,230 @@ func parseFlags() *slaveConfig {
 		cfg.MediaDirs[i] = strings.TrimSpace(cfg.MediaDirs[i])
 	}
 
-	return cfg
+	// Filter out empty dirs
+	var filtered []string
+	for _, d := range cfg.MediaDirs {
+		if d != "" {
+			filtered = append(filtered, d)
+		}
+	}
+	cfg.MediaDirs = filtered
+
+	return cfg, disc
+}
+
+// ---------------------------------------------------------------------------
+// Auto-discovery: fill missing config from local master config files
+// ---------------------------------------------------------------------------
+
+// autoDiscovered tracks which config values were auto-discovered (vs explicit).
+type autoDiscovered struct {
+	MasterURL bool
+	APIKey    bool
+	MediaDirs bool
+}
+
+// loadEnvFile reads a .env file and returns a map of key=value pairs.
+// Skips comments (#) and blank lines. Handles optional quoting.
+func loadEnvFile(path string) map[string]string {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	env := make(map[string]string)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.IndexByte(line, '=')
+		if idx < 1 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		// Strip surrounding quotes
+		if len(val) >= 2 {
+			if (val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'') {
+				val = val[1 : len(val)-1]
+			}
+		}
+		env[key] = val
+	}
+	return env
+}
+
+// configJSONPartial holds only the fields we need from config.json.
+type configJSONPartial struct {
+	Server struct {
+		Host        string `json:"host"`
+		Port        int    `json:"port"`
+		EnableHTTPS bool   `json:"enable_https"`
+	} `json:"server"`
+	Directories struct {
+		Videos string `json:"videos"`
+		Music  string `json:"music"`
+	} `json:"directories"`
+	Receiver struct {
+		APIKeys []string `json:"api_keys"`
+	} `json:"receiver"`
+}
+
+// loadConfigJSON reads config.json and returns the partial struct, or nil on error.
+func loadConfigJSON(path string) *configJSONPartial {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var cfg configJSONPartial
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+	return &cfg
+}
+
+// deriveMasterURL builds a master URL from host, port, and HTTPS flag.
+func deriveMasterURL(host string, port string, enableHTTPS string) string {
+	if host == "" {
+		return ""
+	}
+	scheme := "http"
+	if strings.EqualFold(enableHTTPS, "true") || enableHTTPS == "1" {
+		scheme = "https"
+	}
+	// Default port based on scheme
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "8080"
+		}
+	}
+	// Omit port for standard scheme/port combos
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+		return scheme + "://" + host
+	}
+	return scheme + "://" + host + ":" + port
+}
+
+// autoDiscover fills in missing slaveConfig values from local config files.
+// Discovery order: .deploy.env → .slave.env → .env → config.json.
+// Only values that are still empty are filled — explicit flags/env always win.
+func autoDiscover(cfg *slaveConfig) autoDiscovered {
+	var disc autoDiscovered
+
+	// Nothing to discover if everything is already set
+	if cfg.MasterURL != "" && cfg.APIKey != "" && len(cfg.MediaDirs) > 0 {
+		return disc
+	}
+
+	// Load env files in priority order and merge (first file wins per key)
+	merged := make(map[string]string)
+	for _, path := range []string{".deploy.env", ".slave.env", ".env"} {
+		env := loadEnvFile(path)
+		for k, v := range env {
+			if _, exists := merged[k]; !exists {
+				merged[k] = v
+			}
+		}
+	}
+
+	// Try to fill MasterURL from env files
+	if cfg.MasterURL == "" {
+		if v := merged["MASTER_URL"]; v != "" {
+			cfg.MasterURL = v
+			disc.MasterURL = true
+		} else {
+			// Derive from SERVER_HOST + SERVER_PORT + SERVER_ENABLE_HTTPS
+			derived := deriveMasterURL(
+				merged["SERVER_HOST"],
+				merged["SERVER_PORT"],
+				merged["SERVER_ENABLE_HTTPS"],
+			)
+			if derived != "" {
+				cfg.MasterURL = derived
+				disc.MasterURL = true
+			}
+		}
+	}
+
+	// Try to fill APIKey from env files
+	if cfg.APIKey == "" {
+		if v := merged["RECEIVER_API_KEY"]; v != "" {
+			cfg.APIKey = v
+			disc.APIKey = true
+		} else if v := merged["RECEIVER_API_KEYS"]; v != "" {
+			// Take the first key from a comma-separated list
+			if first := strings.SplitN(v, ",", 2)[0]; strings.TrimSpace(first) != "" {
+				cfg.APIKey = strings.TrimSpace(first)
+				disc.APIKey = true
+			}
+		}
+	}
+
+	// Try to fill MediaDirs from env files
+	if len(cfg.MediaDirs) == 0 {
+		if v := merged["MEDIA_DIRS"]; v != "" {
+			cfg.MediaDirs = strings.Split(v, ",")
+			disc.MediaDirs = true
+		} else {
+			// Combine VIDEOS_DIR + MUSIC_DIR
+			var dirs []string
+			if v := merged["VIDEOS_DIR"]; v != "" {
+				dirs = append(dirs, v)
+			}
+			if v := merged["MUSIC_DIR"]; v != "" {
+				dirs = append(dirs, v)
+			}
+			if len(dirs) > 0 {
+				cfg.MediaDirs = dirs
+				disc.MediaDirs = true
+			}
+		}
+	}
+
+	// If anything is still missing, try config.json as a final fallback
+	if cfg.MasterURL == "" || cfg.APIKey == "" || len(cfg.MediaDirs) == 0 {
+		if jcfg := loadConfigJSON("config.json"); jcfg != nil {
+			if cfg.MasterURL == "" {
+				port := ""
+				if jcfg.Server.Port > 0 {
+					port = fmt.Sprintf("%d", jcfg.Server.Port)
+				}
+				https := "false"
+				if jcfg.Server.EnableHTTPS {
+					https = "true"
+				}
+				derived := deriveMasterURL(jcfg.Server.Host, port, https)
+				if derived != "" {
+					cfg.MasterURL = derived
+					disc.MasterURL = true
+				}
+			}
+			if cfg.APIKey == "" && len(jcfg.Receiver.APIKeys) > 0 {
+				cfg.APIKey = jcfg.Receiver.APIKeys[0]
+				disc.APIKey = true
+			}
+			if len(cfg.MediaDirs) == 0 {
+				var dirs []string
+				if jcfg.Directories.Videos != "" {
+					dirs = append(dirs, jcfg.Directories.Videos)
+				}
+				if jcfg.Directories.Music != "" {
+					dirs = append(dirs, jcfg.Directories.Music)
+				}
+				if len(dirs) > 0 {
+					cfg.MediaDirs = dirs
+					disc.MediaDirs = true
+				}
+			}
+		}
+	}
+
+	return disc
 }
 
 // resolveAndValidate ensures the path is within one of the allowed directories.
