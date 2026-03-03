@@ -32,14 +32,18 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 	}
 
 	_, err := h.thumbnails.GenerateThumbnail(absPath, req.ID, req.IsAudio)
-	if err != nil {
+	if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
+	msg := "Thumbnail generated"
+	if errors.Is(err, thumbnails.ErrThumbnailPending) {
+		msg = "Thumbnail generation queued"
+	}
 	writeSuccess(c, map[string]string{
-		"message": "Thumbnail generated",
+		"message": msg,
 	})
 }
 

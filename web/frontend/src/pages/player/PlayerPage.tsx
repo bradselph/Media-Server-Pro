@@ -7,6 +7,7 @@ import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {useHLS} from '@/hooks/useHLS'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useEqualizer} from '@/hooks/useEqualizer'
+import {PlayerSettingsPanel} from '@/components/PlayerSettingsPanel'
 import {analyticsApi, hlsApi, mediaApi, ratingsApi, suggestionsApi, watchHistoryApi} from '@/api/endpoints'
 import type {HLSJob, Suggestion} from '@/api/types'
 import {formatDuration, formatFileSize, formatTitle} from '@/utils/formatters'
@@ -83,7 +84,11 @@ export function PlayerPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [showMatureWarning, setShowMatureWarning] = useState(false)
     const [matureAccepted, setMatureAccepted] = useState(false)
-
+    // Theater mode
+    const [theaterMode, setTheaterMode] = useState(false)
+    // Progress bar time tooltip
+    const [hoverTime, setHoverTime] = useState<number | null>(null)
+    const [hoverPos, setHoverPos] = useState(0)
     // HLS state
     const [hlsJob, setHlsJob] = useState<HLSJob | null>(null)
     const [hlsPolling, setHlsPolling] = useState(false)
@@ -91,8 +96,7 @@ export function PlayerPage() {
     const [hlsAvailable, setHlsAvailable] = useState(false)
     const [hlsReadyUrl, setHlsReadyUrl] = useState<string | null>(null)
     const hlsEnabled = useSettingsStore((s) => s.serverSettings?.features?.enableHLS ?? true)
-
-    // Rating state (Feature 2)
+    // Rating state
     const [userRating, setUserRating] = useState(0)
     const [ratingHover, setRatingHover] = useState(0)
 
@@ -106,7 +110,8 @@ export function PlayerPage() {
 
     // Controls visibility timeout
     const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
+    // Double-click fullscreen tracking
+    const lastClickTimeRef = useRef(0)
     // Fetch media item — mediaApi.get() handles URL encoding internally; do not pre-encode
     const {data: media, isLoading: mediaLoading, error: mediaError} = useQuery({
         queryKey: ['media-item', mediaId],
@@ -119,14 +124,20 @@ export function PlayerPage() {
     const onHlsFallback = useCallback(() => setActiveHlsUrl(null), [])
 
     // Attach hls.js for video HLS playback when a stream URL is available
-    // IC-14: destructure isLoading/error so hls.js lifecycle feeds the spinner and error UI
-    const {qualities: hlsQualities, currentQuality, selectQuality, isLoading: hlsIsLoading, error: hlsError} = useHLS(
+    const {
+        qualities: hlsQualities,
+        currentQuality,
+        autoLevel,
+        selectQuality,
+        isLoading: hlsIsLoading,
+        error: hlsError,
+        bandwidth,
+    } = useHLS(
         videoRef,
         media?.type === 'video' && hlsEnabled ? activeHlsUrl : null,
         onHlsFallback,
     )
-
-    // IC-14: surface hls.js errors via toast so users aren't left with a silent black screen
+    // Surface hls.js errors via toast so users aren't left with a silent black screen
     useEffect(() => {
         if (hlsError) showToast(hlsError, 'error')
     }, [hlsError, showToast])
@@ -186,8 +197,6 @@ export function PlayerPage() {
         el.playbackRate = playbackRate
 
         // Fetch saved position so handleLoadedMetadata can seek to it.
-        // Also apply it directly if loadedmetadata already fired (remote DB latency
-        // can make the fetch return AFTER the event — we're near the start if so).
         resumePositionRef.current = 0
         let positionFetchCancelled = false
         if (user) {
@@ -197,8 +206,6 @@ export function PlayerPage() {
                     if (positionFetchCancelled) return
                     const pos = data?.position ?? 0
                     resumePositionRef.current = pos
-                    // If the video already loaded its metadata and we're still near the
-                    // beginning, seek now (handles high-latency DB race)
                     if (pos > 5 && elRef.readyState >= 1 && elRef.duration > 0
                         && pos < elRef.duration - 5 && elRef.currentTime < 2) {
                         elRef.currentTime = pos
@@ -207,8 +214,7 @@ export function PlayerPage() {
                 .catch(() => {
                 })
         }
-
-        // Track analytics — use media.id (UUID), not mediaId (file path)
+        // Track analytics
         analyticsApi.trackEvent({type: 'view', media_id: media.id}).catch(() => {
         })
 
@@ -216,8 +222,7 @@ export function PlayerPage() {
             positionFetchCancelled = true
         }
     }, [mediaId, media, matureAccepted]) // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Check HLS availability — show popup instead of auto-switching
+    // Check HLS availability
     useEffect(() => {
         if (!mediaId || media?.type !== 'video' || !hlsEnabled) return
         hlsApi.check(mediaId).then(hls => {
@@ -227,7 +232,6 @@ export function PlayerPage() {
             } else if (hls.job_id && hls.status === 'running') {
                 setHlsJob({
                     id: hls.job_id,
-                    // HLS job status (media_path removed from API)
                     status: 'running',
                     progress: hls.progress ?? 0,
                     qualities: hls.qualities ?? [],
@@ -261,9 +265,7 @@ export function PlayerPage() {
         }, 3000)
         return () => clearInterval(interval)
     }, [hlsPolling, hlsJob])
-
-    // Restore direct stream when HLS becomes inactive (fallback or user never switched).
-    // hls.destroy() clears el.src; without this the video element is left with no source.
+    // Restore direct stream when HLS becomes inactive
     useEffect(() => {
         if (activeHlsUrl !== null) return
         if (!mediaId || !media) return
@@ -274,15 +276,10 @@ export function PlayerPage() {
             el.src = mediaApi.getStreamUrl(mediaId)
         }
     }, [activeHlsUrl, mediaId, media, matureAccepted])
-
-    // Derived media type — declared here (before any useEffect that reads them)
-    // so TypeScript block-scoping rules are satisfied.
+    // Derived media type
     const isAudio = media?.type === 'audio'
     const isVideo = media?.type === 'video'
-
-    // Controls auto-hide (video only).
-    // Uses isPlayingRef so the setTimeout callback always reads the *current* playing state
-    // rather than the stale value captured when the callback was created.
+    // Controls auto-hide (video only)
     const resetControlsTimer = useCallback(() => {
         if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
         setShowControls(true)
@@ -296,10 +293,6 @@ export function PlayerPage() {
             if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
         }
     }, [])
-
-    // Keep isPlayingRef in sync and auto-manage controls visibility when play state changes.
-    // Without this, controls stay visible forever when the user presses play without
-    // moving the mouse (resetControlsTimer is only called on mouse-move).
     useEffect(() => {
         if (!isVideo) return
         isPlayingRef.current = isPlaying
@@ -311,9 +304,7 @@ export function PlayerPage() {
             setShowControls(true)
         }
     }, [isPlaying, isVideo])
-
-    // Save position when page is hidden (tab switch, browser close) so seeking then
-    // closing without pausing still persists the watch position
+    // Save position when page is hidden
     useEffect(() => {
         if (!mediaId) return
 
@@ -336,12 +327,22 @@ export function PlayerPage() {
     function togglePlay() {
         const el = getActiveEl()
         if (!el) return
-        if (el.paused) {
-            el.play().catch(() => {
-            })
-        } else {
-            el.pause()
+        el.paused ? el.play().catch(() => {}) : el.pause()
+    }
+
+    function handleVideoClick() {
+        const now = Date.now()
+        if (now - lastClickTimeRef.current < 300) {
+            handleFullscreen()
+            lastClickTimeRef.current = 0
+            return
         }
+        lastClickTimeRef.current = now
+        setTimeout(() => {
+            if (lastClickTimeRef.current === now) {
+                togglePlay()
+            }
+        }, 300)
     }
 
     function handleTimeUpdate() {
@@ -360,7 +361,6 @@ export function PlayerPage() {
             durationRef.current = el.duration
             setDuration(el.duration)
             setIsLoading(false)
-            // Resume from saved position if it's meaningful (>5 s from start, >5 s from end)
             const saved = resumePositionRef.current
             if (saved > 5 && el.duration > 0 && saved < el.duration - 5) {
                 el.currentTime = saved
@@ -373,16 +373,11 @@ export function PlayerPage() {
 
     function handlePause() {
         setIsPlaying(false)
-        // Save position on pause so navigation away after pausing doesn't lose progress
         if (mediaId && currentTimeRef.current > 0 && durationRef.current > 0) {
             watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
             })
         }
     }
-
-    // Fired when the element's duration attribute changes (e.g. after HLS switches stream).
-    // loadedmetadata can fire before hls.js sets the correct duration, so this catches
-    // the subsequent update that arrives once the manifest is fully parsed.
     function handleDurationChange() {
         const el = getActiveEl()
         if (el && isFinite(el.duration) && el.duration > 0) {
@@ -398,22 +393,26 @@ export function PlayerPage() {
         const ratio = (e.clientX - rect.left) / rect.width
         el.currentTime = ratio * duration
     }
-
-    // Touch-drag seeking for mobile — prevents page scroll while dragging the progress bar
     function handleProgressTouch(e: React.TouchEvent<HTMLDivElement>) {
         e.preventDefault()
-        const touch = e.touches[0] ?? e.changedTouches[0]
-        if (!touch) return
-        const rect = e.currentTarget.getBoundingClientRect()
-        const ratio = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
         const el = getActiveEl()
         if (!el || !duration) return
+        const touch = e.touches[0] ?? e.changedTouches[0]
+        const rect = e.currentTarget.getBoundingClientRect()
+        const ratio = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
         el.currentTime = ratio * duration
     }
-
+    function handleProgressHover(e: React.MouseEvent<HTMLDivElement>) {
+        if (!duration) return
+        const rect = e.currentTarget.getBoundingClientRect()
+        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+        setHoverTime(ratio * duration)
+        setHoverPos(e.clientX - rect.left)
+    }
+    function handleProgressLeave() {
+        setHoverTime(null)
+    }
     function handleSeeked() {
-        // Save position immediately after a seek so closing the tab/navigating away
-        // doesn't lose the new position (periodic saves only fire during playback)
         if (mediaId && currentTimeRef.current > 5 && durationRef.current > 0) {
             watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
             })
@@ -473,20 +472,12 @@ export function PlayerPage() {
     }
 
     function handleEnded() {
-        // Save watch position
         if (mediaId) {
             watchHistoryApi.trackPosition(mediaId, duration, duration).catch(() => {
             })
         }
     }
-
-    // ST-03: position tracking below (interval + handlePause + handleEnded + visibilitychange)
-    // duplicates the logic in useMediaPosition hook. PlayerPage uses a ref-based auto-seek
-    // approach (resumePositionRef) rather than useMediaPosition's dialog-based resume flow,
-    // so consolidation requires aligning the two UX patterns first.
-
-    // Save position periodically — read from refs so the interval is not recreated on
-    // every timeupdate tick (which would reset the timer and make it never fire)
+    // Save position periodically
     useEffect(() => {
         if (!mediaId || !isPlaying || !duration) return
         const interval = setInterval(() => {
@@ -497,12 +488,10 @@ export function PlayerPage() {
         }, 30000)
         return () => clearInterval(interval)
     }, [mediaId, isPlaying, duration])
-
-    // Keyboard shortcuts — all handlers operate on the DOM element directly via
-    // getActiveEl(), so this effect only needs to re-attach when the media type changes.
+    // Keyboard shortcuts
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
-            if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return
+            if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'SELECT') return
             const el = getActiveEl()
             switch (e.key) {
                 case ' ':
@@ -510,31 +499,46 @@ export function PlayerPage() {
                 case 'K':
                     e.preventDefault()
                     if (el) {
-                        el.paused ? el.play().catch(() => {
-                        }) : el.pause()
+                        el.paused ? el.play().catch(() => {}) : el.pause()
                     }
                     break
-                case 'ArrowLeft':
+                case 'j':
+                case 'J':
                     e.preventDefault()
                     if (el) el.currentTime = Math.max(0, el.currentTime - 10)
                     break
-                case 'ArrowRight':
+                case 'l':
+                case 'L':
                     e.preventDefault()
                     if (el) el.currentTime = Math.min(el.duration, el.currentTime + 10)
                     break
+                case 'ArrowLeft':
+                    e.preventDefault()
+                    if (el) el.currentTime = Math.max(0, el.currentTime - 5)
+                    break
+                case 'ArrowRight':
+                    e.preventDefault()
+                    if (el) el.currentTime = Math.min(el.duration, el.currentTime + 5)
+                    break
                 case 'ArrowUp':
                     e.preventDefault()
-                    if (el) el.volume = Math.min(1, el.volume + 0.1)
+                    if (el) {
+                        el.volume = Math.min(1, el.volume + 0.05)
+                        setVolume(el.volume)
+                    }
                     break
                 case 'ArrowDown':
                     e.preventDefault()
-                    if (el) el.volume = Math.max(0, el.volume - 0.1)
+                    if (el) {
+                        el.volume = Math.max(0, el.volume - 0.05)
+                        setVolume(el.volume)
+                    }
                     break
                 case 'm':
                 case 'M':
                     e.preventDefault()
                     if (el) {
-                        el.muted = !el.muted;
+                        el.muted = !el.muted
                         setIsMuted(el.muted)
                     }
                     break
@@ -543,15 +547,63 @@ export function PlayerPage() {
                     e.preventDefault()
                     handleFullscreen()
                     break
-            }
+                case 't':
+                case 'T':
+                    e.preventDefault()
+                    setTheaterMode(t => !t)
+                    break
+                case 'Escape':
+                    if (showSettings) {
+                        e.preventDefault()
+                        setShowSettings(false)
+                    }
+                    break
+                // Number keys 0-9: seek to percentage
+                case '0': case '1': case '2': case '3': case '4':
+                case '5': case '6': case '7': case '8': case '9':
+                    e.preventDefault()
+                    if (el && el.duration) {
+                        el.currentTime = (parseInt(e.key) / 10) * el.duration
+                    }
+                    break
+                case ',':
+                    // Previous frame (when paused)
+                    if (el && el.paused) {
+                        e.preventDefault()
+                        el.currentTime = Math.max(0, el.currentTime - (1 / 30))
+                    }
+                    break
+                case '.':
+                    // Next frame (when paused)
+                    if (el && el.paused) {
+                        e.preventDefault()
+                        el.currentTime = Math.min(el.duration, el.currentTime + (1 / 30))
+                    }
+                    break
+                case '<':
+                    e.preventDefault()
+                    setSpeed(Math.max(0.25, playbackRate - 0.25))
+                    break
+                case '>':
+                    e.preventDefault()
+                    setSpeed(Math.min(2, playbackRate + 0.25))
+                    break
         }
-
+        }
         document.addEventListener('keydown', onKeyDown)
         return () => document.removeEventListener('keydown', onKeyDown)
-    }, [media?.type])
-
+    }, [media?.type, showSettings, playbackRate])
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-
+    // Quality badge for the controls bar
+    const qualityBadge = (() => {
+        if (hlsQualities.length === 0) return null
+        if (currentQuality === -1) {
+            if (autoLevel >= 0 && hlsQualities[autoLevel]) return hlsQualities[autoLevel].name
+            return null
+        }
+        const q = hlsQualities.find(q => q.index === currentQuality)
+        return q?.name ?? null
+    })()
     if (!mediaId) {
         return (
             <div className="player-page">
@@ -626,7 +678,7 @@ export function PlayerPage() {
                                         setShowMatureWarning(false)
                                     }}
                                 >
-                                    <i className="bi bi-check-circle"/> I am 18+, Continue
+                                    <i className="bi bi-check-lg"/> I understand, continue
                                 </button>
                                 <button className="media-action-btn" onClick={() => navigate('/')}>
                                     <i className="bi bi-arrow-left"/> Go Back
@@ -642,10 +694,18 @@ export function PlayerPage() {
 
             <div className="player-page-container">
                 <div className="player-header">
+                    {isVideo && (
+                        <button
+                            className={`player-theater-btn ${theaterMode ? 'player-theater-btn--active' : ''}`}
+                            onClick={() => setTheaterMode(t => !t)}
+                            title="Theater mode (T)"
+                        >
+                            <i className={theaterMode ? 'bi bi-arrows-angle-contract' : 'bi bi-arrows-angle-expand'}/>
+                        </button>
+                    )}
                     <Link to="/" className="player-back-btn"><i className="bi bi-arrow-left"/> Back to Library</Link>
                 </div>
-
-                <div className="player-layout">
+                <div className={`player-layout ${theaterMode ? 'player-layout--theater' : ''}`}>
                     {/* Main player column */}
                     <div className="player-main">
                         {/* Video / Audio container */}
@@ -653,7 +713,7 @@ export function PlayerPage() {
                             className={`video-wrapper${isVideo && isPlaying && !showControls ? ' playing-idle' : ''}`}
                             onMouseMove={isVideo ? resetControlsTimer : undefined}
                             onMouseLeave={isVideo && isPlaying ? () => setShowControls(false) : undefined}
-                            onClick={isVideo ? togglePlay : undefined}
+                            onClick={isVideo ? handleVideoClick : undefined}
                         >
                             {/* Hidden audio element for audio type */}
                             {isAudio && (
@@ -695,10 +755,11 @@ export function PlayerPage() {
                                     preload="auto"
                                 />
                             )}
-
-                            {/* Loading spinner — covers both native buffering and hls.js level-loading (IC-14) */}
+                            {/* Loading spinner */}
                             {(isLoading || hlsIsLoading) && (
-                                <div className="player-loading"><i className="bi bi-arrow-repeat"/></div>
+                                <div className="player-loading">
+                                    <div className="player-loading-spinner"/>
+                                </div>
                             )}
 
                             {/* Custom controls */}
@@ -707,10 +768,24 @@ export function PlayerPage() {
                                 onClick={e => e.stopPropagation()}
                             >
                                 {/* Progress bar */}
-                                <div className="ctrl-progress-container" onClick={handleProgressClick}
-                                     onTouchStart={handleProgressTouch} onTouchMove={handleProgressTouch}>
+                                <div
+                                    className="ctrl-progress-container"
+                                    onClick={handleProgressClick}
+                                    onMouseMove={handleProgressHover}
+                                    onMouseLeave={handleProgressLeave}
+                                    onTouchStart={handleProgressTouch}
+                                    onTouchMove={handleProgressTouch}
+                                >
                                     <div className="ctrl-buffer-bar" style={{width: `${buffered}%`}}/>
                                     <div className="ctrl-progress-fill" style={{width: `${progress}%`}}/>
+                                    {hoverTime !== null && (
+                                        <div
+                                            className="ctrl-progress-tooltip"
+                                            style={{left: `${hoverPos}px`}}
+                                        >
+                                            {formatDuration(hoverTime)}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Controls row */}
@@ -722,8 +797,9 @@ export function PlayerPage() {
                                     <button className="ctrl-btn" onClick={() => {
                                         const el = getActiveEl();
                                         if (el) el.currentTime = Math.max(0, el.currentTime - 10)
-                                    }} title="Skip back 10s (←)">
-                                        <i className="bi bi-skip-backward-fill"/>10
+                                    }} title="Back 10s (J)">
+                                        <i className="bi bi-skip-backward-fill"/>
+                                        <span className="ctrl-btn-label">10</span>
                                     </button>
                                     <button className="ctrl-btn" onClick={() => {
                                         const el = getActiveEl();
@@ -750,62 +826,50 @@ export function PlayerPage() {
                                     <span
                                         className="ctrl-time">{formatDuration(currentTime)} / {formatDuration(duration)}</span>
                                     <div className="ctrl-spacer"/>
+                                    {/* Quality badge indicator */}
+                                    {qualityBadge && (
+                                        <span className="ctrl-quality-badge" title="Current quality">
+                                            {qualityBadge}
+                                        </span>
+                                    )}
+                                    {/* Speed indicator (only shows when not 1x) */}
+                                    {playbackRate !== 1 && (
+                                        <span className="ctrl-speed-badge" title="Playback speed">
+                                            {playbackRate}x
+                                        </span>
+                                    )}
+                                    {/* Settings gear — opens unified panel */}
+                                    <div className="ctrl-settings-wrapper">
                                     <button
-                                        className={`ctrl-btn ${isLooping ? 'active' : ''}`}
-                                        onClick={toggleLoop}
-                                        title="Toggle Loop"
+                                            className={`ctrl-btn ${showSettings ? 'active' : ''}`}
+                                            onClick={() => setShowSettings(s => !s)}
+                                            title="Settings"
                                     >
-                                        <i className="bi bi-repeat"/>
+                                            <i className={`bi bi-gear-fill ${showSettings ? 'ctrl-gear-spin' : ''}`}/>
                                     </button>
-                                    {isVideo && (
-                                        <button className="ctrl-btn" onClick={handlePiP} title="Picture-in-Picture">
-                                            <i className="bi bi-pip-fill"/>
-                                        </button>
-                                    )}
-                                    <button className="ctrl-btn" onClick={() => setShowSettings(s => !s)}
-                                            title="Settings">
-                                        <i className="bi bi-gear-fill"/>
-                                    </button>
-                                    {isVideo && hlsQualities.length > 1 && (
-                                        <select
-                                            className="ctrl-quality-select"
-                                            value={currentQuality}
-                                            onChange={e => selectQuality(Number(e.target.value))}
-                                            onClick={e => e.stopPropagation()}
-                                            title="Video quality"
-                                        >
-                                            <option value={-1}>Auto</option>
-                                            {hlsQualities.map(q => (
-                                                <option key={q.index} value={q.index}>{q.name}</option>
-                                            ))}
-                                        </select>
-                                    )}
+                                        {showSettings && (
+                                            <PlayerSettingsPanel
+                                                qualities={hlsQualities}
+                                                currentQuality={currentQuality}
+                                                autoLevel={autoLevel}
+                                                onSelectQuality={selectQuality}
+                                                playbackRate={playbackRate}
+                                                onSetSpeed={setSpeed}
+                                                isLooping={isLooping}
+                                                onToggleLoop={toggleLoop}
+                                                showPiP={isVideo}
+                                                onPiP={handlePiP}
+                                                bandwidth={bandwidth}
+                                                onClose={() => setShowSettings(false)}
+                                            />
+                                        )}
+                                    </div>
                                     {isVideo && (
                                         <button className="ctrl-btn" onClick={handleFullscreen} title="Fullscreen (F)">
                                             <i className="bi bi-fullscreen"/>
                                         </button>
                                     )}
                                 </div>
-
-                                {/* Settings menu */}
-                                {showSettings && (
-                                    <div className="ctrl-settings-menu" onClick={e => e.stopPropagation()}>
-                                        <div className="ctrl-settings-item"
-                                             style={{cursor: 'default', fontWeight: 600}}>
-                                            <span>Playback Speed</span>
-                                            <span>{playbackRate}x</span>
-                                        </div>
-                                        {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(speed => (
-                                            <div
-                                                key={speed}
-                                                className={`ctrl-settings-item ${playbackRate === speed ? 'active' : ''}`}
-                                                onClick={() => setSpeed(speed)}
-                                            >
-                                                {speed === 1 ? 'Normal' : `${speed}x`}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
                         </div>
 
@@ -822,11 +886,21 @@ export function PlayerPage() {
                                     <div
                                         className="ctrl-progress-container audio-progress"
                                         onClick={handleProgressClick}
+                                        onMouseMove={handleProgressHover}
+                                        onMouseLeave={handleProgressLeave}
                                         onTouchStart={handleProgressTouch}
                                         onTouchMove={handleProgressTouch}
                                     >
                                         <div className="ctrl-progress-fill"
                                              style={{width: `${progress}%`, background: '#667eea'}}/>
+                                        {hoverTime !== null && (
+                                            <div
+                                                className="ctrl-progress-tooltip ctrl-progress-tooltip--audio"
+                                                style={{left: `${hoverPos}px`}}
+                                            >
+                                                {formatDuration(hoverTime)}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 {/* Controls row */}
@@ -866,7 +940,7 @@ export function PlayerPage() {
                                         onClick={toggleLoop} title="Loop">
                                         <i className="bi bi-repeat"/>
                                     </button>
-                                    {/* Speed cycle button: tap to step through 0.5→0.75→1→1.25→1.5→2 */}
+                                    {/* Speed cycle button */}
                                     <button
                                         className="ctrl-btn"
                                         style={{
@@ -952,7 +1026,7 @@ export function PlayerPage() {
                                 <span><i className="bi bi-hdd-fill"/> {formatFileSize(media.size)}</span>
                                 <span><i className="bi bi-clock"/> {formatDuration(media.duration)}</span>
                                 {media.width && media.height &&
-                                    <span><i className="bi bi-aspect-ratio"/> {media.width}×{media.height}</span>}
+                                    <span><i className="bi bi-aspect-ratio"/> {media.width}x{media.height}</span>}
                                 {media.container && <span><i className="bi bi-file-play"/> {media.container}</span>}
                             </div>
                             <div className="media-action-buttons">
@@ -997,8 +1071,7 @@ export function PlayerPage() {
                                 related.map(entry => <SimilarItem key={entry.media_id} entry={entry}/>)
                             )}
                         </div>
-
-                        {/* Star Rating (Feature 2) */}
+                            {/* Star Rating */}
                         {user && (
                             <div className="player-sidebar-card">
                                 <h3><i className="bi bi-star-fill"/> Rate This</h3>
@@ -1031,6 +1104,20 @@ export function PlayerPage() {
                                 )}
                             </div>
                         )}
+                        {/* Keyboard shortcuts card */}
+                        <div className="player-sidebar-card player-shortcuts-card">
+                            <h3><i className="bi bi-keyboard"/> Shortcuts</h3>
+                            <div className="player-shortcuts-grid">
+                                <kbd>K</kbd> <span>Play/Pause</span>
+                                <kbd>J</kbd> <span>Back 10s</span>
+                                <kbd>L</kbd> <span>Forward 10s</span>
+                                <kbd>F</kbd> <span>Fullscreen</span>
+                                <kbd>T</kbd> <span>Theater</span>
+                                <kbd>M</kbd> <span>Mute</span>
+                                <kbd>0-9</kbd> <span>Seek %</span>
+                                <kbd>&lt; &gt;</kbd> <span>Speed</span>
+                            </div>
+                        </div>
                     </div>
                     </SectionErrorBoundary>
                 </div>
