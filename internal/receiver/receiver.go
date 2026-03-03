@@ -223,6 +223,7 @@ func (m *Module) healthCheckLoop() {
 		select {
 		case <-m.healthTicker.C:
 			m.markStaleSlaves()
+			m.cleanupStalePending()
 		case <-m.healthDone:
 			return
 		}
@@ -380,6 +381,10 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 }
 
 // Heartbeat updates the slave's last-seen timestamp.
+// The in-memory timestamp is always updated, but the DB write is debounced:
+// we only persist when the last DB write for this slave is older than 60 seconds.
+// This avoids a DB UPSERT on every 15-second heartbeat while keeping the
+// in-memory state accurate for the stale-slave detector.
 func (m *Module) Heartbeat(slaveID string) error {
 	m.mu.Lock()
 	node, exists := m.slaves[slaveID]
@@ -387,10 +392,15 @@ func (m *Module) Heartbeat(slaveID string) error {
 		m.mu.Unlock()
 		return fmt.Errorf("slave not found: %s", slaveID)
 	}
+	prevLastSeen := node.LastSeen
 	node.Status = "online"
 	node.LastSeen = time.Now()
 	m.mu.Unlock()
 
+	// Debounce: only write to DB if the last persist was >60s ago
+	if time.Since(prevLastSeen) < 60*time.Second {
+		return nil
+	}
 	return m.slaveRepo.Upsert(context.Background(), nodeToSlaveRecord(node))
 }
 
@@ -527,15 +537,20 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 		if !ok || delivery == nil {
 			return fmt.Errorf("stream delivery failed for %s", mediaID)
 		}
-		// Forward safe response headers only.
-		blockedHeaders := map[string]bool{
-			"Set-Cookie":       true,
-			"Authorization":    true,
-			"Cookie":           true,
-			"Www-Authenticate": true,
+		// Forward only media-relevant headers (allowlist) to prevent leaking
+		// slave identity, server software, or internal infrastructure details.
+		allowedHeaders := map[string]bool{
+			"Content-Type":        true,
+			"Content-Length":      true,
+			"Content-Range":      true,
+			"Content-Disposition": true,
+			"Accept-Ranges":      true,
+			"Last-Modified":      true,
+			"Etag":               true,
+			"Cache-Control":      true,
 		}
 		for key, values := range delivery.Headers {
-			if blockedHeaders[key] {
+			if !allowedHeaders[key] {
 				continue
 			}
 			for _, v := range values {
@@ -551,12 +566,28 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 		m.pendingMu.Lock()
 		delete(m.pendingStreams, token)
 		m.pendingMu.Unlock()
+		// Drain any delivery that arrived after timeout to avoid leaking the body.
+		select {
+		case d := <-ps.Ready:
+			if d != nil && d.Body != nil {
+				d.Body.Close()
+			}
+		default:
+		}
 		return fmt.Errorf("stream request timed out for %s", mediaID)
 
 	case <-r.Context().Done():
 		m.pendingMu.Lock()
 		delete(m.pendingStreams, token)
 		m.pendingMu.Unlock()
+		// Drain any delivery that arrived after cancel to avoid leaking the body.
+		select {
+		case d := <-ps.Ready:
+			if d != nil && d.Body != nil {
+				d.Body.Close()
+			}
+		default:
+		}
 		return r.Context().Err()
 	}
 }

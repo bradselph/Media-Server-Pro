@@ -87,6 +87,7 @@ type MediaInfo struct {
 	Views     int
 	Rating    float64
 	AddedAt   time.Time
+	IsMature  bool // flagged by the scanner — used to exclude from public suggestions
 }
 
 // NewModule creates a new suggestions module
@@ -340,6 +341,9 @@ func (m *Module) GetSuggestions(userID string, limit int) []*Suggestion {
 
 	var suggestions []*Suggestion
 	for _, media := range m.mediaData {
+		if media.IsMature {
+			continue // Never surface mature items in public suggestions
+		}
 		if recentlyViewed[media.Path] {
 			continue // Skip recently viewed
 		}
@@ -522,6 +526,9 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 	var suggestions []*Suggestion
 
 	for _, media := range m.mediaData {
+		if media.IsMature {
+			continue // Never surface mature items in public suggestions
+		}
 		score := float64(media.Views) * math.Max(media.Rating, 1)
 
 		// Boost recent content
@@ -569,7 +576,7 @@ func (m *Module) GetSimilarMedia(mediaPath string, limit int) []*Suggestion {
 	var suggestions []*Suggestion
 
 	for _, media := range m.mediaData {
-		if media.Path == mediaPath {
+		if media.Path == mediaPath || media.IsMature {
 			continue
 		}
 
@@ -685,6 +692,9 @@ func (m *Module) GetContinueWatching(userID string, limit int) []*Suggestion {
 		title := vh.MediaPath
 		mediaID := ""
 		if media != nil {
+			if media.IsMature {
+				continue // Never surface mature items
+			}
 			title = media.Title
 			mediaID = media.StableID
 		}

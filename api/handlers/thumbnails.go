@@ -151,6 +151,26 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 		return
 	}
 
+	// Mature content check: extract media ID from filename (e.g. "uuid.jpg" → "uuid"),
+	// look up the media item, and serve a censored placeholder if the user isn't authorised.
+	mediaID := strings.TrimSuffix(filename, ext)
+	if item, err := h.media.GetMediaByID(mediaID); err == nil && item != nil && item.IsMature {
+		canView := false
+		if user := getUser(c); user != nil {
+			canView = user.Permissions.CanViewMature && user.Preferences.ShowMature
+		}
+		if !canView {
+			if censoredPath, cErr := h.thumbnails.GetPlaceholderPath("censored"); cErr == nil {
+				c.Header("Cache-Control", "private, max-age=300")
+				c.Header("Content-Type", "image/jpeg")
+				http.ServeFile(c.Writer, c.Request, censoredPath)
+				return
+			}
+			writeError(c, http.StatusForbidden, "Mature content")
+			return
+		}
+	}
+
 	c.Header("Cache-Control", "public, max-age=604800")
 	c.Header("Content-Type", "image/jpeg")
 	http.ServeFile(c.Writer, c.Request, filePath)
@@ -165,6 +185,18 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 	path, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return
+	}
+
+	// Block preview thumbnails for mature content when user is not authorised.
+	if item, err := h.media.GetMedia(path); err == nil && item != nil && item.IsMature {
+		canView := false
+		if user := getUser(c); user != nil {
+			canView = user.Permissions.CanViewMature && user.Preferences.ShowMature
+		}
+		if !canView {
+			writeSuccess(c, map[string]interface{}{"previews": []string{}})
+			return
+		}
 	}
 
 	cfg := h.media.GetConfig()

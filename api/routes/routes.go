@@ -341,9 +341,10 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// Stream push — slave delivers file data in response to a WS stream_request
 	api.POST("/receiver/stream-push/:token", h.ReceiverStreamPush)
 
-	// Receiver media browsing (user-facing, requires session auth)
-	api.GET("/receiver/media", requireAuth(), h.ReceiverListMedia)
-	api.GET("/receiver/media/:id", requireAuth(), h.ReceiverGetMedia)
+	// Receiver media browsing — admin only (exposes slave IDs, paths, internal topology).
+	// Regular users see slave media seamlessly through the unified /api/media listing.
+	api.GET("/receiver/media", adminAuth(authModule), h.ReceiverListMedia)
+	api.GET("/receiver/media/:id", adminAuth(authModule), h.ReceiverGetMedia)
 
 	// -----------------------------------------------------------------------
 	// Admin routes group (/api/admin)

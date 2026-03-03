@@ -68,12 +68,20 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	if h.receiver != nil {
 		cfg := h.media.GetConfig()
 		if cfg.Features.EnableReceiver && cfg.Receiver.Enabled {
-			localFingerprints := h.media.ContentFingerprints()
+			// Track fingerprints already added from receiver items so that if
+			// the same file exists on two different slaves, only the first is kept.
+			seenFP := make(map[string]bool)
 			for _, ri := range h.receiver.GetAllMedia() {
-				// Skip duplicates: if the slave item has a fingerprint that matches
-				// a local file, the master already has this content — no need to list it twice.
-				if ri.ContentFingerprint != "" && localFingerprints[ri.ContentFingerprint] {
-					continue
+				if ri.ContentFingerprint != "" {
+					// Skip master-vs-slave duplicates
+					if h.media.HasFingerprint(ri.ContentFingerprint) {
+						continue
+					}
+					// Skip slave-vs-slave duplicates
+					if seenFP[ri.ContentFingerprint] {
+						continue
+					}
+					seenFP[ri.ContentFingerprint] = true
 				}
 				item := &models.MediaItem{
 					ID:       ri.ID,
@@ -83,7 +91,6 @@ func (h *Handler) ListMedia(c *gin.Context) {
 					Duration: ri.Duration,
 					Width:    ri.Width,
 					Height:   ri.Height,
-					IsRemote: true,
 				}
 				// Apply the same filters as local media
 				if filterNoPagination.Type != "" && item.Type != filterNoPagination.Type {
@@ -100,9 +107,23 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		}
 	}
 
-	// Mature items are included in the listing for all users (guests and authenticated).
-	// The frontend blurs them and shows a login/enable gate overlay based on is_mature=true.
-	// Actual streaming/download of mature content is enforced in checkMatureAccess().
+	// Mature content gate: determine whether the caller can see mature items.
+	// If the user is not authorised (guest, no permission, or preference disabled),
+	// mature items are stripped from the listing entirely — this is a server-side
+	// enforcement that does not rely on the frontend blur overlay.
+	canViewMature := false
+	if user := getUser(c); user != nil {
+		canViewMature = user.Permissions.CanViewMature && user.Preferences.ShowMature
+	}
+	if !canViewMature {
+		filtered := make([]*models.MediaItem, 0, len(allItems))
+		for _, item := range allItems {
+			if !item.IsMature {
+				filtered = append(filtered, item)
+			}
+		}
+		allItems = filtered
+	}
 
 	totalItems := len(allItems)
 	totalPages := 1
@@ -163,6 +184,12 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		// Try receiver media — return it as a models.MediaItem so it's transparent
 		if h.receiver != nil {
 			if ri := h.receiver.GetMediaItem(id); ri != nil {
+				// Check mature access for receiver items via fingerprint
+				if h.isReceiverItemMature(ri.ContentFingerprint) && !h.canViewMatureContent(c) {
+					writeError(c, http.StatusForbidden,
+						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
+					return
+				}
 				writeSuccess(c, &models.MediaItem{
 					ID:       ri.ID,
 					Name:     ri.Name,
@@ -171,7 +198,6 @@ func (h *Handler) GetMedia(c *gin.Context) {
 					Duration: ri.Duration,
 					Width:    ri.Width,
 					Height:   ri.Height,
-					IsRemote: true,
 				})
 				return
 			}
@@ -258,6 +284,14 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		// This makes slave media fully transparent — same URL pattern as local.
 		if h.receiver != nil {
 			if item := h.receiver.GetMediaItem(id); item != nil {
+				// Receiver items inherit the mature flag from the scanner if the
+				// master has scanned the same content. If the fingerprint matches a
+				// mature local item, deny access for unauthorised callers.
+				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
+					writeError(c, http.StatusForbidden,
+						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
+					return
+				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
 					if !c.Writer.Written() && !isClientDisconnect(err) {
 						writeError(c, http.StatusBadGateway, "Stream proxy error")
@@ -366,6 +400,11 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		// Not found locally — try receiver media for download too
 		if h.receiver != nil {
 			if item := h.receiver.GetMediaItem(id); item != nil {
+				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
+					writeError(c, http.StatusForbidden,
+						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
+					return
+				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
 					if !c.Writer.Written() && !isClientDisconnect(err) {
 						writeError(c, http.StatusBadGateway, "Download proxy error")
@@ -475,4 +514,25 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 	}
 
 	writeSuccess(c, nil)
+}
+
+// canViewMatureContent reports whether the current request's user is authorised
+// to access mature content (session + CanViewMature permission + ShowMature pref).
+func (h *Handler) canViewMatureContent(c *gin.Context) bool {
+	user := getUser(c)
+	if user == nil {
+		return false
+	}
+	return user.Permissions.CanViewMature && user.Preferences.ShowMature
+}
+
+// isReceiverItemMature checks whether a receiver item's content fingerprint
+// matches a local item that is flagged as mature. Returns false if the
+// fingerprint is empty or unknown (errs on the side of allowing access when
+// mature status is indeterminate).
+func (h *Handler) isReceiverItemMature(fingerprint string) bool {
+	if fingerprint == "" {
+		return false
+	}
+	return h.media.IsFingerprintMature(fingerprint)
 }

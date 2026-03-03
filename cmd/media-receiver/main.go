@@ -77,6 +77,55 @@ type slaveConfig struct {
 	HeartbeatInterval time.Duration
 }
 
+// fingerprint cache: avoid recomputing SHA-256 for unchanged files.
+// key = absolute path, value = cached result.
+type fpCacheEntry struct {
+	modTime     time.Time
+	size        int64
+	fingerprint string
+}
+
+var (
+	fpCache   = make(map[string]fpCacheEntry)
+	fpCacheMu sync.Mutex
+)
+
+// getCachedFingerprint returns a cached fingerprint if the file hasn't changed
+// (same mtime + size), or computes, caches, and returns a fresh one.
+func getCachedFingerprint(path string, info os.FileInfo) string {
+	fpCacheMu.Lock()
+	defer fpCacheMu.Unlock()
+
+	if cached, ok := fpCache[path]; ok {
+		if cached.modTime.Equal(info.ModTime()) && cached.size == info.Size() {
+			return cached.fingerprint
+		}
+	}
+
+	fp := computeContentFingerprint(path)
+	fpCache[path] = fpCacheEntry{
+		modTime:     info.ModTime(),
+		size:        info.Size(),
+		fingerprint: fp,
+	}
+	return fp
+}
+
+// streamHTTPClient is reused across all stream deliveries to benefit from
+// connection pooling (keep-alive) to the master.
+var streamHTTPClient = &http.Client{
+	Timeout: 0, // no overall timeout for streaming
+	Transport: &http.Transport{
+		MaxIdleConns:        10,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	},
+}
+
+// lastCatalogHash stores a SHA-256 of the last pushed catalog items so we can
+// skip redundant full pushes when nothing has changed.
+var lastCatalogHash string
+
 func main() {
 	cfg := parseFlags()
 
@@ -161,6 +210,15 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 	defer conn.Close()
 	fmt.Println("Connected to master via WebSocket")
 
+	// Set read deadline — extended on every incoming message/ping.
+	// If no data arrives within 90s (3x the master's 25s ping interval),
+	// the connection is considered dead and we reconnect.
+	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+	conn.SetPingHandler(func(data string) error {
+		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+		return conn.WriteMessage(websocket.PongMessage, []byte(data))
+	})
+
 	// Send registration
 	if err := sendWSJSON(conn, "register", map[string]string{
 		"slave_id": cfg.SlaveID,
@@ -170,7 +228,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 	}
 	fmt.Println("Registered with master")
 
-	// Initial scan and catalog push
+	// Initial scan and catalog push (always push on connect)
 	items := scanMediaDirs(cfg.MediaDirs)
 	fmt.Printf("Found %d media files\n", len(items))
 	if err := sendWSJSON(conn, "catalog", map[string]interface{}{
@@ -180,6 +238,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 	}); err != nil {
 		return fmt.Errorf("catalog push failed: %w", err)
 	}
+	lastCatalogHash = hashCatalog(items)
 	fmt.Printf("Pushed %d items to master\n", len(items))
 
 	// Start reading stream requests from master in a goroutine
@@ -200,6 +259,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 				}
 				return
 			}
+			conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 
 			var msg wsMessage
 			if err := json.Unmarshal(raw, &msg); err != nil {
@@ -235,6 +295,11 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 		select {
 		case <-scanTicker.C:
 			items := scanMediaDirs(cfg.MediaDirs)
+			h := hashCatalog(items)
+			if h == lastCatalogHash {
+				// Catalog unchanged since last push — skip redundant full push.
+				continue
+			}
 			writeMu.Lock()
 			err := sendWSJSON(conn, "catalog", map[string]interface{}{
 				"slave_id": cfg.SlaveID,
@@ -245,6 +310,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 			if err != nil {
 				return fmt.Errorf("catalog push failed: %w", err)
 			}
+			lastCatalogHash = h
 			fmt.Printf("[%s] Pushed %d items to master\n", time.Now().Format("15:04:05"), len(items))
 
 		case <-heartbeatTicker.C:
@@ -341,8 +407,7 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 		}
 	}
 
-	client := &http.Client{Timeout: 0} // no timeout for streaming
-	resp, err := client.Do(httpReq)
+	resp, err := streamHTTPClient.Do(httpReq)
 	if err != nil {
 		if ctx.Err() == nil {
 			fmt.Fprintf(os.Stderr, "Stream push failed for %s: %v\n", req.Token, err)
@@ -593,7 +658,7 @@ func scanMediaDirs(dirs []string) []catalogItem {
 				relPath = info.Name()
 			}
 
-			fp := computeContentFingerprint(path)
+			fp := getCachedFingerprint(path, info)
 
 			items = append(items, catalogItem{
 				ID:                 id,
@@ -630,6 +695,16 @@ func classifyFile(name string) string {
 func generateFileID(path string) string {
 	h := sha256.Sum256([]byte(path))
 	return hex.EncodeToString(h[:16])
+}
+
+// hashCatalog produces a deterministic hash of the catalog so we can detect
+// when nothing has changed between scans and skip redundant pushes.
+func hashCatalog(items []catalogItem) string {
+	h := sha256.New()
+	for _, item := range items {
+		fmt.Fprintf(h, "%s|%s|%d|%s\n", item.Path, item.Name, item.Size, item.ContentFingerprint)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // computeContentFingerprint computes a SHA-256 fingerprint of a media file.
