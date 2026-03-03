@@ -223,7 +223,19 @@ func (m *Module) loadFromDB() {
 		if node, ok := m.slaves[rec.SlaveID]; ok {
 			item.SlaveName = node.Name
 		}
-		m.media[rec.ID] = item
+
+		// Migrate legacy "slaveID:itemID" composite keys to opaque IDs.
+		// The next full catalog push will rewrite the DB rows; for now we
+		// just fix the in-memory index so lookups work.
+		id := rec.ID
+		if strings.Contains(id, ":") {
+			parts := strings.SplitN(id, ":", 2)
+			if len(parts) == 2 {
+				id = opaqueMediaID(parts[0], parts[1])
+				item.ID = id
+			}
+		}
+		m.media[id] = item
 	}
 
 	m.log.Info("Loaded %d slaves, %d media items from DB", len(m.slaves), len(m.media))
