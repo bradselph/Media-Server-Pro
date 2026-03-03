@@ -265,8 +265,11 @@ func (h *Handler) AdminGetDatabaseStatus(c *gin.Context) {
 	var repositoryType string
 	if connected && h.database.DB() != nil {
 		ctx := c.Request.Context()
+		// GORM auto-migration doesn't use a schema_migrations table, so this
+		// query may legitimately fail with "table doesn't exist".  Only warn
+		// on unexpected errors.
 		err := h.database.DB().QueryRowContext(ctx, "SELECT COALESCE(MAX(version), 0) FROM schema_migrations").Scan(&schemaVersion)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), "doesn't exist") {
 			h.log.Warn("Failed to get schema version: %v", err)
 		}
 		repositoryType = "MySQL"
