@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -87,7 +88,9 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 	type healthier interface {
 		Health() models.HealthStatus
 	}
-	// Build module list, skipping any that are nil (optional modules that failed to init)
+	// Build module list, skipping any that are nil (optional modules that failed to init).
+	// NOTE: A typed nil pointer (e.g. (*analytics.Module)(nil)) stored in an interface
+	// is NOT nil at the interface level — we must use reflect to detect it.
 	allModules := []healthier{
 		h.security, h.database, h.auth, h.media, h.streaming, h.hls,
 		h.analytics, h.playlist, h.admin, h.tasks, h.upload, h.scanner,
@@ -102,7 +105,7 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 	}
 	moduleHealths := make([]moduleHealthItem, 0, len(allModules))
 	for _, p := range allModules {
-		if p == nil {
+		if p == nil || reflect.ValueOf(p).IsNil() {
 			continue
 		}
 		hs := p.Health()
