@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.29.0] - 2026-03-03 (minor)
+
+- Merge pull request #32 from bradselph/development
+- refactor(admin): consolidate 16 tabs into 10 with sub-tabs
+
+
 ## [0.28.0] - 2026-03-02 (minor)
 
 - Merge pull request #31 from bradselph/development
