@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.0] - 2026-03-03 (minor)
+
+- Merge pull request #42 from bradselph/development
+- fix: correct broken player controls, settings panel, and missing code
+- fix: handle thumbnail pending status and typed nil interface panic
+
+
 ## [0.38.0] - 2026-03-03 (minor)
 
 - Merge pull request #41 from bradselph/development
