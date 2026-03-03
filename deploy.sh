@@ -59,7 +59,13 @@ FIX_ENV=false
 ROLLBACK=false
 SETUP=false
 SETUP_RECEIVER=false
-BRANCH="main"
+
+# Default branch: read from .env UPDATER_BRANCH, fall back to "main"
+BRANCH=""
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+  BRANCH=$(grep -oP '(?<=^UPDATER_BRANCH=)\S+' "$SCRIPT_DIR/.env" 2>/dev/null || echo "")
+fi
+BRANCH="${BRANCH:-main}"
 
 # ── SSH auth setup ────────────────────────────────────────────────────────────
 # Generates key if missing, strips any passphrase (needed for BatchMode=yes),
