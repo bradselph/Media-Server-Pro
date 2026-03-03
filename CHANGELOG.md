@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0] - 2026-03-03 (minor)
+
+- Merge pull request #38 from bradselph/development
+- feat: auto-discover slave config from local master config files
+- docs: update CLAUDE.md to reflect current project state
+
+
 ## [0.34.0] - 2026-03-03 (minor)
 
 - Merge pull request #37 from bradselph/development
