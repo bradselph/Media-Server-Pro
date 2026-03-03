@@ -1017,13 +1017,25 @@ func (f Filter) matches(item *models.MediaItem) bool {
 }
 
 // matchesSearch checks whether the item matches the search term in the filter.
+// Matches against item name, category, and tags — NOT the filesystem path,
+// which is an internal implementation detail hidden from API consumers.
 func (f Filter) matchesSearch(item *models.MediaItem) bool {
 	if f.Search == "" {
 		return true
 	}
 	search := strings.ToLower(f.Search)
-	return strings.Contains(strings.ToLower(item.Name), search) ||
-		strings.Contains(strings.ToLower(item.Path), search)
+	if strings.Contains(strings.ToLower(item.Name), search) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(item.Category), search) {
+		return true
+	}
+	for _, tag := range item.Tags {
+		if strings.Contains(strings.ToLower(tag), search) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchesTags checks whether the item has at least one of the filter's required tags.
