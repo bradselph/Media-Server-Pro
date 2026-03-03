@@ -4561,6 +4561,68 @@ function DiscoveryTab() {
     )
 }
 
+// ── Sub-tab navigation (used by consolidated tabs) ──────────────────────────
+
+function SubTabs({items, active, onChange}: {
+    items: { id: string; label: string }[]
+    active: string
+    onChange: (id: string) => void
+}) {
+    return (
+        <div className="admin-subtab-nav">
+            {items.map(item => (
+                <button key={item.id}
+                        className={`admin-subtab-btn ${active === item.id ? 'active' : ''}`}
+                        onClick={() => onChange(item.id)}>
+                    {item.label}
+                </button>
+            ))}
+        </div>
+    )
+}
+
+// ── Consolidated tabs ────────────────────────────────────────────────────────
+
+function ContentTab() {
+    const [sub, setSub] = useState('review')
+    return (<>
+        <SubTabs items={[
+            {id: 'review', label: 'Review'},
+            {id: 'categorizer', label: 'Categorizer'},
+            {id: 'discovery', label: 'Discovery'},
+        ]} active={sub} onChange={setSub}/>
+        {sub === 'review' && <ContentReviewTab/>}
+        {sub === 'categorizer' && <CategorizerTab/>}
+        {sub === 'discovery' && <DiscoveryTab/>}
+    </>)
+}
+
+function SourcesTab() {
+    const [sub, setSub] = useState('remote')
+    return (<>
+        <SubTabs items={[
+            {id: 'remote', label: 'Remote'},
+            {id: 'slaves', label: 'Slaves'},
+        ]} active={sub} onChange={setSub}/>
+        {sub === 'remote' && <RemoteTab/>}
+        {sub === 'slaves' && <ReceiverTab/>}
+    </>)
+}
+
+function SystemTab() {
+    const [sub, setSub] = useState('settings')
+    return (<>
+        <SubTabs items={[
+            {id: 'settings', label: 'Settings'},
+            {id: 'logs', label: 'Logs'},
+            {id: 'database', label: 'Database'},
+        ]} active={sub} onChange={setSub}/>
+        {sub === 'settings' && <SettingsTab/>}
+        {sub === 'logs' && <LogsTab/>}
+        {sub === 'database' && <DatabaseTab/>}
+    </>)
+}
+
 // ── Main AdminPage ────────────────────────────────────────────────────────────
 
 type Tab =
@@ -4569,19 +4631,14 @@ type Tab =
     | 'media'
     | 'streaming'
     | 'analytics'
-    | 'logs'
-    | 'settings'
-    | 'remote'
-    | 'receiver'
-    | 'database'
-    | 'content-review'
+    | 'content'
+    | 'sources'
+    | 'system'
     | 'playlists'
     | 'security'
-    | 'categorizer'
-    | 'discovery'
     | 'updates'
 
-const VALID_TABS: Tab[] = ['dashboard', 'users', 'media', 'streaming', 'analytics', 'logs', 'settings', 'remote', 'receiver', 'database', 'content-review', 'playlists', 'security', 'categorizer', 'discovery', 'updates']
+const VALID_TABS: Tab[] = ['dashboard', 'users', 'media', 'streaming', 'analytics', 'content', 'sources', 'system', 'playlists', 'security', 'updates']
 
 export function AdminPage() {
     const navigate = useNavigate()
@@ -4605,17 +4662,12 @@ export function AdminPage() {
         {id: 'media', label: 'Media', icon: 'bi-folder-fill'},
         {id: 'streaming', label: 'Streaming', icon: 'bi-broadcast'},
         {id: 'analytics', label: 'Analytics', icon: 'bi-bar-chart-fill'},
-        {id: 'logs', label: 'Logs', icon: 'bi-display'},
-        {id: 'settings', label: 'Settings', icon: 'bi-gear-fill'},
-        {id: 'remote', label: 'Remote Sources', icon: 'bi-cloud-arrow-down-fill'},
-        {id: 'receiver', label: 'Receiver', icon: 'bi-diagram-3-fill'},
-        {id: 'database', label: 'Database', icon: 'bi-database-fill'},
-        {id: 'content-review', label: 'Content Review', icon: 'bi-shield-fill'},
+        {id: 'content', label: 'Content', icon: 'bi-shield-fill'},
+        {id: 'sources', label: 'Sources', icon: 'bi-cloud-arrow-down-fill'},
         {id: 'playlists', label: 'Playlists', icon: 'bi-collection-fill'},
         {id: 'security', label: 'Security', icon: 'bi-lock-fill'},
-        {id: 'categorizer', label: 'Categorizer', icon: 'bi-tags-fill'},
-        {id: 'discovery', label: 'Discovery', icon: 'bi-binoculars-fill'},
         {id: 'updates', label: 'Updates', icon: 'bi-arrow-up-circle-fill'},
+        {id: 'system', label: 'System', icon: 'bi-gear-fill'},
     ]
 
     async function handleLogout() {
@@ -4654,16 +4706,11 @@ export function AdminPage() {
                     {activeTab === 'media' && <MediaTab/>}
                     {activeTab === 'streaming' && <StreamingTab/>}
                     {activeTab === 'analytics' && <AnalyticsTab/>}
-                    {activeTab === 'logs' && <LogsTab/>}
-                    {activeTab === 'settings' && <SettingsTab/>}
-                    {activeTab === 'remote' && <RemoteTab/>}
-                    {activeTab === 'receiver' && <ReceiverTab/>}
-                    {activeTab === 'database' && <DatabaseTab/>}
-                    {activeTab === 'content-review' && <ContentReviewTab/>}
+                    {activeTab === 'content' && <ContentTab/>}
+                    {activeTab === 'sources' && <SourcesTab/>}
+                    {activeTab === 'system' && <SystemTab/>}
                     {activeTab === 'playlists' && <PlaylistsTab/>}
                     {activeTab === 'security' && <SecurityTab/>}
-                    {activeTab === 'categorizer' && <CategorizerTab/>}
-                    {activeTab === 'discovery' && <DiscoveryTab/>}
                     {activeTab === 'updates' && <UpdatesTab/>}
                 </SectionErrorBoundary>
             </div>
