@@ -65,14 +65,14 @@ type Module struct {
 
 // UpdateCheckResult holds the result of an update check
 type UpdateCheckResult struct {
-	CurrentVersion  string    `json:"current_version"`
-	LatestVersion   string    `json:"latest_version"`
-	UpdateAvailable bool      `json:"update_available"`
-	ReleaseURL      string    `json:"release_url,omitempty"`
-	ReleaseNotes    string    `json:"release_notes,omitempty"`
+	CurrentVersion  string     `json:"current_version"`
+	LatestVersion   string     `json:"latest_version"`
+	UpdateAvailable bool       `json:"update_available"`
+	ReleaseURL      string     `json:"release_url,omitempty"`
+	ReleaseNotes    string     `json:"release_notes,omitempty"`
 	PublishedAt     *time.Time `json:"published_at,omitempty"`
-	CheckedAt       time.Time `json:"checked_at"`
-	Error           string    `json:"error,omitempty"`
+	CheckedAt       time.Time  `json:"checked_at"`
+	Error           string     `json:"error,omitempty"`
 }
 
 // UpdateStatus holds the status of an update operation

@@ -392,7 +392,7 @@ func (s *MatureScanner) ScanFile(path string) *ScanResult {
 	return result
 }
 
-// scanFileInternal performs the actual scan without persisting, for use in batch operations.
+// scanFileInternal performs the actual scan without persisting.
 func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 	s.log.Debug("→ Scanning: %s", filepath.Base(path))
 
@@ -784,8 +784,10 @@ func (s *MatureScanner) ScanDirectory(dir string) ([]*ScanResult, error) {
 			return nil
 		}
 
-		result := s.scanFileInternal(path)
-		results = append(results, result)
+		result := s.ScanFile(path)
+		if result != nil {
+			results = append(results, result)
+		}
 
 		return nil
 	})

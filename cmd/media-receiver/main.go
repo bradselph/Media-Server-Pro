@@ -404,8 +404,8 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 				statusCode = 206
 				contentLength = length
 				extraHeaders = map[string]string{
-					"Content-Range":  fmt.Sprintf("bytes %d-%d/%d", start, end, stat.Size()),
-					"Accept-Ranges":  "bytes",
+					"Content-Range": fmt.Sprintf("bytes %d-%d/%d", start, end, stat.Size()),
+					"Accept-Ranges": "bytes",
 				}
 			}
 		}
@@ -1001,4 +1001,3 @@ func computeContentFingerprint(path string) string {
 
 	return hex.EncodeToString(h.Sum(nil))
 }
-

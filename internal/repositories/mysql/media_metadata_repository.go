@@ -104,9 +104,11 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 				"category":       clause.Column{Table: "excluded", Name: "category"},
 				"probe_mod_time": clause.Column{Table: "excluded", Name: "probe_mod_time"},
 				// Only write stable_id when it's not already set
-				"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', excluded.stable_id, media_metadata.stable_id)"),
+				// NOTE: MySQL uses VALUES(col) to reference the incoming row in ON DUPLICATE KEY UPDATE.
+				// "excluded.col" is PostgreSQL syntax and causes Error 1054 on MySQL.
+				"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', VALUES(stable_id), media_metadata.stable_id)"),
 				// Only write fingerprint when it's not already set
-				"content_fingerprint": gorm.Expr("IF(media_metadata.content_fingerprint IS NULL OR media_metadata.content_fingerprint = '', excluded.content_fingerprint, media_metadata.content_fingerprint)"),
+				"content_fingerprint": gorm.Expr("IF(media_metadata.content_fingerprint IS NULL OR media_metadata.content_fingerprint = '', VALUES(content_fingerprint), media_metadata.content_fingerprint)"),
 			}),
 		}).Create(&row).Error; err != nil {
 			return fmt.Errorf("failed to upsert media metadata: %w", err)
