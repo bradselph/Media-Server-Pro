@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.34.0] - 2026-03-03 (minor)
+
+- Merge pull request #37 from bradselph/development
+- Update deploy.sh
+
+
 ## [0.33.0] - 2026-03-03 (minor)
 
 - Merge pull request #36 from bradselph/development
