@@ -383,16 +383,44 @@ func registerTasks(
 		},
 	)
 
-	// Mature content scan — scans videos directory for mature content every 12h
+	// Mature content scan — scans all media directories for mature content every 12h
+	// and applies auto-flagged results to the media library so ListMedia can filter them.
 	scheduler.RegisterTask(
 		"mature-content-scan",
 		"Mature Content Scan",
 		"Scans media directories for mature content using configured detection models",
 		12*time.Hour,
 		func(ctx context.Context) error {
-			videosDir := cfg.Get().Directories.Videos
-			_, err := scannerModule.ScanDirectory(videosDir)
-			return err
+			dirs := cfg.Get().Directories
+			var allResults []*scanner.ScanResult
+
+			for _, dir := range []string{dirs.Videos, dirs.Music, dirs.Uploads} {
+				if dir == "" {
+					continue
+				}
+				results, err := scannerModule.ScanDirectory(dir)
+				if err != nil {
+					log.Error("Mature scan failed for %s: %v", dir, err)
+					continue
+				}
+				allResults = append(allResults, results...)
+			}
+
+			// Apply auto-flagged results to the media library
+			applied := 0
+			for _, result := range allResults {
+				if result.AutoFlagged && result.IsMature {
+					if err := mediaModule.SetMatureFlag(result.Path, true, result.Confidence, result.Reasons); err != nil {
+						log.Error("Failed to set mature flag for %s: %v", result.Path, err)
+					} else {
+						applied++
+					}
+				}
+			}
+			if applied > 0 {
+				log.Info("Mature scan complete: %d scanned, %d flagged", len(allResults), applied)
+			}
+			return nil
 		},
 	)
 
