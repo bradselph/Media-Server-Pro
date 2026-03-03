@@ -659,6 +659,7 @@ export interface PermissionsInfo {
         canManage?: boolean
     }
     limits?: {
+        // storage_quota is in bytes (e.g. 1073741824 = 1 GB). Divide by 1073741824 for display in GB.
         storage_quota: number
         concurrent_streams: number
     }
@@ -770,16 +771,11 @@ export interface IPEntry {
 
 export interface BannedIP {
     ip: string
-    // TODO: API Contract Mismatch - BannedIP.banned_at is always the CURRENT time at the moment
-    // of the GET /api/admin/security/banned request, not the actual ban timestamp.
-    // The backend handler (api/handlers/admin_security.go:159) sets `BannedAt: time.Now()` on
-    // every response — the security module has no persistent ban timestamp storage.
-    // Treat this field as unreliable for displaying when an IP was actually banned.
+    // Timestamp when the ban was created (RFC3339). Stored in the BanRecord at ban time.
     banned_at: string
     expires_at?: string
-    // TODO: API Contract Mismatch - BannedIP.reason is always "Rate limit violation" regardless
-    // of how the ban was created. The BanIP handler (admin_security.go:170-188) does not accept
-    // or persist a reason. Manually banned IPs show the same reason as auto-banned ones.
+    // Reason for the ban. Manual bans default to "Manual ban"; auto-bans use the triggering reason.
+    // The POST /api/admin/security/ban endpoint accepts an optional "reason" field in the body.
     reason: string
 }
 
