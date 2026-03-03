@@ -360,6 +360,15 @@ func (h *Handler) requireThumbnails(c *gin.Context) bool {
 	return true
 }
 
+// requireSecurity checks that the security module is available.
+func (h *Handler) requireSecurity(c *gin.Context) bool {
+	if h.security == nil {
+		writeError(c, http.StatusServiceUnavailable, "Security feature is not available")
+		return false
+	}
+	return true
+}
+
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
 // is best-effort — if the admin module is unavailable the action is silently
 // skipped so that the primary operation (user create, media delete, etc.) still
