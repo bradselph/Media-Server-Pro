@@ -1397,7 +1397,7 @@ function ThumbnailStatsCard() {
                     type="text"
                     value={thumbPath}
                     onChange={e => setThumbPath(e.target.value)}
-                    placeholder="Media file path to generate thumbnail..."
+                    placeholder="Media ID to generate thumbnail..."
                     style={{
                         flex: 1,
                         padding: '6px 10px',
@@ -1997,7 +1997,7 @@ function LogsTab() {
                 ) : (
                     <div className="log-viewer">
                         {logs.length === 0 && <div style={{color: '#888'}}>No log entries found.</div>}
-                        {[...logs].reverse().map((entry, i) => (
+                        {logs.map((entry, i) => (
                             <div key={i} className={`log-line ${entry.level?.toLowerCase()}`}>
                                 <span style={{opacity: 0.5}}>[{entry.timestamp}]</span>{' '}
                                 <span style={{fontWeight: 600, opacity: 0.8}}>[{entry.module}]</span>{' '}
