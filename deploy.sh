@@ -509,6 +509,7 @@ run_or_dry vps "
 
 # ── Ensure dependencies are installed on VPS ─────────────────────────────────
 info "Checking dependencies on VPS..."
+
 run_or_dry vps "
   set -euo pipefail
   export PATH=\$PATH:/usr/local/go/bin
@@ -634,14 +635,16 @@ run_or_dry vps "
 
   # Build Go binary
   echo '[deploy] Building Go binary...'
-  VERSION=\$(cat VERSION 2>/dev/null || echo 4.0.0)
+  VERSION=\$(cat VERSION 2>/dev/null || echo 0.0.0)
   go build \\
     -ldflags \"-X main.Version=\$VERSION -X main.BuildDate=\$(date +%Y-%m-%d)\" \\
     -o server ./cmd/server
 
   # Build slave receiver binary
   echo '[deploy] Building media-receiver (slave) binary...'
-  go build -o media-receiver ./cmd/media-receiver
+  go build \\
+    -ldflags \"-X main.Version=\$VERSION -X main.BuildDate=\$(date +%Y-%m-%d)\" \\
+    -o media-receiver ./cmd/media-receiver
 
   echo '[deploy] Build complete'
 "
