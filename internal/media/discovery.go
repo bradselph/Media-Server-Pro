@@ -619,15 +619,24 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 			m.metaMu.RUnlock()
 
 			if oldMeta != nil {
-				// Migrate metadata from old path to new path (file was moved/renamed)
-				m.log.Info("Detected moved file: %s -> %s (fingerprint %s…)", oldPath, path, fp[:12])
-				m.metaMu.Lock()
-				m.metadata[path] = oldMeta
-				delete(m.metadata, oldPath)
-				m.fingerprintIndex[fp] = path
-				m.metaMu.Unlock()
-				meta = oldMeta
-				hasMeta = true
+				// Before assuming a move, verify the old path no longer exists.
+				// If both paths are present on disk the file was copied (duplicate),
+				// not moved.  In that case treat this as a new file and let the
+				// post-scan dedup pass pick the winner.
+				if _, statErr := os.Stat(oldPath); statErr != nil && os.IsNotExist(statErr) {
+					// Old path gone — genuine move/rename.
+					m.log.Info("Detected moved file: %s -> %s (fingerprint %s…)", oldPath, path, fp[:12])
+					m.metaMu.Lock()
+					m.metadata[path] = oldMeta
+					delete(m.metadata, oldPath)
+					m.fingerprintIndex[fp] = path
+					m.metaMu.Unlock()
+					meta = oldMeta
+					hasMeta = true
+				} else {
+					// Old path still exists — duplicate file, not a move.
+					m.log.Debug("Duplicate content at %s and %s (fingerprint %s…)", oldPath, path, fp[:12])
+				}
 			} else if found {
 				// Same file at same path — just use existing metadata normally.
 				// This happens when the fingerprint was computed for the first time
