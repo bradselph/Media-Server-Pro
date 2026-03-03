@@ -302,6 +302,7 @@ func registerTasks(
 						Tags:      item.Tags,
 						Views:     item.Views,
 						AddedAt:   item.DateAdded,
+						IsMature:  item.IsMature,
 					})
 				}
 				suggestionsModule.UpdateMediaData(mediaInfos)

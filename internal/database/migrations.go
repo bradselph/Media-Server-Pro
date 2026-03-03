@@ -439,6 +439,8 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 			"ALTER TABLE media_metadata ADD UNIQUE INDEX idx_stable_id (stable_id)"},
 		{"media_metadata", "idx_content_fingerprint",
 			"ALTER TABLE media_metadata ADD INDEX idx_content_fingerprint (content_fingerprint)"},
+		{"receiver_media", "idx_receiver_media_fingerprint",
+			"ALTER TABLE receiver_media ADD INDEX idx_receiver_media_fingerprint (content_fingerprint)"},
 	}
 
 	for _, idx := range indexes {

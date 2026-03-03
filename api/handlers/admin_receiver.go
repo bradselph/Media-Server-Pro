@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -219,6 +220,10 @@ func (h *Handler) ReceiverWebSocket(c *gin.Context) {
 // POST /api/receiver/stream-push/:token
 // The slave opens this connection in response to a stream_request sent over WebSocket.
 func (h *Handler) ReceiverStreamPush(c *gin.Context) {
+	if !h.requireReceiverAPIKey(c) {
+		return
+	}
+
 	token := c.Param("token")
 	if token == "" {
 		writeError(c, http.StatusBadRequest, "token required")
@@ -231,7 +236,10 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 		return
 	}
 
-	// Build the delivery with the slave's request headers and body
+	// Build the delivery with the slave's request headers and body.
+	// We use a pipe so this handler can block until the ProxyStream consumer
+	// finishes reading the body — if we passed c.Request.Body directly, Gin
+	// would close it when this handler returns, racing with ProxyStream's read.
 	statusCode := http.StatusOK
 	if status := c.GetHeader("X-Stream-Status"); status != "" {
 		if parsed, err := strconv.Atoi(status); err == nil && parsed > 0 {
@@ -239,13 +247,19 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 		}
 	}
 
+	pr, pw := io.Pipe()
 	delivery := &receiver.StreamDelivery{
 		StatusCode:  statusCode,
 		ContentType: c.GetHeader("Content-Type"),
 		Headers:     c.Request.Header.Clone(),
-		Body:        c.Request.Body,
+		Body:        pr,
 	}
 
 	// Signal the waiting proxy handler
 	ps.Ready <- delivery
+
+	// Copy the slave's request body into the pipe. This blocks until
+	// ProxyStream (the consumer) finishes reading or the pipe is closed.
+	_, copyErr := io.Copy(pw, c.Request.Body)
+	pw.CloseWithError(copyErr) // signals EOF (or error) to the reader
 }

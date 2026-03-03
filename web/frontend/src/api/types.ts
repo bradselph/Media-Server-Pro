@@ -132,9 +132,6 @@ export interface MediaItem {
     last_played?: string
     is_mature: boolean
     mature_score?: number
-    // Backend json:"is_remote" (no omitempty) — always present; false for local files
-    is_remote: boolean
-    remote_url?: string
     metadata?: Record<string, string>
 }
 

@@ -1424,6 +1424,8 @@ func (m *Manager) applyRemoteMediaEnvOverrides() {
 	}
 	if val, ok := envGetInt64("REMOTE_MEDIA_CACHE_SIZE"); ok {
 		m.config.RemoteMedia.CacheSize = val
+	} else if val, ok := envGetInt64("REMOTE_MEDIA_CACHE_SIZE_MB"); ok {
+		m.config.RemoteMedia.CacheSize = val * 1024 * 1024 // MB → bytes
 	}
 	if val, ok := envGetDuration(time.Hour, "REMOTE_MEDIA_CACHE_TTL_HOURS"); ok {
 		m.config.RemoteMedia.CacheTTL = val
@@ -1435,7 +1437,16 @@ func (m *Manager) applyReceiverEnvOverrides() {
 		m.config.Receiver.Enabled = val
 	}
 	if val := envGetStr("RECEIVER_API_KEY", "RECEIVER_API_KEYS"); val != "" {
-		m.config.Receiver.APIKeys = []string{val}
+		keys := strings.Split(val, ",")
+		trimmed := make([]string, 0, len(keys))
+		for _, k := range keys {
+			if s := strings.TrimSpace(k); s != "" {
+				trimmed = append(trimmed, s)
+			}
+		}
+		if len(trimmed) > 0 {
+			m.config.Receiver.APIKeys = trimmed
+		}
 	}
 	if val, ok := envGetInt("RECEIVER_MAX_PROXY_CONNS"); ok {
 		m.config.Receiver.MaxProxyConns = val

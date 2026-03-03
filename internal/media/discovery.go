@@ -1001,17 +1001,29 @@ func (m *Module) GetCategories() []*models.MediaCategory {
 	return cats
 }
 
-// ContentFingerprints returns a snapshot of all known content fingerprints for
-// local media. Used by the handler to deduplicate receiver items that match
-// local files (same content on both master and slave).
-func (m *Module) ContentFingerprints() map[string]bool {
+// HasFingerprint reports whether a content fingerprint matches any local media file.
+// Used to deduplicate receiver items that exist on both master and slave.
+func (m *Module) HasFingerprint(fp string) bool {
 	m.metaMu.RLock()
 	defer m.metaMu.RUnlock()
-	fps := make(map[string]bool, len(m.fingerprintIndex))
-	for fp := range m.fingerprintIndex {
-		fps[fp] = true
+	_, ok := m.fingerprintIndex[fp]
+	return ok
+}
+
+// IsFingerprintMature reports whether a content fingerprint matches a local media
+// file that is flagged as mature. Used to gate access to receiver items that
+// correspond to mature local content.
+func (m *Module) IsFingerprintMature(fp string) bool {
+	m.metaMu.RLock()
+	path, ok := m.fingerprintIndex[fp]
+	m.metaMu.RUnlock()
+	if !ok {
+		return false
 	}
-	return fps
+	m.mu.RLock()
+	item, ok := m.media[path]
+	m.mu.RUnlock()
+	return ok && item.IsMature
 }
 
 // GetStats returns media statistics

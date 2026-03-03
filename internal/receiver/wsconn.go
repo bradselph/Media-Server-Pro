@@ -82,6 +82,7 @@ type slaveWS struct {
 	conn    *websocket.Conn
 	mu      sync.Mutex // protects writes to conn
 	log     *logger.Logger
+	done    chan struct{} // closed on disconnect to stop the ping goroutine
 }
 
 // sendJSON sends a typed JSON message to the slave.
@@ -125,6 +126,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	sw := &slaveWS{
 		conn: conn,
 		log:  m.log,
+		done: make(chan struct{}),
 	}
 
 	// Configure keep-alive via ping/pong
@@ -134,21 +136,27 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	// Start ping ticker
+	// Start ping ticker — stopped when done channel is closed on disconnect
 	go func() {
 		ticker := time.NewTicker(25 * time.Second)
 		defer ticker.Stop()
-		for range ticker.C {
-			sw.mu.Lock()
-			err := conn.WriteMessage(websocket.PingMessage, nil)
-			sw.mu.Unlock()
-			if err != nil {
+		for {
+			select {
+			case <-ticker.C:
+				sw.mu.Lock()
+				err := conn.WriteMessage(websocket.PingMessage, nil)
+				sw.mu.Unlock()
+				if err != nil {
+					return
+				}
+			case <-sw.done:
 				return
 			}
 		}
 	}()
 
 	defer func() {
+		close(sw.done)
 		conn.Close()
 		if sw.slaveID != "" {
 			m.removeSlaveWS(sw.slaveID)

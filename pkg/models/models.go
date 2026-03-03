@@ -44,9 +44,7 @@ type MediaItem struct {
 	// SECURITY WARNING: Metadata contains arbitrary key-value pairs.
 	// All metadata values MUST be sanitized using helpers.SanitizeMap before storage
 	// to prevent XSS when rendered in HTML templates. Handlers should validate keys/values.
-	Metadata  map[string]string `json:"metadata,omitempty"`
-	IsRemote  bool              `json:"is_remote"`
-	RemoteURL string            `json:"remote_url,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // MediaCategory represents a category of media files

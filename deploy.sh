@@ -434,8 +434,8 @@ if $SETUP_RECEIVER; then
     fi
     if [ -n \"\$NGINX_CONF\" ] && ! grep -q 'client_max_body_size' \"\$NGINX_CONF\" 2>/dev/null; then
       echo \"[receiver] Adding client_max_body_size 0 to \$NGINX_CONF\"
-      # Insert after the first proxy_pass line inside the location / block
-      sudo sed -i '/proxy_pass.*http:/a \\    client_max_body_size 0;' \"\$NGINX_CONF\"
+      # Insert after the first proxy_pass line only (0,/pattern/ = first match)
+      sudo sed -i '0,/proxy_pass.*http:/{/proxy_pass.*http:/a \\    client_max_body_size 0;\n}' \"\$NGINX_CONF\"
       sudo nginx -t 2>/dev/null && sudo systemctl reload nginx && echo '[receiver] nginx reloaded' \
         || echo '[receiver] WARNING: nginx config test failed — check manually'
     elif [ -n \"\$NGINX_CONF\" ]; then
