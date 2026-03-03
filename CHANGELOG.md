@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.31.0] - 2026-03-03 (minor)
+
+- Merge pull request #34 from bradselph/development
+- fix: deduplicate local media by content fingerprint during scan
+
+
 ## [0.30.0] - 2026-03-03 (minor)
 
 - Merge pull request #33 from bradselph/development
