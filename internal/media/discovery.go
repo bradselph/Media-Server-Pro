@@ -415,6 +415,49 @@ func (m *Module) Scan() error {
 		}
 	}
 
+	// ── Local dedup by content fingerprint ─────────────────────────────
+	// When identical file content exists at multiple filesystem paths
+	// (e.g. copied into two configured directories), keep only one
+	// representative entry.  The winner is the copy with the most views;
+	// ties are broken by earliest DateAdded so the original discovery
+	// date is preserved.
+	var dupsRemoved int
+	m.metaMu.RLock()
+	fpWinner := make(map[string]string, len(newMedia)) // fingerprint -> winning path
+	for path := range newMedia {
+		meta := m.metadata[path]
+		if meta == nil || meta.ContentFingerprint == "" {
+			continue
+		}
+		fp := meta.ContentFingerprint
+		existing, seen := fpWinner[fp]
+		if !seen {
+			fpWinner[fp] = path
+			continue
+		}
+		// Pick the better of the two entries.
+		existingMeta := m.metadata[existing]
+		keepExisting := true
+		if meta.Views > existingMeta.Views {
+			keepExisting = false
+		} else if meta.Views == existingMeta.Views && meta.DateAdded.Before(existingMeta.DateAdded) {
+			keepExisting = false
+		}
+		if keepExisting {
+			delete(newMedia, path)
+			m.log.Info("Dedup: skipping %s (duplicate of %s, fingerprint %s…)", path, existing, fp[:12])
+		} else {
+			delete(newMedia, existing)
+			fpWinner[fp] = path
+			m.log.Info("Dedup: skipping %s (duplicate of %s, fingerprint %s…)", existing, path, fp[:12])
+		}
+		dupsRemoved++
+	}
+	m.metaMu.RUnlock()
+	if dupsRemoved > 0 {
+		m.log.Info("Dedup: removed %d local duplicate(s) by content fingerprint", dupsRemoved)
+	}
+
 	// Build ID index for O(1) lookups by ID
 	newMediaByID := make(map[string]*models.MediaItem, len(newMedia))
 	for _, item := range newMedia {
