@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.37.0] - 2026-03-03 (minor)
+
+- Merge pull request #40 from bradselph/development
+- go fmt all
+- fix: suppress noisy schema_migrations warning on GORM auto-migration
+- fix: persist scan results to DB in ScanDirectory for review queue
+- fix: use MySQL VALUES() syntax instead of PostgreSQL excluded.* in upsert
+
+
 ## [0.36.0] - 2026-03-03 (minor)
 
 - Merge pull request #39 from bradselph/development
