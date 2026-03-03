@@ -15,7 +15,37 @@ func (h *Handler) GetRemoteSources(c *gin.Context) {
 		return
 	}
 	sources := h.remote.GetSources()
-	writeSuccess(c, sources)
+
+	// Strip passwords before sending to the frontend.
+	type safeSource struct {
+		Name     string `json:"name"`
+		URL      string `json:"url"`
+		Username string `json:"username,omitempty"`
+		Enabled  bool   `json:"enabled"`
+	}
+	type safeState struct {
+		Source     safeSource `json:"source"`
+		Status     string     `json:"status"`
+		LastSync   interface{} `json:"last_sync"`
+		MediaCount int        `json:"media_count"`
+		Error      string     `json:"error,omitempty"`
+	}
+	safe := make([]safeState, len(sources))
+	for i, s := range sources {
+		safe[i] = safeState{
+			Source: safeSource{
+				Name:     s.Source.Name,
+				URL:      s.Source.URL,
+				Username: s.Source.Username,
+				Enabled:  s.Source.Enabled,
+			},
+			Status:     s.Status,
+			LastSync:   s.LastSync,
+			MediaCount: s.MediaCount,
+			Error:      s.Error,
+		}
+	}
+	writeSuccess(c, safe)
 }
 
 // CreateRemoteSource adds a new remote source at runtime and persists it to config
@@ -47,7 +77,12 @@ func (h *Handler) CreateRemoteSource(c *gin.Context) {
 		h.log.Warn("Failed to persist new remote source to config: %v", err)
 	}
 
-	writeSuccess(c, source)
+	writeSuccess(c, map[string]interface{}{
+		"name":     source.Name,
+		"url":      source.URL,
+		"username": source.Username,
+		"enabled":  source.Enabled,
+	})
 }
 
 // GetRemoteStats returns remote media statistics
