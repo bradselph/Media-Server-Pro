@@ -930,14 +930,32 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 
 	var items []*models.MediaItem
 	for _, item := range m.media {
-		if filter.matches(item) {
+		if filter.Matches(item) {
 			items = append(items, item)
 		}
 	}
 
-	// Sort by specified field (all cases use ascending order; SortDesc reverses uniformly)
+	filter.SortItems(items)
+	return items
+}
+
+// Filter defines filtering options for media listing.
+type Filter struct {
+	Type     models.MediaType
+	Category string
+	Search   string
+	Tags     []string
+	IsMature *bool
+	SortBy   string
+	SortDesc bool
+}
+
+// SortItems sorts a slice of media items in place according to the filter's
+// SortBy and SortDesc fields.  Exported so handlers can re-sort a merged
+// (local + receiver) list after appending items.
+func (f Filter) SortItems(items []*models.MediaItem) {
 	sort.Slice(items, func(i, j int) bool {
-		switch filter.SortBy {
+		switch f.SortBy {
 		case "name":
 			return items[i].Name < items[j].Name
 		case "date_added":
@@ -964,40 +982,16 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 		}
 	})
 
-	if filter.SortDesc {
+	if f.SortDesc {
 		for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
 			items[i], items[j] = items[j], items[i]
 		}
 	}
-
-	// Apply pagination
-	if filter.Offset > 0 {
-		if filter.Offset >= len(items) {
-			return []*models.MediaItem{}
-		}
-		items = items[filter.Offset:]
-	}
-	if filter.Limit > 0 && filter.Limit < len(items) {
-		items = items[:filter.Limit]
-	}
-
-	return items
 }
 
-// Filter defines filtering options for media listing
-type Filter struct {
-	Type     models.MediaType
-	Category string
-	Search   string
-	Tags     []string
-	IsMature *bool
-	SortBy   string
-	SortDesc bool
-	Offset   int
-	Limit    int
-}
-
-func (f Filter) matches(item *models.MediaItem) bool {
+// Matches reports whether a media item passes the filter's criteria.
+// Exported so handlers can apply the same filter logic to receiver items.
+func (f Filter) Matches(item *models.MediaItem) bool {
 	if f.Type != "" && f.Type != models.MediaTypeUnknown && item.Type != f.Type {
 		return false
 	}
