@@ -17,7 +17,7 @@ import (
 
 // ListMedia returns all media items
 func (h *Handler) ListMedia(c *gin.Context) {
-	c.Header("Cache-Control", "private, max-age=60")
+	c.Header("Cache-Control", "private, max-age=300")
 
 	sortBy := c.Query("sort")
 	if sortBy == "date" {
