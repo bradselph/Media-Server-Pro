@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.36.0] - 2026-03-03 (minor)
+
+- Merge pull request #39 from bradselph/development
+- fix: add missing content_fingerprint field to ReceiverMediaItem type
+- fix: serve placeholder thumbnails for receiver media items
+- fix: complete receiver media item data and enable playback tracking
+- fix: strip password from RemoteSource in API responses
+- fix: correct log viewer display order and thumbnail input label
+- Merge branch 'main' into development
+- fix: correct misleading TODO comments on BannedIP and storage_quota types
+- fix: replace incorrect TODO comment on storage_quota in GetPermissions
+- fix: remove unused encoding/json import from admin_security.go
+- fix: apply scanner mature flags to media library in background task
+- fix: prevent media list from refreshing on navigation and filter changes
+
+
 ## [0.35.0] - 2026-03-03 (minor)
 
 - Merge pull request #38 from bradselph/development
