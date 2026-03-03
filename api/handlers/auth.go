@@ -515,17 +515,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 			"canDelete":          user.Permissions.CanDelete,
 			"canManage":          user.Permissions.CanManage,
 		},
-		// TODO: API Contract Mismatch - "storage_quota" field in limits returns raw BYTES
-		// from getUserStorageQuota() (handler.go:527-544), e.g. 1073741824 for "basic".
-		// Frontend (web/frontend/src/pages/profile/ProfilePage.tsx:352-354) correctly
-		// divides by 1073741824 to convert to GB: `(permissions.limits.storage_quota / 1073741824).toFixed(0) GB`.
-		// However, types.ts PermissionsInfo.limits.storage_quota: number has no annotation
-		// clarifying the unit is bytes, creating a maintenance hazard — future callers may
-		// not know to divide. Consider adding a comment to types.ts or renaming to storage_quota_bytes.
-		// NOTE: The division in ProfilePage.tsx IS correct — no runtime bug here, but the
-		// contrast with GetStorageUsage's "quota_gb" field (system.go:230) that is ALSO bytes
-		// creates an inconsistent API surface where one field implies GB and is bytes, and
-		// the other correctly represents bytes but lacks documentation.
+		// storage_quota is in bytes; GetStorageUsage's quota_gb is in GB (already divided).
 		"limits": map[string]interface{}{
 			"storage_quota":      h.getUserStorageQuota(user.Type),
 			"concurrent_streams": h.getUserStreamLimit(user.Type),
