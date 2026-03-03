@@ -75,6 +75,7 @@ func (h *Handler) CreateRemoteSource(c *gin.Context) {
 		cfg.RemoteMedia.Sources = append(cfg.RemoteMedia.Sources, source)
 	}); err != nil {
 		h.log.Warn("Failed to persist new remote source to config: %v", err)
+		// Source is active in memory but won't survive a restart
 	}
 
 	writeSuccess(c, map[string]interface{}{
@@ -170,7 +171,7 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 	}
 
 	if err := h.config.Update(func(cfg *config.Config) {
-		filtered := cfg.RemoteMedia.Sources[:0]
+		filtered := make([]config.RemoteSource, 0, len(cfg.RemoteMedia.Sources))
 		for _, s := range cfg.RemoteMedia.Sources {
 			if s.Name != sourceName {
 				filtered = append(filtered, s)
@@ -234,6 +235,9 @@ func (h *Handler) StreamRemoteMedia(c *gin.Context) {
 
 	if err := h.remote.ProxyRemoteWithCache(c.Writer, c.Request, remoteURL, sourceName); err != nil {
 		h.log.Error("Remote stream error: %v", err)
-		writeError(c, http.StatusBadGateway, "Failed to stream from remote")
+		// Only write error response if headers haven't been sent yet
+		if !c.Writer.Written() {
+			writeError(c, http.StatusBadGateway, "Failed to stream from remote")
+		}
 	}
 }

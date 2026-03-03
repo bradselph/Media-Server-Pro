@@ -220,6 +220,9 @@ func (h *Handler) ReceiverWebSocket(c *gin.Context) {
 // POST /api/receiver/stream-push/:token
 // The slave opens this connection in response to a stream_request sent over WebSocket.
 func (h *Handler) ReceiverStreamPush(c *gin.Context) {
+	if !h.checkReceiverEnabled(c) {
+		return
+	}
 	if !h.requireReceiverAPIKey(c) {
 		return
 	}

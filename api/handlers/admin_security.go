@@ -9,6 +9,9 @@ import (
 
 // GetSecurityStats returns security module statistics
 func (h *Handler) GetSecurityStats(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	stats := h.security.GetStats()
 	writeSuccess(c, map[string]interface{}{
 		"banned_ips":         stats.BannedIPs,
@@ -21,6 +24,9 @@ func (h *Handler) GetSecurityStats(c *gin.Context) {
 
 // GetWhitelist returns the IP whitelist as a flat array.
 func (h *Handler) GetWhitelist(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	type ipEntry struct {
 		IP        string     `json:"ip"`
 		Comment   string     `json:"comment"`
@@ -38,6 +44,9 @@ func (h *Handler) GetWhitelist(c *gin.Context) {
 
 // AddToWhitelist adds an IP to the whitelist
 func (h *Handler) AddToWhitelist(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	var req struct {
 		IP        string     `json:"ip"`
 		Comment   string     `json:"comment"`
@@ -64,6 +73,9 @@ func (h *Handler) AddToWhitelist(c *gin.Context) {
 
 // RemoveFromWhitelist removes an IP from the whitelist
 func (h *Handler) RemoveFromWhitelist(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	var req struct {
 		IP string `json:"ip"`
 	}
@@ -82,6 +94,9 @@ func (h *Handler) RemoveFromWhitelist(c *gin.Context) {
 
 // GetBlacklist returns the IP blacklist as a flat array.
 func (h *Handler) GetBlacklist(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	type ipEntry struct {
 		IP        string     `json:"ip"`
 		Comment   string     `json:"comment"`
@@ -99,6 +114,9 @@ func (h *Handler) GetBlacklist(c *gin.Context) {
 
 // AddToBlacklist adds an IP to the blacklist
 func (h *Handler) AddToBlacklist(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	var req struct {
 		IP        string     `json:"ip"`
 		Comment   string     `json:"comment"`
@@ -125,6 +143,9 @@ func (h *Handler) AddToBlacklist(c *gin.Context) {
 
 // RemoveFromBlacklist removes an IP from the blacklist
 func (h *Handler) RemoveFromBlacklist(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	var req struct {
 		IP string `json:"ip"`
 	}
@@ -143,6 +164,9 @@ func (h *Handler) RemoveFromBlacklist(c *gin.Context) {
 
 // GetBannedIPs returns currently banned IPs as a typed array.
 func (h *Handler) GetBannedIPs(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	banned := h.security.GetBannedIPs()
 	type bannedIP struct {
 		IP        string     `json:"ip"`
@@ -167,6 +191,9 @@ func (h *Handler) GetBannedIPs(c *gin.Context) {
 
 // BanIP manually bans an IP
 func (h *Handler) BanIP(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	var req struct {
 		IP       string `json:"ip"`
 		Duration int    `json:"duration_minutes"`
@@ -174,6 +201,11 @@ func (h *Handler) BanIP(c *gin.Context) {
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	if req.IP == "" {
+		writeError(c, http.StatusBadRequest, "IP address is required")
 		return
 	}
 
@@ -193,6 +225,9 @@ func (h *Handler) BanIP(c *gin.Context) {
 
 // UnbanIP removes a ban on an IP
 func (h *Handler) UnbanIP(c *gin.Context) {
+	if !h.requireSecurity(c) {
+		return
+	}
 	var req struct {
 		IP string `json:"ip"`
 	}

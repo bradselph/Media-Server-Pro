@@ -92,7 +92,7 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 		h.security, h.database, h.auth, h.media, h.streaming, h.hls,
 		h.analytics, h.playlist, h.admin, h.tasks, h.upload, h.scanner,
 		h.thumbnails, h.validator, h.backup, h.autodiscovery, h.suggestions,
-		h.categorizer, h.updater, h.remote,
+		h.categorizer, h.updater, h.remote, h.receiver,
 	}
 	type moduleHealthItem struct {
 		Name      string `json:"name"`
@@ -244,6 +244,12 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 // AdminDeleteUser deletes a user
 func (h *Handler) AdminDeleteUser(c *gin.Context) {
 	username := c.Param("username")
+
+	// Prevent admin from deleting their own account
+	if sess := getSession(c); sess != nil && sess.Username == username {
+		writeError(c, http.StatusForbidden, "Cannot delete your own account")
+		return
+	}
 
 	if err := h.auth.DeleteUser(c.Request.Context(), username); err != nil {
 		writeError(c, http.StatusNotFound, "User not found")

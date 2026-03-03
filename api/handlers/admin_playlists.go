@@ -37,7 +37,7 @@ func (h *Handler) AdminListPlaylists(c *gin.Context) {
 
 	filtered := all
 	if search != "" {
-		kept := all[:0]
+		kept := make([]*models.Playlist, 0, len(all))
 		for _, p := range all {
 			if strings.Contains(strings.ToLower(p.Name), search) {
 				kept = append(kept, p)

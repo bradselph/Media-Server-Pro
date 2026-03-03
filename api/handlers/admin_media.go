@@ -256,6 +256,25 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		return
 	}
 
+	// Pre-validate update data before entering the loop so we don't partially
+	// process items and then return an error mid-way.
+	if req.Action == "update" {
+		hasValidField := false
+		if _, ok := req.Data["category"].(string); ok {
+			hasValidField = true
+		}
+		if _, ok := req.Data["is_mature"].(bool); ok {
+			hasValidField = true
+		}
+		if _, ok := req.Data["tags"]; ok {
+			hasValidField = true
+		}
+		if !hasValidField {
+			writeError(c, http.StatusBadRequest, "no valid fields in data for update action")
+			return
+		}
+	}
+
 	var successCount, failedCount int
 	errs := make([]string, 0)
 
@@ -297,10 +316,6 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 					}
 					updates["tags"] = tags
 				}
-			}
-			if len(updates) == 0 {
-				writeError(c, http.StatusBadRequest, "no valid fields in data for update action")
-				return
 			}
 			opErr = h.media.UpdateMetadata(path, updates)
 			if opErr == nil {
