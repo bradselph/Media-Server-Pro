@@ -183,7 +183,7 @@ onClick={() => handleQualitySelect(q.index)}
 <div className="settings-panel__divider"/>
 <div className="settings-panel__bandwidth">
 <i className="bi bi-speedometer"/>
-<span>Connection: {formatBitrate(bandwidth)}</span>
+<span>Connection: {formatBitrate(bandwidth!)}</span>
 </div>
 </>
 )}
