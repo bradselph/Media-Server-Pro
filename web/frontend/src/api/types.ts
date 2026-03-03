@@ -620,6 +620,7 @@ export interface ReceiverMediaItem {
     size: number
     duration: number
     content_type: string
+    content_fingerprint?: string
     width: number
     height: number
 }
