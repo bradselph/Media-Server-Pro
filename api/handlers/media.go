@@ -111,23 +111,10 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		filterNoPagination.SortItems(allItems)
 	}
 
-	// Mature content gate: determine whether the caller can see mature items.
-	// If the user is not authorised (guest, no permission, or preference disabled),
-	// mature items are stripped from the listing entirely — this is a server-side
-	// enforcement that does not rely on the frontend blur overlay.
-	canViewMature := false
-	if user := getUser(c); user != nil {
-		canViewMature = user.Permissions.CanViewMature && user.Preferences.ShowMature
-	}
-	if !canViewMature {
-		filtered := make([]*models.MediaItem, 0, len(allItems))
-		for _, item := range allItems {
-			if !item.IsMature {
-				filtered = append(filtered, item)
-			}
-		}
-		allItems = filtered
-	}
+	// Mature items are included in the listing with is_mature=true so the
+	// frontend can display them blurred with a gate overlay.  Server-side
+	// enforcement happens on individual item / streaming endpoints — guests
+	// and users without permission cannot actually play or access mature content.
 
 	totalItems := len(allItems)
 	totalPages := 1

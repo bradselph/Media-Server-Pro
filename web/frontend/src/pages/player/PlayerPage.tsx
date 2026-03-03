@@ -93,8 +93,6 @@ export function PlayerPage() {
     const [hlsJob, setHlsJob] = useState<HLSJob | null>(null)
     const [hlsPolling, setHlsPolling] = useState(false)
     const [activeHlsUrl, setActiveHlsUrl] = useState<string | null>(null)
-    const [hlsAvailable, setHlsAvailable] = useState(false)
-    const [hlsReadyUrl, setHlsReadyUrl] = useState<string | null>(null)
     const hlsEnabled = useSettingsStore((s) => s.serverSettings?.features?.enableHLS ?? true)
     // Rating state
     const [userRating, setUserRating] = useState(0)
@@ -185,8 +183,6 @@ export function PlayerPage() {
         setDuration(0)
         setIsPlaying(false)
         setActiveHlsUrl(null)
-        setHlsAvailable(false)
-        setHlsReadyUrl(null)
         setHlsJob(null)
         setHlsPolling(false)
         setUserRating(0)
@@ -222,13 +218,13 @@ export function PlayerPage() {
             positionFetchCancelled = true
         }
     }, [mediaId, media, matureAccepted]) // eslint-disable-line react-hooks/exhaustive-deps
-    // Check HLS availability
+    // Check HLS availability — auto-activate when ready so quality selection
+    // appears in the settings panel without requiring a manual opt-in.
     useEffect(() => {
         if (!mediaId || media?.type !== 'video' || !hlsEnabled) return
         hlsApi.check(mediaId).then(hls => {
             if (hls.available && hls.hls_url) {
-                setHlsAvailable(true)
-                setHlsReadyUrl(hls.hls_url)
+                setActiveHlsUrl(hls.hls_url)
             } else if (hls.job_id && hls.status === 'running') {
                 setHlsJob({
                     id: hls.job_id,
@@ -254,8 +250,7 @@ export function PlayerPage() {
                 setHlsJob(updated)
                 if (updated.status === 'completed') {
                     setHlsPolling(false)
-                    setHlsAvailable(true)
-                    setHlsReadyUrl(hlsApi.getMasterPlaylistUrl(updated.id))
+                    setActiveHlsUrl(hlsApi.getMasterPlaylistUrl(updated.id))
                 } else if (updated.status === 'failed') {
                     setHlsPolling(false)
                 }
@@ -974,30 +969,6 @@ export function PlayerPage() {
                                         onChange={handleVolumeChange}
                                         style={{width: 70, cursor: 'pointer', accentColor: '#667eea'}}
                                     />
-                                </div>
-                            </div>
-                        )}
-
-                        {/* HLS available — user opt-in banner */}
-                        {hlsAvailable && hlsReadyUrl && !activeHlsUrl && (
-                            <div className="hls-available-banner">
-                                <span><i className="bi bi-lightning-fill"/> HLS adaptive stream ready</span>
-                                <div className="hls-banner-actions">
-                                    <button
-                                        className="hls-switch-btn"
-                                        onClick={() => {
-                                            setActiveHlsUrl(hlsReadyUrl);
-                                            setHlsAvailable(false)
-                                        }}
-                                    >
-                                        <i className="bi bi-play-circle"/> Switch to HLS
-                                    </button>
-                                    <button
-                                        className="hls-dismiss-btn"
-                                        onClick={() => setHlsAvailable(false)}
-                                    >
-                                        Dismiss
-                                    </button>
                                 </div>
                             </div>
                         )}
