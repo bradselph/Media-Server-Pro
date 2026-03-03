@@ -178,7 +178,7 @@ onClick={() => handleQualitySelect(q.index)}
 </span>
 </button>
 ))}
-{bandwidth > 0 && (
+{(bandwidth ?? 0) > 0 && (
 <>
 <div className="settings-panel__divider"/>
 <div className="settings-panel__bandwidth">

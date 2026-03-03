@@ -1,6 +1,6 @@
 import {type RefObject, useCallback, useEffect, useRef, useState} from 'react'
 
-interface HLSQuality {
+export interface HLSQuality {
     index: number
     height: number
     bitrate: number
@@ -10,9 +10,11 @@ interface HLSQuality {
 interface UseHLSResult {
     qualities: HLSQuality[]
     currentQuality: number
+    autoLevel: number
     selectQuality: (index: number) => void
     isLoading: boolean
     error: string | null
+    bandwidth: number
 }
 
 function getQualityName(height: number): string {
@@ -25,6 +27,12 @@ function getQualityName(height: number): string {
     return `${height}p`
 }
 
+export function formatBitrate(bps: number): string {
+    if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`
+    if (bps >= 1_000) return `${(bps / 1_000).toFixed(0)} Kbps`
+    return `${bps} bps`
+}
+
 export function useHLS(
     mediaRef: RefObject<HTMLMediaElement | null>,
     hlsUrl: string | null,
@@ -33,6 +41,8 @@ export function useHLS(
     const hlsRef = useRef<import('hls.js').default | null>(null)
     const [qualities, setQualities] = useState<HLSQuality[]>([])
     const [currentQuality, setCurrentQuality] = useState(-1)
+    const [autoLevel, setAutoLevel] = useState(-1)
+    const [bandwidth, setBandwidth] = useState(0)
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const networkRetryCount = useRef(0)
@@ -54,6 +64,8 @@ export function useHLS(
         if (!hlsUrl || !mediaRef.current) {
             setQualities([])
             setCurrentQuality(-1)
+            setAutoLevel(-1)
+            setBandwidth(0)
             setIsLoading(false)
             setError(null)
             return
@@ -140,11 +152,12 @@ export function useHLS(
                 }))
                 setQualities(q)
                 setCurrentQuality(-1) // auto
+                setAutoLevel(-1)
                 setIsLoading(false)
             })
 
             hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
-                if (!cancelled) setCurrentQuality(data.level)
+                if (!cancelled) setAutoLevel(data.level)
             })
 
             hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
@@ -153,10 +166,11 @@ export function useHLS(
                 if (stats.loaded && stats.loading.end && stats.loading.start) {
                     const loadTime = stats.loading.end - stats.loading.start
                     if (loadTime > 0) {
-                        const bandwidth = (stats.loaded * 8) / (loadTime / 1000)
-                        if (bandwidth < 1_000_000) {
+                        const bw = (stats.loaded * 8) / (loadTime / 1000)
+                        setBandwidth(bw)
+                        if (bw < 1_000_000) {
                             hls.config.maxBufferLength = 30
-                        } else if (bandwidth < 3_000_000) {
+                        } else if (bw < 3_000_000) {
                             hls.config.maxBufferLength = 45
                         } else {
                             hls.config.maxBufferLength = 60
@@ -218,9 +232,11 @@ export function useHLS(
             }
             setQualities([])
             setCurrentQuality(-1)
+            setAutoLevel(-1)
+            setBandwidth(0)
             setIsLoading(false)
         }
     }, [hlsUrl, mediaRef])
 
-    return {qualities, currentQuality, selectQuality, isLoading, error}
+    return {qualities, currentQuality, autoLevel, selectQuality, isLoading, error, bandwidth}
 }
