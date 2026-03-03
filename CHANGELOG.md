@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.38.0] - 2026-03-03 (minor)
+
+- Merge pull request #41 from bradselph/development
+- fix: multiple admin handler bugs across tabs
+
+
 ## [0.37.0] - 2026-03-03 (minor)
 
 - Merge pull request #40 from bradselph/development
