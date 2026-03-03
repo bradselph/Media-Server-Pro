@@ -24,11 +24,11 @@ func (h *Handler) GetRemoteSources(c *gin.Context) {
 		Enabled  bool   `json:"enabled"`
 	}
 	type safeState struct {
-		Source     safeSource `json:"source"`
-		Status     string     `json:"status"`
+		Source     safeSource  `json:"source"`
+		Status     string      `json:"status"`
 		LastSync   interface{} `json:"last_sync"`
-		MediaCount int        `json:"media_count"`
-		Error      string     `json:"error,omitempty"`
+		MediaCount int         `json:"media_count"`
+		Error      string      `json:"error,omitempty"`
 	}
 	safe := make([]safeState, len(sources))
 	for i, s := range sources {

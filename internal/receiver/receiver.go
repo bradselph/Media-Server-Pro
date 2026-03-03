@@ -527,12 +527,12 @@ func (m *Module) GetStats() Stats {
 var allowedProxyHeaders = map[string]bool{
 	"Content-Type":        true,
 	"Content-Length":      true,
-	"Content-Range":      true,
+	"Content-Range":       true,
 	"Content-Disposition": true,
-	"Accept-Ranges":      true,
-	"Last-Modified":      true,
-	"Etag":               true,
-	"Cache-Control":      true,
+	"Accept-Ranges":       true,
+	"Last-Modified":       true,
+	"Etag":                true,
+	"Cache-Control":       true,
 }
 
 // ProxyStream streams media from a slave to the client.
