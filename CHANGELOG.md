@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.33.0] - 2026-03-03 (minor)
+
+- Merge pull request #36 from bradselph/development
+- fix: apply all filters and sort to receiver items in ListMedia
+
+
 ## [0.32.0] - 2026-03-03 (minor)
 
 - Merge pull request #35 from bradselph/development
