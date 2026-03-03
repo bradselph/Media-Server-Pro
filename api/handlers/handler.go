@@ -523,6 +523,33 @@ func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 	return item.Path, true
 }
 
+// resolveMediaPathOrReceiver is like resolveMediaByID but falls back to receiver
+// items when the ID is not found locally. For receiver items it returns a
+// synthetic path "receiver:<id>" suitable for use as a database key (position
+// tracking, watch history) but NOT for local file operations.
+func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path string, receiverName string, ok bool) {
+	if id == "" {
+		writeError(c, http.StatusBadRequest, errIDRequired)
+		return "", "", false
+	}
+	item, err := h.media.GetMediaByID(id)
+	if err == nil {
+		return item.Path, item.Name, true
+	}
+	// Fallback: check receiver media
+	if h.receiver != nil {
+		if ri := h.receiver.GetMediaItem(id); ri != nil {
+			return "receiver:" + id, ri.Name, true
+		}
+	}
+	if !h.media.IsReady() {
+		writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+		return "", "", false
+	}
+	writeError(c, http.StatusNotFound, errMediaNotFound)
+	return "", "", false
+}
+
 // getUserStorageQuota returns storage quota for user type
 func (h *Handler) getUserStorageQuota(userType string) int64 {
 	cfg := h.media.GetConfig()

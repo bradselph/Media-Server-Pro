@@ -1,5 +1,5 @@
 import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
-import {useQuery, useQueryClient} from '@tanstack/react-query'
+import {keepPreviousData, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
@@ -749,8 +749,9 @@ export function IndexPage() {
         return () => clearTimeout(t)
     }, [searchInput, updateParams])
 
-    // Media list query
-    const {data: mediaData, isLoading: mediaLoading, error: mediaError} = useQuery({
+    // Media list query — keepPreviousData prevents the grid from blanking out
+    // when changing page/filter/sort; the old results stay visible until the new ones arrive.
+    const {data: mediaData, isPending: mediaInitialLoading, isFetching: mediaFetching, isPlaceholderData: mediaStale, error: mediaError} = useQuery({
         queryKey: ['media', {page, limit, type: mediaType, sort: sortBy, order: sortOrder, category, search}],
         queryFn: () => mediaApi.list({
             page,
@@ -761,12 +762,14 @@ export function IndexPage() {
             category: category === 'all' ? undefined : category,
             search: search || undefined,
         }),
+        placeholderData: keepPreviousData,
     })
 
-    // Categories query
+    // Categories query — rarely changes, cache for 10 minutes
     const {data: categories = []} = useQuery<MediaCategory[]>({
         queryKey: ['categories'],
         queryFn: () => mediaApi.getCategories(),
+        staleTime: 10 * 60 * 1000,
     })
 
     // Analytics query — admin-only endpoint, only execute when user is admin
@@ -786,6 +789,7 @@ export function IndexPage() {
         queryKey: ['continue-watching'],
         queryFn: () => suggestionsApi.getContinueWatching(),
         enabled: isAuthenticated && showContinueWatching,
+        staleTime: 2 * 60 * 1000,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -794,6 +798,7 @@ export function IndexPage() {
         queryKey: ['suggestions'],
         queryFn: () => suggestionsApi.get(),
         enabled: showRecommended,
+        staleTime: 10 * 60 * 1000,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -802,6 +807,7 @@ export function IndexPage() {
         queryKey: ['suggestions-trending'],
         queryFn: () => suggestionsApi.getTrending(),
         enabled: showTrending,
+        staleTime: 10 * 60 * 1000,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -811,6 +817,7 @@ export function IndexPage() {
         queryKey: ['playlists'],
         queryFn: () => playlistApi.list(),
         enabled: isAuthenticated,
+        staleTime: 5 * 60 * 1000,
         select: (data) => data ?? [],
     })
 
@@ -945,7 +952,7 @@ export function IndexPage() {
                 />
 
                 <button className="controls-btn" onClick={handleRefresh} title="Refresh"><i
-                    className="bi bi-arrow-counterclockwise"/> Refresh
+                    className={`bi bi-arrow-counterclockwise${mediaFetching ? ' spin' : ''}`}/> Refresh
                 </button>
                 <button className="controls-btn controls-btn-success" onClick={handlePlayAll}><i
                     className="bi bi-play-fill"/> Play All
@@ -1113,7 +1120,7 @@ export function IndexPage() {
                             <i className="bi bi-arrow-clockwise"/> Retry
                         </button>
                     </div>
-                ) : mediaLoading ? (
+                ) : mediaInitialLoading ? (
                     <div className="loading-state"><i className="bi bi-film"/> Loading your media library...</div>
                 ) : items.length === 0 && mediaData?.scanning ? (
                     <div className="loading-state">
@@ -1129,7 +1136,7 @@ export function IndexPage() {
                         </p>
                     </div>
                 ) : (
-                    <div className="media-grid">
+                    <div className="media-grid" style={(mediaFetching && mediaStale) ? {opacity: 0.6, pointerEvents: 'none', transition: 'opacity 0.15s ease'} : {transition: 'opacity 0.15s ease'}}>
                         {items.map(item => (
                             <MediaCard
                                 key={item.id}

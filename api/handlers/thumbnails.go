@@ -68,6 +68,28 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	}
 
 	id := c.Query("id")
+
+	// Receiver items have no local file — serve a placeholder instead of 404.
+	if id != "" {
+		if _, err := h.media.GetMediaByID(id); err != nil && h.receiver != nil {
+			if ri := h.receiver.GetMediaItem(id); ri != nil {
+				placeholderType := "placeholder"
+				if ri.MediaType == "audio" {
+					placeholderType = "audio_placeholder"
+				}
+				if h.isReceiverItemMature(ri.ContentFingerprint) && !h.canViewMatureContent(c) {
+					placeholderType = "censored"
+				}
+				if ph, pErr := h.thumbnails.GetPlaceholderPath(placeholderType); pErr == nil {
+					c.Header("Cache-Control", "public, max-age=86400")
+					c.Header("Content-Type", "image/jpeg")
+					http.ServeFile(c.Writer, c.Request, ph)
+					return
+				}
+			}
+		}
+	}
+
 	path, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return
@@ -182,6 +204,17 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 		return
 	}
 	id := c.Query("id")
+
+	// Receiver items have no local file for preview generation.
+	if id != "" {
+		if _, err := h.media.GetMediaByID(id); err != nil && h.receiver != nil {
+			if h.receiver.GetMediaItem(id) != nil {
+				writeSuccess(c, map[string]interface{}{"previews": []string{}})
+				return
+			}
+		}
+	}
+
 	path, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return

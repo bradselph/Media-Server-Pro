@@ -17,7 +17,7 @@ import (
 
 // ListMedia returns all media items
 func (h *Handler) ListMedia(c *gin.Context) {
-	c.Header("Cache-Control", "private, max-age=60")
+	c.Header("Cache-Control", "private, max-age=300")
 
 	sortBy := c.Query("sort")
 	if sortBy == "date" {
@@ -202,6 +202,7 @@ func (h *Handler) GetMedia(c *gin.Context) {
 					Duration: ri.Duration,
 					Width:    ri.Width,
 					Height:   ri.Height,
+					IsMature: h.isReceiverItemMature(ri.ContentFingerprint),
 				})
 				return
 			}
@@ -443,7 +444,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 // GetPlaybackPosition returns the saved playback position for the current user.
 func (h *Handler) GetPlaybackPosition(c *gin.Context) {
 	id := c.Query("id")
-	absPath, ok := h.resolveMediaByID(c, id)
+	mediaPath, _, ok := h.resolveMediaPathOrReceiver(c, id)
 	if !ok {
 		return
 	}
@@ -453,7 +454,7 @@ func (h *Handler) GetPlaybackPosition(c *gin.Context) {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
-	position := h.media.GetPlaybackPosition(c.Request.Context(), absPath, session.UserID)
+	position := h.media.GetPlaybackPosition(c.Request.Context(), mediaPath, session.UserID)
 	writeSuccess(c, map[string]float64{"position": position})
 }
 
@@ -469,7 +470,7 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 		return
 	}
 
-	absPath, ok := h.resolveMediaByID(c, req.ID)
+	mediaPath, mediaName, ok := h.resolveMediaPathOrReceiver(c, req.ID)
 	if !ok {
 		return
 	}
@@ -483,17 +484,18 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 	}
 
 	if userID != "" {
-		if err := h.media.UpdatePlaybackPosition(c.Request.Context(), absPath, userID, req.Position); err != nil {
+		if err := h.media.UpdatePlaybackPosition(c.Request.Context(), mediaPath, userID, req.Position); err != nil {
 			h.log.Warn("Failed to update playback position for media %s: %v", req.ID, err)
 		}
 
 		if req.Duration > 0 && username != "" {
-			var mediaName string
-			if mi, err := h.media.GetMedia(absPath); err == nil {
+			// For local media, prefer the name from the media module; for
+			// receiver items the name was already resolved by the helper.
+			if mi, err := h.media.GetMedia(mediaPath); err == nil {
 				mediaName = mi.Name
 			}
 			item := models.WatchHistoryItem{
-				MediaPath: absPath,
+				MediaPath: mediaPath,
 				MediaID:   req.ID,
 				MediaName: mediaName,
 				Position:  req.Position,
@@ -507,7 +509,7 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 			}
 
 			if item.Completed && h.suggestions != nil {
-				h.suggestions.RecordCompletion(userID, absPath)
+				h.suggestions.RecordCompletion(userID, mediaPath)
 			}
 		}
 	}

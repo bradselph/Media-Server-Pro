@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -205,6 +204,3 @@ func (h *Handler) UnbanIP(c *gin.Context) {
 	h.security.UnbanIP(req.IP)
 	writeSuccess(c, nil)
 }
-
-// ensure json import is used
-var _ = json.Marshal
