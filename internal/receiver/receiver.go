@@ -7,6 +7,8 @@ package receiver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +26,15 @@ import (
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
+
+// opaqueMediaID produces a deterministic, opaque 32-char hex identifier from
+// a slave ID and item ID.  This hides internal topology (which slave hosts
+// what) from the public API so that clients never see raw slave identifiers
+// in URLs or responses.
+func opaqueMediaID(slaveID, itemID string) string {
+	h := sha256.Sum256([]byte(slaveID + "\x00" + itemID))
+	return hex.EncodeToString(h[:16])
+}
 
 // RegisterRequest is the body for POST /api/receiver/register.
 type RegisterRequest struct {
@@ -212,7 +223,19 @@ func (m *Module) loadFromDB() {
 		if node, ok := m.slaves[rec.SlaveID]; ok {
 			item.SlaveName = node.Name
 		}
-		m.media[rec.ID] = item
+
+		// Migrate legacy "slaveID:itemID" composite keys to opaque IDs.
+		// The next full catalog push will rewrite the DB rows; for now we
+		// just fix the in-memory index so lookups work.
+		id := rec.ID
+		if strings.Contains(id, ":") {
+			parts := strings.SplitN(id, ":", 2)
+			if len(parts) == 2 {
+				id = opaqueMediaID(parts[0], parts[1])
+				item.ID = id
+			}
+		}
+		m.media[id] = item
 	}
 
 	m.log.Info("Loaded %d slaves, %d media items from DB", len(m.slaves), len(m.media))
@@ -325,7 +348,7 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	records := make([]*repositories.ReceiverMediaRecord, len(req.Items))
 	for i, item := range req.Items {
 		records[i] = &repositories.ReceiverMediaRecord{
-			ID:                 fmt.Sprintf("%s:%s", req.SlaveID, item.ID),
+			ID:                 opaqueMediaID(req.SlaveID, item.ID),
 			SlaveID:            req.SlaveID,
 			RemotePath:         item.Path,
 			Name:               item.Name,
@@ -498,9 +521,24 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
-// ProxyStream requests the media from the slave via its WebSocket connection
-// and waits for the slave to deliver the file data via a reverse HTTP POST.
-// Range requests are forwarded so seeking works correctly.
+// allowedProxyHeaders is the set of response headers forwarded from the slave
+// to the client.  Only media-relevant headers are allowed to prevent leaking
+// slave identity, server software, or internal infrastructure details.
+var allowedProxyHeaders = map[string]bool{
+	"Content-Type":        true,
+	"Content-Length":      true,
+	"Content-Range":      true,
+	"Content-Disposition": true,
+	"Accept-Ranges":      true,
+	"Last-Modified":      true,
+	"Etag":               true,
+	"Cache-Control":      true,
+}
+
+// ProxyStream streams media from a slave to the client.
+// It first attempts a WebSocket-based request (slave pushes data back via HTTP
+// POST).  If the slave has no active WebSocket connection, it falls back to a
+// direct HTTP proxy through the slave's BaseURL.
 func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID string) error {
 	item := m.GetMediaItem(mediaID)
 	if item == nil {
@@ -509,23 +547,35 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 	}
 
 	m.mu.RLock()
-	_, exists := m.slaves[item.SlaveID]
+	slave, exists := m.slaves[item.SlaveID]
 	m.mu.RUnlock()
 	if !exists {
 		return fmt.Errorf("slave not found for media %s", mediaID)
 	}
 
-	// Generate unique token for this stream request
+	// Try WebSocket-based streaming first (slave pushes data).
+	if sw := m.getSlaveWS(item.SlaveID); sw != nil {
+		err := m.proxyViaWS(w, r, item, mediaID)
+		if err == nil {
+			return nil
+		}
+		m.log.Warn("WS stream failed for %s, trying HTTP fallback: %v", mediaID, err)
+	}
+
+	// Fallback: HTTP proxy through the slave's BaseURL.
+	return m.proxyViaHTTP(w, r, slave, item)
+}
+
+// proxyViaWS uses the WebSocket-based push protocol to stream media.
+func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaItem, mediaID string) error {
 	token := uuid.New().String()
 	rangeHeader := r.Header.Get("Range")
 
-	// Send stream request to slave via WebSocket
 	ps, err := m.RequestStream(item.SlaveID, token, item.Path, rangeHeader)
 	if err != nil {
 		return fmt.Errorf("failed to request stream: %w", err)
 	}
 
-	// Wait for slave to deliver the data (timeout after 30s)
 	cfg := m.config.Get()
 	timeout := cfg.Receiver.ProxyTimeout
 	if timeout == 0 {
@@ -537,20 +587,8 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 		if !ok || delivery == nil {
 			return fmt.Errorf("stream delivery failed for %s", mediaID)
 		}
-		// Forward only media-relevant headers (allowlist) to prevent leaking
-		// slave identity, server software, or internal infrastructure details.
-		allowedHeaders := map[string]bool{
-			"Content-Type":        true,
-			"Content-Length":      true,
-			"Content-Range":      true,
-			"Content-Disposition": true,
-			"Accept-Ranges":      true,
-			"Last-Modified":      true,
-			"Etag":               true,
-			"Cache-Control":      true,
-		}
 		for key, values := range delivery.Headers {
-			if !allowedHeaders[key] {
+			if !allowedProxyHeaders[key] {
 				continue
 			}
 			for _, v := range values {
@@ -566,7 +604,6 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 		m.pendingMu.Lock()
 		delete(m.pendingStreams, token)
 		m.pendingMu.Unlock()
-		// Drain any delivery that arrived after timeout to avoid leaking the body.
 		select {
 		case d := <-ps.Ready:
 			if d != nil && d.Body != nil {
@@ -580,7 +617,6 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 		m.pendingMu.Lock()
 		delete(m.pendingStreams, token)
 		m.pendingMu.Unlock()
-		// Drain any delivery that arrived after cancel to avoid leaking the body.
 		select {
 		case d := <-ps.Ready:
 			if d != nil && d.Body != nil {
@@ -590,6 +626,54 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 		}
 		return r.Context().Err()
 	}
+}
+
+// proxyViaHTTP fetches the media from the slave's HTTP endpoint and relays it
+// to the client.  This is the fallback when the slave has no active WebSocket.
+func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *SlaveNode, item *MediaItem) error {
+	baseURL := slave.BaseURL
+	if baseURL == "" || baseURL == "ws-connected" {
+		return fmt.Errorf("slave %s has no HTTP base URL for fallback", item.SlaveID)
+	}
+
+	// Build the upstream request to the slave's media endpoint.
+	targetURL := strings.TrimRight(baseURL, "/") + "/media?id=" + item.Path
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build proxy request: %w", err)
+	}
+
+	// Forward range header for seeking support.
+	if rh := r.Header.Get("Range"); rh != "" {
+		req.Header.Set("Range", rh)
+	}
+	req.Header.Set("User-Agent", "MediaServerPro-Receiver/1.0")
+
+	cfg := m.config.Get()
+	timeout := cfg.Receiver.ProxyTimeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP proxy to slave failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Forward allowed headers only.
+	for key, values := range resp.Header {
+		if !allowedProxyHeaders[key] {
+			continue
+		}
+		for _, v := range values {
+			w.Header().Add(key, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, copyErr := io.Copy(w, resp.Body)
+	return copyErr
 }
 
 // --- Conversion helpers ---
