@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.30.0] - 2026-03-03 (minor)
+
+- Merge pull request #33 from bradselph/development
+- fix: mature content enforcement, source transparency, slave efficiency, dedup
+
+
 ## [0.29.0] - 2026-03-03 (minor)
 
 - Merge pull request #32 from bradselph/development
