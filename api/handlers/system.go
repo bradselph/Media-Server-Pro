@@ -132,11 +132,6 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 func (h *Handler) GetServerSettings(c *gin.Context) {
 	cfg := h.media.GetConfig()
 
-	// TODO: features.analytics_tracking and features.enableAnalytics are duplicate keys pointing to
-	// the same cfg.Analytics.Enabled value. The frontend types.ts ServerSettings.features interface
-	// (web/frontend/src/api/types.ts) declares both keys. This creates ambiguity: one key is camelCase
-	// legacy and one is snake_case Go convention. Remove analytics_tracking (the legacy alias) and
-	// update any frontend code that reads settings.features.analytics_tracking to use enableAnalytics.
 	settings := map[string]interface{}{
 		"thumbnails": map[string]interface{}{
 			"enabled":             cfg.Thumbnails.Enabled,
@@ -152,10 +147,9 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enabled": cfg.Analytics.Enabled,
 		},
 		"features": map[string]interface{}{
-			"enableThumbnails":   cfg.Thumbnails.Enabled,
-			"enableHLS":          cfg.HLS.Enabled,
-			"enableAnalytics":    cfg.Analytics.Enabled,
-			"analytics_tracking": cfg.Analytics.Enabled,
+			"enableThumbnails": cfg.Thumbnails.Enabled,
+			"enableHLS":        cfg.HLS.Enabled,
+			"enableAnalytics":  cfg.Analytics.Enabled,
 		},
 		"uploads": map[string]interface{}{
 			"enabled":     cfg.Uploads.Enabled,
