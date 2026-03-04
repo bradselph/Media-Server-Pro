@@ -7,9 +7,9 @@
 # files, and files that are still being actively written to (via lsof/fuser).
 #
 # Usage:
-#   ./download-move.sh                  # copy all completed downloads to MSP uploads
+#   ./download-move.sh                  # move completed downloads to MSP uploads (deletes source)
 #   ./download-move.sh --dry-run        # preview what would be moved
-#   ./download-move.sh --delete         # delete source files after copying (move)
+#   ./download-move.sh --no-delete      # copy only, keep source files in downloads
 #   ./download-move.sh --list           # just list completed files, don't move
 #   ./download-move.sh --help           # show this help
 #
@@ -50,13 +50,14 @@ MEDIA_SUBDIR="${MEDIA_SUBDIR:-uploads}"
 
 DRY_RUN=false
 LIST_ONLY=false
-DELETE_SOURCE=false
+DELETE_SOURCE=true   # default: move (delete source after copy)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run)   DRY_RUN=true      ; shift ;;
-    --list)      LIST_ONLY=true    ; shift ;;
-    --delete)    DELETE_SOURCE=true ; shift ;;
+    --dry-run)    DRY_RUN=true       ; shift ;;
+    --list)       LIST_ONLY=true     ; shift ;;
+    --no-delete)  DELETE_SOURCE=false ; shift ;;
+    --delete)     DELETE_SOURCE=true  ; shift ;;  # kept for backwards compat
     --help|-h)
       sed -n '/^# Usage:/,/^[^#]/p' "$0" | head -n -1
       exit 0
@@ -278,13 +279,7 @@ while IFS= read -r -d '' file; do
   moved=\$((moved + 1))
   moved_files="\$moved_files \$dest"
 
-done < <(find "\$DOWNLOADS_PATH" -maxdepth 1 -type f -print0 2>/dev/null)
-
-# Warn if subdirectories exist (e.g. yt-dlp playlist downloads) — those are not scanned
-subdir_count=\$(find "\$DOWNLOADS_PATH" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)
-if [ "\$subdir_count" -gt 0 ]; then
-  echo "WARN: \$subdir_count subdirectory/ies found in \$DOWNLOADS_PATH — subdirectory files are not moved (only top-level files are scanned)"
-fi
+done < <(find "\$DOWNLOADS_PATH" -type f -print0 2>/dev/null)
 
 # ── Fix ownership so MSP can read the files ──────────────────────────────────
 if [ "\$LIST_ONLY" != "true" ] && [ "\$DRY_RUN" != "true" ] && [ "\$moved" -gt 0 ]; then
