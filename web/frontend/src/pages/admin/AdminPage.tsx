@@ -15,6 +15,9 @@ import type {
     EventStats,
     ExtractorItem,
     ExtractorStats,
+    CrawlTarget,
+    CrawlerDiscovery,
+    CrawlerStats,
     HLSValidationResult,
     IPEntry,
     MediaItem,
@@ -4745,6 +4748,256 @@ function ExtractorTab() {
     )
 }
 
+function CrawlerTab() {
+    const queryClient = useQueryClient()
+    const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+    const [newUrl, setNewUrl] = useState('')
+    const [newName, setNewName] = useState('')
+    const [adding, setAdding] = useState(false)
+    const [crawlingId, setCrawlingId] = useState<string | null>(null)
+    const [reviewView, setReviewView] = useState<'pending' | 'all'>('pending')
+    const [approvingId, setApprovingId] = useState<string | null>(null)
+
+    const {data: targets, isLoading: targetsLoading} = useQuery<CrawlTarget[]>({
+        queryKey: ['admin-crawler-targets'],
+        queryFn: () => adminApi.getCrawlerTargets(),
+        refetchInterval: 15000,
+        retry: false,
+    })
+
+    const {data: discoveries, isLoading: discoveriesLoading} = useQuery<CrawlerDiscovery[]>({
+        queryKey: ['admin-crawler-discoveries', reviewView],
+        queryFn: () => adminApi.getCrawlerDiscoveries(reviewView === 'pending' ? 'pending' : undefined),
+        refetchInterval: 10000,
+        retry: false,
+    })
+
+    const {data: stats} = useQuery<CrawlerStats>({
+        queryKey: ['admin-crawler-stats'],
+        queryFn: () => adminApi.getCrawlerStats(),
+        refetchInterval: 10000,
+        retry: false,
+    })
+
+    async function handleAddTarget(e: FormEvent) {
+        e.preventDefault()
+        if (!newUrl.trim()) return
+        setAdding(true)
+        setMsg(null)
+        try {
+            const target = await adminApi.addCrawlerTarget(newUrl.trim(), newName.trim() || undefined)
+            setMsg({type: 'success', text: `Added target: ${target.name}`})
+            setNewUrl('')
+            setNewName('')
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-targets']})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-stats']})
+        } catch (err) {
+            setMsg({type: 'error', text: `Failed: ${errMsg(err)}`})
+        } finally {
+            setAdding(false)
+        }
+    }
+
+    async function handleCrawl(id: string) {
+        setCrawlingId(id)
+        setMsg(null)
+        try {
+            const result = await adminApi.crawlTarget(id)
+            setMsg({type: 'success', text: `Crawl complete: ${result.new_discoveries} new streams found`})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-targets']})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-discoveries']})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-stats']})
+        } catch (err) {
+            setMsg({type: 'error', text: `Crawl failed: ${errMsg(err)}`})
+        } finally {
+            setCrawlingId(null)
+        }
+    }
+
+    async function handleRemoveTarget(id: string, name: string) {
+        if (!window.confirm(`Remove target "${name}" and all its discoveries?`)) return
+        try {
+            await adminApi.removeCrawlerTarget(id)
+            setMsg({type: 'success', text: `Removed: ${name}`})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-targets']})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-discoveries']})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-stats']})
+        } catch (err) {
+            setMsg({type: 'error', text: `Remove failed: ${errMsg(err)}`})
+        }
+    }
+
+    async function handleApprove(id: string) {
+        setApprovingId(id)
+        try {
+            const disc = await adminApi.approveCrawlerDiscovery(id)
+            setMsg({type: 'success', text: `Added to library: ${disc.title}`})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-discoveries']})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-stats']})
+        } catch (err) {
+            setMsg({type: 'error', text: `Approve failed: ${errMsg(err)}`})
+        } finally {
+            setApprovingId(null)
+        }
+    }
+
+    async function handleIgnore(id: string) {
+        try {
+            await adminApi.ignoreCrawlerDiscovery(id)
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-discoveries']})
+            await queryClient.invalidateQueries({queryKey: ['admin-crawler-stats']})
+        } catch (err) {
+            setMsg({type: 'error', text: `Ignore failed: ${errMsg(err)}`})
+        }
+    }
+
+    function statusBadge(status: string) {
+        const cls = status === 'pending' ? 'badge-inactive' : status === 'added' ? 'badge-active' : 'badge-mature'
+        return <span className={`media-card-type-badge ${cls}`}>{status}</span>
+    }
+
+    return (
+        <div className="admin-section">
+            <h3>Stream Crawler</h3>
+            <p style={{color: 'var(--text-secondary)', marginBottom: '1rem'}}>
+                Crawl target site pages to discover M3U8 streams. Review discovered streams and approve them to add to the media library.
+            </p>
+
+            {msg && <div className={`admin-alert ${msg.type === 'success' ? 'admin-alert-success' : 'admin-alert-error'}`}>{msg.text}</div>}
+
+            {/* Stats */}
+            {stats && (
+                <div className="admin-stats-grid" style={{marginBottom: '1.5rem'}}>
+                    <div className="admin-stat-card"><div className="admin-stat-value">{stats.total_targets}</div><div className="admin-stat-label">Targets</div></div>
+                    <div className="admin-stat-card"><div className="admin-stat-value">{stats.pending_discoveries}</div><div className="admin-stat-label">Pending Review</div></div>
+                    <div className="admin-stat-card"><div className="admin-stat-value">{stats.total_discoveries}</div><div className="admin-stat-label">Total Found</div></div>
+                    <div className="admin-stat-card"><div className="admin-stat-value">{stats.crawling ? 'Running' : 'Idle'}</div><div className="admin-stat-label">Status</div></div>
+                </div>
+            )}
+
+            {/* Add Target */}
+            <h4 style={{marginBottom: '0.5rem'}}>Crawl Targets</h4>
+            <form onSubmit={handleAddTarget} style={{display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap'}}>
+                <input
+                    type="url"
+                    value={newUrl}
+                    onChange={e => setNewUrl(e.target.value)}
+                    placeholder="Site URL to crawl..."
+                    required
+                    style={{flex: 2, minWidth: '250px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}
+                />
+                <input
+                    type="text"
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    placeholder="Name (optional)"
+                    style={{flex: 1, minWidth: '120px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}
+                />
+                <button type="submit" className="admin-btn admin-btn-primary" disabled={adding || !newUrl.trim()}>
+                    {adding ? 'Adding...' : 'Add Target'}
+                </button>
+            </form>
+
+            {/* Targets Table */}
+            {targetsLoading ? (
+                <p style={{color: 'var(--text-secondary)'}}>Loading...</p>
+            ) : !targets || targets.length === 0 ? (
+                <p style={{color: 'var(--text-secondary)'}}>No crawl targets. Add a site URL above.</p>
+            ) : (
+                <div className="admin-table-wrap" style={{marginBottom: '2rem'}}>
+                    <table className="admin-table">
+                        <thead><tr><th>Name</th><th>URL</th><th>Last Crawled</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            {targets.map(t => (
+                                <tr key={t.id}>
+                                    <td>{t.name}</td>
+                                    <td style={{maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.85em'}}>{t.url}</td>
+                                    <td>{t.last_crawled ? new Date(t.last_crawled).toLocaleString() : 'Never'}</td>
+                                    <td>
+                                        <button
+                                            className="admin-btn admin-btn-sm admin-btn-primary"
+                                            onClick={() => handleCrawl(t.id)}
+                                            disabled={crawlingId === t.id || (stats?.crawling ?? false)}
+                                        >
+                                            {crawlingId === t.id ? 'Crawling...' : 'Crawl'}
+                                        </button>
+                                        {' '}
+                                        <button className="admin-btn admin-btn-sm admin-btn-danger" onClick={() => handleRemoveTarget(t.id, t.name)}>
+                                            Remove
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Discoveries */}
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem'}}>
+                <h4>Discovered Streams</h4>
+                <div style={{display: 'flex', gap: '0.5rem'}}>
+                    <button
+                        className={`admin-btn admin-btn-sm ${reviewView === 'pending' ? 'admin-btn-primary' : ''}`}
+                        onClick={() => setReviewView('pending')}
+                    >Pending</button>
+                    <button
+                        className={`admin-btn admin-btn-sm ${reviewView === 'all' ? 'admin-btn-primary' : ''}`}
+                        onClick={() => setReviewView('all')}
+                    >All</button>
+                </div>
+            </div>
+
+            {discoveriesLoading ? (
+                <p style={{color: 'var(--text-secondary)'}}>Loading...</p>
+            ) : !discoveries || discoveries.length === 0 ? (
+                <p style={{color: 'var(--text-secondary)'}}>
+                    {reviewView === 'pending' ? 'No pending discoveries. Crawl a target to find streams.' : 'No discoveries yet.'}
+                </p>
+            ) : (
+                <div className="admin-table-wrap">
+                    <table className="admin-table">
+                        <thead><tr><th>Title</th><th>Stream URL</th><th>Status</th><th>Found</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            {discoveries.map(d => (
+                                <tr key={d.id}>
+                                    <td title={d.page_url} style={{maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                        {d.title}
+                                    </td>
+                                    <td title={d.stream_url} style={{maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.85em'}}>
+                                        {d.stream_url}
+                                    </td>
+                                    <td>{statusBadge(d.status)}</td>
+                                    <td>{new Date(d.discovered_at).toLocaleDateString()}</td>
+                                    <td>
+                                        {d.status === 'pending' && (<>
+                                            <button
+                                                className="admin-btn admin-btn-sm admin-btn-primary"
+                                                onClick={() => handleApprove(d.id)}
+                                                disabled={approvingId === d.id}
+                                                title="Add to media library"
+                                            >
+                                                {approvingId === d.id ? '...' : 'Add'}
+                                            </button>
+                                            {' '}
+                                            <button className="admin-btn admin-btn-sm" onClick={() => handleIgnore(d.id)} title="Ignore">
+                                                Ignore
+                                            </button>
+                                        </>)}
+                                        {d.status !== 'pending' && (
+                                            <span style={{color: 'var(--text-secondary)', fontSize: '0.85em'}}>{d.reviewed_by || '-'}</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    )
+}
+
 function SourcesTab() {
     const [sub, setSub] = useState('remote')
     return (<>
@@ -4752,10 +5005,12 @@ function SourcesTab() {
             {id: 'remote', label: 'Remote'},
             {id: 'slaves', label: 'Slaves'},
             {id: 'extractor', label: 'HLS Streams'},
+            {id: 'crawler', label: 'Crawler'},
         ]} active={sub} onChange={setSub}/>
         {sub === 'remote' && <RemoteTab/>}
         {sub === 'slaves' && <ReceiverTab/>}
         {sub === 'extractor' && <ExtractorTab/>}
+        {sub === 'crawler' && <CrawlerTab/>}
     </>)
 }
 

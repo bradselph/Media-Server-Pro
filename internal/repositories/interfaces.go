@@ -415,3 +415,52 @@ type ExtractorItemRecord struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
+
+// CrawlerTargetRepository provides crawler target storage
+type CrawlerTargetRepository interface {
+	Upsert(ctx context.Context, target *CrawlerTargetRecord) error
+	Get(ctx context.Context, id string) (*CrawlerTargetRecord, error)
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context) ([]*CrawlerTargetRecord, error)
+	UpdateLastCrawled(ctx context.Context, id string, crawledAt time.Time) error
+}
+
+// CrawlerTargetRecord represents a site target for crawling
+type CrawlerTargetRecord struct {
+	ID          string
+	Name        string
+	URL         string
+	Site        string
+	Enabled     bool
+	LastCrawled *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// CrawlerDiscoveryRepository provides crawler discovery storage
+type CrawlerDiscoveryRepository interface {
+	Create(ctx context.Context, disc *CrawlerDiscoveryRecord) error
+	Get(ctx context.Context, id string) (*CrawlerDiscoveryRecord, error)
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context) ([]*CrawlerDiscoveryRecord, error)
+	ListByTarget(ctx context.Context, targetID string) ([]*CrawlerDiscoveryRecord, error)
+	ListPending(ctx context.Context) ([]*CrawlerDiscoveryRecord, error)
+	UpdateStatus(ctx context.Context, id, status, reviewedBy string) error
+	ExistsByStreamURL(ctx context.Context, streamURL string) (bool, error)
+}
+
+// CrawlerDiscoveryRecord represents a discovered stream from crawling
+type CrawlerDiscoveryRecord struct {
+	ID              string
+	TargetID        string
+	PageURL         string
+	Title           string
+	StreamURL       string
+	StreamType      string
+	Quality         int
+	DetectionMethod string
+	Status          string // "pending", "added", "ignored"
+	ReviewedBy      string
+	ReviewedAt      *time.Time
+	DiscoveredAt    time.Time
+}

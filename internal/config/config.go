@@ -37,6 +37,7 @@ type Config struct {
 	RemoteMedia   RemoteMediaConfig   `json:"remote_media"`
 	Receiver      ReceiverConfig      `json:"receiver"`
 	Extractor     ExtractorConfig     `json:"extractor"`
+	Crawler       CrawlerConfig       `json:"crawler"`
 	MatureScanner MatureScannerConfig `json:"mature_scanner"`
 	Logging       LoggingConfig       `json:"logging"`
 	Features      FeaturesConfig      `json:"features"`
@@ -305,6 +306,14 @@ type ExtractorConfig struct {
 	MaxItems     int           `json:"max_items"`     // Maximum extracted items in library
 }
 
+// CrawlerConfig holds settings for the stream crawler that discovers M3U8
+// streams by crawling target site pages and detecting playlist URLs.
+type CrawlerConfig struct {
+	Enabled      bool          `json:"enabled"`
+	MaxPages     int           `json:"max_pages"`     // Max pages to crawl per target
+	CrawlTimeout time.Duration `json:"crawl_timeout"` // Timeout for a single crawl operation
+}
+
 // MatureScannerConfig holds content scanning settings
 type MatureScannerConfig struct {
 	Enabled                   bool     `json:"enabled"`
@@ -342,6 +351,7 @@ type FeaturesConfig struct {
 	EnableAutoDiscovery bool `json:"enable_auto_discovery"`
 	EnableReceiver      bool `json:"enable_receiver"`
 	EnableExtractor     bool `json:"enable_extractor"`
+	EnableCrawler       bool `json:"enable_crawler"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -530,6 +540,11 @@ func DefaultConfig() *Config {
 			ProxyTimeout: 30 * time.Second,
 			MaxItems:     500,
 		},
+		Crawler: CrawlerConfig{
+			Enabled:      false,
+			MaxPages:     20,
+			CrawlTimeout: 5 * time.Minute,
+		},
 		MatureScanner: MatureScannerConfig{
 			Enabled:                   true,
 			AutoFlag:                  true,
@@ -562,6 +577,7 @@ func DefaultConfig() *Config {
 			EnableAutoDiscovery: true,
 			EnableReceiver:      false,
 			EnableExtractor:     false,
+			EnableCrawler:       false,
 		},
 		Database: DatabaseConfig{
 			Enabled:         true, // MySQL is now required
@@ -1012,6 +1028,7 @@ func (m *Manager) applyEnvOverrides() {
 	m.applyRemoteMediaEnvOverrides()
 	m.applyReceiverEnvOverrides()
 	m.applyExtractorEnvOverrides()
+	m.applyCrawlerEnvOverrides()
 	m.applyDatabaseEnvOverrides()
 	m.applyUpdaterEnvOverrides()
 	m.applyAgeGateEnvOverrides()
@@ -1415,6 +1432,9 @@ func (m *Manager) applyFeatureEnvOverrides() {
 	if val, ok := envGetBool("FEATURE_EXTRACTOR", "FEATURES_EXTRACTOR"); ok {
 		m.config.Features.EnableExtractor = val
 	}
+	if val, ok := envGetBool("FEATURE_CRAWLER", "FEATURES_CRAWLER"); ok {
+		m.config.Features.EnableCrawler = val
+	}
 }
 
 func (m *Manager) applyMatureScannerEnvOverrides() {
@@ -1497,6 +1517,18 @@ func (m *Manager) applyExtractorEnvOverrides() {
 	}
 	if val, ok := envGetInt("EXTRACTOR_MAX_ITEMS"); ok {
 		m.config.Extractor.MaxItems = val
+	}
+}
+
+func (m *Manager) applyCrawlerEnvOverrides() {
+	if val, ok := envGetBool("CRAWLER_ENABLED"); ok {
+		m.config.Crawler.Enabled = val
+	}
+	if val, ok := envGetInt("CRAWLER_MAX_PAGES"); ok {
+		m.config.Crawler.MaxPages = val
+	}
+	if val, ok := envGetDuration(time.Second, "CRAWLER_TIMEOUT_SECONDS"); ok {
+		m.config.Crawler.CrawlTimeout = val
 	}
 }
 

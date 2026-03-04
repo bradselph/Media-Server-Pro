@@ -893,3 +893,38 @@ export interface ExtractorStats {
     active_items: number
     error_items: number
 }
+
+// Matches internal/crawler CrawlTarget struct
+export interface CrawlTarget {
+    id: string
+    name: string
+    url: string
+    site: string
+    enabled: boolean
+    last_crawled?: string
+    created_at: string
+}
+
+// Matches internal/crawler Discovery struct
+export interface CrawlerDiscovery {
+    id: string
+    target_id: string
+    page_url: string
+    title: string
+    stream_url: string
+    stream_type: string
+    quality: number
+    status: 'pending' | 'added' | 'ignored'
+    reviewed_by?: string
+    reviewed_at?: string
+    discovered_at: string
+}
+
+// Matches internal/crawler Stats struct
+export interface CrawlerStats {
+    total_targets: number
+    enabled_targets: number
+    total_discoveries: number
+    pending_discoveries: number
+    crawling: boolean
+}
