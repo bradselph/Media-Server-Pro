@@ -3,11 +3,13 @@ import {type RefObject, useCallback, useEffect, useRef, useState} from 'react'
 export interface HLSQuality {
     index: number
     height: number
+    width: number
     bitrate: number
     name: string
+    codec?: string
 }
 
-interface UseHLSResult {
+export interface UseHLSResult {
     qualities: HLSQuality[]
     currentQuality: number
     autoLevel: number
@@ -16,6 +18,8 @@ interface UseHLSResult {
     error: string | null
     bandwidth: number
 }
+
+const QUALITY_PREF_KEY = 'media-server-quality-pref'
 
 function getQualityName(height: number): string {
     if (height >= 2160) return '4K'
@@ -27,11 +31,32 @@ function getQualityName(height: number): string {
     return `${height}p`
 }
 
-export function formatBitrate(bps: number): string {
+function formatBitrate(bps: number): string {
     if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`
-    if (bps >= 1_000) return `${(bps / 1_000).toFixed(0)} Kbps`
+    if (bps >= 1_000) return `${Math.round(bps / 1_000)} kbps`
     return `${bps} bps`
 }
+
+/** Retrieve stored quality preference height (0 = auto). */
+function getSavedQualityPref(): number {
+    try {
+        const val = localStorage.getItem(QUALITY_PREF_KEY)
+        return val ? parseInt(val, 10) : 0
+    } catch {
+        return 0
+    }
+}
+
+/** Persist quality preference as a height value (0 = auto). */
+function saveQualityPref(height: number): void {
+    try {
+        localStorage.setItem(QUALITY_PREF_KEY, String(height))
+    } catch {
+        // localStorage may be full or disabled
+    }
+}
+
+export {formatBitrate, getQualityName}
 
 export function useHLS(
     mediaRef: RefObject<HTMLMediaElement | null>,
@@ -42,9 +67,9 @@ export function useHLS(
     const [qualities, setQualities] = useState<HLSQuality[]>([])
     const [currentQuality, setCurrentQuality] = useState(-1)
     const [autoLevel, setAutoLevel] = useState(-1)
-    const [bandwidth, setBandwidth] = useState(0)
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [bandwidth, setBandwidth] = useState(0)
     const networkRetryCount = useRef(0)
     const mediaRetryCount = useRef(0)
 
@@ -57,6 +82,14 @@ export function useHLS(
         if (hlsRef.current) {
             hlsRef.current.currentLevel = index
             setCurrentQuality(index)
+
+            // Persist preference — store height for the selected quality, 0 for auto.
+            if (index === -1) {
+                saveQualityPref(0)
+            } else {
+                const level = hlsRef.current.levels[index]
+                if (level) saveQualityPref(level.height)
+            }
         }
     }, [])
 
@@ -65,9 +98,9 @@ export function useHLS(
             setQualities([])
             setCurrentQuality(-1)
             setAutoLevel(-1)
-            setBandwidth(0)
             setIsLoading(false)
             setError(null)
+            setBandwidth(0)
             return
         }
 
@@ -109,6 +142,7 @@ export function useHLS(
 
             setIsLoading(true)
             setError(null)
+            setBandwidth(0)
             networkRetryCount.current = 0
             mediaRetryCount.current = 0
 
@@ -147,17 +181,36 @@ export function useHLS(
                 const q: HLSQuality[] = data.levels.map((level, i) => ({
                     index: i,
                     height: level.height,
+                    width: level.width,
                     bitrate: level.bitrate,
                     name: getQualityName(level.height),
+                    codec: level.videoCodec || undefined,
                 }))
                 setQualities(q)
-                setCurrentQuality(-1) // auto
-                setAutoLevel(-1)
                 setIsLoading(false)
+
+                // Apply saved quality preference
+                const savedHeight = getSavedQualityPref()
+                if (savedHeight > 0) {
+                    const match = q.find(level => level.height === savedHeight)
+                    if (match) {
+                        hls.currentLevel = match.index
+                        setCurrentQuality(match.index)
+                        return
+                    }
+                }
+                // Default to auto
+                setCurrentQuality(-1)
             })
 
             hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
-                if (!cancelled) setAutoLevel(data.level)
+                if (cancelled) return
+                // When in auto mode (currentLevel === -1), track what ABR chose
+                if (hls.currentLevel === -1) {
+                    setAutoLevel(data.level)
+                } else {
+                    setCurrentQuality(data.level)
+                }
             })
 
             hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
@@ -233,8 +286,8 @@ export function useHLS(
             setQualities([])
             setCurrentQuality(-1)
             setAutoLevel(-1)
-            setBandwidth(0)
             setIsLoading(false)
+            setBandwidth(0)
         }
     }, [hlsUrl, mediaRef])
 
