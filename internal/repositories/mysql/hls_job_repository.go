@@ -15,18 +15,19 @@ import (
 )
 
 type hlsJobRow struct {
-	ID          string     `gorm:"column:id;primaryKey"`
-	MediaPath   string     `gorm:"column:media_path"`
-	OutputDir   string     `gorm:"column:output_dir"`
-	Status      string     `gorm:"column:status"`
-	Progress    float64    `gorm:"column:progress"`
-	Qualities   string     `gorm:"column:qualities;type:json"`
-	StartedAt   time.Time  `gorm:"column:started_at"`
-	CompletedAt *time.Time `gorm:"column:completed_at"`
-	Error       *string    `gorm:"column:error_message"`
-	FailCount   int        `gorm:"column:fail_count"`
-	HLSUrl      *string    `gorm:"column:hls_url"`
-	Available   bool       `gorm:"column:available"`
+	ID             string     `gorm:"column:id;primaryKey"`
+	MediaPath      string     `gorm:"column:media_path"`
+	OutputDir      string     `gorm:"column:output_dir"`
+	Status         string     `gorm:"column:status"`
+	Progress       float64    `gorm:"column:progress"`
+	Qualities      string     `gorm:"column:qualities;type:json"`
+	StartedAt      time.Time  `gorm:"column:started_at"`
+	CompletedAt    *time.Time `gorm:"column:completed_at"`
+	LastAccessedAt *time.Time `gorm:"column:last_accessed_at"`
+	Error          *string    `gorm:"column:error_message"`
+	FailCount      int        `gorm:"column:fail_count"`
+	HLSUrl         *string    `gorm:"column:hls_url"`
+	Available      bool       `gorm:"column:available"`
 }
 
 func (hlsJobRow) TableName() string { return "hls_jobs" }
@@ -45,8 +46,8 @@ func (r *HLSJobRepository) Save(ctx context.Context, job *models.HLSJob) error {
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"media_path", "output_dir", "status", "progress", "qualities",
-			"started_at", "completed_at", "error_message", "fail_count",
-			"hls_url", "available",
+			"started_at", "completed_at", "last_accessed_at", "error_message",
+			"fail_count", "hls_url", "available",
 		}),
 	}).Create(&row).Error; err != nil {
 		return fmt.Errorf("failed to save HLS job: %w", err)
@@ -100,6 +101,9 @@ func (r *HLSJobRepository) jobToRow(job *models.HLSJob) hlsJobRow {
 	if job.CompletedAt != nil {
 		row.CompletedAt = job.CompletedAt
 	}
+	if job.LastAccessedAt != nil {
+		row.LastAccessedAt = job.LastAccessedAt
+	}
 	if job.Error != "" {
 		row.Error = &job.Error
 	}
@@ -111,15 +115,16 @@ func (r *HLSJobRepository) jobToRow(job *models.HLSJob) hlsJobRow {
 
 func (r *HLSJobRepository) rowToJob(row *hlsJobRow) *models.HLSJob {
 	job := &models.HLSJob{
-		ID:          row.ID,
-		MediaPath:   row.MediaPath,
-		OutputDir:   row.OutputDir,
-		Status:      models.HLSStatus(row.Status),
-		Progress:    row.Progress,
-		StartedAt:   row.StartedAt,
-		CompletedAt: row.CompletedAt,
-		FailCount:   row.FailCount,
-		Available:   row.Available,
+		ID:             row.ID,
+		MediaPath:      row.MediaPath,
+		OutputDir:      row.OutputDir,
+		Status:         models.HLSStatus(row.Status),
+		Progress:       row.Progress,
+		StartedAt:      row.StartedAt,
+		CompletedAt:    row.CompletedAt,
+		LastAccessedAt: row.LastAccessedAt,
+		FailCount:      row.FailCount,
+		Available:      row.Available,
 	}
 	if row.Error != nil {
 		job.Error = *row.Error

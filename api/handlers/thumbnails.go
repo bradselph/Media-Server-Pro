@@ -146,7 +146,7 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		return
 	}
 
-	c.Header("Cache-Control", "private, max-age=604800")
+	c.Header("Cache-Control", "public, max-age=604800")
 	c.Header("Content-Type", "image/jpeg")
 	http.ServeFile(c.Writer, c.Request, thumbFilePath)
 }

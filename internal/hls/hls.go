@@ -71,6 +71,7 @@ type Module struct {
 	accessTracker *AccessTracker
 	activeJobs    sync.WaitGroup // Tracks active transcoding jobs for graceful shutdown
 	stopping      atomic.Bool    // Set to true during Stop() to distinguish cancellation from real failures
+	qualityLocks  sync.Map       // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
 }
 
 // NewModule creates a new HLS module
@@ -290,7 +291,9 @@ func (m *Module) cleanupLoop() {
 	}
 }
 
-// cleanupOldSegments removes HLS segments older than retention period
+// cleanupOldSegments removes HLS segments older than retention period.
+// It checks access tracker first, then persisted LastAccessedAt, and falls
+// back to directory ModTime. Running/pending jobs are never removed.
 func (m *Module) cleanupOldSegments() {
 	cfg := m.config.Get()
 	retention := time.Duration(cfg.HLS.RetentionMinutes) * time.Minute
@@ -310,31 +313,58 @@ func (m *Module) cleanupOldSegments() {
 			continue
 		}
 
-		path := filepath.Join(m.cacheDir, entry.Name())
-		info, err := entry.Info()
-		if err != nil {
+		jobID := entry.Name()
+
+		// Skip running/pending jobs
+		m.jobsMu.RLock()
+		job, exists := m.jobs[jobID]
+		m.jobsMu.RUnlock()
+		if exists && (job.Status == models.HLSStatusRunning || job.Status == models.HLSStatusPending) {
 			continue
 		}
 
-		if info.ModTime().Before(cutoff) {
-			if err := os.RemoveAll(path); err != nil {
-				m.log.Warn("Failed to remove HLS directory %s: %v", path, err)
-			} else {
-				jobID := entry.Name()
-				m.jobsMu.Lock()
-				delete(m.jobs, jobID)
-				m.jobsMu.Unlock()
-				m.accessTracker.mu.Lock()
-				delete(m.accessTracker.lastAccess, jobID)
-				m.accessTracker.mu.Unlock()
-				removed++
-			}
+		// Determine last activity: in-memory tracker → persisted field → ModTime
+		lastActivity := m.getCleanupLastAccess(jobID, job, entry)
+		if lastActivity.IsZero() || !lastActivity.Before(cutoff) {
+			continue
+		}
+
+		path := filepath.Join(m.cacheDir, jobID)
+		if err := os.RemoveAll(path); err != nil {
+			m.log.Warn("Failed to remove HLS directory %s: %v", path, err)
+		} else {
+			m.jobsMu.Lock()
+			delete(m.jobs, jobID)
+			m.jobsMu.Unlock()
+			m.accessTracker.mu.Lock()
+			delete(m.accessTracker.lastAccess, jobID)
+			m.accessTracker.mu.Unlock()
+			removed++
 		}
 	}
 
 	if removed > 0 {
 		m.log.Info("Cleaned up %d old HLS directories", removed)
 	}
+}
+
+// getCleanupLastAccess returns the best available last-access time for a job,
+// checking: in-memory access tracker → persisted LastAccessedAt → directory ModTime.
+func (m *Module) getCleanupLastAccess(jobID string, job *models.HLSJob, entry os.DirEntry) time.Time {
+	// 1. In-memory access tracker (most accurate for current session)
+	if t, ok := m.GetLastAccess(jobID); ok {
+		return t
+	}
+	// 2. Persisted LastAccessedAt (survives restarts)
+	if job != nil && job.LastAccessedAt != nil {
+		return *job.LastAccessedAt
+	}
+	// 3. Fall back to directory modification time
+	info, err := entry.Info()
+	if err != nil {
+		return time.Time{}
+	}
+	return info.ModTime()
 }
 
 // GenerateHLS starts HLS transcoding for a media file.
@@ -514,134 +544,28 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 	}
 
 	cfg := m.config.Get()
+	lazyMode := cfg.HLS.LazyTranscode
 
-	// Generate variants for each quality
+	// In lazy mode, only transcode the first quality upfront; remaining qualities
+	// will be transcoded on-demand when ServeVariantPlaylist is called.
+	qualitiesToTranscode := job.Qualities
+	if lazyMode && len(qualitiesToTranscode) > 1 {
+		qualitiesToTranscode = qualitiesToTranscode[:1]
+		m.log.Info("Lazy transcode: only generating %s upfront for job %s", qualitiesToTranscode[0], job.ID)
+	}
+
 	var variantPlaylists []string
-	for i, quality := range job.Qualities {
-		profile := m.getQualityProfile(quality)
-		if profile == nil {
-			m.log.Warn("Unknown quality profile: %s", quality)
-			continue
+	for i, quality := range qualitiesToTranscode {
+		if err := m.transcodeQuality(ctx, job, quality, len(qualitiesToTranscode), i+1, totalDuration); err != nil {
+			return // transcodeQuality already set job status
 		}
-
-		variantDir := filepath.Join(job.OutputDir, quality)
-		if err := os.MkdirAll(variantDir, 0755); err != nil {
-			m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Failed to create variant dir: %v", err), 0)
-			return
-		}
-
-		playlistPath := filepath.Join(variantDir, "playlist.m3u8")
-		segmentPattern := filepath.Join(variantDir, "segment_%04d.ts")
-
-		m.log.Info("Generating HLS variant %s (%dx%d @ %dkbps)", quality, profile.Width, profile.Height, profile.Bitrate/1000)
-
-		// Build ffmpeg pipeline using ffmpeg-go
-		stream := ffmpeg.Input(job.MediaPath)
-
-		// Apply video filters and encoding
-		stream = stream.Output(playlistPath,
-			ffmpeg.KwArgs{
-				// Video codec settings
-				"c:v":          "libx264",
-				"preset":       "fast",
-				"vf":           fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
-				"b:v":          fmt.Sprintf("%dk", profile.Bitrate/1000),
-				"maxrate":      fmt.Sprintf("%dk", profile.Bitrate/1000),
-				"bufsize":      fmt.Sprintf("%dk", profile.Bitrate*2/1000),
-				"g":            strconv.Itoa(cfg.HLS.SegmentDuration * 30), // GOP size (keyframe interval)
-				"sc_threshold": "0",                                        // Disable scene change detection for consistent segment sizes
-
-				// Audio codec settings
-				"c:a": "aac",
-				"b:a": fmt.Sprintf("%dk", profile.AudioBitrate/1000),
-				"ac":  "2", // Stereo
-
-				// HLS-specific settings
-				"f":                    "hls",
-				"hls_time":             strconv.Itoa(cfg.HLS.SegmentDuration),
-				"hls_playlist_type":    "vod",
-				"hls_segment_type":     "mpegts",
-				"hls_list_size":        "0",
-				"hls_segment_filename": segmentPattern,
-				"hls_flags":            "independent_segments",
-			},
-		).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
-
-		// Create a command from the stream
-		cmd := stream.Compile()
-
-		// Apply context for cancellation; use cmd.Path (absolute binary path set by
-		// SetFfmpegPath) rather than cmd.Args[0] (bare "ffmpeg" name, PATH lookup).
-		cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
-		cmdWithContext.Env = cmd.Env
-		cmdWithContext.Dir = cmd.Dir
-
-		// Capture stderr for progress monitoring and error diagnostics.
-		// io.TeeReader writes every byte read by monitorProgress into stderrBuf,
-		// so we have the full ffmpeg output available after Wait() returns.
-		var stderrBuf bytes.Buffer
-		stderrPipe, err := cmdWithContext.StderrPipe()
-		if err != nil {
-			m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Failed to create stderr pipe: %v", err), 0)
-			return
-		}
-
-		if err := cmdWithContext.Start(); err != nil {
-			m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Failed to start ffmpeg: %v", err), 0)
-			return
-		}
-
-		// Monitor progress from stderr, capturing all output for error diagnostics.
-		progressDone := make(chan struct{})
-		go func() {
-			defer close(progressDone)
-			m.monitorProgress(job.ID, io.TeeReader(stderrPipe, &stderrBuf), len(job.Qualities), i+1, totalDuration)
-		}()
-
-		waitErr := cmdWithContext.Wait()
-		<-progressDone // ensure monitorProgress has finished reading before we inspect stderrBuf
-
-		if waitErr != nil {
-			// Treat as cancellation if the context is done (cancel() called), the
-			// module is shutting down (Stop() called), or ffmpeg was killed by a
-			// signal (e.g. SIGINT propagated to the process group on Ctrl+C).
-			// All three cause ffmpeg to exit non-zero but none is a real failure.
-			stderrStr := stderrBuf.String()
-			signalKilled := strings.Contains(stderrStr, "Exiting normally, received signal")
-			if ctx.Err() != nil || m.stopping.Load() || signalKilled {
-				m.log.Info("HLS transcoding cancelled for job %s quality %s", job.ID, quality)
-				m.updateJobStatus(job.ID, models.HLSStatusCancelled, "Transcoding cancelled", 0)
-				return
-			}
-			// Real ffmpeg failure - log stderr output to help diagnose the cause.
-			if errOutput := strings.TrimSpace(stderrStr); errOutput != "" {
-				if len(errOutput) > 1000 {
-					errOutput = "...(truncated)\n" + errOutput[len(errOutput)-1000:]
-				}
-				m.log.Error("ffmpeg stderr for job %s quality %s:\n%s", job.ID, quality, errOutput)
-			}
-			// Clean up partial output on failure
-			m.log.Warn("Transcoding failed for job %s quality %s, cleaning up partial output", job.ID, quality)
-			if removeErr := os.RemoveAll(variantDir); removeErr != nil {
-				m.log.Error("Failed to clean up partial HLS variant at %s: %v", variantDir, removeErr)
-			}
-			m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Transcoding failed for %s: %v", quality, waitErr), 0)
-			return
-		}
-
-		// Verify the playlist was created
-		if _, err := os.Stat(playlistPath); err != nil {
-			m.log.Error("Playlist not created for quality %s: %v", quality, err)
-			m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Playlist not created for %s", quality), 0)
-			return
-		}
-
-		m.log.Info("Successfully generated HLS variant %s", quality)
 		variantPlaylists = append(variantPlaylists, quality)
 	}
 
-	// Generate master playlist
-	if err := m.generateMasterPlaylist(job.OutputDir, variantPlaylists); err != nil {
+	// Master playlist lists ALL configured qualities (even those not yet transcoded
+	// in lazy mode) so that clients can request any variant.
+	masterQualities := job.Qualities
+	if err := m.generateMasterPlaylist(job.OutputDir, masterQualities); err != nil {
 		m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Failed to create master playlist: %v", err), 0)
 		return
 	}
@@ -661,6 +585,161 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 	}
 
 	m.log.Info("HLS generation completed for job %s", job.ID)
+}
+
+// transcodeQuality transcodes a single quality variant for a job.
+// Returns nil on success, or an error if transcoding failed (job status is already updated).
+func (m *Module) transcodeQuality(ctx context.Context, job *models.HLSJob, quality string, totalQualities, currentQuality int, totalDuration float64) error {
+	cfg := m.config.Get()
+	profile := m.getQualityProfile(quality)
+	if profile == nil {
+		m.log.Warn("Unknown quality profile: %s", quality)
+		return fmt.Errorf("unknown quality profile: %s", quality)
+	}
+
+	variantDir := filepath.Join(job.OutputDir, quality)
+	if err := os.MkdirAll(variantDir, 0755); err != nil {
+		m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Failed to create variant dir: %v", err), 0)
+		return err
+	}
+
+	playlistPath := filepath.Join(variantDir, "playlist.m3u8")
+	segmentPattern := filepath.Join(variantDir, "segment_%04d.ts")
+
+	m.log.Info("Generating HLS variant %s (%dx%d @ %dkbps)", quality, profile.Width, profile.Height, profile.Bitrate/1000)
+
+	// Build ffmpeg pipeline using ffmpeg-go
+	stream := ffmpeg.Input(job.MediaPath)
+
+	// Apply video filters and encoding
+	stream = stream.Output(playlistPath,
+		ffmpeg.KwArgs{
+			// Video codec settings
+			"c:v":          "libx264",
+			"preset":       "fast",
+			"vf":           fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
+			"b:v":          fmt.Sprintf("%dk", profile.Bitrate/1000),
+			"maxrate":      fmt.Sprintf("%dk", profile.Bitrate/1000),
+			"bufsize":      fmt.Sprintf("%dk", profile.Bitrate*2/1000),
+			"g":            strconv.Itoa(cfg.HLS.SegmentDuration * 30), // GOP size (keyframe interval)
+			"sc_threshold": "0",                                        // Disable scene change detection for consistent segment sizes
+
+			// Audio codec settings
+			"c:a": "aac",
+			"b:a": fmt.Sprintf("%dk", profile.AudioBitrate/1000),
+			"ac":  "2", // Stereo
+
+			// HLS-specific settings
+			"f":                    "hls",
+			"hls_time":             strconv.Itoa(cfg.HLS.SegmentDuration),
+			"hls_playlist_type":    "vod",
+			"hls_segment_type":     "mpegts",
+			"hls_list_size":        "0",
+			"hls_segment_filename": segmentPattern,
+			"hls_flags":            "independent_segments",
+		},
+	).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
+
+	// Create a command from the stream
+	cmd := stream.Compile()
+
+	// Apply context for cancellation; use cmd.Path (absolute binary path set by
+	// SetFfmpegPath) rather than cmd.Args[0] (bare "ffmpeg" name, PATH lookup).
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext.Env = cmd.Env
+	cmdWithContext.Dir = cmd.Dir
+
+	// Capture stderr for progress monitoring and error diagnostics.
+	// io.TeeReader writes every byte read by monitorProgress into stderrBuf,
+	// so we have the full ffmpeg output available after Wait() returns.
+	var stderrBuf bytes.Buffer
+	stderrPipe, err := cmdWithContext.StderrPipe()
+	if err != nil {
+		m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Failed to create stderr pipe: %v", err), 0)
+		return err
+	}
+
+	if err := cmdWithContext.Start(); err != nil {
+		m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Failed to start ffmpeg: %v", err), 0)
+		return err
+	}
+
+	// Monitor progress from stderr, capturing all output for error diagnostics.
+	progressDone := make(chan struct{})
+	go func() {
+		defer close(progressDone)
+		m.monitorProgress(job.ID, io.TeeReader(stderrPipe, &stderrBuf), totalQualities, currentQuality, totalDuration)
+	}()
+
+	waitErr := cmdWithContext.Wait()
+	<-progressDone // ensure monitorProgress has finished reading before we inspect stderrBuf
+
+	if waitErr != nil {
+		// Treat as cancellation if the context is done (cancel() called), the
+		// module is shutting down (Stop() called), or ffmpeg was killed by a
+		// signal (e.g. SIGINT propagated to the process group on Ctrl+C).
+		// All three cause ffmpeg to exit non-zero but none is a real failure.
+		stderrStr := stderrBuf.String()
+		signalKilled := strings.Contains(stderrStr, "Exiting normally, received signal")
+		if ctx.Err() != nil || m.stopping.Load() || signalKilled {
+			m.log.Info("HLS transcoding cancelled for job %s quality %s", job.ID, quality)
+			m.updateJobStatus(job.ID, models.HLSStatusCancelled, "Transcoding cancelled", 0)
+			return waitErr
+		}
+		// Real ffmpeg failure - log stderr output to help diagnose the cause.
+		if errOutput := strings.TrimSpace(stderrStr); errOutput != "" {
+			if len(errOutput) > 1000 {
+				errOutput = "...(truncated)\n" + errOutput[len(errOutput)-1000:]
+			}
+			m.log.Error("ffmpeg stderr for job %s quality %s:\n%s", job.ID, quality, errOutput)
+		}
+		// Clean up partial output on failure
+		m.log.Warn("Transcoding failed for job %s quality %s, cleaning up partial output", job.ID, quality)
+		if removeErr := os.RemoveAll(variantDir); removeErr != nil {
+			m.log.Error("Failed to clean up partial HLS variant at %s: %v", variantDir, removeErr)
+		}
+		m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Transcoding failed for %s: %v", quality, waitErr), 0)
+		return waitErr
+	}
+
+	// Verify the playlist was created
+	if _, err := os.Stat(playlistPath); err != nil {
+		m.log.Error("Playlist not created for quality %s: %v", quality, err)
+		m.updateJobStatus(job.ID, models.HLSStatusFailed, fmt.Sprintf("Playlist not created for %s", quality), 0)
+		return fmt.Errorf("playlist not created for %s", quality)
+	}
+
+	m.log.Info("Successfully generated HLS variant %s", quality)
+	return nil
+}
+
+// lazyTranscodeQuality transcodes a single quality on-demand with per-quality locking
+// to prevent duplicate concurrent transcodes of the same quality.
+func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, quality string) error {
+	lockKey := job.ID + "/" + quality
+	mu, _ := m.qualityLocks.LoadOrStore(lockKey, &sync.Mutex{})
+	qMu := mu.(*sync.Mutex)
+	qMu.Lock()
+	defer qMu.Unlock()
+
+	// Re-check: another goroutine may have completed transcoding while we waited
+	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
+	if _, err := os.Stat(playlistPath); err == nil {
+		return nil // Already transcoded
+	}
+
+	m.log.Info("On-demand lazy transcode of quality %s for job %s", quality, job.ID)
+
+	// Acquire the transcoding semaphore
+	select {
+	case m.transSem <- struct{}{}:
+		defer func() { <-m.transSem }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	totalDuration := m.getMediaDuration(ctx, job.MediaPath)
+	return m.transcodeQuality(ctx, job, quality, 1, 1, totalDuration)
 }
 
 // monitorProgress monitors ffmpeg progress output and parses time= for progress tracking.
@@ -1012,7 +1091,8 @@ func (m *Module) CheckOrGenerateHLS(ctx context.Context, mediaPath string, media
 	return job, nil
 }
 
-// ServeMasterPlaylist serves the master HLS playlist
+// ServeMasterPlaylist serves the master HLS playlist.
+// When CDNBaseURL is configured, variant paths are rewritten to absolute CDN URLs.
 func (m *Module) ServeMasterPlaylist(w http.ResponseWriter, r *http.Request, jobID string) error {
 	job, err := m.GetJobStatus(jobID)
 	if err != nil {
@@ -1024,6 +1104,34 @@ func (m *Module) ServeMasterPlaylist(w http.ResponseWriter, r *http.Request, job
 	}
 
 	masterPath := filepath.Join(job.OutputDir, masterPlaylistName)
+
+	cfg := m.config.Get()
+	cdnBase := cfg.HLS.CDNBaseURL
+
+	if cdnBase != "" {
+		data, err := os.ReadFile(masterPath)
+		if err != nil {
+			return fmt.Errorf("failed to read master playlist: %w", err)
+		}
+
+		var rewritten bytes.Buffer
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			// Rewrite relative variant playlist paths to absolute CDN URLs
+			if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+				line = cdnBase + "/hls/" + jobID + "/" + trimmed
+			}
+			rewritten.WriteString(line)
+			rewritten.WriteString("\n")
+		}
+
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(rewritten.Bytes())
+		return nil
+	}
+
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1031,7 +1139,10 @@ func (m *Module) ServeMasterPlaylist(w http.ResponseWriter, r *http.Request, job
 	return nil
 }
 
-// ServeVariantPlaylist serves a variant HLS playlist
+// ServeVariantPlaylist serves a variant HLS playlist.
+// When CDNBaseURL is configured, segment filenames are rewritten to absolute CDN URLs.
+// In lazy transcode mode, if the requested quality hasn't been transcoded yet,
+// it will be transcoded on-demand before serving.
 func (m *Module) ServeVariantPlaylist(w http.ResponseWriter, r *http.Request, jobID, quality string) error {
 	job, err := m.GetJobStatus(jobID)
 	if err != nil {
@@ -1040,7 +1151,47 @@ func (m *Module) ServeVariantPlaylist(w http.ResponseWriter, r *http.Request, jo
 
 	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
 	if _, err := os.Stat(playlistPath); err != nil {
-		return fmt.Errorf("variant playlist not found: %s", quality)
+		cfg := m.config.Get()
+		if !cfg.HLS.LazyTranscode {
+			return fmt.Errorf("variant playlist not found: %s", quality)
+		}
+
+		// Lazy transcode: quality hasn't been generated yet — transcode on demand.
+		if err := m.lazyTranscodeQuality(r.Context(), job, quality); err != nil {
+			return fmt.Errorf("on-demand transcode failed for %s: %w", quality, err)
+		}
+
+		// Re-check after transcoding
+		if _, err := os.Stat(playlistPath); err != nil {
+			return fmt.Errorf("variant playlist not found after on-demand transcode: %s", quality)
+		}
+	}
+
+	cfg := m.config.Get()
+	cdnBase := cfg.HLS.CDNBaseURL
+
+	if cdnBase != "" {
+		data, err := os.ReadFile(playlistPath)
+		if err != nil {
+			return fmt.Errorf("failed to read variant playlist: %w", err)
+		}
+
+		var rewritten bytes.Buffer
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			// Rewrite relative segment filenames to absolute CDN URLs
+			if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+				line = cdnBase + "/hls/" + jobID + "/" + quality + "/" + trimmed
+			}
+			rewritten.WriteString(line)
+			rewritten.WriteString("\n")
+		}
+
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(rewritten.Bytes())
+		return nil
 	}
 
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -1607,11 +1758,22 @@ type AccessTracker struct {
 	mu         sync.RWMutex
 }
 
-// RecordAccess records an access to an HLS job
+// RecordAccess records an access to an HLS job and persists the timestamp
+// so that access times survive restarts.
 func (m *Module) RecordAccess(jobID string) {
+	now := time.Now()
 	m.accessTracker.mu.Lock()
-	defer m.accessTracker.mu.Unlock()
-	m.accessTracker.lastAccess[jobID] = time.Now()
+	m.accessTracker.lastAccess[jobID] = now
+	m.accessTracker.mu.Unlock()
+
+	// Persist on the job so access times survive restarts
+	m.jobsMu.RLock()
+	job, exists := m.jobs[jobID]
+	m.jobsMu.RUnlock()
+	if exists {
+		job.LastAccessedAt = &now
+		m.saveJob(job)
+	}
 }
 
 // GetLastAccess returns the last access time for a job
@@ -1651,13 +1813,19 @@ func (m *Module) CleanInactiveJobs(inactiveThreshold time.Duration) int {
 }
 
 // getEffectiveLastAccess returns the last access time for a job, falling back to
-// the directory modification time if no access has been recorded.
+// persisted LastAccessedAt and then directory modification time.
 func (m *Module) getEffectiveLastAccess(jobID string, entry os.DirEntry) time.Time {
-	lastAccess, ok := m.GetLastAccess(jobID)
-	if ok {
-		return lastAccess
+	if t, ok := m.GetLastAccess(jobID); ok {
+		return t
 	}
-	// If no access recorded, use file modification time
+	// Check persisted LastAccessedAt
+	m.jobsMu.RLock()
+	job, exists := m.jobs[jobID]
+	m.jobsMu.RUnlock()
+	if exists && job.LastAccessedAt != nil {
+		return *job.LastAccessedAt
+	}
+	// Fall back to directory modification time
 	info, err := entry.Info()
 	if err != nil {
 		return time.Time{}
