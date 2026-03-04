@@ -22,6 +22,7 @@ import (
 	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/hls"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
@@ -83,6 +84,7 @@ type Handler struct {
 	updater       *updater.Module
 	remote        *remote.Module
 	receiver      *receiver.Module
+	extractor     *extractor.Module
 	config        *config.Manager
 }
 
@@ -113,6 +115,7 @@ type HandlerDeps struct {
 	Updater       *updater.Module
 	Remote        *remote.Module
 	Receiver      *receiver.Module
+	Extractor     *extractor.Module
 }
 
 // NewHandler creates a new handler with dependencies.
@@ -147,6 +150,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		updater:       deps.Updater,
 		remote:        deps.Remote,
 		receiver:      deps.Receiver,
+		extractor:     deps.Extractor,
 		config:        deps.Config,
 	}
 }
@@ -607,6 +611,20 @@ func (h *Handler) getUserType(cfg *config.Config, user *models.User) *config.Use
 		}
 	}
 	return nil
+}
+
+// checkExtractorEnabled returns true if the extractor feature is enabled.
+func (h *Handler) checkExtractorEnabled(c *gin.Context) bool {
+	if h.extractor == nil {
+		writeError(c, http.StatusServiceUnavailable, "Extractor is not available")
+		return false
+	}
+	cfg := h.media.GetConfig()
+	if !cfg.Features.EnableExtractor || !cfg.Extractor.Enabled {
+		writeError(c, http.StatusNotFound, "Extractor feature is disabled")
+		return false
+	}
+	return true
 }
 
 // checkRemoteMediaEnabled returns true if remote media feature is enabled

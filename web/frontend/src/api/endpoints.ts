@@ -71,6 +71,8 @@ import type {
     ValidationResult,
     ValidatorStats,
     WatchHistoryEntry,
+    ExtractorItem,
+    ExtractorStats,
 } from './types'
 
 // ── Feature 1: Storage Usage & Permissions ──
@@ -676,6 +678,19 @@ export const adminApi = {
 
     cleanRemoteCache: () =>
         api.post<{ removed: number }>('/api/admin/remote/cache/clean'),
+
+    // Feature 5: Analytics detail + export
+    getExtractorItems: () =>
+        api.get<ExtractorItem[]>('/api/admin/extractor/items'),
+
+    addExtractorItem: (url: string, title?: string) =>
+        api.post<ExtractorItem>('/api/admin/extractor/items', { url, ...(title ? { title } : {}) }),
+
+    removeExtractorItem: (id: string) =>
+        api.delete<void>(`/api/admin/extractor/items/${encodeURIComponent(id)}`),
+
+    getExtractorStats: () =>
+        api.get<ExtractorStats>('/api/admin/extractor/stats'),
 
     // Feature 5: Analytics detail + export
     exportAnalytics: (): Promise<Blob> =>

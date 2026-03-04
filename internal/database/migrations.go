@@ -379,6 +379,32 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 				INDEX idx_receiver_media_slave (slave_id),
 				INDEX idx_receiver_media_name (name(191))
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"extractor_items", `
+			CREATE TABLE IF NOT EXISTS extractor_items (
+				id               VARCHAR(255) PRIMARY KEY,
+				source_url       VARCHAR(2048) NOT NULL,
+				title            VARCHAR(500)  NOT NULL,
+				stream_url       VARCHAR(2048) NOT NULL,
+				stream_type      VARCHAR(20)   NOT NULL DEFAULT 'hls',
+				content_type     VARCHAR(100),
+				quality          VARCHAR(50),
+				width            INT           DEFAULT 0,
+				height           INT           DEFAULT 0,
+				duration         DOUBLE        DEFAULT 0,
+				site             VARCHAR(255),
+				detection_method VARCHAR(50),
+				status           VARCHAR(50)   NOT NULL DEFAULT 'active',
+				error_message    TEXT,
+				added_by         VARCHAR(255),
+				resolved_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+				expires_at       TIMESTAMP     NULL,
+				created_at       TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+				updated_at       TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_extractor_status (status),
+				INDEX idx_extractor_site (site),
+				INDEX idx_extractor_title (title(191))
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	}
 
 	for _, t := range tables {

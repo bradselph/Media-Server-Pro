@@ -13,6 +13,8 @@ import type {
     CategoryStats,
     DiscoverySuggestion,
     EventStats,
+    ExtractorItem,
+    ExtractorStats,
     HLSValidationResult,
     IPEntry,
     MediaItem,
@@ -4597,15 +4599,163 @@ function ContentTab() {
     </>)
 }
 
+function ExtractorTab() {
+    const queryClient = useQueryClient()
+    const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+    const [newUrl, setNewUrl] = useState('')
+    const [newTitle, setNewTitle] = useState('')
+    const [adding, setAdding] = useState(false)
+
+    const {data: items, isLoading} = useQuery<ExtractorItem[]>({
+        queryKey: ['admin-extractor-items'],
+        queryFn: () => adminApi.getExtractorItems(),
+        refetchInterval: 15000,
+        retry: false,
+    })
+
+    const {data: stats} = useQuery<ExtractorStats>({
+        queryKey: ['admin-extractor-stats'],
+        queryFn: () => adminApi.getExtractorStats(),
+        refetchInterval: 30000,
+        retry: false,
+    })
+
+    async function handleAdd(e: FormEvent) {
+        e.preventDefault()
+        if (!newUrl.trim()) return
+        setAdding(true)
+        setMsg(null)
+        try {
+            const item = await adminApi.addExtractorItem(newUrl.trim(), newTitle.trim() || undefined)
+            setMsg({type: 'success', text: `Added: ${item.title}`})
+            setNewUrl('')
+            setNewTitle('')
+            await queryClient.invalidateQueries({queryKey: ['admin-extractor-items']})
+            await queryClient.invalidateQueries({queryKey: ['admin-extractor-stats']})
+        } catch (err) {
+            setMsg({type: 'error', text: `Failed: ${errMsg(err)}`})
+        } finally {
+            setAdding(false)
+        }
+    }
+
+    async function handleRemove(id: string, title: string) {
+        if (!window.confirm(`Remove "${title}" from the library?`)) return
+        setMsg(null)
+        try {
+            await adminApi.removeExtractorItem(id)
+            setMsg({type: 'success', text: `Removed: ${title}`})
+            await queryClient.invalidateQueries({queryKey: ['admin-extractor-items']})
+            await queryClient.invalidateQueries({queryKey: ['admin-extractor-stats']})
+        } catch (err) {
+            setMsg({type: 'error', text: `Remove failed: ${errMsg(err)}`})
+        }
+    }
+
+    function statusBadge(status: string) {
+        const cls = status === 'active' ? 'badge-active' : 'badge-mature'
+        return <span className={`media-card-type-badge ${cls}`}>{status}</span>
+    }
+
+    return (
+        <div className="admin-section">
+            <h3>HLS Stream Proxy</h3>
+            <p style={{color: 'var(--text-secondary)', marginBottom: '1rem'}}>
+                Add M3U8 playlist URLs to proxy HLS streams through the server.
+                Streams appear in the media library — no files are downloaded to disk.
+            </p>
+
+            {msg && <div className={`admin-alert ${msg.type === 'success' ? 'admin-alert-success' : 'admin-alert-error'}`}>{msg.text}</div>}
+
+            {/* Stats */}
+            {stats && (
+                <div className="admin-stats-grid" style={{marginBottom: '1.5rem'}}>
+                    <div className="admin-stat-card"><div className="admin-stat-value">{stats.total_items}</div><div className="admin-stat-label">Total Streams</div></div>
+                    <div className="admin-stat-card"><div className="admin-stat-value">{stats.active_items}</div><div className="admin-stat-label">Active</div></div>
+                    <div className="admin-stat-card"><div className="admin-stat-value">{stats.error_items}</div><div className="admin-stat-label">Errors</div></div>
+                </div>
+            )}
+
+            {/* Add URL form */}
+            <form onSubmit={handleAdd} style={{display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap'}}>
+                <input
+                    type="url"
+                    value={newUrl}
+                    onChange={e => setNewUrl(e.target.value)}
+                    placeholder="M3U8 playlist URL..."
+                    required
+                    style={{flex: 2, minWidth: '250px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}
+                />
+                <input
+                    type="text"
+                    value={newTitle}
+                    onChange={e => setNewTitle(e.target.value)}
+                    placeholder="Title (optional)"
+                    style={{flex: 1, minWidth: '150px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}
+                />
+                <button type="submit" className="admin-btn admin-btn-primary" disabled={adding || !newUrl.trim()}>
+                    {adding ? 'Adding...' : 'Add Stream'}
+                </button>
+            </form>
+
+            {/* Items table */}
+            {isLoading ? (
+                <p style={{color: 'var(--text-secondary)'}}>Loading...</p>
+            ) : !items || items.length === 0 ? (
+                <p style={{color: 'var(--text-secondary)'}}>No streams added yet. Paste an M3U8 URL above to get started.</p>
+            ) : (
+                <div className="admin-table-wrap">
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Stream URL</th>
+                                <th>Status</th>
+                                <th>Added</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {items.map(item => (
+                                <tr key={item.id}>
+                                    <td style={{maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                        {item.title}
+                                    </td>
+                                    <td title={item.stream_url} style={{maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.85em'}}>
+                                        {item.stream_url}
+                                    </td>
+                                    <td>{statusBadge(item.status)}</td>
+                                    <td>{new Date(item.created_at).toLocaleDateString()}</td>
+                                    <td>
+                                        <button
+                                            className="admin-btn admin-btn-sm admin-btn-danger"
+                                            onClick={() => handleRemove(item.id, item.title)}
+                                            title="Remove from library"
+                                        >
+                                            Remove
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    )
+}
+
 function SourcesTab() {
     const [sub, setSub] = useState('remote')
     return (<>
         <SubTabs items={[
             {id: 'remote', label: 'Remote'},
             {id: 'slaves', label: 'Slaves'},
+            {id: 'extractor', label: 'HLS Streams'},
         ]} active={sub} onChange={setSub}/>
         {sub === 'remote' && <RemoteTab/>}
         {sub === 'slaves' && <ReceiverTab/>}
+        {sub === 'extractor' && <ExtractorTab/>}
     </>)
 }
 
