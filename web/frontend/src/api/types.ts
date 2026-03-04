@@ -873,3 +873,23 @@ export interface DiscoverySuggestion {
     confidence: number
     metadata?: Record<string, string>
 }
+
+// ── Extractor (Stream Extraction) ──
+
+// Matches internal/extractor ExtractedItem struct
+export interface ExtractorItem {
+    id: string
+    title: string
+    stream_url: string
+    status: 'active' | 'error'
+    error_message?: string
+    added_by: string
+    created_at: string
+}
+
+// Matches internal/extractor Stats struct
+export interface ExtractorStats {
+    total_items: number
+    active_items: number
+    error_items: number
+}

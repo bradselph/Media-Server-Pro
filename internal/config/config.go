@@ -36,6 +36,7 @@ type Config struct {
 	HLS           HLSConfig           `json:"hls"`
 	RemoteMedia   RemoteMediaConfig   `json:"remote_media"`
 	Receiver      ReceiverConfig      `json:"receiver"`
+	Extractor     ExtractorConfig     `json:"extractor"`
 	MatureScanner MatureScannerConfig `json:"mature_scanner"`
 	Logging       LoggingConfig       `json:"logging"`
 	Features      FeaturesConfig      `json:"features"`
@@ -295,6 +296,15 @@ type ReceiverConfig struct {
 	BufferSize    int           `json:"buffer_size"`
 }
 
+// ExtractorConfig holds settings for the stream extractor/proxy.
+// The extractor accepts M3U8 playlist URLs and proxies HLS streams to users
+// as if they were native media items — no files are downloaded to disk.
+type ExtractorConfig struct {
+	Enabled      bool          `json:"enabled"`
+	ProxyTimeout time.Duration `json:"proxy_timeout"` // Timeout for proxying HLS segments
+	MaxItems     int           `json:"max_items"`     // Maximum extracted items in library
+}
+
 // MatureScannerConfig holds content scanning settings
 type MatureScannerConfig struct {
 	Enabled                   bool     `json:"enabled"`
@@ -331,6 +341,7 @@ type FeaturesConfig struct {
 	EnableSuggestions   bool `json:"enable_suggestions"`
 	EnableAutoDiscovery bool `json:"enable_auto_discovery"`
 	EnableReceiver      bool `json:"enable_receiver"`
+	EnableExtractor     bool `json:"enable_extractor"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -514,6 +525,11 @@ func DefaultConfig() *Config {
 			MaxProxyConns: 50,
 			BufferSize:    64 * 1024, // 64KB
 		},
+		Extractor: ExtractorConfig{
+			Enabled:      false,
+			ProxyTimeout: 30 * time.Second,
+			MaxItems:     500,
+		},
 		MatureScanner: MatureScannerConfig{
 			Enabled:                   true,
 			AutoFlag:                  true,
@@ -545,6 +561,7 @@ func DefaultConfig() *Config {
 			EnableSuggestions:   true,
 			EnableAutoDiscovery: true,
 			EnableReceiver:      false,
+			EnableExtractor:     false,
 		},
 		Database: DatabaseConfig{
 			Enabled:         true, // MySQL is now required
@@ -994,6 +1011,7 @@ func (m *Manager) applyEnvOverrides() {
 	m.applyMatureScannerEnvOverrides()
 	m.applyRemoteMediaEnvOverrides()
 	m.applyReceiverEnvOverrides()
+	m.applyExtractorEnvOverrides()
 	m.applyDatabaseEnvOverrides()
 	m.applyUpdaterEnvOverrides()
 	m.applyAgeGateEnvOverrides()
@@ -1394,6 +1412,9 @@ func (m *Manager) applyFeatureEnvOverrides() {
 	if val, ok := envGetBool("FEATURE_RECEIVER", "FEATURES_RECEIVER"); ok {
 		m.config.Features.EnableReceiver = val
 	}
+	if val, ok := envGetBool("FEATURE_EXTRACTOR", "FEATURES_EXTRACTOR"); ok {
+		m.config.Features.EnableExtractor = val
+	}
 }
 
 func (m *Manager) applyMatureScannerEnvOverrides() {
@@ -1464,6 +1485,18 @@ func (m *Manager) applyReceiverEnvOverrides() {
 	}
 	if val, ok := envGetDuration(time.Second, "RECEIVER_HEALTH_CHECK_SECONDS"); ok {
 		m.config.Receiver.HealthCheck = val
+	}
+}
+
+func (m *Manager) applyExtractorEnvOverrides() {
+	if val, ok := envGetBool("EXTRACTOR_ENABLED"); ok {
+		m.config.Extractor.Enabled = val
+	}
+	if val, ok := envGetDuration(time.Second, "EXTRACTOR_PROXY_TIMEOUT_SECONDS"); ok {
+		m.config.Extractor.ProxyTimeout = val
+	}
+	if val, ok := envGetInt("EXTRACTOR_MAX_ITEMS"); ok {
+		m.config.Extractor.MaxItems = val
 	}
 }
 

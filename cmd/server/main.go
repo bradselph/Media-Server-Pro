@@ -24,6 +24,7 @@ import (
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/playlist"
+	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
 	"media-server-pro/internal/scanner"
@@ -218,6 +219,10 @@ func main() {
 	receiverModule := receiver.NewModule(cfg, dbModule)
 	mustRegister(srv, receiverModule)
 
+	// Extractor (non-critical — requires database for item persistence)
+	extractorModule := extractor.NewModule(cfg, dbModule)
+	mustRegister(srv, extractorModule)
+
 	// ── Age gate middleware ────────────────────────────────────────────────
 	appCfg := cfg.Get()
 	ageGate := middleware.NewAgeGate(appCfg.AgeGate)
@@ -252,6 +257,7 @@ func main() {
 		Updater:       updaterModule,
 		Remote:        remoteModule,
 		Receiver:      receiverModule,
+		Extractor:     extractorModule,
 	})
 
 	routes.Setup(srv.Engine(), h, authModule, securityModule, cfg, ageGate)

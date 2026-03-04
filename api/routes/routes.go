@@ -183,6 +183,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 		"/thumbnails/",
 		"/remote/stream",
 		"/receiver/stream",
+		"/extractor/hls/",
 	})))
 
 	// Apply ETag caching for GET/HEAD /api/* JSON responses
@@ -232,6 +233,11 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 
 	// Remote streaming — frontend uses mediaApi.getRemoteStreamUrl()
 	r.GET("/remote/stream", requireAuth(), h.StreamRemoteMedia)
+
+	// Extractor HLS proxy (direct, high-frequency — excluded from gzip)
+	r.GET("/extractor/hls/:id/master.m3u8", h.ExtractorHLSMaster)
+	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", h.ExtractorHLSVariant)
+	r.GET("/extractor/hls/:id/:quality/:segment", h.ExtractorHLSSegment)
 
 	// Receiver WebSocket — slave nodes connect here (authenticated via X-API-Key / api_key query)
 	r.GET("/ws/receiver", h.ReceiverWebSocket)
@@ -485,6 +491,12 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.DELETE("/remote/sources/:source", h.DeleteRemoteSource)
 	adminGrp.POST("/remote/cache", h.CacheRemoteMedia)
 	adminGrp.POST("/remote/cache/clean", h.CleanRemoteCache)
+
+	// Extractor routes (admin)
+	adminGrp.GET("/extractor/items", h.ListExtractorItems)
+	adminGrp.POST("/extractor/items", h.AddExtractorItem)
+	adminGrp.DELETE("/extractor/items/:id", h.RemoveExtractorItem)
+	adminGrp.GET("/extractor/stats", h.GetExtractorStats)
 
 	// Receiver (master-slave proxy) routes (admin)
 	adminGrp.GET("/receiver/slaves", h.AdminReceiverListSlaves)

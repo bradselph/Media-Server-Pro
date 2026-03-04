@@ -382,3 +382,36 @@ type BackupManifestRecord struct {
 	Errors      []string
 	Version     string
 }
+
+// ExtractorItemRepository provides extracted media item storage
+type ExtractorItemRepository interface {
+	Upsert(ctx context.Context, item *ExtractorItemRecord) error
+	Get(ctx context.Context, id string) (*ExtractorItemRecord, error)
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context) ([]*ExtractorItemRecord, error)
+	ListActive(ctx context.Context) ([]*ExtractorItemRecord, error)
+	UpdateStatus(ctx context.Context, id, status, errorMsg string) error
+}
+
+// ExtractorItemRecord represents a stored extracted media item
+type ExtractorItemRecord struct {
+	ID              string
+	SourceURL       string
+	Title           string
+	StreamURL       string
+	StreamType      string // "hls" or "mp4"
+	ContentType     string
+	Quality         string
+	Width           int
+	Height          int
+	Duration        float64
+	Site            string
+	DetectionMethod string
+	Status          string // "active", "expired", "error"
+	ErrorMessage    string
+	AddedBy         string
+	ResolvedAt      time.Time
+	ExpiresAt       *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}

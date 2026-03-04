@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fmt"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/thumbnails"
@@ -105,7 +106,30 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		}
 	}
 
-	// Re-sort the combined list so receiver items are interleaved correctly
+	// Merge extractor items into the listing so extracted external URLs
+	// appear in the unified library alongside local and slave media.
+	if h.extractor != nil {
+		cfg := h.media.GetConfig()
+		if cfg.Features.EnableExtractor && cfg.Extractor.Enabled {
+			for _, ei := range h.extractor.GetAllItems() {
+				if ei.Status != "active" {
+					continue
+				}
+				item := &models.MediaItem{
+					ID:   ei.ID,
+					Name: ei.Title,
+					Type: models.MediaTypeVideo,
+				}
+				if !filterNoPagination.Matches(item) {
+					continue
+				}
+				allItems = append(allItems, item)
+				hasReceiverItems = true // reuse flag to trigger re-sort
+			}
+		}
+	}
+
+	// Re-sort the combined list so receiver/extractor items are interleaved correctly
 	// with local items instead of being appended at the end.
 	if hasReceiverItems {
 		filterNoPagination.SortItems(allItems)
@@ -204,6 +228,17 @@ func (h *Handler) GetMedia(c *gin.Context) {
 					Width:    ri.Width,
 					Height:   ri.Height,
 					IsMature: h.isReceiverItemMature(ri.ContentFingerprint),
+				})
+				return
+			}
+		}
+		// Try extractor items
+		if h.extractor != nil {
+			if ei := h.extractor.GetItem(id); ei != nil && ei.Status == "active" {
+				writeSuccess(c, &models.MediaItem{
+					ID:   ei.ID,
+					Name: ei.Title,
+					Type: models.MediaTypeVideo,
 				})
 				return
 			}
@@ -312,7 +347,15 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 				return
 			}
 		}
-		// Neither local nor receiver — write appropriate error
+		// Try extractor items — proxy HLS from M3U8 stream
+		if h.extractor != nil {
+			if ei := h.extractor.GetItem(id); ei != nil && ei.Status == "active" {
+				// Redirect to the proxy HLS master playlist
+				c.Redirect(http.StatusFound, fmt.Sprintf("/extractor/hls/%s/master.m3u8", id))
+				return
+			}
+		}
+		// Neither local, receiver, nor extractor — write appropriate error
 		if !h.media.IsReady() {
 			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
 		} else {
