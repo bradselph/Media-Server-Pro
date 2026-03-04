@@ -65,8 +65,8 @@ type Module struct {
 	dbModule  *database.Module
 	repo      repositories.SuggestionProfileRepository
 	profiles  map[string]*UserProfile
-	mediaData map[string]*MediaInfo   // keyed by filesystem path
-	mediaByID map[string]*MediaInfo   // keyed by StableID (secondary index)
+	mediaData map[string]*MediaInfo // keyed by filesystem path
+	mediaByID map[string]*MediaInfo // keyed by StableID (secondary index)
 	mu        sync.RWMutex
 	healthy   bool
 	healthMsg string
