@@ -327,7 +327,12 @@ export function PlayerPage() {
     function togglePlay() {
         const el = getActiveEl()
         if (!el) return
-        el.paused ? el.play().catch(() => {}) : el.pause()
+        if (el.paused) {
+            el.play().catch(() => {
+            })
+        } else {
+            el.pause()
+        }
     }
 
     function handleVideoClick() {
@@ -395,11 +400,12 @@ export function PlayerPage() {
     }
     function handleProgressTouch(e: React.TouchEvent<HTMLDivElement>) {
         e.preventDefault()
-        const el = getActiveEl()
-        if (!el || !duration) return
         const touch = e.touches[0] ?? e.changedTouches[0]
+        if (!touch) return
         const rect = e.currentTarget.getBoundingClientRect()
         const ratio = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+        const el = getActiveEl()
+        if (!el || !duration) return
         el.currentTime = ratio * duration
     }
     function handleProgressHover(e: React.MouseEvent<HTMLDivElement>) {
@@ -444,7 +450,6 @@ export function PlayerPage() {
         const el = getActiveEl()
         setPlaybackRate(speed)
         if (el) el.playbackRate = speed
-        setShowSettings(false)
     }
 
     function handleFullscreen() {
@@ -499,7 +504,8 @@ export function PlayerPage() {
                 case 'K':
                     e.preventDefault()
                     if (el) {
-                        el.paused ? el.play().catch(() => {}) : el.pause()
+                        el.paused ? el.play().catch(() => {
+                        }) : el.pause()
                     }
                     break
                 case 'j':
@@ -588,8 +594,9 @@ export function PlayerPage() {
                     e.preventDefault()
                     setSpeed(Math.min(2, playbackRate + 0.25))
                     break
+            }
         }
-        }
+
         document.addEventListener('keydown', onKeyDown)
         return () => document.removeEventListener('keydown', onKeyDown)
     }, [media?.type, showSettings, playbackRate])
@@ -678,7 +685,7 @@ export function PlayerPage() {
                                         setShowMatureWarning(false)
                                     }}
                                 >
-                                    <i className="bi bi-check-lg"/> I understand, continue
+                                    <i className="bi bi-check-circle"/> I am 18+, Continue
                                 </button>
                                 <button className="media-action-btn" onClick={() => navigate('/')}>
                                     <i className="bi bi-arrow-left"/> Go Back
@@ -692,8 +699,9 @@ export function PlayerPage() {
                 </div>
             )}
 
-            <div className="player-page-container">
+            <div className={`player-page-container ${theaterMode ? 'player-page-container--theater' : ''}`}>
                 <div className="player-header">
+                    <Link to="/" className="player-back-btn"><i className="bi bi-arrow-left"/> Back to Library</Link>
                     {isVideo && (
                         <button
                             className={`player-theater-btn ${theaterMode ? 'player-theater-btn--active' : ''}`}
@@ -703,7 +711,6 @@ export function PlayerPage() {
                             <i className={theaterMode ? 'bi bi-arrows-angle-contract' : 'bi bi-arrows-angle-expand'}/>
                         </button>
                     )}
-                    <Link to="/" className="player-back-btn"><i className="bi bi-arrow-left"/> Back to Library</Link>
                 </div>
                 <div className={`player-layout ${theaterMode ? 'player-layout--theater' : ''}`}>
                     {/* Main player column */}
@@ -778,6 +785,7 @@ export function PlayerPage() {
                                 >
                                     <div className="ctrl-buffer-bar" style={{width: `${buffered}%`}}/>
                                     <div className="ctrl-progress-fill" style={{width: `${progress}%`}}/>
+                                    {/* Time tooltip on hover */}
                                     {hoverTime !== null && (
                                         <div
                                             className="ctrl-progress-tooltip"
@@ -790,7 +798,7 @@ export function PlayerPage() {
 
                                 {/* Controls row */}
                                 <div className="ctrl-row">
-                                    <button className="ctrl-btn" onClick={togglePlay} title="Play/Pause (Space)">
+                                    <button className="ctrl-btn" onClick={togglePlay} title="Play/Pause (K)">
                                         {isPlaying ? <i className="bi bi-pause-fill"/> :
                                             <i className="bi bi-play-fill"/>}
                                     </button>
@@ -804,8 +812,9 @@ export function PlayerPage() {
                                     <button className="ctrl-btn" onClick={() => {
                                         const el = getActiveEl();
                                         if (el) el.currentTime = Math.min(el.duration, el.currentTime + 10)
-                                    }} title="Skip forward 10s (→)">
-                                        10<i className="bi bi-skip-forward-fill"/>
+                                    }} title="Forward 10s (L)">
+                                        <span className="ctrl-btn-label">10</span>
+                                        <i className="bi bi-skip-forward-fill"/>
                                     </button>
                                     <div className="ctrl-volume-wrapper">
                                         <button className="ctrl-btn" onClick={toggleMute} title="Mute (M)">
@@ -840,13 +849,13 @@ export function PlayerPage() {
                                     )}
                                     {/* Settings gear — opens unified panel */}
                                     <div className="ctrl-settings-wrapper">
-                                    <button
+                                        <button
                                             className={`ctrl-btn ${showSettings ? 'active' : ''}`}
                                             onClick={() => setShowSettings(s => !s)}
                                             title="Settings"
-                                    >
+                                        >
                                             <i className={`bi bi-gear-fill ${showSettings ? 'ctrl-gear-spin' : ''}`}/>
-                                    </button>
+                                        </button>
                                         {showSettings && (
                                             <PlayerSettingsPanel
                                                 qualities={hlsQualities}
@@ -865,7 +874,8 @@ export function PlayerPage() {
                                         )}
                                     </div>
                                     {isVideo && (
-                                        <button className="ctrl-btn" onClick={handleFullscreen} title="Fullscreen (F)">
+                                        <button className="ctrl-btn" onClick={handleFullscreen}
+                                                title="Fullscreen (F)">
                                             <i className="bi bi-fullscreen"/>
                                         </button>
                                     )}
@@ -1001,7 +1011,6 @@ export function PlayerPage() {
                                 </div>
                             </div>
                         )}
-
                         {/* HLS progress indicator */}
                         {hlsJob && hlsJob.status === 'running' && (
                             <div className="hls-progress-wrapper">
@@ -1060,65 +1069,67 @@ export function PlayerPage() {
 
                     {/* Sidebar */}
                     <SectionErrorBoundary title="Sidebar unavailable">
-                    <div className="player-sidebar">
-                        <div className="player-sidebar-card">
-                            <h3><i className="bi bi-play-fill"/> Similar Media</h3>
-                            {relatedLoading ? (
-                                <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading...</p>
-                            ) : related.length === 0 ? (
-                                <p style={{color: 'var(--text-muted)', fontSize: 13}}>No similar media found.</p>
-                            ) : (
-                                related.map(entry => <SimilarItem key={entry.media_id} entry={entry}/>)
-                            )}
-                        </div>
-                            {/* Star Rating */}
-                        {user && (
+                        <div className="player-sidebar">
                             <div className="player-sidebar-card">
-                                <h3><i className="bi bi-star-fill"/> Rate This</h3>
-                                <div style={{display: 'flex', gap: 4, marginTop: 4}}>
-                                    {[1, 2, 3, 4, 5].map(star => (
-                                        <button
-                                            key={star}
-                                            onClick={() => handleRate(star)}
-                                            onMouseEnter={() => setRatingHover(star)}
-                                            onMouseLeave={() => setRatingHover(0)}
-                                            style={{
-                                                background: 'none',
-                                                border: 'none',
-                                                cursor: 'pointer',
-                                                fontSize: 22,
-                                                padding: '2px 3px',
-                                                color: star <= (ratingHover || userRating) ? '#f59e0b' : 'var(--text-muted)',
-                                                transition: 'color 0.15s',
-                                            }}
-                                            title={`Rate ${star} star${star !== 1 ? 's' : ''}`}
-                                        >
-                                            <i className={`bi bi-star${star <= (ratingHover || userRating) ? '-fill' : ''}`}/>
-                                        </button>
-                                    ))}
-                                </div>
-                                {userRating > 0 && (
-                                    <p style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 4}}>
-                                        You rated this {userRating}/5
-                                    </p>
+                                <h3><i className="bi bi-play-fill"/> Similar Media</h3>
+                                {relatedLoading ? (
+                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading...</p>
+                                ) : related.length === 0 ? (
+                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>No similar media found.</p>
+                                ) : (
+                                    related.map(entry => <SimilarItem key={entry.media_id} entry={entry}/>)
                                 )}
                             </div>
-                        )}
-                        {/* Keyboard shortcuts card */}
-                        <div className="player-sidebar-card player-shortcuts-card">
-                            <h3><i className="bi bi-keyboard"/> Shortcuts</h3>
-                            <div className="player-shortcuts-grid">
-                                <kbd>K</kbd> <span>Play/Pause</span>
-                                <kbd>J</kbd> <span>Back 10s</span>
-                                <kbd>L</kbd> <span>Forward 10s</span>
-                                <kbd>F</kbd> <span>Fullscreen</span>
-                                <kbd>T</kbd> <span>Theater</span>
-                                <kbd>M</kbd> <span>Mute</span>
-                                <kbd>0-9</kbd> <span>Seek %</span>
-                                <kbd>&lt; &gt;</kbd> <span>Speed</span>
+
+                            {/* Star Rating */}
+                            {user && (
+                                <div className="player-sidebar-card">
+                                    <h3><i className="bi bi-star-fill"/> Rate This</h3>
+                                    <div style={{display: 'flex', gap: 4, marginTop: 4}}>
+                                        {[1, 2, 3, 4, 5].map(star => (
+                                            <button
+                                                key={star}
+                                                onClick={() => handleRate(star)}
+                                                onMouseEnter={() => setRatingHover(star)}
+                                                onMouseLeave={() => setRatingHover(0)}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    fontSize: 22,
+                                                    padding: '2px 3px',
+                                                    color: star <= (ratingHover || userRating) ? '#f59e0b' : 'var(--text-muted)',
+                                                    transition: 'color 0.15s',
+                                                }}
+                                                title={`Rate ${star} star${star !== 1 ? 's' : ''}`}
+                                            >
+                                                <i className={`bi bi-star${star <= (ratingHover || userRating) ? '-fill' : ''}`}/>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {userRating > 0 && (
+                                        <p style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 4}}>
+                                            You rated this {userRating}/5
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Keyboard shortcuts card */}
+                            <div className="player-sidebar-card player-shortcuts-card">
+                                <h3><i className="bi bi-keyboard"/> Shortcuts</h3>
+                                <div className="player-shortcuts-grid">
+                                    <kbd>K</kbd> <span>Play/Pause</span>
+                                    <kbd>J</kbd> <span>Back 10s</span>
+                                    <kbd>L</kbd> <span>Forward 10s</span>
+                                    <kbd>F</kbd> <span>Fullscreen</span>
+                                    <kbd>T</kbd> <span>Theater</span>
+                                    <kbd>M</kbd> <span>Mute</span>
+                                    <kbd>0-9</kbd> <span>Seek %</span>
+                                    <kbd>&lt; &gt;</kbd> <span>Speed</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
                     </SectionErrorBoundary>
                 </div>
             </div>

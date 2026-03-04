@@ -36,8 +36,6 @@
     font-size: 14px;
     cursor: pointer;
     transition: all 0.2s;
-    font-size: 14px;
-    margin-left: auto;
 }
 
 .player-back-btn:hover {
@@ -46,6 +44,27 @@
     border-color: #667eea;
     text-decoration: none;
 }
+.player-theater-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+    margin-left: auto;
+}
+
+.player-theater-btn:hover {
+    background: var(--border-color);
+    color: var(--text-color);
+}
+
 .player-theater-btn--active {
     background: rgba(102, 126, 234, 0.15);
     border-color: rgba(102, 126, 234, 0.4);
@@ -126,8 +145,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    font-size: 32px;
     z-index: 5;
 }
 .player-loading-spinner {
@@ -217,14 +234,38 @@
 }
 
 .ctrl-progress-container:hover .ctrl-progress-fill::after {
-    opacity: 1;
+    transform: translateY(-50%) scale(1);
+}
+
+/* Progress bar time tooltip */
+.ctrl-progress-tooltip {
+    position: absolute;
+    bottom: 16px;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    font-size: 12px;
+    font-family: monospace;
+    padding: 4px 8px;
+    border-radius: 4px;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 15;
+}
+
+.ctrl-progress-tooltip--audio {
+    bottom: 20px;
+    background: var(--card-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 /* Controls row */
 .ctrl-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     color: white;
 }
 
@@ -241,6 +282,7 @@
     justify-content: center;
     transition: background 0.2s;
     min-width: 32px;
+    gap: 1px;
 }
 
 .ctrl-btn:hover {
@@ -251,8 +293,41 @@
     color: #667eea;
 }
 
+.ctrl-btn-label {
+    font-size: 10px;
+    font-weight: 600;
+}
+
 .ctrl-spacer {
     flex: 1;
+}
+
+/* Quality badge in the controls bar */
+.ctrl-quality-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    background: rgba(102, 126, 234, 0.3);
+    border: 1px solid rgba(102, 126, 234, 0.5);
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #a5b4fc;
+    letter-spacing: 0.02em;
+}
+
+/* Speed badge in the controls bar */
+.ctrl-speed-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    background: rgba(251, 146, 60, 0.2);
+    border: 1px solid rgba(251, 146, 60, 0.4);
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: monospace;
+    color: #fb923c;
 }
 
 .ctrl-quality-select {
@@ -306,7 +381,208 @@
     cursor: pointer;
 }
 
-/* Settings popup */
+/* Settings wrapper for positioning the panel */
+.ctrl-settings-wrapper {
+    position: relative;
+}
+
+/* Gear spin animation */
+.ctrl-gear-spin {
+    animation: gear-spin 0.5s ease;
+}
+@keyframes gear-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(90deg); }
+}
+
+/* ── Settings Panel (unified quality/speed/loop menu) ── */
+.settings-panel {
+    position: absolute;
+    bottom: 44px;
+    right: 0;
+    background: rgba(15, 15, 20, 0.97);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    min-width: 260px;
+    max-height: 400px;
+    overflow-y: auto;
+    z-index: 30;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    animation: settings-panel-enter 0.15s ease;
+}
+
+@keyframes settings-panel-enter {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.settings-panel__menu {
+    padding: 6px 0;
+}
+
+.settings-panel__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 14px;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.12s;
+    text-align: left;
+}
+
+.settings-panel__item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.settings-panel__item--active {
+    background: rgba(102, 126, 234, 0.15);
+}
+
+.settings-panel__item-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.settings-panel__item-left > i {
+    font-size: 15px;
+    width: 18px;
+    text-align: center;
+    opacity: 0.8;
+}
+
+.settings-panel__item-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+}
+
+.settings-panel__item-right > i {
+    font-size: 11px;
+}
+
+.settings-panel__value {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Toggle switch */
+.settings-panel__toggle {
+    width: 36px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    position: relative;
+    transition: background 0.2s;
+}
+.settings-panel__toggle--on {
+    background: #667eea;
+}
+.settings-panel__toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+
+.settings-panel__toggle--on .settings-panel__toggle-knob {
+    transform: translateX(16px);
+}
+
+/* Back button in submenus */
+.settings-panel__back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s;
+    text-align: left;
+}
+
+.settings-panel__back:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.settings-panel__back > i {
+    font-size: 12px;
+}
+
+.settings-panel__divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 0;
+}
+
+/* Auto quality badge */
+.settings-panel__auto-badge {
+    display: inline-flex;
+    padding: 1px 6px;
+    background: rgba(102, 126, 234, 0.25);
+    border-radius: 3px;
+    font-size: 11px;
+    color: #a5b4fc;
+    margin-left: 4px;
+}
+
+/* HD badge */
+.settings-panel__hd-badge {
+    display: inline-flex;
+    padding: 1px 5px;
+    background: rgba(102, 126, 234, 0.3);
+    border: 1px solid rgba(102, 126, 234, 0.5);
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #a5b4fc;
+    letter-spacing: 0.05em;
+    margin-left: 4px;
+}
+
+/* Bitrate display */
+.settings-panel__bitrate {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+    font-family: monospace;
+}
+
+/* Bandwidth info */
+.settings-panel__bandwidth {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+}
+
+.settings-panel__bandwidth > i {
+    font-size: 12px;
+}
+
+/* ── Legacy settings menu (removed, but keep for transition) ── */
 .ctrl-settings-menu {
     position: absolute;
     bottom: 52px;
@@ -434,6 +710,35 @@
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+/* Keyboard shortcuts card */
+.player-shortcuts-card h3 {
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.player-shortcuts-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    align-items: center;
+}
+
+.player-shortcuts-grid kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 6px;
+    background: var(--border-color);
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-color);
+    min-width: 28px;
+    text-align: center;
 }
 
 .related-item {
@@ -711,214 +1016,28 @@
     .player-layout {
         grid-template-columns: 1fr;
     }
+
+    /* Settings panel full-width on mobile */
+    .settings-panel {
+        min-width: 220px;
+        right: -10px;
+    }
+
+    /* Hide shortcuts card on mobile */
+    .player-shortcuts-card {
+        display: none;
+    }
+
+    /* Hide quality/speed badges on very small screens */
+    .ctrl-quality-badge,
+    .ctrl-speed-badge {
+        display: none;
+    }
 }
 
 /* Ensure touch-drag works on progress bars (prevents page scroll during seek) */
 .ctrl-progress-container {
     touch-action: none;
-}
-/* ── Theater Button ── */
-.player-theater-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 8px 10px;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    color: var(--text-color);
-    font-size: 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.player-theater-btn:hover {
-    background: var(--border-color);
-}
-.player-theater-btn--active {
-    background: rgba(102, 126, 234, 0.15);
-    border-color: rgba(102, 126, 234, 0.4);
-    color: #667eea;
-}
-
-/* ── Progress Tooltip ── */
-.ctrl-progress-tooltip {
-    position: absolute;
-    bottom: 14px;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.9);
-    color: white;
-    font-size: 11px;
-    font-family: monospace;
-    padding: 3px 6px;
-    border-radius: 3px;
-    white-space: nowrap;
-    pointer-events: none;
-    z-index: 5;
-}
-.ctrl-progress-tooltip--audio {
-    bottom: 20px;
-}
-
-/* ── Control Bar Badges ── */
-.ctrl-quality-badge,
-.ctrl-speed-badge {
-    font-size: 11px;
-    font-family: monospace;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: rgba(255, 255, 255, 0.15);
-    color: rgba(255, 255, 255, 0.85);
-    white-space: nowrap;
-}
-
-.ctrl-btn-label {
-    font-size: 9px;
-    font-weight: 600;
-}
-
-/* ── Settings Wrapper ── */
-.ctrl-settings-wrapper {
-    position: relative;
-}
-
-/* Gear spin animation */
-.ctrl-gear-spin {
-    animation: gear-spin 0.5s ease;
-}
-@keyframes gear-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(90deg); }
-}
-
-/* ── Settings Panel (unified quality/speed/loop panel) ── */
-.settings-panel {
-    position: absolute;
-    bottom: 52px;
-    right: 0;
-    background: rgba(15, 15, 20, 0.97);
-    border-radius: 10px;
-    min-width: 220px;
-    max-height: 340px;
-    overflow-y: auto;
-    z-index: 30;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.settings-panel__menu {
-    display: flex;
-    flex-direction: column;
-    padding: 6px;
-}
-.settings-panel__item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 9px 12px;
-    border: none;
-    background: none;
-    color: white;
-    font-size: 13px;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: background 0.15s;
-    text-align: left;
-    width: 100%;
-}
-.settings-panel__item:hover {
-    background: rgba(255, 255, 255, 0.08);
-}
-.settings-panel__item--active {
-    background: rgba(102, 126, 234, 0.2);
-}
-.settings-panel__item-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.settings-panel__item-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 12px;
-}
-.settings-panel__value {
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.6);
-}
-.settings-panel__back {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 9px 12px;
-    border: none;
-    background: none;
-    color: white;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: background 0.15s;
-    width: 100%;
-    text-align: left;
-}
-.settings-panel__back:hover {
-    background: rgba(255, 255, 255, 0.08);
-}
-.settings-panel__divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.08);
-    margin: 4px 8px;
-}
-.settings-panel__toggle {
-    width: 32px;
-    height: 18px;
-    border-radius: 9px;
-    background: rgba(255, 255, 255, 0.2);
-    position: relative;
-    transition: background 0.2s;
-}
-.settings-panel__toggle--on {
-    background: #667eea;
-}
-.settings-panel__toggle-knob {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: white;
-    transition: left 0.2s;
-}
-.settings-panel__toggle--on .settings-panel__toggle-knob {
-    left: 16px;
-}
-.settings-panel__auto-badge {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.4);
-}
-.settings-panel__hd-badge {
-    font-size: 9px;
-    font-weight: 700;
-    padding: 1px 4px;
-    border-radius: 3px;
-    background: rgba(102, 126, 234, 0.3);
-    color: #a5b4fc;
-}
-.settings-panel__bitrate {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.4);
-    font-family: monospace;
-}
-.settings-panel__bandwidth {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.4);
 }
 
 /* ── Settings panel scrollbar ── */
@@ -931,26 +1050,4 @@
 .settings-panel::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.2);
     border-radius: 2px;
-}
-
-/* ── Keyboard Shortcuts Grid ── */
-.player-shortcuts-grid {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 6px 12px;
-    font-size: 13px;
-}
-.player-shortcuts-grid kbd {
-    display: inline-block;
-    padding: 2px 6px;
-    background: var(--border-color);
-    border-radius: 4px;
-    font-size: 11px;
-    font-family: monospace;
-    text-align: center;
-    min-width: 28px;
-    color: var(--text-color);
-}
-.player-shortcuts-grid span {
-    color: var(--text-muted);
 }

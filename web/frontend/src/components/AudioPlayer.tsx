@@ -31,7 +31,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
         usePlaybackStore.getState().setHLSUrl(null)
     }, [])
 
-    const {qualities, currentQuality, selectQuality} = useHLS(
+    const {qualities, currentQuality, autoLevel, selectQuality} = useHLS(
         audioRef,
         hlsEnabled ? hlsUrl : null,
         handleHLSFallback,
@@ -255,7 +255,11 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
                             onChange={e => selectQuality(parseInt(e.target.value))}
                             title="Quality"
                         >
-                            <option value={-1}>Auto</option>
+                            <option value={-1}>
+                                Auto{currentQuality === -1 && autoLevel >= 0 && qualities[autoLevel]
+                                    ? ` (${qualities[autoLevel].name})`
+                                    : ''}
+                            </option>
                             {qualities.map(q => (
                                 <option key={q.index} value={q.index}>{q.name}</option>
                             ))}
