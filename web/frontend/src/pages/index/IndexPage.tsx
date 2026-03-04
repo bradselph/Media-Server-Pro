@@ -672,9 +672,14 @@ export function IndexPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const defaultLimit = user?.preferences?.items_per_page || serverSettings?.ui?.items_per_page || 24
 
-    // Ref so updateParams stays stable even as defaultLimit changes from async data loads
+    // Refs so updateParams stays stable even as defaultLimit or setSearchParams changes.
+    // In React Router v7, setSearchParams gets a new identity on each location update, so
+    // depending on it directly would make updateParams unstable — causing the search debounce
+    // effect to re-fire on every page navigation and reset the page back to 1.
     const defaultLimitRef = useRef(defaultLimit)
     defaultLimitRef.current = defaultLimit
+    const setSearchParamsRef = useRef(setSearchParams)
+    setSearchParamsRef.current = setSearchParams
 
     const page = Math.max(1, Number(searchParams.get('page')) || 1)
     const limit = Number(searchParams.get('limit')) || defaultLimit
@@ -687,7 +692,7 @@ export function IndexPage() {
 
     // Helper: update URL params (replace: true to avoid flooding browser history)
     const updateParams = useCallback((updates: Record<string, string | number | null>) => {
-        setSearchParams(prev => {
+        setSearchParamsRef.current(prev => {
             const next = new URLSearchParams(prev)
             for (const [key, value] of Object.entries(updates)) {
                 if (value === null || value === '') {
@@ -705,7 +710,7 @@ export function IndexPage() {
             if (next.get('limit') === String(defaultLimitRef.current)) next.delete('limit')
             return next
         }, {replace: true})
-    }, [setSearchParams]) // stable — reads defaultLimit via ref to avoid spurious re-creation
+    }, []) // truly stable — reads both setSearchParams and defaultLimit via refs
 
     const setPage = useCallback((v: number | ((prev: number) => number)) => {
         const newPage = typeof v === 'function' ? v(page) : v
