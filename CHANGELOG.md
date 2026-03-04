@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0] - 2026-03-03 (minor)
+
+- Merge pull request #43 from bradselph/development
+- fix: deploy script reads branch from .env UPDATER_BRANCH
+- fix: non-null assertion for bandwidth in PlayerSettingsPanel
+
+
 ## [0.39.0] - 2026-03-03 (minor)
 
 - Merge pull request #42 from bradselph/development
