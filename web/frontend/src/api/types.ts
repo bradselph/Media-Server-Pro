@@ -336,6 +336,10 @@ export interface ServerSettings {
         enableThumbnails: boolean
         enableHLS: boolean
         enableAnalytics: boolean
+        // TODO: analytics_tracking is a duplicate of enableAnalytics — both map to
+        // cfg.Analytics.Enabled in api/handlers/system.go GetServerSettings. One key is
+        // snake_case legacy, one is camelCase. Remove analytics_tracking here and in
+        // GetServerSettings once all frontend consumers are updated to use enableAnalytics.
         analytics_tracking: boolean
     }
     uploads: {
@@ -427,6 +431,12 @@ export interface AuditLogEntry {
     action: string
     // Backend uses "resource" not "target"
     resource: string
+    // TODO: details is declared as optional here but is ALWAYS absent from the backend response.
+    // models.AuditLogEntry.Details has gorm:"-" and db:"-" tags, so it is never written to or
+    // read from MySQL. admin.LogAction() assigns values to this field in-memory, but they are
+    // lost immediately and never serialized. The audit log UI always renders an empty details
+    // section. Remove this field from the interface (or mark it as permanently absent) until
+    // backend persistence for AuditLogEntry.Details is implemented.
     details?: Record<string, unknown>
     // Backend uses "ip_address" not "ip"
     ip_address?: string

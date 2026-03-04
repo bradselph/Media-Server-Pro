@@ -268,6 +268,12 @@ func (m *Module) updateStats(event models.AnalyticsEvent) {
 
 	if event.Type == "view" {
 		daily.TotalViews++
+		// TODO: DailyStats.UniqueUsers, TotalWatchTime, NewUsers, and TopMedia are never updated here.
+		// UniqueUsers: use a per-day set of userIDs (e.g. map[string]map[string]struct{}) to count distinct.
+		// TotalWatchTime: accumulate from "playback" events that carry a "duration" field in event.Data.
+		// NewUsers: requires auth.CreateUser to emit a synthetic event; or query user.CreatedAt on flush.
+		// TopMedia: maintain a sorted slice of (mediaID, count) pairs updated on each "view" event.
+		// Until these are implemented, GetDailyStats returns zeroes for all four fields.
 	}
 
 	// Update media stats
@@ -848,6 +854,12 @@ func (m *Module) GetEventStats(ctx context.Context) EventStats {
 
 	hourly := make([]int, 24)
 	for _, event := range todayEvents {
+		// TODO: Timezone mismatch in hourly distribution. Events are stored with UTC timestamps
+		// (gorm:"autoCreateTime" uses UTC), but todayStr is filtered using the server's local timezone
+		// via time.Now().Location(). If the server is in a non-UTC timezone, events near midnight may
+		// be attributed to the wrong bucket (event.Timestamp.Hour() returns UTC hour while todayStr
+		// filters by local date). Fix: convert event.Timestamp to the server's local timezone before
+		// calling .Hour(), or store all timestamps in local time consistently.
 		hourly[event.Timestamp.Hour()]++
 	}
 

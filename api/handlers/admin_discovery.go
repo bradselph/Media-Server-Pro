@@ -21,6 +21,12 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 		return
 	}
 
+	// TODO: req.Directory is accepted from the request body and passed directly to ScanDirectory
+	// without validation against the configured media directories (cfg.Directories.Videos,
+	// cfg.Directories.Music, cfg.Directories.Uploads). An admin could scan any arbitrary directory
+	// on the filesystem, leaking directory listings or triggering ffprobe against unexpected content.
+	// Fix: validate that req.Directory starts with (or equals) one of the configured media paths
+	// using filepath.HasPrefix or a similar containment check before calling ScanDirectory.
 	scanResults, err := h.autodiscovery.ScanDirectory(req.Directory)
 	if err != nil {
 		h.log.Error("%v", err)

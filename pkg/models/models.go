@@ -13,6 +13,10 @@ type MediaType string
 const (
 	MediaTypeVideo   MediaType = "video"
 	MediaTypeAudio   MediaType = "audio"
+	// TODO: MediaTypeUnknown is never assigned anywhere in the codebase (DEPRECATED S-04). Unmatched
+	// files are silently dropped by internal/media/discovery.go rather than catalogued as unknown.
+	// Remove this constant and the "unknown" type arm in MediaItem.type (types.ts) once confirmed
+	// no external consumers rely on this value in stored analytics events or playlists.
 	MediaTypeUnknown MediaType = "unknown" // DEPRECATED: S-04 — never assigned; unmatched files are dropped not catalogued — safe to delete
 )
 
@@ -84,6 +88,11 @@ type User struct {
 func (*User) TableName() string {
 	return "users"
 }
+
+// TODO: userStorage, MarshalStorage, and UnmarshalStorage (DEPRECATED R-02) are holdovers from
+// the JSON file persistence era. All storage now goes through GORM MySQL repositories
+// (internal/repositories/mysql/). No caller in the codebase invokes MarshalStorage or
+// UnmarshalStorage. Remove all three once confirmed no external tooling depends on them.
 
 // DEPRECATED: R-02 — JSON file persistence era; MySQL repositories are used for all storage — safe to delete
 type userStorage struct {
@@ -275,6 +284,13 @@ type WatchHistoryItem struct {
 	Completed bool      `json:"completed"`
 }
 
+/* TODO: PlaybackPosition uses filesystem Path as the composite primary key (Path + UserID).
+   When a file is renamed or moved via media.RenameMedia/MoveMedia, the stable UUID (MediaItem.ID)
+   is preserved but all PlaybackPosition records keyed to the old path become orphaned and are never
+   found again. The primary key should be migrated to (media_id, user_id) using the stable UUID,
+   consistent with WatchHistoryItem.MediaID. Related: REC-03 in MEMORY.md — MediaMetadataRepository
+   similarly keys on path; both should migrate together. The same orphaning problem affects
+   MediaTag.Path and all repository lookup methods in internal/repositories/interfaces.go. */
 // PlaybackPosition represents a user's playback position for a media file
 type PlaybackPosition struct {
 	Path      string    `json:"path" db:"path" gorm:"primaryKey;size:500"`
@@ -478,12 +494,27 @@ type ViewStats struct {
 	TotalViews     int       `json:"total_views"`
 	CompletionRate float64   `json:"completion_rate"`
 	LastViewed     time.Time `json:"last_viewed"`
+	// TODO: UniqueViewers, AvgWatchDuration, and PeakConcurrent always return zero (IC-01).
+	// The analytics module's updateStats() only populates TotalViews, CompletionRate, and LastViewed.
+	// To compute these: UniqueViewers requires storing per-view userID in mediaStats and deduplicating;
+	// AvgWatchDuration requires accumulating "playback" event durations and averaging;
+	// PeakConcurrent requires a real-time concurrency counter in streaming.Module.GetStats().
+	// These fields appear in every GetMediaStats response and in the Admin analytics dashboard
+	// (web/frontend/src/pages/admin/AdminPage.tsx) where they render as "0".
 	// IC-01: fields below always return zero — analytics module does not yet compute them
 	UniqueViewers    int     `json:"unique_viewers"`     // requires per-view user tracking
 	AvgWatchDuration float64 `json:"avg_watch_duration"` // requires watch time aggregation
 	PeakConcurrent   int     `json:"peak_concurrent"`    // requires real-time concurrency tracking
 }
 
+/* TODO: DailyStats.UniqueUsers, TotalWatchTime, NewUsers, and TopMedia are never populated.
+   analytics.updateStats() only increments TotalViews when event.Type == "view". The remaining
+   fields always serialize as zero/null in GetDailyStats responses consumed by the Admin analytics
+   dashboard charts (web/frontend/src/pages/admin/AdminPage.tsx).
+   - UniqueUsers: count distinct event.UserID per day in updateStats
+   - TotalWatchTime: accumulate "playback" event duration field per day
+   - NewUsers: requires a hook in auth.CreateUser to emit a "new_user" event
+   - TopMedia: sort mediaStats by TotalViews and store top-N media IDs per day */
 // DailyStats holds daily aggregate statistics
 type DailyStats struct {
 	Date           string   `json:"date"` // "YYYY-MM-DD" date string, not a timestamp
@@ -558,6 +589,12 @@ type AuditLogEntry struct {
 	Username  string                 `json:"username" db:"username" gorm:"size:255"`
 	Action    string                 `json:"action" db:"action" gorm:"size:100;not null;index"`
 	Resource  string                 `json:"resource" db:"resource" gorm:"size:255;index"`
+	// TODO: Details is excluded from GORM persistence (gorm:"-") and SQL queries (db:"-").
+	// admin.LogAction() assigns values to this field, but they are lost: never written to MySQL,
+	// never included in ExportAuditLog CSV output (api/handlers/admin.go ExportAuditLog).
+	// The frontend's AuditLogEntry.details (web/frontend/src/api/types.ts) always receives null.
+	// To fix: add a TEXT/JSON column to the audit_log table, serialize Details to JSON on write,
+	// and deserialize on read in internal/repositories/mysql/audit_log_repository.go.
 	Details   map[string]interface{} `json:"details,omitempty" db:"-" gorm:"-"`
 	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
 	Success   bool                   `json:"success" db:"success" gorm:"index"`

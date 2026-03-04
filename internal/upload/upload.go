@@ -189,6 +189,15 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category st
 
 	// Generate upload ID and create progress tracker
 	uploadID := m.generateUploadID()
+	// TODO: uploadID is generated here and stored in activeUploads, but it is never returned to
+	// the HTTP client. The upload handler (api/handlers/upload.go) does not include the uploadID
+	// in the response body. Clients therefore cannot poll GET /api/upload/:id/progress (which
+	// calls GetProgress) because they never learn the ID. The GetProgress endpoint and the
+	// uploadApi.getProgress() frontend function (web/frontend/src/api/endpoints.ts) are effectively
+	// unreachable in practice. Additionally, uploads are removed from activeUploads immediately on
+	// completion (the defer above), so even if a client knew the ID, progress would disappear before
+	// they could poll it. Fix: return the uploadID in the Result struct and in the HTTP response,
+	// and consider keeping completed uploads in a separate completed-uploads map for a grace period.
 	progress := &Progress{
 		ID:        uploadID,
 		Filename:  filename,
