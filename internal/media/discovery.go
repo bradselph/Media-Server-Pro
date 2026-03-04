@@ -394,7 +394,7 @@ func (m *Module) Scan() error {
 	// Scan video directory
 	if cfg.Directories.Videos != "" {
 		m.log.Debug("Scanning video directory: %s", cfg.Directories.Videos)
-		if err := m.scanDirectory(cfg.Directories.Videos, models.MediaTypeVideo, newMedia); err != nil {
+		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Videos, models.MediaTypeVideo, newMedia); err != nil {
 			m.log.Error("Failed to scan videos directory: %v", err)
 		}
 	}
@@ -402,7 +402,7 @@ func (m *Module) Scan() error {
 	// Scan music directory
 	if cfg.Directories.Music != "" {
 		m.log.Debug("Scanning music directory: %s", cfg.Directories.Music)
-		if err := m.scanDirectory(cfg.Directories.Music, models.MediaTypeAudio, newMedia); err != nil {
+		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Music, models.MediaTypeAudio, newMedia); err != nil {
 			m.log.Error("Failed to scan music directory: %v", err)
 		}
 	}
@@ -410,7 +410,7 @@ func (m *Module) Scan() error {
 	// Scan uploads directory
 	if cfg.Directories.Uploads != "" && cfg.Features.EnableUploads {
 		m.log.Debug("Scanning uploads directory: %s", cfg.Directories.Uploads)
-		if err := m.scanDirectory(cfg.Directories.Uploads, models.MediaTypeUnknown, newMedia); err != nil {
+		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Uploads, models.MediaTypeUnknown, newMedia); err != nil {
 			m.log.Error("Failed to scan uploads directory: %v", err)
 		}
 	}
@@ -532,8 +532,9 @@ func (m *Module) Scan() error {
 	return nil
 }
 
-// scanDirectory recursively scans a directory for media files
-func (m *Module) scanDirectory(dir string, defaultType models.MediaType, result map[string]*models.MediaItem) error {
+// scanDirectory recursively scans a directory for media files.
+// The context allows cancellation during server shutdown.
+func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType models.MediaType, result map[string]*models.MediaItem) error {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return fmt.Errorf("failed to resolve path: %w", err)
@@ -546,6 +547,13 @@ func (m *Module) scanDirectory(dir string, defaultType models.MediaType, result 
 	}
 
 	return filepath.Walk(absDir, func(path string, info os.FileInfo, err error) error {
+		// Check for cancellation periodically
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		if err != nil {
 			m.log.Warn("Error accessing path %s: %v", path, err)
 			return nil // Continue scanning
@@ -756,7 +764,7 @@ func (m *Module) extractMetadata(item *models.MediaItem) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.scanCtx, 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, m.ffprobePath,

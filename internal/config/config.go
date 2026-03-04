@@ -247,6 +247,8 @@ type HLSConfig struct {
 	AutoGenerate     bool          `json:"auto_generate"`
 	QualityProfiles  []HLSQuality  `json:"quality_profiles"`
 	ConcurrentLimit  int           `json:"concurrent_limit"`
+	CDNBaseURL       string        `json:"cdn_base_url"`
+	LazyTranscode    bool          `json:"lazy_transcode"`
 }
 
 // HLSQuality defines an HLS quality profile
@@ -1273,6 +1275,12 @@ func (m *Manager) applyHLSEnvOverrides() {
 		if len(filtered) > 0 {
 			m.config.HLS.QualityProfiles = filtered
 		}
+	}
+	if val := envGetStr("HLS_CDN_BASE_URL"); val != "" {
+		m.config.HLS.CDNBaseURL = strings.TrimRight(val, "/")
+	}
+	if val, ok := envGetBool("HLS_LAZY_TRANSCODE"); ok {
+		m.config.HLS.LazyTranscode = val
 	}
 }
 

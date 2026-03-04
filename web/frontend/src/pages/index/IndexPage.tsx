@@ -89,7 +89,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
         })
 
         xhr.addEventListener('load', () => {
-            if (xhr.status === 200) {
+            if (xhr.status >= 200 && xhr.status < 300) {
                 try {
                     const raw = JSON.parse(xhr.responseText)
                     const data = raw.data ?? raw

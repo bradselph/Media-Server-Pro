@@ -239,18 +239,19 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 
 		{"hls_jobs", `
 			CREATE TABLE IF NOT EXISTS hls_jobs (
-				id            VARCHAR(64)  PRIMARY KEY,
-				media_path    VARCHAR(500) NOT NULL,
-				output_dir    VARCHAR(500),
-				status        VARCHAR(50)  NOT NULL DEFAULT 'pending',
-				progress      FLOAT        DEFAULT 0.0,
-				qualities     JSON,
-				started_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				completed_at  TIMESTAMP    NULL,
-				error_message TEXT,
-				fail_count    INT          DEFAULT 0,
-				hls_url       VARCHAR(1024),
-				available     BOOLEAN      DEFAULT FALSE,
+				id               VARCHAR(64)  PRIMARY KEY,
+				media_path       VARCHAR(500) NOT NULL,
+				output_dir       VARCHAR(500),
+				status           VARCHAR(50)  NOT NULL DEFAULT 'pending',
+				progress         FLOAT        DEFAULT 0.0,
+				qualities        JSON,
+				started_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				completed_at     TIMESTAMP    NULL,
+				last_accessed_at TIMESTAMP    NULL,
+				error_message    TEXT,
+				fail_count       INT          DEFAULT 0,
+				hls_url          VARCHAR(1024),
+				available        BOOLEAN      DEFAULT FALSE,
 				INDEX idx_media_path (media_path),
 				INDEX idx_status     (status)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
@@ -419,6 +420,7 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 		// local and slave media. Slave nodes compute the same fingerprint algorithm and
 		// push it in their catalog so the master can skip items that match local media.
 		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
+		{"hls_jobs", "last_accessed_at", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {

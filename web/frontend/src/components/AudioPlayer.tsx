@@ -100,7 +100,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
         const onPlay = () => setPlaying(true)
         const onPause = () => setPlaying(false)
         const onEnded = () => {
-            const nextPath = playNext()
+            const nextPath = usePlaylistStore.getState().playNext()
             if (nextPath) {
                 usePlaybackStore.getState().playMedia(nextPath)
             } else {
@@ -121,7 +121,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
             audio.removeEventListener('pause', onPause)
             audio.removeEventListener('ended', onEnded)
         }
-    }, [setCurrentTime, setDuration, setPlaying, playNext])
+    }, [setCurrentTime, setDuration, setPlaying])
 
     // Progress bar click to seek
     const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {

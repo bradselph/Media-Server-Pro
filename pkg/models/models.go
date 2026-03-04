@@ -496,18 +496,19 @@ type DailyStats struct {
 
 // HLSJob represents an HLS transcoding job
 type HLSJob struct {
-	ID          string     `json:"id"`
-	MediaPath   string     `json:"-"`
-	OutputDir   string     `json:"-"`
-	Status      HLSStatus  `json:"status"`
-	Progress    float64    `json:"progress"`
-	Qualities   []string   `json:"qualities"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Error       string     `json:"error,omitempty"`
-	FailCount   int        `json:"fail_count,omitempty"` // Number of consecutive transcode failures; job is not retried after maxHLSFailures
-	HLSUrl      string     `json:"hls_url,omitempty"`
-	Available   bool       `json:"available"`
+	ID             string     `json:"id"`
+	MediaPath      string     `json:"-"`
+	OutputDir      string     `json:"-"`
+	Status         HLSStatus  `json:"status"`
+	Progress       float64    `json:"progress"`
+	Qualities      []string   `json:"qualities"`
+	StartedAt      time.Time  `json:"started_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
+	Error          string     `json:"error,omitempty"`
+	FailCount      int        `json:"fail_count,omitempty"` // Number of consecutive transcode failures; job is not retried after maxHLSFailures
+	HLSUrl         string     `json:"hls_url,omitempty"`
+	Available      bool       `json:"available"`
 }
 
 // HLSStatus represents the status of an HLS job

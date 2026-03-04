@@ -1732,7 +1732,7 @@ function StreamingTab() {
                             {validationResult.errors && validationResult.errors.length > 0 && (
                                 <div style={{marginTop: 12}}>
                                     <h4 style={{color: '#ef4444'}}>Errors</h4>
-                                    {validationResult.errors.map((e, i) => <p key={i} style={{
+                                    {validationResult.errors.map((e, i) => <p key={`${e}-${i}`} style={{
                                         color: '#ef4444',
                                         fontSize: 13
                                     }}>{e}</p>)}
@@ -2862,12 +2862,12 @@ function DatabaseTab() {
                     <div className="query-result">
                         <table>
                             <thead>
-                            <tr>{result.columns.map((c, i) => <th key={i}>{c}</th>)}</tr>
+                            <tr>{result.columns.map(c => <th key={c}>{c}</th>)}</tr>
                             </thead>
                             <tbody>
                             {(result.rows ?? []).map((row, ri) => (
-                                <tr key={ri}>{(row as unknown[]).map((cell, ci) => <td
-                                    key={ci}>{String(cell ?? 'NULL')}</td>)}</tr>
+                                <tr key={`row-${ri}`}>{(Array.isArray(row) ? row : []).map((cell, ci) => <td
+                                    key={`${ri}-${ci}`}>{String(cell ?? 'NULL')}</td>)}</tr>
                             ))}
                             </tbody>
                         </table>
