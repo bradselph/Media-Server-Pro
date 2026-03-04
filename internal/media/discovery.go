@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -985,10 +986,17 @@ func (f Filter) SortItems(items []*models.MediaItem) {
 				return !items[i].IsMature // false < true: non-mature first in ascending
 			}
 			return items[i].Name < items[j].Name
+		case "random":
+			return items[i].ID < items[j].ID // stable placeholder; shuffled below
 		default:
 			return items[i].Name < items[j].Name
 		}
 	})
+
+	if f.SortBy == "random" {
+		rand.Shuffle(len(items), func(i, j int) { items[i], items[j] = items[j], items[i] })
+		return
+	}
 
 	if f.SortDesc {
 		for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {

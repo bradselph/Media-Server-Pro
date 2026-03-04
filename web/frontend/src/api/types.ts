@@ -336,11 +336,6 @@ export interface ServerSettings {
         enableThumbnails: boolean
         enableHLS: boolean
         enableAnalytics: boolean
-        // TODO: analytics_tracking is a duplicate of enableAnalytics — both map to
-        // cfg.Analytics.Enabled in api/handlers/system.go GetServerSettings. One key is
-        // snake_case legacy, one is camelCase. Remove analytics_tracking here and in
-        // GetServerSettings once all frontend consumers are updated to use enableAnalytics.
-        analytics_tracking: boolean
     }
     uploads: {
         enabled: boolean
@@ -506,7 +501,7 @@ export interface DatabaseStatus {
     connected: boolean
     host: string
     database: string
-    schema_version: number
+    app_version: string
     repository_type: string
     message: string
     checked_at: string

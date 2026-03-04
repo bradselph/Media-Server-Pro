@@ -65,7 +65,8 @@ type Module struct {
 	dbModule  *database.Module
 	repo      repositories.SuggestionProfileRepository
 	profiles  map[string]*UserProfile
-	mediaData map[string]*MediaInfo
+	mediaData map[string]*MediaInfo   // keyed by filesystem path
+	mediaByID map[string]*MediaInfo   // keyed by StableID (secondary index)
 	mu        sync.RWMutex
 	healthy   bool
 	healthMsg string
@@ -98,6 +99,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		dbModule:  dbModule,
 		profiles:  make(map[string]*UserProfile),
 		mediaData: make(map[string]*MediaInfo),
+		mediaByID: make(map[string]*MediaInfo),
 	}
 }
 
@@ -298,16 +300,21 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 }
 
 // UpdateMediaData atomically replaces the in-memory media catalogue used for suggestions.
-// Builds the new map outside the lock then swaps in one operation to eliminate the
+// Builds both indexes outside the lock then swaps in one operation to eliminate the
 // window where mediaData is empty (IC-05).
 func (m *Module) UpdateMediaData(items []*MediaInfo) {
 	newData := make(map[string]*MediaInfo, len(items))
+	newByID := make(map[string]*MediaInfo, len(items))
 	for _, item := range items {
 		newData[item.Path] = item
+		if item.StableID != "" {
+			newByID[item.StableID] = item
+		}
 	}
 
 	m.mu.Lock()
 	m.mediaData = newData
+	m.mediaByID = newByID
 	m.mu.Unlock()
 
 	m.log.Info("Updated media data: %d items", len(items))
@@ -358,31 +365,32 @@ func (m *Module) GetSuggestions(userID string, limit int) []*Suggestion {
 			reasons = append(reasons, "Watch again")
 		}
 
-		// Add ±15% score jitter so results rotate between calls
-		score *= 1.0 + (rand.Float64()*0.30 - 0.15)
+		// Add ±40% score jitter so results rotate meaningfully between calls
+		score *= 1.0 + (rand.Float64()*0.80 - 0.40)
 
-		if score > 0 {
-			suggestions = append(suggestions, &Suggestion{
-				MediaID:   media.StableID,
-				MediaPath: media.Path,
-				Title:     media.Title,
-				Category:  media.Category,
-				MediaType: media.MediaType,
-				Score:     score,
-				Reasons:   reasons,
-			})
-		}
+		suggestions = append(suggestions, &Suggestion{
+			MediaID:   media.StableID,
+			MediaPath: media.Path,
+			Title:     media.Title,
+			Category:  media.Category,
+			MediaType: media.MediaType,
+			Score:     score,
+			Reasons:   reasons,
+		})
 	}
 
-	// Sort by jittered score
+	// Sort by jittered score, then randomly sample from the top pool for variety
 	sort.Slice(suggestions, func(i, j int) bool {
 		return suggestions[i].Score > suggestions[j].Score
 	})
 
-	// Apply category diversity: at most ceil(limit/2) items per category,
-	// then pad with remaining top-scored items to reach limit.
 	const maxPerCategory = 3
-	suggestions = diversify(suggestions, limit, maxPerCategory)
+	// Sample from top candidates then apply diversity so results vary on each call
+	candidates := topShuffled(suggestions, limit*3)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+	suggestions = diversify(candidates, limit, maxPerCategory)
 
 	return suggestions
 }
@@ -429,8 +437,10 @@ func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo) (float64, []
 }
 
 // scoreMediaBase calculates the base score from popularity, recency, and rating.
+// All items receive a minimum exploration baseline of 0.05 so that library items
+// with no views/rating/recency still have a chance to surface in suggestions.
 func scoreMediaBase(media *MediaInfo) (float64, []string) {
-	var score float64
+	score := 0.05 // exploration baseline — every non-mature item can appear
 	var reasons []string
 
 	popularityScore := math.Log10(float64(media.Views+1)) * 0.1
@@ -453,6 +463,27 @@ func scoreMediaBase(media *MediaInfo) (float64, []string) {
 	}
 
 	return score, reasons
+}
+
+// topShuffled takes the top min(len, n*poolFactor) items by score (already sorted
+// descending) and returns a randomly shuffled selection of n items.  This ensures
+// high-scored items dominate the candidate pool while still producing varied results
+// on every call.
+func topShuffled(sorted []*Suggestion, n int) []*Suggestion {
+	if len(sorted) <= n {
+		result := make([]*Suggestion, len(sorted))
+		copy(result, sorted)
+		rand.Shuffle(len(result), func(i, j int) { result[i], result[j] = result[j], result[i] })
+		return result
+	}
+	poolSize := n * 4
+	if poolSize > len(sorted) {
+		poolSize = len(sorted)
+	}
+	pool := make([]*Suggestion, poolSize)
+	copy(pool, sorted[:poolSize])
+	rand.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
+	return pool[:n]
 }
 
 // scoreMediaForProfile calculates the personalized score based on a user profile.
@@ -537,8 +568,8 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 			score *= 1.5
 		}
 
-		// Add ±20% jitter for variety
-		score *= 1.0 + (rand.Float64()*0.40 - 0.20)
+		// Add ±50% jitter for variety in trending results
+		score *= 1.0 + (rand.Float64()*1.00 - 0.50)
 
 		suggestions = append(suggestions, &Suggestion{
 			MediaID:   media.StableID,
@@ -551,16 +582,22 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 		})
 	}
 
-	// Sort by jittered score
+	// Sort by jittered score, then sample from top pool for variety
 	sort.Slice(suggestions, func(i, j int) bool {
 		return suggestions[i].Score > suggestions[j].Score
 	})
 
-	return diversify(suggestions, limit, 3)
+	candidates := topShuffled(suggestions, limit*3)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+	return diversify(candidates, limit, 3)
 }
 
-// GetSimilarMedia returns media similar to a given item
-func (m *Module) GetSimilarMedia(mediaPath string, limit int) []*Suggestion {
+// GetSimilarMedia returns media similar to a given item.
+// mediaID is the StableID (UUID) of the source item; path-based lookup is used
+// as a fallback for items not yet indexed by ID.
+func (m *Module) GetSimilarMedia(mediaID string, limit int) []*Suggestion {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -568,22 +605,29 @@ func (m *Module) GetSimilarMedia(mediaPath string, limit int) []*Suggestion {
 		limit = 10
 	}
 
-	sourceMedia, ok := m.mediaData[mediaPath]
-	if !ok {
-		return nil
+	// Look up source by StableID first, then by path for backward compatibility.
+	sourceMedia := m.mediaByID[mediaID]
+	if sourceMedia == nil {
+		sourceMedia = m.mediaData[mediaID]
+	}
+
+	// Source not found in catalogue (not yet scanned or catalogue empty):
+	// return a random sample from the library so the sidebar is never blank.
+	if sourceMedia == nil {
+		return m.randomSample(mediaID, limit)
 	}
 
 	var suggestions []*Suggestion
 
 	for _, media := range m.mediaData {
-		if media.Path == mediaPath || media.IsMature {
+		if media.StableID == sourceMedia.StableID || media.Path == sourceMedia.Path || media.IsMature {
 			continue
 		}
 
 		score, reasons := computeSimilarity(sourceMedia, media)
 
-		// Add ±20% score jitter for variety in related-media results
-		score *= 1.0 + (rand.Float64()*0.40 - 0.20)
+		// Add ±50% score jitter for variety in related-media results
+		score *= 1.0 + (rand.Float64()*1.00 - 0.50)
 
 		if score > 0 {
 			suggestions = append(suggestions, &Suggestion{
@@ -598,15 +642,49 @@ func (m *Module) GetSimilarMedia(mediaPath string, limit int) []*Suggestion {
 		}
 	}
 
-	// Sort by jittered score
+	// If we found too few similar items, pad with random library items.
+	if len(suggestions) < limit/2 {
+		suggestions = append(suggestions, m.randomSample(sourceMedia.StableID, limit)...)
+	}
+
+	// Sort by jittered score, then sample from top pool for variety
 	sort.Slice(suggestions, func(i, j int) bool {
 		return suggestions[i].Score > suggestions[j].Score
 	})
 
-	// Allow up to 60% of results from the same category as source,
-	// blend in others for variety
+	// Allow up to 60% of results from the same category as source
 	sameCategory := limit*6/10 + 1
-	return diversify(suggestions, limit, sameCategory)
+	candidates := topShuffled(suggestions, limit*3)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+	return diversify(candidates, limit, sameCategory)
+}
+
+// randomSample returns a random selection of non-mature items from the catalogue,
+// excluding the item with the given StableID.  Used as a fallback when similarity
+// scoring cannot produce enough results.
+func (m *Module) randomSample(excludeID string, n int) []*Suggestion {
+	pool := make([]*Suggestion, 0, len(m.mediaData))
+	for _, media := range m.mediaData {
+		if media.StableID == excludeID || media.IsMature {
+			continue
+		}
+		pool = append(pool, &Suggestion{
+			MediaID:   media.StableID,
+			MediaPath: media.Path,
+			Title:     media.Title,
+			Category:  media.Category,
+			MediaType: media.MediaType,
+			Score:     rand.Float64(),
+			Reasons:   []string{"Discover something new"},
+		})
+	}
+	rand.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
+	if len(pool) > n {
+		pool = pool[:n]
+	}
+	return pool
 }
 
 // computeSimilarity calculates how similar two media items are by category, type, tags, and title.
@@ -615,7 +693,7 @@ func computeSimilarity(source, candidate *MediaInfo) (float64, []string) {
 	var reasons []string
 
 	if candidate.Category == source.Category {
-		score += 0.5
+		score += 0.3
 		reasons = append(reasons, "Same category")
 	}
 	if candidate.MediaType == source.MediaType {
