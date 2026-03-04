@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.45.0] - 2026-03-04 (minor)
+
+- Merge pull request #48 from bradselph/development
+- Update CLAUDE.md
+
+
+## [0.44.0] - 2026-03-04 (minor)
+
+- Merge pull request #47 from bradselph/development
+- fix: prevent pagination resetting to page 1 on async data load
+
+
+## [0.43.0] - 2026-03-04 (minor)
+
+- Merge pull request #46 from bradselph/development
+- feat: bug fixes, CDN-ready HLS hosting, smart cleanup, lazy transcoding
+
+
 ## [0.42.0] - 2026-03-04 (minor)
 
 - Merge pull request #45 from bradselph/development
