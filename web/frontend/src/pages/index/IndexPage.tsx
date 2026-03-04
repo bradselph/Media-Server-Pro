@@ -672,6 +672,10 @@ export function IndexPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const defaultLimit = user?.preferences?.items_per_page || serverSettings?.ui?.items_per_page || 24
 
+    // Ref so updateParams stays stable even as defaultLimit changes from async data loads
+    const defaultLimitRef = useRef(defaultLimit)
+    defaultLimitRef.current = defaultLimit
+
     const page = Math.max(1, Number(searchParams.get('page')) || 1)
     const limit = Number(searchParams.get('limit')) || defaultLimit
     const mediaType = searchParams.get('type') || 'all'
@@ -698,10 +702,10 @@ export function IndexPage() {
             if (next.get('sort') === 'date') next.delete('sort')
             if (next.get('order') === 'desc') next.delete('order')
             if (next.get('category') === 'all') next.delete('category')
-            if (next.get('limit') === String(defaultLimit)) next.delete('limit')
+            if (next.get('limit') === String(defaultLimitRef.current)) next.delete('limit')
             return next
         }, {replace: true})
-    }, [setSearchParams, defaultLimit])
+    }, [setSearchParams]) // stable — reads defaultLimit via ref to avoid spurious re-creation
 
     const setPage = useCallback((v: number | ((prev: number) => number)) => {
         const newPage = typeof v === 'function' ? v(page) : v
