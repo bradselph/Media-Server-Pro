@@ -18,6 +18,8 @@
 #   VPS_USER           SSH user          (default: root)
 #   VPS_PORT           SSH port          (default: 22)
 #   KEY_FILE           SSH private key   (default: ~/.ssh/id_ed25519)
+/home/deployment/downloader/server/downloads
+/home/deployment/downloader/server/downloads/server/downloads
 #   DOWNLOADER_DIR     Downloader dir    (default: /home/deployment/downloader/server/downloads)
 #   MSP_DIR            Media Server Pro  (default: /home/deployment/media-server-pro)
 #   MEDIA_SUBDIR       MSP subdirectory  (default: uploads — files land in $MSP_DIR/uploads/)
@@ -278,17 +280,30 @@ while IFS= read -r -d '' file; do
 
 done < <(find "\$DOWNLOADS_PATH" -maxdepth 1 -type f -print0 2>/dev/null)
 
+# Warn if subdirectories exist (e.g. yt-dlp playlist downloads) — those are not scanned
+subdir_count=\$(find "\$DOWNLOADS_PATH" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)
+if [ "\$subdir_count" -gt 0 ]; then
+  echo "WARN: \$subdir_count subdirectory/ies found in \$DOWNLOADS_PATH — subdirectory files are not moved (only top-level files are scanned)"
+fi
+
 # ── Fix ownership so MSP can read the files ──────────────────────────────────
 if [ "\$LIST_ONLY" != "true" ] && [ "\$DRY_RUN" != "true" ] && [ "\$moved" -gt 0 ]; then
   MSP_OWNER=\$(stat -c%U "\$UPLOADS_PATH" 2>/dev/null || echo "")
   MSP_GROUP=\$(stat -c%G "\$UPLOADS_PATH" 2>/dev/null || echo "")
   if [ -n "\$MSP_OWNER" ] && [ "\$MSP_OWNER" != "root" ]; then
-    chown "\${MSP_OWNER}:\${MSP_GROUP}" "\$UPLOADS_PATH"/* 2>/dev/null || true
+    # chown only the files we just moved, not everything in uploads
+    for f in \$moved_files; do
+      chown "\${MSP_OWNER}:\${MSP_GROUP}" "\$f" 2>/dev/null || true
+    done
   fi
 fi
 
 echo ""
-echo "SUMMARY: \$total scanned, \$moved completed, \$skipped skipped"
+if [ "\$LIST_ONLY" = "true" ]; then
+  echo "SUMMARY: \$total scanned, \$moved ready, \$skipped skipped"
+else
+  echo "SUMMARY: \$total scanned, \$moved completed, \$skipped skipped"
+fi
 REMOTE_SCRIPT
 
 echo ""
