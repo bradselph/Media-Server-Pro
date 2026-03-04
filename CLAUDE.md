@@ -229,6 +229,16 @@ scheduler.RegisterTask("task-id", "Name", "Description", interval, func(ctx cont
 })
 ```
 
+### HLS Adaptive Streaming
+
+HLS transcoding lives in `internal/hls/hls.go`. Key behaviors:
+
+- **Quality profiles**: Defined in `config.json` under `quality_profiles`; selected via `HLS_QUALITIES` env var
+- **Lazy transcoding** (`HLS_LAZY_TRANSCODE=true`): Only the first quality is transcoded upfront; remaining qualities are transcoded on-demand when `ServeVariantPlaylist` is called. Per-quality mutexes prevent duplicate concurrent transcodes.
+- **CDN base URL** (`HLS_CDN_BASE_URL=https://cdn.example.com`): Rewrites all HLS master/variant playlist URLs to absolute CDN paths, enabling origin-pull CDN caching. Thumbnail `Cache-Control` is `public` (not `private`) when CDN mode is active.
+- **Access-time cleanup**: `cleanupOldSegments` uses `LastAccessedAt` (persisted on `HLSJob`) to determine staleness, falling back to `ModTime`. Running/pending jobs are never cleaned up.
+- **`HLSJob` model** has `LastAccessedAt *time.Time` — auto-migrated via GORM.
+
 ## Build Tags
 
 Platform-specific code in `internal/server/`: `signals_windows.go` / `signals_unix.go`
