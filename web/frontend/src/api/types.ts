@@ -506,7 +506,7 @@ export interface DatabaseStatus {
     connected: boolean
     host: string
     database: string
-    schema_version: number
+    app_version: string
     repository_type: string
     message: string
     checked_at: string

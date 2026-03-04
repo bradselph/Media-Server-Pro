@@ -2834,7 +2834,7 @@ function DatabaseTab() {
                         </div>
                         <div><strong>Host:</strong> {dbStatus.host}</div>
                         <div><strong>Database:</strong> {dbStatus.database}</div>
-                        <div><strong>Schema Version:</strong> v{dbStatus.schema_version}</div>
+                        <div><strong>App Version:</strong> v{dbStatus.app_version}</div>
                         <div><strong>Repository:</strong> {dbStatus.repository_type}</div>
                         {!dbStatus.connected && dbStatus.message &&
                             <div style={{color: '#ef4444'}}><strong>Error:</strong> {dbStatus.message}</div>}
