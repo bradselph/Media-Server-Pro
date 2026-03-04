@@ -288,11 +288,19 @@ function MediaCard({
                         <i className="bi bi-shield-lock-fill"/>
                         <span>18+ Content</span>
                         {isAuthenticated ? (
-                            <Link to="/profile" className="mature-gate-login" onClick={(e) => e.stopPropagation()}>
+                            <Link
+                                to={`/profile?mature_redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
+                                className="mature-gate-login"
+                                onClick={(e) => e.stopPropagation()}
+                            >
                                 Enable in profile settings
                             </Link>
                         ) : (
-                            <Link to="/login" className="mature-gate-login" onClick={(e) => e.stopPropagation()}>
+                            <Link
+                                to={`/login?redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
+                                className="mature-gate-login"
+                                onClick={(e) => e.stopPropagation()}
+                            >
                                 Sign in to view
                             </Link>
                         )}

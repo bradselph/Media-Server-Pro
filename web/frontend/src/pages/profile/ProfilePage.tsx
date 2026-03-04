@@ -1,7 +1,8 @@
 import {type FormEvent, useEffect, useMemo, useState} from 'react'
-import {Link} from 'react-router-dom'
+import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
+import {useQueryClient} from '@tanstack/react-query'
 import {authApi, permissionsApi as permApi, preferencesApi, storageApi, watchHistoryApi} from '@/api/endpoints'
 import {ApiError} from '@/api/client'
 import {useToast} from '@/components/Toast'
@@ -37,6 +38,13 @@ export function ProfilePage() {
     const {user, checkSession} = useAuthStore()
     const {theme, setTheme} = useThemeStore()
     const {showToast} = useToast()
+    const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const queryClient = useQueryClient()
+
+    // Mature content redirect: validate to prevent open redirect attacks
+    const rawMatureRedirect = searchParams.get('mature_redirect') || ''
+    const matureRedirect = rawMatureRedirect.startsWith('/') && !rawMatureRedirect.startsWith('//') ? rawMatureRedirect : ''
 
     const [preferences, setPreferences] = useState<UserPreferences | null>(null)
     const [prefsError, setPrefsError] = useState(false)
@@ -163,7 +171,18 @@ export function ProfilePage() {
                 }
             }
             await checkSession()
+            // Invalidate media cache so index page reflects mature filter changes
+            await queryClient.invalidateQueries({queryKey: ['media']})
             showToast('Preferences saved', 'success')
+            // Mature redirect flow: if user enabled show_mature, go to the media
+            if (matureRedirect) {
+                if (preferences.show_mature) {
+                    navigate(matureRedirect, {replace: true})
+                } else {
+                    navigate('/', {replace: true})
+                }
+                return
+            }
         } catch {
             showToast('Failed to save preferences', 'error')
         } finally {
@@ -244,6 +263,33 @@ export function ProfilePage() {
                 </div>
                 <Link to="/" className="back-link">Back to Library</Link>
             </div>
+
+            {matureRedirect && (
+                <div style={{
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--accent-color, #667eea)',
+                    borderRadius: 8,
+                    padding: '12px 16px',
+                    marginBottom: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                }}>
+                    <span style={{fontSize: 14}}>
+                        <i className="bi bi-shield-lock-fill" style={{marginRight: 6, color: 'var(--accent-color, #667eea)'}}/>{' '}
+                        Enable mature content below to view the requested media.
+                    </span>
+                    <button
+                        className="btn btn-sm"
+                        onClick={() => navigate('/', {replace: true})}
+                        style={{whiteSpace: 'nowrap'}}
+                    >
+                        Skip
+                    </button>
+                </div>
+            )}
 
             <div className="profile-grid">
                 {/* Account Info Card */}
