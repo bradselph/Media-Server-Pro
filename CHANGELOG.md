@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.50.0] - 2026-03-04 (minor)
+
+- Merge pull request #53 from bradselph/development
+- fix(download-move): fix cp+rm misreport, scoped chown, subdir warning
+- fix(download-move): fix cp+rm misreport, scoped chown, subdir warning
+- feat(crawler): add stream crawler module for M3U8 discovery
+
+
 ## [0.49.0] - 2026-03-04 (minor)
 
 - Merge pull request #52 from bradselph/development
