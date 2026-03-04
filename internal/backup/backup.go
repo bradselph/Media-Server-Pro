@@ -190,6 +190,14 @@ func (m *Module) getFilesToBackup(backupType string) []string {
 		files = []string{
 			"config.json",
 		}
+	// TODO: The "data" and "full" backup types list legacy JSON filenames from the pre-MySQL era
+	// (playlists.json, analytics/daily_stats.json, analytics/media_stats.json, scan_results.json,
+	// validation_results.json, review_queue.json). All of these data sources now live in MySQL —
+	// the JSON files no longer exist on disk. The addFileToZip loop skips files that fail os.Stat,
+	// so the resulting zip for "data" and "full" types contains only config.json (or nothing for
+	// "data"). The backup type selection in the Admin > Backups UI is therefore misleading.
+	// Fix: replace these file-based entries with MySQL dump logic — use mysqldump or export each
+	// repository's data as JSON/CSV within the zip — to make "data" and "full" backups meaningful.
 	case "data":
 		files = []string{
 			"playlists.json",

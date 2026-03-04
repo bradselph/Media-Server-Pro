@@ -539,6 +539,13 @@ var allowedProxyHeaders = map[string]bool{
 // It first attempts a WebSocket-based request (slave pushes data back via HTTP
 // POST).  If the slave has no active WebSocket connection, it falls back to a
 // direct HTTP proxy through the slave's BaseURL.
+//
+// TODO: ReceiverConfig.MaxProxyConns (defaulting to 50 in config defaults, set via
+// RECEIVER_MAX_PROXY_CONNS env var) is read from config but never enforced anywhere in this
+// function or in the httpClient used by proxyViaHTTP. There is no connection semaphore, pool limit,
+// or concurrent-proxy counter. The config key exists with a documented purpose but has zero effect.
+// Fix: add a buffered channel semaphore (make(chan struct{}, cfg.Receiver.MaxProxyConns)) acquired
+// at the start of ProxyStream and released on return to cap concurrent proxy connections.
 func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID string) error {
 	item := m.GetMediaItem(mediaID)
 	if item == nil {

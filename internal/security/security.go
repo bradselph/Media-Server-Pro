@@ -251,6 +251,11 @@ func (m *Module) IsBanned(ip string) bool {
 }
 
 // BanIP manually bans an IP with a reason
+// TODO: BanIP stores the ban in the rateLimiter's in-memory bannedIPs map only. The ban is not
+// persisted to MySQL (unlike whitelist/blacklist entries which go through the ip_list repository).
+// A server restart clears all active bans, even if they were set with a long duration via the Admin
+// UI (POST /api/admin/security/ban). Fix: persist bans to the ip_list repository with type="ban"
+// and an expires_at timestamp, and restore them on Start() alongside whitelist/blacklist entries.
 func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 	m.rateLimiter.BanIP(ip, duration, reason)
 }
@@ -802,6 +807,11 @@ func (r *RateLimiter) cleanupWithIPLists(whitelist, blacklist *IPList) {
 	}
 }
 
+// TODO: Middleware (standard net/http variant) is never registered anywhere. api/routes/routes.go
+// calls securityModule.GinMiddleware() exclusively. Middleware and GinMiddleware are ~120 lines of
+// near-identical logic (IP access check + rate limiting + path exclusions). This is REC-19 from
+// MEMORY.md. Remove Middleware and its net/http import path (pkg/middleware/ net/http variants)
+// once confirmed no external integration depends on the standard http.Handler interface.
 // Middleware creates HTTP middleware for security checks
 func (m *Module) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

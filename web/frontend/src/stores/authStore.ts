@@ -78,6 +78,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
             await authApi.logout()
         } finally {
+            // TODO: allowGuests is NOT preserved here despite the comment saying it is.
+            // The set() call does not include allowGuests, so Zustand resets it to the
+            // store's initial value of false. After logout, guest-accessible content may
+            // be hidden until checkSession() is called again (which restores the server's
+            // allow_guests setting). Fix: capture the current allowGuests value before the
+            // set() call and include it explicitly: set({ ..., allowGuests: get().allowGuests }).
             // Preserve allowGuests — it's a server config value, unchanged by logout
             set({
                 user: null,

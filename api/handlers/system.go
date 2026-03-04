@@ -132,6 +132,11 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 func (h *Handler) GetServerSettings(c *gin.Context) {
 	cfg := h.media.GetConfig()
 
+	// TODO: features.analytics_tracking and features.enableAnalytics are duplicate keys pointing to
+	// the same cfg.Analytics.Enabled value. The frontend types.ts ServerSettings.features interface
+	// (web/frontend/src/api/types.ts) declares both keys. This creates ambiguity: one key is camelCase
+	// legacy and one is snake_case Go convention. Remove analytics_tracking (the legacy alias) and
+	// update any frontend code that reads settings.features.analytics_tracking to use enableAnalytics.
 	settings := map[string]interface{}{
 		"thumbnails": map[string]interface{}{
 			"enabled":             cfg.Thumbnails.Enabled,
@@ -261,6 +266,12 @@ func (h *Handler) AdminGetDatabaseStatus(c *gin.Context) {
 	health := h.database.Health()
 	connected := health.Status == models.StatusHealthy
 
+	// TODO: schema_version always returns 0. GORM auto-migration (database.Module.autoMigrate) never
+	// writes to a schema_migrations table, so the SELECT COALESCE(MAX(version), 0) query always
+	// returns NULL → 0. The Admin > Dashboard > Database panel displays this misleading value.
+	// Options: (a) maintain a versions table manually updated on each migration, or (b) remove the
+	// schema_version field from the response and display the app version instead, or (c) query
+	// GORM's automigrate history via information_schema.TABLES to show table count as a proxy.
 	var schemaVersion int
 	var repositoryType string
 	if connected && h.database.DB() != nil {

@@ -8,6 +8,18 @@
 // but email collection and sending infrastructure do not exist. A future implementation
 // would require: email collection at registration, a reset request endpoint, a
 // token-based reset flow, and an email sending dependency.
+
+// TODO: Password recovery flow is entirely absent despite User.Email existing in both the Go model
+// (pkg/models/models.go) and the registration handler (api/handlers/auth.go Register accepts email).
+// Required additions:
+//   1. An SMTP / email-sending dependency and config section (host, port, from-address, TLS)
+//   2. POST /api/auth/forgot-password — generate a time-limited reset token, store hashed in DB,
+//      email a reset link to User.Email
+//   3. POST /api/auth/reset-password — accept token + new password, validate token expiry, update hash
+//   4. A reset_tokens table (id, user_id, token_hash, expires_at, used_at)
+//   5. A SignupPage / ProfilePage UI for entering email at registration and for requesting reset
+// Until this is implemented, User.Email is collected but never used for any feature.
+
 package auth
 
 import (

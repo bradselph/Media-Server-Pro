@@ -30,6 +30,16 @@ function cleanFileName(name: string): string {
 
 function displayMediaName(entry: { media_name?: string; media_id: string }): string {
     if (entry.media_name) return cleanFileName(entry.media_name)
+    // TODO: This fallback displays a truncated UUID (or pre-v0.32.0 MD5 path hash) as a label,
+    // which is not human-readable. WatchHistoryItem.MediaName (media_name) is populated by
+    // api/handlers/auth.go GetWatchHistory only for items present in the current media catalog.
+    // Legacy watch history entries recorded before the UUID migration (pre-v0.32.0) stored a
+    // path-derived MD5 as media_id and had no media_name. There is no migration path to backfill
+    // media_name for these entries. Options:
+    //   (a) Add a backend migration task that looks up MediaName by MediaID and updates stored
+    //       WatchHistoryItem rows in the users table (GORM JSON column).
+    //   (b) Show a generic "Unknown title" label instead of a truncated hash.
+    //   (c) Filter out entries where media_name is absent from the displayed history.
     // Fallback: truncated MD5 hash for legacy entries without media_name
     return entry.media_id.slice(0, 8) + '…'
 }

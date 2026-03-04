@@ -120,6 +120,13 @@ func (h *Handler) Logout(c *gin.Context) {
 		}
 	}
 
+	// TODO: The admin_session cookie block below is a remnant of the old dual-session system where
+	// admin and user sessions were stored separately. The current implementation uses a single
+	// unified session_id cookie for all roles (admin and viewer). The admin_session lookup in
+	// LogoutAdmin and the corresponding Set-Cookie expiry header are dead code paths in normal
+	// operation — no path in the login flow sets an admin_session cookie anymore. Remove this
+	// block (both the LogoutAdmin call and the admin_session cookie expiry) once confirmed that
+	// no existing client sessions carry an admin_session cookie from the legacy system.
 	adminCookie, err := c.Request.Cookie("admin_session")
 	if err == nil {
 		if logoutErr := h.auth.LogoutAdmin(c.Request.Context(), adminCookie.Value); logoutErr != nil {
