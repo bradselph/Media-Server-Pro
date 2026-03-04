@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.44.0] - 2026-03-04 (minor)
+
+- Merge pull request #47 from bradselph/development
+- fix: prevent pagination resetting to page 1 on async data load
+
+
 ## [0.43.0] - 2026-03-04 (minor)
 
 - Merge pull request #46 from bradselph/development
