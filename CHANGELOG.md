@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.48.0] - 2026-03-04 (minor)
+
+- Merge pull request #51 from bradselph/development
+- go fmt all
+
+
 ## [0.47.0] - 2026-03-04 (minor)
 
 - Merge pull request #50 from bradselph/development
