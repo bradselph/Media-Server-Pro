@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.49.0] - 2026-03-04 (minor)
+
+- Merge pull request #52 from bradselph/development
+- feat(extractor): add HLS stream proxy module
+
+
 ## [0.48.0] - 2026-03-04 (minor)
 
 - Merge pull request #51 from bradselph/development
