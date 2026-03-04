@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.47.0] - 2026-03-04 (minor)
+
+- Merge pull request #50 from bradselph/development
+- fix(system): remove duplicate analytics_tracking feature flag
+- Merge branch 'main' into development
+- fix(system): replace misleading schema_version with app_version
+- fix(auth): remove legacy admin_session dead code from Logout
+- fix(thumbnails): use canonical IsAudioExtension for audio detection
+- feat(media): add random sort option to media library
+- fix(suggestions): seed catalogue immediately after initial media scan
+- fix(suggestions): repair broken similar media and improve variety
+- Merge branch 'main' into development
+
+
 ## [0.46.0] - 2026-03-04 (minor)
 
 - Merge pull request #49 from bradselph/development
