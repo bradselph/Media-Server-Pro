@@ -49,8 +49,8 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 		return
 	}
 	id := c.Query("id")
-	absPath, ok := h.resolveMediaByID(c, id)
-	if !ok {
+	// Validate the media ID exists before querying the suggestions engine.
+	if _, ok := h.resolveMediaByID(c, id); !ok {
 		return
 	}
 
@@ -59,7 +59,9 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 		limit = l
 	}
 
-	similar := h.suggestions.GetSimilarMedia(absPath, limit)
+	// Pass the StableID directly — the suggestions module indexes by ID,
+	// avoiding path-mismatch issues when the catalogue hasn't refreshed yet.
+	similar := h.suggestions.GetSimilarMedia(id, limit)
 	h.enrichSuggestionThumbnails(similar)
 	writeSuccess(c, similar)
 }
