@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/thumbnails"
+	"media-server-pro/pkg/helpers"
 )
 
 // GenerateThumbnail generates a thumbnail for a media file
@@ -118,18 +119,7 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	}
 
 	if !h.thumbnails.HasThumbnail(id) {
-		// TODO: This audio extension check is incomplete. It covers only 5 extensions (.mp3, .wav,
-		// .flac, .aac, .ogg) while the upload module's audioExtensions map (internal/upload/upload.go)
-		// supports 10: .mp3, .wav, .flac, .aac, .ogg, .m4a, .wma, .aiff, .alac, .opus.
-		// Files with the missing extensions (.m4a, .wma, .aiff, .alac, .opus) will have isAudio=false,
-		// causing GenerateThumbnailSync to attempt ffmpeg video frame extraction instead of audio
-		// waveform generation, likely producing a blank or wrong thumbnail.
-		// Fix: use helpers.IsAudioExtension(ext) or sync this set with upload.audioExtensions.
-		isAudio := strings.HasSuffix(strings.ToLower(path), ".mp3") ||
-			strings.HasSuffix(strings.ToLower(path), ".wav") ||
-			strings.HasSuffix(strings.ToLower(path), ".flac") ||
-			strings.HasSuffix(strings.ToLower(path), ".aac") ||
-			strings.HasSuffix(strings.ToLower(path), ".ogg")
+		isAudio := helpers.IsAudioExtension(filepath.Ext(path))
 
 		_, err := h.thumbnails.GenerateThumbnailSync(path, id, isAudio)
 		if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
