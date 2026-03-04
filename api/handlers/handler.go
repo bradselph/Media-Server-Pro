@@ -22,6 +22,7 @@ import (
 	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/hls"
 	"media-server-pro/internal/logger"
@@ -85,6 +86,7 @@ type Handler struct {
 	remote        *remote.Module
 	receiver      *receiver.Module
 	extractor     *extractor.Module
+	crawler       *crawler.Module
 	config        *config.Manager
 }
 
@@ -116,6 +118,7 @@ type HandlerDeps struct {
 	Remote        *remote.Module
 	Receiver      *receiver.Module
 	Extractor     *extractor.Module
+	Crawler       *crawler.Module
 }
 
 // NewHandler creates a new handler with dependencies.
@@ -151,6 +154,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		remote:        deps.Remote,
 		receiver:      deps.Receiver,
 		extractor:     deps.Extractor,
+		crawler:       deps.Crawler,
 		config:        deps.Config,
 	}
 }
@@ -622,6 +626,20 @@ func (h *Handler) checkExtractorEnabled(c *gin.Context) bool {
 	cfg := h.media.GetConfig()
 	if !cfg.Features.EnableExtractor || !cfg.Extractor.Enabled {
 		writeError(c, http.StatusNotFound, "Extractor feature is disabled")
+		return false
+	}
+	return true
+}
+
+// checkCrawlerEnabled returns true if the crawler feature is enabled.
+func (h *Handler) checkCrawlerEnabled(c *gin.Context) bool {
+	if h.crawler == nil {
+		writeError(c, http.StatusServiceUnavailable, "Crawler is not available")
+		return false
+	}
+	cfg := h.media.GetConfig()
+	if !cfg.Features.EnableCrawler || !cfg.Crawler.Enabled {
+		writeError(c, http.StatusNotFound, "Crawler feature is disabled")
 		return false
 	}
 	return true

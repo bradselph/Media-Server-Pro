@@ -405,6 +405,39 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 				INDEX idx_extractor_site (site),
 				INDEX idx_extractor_title (title(191))
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"crawler_targets", `
+			CREATE TABLE IF NOT EXISTS crawler_targets (
+				id           VARCHAR(255) PRIMARY KEY,
+				name         VARCHAR(255) NOT NULL,
+				url          VARCHAR(2048) NOT NULL,
+				site         VARCHAR(255),
+				enabled      TINYINT(1) NOT NULL DEFAULT 1,
+				last_crawled TIMESTAMP  NULL,
+				created_at   TIMESTAMP  DEFAULT CURRENT_TIMESTAMP,
+				updated_at   TIMESTAMP  DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_crawler_target_enabled (enabled),
+				INDEX idx_crawler_target_site (site)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"crawler_discoveries", `
+			CREATE TABLE IF NOT EXISTS crawler_discoveries (
+				id               VARCHAR(255) PRIMARY KEY,
+				target_id        VARCHAR(255) NOT NULL,
+				page_url         VARCHAR(2048) NOT NULL,
+				title            VARCHAR(500)  NOT NULL,
+				stream_url       VARCHAR(2048) NOT NULL,
+				stream_type      VARCHAR(20)   NOT NULL DEFAULT 'hls',
+				quality          INT DEFAULT 0,
+				detection_method VARCHAR(50),
+				status           VARCHAR(50)   NOT NULL DEFAULT 'pending',
+				reviewed_by      VARCHAR(255),
+				reviewed_at      TIMESTAMP     NULL,
+				discovered_at    TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+				INDEX idx_crawler_disc_target (target_id),
+				INDEX idx_crawler_disc_status (status),
+				FOREIGN KEY (target_id) REFERENCES crawler_targets(id) ON DELETE CASCADE
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	}
 
 	for _, t := range tables {

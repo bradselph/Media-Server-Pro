@@ -73,6 +73,9 @@ import type {
     WatchHistoryEntry,
     ExtractorItem,
     ExtractorStats,
+    CrawlTarget,
+    CrawlerDiscovery,
+    CrawlerStats,
 } from './types'
 
 // ── Feature 1: Storage Usage & Permissions ──
@@ -691,6 +694,34 @@ export const adminApi = {
 
     getExtractorStats: () =>
         api.get<ExtractorStats>('/api/admin/extractor/stats'),
+
+    // Crawler: target management + discovery review
+    getCrawlerTargets: () =>
+        api.get<CrawlTarget[]>('/api/admin/crawler/targets'),
+
+    addCrawlerTarget: (url: string, name?: string) =>
+        api.post<CrawlTarget>('/api/admin/crawler/targets', { url, ...(name ? { name } : {}) }),
+
+    removeCrawlerTarget: (id: string) =>
+        api.delete<void>(`/api/admin/crawler/targets/${encodeURIComponent(id)}`),
+
+    crawlTarget: (id: string) =>
+        api.post<{ new_discoveries: number }>(`/api/admin/crawler/targets/${encodeURIComponent(id)}/crawl`),
+
+    getCrawlerDiscoveries: (status?: string) =>
+        api.get<CrawlerDiscovery[]>(`/api/admin/crawler/discoveries${status ? `?status=${status}` : ''}`),
+
+    approveCrawlerDiscovery: (id: string) =>
+        api.post<CrawlerDiscovery>(`/api/admin/crawler/discoveries/${encodeURIComponent(id)}/approve`),
+
+    ignoreCrawlerDiscovery: (id: string) =>
+        api.post<void>(`/api/admin/crawler/discoveries/${encodeURIComponent(id)}/ignore`),
+
+    deleteCrawlerDiscovery: (id: string) =>
+        api.delete<void>(`/api/admin/crawler/discoveries/${encodeURIComponent(id)}`),
+
+    getCrawlerStats: () =>
+        api.get<CrawlerStats>('/api/admin/crawler/stats'),
 
     // Feature 5: Analytics detail + export
     exportAnalytics: (): Promise<Blob> =>
