@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0] - 2026-03-04 (minor)
+
+- Merge pull request #49 from bradselph/development
+- chore: annotate incomplete/wired-but-unused features with TODO comments
+- fix: prevent pagination reset when navigating pages in React Router v7
+
+
 ## [0.45.0] - 2026-03-04 (minor)
 
 - Merge pull request #48 from bradselph/development
