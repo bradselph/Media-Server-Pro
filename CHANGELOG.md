@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.51.0] - 2026-03-04 (minor)
+
+- Merge pull request #54 from bradselph/development
+- fix(download-move): scan subdirs recursively, default to move not copy
+
+
 ## [0.50.0] - 2026-03-04 (minor)
 
 - Merge pull request #53 from bradselph/development
