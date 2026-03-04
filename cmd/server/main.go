@@ -261,6 +261,35 @@ func main() {
 		log.Error("Server error: %v", err)
 		os.Exit(1)
 	}
+
+	// Seed suggestions module immediately after the media module's initial scan
+	// completes, so suggestions are available without waiting for the first hourly
+	// task to fire (which has a 45-second startup delay + scan time).
+	go func() {
+		for !mediaModule.IsReady() {
+			time.Sleep(500 * time.Millisecond)
+		}
+		items := mediaModule.ListMedia(media.Filter{})
+		mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
+		for _, item := range items {
+			mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
+				Path:      item.Path,
+				StableID:  item.ID,
+				Title:     item.Name,
+				Category:  item.Category,
+				MediaType: string(item.Type),
+				Tags:      item.Tags,
+				Views:     item.Views,
+				AddedAt:   item.DateAdded,
+				IsMature:  item.IsMature,
+			})
+		}
+		if len(mediaInfos) > 0 {
+			suggestionsModule.UpdateMediaData(mediaInfos)
+			log.Info("Seeded suggestions with %d items from initial media scan", len(mediaInfos))
+		}
+	}()
+
 	srv.Wait()
 }
 
