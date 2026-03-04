@@ -8,6 +8,7 @@ import {useHLS} from '@/hooks/useHLS'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useEqualizer} from '@/hooks/useEqualizer'
 import {PlayerSettingsPanel} from '@/components/PlayerSettingsPanel'
+import {ApiError} from '@/api/client'
 import {analyticsApi, hlsApi, mediaApi, ratingsApi, suggestionsApi, watchHistoryApi} from '@/api/endpoints'
 import type {HLSJob, Suggestion} from '@/api/types'
 import {formatDuration, formatFileSize, formatTitle} from '@/utils/formatters'
@@ -644,6 +645,10 @@ export function PlayerPage() {
     }
 
     if (mediaError || !media) {
+        const is403 = mediaError instanceof ApiError && mediaError.status === 403
+        const errMsg = mediaError instanceof ApiError ? mediaError.message : ''
+        const playerUrl = `/player?id=${encodeURIComponent(mediaId)}`
+
         return (
             <div className="player-page">
                 <div className="player-page-container">
@@ -652,8 +657,38 @@ export function PlayerPage() {
                             Library</Link>
                     </div>
                     <div style={{textAlign: 'center', padding: '60px 0'}}>
-                        <p style={{color: '#ef4444', marginBottom: 12}}>Media not found or unavailable.</p>
-                        <Link to="/"><i className="bi bi-arrow-left"/> Back to Library</Link>
+                        {is403 && errMsg.includes('log in') ? (
+                            <>
+                                <p style={{color: '#ef4444', marginBottom: 12}}>
+                                    <i className="bi bi-shield-lock-fill"/> This content is marked as mature (18+).
+                                </p>
+                                <Link to={`/login?redirect=${encodeURIComponent(playerUrl)}`}>
+                                    Sign in to view this content
+                                </Link>
+                            </>
+                        ) : is403 && errMsg.includes('permission') ? (
+                            <>
+                                <p style={{color: '#ef4444', marginBottom: 12}}>
+                                    <i className="bi bi-shield-lock-fill"/> Your account does not have permission to view mature content.
+                                </p>
+                                <p style={{color: 'var(--text-muted)', fontSize: 14}}>Contact an administrator to request access.</p>
+                                <Link to="/" style={{marginTop: 12, display: 'inline-block'}}><i className="bi bi-arrow-left"/> Back to Library</Link>
+                            </>
+                        ) : is403 && (errMsg.includes('Enable') || errMsg.includes('preferences')) ? (
+                            <>
+                                <p style={{color: '#ef4444', marginBottom: 12}}>
+                                    <i className="bi bi-shield-lock-fill"/> This content is marked as mature (18+).
+                                </p>
+                                <Link to={`/profile?mature_redirect=${encodeURIComponent(playerUrl)}`}>
+                                    Enable mature content in profile settings
+                                </Link>
+                            </>
+                        ) : (
+                            <>
+                                <p style={{color: '#ef4444', marginBottom: 12}}>Media not found or unavailable.</p>
+                                <Link to="/"><i className="bi bi-arrow-left"/> Back to Library</Link>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

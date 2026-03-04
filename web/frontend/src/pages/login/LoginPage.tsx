@@ -26,7 +26,24 @@ export function LoginPage() {
 
         try {
             const result = await login(username, password)
-            navigate(result.isAdmin ? '/admin' : redirectTo, {replace: true})
+            if (result.isAdmin) {
+                navigate('/admin', {replace: true})
+            } else if (redirectTo.startsWith('/player')) {
+                // Mature content redirect flow: check if user can actually view it
+                const state = useAuthStore.getState()
+                if (state.permissions.can_view_mature && state.user?.preferences?.show_mature) {
+                    // Full access — go straight to the player
+                    navigate(redirectTo, {replace: true})
+                } else if (state.permissions.can_view_mature) {
+                    // Has permission but show_mature is off — send to profile to enable
+                    navigate(`/profile?mature_redirect=${encodeURIComponent(redirectTo)}`, {replace: true})
+                } else {
+                    // Admin hasn't granted permission — go home
+                    navigate('/', {replace: true})
+                }
+            } else {
+                navigate(redirectTo, {replace: true})
+            }
         } catch (err: unknown) {
             if (err instanceof ApiError) {
                 setError(err.message)
