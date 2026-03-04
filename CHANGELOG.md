@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.42.0] - 2026-03-04 (minor)
+
+- Merge pull request #45 from bradselph/development
+- feat: mature content access control with full redirect flow
+
+
 ## [0.41.0] - 2026-03-04 (minor)
 
 - Merge pull request #44 from bradselph/development
