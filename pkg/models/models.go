@@ -11,8 +11,8 @@ import (
 type MediaType string
 
 const (
-	MediaTypeVideo   MediaType = "video"
-	MediaTypeAudio   MediaType = "audio"
+	MediaTypeVideo MediaType = "video"
+	MediaTypeAudio MediaType = "audio"
 	// TODO: MediaTypeUnknown is never assigned anywhere in the codebase (DEPRECATED S-04). Unmatched
 	// files are silently dropped by internal/media/discovery.go rather than catalogued as unknown.
 	// Remove this constant and the "unknown" type arm in MediaItem.type (types.ts) once confirmed
@@ -583,12 +583,12 @@ type MatureReviewItem struct {
 
 // AuditLogEntry represents an entry in the audit log
 type AuditLogEntry struct {
-	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`
-	Timestamp time.Time              `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
-	UserID    string                 `json:"user_id" db:"user_id" gorm:"size:255;index"`
-	Username  string                 `json:"username" db:"username" gorm:"size:255"`
-	Action    string                 `json:"action" db:"action" gorm:"size:100;not null;index"`
-	Resource  string                 `json:"resource" db:"resource" gorm:"size:255;index"`
+	ID        string    `json:"id" db:"id" gorm:"primaryKey;size:255"`
+	Timestamp time.Time `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
+	UserID    string    `json:"user_id" db:"user_id" gorm:"size:255;index"`
+	Username  string    `json:"username" db:"username" gorm:"size:255"`
+	Action    string    `json:"action" db:"action" gorm:"size:100;not null;index"`
+	Resource  string    `json:"resource" db:"resource" gorm:"size:255;index"`
 	// TODO: Details is excluded from GORM persistence (gorm:"-") and SQL queries (db:"-").
 	// admin.LogAction() assigns values to this field, but they are lost: never written to MySQL,
 	// never included in ExportAuditLog CSV output (api/handlers/admin.go ExportAuditLog).
