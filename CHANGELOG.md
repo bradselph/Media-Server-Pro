@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.41.0] - 2026-03-04 (minor)
+
+- Merge pull request #44 from bradselph/development
+- Merge branch 'main' into development
+- feat: enhanced player settings panel, quality persistence, and UI polish
+- fix: show mature items blurred for guests and auto-activate HLS
+- Merge branch 'main' into development
+
+
 ## [0.40.0] - 2026-03-03 (minor)
 
 - Merge pull request #43 from bradselph/development
