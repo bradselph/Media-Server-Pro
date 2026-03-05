@@ -120,6 +120,8 @@ type Module struct {
 	wsConns        map[string]*slaveWS
 	pendingMu      sync.Mutex
 	pendingStreams map[string]*PendingStream
+	// proxySem limits the number of concurrent proxy connections (MaxProxyConns).
+	proxySem chan struct{}
 }
 
 // NewModule creates a new receiver module.
@@ -152,6 +154,12 @@ func (m *Module) Start(_ context.Context) error {
 		m.setHealth(true, "Disabled")
 		return nil
 	}
+
+	maxConns := cfg.Receiver.MaxProxyConns
+	if maxConns <= 0 {
+		maxConns = 50
+	}
+	m.proxySem = make(chan struct{}, maxConns)
 
 	m.loadFromDB()
 
@@ -540,13 +548,18 @@ var allowedProxyHeaders = map[string]bool{
 // POST).  If the slave has no active WebSocket connection, it falls back to a
 // direct HTTP proxy through the slave's BaseURL.
 //
-// TODO: ReceiverConfig.MaxProxyConns (defaulting to 50 in config defaults, set via
-// RECEIVER_MAX_PROXY_CONNS env var) is read from config but never enforced anywhere in this
-// function or in the httpClient used by proxyViaHTTP. There is no connection semaphore, pool limit,
-// or concurrent-proxy counter. The config key exists with a documented purpose but has zero effect.
-// Fix: add a buffered channel semaphore (make(chan struct{}, cfg.Receiver.MaxProxyConns)) acquired
-// at the start of ProxyStream and released on return to cap concurrent proxy connections.
 func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID string) error {
+	// Enforce MaxProxyConns limit via a buffered channel semaphore.
+	if m.proxySem != nil {
+		select {
+		case m.proxySem <- struct{}{}:
+			defer func() { <-m.proxySem }()
+		default:
+			http.Error(w, "Too many concurrent proxy connections", http.StatusServiceUnavailable)
+			return nil
+		}
+	}
+
 	item := m.GetMediaItem(mediaID)
 	if item == nil {
 		http.NotFound(w, r)
