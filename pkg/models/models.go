@@ -61,7 +61,7 @@ type MediaCategory struct {
 
 // User represents a system user.
 // PasswordHash and Salt are excluded from default JSON serialization (json:"-")
-// to prevent accidental leakage. For persistence, use MarshalStorage/UnmarshalStorage.
+// to prevent accidental leakage. All persistence goes through GORM MySQL repositories.
 type User struct {
 	ID            string             `json:"id" db:"id" gorm:"primaryKey;size:255"`
 	Username      string             `json:"username" db:"username" gorm:"uniqueIndex;size:255;not null"`
@@ -89,67 +89,6 @@ func (*User) TableName() string {
 	return "users"
 }
 
-// TODO: userStorage, MarshalStorage, and UnmarshalStorage (DEPRECATED R-02) are holdovers from
-// the JSON file persistence era. All storage now goes through GORM MySQL repositories
-// (internal/repositories/mysql/). No caller in the codebase invokes MarshalStorage or
-// UnmarshalStorage. Remove all three once confirmed no external tooling depends on them.
-
-// DEPRECATED: R-02 — JSON file persistence era; MySQL repositories are used for all storage — safe to delete
-type userStorage struct {
-	ID            string                 `json:"id"`
-	Username      string                 `json:"username"`
-	PasswordHash  string                 `json:"password_hash,omitempty"`
-	Salt          string                 `json:"salt,omitempty"`
-	Email         string                 `json:"email,omitempty"`
-	Role          UserRole               `json:"role"`
-	Type          string                 `json:"type"`
-	Enabled       bool                   `json:"enabled"`
-	CreatedAt     time.Time              `json:"created_at"`
-	LastLogin     *time.Time             `json:"last_login,omitempty"`
-	Permissions   UserPermissions        `json:"permissions"`
-	Preferences   UserPreferences        `json:"preferences"`
-	WatchHistory  []WatchHistoryItem     `json:"watch_history,omitempty"`
-	StorageUsed   int64                  `json:"storage_used"`
-	ActiveStreams int                    `json:"active_streams"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
-}
-
-// DEPRECATED: R-02 — JSON file persistence era — safe to delete
-func (u *User) MarshalStorage() ([]byte, error) {
-	s := userStorage{
-		ID: u.ID, Username: u.Username, PasswordHash: u.PasswordHash, Salt: u.Salt,
-		Email: u.Email, Role: u.Role, Type: u.Type, Enabled: u.Enabled,
-		CreatedAt: u.CreatedAt, LastLogin: u.LastLogin, Permissions: u.Permissions,
-		Preferences: u.Preferences, WatchHistory: u.WatchHistory,
-		StorageUsed: u.StorageUsed, ActiveStreams: u.ActiveStreams, Metadata: u.Metadata,
-	}
-	return json.Marshal(s)
-}
-
-// DEPRECATED: R-02 — JSON file persistence era — safe to delete
-func (u *User) UnmarshalStorage(data []byte) error {
-	var s userStorage
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	u.ID = s.ID
-	u.Username = s.Username
-	u.PasswordHash = s.PasswordHash
-	u.Salt = s.Salt
-	u.Email = s.Email
-	u.Role = s.Role
-	u.Type = s.Type
-	u.Enabled = s.Enabled
-	u.CreatedAt = s.CreatedAt
-	u.LastLogin = s.LastLogin
-	u.Permissions = s.Permissions
-	u.Preferences = s.Preferences
-	u.WatchHistory = s.WatchHistory
-	u.StorageUsed = s.StorageUsed
-	u.ActiveStreams = s.ActiveStreams
-	u.Metadata = s.Metadata
-	return nil
-}
 
 // UserRole represents the role of a user
 type UserRole string
