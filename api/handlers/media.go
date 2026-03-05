@@ -333,12 +333,16 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
 					return
 				}
-				// TODO: Stream limit enforcement is missing for receiver-sourced media. For local media,
-				// the handler calls h.streaming.CanStartStream(userID, maxStreams) to cap concurrent
-				// streams per user. That check is skipped entirely here, allowing authenticated users
-				// to bypass per-user stream limits by requesting receiver (slave) content. Apply the
-				// same getUserStreamLimit / CanStartStream guard to receiver proxy requests as is done
-				// for local media (lines 330–336 below).
+				// Enforce per-user stream limits for receiver-sourced media, same as local media.
+				if session := getSession(c); session != nil {
+					if user, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
+						maxStreams := h.getUserStreamLimit(user.Type)
+						if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
+							writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
+							return
+						}
+					}
+				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
 					if !c.Writer.Written() && !isClientDisconnect(err) {
 						writeError(c, http.StatusBadGateway, "Stream proxy error")
