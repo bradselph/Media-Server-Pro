@@ -88,13 +88,16 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 		return
 	}
 
-	// TODO: SetCategory only updates the categorizer's in-memory store and MySQL categorized_items
-	// table. It does NOT call h.media.UpdateMetadata to propagate the new category to MediaItem.Category
-	// in the in-memory media catalog. This creates a stale-data inconsistency: the category set here
-	// will not appear in ListMedia or GetMedia responses until the next full media scan.
-	// Fix: add h.media.UpdateMetadata(req.Path, map[string]interface{}{"category": string(req.Category)})
-	// after h.categorizer.SetCategory(), as CategorizeFile (above) already does correctly.
 	h.categorizer.SetCategory(req.Path, req.Category)
+	// Propagate the new category to the in-memory media catalog immediately so
+	// ListMedia/GetMedia reflect the change without waiting for the next scan.
+	if string(req.Category) != "" {
+		if updateErr := h.media.UpdateMetadata(req.Path, map[string]interface{}{
+			"category": string(req.Category),
+		}); updateErr != nil {
+			h.log.Warn("Categorizer: failed to update media metadata for %s: %v", req.Path, updateErr)
+		}
+	}
 	writeSuccess(c, map[string]string{"message": "Category set"})
 }
 

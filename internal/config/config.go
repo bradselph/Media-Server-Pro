@@ -309,10 +309,15 @@ type ExtractorConfig struct {
 
 // CrawlerConfig holds settings for the stream crawler that discovers M3U8
 // streams by crawling target site pages and detecting playlist URLs.
+// When BrowserEnabled is true (default) and Chrome/Chromium is found on
+// the system, the crawler uses headless-Chrome to click play buttons and
+// intercept network traffic — matching how the companion downloader project
+// discovers streams. Falls back to plain HTML regex when Chrome is unavailable.
 type CrawlerConfig struct {
-	Enabled      bool          `json:"enabled"`
-	MaxPages     int           `json:"max_pages"`     // Max pages to crawl per target
-	CrawlTimeout time.Duration `json:"crawl_timeout"` // Timeout for a single crawl operation
+	Enabled        bool          `json:"enabled"`
+	BrowserEnabled bool          `json:"browser_enabled"` // Use headless Chrome for stream detection (default true)
+	MaxPages       int           `json:"max_pages"`       // Max pages to crawl per target
+	CrawlTimeout   time.Duration `json:"crawl_timeout"`   // Timeout for a single crawl operation
 }
 
 // BackupConfig holds backup retention settings
@@ -550,9 +555,10 @@ func DefaultConfig() *Config {
 			MaxItems:     500,
 		},
 		Crawler: CrawlerConfig{
-			Enabled:      false,
-			MaxPages:     20,
-			CrawlTimeout: 5 * time.Minute,
+			Enabled:        false,
+			BrowserEnabled: true,
+			MaxPages:       20,
+			CrawlTimeout:   5 * time.Minute,
 		},
 		MatureScanner: MatureScannerConfig{
 			Enabled:                   true,
@@ -1542,6 +1548,9 @@ func (m *Manager) applyExtractorEnvOverrides() {
 func (m *Manager) applyCrawlerEnvOverrides() {
 	if val, ok := envGetBool("CRAWLER_ENABLED"); ok {
 		m.config.Crawler.Enabled = val
+	}
+	if val, ok := envGetBool("CRAWLER_BROWSER_ENABLED"); ok {
+		m.config.Crawler.BrowserEnabled = val
 	}
 	if val, ok := envGetInt("CRAWLER_MAX_PAGES"); ok {
 		m.config.Crawler.MaxPages = val

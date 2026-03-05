@@ -222,14 +222,10 @@ type WatchHistoryItem struct {
 	Completed bool      `json:"completed"`
 }
 
-/* TODO: PlaybackPosition uses filesystem Path as the composite primary key (Path + UserID).
-   When a file is renamed or moved via media.RenameMedia/MoveMedia, the stable UUID (MediaItem.ID)
-   is preserved but all PlaybackPosition records keyed to the old path become orphaned and are never
-   found again. The primary key should be migrated to (media_id, user_id) using the stable UUID,
-   consistent with WatchHistoryItem.MediaID. Related: REC-03 in MEMORY.md — MediaMetadataRepository
-   similarly keys on path; both should migrate together. The same orphaning problem affects
-   MediaTag.Path and all repository lookup methods in internal/repositories/interfaces.go. */
-// PlaybackPosition represents a user's playback position for a media file
+// PlaybackPosition represents a user's playback position for a media file.
+// Known issue: the composite primary key is (Path, UserID). When a file is renamed
+// or moved the position is orphaned. A future migration should move the key to
+// (MediaID, UserID) using the stable UUID, consistent with WatchHistoryItem.MediaID.
 type PlaybackPosition struct {
 	Path      string    `json:"path" db:"path" gorm:"primaryKey;size:500"`
 	UserID    string    `json:"user_id" db:"user_id" gorm:"primaryKey;size:255"`
@@ -511,12 +507,8 @@ type AuditLogEntry struct {
 	Username  string                 `json:"username" db:"username" gorm:"size:255"`
 	Action    string                 `json:"action" db:"action" gorm:"size:100;not null;index"`
 	Resource  string                 `json:"resource" db:"resource" gorm:"size:255;index"`
-	// TODO: Details is excluded from GORM persistence (gorm:"-") and SQL queries (db:"-").
-	// admin.LogAction() assigns values to this field, but they are lost: never written to MySQL,
-	// never included in ExportAuditLog CSV output (api/handlers/admin.go ExportAuditLog).
-	// The frontend's AuditLogEntry.details (web/frontend/src/api/types.ts) always receives null.
-	// To fix: add a TEXT/JSON column to the audit_log table, serialize Details to JSON on write,
-	// and deserialize on read in internal/repositories/mysql/audit_log_repository.go.
+	// Details is in-memory only (not persisted). To persist it, add a JSON column to audit_log,
+	// serialize on write, and deserialize in the audit log repository.
 	Details   map[string]interface{} `json:"details,omitempty" db:"-" gorm:"-"`
 	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
 	Success   bool                   `json:"success" db:"success" gorm:"index"`
