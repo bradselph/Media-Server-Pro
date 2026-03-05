@@ -236,6 +236,11 @@ func (h *Handler) UnbanIP(c *gin.Context) {
 		return
 	}
 
+	if req.IP == "" {
+		writeError(c, http.StatusBadRequest, "IP address is required")
+		return
+	}
+
 	h.security.UnbanIP(req.IP)
 	writeSuccess(c, nil)
 }

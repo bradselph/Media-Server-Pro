@@ -58,6 +58,11 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 		return
 	}
 
+	if req.Name == "" {
+		writeError(c, http.StatusBadRequest, "Playlist name required")
+		return
+	}
+
 	pl, err := h.playlist.CreatePlaylist(c.Request.Context(), req.Name, req.Description, session.UserID, req.IsPublic)
 	if err != nil {
 		h.log.Error("%v", err)

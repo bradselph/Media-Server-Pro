@@ -303,9 +303,19 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 		prefs.AutoPlay = v
 	}
 	if v, ok := incoming["playback_speed"].(float64); ok {
+		if v < 0.25 {
+			v = 0.25
+		} else if v > 4.0 {
+			v = 4.0
+		}
 		prefs.PlaybackSpeed = v
 	}
 	if v, ok := incoming["volume"].(float64); ok {
+		if v < 0 {
+			v = 0
+		} else if v > 1.0 {
+			v = 1.0
+		}
 		prefs.Volume = v
 	}
 	if showMature, ok := incoming["show_mature"].(bool); ok {
@@ -327,7 +337,13 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 		prefs.ShowAnalytics = v
 	}
 	if v, ok := incoming["items_per_page"].(float64); ok {
-		prefs.ItemsPerPage = int(v)
+		n := int(v)
+		if n < 1 {
+			n = 1
+		} else if n > 200 {
+			n = 200
+		}
+		prefs.ItemsPerPage = n
 	}
 	if v, ok := incoming["sort_by"].(string); ok {
 		prefs.SortBy = v
@@ -384,6 +400,9 @@ func (h *Handler) GetWatchHistory(c *gin.Context) {
 	}
 
 	history := user.WatchHistory
+	if history == nil {
+		history = []models.WatchHistoryItem{}
+	}
 
 	// Enrich entries with human-readable media names so the frontend
 	// doesn't need to resolve opaque UUIDs for display.
@@ -428,18 +447,32 @@ func (h *Handler) ClearWatchHistory(c *gin.Context) {
 	}
 
 	if mediaID := c.Query("id"); mediaID != "" {
-		// Resolve ID to path for internal operations
+		// Resolve ID to path for internal operations — fall back to receiver media if not local.
+		var mediaPath string
 		item, err := h.media.GetMediaByID(mediaID)
 		if err != nil {
-			writeError(c, http.StatusNotFound, errMediaNotFound)
-			return
+			// Check receiver media before returning 404
+			if h.receiver != nil {
+				if ri := h.receiver.GetMediaItem(mediaID); ri != nil {
+					mediaPath = "receiver:" + mediaID
+				}
+			}
+			if mediaPath == "" {
+				writeError(c, http.StatusNotFound, errMediaNotFound)
+				return
+			}
+		} else {
+			mediaPath = item.Path
 		}
-		if err := h.auth.RemoveWatchHistoryItem(c.Request.Context(), session.Username, item.Path); err != nil {
+		if err := h.auth.RemoveWatchHistoryItem(c.Request.Context(), session.Username, mediaPath); err != nil {
 			h.log.Error("%v", err)
 			writeError(c, http.StatusInternalServerError, "Internal server error")
 			return
 		}
-		h.media.ClearPlaybackPosition(c.Request.Context(), item.Path, session.UserID)
+		// Only clear local playback positions (receiver items have no server-side position store)
+		if item != nil {
+			h.media.ClearPlaybackPosition(c.Request.Context(), mediaPath, session.UserID)
+		}
 		writeSuccess(c, map[string]string{"status": "removed"})
 		return
 	}

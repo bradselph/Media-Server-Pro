@@ -47,7 +47,7 @@ type Manifest struct {
 	CreatedAt   time.Time `json:"created_at"`
 	Size        int64     `json:"size"`
 	Type        string    `json:"type"` // full, config, data
-	Description string    `json:"description"`
+	Description string    `json:"description,omitempty"`
 	Files       []string  `json:"files"`
 	Errors      []string  `json:"errors,omitempty"`
 	Version     string    `json:"version"`

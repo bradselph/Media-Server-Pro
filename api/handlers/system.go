@@ -218,7 +218,14 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	}
 
 	usedGB := float64(totalSize) / (1024 * 1024 * 1024)
-	quotaGB := float64(storageQuotaGB) / (1024 * 1024 * 1024)
+	// storageQuotaGB == -1 means unlimited (admin accounts); keep as -1 so the
+	// frontend can distinguish unlimited from zero.
+	var quotaGB float64
+	if storageQuotaGB < 0 {
+		quotaGB = -1
+	} else {
+		quotaGB = float64(storageQuotaGB) / (1024 * 1024 * 1024)
+	}
 	percentage := 0.0
 	if quotaGB > 0 {
 		percentage = (usedGB / quotaGB) * 100
