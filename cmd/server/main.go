@@ -190,15 +190,12 @@ func main() {
 	backupModule := backup.NewModule(cfg, dbModule)
 	mustRegister(srv, backupModule)
 
-	// TODO: FeaturesConfig.EnableAutoDiscovery (env FEATURES_ENABLE_AUTO_DISCOVERY) is configurable
-	// but never checked here. The autodiscovery module is registered unconditionally, unlike
-	// EnableReceiver and EnableRemoteMedia which gate their module construction inside a cfg.Features
-	// check. Fix: wrap this block in `if appCfg.Features.EnableAutoDiscovery { ... }` and pass nil
-	// to HandlerDeps.Autodiscovery when disabled, consistent with the receiverModule and remoteModule
-	// conditional patterns below. The requireAutodiscovery() handler guard already handles nil safely.
 	// Auto-discovery (non-critical — requires database for suggestion persistence)
-	autodiscoveryModule := autodiscovery.NewModule(cfg, dbModule)
-	mustRegister(srv, autodiscoveryModule)
+	var autodiscoveryModule *autodiscovery.Module
+	if cfg.Get().Features.EnableAutoDiscovery {
+		autodiscoveryModule = autodiscovery.NewModule(cfg, dbModule)
+		mustRegister(srv, autodiscoveryModule)
+	}
 
 	// Suggestions (non-critical — requires database for user profiles)
 	suggestionsModule := suggestions.NewModule(cfg, dbModule)
@@ -420,11 +417,10 @@ func registerTasks(
 			if backupModule == nil {
 				return nil
 			}
-			// TODO: keepCount is hardcoded to 10. BackupConfig (internal/config/config.go) has a
-			// RetentionCount field (env BACKUP_RETENTION_COUNT) that is not used here. Fix: read
-			// cfg.Get().Backup.RetentionCount and fall back to 10 if zero, making the retention
-			// limit configurable without a code change.
-			const keepCount = 10
+			keepCount := cfg.Get().Backup.RetentionCount
+			if keepCount <= 0 {
+				keepCount = 10
+			}
 			removed, err := backupModule.CleanOldBackups(keepCount)
 			if removed > 0 {
 				log.Info("Cleaned %d old backups (keeping %d)", removed, keepCount)
