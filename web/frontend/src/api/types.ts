@@ -676,7 +676,7 @@ export interface PermissionsInfo {
 // ── Feature 4: Upload ──
 
 export interface UploadResult {
-    uploaded: Array<{ filename: string; size: number }>
+    uploaded: Array<{ upload_id: string; filename: string; size: number }>
     errors: Array<{ filename: string; error: string }>
 }
 

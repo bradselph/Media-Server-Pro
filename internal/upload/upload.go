@@ -69,6 +69,7 @@ type Progress struct {
 
 // Result contains the result of an upload.
 type Result struct {
+	UploadID  string `json:"upload_id"`
 	Success   bool   `json:"success"`
 	Filename  string `json:"filename"`
 	Path      string `json:"path"`
@@ -187,17 +188,9 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category st
 		}
 	}()
 
-	// Generate upload ID and create progress tracker
+	// Generate upload ID, store progress, and return the ID in the Result so clients
+	// can poll GET /api/upload/:id/progress. Completed entries linger for 5 minutes.
 	uploadID := m.generateUploadID()
-	// TODO: uploadID is generated here and stored in activeUploads, but it is never returned to
-	// the HTTP client. The upload handler (api/handlers/upload.go) does not include the uploadID
-	// in the response body. Clients therefore cannot poll GET /api/upload/:id/progress (which
-	// calls GetProgress) because they never learn the ID. The GetProgress endpoint and the
-	// uploadApi.getProgress() frontend function (web/frontend/src/api/endpoints.ts) are effectively
-	// unreachable in practice. Additionally, uploads are removed from activeUploads immediately on
-	// completion (the defer above), so even if a client knew the ID, progress would disappear before
-	// they could poll it. Fix: return the uploadID in the Result struct and in the HTTP response,
-	// and consider keeping completed uploads in a separate completed-uploads map for a grace period.
 	progress := &Progress{
 		ID:        uploadID,
 		Filename:  filename,
@@ -211,10 +204,15 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category st
 	m.activeUploads[uploadID] = progress
 	m.mu.Unlock()
 
+	// Remove from activeUploads after a 5-minute grace period so clients can
+	// still poll progress after the upload completes.
 	defer func() {
-		m.mu.Lock()
-		delete(m.activeUploads, uploadID)
-		m.mu.Unlock()
+		go func() {
+			time.Sleep(5 * time.Minute)
+			m.mu.Lock()
+			delete(m.activeUploads, uploadID)
+			m.mu.Unlock()
+		}()
 	}()
 
 	// Atomically find unique filename and create temp file
@@ -263,6 +261,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category st
 	m.log.Info("Upload complete: %s (%d bytes) by user %s", filename, written, userID)
 
 	return &Result{
+		UploadID:  uploadID,
 		Success:   true,
 		Filename:  filepath.Base(destPath),
 		Path:      destPath,

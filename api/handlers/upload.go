@@ -77,6 +77,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 	category := c.Request.FormValue("category")
 
 	type uploadedEntry struct {
+		UploadID string `json:"upload_id"`
 		Filename string `json:"filename"`
 		Size     int64  `json:"size"`
 	}
@@ -101,7 +102,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
 			continue
 		}
-		uploaded = append(uploaded, uploadedEntry{Filename: result.Filename, Size: result.Size})
+		uploaded = append(uploaded, uploadedEntry{UploadID: result.UploadID, Filename: result.Filename, Size: result.Size})
 		totalAdded += result.Size
 
 		if cfg.Uploads.ScanForMature && result.Path != "" && h.scanner != nil {

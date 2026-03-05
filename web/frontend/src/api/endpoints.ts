@@ -107,12 +107,8 @@ export const uploadApi = {
         return api.upload<UploadResult>('/api/upload', formData)
     },
 
-    // TODO: getProgress is unreachable in practice. The upload ID is generated internally by
-    // internal/upload/upload.go (generateUploadID) and never returned in the HTTP response from
-    // POST /api/upload. Clients therefore cannot know the ID to poll. Additionally, the upload
-    // is removed from activeUploads immediately upon completion (via defer delete), so any poll
-    // that arrived after completion would receive 404. Fix: return the upload ID in the upload
-    // response and keep completed entries in a short-lived cache before eviction.
+    // Returns upload progress for the given upload_id (from the uploaded[] array in UploadResult).
+    // Completed entries remain accessible for 5 minutes after the upload finishes.
     getProgress: (id: string) =>
         api.get<UploadProgress>(`/api/upload/${encodeURIComponent(id)}/progress`),
 }
