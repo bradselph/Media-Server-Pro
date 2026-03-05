@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.52.0] - 2026-03-05 (minor)
+
+- Merge pull request #55 from bradselph/development
+- refactor(security): remove unused net/http Middleware method (REC-19)
+- refactor(models): remove deprecated userStorage, MarshalStorage, UnmarshalStorage
+- fix(streaming): enforce per-user stream limits for receiver-sourced media
+- fix(security): validate discovery dir and use media ID in validator handlers
+- fix(auth): preserve allowGuests across logout in authStore
+- fix: gate autodiscovery on feature flag, make backup retention configurable
+
+
 ## [0.51.0] - 2026-03-04 (minor)
 
 - Merge pull request #54 from bradselph/development
