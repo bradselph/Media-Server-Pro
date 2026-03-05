@@ -33,7 +33,9 @@ type Module struct {
 	eventRepo     repositories.AnalyticsRepository
 	sessions      map[string]*sessionData
 	dailyStats    map[string]*models.DailyStats
+	dailyUsers    map[string]map[string]struct{} // keyed by date → set of userIDs
 	mediaStats    map[string]*models.ViewStats
+	mediaViewers  map[string]map[string]struct{} // keyed by mediaID → set of userIDs
 	sessionsMu    sync.RWMutex
 	statsMu       sync.RWMutex
 	healthy       bool
@@ -63,14 +65,16 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 	}
 
 	return &Module{
-		config:     cfg,
-		log:        logger.New("analytics"),
-		dbModule:   dbModule,
-		sessions:   make(map[string]*sessionData),
-		dailyStats: make(map[string]*models.DailyStats),
-		mediaStats: make(map[string]*models.ViewStats),
-		done:       make(chan struct{}),
-		maxEvents:  2000, // enough for accurate stat reconstruction; 10000 caused 500ms+ startup queries
+		config:       cfg,
+		log:          logger.New("analytics"),
+		dbModule:     dbModule,
+		sessions:     make(map[string]*sessionData),
+		dailyStats:   make(map[string]*models.DailyStats),
+		dailyUsers:   make(map[string]map[string]struct{}),
+		mediaStats:   make(map[string]*models.ViewStats),
+		mediaViewers: make(map[string]map[string]struct{}),
+		done:         make(chan struct{}),
+		maxEvents:    2000, // enough for accurate stat reconstruction; 10000 caused 500ms+ startup queries
 	}, nil
 }
 
@@ -268,12 +272,21 @@ func (m *Module) updateStats(event models.AnalyticsEvent) {
 
 	if event.Type == "view" {
 		daily.TotalViews++
-		// TODO: DailyStats.UniqueUsers, TotalWatchTime, NewUsers, and TopMedia are never updated here.
-		// UniqueUsers: use a per-day set of userIDs (e.g. map[string]map[string]struct{}) to count distinct.
-		// TotalWatchTime: accumulate from "playback" events that carry a "duration" field in event.Data.
-		// NewUsers: requires auth.CreateUser to emit a synthetic event; or query user.CreatedAt on flush.
-		// TopMedia: maintain a sorted slice of (mediaID, count) pairs updated on each "view" event.
-		// Until these are implemented, GetDailyStats returns zeroes for all four fields.
+		// Track unique users per day for UniqueUsers
+		if event.UserID != "" {
+			if m.dailyUsers[today] == nil {
+				m.dailyUsers[today] = make(map[string]struct{})
+			}
+			m.dailyUsers[today][event.UserID] = struct{}{}
+			daily.UniqueUsers = len(m.dailyUsers[today])
+		}
+	}
+
+	if event.Type == "playback" {
+		// Accumulate watch time from "playback" events that carry a "duration" field
+		if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
+			daily.TotalWatchTime += dur
+		}
 	}
 
 	// Update media stats
@@ -287,9 +300,25 @@ func (m *Module) updateStats(event models.AnalyticsEvent) {
 		if event.Type == "view" {
 			stats.TotalViews++
 			stats.LastViewed = time.Now()
+			// Track unique viewers per media item
+			if event.UserID != "" {
+				if m.mediaViewers[event.MediaID] == nil {
+					m.mediaViewers[event.MediaID] = make(map[string]struct{})
+				}
+				m.mediaViewers[event.MediaID][event.UserID] = struct{}{}
+				stats.UniqueViewers = len(m.mediaViewers[event.MediaID])
+			}
 		}
 
 		if event.Type == "playback" {
+			if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
+				// Accumulate average watch duration
+				if stats.TotalViews > 0 {
+					stats.AvgWatchDuration = (stats.AvgWatchDuration*float64(stats.TotalViews-1) + dur) / float64(stats.TotalViews)
+				} else {
+					stats.AvgWatchDuration = dur
+				}
+			}
 			if data, ok := event.Data["progress"].(float64); ok && data >= 90 {
 				// Prevent division by zero if TotalViews is 0
 				if stats.TotalViews > 0 {
@@ -852,15 +881,11 @@ func (m *Module) GetEventStats(ctx context.Context) EventStats {
 		todayEvents = nil
 	}
 
+	loc := time.Now().Location()
 	hourly := make([]int, 24)
 	for _, event := range todayEvents {
-		// TODO: Timezone mismatch in hourly distribution. Events are stored with UTC timestamps
-		// (gorm:"autoCreateTime" uses UTC), but todayStr is filtered using the server's local timezone
-		// via time.Now().Location(). If the server is in a non-UTC timezone, events near midnight may
-		// be attributed to the wrong bucket (event.Timestamp.Hour() returns UTC hour while todayStr
-		// filters by local date). Fix: convert event.Timestamp to the server's local timezone before
-		// calling .Hour(), or store all timestamps in local time consistently.
-		hourly[event.Timestamp.Hour()]++
+		// Convert to local timezone so the hour bucket matches the local todayStr filter.
+		hourly[event.Timestamp.In(loc).Hour()]++
 	}
 
 	return EventStats{
