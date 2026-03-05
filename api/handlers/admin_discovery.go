@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -21,12 +22,26 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 		return
 	}
 
-	// TODO: req.Directory is accepted from the request body and passed directly to ScanDirectory
-	// without validation against the configured media directories (cfg.Directories.Videos,
-	// cfg.Directories.Music, cfg.Directories.Uploads). An admin could scan any arbitrary directory
-	// on the filesystem, leaking directory listings or triggering ffprobe against unexpected content.
-	// Fix: validate that req.Directory starts with (or equals) one of the configured media paths
-	// using filepath.HasPrefix or a similar containment check before calling ScanDirectory.
+	// Validate that the requested directory is within a configured media path to prevent
+	// arbitrary filesystem traversal by admins.
+	dirs := h.config.Get().Directories
+	allowedRoots := []string{dirs.Videos, dirs.Music, dirs.Uploads}
+	cleanReq := filepath.Clean(req.Directory)
+	allowed := false
+	for _, root := range allowedRoots {
+		if root == "" {
+			continue
+		}
+		cleanRoot := filepath.Clean(root)
+		if cleanReq == cleanRoot || strings.HasPrefix(cleanReq, cleanRoot+string(filepath.Separator)) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		writeError(c, http.StatusBadRequest, "Directory must be within a configured media path")
+		return
+	}
 	scanResults, err := h.autodiscovery.ScanDirectory(req.Directory)
 	if err != nil {
 		h.log.Error("%v", err)

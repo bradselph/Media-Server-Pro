@@ -38,6 +38,7 @@ type Config struct {
 	Receiver      ReceiverConfig      `json:"receiver"`
 	Extractor     ExtractorConfig     `json:"extractor"`
 	Crawler       CrawlerConfig       `json:"crawler"`
+	Backup        BackupConfig        `json:"backup"`
 	MatureScanner MatureScannerConfig `json:"mature_scanner"`
 	Logging       LoggingConfig       `json:"logging"`
 	Features      FeaturesConfig      `json:"features"`
@@ -314,6 +315,14 @@ type CrawlerConfig struct {
 	CrawlTimeout time.Duration `json:"crawl_timeout"` // Timeout for a single crawl operation
 }
 
+// BackupConfig holds backup retention settings
+type BackupConfig struct {
+	// RetentionCount is the maximum number of backup archives to keep.
+	// Older backups beyond this count are removed by the backup-cleanup task.
+	// Defaults to 10. Set via BACKUP_RETENTION_COUNT env var.
+	RetentionCount int `json:"retention_count"`
+}
+
 // MatureScannerConfig holds content scanning settings
 type MatureScannerConfig struct {
 	Enabled                   bool     `json:"enabled"`
@@ -553,6 +562,9 @@ func DefaultConfig() *Config {
 			HighConfidenceKeywords:    []string{"xxx", "porn", "adult", "nsfw"},
 			MediumConfidenceKeywords:  []string{"mature", "explicit", "18+"},
 			RequireReview:             true,
+		},
+		Backup: BackupConfig{
+			RetentionCount: 10,
 		},
 		Logging: LoggingConfig{
 			Level:        "info",
@@ -1024,6 +1036,7 @@ func (m *Manager) applyEnvOverrides() {
 	m.applyAnalyticsEnvOverrides()
 	m.applyUploadsEnvOverrides()
 	m.applyFeatureEnvOverrides()
+	m.applyBackupEnvOverrides()
 	m.applyMatureScannerEnvOverrides()
 	m.applyRemoteMediaEnvOverrides()
 	m.applyReceiverEnvOverrides()
@@ -1434,6 +1447,12 @@ func (m *Manager) applyFeatureEnvOverrides() {
 	}
 	if val, ok := envGetBool("FEATURE_CRAWLER", "FEATURES_CRAWLER"); ok {
 		m.config.Features.EnableCrawler = val
+	}
+}
+
+func (m *Manager) applyBackupEnvOverrides() {
+	if val, ok := envGetInt("BACKUP_RETENTION_COUNT"); ok {
+		m.config.Backup.RetentionCount = val
 	}
 }
 
