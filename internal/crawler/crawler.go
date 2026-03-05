@@ -36,6 +36,7 @@ type Module struct {
 	discoveryRepo repositories.CrawlerDiscoveryRepository
 
 	httpClient *http.Client
+	browser    *browserDetector
 
 	crawlMu   sync.Mutex
 	crawling  bool
@@ -81,11 +82,29 @@ type Stats struct {
 
 // NewModule creates a new crawler module.
 func NewModule(cfg *config.Manager, dbModule *database.Module, extractorModule *extractor.Module) *Module {
+	log := logger.New("crawler")
+	crawlCfg := cfg.Get().Crawler
+	crawlTimeout := crawlCfg.CrawlTimeout
+	if crawlTimeout <= 0 {
+		crawlTimeout = 60 * time.Second
+	}
+	var bd *browserDetector
+	if crawlCfg.BrowserEnabled {
+		bd = newBrowserDetector(log, crawlTimeout)
+		if bd.available() {
+			log.Info("Browser detection enabled (Chrome: %s)", bd.chromeBin)
+		} else {
+			log.Warn("No Chrome/Chromium found — browser detection disabled, falling back to HTML-only mode")
+		}
+	} else {
+		log.Info("Browser detection disabled by config")
+	}
 	return &Module{
 		config:    cfg,
-		log:       logger.New("crawler"),
+		log:       log,
 		dbModule:  dbModule,
 		extractor: extractorModule,
+		browser:   bd,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -286,26 +305,14 @@ func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) 
 		contentLinks = contentLinks[:maxPages]
 	}
 
-	// Step 2: Visit each content link and look for M3U8 streams
+	// Step 2: Visit each content link and look for streams.
+	// Uses browser-based detection (click play, intercept network) with HTML fallback.
 	newCount := 0
 	for i, link := range contentLinks {
 		m.log.Debug("Probing [%d/%d]: %s", i+1, len(contentLinks), link)
 
-		streams, title := m.probeForM3U8(link)
+		streams, title := m.probeForStreams(link)
 		if len(streams) == 0 {
-			continue
-		}
-
-		// Take the first (best) M3U8 found
-		streamURL := streams[0]
-
-		// Skip if we already have this stream
-		exists, err := m.discoveryRepo.ExistsByStreamURL(context.Background(), streamURL)
-		if err != nil {
-			m.log.Warn("Failed to check discovery existence: %v", err)
-			continue
-		}
-		if exists {
 			continue
 		}
 
@@ -313,24 +320,46 @@ func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) 
 			title = extractTitleFromURL(link)
 		}
 
-		id := generateDiscoveryID(streamURL)
-		rec := &repositories.CrawlerDiscoveryRecord{
-			ID:           id,
-			TargetID:     target.ID,
-			PageURL:      link,
-			Title:        title,
-			StreamURL:    streamURL,
-			StreamType:   "hls",
-			Status:       "pending",
-			DiscoveredAt: time.Now(),
-		}
+		for _, stream := range streams {
+			// Only store M3U8 streams (HLS playlists)
+			if stream.Type != "m3u8" {
+				continue
+			}
 
-		if err := m.discoveryRepo.Create(context.Background(), rec); err != nil {
-			m.log.Warn("Failed to store discovery: %v", err)
-			continue
+			streamURL := stream.URL
+
+			// Skip if we already have this stream
+			exists, err := m.discoveryRepo.ExistsByStreamURL(context.Background(), streamURL)
+			if err != nil {
+				m.log.Warn("Failed to check discovery existence: %v", err)
+				continue
+			}
+			if exists {
+				continue
+			}
+
+			id := generateDiscoveryID(streamURL)
+			rec := &repositories.CrawlerDiscoveryRecord{
+				ID:              id,
+				TargetID:        target.ID,
+				PageURL:         link,
+				Title:           title,
+				StreamURL:       streamURL,
+				StreamType:      "hls",
+				Quality:         stream.Quality,
+				DetectionMethod: stream.DetectionMethod,
+				Status:          "pending",
+				DiscoveredAt:    time.Now(),
+			}
+
+			if err := m.discoveryRepo.Create(context.Background(), rec); err != nil {
+				m.log.Warn("Failed to store discovery: %v", err)
+				continue
+			}
+			newCount++
+			m.log.Info("Discovered M3U8 [%s]: %s -> %s", stream.DetectionMethod, title, streamURL)
+			break // Take best stream per page
 		}
-		newCount++
-		m.log.Info("Discovered M3U8: %s -> %s", title, streamURL)
 	}
 
 	// Update last crawled timestamp
@@ -441,8 +470,41 @@ func (m *Module) extractContentLinks(html string, baseURL *url.URL) []string {
 	return links
 }
 
-// probeForM3U8 fetches a content page and extracts M3U8 URLs from the HTML.
-func (m *Module) probeForM3U8(pageURL string) ([]string, string) {
+// probeForStreams attempts browser-based detection first (clicking play buttons,
+// intercepting network requests), then falls back to simple HTML regex matching.
+// This is the core fix: modern video sites load streams via JavaScript after
+// user interaction, so plain HTML fetching misses them entirely.
+func (m *Module) probeForStreams(pageURL string) ([]detectedStream, string) {
+	// Try browser-based detection first (like the downloader's Puppeteer approach)
+	if m.browser != nil && m.browser.available() {
+		result, err := m.browser.probe(context.Background(), pageURL)
+		if err != nil {
+			m.log.Warn("Browser probe failed for %s: %v — falling back to HTML", pageURL, err)
+		} else if len(result.Streams) > 0 {
+			return result.Streams, result.Title
+		} else {
+			m.log.Debug("Browser found no streams on %s, trying HTML fallback", pageURL)
+		}
+	}
+
+	// Fallback: fetch raw HTML and regex-match M3U8 URLs
+	m3u8s, title := m.probeForM3U8HTML(pageURL)
+	if len(m3u8s) == 0 {
+		return nil, title
+	}
+	streams := make([]detectedStream, len(m3u8s))
+	for i, u := range m3u8s {
+		streams[i] = detectedStream{
+			URL:             u,
+			Type:            "m3u8",
+			DetectionMethod: "html-regex",
+		}
+	}
+	return streams, title
+}
+
+// probeForM3U8HTML is the original HTML-only prober (kept as fallback).
+func (m *Module) probeForM3U8HTML(pageURL string) ([]string, string) {
 	body, err := m.fetchPage(pageURL)
 	if err != nil {
 		m.log.Debug("Failed to fetch %s: %v", pageURL, err)
