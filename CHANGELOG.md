@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.53.0] - 2026-03-05 (minor)
+
+- Merge pull request #56 from bradselph/development
+- fix(misc): clean up remaining TODOs, fix backup types, fix crawler syntax error
+- fix(security): persist IP bans to MySQL so they survive server restarts
+- fix(analytics): implement UniqueUsers, TotalWatchTime, UniqueViewers, AvgWatchDuration; fix hourly TZ
+- fix(receiver): enforce MaxProxyConns via buffered channel semaphore
+- fix(frontend): fix stale comments, remove absent details field, improve media name fallback
+- fix(upload): return upload_id in response, keep progress accessible after completion
+
+
 ## [0.52.0] - 2026-03-05 (minor)
 
 - Merge pull request #55 from bradselph/development
