@@ -250,19 +250,32 @@ func (m *Module) IsBanned(ip string) bool {
 	return m.rateLimiter.IsBanned(ip)
 }
 
-// BanIP manually bans an IP with a reason
-// TODO: BanIP stores the ban in the rateLimiter's in-memory bannedIPs map only. The ban is not
-// persisted to MySQL (unlike whitelist/blacklist entries which go through the ip_list repository).
-// A server restart clears all active bans, even if they were set with a long duration via the Admin
-// UI (POST /api/admin/security/ban). Fix: persist bans to the ip_list repository with type="ban"
-// and an expires_at timestamp, and restore them on Start() alongside whitelist/blacklist entries.
+// BanIP manually bans an IP with a reason. The ban is persisted to MySQL so it
+// survives server restarts.
 func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 	m.rateLimiter.BanIP(ip, duration, reason)
+	// Persist to DB
+	ctx := context.Background()
+	expiresAt := time.Now().Add(duration)
+	rec := &repositories.IPEntryRecord{
+		Value:     ip,
+		Comment:   reason,
+		AddedAt:   time.Now(),
+		AddedBy:   "system",
+		ExpiresAt: &expiresAt,
+	}
+	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
+		m.log.Warn("Failed to persist ban for %s: %v", ip, err)
+	}
 }
 
-// UnbanIP removes a ban on an IP
+// UnbanIP removes a ban on an IP, from memory and from the database.
 func (m *Module) UnbanIP(ip string) {
 	m.rateLimiter.UnbanIP(ip)
+	ctx := context.Background()
+	if err := m.repo.RemoveEntry(ctx, "ban", ip); err != nil {
+		m.log.Warn("Failed to remove persisted ban for %s: %v", ip, err)
+	}
 }
 
 // GetBannedIPs returns list of currently banned IPs with full metadata
@@ -552,6 +565,25 @@ func (m *Module) loadIPLists() error {
 			}
 			m.parseIPEntry(&entry)
 			m.blacklist.Entries = append(m.blacklist.Entries, entry)
+		}
+	}
+
+	// Restore persisted bans into the in-memory rate limiter.
+	now := time.Now()
+	if banEntries, err := m.repo.GetEntries(ctx, "ban"); err == nil {
+		for _, rec := range banEntries {
+			if rec.ExpiresAt != nil && rec.ExpiresAt.Before(now) {
+				// Expired — clean up silently
+				_ = m.repo.RemoveEntry(ctx, "ban", rec.Value)
+				continue
+			}
+			var remaining time.Duration
+			if rec.ExpiresAt != nil {
+				remaining = time.Until(*rec.ExpiresAt)
+			} else {
+				remaining = 24 * time.Hour // fallback for bans with no expiry
+			}
+			m.rateLimiter.BanIP(rec.Value, remaining, rec.Comment)
 		}
 	}
 
