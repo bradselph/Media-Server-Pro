@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.0] - 2026-03-05 (minor)
+
+- Merge pull request #57 from bradselph/development
+- fix(handlers): handle edge cases across auth, media, analytics, security, playlists
+- Update backup.go
+
+
 ## [0.53.0] - 2026-03-05 (minor)
 
 - Merge pull request #56 from bradselph/development
