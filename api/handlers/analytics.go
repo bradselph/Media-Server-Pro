@@ -127,6 +127,10 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
+	if req.Type == "" {
+		writeError(c, http.StatusBadRequest, "event type required")
+		return
+	}
 	if req.Duration > 0 {
 		if req.Data == nil {
 			req.Data = make(map[string]interface{})
@@ -243,6 +247,11 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 		if t, err := time.Parse("2006-01-02", v); err == nil {
 			endDate = t
 		}
+	}
+
+	if startDate.After(endDate) {
+		writeError(c, http.StatusBadRequest, "start_date must be before end_date")
+		return
 	}
 
 	filename, err := h.analytics.ExportCSV(c.Request.Context(), startDate, endDate)

@@ -524,6 +524,10 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 		return
 	}
 
+	if req.Position < 0 {
+		req.Position = 0
+	}
+
 	mediaPath, mediaName, ok := h.resolveMediaPathOrReceiver(c, req.ID)
 	if !ok {
 		return
