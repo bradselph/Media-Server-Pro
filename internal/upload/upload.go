@@ -486,7 +486,7 @@ func (m *Module) GetActiveUploads() []*Progress {
 // GetUserStorageUsed calculates storage used by a specific user by walking
 // only their per-user upload subdirectory (uploads/{userID}/).
 func (m *Module) GetUserStorageUsed(userID string) (int64, error) {
-	userDir := filepath.Join(m.uploadDir, userID)
+	userDir := filepath.Join(m.uploadDir, filepath.Base(userID))
 	if _, err := os.Stat(userDir); os.IsNotExist(err) {
 		return 0, nil
 	}
