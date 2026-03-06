@@ -395,6 +395,10 @@ func (m *Module) extractFile(file *zip.File) error {
 		return err
 	}
 	if n > maxExtractSize {
+		// Clean up the oversize partial file
+		if removeErr := os.Remove(destPath); removeErr != nil {
+			m.log.Warn("Failed to remove oversize extracted file %s: %v", destPath, removeErr)
+		}
 		return fmt.Errorf("file %s exceeds maximum extract size of %d bytes", file.Name, maxExtractSize)
 	}
 	return nil
