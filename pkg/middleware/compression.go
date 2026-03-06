@@ -267,6 +267,7 @@ func (e *ginETagWriter) Write(b []byte) (int, error) {
 	}
 	if e.body.Len()+len(b) > etagMaxBufferSize {
 		e.overflow = true
+		e.written = true
 		e.ResponseWriter.WriteHeader(e.statusCode)
 		_, _ = e.ResponseWriter.Write(e.body.Bytes())
 		e.body.Reset()
