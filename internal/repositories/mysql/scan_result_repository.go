@@ -108,7 +108,7 @@ func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositor
 	var row scanResultRow
 	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("scan result not found: %s", path)
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to query scan result: %w", err)
 	}
