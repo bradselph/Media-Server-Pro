@@ -403,14 +403,6 @@ func (m *Module) countActiveSessions(timeout time.Duration) int {
 	return active
 }
 
-// DEPRECATED: R-09 — never called from any handler; GetSummary/GetStats provide active session counts — safe to delete
-func (m *Module) GetActiveSessions() int {
-	m.sessionsMu.RLock()
-	defer m.sessionsMu.RUnlock()
-	cfg := m.config.Get()
-	return m.countActiveSessions(cfg.Analytics.SessionTimeout)
-}
-
 // GetRecentEvents returns recent events
 func (m *Module) GetRecentEvents(ctx context.Context, limit int) []models.AnalyticsEvent {
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{Limit: limit})
