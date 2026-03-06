@@ -97,15 +97,14 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "path"}},
 			DoUpdates: clause.Assignments(map[string]interface{}{
-				"views":          clause.Column{Table: "excluded", Name: "views"},
-				"last_played":    clause.Column{Table: "excluded", Name: "last_played"},
-				"is_mature":      clause.Column{Table: "excluded", Name: "is_mature"},
-				"mature_score":   clause.Column{Table: "excluded", Name: "mature_score"},
-				"category":       clause.Column{Table: "excluded", Name: "category"},
-				"probe_mod_time": clause.Column{Table: "excluded", Name: "probe_mod_time"},
+				// MySQL uses VALUES(col) to reference the incoming row in ON DUPLICATE KEY UPDATE.
+				"views":          gorm.Expr("VALUES(views)"),
+				"last_played":    gorm.Expr("VALUES(last_played)"),
+				"is_mature":      gorm.Expr("VALUES(is_mature)"),
+				"mature_score":   gorm.Expr("VALUES(mature_score)"),
+				"category":       gorm.Expr("VALUES(category)"),
+				"probe_mod_time": gorm.Expr("VALUES(probe_mod_time)"),
 				// Only write stable_id when it's not already set
-				// NOTE: MySQL uses VALUES(col) to reference the incoming row in ON DUPLICATE KEY UPDATE.
-				// "excluded.col" is PostgreSQL syntax and causes Error 1054 on MySQL.
 				"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', VALUES(stable_id), media_metadata.stable_id)"),
 				// Only write fingerprint when it's not already set
 				"content_fingerprint": gorm.Expr("IF(media_metadata.content_fingerprint IS NULL OR media_metadata.content_fingerprint = '', VALUES(content_fingerprint), media_metadata.content_fingerprint)"),
@@ -200,13 +199,18 @@ func (r *MediaMetadataRepository) List(ctx context.Context) (map[string]*reposit
 	return results, nil
 }
 
-// IncrementViews increments the view count for a media item
+// IncrementViews increments the view count for a media item.
+// Only updates existing rows to avoid creating metadata entries without a stable_id.
 func (r *MediaMetadataRepository) IncrementViews(ctx context.Context, path string) error {
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO media_metadata (path, views, date_added)
-		VALUES (?, 1, NOW())
-		ON DUPLICATE KEY UPDATE views = views + 1, last_played = NOW()
-	`, path).Error
+	result := r.db.WithContext(ctx).Exec(`
+		UPDATE media_metadata SET views = views + 1, last_played = NOW() WHERE path = ?
+	`, path)
+	if result.Error != nil {
+		return result.Error
+	}
+	// If no row existed, the media hasn't been catalogued yet — skip silently.
+	// The next full scan will create the row with a proper stable_id.
+	return nil
 }
 
 // UpdatePlaybackPosition updates the playback position for a user

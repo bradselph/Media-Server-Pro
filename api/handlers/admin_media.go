@@ -183,7 +183,7 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 		updates[k] = v
 	}
 
-	reqName = trimSpace(reqName)
+	reqName = strings.TrimSpace(reqName)
 
 	if err := h.media.UpdateMetadata(path, updates); err != nil {
 		h.log.Error("%v", err)
@@ -336,16 +336,4 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		"failed":  failedCount,
 		"errors":  errs,
 	})
-}
-
-// trimSpace trims whitespace from a string (local helper to avoid import of strings in this file).
-func trimSpace(s string) string {
-	start, end := 0, len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
-		end--
-	}
-	return s[start:end]
 }

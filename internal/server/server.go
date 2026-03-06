@@ -343,13 +343,15 @@ func (s *Server) startHTTPS() error {
 	if _, err := os.Stat(cfg.Server.KeyFile); err != nil {
 		return fmt.Errorf("TLS key file not found or not readable (%s): %w", cfg.Server.KeyFile, err)
 	}
-	// Verify the cert/key pair is valid before binding to the port
-	if _, err := tls.LoadX509KeyPair(cfg.Server.CertFile, cfg.Server.KeyFile); err != nil {
+	// Load and verify the cert/key pair before binding to the port
+	cert, err := tls.LoadX509KeyPair(cfg.Server.CertFile, cfg.Server.KeyFile)
+	if err != nil {
 		return fmt.Errorf("TLS certificate/key pair is invalid: %w", err)
 	}
 
-	// Configure TLS
+	// Configure TLS with the loaded certificate
 	tlsConfig := &tls.Config{
+		Certificates:     []tls.Certificate{cert},
 		MinVersion:       tls.VersionTLS12,
 		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 	}

@@ -804,13 +804,6 @@ func (m *Module) GetContinueWatching(userID string, limit int) []*Suggestion {
 	return suggestions
 }
 
-// DEPRECATED: DC-03 — not exposed via any route or handler — safe to delete
-func (m *Module) GetUserProfile(userID string) *UserProfile {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.profiles[userID]
-}
-
 // GetStats returns suggestion module statistics
 func (m *Module) GetStats() SuggestionStats {
 	m.mu.RLock()

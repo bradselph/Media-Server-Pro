@@ -161,10 +161,15 @@ func (m *Module) setHealth(healthy bool, msg string) {
 	m.healthMu.Unlock()
 }
 
+var errDisabled = fmt.Errorf("crawler is disabled")
+
 // --- Target Management ---
 
 // AddTarget adds a new crawl target.
 func (m *Module) AddTarget(name, rawURL string) (*CrawlTarget, error) {
+	if m.targetRepo == nil {
+		return nil, errDisabled
+	}
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return nil, fmt.Errorf("invalid URL: must be HTTP/HTTPS")
@@ -197,11 +202,17 @@ func (m *Module) AddTarget(name, rawURL string) (*CrawlTarget, error) {
 
 // RemoveTarget removes a crawl target and its discoveries.
 func (m *Module) RemoveTarget(id string) error {
+	if m.targetRepo == nil {
+		return errDisabled
+	}
 	return m.targetRepo.Delete(context.Background(), id)
 }
 
 // GetTargets returns all crawl targets.
 func (m *Module) GetTargets() ([]*CrawlTarget, error) {
+	if m.targetRepo == nil {
+		return nil, errDisabled
+	}
 	records, err := m.targetRepo.List(context.Background())
 	if err != nil {
 		return nil, err
@@ -215,6 +226,9 @@ func (m *Module) GetTargets() ([]*CrawlTarget, error) {
 
 // ToggleTarget enables/disables a target.
 func (m *Module) ToggleTarget(id string, enabled bool) error {
+	if m.targetRepo == nil {
+		return errDisabled
+	}
 	rec, err := m.targetRepo.Get(context.Background(), id)
 	if err != nil {
 		return err
@@ -253,6 +267,9 @@ var (
 
 // CrawlTarget triggers a crawl for a specific target.
 func (m *Module) CrawlTarget(targetID string) (int, error) {
+	if m.targetRepo == nil {
+		return 0, errDisabled
+	}
 	m.crawlMu.Lock()
 	if m.crawling {
 		m.crawlMu.Unlock()
@@ -547,6 +564,9 @@ func (m *Module) probeForM3U8HTML(pageURL string) ([]string, string) {
 
 // GetDiscoveries returns discoveries, optionally filtered by status.
 func (m *Module) GetDiscoveries(status string) ([]*Discovery, error) {
+	if m.discoveryRepo == nil {
+		return nil, errDisabled
+	}
 	var records []*repositories.CrawlerDiscoveryRecord
 	var err error
 
@@ -568,6 +588,9 @@ func (m *Module) GetDiscoveries(status string) ([]*Discovery, error) {
 
 // ApproveDiscovery marks a discovery as "added" and adds it to the extractor.
 func (m *Module) ApproveDiscovery(id, reviewedBy string) (*Discovery, error) {
+	if m.discoveryRepo == nil {
+		return nil, errDisabled
+	}
 	disc, err := m.discoveryRepo.Get(context.Background(), id)
 	if err != nil {
 		return nil, err
@@ -602,6 +625,9 @@ func (m *Module) ApproveDiscovery(id, reviewedBy string) (*Discovery, error) {
 
 // IgnoreDiscovery marks a discovery as "ignored".
 func (m *Module) IgnoreDiscovery(id, reviewedBy string) error {
+	if m.discoveryRepo == nil {
+		return errDisabled
+	}
 	disc, err := m.discoveryRepo.Get(context.Background(), id)
 	if err != nil {
 		return err
@@ -615,6 +641,9 @@ func (m *Module) IgnoreDiscovery(id, reviewedBy string) error {
 
 // DeleteDiscovery removes a discovery permanently.
 func (m *Module) DeleteDiscovery(id string) error {
+	if m.discoveryRepo == nil {
+		return errDisabled
+	}
 	return m.discoveryRepo.Delete(context.Background(), id)
 }
 

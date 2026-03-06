@@ -4,12 +4,10 @@ package backup
 import (
 	"archive/zip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,8 +20,6 @@ import (
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
-
-const manifestSuffix = "_manifest.json"
 
 // Module handles backup and restore operations
 type Module struct {
@@ -404,44 +400,20 @@ func (m *Module) extractFile(file *zip.File) error {
 	return nil
 }
 
-// ListBackups returns all available backups
+// ListBackups returns all available backups from the database.
 func (m *Module) ListBackups() ([]*Manifest, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	entries, err := os.ReadDir(m.backupDir)
+	records, err := m.repo.List(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
-	backups := make([]*Manifest, 0)
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		if !strings.HasSuffix(entry.Name(), manifestSuffix) {
-			continue
-		}
-
-		manifestPath := filepath.Join(m.backupDir, entry.Name())
-		data, err := os.ReadFile(manifestPath)
-		if err != nil {
-			continue
-		}
-
-		var manifest Manifest
-		if err := json.Unmarshal(data, &manifest); err != nil {
-			m.log.Warn("Failed to parse backup manifest %s: %v", entry.Name(), err)
-			continue
-		}
-
-		backups = append(backups, &manifest)
+	backups := make([]*Manifest, 0, len(records))
+	for _, rec := range records {
+		backups = append(backups, m.recordToManifest(rec))
 	}
-
-	// Sort by date, newest first
-	sort.Slice(backups, func(i, j int) bool {
-		return backups[i].CreatedAt.After(backups[j].CreatedAt)
-	})
 
 	return backups, nil
 }
@@ -457,33 +429,44 @@ func (m *Module) DeleteBackup(backupID string) error {
 		return err
 	}
 
-	// Delete manifest
-	manifestPath := filepath.Join(m.backupDir, backupID+manifestSuffix)
-	if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
-		return err
+	// Delete manifest from database
+	if err := m.repo.Delete(context.Background(), backupID); err != nil {
+		m.log.Warn("Failed to delete backup manifest from database: %v", err)
 	}
 
 	m.log.Info("Deleted backup: %s", backupID)
 	return nil
 }
 
-// GetBackup returns a specific backup manifest
+// GetBackup returns a specific backup manifest from the database
 func (m *Module) GetBackup(backupID string) (*Manifest, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	manifestPath := filepath.Join(m.backupDir, backupID+manifestSuffix)
-	data, err := os.ReadFile(manifestPath)
+	rec, err := m.repo.Get(context.Background(), backupID)
 	if err != nil {
+		return nil, err
+	}
+	if rec == nil {
 		return nil, fmt.Errorf("backup not found: %s", backupID)
 	}
 
-	var manifest Manifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, err
-	}
+	return m.recordToManifest(rec), nil
+}
 
-	return &manifest, nil
+// recordToManifest converts a repository BackupManifestRecord to a Manifest.
+func (m *Module) recordToManifest(rec *repositories.BackupManifestRecord) *Manifest {
+	return &Manifest{
+		ID:          rec.ID,
+		Filename:    rec.Filename,
+		CreatedAt:   rec.CreatedAt,
+		Size:        rec.Size,
+		Type:        rec.Type,
+		Description: rec.Description,
+		Files:       rec.Files,
+		Errors:      rec.Errors,
+		Version:     rec.Version,
+	}
 }
 
 // CleanOldBackups removes backups older than retention period
