@@ -560,12 +560,14 @@ func (m *Module) getCachedMedia(remoteURL string) *CachedMedia {
 	cfg := m.config.Get()
 	if cfg.RemoteMedia.CacheTTL > 0 && time.Since(cached.LastAccess) > cfg.RemoteMedia.CacheTTL {
 		m.mu.RUnlock()
-		// Lazily evict expired entry
+		// Lazily evict expired entry — re-check under write lock to avoid races
 		m.mu.Lock()
-		if err := os.Remove(cached.LocalPath); err != nil && !os.IsNotExist(err) {
-			m.log.Warn("Failed to remove expired cache file %s: %v", cached.LocalPath, err)
+		if entry, ok := m.mediaCache[remoteURL]; ok && time.Since(entry.LastAccess) > cfg.RemoteMedia.CacheTTL {
+			if err := os.Remove(entry.LocalPath); err != nil && !os.IsNotExist(err) {
+				m.log.Warn("Failed to remove expired cache file %s: %v", entry.LocalPath, err)
+			}
+			delete(m.mediaCache, remoteURL)
 		}
-		delete(m.mediaCache, remoteURL)
 		m.mu.Unlock()
 		return nil
 	}
