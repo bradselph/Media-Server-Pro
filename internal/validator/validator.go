@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -459,43 +458,6 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 
 	m.log.Info("Fixed media file: %s -> %s", path, outputPath)
 	return result, nil
-}
-
-// DEPRECATED: DC-04 — no route registered, never called from any handler; use ValidateFile per-file — safe to delete
-func (m *Module) ValidateDirectory(dir string, filesPerRun int) ([]*ValidationResult, error) {
-	if m.ffprobePath == "" {
-		return nil, fmt.Errorf("ffprobe not available")
-	}
-
-	var results []*ValidationResult
-	count := 0
-
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Continue on error
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if filesPerRun > 0 && count >= filesPerRun {
-			return filepath.SkipAll
-		}
-
-		if !m.shouldValidateFile(path) {
-			return nil
-		}
-
-		result, validateErr := m.ValidateFile(path)
-		if validateErr != nil {
-			m.log.Debug("Failed to validate %s: %v", path, validateErr)
-		}
-		results = append(results, result)
-		count++
-
-		return nil
-	})
-
-	return results, err
 }
 
 // shouldValidateFile checks whether a file at the given path is a media file
