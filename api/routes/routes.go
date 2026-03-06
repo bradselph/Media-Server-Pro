@@ -112,13 +112,19 @@ func ginETags() gin.HandlerFunc {
 			return
 		}
 
-		// Use a buffered writer to capture the response body
-		blw := &bodyLogWriter{body: bytes.NewBufferString(""), ResponseWriter: c.Writer}
+		// Use a buffered writer that captures the body without flushing to the
+		// client, so we can compute the ETag and potentially respond with 304
+		// before any bytes are sent.
+		blw := &etagBufferWriter{body: bytes.NewBuffer(nil), ResponseWriter: c.Writer}
 		c.Writer = blw
 		c.Next()
 
 		// Only apply ETag to 2xx responses
 		if blw.Status() < 200 || blw.Status() >= 300 {
+			// Non-2xx: flush buffered body as-is
+			if blw.body.Len() > 0 {
+				_, _ = blw.ResponseWriter.Write(blw.body.Bytes())
+			}
 			return
 		}
 
@@ -126,20 +132,28 @@ func ginETags() gin.HandlerFunc {
 		c.Header("ETag", etag)
 
 		if match := c.GetHeader("If-None-Match"); match == etag {
+			// 304 Not Modified — do not send the body
 			c.Status(http.StatusNotModified)
+			return
+		}
+
+		// Flush buffered body to the client
+		if blw.body.Len() > 0 {
+			_, _ = blw.ResponseWriter.Write(blw.body.Bytes())
 		}
 	}
 }
 
-// bodyLogWriter wraps gin.ResponseWriter to capture the response body for ETag calculation.
-type bodyLogWriter struct {
+// etagBufferWriter wraps gin.ResponseWriter to buffer the response body.
+// Writes are captured in memory only — nothing is flushed to the client until
+// the ETag middleware explicitly writes the buffer (or discards it for 304).
+type etagBufferWriter struct {
 	gin.ResponseWriter
 	body *bytes.Buffer
 }
 
-func (w *bodyLogWriter) Write(b []byte) (int, error) {
-	w.body.Write(b)
-	return w.ResponseWriter.Write(b)
+func (w *etagBufferWriter) Write(b []byte) (int, error) {
+	return w.body.Write(b)
 }
 
 // hashFNV1a computes an FNV-1a hash of the given bytes and returns it as a hex string.
