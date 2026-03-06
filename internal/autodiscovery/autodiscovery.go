@@ -445,13 +445,6 @@ func (m *Module) ApplySuggestion(originalPath string) error {
 		return fmt.Errorf("destination path %s is outside allowed media directories", absDestPath)
 	}
 
-	// Ensure destination directory exists
-	if suggestion.SuggestedPath != "" {
-		if err := os.MkdirAll(suggestion.SuggestedPath, 0755); err != nil {
-			return err
-		}
-	}
-
 	// Verify source file exists before attempting rename
 	if _, err := os.Stat(originalPath); err != nil {
 		return fmt.Errorf("source file not found: %w", err)
@@ -460,6 +453,14 @@ func (m *Module) ApplySuggestion(originalPath string) error {
 	// Check if destination already exists to prevent silent overwrite and data loss
 	if _, err := os.Stat(destPath); err == nil {
 		return fmt.Errorf("destination already exists, refusing to overwrite: %s", destPath)
+	}
+
+	// Ensure destination directory exists (after precondition checks to avoid
+	// creating empty directories when source is missing or dest already exists)
+	if suggestion.SuggestedPath != "" {
+		if err := os.MkdirAll(suggestion.SuggestedPath, 0755); err != nil {
+			return err
+		}
 	}
 
 	// Rename/move file
