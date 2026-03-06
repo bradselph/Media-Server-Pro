@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.58.0] - 2026-03-06 (minor)
+
+- Merge pull request #61 from bradselph/development
+- refactor(deploy): consolidate scripts into setup.sh + deploy.sh
+
+
 ## [0.57.0] - 2026-03-06 (minor)
 
 - Merge pull request #60 from bradselph/development
