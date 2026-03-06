@@ -478,7 +478,7 @@ func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 		}
 
 		// Only process media files
-		if !isMediaFile(path) {
+		if !helpers.IsMediaExtension(strings.ToLower(filepath.Ext(path))) {
 			return nil
 		}
 
@@ -493,12 +493,6 @@ func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 
 	// Items are persisted individually in CategorizeFile
 	return results, nil
-}
-
-// DEPRECATED: R-03 — one-line wrapper; call helpers.IsMediaExtension(ext) directly — safe to delete
-func isMediaFile(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return helpers.IsMediaExtension(ext)
 }
 
 // GetCategory returns the category for a path
