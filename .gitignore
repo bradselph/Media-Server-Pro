@@ -4,9 +4,11 @@
 
 config.json
 .env
+.env.generated
 .deploy.env
 .slave.env
 .media-receiver.pid
+dev-tools/
 
 /web/static/react/
 /node_modules/
