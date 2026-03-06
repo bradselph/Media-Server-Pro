@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.57.0] - 2026-03-06 (minor)
+
+- Merge pull request #60 from bradselph/development
+- fix(backup): clean up oversize file in extractFile on zip bomb rejection
+- fix(autodiscovery): check preconditions before creating destination directory
+- fix(handlers): remove dead ScanMetadata field from ScanContent request
+- fix(middleware): buffer ETag response body before flushing to client
+
+
 ## [0.56.0] - 2026-03-06 (minor)
 
 - Merge pull request #59 from bradselph/development
