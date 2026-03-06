@@ -3,6 +3,7 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 
 	"media-server-pro/internal/repositories"
 	"media-server-pro/pkg/models"
@@ -112,7 +113,7 @@ func (r *PlaylistRepository) batchLoadItems(ctx context.Context, playlists []*mo
 		Where("playlist_id IN ?", ids).
 		Order("position ASC").
 		Find(&allItems).Error; err != nil {
-		return playlists, nil // return playlists with empty items on error
+		return nil, fmt.Errorf("failed to load playlist items: %w", err)
 	}
 
 	// Distribute items to their playlists
