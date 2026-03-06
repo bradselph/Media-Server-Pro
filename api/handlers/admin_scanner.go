@@ -16,9 +16,8 @@ func (h *Handler) ScanContent(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Path         string `json:"path"`
-		AutoApply    bool   `json:"auto_apply"`
-		ScanMetadata bool   `json:"scan_metadata"`
+		Path      string `json:"path"`
+		AutoApply bool   `json:"auto_apply"`
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
