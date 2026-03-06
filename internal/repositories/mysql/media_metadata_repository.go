@@ -199,13 +199,18 @@ func (r *MediaMetadataRepository) List(ctx context.Context) (map[string]*reposit
 	return results, nil
 }
 
-// IncrementViews increments the view count for a media item
+// IncrementViews increments the view count for a media item.
+// Only updates existing rows to avoid creating metadata entries without a stable_id.
 func (r *MediaMetadataRepository) IncrementViews(ctx context.Context, path string) error {
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO media_metadata (path, views, date_added)
-		VALUES (?, 1, NOW())
-		ON DUPLICATE KEY UPDATE views = views + 1, last_played = NOW()
-	`, path).Error
+	result := r.db.WithContext(ctx).Exec(`
+		UPDATE media_metadata SET views = views + 1, last_played = NOW() WHERE path = ?
+	`, path)
+	if result.Error != nil {
+		return result.Error
+	}
+	// If no row existed, the media hasn't been catalogued yet — skip silently.
+	// The next full scan will create the row with a proper stable_id.
+	return nil
 }
 
 // UpdatePlaybackPosition updates the playback position for a user
