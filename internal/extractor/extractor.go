@@ -231,8 +231,14 @@ func (m *Module) RemoveItem(id string) error {
 		}
 	}
 
-	// Clear any cached playlists for this item
-	m.playlistCache.Delete(id + ":master")
+	// Clear any cached playlists for this item (master + all variant qualities)
+	prefix := id + ":"
+	m.playlistCache.Range(func(key, _ interface{}) bool {
+		if k, ok := key.(string); ok && len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			m.playlistCache.Delete(key)
+		}
+		return true
+	})
 
 	return nil
 }
