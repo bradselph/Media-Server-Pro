@@ -4,8 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-
-	"media-server-pro/internal/scanner"
 )
 
 // UploadMedia handles media file upload
@@ -133,9 +131,6 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		"errors":   uploadErrors,
 	})
 }
-
-// ensure scanner import is used
-var _ = (*scanner.ScanResult)(nil)
 
 // GetUploadProgress returns upload progress
 func (h *Handler) GetUploadProgress(c *gin.Context) {
