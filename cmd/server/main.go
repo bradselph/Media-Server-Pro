@@ -264,15 +264,10 @@ func main() {
 
 	routes.Setup(srv.Engine(), h, authModule, securityModule, cfg, ageGate)
 
-	// ── Start server (blocks until graceful shutdown) ──────────────────────
-	if err := srv.Start(); err != nil {
-		log.Error("Server error: %v", err)
-		os.Exit(1)
-	}
-
 	// Seed suggestions module immediately after the media module's initial scan
 	// completes, so suggestions are available without waiting for the first hourly
 	// task to fire (which has a 45-second startup delay + scan time).
+	// This goroutine must be launched before srv.Start() which blocks until shutdown.
 	go func() {
 		for !mediaModule.IsReady() {
 			time.Sleep(500 * time.Millisecond)
@@ -298,7 +293,11 @@ func main() {
 		}
 	}()
 
-	srv.Wait()
+	// ── Start server (blocks until graceful shutdown) ──────────────────────
+	if err := srv.Start(); err != nil {
+		log.Error("Server error: %v", err)
+		os.Exit(1)
+	}
 }
 
 // mustRegister registers a module and exits on failure.
