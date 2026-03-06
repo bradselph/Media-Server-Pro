@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.55.0] - 2026-03-06 (minor)
+
+- Merge pull request #58 from bradselph/development
+- fix(categorizer): remove deprecated isMediaFile wrapper (dead code)
+- fix(validator): remove deprecated ValidateDirectory (dead code, nil append bug)
+- fix(extractor): clean up all playlist cache entries on RemoveItem
+- fix(repo): return nil,nil on not-found in ScanResultRepository.Get
+- fix(repo): use errors.Is() for ErrRecordNotFound in ip_list_repository
+- fix(upload): sanitize userID in GetUserStorageUsed to prevent path traversal
+- fix(remote): fix lock upgrade race in getCachedMedia
+- fix(crawler): add nil guards to prevent panic when crawler is disabled
+- fix(handlers): fix loop variable pointer aliasing in GetBannedIPs
+- fix(backup): use database for manifest storage instead of filesystem
+- fix(repo): prevent IncrementViews from inserting rows without stable_id
+- fix(repo): use MySQL VALUES() syntax instead of PostgreSQL excluded.col in Upsert
+- fix(analytics): remove 7 deprecated Track* methods with zero callers
+- fix(analytics): remove deprecated GetActiveSessions with zero callers
+- fix(suggestions): remove deprecated GetUserProfile function
+- fix(main): move suggestion seeding goroutine before srv.Start()
+- fix(handlers): remove unnecessary scanner import hack in upload.go
+- fix(handlers): remove redundant trimSpace reimplementation in admin_media.go
+- fix(middleware): set written flag on ETag buffer overflow
+- fix(server): load TLS certificates into tlsConfig for HTTPS
+
+
 ## [0.54.0] - 2026-03-05 (minor)
 
 - Merge pull request #57 from bradselph/development
