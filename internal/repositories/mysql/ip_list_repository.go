@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -56,7 +57,7 @@ func (r *IPListRepository) SaveListConfig(ctx context.Context, listType string, 
 func (r *IPListRepository) GetListConfig(ctx context.Context, listType string) (string, bool, error) {
 	var row ipListConfigRow
 	if err := r.db.WithContext(ctx).Where("list_type = ?", listType).First(&row).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", false, nil
 		}
 		return "", false, fmt.Errorf("failed to get IP list config: %w", err)
