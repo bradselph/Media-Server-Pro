@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.56.0] - 2026-03-06 (minor)
+
+- Merge pull request #59 from bradselph/development
+- Merge branch 'main' into development
+- fix(repo): propagate error instead of silently returning empty playlists
+- Merge branch 'main' into development
+
+
 ## [0.55.0] - 2026-03-06 (minor)
 
 - Merge pull request #58 from bradselph/development
