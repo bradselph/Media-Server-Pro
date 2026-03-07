@@ -90,9 +90,8 @@ type Module struct {
 	// Built during loadMetadata and updated during scans so that createMediaItem can
 	// detect moved/renamed files by matching fingerprint instead of path.
 	fingerprintIndex map[string]string // fingerprint -> path
-	mu               sync.RWMutex
-	metaMu           sync.RWMutex
-	saveMu           sync.Mutex // serialises concurrent saveMetadata calls to prevent MySQL lock waits
+	mu     sync.RWMutex // protects media, mediaByID, categories, metadata, fingerprintIndex, version, lastScan
+	saveMu sync.Mutex   // serialises concurrent saveMetadata calls to prevent MySQL lock waits
 	dataDir          string
 	scanning         bool // protected by healthMu; true while Scan() is running
 	healthy          bool
@@ -423,7 +422,7 @@ func (m *Module) Scan() error {
 	// ties are broken by earliest DateAdded so the original discovery
 	// date is preserved.
 	var dupsRemoved int
-	m.metaMu.RLock()
+	m.mu.RLock()
 	fpWinner := make(map[string]string, len(newMedia)) // fingerprint -> winning path
 	for path := range newMedia {
 		meta := m.metadata[path]
@@ -454,7 +453,7 @@ func (m *Module) Scan() error {
 		}
 		dupsRemoved++
 	}
-	m.metaMu.RUnlock()
+	m.mu.RUnlock()
 	if dupsRemoved > 0 {
 		m.log.Info("Dedup: removed %d local duplicate(s) by content fingerprint", dupsRemoved)
 	}
@@ -605,9 +604,9 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	}
 
 	// Get existing metadata (includes StableID loaded from DB at startup)
-	m.metaMu.RLock()
+	m.mu.RLock()
 	meta, hasMeta := m.metadata[path]
-	m.metaMu.RUnlock()
+	m.mu.RUnlock()
 
 	if !hasMeta {
 		// No metadata at this path. Compute a content fingerprint and check
@@ -619,13 +618,13 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		}
 
 		if fp != "" {
-			m.metaMu.RLock()
+			m.mu.RLock()
 			oldPath, found := m.fingerprintIndex[fp]
 			var oldMeta *Metadata
 			if found && oldPath != path {
 				oldMeta = m.metadata[oldPath]
 			}
-			m.metaMu.RUnlock()
+			m.mu.RUnlock()
 
 			if oldMeta != nil {
 				// Before assuming a move, verify the old path no longer exists.
@@ -635,11 +634,11 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 				if _, statErr := os.Stat(oldPath); statErr != nil && os.IsNotExist(statErr) {
 					// Old path gone — genuine move/rename.
 					m.log.Info("Detected moved file: %s -> %s (fingerprint %s…)", oldPath, path, fp[:12])
-					m.metaMu.Lock()
+					m.mu.Lock()
 					m.metadata[path] = oldMeta
 					delete(m.metadata, oldPath)
 					m.fingerprintIndex[fp] = path
-					m.metaMu.Unlock()
+					m.mu.Unlock()
 					meta = oldMeta
 					hasMeta = true
 				} else {
@@ -659,7 +658,7 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 			if !hasMeta {
 				now := time.Now()
 				item.DateAdded = now
-				m.metaMu.Lock()
+				m.mu.Lock()
 				m.metadata[path] = &Metadata{
 					ContentFingerprint: fp,
 					DateAdded:          now,
@@ -668,25 +667,25 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 				}
 				meta = m.metadata[path]
 				m.fingerprintIndex[fp] = path
-				m.metaMu.Unlock()
+				m.mu.Unlock()
 			} else if meta.ContentFingerprint == "" {
-				m.metaMu.Lock()
+				m.mu.Lock()
 				meta.ContentFingerprint = fp
 				m.fingerprintIndex[fp] = path
-				m.metaMu.Unlock()
+				m.mu.Unlock()
 			}
 		} else {
 			// Fingerprint failed — create basic metadata entry
 			now := time.Now()
 			item.DateAdded = now
-			m.metaMu.Lock()
+			m.mu.Lock()
 			m.metadata[path] = &Metadata{
 				DateAdded:   now,
 				PlaybackPos: make(map[string]float64),
 				CustomMeta:  make(map[string]string),
 			}
 			meta = m.metadata[path]
-			m.metaMu.Unlock()
+			m.mu.Unlock()
 		}
 	}
 
@@ -705,10 +704,10 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		// Compute fingerprint for existing files that predate fingerprint support
 		if meta.ContentFingerprint == "" {
 			if fp, err := computeContentFingerprint(path); err == nil && fp != "" {
-				m.metaMu.Lock()
+				m.mu.Lock()
 				meta.ContentFingerprint = fp
 				m.fingerprintIndex[fp] = path
-				m.metaMu.Unlock()
+				m.mu.Unlock()
 			}
 		}
 	}
@@ -717,9 +716,9 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	if item.ID == "" {
 		newID := uuid.New().String()
 		item.ID = newID
-		m.metaMu.Lock()
+		m.mu.Lock()
 		meta.StableID = newID
-		m.metaMu.Unlock()
+		m.mu.Unlock()
 	}
 
 	// Auto-detect category
@@ -757,9 +756,9 @@ type ffprobeResult struct {
 // that subsequent hourly scans are near-instant for unchanged media files.
 func (m *Module) extractMetadata(item *models.MediaItem) {
 	// Check whether we already have up-to-date probe data for this file.
-	m.metaMu.RLock()
+	m.mu.RLock()
 	meta, hasMeta := m.metadata[item.Path]
-	m.metaMu.RUnlock()
+	m.mu.RUnlock()
 	if hasMeta && !meta.ProbeModTime.IsZero() && !item.DateModified.After(meta.ProbeModTime) {
 		m.log.Debug("Skipping ffprobe for unchanged file: %s", item.Path)
 		return
@@ -795,11 +794,11 @@ func (m *Module) extractMetadata(item *models.MediaItem) {
 	}
 	m.mu.Unlock()
 
-	m.metaMu.Lock()
+	m.mu.Lock()
 	if m.metadata[item.Path] != nil {
 		m.metadata[item.Path].ProbeModTime = item.DateModified
 	}
-	m.metaMu.Unlock()
+	m.mu.Unlock()
 }
 
 // applyProbeData applies parsed ffprobe data to a media item.
@@ -1078,8 +1077,8 @@ func (m *Module) GetCategories() []*models.MediaCategory {
 // HasFingerprint reports whether a content fingerprint matches any local media file.
 // Used to deduplicate receiver items that exist on both master and slave.
 func (m *Module) HasFingerprint(fp string) bool {
-	m.metaMu.RLock()
-	defer m.metaMu.RUnlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	_, ok := m.fingerprintIndex[fp]
 	return ok
 }
@@ -1088,9 +1087,9 @@ func (m *Module) HasFingerprint(fp string) bool {
 // file that is flagged as mature. Used to gate access to receiver items that
 // correspond to mature local content.
 func (m *Module) IsFingerprintMature(fp string) bool {
-	m.metaMu.RLock()
+	m.mu.RLock()
 	path, ok := m.fingerprintIndex[fp]
-	m.metaMu.RUnlock()
+	m.mu.RUnlock()
 	if !ok {
 		return false
 	}
@@ -1135,7 +1134,6 @@ type Stats struct {
 }
 
 // IncrementViews increments view count for a media item.
-// Lock ordering: metaMu first, then mu (consistent with UpdateMetadata)
 func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	// Use repository if available
 	if m.metadataRepo != nil {
@@ -1145,7 +1143,7 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	}
 
 	// Also update in-memory cache
-	m.metaMu.Lock()
+	m.mu.Lock()
 
 	meta, exists := m.metadata[path]
 	if !exists {
@@ -1161,15 +1159,9 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	now := time.Now()
 	meta.LastPlayed = &now
 
-	views := meta.Views
-	lastPlayed := meta.LastPlayed
-	m.metaMu.Unlock()
-
-	// Also update media item (acquire mu after releasing metaMu)
-	m.mu.Lock()
 	if item, exists := m.media[path]; exists {
-		item.Views = views
-		item.LastPlayed = lastPlayed
+		item.Views = meta.Views
+		item.LastPlayed = meta.LastPlayed
 	}
 	m.mu.Unlock()
 
@@ -1186,8 +1178,8 @@ func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string
 	}
 
 	// Also update in-memory cache
-	m.metaMu.Lock()
-	defer m.metaMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	meta, exists := m.metadata[path]
 	if !exists {
@@ -1217,8 +1209,8 @@ func (m *Module) GetPlaybackPosition(ctx context.Context, path, userID string) f
 	}
 
 	// Fallback to in-memory cache
-	m.metaMu.RLock()
-	defer m.metaMu.RUnlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	meta, exists := m.metadata[path]
 	if !exists || meta.PlaybackPos == nil {
@@ -1237,8 +1229,8 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 	}
 
 	// Remove from in-memory cache so the fallback path also returns 0
-	m.metaMu.Lock()
-	defer m.metaMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if meta, exists := m.metadata[path]; exists && meta.PlaybackPos != nil {
 		delete(meta.PlaybackPos, userID)
 	}
@@ -1247,8 +1239,8 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 // ClearAllPlaybackPositions removes every saved resume position for a given user.
 // Called when the user clears their entire watch history.
 func (m *Module) ClearAllPlaybackPositions(userID string) {
-	m.metaMu.Lock()
-	defer m.metaMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, meta := range m.metadata {
 		if meta.PlaybackPos != nil {
 			delete(meta.PlaybackPos, userID)
@@ -1260,10 +1252,8 @@ func (m *Module) ClearAllPlaybackPositions(userID string) {
 }
 
 // SetMatureFlag sets the mature content flag for a media item
-// Lock ordering: metaMu first, then mu (consistent with UpdateMetadata, AddTag, etc.)
 func (m *Module) SetMatureFlag(path string, isMature bool, score float64, reasons []string) error {
-	// Acquire metaMu first for consistent lock ordering
-	m.metaMu.Lock()
+	m.mu.Lock()
 
 	meta, exists := m.metadata[path]
 	if !exists {
@@ -1278,10 +1268,7 @@ func (m *Module) SetMatureFlag(path string, isMature bool, score float64, reason
 	meta.IsMature = isMature
 	meta.MatureScore = score
 	meta.MatureReasons = reasons
-	m.metaMu.Unlock()
 
-	// Update media item under mu (acquired after releasing metaMu)
-	m.mu.Lock()
 	if item, exists := m.media[path]; exists {
 		item.IsMature = isMature
 		item.MatureScore = score
@@ -1318,8 +1305,8 @@ func (m *Module) loadMetadata() error {
 		return fmt.Errorf("failed to load metadata from database: %w", err)
 	}
 
-	m.metaMu.Lock()
-	defer m.metaMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	// Convert repository metadata to internal format and build the fingerprint index
 	// so that createMediaItem can detect moved/renamed files by content fingerprint.
@@ -1343,14 +1330,14 @@ func (m *Module) saveMetadataItem(path string) error {
 	if m.metadataRepo == nil {
 		return nil
 	}
-	m.metaMu.RLock()
+	m.mu.RLock()
 	meta, ok := m.metadata[path]
 	if !ok {
-		m.metaMu.RUnlock()
+		m.mu.RUnlock()
 		return nil
 	}
 	repoMeta := m.convertInternalToRepo(path, meta)
-	m.metaMu.RUnlock()
+	m.mu.RUnlock()
 
 	// Use saveMu to serialise with the bulk saveMetadata loop: both code paths
 	// delete+insert on media_tags for the same row, causing lock-wait timeouts
@@ -1371,12 +1358,12 @@ func (m *Module) saveMetadata(ctx context.Context) error {
 	// Snapshot under the read lock so we don't hold it across slow DB writes.
 	// Concurrent saveMetadata calls would each hold RLock for O(n * db_latency),
 	// causing MySQL "Lock wait timeout exceeded" when upserts race on the same rows.
-	m.metaMu.RLock()
+	m.mu.RLock()
 	snapshot := make(map[string]*repositories.MediaMetadata, len(m.metadata))
 	for path, meta := range m.metadata {
 		snapshot[path] = m.convertInternalToRepo(path, meta)
 	}
-	m.metaMu.RUnlock()
+	m.mu.RUnlock()
 
 	// Serialise DB writes: prevents concurrent upserts to the same rows from
 	// racing and hitting MySQL row-lock timeouts.

@@ -46,25 +46,19 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 		return "", fmt.Errorf("failed to rename: %w", err)
 	}
 
-	// Update in-memory indexes under mu.
-	// The stable UUID is preserved — it is decoupled from the path.
+	// Update in-memory indexes (media + metadata share mu)
 	m.mu.Lock()
 	if item, exists := m.media[oldPath]; exists {
 		item.Path = newPath
 		item.Name = newName
 		delete(m.media, oldPath)
 		m.media[newPath] = item
-		// ID stays the same so mediaByID needs no update
 	}
-	m.mu.Unlock()
-
-	// Update metadata key under metaMu
-	m.metaMu.Lock()
 	if meta, exists := m.metadata[oldPath]; exists {
 		delete(m.metadata, oldPath)
 		m.metadata[newPath] = meta
 	}
-	m.metaMu.Unlock()
+	m.mu.Unlock()
 
 	m.log.Info("Renamed media: %s -> %s", oldPath, newPath)
 
@@ -108,27 +102,19 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 		return "", fmt.Errorf("failed to move: %w", err)
 	}
 
-	// Update in-memory indexes under mu.
-	// The stable UUID is preserved — it is decoupled from the path.
+	// Update in-memory indexes (media + metadata share mu)
 	m.mu.Lock()
 	if item, exists := m.media[oldPath]; exists {
 		item.Path = newPath
 		delete(m.media, oldPath)
 		m.media[newPath] = item
-		// ID stays the same so mediaByID needs no update
-
-		// Re-detect category based on new location
 		item.Category = m.detectCategory(newPath)
 	}
-	m.mu.Unlock()
-
-	// Update metadata key under metaMu
-	m.metaMu.Lock()
 	if meta, exists := m.metadata[oldPath]; exists {
 		delete(m.metadata, oldPath)
 		m.metadata[newPath] = meta
 	}
-	m.metaMu.Unlock()
+	m.mu.Unlock()
 
 	m.log.Info("Moved media: %s -> %s", oldPath, newPath)
 
@@ -154,18 +140,14 @@ func (m *Module) DeleteMedia(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to delete: %w", err)
 	}
 
-	// Remove from in-memory indexes under mu
+	// Remove from in-memory indexes (media + metadata share mu)
 	m.mu.Lock()
 	if item, exists := m.media[path]; exists {
 		delete(m.mediaByID, item.ID)
 	}
 	delete(m.media, path)
-	m.mu.Unlock()
-
-	// Remove from metadata under metaMu
-	m.metaMu.Lock()
 	delete(m.metadata, path)
-	m.metaMu.Unlock()
+	m.mu.Unlock()
 
 	m.log.Info("Deleted media: %s", path)
 	// Item was deleted — remove from DB too (not just the in-memory map)
@@ -180,17 +162,11 @@ func (m *Module) DeleteMedia(ctx context.Context, path string) error {
 	return nil
 }
 
-// RemoveMedia removes a media entry from the index without deleting the file
-// This is used for cleanup when files have already been deleted externally
-// Lock ordering: metaMu first, then mu (consistent with UpdateMetadata, AddTag, etc.)
+// RemoveMedia removes a media entry from the index without deleting the file.
+// This is used for cleanup when files have already been deleted externally.
 func (m *Module) RemoveMedia(path string) error {
-	// Remove from metadata first (acquire metaMu before mu to maintain lock ordering)
-	m.metaMu.Lock()
-	delete(m.metadata, path)
-	m.metaMu.Unlock()
-
-	// Remove from media cache and ID index
 	m.mu.Lock()
+	delete(m.metadata, path)
 	item, exists := m.media[path]
 	if !exists {
 		m.mu.Unlock()
@@ -198,8 +174,6 @@ func (m *Module) RemoveMedia(path string) error {
 	}
 	delete(m.mediaByID, item.ID)
 	delete(m.media, path)
-
-	// Increment version to signal change
 	m.version++
 	m.mu.Unlock()
 
@@ -220,9 +194,8 @@ func (m *Module) RemoveMedia(path string) error {
 }
 
 // UpdateMetadata updates metadata for a media file.
-// Lock ordering: metaMu is released before acquiring mu to prevent deadlock.
 func (m *Module) UpdateMetadata(path string, updates map[string]interface{}) error {
-	m.metaMu.Lock()
+	m.mu.Lock()
 
 	meta, exists := m.metadata[path]
 	if !exists {
@@ -234,10 +207,6 @@ func (m *Module) UpdateMetadata(path string, updates map[string]interface{}) err
 	}
 
 	applyMetadataUpdates(meta, updates)
-	m.metaMu.Unlock()
-
-	// Sync to media item under mu only (metaMu already released to avoid deadlock)
-	m.mu.Lock()
 	m.syncMediaItem(path, updates)
 	m.mu.Unlock()
 
@@ -323,10 +292,8 @@ func (m *Module) SetTags(path string, tags []string) error {
 }
 
 // AddTag adds a tag to a media file
-// Lock ordering: metaMu first, then mu (consistent with UpdateMetadata)
 func (m *Module) AddTag(path, tag string) error {
-	// Acquire metaMu first for consistent lock ordering
-	m.metaMu.Lock()
+	m.mu.Lock()
 
 	meta, exists := m.metadata[path]
 	if !exists {
@@ -341,20 +308,16 @@ func (m *Module) AddTag(path, tag string) error {
 	// Check if tag already exists
 	for _, t := range meta.Tags {
 		if t == tag {
-			m.metaMu.Unlock()
+			m.mu.Unlock()
 			return nil // Already has tag
 		}
 	}
 
 	meta.Tags = append(meta.Tags, tag)
-	newTags := make([]string, len(meta.Tags))
-	copy(newTags, meta.Tags)
-	m.metaMu.Unlock()
-
-	// Sync tags to the in-memory MediaItem (acquire mu after releasing metaMu)
-	m.mu.Lock()
 	if item, exists := m.media[path]; exists {
-		item.Tags = newTags
+		tagsCopy := make([]string, len(meta.Tags))
+		copy(tagsCopy, meta.Tags)
+		item.Tags = tagsCopy
 	}
 	m.mu.Unlock()
 
@@ -368,14 +331,12 @@ func (m *Module) AddTag(path, tag string) error {
 }
 
 // RemoveTag removes a tag from a media file
-// Lock ordering: metaMu first, then mu (consistent with UpdateMetadata)
 func (m *Module) RemoveTag(path, tag string) error {
-	// Acquire metaMu first for consistent lock ordering
-	m.metaMu.Lock()
+	m.mu.Lock()
 
 	meta, exists := m.metadata[path]
 	if !exists {
-		m.metaMu.Unlock()
+		m.mu.Unlock()
 		return nil
 	}
 
@@ -387,13 +348,9 @@ func (m *Module) RemoveTag(path, tag string) error {
 	}
 	meta.Tags = newTags
 
-	tagsCopy := make([]string, len(meta.Tags))
-	copy(tagsCopy, meta.Tags)
-	m.metaMu.Unlock()
-
-	// Sync tags to the in-memory MediaItem (acquire mu after releasing metaMu)
-	m.mu.Lock()
 	if item, exists := m.media[path]; exists {
+		tagsCopy := make([]string, len(newTags))
+		copy(tagsCopy, newTags)
 		item.Tags = tagsCopy
 	}
 	m.mu.Unlock()
