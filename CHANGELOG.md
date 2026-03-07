@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.65.0] - 2026-03-07 (minor)
+
+- Merge pull request #68 from bradselph/development
+- fix(security): harden P0/P1 vulnerabilities from architectural review
+
+
 ## [0.64.0] - 2026-03-07 (minor)
 
 - Merge pull request #67 from bradselph/development
