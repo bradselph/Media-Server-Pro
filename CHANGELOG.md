@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.63.0] - 2026-03-07 (minor)
+
+- Merge pull request #66 from bradselph/development
+- fix(admin): fix broken CSS in extractor/crawler tabs and duplicate analytics stat
+
+
 ## [0.62.0] - 2026-03-07 (minor)
 
 - Merge pull request #65 from bradselph/development
