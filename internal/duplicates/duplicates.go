@@ -226,6 +226,9 @@ func (m *Module) ScanLocalMedia(ctx context.Context) error {
 		fpGroups[meta.ContentFingerprint] = append(fpGroups[meta.ContentFingerprint], entry{meta.StableID, path})
 	}
 
+	// Cache per-fingerprint resolved-removal results to avoid redundant DB calls.
+	resolvedFPs := make(map[string]bool)
+
 	for fp, group := range fpGroups {
 		if len(group) < 2 {
 			continue
@@ -240,6 +243,20 @@ func (m *Module) ScanLocalMedia(ctx context.Context) error {
 				}
 				if exists {
 					continue
+				}
+				// Suppress re-detection when a previous removal action was recorded for
+				// this fingerprint (handles the case where the file was not deleted from
+				// disk but the metadata row was, causing a new stableID on the next scan).
+				if resolved, ok := resolvedFPs[fp]; ok {
+					if resolved {
+						continue
+					}
+				} else {
+					resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, fp)
+					resolvedFPs[fp] = resolved
+					if resolved {
+						continue
+					}
 				}
 				rec := &repositories.ReceiverDuplicateRecord{
 					ID:           uuid.New().String(),
@@ -338,10 +355,24 @@ func (m *Module) ResolveDuplicate(id, action, resolvedBy string) error {
 	switch action {
 	case "remove_a":
 		m.removeItem(ctx, rec.ItemAID, rec.ItemASlaveID)
-		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
+		if err := m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy); err != nil {
+			return err
+		}
+		// Cascade: mark all other pending pairs that reference the removed item as resolved.
+		if err := m.dupRepo.UpdateStatusForItem(ctx, rec.ItemAID, action, resolvedBy); err != nil {
+			m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", rec.ItemAID, err)
+		}
+		return nil
 	case "remove_b":
 		m.removeItem(ctx, rec.ItemBID, rec.ItemBSlaveID)
-		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
+		if err := m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy); err != nil {
+			return err
+		}
+		// Cascade: mark all other pending pairs that reference the removed item as resolved.
+		if err := m.dupRepo.UpdateStatusForItem(ctx, rec.ItemBID, action, resolvedBy); err != nil {
+			m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", rec.ItemBID, err)
+		}
+		return nil
 	case "keep_both", "ignore":
 		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
 	default:

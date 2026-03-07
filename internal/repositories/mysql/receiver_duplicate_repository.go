@@ -123,6 +123,22 @@ func (r *ReceiverDuplicateRepository) UpdateStatus(ctx context.Context, id, stat
 	return nil
 }
 
+// UpdateStatusForItem marks all pending duplicate records that reference the given item ID
+// (on either side) with the given status.  Used to cascade resolution when an item is removed.
+func (r *ReceiverDuplicateRepository) UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error {
+	updates := map[string]interface{}{
+		"status":      status,
+		"resolved_by": resolvedBy,
+		"resolved_at": time.Now().Format("2006-01-02 15:04:05"),
+	}
+	if err := r.db.WithContext(ctx).Model(&receiverDuplicateRow{}).
+		Where("(item_a_id = ? OR item_b_id = ?) AND status = 'pending'", itemID, itemID).
+		Updates(updates).Error; err != nil {
+		return fmt.Errorf("failed to cascade duplicate status for item %s: %w", itemID, err)
+	}
+	return nil
+}
+
 func (r *ReceiverDuplicateRepository) CountPending(ctx context.Context) (int64, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).Model(&receiverDuplicateRow{}).Where("status = ?", "pending").Count(&count).Error; err != nil {

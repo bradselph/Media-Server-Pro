@@ -372,6 +372,7 @@ type ReceiverDuplicateRepository interface {
 	ExistsByPair(ctx context.Context, itemAID, itemBID string) (bool, error)
 	ExistsResolvedRemoval(ctx context.Context, fingerprint string) (bool, error)
 	UpdateStatus(ctx context.Context, id, status, resolvedBy string) error
+	UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error
 	CountPending(ctx context.Context) (int64, error)
 	DeleteForItem(ctx context.Context, itemID string) error
 }
