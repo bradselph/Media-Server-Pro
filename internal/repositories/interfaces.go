@@ -42,9 +42,24 @@ type MediaMetadataRepository interface {
 	Get(ctx context.Context, path string) (*MediaMetadata, error)
 	Delete(ctx context.Context, path string) error
 	List(ctx context.Context) (map[string]*MediaMetadata, error)
+	// ListFiltered returns metadata matching the given filter with DB-level
+	// pagination. The second return value is the total count of matching rows
+	// (before LIMIT/OFFSET) for pagination controls.
+	ListFiltered(ctx context.Context, filter MediaFilter) ([]*MediaMetadata, int64, error)
 	IncrementViews(ctx context.Context, path string) error
 	UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error
 	GetPlaybackPosition(ctx context.Context, path, userID string) (float64, error)
+}
+
+// MediaFilter defines DB-level filtering and pagination for media queries.
+type MediaFilter struct {
+	Category string // exact match on category
+	IsMature *bool  // filter by mature flag
+	Search   string // substring match on path (LIKE %search%)
+	SortBy   string // column to sort by: "views", "date_added", "path"
+	SortDesc bool   // descending sort
+	Limit    int    // max results (0 = no limit)
+	Offset   int    // skip N results
 }
 
 // ScanResultRepository provides mature content scan result storage
