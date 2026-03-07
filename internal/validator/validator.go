@@ -524,8 +524,14 @@ type Stats struct {
 // ClearResult removes a validation result
 func (m *Module) ClearResult(path string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	delete(m.results, path)
+	m.mu.Unlock()
+
+	if m.repo != nil {
+		if err := m.repo.Delete(context.Background(), path); err != nil {
+			m.log.Warn("ClearResult: failed to delete from DB for %s: %v", path, err)
+		}
+	}
 }
 
 // Persistence — reads/writes via MySQL repository
