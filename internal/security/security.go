@@ -53,6 +53,7 @@ type Module struct {
 	whitelist        *IPList
 	blacklist        *IPList
 	rateLimiter      *RateLimiter
+	authRateLimiter  *RateLimiter // stricter limits for auth endpoints
 	healthy          bool
 	healthMsg        string
 	totalBlocked     int64
@@ -128,6 +129,15 @@ type Stats struct {
 
 // NewModule creates a new security module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
+	secCfg := cfg.Get().Security
+	authLimit := secCfg.AuthRateLimit
+	if authLimit <= 0 {
+		authLimit = 20
+	}
+	authBurst := secCfg.AuthBurstLimit
+	if authBurst <= 0 {
+		authBurst = 5
+	}
 	return &Module{
 		config:   cfg,
 		log:      logger.New("security"),
@@ -143,11 +153,18 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 			Entries: make([]IPEntry, 0),
 		},
 		rateLimiter: NewRateLimiter(RateLimitConfig{
-			RequestsPerMinute: cfg.Get().Security.RateLimitRequests,
-			BurstLimit:        cfg.Get().Security.BurstLimit,
-			BurstWindow:       cfg.Get().Security.BurstWindow,
-			BanDuration:       cfg.Get().Security.BanDuration,
-			ViolationsForBan:  cfg.Get().Security.ViolationsForBan,
+			RequestsPerMinute: secCfg.RateLimitRequests,
+			BurstLimit:        secCfg.BurstLimit,
+			BurstWindow:       secCfg.BurstWindow,
+			BanDuration:       secCfg.BanDuration,
+			ViolationsForBan:  secCfg.ViolationsForBan,
+		}),
+		authRateLimiter: NewRateLimiter(RateLimitConfig{
+			RequestsPerMinute: authLimit,
+			BurstLimit:        authBurst,
+			BurstWindow:       secCfg.BurstWindow,
+			BanDuration:       secCfg.BanDuration,
+			ViolationsForBan:  secCfg.ViolationsForBan,
 		}),
 	}
 }
@@ -170,6 +187,7 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Start rate limiter cleanup (also cleans expired IP list entries)
 	m.rateLimiter.StartCleanup(m.whitelist, m.blacklist)
+	m.authRateLimiter.StartCleanup(nil, nil)
 
 	m.mu.Lock()
 	m.healthy = true
@@ -192,6 +210,7 @@ func (m *Module) Stop(_ context.Context) error {
 
 	// Stop rate limiter cleanup
 	m.rateLimiter.StopCleanup()
+	m.authRateLimiter.StopCleanup()
 
 	m.mu.Lock()
 	m.healthy = false
@@ -839,9 +858,16 @@ func (r *RateLimiter) cleanupWithIPLists(whitelist, blacklist *IPList) {
 	}
 }
 
-// GinMiddleware returns a gin.HandlerFunc that applies the same security checks
-// (IP access control and rate limiting) as the net/http Middleware method.
-// Called from api/routes/routes.go when registering global middleware on the gin engine.
+// isAuthPath returns true for authentication endpoints that should use
+// the stricter auth rate limiter (login, register).
+func isAuthPath(path string) bool {
+	return path == "/api/auth/login" || path == "/api/auth/register"
+}
+
+// GinMiddleware returns a gin.HandlerFunc that applies security checks
+// (IP access control and tiered rate limiting).
+// Authentication endpoints (login, register) use a stricter rate limit
+// to prevent brute-force and credential-stuffing attacks.
 func (m *Module) GinMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := getClientIP(c.Request)
@@ -879,16 +905,22 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// Select rate limiter tier based on endpoint
+		limiter := m.rateLimiter
+		if isAuthPath(path) {
+			limiter = m.authRateLimiter
+		}
+
 		// Check rate limit
-		allowed, remaining, resetAt := m.CheckRateLimit(ip)
+		allowed, remaining, resetAt := limiter.CheckRequest(ip)
 
 		// Set rate limit headers
-		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", m.rateLimiter.config.RequestsPerMinute))
+		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.config.RequestsPerMinute))
 		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
 		c.Header("X-RateLimit-Reset", fmt.Sprintf("%d", resetAt.Unix()))
 
 		if !allowed {
-			m.log.Warn("Rate limit exceeded for %s", ip)
+			m.log.Warn("Rate limit exceeded for %s on %s", ip, path)
 			m.mu.Lock()
 			m.totalRateLimited++
 			m.mu.Unlock()
