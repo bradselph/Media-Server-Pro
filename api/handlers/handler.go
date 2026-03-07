@@ -261,125 +261,30 @@ func randIntn(n int) int {
 	return int(nBig.Int64())
 }
 
-// requireAdmin checks that the admin module is available. Returns false (and writes
-// a 503 error) if the module failed to initialise. Use at the top of handlers that
-// call h.admin methods other than LogAction.
-func (h *Handler) requireAdmin(c *gin.Context) bool {
-	if h.admin == nil {
-		writeError(c, http.StatusServiceUnavailable, "Admin module is not available")
+// requireModule checks that the given module pointer is non-nil. Returns false
+// (and writes a 503 error) if the module failed to initialise or is disabled.
+// Use at the top of handlers that depend on optional modules.
+func requireModule(c *gin.Context, module any, name string) bool {
+	if module == nil {
+		writeError(c, http.StatusServiceUnavailable, name+" is not available")
 		return false
 	}
 	return true
 }
 
-// requirePlaylist checks that the playlist module is available. Returns false
-// (and writes a 503 error) if the module failed to initialise.
-func (h *Handler) requirePlaylist(c *gin.Context) bool {
-	if h.playlist == nil {
-		writeError(c, http.StatusServiceUnavailable, "Playlist feature is not available")
-		return false
-	}
-	return true
-}
-
-// requireHLS checks that the HLS module is available.
-func (h *Handler) requireHLS(c *gin.Context) bool {
-	if h.hls == nil {
-		writeError(c, http.StatusServiceUnavailable, "HLS feature is not available")
-		return false
-	}
-	return true
-}
-
-// requireSuggestions checks that the suggestions module is available.
-func (h *Handler) requireSuggestions(c *gin.Context) bool {
-	if h.suggestions == nil {
-		writeError(c, http.StatusServiceUnavailable, "Suggestions feature is not available")
-		return false
-	}
-	return true
-}
-
-// requireScanner checks that the scanner module is available.
-func (h *Handler) requireScanner(c *gin.Context) bool {
-	if h.scanner == nil {
-		writeError(c, http.StatusServiceUnavailable, "Scanner is not available")
-		return false
-	}
-	return true
-}
-
-// requireValidator checks that the validator module is available.
-func (h *Handler) requireValidator(c *gin.Context) bool {
-	if h.validator == nil {
-		writeError(c, http.StatusServiceUnavailable, "Validator is not available")
-		return false
-	}
-	return true
-}
-
-// requireBackup checks that the backup module is available.
-func (h *Handler) requireBackup(c *gin.Context) bool {
-	if h.backup == nil {
-		writeError(c, http.StatusServiceUnavailable, "Backup feature is not available")
-		return false
-	}
-	return true
-}
-
-// requireCategorizer checks that the categorizer module is available.
-func (h *Handler) requireCategorizer(c *gin.Context) bool {
-	if h.categorizer == nil {
-		writeError(c, http.StatusServiceUnavailable, "Categorizer is not available")
-		return false
-	}
-	return true
-}
-
-// requireAutodiscovery checks that the autodiscovery module is available.
-func (h *Handler) requireAutodiscovery(c *gin.Context) bool {
-	if h.autodiscovery == nil {
-		writeError(c, http.StatusServiceUnavailable, "Auto-discovery is not available")
-		return false
-	}
-	return true
-}
-
-// requireUpdater checks that the updater module is available.
-func (h *Handler) requireUpdater(c *gin.Context) bool {
-	if h.updater == nil {
-		writeError(c, http.StatusServiceUnavailable, "Updater is not available")
-		return false
-	}
-	return true
-}
-
-// requireUpload checks that the upload module is available.
-func (h *Handler) requireUpload(c *gin.Context) bool {
-	if h.upload == nil {
-		writeError(c, http.StatusServiceUnavailable, "Upload feature is not available")
-		return false
-	}
-	return true
-}
-
-// requireThumbnails checks that the thumbnails module is available.
-func (h *Handler) requireThumbnails(c *gin.Context) bool {
-	if h.thumbnails == nil {
-		writeError(c, http.StatusServiceUnavailable, "Thumbnails feature is not available")
-		return false
-	}
-	return true
-}
-
-// requireSecurity checks that the security module is available.
-func (h *Handler) requireSecurity(c *gin.Context) bool {
-	if h.security == nil {
-		writeError(c, http.StatusServiceUnavailable, "Security feature is not available")
-		return false
-	}
-	return true
-}
+func (h *Handler) requireAdmin(c *gin.Context) bool         { return requireModule(c, h.admin, "Admin module") }
+func (h *Handler) requirePlaylist(c *gin.Context) bool      { return requireModule(c, h.playlist, "Playlist feature") }
+func (h *Handler) requireHLS(c *gin.Context) bool           { return requireModule(c, h.hls, "HLS feature") }
+func (h *Handler) requireSuggestions(c *gin.Context) bool   { return requireModule(c, h.suggestions, "Suggestions feature") }
+func (h *Handler) requireScanner(c *gin.Context) bool       { return requireModule(c, h.scanner, "Scanner") }
+func (h *Handler) requireValidator(c *gin.Context) bool     { return requireModule(c, h.validator, "Validator") }
+func (h *Handler) requireBackup(c *gin.Context) bool        { return requireModule(c, h.backup, "Backup feature") }
+func (h *Handler) requireCategorizer(c *gin.Context) bool   { return requireModule(c, h.categorizer, "Categorizer") }
+func (h *Handler) requireAutodiscovery(c *gin.Context) bool { return requireModule(c, h.autodiscovery, "Auto-discovery") }
+func (h *Handler) requireUpdater(c *gin.Context) bool       { return requireModule(c, h.updater, "Updater") }
+func (h *Handler) requireUpload(c *gin.Context) bool        { return requireModule(c, h.upload, "Upload feature") }
+func (h *Handler) requireThumbnails(c *gin.Context) bool    { return requireModule(c, h.thumbnails, "Thumbnails feature") }
+func (h *Handler) requireSecurity(c *gin.Context) bool      { return requireModule(c, h.security, "Security feature") }
 
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
 // is best-effort — if the admin module is unavailable the action is silently
@@ -621,46 +526,39 @@ func (h *Handler) getUserType(cfg *config.Config, user *models.User) *config.Use
 	return nil
 }
 
-// checkExtractorEnabled returns true if the extractor feature is enabled.
+// checkFeatureEnabled checks that a module is non-nil and that a config flag
+// reports the feature as enabled. Returns false (and writes the appropriate
+// 503 or 404 error) if either check fails.
+func checkFeatureEnabled(c *gin.Context, module any, name string, enabled func() bool) bool {
+	if !requireModule(c, module, name) {
+		return false
+	}
+	if !enabled() {
+		writeError(c, http.StatusNotFound, name+" feature is disabled")
+		return false
+	}
+	return true
+}
+
 func (h *Handler) checkExtractorEnabled(c *gin.Context) bool {
-	if h.extractor == nil {
-		writeError(c, http.StatusServiceUnavailable, "Extractor is not available")
-		return false
-	}
-	cfg := h.media.GetConfig()
-	if !cfg.Features.EnableExtractor || !cfg.Extractor.Enabled {
-		writeError(c, http.StatusNotFound, "Extractor feature is disabled")
-		return false
-	}
-	return true
+	return checkFeatureEnabled(c, h.extractor, "Extractor", func() bool {
+		cfg := h.media.GetConfig()
+		return cfg.Features.EnableExtractor && cfg.Extractor.Enabled
+	})
 }
 
-// checkCrawlerEnabled returns true if the crawler feature is enabled.
 func (h *Handler) checkCrawlerEnabled(c *gin.Context) bool {
-	if h.crawler == nil {
-		writeError(c, http.StatusServiceUnavailable, "Crawler is not available")
-		return false
-	}
-	cfg := h.media.GetConfig()
-	if !cfg.Features.EnableCrawler || !cfg.Crawler.Enabled {
-		writeError(c, http.StatusNotFound, "Crawler feature is disabled")
-		return false
-	}
-	return true
+	return checkFeatureEnabled(c, h.crawler, "Crawler", func() bool {
+		cfg := h.media.GetConfig()
+		return cfg.Features.EnableCrawler && cfg.Crawler.Enabled
+	})
 }
 
-// checkRemoteMediaEnabled returns true if remote media feature is enabled
 func (h *Handler) checkRemoteMediaEnabled(c *gin.Context) bool {
-	if h.remote == nil {
-		writeError(c, http.StatusServiceUnavailable, "Remote media is not available")
-		return false
-	}
-	cfg := h.media.GetConfig()
-	if !cfg.Features.EnableRemoteMedia || !cfg.RemoteMedia.Enabled {
-		writeError(c, http.StatusNotFound, "Remote media feature is disabled")
-		return false
-	}
-	return true
+	return checkFeatureEnabled(c, h.remote, "Remote media", func() bool {
+		cfg := h.media.GetConfig()
+		return cfg.Features.EnableRemoteMedia && cfg.RemoteMedia.Enabled
+	})
 }
 
 // enrichSuggestionThumbnails populates thumbnail URLs for suggestions.
