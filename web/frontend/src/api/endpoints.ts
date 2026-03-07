@@ -596,11 +596,11 @@ export const adminApi = {
         }>('/api/admin/hls/clean/inactive', maxAge !== undefined ? {max_age_hours: maxAge} : {}),
 
     // Validator
-    validateMedia: (path: string) =>
-        api.post<ValidationResult>('/api/admin/validator/validate', {path}),
+    validateMedia: (id: string) =>
+        api.post<ValidationResult>('/api/admin/validator/validate', {id}),
 
-    fixMedia: (path: string) =>
-        api.post<ValidationResult>('/api/admin/validator/fix', {path}),
+    fixMedia: (id: string) =>
+        api.post<ValidationResult>('/api/admin/validator/fix', {id}),
 
     getValidatorStats: () =>
         api.get<ValidatorStats>('/api/admin/validator/stats'),
