@@ -470,14 +470,13 @@ func (m *Module) ApplySuggestion(originalPath string) error {
 
 	m.log.Info("Applied suggestion: %s -> %s", originalPath, destPath)
 
-	// Remove suggestion from memory and delete from DB so it doesn't
-	// reload on the next server restart.
+	// Remove suggestion and persist
 	m.mu.Lock()
 	delete(m.suggestions, originalPath)
 	m.mu.Unlock()
 
-	if err := m.repo.Delete(context.Background(), originalPath); err != nil {
-		m.log.Warn("ApplySuggestion: failed to delete suggestion from DB for %s: %v", originalPath, err)
+	if saveErr := m.saveSuggestions(); saveErr != nil {
+		m.log.Warn("Failed to persist suggestions after apply: %v", saveErr)
 	}
 
 	return nil
@@ -523,12 +522,8 @@ func (m *Module) GetSuggestions() []*models.AutoDiscoverySuggestion {
 // ClearSuggestion removes a suggestion
 func (m *Module) ClearSuggestion(path string) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.suggestions, path)
-	m.mu.Unlock()
-
-	if err := m.repo.Delete(context.Background(), path); err != nil {
-		m.log.Warn("ClearSuggestion: failed to delete from DB for %s: %v", path, err)
-	}
 }
 
 // ClearAllSuggestions removes all suggestions
@@ -537,8 +532,8 @@ func (m *Module) ClearAllSuggestions() {
 	m.suggestions = make(map[string]*models.AutoDiscoverySuggestion)
 	m.mu.Unlock()
 
-	if err := m.repo.DeleteAll(context.Background()); err != nil {
-		m.log.Warn("ClearAllSuggestions: failed to delete all suggestions from DB: %v", err)
+	if saveErr := m.saveSuggestions(); saveErr != nil {
+		m.log.Warn("Failed to persist suggestions after clear: %v", saveErr)
 	}
 }
 

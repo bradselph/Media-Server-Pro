@@ -95,6 +95,23 @@ echo -e "  provisions and deploys your server."
 echo ""
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Pre-flight checks — verify local tools required by the setup/deploy process
+# ══════════════════════════════════════════════════════════════════════════════
+PREFLIGHT_MISSING=()
+for cmd in ssh scp bash; do
+  command -v "$cmd" &>/dev/null || PREFLIGHT_MISSING+=("$cmd")
+done
+
+if [[ ${#PREFLIGHT_MISSING[@]} -gt 0 ]]; then
+  die "Required tools not found: ${PREFLIGHT_MISSING[*]}. Please install them first."
+fi
+
+# openssl is optional — used for API key generation, with fallbacks
+if ! command -v openssl &>/dev/null; then
+  warn "openssl not found — API keys will be generated using a fallback method."
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Mode selection
 # ══════════════════════════════════════════════════════════════════════════════
 echo -e "  ${BOLD}What would you like to set up?${RESET}"
@@ -224,7 +241,6 @@ EOF
   section "Authentication"
 
   prompt_yn AUTH_GUEST  "Allow guest access (browse without login)?" "y"
-  prompt_yn AUTH_SIGNUP "Allow user self-registration?"              "y"
 
   # ── Logging ─────────────────────────────────────────────────────────────────
   section "Logging"
@@ -246,10 +262,10 @@ EOF
 # ── Server ────────────────────────────────────────────────────
 SERVER_HOST=$SRV_HOST
 SERVER_PORT=$SRV_PORT
-SERVER_READ_TIMEOUT=30s
-SERVER_WRITE_TIMEOUT=60s
-SERVER_IDLE_TIMEOUT=120s
-SERVER_SHUTDOWN_TIMEOUT=30s
+SERVER_READ_TIMEOUT=30
+SERVER_WRITE_TIMEOUT=60
+SERVER_IDLE_TIMEOUT=120
+SERVER_SHUTDOWN_TIMEOUT=30
 SERVER_MAX_HEADER_BYTES=1048576
 SERVER_ENABLE_HTTPS=$SRV_HTTPS
 SERVER_CERT_FILE=$SRV_CERT
@@ -259,11 +275,13 @@ SERVER_KEY_FILE=$SRV_KEY
 VIDEOS_DIR=./videos
 MUSIC_DIR=./music
 THUMBNAILS_DIR=./thumbnails
+PLAYLISTS_DIR=./playlists
 UPLOADS_DIR=./uploads
-CACHE_DIR=./cache
-LOGS_DIR=./logs
-DATA_DIR=./data
+ANALYTICS_DIR=./analytics
 HLS_CACHE_DIR=./cache/hls
+DATA_DIR=./data
+LOGS_DIR=./logs
+TEMP_DIR=./temp
 BACKUP_DIR=./backups
 
 # ── Database (MySQL) ─────────────────────────────────────────
@@ -284,7 +302,7 @@ DATABASE_RETRY_INTERVAL=2s
 # ── Streaming ─────────────────────────────────────────────────
 STREAMING_CHUNK_SIZE=1048576
 STREAMING_MOBILE_OPTIMIZATION=true
-STREAMING_MAX_CONCURRENT=100
+DOWNLOAD_ENABLED=true
 
 # ── HLS ───────────────────────────────────────────────────────
 HLS_ENABLED=$FEAT_HLS
@@ -309,74 +327,84 @@ ANALYTICS_RETENTION_DAYS=90
 # ── Uploads ───────────────────────────────────────────────────
 UPLOADS_ENABLED=$FEAT_UPLOADS
 UPLOADS_MAX_FILE_SIZE=10737418240
-UPLOADS_ALLOWED_EXTENSIONS=mp4,mkv,webm,avi,mov,mp3,flac,wav,aac,ogg
+UPLOADS_ALLOWED_EXTENSIONS=.mp4,.mkv,.webm,.avi,.mov,.mp3,.flac,.wav,.aac,.ogg
 
 # ── Security ──────────────────────────────────────────────────
-SECURITY_RATE_LIMIT_ENABLED=true
-SECURITY_RATE_LIMIT_REQUESTS=100
-SECURITY_RATE_LIMIT_WINDOW=1m
-SECURITY_CORS_ENABLED=true
-SECURITY_CORS_ORIGINS=*
-SECURITY_CSP_ENABLED=false
-SECURITY_CSP_POLICY=
-SECURITY_HSTS_ENABLED=false
-SECURITY_HSTS_MAX_AGE=31536000
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW_SECONDS=60
+CORS_ENABLED=true
+CORS_ORIGINS=*
+CSP_ENABLED=false
+CSP_POLICY=
+HSTS_ENABLED=false
+HSTS_MAX_AGE=31536000
 SECURITY_ENABLE_IP_WHITELIST=false
 SECURITY_ENABLE_IP_BLACKLIST=false
 SECURITY_IP_WHITELIST=
 SECURITY_IP_BLACKLIST=
 
 # ── Authentication ────────────────────────────────────────────
-AUTH_SESSION_TIMEOUT=24h
+AUTH_SESSION_TIMEOUT_HOURS=24
 AUTH_MAX_LOGIN_ATTEMPTS=5
-AUTH_LOCKOUT_DURATION=15m
-AUTH_GUEST_ACCESS=$AUTH_GUEST
-AUTH_ALLOW_REGISTRATION=$AUTH_SIGNUP
+AUTH_LOCKOUT_DURATION_MINUTES=15
+AUTH_ALLOW_GUESTS=$AUTH_GUEST
+AUTH_SECURE_COOKIES=$SRV_HTTPS
 
 # ── Admin ─────────────────────────────────────────────────────
 ADMIN_ENABLED=true
 ADMIN_USERNAME=$ADMIN_USER
 ADMIN_PASSWORD=$ADMIN_PASS
-ADMIN_PASSWORD_HASH=
 
 # ── Age Gate ──────────────────────────────────────────────────
 AGE_GATE_ENABLED=false
 AGE_GATE_COOKIE_NAME=age_verified
 AGE_GATE_COOKIE_MAX_AGE=31536000
-AGE_GATE_IP_VERIFY_TTL=24h
+AGE_GATE_IP_VERIFY_TTL_HOURS=24
 AGE_GATE_BYPASS_IPS=127.0.0.1,::1
 
 # ── Mature Content Scanner ───────────────────────────────────
-SCANNER_ENABLED=true
-SCANNER_AUTO_FLAG_THRESHOLD=0.85
-SCANNER_AUTO_APPLY=false
-SCANNER_REVIEW_QUEUE_SIZE=500
+MATURE_SCANNER_ENABLED=true
+MATURE_SCANNER_HIGH_CONFIDENCE_THRESHOLD=0.85
+MATURE_SCANNER_AUTO_FLAG=false
+MATURE_SCANNER_REQUIRE_REVIEW=true
 
 # ── Logging ───────────────────────────────────────────────────
 LOG_LEVEL=$LOG_LEVEL
 LOG_FORMAT=text
 LOG_FILE_ENABLED=true
-LOG_FILE_MAX_SIZE=104857600
-LOG_FILE_MAX_BACKUPS=5
+LOG_MAX_FILE_SIZE=104857600
+LOG_MAX_BACKUPS=5
 
 # ── Features ──────────────────────────────────────────────────
 FEATURE_HLS=$FEAT_HLS
 FEATURE_ANALYTICS=$FEAT_ANALYTICS
 FEATURE_UPLOADS=$FEAT_UPLOADS
-FEATURE_ADMIN=true
+FEATURE_ADMIN_PANEL=true
 FEATURE_SUGGESTIONS=$FEAT_SUGGESTIONS
 FEATURE_REMOTE_MEDIA=$FEAT_REMOTE
 FEATURE_RECEIVER=$FEAT_RECEIVER
+FEATURE_PLAYLISTS=true
+FEATURE_THUMBNAILS=true
+FEATURE_USER_AUTH=true
+FEATURE_MATURE_SCANNER=true
+FEATURE_AUTO_DISCOVERY=true
+FEATURE_DUPLICATE_DETECTION=true
+FEATURE_EXTRACTOR=false
+FEATURE_CRAWLER=false
 
 # ── Updater ───────────────────────────────────────────────────
-UPDATER_ENABLED=true
 UPDATER_GITHUB_TOKEN=
-UPDATER_CHECK_INTERVAL=24h
+UPDATER_BRANCH=$DEPLOY_BRANCH
+UPDATER_METHOD=source
+
+# ── Backup ───────────────────────────────────────────────────
+BACKUP_RETENTION_COUNT=10
 
 # ── Remote Media ──────────────────────────────────────────────
 REMOTE_MEDIA_ENABLED=$FEAT_REMOTE
-REMOTE_CACHE_DIR=./cache/remote
-REMOTE_CACHE_SIZE_MB=1024
+REMOTE_MEDIA_CACHE_ENABLED=true
+REMOTE_MEDIA_CACHE_SIZE_MB=1024
 
 # ── Receiver ──────────────────────────────────────────────────
 RECEIVER_ENABLED=$FEAT_RECEIVER
@@ -395,6 +423,8 @@ ENVFILE
   if [[ "$DO_DEPLOY" == "true" ]]; then
     # Verify deploy.sh exists
     [[ -f "$SCRIPT_DIR/deploy.sh" ]] || die "deploy.sh not found in $SCRIPT_DIR"
+    command -v ssh &>/dev/null || die "ssh not found. Please install OpenSSH."
+    command -v scp &>/dev/null || die "scp not found. Please install OpenSSH."
 
     echo ""
     info "Step 1/3: Provisioning VPS..."

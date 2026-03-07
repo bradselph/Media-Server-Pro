@@ -166,6 +166,14 @@ func (m *Module) setHealth(healthy bool, msg string) {
 func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, error) {
 	cfg := m.config.Get()
 
+	// Check max items limit
+	m.mu.RLock()
+	count := len(m.items)
+	m.mu.RUnlock()
+	if cfg.Extractor.MaxItems > 0 && count >= cfg.Extractor.MaxItems {
+		return nil, fmt.Errorf("maximum extracted items limit reached (%d)", cfg.Extractor.MaxItems)
+	}
+
 	// Validate that the URL looks like an M3U8 playlist
 	u, err := url.Parse(streamURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -221,6 +229,11 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 			m.log.Warn("Failed to save extractor item to DB: %v", err)
 		}
 	}
+
+	// Add to in-memory cache
+	m.mu.Lock()
+	m.items[id] = item
+	m.mu.Unlock()
 
 	m.log.Info("Added extractor item: %s -> %s", item.Title, item.StreamURL)
 	return item, nil
@@ -341,7 +354,7 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 		}
 	}
 	if !ok {
-		// Re-fetch the master playlist
+		// Try to re-fetch the master first
 		item := m.GetItem(itemID)
 		if item == nil {
 			return fmt.Errorf("item not found: %s", itemID)

@@ -712,13 +712,19 @@ if $SETUP; then
 
     # ── Create required data directories ─────────────────────────────────────
     echo '[setup] Creating data directories...'
-    sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,uploads,cache/hls,cache/remote,logs,data,data/remote_cache,backups}
+    sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,playlists,uploads,analytics,cache/hls,cache/remote,logs,data,data/remote_cache,backups,temp}
 
     # ── Copy .env template ───────────────────────────────────────────────────
     if [ ! -f '$DEPLOY_DIR/.env' ]; then
-      sudo cp '$DEPLOY_DIR/.env.example' '$DEPLOY_DIR/.env'
-      sudo chmod 600 '$DEPLOY_DIR/.env'
-      echo '[setup] Created .env from template — edit it with your settings!'
+      if [ -f '$DEPLOY_DIR/.env.example' ]; then
+        sudo cp '$DEPLOY_DIR/.env.example' '$DEPLOY_DIR/.env'
+        sudo chmod 600 '$DEPLOY_DIR/.env'
+        echo '[setup] Created .env from template — edit it with your settings!'
+      else
+        sudo touch '$DEPLOY_DIR/.env'
+        sudo chmod 600 '$DEPLOY_DIR/.env'
+        echo '[setup] Created empty .env — run ./setup.sh to generate configuration'
+      fi
     fi
 
     # ── Set ownership ────────────────────────────────────────────────────────
@@ -1097,7 +1103,7 @@ run_or_dry remote "
   fi
 
   # Ensure data directories exist
-  sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,uploads,cache/hls,cache/remote,logs,data,data/remote_cache,backups}
+  sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,playlists,uploads,analytics,cache/hls,cache/remote,logs,data,data/remote_cache,backups,temp}
 
   # Secure .env file permissions
   [ -f '$DEPLOY_DIR/.env' ] && sudo chmod 600 '$DEPLOY_DIR/.env'
