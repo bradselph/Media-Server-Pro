@@ -375,6 +375,10 @@ type ReceiverDuplicateRepository interface {
 	UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error
 	CountPending(ctx context.Context) (int64, error)
 	DeleteForItem(ctx context.Context, itemID string) error
+	// DeleteBySlave removes all duplicate records where either side belongs to slaveID.
+	DeleteBySlave(ctx context.Context, slaveID string) error
+	// DeletePendingBySlave removes only pending duplicate records for slaveID.
+	DeletePendingBySlave(ctx context.Context, slaveID string) error
 }
 
 // ReceiverDuplicateRecord represents a detected duplicate pair between two slave media items.

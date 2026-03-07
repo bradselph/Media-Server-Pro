@@ -147,6 +147,29 @@ func (r *ReceiverDuplicateRepository) CountPending(ctx context.Context) (int64, 
 	return count, nil
 }
 
+// DeleteBySlave removes all duplicate records where either side belongs to slaveID.
+// Used when a slave is permanently unregistered so its resolved history is also purged.
+func (r *ReceiverDuplicateRepository) DeleteBySlave(ctx context.Context, slaveID string) error {
+	if err := r.db.WithContext(ctx).
+		Where("item_a_slave_id = ? OR item_b_slave_id = ?", slaveID, slaveID).
+		Delete(&receiverDuplicateRow{}).Error; err != nil {
+		return fmt.Errorf("failed to delete duplicates for slave %s: %w", slaveID, err)
+	}
+	return nil
+}
+
+// DeletePendingBySlave removes only pending duplicate records for slaveID.
+// Used on full catalog replacement so the fresh catalog is re-evaluated while
+// preserving resolved (keep_both / ignore) admin decisions.
+func (r *ReceiverDuplicateRepository) DeletePendingBySlave(ctx context.Context, slaveID string) error {
+	if err := r.db.WithContext(ctx).
+		Where("(item_a_slave_id = ? OR item_b_slave_id = ?) AND status = 'pending'", slaveID, slaveID).
+		Delete(&receiverDuplicateRow{}).Error; err != nil {
+		return fmt.Errorf("failed to delete pending duplicates for slave %s: %w", slaveID, err)
+	}
+	return nil
+}
+
 // DeleteForItem removes all duplicate records that reference the given item ID (either side).
 func (r *ReceiverDuplicateRepository) DeleteForItem(ctx context.Context, itemID string) error {
 	if err := r.db.WithContext(ctx).

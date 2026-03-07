@@ -127,6 +127,29 @@ func (m *Module) enabled() bool {
 	return m.dupRepo != nil && m.cfg.Get().Features.EnableDuplicateDetection
 }
 
+// ClearForSlave removes all duplicate records (any status) involving the given slave.
+// Call this when a slave is permanently unregistered so stale records are purged.
+func (m *Module) ClearForSlave(slaveID string) {
+	if m.dupRepo == nil {
+		return
+	}
+	if err := m.dupRepo.DeleteBySlave(context.Background(), slaveID); err != nil {
+		m.log.Warn("ClearForSlave: failed to delete duplicate records for slave %s: %v", slaveID, err)
+	}
+}
+
+// ClearPendingForSlave removes only pending duplicate records involving the given slave.
+// Call this on a full catalog replacement so the fresh catalog is re-evaluated while
+// preserving resolved admin decisions (keep_both / ignore / remove_a / remove_b).
+func (m *Module) ClearPendingForSlave(slaveID string) {
+	if m.dupRepo == nil {
+		return
+	}
+	if err := m.dupRepo.DeletePendingBySlave(context.Background(), slaveID); err != nil {
+		m.log.Warn("ClearPendingForSlave: failed to delete pending duplicates for slave %s: %v", slaveID, err)
+	}
+}
+
 // CountPending returns the number of unresolved duplicate pairs.
 func (m *Module) CountPending() int {
 	if !m.enabled() {
