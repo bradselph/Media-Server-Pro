@@ -23,6 +23,7 @@ import type {
     MediaItem,
     Playlist,
     QueryResult,
+    ReceiverDuplicate,
     ReceiverMediaItem,
     ReceiverStats,
     RemoteMediaItem,
@@ -4998,19 +4999,193 @@ function CrawlerTab() {
     )
 }
 
+// ── Tab: Receiver Duplicates ──────────────────────────────────────────────────
+
+function DuplicatesTab() {
+    const queryClient = useQueryClient()
+    const [msg, setMsg] = useState<{type: 'success' | 'error'; text: string} | null>(null)
+    const [showAll, setShowAll] = useState(false)
+    const [resolving, setResolving] = useState<string | null>(null)
+
+    const {data: dupes, isLoading, isError} = useQuery<ReceiverDuplicate[]>({
+        queryKey: ['receiver-duplicates', showAll ? 'all' : 'pending'],
+        queryFn: () => adminApi.listReceiverDuplicates(showAll ? 'all' : 'pending'),
+        refetchInterval: 30000,
+        retry: false,
+    })
+
+    async function handleResolve(id: string, action: string) {
+        setResolving(id)
+        setMsg(null)
+        try {
+            const res = await adminApi.resolveReceiverDuplicate(id, action)
+            setMsg({type: 'success', text: res.message ?? 'Resolved'})
+            await queryClient.invalidateQueries({queryKey: ['receiver-duplicates']})
+            await queryClient.invalidateQueries({queryKey: ['admin-receiver-stats']})
+        } catch (err) {
+            setMsg({type: 'error', text: `Failed: ${errMsg(err)}`})
+        } finally {
+            setResolving(null)
+        }
+    }
+
+    function itemCard(item: ReceiverMediaItem, label: string) {
+        return (
+            <div style={{flex: 1, minWidth: 0, background: 'var(--input-bg)', borderRadius: 6, padding: '10px 14px'}}>
+                <div style={{fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1}}>{label}</div>
+                <div style={{fontWeight: 600, wordBreak: 'break-all', marginBottom: 4}}>{item.name}</div>
+                <div style={{fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '6px 16px'}}>
+                    <span><i className="bi bi-hdd-network"/> {item.slave_name || item.slave_id.slice(0, 12) + '…'}</span>
+                    {item.size > 0 && <span><i className="bi bi-file-earmark"/> {formatBytes(item.size)}</span>}
+                    {item.duration > 0 && <span><i className="bi bi-stopwatch"/> {Math.floor(item.duration / 60)}:{String(Math.floor(item.duration % 60)).padStart(2, '0')}</span>}
+                    {item.media_type && <span className={`media-card-type-badge badge-${item.media_type}`}>{item.media_type}</span>}
+                </div>
+            </div>
+        )
+    }
+
+    function statusBadge(status: string) {
+        if (status === 'pending') return <span className="media-card-type-badge badge-mature"><i className="bi bi-exclamation-circle-fill"/> Pending</span>
+        if (status === 'remove_a') return <span className="media-card-type-badge badge-inactive"><i className="bi bi-trash3-fill"/> A removed</span>
+        if (status === 'remove_b') return <span className="media-card-type-badge badge-inactive"><i className="bi bi-trash3-fill"/> B removed</span>
+        if (status === 'keep_both') return <span className="media-card-type-badge badge-active"><i className="bi bi-check-circle-fill"/> Keep both</span>
+        if (status === 'ignore') return <span className="media-card-type-badge badge-active"><i className="bi bi-eye-slash-fill"/> Ignored</span>
+        return <span className="media-card-type-badge">{status}</span>
+    }
+
+    return (
+        <div>
+            <h2 style={{margin: '0 0 4px 0', fontSize: 20}}><i className="bi bi-copy"/> Duplicate Detection</h2>
+            <p style={{margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: 13}}>
+                Slave media items sharing the same content fingerprint (SHA-256 of sampled file content).
+                Choose how to handle each pair.
+            </p>
+
+            {msg && (
+                <div className={`admin-alert admin-alert-${msg.type === 'success' ? 'success' : 'danger'}`}
+                     style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+                    <span><i className={`bi ${msg.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}/> {msg.text}</span>
+                    <button onClick={() => setMsg(null)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7}}>×</button>
+                </div>
+            )}
+
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+                <div style={{fontSize: 13, color: 'var(--text-muted)'}}>
+                    {isLoading ? 'Loading…' : isError ? 'Feature may be disabled.' : `${dupes?.length ?? 0} ${showAll ? 'total' : 'pending'} duplicate pair${dupes?.length !== 1 ? 's' : ''}`}
+                </div>
+                <div style={{display: 'flex', gap: 8}}>
+                    <button className={`admin-btn ${showAll ? 'admin-btn-primary' : ''}`} style={{fontSize: 12, padding: '5px 10px'}}
+                            onClick={() => setShowAll(v => !v)}>
+                        <i className={`bi ${showAll ? 'bi-funnel-fill' : 'bi-funnel'}`}/> {showAll ? 'Showing All' : 'Show All'}
+                    </button>
+                    <button className="admin-btn" style={{fontSize: 12, padding: '5px 10px'}}
+                            onClick={() => queryClient.invalidateQueries({queryKey: ['receiver-duplicates']})}>
+                        <i className="bi bi-arrow-clockwise"/> Refresh
+                    </button>
+                </div>
+            </div>
+
+            {isLoading && <p style={{color: 'var(--text-muted)', fontSize: 13}}><i className="bi bi-hourglass-split"/> Checking for duplicates…</p>}
+
+            {isError && (
+                <div className="admin-alert admin-alert-warning">
+                    <i className="bi bi-exclamation-triangle-fill"/> Receiver feature may be disabled. Enable it to use duplicate detection.
+                </div>
+            )}
+
+            {!isLoading && !isError && (!dupes || dupes.length === 0) && (
+                <div style={{textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)'}}>
+                    <i className="bi bi-check2-circle" style={{fontSize: 36, display: 'block', marginBottom: 8, color: '#10b981'}}/>
+                    <p style={{margin: 0}}>{showAll ? 'No duplicate records found.' : 'No pending duplicates — all clear!'}</p>
+                </div>
+            )}
+
+            {dupes && dupes.length > 0 && (
+                <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
+                    {dupes.map(dup => (
+                        <div key={dup.id} className="admin-card" style={{padding: '14px 16px'}}>
+                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8}}>
+                                <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+                                    {statusBadge(dup.status)}
+                                    <span style={{fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace'}}>
+                                        fp: {dup.fingerprint.slice(0, 16)}…
+                                    </span>
+                                </div>
+                                <span style={{fontSize: 11, color: 'var(--text-muted)'}}>
+                                    detected {new Date(dup.detected_at).toLocaleString()}
+                                    {dup.resolved_by && ` · resolved by ${dup.resolved_by}`}
+                                </span>
+                            </div>
+
+                            <div style={{display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap'}}>
+                                {itemCard(dup.item_a, 'Item A')}
+                                <div style={{display: 'flex', alignItems: 'center', flexShrink: 0, color: 'var(--text-muted)', fontSize: 20}}>
+                                    <i className="bi bi-arrow-left-right"/>
+                                </div>
+                                {itemCard(dup.item_b, 'Item B')}
+                            </div>
+
+                            {dup.status === 'pending' && (
+                                <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+                                    <button className="admin-btn admin-btn-danger" style={{fontSize: 12}}
+                                            disabled={resolving === dup.id}
+                                            onClick={() => handleResolve(dup.id, 'remove_a')}>
+                                        <i className="bi bi-trash3-fill"/> Remove A
+                                    </button>
+                                    <button className="admin-btn admin-btn-danger" style={{fontSize: 12}}
+                                            disabled={resolving === dup.id}
+                                            onClick={() => handleResolve(dup.id, 'remove_b')}>
+                                        <i className="bi bi-trash3-fill"/> Remove B
+                                    </button>
+                                    <button className="admin-btn admin-btn-primary" style={{fontSize: 12}}
+                                            disabled={resolving === dup.id}
+                                            onClick={() => handleResolve(dup.id, 'keep_both')}>
+                                        <i className="bi bi-check2-circle"/> Keep Both
+                                    </button>
+                                    <button className="admin-btn" style={{fontSize: 12}}
+                                            disabled={resolving === dup.id}
+                                            onClick={() => handleResolve(dup.id, 'ignore')}>
+                                        <i className="bi bi-eye-slash"/> Ignore
+                                    </button>
+                                    {resolving === dup.id && (
+                                        <span style={{fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center'}}>
+                                            <i className="bi bi-hourglass-split"/> Working…
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
+
 function SourcesTab() {
     const [sub, setSub] = useState('remote')
+    const {data: stats} = useQuery<ReceiverStats>({
+        queryKey: ['admin-receiver-stats'],
+        queryFn: () => adminApi.getReceiverStats(),
+        refetchInterval: 30000,
+        retry: false,
+    })
+
+    const dupCount = stats?.duplicate_count ?? 0
+
     return (<>
         <SubTabs items={[
             {id: 'remote', label: 'Remote'},
             {id: 'slaves', label: 'Slaves'},
             {id: 'extractor', label: 'HLS Streams'},
             {id: 'crawler', label: 'Crawler'},
+            {id: 'duplicates', label: dupCount > 0 ? `Duplicates (${dupCount})` : 'Duplicates'},
         ]} active={sub} onChange={setSub}/>
         {sub === 'remote' && <RemoteTab/>}
         {sub === 'slaves' && <ReceiverTab/>}
         {sub === 'extractor' && <ExtractorTab/>}
         {sub === 'crawler' && <CrawlerTab/>}
+        {sub === 'duplicates' && <DuplicatesTab/>}
     </>)
 }
 
