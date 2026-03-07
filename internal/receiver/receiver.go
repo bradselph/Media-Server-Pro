@@ -20,6 +20,7 @@ import (
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/repositories"
 	mysqlrepo "media-server-pro/internal/repositories/mysql"
@@ -101,20 +102,6 @@ type Stats struct {
 	DuplicateCount int `json:"duplicate_count"`
 }
 
-// DuplicateGroup represents a pair of slave media items sharing the same content fingerprint.
-type DuplicateGroup struct {
-	ID          string     `json:"id"`
-	Fingerprint string     `json:"fingerprint"`
-	ItemA       *MediaItem `json:"item_a"`
-	ItemB       *MediaItem `json:"item_b"`
-	ItemAName   string     `json:"item_a_name"`
-	ItemBName   string     `json:"item_b_name"`
-	Status      string     `json:"status"`
-	ResolvedBy  string     `json:"resolved_by,omitempty"`
-	ResolvedAt  *time.Time `json:"resolved_at,omitempty"`
-	DetectedAt  time.Time  `json:"detected_at"`
-}
-
 // Module handles incoming media catalog registrations from slave nodes.
 type Module struct {
 	config       *config.Manager
@@ -122,7 +109,7 @@ type Module struct {
 	dbModule     *database.Module
 	slaveRepo    repositories.ReceiverSlaveRepository
 	mediaRepo    repositories.ReceiverMediaRepository
-	dupRepo      repositories.ReceiverDuplicateRepository
+	dupModule    *duplicates.Module
 	mu           sync.RWMutex
 	slaves       map[string]*SlaveNode
 	media        map[string]*MediaItem // keyed by master-assigned ID
@@ -154,6 +141,12 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	}
 }
 
+// SetDuplicatesModule wires the duplicates module so the receiver can report
+// fingerprint collisions without depending on the receiver feature being enabled.
+func (m *Module) SetDuplicatesModule(d *duplicates.Module) {
+	m.dupModule = d
+}
+
 // Name implements server.Module.
 func (m *Module) Name() string { return "receiver" }
 
@@ -163,7 +156,6 @@ func (m *Module) Start(_ context.Context) error {
 
 	m.slaveRepo = mysqlrepo.NewReceiverSlaveRepository(m.dbModule.GORM())
 	m.mediaRepo = mysqlrepo.NewReceiverMediaRepository(m.dbModule.GORM())
-	m.dupRepo = mysqlrepo.NewReceiverDuplicateRepository(m.dbModule.GORM())
 
 	cfg := m.config.Get()
 	if !cfg.Receiver.Enabled {
@@ -426,8 +418,18 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 
 	m.log.Info("Catalog updated: %d items from slave %s", len(req.Items), req.SlaveID)
 
-	// Detect duplicates in the background — non-critical, must not block the response.
-	go m.detectDuplicates(req.SlaveID, req.Items)
+	// Report to the duplicates module in the background — non-critical.
+	if m.dupModule != nil {
+		refs := make([]duplicates.ReceiverItemRef, len(req.Items))
+		for i, item := range req.Items {
+			refs[i] = duplicates.ReceiverItemRef{
+				OpaqueID:           opaqueMediaID(req.SlaveID, item.ID),
+				Name:               item.Name,
+				ContentFingerprint: item.ContentFingerprint,
+			}
+		}
+		go m.dupModule.RecordDuplicatesFromSlave(req.SlaveID, refs)
+	}
 
 	return len(req.Items), nil
 }
@@ -548,175 +550,10 @@ func (m *Module) GetStats() Stats {
 	}
 	m.mu.RUnlock()
 
-	if m.dupRepo != nil {
-		if count, err := m.dupRepo.CountPending(context.Background()); err == nil {
-			stats.DuplicateCount = int(count)
-		}
+	if m.dupModule != nil {
+		stats.DuplicateCount = m.dupModule.CountPending()
 	}
 	return stats
-}
-
-// detectDuplicates checks items from the given slave against items already
-// cataloged from other slaves. Any new fingerprint collision is persisted as a
-// pending duplicate for admin review.
-func (m *Module) detectDuplicates(slaveID string, pushedItems []*CatalogItem) {
-	if m.dupRepo == nil {
-		return
-	}
-	ctx := context.Background()
-
-	// Build a fingerprint index of items from OTHER slaves.
-	m.mu.RLock()
-	fpIndex := make(map[string][]*MediaItem)
-	for _, item := range m.media {
-		if item.SlaveID == slaveID || item.ContentFingerprint == "" {
-			continue
-		}
-		fpIndex[item.ContentFingerprint] = append(fpIndex[item.ContentFingerprint], item)
-	}
-	m.mu.RUnlock()
-
-	for _, pushed := range pushedItems {
-		if pushed.ContentFingerprint == "" {
-			continue
-		}
-		matches := fpIndex[pushed.ContentFingerprint]
-		if len(matches) == 0 {
-			continue
-		}
-		pushedOpaqueID := opaqueMediaID(slaveID, pushed.ID)
-		for _, existing := range matches {
-			exists, err := m.dupRepo.ExistsByPair(ctx, pushedOpaqueID, existing.ID)
-			if err != nil {
-				m.log.Warn("Duplicate check failed: %v", err)
-				continue
-			}
-			if exists {
-				continue
-			}
-			rec := &repositories.ReceiverDuplicateRecord{
-				ID:           uuid.New().String(),
-				Fingerprint:  pushed.ContentFingerprint,
-				ItemAID:      pushedOpaqueID,
-				ItemASlaveID: slaveID,
-				ItemAName:    pushed.Name,
-				ItemBID:      existing.ID,
-				ItemBSlaveID: existing.SlaveID,
-				ItemBName:    existing.Name,
-				Status:       "pending",
-				DetectedAt:   time.Now(),
-			}
-			if err := m.dupRepo.Create(ctx, rec); err != nil {
-				m.log.Warn("Failed to store duplicate record: %v", err)
-			} else {
-				m.log.Info("Duplicate detected: %q (slave %s) ↔ %q (slave %s) [fp=%s…]",
-					pushed.Name, slaveID, existing.Name, existing.SlaveID, pushed.ContentFingerprint[:8])
-			}
-		}
-	}
-}
-
-// ListDuplicates returns all detected duplicate groups. Pass statusFilter="" or
-// "pending" to return only unresolved pairs; any other value returns all records.
-func (m *Module) ListDuplicates(statusFilter string) ([]*DuplicateGroup, error) {
-	if m.dupRepo == nil {
-		return nil, nil
-	}
-	ctx := context.Background()
-
-	var records []*repositories.ReceiverDuplicateRecord
-	var err error
-	if statusFilter == "" || statusFilter == "pending" {
-		records, err = m.dupRepo.ListPending(ctx)
-	} else {
-		records, err = m.dupRepo.List(ctx)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	groups := make([]*DuplicateGroup, 0, len(records))
-	for _, rec := range records {
-		g := &DuplicateGroup{
-			ID:          rec.ID,
-			Fingerprint: rec.Fingerprint,
-			ItemAName:   rec.ItemAName,
-			ItemBName:   rec.ItemBName,
-			Status:      rec.Status,
-			ResolvedBy:  rec.ResolvedBy,
-			ResolvedAt:  rec.ResolvedAt,
-			DetectedAt:  rec.DetectedAt,
-		}
-		// Enrich with live in-memory data; fall back to stored names if item is gone.
-		if item := m.media[rec.ItemAID]; item != nil {
-			g.ItemA = item
-		} else {
-			g.ItemA = &MediaItem{ID: rec.ItemAID, SlaveID: rec.ItemASlaveID, Name: rec.ItemAName}
-		}
-		if item := m.media[rec.ItemBID]; item != nil {
-			g.ItemB = item
-		} else {
-			g.ItemB = &MediaItem{ID: rec.ItemBID, SlaveID: rec.ItemBSlaveID, Name: rec.ItemBName}
-		}
-		groups = append(groups, g)
-	}
-	return groups, nil
-}
-
-// ResolveDuplicate acts on an admin decision for a detected duplicate pair.
-// action must be one of: "remove_a", "remove_b", "keep_both", "ignore".
-func (m *Module) ResolveDuplicate(id, action, resolvedBy string) error {
-	if m.dupRepo == nil {
-		return fmt.Errorf("duplicate detection is not available")
-	}
-	ctx := context.Background()
-
-	rec, err := m.dupRepo.Get(ctx, id)
-	if err != nil {
-		return fmt.Errorf("failed to fetch duplicate: %w", err)
-	}
-	if rec == nil {
-		return fmt.Errorf("duplicate not found: %s", id)
-	}
-
-	switch action {
-	case "remove_a":
-		m.mu.Lock()
-		delete(m.media, rec.ItemAID)
-		if node, ok := m.slaves[rec.ItemASlaveID]; ok && node.MediaCount > 0 {
-			node.MediaCount--
-		}
-		m.mu.Unlock()
-		if err := m.mediaRepo.DeleteByID(ctx, rec.ItemAID); err != nil {
-			m.log.Warn("ResolveDuplicate: DB delete of item A failed: %v", err)
-		}
-		// Clean up other duplicate records referencing the removed item.
-		if err := m.dupRepo.DeleteForItem(ctx, rec.ItemAID); err != nil {
-			m.log.Warn("ResolveDuplicate: failed to clean up dup records for item A: %v", err)
-		}
-		return nil
-	case "remove_b":
-		m.mu.Lock()
-		delete(m.media, rec.ItemBID)
-		if node, ok := m.slaves[rec.ItemBSlaveID]; ok && node.MediaCount > 0 {
-			node.MediaCount--
-		}
-		m.mu.Unlock()
-		if err := m.mediaRepo.DeleteByID(ctx, rec.ItemBID); err != nil {
-			m.log.Warn("ResolveDuplicate: DB delete of item B failed: %v", err)
-		}
-		if err := m.dupRepo.DeleteForItem(ctx, rec.ItemBID); err != nil {
-			m.log.Warn("ResolveDuplicate: failed to clean up dup records for item B: %v", err)
-		}
-		return nil
-	case "keep_both", "ignore":
-		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
-	default:
-		return fmt.Errorf("unknown action %q — must be remove_a, remove_b, keep_both, or ignore", action)
-	}
 }
 
 // allowedProxyHeaders is the set of response headers forwarded from the slave

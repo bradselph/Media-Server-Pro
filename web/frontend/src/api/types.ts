@@ -631,12 +631,20 @@ export interface ReceiverStats {
     duplicate_count: number
 }
 
-// Matches internal/receiver/receiver.go DuplicateGroup struct
+// Matches internal/duplicates/duplicates.go DuplicateItem struct
+export interface DuplicateItem {
+    id: string
+    slave_id?: string
+    name: string
+    source: 'local' | 'receiver'
+}
+
+// Matches internal/duplicates/duplicates.go DuplicateGroup struct
 export interface ReceiverDuplicate {
     id: string
     fingerprint: string
-    item_a: ReceiverMediaItem
-    item_b: ReceiverMediaItem
+    item_a: DuplicateItem
+    item_b: DuplicateItem
     item_a_name: string
     item_b_name: string
     // "pending" | "remove_a" | "remove_b" | "keep_both" | "ignore"

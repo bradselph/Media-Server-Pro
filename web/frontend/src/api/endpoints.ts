@@ -872,11 +872,11 @@ export const adminApi = {
         api.delete<void>(`/api/admin/receiver/slaves/${encodeURIComponent(id)}`),
 
     listReceiverDuplicates: (status = 'pending') =>
-        api.get<ReceiverDuplicate[]>(`/api/admin/receiver/duplicates?status=${encodeURIComponent(status)}`),
+        api.get<ReceiverDuplicate[]>(`/api/admin/duplicates?status=${encodeURIComponent(status)}`),
 
     resolveReceiverDuplicate: (id: string, action: string) =>
         api.post<{message: string; action: string}>(
-            `/api/admin/receiver/duplicates/${encodeURIComponent(id)}/resolve`,
+            `/api/admin/duplicates/${encodeURIComponent(id)}/resolve`,
             {action},
         ),
 }

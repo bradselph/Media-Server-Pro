@@ -21,6 +21,7 @@ import (
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/hls"
 	"media-server-pro/internal/logger"
@@ -213,8 +214,13 @@ func main() {
 	remoteModule := remote.NewModule(cfg, dbModule)
 	mustRegister(srv, remoteModule)
 
+	// Duplicates (non-critical — independent duplicate detection for local and receiver media)
+	duplicatesModule := duplicates.NewModule(cfg, dbModule)
+	mustRegister(srv, duplicatesModule)
+
 	// Receiver (non-critical — requires database for slave registry and media catalog)
 	receiverModule := receiver.NewModule(cfg, dbModule)
+	receiverModule.SetDuplicatesModule(duplicatesModule)
 	mustRegister(srv, receiverModule)
 
 	// Extractor (non-critical — requires database for item persistence)
@@ -230,7 +236,7 @@ func main() {
 
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(tasksModule, mediaModule, scannerModule, thumbnailsModule,
-		authModule, backupModule, suggestionsModule, cfg, log)
+		authModule, backupModule, suggestionsModule, duplicatesModule, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
 	h := handlers.NewHandler(handlers.HandlerDeps{
@@ -260,6 +266,7 @@ func main() {
 		Receiver:      receiverModule,
 		Extractor:     extractorModule,
 		Crawler:       crawlerModule,
+		Duplicates:    duplicatesModule,
 	})
 
 	routes.Setup(srv.Engine(), h, authModule, securityModule, cfg, ageGate)
@@ -317,6 +324,7 @@ func registerTasks(
 	authModule *auth.Module,
 	backupModule *backup.Module,
 	suggestionsModule *suggestions.Module,
+	duplicatesModule *duplicates.Module,
 	cfg *config.Manager,
 	log *logger.Logger,
 ) {
@@ -470,6 +478,17 @@ func registerTasks(
 				log.Info("Mature scan complete: %d scanned, %d flagged", len(allResults), applied)
 			}
 			return nil
+		},
+	)
+
+	// Duplicate scan — checks local media library for fingerprint collisions every 24h
+	scheduler.RegisterTask(
+		"duplicate-scan",
+		"Duplicate Media Scan",
+		"Scans local media library for files sharing the same content fingerprint",
+		24*time.Hour,
+		func(ctx context.Context) error {
+			return duplicatesModule.ScanLocalMedia(ctx)
 		},
 	)
 

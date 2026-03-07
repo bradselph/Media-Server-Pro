@@ -23,6 +23,7 @@ import (
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/hls"
 	"media-server-pro/internal/logger"
@@ -87,6 +88,7 @@ type Handler struct {
 	receiver      *receiver.Module
 	extractor     *extractor.Module
 	crawler       *crawler.Module
+	duplicates    *duplicates.Module
 	config        *config.Manager
 }
 
@@ -119,6 +121,7 @@ type HandlerDeps struct {
 	Receiver      *receiver.Module
 	Extractor     *extractor.Module
 	Crawler       *crawler.Module
+	Duplicates    *duplicates.Module
 }
 
 // NewHandler creates a new handler with dependencies.
@@ -155,6 +158,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		receiver:      deps.Receiver,
 		extractor:     deps.Extractor,
 		crawler:       deps.Crawler,
+		duplicates:    deps.Duplicates,
 		config:        deps.Config,
 	}
 }

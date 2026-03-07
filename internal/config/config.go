@@ -363,9 +363,10 @@ type FeaturesConfig struct {
 	EnableAdminPanel    bool `json:"enable_admin_panel"`
 	EnableSuggestions   bool `json:"enable_suggestions"`
 	EnableAutoDiscovery bool `json:"enable_auto_discovery"`
-	EnableReceiver      bool `json:"enable_receiver"`
-	EnableExtractor     bool `json:"enable_extractor"`
-	EnableCrawler       bool `json:"enable_crawler"`
+	EnableReceiver             bool `json:"enable_receiver"`
+	EnableExtractor            bool `json:"enable_extractor"`
+	EnableCrawler              bool `json:"enable_crawler"`
+	EnableDuplicateDetection   bool `json:"enable_duplicate_detection"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -593,9 +594,10 @@ func DefaultConfig() *Config {
 			EnableAdminPanel:    true,
 			EnableSuggestions:   true,
 			EnableAutoDiscovery: true,
-			EnableReceiver:      false,
-			EnableExtractor:     false,
-			EnableCrawler:       false,
+			EnableReceiver:           false,
+			EnableExtractor:          false,
+			EnableCrawler:            false,
+			EnableDuplicateDetection: true,
 		},
 		Database: DatabaseConfig{
 			Enabled:         true, // MySQL is now required
@@ -1453,6 +1455,9 @@ func (m *Manager) applyFeatureEnvOverrides() {
 	}
 	if val, ok := envGetBool("FEATURE_CRAWLER", "FEATURES_CRAWLER"); ok {
 		m.config.Features.EnableCrawler = val
+	}
+	if val, ok := envGetBool("FEATURE_DUPLICATE_DETECTION", "FEATURES_DUPLICATE_DETECTION"); ok {
+		m.config.Features.EnableDuplicateDetection = val
 	}
 }
 

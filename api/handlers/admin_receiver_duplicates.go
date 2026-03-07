@@ -6,16 +6,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AdminListReceiverDuplicates returns detected duplicate media pairs for admin review.
-// GET /api/admin/receiver/duplicates?status=pending   (default: pending only)
-// GET /api/admin/receiver/duplicates?status=all       (all records)
-func (h *Handler) AdminListReceiverDuplicates(c *gin.Context) {
-	if !h.checkReceiverEnabled(c) {
+// AdminListDuplicates returns detected duplicate media pairs for admin review.
+// GET /api/admin/duplicates?status=pending   (default: pending only)
+// GET /api/admin/duplicates?status=all       (all records)
+func (h *Handler) AdminListDuplicates(c *gin.Context) {
+	if !h.checkDuplicateDetectionEnabled(c) {
 		return
 	}
 
 	statusFilter := c.DefaultQuery("status", "pending")
-	groups, err := h.receiver.ListDuplicates(statusFilter)
+	groups, err := h.duplicates.ListDuplicates(statusFilter)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to list duplicates: "+err.Error())
 		return
@@ -24,11 +24,11 @@ func (h *Handler) AdminListReceiverDuplicates(c *gin.Context) {
 	writeSuccess(c, groups)
 }
 
-// AdminResolveReceiverDuplicate handles an admin action on a detected duplicate pair.
-// POST /api/admin/receiver/duplicates/:id/resolve
+// AdminResolveDuplicate handles an admin action on a detected duplicate pair.
+// POST /api/admin/duplicates/:id/resolve
 // Body: { "action": "remove_a" | "remove_b" | "keep_both" | "ignore" }
-func (h *Handler) AdminResolveReceiverDuplicate(c *gin.Context) {
-	if !h.checkReceiverEnabled(c) {
+func (h *Handler) AdminResolveDuplicate(c *gin.Context) {
+	if !h.checkDuplicateDetectionEnabled(c) {
 		return
 	}
 
@@ -52,12 +52,12 @@ func (h *Handler) AdminResolveReceiverDuplicate(c *gin.Context) {
 		resolvedBy = session.Username
 	}
 
-	if err := h.receiver.ResolveDuplicate(id, body.Action, resolvedBy); err != nil {
+	if err := h.duplicates.ResolveDuplicate(id, body.Action, resolvedBy); err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	h.logAdminAction(c, session.UserID, session.Username, "resolve_receiver_duplicate",
+	h.logAdminAction(c, session.UserID, session.Username, "resolve_duplicate",
 		id, map[string]interface{}{"action": body.Action})
 
 	writeSuccess(c, gin.H{"message": "duplicate resolved", "action": body.Action})
