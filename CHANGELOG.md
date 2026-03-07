@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.61.0] - 2026-03-07 (minor)
+
+- Merge pull request #64 from bradselph/development
+- feat(duplicates): extract duplicate detection into independent module
+
+
 ## [0.60.0] - 2026-03-07 (minor)
 
 - Merge pull request #63 from bradselph/development
