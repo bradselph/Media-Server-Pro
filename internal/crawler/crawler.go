@@ -245,14 +245,14 @@ func (m *Module) ToggleTarget(id string, enabled bool) error {
 
 // Regex patterns for extracting links and M3U8 URLs from HTML
 var (
-	hrefRegex = regexp.MustCompile(`href=["']([^"']+)["']`)
-	m3u8Regex = regexp.MustCompile(`https?://[^\s"'<>]+\.m3u8[^\s"'<>]*`)
+	hrefRegex  = regexp.MustCompile(`href=["']([^"']+)["']`)
+	m3u8Regex  = regexp.MustCompile(`https?://[^\s"'<>]+\.m3u8[^\s"'<>]*`)
 	titleRegex = regexp.MustCompile(`<title[^>]*>([^<]+)</title>`)
 	// Patterns that indicate a page link is likely a video/content page
 	contentPathPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)/view_video`),       // PornHub
-		regexp.MustCompile(`(?i)/video\d+`),          // XVideos
-		regexp.MustCompile(`(?i)/watch`),              // YouTube, YouPorn
+		regexp.MustCompile(`(?i)/view_video`), // PornHub
+		regexp.MustCompile(`(?i)/video\d+`),   // XVideos
+		regexp.MustCompile(`(?i)/watch`),      // YouTube, YouPorn
 		regexp.MustCompile(`(?i)/embed`),
 		regexp.MustCompile(`(?i)/video/`),
 		regexp.MustCompile(`(?i)/v/`),

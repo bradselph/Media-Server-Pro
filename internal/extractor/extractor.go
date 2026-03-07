@@ -46,13 +46,13 @@ type Module struct {
 
 // ExtractedItem is the in-memory representation of a proxied stream.
 type ExtractedItem struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	StreamURL string    `json:"stream_url"` // M3U8 playlist URL
-	AddedBy   string    `json:"added_by"`
-	Status    string    `json:"status"` // "active" or "error"
-	ErrorMessage string `json:"error_message,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	StreamURL    string    `json:"stream_url"` // M3U8 playlist URL
+	AddedBy      string    `json:"added_by"`
+	Status       string    `json:"status"` // "active" or "error"
+	ErrorMessage string    `json:"error_message,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // cachedPlaylist stores parsed HLS playlist data.

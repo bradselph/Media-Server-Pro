@@ -547,7 +547,6 @@ var allowedProxyHeaders = map[string]bool{
 // It first attempts a WebSocket-based request (slave pushes data back via HTTP
 // POST).  If the slave has no active WebSocket connection, it falls back to a
 // direct HTTP proxy through the slave's BaseURL.
-//
 func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID string) error {
 	// Enforce MaxProxyConns limit via a buffered channel semaphore.
 	if m.proxySem != nil {
