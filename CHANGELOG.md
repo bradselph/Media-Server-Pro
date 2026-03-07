@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.60.0] - 2026-03-07 (minor)
+
+- Merge pull request #63 from bradselph/development
+- feat(receiver): add duplicate detection and fix thumbnail regeneration
+- go fmt all
+
+
 ## [0.59.0] - 2026-03-07 (minor)
 
 - Merge pull request #62 from bradselph/development
