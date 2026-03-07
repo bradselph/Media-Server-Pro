@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.64.0] - 2026-03-07 (minor)
+
+- Merge pull request #67 from bradselph/development
+- fix(setup): align env vars with config loader, fix extractor cache and autodiscovery persistence
+- fix(modules): edge case fixes across extractor, upload, autodiscovery, validator
+- fix(duplicates): clean up orphaned records on slave unregister and catalog replace
+- fix(duplicates): cascade resolution and suppress re-detection edge cases
+- fix(handlers): prevent nil dereference in AdminResolveDuplicate
+- fix(duplicates): prevent resolved pairs from reappearing after removal
+- fix(restart): fix server restart failing to come back after shutdown
+
+
 ## [0.63.0] - 2026-03-07 (minor)
 
 - Merge pull request #66 from bradselph/development
