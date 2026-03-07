@@ -96,6 +96,7 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 		h.analytics, h.playlist, h.admin, h.tasks, h.upload, h.scanner,
 		h.thumbnails, h.validator, h.backup, h.autodiscovery, h.suggestions,
 		h.categorizer, h.updater, h.remote, h.receiver,
+		h.extractor, h.crawler, h.duplicates,
 	}
 	type moduleHealthItem struct {
 		Name      string `json:"name"`
