@@ -11,6 +11,19 @@ import (
 	"media-server-pro/internal/receiver"
 )
 
+// checkDuplicateDetectionEnabled returns true if the duplicates module is available and enabled.
+func (h *Handler) checkDuplicateDetectionEnabled(c *gin.Context) bool {
+	if h.duplicates == nil {
+		writeError(c, http.StatusServiceUnavailable, "Duplicate detection is not available")
+		return false
+	}
+	if !h.config.Get().Features.EnableDuplicateDetection {
+		writeError(c, http.StatusNotFound, "Duplicate detection feature is disabled")
+		return false
+	}
+	return true
+}
+
 // checkReceiverEnabled returns true if the receiver module is available and enabled.
 func (h *Handler) checkReceiverEnabled(c *gin.Context) bool {
 	if h.receiver == nil {

@@ -23,6 +23,7 @@ import type {
     MediaItem,
     Playlist,
     QueryResult,
+    DuplicateItem,
     ReceiverDuplicate,
     ReceiverMediaItem,
     ReceiverStats,
@@ -5029,16 +5030,16 @@ function DuplicatesTab() {
         }
     }
 
-    function itemCard(item: ReceiverMediaItem, label: string) {
+    function itemCard(item: DuplicateItem, label: string) {
         return (
             <div style={{flex: 1, minWidth: 0, background: 'var(--input-bg)', borderRadius: 6, padding: '10px 14px'}}>
                 <div style={{fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1}}>{label}</div>
                 <div style={{fontWeight: 600, wordBreak: 'break-all', marginBottom: 4}}>{item.name}</div>
                 <div style={{fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '6px 16px'}}>
-                    <span><i className="bi bi-hdd-network"/> {item.slave_name || item.slave_id.slice(0, 12) + '…'}</span>
-                    {item.size > 0 && <span><i className="bi bi-file-earmark"/> {formatBytes(item.size)}</span>}
-                    {item.duration > 0 && <span><i className="bi bi-stopwatch"/> {Math.floor(item.duration / 60)}:{String(Math.floor(item.duration % 60)).padStart(2, '0')}</span>}
-                    {item.media_type && <span className={`media-card-type-badge badge-${item.media_type}`}>{item.media_type}</span>}
+                    {item.source === 'receiver'
+                        ? <span><i className="bi bi-hdd-network"/> Receiver {item.slave_id ? item.slave_id.slice(0, 12) + '…' : ''}</span>
+                        : <span><i className="bi bi-hdd"/> Local</span>
+                    }
                 </div>
             </div>
         )
@@ -5057,7 +5058,7 @@ function DuplicatesTab() {
         <div>
             <h2 style={{margin: '0 0 4px 0', fontSize: 20}}><i className="bi bi-copy"/> Duplicate Detection</h2>
             <p style={{margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: 13}}>
-                Slave media items sharing the same content fingerprint (SHA-256 of sampled file content).
+                Local and receiver media items sharing the same content fingerprint (SHA-256 of sampled file content).
                 Choose how to handle each pair.
             </p>
 
@@ -5089,7 +5090,7 @@ function DuplicatesTab() {
 
             {isError && (
                 <div className="admin-alert admin-alert-warning">
-                    <i className="bi bi-exclamation-triangle-fill"/> Receiver feature may be disabled. Enable it to use duplicate detection.
+                    <i className="bi bi-exclamation-triangle-fill"/> Duplicate detection may be disabled. Set <code>FEATURE_DUPLICATE_DETECTION=true</code> and restart.
                 </div>
             )}
 
