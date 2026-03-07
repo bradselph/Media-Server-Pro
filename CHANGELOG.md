@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.59.0] - 2026-03-07 (minor)
+
+- Merge pull request #62 from bradselph/development
+- fix(frontend): use media ID instead of path for validator API calls
+
+
 ## [0.58.0] - 2026-03-06 (minor)
 
 - Merge pull request #61 from bradselph/development
