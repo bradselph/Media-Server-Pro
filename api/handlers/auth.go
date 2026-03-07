@@ -64,7 +64,7 @@ func (h *Handler) Login(c *gin.Context) {
 			Path:     "/",
 			Expires:  session.ExpiresAt,
 			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteStrictMode,
 			Secure:   isSecureRequest(c.Request),
 		})
 		writeSuccess(c, map[string]interface{}{
@@ -98,7 +98,7 @@ func (h *Handler) Login(c *gin.Context) {
 		Path:     "/",
 		Expires:  session.ExpiresAt,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		Secure:   isSecureRequest(c.Request),
 	})
 
@@ -126,7 +126,7 @@ func (h *Handler) Logout(c *gin.Context) {
 		Path:     "/",
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		Secure:   isSecureRequest(c.Request),
 	})
 
@@ -215,7 +215,7 @@ func (h *Handler) Register(c *gin.Context) {
 		Path:     "/",
 		Expires:  session.ExpiresAt,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		Secure:   isSecureRequest(c.Request),
 	})
 
@@ -631,7 +631,7 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 			Path:     "/",
 			MaxAge:   -1,
 			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteStrictMode,
 			Secure:   isSecureRequest(c.Request),
 		})
 	}

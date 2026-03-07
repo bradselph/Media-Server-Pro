@@ -196,7 +196,7 @@ func (ag *AgeGate) VerifyHandler(w http.ResponseWriter, r *http.Request) {
 			MaxAge:   ag.cfg.CookieMaxAge,
 			Path:     "/",
 			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteStrictMode,
 			Secure:   ageGateSecure(r),
 		})
 	}
@@ -233,7 +233,7 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 				MaxAge:   ag.cfg.CookieMaxAge,
 				Path:     "/",
 				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
+				SameSite: http.SameSiteStrictMode,
 				Secure:   ageGateSecure(c.Request),
 			})
 		}

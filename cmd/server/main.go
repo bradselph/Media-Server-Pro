@@ -100,6 +100,9 @@ func main() {
 	cfg := srv.Config()
 	log := logger.New("main")
 
+	// ── Startup security checks ────────────────────────────────────────────
+	validateSecrets(cfg, log)
+
 	// ── Module construction ────────────────────────────────────────────────
 
 	// Database (critical)
@@ -304,6 +307,46 @@ func main() {
 	if err := srv.Start(); err != nil {
 		log.Error("Server error: %v", err)
 		os.Exit(1)
+	}
+}
+
+// validateSecrets checks critical configuration values and logs actionable
+// warnings for any that are absent or obviously insecure. A fatal error is
+// logged (and the process exits) only for conditions that would render the
+// server completely insecure or non-functional.
+func validateSecrets(cfg *config.Manager, log *logger.Logger) {
+	appCfg := cfg.Get()
+
+	// Receiver: API keys are the sole authentication mechanism for slave nodes.
+	// An empty key list means any client can register as a slave and push a
+	// media catalog to the master — no authentication at all.
+	if appCfg.Receiver.Enabled && len(appCfg.Receiver.APIKeys) == 0 {
+		log.Error("FATAL: receiver is enabled but no API keys are configured. " +
+			"Set RECEIVER_API_KEYS in .env or receiver.api_keys in config.json, then restart.")
+		os.Exit(1)
+	}
+
+	// Warn about known-weak receiver API key values.
+	weakKeys := map[string]bool{
+		"changeme": true, "secret": true, "password": true,
+		"test": true, "default": true, "apikey": true, "api-key": true,
+	}
+	for _, key := range appCfg.Receiver.APIKeys {
+		if weakKeys[key] {
+			log.Warn("Receiver API key %q is a known-weak value — replace it in production", key)
+		}
+	}
+
+	// CORS: wildcard origin in production allows any site to make credentialed
+	// requests to the API and exfiltrate session data.
+	if appCfg.Security.CORSEnabled {
+		for _, origin := range appCfg.Security.CORSOrigins {
+			if origin == "*" {
+				log.Warn("CORS is configured with wildcard origin '*'. " +
+					"This allows any website to make credentialed requests. " +
+					"Restrict cors_origins to your frontend domains in production.")
+			}
+		}
 	}
 }
 

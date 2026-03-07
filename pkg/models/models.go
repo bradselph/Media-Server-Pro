@@ -506,9 +506,7 @@ type AuditLogEntry struct {
 	Username  string    `json:"username" db:"username" gorm:"size:255"`
 	Action    string    `json:"action" db:"action" gorm:"size:100;not null;index"`
 	Resource  string    `json:"resource" db:"resource" gorm:"size:255;index"`
-	// Details is in-memory only (not persisted). To persist it, add a JSON column to audit_log,
-	// serialize on write, and deserialize in the audit log repository.
-	Details   map[string]interface{} `json:"details,omitempty" db:"-" gorm:"-"`
+	Details   map[string]interface{} `json:"details,omitempty" db:"details" gorm:"type:json;serializer:json"`
 	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
 	Success   bool                   `json:"success" db:"success" gorm:"index"`
 }

@@ -44,7 +44,15 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 			} else {
 				// Clear stale/expired cookie so the browser stops resending it
 				secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
-				c.SetCookie("session_id", "", -1, "/", "", secure, true)
+				http.SetCookie(c.Writer, &http.Cookie{
+					Name:     "session_id",
+					Value:    "",
+					Path:     "/",
+					MaxAge:   -1,
+					HttpOnly: true,
+					Secure:   secure,
+					SameSite: http.SameSiteStrictMode,
+				})
 			}
 		}
 		c.Next()

@@ -135,22 +135,22 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		filterNoPagination.SortItems(allItems)
 	}
 
-	// Mature filtering: guests see mature items blurred (frontend gate overlay),
-	// but logged-in users without access see NO mature items at all.
-	session := getSession(c)
-	if session != nil {
-		// User is logged in — check mature access
-		user := getUser(c)
-		if user == nil || !user.Permissions.CanViewMature || !user.Preferences.ShowMature {
-			// Strip all mature items from the listing
-			filtered := make([]*models.MediaItem, 0, len(allItems))
-			for _, item := range allItems {
-				if !item.IsMature {
-					filtered = append(filtered, item)
-				}
-			}
-			allItems = filtered
+	// Mature filtering: hide mature items from guests and from logged-in users
+	// who lack the permission or preference to view them.
+	showMature := false
+	if session := getSession(c); session != nil {
+		if user := getUser(c); user != nil && user.Permissions.CanViewMature && user.Preferences.ShowMature {
+			showMature = true
 		}
+	}
+	if !showMature {
+		filtered := make([]*models.MediaItem, 0, len(allItems))
+		for _, item := range allItems {
+			if !item.IsMature {
+				filtered = append(filtered, item)
+			}
+		}
+		allItems = filtered
 	}
 	// else: guest — keep mature items so frontend can show them blurred with gate
 
