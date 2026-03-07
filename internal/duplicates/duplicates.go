@@ -6,6 +6,7 @@ package duplicates
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -126,6 +127,29 @@ func (m *Module) enabled() bool {
 	return m.dupRepo != nil && m.cfg.Get().Features.EnableDuplicateDetection
 }
 
+// ClearForSlave removes all duplicate records (any status) involving the given slave.
+// Call this when a slave is permanently unregistered so stale records are purged.
+func (m *Module) ClearForSlave(slaveID string) {
+	if m.dupRepo == nil {
+		return
+	}
+	if err := m.dupRepo.DeleteBySlave(context.Background(), slaveID); err != nil {
+		m.log.Warn("ClearForSlave: failed to delete duplicate records for slave %s: %v", slaveID, err)
+	}
+}
+
+// ClearPendingForSlave removes only pending duplicate records involving the given slave.
+// Call this on a full catalog replacement so the fresh catalog is re-evaluated while
+// preserving resolved admin decisions (keep_both / ignore / remove_a / remove_b).
+func (m *Module) ClearPendingForSlave(slaveID string) {
+	if m.dupRepo == nil {
+		return
+	}
+	if err := m.dupRepo.DeletePendingBySlave(context.Background(), slaveID); err != nil {
+		m.log.Warn("ClearPendingForSlave: failed to delete pending duplicates for slave %s: %v", slaveID, err)
+	}
+}
+
 // CountPending returns the number of unresolved duplicate pairs.
 func (m *Module) CountPending() int {
 	if !m.enabled() {
@@ -176,6 +200,11 @@ func (m *Module) RecordDuplicatesFromSlave(slaveID string, items []ReceiverItemR
 			if exists {
 				continue
 			}
+			// Suppress re-detection when a slave re-pushes an item that was
+			// previously removed via "remove_a"/"remove_b" (new row ID ≠ old ID).
+			if resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); resolved {
+				continue
+			}
 			rec := &repositories.ReceiverDuplicateRecord{
 				ID:           uuid.New().String(),
 				Fingerprint:  item.ContentFingerprint,
@@ -220,6 +249,9 @@ func (m *Module) ScanLocalMedia(ctx context.Context) error {
 		fpGroups[meta.ContentFingerprint] = append(fpGroups[meta.ContentFingerprint], entry{meta.StableID, path})
 	}
 
+	// Cache per-fingerprint resolved-removal results to avoid redundant DB calls.
+	resolvedFPs := make(map[string]bool)
+
 	for fp, group := range fpGroups {
 		if len(group) < 2 {
 			continue
@@ -234,6 +266,20 @@ func (m *Module) ScanLocalMedia(ctx context.Context) error {
 				}
 				if exists {
 					continue
+				}
+				// Suppress re-detection when a previous removal action was recorded for
+				// this fingerprint (handles the case where the file was not deleted from
+				// disk but the metadata row was, causing a new stableID on the next scan).
+				if resolved, ok := resolvedFPs[fp]; ok {
+					if resolved {
+						continue
+					}
+				} else {
+					resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, fp)
+					resolvedFPs[fp] = resolved
+					if resolved {
+						continue
+					}
 				}
 				rec := &repositories.ReceiverDuplicateRecord{
 					ID:           uuid.New().String(),
@@ -332,10 +378,24 @@ func (m *Module) ResolveDuplicate(id, action, resolvedBy string) error {
 	switch action {
 	case "remove_a":
 		m.removeItem(ctx, rec.ItemAID, rec.ItemASlaveID)
-		return m.dupRepo.DeleteForItem(ctx, rec.ItemAID)
+		if err := m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy); err != nil {
+			return err
+		}
+		// Cascade: mark all other pending pairs that reference the removed item as resolved.
+		if err := m.dupRepo.UpdateStatusForItem(ctx, rec.ItemAID, action, resolvedBy); err != nil {
+			m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", rec.ItemAID, err)
+		}
+		return nil
 	case "remove_b":
 		m.removeItem(ctx, rec.ItemBID, rec.ItemBSlaveID)
-		return m.dupRepo.DeleteForItem(ctx, rec.ItemBID)
+		if err := m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy); err != nil {
+			return err
+		}
+		// Cascade: mark all other pending pairs that reference the removed item as resolved.
+		if err := m.dupRepo.UpdateStatusForItem(ctx, rec.ItemBID, action, resolvedBy); err != nil {
+			m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", rec.ItemBID, err)
+		}
+		return nil
 	case "keep_both", "ignore":
 		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
 	default:
@@ -361,6 +421,9 @@ func (m *Module) removeItem(ctx context.Context, itemID, slaveID string) {
 			if meta.StableID == itemID {
 				if err := m.metaRepo.Delete(ctx, path); err != nil {
 					m.log.Warn("removeItem: failed to delete local metadata for %s: %v", path, err)
+				}
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					m.log.Warn("removeItem: failed to delete local file %s: %v", path, err)
 				}
 				return
 			}

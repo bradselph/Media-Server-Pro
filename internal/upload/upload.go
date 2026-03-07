@@ -141,6 +141,14 @@ func (m *Module) Health() models.HealthStatus {
 // multipart file header. userID is used for the per-user subdirectory; category
 // is an optional subdirectory name within the user directory.
 func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category string) (*Result, error) {
+	// Enforce per-file size limit.  HandleUpload applies MaxBytesReader to the
+	// whole request body, but callers that pass individual file headers directly
+	// (e.g. multi-file upload handlers) bypass that check.
+	cfg := m.config.Get()
+	if cfg.Uploads.MaxFileSize > 0 && fh.Size > cfg.Uploads.MaxFileSize {
+		return nil, fmt.Errorf("file size %d bytes exceeds maximum allowed size of %d bytes", fh.Size, cfg.Uploads.MaxFileSize)
+	}
+
 	// Validate filename
 	filename, err := m.sanitizeFilename(fh.Filename)
 	if err != nil {

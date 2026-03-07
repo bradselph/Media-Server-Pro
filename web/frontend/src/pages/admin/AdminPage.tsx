@@ -205,8 +205,10 @@ function DashboardTab() {
                         <i className="bi bi-search"/> Scan Media
                     </button>
                     <button className="admin-btn admin-btn-warning" onClick={() => {
-                        if (window.confirm('Restart the server? Active streams will be interrupted.'))
-                            handleAction(() => adminApi.restartServer(), 'Server restarting...')
+                        if (window.confirm('Restart the server? Active streams will be interrupted.')) {
+                            handleAction(() => adminApi.restartServer(), 'Server restarting… page will reload in 10s')
+                            setTimeout(() => window.location.reload(), 10000)
+                        }
                     }}>
                         <i className="bi bi-arrow-clockwise"/> Restart Server
                     </button>

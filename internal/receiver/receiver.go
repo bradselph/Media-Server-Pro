@@ -380,9 +380,14 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	}
 
 	if req.Full {
-		// Full replacement: delete existing catalog then insert
+		// Full replacement: delete existing catalog then insert.
+		// Also clear pending duplicate records for this slave so the fresh catalog
+		// is re-evaluated — resolved admin decisions are preserved.
 		if err := m.mediaRepo.DeleteBySlave(ctx, req.SlaveID); err != nil {
 			return 0, fmt.Errorf("failed to clear old catalog: %w", err)
+		}
+		if m.dupModule != nil {
+			m.dupModule.ClearPendingForSlave(req.SlaveID)
 		}
 	}
 
@@ -476,6 +481,10 @@ func (m *Module) UnregisterSlave(slaveID string) error {
 	ctx := context.Background()
 	if err := m.mediaRepo.DeleteBySlave(ctx, slaveID); err != nil {
 		return fmt.Errorf("failed to remove slave media: %w", err)
+	}
+	// Remove all duplicate records for this slave (any status) — the slave is gone permanently.
+	if m.dupModule != nil {
+		m.dupModule.ClearForSlave(slaveID)
 	}
 	return m.slaveRepo.Delete(ctx, slaveID)
 }

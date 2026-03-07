@@ -25,6 +25,11 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+// playlistCacheTTL is the maximum age of a cached HLS playlist entry.
+// After this duration the entry is treated as a cache miss and the upstream
+// playlist is re-fetched so stale variant/segment URLs are refreshed.
+const playlistCacheTTL = 5 * time.Minute
+
 // Module handles HLS stream proxying for external M3U8 URLs.
 type Module struct {
 	config     *config.Manager
@@ -195,12 +200,27 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 		CreatedAt: now,
 	}
 
-	// Verify the M3U8 URL is reachable
+	// Verify the M3U8 URL is reachable (outside the lock — can be slow)
 	if _, _, err := m.fetchURL(streamURL); err != nil {
 		item.Status = "error"
 		item.ErrorMessage = fmt.Sprintf("Failed to fetch M3U8: %v", err)
 		m.log.Warn("M3U8 URL unreachable: %s — %v", streamURL, err)
 	}
+
+	// Acquire the write lock to enforce the max-items limit and add the item
+	// atomically.  Checking the count under RLock and adding under Lock would
+	// be a TOCTOU race: two concurrent callers could both pass the check and
+	// both add, exceeding the configured limit.
+	m.mu.Lock()
+	if cfg.Extractor.MaxItems > 0 && len(m.items) >= cfg.Extractor.MaxItems {
+		// Don't count an update to an existing item against the limit.
+		if _, exists := m.items[id]; !exists {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("maximum extracted items limit reached (%d)", cfg.Extractor.MaxItems)
+		}
+	}
+	m.items[id] = item
+	m.mu.Unlock()
 
 	// Save to DB
 	if m.repo != nil {
@@ -324,8 +344,15 @@ func (m *Module) ProxyHLSMaster(w http.ResponseWriter, r *http.Request, itemID s
 
 // ProxyHLSVariant fetches an upstream variant playlist and rewrites segment URLs.
 func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID string, qualityIdx int) error {
-	// Look up the variant URL from the cached master
+	// Look up the variant URL from the cached master.
+	// Treat the entry as a miss if it is older than playlistCacheTTL so that
+	// rotated CDN variant URLs are refreshed automatically.
 	cached, ok := m.playlistCache.Load(itemID + ":master")
+	if ok {
+		if cp, _ := cached.(*cachedPlaylist); cp != nil && time.Since(cp.fetchedAt) > playlistCacheTTL {
+			ok = false
+		}
+	}
 	if !ok {
 		// Try to re-fetch the master first
 		item := m.GetItem(itemID)
@@ -381,6 +408,15 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 func (m *Module) ProxyHLSSegment(w http.ResponseWriter, r *http.Request, itemID string, qualityIdx int, segment string) error {
 	cacheKey := fmt.Sprintf("%s:%d", itemID, qualityIdx)
 	cached, ok := m.playlistCache.Load(cacheKey)
+	if ok {
+		// A stale segment cache means the variant playlist has not been
+		// re-fetched recently.  Return 404 so the HLS client re-requests
+		// the variant playlist (which will refresh the segment list) before
+		// asking for segments again.
+		if cp, _ := cached.(*cachedPlaylist); cp != nil && time.Since(cp.fetchedAt) > playlistCacheTTL {
+			ok = false
+		}
+	}
 	if !ok {
 		return fmt.Errorf("segment cache not found for %s quality %d", itemID, qualityIdx)
 	}
