@@ -6,6 +6,7 @@ package duplicates
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -176,6 +177,11 @@ func (m *Module) RecordDuplicatesFromSlave(slaveID string, items []ReceiverItemR
 			if exists {
 				continue
 			}
+			// Suppress re-detection when a slave re-pushes an item that was
+			// previously removed via "remove_a"/"remove_b" (new row ID ≠ old ID).
+			if resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); resolved {
+				continue
+			}
 			rec := &repositories.ReceiverDuplicateRecord{
 				ID:           uuid.New().String(),
 				Fingerprint:  item.ContentFingerprint,
@@ -332,10 +338,10 @@ func (m *Module) ResolveDuplicate(id, action, resolvedBy string) error {
 	switch action {
 	case "remove_a":
 		m.removeItem(ctx, rec.ItemAID, rec.ItemASlaveID)
-		return m.dupRepo.DeleteForItem(ctx, rec.ItemAID)
+		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
 	case "remove_b":
 		m.removeItem(ctx, rec.ItemBID, rec.ItemBSlaveID)
-		return m.dupRepo.DeleteForItem(ctx, rec.ItemBID)
+		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
 	case "keep_both", "ignore":
 		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
 	default:
@@ -361,6 +367,9 @@ func (m *Module) removeItem(ctx context.Context, itemID, slaveID string) {
 			if meta.StableID == itemID {
 				if err := m.metaRepo.Delete(ctx, path); err != nil {
 					m.log.Warn("removeItem: failed to delete local metadata for %s: %v", path, err)
+				}
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					m.log.Warn("removeItem: failed to delete local file %s: %v", path, err)
 				}
 				return
 			}

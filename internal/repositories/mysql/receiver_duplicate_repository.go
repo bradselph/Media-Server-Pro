@@ -97,6 +97,20 @@ func (r *ReceiverDuplicateRepository) ExistsByPair(ctx context.Context, itemAID,
 	return count > 0, nil
 }
 
+// ExistsResolvedRemoval reports whether any record with the given fingerprint was
+// previously resolved via remove_a or remove_b.  Used to suppress re-detection of
+// receiver items that get re-pushed by a slave after being removed.
+func (r *ReceiverDuplicateRepository) ExistsResolvedRemoval(ctx context.Context, fingerprint string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&receiverDuplicateRow{}).
+		Where("fingerprint = ? AND status IN ('remove_a', 'remove_b')", fingerprint).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("failed to check resolved removal: %w", err)
+	}
+	return count > 0, nil
+}
+
 func (r *ReceiverDuplicateRepository) UpdateStatus(ctx context.Context, id, status, resolvedBy string) error {
 	updates := map[string]interface{}{
 		"status":      status,
