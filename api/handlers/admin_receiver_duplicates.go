@@ -47,8 +47,10 @@ func (h *Handler) AdminResolveDuplicate(c *gin.Context) {
 	}
 
 	session := getSession(c)
+	userID := ""
 	resolvedBy := ""
 	if session != nil {
+		userID = session.UserID
 		resolvedBy = session.Username
 	}
 
@@ -57,7 +59,7 @@ func (h *Handler) AdminResolveDuplicate(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, session.UserID, session.Username, "resolve_duplicate",
+	h.logAdminAction(c, userID, resolvedBy, "resolve_duplicate",
 		id, map[string]interface{}{"action": body.Action})
 
 	writeSuccess(c, gin.H{"message": "duplicate resolved", "action": body.Action})
