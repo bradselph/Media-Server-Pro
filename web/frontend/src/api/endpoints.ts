@@ -61,6 +61,7 @@ import type {
     TopMediaItem,
     UploadProgress,
     UploadResult,
+    ReceiverDuplicate,
     ReceiverMediaItem,
     ReceiverStats,
     SlaveNode,
@@ -869,6 +870,15 @@ export const adminApi = {
 
     removeReceiverSlave: (id: string) =>
         api.delete<void>(`/api/admin/receiver/slaves/${encodeURIComponent(id)}`),
+
+    listReceiverDuplicates: (status = 'pending') =>
+        api.get<ReceiverDuplicate[]>(`/api/admin/receiver/duplicates?status=${encodeURIComponent(status)}`),
+
+    resolveReceiverDuplicate: (id: string, action: string) =>
+        api.post<{message: string; action: string}>(
+            `/api/admin/receiver/duplicates/${encodeURIComponent(id)}/resolve`,
+            {action},
+        ),
 }
 
 // ── Receiver media (admin diagnostics only — regular users see receiver media

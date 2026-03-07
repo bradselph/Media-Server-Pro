@@ -527,6 +527,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.GET("/receiver/slaves", h.AdminReceiverListSlaves)
 	adminGrp.GET("/receiver/stats", h.AdminReceiverGetStats)
 	adminGrp.DELETE("/receiver/slaves/:id", h.AdminReceiverRemoveSlave)
+	adminGrp.GET("/receiver/duplicates", h.AdminListReceiverDuplicates)
+	adminGrp.POST("/receiver/duplicates/:id/resolve", h.AdminResolveReceiverDuplicate)
 
 	// Admin media management routes
 	adminGrp.GET(pathMedia, h.AdminListMedia)

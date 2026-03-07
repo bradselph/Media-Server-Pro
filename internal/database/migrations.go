@@ -438,6 +438,24 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 				INDEX idx_crawler_disc_status (status),
 				FOREIGN KEY (target_id) REFERENCES crawler_targets(id) ON DELETE CASCADE
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+
+		{"receiver_duplicates", `
+			CREATE TABLE IF NOT EXISTS receiver_duplicates (
+				id              VARCHAR(255) PRIMARY KEY,
+				fingerprint     VARCHAR(64)  NOT NULL,
+				item_a_id       VARCHAR(255) NOT NULL,
+				item_a_slave_id VARCHAR(255) NOT NULL,
+				item_a_name     VARCHAR(500) NOT NULL,
+				item_b_id       VARCHAR(255) NOT NULL,
+				item_b_slave_id VARCHAR(255) NOT NULL,
+				item_b_name     VARCHAR(500) NOT NULL,
+				status          VARCHAR(50)  NOT NULL DEFAULT 'pending',
+				resolved_by     VARCHAR(255),
+				resolved_at     TIMESTAMP    NULL,
+				detected_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				INDEX idx_dup_fingerprint (fingerprint),
+				INDEX idx_dup_status (status)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	}
 
 	for _, t := range tables {

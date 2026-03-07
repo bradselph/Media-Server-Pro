@@ -47,8 +47,8 @@ type cdpError struct {
 
 // browserDetector drives headless Chrome via CDP to discover streams.
 type browserDetector struct {
-	log      loggerI
-	timeout  time.Duration
+	log       loggerI
+	timeout   time.Duration
 	chromeBin string // path to chrome/chromium binary
 
 	mu     sync.Mutex
@@ -66,7 +66,7 @@ type loggerI interface {
 // detectedStream represents a single stream found by the browser detector.
 type detectedStream struct {
 	URL             string `json:"url"`
-	Type            string `json:"type"`             // "m3u8" or "mp4"
+	Type            string `json:"type"` // "m3u8" or "mp4"
 	ContentType     string `json:"content_type"`
 	IsMaster        bool   `json:"is_master"`
 	Quality         int    `json:"quality"`

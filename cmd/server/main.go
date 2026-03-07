@@ -19,13 +19,13 @@ import (
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/hls"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/playlist"
-	"media-server-pro/internal/crawler"
-	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
 	"media-server-pro/internal/scanner"
@@ -377,8 +377,12 @@ func registerTasks(
 				if ctx.Err() != nil {
 					break
 				}
-				if !thumbnailsModule.HasThumbnail(item.ID) {
-					isAudio := item.Type == "audio"
+				isAudio := item.Type == "audio"
+				// For video: regenerate if ANY thumbnail (main or preview) is missing.
+				// For audio: only the single waveform thumbnail matters.
+				needsGen := isAudio && !thumbnailsModule.HasThumbnail(item.ID) ||
+					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(item.ID)
+				if needsGen {
 					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, item.ID, isAudio); err != nil {
 						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
 							log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)

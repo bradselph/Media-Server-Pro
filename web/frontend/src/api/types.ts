@@ -628,6 +628,22 @@ export interface ReceiverStats {
     slave_count: number
     online_slaves: number
     media_count: number
+    duplicate_count: number
+}
+
+// Matches internal/receiver/receiver.go DuplicateGroup struct
+export interface ReceiverDuplicate {
+    id: string
+    fingerprint: string
+    item_a: ReceiverMediaItem
+    item_b: ReceiverMediaItem
+    item_a_name: string
+    item_b_name: string
+    // "pending" | "remove_a" | "remove_b" | "keep_both" | "ignore"
+    status: string
+    resolved_by?: string
+    resolved_at?: string
+    detected_at: string
 }
 
 // ── Feature 1: Storage & Permissions ──

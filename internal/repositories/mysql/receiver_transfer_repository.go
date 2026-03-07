@@ -209,6 +209,13 @@ func (r *ReceiverMediaRepository) DeleteBySlave(ctx context.Context, slaveID str
 	return nil
 }
 
+func (r *ReceiverMediaRepository) DeleteByID(ctx context.Context, id string) error {
+	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&receiverMediaRow{}).Error; err != nil {
+		return fmt.Errorf("failed to delete receiver media record: %w", err)
+	}
+	return nil
+}
+
 func (r *ReceiverMediaRepository) Search(ctx context.Context, query string) ([]*repositories.ReceiverMediaRecord, error) {
 	var rows []receiverMediaRow
 	pattern := "%" + query + "%"

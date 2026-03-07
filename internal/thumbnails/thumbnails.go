@@ -300,15 +300,17 @@ func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio boo
 	cfg := m.config.Get()
 	outputPath := m.getThumbnailPath(mediaID)
 
-	// Check if already exists
+	// For videos, delegate entirely to GeneratePreviewThumbnails which checks
+	// both the main thumbnail and all preview thumbnails individually, so
+	// missing previews are regenerated even when the main already exists.
+	if !isAudio {
+		return m.GeneratePreviewThumbnails(mediaPath, mediaID)
+	}
+
+	// For audio: single waveform thumbnail — skip if already on disk.
 	if _, err := os.Stat(outputPath); err == nil {
 		m.log.Debug("Thumbnail already exists: %s", outputPath)
 		return outputPath, nil
-	}
-
-	// For videos, generate multiple preview thumbnails
-	if !isAudio {
-		return m.GeneratePreviewThumbnails(mediaPath, mediaID)
 	}
 
 	// For audio, just generate one waveform.
@@ -889,6 +891,13 @@ func (m *Module) GetPreviewURLs(mediaPath string, mediaID string, count int) []s
 
 		// Generate preview thumbnail if GenerateOnAccess is enabled
 		if cfg.Thumbnails.GenerateOnAccess {
+			// Guard against duplicate queuing for the same output path.
+			if _, loaded := m.inFlight.LoadOrStore(previewPath, time.Now()); loaded {
+				// Already queued by another concurrent request; return URL optimistically.
+				urls = append(urls, previewURL)
+				continue
+			}
+
 			job := &ThumbnailJob{
 				MediaPath:  mediaPath,
 				OutputPath: previewPath,
@@ -898,6 +907,10 @@ func (m *Module) GetPreviewURLs(mediaPath string, mediaID string, count int) []s
 				IsAudio:    false,
 			}
 
+			m.statsMu.Lock()
+			m.stats.Pending++
+			m.statsMu.Unlock()
+
 			// Try async generation first, fall back to sync if queue full
 			select {
 			case m.jobQueue <- job:
@@ -905,7 +918,11 @@ func (m *Module) GetPreviewURLs(mediaPath string, mediaID string, count int) []s
 				// Don't wait for generation - return URL anyway
 				urls = append(urls, previewURL)
 			default:
-				// Queue full - generate synchronously
+				// Queue full — generate synchronously and clear inFlight ourselves.
+				m.inFlight.Delete(previewPath)
+				m.statsMu.Lock()
+				m.stats.Pending--
+				m.statsMu.Unlock()
 				if err := m.generateThumbnail(job); err == nil {
 					urls = append(urls, previewURL)
 				}

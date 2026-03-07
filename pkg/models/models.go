@@ -11,8 +11,8 @@ import (
 type MediaType string
 
 const (
-	MediaTypeVideo   MediaType = "video"
-	MediaTypeAudio   MediaType = "audio"
+	MediaTypeVideo MediaType = "video"
+	MediaTypeAudio MediaType = "audio"
 	// MediaTypeUnknown is used as a sentinel by internal/media/discovery.go when scanning
 	// the uploads directory (mixed content). It is never stored on a MediaItem.Type field —
 	// unmatched files are dropped during scanning, not catalogued as unknown.
@@ -87,7 +87,6 @@ type User struct {
 func (*User) TableName() string {
 	return "users"
 }
-
 
 // UserRole represents the role of a user
 type UserRole string
@@ -425,12 +424,12 @@ func (AnalyticsEvent) TableName() string {
 
 // ViewStats holds view statistics for a media item
 type ViewStats struct {
-	TotalViews     int       `json:"total_views"`
-	CompletionRate float64   `json:"completion_rate"`
-	LastViewed     time.Time `json:"last_viewed"`
-	UniqueViewers    int     `json:"unique_viewers"`
-	AvgWatchDuration float64 `json:"avg_watch_duration"`
-	PeakConcurrent   int     `json:"peak_concurrent"` // populated by streaming.Module.GetStats()
+	TotalViews       int       `json:"total_views"`
+	CompletionRate   float64   `json:"completion_rate"`
+	LastViewed       time.Time `json:"last_viewed"`
+	UniqueViewers    int       `json:"unique_viewers"`
+	AvgWatchDuration float64   `json:"avg_watch_duration"`
+	PeakConcurrent   int       `json:"peak_concurrent"` // populated by streaming.Module.GetStats()
 }
 
 // DailyStats holds daily aggregate statistics
@@ -501,12 +500,12 @@ type MatureReviewItem struct {
 
 // AuditLogEntry represents an entry in the audit log
 type AuditLogEntry struct {
-	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`
-	Timestamp time.Time              `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
-	UserID    string                 `json:"user_id" db:"user_id" gorm:"size:255;index"`
-	Username  string                 `json:"username" db:"username" gorm:"size:255"`
-	Action    string                 `json:"action" db:"action" gorm:"size:100;not null;index"`
-	Resource  string                 `json:"resource" db:"resource" gorm:"size:255;index"`
+	ID        string    `json:"id" db:"id" gorm:"primaryKey;size:255"`
+	Timestamp time.Time `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
+	UserID    string    `json:"user_id" db:"user_id" gorm:"size:255;index"`
+	Username  string    `json:"username" db:"username" gorm:"size:255"`
+	Action    string    `json:"action" db:"action" gorm:"size:100;not null;index"`
+	Resource  string    `json:"resource" db:"resource" gorm:"size:255;index"`
 	// Details is in-memory only (not persisted). To persist it, add a JSON column to audit_log,
 	// serialize on write, and deserialize in the audit log repository.
 	Details   map[string]interface{} `json:"details,omitempty" db:"-" gorm:"-"`

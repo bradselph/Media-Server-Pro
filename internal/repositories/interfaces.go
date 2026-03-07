@@ -343,6 +343,7 @@ type ReceiverMediaRepository interface {
 	ListBySlave(ctx context.Context, slaveID string) ([]*ReceiverMediaRecord, error)
 	ListAll(ctx context.Context) ([]*ReceiverMediaRecord, error)
 	DeleteBySlave(ctx context.Context, slaveID string) error
+	DeleteByID(ctx context.Context, id string) error
 	Search(ctx context.Context, query string) ([]*ReceiverMediaRecord, error)
 }
 
@@ -360,6 +361,35 @@ type ReceiverMediaRecord struct {
 	Width              int
 	Height             int
 	UpdatedAt          time.Time
+}
+
+// ReceiverDuplicateRepository provides storage for detected duplicate media pairs.
+type ReceiverDuplicateRepository interface {
+	Create(ctx context.Context, dup *ReceiverDuplicateRecord) error
+	Get(ctx context.Context, id string) (*ReceiverDuplicateRecord, error)
+	List(ctx context.Context) ([]*ReceiverDuplicateRecord, error)
+	ListPending(ctx context.Context) ([]*ReceiverDuplicateRecord, error)
+	ExistsByPair(ctx context.Context, itemAID, itemBID string) (bool, error)
+	UpdateStatus(ctx context.Context, id, status, resolvedBy string) error
+	CountPending(ctx context.Context) (int64, error)
+	DeleteForItem(ctx context.Context, itemID string) error
+}
+
+// ReceiverDuplicateRecord represents a detected duplicate pair between two slave media items.
+type ReceiverDuplicateRecord struct {
+	ID           string
+	Fingerprint  string
+	ItemAID      string
+	ItemASlaveID string
+	ItemAName    string
+	ItemBID      string
+	ItemBSlaveID string
+	ItemBName    string
+	// Status is one of: "pending", "remove_a", "remove_b", "keep_both", "ignore"
+	Status     string
+	ResolvedBy string
+	ResolvedAt *time.Time
+	DetectedAt time.Time
 }
 
 // BackupManifestRepository provides backup manifest storage
