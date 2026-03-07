@@ -855,8 +855,10 @@ func (h *Handler) RestartServer(c *gin.Context) {
 		time.Sleep(1 * time.Second)
 
 		if os.Getenv("INVOCATION_ID") != "" {
-			h.log.Info("Running under systemd — exiting for service manager restart")
-			os.Exit(0)
+			// Under systemd: exit with code 1 so Restart=on-failure triggers a restart.
+			// os.Exit(0) is a clean exit that systemd does NOT restart.
+			h.log.Info("Running under systemd — exiting with code 1 for service manager restart")
+			os.Exit(1)
 			return
 		}
 
@@ -879,7 +881,7 @@ func (h *Handler) RestartServer(c *gin.Context) {
 		cmd := exec.Command(exe, os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		cmd.Stdin = os.Stdin
+		setCmdRestartAttrs(cmd) // detach child from parent session (platform-specific)
 
 		if err := cmd.Start(); err != nil {
 			h.log.Error("Failed to start replacement process: %v — falling back to exit", err)

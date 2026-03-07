@@ -2,12 +2,14 @@
 # deploy.sh — Deploy Media Server Pro (master server or slave node).
 #
 # MASTER SERVER (default):
-#   ./deploy.sh                         # pull + build + restart on VPS
+#   ./deploy.sh                         # pull + build + restart on VPS (branch from .env or main)
+#   ./deploy.sh --branch main           # deploy from the stable main branch
+#   ./deploy.sh --branch development    # deploy from the development branch
+#   ./deploy.sh --dev                   # shorthand for --branch development
 #   ./deploy.sh --setup                 # first-time VPS provisioning
 #   ./deploy.sh --setup-receiver        # configure master receiver for slave nodes
 #   ./deploy.sh --fix-env               # patch .env on VPS
 #   ./deploy.sh --rollback              # restore server.bak on VPS
-#   ./deploy.sh --branch main           # deploy specific branch
 #   ./deploy.sh --dry-run               # preview commands without executing
 #
 # SLAVE NODE (--slave):
@@ -105,11 +107,13 @@ SLAVE_LOCAL=false
 SLAVE_STOP=false
 
 # Default branch: read from .env UPDATER_BRANCH, fall back to "main"
-BRANCH=""
+# Can be overridden by --branch or --dev flags (parsed after this block).
+_BRANCH_DEFAULT=""
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
-  BRANCH=$(grep -oP '(?<=^UPDATER_BRANCH=)\S+' "$SCRIPT_DIR/.env" 2>/dev/null || echo "")
+  _BRANCH_DEFAULT=$(grep -oP '(?<=^UPDATER_BRANCH=)\S+' "$SCRIPT_DIR/.env" 2>/dev/null || echo "")
 fi
-BRANCH="${BRANCH:-main}"
+_BRANCH_DEFAULT="${_BRANCH_DEFAULT:-main}"
+BRANCH="${_BRANCH_DEFAULT}"   # may be overridden by flag parsing below
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -123,6 +127,7 @@ while [[ $# -gt 0 ]]; do
     --local)           SLAVE_LOCAL=true      ; shift ;;
     --stop)            SLAVE_STOP=true       ; shift ;;
     --branch)          BRANCH="$2"           ; shift 2 ;;
+    --dev)             BRANCH="development"  ; shift ;;
     --help|-h)
       sed -n '/^# MASTER/,/^[^#]/p' "$0" | head -n -1
       echo ""
@@ -143,6 +148,27 @@ if $SLAVE_MODE; then
 else
   [[ -z "$VPS_HOST" ]]     && die "VPS_HOST is not set. Export it or add to .deploy.env"
   [[ -z "$GITHUB_TOKEN" ]] && die "GITHUB_TOKEN is not set. Export it or add to .deploy.env"
+fi
+
+# ── Interactive branch selection (master mode, non-slave, no flag given) ──────
+# If BRANCH wasn't set by a --branch/--dev flag, prompt the user to choose.
+# Falls back to the default silently when stdin is not a terminal (CI/pipe).
+if ! $SLAVE_MODE && [[ "$BRANCH" == "$_BRANCH_DEFAULT" ]] && [[ -t 0 ]]; then
+  echo -e "${CYAN}[deploy]${RESET} Branch to deploy from [${BOLD}${_BRANCH_DEFAULT}${RESET}]:"
+  echo "  1) main         — stable releases"
+  echo "  2) development  — latest features"
+  echo -n "  Choice (Enter = ${_BRANCH_DEFAULT}): "
+  read -r _BRANCH_CHOICE </dev/tty
+  case "$_BRANCH_CHOICE" in
+    1|main)        BRANCH="main"        ;;
+    2|dev*)        BRANCH="development" ;;
+    "")            BRANCH="$_BRANCH_DEFAULT" ;;
+    *)
+      # Accept any branch name typed directly
+      BRANCH="$_BRANCH_CHOICE"
+      ;;
+  esac
+  echo ""
 fi
 
 CLONE_URL="https://${GITHUB_TOKEN}@${REPO_URL}"
