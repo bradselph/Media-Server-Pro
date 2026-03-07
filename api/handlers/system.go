@@ -333,94 +333,80 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	defer cancel()
 	db := h.database.DB()
 
-	if isSelect {
-		rows, err := db.QueryContext(ctx, query)
-		if err != nil {
-			if h.admin != nil {
-				h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query}, c.ClientIP(), false)
-			}
-			h.log.Error("Query execution failed: %v", err)
-			writeError(c, http.StatusBadRequest, "Query execution failed")
-			return
-		}
-		defer func() {
-			if err := rows.Close(); err != nil {
-				h.log.Warn("Failed to close rows: %v", err)
-			}
-		}()
-
-		columns, err := rows.Columns()
-		if err != nil {
-			h.log.Error("Failed to get columns: %v", err)
-			writeError(c, http.StatusInternalServerError, "Query execution failed")
-			return
-		}
-
-		maxRows := h.media.GetConfig().Admin.MaxQueryRows
-		if maxRows <= 0 {
-			maxRows = 1000
-		}
-		var results [][]interface{}
-		for rows.Next() && len(results) < maxRows {
-			values := make([]interface{}, len(columns))
-			valuePtrs := make([]interface{}, len(columns))
-			for i := range values {
-				valuePtrs[i] = &values[i]
-			}
-
-			if err := rows.Scan(valuePtrs...); err != nil {
-				h.log.Error("Failed to scan row: %v", err)
-				writeError(c, http.StatusInternalServerError, "Query execution failed")
-				return
-			}
-
-			row := make([]interface{}, len(columns))
-			for i, val := range values {
-				if b, ok := val.([]byte); ok {
-					row[i] = string(b)
-				} else {
-					row[i] = val
-				}
-			}
-			results = append(results, row)
-		}
-
-		if err := rows.Err(); err != nil {
-			h.log.Error("Error reading rows: %v", err)
-			writeError(c, http.StatusInternalServerError, "Query execution failed")
-			return
-		}
-
+	if !isSelect {
+		h.log.Warn("Admin %s attempted disallowed mutating query", username)
 		if h.admin != nil {
-			h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query, "rows": len(results)}, c.ClientIP(), true)
+			h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query}, c.ClientIP(), false)
 		}
-
-		writeSuccess(c, map[string]interface{}{
-			"columns":       columns,
-			"rows":          results,
-			"rows_affected": len(results),
-			"truncated":     len(results) >= maxRows,
-		})
-	} else {
-		result, err := db.ExecContext(ctx, query)
-		if err != nil {
-			if h.admin != nil {
-				h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query}, c.ClientIP(), false)
-			}
-			h.log.Error("Query execution failed: %v", err)
-			writeError(c, http.StatusBadRequest, "Query execution failed")
-			return
-		}
-
-		rowsAffected, _ := result.RowsAffected()
-
-		if h.admin != nil {
-			h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query, "affected": rowsAffected}, c.ClientIP(), true)
-		}
-
-		writeSuccess(c, map[string]interface{}{
-			"rows_affected": rowsAffected,
-			"message":       fmt.Sprintf("Query executed successfully. Rows affected: %d", rowsAffected),
-		})
+		writeError(c, http.StatusForbidden, "Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are permitted")
+		return
 	}
+
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		if h.admin != nil {
+			h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query}, c.ClientIP(), false)
+		}
+		h.log.Error("Query execution failed: %v", err)
+		writeError(c, http.StatusBadRequest, "Query execution failed")
+		return
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			h.log.Warn("Failed to close rows: %v", err)
+		}
+	}()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		h.log.Error("Failed to get columns: %v", err)
+		writeError(c, http.StatusInternalServerError, "Query execution failed")
+		return
+	}
+
+	maxRows := h.media.GetConfig().Admin.MaxQueryRows
+	if maxRows <= 0 {
+		maxRows = 1000
+	}
+	var results [][]interface{}
+	for rows.Next() && len(results) < maxRows {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			h.log.Error("Failed to scan row: %v", err)
+			writeError(c, http.StatusInternalServerError, "Query execution failed")
+			return
+		}
+
+		row := make([]interface{}, len(columns))
+		for i, val := range values {
+			if b, ok := val.([]byte); ok {
+				row[i] = string(b)
+			} else {
+				row[i] = val
+			}
+		}
+		results = append(results, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		h.log.Error("Error reading rows: %v", err)
+		writeError(c, http.StatusInternalServerError, "Query execution failed")
+		return
+	}
+
+	if h.admin != nil {
+		h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query, "rows": len(results)}, c.ClientIP(), true)
+	}
+
+	writeSuccess(c, map[string]interface{}{
+		"columns":       columns,
+		"rows":          results,
+		"rows_affected": len(results),
+		"truncated":     len(results) >= maxRows,
+	})
 }
