@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.62.0] - 2026-03-07 (minor)
+
+- Merge pull request #65 from bradselph/development
+- fix(admin): include extractor, crawler, duplicates in system health check
+
+
 ## [0.61.0] - 2026-03-07 (minor)
 
 - Merge pull request #64 from bradselph/development
