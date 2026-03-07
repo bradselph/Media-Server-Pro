@@ -740,7 +740,7 @@ export function IndexPage() {
     const [showFilters, setShowFilters] = useState(true)
 
     // Playlist store — shuffle, repeat, and queue management
-    const {shuffleMode, repeatMode, toggleShuffle, toggleRepeat} = usePlaylistStore()
+    const {shuffleMode, repeatMode, toggleShuffle, toggleRepeat, setPlaylistFromIds} = usePlaylistStore()
 
     // UI state
     const [showUpload, setShowUpload] = useState(false)
@@ -927,7 +927,10 @@ export function IndexPage() {
     }
 
     function handlePlayAll() {
-        if (items.length > 0) setNowPlaying(items[0])
+        const playable = items.filter(i => !i.is_mature || (permissions.can_view_mature && user?.preferences?.show_mature === true))
+        if (playable.length === 0) return
+        setPlaylistFromIds(playable.map(i => i.id), playable.map(i => i.name))
+        setNowPlaying(playable[0])
     }
 
     // Upload done → refresh media

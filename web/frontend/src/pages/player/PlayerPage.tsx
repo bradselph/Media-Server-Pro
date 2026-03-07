@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useQuery} from '@tanstack/react-query'
 import {useAuthStore} from '@/stores/authStore'
+import {usePlaylistStore} from '@/stores/playlistStore'
 import {useToast} from '@/components/Toast'
 import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {useHLS} from '@/hooks/useHLS'
@@ -55,6 +56,7 @@ export function PlayerPage() {
     const permissions = useAuthStore((s) => s.permissions)
     const user = useAuthStore((s) => s.user)
     const {showToast} = useToast()
+    const {currentPlaylist, currentIndex, setCurrentIndex, playNext, playPrevious} = usePlaylistStore()
 
     // Media element refs
     const videoRef = useRef<HTMLVideoElement>(null)
@@ -100,6 +102,13 @@ export function PlayerPage() {
     // Rating state
     const [userRating, setUserRating] = useState(0)
     const [ratingHover, setRatingHover] = useState(0)
+
+    // Sync playlist store index when navigating to a media ID that's in the playlist
+    useEffect(() => {
+        if (!mediaId || currentPlaylist.length === 0) return
+        const idx = currentPlaylist.findIndex(i => i.media_id === mediaId)
+        if (idx !== -1 && idx !== currentIndex) setCurrentIndex(idx)
+    }, [mediaId, currentPlaylist, currentIndex, setCurrentIndex])
 
     const handleRate = useCallback((rating: number) => {
         setUserRating(rating)
@@ -336,6 +345,18 @@ export function PlayerPage() {
         }
     }
 
+    function handlePrevTrack() {
+        const prevId = playPrevious()
+        if (prevId) navigate(`/player?id=${encodeURIComponent(prevId)}`, {replace: true})
+    }
+
+    function handleNextTrack() {
+        const nextId = playNext()
+        if (nextId) navigate(`/player?id=${encodeURIComponent(nextId)}`, {replace: true})
+    }
+
+    const hasPlaylist = currentPlaylist.length > 1
+
     function handleVideoClick() {
         const now = Date.now()
         if (now - lastClickTimeRef.current < 300) {
@@ -481,6 +502,11 @@ export function PlayerPage() {
         if (mediaId) {
             watchHistoryApi.trackPosition(mediaId, duration, duration).catch(() => {
             })
+        }
+        // Auto-advance to next track in playlist
+        const nextId = playNext()
+        if (nextId) {
+            navigate(`/player?id=${encodeURIComponent(nextId)}`, {replace: true})
         }
     }
     // Save position periodically
@@ -833,10 +859,20 @@ export function PlayerPage() {
 
                                 {/* Controls row */}
                                 <div className="ctrl-row">
+                                    {hasPlaylist && (
+                                        <button className="ctrl-btn" onClick={handlePrevTrack} title="Previous track">
+                                            <i className="bi bi-skip-start-fill"/>
+                                        </button>
+                                    )}
                                     <button className="ctrl-btn" onClick={togglePlay} title="Play/Pause (K)">
                                         {isPlaying ? <i className="bi bi-pause-fill"/> :
                                             <i className="bi bi-play-fill"/>}
                                     </button>
+                                    {hasPlaylist && (
+                                        <button className="ctrl-btn" onClick={handleNextTrack} title="Next track">
+                                            <i className="bi bi-skip-end-fill"/>
+                                        </button>
+                                    )}
                                     <button className="ctrl-btn" onClick={() => {
                                         const el = getActiveEl();
                                         if (el) el.currentTime = Math.max(0, el.currentTime - 10)
@@ -950,6 +986,12 @@ export function PlayerPage() {
                                 </div>
                                 {/* Controls row */}
                                 <div style={{display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap'}}>
+                                    {hasPlaylist && (
+                                        <button className="ctrl-btn" style={{color: 'var(--text-color)'}}
+                                                onClick={handlePrevTrack} title="Previous track">
+                                            <i className="bi bi-skip-start-fill"/>
+                                        </button>
+                                    )}
                                     <button className="ctrl-btn" style={{color: 'var(--text-color)'}}
                                             onClick={() => {
                                                 const el = getActiveEl()
@@ -969,6 +1011,12 @@ export function PlayerPage() {
                                             }} title="Forward 10s">
                                         <i className="bi bi-skip-forward-fill"/>
                                     </button>
+                                    {hasPlaylist && (
+                                        <button className="ctrl-btn" style={{color: 'var(--text-color)'}}
+                                                onClick={handleNextTrack} title="Next track">
+                                            <i className="bi bi-skip-end-fill"/>
+                                        </button>
+                                    )}
                                     <span style={{
                                         fontSize: 12,
                                         color: 'var(--text-muted)',
