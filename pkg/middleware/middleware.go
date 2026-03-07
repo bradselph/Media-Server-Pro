@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/logger"
 )
 
 // ContextKey is a type for context keys
@@ -80,8 +82,9 @@ func getClientIP(r *http.Request) string {
 }
 
 // GinRequestID adds a unique request ID to each request via X-Request-ID header.
-// The request ID is also stored in c.Request.Context() so framework-agnostic
-// modules can retrieve it via context.Value(middleware.RequestIDKey).
+// The request ID is stored in:
+//   - Gin context (c.Set) for handler access
+//   - c.Request.Context() for framework-agnostic module access via logger.RequestIDFromContext
 func GinRequestID() gin.HandlerFunc {
 	var counter uint64
 	return func(c *gin.Context) {
@@ -89,6 +92,8 @@ func GinRequestID() gin.HandlerFunc {
 		requestID := fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
 		c.Set(string(RequestIDKey), requestID)
 		c.Header("X-Request-ID", requestID)
+		// Also store in request context so modules can extract it via logger.RequestIDFromContext
+		c.Request = c.Request.WithContext(logger.ContextWithRequestID(c.Request.Context(), requestID))
 		c.Next()
 	}
 }

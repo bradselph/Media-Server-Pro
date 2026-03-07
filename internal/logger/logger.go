@@ -4,6 +4,7 @@
 package logger
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,6 +44,25 @@ var levelColors = map[Level]string{
 }
 
 const colorReset = "\033[0m"
+
+// ridKeyType is the context key for request ID propagation.
+type ridKeyType struct{}
+
+var ridKey = ridKeyType{}
+
+// ContextWithRequestID returns a new context carrying the given request ID.
+// Used by HTTP middleware to propagate the request ID to downstream modules.
+func ContextWithRequestID(ctx context.Context, rid string) context.Context {
+	return context.WithValue(ctx, ridKey, rid)
+}
+
+// RequestIDFromContext extracts the request ID from a context, or "" if absent.
+func RequestIDFromContext(ctx context.Context) string {
+	if rid, ok := ctx.Value(ridKey).(string); ok {
+		return rid
+	}
+	return ""
+}
 
 // Logger provides structured logging with module context
 type Logger struct {
@@ -253,7 +273,7 @@ func SetJSONFormat(enabled bool) {
 }
 
 // formatMessageJSON creates a JSON-structured log line.
-func (l *Logger) formatMessageJSON(level Level, msg string, args ...interface{}) string {
+func (l *Logger) formatMessageJSON(level Level, requestID, msg string, args ...interface{}) string {
 	formattedMsg := msg
 	if len(args) > 0 {
 		formattedMsg = fmt.Sprintf(msg, args...)
@@ -272,6 +292,9 @@ func (l *Logger) formatMessageJSON(level Level, msg string, args ...interface{})
 		"caller": caller,
 		"msg":    formattedMsg,
 	}
+	if requestID != "" {
+		entry["request_id"] = requestID
+	}
 
 	data, err := json.Marshal(entry)
 	if err != nil {
@@ -281,7 +304,7 @@ func (l *Logger) formatMessageJSON(level Level, msg string, args ...interface{})
 }
 
 // formatMessage creates a formatted log message with metadata
-func (l *Logger) formatMessage(level Level, msg string, args ...interface{}) string {
+func (l *Logger) formatMessage(level Level, requestID, msg string, args ...interface{}) string {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMsg := msg
 	if len(args) > 0 {
@@ -300,6 +323,17 @@ func (l *Logger) formatMessage(level Level, msg string, args ...interface{}) str
 		levelStr = fmt.Sprintf("%s%s%s", levelColors[level], levelStr, colorReset)
 	}
 
+	if requestID != "" {
+		return fmt.Sprintf("[%s] [%s] [%s] [%s] [%s] %s",
+			timestamp,
+			levelStr,
+			l.module,
+			requestID,
+			caller,
+			formattedMsg,
+		)
+	}
+
 	return fmt.Sprintf("[%s] [%s] [%s] [%s] %s",
 		timestamp,
 		levelStr,
@@ -311,6 +345,11 @@ func (l *Logger) formatMessage(level Level, msg string, args ...interface{}) str
 
 // log writes a log message at the specified level
 func (l *Logger) log(level Level, msg string, args ...interface{}) {
+	l.logWithRID(level, "", msg, args...)
+}
+
+// logWithRID writes a log message at the specified level with an optional request ID.
+func (l *Logger) logWithRID(level Level, requestID, msg string, args ...interface{}) {
 	if level < l.minLevel {
 		return
 	}
@@ -318,9 +357,9 @@ func (l *Logger) log(level Level, msg string, args ...interface{}) {
 	l.mu.Lock()
 	var formatted string
 	if l.jsonFormat {
-		formatted = l.formatMessageJSON(level, msg, args...)
+		formatted = l.formatMessageJSON(level, requestID, msg, args...)
 	} else {
-		formatted = l.formatMessage(level, msg, args...)
+		formatted = l.formatMessage(level, requestID, msg, args...)
 	}
 
 	// Write to stdout
@@ -337,9 +376,9 @@ func (l *Logger) log(level Level, msg string, args ...interface{}) {
 			globalLogger.rotateIfNeeded()
 			var fileFormatted string
 			if globalLogger.jsonFormat {
-				fileFormatted = l.formatMessageJSON(level, msg, args...)
+				fileFormatted = l.formatMessageJSON(level, requestID, msg, args...)
 			} else {
-				fileFormatted = l.formatMessagePlain(level, msg, args...)
+				fileFormatted = l.formatMessagePlain(level, requestID, msg, args...)
 			}
 			_, _ = fmt.Fprintln(globalLogger.fileOutput, fileFormatted)
 		}
@@ -426,7 +465,7 @@ func (l *Logger) cleanOldBackups(basePath string) {
 }
 
 // formatMessagePlain creates a formatted log message without colors
-func (l *Logger) formatMessagePlain(level Level, msg string, args ...interface{}) string {
+func (l *Logger) formatMessagePlain(level Level, requestID, msg string, args ...interface{}) string {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMsg := msg
 	if len(args) > 0 {
@@ -437,6 +476,17 @@ func (l *Logger) formatMessagePlain(level Level, msg string, args ...interface{}
 	caller := "unknown"
 	if ok {
 		caller = fmt.Sprintf("%s:%d", filepath.Base(file), line)
+	}
+
+	if requestID != "" {
+		return fmt.Sprintf("[%s] [%s] [%s] [%s] [%s] %s",
+			timestamp,
+			levelNames[level],
+			l.module,
+			requestID,
+			caller,
+			formattedMsg,
+		)
 	}
 
 	return fmt.Sprintf("[%s] [%s] [%s] [%s] %s",
@@ -477,6 +527,26 @@ func (l *Logger) Fatal(msg string, args ...interface{}) {
 	l.log(FATAL, msg, args...)
 	Shutdown() // Flush logger's file buffer
 	os.Exit(1) // Immediate termination - no defers run, other goroutines interrupted
+}
+
+// DebugCtx logs a debug message with request ID extracted from context.
+func (l *Logger) DebugCtx(ctx context.Context, msg string, args ...interface{}) {
+	l.logWithRID(DEBUG, RequestIDFromContext(ctx), msg, args...)
+}
+
+// InfoCtx logs an informational message with request ID extracted from context.
+func (l *Logger) InfoCtx(ctx context.Context, msg string, args ...interface{}) {
+	l.logWithRID(INFO, RequestIDFromContext(ctx), msg, args...)
+}
+
+// WarnCtx logs a warning message with request ID extracted from context.
+func (l *Logger) WarnCtx(ctx context.Context, msg string, args ...interface{}) {
+	l.logWithRID(WARN, RequestIDFromContext(ctx), msg, args...)
+}
+
+// ErrorCtx logs an error message with request ID extracted from context.
+func (l *Logger) ErrorCtx(ctx context.Context, msg string, args ...interface{}) {
+	l.logWithRID(ERROR, RequestIDFromContext(ctx), msg, args...)
 }
 
 // ModuleHealth tracks the health status of a module
