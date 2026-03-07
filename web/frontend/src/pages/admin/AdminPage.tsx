@@ -1838,10 +1838,6 @@ function AnalyticsTab() {
                 {eventStats && (
                     <div className="admin-stats-grid" style={{marginTop: 12}}>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{eventStats.total_events.toLocaleString()}</span>
-                            <span className="admin-stat-label">Total Events</span>
-                        </div>
-                        <div className="admin-stat-card">
                             <span className="admin-stat-value">{Object.keys(eventStats.event_counts).length}</span>
                             <span className="admin-stat-label">Event Types</span>
                         </div>
@@ -1896,7 +1892,7 @@ function AnalyticsTab() {
                                     <td>{i + 1}</td>
                                     <td>
                                         <a href={`/player?id=${encodeURIComponent(item.media_id)}`}
-                                           style={{color: 'var(--text-primary)'}}>
+                                           style={{color: 'var(--text-color)'}}>
                                             {item.filename}
                                         </a>
                                     </td>
@@ -2433,7 +2429,8 @@ function RemoteTab() {
                                 </td>
                                 <td>
                                     <button
-                                        className="admin-btn admin-btn-sm"
+                                        className="admin-btn"
+                                        style={{padding: '4px 7px', fontSize: 13}}
                                         onClick={() => handleSync(s.source.name)}
                                         disabled={syncing === s.source.name}
                                         title="Trigger sync"
@@ -2441,10 +2438,10 @@ function RemoteTab() {
                                         <i className={`bi bi-arrow-repeat ${syncing === s.source.name ? 'spinning' : ''}`}/>
                                     </button>
                                     <button
-                                        className="admin-btn admin-btn-sm admin-btn-danger"
+                                        className="admin-btn admin-btn-danger"
                                         onClick={() => handleDelete(s.source.name)}
                                         title="Remove source"
-                                        style={{marginLeft: 4}}
+                                        style={{marginLeft: 4, padding: '4px 7px', fontSize: 13}}
                                     >
                                         <i className="bi bi-trash"/>
                                     </button>
@@ -4663,14 +4660,14 @@ function ExtractorTab() {
     }
 
     return (
-        <div className="admin-section">
+        <div>
             <h3>HLS Stream Proxy</h3>
-            <p style={{color: 'var(--text-secondary)', marginBottom: '1rem'}}>
+            <p style={{color: 'var(--text-muted)', marginBottom: 12}}>
                 Add M3U8 playlist URLs to proxy HLS streams through the server.
                 Streams appear in the media library — no files are downloaded to disk.
             </p>
 
-            {msg && <div className={`admin-alert ${msg.type === 'success' ? 'admin-alert-success' : 'admin-alert-error'}`}>{msg.text}</div>}
+            {msg && <div className={`admin-alert ${msg.type === 'success' ? 'admin-alert-success' : 'admin-alert-danger'}`}>{msg.text}</div>}
 
             {/* Stats */}
             {stats && (
@@ -4689,14 +4686,14 @@ function ExtractorTab() {
                     onChange={e => setNewUrl(e.target.value)}
                     placeholder="M3U8 playlist URL..."
                     required
-                    style={{flex: 2, minWidth: '250px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}
+                    style={{flex: 2, minWidth: '250px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
                 />
                 <input
                     type="text"
                     value={newTitle}
                     onChange={e => setNewTitle(e.target.value)}
                     placeholder="Title (optional)"
-                    style={{flex: 1, minWidth: '150px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}
+                    style={{flex: 1, minWidth: '150px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
                 />
                 <button type="submit" className="admin-btn admin-btn-primary" disabled={adding || !newUrl.trim()}>
                     {adding ? 'Adding...' : 'Add Stream'}
@@ -4705,11 +4702,11 @@ function ExtractorTab() {
 
             {/* Items table */}
             {isLoading ? (
-                <p style={{color: 'var(--text-secondary)'}}>Loading...</p>
+                <p style={{color: 'var(--text-muted)'}}>Loading...</p>
             ) : !items || items.length === 0 ? (
-                <p style={{color: 'var(--text-secondary)'}}>No streams added yet. Paste an M3U8 URL above to get started.</p>
+                <p style={{color: 'var(--text-muted)'}}>No streams added yet. Paste an M3U8 URL above to get started.</p>
             ) : (
-                <div className="admin-table-wrap">
+                <div className="admin-table-wrapper">
                     <table className="admin-table">
                         <thead>
                             <tr>
@@ -4733,7 +4730,8 @@ function ExtractorTab() {
                                     <td>{new Date(item.created_at).toLocaleDateString()}</td>
                                     <td>
                                         <button
-                                            className="admin-btn admin-btn-sm admin-btn-danger"
+                                            className="admin-btn admin-btn-danger"
+                                            style={{fontSize: 12, padding: '3px 8px'}}
                                             onClick={() => handleRemove(item.id, item.title)}
                                             title="Remove from library"
                                         >
@@ -4859,13 +4857,13 @@ function CrawlerTab() {
     }
 
     return (
-        <div className="admin-section">
+        <div>
             <h3>Stream Crawler</h3>
-            <p style={{color: 'var(--text-secondary)', marginBottom: '1rem'}}>
+            <p style={{color: 'var(--text-muted)', marginBottom: 12}}>
                 Crawl target site pages to discover M3U8 streams. Review discovered streams and approve them to add to the media library.
             </p>
 
-            {msg && <div className={`admin-alert ${msg.type === 'success' ? 'admin-alert-success' : 'admin-alert-error'}`}>{msg.text}</div>}
+            {msg && <div className={`admin-alert ${msg.type === 'success' ? 'admin-alert-success' : 'admin-alert-danger'}`}>{msg.text}</div>}
 
             {/* Stats */}
             {stats && (
@@ -4886,14 +4884,14 @@ function CrawlerTab() {
                     onChange={e => setNewUrl(e.target.value)}
                     placeholder="Site URL to crawl..."
                     required
-                    style={{flex: 2, minWidth: '250px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}
+                    style={{flex: 2, minWidth: '250px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
                 />
                 <input
                     type="text"
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
                     placeholder="Name (optional)"
-                    style={{flex: 1, minWidth: '120px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}
+                    style={{flex: 1, minWidth: '120px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
                 />
                 <button type="submit" className="admin-btn admin-btn-primary" disabled={adding || !newUrl.trim()}>
                     {adding ? 'Adding...' : 'Add Target'}
@@ -4902,11 +4900,11 @@ function CrawlerTab() {
 
             {/* Targets Table */}
             {targetsLoading ? (
-                <p style={{color: 'var(--text-secondary)'}}>Loading...</p>
+                <p style={{color: 'var(--text-muted)'}}>Loading...</p>
             ) : !targets || targets.length === 0 ? (
-                <p style={{color: 'var(--text-secondary)'}}>No crawl targets. Add a site URL above.</p>
+                <p style={{color: 'var(--text-muted)'}}>No crawl targets. Add a site URL above.</p>
             ) : (
-                <div className="admin-table-wrap" style={{marginBottom: '2rem'}}>
+                <div className="admin-table-wrapper" style={{marginBottom: 24}}>
                     <table className="admin-table">
                         <thead><tr><th>Name</th><th>URL</th><th>Last Crawled</th><th>Actions</th></tr></thead>
                         <tbody>
@@ -4917,14 +4915,15 @@ function CrawlerTab() {
                                     <td>{t.last_crawled ? new Date(t.last_crawled).toLocaleString() : 'Never'}</td>
                                     <td>
                                         <button
-                                            className="admin-btn admin-btn-sm admin-btn-primary"
+                                            className="admin-btn admin-btn-primary"
+                                            style={{fontSize: 12, padding: '4px 8px'}}
                                             onClick={() => handleCrawl(t.id)}
                                             disabled={crawlingId === t.id || (stats?.crawling ?? false)}
                                         >
                                             {crawlingId === t.id ? 'Crawling...' : 'Crawl'}
                                         </button>
                                         {' '}
-                                        <button className="admin-btn admin-btn-sm admin-btn-danger" onClick={() => handleRemoveTarget(t.id, t.name)}>
+                                        <button className="admin-btn admin-btn-danger" style={{fontSize: 12, padding: '4px 8px'}} onClick={() => handleRemoveTarget(t.id, t.name)}>
                                             Remove
                                         </button>
                                     </td>
@@ -4940,24 +4939,26 @@ function CrawlerTab() {
                 <h4>Discovered Streams</h4>
                 <div style={{display: 'flex', gap: '0.5rem'}}>
                     <button
-                        className={`admin-btn admin-btn-sm ${reviewView === 'pending' ? 'admin-btn-primary' : ''}`}
+                        className={`admin-btn ${reviewView === 'pending' ? 'admin-btn-primary' : ''}`}
+                        style={{fontSize: 12, padding: '4px 10px'}}
                         onClick={() => setReviewView('pending')}
                     >Pending</button>
                     <button
-                        className={`admin-btn admin-btn-sm ${reviewView === 'all' ? 'admin-btn-primary' : ''}`}
+                        className={`admin-btn ${reviewView === 'all' ? 'admin-btn-primary' : ''}`}
+                        style={{fontSize: 12, padding: '4px 10px'}}
                         onClick={() => setReviewView('all')}
                     >All</button>
                 </div>
             </div>
 
             {discoveriesLoading ? (
-                <p style={{color: 'var(--text-secondary)'}}>Loading...</p>
+                <p style={{color: 'var(--text-muted)'}}>Loading...</p>
             ) : !discoveries || discoveries.length === 0 ? (
-                <p style={{color: 'var(--text-secondary)'}}>
+                <p style={{color: 'var(--text-muted)'}}>
                     {reviewView === 'pending' ? 'No pending discoveries. Crawl a target to find streams.' : 'No discoveries yet.'}
                 </p>
             ) : (
-                <div className="admin-table-wrap">
+                <div className="admin-table-wrapper">
                     <table className="admin-table">
                         <thead><tr><th>Title</th><th>Stream URL</th><th>Status</th><th>Found</th><th>Actions</th></tr></thead>
                         <tbody>
@@ -4974,7 +4975,8 @@ function CrawlerTab() {
                                     <td>
                                         {d.status === 'pending' && (<>
                                             <button
-                                                className="admin-btn admin-btn-sm admin-btn-primary"
+                                                className="admin-btn admin-btn-primary"
+                                                style={{fontSize: 12, padding: '4px 8px'}}
                                                 onClick={() => handleApprove(d.id)}
                                                 disabled={approvingId === d.id}
                                                 title="Add to media library"
@@ -4982,12 +4984,12 @@ function CrawlerTab() {
                                                 {approvingId === d.id ? '...' : 'Add'}
                                             </button>
                                             {' '}
-                                            <button className="admin-btn admin-btn-sm" onClick={() => handleIgnore(d.id)} title="Ignore">
+                                            <button className="admin-btn" style={{fontSize: 12, padding: '4px 8px'}} onClick={() => handleIgnore(d.id)} title="Ignore">
                                                 Ignore
                                             </button>
                                         </>)}
                                         {d.status !== 'pending' && (
-                                            <span style={{color: 'var(--text-secondary)', fontSize: '0.85em'}}>{d.reviewed_by || '-'}</span>
+                                            <span style={{color: 'var(--text-muted)', fontSize: 12}}>{d.reviewed_by || '-'}</span>
                                         )}
                                     </td>
                                 </tr>
