@@ -61,26 +61,6 @@ func isTrustedProxy(remoteAddr string) bool {
 	return false
 }
 
-func getClientIP(r *http.Request) string {
-	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		remoteIP = r.RemoteAddr
-	}
-
-	// Only trust forwarded headers from known proxies
-	if isTrustedProxy(remoteIP) {
-		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			ips := strings.Split(forwarded, ",")
-			return strings.TrimSpace(ips[0])
-		}
-		if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
-			return realIP
-		}
-	}
-
-	return remoteIP
-}
-
 // GinRequestID adds a unique request ID to each request via X-Request-ID header.
 // The request ID is stored in:
 //   - Gin context (c.Set) for handler access
