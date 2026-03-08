@@ -199,6 +199,91 @@ func (r *MediaMetadataRepository) List(ctx context.Context) (map[string]*reposit
 	return results, nil
 }
 
+// ListFiltered returns metadata matching the given filter with DB-level
+// pagination. Returns matching rows and the total count before LIMIT/OFFSET.
+func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repositories.MediaFilter) ([]*repositories.MediaMetadata, int64, error) {
+	query := r.db.WithContext(ctx).Model(&mediaMetadataRow{})
+
+	// Apply filters
+	if filter.Category != "" {
+		query = query.Where("category = ?", filter.Category)
+	}
+	if filter.IsMature != nil {
+		query = query.Where("is_mature = ?", *filter.IsMature)
+	}
+	if filter.Search != "" {
+		like := "%" + filter.Search + "%"
+		query = query.Where("path LIKE ? OR category LIKE ?", like, like)
+	}
+
+	// Count total matches before pagination
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count media metadata: %w", err)
+	}
+
+	// Apply sorting
+	switch filter.SortBy {
+	case "views":
+		if filter.SortDesc {
+			query = query.Order("views DESC")
+		} else {
+			query = query.Order("views ASC")
+		}
+	case "date_added":
+		if filter.SortDesc {
+			query = query.Order("date_added DESC")
+		} else {
+			query = query.Order("date_added ASC")
+		}
+	default:
+		if filter.SortDesc {
+			query = query.Order("path DESC")
+		} else {
+			query = query.Order("path ASC")
+		}
+	}
+
+	// Apply pagination
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	var rows []mediaMetadataRow
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to query media metadata: %w", err)
+	}
+
+	// Convert rows and batch-load tags
+	results := make([]*repositories.MediaMetadata, len(rows))
+	paths := make([]string, len(rows))
+	for i := range rows {
+		results[i] = r.rowToMetadata(&rows[i])
+		results[i].Tags = []string{}
+		paths[i] = rows[i].Path
+	}
+
+	if len(paths) > 0 {
+		var tags []mediaTagRow
+		if err := r.db.WithContext(ctx).Where("path IN ?", paths).Find(&tags).Error; err == nil {
+			tagMap := make(map[string][]string)
+			for _, t := range tags {
+				tagMap[t.Path] = append(tagMap[t.Path], t.Tag)
+			}
+			for _, m := range results {
+				if t, ok := tagMap[m.Path]; ok {
+					m.Tags = t
+				}
+			}
+		}
+	}
+
+	return results, total, nil
+}
+
 // IncrementViews increments the view count for a media item.
 // Only updates existing rows to avoid creating metadata entries without a stable_id.
 func (r *MediaMetadataRepository) IncrementViews(ctx context.Context, path string) error {

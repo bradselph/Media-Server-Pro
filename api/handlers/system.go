@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -14,6 +15,9 @@ import (
 
 	"media-server-pro/pkg/models"
 )
+
+// serverStartTime records when the server started, for uptime metrics.
+var serverStartTime = time.Now()
 
 // GetHealth returns server health status for uptime monitors, nginx health checks, and the
 // systemd healthcheck script. Returns 200 when healthy, 503 when any critical module is
@@ -79,14 +83,17 @@ func (h *Handler) GetHealth(c *gin.Context) {
 	c.JSON(httpCode, resp)
 }
 
-// GetMetrics returns Prometheus-style metrics
+// GetMetrics returns Prometheus-style metrics including server info, media
+// stats, streaming stats, analytics, system runtime metrics, and module health.
 func (h *Handler) GetMetrics(c *gin.Context) {
 	var b strings.Builder
 
+	// Server info
 	_, _ = fmt.Fprintf(&b, "# HELP media_server_info Server information\n")
 	_, _ = fmt.Fprintf(&b, "# TYPE media_server_info gauge\n")
 	_, _ = fmt.Fprintf(&b, "media_server_info{version=\"%s\"} 1\n", h.version)
 
+	// Media stats
 	mediaStats := h.media.GetStats()
 	_, _ = fmt.Fprintf(&b, "# HELP media_total_videos Total number of tracked videos\n")
 	_, _ = fmt.Fprintf(&b, "# TYPE media_total_videos gauge\n")
@@ -96,8 +103,9 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 	_, _ = fmt.Fprintf(&b, "# TYPE media_total_audio gauge\n")
 	_, _ = fmt.Fprintf(&b, "media_total_audio %d\n", mediaStats.AudioCount)
 
+	// Streaming stats
 	streamStats := h.streaming.GetStats()
-	_, _ = fmt.Fprintf(&b, "# HELP media_active_sessions Current active sessions\n")
+	_, _ = fmt.Fprintf(&b, "# HELP media_active_sessions Current active streaming sessions\n")
 	_, _ = fmt.Fprintf(&b, "# TYPE media_active_sessions gauge\n")
 	_, _ = fmt.Fprintf(&b, "media_active_sessions %d\n", streamStats.ActiveStreams)
 
@@ -105,10 +113,11 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 	_, _ = fmt.Fprintf(&b, "# TYPE media_total_streams_count counter\n")
 	_, _ = fmt.Fprintf(&b, "media_total_streams_count %d\n", streamStats.TotalStreams)
 
-	_, _ = fmt.Fprintf(&b, "# HELP media_total_bytes_sent Total bytes sent\n")
+	_, _ = fmt.Fprintf(&b, "# HELP media_total_bytes_sent Total bytes sent via streaming\n")
 	_, _ = fmt.Fprintf(&b, "# TYPE media_total_bytes_sent counter\n")
 	_, _ = fmt.Fprintf(&b, "media_total_bytes_sent %d\n", streamStats.TotalBytesSent)
 
+	// Analytics
 	if h.analytics != nil {
 		analyticsStats := h.analytics.GetStats()
 		_, _ = fmt.Fprintf(&b, "# HELP media_total_views Total view count\n")
@@ -118,6 +127,73 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 		_, _ = fmt.Fprintf(&b, "# HELP media_unique_clients Total unique clients\n")
 		_, _ = fmt.Fprintf(&b, "# TYPE media_unique_clients gauge\n")
 		_, _ = fmt.Fprintf(&b, "media_unique_clients %d\n", analyticsStats.UniqueClients)
+	}
+
+	// Security stats
+	if h.security != nil {
+		secStats := h.security.GetStats()
+		_, _ = fmt.Fprintf(&b, "# HELP media_security_blocked_total Total blocked requests\n")
+		_, _ = fmt.Fprintf(&b, "# TYPE media_security_blocked_total counter\n")
+		_, _ = fmt.Fprintf(&b, "media_security_blocked_total %d\n", secStats.TotalBlocked)
+
+		_, _ = fmt.Fprintf(&b, "# HELP media_security_rate_limited_total Total rate-limited requests\n")
+		_, _ = fmt.Fprintf(&b, "# TYPE media_security_rate_limited_total counter\n")
+		_, _ = fmt.Fprintf(&b, "media_security_rate_limited_total %d\n", secStats.TotalRateLimited)
+
+		_, _ = fmt.Fprintf(&b, "# HELP media_security_banned_ips Current number of banned IPs\n")
+		_, _ = fmt.Fprintf(&b, "# TYPE media_security_banned_ips gauge\n")
+		_, _ = fmt.Fprintf(&b, "media_security_banned_ips %d\n", secStats.BannedIPs)
+	}
+
+	// Go runtime metrics
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+
+	_, _ = fmt.Fprintf(&b, "# HELP media_go_goroutines Number of active goroutines\n")
+	_, _ = fmt.Fprintf(&b, "# TYPE media_go_goroutines gauge\n")
+	_, _ = fmt.Fprintf(&b, "media_go_goroutines %d\n", runtime.NumGoroutine())
+
+	_, _ = fmt.Fprintf(&b, "# HELP media_go_memory_alloc_bytes Current heap allocation in bytes\n")
+	_, _ = fmt.Fprintf(&b, "# TYPE media_go_memory_alloc_bytes gauge\n")
+	_, _ = fmt.Fprintf(&b, "media_go_memory_alloc_bytes %d\n", memStats.Alloc)
+
+	_, _ = fmt.Fprintf(&b, "# HELP media_go_memory_sys_bytes Total memory obtained from the OS\n")
+	_, _ = fmt.Fprintf(&b, "# TYPE media_go_memory_sys_bytes gauge\n")
+	_, _ = fmt.Fprintf(&b, "media_go_memory_sys_bytes %d\n", memStats.Sys)
+
+	_, _ = fmt.Fprintf(&b, "# HELP media_go_gc_runs_total Total number of GC runs\n")
+	_, _ = fmt.Fprintf(&b, "# TYPE media_go_gc_runs_total counter\n")
+	_, _ = fmt.Fprintf(&b, "media_go_gc_runs_total %d\n", memStats.NumGC)
+
+	// Server uptime
+	_, _ = fmt.Fprintf(&b, "# HELP media_uptime_seconds Server uptime in seconds\n")
+	_, _ = fmt.Fprintf(&b, "# TYPE media_uptime_seconds gauge\n")
+	_, _ = fmt.Fprintf(&b, "media_uptime_seconds %.0f\n", time.Since(serverStartTime).Seconds())
+
+	// Module health (1 = healthy, 0 = unhealthy)
+	type moduleEntry struct {
+		name   string
+		health func() models.HealthStatus
+	}
+	modules := []moduleEntry{
+		{"database", h.database.Health},
+		{"auth", h.auth.Health},
+		{"media", h.media.Health},
+		{"streaming", h.streaming.Health},
+	}
+	if h.security != nil {
+		modules = append(modules, moduleEntry{"security", h.security.Health})
+	}
+
+	_, _ = fmt.Fprintf(&b, "# HELP media_module_healthy Module health status (1=healthy, 0=unhealthy)\n")
+	_, _ = fmt.Fprintf(&b, "# TYPE media_module_healthy gauge\n")
+	for _, m := range modules {
+		hs := m.health()
+		val := 0
+		if hs.Status == models.StatusHealthy {
+			val = 1
+		}
+		_, _ = fmt.Fprintf(&b, "media_module_healthy{module=\"%s\"} %d\n", m.name, val)
 	}
 
 	c.Header(headerContentType, "text/plain; version=0.0.4")

@@ -500,12 +500,12 @@ type MatureReviewItem struct {
 
 // AuditLogEntry represents an entry in the audit log
 type AuditLogEntry struct {
-	ID        string    `json:"id" db:"id" gorm:"primaryKey;size:255"`
-	Timestamp time.Time `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
-	UserID    string    `json:"user_id" db:"user_id" gorm:"size:255;index"`
-	Username  string    `json:"username" db:"username" gorm:"size:255"`
-	Action    string    `json:"action" db:"action" gorm:"size:100;not null;index"`
-	Resource  string    `json:"resource" db:"resource" gorm:"size:255;index"`
+	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`
+	Timestamp time.Time              `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
+	UserID    string                 `json:"user_id" db:"user_id" gorm:"size:255;index"`
+	Username  string                 `json:"username" db:"username" gorm:"size:255"`
+	Action    string                 `json:"action" db:"action" gorm:"size:100;not null;index"`
+	Resource  string                 `json:"resource" db:"resource" gorm:"size:255;index"`
 	Details   map[string]interface{} `json:"details,omitempty" db:"details" gorm:"type:json;serializer:json"`
 	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
 	Success   bool                   `json:"success" db:"success" gorm:"index"`

@@ -198,13 +198,20 @@ type SecurityConfig struct {
 	BurstWindow       time.Duration `json:"burst_window"`
 	ViolationsForBan  int           `json:"violations_for_ban"`
 	BanDuration       time.Duration `json:"ban_duration"`
-	MaxFileSizeMB     int           `json:"max_file_size_mb"`
-	CSPEnabled        bool          `json:"csp_enabled"`
-	CSPPolicy         string        `json:"csp_policy"`
-	HSTSEnabled       bool          `json:"hsts_enabled"`
-	HSTSMaxAge        int           `json:"hsts_max_age"`
-	CORSEnabled       bool          `json:"cors_enabled"`
-	CORSOrigins       []string      `json:"cors_origins"`
+	// AuthRateLimit is the requests-per-minute limit for authentication endpoints
+	// (login, register). Stricter than the default to prevent brute-force attacks.
+	// Default: 20 req/min.
+	AuthRateLimit int `json:"auth_rate_limit"`
+	// AuthBurstLimit is the burst limit for authentication endpoints within the
+	// burst window. Default: 5.
+	AuthBurstLimit int      `json:"auth_burst_limit"`
+	MaxFileSizeMB  int      `json:"max_file_size_mb"`
+	CSPEnabled     bool     `json:"csp_enabled"`
+	CSPPolicy      string   `json:"csp_policy"`
+	HSTSEnabled    bool     `json:"hsts_enabled"`
+	HSTSMaxAge     int      `json:"hsts_max_age"`
+	CORSEnabled    bool     `json:"cors_enabled"`
+	CORSOrigins    []string `json:"cors_origins"`
 }
 
 // AdminConfig holds admin panel settings
@@ -352,21 +359,21 @@ type LoggingConfig struct {
 
 // FeaturesConfig holds feature toggle settings.
 type FeaturesConfig struct {
-	EnableHLS           bool `json:"enable_hls"`
-	EnableAnalytics     bool `json:"enable_analytics"`
-	EnablePlaylists     bool `json:"enable_playlists"`
-	EnableUploads       bool `json:"enable_uploads"`
-	EnableThumbnails    bool `json:"enable_thumbnails"`
-	EnableMatureScanner bool `json:"enable_mature_scanner"`
-	EnableRemoteMedia   bool `json:"enable_remote_media"`
-	EnableUserAuth      bool `json:"enable_user_auth"`
-	EnableAdminPanel    bool `json:"enable_admin_panel"`
-	EnableSuggestions   bool `json:"enable_suggestions"`
-	EnableAutoDiscovery bool `json:"enable_auto_discovery"`
-	EnableReceiver             bool `json:"enable_receiver"`
-	EnableExtractor            bool `json:"enable_extractor"`
-	EnableCrawler              bool `json:"enable_crawler"`
-	EnableDuplicateDetection   bool `json:"enable_duplicate_detection"`
+	EnableHLS                bool `json:"enable_hls"`
+	EnableAnalytics          bool `json:"enable_analytics"`
+	EnablePlaylists          bool `json:"enable_playlists"`
+	EnableUploads            bool `json:"enable_uploads"`
+	EnableThumbnails         bool `json:"enable_thumbnails"`
+	EnableMatureScanner      bool `json:"enable_mature_scanner"`
+	EnableRemoteMedia        bool `json:"enable_remote_media"`
+	EnableUserAuth           bool `json:"enable_user_auth"`
+	EnableAdminPanel         bool `json:"enable_admin_panel"`
+	EnableSuggestions        bool `json:"enable_suggestions"`
+	EnableAutoDiscovery      bool `json:"enable_auto_discovery"`
+	EnableReceiver           bool `json:"enable_receiver"`
+	EnableExtractor          bool `json:"enable_extractor"`
+	EnableCrawler            bool `json:"enable_crawler"`
+	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -490,6 +497,8 @@ func DefaultConfig() *Config {
 			BurstWindow:       5 * time.Second,
 			ViolationsForBan:  10,
 			BanDuration:       15 * time.Minute,
+			AuthRateLimit:     20,
+			AuthBurstLimit:    5,
 			MaxFileSizeMB:     0, // 0 = no limit
 			CSPEnabled:        true,
 			CSPPolicy:         "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob:",
@@ -583,17 +592,17 @@ func DefaultConfig() *Config {
 			ColorEnabled: true,
 		},
 		Features: FeaturesConfig{
-			EnableHLS:           true,
-			EnableAnalytics:     true,
-			EnablePlaylists:     true,
-			EnableUploads:       true,
-			EnableThumbnails:    true,
-			EnableMatureScanner: true,
-			EnableRemoteMedia:   false,
-			EnableUserAuth:      true,
-			EnableAdminPanel:    true,
-			EnableSuggestions:   true,
-			EnableAutoDiscovery: true,
+			EnableHLS:                true,
+			EnableAnalytics:          true,
+			EnablePlaylists:          true,
+			EnableUploads:            true,
+			EnableThumbnails:         true,
+			EnableMatureScanner:      true,
+			EnableRemoteMedia:        false,
+			EnableUserAuth:           true,
+			EnableAdminPanel:         true,
+			EnableSuggestions:        true,
+			EnableAutoDiscovery:      true,
 			EnableReceiver:           false,
 			EnableExtractor:          false,
 			EnableCrawler:            false,
@@ -1217,6 +1226,12 @@ func (m *Manager) applySecurityEnvOverrides() {
 	}
 	if val, ok := envGetDuration(time.Minute, "BAN_DURATION_MINUTES"); ok {
 		m.config.Security.BanDuration = val
+	}
+	if val, ok := envGetInt("AUTH_RATE_LIMIT"); ok {
+		m.config.Security.AuthRateLimit = val
+	}
+	if val, ok := envGetInt("AUTH_BURST_LIMIT"); ok {
+		m.config.Security.AuthBurstLimit = val
 	}
 	if val, ok := envGetBool("CORS_ENABLED"); ok {
 		m.config.Security.CORSEnabled = val

@@ -11,31 +11,17 @@ import (
 	"media-server-pro/internal/receiver"
 )
 
-// checkDuplicateDetectionEnabled returns true if the duplicates module is available and enabled.
 func (h *Handler) checkDuplicateDetectionEnabled(c *gin.Context) bool {
-	if h.duplicates == nil {
-		writeError(c, http.StatusServiceUnavailable, "Duplicate detection is not available")
-		return false
-	}
-	if !h.config.Get().Features.EnableDuplicateDetection {
-		writeError(c, http.StatusNotFound, "Duplicate detection feature is disabled")
-		return false
-	}
-	return true
+	return checkFeatureEnabled(c, h.duplicates, "Duplicate detection", func() bool {
+		return h.config.Get().Features.EnableDuplicateDetection
+	})
 }
 
-// checkReceiverEnabled returns true if the receiver module is available and enabled.
 func (h *Handler) checkReceiverEnabled(c *gin.Context) bool {
-	if h.receiver == nil {
-		writeError(c, http.StatusServiceUnavailable, "Media receiver is not available")
-		return false
-	}
-	cfg := h.media.GetConfig()
-	if !cfg.Features.EnableReceiver || !cfg.Receiver.Enabled {
-		writeError(c, http.StatusNotFound, "Media receiver feature is disabled")
-		return false
-	}
-	return true
+	return checkFeatureEnabled(c, h.receiver, "Media receiver", func() bool {
+		cfg := h.media.GetConfig()
+		return cfg.Features.EnableReceiver && cfg.Receiver.Enabled
+	})
 }
 
 // requireReceiverAPIKey validates the X-API-Key header against configured receiver keys.
