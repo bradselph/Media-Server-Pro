@@ -55,7 +55,7 @@ type MediaMetadataRepository interface {
 type MediaFilter struct {
 	Category string // exact match on category
 	IsMature *bool  // filter by mature flag
-	Search   string // substring match on path (LIKE %search%)
+	Search   string // substring match on path or category (LIKE %search%)
 	SortBy   string // column to sort by: "views", "date_added", "path"
 	SortDesc bool   // descending sort
 	Limit    int    // max results (0 = no limit)

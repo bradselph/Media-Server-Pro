@@ -213,7 +213,7 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 	}
 	if filter.Search != "" {
 		like := "%" + filter.Search + "%"
-		query = query.Where("path LIKE ?", like)
+		query = query.Where("path LIKE ? OR category LIKE ?", like, like)
 	}
 
 	// Count total matches before pagination
