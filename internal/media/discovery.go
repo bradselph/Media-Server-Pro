@@ -792,9 +792,6 @@ func (m *Module) extractMetadata(item *models.MediaItem) {
 	if current, exists := m.media[item.Path]; exists {
 		m.applyProbeData(current, &probe)
 	}
-	m.mu.Unlock()
-
-	m.mu.Lock()
 	if m.metadata[item.Path] != nil {
 		m.metadata[item.Path].ProbeModTime = item.DateModified
 	}
@@ -1088,14 +1085,12 @@ func (m *Module) HasFingerprint(fp string) bool {
 // correspond to mature local content.
 func (m *Module) IsFingerprintMature(fp string) bool {
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 	path, ok := m.fingerprintIndex[fp]
-	m.mu.RUnlock()
 	if !ok {
 		return false
 	}
-	m.mu.RLock()
 	item, ok := m.media[path]
-	m.mu.RUnlock()
 	return ok && item.IsMature
 }
 
