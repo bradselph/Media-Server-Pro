@@ -272,19 +272,37 @@ func requireModule(c *gin.Context, module any, name string) bool {
 	return true
 }
 
-func (h *Handler) requireAdmin(c *gin.Context) bool         { return requireModule(c, h.admin, "Admin module") }
-func (h *Handler) requirePlaylist(c *gin.Context) bool      { return requireModule(c, h.playlist, "Playlist feature") }
-func (h *Handler) requireHLS(c *gin.Context) bool           { return requireModule(c, h.hls, "HLS feature") }
-func (h *Handler) requireSuggestions(c *gin.Context) bool   { return requireModule(c, h.suggestions, "Suggestions feature") }
-func (h *Handler) requireScanner(c *gin.Context) bool       { return requireModule(c, h.scanner, "Scanner") }
-func (h *Handler) requireValidator(c *gin.Context) bool     { return requireModule(c, h.validator, "Validator") }
-func (h *Handler) requireBackup(c *gin.Context) bool        { return requireModule(c, h.backup, "Backup feature") }
-func (h *Handler) requireCategorizer(c *gin.Context) bool   { return requireModule(c, h.categorizer, "Categorizer") }
-func (h *Handler) requireAutodiscovery(c *gin.Context) bool { return requireModule(c, h.autodiscovery, "Auto-discovery") }
-func (h *Handler) requireUpdater(c *gin.Context) bool       { return requireModule(c, h.updater, "Updater") }
-func (h *Handler) requireUpload(c *gin.Context) bool        { return requireModule(c, h.upload, "Upload feature") }
-func (h *Handler) requireThumbnails(c *gin.Context) bool    { return requireModule(c, h.thumbnails, "Thumbnails feature") }
-func (h *Handler) requireSecurity(c *gin.Context) bool      { return requireModule(c, h.security, "Security feature") }
+func (h *Handler) requireAdmin(c *gin.Context) bool { return requireModule(c, h.admin, "Admin module") }
+func (h *Handler) requirePlaylist(c *gin.Context) bool {
+	return requireModule(c, h.playlist, "Playlist feature")
+}
+func (h *Handler) requireHLS(c *gin.Context) bool { return requireModule(c, h.hls, "HLS feature") }
+func (h *Handler) requireSuggestions(c *gin.Context) bool {
+	return requireModule(c, h.suggestions, "Suggestions feature")
+}
+func (h *Handler) requireScanner(c *gin.Context) bool { return requireModule(c, h.scanner, "Scanner") }
+func (h *Handler) requireValidator(c *gin.Context) bool {
+	return requireModule(c, h.validator, "Validator")
+}
+func (h *Handler) requireBackup(c *gin.Context) bool {
+	return requireModule(c, h.backup, "Backup feature")
+}
+func (h *Handler) requireCategorizer(c *gin.Context) bool {
+	return requireModule(c, h.categorizer, "Categorizer")
+}
+func (h *Handler) requireAutodiscovery(c *gin.Context) bool {
+	return requireModule(c, h.autodiscovery, "Auto-discovery")
+}
+func (h *Handler) requireUpdater(c *gin.Context) bool { return requireModule(c, h.updater, "Updater") }
+func (h *Handler) requireUpload(c *gin.Context) bool {
+	return requireModule(c, h.upload, "Upload feature")
+}
+func (h *Handler) requireThumbnails(c *gin.Context) bool {
+	return requireModule(c, h.thumbnails, "Thumbnails feature")
+}
+func (h *Handler) requireSecurity(c *gin.Context) bool {
+	return requireModule(c, h.security, "Security feature")
+}
 
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
 // is best-effort — if the admin module is unavailable the action is silently

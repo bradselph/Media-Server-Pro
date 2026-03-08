@@ -204,14 +204,14 @@ type SecurityConfig struct {
 	AuthRateLimit int `json:"auth_rate_limit"`
 	// AuthBurstLimit is the burst limit for authentication endpoints within the
 	// burst window. Default: 5.
-	AuthBurstLimit int `json:"auth_burst_limit"`
-	MaxFileSizeMB  int `json:"max_file_size_mb"`
-	CSPEnabled     bool          `json:"csp_enabled"`
-	CSPPolicy      string        `json:"csp_policy"`
-	HSTSEnabled    bool          `json:"hsts_enabled"`
-	HSTSMaxAge     int           `json:"hsts_max_age"`
-	CORSEnabled    bool          `json:"cors_enabled"`
-	CORSOrigins    []string      `json:"cors_origins"`
+	AuthBurstLimit int      `json:"auth_burst_limit"`
+	MaxFileSizeMB  int      `json:"max_file_size_mb"`
+	CSPEnabled     bool     `json:"csp_enabled"`
+	CSPPolicy      string   `json:"csp_policy"`
+	HSTSEnabled    bool     `json:"hsts_enabled"`
+	HSTSMaxAge     int      `json:"hsts_max_age"`
+	CORSEnabled    bool     `json:"cors_enabled"`
+	CORSOrigins    []string `json:"cors_origins"`
 }
 
 // AdminConfig holds admin panel settings
@@ -359,21 +359,21 @@ type LoggingConfig struct {
 
 // FeaturesConfig holds feature toggle settings.
 type FeaturesConfig struct {
-	EnableHLS           bool `json:"enable_hls"`
-	EnableAnalytics     bool `json:"enable_analytics"`
-	EnablePlaylists     bool `json:"enable_playlists"`
-	EnableUploads       bool `json:"enable_uploads"`
-	EnableThumbnails    bool `json:"enable_thumbnails"`
-	EnableMatureScanner bool `json:"enable_mature_scanner"`
-	EnableRemoteMedia   bool `json:"enable_remote_media"`
-	EnableUserAuth      bool `json:"enable_user_auth"`
-	EnableAdminPanel    bool `json:"enable_admin_panel"`
-	EnableSuggestions   bool `json:"enable_suggestions"`
-	EnableAutoDiscovery bool `json:"enable_auto_discovery"`
-	EnableReceiver             bool `json:"enable_receiver"`
-	EnableExtractor            bool `json:"enable_extractor"`
-	EnableCrawler              bool `json:"enable_crawler"`
-	EnableDuplicateDetection   bool `json:"enable_duplicate_detection"`
+	EnableHLS                bool `json:"enable_hls"`
+	EnableAnalytics          bool `json:"enable_analytics"`
+	EnablePlaylists          bool `json:"enable_playlists"`
+	EnableUploads            bool `json:"enable_uploads"`
+	EnableThumbnails         bool `json:"enable_thumbnails"`
+	EnableMatureScanner      bool `json:"enable_mature_scanner"`
+	EnableRemoteMedia        bool `json:"enable_remote_media"`
+	EnableUserAuth           bool `json:"enable_user_auth"`
+	EnableAdminPanel         bool `json:"enable_admin_panel"`
+	EnableSuggestions        bool `json:"enable_suggestions"`
+	EnableAutoDiscovery      bool `json:"enable_auto_discovery"`
+	EnableReceiver           bool `json:"enable_receiver"`
+	EnableExtractor          bool `json:"enable_extractor"`
+	EnableCrawler            bool `json:"enable_crawler"`
+	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -592,17 +592,17 @@ func DefaultConfig() *Config {
 			ColorEnabled: true,
 		},
 		Features: FeaturesConfig{
-			EnableHLS:           true,
-			EnableAnalytics:     true,
-			EnablePlaylists:     true,
-			EnableUploads:       true,
-			EnableThumbnails:    true,
-			EnableMatureScanner: true,
-			EnableRemoteMedia:   false,
-			EnableUserAuth:      true,
-			EnableAdminPanel:    true,
-			EnableSuggestions:   true,
-			EnableAutoDiscovery: true,
+			EnableHLS:                true,
+			EnableAnalytics:          true,
+			EnablePlaylists:          true,
+			EnableUploads:            true,
+			EnableThumbnails:         true,
+			EnableMatureScanner:      true,
+			EnableRemoteMedia:        false,
+			EnableUserAuth:           true,
+			EnableAdminPanel:         true,
+			EnableSuggestions:        true,
+			EnableAutoDiscovery:      true,
 			EnableReceiver:           false,
 			EnableExtractor:          false,
 			EnableCrawler:            false,

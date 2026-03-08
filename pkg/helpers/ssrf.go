@@ -15,20 +15,20 @@ var privateRanges []*net.IPNet
 
 func init() {
 	private := []string{
-		"127.0.0.0/8",    // IPv4 loopback
-		"10.0.0.0/8",     // RFC-1918
-		"172.16.0.0/12",  // RFC-1918
-		"192.168.0.0/16", // RFC-1918
-		"169.254.0.0/16", // link-local
-		"100.64.0.0/10",  // shared address space (RFC 6598)
-		"192.0.0.0/24",   // IETF protocol assignments
-		"198.18.0.0/15",  // benchmarking
+		"127.0.0.0/8",     // IPv4 loopback
+		"10.0.0.0/8",      // RFC-1918
+		"172.16.0.0/12",   // RFC-1918
+		"192.168.0.0/16",  // RFC-1918
+		"169.254.0.0/16",  // link-local
+		"100.64.0.0/10",   // shared address space (RFC 6598)
+		"192.0.0.0/24",    // IETF protocol assignments
+		"198.18.0.0/15",   // benchmarking
 		"198.51.100.0/24", // documentation
-		"203.0.113.0/24", // documentation
-		"240.0.0.0/4",    // reserved
-		"::1/128",        // IPv6 loopback
-		"fc00::/7",       // IPv6 ULA
-		"fe80::/10",      // IPv6 link-local
+		"203.0.113.0/24",  // documentation
+		"240.0.0.0/4",     // reserved
+		"::1/128",         // IPv6 loopback
+		"fc00::/7",        // IPv6 ULA
+		"fe80::/10",       // IPv6 link-local
 	}
 	for _, cidr := range private {
 		_, block, _ := net.ParseCIDR(cidr)

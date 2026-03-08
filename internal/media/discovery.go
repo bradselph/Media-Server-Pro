@@ -90,8 +90,8 @@ type Module struct {
 	// Built during loadMetadata and updated during scans so that createMediaItem can
 	// detect moved/renamed files by matching fingerprint instead of path.
 	fingerprintIndex map[string]string // fingerprint -> path
-	mu     sync.RWMutex // protects media, mediaByID, categories, metadata, fingerprintIndex, version, lastScan
-	saveMu sync.Mutex   // serialises concurrent saveMetadata calls to prevent MySQL lock waits
+	mu               sync.RWMutex      // protects media, mediaByID, categories, metadata, fingerprintIndex, version, lastScan
+	saveMu           sync.Mutex        // serialises concurrent saveMetadata calls to prevent MySQL lock waits
 	dataDir          string
 	scanning         bool // protected by healthMu; true while Scan() is running
 	healthy          bool
