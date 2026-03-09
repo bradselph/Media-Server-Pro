@@ -753,8 +753,18 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.Unlock()
 	}
 
-	// Auto-detect category
-	item.Category = m.detectCategory(path)
+	// Use stored category from DB when available (from categorizer or admin), else auto-detect from path and persist
+	if hasMeta && meta.Category != "" {
+		item.Category = meta.Category
+	} else {
+		item.Category = m.detectCategory(path)
+		// Persist auto-detected category into metadata so it is saved to DB and used on next load
+		m.mu.Lock()
+		if m.metadata[path] != nil {
+			m.metadata[path].Category = item.Category
+		}
+		m.mu.Unlock()
+	}
 
 	// Check whether a thumbnail already exists on disk and pre-populate the URL.
 	// Thumbnail files are named by stable UUID; the public URL uses the same ID
