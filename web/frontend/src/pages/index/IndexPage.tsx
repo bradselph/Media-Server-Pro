@@ -1091,6 +1091,26 @@ export function IndexPage() {
         return () => ro.disconnect()
     }, [])
 
+    // Batch prefetch thumbnails — single API call, then preload images into browser cache
+    useEffect(() => {
+        if (items.length === 0) return
+        const ids = items
+            .filter(m => m.thumbnail_url)
+            .map(m => m.id)
+            .slice(0, 50)
+        if (ids.length === 0) return
+        mediaApi.getThumbnailBatch(ids, 320)
+            .then(res => {
+                const base = window.location.origin
+                Object.values(res.thumbnails ?? {}).forEach(url => {
+                    const full = url.startsWith('/') ? base + url : url
+                    const img = new Image()
+                    img.src = full
+                })
+            })
+            .catch(() => {})
+    }, [items])
+
     // Prefetch next page for faster pagination
     useEffect(() => {
         if (!hasNextPage) return
