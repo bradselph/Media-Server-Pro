@@ -316,7 +316,9 @@ func (m *Module) UpdateMediaData(items []*MediaInfo) {
 	m.mu.Lock()
 	m.mediaData = newData
 	m.mediaByID = newByID
-	m.catalogueSeeded = len(newData) > 0
+	// Mark catalogue ready after first update (even if empty) so API returns 200 with []
+	// instead of 503 while the UI can show "no suggestions yet" or retry.
+	m.catalogueSeeded = true
 	m.mu.Unlock()
 
 	m.log.Info("Updated media data: %d items", len(items))

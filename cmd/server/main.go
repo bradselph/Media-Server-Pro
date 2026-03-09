@@ -297,8 +297,8 @@ func main() {
 				IsMature:  item.IsMature,
 			})
 		}
+		suggestionsModule.UpdateMediaData(mediaInfos)
 		if len(mediaInfos) > 0 {
-			suggestionsModule.UpdateMediaData(mediaInfos)
 			log.Info("Seeded suggestions with %d items from initial media scan", len(mediaInfos))
 		}
 	}()

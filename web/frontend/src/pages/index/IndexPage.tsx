@@ -877,7 +877,12 @@ export function IndexPage() {
     })
 
     // Personalized suggestions — public, shows genre/history-based picks
-    const {data: suggestions = []} = useQuery<Suggestion[]>({
+    const {
+        data: suggestions = [],
+        isLoading: suggestionsLoading,
+        isError: suggestionsError,
+        refetch: suggestionsRefetch,
+    } = useQuery<Suggestion[]>({
         queryKey: ['suggestions'],
         queryFn: () => suggestionsApi.get(),
         enabled: showRecommended,
@@ -888,7 +893,12 @@ export function IndexPage() {
     })
 
     // Trending suggestions — public, most-viewed recently
-    const {data: trending = []} = useQuery<Suggestion[]>({
+    const {
+        data: trending = [],
+        isLoading: trendingLoading,
+        isError: trendingError,
+        refetch: trendingRefetch,
+    } = useQuery<Suggestion[]>({
         queryKey: ['suggestions-trending'],
         queryFn: () => suggestionsApi.getTrending(),
         enabled: showTrending,
@@ -1104,46 +1114,72 @@ export function IndexPage() {
                 </div>
             )}
 
-            {/* Recommended For You — hidden when user disabled it */}
-            {showRecommended && suggestions.length > 0 && (
+            {/* Recommended For You — shown when enabled; loading/error states with retry */}
+            {showRecommended && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-stars"/> Recommended For You</h3>
-                    <div className="continue-watching-row">
-                        {suggestions.map(entry => (
-                            <Link
-                                key={entry.media_id}
-                                className="continue-card"
-                                to={`/player?id=${encodeURIComponent(entry.media_id)}`}
-                            >
-                                <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
-                                {entry.score != null && (
-                                    <div className="continue-card-meta"><i
-                                        className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
-                                )}
-                            </Link>
-                        ))}
-                    </div>
+                    {suggestionsLoading ? (
+                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading suggestions…</p>
+                    ) : suggestionsError ? (
+                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>
+                            Suggestions are still loading (catalogue may be scanning).{' '}
+                            <button type="button" className="controls-btn" style={{marginLeft: 4}} onClick={() => suggestionsRefetch()}>
+                                Retry
+                            </button>
+                        </p>
+                    ) : suggestions.length > 0 ? (
+                        <div className="continue-watching-row">
+                            {suggestions.map(entry => (
+                                <Link
+                                    key={entry.media_id}
+                                    className="continue-card"
+                                    to={`/player?id=${encodeURIComponent(entry.media_id)}`}
+                                >
+                                    <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
+                                    <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
+                                    {entry.score != null && (
+                                        <div className="continue-card-meta"><i
+                                            className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
+                                    )}
+                                </Link>
+                            ))}
+                        </div>
+                    ) : (
+                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>No recommendations yet. Watch some media to get personalized picks.</p>
+                    )}
                 </div>
             )}
 
-            {/* Trending — hidden when user disabled it */}
-            {showTrending && trending.length > 0 && (
+            {/* Trending — shown when enabled; loading/error states with retry */}
+            {showTrending && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-fire"/> Trending</h3>
-                    <div className="continue-watching-row">
-                        {trending.map(entry => (
-                            <Link
-                                key={entry.media_id}
-                                className="continue-card"
-                                to={`/player?id=${encodeURIComponent(entry.media_id)}`}
-                            >
-                                <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
-                                <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
-                            </Link>
-                        ))}
-                    </div>
+                    {trendingLoading ? (
+                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading trending…</p>
+                    ) : trendingError ? (
+                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>
+                            Trending is still loading.{' '}
+                            <button type="button" className="controls-btn" style={{marginLeft: 4}} onClick={() => trendingRefetch()}>
+                                Retry
+                            </button>
+                        </p>
+                    ) : trending.length > 0 ? (
+                        <div className="continue-watching-row">
+                            {trending.map(entry => (
+                                <Link
+                                    key={entry.media_id}
+                                    className="continue-card"
+                                    to={`/player?id=${encodeURIComponent(entry.media_id)}`}
+                                >
+                                    <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
+                                    <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
+                                    <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
+                                </Link>
+                            ))}
+                        </div>
+                    ) : (
+                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>No trending items yet.</p>
+                    )}
                 </div>
             )}
 

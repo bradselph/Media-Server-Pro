@@ -168,7 +168,12 @@ export function PlayerPage() {
     useEqualizer(audioReady && media?.type === 'audio' ? audioRef.current : null)
 
     // Fetch similar media via suggestions engine (semantic similarity by category/tags/type)
-    const {data: similarData = [], isLoading: relatedLoading} = useQuery({
+    const {
+        data: similarData = [],
+        isLoading: relatedLoading,
+        isError: similarError,
+        refetch: similarRefetch,
+    } = useQuery({
         queryKey: ['media-similar', mediaId],
         queryFn: () => suggestionsApi.getSimilar(mediaId ?? ''),
         enabled: !!mediaId,
@@ -1217,7 +1222,14 @@ export function PlayerPage() {
                             <div className="player-sidebar-card">
                                 <h3><i className="bi bi-play-fill"/> Similar Media</h3>
                                 {relatedLoading ? (
-                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading...</p>
+                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading…</p>
+                                ) : similarError ? (
+                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>
+                                        Similar media still loading.{' '}
+                                        <button type="button" className="media-action-btn" style={{marginTop: 4}} onClick={() => similarRefetch()}>
+                                            Retry
+                                        </button>
+                                    </p>
                                 ) : related.length === 0 ? (
                                     <p style={{color: 'var(--text-muted)', fontSize: 13}}>No similar media found.</p>
                                 ) : (
