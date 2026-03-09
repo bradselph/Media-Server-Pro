@@ -226,6 +226,17 @@
     gap: 16px;
 }
 
+.media-grid-virtual-row {
+    display: grid;
+    grid-template-columns: repeat(var(--grid-cols, 4), minmax(220px, 1fr));
+    gap: 16px;
+    height: 220px;
+}
+
+.media-grid-scroll {
+    scroll-behavior: smooth;
+}
+
 .media-card {
     background: var(--card-bg);
     border: 1px solid var(--border-color);

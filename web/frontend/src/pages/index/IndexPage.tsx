@@ -1,6 +1,7 @@
 import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
 import {keepPreviousData, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
+import {useVirtualizer} from '@tanstack/react-virtual'
 import {decode} from 'blurhash'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
@@ -36,6 +37,63 @@ function BlurHashPlaceholder({hash, className, style}: { hash: string; className
     }, [hash])
 
     return <canvas ref={canvasRef} className={className} style={{...style, display: 'block', width: '100%', height: '100%', objectFit: 'cover'}} aria-hidden />
+}
+
+// Virtualized media grid — renders only visible rows for large libraries
+const ROW_HEIGHT = 220
+const CARD_MIN_WIDTH = 236 // 220 + 16 gap
+
+function VirtualizedMediaGrid({
+    items,
+    columns,
+    getScrollElement,
+    overscan = 2,
+    renderCard,
+}: {
+    items: MediaItem[]
+    columns: number
+    getScrollElement: () => HTMLElement | null
+    overscan?: number
+    renderCard: (item: MediaItem) => React.ReactNode
+}) {
+    const rowCount = Math.ceil(items.length / columns)
+    const rowVirtualizer = useVirtualizer({
+        count: rowCount,
+        getScrollElement,
+        estimateSize: () => ROW_HEIGHT,
+        overscan,
+    })
+
+    return (
+        <div
+            style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+            }}
+        >
+            {rowVirtualizer.getVirtualItems().map(virtualRow => (
+                <div
+                    key={virtualRow.key}
+                    className="media-grid media-grid-virtual-row"
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                        ['--grid-cols' as string]: columns,
+                    }}
+                >
+                    {Array.from({length: columns}, (_, col) => {
+                        const idx = virtualRow.index * columns + col
+                        const item = items[idx]
+                        return item ? renderCard(item) : <div key={`empty-${virtualRow.index}-${col}`} style={{minWidth: 220, minHeight: 1}} />
+                    })}
+                </div>
+            ))}
+        </div>
+    )
 }
 
 // ── Upload Modal ──────────────────────────────────────────────────────────────
@@ -1021,6 +1079,18 @@ export function IndexPage() {
     const totalPages = mediaData?.total_pages ?? 1
     const hasNextPage = page < totalPages
 
+    const gridScrollRef = useRef<HTMLDivElement>(null)
+    const [gridColumns, setGridColumns] = useState(4)
+    useEffect(() => {
+        const el = gridScrollRef.current
+        if (!el) return
+        const ro = new ResizeObserver(() => {
+            setGridColumns(Math.max(2, Math.floor(el.clientWidth / CARD_MIN_WIDTH)))
+        })
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
+
     // Prefetch next page for faster pagination
     useEffect(() => {
         if (!hasNextPage) return
@@ -1379,18 +1449,31 @@ export function IndexPage() {
                         </p>
                     </div>
                 ) : (
-                    <div className="media-grid" style={(mediaFetching && mediaStale) ? {opacity: 0.6, pointerEvents: 'none', transition: 'opacity 0.15s ease'} : {transition: 'opacity 0.15s ease'}}>
-                        {items.map(item => (
-                            <MediaCard
-                                key={item.id}
-                                item={item}
-                                isPlaying={nowPlaying?.id === item.id}
-                                onPlay={handlePlay}
-                                canDownload={permissions.can_download}
-                                canViewMature={permissions.can_view_mature && (user?.preferences?.show_mature === true)}
-                                isAuthenticated={isAuthenticated}
-                            />
-                        ))}
+                    <div
+                        ref={gridScrollRef}
+                        className="media-grid-scroll"
+                        style={{
+                            overflow: 'auto',
+                            maxHeight: 'min(70vh, 800px)',
+                            ...((mediaFetching && mediaStale) ? {opacity: 0.6, pointerEvents: 'none', transition: 'opacity 0.15s ease'} : {transition: 'opacity 0.15s ease'}),
+                        }}
+                    >
+                        <VirtualizedMediaGrid
+                            items={items}
+                            columns={gridColumns}
+                            getScrollElement={() => gridScrollRef.current}
+                            renderCard={item => (
+                                <MediaCard
+                                    key={item.id}
+                                    item={item}
+                                    isPlaying={nowPlaying?.id === item.id}
+                                    onPlay={handlePlay}
+                                    canDownload={permissions.can_download}
+                                    canViewMature={permissions.can_view_mature && (user?.preferences?.show_mature === true)}
+                                    isAuthenticated={isAuthenticated}
+                                />
+                            )}
+                        />
                     </div>
                 )}
 
