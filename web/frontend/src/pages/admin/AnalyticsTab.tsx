@@ -83,16 +83,51 @@ export function AnalyticsTab() {
                             <span className="admin-stat-value">{(summary.total_views ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Total Views</span>
                         </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{(summary.today_views ?? 0).toLocaleString()}</span>
+                            <span className="admin-stat-label">Views Today</span>
+                        </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{(summary.total_media ?? 0).toLocaleString()}</span>
+                            <span className="admin-stat-label">Media Tracked</span>
+                        </div>
                     </div>
                 )}
                 {/* Feature 5: Event detail stats */}
                 {eventStats && (
+                    <>
                     <div className="admin-stats-grid" style={{marginTop: 12}}>
                         <div className="admin-stat-card">
                             <span className="admin-stat-value">{Object.keys(eventStats.event_counts).length}</span>
                             <span className="admin-stat-label">Event Types</span>
                         </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{eventStats.total_events.toLocaleString()}</span>
+                            <span className="admin-stat-label">Total Tracked</span>
+                        </div>
                     </div>
+                    {/* Hourly activity distribution */}
+                    {eventStats.hourly_events && eventStats.hourly_events.some(v => v > 0) && (
+                        <div style={{marginTop: 12}}>
+                            <h3 style={{fontSize: 14, margin: '0 0 8px'}}>Today&apos;s Hourly Activity</h3>
+                            <div style={{display: 'flex', alignItems: 'flex-end', gap: 2, height: 60}}>
+                                {eventStats.hourly_events.map((count, hour) => {
+                                    const max = Math.max(...eventStats.hourly_events)
+                                    const pct = max > 0 ? (count / max) * 100 : 0
+                                    return (
+                                        <div key={hour} title={`${hour}:00 — ${count} events`}
+                                             style={{flex: 1, minWidth: 0, background: 'var(--color-primary, #3b82f6)',
+                                                     borderRadius: '2px 2px 0 0', height: `${Math.max(pct, 2)}%`,
+                                                     opacity: count > 0 ? 1 : 0.15}} />
+                                    )
+                                })}
+                            </div>
+                            <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2}}>
+                                <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span>
+                            </div>
+                        </div>
+                    )}
+                    </>
                 )}
                 {/* Feature 9: Suggestion stats */}
                 {suggestionStats && (

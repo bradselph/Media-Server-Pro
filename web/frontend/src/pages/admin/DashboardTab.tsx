@@ -68,6 +68,10 @@ export function DashboardTab() {
                             <span className="admin-stat-value">{stats.hls_jobs_running}</span>
                             <span className="admin-stat-label">HLS Running</span>
                         </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{stats.hls_jobs_completed}</span>
+                            <span className="admin-stat-label">HLS Completed</span>
+                        </div>
                     </div>
 
                     <div className="admin-card">
