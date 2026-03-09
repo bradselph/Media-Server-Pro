@@ -269,6 +269,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
 
 const THUMBNAIL_RETRY_DELAY_MS = 2500
 const THUMBNAIL_MAX_RETRIES = 3
+const THUMBNAIL_LAZY_MARGIN_PX = 200
 
 function MediaCard({
                        item,
@@ -292,6 +293,8 @@ function MediaCard({
     const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(() => item.thumbnail_url ?? null)
     const [thumbnailError, setThumbnailError] = useState(false)
     const [imgLoaded, setImgLoaded] = useState(false)
+    const [inView, setInView] = useState(false)
+    const containerRef = useRef<HTMLDivElement>(null)
     const retryCountRef = useRef(0)
     const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -355,6 +358,20 @@ function MediaCard({
         }
     }, [])
 
+    // IntersectionObserver: load thumbnail 200px before card enters viewport
+    useEffect(() => {
+        const el = containerRef.current
+        if (!el) return
+        const obs = new IntersectionObserver(
+            ([entry]) => {
+                if (entry?.isIntersecting) setInView(true)
+            },
+            {rootMargin: `${THUMBNAIL_LAZY_MARGIN_PX}px`}
+        )
+        obs.observe(el)
+        return () => obs.disconnect()
+    }, [])
+
     function handleThumbnailError() {
         const baseUrl = item.thumbnail_url
         if (!baseUrl || retryCountRef.current >= THUMBNAIL_MAX_RETRIES) {
@@ -377,6 +394,7 @@ function MediaCard({
     return (
         <div className={`media-card ${isPlaying ? 'playing' : ''} ${restricted ? 'mature-restricted' : ''}`}>
             <div
+                ref={containerRef}
                 onClick={goToPlayer}
                 style={{cursor: restricted ? 'default' : 'pointer', position: 'relative'}}
                 onMouseEnter={handleMouseEnter}
@@ -393,9 +411,9 @@ function MediaCard({
                         )}
                         <img
                             className="media-thumbnail"
-                            src={thumbnailSrc || item.thumbnail_url}
+                            src={inView ? (thumbnailSrc || item.thumbnail_url) : undefined}
                             alt={formatTitle(item.name)}
-                            loading="lazy"
+                            loading={inView ? 'eager' : 'lazy'}
                             style={{
                                 ...(restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : {}),
                                 opacity: imgLoaded ? 1 : (item.blur_hash ? 0 : 1),
@@ -997,6 +1015,24 @@ export function IndexPage() {
 
     const items = mediaData?.items ?? []
     const totalPages = mediaData?.total_pages ?? 1
+    const hasNextPage = page < totalPages
+
+    // Prefetch next page for faster pagination
+    useEffect(() => {
+        if (!hasNextPage) return
+        queryClient.prefetchQuery({
+            queryKey: ['media', {page: page + 1, limit, type: mediaType, sort: sortBy, order: sortOrder, category, search}],
+            queryFn: () => mediaApi.list({
+                page: page + 1,
+                limit: limit === 0 ? undefined : limit,
+                type: mediaType === 'all' ? undefined : mediaType,
+                sort: sortBy,
+                sort_order: sortOrder,
+                category: category === 'all' ? undefined : category,
+                search: search || undefined,
+            }),
+        })
+    }, [page, limit, mediaType, sortBy, sortOrder, category, search, hasNextPage, queryClient])
     const totalItems = mediaData?.total_items ?? 0
 
     function handlePlay(item: MediaItem) {

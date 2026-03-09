@@ -13,6 +13,8 @@ import (
 	"media-server-pro/pkg/helpers"
 )
 
+const batchThumbnailMaxIDs = 50
+
 // acceptsWebP returns true if the request's Accept header includes image/webp
 func acceptsWebP(r *http.Request) bool {
 	accept := r.Header.Get("Accept")
@@ -269,6 +271,43 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 	writeSuccess(c, map[string]interface{}{
 		"previews": urls,
 	})
+}
+
+// GetThumbnailBatch returns thumbnail URLs for multiple media IDs in one request.
+// Query: ?ids=id1,id2,id3 (comma-separated, max 50). Optional ?w=320 for responsive sizes (Phase 1.2).
+func (h *Handler) GetThumbnailBatch(c *gin.Context) {
+	if !h.requireThumbnails(c) {
+		return
+	}
+	idsParam := c.Query("ids")
+	if idsParam == "" {
+		writeError(c, http.StatusBadRequest, "ids parameter required")
+		return
+	}
+	rawIDs := strings.Split(idsParam, ",")
+	ids := make([]string, 0, len(rawIDs))
+	seen := make(map[string]bool)
+	for _, id := range rawIDs {
+		id = strings.TrimSpace(id)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) > batchThumbnailMaxIDs {
+		ids = ids[:batchThumbnailMaxIDs]
+	}
+	w := strings.TrimSpace(c.Query("w"))
+
+	thumbnailsMap := make(map[string]string, len(ids))
+	for _, id := range ids {
+		url := "/thumbnail?id=" + id
+		if w != "" {
+			url += "&w=" + w
+		}
+		thumbnailsMap[id] = url
+	}
+	writeSuccess(c, map[string]interface{}{"thumbnails": thumbnailsMap})
 }
 
 // GetThumbnailStats returns thumbnail generation stats

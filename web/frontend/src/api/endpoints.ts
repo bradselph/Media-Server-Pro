@@ -199,6 +199,12 @@ export const mediaApi = {
 
     getThumbnailPreviews: (id: string) =>
         api.get<ThumbnailPreviews>(`/api/thumbnails/previews?id=${encodeURIComponent(id)}`),
+
+    getThumbnailBatch: (ids: string[], width?: number) => {
+        const qs = new URLSearchParams({ids: ids.join(',')})
+        if (width) qs.set('w', String(width))
+        return api.get<{thumbnails: Record<string, string>}>(`/api/thumbnails/batch?${qs}`)
+    },
 }
 
 // ── HLS ──

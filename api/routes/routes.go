@@ -348,6 +348,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 
 	// Thumbnail previews (public) — frontend uses mediaApi.getThumbnailPreviews()
 	api.GET("/thumbnails/previews", h.GetThumbnailPreviews)
+	// Batch thumbnail URLs — ?ids=id1,id2&w=320 (max 50 ids)
+	api.GET("/thumbnails/batch", h.GetThumbnailBatch)
 
 	// Suggestions routes (public)
 	api.GET("/suggestions", h.GetSuggestions)
