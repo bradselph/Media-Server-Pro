@@ -1,6 +1,8 @@
 import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
 import {keepPreviousData, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
+import {useVirtualizer} from '@tanstack/react-virtual'
+import {decode} from 'blurhash'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -12,6 +14,87 @@ import {useEqualizer} from '@/hooks/useEqualizer'
 import {EqualizerPanel} from '@/components/EqualizerPanel'
 import {formatDuration, formatFileSize, formatTitle} from '@/utils/formatters'
 import '@/styles/index.css'
+
+// BlurHashPlaceholder renders a decoded BlurHash as a canvas for LQIP
+function BlurHashPlaceholder({hash, className, style}: { hash: string; className?: string; style?: CSSProperties }) {
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+
+    useEffect(() => {
+        if (!hash || !canvasRef.current) return
+        try {
+            const pixels = decode(hash, 32, 18)
+            const canvas = canvasRef.current
+            const ctx = canvas.getContext('2d')
+            if (!ctx) return
+            canvas.width = 32
+            canvas.height = 18
+            const imageData = ctx.createImageData(32, 18)
+            imageData.data.set(pixels)
+            ctx.putImageData(imageData, 0, 0)
+        } catch {
+            // Invalid hash — ignore
+        }
+    }, [hash])
+
+    return <canvas ref={canvasRef} className={className} style={{...style, display: 'block', width: '100%', height: '100%', objectFit: 'cover'}} aria-hidden />
+}
+
+// Virtualized media grid — renders only visible rows for large libraries
+const ROW_HEIGHT = 220
+const CARD_MIN_WIDTH = 236 // 220 + 16 gap
+
+function VirtualizedMediaGrid({
+    items,
+    columns,
+    getScrollElement,
+    overscan = 2,
+    renderCard,
+}: {
+    items: MediaItem[]
+    columns: number
+    getScrollElement: () => HTMLElement | null
+    overscan?: number
+    renderCard: (item: MediaItem) => React.ReactNode
+}) {
+    const rowCount = Math.ceil(items.length / columns)
+    const rowVirtualizer = useVirtualizer({
+        count: rowCount,
+        getScrollElement,
+        estimateSize: () => ROW_HEIGHT,
+        overscan,
+    })
+
+    return (
+        <div
+            style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+            }}
+        >
+            {rowVirtualizer.getVirtualItems().map(virtualRow => (
+                <div
+                    key={virtualRow.key}
+                    className="media-grid media-grid-virtual-row"
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                        ['--grid-cols' as string]: columns,
+                    }}
+                >
+                    {Array.from({length: columns}, (_, col) => {
+                        const idx = virtualRow.index * columns + col
+                        const item = items[idx]
+                        return item ? renderCard(item) : <div key={`empty-${virtualRow.index}-${col}`} style={{minWidth: 220, minHeight: 1}} />
+                    })}
+                </div>
+            ))}
+        </div>
+    )
+}
 
 // ── Upload Modal ──────────────────────────────────────────────────────────────
 
@@ -242,6 +325,10 @@ function UploadModal({onClose, onDone, maxFileSize}: {
 
 // ── MediaCard Component ───────────────────────────────────────────────────────
 
+const THUMBNAIL_RETRY_DELAY_MS = 2500
+const THUMBNAIL_MAX_RETRIES = 3
+const THUMBNAIL_LAZY_MARGIN_PX = 200
+
 function MediaCard({
                        item,
                        isPlaying,
@@ -261,6 +348,13 @@ function MediaCard({
     const restricted = item.is_mature && !canViewMature
     const [previewUrls, setPreviewUrls] = useState<string[] | null>(null)
     const [previewIndex, setPreviewIndex] = useState(0)
+    const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(() => item.thumbnail_url ?? null)
+    const [thumbnailError, setThumbnailError] = useState(false)
+    const [imgLoaded, setImgLoaded] = useState(false)
+    const [inView, setInView] = useState(false)
+    const containerRef = useRef<HTMLDivElement>(null)
+    const retryCountRef = useRef(0)
+    const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const fetchedRef = useRef(false)
 
@@ -269,6 +363,16 @@ function MediaCard({
         : item.thumbnail_url
 
     const hoveringRef = useRef(false)
+
+    // Keep thumbnailSrc in sync when switching between main and preview
+    useEffect(() => {
+        if (currentThumbnail) {
+            setThumbnailError(false)
+            setThumbnailSrc(currentThumbnail)
+            setImgLoaded(false)
+            retryCountRef.current = 0
+        }
+    }, [currentThumbnail])
 
     function startCycling(urls: string[]) {
         if (intervalRef.current) clearInterval(intervalRef.current)
@@ -308,8 +412,37 @@ function MediaCard({
     useEffect(() => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current)
+            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
         }
     }, [])
+
+    // IntersectionObserver: load thumbnail 200px before card enters viewport
+    useEffect(() => {
+        const el = containerRef.current
+        if (!el) return
+        const obs = new IntersectionObserver(
+            ([entry]) => {
+                if (entry?.isIntersecting) setInView(true)
+            },
+            {rootMargin: `${THUMBNAIL_LAZY_MARGIN_PX}px`}
+        )
+        obs.observe(el)
+        return () => obs.disconnect()
+    }, [])
+
+    function handleThumbnailError() {
+        const baseUrl = item.thumbnail_url
+        if (!baseUrl || retryCountRef.current >= THUMBNAIL_MAX_RETRIES) {
+            setThumbnailError(true)
+            return
+        }
+        retryCountRef.current += 1
+        retryTimeoutRef.current = setTimeout(() => {
+            retryTimeoutRef.current = null
+            const sep = baseUrl.includes('?') ? '&' : '?'
+            setThumbnailSrc(`${baseUrl}${sep}_=${Date.now()}`)
+        }, THUMBNAIL_RETRY_DELAY_MS)
+    }
 
     function goToPlayer() {
         if (restricted) return
@@ -319,22 +452,46 @@ function MediaCard({
     return (
         <div className={`media-card ${isPlaying ? 'playing' : ''} ${restricted ? 'mature-restricted' : ''}`}>
             <div
+                ref={containerRef}
                 onClick={goToPlayer}
                 style={{cursor: restricted ? 'default' : 'pointer', position: 'relative'}}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
             >
-                {item.thumbnail_url ? (
-                    <img
-                        className="media-thumbnail"
-                        src={currentThumbnail || item.thumbnail_url}
-                        alt={formatTitle(item.name)}
-                        loading="lazy"
-                        style={restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : undefined}
-                        onError={e => {
-                            (e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                    />
+                {item.thumbnail_url && !thumbnailError ? (
+                    <>
+                        {item.blur_hash && (
+                            <BlurHashPlaceholder
+                                hash={item.blur_hash}
+                                className="media-thumbnail media-thumbnail-blurhash"
+                                style={{position: 'absolute', inset: 0, opacity: imgLoaded ? 0 : 1, transition: 'opacity 0.2s ease'}}
+                            />
+                        )}
+                        <img
+                            className="media-thumbnail"
+                            src={inView ? (thumbnailSrc || item.thumbnail_url) : undefined}
+                            srcSet={(!previewUrls || previewUrls.length === 0) && item.thumbnail_url
+                                ? [160, 320, 640].map(w => `${item.thumbnail_url!}${item.thumbnail_url!.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
+                                : undefined}
+                            sizes={(!previewUrls || previewUrls.length === 0) ? '(max-width: 640px) 160px, (max-width: 1024px) 320px, 640px' : undefined}
+                            alt={formatTitle(item.name)}
+                            loading={inView ? 'eager' : 'lazy'}
+                            style={{
+                                ...(restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : {}),
+                                opacity: imgLoaded ? 1 : (item.blur_hash ? 0 : 1),
+                                transition: 'opacity 0.2s ease',
+                                position: 'relative',
+                                zIndex: 1,
+                            }}
+                            onError={handleThumbnailError}
+                            onLoad={() => {
+                                retryCountRef.current = 0
+                                setImgLoaded(true)
+                            }}
+                        />
+                    </>
+                ) : item.blur_hash ? (
+                    <BlurHashPlaceholder hash={item.blur_hash} className="media-thumbnail" />
                 ) : (
                     <div className="media-thumbnail-placeholder">
                         <i className={item.type === 'video' ? 'bi bi-play-circle' : 'bi bi-music-note-beamed'}/>
@@ -920,6 +1077,36 @@ export function IndexPage() {
 
     const items = mediaData?.items ?? []
     const totalPages = mediaData?.total_pages ?? 1
+    const hasNextPage = page < totalPages
+
+    const gridScrollRef = useRef<HTMLDivElement>(null)
+    const [gridColumns, setGridColumns] = useState(4)
+    useEffect(() => {
+        const el = gridScrollRef.current
+        if (!el) return
+        const ro = new ResizeObserver(() => {
+            setGridColumns(Math.max(2, Math.floor(el.clientWidth / CARD_MIN_WIDTH)))
+        })
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
+
+    // Prefetch next page for faster pagination
+    useEffect(() => {
+        if (!hasNextPage) return
+        queryClient.prefetchQuery({
+            queryKey: ['media', {page: page + 1, limit, type: mediaType, sort: sortBy, order: sortOrder, category, search}],
+            queryFn: () => mediaApi.list({
+                page: page + 1,
+                limit: limit === 0 ? undefined : limit,
+                type: mediaType === 'all' ? undefined : mediaType,
+                sort: sortBy,
+                sort_order: sortOrder,
+                category: category === 'all' ? undefined : category,
+                search: search || undefined,
+            }),
+        })
+    }, [page, limit, mediaType, sortBy, sortOrder, category, search, hasNextPage, queryClient])
     const totalItems = mediaData?.total_items ?? 0
 
     function handlePlay(item: MediaItem) {
@@ -1262,18 +1449,31 @@ export function IndexPage() {
                         </p>
                     </div>
                 ) : (
-                    <div className="media-grid" style={(mediaFetching && mediaStale) ? {opacity: 0.6, pointerEvents: 'none', transition: 'opacity 0.15s ease'} : {transition: 'opacity 0.15s ease'}}>
-                        {items.map(item => (
-                            <MediaCard
-                                key={item.id}
-                                item={item}
-                                isPlaying={nowPlaying?.id === item.id}
-                                onPlay={handlePlay}
-                                canDownload={permissions.can_download}
-                                canViewMature={permissions.can_view_mature && (user?.preferences?.show_mature === true)}
-                                isAuthenticated={isAuthenticated}
-                            />
-                        ))}
+                    <div
+                        ref={gridScrollRef}
+                        className="media-grid-scroll"
+                        style={{
+                            overflow: 'auto',
+                            maxHeight: 'min(70vh, 800px)',
+                            ...((mediaFetching && mediaStale) ? {opacity: 0.6, pointerEvents: 'none', transition: 'opacity 0.15s ease'} : {transition: 'opacity 0.15s ease'}),
+                        }}
+                    >
+                        <VirtualizedMediaGrid
+                            items={items}
+                            columns={gridColumns}
+                            getScrollElement={() => gridScrollRef.current}
+                            renderCard={item => (
+                                <MediaCard
+                                    key={item.id}
+                                    item={item}
+                                    isPlaying={nowPlaying?.id === item.id}
+                                    onPlay={handlePlay}
+                                    canDownload={permissions.can_download}
+                                    canViewMature={permissions.can_view_mature && (user?.preferences?.show_mature === true)}
+                                    isAuthenticated={isAuthenticated}
+                                />
+                            )}
+                        />
                     </div>
                 )}
 

@@ -2,6 +2,7 @@
 package thumbnails
 
 import (
+	"container/heap"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,30 +22,44 @@ import (
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 
+	"github.com/buckket/go-blurhash"
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
 var (
 	// ErrThumbnailPending indicates thumbnail is being generated
 	ErrThumbnailPending = fmt.Errorf("thumbnail generation pending")
+
+	// Responsive thumbnail widths (16:9: 160x90, 320x180, 640x360)
+	responsiveWidths  = []int{160, 320, 640}
+	responsiveSuffixes = map[int]string{160: "-sm", 320: "-md", 640: "-lg"}
 )
+
+// BlurHashUpdater updates BlurHash in metadata storage (e.g. MediaMetadataRepository)
+type BlurHashUpdater interface {
+	UpdateBlurHash(ctx context.Context, path string, hash string) error
+}
 
 // Module handles thumbnail generation
 type Module struct {
-	log          *logger.Logger
-	config       *config.Manager
-	thumbnailDir string
-	ffmpegPath   string
-	ffprobePath  string
-	jobQueue     chan *ThumbnailJob
-	ctx          context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
-	stats        Stats
-	statsMu      sync.RWMutex
-	healthMu     sync.RWMutex
-	healthy      bool
-	healthMsg    string
+	log             *logger.Logger
+	config          *config.Manager
+	thumbnailDir    string
+	ffmpegPath      string
+	ffprobePath     string
+	jobHeap         jobHeap
+	jobMu           sync.Mutex
+	jobCond         *sync.Cond
+	jobCap          int // max queue size
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	stats           Stats
+	statsMu         sync.RWMutex
+	healthMu        sync.RWMutex
+	healthy         bool
+	healthMsg       string
+	blurHashUpdater BlurHashUpdater
 	// inFlight tracks output paths currently queued or being processed to
 	// prevent duplicate jobs when the background task and HTTP handlers both
 	// call GenerateThumbnail for the same file before it is written to disk.
@@ -63,6 +79,27 @@ type ThumbnailJob struct {
 	IsAudio    bool
 }
 
+// priorityJob wraps ThumbnailJob with priority (0=high/user-triggered, 1=low/background)
+type priorityJob struct {
+	job      *ThumbnailJob
+	priority int
+}
+
+// jobHeap implements heap.Interface for priority queue (lower priority value = higher priority)
+type jobHeap []*priorityJob
+
+func (h jobHeap) Len() int            { return len(h) }
+func (h jobHeap) Less(i, j int) bool  { return h[i].priority < h[j].priority }
+func (h jobHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
+func (h *jobHeap) Push(x interface{}) { *h = append(*h, x.(*priorityJob)) }
+func (h *jobHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	item := old[n-1]
+	*h = old[0 : n-1]
+	return item
+}
+
 // Stats holds thumbnail generation statistics
 type Stats struct {
 	Generated int64
@@ -76,8 +113,8 @@ func (m *Module) Name() string {
 	return "thumbnails"
 }
 
-// NewModule creates a new thumbnail module
-func NewModule(cfg *config.Manager) *Module {
+// NewModule creates a new thumbnail module. blurHashUpdater may be nil to skip BlurHash storage.
+func NewModule(cfg *config.Manager, blurHashUpdater BlurHashUpdater) *Module {
 	log := logger.New("thumbnails")
 	currentConfig := cfg.Get()
 
@@ -87,14 +124,18 @@ func NewModule(cfg *config.Manager) *Module {
 		queueSize = 100
 	}
 
-	return &Module{
-		log:          log,
-		config:       cfg,
-		thumbnailDir: currentConfig.Directories.Thumbnails,
-		jobQueue:     make(chan *ThumbnailJob, queueSize),
-		healthy:      false,
-		healthMsg:    "", // Empty message to suppress warning before Start() is called
+	m := &Module{
+		log:             log,
+		config:          cfg,
+		thumbnailDir:    currentConfig.Directories.Thumbnails,
+		jobHeap:         jobHeap{},
+		jobCap:          queueSize,
+		healthy:         false,
+		healthMsg:       "", // Empty message to suppress warning before Start() is called
+		blurHashUpdater: blurHashUpdater,
 	}
+	m.jobCond = sync.NewCond(&m.jobMu)
+	return m
 }
 
 // Start initializes the thumbnail module
@@ -205,10 +246,8 @@ func (m *Module) Stop(ctx context.Context) error {
 	if m.cancel != nil {
 		m.cancel()
 	}
-
-	// Do NOT close m.jobQueue here: closing a channel while a concurrent
-	// GenerateThumbnail call might be sending panics the program. Workers
-	// already exit cleanly when m.ctx is cancelled (they select on ctx.Done()).
+	// Wake workers blocked in dequeue so they see ctx.Done()
+	m.jobCond.Broadcast()
 
 	// Wait for workers with timeout
 	done := make(chan struct{})
@@ -248,7 +287,38 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// worker processes thumbnail generation jobs
+// enqueue adds a job to the priority queue. highPriority=true for user-triggered requests.
+// Returns true if queued, false if queue full.
+func (m *Module) enqueue(job *ThumbnailJob, highPriority bool) bool {
+	m.jobMu.Lock()
+	defer m.jobMu.Unlock()
+	if len(m.jobHeap) >= m.jobCap {
+		return false
+	}
+	pri := 1 // low (background)
+	if highPriority {
+		pri = 0 // high (user viewing)
+	}
+	heap.Push(&m.jobHeap, &priorityJob{job: job, priority: pri})
+	m.jobCond.Signal()
+	return true
+}
+
+// dequeue blocks until a job is available or ctx is cancelled. Returns nil when ctx is done.
+func (m *Module) dequeue(ctx context.Context) *ThumbnailJob {
+	m.jobMu.Lock()
+	defer m.jobMu.Unlock()
+	for len(m.jobHeap) == 0 {
+		if ctx.Err() != nil {
+			return nil
+		}
+		m.jobCond.Wait()
+	}
+	pj := heap.Pop(&m.jobHeap).(*priorityJob)
+	return pj.job
+}
+
+// worker processes thumbnail generation jobs from the priority queue
 func (m *Module) worker(id int) {
 	defer m.wg.Done()
 	m.log.Debug("Worker %d started", id)
@@ -258,41 +328,38 @@ func (m *Module) worker(id int) {
 		case <-m.ctx.Done():
 			m.log.Debug("Worker %d stopping", id)
 			return
-		case job, ok := <-m.jobQueue:
-			if !ok {
-				m.log.Debug("Worker %d: job queue closed", id)
-				return
-			}
-
-			m.log.Info("Worker %d: Generating thumbnail for %s", id, job.MediaPath)
-
-			// Decrement pending count
-			m.statsMu.Lock()
-			m.stats.Pending--
-			m.statsMu.Unlock()
-
-			// Generate thumbnail; always clear inFlight when done so future
-			// calls can re-queue if the file ends up missing (e.g. deleted).
-			if err := m.generateThumbnail(job); err != nil {
-				m.log.Error("Worker %d: Failed to generate thumbnail for %s: %v", id, job.MediaPath, err)
-				m.statsMu.Lock()
-				m.stats.Failed++
-				m.statsMu.Unlock()
-			} else {
-				m.log.Info("Worker %d: ✓ Thumbnail generated: %s", id, job.OutputPath)
-				m.statsMu.Lock()
-				m.stats.Generated++
-				m.statsMu.Unlock()
-			}
-			m.inFlight.Delete(job.OutputPath)
+		default:
 		}
+		job := m.dequeue(m.ctx)
+		if job == nil {
+			return
+		}
+
+		m.log.Info("Worker %d: Generating thumbnail for %s", id, job.MediaPath)
+
+		m.statsMu.Lock()
+		m.stats.Pending--
+		m.statsMu.Unlock()
+
+		if err := m.generateThumbnail(job); err != nil {
+			m.log.Error("Worker %d: Failed to generate thumbnail for %s: %v", id, job.MediaPath, err)
+			m.statsMu.Lock()
+			m.stats.Failed++
+			m.statsMu.Unlock()
+		} else {
+			m.log.Info("Worker %d: ✓ Thumbnail generated: %s", id, job.OutputPath)
+			m.statsMu.Lock()
+			m.stats.Generated++
+			m.statsMu.Unlock()
+		}
+		m.inFlight.Delete(job.OutputPath)
 	}
 }
 
 // GenerateThumbnail queues async thumbnail generation (generates all preview thumbnails)
 // GenerateThumbnail generates a thumbnail for a media file.
-// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
-func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio bool) (string, error) {
+// highPriority=true for user-triggered (HTTP, hover); false for background scan.
+func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio bool, highPriority bool) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg not available")
 	}
@@ -300,11 +367,8 @@ func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio boo
 	cfg := m.config.Get()
 	outputPath := m.getThumbnailPath(mediaID)
 
-	// For videos, delegate entirely to GeneratePreviewThumbnails which checks
-	// both the main thumbnail and all preview thumbnails individually, so
-	// missing previews are regenerated even when the main already exists.
 	if !isAudio {
-		return m.GeneratePreviewThumbnails(mediaPath, mediaID)
+		return m.GeneratePreviewThumbnails(mediaPath, mediaID, highPriority)
 	}
 
 	// For audio: single waveform thumbnail — skip if already on disk.
@@ -334,25 +398,21 @@ func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio boo
 	m.stats.Pending++
 	m.statsMu.Unlock()
 
-	// Try to queue job
-	select {
-	case m.jobQueue <- job:
-		m.log.Debug("Queued thumbnail generation for: %s", mediaPath)
+	if m.enqueue(job, highPriority) {
+		m.log.Debug("Queued thumbnail generation for: %s (priority=%v)", mediaPath, highPriority)
 		return outputPath, ErrThumbnailPending
-	default:
-		// Queue full - clear inFlight, decrement pending, generate synchronously
-		m.inFlight.Delete(outputPath)
-		m.statsMu.Lock()
-		m.stats.Pending--
-		m.statsMu.Unlock()
-		m.log.Warn("Job queue full, generating thumbnail synchronously: %s", mediaPath)
-		return outputPath, m.generateThumbnail(job)
 	}
+	m.inFlight.Delete(outputPath)
+	m.statsMu.Lock()
+	m.stats.Pending--
+	m.statsMu.Unlock()
+	m.log.Warn("Job queue full, generating thumbnail synchronously: %s", mediaPath)
+	return outputPath, m.generateThumbnail(job)
 }
 
 // GeneratePreviewThumbnails generates multiple thumbnails at different timestamps for hover preview.
-// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
-func (m *Module) GeneratePreviewThumbnails(mediaPath string, mediaID string) (string, error) {
+// highPriority=true when user is viewing (hover); false for background scan.
+func (m *Module) GeneratePreviewThumbnails(mediaPath string, mediaID string, highPriority bool) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg not available")
 	}
@@ -400,10 +460,9 @@ func (m *Module) GeneratePreviewThumbnails(mediaPath string, mediaID string) (st
 			m.stats.Pending++
 			m.statsMu.Unlock()
 
-			select {
-			case m.jobQueue <- mainJob:
+			if m.enqueue(mainJob, highPriority) {
 				m.log.Debug("Queued main thumbnail for: %s", mediaPath)
-			default:
+			} else {
 				m.inFlight.Delete(mainPath)
 				m.statsMu.Lock()
 				m.stats.Pending--
@@ -450,11 +509,9 @@ previewLoop:
 		m.stats.Pending++
 		m.statsMu.Unlock()
 
-		// Try to queue job
-		select {
-		case m.jobQueue <- job:
+		if m.enqueue(job, highPriority) {
 			m.log.Debug("Queued preview thumbnail %d/%d for: %s (timestamp: %.2fs)", i+1, previewCount, mediaPath, timestamp)
-		default:
+		} else {
 			m.inFlight.Delete(outputPath)
 			m.statsMu.Lock()
 			m.stats.Pending--
@@ -587,6 +644,86 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 		m.log.Debug("Thumbnail size: %d bytes", info.Size())
 	}
 
+	// Generate WebP variant (30–50% smaller) for clients that accept it
+	webpPath := m.getThumbnailPathWebp(job.OutputPath)
+	if err := m.generateWebPFromVideo(job.MediaPath, webpPath, job.Width, job.Height, timestamp); err != nil {
+		m.log.Warn("WebP thumbnail generation failed (JPEG served): %v", err)
+		// Non-fatal: JPEG is already available
+	} else if info, err := os.Stat(webpPath); err == nil {
+		m.statsMu.Lock()
+		m.stats.TotalSize += info.Size()
+		m.statsMu.Unlock()
+		m.log.Debug("WebP thumbnail size: %d bytes", info.Size())
+	}
+
+	// Generate responsive sizes (160, 320, 640) for srcset — main thumbnail only
+	if !strings.Contains(filepath.Base(job.OutputPath), "_preview_") {
+		mediaID := strings.TrimSuffix(filepath.Base(job.OutputPath), ".jpg")
+		for _, w := range responsiveWidths {
+			h := w * 9 / 16
+			suffix := responsiveSuffixes[w]
+			outPath := filepath.Join(m.thumbnailDir, mediaID+suffix+".webp")
+			if err := m.generateWebPFromVideo(job.MediaPath, outPath, w, h, timestamp); err != nil {
+				m.log.Debug("Responsive thumbnail %dw failed: %v", w, err)
+			}
+		}
+	}
+
+	// Compute and store BlurHash for main thumbnail only (LQIP placeholders)
+	if m.blurHashUpdater != nil && !strings.Contains(filepath.Base(job.OutputPath), "_preview_") {
+		if hash, err := m.computeBlurHash(job.OutputPath); err == nil && hash != "" {
+			bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := m.blurHashUpdater.UpdateBlurHash(bgCtx, job.MediaPath, hash); err != nil {
+				m.log.Warn("Failed to store BlurHash: %v", err)
+			}
+			bgCancel()
+		}
+	}
+
+	return nil
+}
+
+// computeBlurHash reads a JPEG and returns its BlurHash string (4x3 components)
+func (m *Module) computeBlurHash(jpgPath string) (string, error) {
+	f, err := os.Open(jpgPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	img, err := jpeg.Decode(f)
+	if err != nil {
+		return "", err
+	}
+	return blurhash.Encode(4, 3, img)
+}
+
+// generateWebPFromVideo extracts a frame and encodes as WebP
+func (m *Module) generateWebPFromVideo(mediaPath, outputPath string, width, height int, timestamp float64) error {
+	scaleFilter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+		width, height, width, height)
+
+	stream := ffmpeg.Input(mediaPath, ffmpeg.KwArgs{"ss": fmt.Sprintf("%.2f", timestamp)}).
+		Output(outputPath, ffmpeg.KwArgs{
+			"vframes": "1",
+			"vf":      scaleFilter,
+			"c:v":     "libwebp",
+			"q:v":     "80",
+		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
+
+	cmd := stream.Compile()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext.Env = cmd.Env
+	cmdWithContext.Dir = cmd.Dir
+
+	output, err := cmdWithContext.CombinedOutput()
+	if err != nil {
+		m.log.Debug("FFmpeg WebP failed: %v, output: %s", err, string(output))
+		return fmt.Errorf("ffmpeg webp: %w", err)
+	}
 	return nil
 }
 
@@ -626,13 +763,58 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 		return fmt.Errorf("waveform file not created")
 	}
 
+	// Generate WebP variant for audio waveforms
+	webpPath := m.getThumbnailPathWebp(job.OutputPath)
+	if err := m.generateWebPFromAudio(job.MediaPath, webpPath, job.Width, job.Height); err != nil {
+		m.log.Warn("WebP waveform generation failed (JPEG served): %v", err)
+	}
+
+	// Compute and store BlurHash for audio waveforms (main thumbnail only)
+	if m.blurHashUpdater != nil && !strings.Contains(filepath.Base(job.OutputPath), "_preview_") {
+		if hash, err := m.computeBlurHash(job.OutputPath); err == nil && hash != "" {
+			bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := m.blurHashUpdater.UpdateBlurHash(bgCtx, job.MediaPath, hash); err != nil {
+				m.log.Warn("Failed to store BlurHash: %v", err)
+			}
+			bgCancel()
+		}
+	}
 	return nil
+}
+
+// generateWebPFromAudio creates waveform as WebP
+func (m *Module) generateWebPFromAudio(mediaPath, outputPath string, width, height int) error {
+	waveformFilter := fmt.Sprintf("showwavespic=s=%dx%d:colors=#0080ff", width, height)
+
+	stream := ffmpeg.Input(mediaPath).
+		Output(outputPath, ffmpeg.KwArgs{
+			"filter_complex": waveformFilter,
+			"frames:v":       "1",
+			"c:v":            "libwebp",
+			"q:v":            "80",
+		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
+
+	cmd := stream.Compile()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext.Env = cmd.Env
+	cmdWithContext.Dir = cmd.Dir
+
+	_, err := cmdWithContext.CombinedOutput()
+	return err
 }
 
 // getThumbnailPath generates the output path for a thumbnail (index 0 for main thumbnail).
 // mediaID is the stable UUID used as the filename base.
 func (m *Module) getThumbnailPath(mediaID string) string {
 	return m.getThumbnailPathByIndex(mediaID, 0)
+}
+
+// getThumbnailPathWebp returns the WebP path for a given JPEG path.
+func (m *Module) getThumbnailPathWebp(jpgPath string) string {
+	return strings.TrimSuffix(jpgPath, ".jpg") + ".webp"
 }
 
 // getThumbnailPathByIndex generates the output path for a specific thumbnail index.
@@ -660,6 +842,40 @@ func (m *Module) HasThumbnail(mediaID string) bool {
 	path := m.getThumbnailPath(mediaID)
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// HasWebPThumbnail checks if a WebP thumbnail exists for a media ID
+func (m *Module) HasWebPThumbnail(mediaID string) bool {
+	jpgPath := m.getThumbnailPath(mediaID)
+	webpPath := m.getThumbnailPathWebp(jpgPath)
+	_, err := os.Stat(webpPath)
+	return err == nil
+}
+
+// GetThumbnailFilePathWebp returns the absolute file path for WebP variant, or empty if not found
+func (m *Module) GetThumbnailFilePathWebp(mediaID string) string {
+	jpgPath := m.getThumbnailPath(mediaID)
+	webpPath := m.getThumbnailPathWebp(jpgPath)
+	if _, err := os.Stat(webpPath); err == nil {
+		return webpPath
+	}
+	return ""
+}
+
+// GetThumbnailFilePathForSize returns the path for a responsive size (160, 320, 640).
+// Responsive sizes are stored as WebP only (-sm.webp, -md.webp, -lg.webp).
+// Returns empty if width not in (160, 320, 640) or file does not exist.
+func (m *Module) GetThumbnailFilePathForSize(mediaID string, width int) string {
+	suffix, ok := responsiveSuffixes[width]
+	if !ok {
+		return ""
+	}
+	// Responsive sizes are WebP-only (-sm.webp, -md.webp, -lg.webp)
+	path := filepath.Join(m.thumbnailDir, mediaID+suffix+".webp")
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	return ""
 }
 
 // HasAllPreviewThumbnails checks if all preview thumbnails exist for a media ID
@@ -911,14 +1127,11 @@ func (m *Module) GetPreviewURLs(mediaPath string, mediaID string, count int) []s
 			m.stats.Pending++
 			m.statsMu.Unlock()
 
-			// Try async generation first, fall back to sync if queue full
-			select {
-			case m.jobQueue <- job:
+			// Try async generation (high priority — user is viewing)
+			if m.enqueue(job, true) {
 				m.log.Debug("Queued preview thumbnail generation: %s (frame at %.1fs)", previewFilename, timestamp)
-				// Don't wait for generation - return URL anyway
 				urls = append(urls, previewURL)
-			default:
-				// Queue full — generate synchronously and clear inFlight ourselves.
+			} else {
 				m.inFlight.Delete(previewPath)
 				m.statsMu.Lock()
 				m.stats.Pending--

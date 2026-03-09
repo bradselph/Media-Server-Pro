@@ -35,6 +35,7 @@ import (
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/tasks"
+	"media-server-pro/internal/repositories/mysql"
 	"media-server-pro/internal/thumbnails"
 	"media-server-pro/internal/updater"
 	"media-server-pro/internal/upload"
@@ -146,8 +147,9 @@ func main() {
 	}
 	mustRegister(srv, scannerModule)
 
-	// Thumbnails (critical)
-	thumbnailsModule := thumbnails.NewModule(cfg)
+	// Thumbnails (critical — optional BlurHash storage via metadata repo)
+	metadataRepo := mysql.NewMediaMetadataRepository(dbModule.GORM())
+	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
 	mustRegister(srv, thumbnailsModule)
 
 	// ── Non-critical modules ───────────────────────────────────────────────
@@ -432,7 +434,7 @@ func registerTasks(
 				needsGen := isAudio && !thumbnailsModule.HasThumbnail(item.ID) ||
 					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(item.ID)
 				if needsGen {
-					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, item.ID, isAudio); err != nil {
+					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, item.ID, isAudio, false); err != nil {
 						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
 							log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
 						}

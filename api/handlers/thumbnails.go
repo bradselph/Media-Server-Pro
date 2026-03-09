@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,14 @@ import (
 	"media-server-pro/internal/thumbnails"
 	"media-server-pro/pkg/helpers"
 )
+
+const batchThumbnailMaxIDs = 50
+
+// acceptsWebP returns true if the request's Accept header includes image/webp
+func acceptsWebP(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "image/webp")
+}
 
 // GenerateThumbnail generates a thumbnail for a media file
 func (h *Handler) GenerateThumbnail(c *gin.Context) {
@@ -32,7 +41,7 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 		return
 	}
 
-	_, err := h.thumbnails.GenerateThumbnail(absPath, req.ID, req.IsAudio)
+	_, err := h.thumbnails.GenerateThumbnail(absPath, req.ID, req.IsAudio, true)
 	if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
@@ -129,7 +138,30 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		}
 	}
 
-	thumbFilePath := h.thumbnails.GetThumbnailFilePath(id)
+	// Responsive size: ?w=160|320|640 serves -sm/-md/-lg.webp when available
+	widthParam := strings.TrimSpace(c.Query("w"))
+	var thumbFilePath string
+	contentType := "image/jpeg"
+	wantWebP := acceptsWebP(c.Request)
+	if widthParam != "" {
+		var w int
+		if _, err := fmt.Sscanf(widthParam, "%d", &w); err == nil {
+			if fp := h.thumbnails.GetThumbnailFilePathForSize(id, w); fp != "" {
+				thumbFilePath = fp
+				contentType = "image/webp" // responsive sizes are WebP-only
+			}
+		}
+	}
+	if thumbFilePath == "" {
+		// Fall back to main thumbnail
+		thumbFilePath = h.thumbnails.GetThumbnailFilePath(id)
+		if wantWebP {
+			if webpPath := h.thumbnails.GetThumbnailFilePathWebp(id); webpPath != "" {
+				thumbFilePath = webpPath
+				contentType = "image/webp"
+			}
+		}
+	}
 
 	if _, err := os.Stat(thumbFilePath); os.IsNotExist(err) {
 		h.log.Error("Thumbnail file does not exist: %s", thumbFilePath)
@@ -138,13 +170,13 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	}
 
 	if c.Request.Method == http.MethodHead {
-		c.Header(headerContentType, "image/jpeg")
+		c.Header(headerContentType, contentType)
 		c.Status(http.StatusOK)
 		return
 	}
 
 	c.Header("Cache-Control", "public, max-age=604800")
-	c.Header("Content-Type", "image/jpeg")
+	c.Header("Content-Type", contentType)
 	http.ServeFile(c.Writer, c.Request, thumbFilePath)
 }
 
@@ -194,8 +226,20 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 		}
 	}
 
+	// Content negotiation: serve WebP when client accepts it
+	contentType := "image/jpeg"
+	if acceptsWebP(c.Request) {
+		webpPath := strings.TrimSuffix(filePath, ".jpg") + ".webp"
+		if webpPath != filePath {
+			if _, err := os.Stat(webpPath); err == nil {
+				filePath = webpPath
+				contentType = "image/webp"
+			}
+		}
+	}
+
 	c.Header("Cache-Control", "public, max-age=604800")
-	c.Header("Content-Type", "image/jpeg")
+	c.Header("Content-Type", contentType)
 	http.ServeFile(c.Writer, c.Request, filePath)
 }
 
@@ -243,6 +287,43 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 	writeSuccess(c, map[string]interface{}{
 		"previews": urls,
 	})
+}
+
+// GetThumbnailBatch returns thumbnail URLs for multiple media IDs in one request.
+// Query: ?ids=id1,id2,id3 (comma-separated, max 50). Optional ?w=320 for responsive sizes (Phase 1.2).
+func (h *Handler) GetThumbnailBatch(c *gin.Context) {
+	if !h.requireThumbnails(c) {
+		return
+	}
+	idsParam := c.Query("ids")
+	if idsParam == "" {
+		writeError(c, http.StatusBadRequest, "ids parameter required")
+		return
+	}
+	rawIDs := strings.Split(idsParam, ",")
+	ids := make([]string, 0, len(rawIDs))
+	seen := make(map[string]bool)
+	for _, id := range rawIDs {
+		id = strings.TrimSpace(id)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) > batchThumbnailMaxIDs {
+		ids = ids[:batchThumbnailMaxIDs]
+	}
+	w := strings.TrimSpace(c.Query("w"))
+
+	thumbnailsMap := make(map[string]string, len(ids))
+	for _, id := range ids {
+		url := "/thumbnail?id=" + id
+		if w != "" {
+			url += "&w=" + w
+		}
+		thumbnailsMap[id] = url
+	}
+	writeSuccess(c, map[string]interface{}{"thumbnails": thumbnailsMap})
 }
 
 // GetThumbnailStats returns thumbnail generation stats

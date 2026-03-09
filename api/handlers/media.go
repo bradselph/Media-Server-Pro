@@ -167,7 +167,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 			// Only generate thumbnails for local media (receiver items have no local path)
 			if !h.thumbnails.HasThumbnail(item.ID) {
 				isAudio := item.Type == "audio"
-				_, err := h.thumbnails.GenerateThumbnail(item.Path, item.ID, isAudio)
+				_, err := h.thumbnails.GenerateThumbnail(item.Path, item.ID, isAudio, true)
 				if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 				}
@@ -262,7 +262,7 @@ func (h *Handler) GetMedia(c *gin.Context) {
 	if item.ThumbnailURL == "" {
 		if !h.thumbnails.HasThumbnail(item.ID) {
 			isAudio := item.Type == "audio"
-			_, err := h.thumbnails.GenerateThumbnail(item.Path, item.ID, isAudio)
+			_, err := h.thumbnails.GenerateThumbnail(item.Path, item.ID, isAudio, true)
 			if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 				h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
 			}
