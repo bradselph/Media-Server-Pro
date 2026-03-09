@@ -258,6 +258,57 @@ function MediaCard({
 }) {
     const navigate = useNavigate()
     const restricted = item.is_mature && !canViewMature
+    const [previewUrls, setPreviewUrls] = useState<string[] | null>(null)
+    const [previewIndex, setPreviewIndex] = useState(0)
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    const fetchedRef = useRef(false)
+
+    const currentThumbnail = previewUrls && previewUrls.length > 0
+        ? previewUrls[previewIndex % previewUrls.length]
+        : item.thumbnail_url
+
+    const hoveringRef = useRef(false)
+
+    function startCycling(urls: string[]) {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+        if (urls.length > 1) {
+            setPreviewIndex(0)
+            intervalRef.current = setInterval(() => {
+                setPreviewIndex(i => i + 1)
+            }, 800)
+        }
+    }
+
+    function handleMouseEnter() {
+        if (restricted || item.type !== 'video' || !item.thumbnail_url) return
+        hoveringRef.current = true
+        if (!fetchedRef.current) {
+            fetchedRef.current = true
+            mediaApi.getThumbnailPreviews(item.id).then(data => {
+                if (data.previews && data.previews.length > 1) {
+                    setPreviewUrls(data.previews)
+                    if (hoveringRef.current) startCycling(data.previews)
+                }
+            }).catch(() => { /* no previews available */ })
+        } else if (previewUrls && previewUrls.length > 1) {
+            startCycling(previewUrls)
+        }
+    }
+
+    function handleMouseLeave() {
+        hoveringRef.current = false
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+        }
+        setPreviewIndex(0)
+    }
+
+    useEffect(() => {
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current)
+        }
+    }, [])
 
     function goToPlayer() {
         if (restricted) return
@@ -266,11 +317,16 @@ function MediaCard({
 
     return (
         <div className={`media-card ${isPlaying ? 'playing' : ''} ${restricted ? 'mature-restricted' : ''}`}>
-            <div onClick={goToPlayer} style={{cursor: restricted ? 'default' : 'pointer', position: 'relative'}}>
+            <div
+                onClick={goToPlayer}
+                style={{cursor: restricted ? 'default' : 'pointer', position: 'relative'}}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+            >
                 {item.thumbnail_url ? (
                     <img
                         className="media-thumbnail"
-                        src={item.thumbnail_url}
+                        src={currentThumbnail || item.thumbnail_url}
                         alt={formatTitle(item.name)}
                         loading="lazy"
                         style={restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : undefined}
