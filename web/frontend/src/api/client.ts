@@ -39,13 +39,16 @@ export async function apiRequest<T>(
     url: string,
     options?: RequestInit,
 ): Promise<T> {
+    const isFormData = options?.body instanceof FormData
     const response = await fetch(url, {
         ...options,
         credentials: 'include', // Always send session cookies
-        headers: {
-            'Content-Type': 'application/json',
-            ...options?.headers,
-        },
+        headers: isFormData
+            ? (options?.headers ?? {})
+            : {
+                'Content-Type': 'application/json',
+                ...options?.headers,
+            },
     })
 
     // Handle non-JSON responses (e.g. 204 No Content)
