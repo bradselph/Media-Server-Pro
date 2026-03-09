@@ -93,21 +93,21 @@ export function AnalyticsTab() {
                         </div>
                     </div>
                 )}
-                {/* Feature 5: Event detail stats */}
-                {eventStats && (
+                {/* Feature 5: Event detail stats — guard empty/partial response when analytics disabled */}
+                {eventStats && (eventStats.total_events != null || (eventStats.event_counts && Object.keys(eventStats.event_counts).length > 0) || (eventStats.hourly_events?.length ?? 0) > 0) && (
                     <>
                     <div className="admin-stats-grid" style={{marginTop: 12}}>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{Object.keys(eventStats.event_counts).length}</span>
+                            <span className="admin-stat-value">{(eventStats.event_counts && Object.keys(eventStats.event_counts).length) ?? 0}</span>
                             <span className="admin-stat-label">Event Types</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{eventStats.total_events.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(eventStats.total_events ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Total Tracked</span>
                         </div>
                     </div>
                     {/* Hourly activity distribution */}
-                    {eventStats.hourly_events && eventStats.hourly_events.some(v => v > 0) && (
+                    {eventStats.hourly_events && eventStats.hourly_events.length > 0 && eventStats.hourly_events.some(v => v > 0) && (
                         <div style={{marginTop: 12}}>
                             <h3 style={{fontSize: 14, margin: '0 0 8px'}}>Today&apos;s Hourly Activity</h3>
                             <div style={{display: 'flex', alignItems: 'flex-end', gap: 2, height: 60}}>
@@ -129,19 +129,19 @@ export function AnalyticsTab() {
                     )}
                     </>
                 )}
-                {/* Feature 9: Suggestion stats */}
+                {/* Feature 9: Suggestion stats — guard partial/empty when suggestions module unavailable */}
                 {suggestionStats && (
                     <div className="admin-stats-grid" style={{marginTop: 12}}>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{suggestionStats.total_profiles.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(suggestionStats.total_profiles ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">User Profiles</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{suggestionStats.total_media.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(suggestionStats.total_media ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Media Tracked</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{suggestionStats.total_views.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(suggestionStats.total_views ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Views Tracked</span>
                         </div>
                     </div>

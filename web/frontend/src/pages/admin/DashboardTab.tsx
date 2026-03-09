@@ -28,8 +28,8 @@ export function DashboardTab() {
         }
     }
 
-    const diskPct = stats ? Math.round((stats.disk_usage / (stats.disk_total || 1)) * 100) : 0
-    const memPct = system ? Math.round((system.memory_used / (system.memory_total || 1)) * 100) : 0
+    const diskPct = stats ? Math.round(((stats.disk_usage ?? 0) / ((stats.disk_total ?? 0) || 1)) * 100) : 0
+    const memPct = system ? Math.round(((system.memory_used ?? 0) / ((system.memory_total ?? 0) || 1)) * 100) : 0
 
     return (
         <div>
@@ -45,31 +45,31 @@ export function DashboardTab() {
                 <>
                     <div className="admin-stats-grid">
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{stats.total_videos.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(stats.total_videos ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Videos</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{stats.total_audio.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(stats.total_audio ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Audio Files</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{stats.total_users.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(stats.total_users ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Total Users</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{stats.active_sessions.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(stats.active_sessions ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Active Sessions</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{stats.total_views.toLocaleString()}</span>
+                            <span className="admin-stat-value">{(stats.total_views ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Total Views</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{stats.hls_jobs_running}</span>
+                            <span className="admin-stat-value">{stats.hls_jobs_running ?? 0}</span>
                             <span className="admin-stat-label">HLS Running</span>
                         </div>
                         <div className="admin-stat-card">
-                            <span className="admin-stat-value">{stats.hls_jobs_completed}</span>
+                            <span className="admin-stat-value">{stats.hls_jobs_completed ?? 0}</span>
                             <span className="admin-stat-label">HLS Completed</span>
                         </div>
                     </div>
@@ -84,7 +84,7 @@ export function DashboardTab() {
                                 marginBottom: 4
                             }}>
                                 <span>Disk Usage</span>
-                                <span>{formatBytes(stats.disk_usage)} / {formatBytes(stats.disk_total)}</span>
+                                <span>{formatBytes(stats.disk_usage ?? 0)} / {formatBytes(stats.disk_total ?? 0)}</span>
                             </div>
                             <div className="disk-usage-bar">
                                 <div
@@ -93,7 +93,7 @@ export function DashboardTab() {
                                 />
                             </div>
                             <div style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 4}}>
-                                {diskPct}% used · {formatBytes(stats.disk_free)} free
+                                {diskPct}% used · {formatBytes(stats.disk_free ?? 0)} free
                             </div>
                         </div>
                     </div>
