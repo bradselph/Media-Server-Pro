@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {getStreamUrl, usePlaybackStore} from '@/stores/playbackStore'
+import {mediaApi} from '@/api/endpoints'
 import {usePlaylistStore} from '@/stores/playlistStore'
 import {useHLS} from '@/hooks/useHLS'
 import {useMediaPosition} from '@/hooks/useMediaPosition'
@@ -155,7 +156,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
     const handleDownload = useCallback(() => {
         if (!currentMediaId) return
         const a = document.createElement('a')
-        a.href = `/download?id=${encodeURIComponent(currentMediaId)}`
+        a.href = mediaApi.getDownloadUrl(currentMediaId)
         a.download = ''
         a.click()
     }, [currentMediaId])

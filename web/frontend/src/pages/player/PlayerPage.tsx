@@ -385,6 +385,11 @@ export function PlayerPage() {
         }, 300)
     }
 
+    const fireAnalytics = useCallback((type: string, data?: Record<string, unknown>) => {
+        if (!mediaId) return
+        analyticsApi.trackEvent({ type, media_id: mediaId, data }).catch(() => {})
+    }, [mediaId])
+
     function handleTimeUpdate() {
         const el = getActiveEl()
         if (!el) return
@@ -417,6 +422,10 @@ export function PlayerPage() {
             watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
             })
         }
+        fireAnalytics('pause', {
+            position: currentTimeRef.current,
+            duration: durationRef.current,
+        })
     }
     function handleDurationChange() {
         const el = getActiveEl()
@@ -458,6 +467,10 @@ export function PlayerPage() {
             watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
             })
         }
+        fireAnalytics('seek', {
+            position: currentTimeRef.current,
+            duration: durationRef.current,
+        })
     }
 
     function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -499,6 +512,29 @@ export function PlayerPage() {
         }
     }
 
+    const handlePlay = useCallback(() => {
+        setIsPlaying(true)
+        fireAnalytics('play', durationRef.current > 0 ? { duration: durationRef.current } : undefined)
+    }, [fireAnalytics])
+
+    const handleWaiting = useCallback(() => {
+        setIsLoading(true)
+        fireAnalytics('buffering', { state: 'start' })
+    }, [fireAnalytics])
+
+    const handleCanPlay = useCallback(() => {
+        setIsLoading(false)
+        fireAnalytics('buffering', { state: 'end' })
+    }, [fireAnalytics])
+
+    const handleSelectQualityWithAnalytics = useCallback((index: number) => {
+        selectQuality(index)
+        const name = index === -1
+            ? 'Auto'
+            : hlsQualities.find(q => q.index === index)?.name ?? String(index)
+        fireAnalytics('quality_change', { quality_index: index, quality_name: name })
+    }, [selectQuality, hlsQualities, fireAnalytics])
+
     function handlePiP() {
         const vid = videoRef.current
         if (!vid) return
@@ -515,6 +551,7 @@ export function PlayerPage() {
         if (mediaId) {
             watchHistoryApi.trackPosition(mediaId, duration, duration).catch(() => {
             })
+            fireAnalytics('complete', { duration, position: duration })
         }
         // Auto-advance to next track in playlist
         const nextId = playNext()
@@ -522,6 +559,17 @@ export function PlayerPage() {
             navigate(`/player?id=${encodeURIComponent(nextId)}`, {replace: true})
         }
     }
+    // Fire fullscreen analytics when user toggles fullscreen (e.g. Escape)
+    useEffect(() => {
+        function onFullscreenChange() {
+            if (mediaId) {
+                fireAnalytics('fullscreen', { active: !!document.fullscreenElement })
+            }
+        }
+        document.addEventListener('fullscreenchange', onFullscreenChange)
+        return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+    }, [mediaId, fireAnalytics])
+
     // Save position periodically
     useEffect(() => {
         if (!mediaId || !isPlaying || !duration) return
@@ -804,12 +852,12 @@ export function PlayerPage() {
                                         onTimeUpdate={handleTimeUpdate}
                                         onLoadedMetadata={handleLoadedMetadata}
                                         onDurationChange={handleDurationChange}
-                                        onPlay={() => setIsPlaying(true)}
+                                        onPlay={handlePlay}
                                         onPause={handlePause}
                                         onEnded={handleEnded}
                                         onSeeked={handleSeeked}
-                                        onWaiting={() => setIsLoading(true)}
-                                        onCanPlay={() => setIsLoading(false)}
+                                        onWaiting={handleWaiting}
+                                        onCanPlay={handleCanPlay}
                                         preload="auto"
                                     />
                                     <div className="audio-visualizer">
@@ -827,12 +875,12 @@ export function PlayerPage() {
                                     onTimeUpdate={handleTimeUpdate}
                                     onLoadedMetadata={handleLoadedMetadata}
                                     onDurationChange={handleDurationChange}
-                                    onPlay={() => setIsPlaying(true)}
+                                    onPlay={handlePlay}
                                     onPause={handlePause}
                                     onEnded={handleEnded}
                                     onSeeked={handleSeeked}
-                                    onWaiting={() => setIsLoading(true)}
-                                    onCanPlay={() => setIsLoading(false)}
+                                    onWaiting={handleWaiting}
+                                    onCanPlay={handleCanPlay}
                                     preload="auto"
                                 />
                             )}
@@ -945,7 +993,7 @@ export function PlayerPage() {
                                                 qualities={hlsQualities}
                                                 currentQuality={currentQuality}
                                                 autoLevel={autoLevel}
-                                                onSelectQuality={selectQuality}
+                                                onSelectQuality={handleSelectQualityWithAnalytics}
                                                 playbackRate={playbackRate}
                                                 onSetSpeed={setSpeed}
                                                 isLooping={isLooping}
