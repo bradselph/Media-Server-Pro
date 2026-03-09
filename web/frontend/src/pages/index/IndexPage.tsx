@@ -412,6 +412,10 @@ function MediaCard({
                         <img
                             className="media-thumbnail"
                             src={inView ? (thumbnailSrc || item.thumbnail_url) : undefined}
+                            srcSet={(!previewUrls || previewUrls.length === 0) && item.thumbnail_url
+                                ? [160, 320, 640].map(w => `${item.thumbnail_url!}${item.thumbnail_url!.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
+                                : undefined}
+                            sizes={(!previewUrls || previewUrls.length === 0) ? '(max-width: 640px) 160px, (max-width: 1024px) 320px, 640px' : undefined}
                             alt={formatTitle(item.name)}
                             loading={inView ? 'eager' : 'lazy'}
                             style={{

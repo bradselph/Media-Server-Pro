@@ -28,6 +28,10 @@ import (
 var (
 	// ErrThumbnailPending indicates thumbnail is being generated
 	ErrThumbnailPending = fmt.Errorf("thumbnail generation pending")
+
+	// Responsive thumbnail widths (16:9: 160x90, 320x180, 640x360)
+	responsiveWidths  = []int{160, 320, 640}
+	responsiveSuffixes = map[int]string{160: "-sm", 320: "-md", 640: "-lg"}
 )
 
 // BlurHashUpdater updates BlurHash in metadata storage (e.g. MediaMetadataRepository)
@@ -608,6 +612,19 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 		m.log.Debug("WebP thumbnail size: %d bytes", info.Size())
 	}
 
+	// Generate responsive sizes (160, 320, 640) for srcset — main thumbnail only
+	if !strings.Contains(filepath.Base(job.OutputPath), "_preview_") {
+		mediaID := strings.TrimSuffix(filepath.Base(job.OutputPath), ".jpg")
+		for _, w := range responsiveWidths {
+			h := w * 9 / 16
+			suffix := responsiveSuffixes[w]
+			outPath := filepath.Join(m.thumbnailDir, mediaID+suffix+".webp")
+			if err := m.generateWebPFromVideo(job.MediaPath, outPath, w, h, timestamp); err != nil {
+				m.log.Debug("Responsive thumbnail %dw failed: %v", w, err)
+			}
+		}
+	}
+
 	// Compute and store BlurHash for main thumbnail only (LQIP placeholders)
 	if m.blurHashUpdater != nil && !strings.Contains(filepath.Base(job.OutputPath), "_preview_") {
 		if hash, err := m.computeBlurHash(job.OutputPath); err == nil && hash != "" {
@@ -797,6 +814,22 @@ func (m *Module) GetThumbnailFilePathWebp(mediaID string) string {
 	webpPath := m.getThumbnailPathWebp(jpgPath)
 	if _, err := os.Stat(webpPath); err == nil {
 		return webpPath
+	}
+	return ""
+}
+
+// GetThumbnailFilePathForSize returns the path for a responsive size (160, 320, 640).
+// Responsive sizes are stored as WebP only (-sm.webp, -md.webp, -lg.webp).
+// Returns empty if width not in (160, 320, 640) or file does not exist.
+func (m *Module) GetThumbnailFilePathForSize(mediaID string, width int) string {
+	suffix, ok := responsiveSuffixes[width]
+	if !ok {
+		return ""
+	}
+	// Responsive sizes are WebP-only (-sm.webp, -md.webp, -lg.webp)
+	path := filepath.Join(m.thumbnailDir, mediaID+suffix+".webp")
+	if _, err := os.Stat(path); err == nil {
+		return path
 	}
 	return ""
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -137,13 +138,28 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		}
 	}
 
-	// Content negotiation: serve WebP when client accepts it (30–50% smaller)
-	thumbFilePath := h.thumbnails.GetThumbnailFilePath(id)
+	// Responsive size: ?w=160|320|640 serves -sm/-md/-lg.webp when available
+	widthParam := strings.TrimSpace(c.Query("w"))
+	var thumbFilePath string
 	contentType := "image/jpeg"
-	if acceptsWebP(c.Request) {
-		if webpPath := h.thumbnails.GetThumbnailFilePathWebp(id); webpPath != "" {
-			thumbFilePath = webpPath
-			contentType = "image/webp"
+	wantWebP := acceptsWebP(c.Request)
+	if widthParam != "" {
+		var w int
+		if _, err := fmt.Sscanf(widthParam, "%d", &w); err == nil {
+			if fp := h.thumbnails.GetThumbnailFilePathForSize(id, w); fp != "" {
+				thumbFilePath = fp
+				contentType = "image/webp" // responsive sizes are WebP-only
+			}
+		}
+	}
+	if thumbFilePath == "" {
+		// Fall back to main thumbnail
+		thumbFilePath = h.thumbnails.GetThumbnailFilePath(id)
+		if wantWebP {
+			if webpPath := h.thumbnails.GetThumbnailFilePathWebp(id); webpPath != "" {
+				thumbFilePath = webpPath
+				contentType = "image/webp"
+			}
 		}
 	}
 
