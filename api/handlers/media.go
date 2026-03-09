@@ -230,6 +230,7 @@ func (h *Handler) GetMedia(c *gin.Context) {
 			}
 		}
 		if !h.media.IsReady() {
+			c.Header("Retry-After", "3")
 			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
 			return
 		}
@@ -347,6 +348,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		}
 		// Neither local, receiver, nor extractor — write appropriate error
 		if !h.media.IsReady() {
+			c.Header("Retry-After", "3")
 			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
 		} else {
 			writeError(c, http.StatusNotFound, errMediaNotFound)

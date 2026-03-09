@@ -39,10 +39,13 @@ export const useThemeStore = create<ThemeState>()(
         }),
         {
             name: 'media-server-theme',
+            onRehydrateStorage: () => (state) => {
+                if (state?.theme) applyTheme(state.theme)
+            },
         },
     ),
 )
 
-// Apply theme from persisted storage on initial load
+// Apply theme from persisted storage on initial load (before async rehydration)
 const initialTheme = useThemeStore.getState().theme
 applyTheme(initialTheme)

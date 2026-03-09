@@ -65,9 +65,10 @@ type Module struct {
 	dbModule  *database.Module
 	repo      repositories.SuggestionProfileRepository
 	profiles  map[string]*UserProfile
-	mediaData map[string]*MediaInfo // keyed by filesystem path
-	mediaByID map[string]*MediaInfo // keyed by StableID (secondary index)
-	mu        sync.RWMutex
+	mediaData       map[string]*MediaInfo // keyed by filesystem path
+	mediaByID       map[string]*MediaInfo // keyed by StableID (secondary index)
+	catalogueSeeded bool                  // true after first non-empty UpdateMediaData
+	mu              sync.RWMutex
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
@@ -315,9 +316,22 @@ func (m *Module) UpdateMediaData(items []*MediaInfo) {
 	m.mu.Lock()
 	m.mediaData = newData
 	m.mediaByID = newByID
+	// Mark catalogue ready after first update (even if empty) so API returns 200 with []
+	// instead of 503 while the UI can show "no suggestions yet" or retry.
+	m.catalogueSeeded = true
 	m.mu.Unlock()
 
 	m.log.Info("Updated media data: %d items", len(items))
+}
+
+// IsCatalogueReady reports whether the media catalogue has been seeded at least
+// once with a non-empty data set. Before this returns true, all suggestion
+// endpoints will return empty results. Handlers use this to return 503 with
+// Retry-After instead of misleading empty arrays.
+func (m *Module) IsCatalogueReady() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.catalogueSeeded
 }
 
 // GetSuggestions returns personalized suggestions for a user
@@ -439,6 +453,16 @@ func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo) (float64, []
 // scoreMediaBase calculates the base score from popularity, recency, and rating.
 // All items receive a minimum exploration baseline of 0.05 so that library items
 // with no views/rating/recency still have a chance to surface in suggestions.
+//
+// Score budget (approximate maximums):
+//   - Exploration baseline: 0.05
+//   - Popularity:           ~0.30 (log10-scaled, 1000+ views)
+//   - Recency:              0.10  (items < 7 days old)
+//   - Rating:               0.20  (rating > 4)
+//
+// The recency boost is intentionally small so that profile-based scoring
+// (up to ~0.50) and popularity can outweigh it.  This prevents the
+// "Recommended" section from degenerating into a "Recently Added" list.
 func scoreMediaBase(media *MediaInfo) (float64, []string) {
 	score := 0.05 // exploration baseline — every non-mature item can appear
 	var reasons []string
@@ -451,7 +475,7 @@ func scoreMediaBase(media *MediaInfo) (float64, []string) {
 
 	daysSinceAdded := time.Since(media.AddedAt).Hours() / 24
 	if daysSinceAdded < 7 {
-		newScore := 0.3 * (1 - daysSinceAdded/7)
+		newScore := 0.10 * (1 - daysSinceAdded/7)
 		score += newScore
 		reasons = append(reasons, "New addition")
 	}
@@ -560,12 +584,18 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 		if media.IsMature {
 			continue // Never surface mature items in public suggestions
 		}
-		score := float64(media.Views) * math.Max(media.Rating, 1)
 
-		// Boost recent content
+		// Trending score is primarily driven by view count.  Items with
+		// zero views get a tiny baseline so they don't dominate via the
+		// recency multiplier alone.
+		viewScore := float64(media.Views)
+		score := viewScore * math.Max(media.Rating, 1)
+
+		// Give a modest boost to recent content (< 30 days), but only
+		// as a tiebreaker — not enough to override popularity.
 		daysSinceAdded := time.Since(media.AddedAt).Hours() / 24
 		if daysSinceAdded < 30 {
-			score *= 1.5
+			score *= 1.2
 		}
 
 		// Add ±50% jitter for variety in trending results
@@ -643,8 +673,13 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int) []*Suggestion {
 	}
 
 	// If we found too few similar items, pad with random library items.
+	// Use low scores so random filler doesn't outrank genuinely similar items.
 	if len(suggestions) < limit/2 {
-		suggestions = append(suggestions, m.randomSample(sourceMedia.StableID, limit)...)
+		filler := m.randomSample(sourceMedia.StableID, limit)
+		for _, f := range filler {
+			f.Score *= 0.1 // scale down so filler stays below real matches
+		}
+		suggestions = append(suggestions, filler...)
 	}
 
 	// Sort by jittered score, then sample from top pool for variety

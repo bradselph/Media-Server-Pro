@@ -127,6 +127,13 @@ export function PlayerPage() {
         queryKey: ['media-item', mediaId],
         queryFn: () => mediaApi.get(mediaId),
         enabled: !!mediaId,
+        // Retry aggressively on 503 (server initializing — media scan in progress)
+        // so users don't see a false "not found" error during startup.
+        retry: (failureCount, error) => {
+            if (error instanceof ApiError && error.status === 503) return failureCount < 5
+            return failureCount < 1
+        },
+        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
     })
 
     // Stable fallback callback — must not be recreated on every render or
@@ -161,10 +168,21 @@ export function PlayerPage() {
     useEqualizer(audioReady && media?.type === 'audio' ? audioRef.current : null)
 
     // Fetch similar media via suggestions engine (semantic similarity by category/tags/type)
-    const {data: similarData = [], isLoading: relatedLoading} = useQuery({
+    const {
+        data: similarData = [],
+        isLoading: relatedLoading,
+        isError: similarError,
+        refetch: similarRefetch,
+    } = useQuery({
         queryKey: ['media-similar', mediaId],
         queryFn: () => suggestionsApi.getSimilar(mediaId ?? ''),
         enabled: !!mediaId,
+        // Retry on 503 (suggestions catalogue not seeded yet during startup)
+        retry: (failureCount, error) => {
+            if (error instanceof ApiError && error.status === 503) return failureCount < 5
+            return failureCount < 1
+        },
+        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -372,6 +390,11 @@ export function PlayerPage() {
         }, 300)
     }
 
+    const fireAnalytics = useCallback((type: string, data?: Record<string, unknown>) => {
+        if (!mediaId) return
+        analyticsApi.trackEvent({ type, media_id: mediaId, data }).catch(() => {})
+    }, [mediaId])
+
     function handleTimeUpdate() {
         const el = getActiveEl()
         if (!el) return
@@ -404,6 +427,10 @@ export function PlayerPage() {
             watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
             })
         }
+        fireAnalytics('pause', {
+            position: currentTimeRef.current,
+            duration: durationRef.current,
+        })
     }
     function handleDurationChange() {
         const el = getActiveEl()
@@ -445,6 +472,10 @@ export function PlayerPage() {
             watchHistoryApi.trackPosition(mediaId, currentTimeRef.current, durationRef.current).catch(() => {
             })
         }
+        fireAnalytics('seek', {
+            position: currentTimeRef.current,
+            duration: durationRef.current,
+        })
     }
 
     function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -486,6 +517,29 @@ export function PlayerPage() {
         }
     }
 
+    const handlePlay = useCallback(() => {
+        setIsPlaying(true)
+        fireAnalytics('play', durationRef.current > 0 ? { duration: durationRef.current } : undefined)
+    }, [fireAnalytics])
+
+    const handleWaiting = useCallback(() => {
+        setIsLoading(true)
+        fireAnalytics('buffering', { state: 'start' })
+    }, [fireAnalytics])
+
+    const handleCanPlay = useCallback(() => {
+        setIsLoading(false)
+        fireAnalytics('buffering', { state: 'end' })
+    }, [fireAnalytics])
+
+    const handleSelectQualityWithAnalytics = useCallback((index: number) => {
+        selectQuality(index)
+        const name = index === -1
+            ? 'Auto'
+            : hlsQualities.find(q => q.index === index)?.name ?? String(index)
+        fireAnalytics('quality_change', { quality_index: index, quality_name: name })
+    }, [selectQuality, hlsQualities, fireAnalytics])
+
     function handlePiP() {
         const vid = videoRef.current
         if (!vid) return
@@ -502,6 +556,7 @@ export function PlayerPage() {
         if (mediaId) {
             watchHistoryApi.trackPosition(mediaId, duration, duration).catch(() => {
             })
+            fireAnalytics('complete', { duration, position: duration })
         }
         // Auto-advance to next track in playlist
         const nextId = playNext()
@@ -509,6 +564,17 @@ export function PlayerPage() {
             navigate(`/player?id=${encodeURIComponent(nextId)}`, {replace: true})
         }
     }
+    // Fire fullscreen analytics when user toggles fullscreen (e.g. Escape)
+    useEffect(() => {
+        function onFullscreenChange() {
+            if (mediaId) {
+                fireAnalytics('fullscreen', { active: !!document.fullscreenElement })
+            }
+        }
+        document.addEventListener('fullscreenchange', onFullscreenChange)
+        return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+    }, [mediaId, fireAnalytics])
+
     // Save position periodically
     useEffect(() => {
         if (!mediaId || !isPlaying || !duration) return
@@ -791,12 +857,12 @@ export function PlayerPage() {
                                         onTimeUpdate={handleTimeUpdate}
                                         onLoadedMetadata={handleLoadedMetadata}
                                         onDurationChange={handleDurationChange}
-                                        onPlay={() => setIsPlaying(true)}
+                                        onPlay={handlePlay}
                                         onPause={handlePause}
                                         onEnded={handleEnded}
                                         onSeeked={handleSeeked}
-                                        onWaiting={() => setIsLoading(true)}
-                                        onCanPlay={() => setIsLoading(false)}
+                                        onWaiting={handleWaiting}
+                                        onCanPlay={handleCanPlay}
                                         preload="auto"
                                     />
                                     <div className="audio-visualizer">
@@ -814,12 +880,12 @@ export function PlayerPage() {
                                     onTimeUpdate={handleTimeUpdate}
                                     onLoadedMetadata={handleLoadedMetadata}
                                     onDurationChange={handleDurationChange}
-                                    onPlay={() => setIsPlaying(true)}
+                                    onPlay={handlePlay}
                                     onPause={handlePause}
                                     onEnded={handleEnded}
                                     onSeeked={handleSeeked}
-                                    onWaiting={() => setIsLoading(true)}
-                                    onCanPlay={() => setIsLoading(false)}
+                                    onWaiting={handleWaiting}
+                                    onCanPlay={handleCanPlay}
                                     preload="auto"
                                 />
                             )}
@@ -932,7 +998,7 @@ export function PlayerPage() {
                                                 qualities={hlsQualities}
                                                 currentQuality={currentQuality}
                                                 autoLevel={autoLevel}
-                                                onSelectQuality={selectQuality}
+                                                onSelectQuality={handleSelectQualityWithAnalytics}
                                                 playbackRate={playbackRate}
                                                 onSetSpeed={setSpeed}
                                                 isLooping={isLooping}
@@ -1156,7 +1222,14 @@ export function PlayerPage() {
                             <div className="player-sidebar-card">
                                 <h3><i className="bi bi-play-fill"/> Similar Media</h3>
                                 {relatedLoading ? (
-                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading...</p>
+                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading…</p>
+                                ) : similarError ? (
+                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>
+                                        Similar media still loading.{' '}
+                                        <button type="button" className="media-action-btn" style={{marginTop: 4}} onClick={() => similarRefetch()}>
+                                            Retry
+                                        </button>
+                                    </p>
                                 ) : related.length === 0 ? (
                                     <p style={{color: 'var(--text-muted)', fontSize: 13}}>No similar media found.</p>
                                 ) : (

@@ -251,6 +251,7 @@
     object-fit: cover;
     background: #1a1a3e;
     display: block;
+    transition: opacity 0.15s ease;
 }
 
 .media-thumbnail-placeholder {

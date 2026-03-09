@@ -458,6 +458,7 @@ func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 	item, err := h.media.GetMediaByID(id)
 	if err != nil {
 		if !h.media.IsReady() {
+			c.Header("Retry-After", "3")
 			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
 			return "", false
 		}
