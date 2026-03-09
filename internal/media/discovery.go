@@ -464,39 +464,9 @@ func (m *Module) Scan() error {
 		newMediaByID[item.ID] = item
 	}
 
-	// Update media cache while preserving concurrent metadata updates
-	// Merge strategy: if an item exists in the old cache with the same ID,
-	// preserve its runtime-updated fields (Views, LastPlayed from IncrementViews)
-	m.mu.Lock()
-	oldMediaByID := m.mediaByID
-	for id, newItem := range newMediaByID {
-		if oldItem, existed := oldMediaByID[id]; existed {
-			// File still exists - preserve runtime metadata that may have been
-			// updated since scan started (views, last played, etc.)
-			// The persistent metadata is already up-to-date from createMediaItem
-			// which reads from m.metadata under lock, so we only need to preserve
-			// fields that are updated in-memory during playback
-			if oldItem.Views > newItem.Views {
-				newItem.Views = oldItem.Views
-			}
-			if oldItem.LastPlayed != nil && (newItem.LastPlayed == nil || oldItem.LastPlayed.After(*newItem.LastPlayed)) {
-				newItem.LastPlayed = oldItem.LastPlayed
-			}
-			// Preserve ThumbnailURL set by handlers; createMediaItem also sets it
-			// from disk, so this only matters if the thumbnail was generated after
-			// the last scan and the new item's disk check missed it.
-			if newItem.ThumbnailURL == "" && oldItem.ThumbnailURL != "" {
-				newItem.ThumbnailURL = oldItem.ThumbnailURL
-			}
-		}
-	}
-	m.media = newMedia
-	m.mediaByID = newMediaByID
-	m.version++
-	m.lastScan = time.Now()
-	m.mu.Unlock()
-
-	// Extract metadata for all items using a bounded worker pool
+	// Extract metadata for all items using a bounded worker pool.
+	// This runs BEFORE the map swap so that Duration, Width, Height, etc. are
+	// populated before any API request can see the new items.
 	if m.ffprobeAvail {
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, 10)
@@ -511,6 +481,55 @@ func (m *Module) Scan() error {
 		}
 		wg.Wait()
 	}
+
+	// Update media cache while preserving concurrent metadata updates.
+	// Merge strategy: if an item exists in the old cache with the same ID,
+	// preserve its runtime-updated fields (Views, LastPlayed from IncrementViews).
+	// Also carry over ffprobe data (Duration, Width, Height, Codec, etc.) from
+	// old items when extractMetadata skipped ffprobe for unchanged files.
+	m.mu.Lock()
+	oldMediaByID := m.mediaByID
+	for id, newItem := range newMediaByID {
+		if oldItem, existed := oldMediaByID[id]; existed {
+			// Preserve runtime playback metadata
+			if oldItem.Views > newItem.Views {
+				newItem.Views = oldItem.Views
+			}
+			if oldItem.LastPlayed != nil && (newItem.LastPlayed == nil || oldItem.LastPlayed.After(*newItem.LastPlayed)) {
+				newItem.LastPlayed = oldItem.LastPlayed
+			}
+			if newItem.ThumbnailURL == "" && oldItem.ThumbnailURL != "" {
+				newItem.ThumbnailURL = oldItem.ThumbnailURL
+			}
+			// Preserve ffprobe-extracted fields when extractMetadata skipped
+			// (unchanged file — ProbeModTime matched). Without this, Duration,
+			// dimensions, codec, etc. reset to zero on every hourly re-scan.
+			if newItem.Duration == 0 && oldItem.Duration > 0 {
+				newItem.Duration = oldItem.Duration
+			}
+			if newItem.Bitrate == 0 && oldItem.Bitrate > 0 {
+				newItem.Bitrate = oldItem.Bitrate
+			}
+			if newItem.Width == 0 && oldItem.Width > 0 {
+				newItem.Width = oldItem.Width
+				newItem.Height = oldItem.Height
+			}
+			if newItem.Codec == "" && oldItem.Codec != "" {
+				newItem.Codec = oldItem.Codec
+			}
+			if newItem.Container == "" && oldItem.Container != "" {
+				newItem.Container = oldItem.Container
+			}
+			if len(newItem.Metadata) == 0 && len(oldItem.Metadata) > 0 {
+				newItem.Metadata = oldItem.Metadata
+			}
+		}
+	}
+	m.media = newMedia
+	m.mediaByID = newMediaByID
+	m.version++
+	m.lastScan = time.Now()
+	m.mu.Unlock()
 
 	// Update categories
 	m.updateCategories()
@@ -787,11 +806,11 @@ func (m *Module) extractMetadata(item *models.MediaItem) {
 		return
 	}
 
-	// Update item and record the mtime at which we probed.
+	// Apply probe data directly to the item and record the mtime.
+	// The item pointer is the same one in newMedia, so this populates
+	// Duration/Width/Height/etc. before the map swap makes it visible.
 	m.mu.Lock()
-	if current, exists := m.media[item.Path]; exists {
-		m.applyProbeData(current, &probe)
-	}
+	m.applyProbeData(item, &probe)
 	if m.metadata[item.Path] != nil {
 		m.metadata[item.Path].ProbeModTime = item.DateModified
 	}
