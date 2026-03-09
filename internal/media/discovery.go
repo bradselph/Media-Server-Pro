@@ -986,6 +986,58 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 	return items
 }
 
+// ListMediaPaginated returns a page of media items using DB-level filtering and pagination.
+// Use this for admin or large libraries to avoid loading the full catalog. Total is the
+// total matching rows in the DB; items may be fewer if some paths are no longer in the
+// current scan (e.g. deleted files not yet pruned). Filter.Type and Filter.Tags are
+// applied in-memory on the page, so the returned slice can be shorter than limit.
+func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, offset int) (items []*models.MediaItem, total int64, err error) {
+	if m.metadataRepo == nil {
+		return nil, 0, fmt.Errorf("metadata repository not available")
+	}
+
+	repoFilter := repositories.MediaFilter{
+		Category: filter.Category,
+		IsMature: filter.IsMature,
+		Search:   filter.Search,
+		SortDesc: filter.SortDesc,
+		Limit:    limit,
+		Offset:   offset,
+	}
+	switch filter.SortBy {
+	case "views":
+		repoFilter.SortBy = "views"
+	case "date_added", "date_modified":
+		repoFilter.SortBy = "date_added"
+	default:
+		repoFilter.SortBy = "path" // name, path, etc.
+	}
+
+	metas, total, err := m.metadataRepo.ListFiltered(ctx, repoFilter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, meta := range metas {
+		item, ok := m.media[meta.Path]
+		if !ok {
+			continue // path no longer in catalog (e.g. file deleted)
+		}
+		if filter.Matches(item) {
+			items = append(items, item)
+		}
+	}
+
+	// ListFiltered already applied sort in DB; re-sort only if we need Type/Tags ordering
+	if filter.Type != "" || len(filter.Tags) > 0 {
+		filter.SortItems(items)
+	}
+	return items, total, nil
+}
+
 // Filter defines filtering options for media listing.
 type Filter struct {
 	Type     models.MediaType
