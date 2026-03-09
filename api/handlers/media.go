@@ -68,8 +68,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	// local item (same file exists on both master and slave — show only the local copy).
 	hasReceiverItems := false
 	if h.receiver != nil {
-		cfg := h.media.GetConfig()
-		if cfg.Features.EnableReceiver && cfg.Receiver.Enabled {
+		if h.media.GetConfig().Receiver.Enabled {
 			// Track fingerprints already added from receiver items so that if
 			// the same file exists on two different slaves, only the first is kept.
 			seenFP := make(map[string]bool)
@@ -109,8 +108,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	// Merge extractor items into the listing so extracted external URLs
 	// appear in the unified library alongside local and slave media.
 	if h.extractor != nil {
-		cfg := h.media.GetConfig()
-		if cfg.Features.EnableExtractor && cfg.Extractor.Enabled {
+		if h.media.GetConfig().Extractor.Enabled {
 			for _, ei := range h.extractor.GetAllItems() {
 				if ei.Status != "active" {
 					continue

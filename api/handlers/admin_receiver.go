@@ -19,8 +19,7 @@ func (h *Handler) checkDuplicateDetectionEnabled(c *gin.Context) bool {
 
 func (h *Handler) checkReceiverEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.receiver, "Media receiver", func() bool {
-		cfg := h.media.GetConfig()
-		return cfg.Features.EnableReceiver && cfg.Receiver.Enabled
+		return h.media.GetConfig().Receiver.Enabled
 	})
 }
 
@@ -106,6 +105,31 @@ func (h *Handler) ReceiverHeartbeat(c *gin.Context) {
 	}
 
 	writeSuccess(c, gin.H{"status": "ok"})
+}
+
+// ReceiverProxyStream proxies a media stream from a slave to the client.
+// GET /receiver/stream/:id
+func (h *Handler) ReceiverProxyStream(c *gin.Context) {
+	if !h.checkReceiverEnabled(c) {
+		return
+	}
+
+	mediaID := c.Param("id")
+	if mediaID == "" {
+		writeError(c, http.StatusBadRequest, "media ID required")
+		return
+	}
+
+	if err := h.receiver.ProxyStream(c.Writer, c.Request, mediaID); err != nil {
+		// Don't write error if headers already sent (stream started)
+		if !c.Writer.Written() {
+			if isClientDisconnect(err) {
+				return
+			}
+			writeError(c, http.StatusBadGateway, err.Error())
+		}
+		return
+	}
 }
 
 // ReceiverListMedia returns all media from all online slaves.

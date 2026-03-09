@@ -561,22 +561,19 @@ func checkFeatureEnabled(c *gin.Context, module any, name string, enabled func()
 
 func (h *Handler) checkExtractorEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.extractor, "Extractor", func() bool {
-		cfg := h.media.GetConfig()
-		return cfg.Features.EnableExtractor && cfg.Extractor.Enabled
+		return h.media.GetConfig().Extractor.Enabled
 	})
 }
 
 func (h *Handler) checkCrawlerEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.crawler, "Crawler", func() bool {
-		cfg := h.media.GetConfig()
-		return cfg.Features.EnableCrawler && cfg.Crawler.Enabled
+		return h.media.GetConfig().Crawler.Enabled
 	})
 }
 
 func (h *Handler) checkRemoteMediaEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.remote, "Remote media", func() bool {
-		cfg := h.media.GetConfig()
-		return cfg.Features.EnableRemoteMedia && cfg.RemoteMedia.Enabled
+		return h.media.GetConfig().RemoteMedia.Enabled
 	})
 }
 
