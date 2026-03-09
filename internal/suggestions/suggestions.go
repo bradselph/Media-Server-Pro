@@ -65,9 +65,10 @@ type Module struct {
 	dbModule  *database.Module
 	repo      repositories.SuggestionProfileRepository
 	profiles  map[string]*UserProfile
-	mediaData map[string]*MediaInfo // keyed by filesystem path
-	mediaByID map[string]*MediaInfo // keyed by StableID (secondary index)
-	mu        sync.RWMutex
+	mediaData       map[string]*MediaInfo // keyed by filesystem path
+	mediaByID       map[string]*MediaInfo // keyed by StableID (secondary index)
+	catalogueSeeded bool                  // true after first non-empty UpdateMediaData
+	mu              sync.RWMutex
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
@@ -315,9 +316,20 @@ func (m *Module) UpdateMediaData(items []*MediaInfo) {
 	m.mu.Lock()
 	m.mediaData = newData
 	m.mediaByID = newByID
+	m.catalogueSeeded = len(newData) > 0
 	m.mu.Unlock()
 
 	m.log.Info("Updated media data: %d items", len(items))
+}
+
+// IsCatalogueReady reports whether the media catalogue has been seeded at least
+// once with a non-empty data set. Before this returns true, all suggestion
+// endpoints will return empty results. Handlers use this to return 503 with
+// Retry-After instead of misleading empty arrays.
+func (m *Module) IsCatalogueReady() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.catalogueSeeded
 }
 
 // GetSuggestions returns personalized suggestions for a user

@@ -5,6 +5,7 @@ import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {usePlaylistStore} from '@/stores/playlistStore'
+import {ApiError} from '@/api/client'
 import {analyticsApi, mediaApi, playlistApi, suggestionsApi} from '@/api/endpoints'
 import type {AnalyticsSummary, MediaCategory, MediaItem, Playlist, Suggestion} from '@/api/types'
 import {useEqualizer} from '@/hooks/useEqualizer'
@@ -857,12 +858,21 @@ export function IndexPage() {
     const showRecommended = user?.preferences?.show_recommended ?? true
     const showTrending = user?.preferences?.show_trending ?? true
 
+    // Retry strategy for suggestion queries: retry on 503 (catalogue not seeded yet)
+    const suggestionsRetry = (failureCount: number, error: Error) => {
+        if (error instanceof ApiError && error.status === 503) return failureCount < 5
+        return failureCount < 1
+    }
+    const suggestionsRetryDelay = (attempt: number) => Math.min(1000 * 2 ** attempt, 10000)
+
     // Continue watching query — in-progress items for authenticated users
     const {data: continueWatching = []} = useQuery<Suggestion[]>({
         queryKey: ['continue-watching'],
         queryFn: () => suggestionsApi.getContinueWatching(),
         enabled: isAuthenticated && showContinueWatching,
         staleTime: 2 * 60 * 1000,
+        retry: suggestionsRetry,
+        retryDelay: suggestionsRetryDelay,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -872,6 +882,8 @@ export function IndexPage() {
         queryFn: () => suggestionsApi.get(),
         enabled: showRecommended,
         staleTime: 10 * 60 * 1000,
+        retry: suggestionsRetry,
+        retryDelay: suggestionsRetryDelay,
         select: data => (data ?? []).slice(0, 8),
     })
 
@@ -881,6 +893,8 @@ export function IndexPage() {
         queryFn: () => suggestionsApi.getTrending(),
         enabled: showTrending,
         staleTime: 10 * 60 * 1000,
+        retry: suggestionsRetry,
+        retryDelay: suggestionsRetryDelay,
         select: data => (data ?? []).slice(0, 8),
     })
 

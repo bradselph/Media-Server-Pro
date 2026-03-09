@@ -172,6 +172,12 @@ export function PlayerPage() {
         queryKey: ['media-similar', mediaId],
         queryFn: () => suggestionsApi.getSimilar(mediaId ?? ''),
         enabled: !!mediaId,
+        // Retry on 503 (suggestions catalogue not seeded yet during startup)
+        retry: (failureCount, error) => {
+            if (error instanceof ApiError && error.status === 503) return failureCount < 5
+            return failureCount < 1
+        },
+        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
         select: data => (data ?? []).slice(0, 8),
     })
 

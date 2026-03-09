@@ -7,9 +7,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// requireSuggestionsCatalogue checks that the suggestions module's media
+// catalogue has been seeded. Returns 503 with Retry-After if the catalogue
+// is empty (server just started, initial scan still in progress).
+func (h *Handler) requireSuggestionsCatalogue(c *gin.Context) bool {
+	if !h.suggestions.IsCatalogueReady() {
+		c.Header("Retry-After", "3")
+		writeError(c, http.StatusServiceUnavailable, "Suggestions are loading — media catalogue scan in progress, please try again shortly")
+		return false
+	}
+	return true
+}
+
 // GetSuggestions returns personalized content suggestions
 func (h *Handler) GetSuggestions(c *gin.Context) {
 	if !h.requireSuggestions(c) {
+		return
+	}
+	if !h.requireSuggestionsCatalogue(c) {
 		return
 	}
 	session := getSession(c)
@@ -33,6 +48,9 @@ func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
+	if !h.requireSuggestionsCatalogue(c) {
+		return
+	}
 	limit := 10
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
 		limit = l
@@ -49,8 +67,8 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 		return
 	}
 	id := c.Query("id")
-	// Validate the media ID exists before querying the suggestions engine.
-	if _, ok := h.resolveMediaByID(c, id); !ok {
+	if id == "" {
+		writeError(c, http.StatusBadRequest, errIDRequired)
 		return
 	}
 
@@ -59,8 +77,9 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 		limit = l
 	}
 
-	// Pass the StableID directly — the suggestions module indexes by ID,
-	// avoiding path-mismatch issues when the catalogue hasn't refreshed yet.
+	// Pass the StableID directly to the suggestions module which has its own
+	// catalogue indexed by ID. No need to validate via the media module —
+	// the suggestions engine handles unknown IDs gracefully (returns random sample).
 	similar := h.suggestions.GetSimilarMedia(id, limit)
 	h.enrichSuggestionThumbnails(similar)
 	writeSuccess(c, similar)
@@ -90,6 +109,9 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 // GetPersonalizedSuggestions returns personalized suggestions (auth-gated alias for GetSuggestions).
 func (h *Handler) GetPersonalizedSuggestions(c *gin.Context) {
 	if !h.requireSuggestions(c) {
+		return
+	}
+	if !h.requireSuggestionsCatalogue(c) {
 		return
 	}
 	session := getSession(c)
