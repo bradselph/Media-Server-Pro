@@ -72,7 +72,8 @@ func (r *AnalyticsRepository) GetByMediaID(ctx context.Context, mediaID string) 
 	return events, err
 }
 
-// GetByUserID retrieves all events for a specific user
+// GetByUserID retrieves all events for a specific user.
+// TODO: Never called. Backend routes GET /api/analytics/events/by-type and by-media exist; profile or admin "events by user" could use this. Either add an API/handler that returns events by user and call GetByUserID, or remove if not needed.
 func (r *AnalyticsRepository) GetByUserID(ctx context.Context, userID string) ([]*models.AnalyticsEvent, error) {
 	var events []*models.AnalyticsEvent
 	err := r.db.WithContext(ctx).

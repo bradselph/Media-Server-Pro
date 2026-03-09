@@ -731,6 +731,7 @@ export const adminApi = {
         api.get<EventStats>('/api/analytics/events/stats'),
 
     // Returns []models.AnalyticsEvent — use AnalyticsEvent[] not AnalyticsSummary[]
+    // TODO: No UI calls getEventsByType or getEventsByMedia; backend supports GET /api/analytics/events/by-type and by-media. AnalyticsTab and other admin components only use getEventStats/getEventTypeCounts. Wire these in AnalyticsTab or remove if not needed.
     getEventsByType: (type: string, limit?: number) => {
         const qs = new URLSearchParams({type})
         if (limit) qs.set('limit', String(limit))

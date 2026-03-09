@@ -25,6 +25,7 @@ export function AnalyticsTab() {
         queryFn: () => adminApi.getEventTypeCounts(),
     })
 
+    // TODO: adminApi.getEventsByType(type, limit) and adminApi.getEventsByMedia(mediaId, limit) are defined in api/endpoints.ts and have backend routes GET /api/analytics/events/by-type and by-media, but no component calls them. Wire UI to show events by type or by media (e.g. dropdowns or detail panels) if analytics detail views are desired.
     // Feature 5: Event stats
     const {data: eventStats} = useQuery<EventStats>({
         queryKey: ['analytics-event-stats'],

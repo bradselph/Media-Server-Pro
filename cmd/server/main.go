@@ -531,6 +531,7 @@ func registerTasks(
 	)
 
 	// Health check — periodic log entry for monitoring systems every 5m
+	// TODO: Task description says "Performs system diagnostics and monitors disk space" but the implementation only logs and returns. Add actual diagnostics (e.g. disk space for Directories, DB ping, critical module health) and optional metrics/alerting, or change the description to match current behavior.
 	scheduler.RegisterTask(
 		"health-check",
 		"Health Check",

@@ -351,6 +351,7 @@ type LoggingConfig struct {
 	Level        string `json:"level"`
 	Format       string `json:"format"` // "text" (default) or "json" for structured JSON output; also controlled by LOG_FORMAT env var
 	FileEnabled  bool   `json:"file_enabled"`
+	// TODO: FileRotation is loaded from config and LOG_FILE_ROTATION env (applyLoggingEnvOverrides) but is never passed to the logger. internal/server/server.go calls logger.EnableFileLogging(logDir, MaxFileSize, MaxBackups) only; internal/logger/logger.go rotateIfNeeded() uses maxSize > 0 to decide rotation. When FileRotation is false, rotation can still occur if MaxFileSize is set. Wire FileRotation into logger so rotation is disabled when false.
 	FileRotation bool   `json:"file_rotation"` // Rotate log files when MaxFileSize is exceeded; keeps MaxBackups rotated copies
 	MaxFileSize  int64  `json:"max_file_size"`
 	MaxBackups   int    `json:"max_backups"`
@@ -771,6 +772,7 @@ func (m *Manager) syncFeatureToggles() {
 	if !m.config.Features.EnableUploads {
 		m.config.Uploads.Enabled = false
 	}
+	// TODO: syncFeatureToggles does not sync Features.EnablePlaylists, EnableUserAuth, EnableAdminPanel, EnableSuggestions, EnableAutoDiscovery, or EnableDuplicateDetection into the corresponding module config (playlist, auth, admin, suggestions, autodiscovery, duplicates). These flags are defined in FeaturesConfig and can be set via FEATURE_* env vars, but setting them to false does not disable those modules. Add sync branches for these so a single source of truth applies (see CLAUDE.md module list).
 }
 
 // findEnvFile looks for .env file in common locations
