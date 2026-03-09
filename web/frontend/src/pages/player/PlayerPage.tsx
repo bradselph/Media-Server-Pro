@@ -127,6 +127,13 @@ export function PlayerPage() {
         queryKey: ['media-item', mediaId],
         queryFn: () => mediaApi.get(mediaId),
         enabled: !!mediaId,
+        // Retry aggressively on 503 (server initializing — media scan in progress)
+        // so users don't see a false "not found" error during startup.
+        retry: (failureCount, error) => {
+            if (error instanceof ApiError && error.status === 503) return failureCount < 5
+            return failureCount < 1
+        },
+        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
     })
 
     // Stable fallback callback — must not be recreated on every render or
