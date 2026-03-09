@@ -564,7 +564,6 @@ export const adminApi = {
         api.post<void>('/api/admin/scanner/scan', {
             path: path ?? '',
             auto_apply: autoApply ?? false,
-            scan_metadata: false,
         }),
 
     getReviewQueue: () =>
