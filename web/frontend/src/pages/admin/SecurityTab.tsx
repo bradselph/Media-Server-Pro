@@ -6,7 +6,7 @@ import {errMsg} from './helpers'
 
 // ── Tab: Security (Feature 10) ────────────────────────────────────────────────
 
-type IPSortKey = 'ip' | 'comment' | 'added_at'
+type IPSortKey = 'ip' | 'comment' | 'added_by' | 'added_at'
 type BanSortKey = 'ip' | 'reason' | 'banned_at' | 'expires_at'
 
 export function SecurityTab() {
@@ -153,6 +153,7 @@ export function SecurityTab() {
                             switch (wlSortBy) {
                                 case 'ip': cmp = a.ip.localeCompare(b.ip); break
                                 case 'comment': cmp = (a.comment || '').localeCompare(b.comment || ''); break
+                                case 'added_by': cmp = (a.added_by || '').localeCompare(b.added_by || ''); break
                                 case 'added_at': cmp = a.added_at.localeCompare(b.added_at); break
                             }
                             return wlSortOrder === 'desc' ? -cmp : cmp
@@ -173,6 +174,7 @@ export function SecurityTab() {
                             <tr>
                                 <th style={thS} onClick={() => handleWlSort('ip')}>IP{wlInd('ip')}</th>
                                 <th style={thS} onClick={() => handleWlSort('comment')}>Comment{wlInd('comment')}</th>
+                                <th style={thS} onClick={() => handleWlSort('added_by')}>Added By{wlInd('added_by')}</th>
                                 <th style={thS} onClick={() => handleWlSort('added_at')}>Added{wlInd('added_at')}</th>
                                 <th>Actions</th>
                             </tr>
@@ -182,6 +184,7 @@ export function SecurityTab() {
                                 <tr key={entry.ip}>
                                     <td><code>{entry.ip}</code></td>
                                     <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.comment || '—'}</td>
+                                    <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.added_by || '—'}</td>
                                     <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(entry.added_at).toLocaleDateString()}</td>
                                     <td>
                                         <button className="admin-btn admin-btn-danger" style={{padding: '3px 8px'}}
@@ -222,6 +225,7 @@ export function SecurityTab() {
                             switch (blSortBy) {
                                 case 'ip': cmp = a.ip.localeCompare(b.ip); break
                                 case 'comment': cmp = (a.comment || '').localeCompare(b.comment || ''); break
+                                case 'added_by': cmp = (a.added_by || '').localeCompare(b.added_by || ''); break
                                 case 'added_at': cmp = a.added_at.localeCompare(b.added_at); break
                             }
                             return blSortOrder === 'desc' ? -cmp : cmp
@@ -242,6 +246,7 @@ export function SecurityTab() {
                             <tr>
                                 <th style={thS} onClick={() => handleBlSort('ip')}>IP{blInd('ip')}</th>
                                 <th style={thS} onClick={() => handleBlSort('comment')}>Comment{blInd('comment')}</th>
+                                <th style={thS} onClick={() => handleBlSort('added_by')}>Added By{blInd('added_by')}</th>
                                 <th style={thS} onClick={() => handleBlSort('added_at')}>Added{blInd('added_at')}</th>
                                 <th>Actions</th>
                             </tr>
@@ -251,6 +256,7 @@ export function SecurityTab() {
                                 <tr key={entry.ip}>
                                     <td><code>{entry.ip}</code></td>
                                     <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.comment || '—'}</td>
+                                    <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.added_by || '—'}</td>
                                     <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(entry.added_at).toLocaleDateString()}</td>
                                     <td>
                                         <button className="admin-btn admin-btn-success" style={{padding: '3px 8px'}}

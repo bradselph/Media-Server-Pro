@@ -158,6 +158,10 @@ export function AnalyticsTab() {
                             <span className="admin-stat-value">{(suggestionStats.total_views ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Views Tracked</span>
                         </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{(suggestionStats.total_watch_time ?? 0) > 3600 ? `${((suggestionStats.total_watch_time ?? 0) / 3600).toFixed(1)}h` : `${Math.round((suggestionStats.total_watch_time ?? 0) / 60)}m`}</span>
+                            <span className="admin-stat-label">Watch Time</span>
+                        </div>
                     </div>
                 )}
                 {exportError && (
