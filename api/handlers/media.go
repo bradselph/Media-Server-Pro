@@ -135,24 +135,10 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		filterNoPagination.SortItems(allItems)
 	}
 
-	// Mature filtering: hide mature items from guests and from logged-in users
-	// who lack the permission or preference to view them.
-	showMature := false
-	if session := getSession(c); session != nil {
-		if user := getUser(c); user != nil && user.Permissions.CanViewMature && user.Preferences.ShowMature {
-			showMature = true
-		}
-	}
-	if !showMature {
-		filtered := make([]*models.MediaItem, 0, len(allItems))
-		for _, item := range allItems {
-			if !item.IsMature {
-				filtered = append(filtered, item)
-			}
-		}
-		allItems = filtered
-	}
-	// else: guest — keep mature items so frontend can show them blurred with gate
+	// Mature content: always include mature items in the listing so the
+	// frontend can render them blurred with a gate overlay (sign-in prompt
+	// for guests, enable-in-settings prompt for authenticated users).
+	// Actual playback/streaming is blocked by checkMatureAccess().
 
 	totalItems := len(allItems)
 	totalPages := 1
