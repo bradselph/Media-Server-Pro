@@ -219,6 +219,25 @@ func (h *Handler) GetEventsByMedia(c *gin.Context) {
 	writeSuccess(c, events)
 }
 
+// GetEventsByUser returns events for a specific user (user_id query param required)
+func (h *Handler) GetEventsByUser(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []interface{}{})
+		return
+	}
+	userID := c.Query("user_id")
+	if userID == "" {
+		writeError(c, http.StatusBadRequest, "user_id parameter required")
+		return
+	}
+	limit := 100
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 1000 {
+		limit = l
+	}
+	events := h.analytics.GetEventsByUser(c.Request.Context(), userID, limit)
+	writeSuccess(c, events)
+}
+
 // GetEventTypeCounts returns counts of each event type
 func (h *Handler) GetEventTypeCounts(c *gin.Context) {
 	if h.analytics == nil {

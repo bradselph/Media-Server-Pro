@@ -744,6 +744,12 @@ export const adminApi = {
         return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-media?${qs}`)
     },
 
+    getEventsByUser: (userId: string, limit?: number) => {
+        const qs = new URLSearchParams({user_id: userId})
+        if (limit) qs.set('limit', String(limit))
+        return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user?${qs}`)
+    },
+
     // Feature 6: Admin playlists management — backend returns []*models.Playlist → use Playlist[]
     listAllPlaylists: (params?: { page?: number; limit?: number; search?: string }) => {
         const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString() : ''

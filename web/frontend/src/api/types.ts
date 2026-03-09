@@ -548,11 +548,21 @@ export interface EventTypeCounts {
 
 // ── Remote Sources ──
 
+// Used for creating/updating remote sources (password accepted on write)
 export interface RemoteSource {
     name: string
     url: string
     username?: string
     password?: string
+    enabled: boolean
+}
+
+// Matches internal/remote/remote.go MediaItem struct (distinct from models.MediaItem)
+// Use this type for API response shapes.
+export interface RemoteSourceResponse {
+    name: string
+    url: string
+    username?: string
     enabled: boolean
 }
 
@@ -570,7 +580,7 @@ export interface RemoteMediaItem {
 }
 
 export interface RemoteSourceState {
-    source: RemoteSource
+    source: RemoteSourceResponse
     status: string       // "idle" | "syncing" | "error"
     // last_sync is always an ISO timestamp string; zero value is "0001-01-01T00:00:00Z" (never synced)
     last_sync: string

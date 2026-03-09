@@ -223,9 +223,15 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enabled": cfg.Analytics.Enabled,
 		},
 		"features": map[string]interface{}{
-			"enableThumbnails": cfg.Thumbnails.Enabled,
-			"enableHLS":        cfg.HLS.Enabled,
-			"enableAnalytics":  cfg.Analytics.Enabled,
+			"enableThumbnails":        cfg.Thumbnails.Enabled,
+			"enableHLS":               cfg.HLS.Enabled,
+			"enableAnalytics":         cfg.Analytics.Enabled,
+			"enablePlaylists":         cfg.Features.EnablePlaylists,
+			"enableUserAuth":          cfg.Features.EnableUserAuth,
+			"enableAdminPanel":        cfg.Features.EnableAdminPanel,
+			"enableSuggestions":       cfg.Features.EnableSuggestions,
+			"enableAutoDiscovery":     cfg.Features.EnableAutoDiscovery,
+			"enableDuplicateDetection": cfg.Features.EnableDuplicateDetection,
 		},
 		"uploads": map[string]interface{}{
 			"enabled":     cfg.Uploads.Enabled,

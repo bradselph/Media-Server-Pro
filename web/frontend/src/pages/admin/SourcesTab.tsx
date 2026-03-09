@@ -632,16 +632,20 @@ function ReceiverTab() {
                                                                         <th>Type</th>
                                                                         <th>Size</th>
                                                                         <th>Duration</th>
+                                                                        <th>Resolution</th>
+                                                                        <th>Content Type</th>
                                                                         <th>Stream</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
                                                                     {browseMedia.map(m => (
                                                                         <tr key={m.id}>
-                                                                            <td>{m.name}</td>
+                                                                            <td title={m.path}>{m.name}</td>
                                                                             <td><span className={`media-card-type-badge badge-${m.media_type}`}>{m.media_type}</span></td>
                                                                             <td>{formatBytes(m.size)}</td>
                                                                             <td>{m.duration > 0 ? `${Math.floor(m.duration / 60)}:${String(Math.floor(m.duration % 60)).padStart(2, '0')}` : '—'}</td>
+                                                                            <td>{m.width > 0 && m.height > 0 ? `${m.width}x${m.height}` : '—'}</td>
+                                                                            <td style={{fontSize: 11}}>{m.content_type || '—'}</td>
                                                                             <td>
                                                                                 <a href={mediaApi.getStreamUrl(m.id)} target="_blank" rel="noreferrer"
                                                                                    className="admin-btn" style={{fontSize: 11, padding: '3px 7px'}}>
@@ -780,6 +784,7 @@ function ExtractorTab() {
                                 <th>Title</th>
                                 <th>Stream URL</th>
                                 <th>Status</th>
+                                <th>Added By</th>
                                 <th>Added</th>
                                 <th>Actions</th>
                             </tr>
@@ -793,7 +798,13 @@ function ExtractorTab() {
                                     <td title={item.stream_url} style={{maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.85em'}}>
                                         {item.stream_url}
                                     </td>
-                                    <td>{statusBadge(item.status)}</td>
+                                    <td>
+                                        {statusBadge(item.status)}
+                                        {item.status === 'error' && item.error_message && (
+                                            <span title={item.error_message} style={{marginLeft: 4, cursor: 'help', color: '#ef4444'}}>&#9888;</span>
+                                        )}
+                                    </td>
+                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{item.added_by || '—'}</td>
                                     <td>{new Date(item.created_at).toLocaleDateString()}</td>
                                     <td>
                                         <button
@@ -936,6 +947,7 @@ function CrawlerTab() {
             {stats && (
                 <div className="admin-stats-grid" style={{marginBottom: '1.5rem'}}>
                     <div className="admin-stat-card"><div className="admin-stat-value">{stats.total_targets}</div><div className="admin-stat-label">Targets</div></div>
+                    <div className="admin-stat-card"><div className="admin-stat-value">{stats.enabled_targets}</div><div className="admin-stat-label">Enabled</div></div>
                     <div className="admin-stat-card"><div className="admin-stat-value">{stats.pending_discoveries}</div><div className="admin-stat-label">Pending Review</div></div>
                     <div className="admin-stat-card"><div className="admin-stat-value">{stats.total_discoveries}</div><div className="admin-stat-label">Total Found</div></div>
                     <div className="admin-stat-card"><div className="admin-stat-value">{stats.crawling ? 'Running' : 'Idle'}</div><div className="admin-stat-label">Status</div></div>
@@ -973,12 +985,14 @@ function CrawlerTab() {
             ) : (
                 <div className="admin-table-wrapper" style={{marginBottom: 24}}>
                     <table className="admin-table">
-                        <thead><tr><th>Name</th><th>URL</th><th>Last Crawled</th><th>Actions</th></tr></thead>
+                        <thead><tr><th>Name</th><th>Site</th><th>URL</th><th>Enabled</th><th>Last Crawled</th><th>Actions</th></tr></thead>
                         <tbody>
                             {targets.map(t => (
                                 <tr key={t.id}>
                                     <td>{t.name}</td>
+                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{t.site || '—'}</td>
                                     <td style={{maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.85em'}}>{t.url}</td>
+                                    <td>{t.enabled ? <span style={{color: '#22c55e'}}>Yes</span> : <span style={{color: '#ef4444'}}>No</span>}</td>
                                     <td>{t.last_crawled ? new Date(t.last_crawled).toLocaleString() : 'Never'}</td>
                                     <td>
                                         <button
@@ -1027,7 +1041,7 @@ function CrawlerTab() {
             ) : (
                 <div className="admin-table-wrapper">
                     <table className="admin-table">
-                        <thead><tr><th>Title</th><th>Stream URL</th><th>Status</th><th>Found</th><th>Actions</th></tr></thead>
+                        <thead><tr><th>Title</th><th>Stream URL</th><th>Type</th><th>Quality</th><th>Status</th><th>Found</th><th>Actions</th></tr></thead>
                         <tbody>
                             {discoveries.map(d => (
                                 <tr key={d.id}>
@@ -1037,6 +1051,8 @@ function CrawlerTab() {
                                     <td title={d.stream_url} style={{maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.85em'}}>
                                         {d.stream_url}
                                     </td>
+                                    <td style={{fontSize: 12}}>{d.stream_type || '—'}</td>
+                                    <td style={{fontSize: 12}}>{d.quality > 0 ? `${d.quality}p` : '—'}</td>
                                     <td>{statusBadge(d.status)}</td>
                                     <td>{new Date(d.discovered_at).toLocaleDateString()}</td>
                                     <td>
@@ -1056,7 +1072,10 @@ function CrawlerTab() {
                                             </button>
                                         </>)}
                                         {d.status !== 'pending' && (
-                                            <span style={{color: 'var(--text-muted)', fontSize: 12}}>{d.reviewed_by || '-'}</span>
+                                            <span style={{color: 'var(--text-muted)', fontSize: 12}}>
+                                                {d.reviewed_by || '-'}
+                                                {d.reviewed_at && ` on ${new Date(d.reviewed_at).toLocaleDateString()}`}
+                                            </span>
                                         )}
                                     </td>
                                 </tr>
@@ -1184,6 +1203,7 @@ function DuplicatesTab() {
                                 <span style={{fontSize: 11, color: 'var(--text-muted)'}}>
                                     detected {new Date(dup.detected_at).toLocaleString()}
                                     {dup.resolved_by && ` · resolved by ${dup.resolved_by}`}
+                                    {dup.resolved_at && ` on ${new Date(dup.resolved_at).toLocaleDateString()}`}
                                 </span>
                             </div>
 

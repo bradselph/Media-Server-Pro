@@ -771,6 +771,12 @@ func (m *Manager) syncFeatureToggles() {
 	if !m.config.Features.EnableUploads {
 		m.config.Uploads.Enabled = false
 	}
+	if !m.config.Features.EnableUserAuth {
+		m.config.Auth.Enabled = false
+	}
+	if !m.config.Features.EnableAdminPanel {
+		m.config.Admin.Enabled = false
+	}
 }
 
 // findEnvFile looks for .env file in common locations

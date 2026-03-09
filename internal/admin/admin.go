@@ -134,14 +134,30 @@ func (m *Module) LogAction(ctx context.Context, userID, username, action, resour
 	m.log.Info("AUDIT: %s by %s on %s (success: %v)", action, username, resource, success)
 }
 
-// GetAuditLog returns audit log entries
-func (m *Module) GetAuditLog(ctx context.Context, limit, offset int) []models.AuditLogEntry {
+// CleanupAuditLogOlderThan deletes audit log entries older than the given retention days.
+// Use retentionDays <= 0 to skip.
+func (m *Module) CleanupAuditLogOlderThan(ctx context.Context, retentionDays int) error {
+	if retentionDays <= 0 {
+		return nil
+	}
+	before := time.Now().AddDate(0, 0, -retentionDays).Format(time.RFC3339)
+	return m.auditRepo.DeleteOlderThan(ctx, before)
+}
+
+// GetAuditLog returns audit log entries, optionally filtered by userID (empty string = all users).
+// Both limit and offset are applied so pagination works when filtering by user.
+func (m *Module) GetAuditLog(ctx context.Context, limit, offset int, userID string) []models.AuditLogEntry {
 	entries, err := m.auditRepo.List(ctx, repositories.AuditLogFilter{
+		UserID: userID,
 		Limit:  limit,
 		Offset: offset,
 	})
 	if err != nil {
-		m.log.Error("Failed to retrieve audit log: %v", err)
+		if userID != "" {
+			m.log.Error("Failed to retrieve audit log for user %s: %v", userID, err)
+		} else {
+			m.log.Error("Failed to retrieve audit log: %v", err)
+		}
 		return []models.AuditLogEntry{}
 	}
 

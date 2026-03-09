@@ -702,6 +702,23 @@ func (m *Module) GetEventsByMedia(ctx context.Context, mediaID string, limit int
 	return result
 }
 
+// GetEventsByUser returns events for a specific user (by user ID)
+func (m *Module) GetEventsByUser(ctx context.Context, userID string, limit int) []models.AnalyticsEvent {
+	events, err := m.eventRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		m.log.Error("Failed to get events by user: %v", err)
+		return []models.AnalyticsEvent{}
+	}
+	if limit > 0 && len(events) > limit {
+		events = events[:limit]
+	}
+	result := make([]models.AnalyticsEvent, len(events))
+	for i, event := range events {
+		result[i] = *event
+	}
+	return result
+}
+
 // GetEventTypeCounts returns counts of each event type using a SQL GROUP BY query.
 func (m *Module) GetEventTypeCounts(ctx context.Context) map[string]int {
 	counts, err := m.eventRepo.CountByType(ctx)

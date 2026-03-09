@@ -343,6 +343,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.GET("/analytics/events/stats", adminAuth(authModule), h.GetEventStats)
 	api.GET("/analytics/events/by-type", adminAuth(authModule), h.GetEventsByType)
 	api.GET("/analytics/events/by-media", adminAuth(authModule), h.GetEventsByMedia)
+	api.GET("/analytics/events/by-user", adminAuth(authModule), h.GetEventsByUser)
 	api.GET("/analytics/events/counts", adminAuth(authModule), h.GetEventTypeCounts)
 
 	// Thumbnail previews (public) — frontend uses mediaApi.getThumbnailPreviews()
