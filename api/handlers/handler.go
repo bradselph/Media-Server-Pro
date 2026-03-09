@@ -590,7 +590,7 @@ func (h *Handler) enrichSuggestionThumbnails(items []*suggestions.Suggestion) {
 			if !h.thumbnails.HasThumbnail(item.MediaID) {
 				ext := strings.ToLower(filepath.Ext(item.MediaPath))
 				isAudio := isAudioExtension(ext)
-				if _, err := h.thumbnails.GenerateThumbnail(item.MediaPath, item.MediaID, isAudio); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
+				if _, err := h.thumbnails.GenerateThumbnail(item.MediaPath, item.MediaID, isAudio, true); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.MediaPath, err)
 				}
 			}

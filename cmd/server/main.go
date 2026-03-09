@@ -434,7 +434,7 @@ func registerTasks(
 				needsGen := isAudio && !thumbnailsModule.HasThumbnail(item.ID) ||
 					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(item.ID)
 				if needsGen {
-					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, item.ID, isAudio); err != nil {
+					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, item.ID, isAudio, false); err != nil {
 						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
 							log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
 						}

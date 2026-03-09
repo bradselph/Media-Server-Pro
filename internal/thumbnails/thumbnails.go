@@ -2,6 +2,7 @@
 package thumbnails
 
 import (
+	"container/heap"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -46,7 +47,10 @@ type Module struct {
 	thumbnailDir    string
 	ffmpegPath      string
 	ffprobePath     string
-	jobQueue        chan *ThumbnailJob
+	jobHeap         jobHeap
+	jobMu           sync.Mutex
+	jobCond         *sync.Cond
+	jobCap          int // max queue size
 	ctx             context.Context
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
@@ -75,6 +79,27 @@ type ThumbnailJob struct {
 	IsAudio    bool
 }
 
+// priorityJob wraps ThumbnailJob with priority (0=high/user-triggered, 1=low/background)
+type priorityJob struct {
+	job      *ThumbnailJob
+	priority int
+}
+
+// jobHeap implements heap.Interface for priority queue (lower priority value = higher priority)
+type jobHeap []*priorityJob
+
+func (h jobHeap) Len() int            { return len(h) }
+func (h jobHeap) Less(i, j int) bool  { return h[i].priority < h[j].priority }
+func (h jobHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
+func (h *jobHeap) Push(x interface{}) { *h = append(*h, x.(*priorityJob)) }
+func (h *jobHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	item := old[n-1]
+	*h = old[0 : n-1]
+	return item
+}
+
 // Stats holds thumbnail generation statistics
 type Stats struct {
 	Generated int64
@@ -99,15 +124,18 @@ func NewModule(cfg *config.Manager, blurHashUpdater BlurHashUpdater) *Module {
 		queueSize = 100
 	}
 
-	return &Module{
+	m := &Module{
 		log:             log,
 		config:          cfg,
 		thumbnailDir:    currentConfig.Directories.Thumbnails,
-		jobQueue:        make(chan *ThumbnailJob, queueSize),
+		jobHeap:         jobHeap{},
+		jobCap:          queueSize,
 		healthy:         false,
 		healthMsg:       "", // Empty message to suppress warning before Start() is called
 		blurHashUpdater: blurHashUpdater,
 	}
+	m.jobCond = sync.NewCond(&m.jobMu)
+	return m
 }
 
 // Start initializes the thumbnail module
@@ -218,10 +246,8 @@ func (m *Module) Stop(ctx context.Context) error {
 	if m.cancel != nil {
 		m.cancel()
 	}
-
-	// Do NOT close m.jobQueue here: closing a channel while a concurrent
-	// GenerateThumbnail call might be sending panics the program. Workers
-	// already exit cleanly when m.ctx is cancelled (they select on ctx.Done()).
+	// Wake workers blocked in dequeue so they see ctx.Done()
+	m.jobCond.Broadcast()
 
 	// Wait for workers with timeout
 	done := make(chan struct{})
@@ -261,7 +287,38 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// worker processes thumbnail generation jobs
+// enqueue adds a job to the priority queue. highPriority=true for user-triggered requests.
+// Returns true if queued, false if queue full.
+func (m *Module) enqueue(job *ThumbnailJob, highPriority bool) bool {
+	m.jobMu.Lock()
+	defer m.jobMu.Unlock()
+	if len(m.jobHeap) >= m.jobCap {
+		return false
+	}
+	pri := 1 // low (background)
+	if highPriority {
+		pri = 0 // high (user viewing)
+	}
+	heap.Push(&m.jobHeap, &priorityJob{job: job, priority: pri})
+	m.jobCond.Signal()
+	return true
+}
+
+// dequeue blocks until a job is available or ctx is cancelled. Returns nil when ctx is done.
+func (m *Module) dequeue(ctx context.Context) *ThumbnailJob {
+	m.jobMu.Lock()
+	defer m.jobMu.Unlock()
+	for len(m.jobHeap) == 0 {
+		if ctx.Err() != nil {
+			return nil
+		}
+		m.jobCond.Wait()
+	}
+	pj := heap.Pop(&m.jobHeap).(*priorityJob)
+	return pj.job
+}
+
+// worker processes thumbnail generation jobs from the priority queue
 func (m *Module) worker(id int) {
 	defer m.wg.Done()
 	m.log.Debug("Worker %d started", id)
@@ -271,41 +328,38 @@ func (m *Module) worker(id int) {
 		case <-m.ctx.Done():
 			m.log.Debug("Worker %d stopping", id)
 			return
-		case job, ok := <-m.jobQueue:
-			if !ok {
-				m.log.Debug("Worker %d: job queue closed", id)
-				return
-			}
-
-			m.log.Info("Worker %d: Generating thumbnail for %s", id, job.MediaPath)
-
-			// Decrement pending count
-			m.statsMu.Lock()
-			m.stats.Pending--
-			m.statsMu.Unlock()
-
-			// Generate thumbnail; always clear inFlight when done so future
-			// calls can re-queue if the file ends up missing (e.g. deleted).
-			if err := m.generateThumbnail(job); err != nil {
-				m.log.Error("Worker %d: Failed to generate thumbnail for %s: %v", id, job.MediaPath, err)
-				m.statsMu.Lock()
-				m.stats.Failed++
-				m.statsMu.Unlock()
-			} else {
-				m.log.Info("Worker %d: ✓ Thumbnail generated: %s", id, job.OutputPath)
-				m.statsMu.Lock()
-				m.stats.Generated++
-				m.statsMu.Unlock()
-			}
-			m.inFlight.Delete(job.OutputPath)
+		default:
 		}
+		job := m.dequeue(m.ctx)
+		if job == nil {
+			return
+		}
+
+		m.log.Info("Worker %d: Generating thumbnail for %s", id, job.MediaPath)
+
+		m.statsMu.Lock()
+		m.stats.Pending--
+		m.statsMu.Unlock()
+
+		if err := m.generateThumbnail(job); err != nil {
+			m.log.Error("Worker %d: Failed to generate thumbnail for %s: %v", id, job.MediaPath, err)
+			m.statsMu.Lock()
+			m.stats.Failed++
+			m.statsMu.Unlock()
+		} else {
+			m.log.Info("Worker %d: ✓ Thumbnail generated: %s", id, job.OutputPath)
+			m.statsMu.Lock()
+			m.stats.Generated++
+			m.statsMu.Unlock()
+		}
+		m.inFlight.Delete(job.OutputPath)
 	}
 }
 
 // GenerateThumbnail queues async thumbnail generation (generates all preview thumbnails)
 // GenerateThumbnail generates a thumbnail for a media file.
-// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
-func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio bool) (string, error) {
+// highPriority=true for user-triggered (HTTP, hover); false for background scan.
+func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio bool, highPriority bool) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg not available")
 	}
@@ -313,11 +367,8 @@ func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio boo
 	cfg := m.config.Get()
 	outputPath := m.getThumbnailPath(mediaID)
 
-	// For videos, delegate entirely to GeneratePreviewThumbnails which checks
-	// both the main thumbnail and all preview thumbnails individually, so
-	// missing previews are regenerated even when the main already exists.
 	if !isAudio {
-		return m.GeneratePreviewThumbnails(mediaPath, mediaID)
+		return m.GeneratePreviewThumbnails(mediaPath, mediaID, highPriority)
 	}
 
 	// For audio: single waveform thumbnail — skip if already on disk.
@@ -347,25 +398,21 @@ func (m *Module) GenerateThumbnail(mediaPath string, mediaID string, isAudio boo
 	m.stats.Pending++
 	m.statsMu.Unlock()
 
-	// Try to queue job
-	select {
-	case m.jobQueue <- job:
-		m.log.Debug("Queued thumbnail generation for: %s", mediaPath)
+	if m.enqueue(job, highPriority) {
+		m.log.Debug("Queued thumbnail generation for: %s (priority=%v)", mediaPath, highPriority)
 		return outputPath, ErrThumbnailPending
-	default:
-		// Queue full - clear inFlight, decrement pending, generate synchronously
-		m.inFlight.Delete(outputPath)
-		m.statsMu.Lock()
-		m.stats.Pending--
-		m.statsMu.Unlock()
-		m.log.Warn("Job queue full, generating thumbnail synchronously: %s", mediaPath)
-		return outputPath, m.generateThumbnail(job)
 	}
+	m.inFlight.Delete(outputPath)
+	m.statsMu.Lock()
+	m.stats.Pending--
+	m.statsMu.Unlock()
+	m.log.Warn("Job queue full, generating thumbnail synchronously: %s", mediaPath)
+	return outputPath, m.generateThumbnail(job)
 }
 
 // GeneratePreviewThumbnails generates multiple thumbnails at different timestamps for hover preview.
-// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
-func (m *Module) GeneratePreviewThumbnails(mediaPath string, mediaID string) (string, error) {
+// highPriority=true when user is viewing (hover); false for background scan.
+func (m *Module) GeneratePreviewThumbnails(mediaPath string, mediaID string, highPriority bool) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg not available")
 	}
@@ -413,10 +460,9 @@ func (m *Module) GeneratePreviewThumbnails(mediaPath string, mediaID string) (st
 			m.stats.Pending++
 			m.statsMu.Unlock()
 
-			select {
-			case m.jobQueue <- mainJob:
+			if m.enqueue(mainJob, highPriority) {
 				m.log.Debug("Queued main thumbnail for: %s", mediaPath)
-			default:
+			} else {
 				m.inFlight.Delete(mainPath)
 				m.statsMu.Lock()
 				m.stats.Pending--
@@ -463,11 +509,9 @@ previewLoop:
 		m.stats.Pending++
 		m.statsMu.Unlock()
 
-		// Try to queue job
-		select {
-		case m.jobQueue <- job:
+		if m.enqueue(job, highPriority) {
 			m.log.Debug("Queued preview thumbnail %d/%d for: %s (timestamp: %.2fs)", i+1, previewCount, mediaPath, timestamp)
-		default:
+		} else {
 			m.inFlight.Delete(outputPath)
 			m.statsMu.Lock()
 			m.stats.Pending--
@@ -1083,14 +1127,11 @@ func (m *Module) GetPreviewURLs(mediaPath string, mediaID string, count int) []s
 			m.stats.Pending++
 			m.statsMu.Unlock()
 
-			// Try async generation first, fall back to sync if queue full
-			select {
-			case m.jobQueue <- job:
+			// Try async generation (high priority — user is viewing)
+			if m.enqueue(job, true) {
 				m.log.Debug("Queued preview thumbnail generation: %s (frame at %.1fs)", previewFilename, timestamp)
-				// Don't wait for generation - return URL anyway
 				urls = append(urls, previewURL)
-			default:
-				// Queue full — generate synchronously and clear inFlight ourselves.
+			} else {
 				m.inFlight.Delete(previewPath)
 				m.statsMu.Lock()
 				m.stats.Pending--

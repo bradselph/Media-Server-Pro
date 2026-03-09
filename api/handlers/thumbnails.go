@@ -41,7 +41,7 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 		return
 	}
 
-	_, err := h.thumbnails.GenerateThumbnail(absPath, req.ID, req.IsAudio)
+	_, err := h.thumbnails.GenerateThumbnail(absPath, req.ID, req.IsAudio, true)
 	if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
