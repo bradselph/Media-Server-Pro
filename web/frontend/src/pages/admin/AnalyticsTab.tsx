@@ -1,7 +1,7 @@
 import {useState} from 'react'
 import {useQuery} from '@tanstack/react-query'
 import {adminApi, analyticsApi} from '@/api/endpoints'
-import type {EventStats, SuggestionStats} from '@/api/types'
+import type {AnalyticsEvent, EventStats, SuggestionStats} from '@/api/types'
 import {errMsg} from './helpers'
 
 // ── Tab: Analytics ────────────────────────────────────────────────────────────
@@ -9,6 +9,8 @@ import {errMsg} from './helpers'
 export function AnalyticsTab() {
     const [exportingAnalytics, setExportingAnalytics] = useState(false)
     const [exportError, setExportError] = useState<string | null>(null)
+    const [eventsByTypeFilter, setEventsByTypeFilter] = useState<string>('')
+    const [eventsByMediaId, setEventsByMediaId] = useState('')
 
     const {data: summary} = useQuery({
         queryKey: ['analytics-summary'],
@@ -25,7 +27,18 @@ export function AnalyticsTab() {
         queryFn: () => adminApi.getEventTypeCounts(),
     })
 
-    // TODO: adminApi.getEventsByType(type, limit) and adminApi.getEventsByMedia(mediaId, limit) are defined in api/endpoints.ts and have backend routes GET /api/analytics/events/by-type and by-media, but no component calls them. Wire UI to show events by type or by media (e.g. dropdowns or detail panels) if analytics detail views are desired.
+    const {data: eventsByType = []} = useQuery<AnalyticsEvent[]>({
+        queryKey: ['analytics-events-by-type', eventsByTypeFilter],
+        queryFn: () => adminApi.getEventsByType(eventsByTypeFilter, 100),
+        enabled: !!eventsByTypeFilter,
+    })
+
+    const {data: eventsByMedia = []} = useQuery<AnalyticsEvent[]>({
+        queryKey: ['analytics-events-by-media', eventsByMediaId],
+        queryFn: () => adminApi.getEventsByMedia(eventsByMediaId, 100),
+        enabled: !!eventsByMediaId.trim(),
+    })
+
     // Feature 5: Event stats
     const {data: eventStats} = useQuery<EventStats>({
         queryKey: ['analytics-event-stats'],
@@ -241,8 +254,83 @@ export function AnalyticsTab() {
                             </tbody>
                         </table>
                     </div>
+                    <div style={{marginTop: 12}}>
+                        <label style={{marginRight: 8}}>View events by type:</label>
+                        <select
+                            className="admin-select"
+                            value={eventsByTypeFilter}
+                            onChange={e => setEventsByTypeFilter(e.target.value)}
+                        >
+                            <option value="">— Select type —</option>
+                            {Object.keys(eventCounts).sort().map(t => (
+                                <option key={t} value={t}>{t}</option>
+                            ))}
+                        </select>
+                        {eventsByTypeFilter && eventsByType.length > 0 && (
+                            <div className="admin-table-wrapper" style={{marginTop: 8, maxHeight: 200, overflow: 'auto'}}>
+                                <table className="admin-table">
+                                    <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Media ID</th>
+                                        <th>User ID</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {eventsByType.slice(0, 50).map((ev, i) => (
+                                        <tr key={ev.id ?? i}>
+                                            <td>{ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}</td>
+                                            <td style={{fontSize: 12}}>{ev.media_id ?? '—'}</td>
+                                            <td style={{fontSize: 12}}>{ev.user_id ?? '—'}</td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                                {eventsByType.length > 50 && <p style={{fontSize: 12, color: 'var(--text-muted)'}}>Showing first 50 of {eventsByType.length}</p>}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
+
+            {/* Events by media */}
+            <div className="admin-card">
+                <h2>Events by Media</h2>
+                <p style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 8}}>Enter a media ID (e.g. from Top Viewed Media) to list recent events.</p>
+                <div style={{display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
+                    <input
+                        type="text"
+                        className="admin-input"
+                        placeholder="Media ID"
+                        value={eventsByMediaId}
+                        onChange={e => setEventsByMediaId(e.target.value)}
+                        style={{minWidth: 200}}
+                    />
+                </div>
+                {eventsByMediaId.trim() && eventsByMedia.length > 0 && (
+                    <div className="admin-table-wrapper" style={{marginTop: 12, maxHeight: 200, overflow: 'auto'}}>
+                        <table className="admin-table">
+                            <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Type</th>
+                                <th>User ID</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {eventsByMedia.slice(0, 50).map((ev, i) => (
+                                <tr key={ev.id ?? i}>
+                                    <td>{ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}</td>
+                                    <td><span className="status-badge">{ev.type ?? '—'}</span></td>
+                                    <td style={{fontSize: 12}}>{ev.user_id ?? '—'}</td>
+                                </tr>
+                            ))}
+                            </tbody>
+                        </table>
+                        {eventsByMedia.length > 50 && <p style={{fontSize: 12, color: 'var(--text-muted)'}}>Showing first 50 of {eventsByMedia.length}</p>}
+                    </div>
+                )}
+            </div>
         </div>
     )
 }

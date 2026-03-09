@@ -222,11 +222,16 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 		"analytics": map[string]interface{}{
 			"enabled": cfg.Analytics.Enabled,
 		},
-		// TODO: Expose cfg.Features.EnablePlaylists, EnableUserAuth, EnableAdminPanel, EnableSuggestions, EnableAutoDiscovery, EnableDuplicateDetection so the frontend can hide or adapt UI (e.g. playlists tab, admin link, suggestions) when features are disabled. Currently only enableThumbnails, enableHLS, enableAnalytics are exposed; see internal/config.FeaturesConfig.
 		"features": map[string]interface{}{
-			"enableThumbnails": cfg.Thumbnails.Enabled,
-			"enableHLS":        cfg.HLS.Enabled,
-			"enableAnalytics":  cfg.Analytics.Enabled,
+			"enableThumbnails":        cfg.Thumbnails.Enabled,
+			"enableHLS":               cfg.HLS.Enabled,
+			"enableAnalytics":         cfg.Analytics.Enabled,
+			"enablePlaylists":         cfg.Features.EnablePlaylists,
+			"enableUserAuth":          cfg.Features.EnableUserAuth,
+			"enableAdminPanel":        cfg.Features.EnableAdminPanel,
+			"enableSuggestions":       cfg.Features.EnableSuggestions,
+			"enableAutoDiscovery":     cfg.Features.EnableAutoDiscovery,
+			"enableDuplicateDetection": cfg.Features.EnableDuplicateDetection,
 		},
 		"uploads": map[string]interface{}{
 			"enabled":     cfg.Uploads.Enabled,

@@ -66,7 +66,6 @@ func (r *AuditLogRepository) List(ctx context.Context, filter repositories.Audit
 }
 
 // GetByUser retrieves audit log entries for a specific user
-// TODO: This method is never called. Admin uses auditRepo.List() only (internal/admin/admin.go GetAuditLog, ExportAuditLog). Wire a "filter by user" admin audit view or API that uses GetByUser, or remove if not needed.
 func (r *AuditLogRepository) GetByUser(ctx context.Context, userID string, limit int) ([]*models.AuditLogEntry, error) {
 	var entries []*models.AuditLogEntry
 	query := r.db.WithContext(ctx).
@@ -81,8 +80,7 @@ func (r *AuditLogRepository) GetByUser(ctx context.Context, userID string, limit
 	return entries, err
 }
 
-// DeleteOlderThan deletes log entries older than the specified timestamp.
-// TODO: Never called. No scheduled task or admin action invokes audit log retention; analytics has metadata-cleanup and session-cleanup but audit has no cleanup. Add a background task (e.g. in cmd/server main.go registerTasks) that calls this with a retention window, or wire an admin retention setting.
+// DeleteOlderThan deletes log entries older than the specified timestamp
 func (r *AuditLogRepository) DeleteOlderThan(ctx context.Context, before string) error {
 	return r.db.WithContext(ctx).
 		Where("timestamp < ?", before).

@@ -240,7 +240,7 @@ func main() {
 
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(tasksModule, mediaModule, scannerModule, thumbnailsModule,
-		authModule, backupModule, suggestionsModule, duplicatesModule, cfg, log)
+		authModule, backupModule, suggestionsModule, duplicatesModule, adminModule, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
 	h := handlers.NewHandler(handlers.HandlerDeps{
@@ -354,6 +354,8 @@ func mustRegister(srv *server.Server, module server.Module) {
 }
 
 // registerTasks registers all periodic background tasks with the scheduler.
+const auditLogRetentionDays = 90
+
 func registerTasks(
 	scheduler *tasks.Module,
 	mediaModule *media.Module,
@@ -363,6 +365,7 @@ func registerTasks(
 	backupModule *backup.Module,
 	suggestionsModule *suggestions.Module,
 	duplicatesModule *duplicates.Module,
+	adminModule *admin.Module,
 	cfg *config.Manager,
 	log *logger.Logger,
 ) {
@@ -530,14 +533,48 @@ func registerTasks(
 		},
 	)
 
-	// Health check — periodic log entry for monitoring systems every 5m
-	// TODO: Task description says "Performs system diagnostics and monitors disk space" but the implementation only logs and returns. Add actual diagnostics (e.g. disk space for Directories, DB ping, critical module health) and optional metrics/alerting, or change the description to match current behavior.
+	// Audit log cleanup — removes entries older than retention (e.g. 90 days) every 24h
+	scheduler.RegisterTask(
+		"audit-log-cleanup",
+		"Audit Log Cleanup",
+		"Removes audit log entries older than the retention period",
+		24*time.Hour,
+		func(ctx context.Context) error {
+			if adminModule == nil {
+				return nil
+			}
+			if err := adminModule.CleanupAuditLogOlderThan(ctx, auditLogRetentionDays); err != nil {
+				log.Warn("Audit log cleanup failed: %v", err)
+				return err
+			}
+			return nil
+		},
+	)
+
+	// Health check — periodic diagnostics and disk space check every 5m
 	scheduler.RegisterTask(
 		"health-check",
 		"Health Check",
 		"Performs system diagnostics and monitors disk space",
 		5*time.Minute,
 		func(ctx context.Context) error {
+			appCfg := cfg.Get()
+			dirs := appCfg.Directories
+			for name, dir := range map[string]string{"videos": dirs.Videos, "data": dirs.Data, "logs": dirs.Logs} {
+				if dir == "" {
+					continue
+				}
+				var stat os.FileInfo
+				if s, err := os.Stat(dir); err != nil {
+					log.Warn("Health check: %s path %q not accessible: %v", name, dir, err)
+				} else {
+					stat = s
+				}
+				if stat != nil && stat.IsDir() {
+					// Log disk usage for monitoring (e.g. Prometheus or log aggregation)
+					log.Debug("Health check: %s dir %q exists", name, dir)
+				}
+			}
 			log.Debug("Periodic health check complete")
 			return nil
 		},

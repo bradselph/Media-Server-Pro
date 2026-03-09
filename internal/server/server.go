@@ -115,12 +115,15 @@ func New(opts Options) (*Server, error) {
 		if logDir == "" {
 			logDir = "logs"
 		}
-		// TODO: appCfg.Logging.FileRotation is not passed to the logger. EnableFileLogging only takes maxSize and maxBackups; internal/logger rotates when maxSize > 0. When FileRotation is false, disable rotation by passing a flag or 0 maxSize so config is honored (see internal/config.config.go LoggingConfig.FileRotation).
-		if err := logger.EnableFileLogging(logDir, appCfg.Logging.MaxFileSize, appCfg.Logging.MaxBackups); err != nil {
+		maxSize := appCfg.Logging.MaxFileSize
+		if !appCfg.Logging.FileRotation {
+			maxSize = 0
+		}
+		if err := logger.EnableFileLogging(logDir, maxSize, appCfg.Logging.MaxBackups); err != nil {
 			log.Warn("Failed to enable file logging: %v", err)
 		} else {
-			log.Info("File logging enabled: directory=%s, max_size=%dMB, max_backups=%d",
-				logDir, appCfg.Logging.MaxFileSize/(1024*1024), appCfg.Logging.MaxBackups)
+			log.Info("File logging enabled: directory=%s, max_size=%dMB, max_backups=%d, rotation=%v",
+				logDir, appCfg.Logging.MaxFileSize/(1024*1024), appCfg.Logging.MaxBackups, appCfg.Logging.FileRotation)
 		}
 	}
 

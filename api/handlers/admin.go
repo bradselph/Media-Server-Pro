@@ -390,7 +390,7 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 	})
 }
 
-// AdminGetAuditLog returns audit log
+// AdminGetAuditLog returns audit log, optionally filtered by user_id query param.
 func (h *Handler) AdminGetAuditLog(c *gin.Context) {
 	if !h.requireAdmin(c) {
 		return
@@ -403,8 +403,9 @@ func (h *Handler) AdminGetAuditLog(c *gin.Context) {
 	if o, err := strconv.Atoi(c.Query("offset")); err == nil && o >= 0 {
 		offset = o
 	}
+	userID := strings.TrimSpace(c.Query("user_id"))
 
-	log := h.admin.GetAuditLog(c.Request.Context(), limit, offset)
+	log := h.admin.GetAuditLog(c.Request.Context(), limit, offset, userID)
 	writeSuccess(c, log)
 }
 
