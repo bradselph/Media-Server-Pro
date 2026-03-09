@@ -106,6 +106,9 @@ type Module struct {
 	initialScanDone  bool // true after the first scan attempt completes (success or failure)
 	ffprobeAvail     bool
 	ffprobePath      string // absolute path, set by checkFFProbe for use under systemd
+	// onInitialScanDone is called when the first scan completes (with the current media list).
+	// Used by the server to seed the suggestions module without polling.
+	onInitialScanDone func([]*models.MediaItem)
 }
 
 // Metadata holds extended metadata for a media item
@@ -273,6 +276,10 @@ func (m *Module) Start(_ context.Context) error {
 			m.healthMu.Unlock()
 			m.log.Info("Initial media scan completed with %d items", len(m.media))
 		}
+		if cb := m.onInitialScanDone; cb != nil {
+			items := m.ListMedia(Filter{})
+			cb(items)
+		}
 	}()
 
 	// Start background scan loop
@@ -346,6 +353,12 @@ func (m *Module) IsReady() bool {
 	m.healthMu.RLock()
 	defer m.healthMu.RUnlock()
 	return m.initialScanDone
+}
+
+// SetOnInitialScanDone sets a callback invoked when the first scan completes with the current media list.
+// Must be called before Start(). Used by the server to seed the suggestions module.
+func (m *Module) SetOnInitialScanDone(fn func([]*models.MediaItem)) {
+	m.onInitialScanDone = fn
 }
 
 // checkFFProbe checks if ffprobe is available
