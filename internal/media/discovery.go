@@ -106,6 +106,9 @@ type Module struct {
 	initialScanDone  bool // true after the first scan attempt completes (success or failure)
 	ffprobeAvail     bool
 	ffprobePath      string // absolute path, set by checkFFProbe for use under systemd
+	// onInitialScanDone is called when the first scan completes (with the current media list).
+	// Used by the server to seed the suggestions module without polling.
+	onInitialScanDone func([]*models.MediaItem)
 }
 
 // Metadata holds extended metadata for a media item
@@ -273,6 +276,10 @@ func (m *Module) Start(_ context.Context) error {
 			m.healthMu.Unlock()
 			m.log.Info("Initial media scan completed with %d items", len(m.media))
 		}
+		if cb := m.onInitialScanDone; cb != nil {
+			items := m.ListMedia(Filter{})
+			cb(items)
+		}
 	}()
 
 	// Start background scan loop
@@ -346,6 +353,12 @@ func (m *Module) IsReady() bool {
 	m.healthMu.RLock()
 	defer m.healthMu.RUnlock()
 	return m.initialScanDone
+}
+
+// SetOnInitialScanDone sets a callback invoked when the first scan completes with the current media list.
+// Must be called before Start(). Used by the server to seed the suggestions module.
+func (m *Module) SetOnInitialScanDone(fn func([]*models.MediaItem)) {
+	m.onInitialScanDone = fn
 }
 
 // checkFFProbe checks if ffprobe is available
@@ -740,8 +753,18 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.Unlock()
 	}
 
-	// Auto-detect category
-	item.Category = m.detectCategory(path)
+	// Use stored category from DB when available (from categorizer or admin), else auto-detect from path and persist
+	if hasMeta && meta.Category != "" {
+		item.Category = meta.Category
+	} else {
+		item.Category = m.detectCategory(path)
+		// Persist auto-detected category into metadata so it is saved to DB and used on next load
+		m.mu.Lock()
+		if m.metadata[path] != nil {
+			m.metadata[path].Category = item.Category
+		}
+		m.mu.Unlock()
+	}
 
 	// Check whether a thumbnail already exists on disk and pre-populate the URL.
 	// Thumbnail files are named by stable UUID; the public URL uses the same ID
@@ -961,6 +984,58 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 
 	filter.SortItems(items)
 	return items
+}
+
+// ListMediaPaginated returns a page of media items using DB-level filtering and pagination.
+// Use this for admin or large libraries to avoid loading the full catalog. Total is the
+// total matching rows in the DB; items may be fewer if some paths are no longer in the
+// current scan (e.g. deleted files not yet pruned). Filter.Type and Filter.Tags are
+// applied in-memory on the page, so the returned slice can be shorter than limit.
+func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, offset int) (items []*models.MediaItem, total int64, err error) {
+	if m.metadataRepo == nil {
+		return nil, 0, fmt.Errorf("metadata repository not available")
+	}
+
+	repoFilter := repositories.MediaFilter{
+		Category: filter.Category,
+		IsMature: filter.IsMature,
+		Search:   filter.Search,
+		SortDesc: filter.SortDesc,
+		Limit:    limit,
+		Offset:   offset,
+	}
+	switch filter.SortBy {
+	case "views":
+		repoFilter.SortBy = "views"
+	case "date_added", "date_modified":
+		repoFilter.SortBy = "date_added"
+	default:
+		repoFilter.SortBy = "path" // name, path, etc.
+	}
+
+	metas, total, err := m.metadataRepo.ListFiltered(ctx, repoFilter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, meta := range metas {
+		item, ok := m.media[meta.Path]
+		if !ok {
+			continue // path no longer in catalog (e.g. file deleted)
+		}
+		if filter.Matches(item) {
+			items = append(items, item)
+		}
+	}
+
+	// ListFiltered already applied sort in DB; re-sort only if we need Type/Tags ordering
+	if filter.Type != "" || len(filter.Tags) > 0 {
+		filter.SortItems(items)
+	}
+	return items, total, nil
 }
 
 // Filter defines filtering options for media listing.

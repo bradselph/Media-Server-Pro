@@ -40,6 +40,7 @@ import (
 	"media-server-pro/internal/upload"
 	"media-server-pro/internal/validator"
 	"media-server-pro/pkg/middleware"
+	"media-server-pro/pkg/models"
 )
 
 // Version and BuildDate are set at build time via -ldflags:
@@ -274,15 +275,9 @@ func main() {
 
 	routes.Setup(srv.Engine(), h, authModule, securityModule, cfg, ageGate)
 
-	// Seed suggestions module immediately after the media module's initial scan
-	// completes, so suggestions are available without waiting for the first hourly
-	// task to fire (which has a 45-second startup delay + scan time).
-	// This goroutine must be launched before srv.Start() which blocks until shutdown.
-	go func() {
-		for !mediaModule.IsReady() {
-			time.Sleep(500 * time.Millisecond)
-		}
-		items := mediaModule.ListMedia(media.Filter{})
+	// Seed suggestions when the media module's initial scan completes (callback runs
+	// inside the media module's goroutine so no polling or race).
+	mediaModule.SetOnInitialScanDone(func(items []*models.MediaItem) {
 		mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
 		for _, item := range items {
 			mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
@@ -301,7 +296,7 @@ func main() {
 		if len(mediaInfos) > 0 {
 			log.Info("Seeded suggestions with %d items from initial media scan", len(mediaInfos))
 		}
-	}()
+	})
 
 	// ── Start server (blocks until graceful shutdown) ──────────────────────
 	if err := srv.Start(); err != nil {

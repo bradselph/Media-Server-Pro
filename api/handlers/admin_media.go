@@ -18,6 +18,8 @@ import (
 )
 
 // AdminListMedia returns media items for admin management with sorting, filtering, and pagination.
+// When limit > 0, uses DB-level pagination (ListMediaPaginated) so the catalog table is
+// referenced and large libraries stay responsive.
 func (h *Handler) AdminListMedia(c *gin.Context) {
 	sortBy := c.Query("sort")
 	if sortBy == "date" {
@@ -35,8 +37,7 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 		isMature = &v
 	}
 
-	// Build filter without pagination to get total count
-	filterNoPagination := media.Filter{
+	filter := media.Filter{
 		Type:     models.MediaType(c.Query("type")),
 		Category: c.Query("category"),
 		Search:   c.Query("search"),
@@ -46,14 +47,6 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 		SortDesc: c.Query("sort_order") == "desc",
 	}
 
-	allItems := h.media.ListMedia(filterNoPagination)
-	if allItems == nil {
-		allItems = make([]*models.MediaItem, 0)
-	}
-
-	totalItems := len(allItems)
-
-	// Apply pagination
 	limit := 50
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
 		if l > 1000 {
@@ -61,25 +54,51 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 		}
 		limit = l
 	}
-	totalPages := 1
+
+	page := 1
+	if p, err := strconv.Atoi(c.Query("page")); err == nil && p > 1 {
+		page = p
+	}
+	offset := (page - 1) * limit
+
+	var items []*models.MediaItem
+	var totalItems int64
+
 	if limit > 0 {
-		totalPages = (totalItems + limit - 1) / limit
+		// Use DB-level pagination so media_metadata is queried and large libraries scale
+		var err error
+		items, totalItems, err = h.media.ListMediaPaginated(c.Request.Context(), filter, limit, offset)
+		if err != nil {
+			h.log.Warn("ListMediaPaginated failed, falling back to in-memory list: %v", err)
+			allItems := h.media.ListMedia(filter)
+			if allItems == nil {
+				allItems = make([]*models.MediaItem, 0)
+			}
+			totalItems = int64(len(allItems))
+			if offset >= len(allItems) {
+				items = []*models.MediaItem{}
+			} else {
+				items = allItems[offset:]
+				if limit < len(items) {
+					items = items[:limit]
+				}
+			}
+		}
+	} else {
+		allItems := h.media.ListMedia(filter)
+		if allItems == nil {
+			allItems = make([]*models.MediaItem, 0)
+		}
+		totalItems = int64(len(allItems))
+		items = allItems
+	}
+
+	totalPages := 1
+	if limit > 0 && totalItems > 0 {
+		totalPages = int((totalItems + int64(limit) - 1) / int64(limit))
 		if totalPages < 1 {
 			totalPages = 1
 		}
-	}
-
-	items := allItems
-	if p, err := strconv.Atoi(c.Query("page")); err == nil && p > 1 {
-		offset := (p - 1) * limit
-		if offset >= len(items) {
-			items = []*models.MediaItem{}
-		} else {
-			items = items[offset:]
-		}
-	}
-	if limit > 0 && limit < len(items) {
-		items = items[:limit]
 	}
 
 	for _, item := range items {

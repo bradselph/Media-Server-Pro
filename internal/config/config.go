@@ -685,6 +685,12 @@ func (m *Manager) Load() error {
 	// Resolve all relative paths to absolute paths
 	m.resolveAbsolutePaths()
 
+	// Sync feature toggles into module-level Enabled fields so there is a
+	// single source of truth. When a Features.Enable* flag is false, the
+	// corresponding module's Enabled field is forced to false. This avoids
+	// the need for callers to check both flags.
+	m.syncFeatureToggles()
+
 	m.log.Info("Configuration loaded successfully")
 	return nil
 }
@@ -730,6 +736,40 @@ func (m *Manager) resolveAbsolutePaths() {
 	}
 	if m.config.Server.KeyFile != "" {
 		m.config.Server.KeyFile = resolvePath(m.config.Server.KeyFile, "key file")
+	}
+}
+
+// syncFeatureToggles propagates Features.Enable* flags into the corresponding
+// module-level Enabled fields. This ensures a single source of truth: if a
+// feature is disabled in FeaturesConfig, the module will not start regardless
+// of its own Enabled field.
+func (m *Manager) syncFeatureToggles() {
+	if !m.config.Features.EnableHLS {
+		m.config.HLS.Enabled = false
+	}
+	if !m.config.Features.EnableAnalytics {
+		m.config.Analytics.Enabled = false
+	}
+	if !m.config.Features.EnableRemoteMedia {
+		m.config.RemoteMedia.Enabled = false
+	}
+	if !m.config.Features.EnableReceiver {
+		m.config.Receiver.Enabled = false
+	}
+	if !m.config.Features.EnableExtractor {
+		m.config.Extractor.Enabled = false
+	}
+	if !m.config.Features.EnableCrawler {
+		m.config.Crawler.Enabled = false
+	}
+	if !m.config.Features.EnableMatureScanner {
+		m.config.MatureScanner.Enabled = false
+	}
+	if !m.config.Features.EnableThumbnails {
+		m.config.Thumbnails.Enabled = false
+	}
+	if !m.config.Features.EnableUploads {
+		m.config.Uploads.Enabled = false
 	}
 }
 

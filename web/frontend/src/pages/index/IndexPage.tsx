@@ -1024,13 +1024,13 @@ export function IndexPage() {
             <div className="index-header">
                 <h1>Media Streamer Pro</h1>
                 <p>Video and Music Streaming Server</p>
-                {analytics && (
+                {analytics && !analytics.analytics_disabled && (
                     <div className="analytics-bar">
                         <span><i
                             className="bi bi-play-circle-fill"/> {(analytics.total_events ?? 0).toLocaleString()} plays</span>
                         <span><i
                             className="bi bi-people-fill"/> {(analytics.unique_clients ?? 0).toLocaleString()} listeners</span>
-                        <span><i className="bi bi-lightning-fill"/> {analytics.active_sessions} active</span>
+                        <span><i className="bi bi-lightning-fill"/> {analytics.active_sessions ?? 0} active</span>
                         <span><i
                             className="bi bi-eye-fill"/> {(analytics.total_views ?? 0).toLocaleString()} views</span>
                     </div>

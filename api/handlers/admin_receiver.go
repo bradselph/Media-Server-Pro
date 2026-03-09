@@ -19,8 +19,7 @@ func (h *Handler) checkDuplicateDetectionEnabled(c *gin.Context) bool {
 
 func (h *Handler) checkReceiverEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.receiver, "Media receiver", func() bool {
-		cfg := h.media.GetConfig()
-		return cfg.Features.EnableReceiver && cfg.Receiver.Enabled
+		return h.media.GetConfig().Receiver.Enabled
 	})
 }
 

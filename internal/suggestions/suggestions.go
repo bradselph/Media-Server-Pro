@@ -114,6 +114,12 @@ func (m *Module) Name() string {
 // only removes the in-memory copy; the data is reloaded on the next access.
 const profileEvictAfter = 30 * 24 * time.Hour // 30 days
 
+// profileSaveInterval controls how often in-memory profiles are flushed to
+// MySQL.  This provides crash resilience — without periodic saves, profile
+// updates accumulated in memory would be lost if the server crashes before
+// a graceful Stop().
+const profileSaveInterval = 10 * time.Minute
+
 // Start initializes the module
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting suggestions module...")
@@ -125,12 +131,14 @@ func (m *Module) Start(_ context.Context) error {
 		m.log.Warn("Failed to load user profiles: %v", err)
 	}
 
-	// Start background profile-eviction goroutine so that profiles for
-	// long-inactive or deleted users do not accumulate indefinitely.
+	// Start background goroutines:
+	// - periodic save: flushes in-memory profiles to MySQL for crash resilience
+	// - profile eviction: removes stale profiles from memory (DB copy preserved)
 	bgCtx, cancel := context.WithCancel(context.Background())
 	m.ctx = bgCtx
 	m.cancel = cancel
-	m.wg.Add(1)
+	m.wg.Add(2)
+	go m.periodicSave(bgCtx)
 	go m.evictStaleProfiles(bgCtx)
 
 	m.healthMu.Lock()
@@ -163,9 +171,31 @@ func (m *Module) Stop(_ context.Context) error {
 	return nil
 }
 
+// periodicSave flushes in-memory profiles to MySQL at regular intervals.
+// This ensures that profile updates are not lost if the server crashes
+// before a graceful Stop().
+func (m *Module) periodicSave(ctx context.Context) {
+	defer m.wg.Done()
+	ticker := time.NewTicker(profileSaveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := m.saveProfiles(); err != nil {
+				m.log.Warn("Periodic profile save failed: %v", err)
+			} else {
+				m.log.Debug("Periodic profile save complete")
+			}
+		}
+	}
+}
+
 // evictStaleProfiles removes in-memory profiles that have not been updated
-// within profileEvictAfter.  The profiles remain persisted in MySQL; they will
-// be reloaded on the next access if the user becomes active again.
+// within profileEvictAfter.  Before eviction, each profile is saved to MySQL
+// so that any in-memory changes are not lost.  The data is reloaded on the
+// next access if the user becomes active again.
 func (m *Module) evictStaleProfiles(ctx context.Context) {
 	defer m.wg.Done()
 	ticker := time.NewTicker(6 * time.Hour)
@@ -177,16 +207,28 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 		case <-ticker.C:
 			cutoff := time.Now().Add(-profileEvictAfter)
 			m.mu.Lock()
-			evicted := 0
-			for id, profile := range m.profiles {
+			var toEvict []*UserProfile
+			for _, profile := range m.profiles {
 				if profile.LastUpdated.Before(cutoff) {
-					delete(m.profiles, id)
-					evicted++
+					toEvict = append(toEvict, profile)
 				}
 			}
 			m.mu.Unlock()
-			if evicted > 0 {
-				m.log.Info("Evicted %d stale user profiles (inactive > %v)", evicted, profileEvictAfter)
+
+			// Save each stale profile to MySQL before evicting from memory.
+			bgCtx := context.Background()
+			for _, profile := range toEvict {
+				m.saveOneProfile(bgCtx, profile)
+			}
+
+			// Now remove from the in-memory map.
+			if len(toEvict) > 0 {
+				m.mu.Lock()
+				for _, profile := range toEvict {
+					delete(m.profiles, profile.UserID)
+				}
+				m.mu.Unlock()
+				m.log.Info("Evicted %d stale user profiles (inactive > %v)", len(toEvict), profileEvictAfter)
 			}
 		}
 	}
@@ -913,33 +955,42 @@ func (m *Module) saveProfiles() error {
 
 	ctx := context.Background()
 	for _, profile := range m.profiles {
-		rec := &repositories.SuggestionProfileRecord{
-			UserID:          profile.UserID,
-			CategoryScores:  profile.CategoryScores,
-			TypePreferences: profile.TypePreferences,
-			TotalViews:      profile.TotalViews,
-			TotalWatchTime:  profile.TotalWatchTime,
-			LastUpdated:     profile.LastUpdated,
-		}
-		if err := m.repo.SaveProfile(ctx, rec); err != nil {
+		if err := m.saveOneProfile(ctx, profile); err != nil {
 			return err
 		}
-		// Save view history
-		for i := range profile.ViewHistory {
-			vh := &profile.ViewHistory[i]
-			entry := &repositories.ViewHistoryRecord{
-				MediaPath:   vh.MediaPath,
-				Category:    vh.Category,
-				MediaType:   vh.MediaType,
-				ViewCount:   vh.ViewCount,
-				TotalTime:   vh.TotalTime,
-				LastViewed:  vh.LastViewed,
-				CompletedAt: vh.CompletedAt,
-				Rating:      vh.Rating,
-			}
-			if err := m.repo.SaveViewHistory(ctx, profile.UserID, entry); err != nil {
-				return err
-			}
+	}
+	return nil
+}
+
+// saveOneProfile persists a single user profile and its view history to MySQL.
+// Caller must ensure the profile is safe to read (either hold m.mu or own the
+// reference exclusively).
+func (m *Module) saveOneProfile(ctx context.Context, profile *UserProfile) error {
+	rec := &repositories.SuggestionProfileRecord{
+		UserID:          profile.UserID,
+		CategoryScores:  profile.CategoryScores,
+		TypePreferences: profile.TypePreferences,
+		TotalViews:      profile.TotalViews,
+		TotalWatchTime:  profile.TotalWatchTime,
+		LastUpdated:     profile.LastUpdated,
+	}
+	if err := m.repo.SaveProfile(ctx, rec); err != nil {
+		return err
+	}
+	for i := range profile.ViewHistory {
+		vh := &profile.ViewHistory[i]
+		entry := &repositories.ViewHistoryRecord{
+			MediaPath:   vh.MediaPath,
+			Category:    vh.Category,
+			MediaType:   vh.MediaType,
+			ViewCount:   vh.ViewCount,
+			TotalTime:   vh.TotalTime,
+			LastViewed:  vh.LastViewed,
+			CompletedAt: vh.CompletedAt,
+			Rating:      vh.Rating,
+		}
+		if err := m.repo.SaveViewHistory(ctx, profile.UserID, entry); err != nil {
+			return err
 		}
 	}
 	return nil

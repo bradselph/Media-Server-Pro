@@ -3385,8 +3385,6 @@ paths:
                   type: string
                 auto_apply:
                   type: boolean
-                scan_metadata:
-                  type: boolean
       responses:
         '200':
           description: Scan results
