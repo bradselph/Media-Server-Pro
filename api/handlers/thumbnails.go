@@ -13,6 +13,12 @@ import (
 	"media-server-pro/pkg/helpers"
 )
 
+// acceptsWebP returns true if the request's Accept header includes image/webp
+func acceptsWebP(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "image/webp")
+}
+
 // GenerateThumbnail generates a thumbnail for a media file
 func (h *Handler) GenerateThumbnail(c *gin.Context) {
 	if !h.requireThumbnails(c) {
@@ -129,7 +135,15 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		}
 	}
 
+	// Content negotiation: serve WebP when client accepts it (30–50% smaller)
 	thumbFilePath := h.thumbnails.GetThumbnailFilePath(id)
+	contentType := "image/jpeg"
+	if acceptsWebP(c.Request) {
+		if webpPath := h.thumbnails.GetThumbnailFilePathWebp(id); webpPath != "" {
+			thumbFilePath = webpPath
+			contentType = "image/webp"
+		}
+	}
 
 	if _, err := os.Stat(thumbFilePath); os.IsNotExist(err) {
 		h.log.Error("Thumbnail file does not exist: %s", thumbFilePath)
@@ -138,13 +152,13 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	}
 
 	if c.Request.Method == http.MethodHead {
-		c.Header(headerContentType, "image/jpeg")
+		c.Header(headerContentType, contentType)
 		c.Status(http.StatusOK)
 		return
 	}
 
 	c.Header("Cache-Control", "public, max-age=604800")
-	c.Header("Content-Type", "image/jpeg")
+	c.Header("Content-Type", contentType)
 	http.ServeFile(c.Writer, c.Request, thumbFilePath)
 }
 
@@ -194,8 +208,20 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 		}
 	}
 
+	// Content negotiation: serve WebP when client accepts it
+	contentType := "image/jpeg"
+	if acceptsWebP(c.Request) {
+		webpPath := strings.TrimSuffix(filePath, ".jpg") + ".webp"
+		if webpPath != filePath {
+			if _, err := os.Stat(webpPath); err == nil {
+				filePath = webpPath
+				contentType = "image/webp"
+			}
+		}
+	}
+
 	c.Header("Cache-Control", "public, max-age=604800")
-	c.Header("Content-Type", "image/jpeg")
+	c.Header("Content-Type", contentType)
 	http.ServeFile(c.Writer, c.Request, filePath)
 }
 

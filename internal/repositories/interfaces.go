@@ -49,6 +49,8 @@ type MediaMetadataRepository interface {
 	IncrementViews(ctx context.Context, path string) error
 	UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error
 	GetPlaybackPosition(ctx context.Context, path, userID string) (float64, error)
+	// UpdateBlurHash updates the BlurHash for a metadata row by path
+	UpdateBlurHash(ctx context.Context, path string, blurHash string) error
 }
 
 // MediaFilter defines DB-level filtering and pagination for media queries.
@@ -93,6 +95,8 @@ type MediaMetadata struct {
 	// ProbeModTime is the file mtime at the time ffprobe was last run.
 	// A zero value means the file has not been probed yet.
 	ProbeModTime *time.Time
+	// BlurHash is a compact representation for LQIP placeholders (~20-30 bytes)
+	BlurHash string
 }
 
 // ScanResult represents a mature content scan result

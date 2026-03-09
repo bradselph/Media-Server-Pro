@@ -38,6 +38,7 @@ type MediaItem struct {
 	Category     string     `json:"category,omitempty"`
 	Tags         []string   `json:"tags,omitempty"`
 	ThumbnailURL string     `json:"thumbnail_url,omitempty"`
+	BlurHash     string     `json:"blur_hash,omitempty"`
 	DateAdded    time.Time  `json:"date_added"`
 	DateModified time.Time  `json:"date_modified"`
 	Views        int        `json:"views"`

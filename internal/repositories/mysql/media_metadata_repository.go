@@ -24,6 +24,7 @@ type mediaMetadataRow struct {
 	MatureScore        float64    `gorm:"column:mature_score"`
 	Category           string     `gorm:"column:category"`
 	ProbeModTime       *time.Time `gorm:"column:probe_mod_time"`
+	BlurHash           string     `gorm:"column:blur_hash"`
 }
 
 func (mediaMetadataRow) TableName() string { return "media_metadata" }
@@ -90,6 +91,7 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 			MatureScore:        metadata.MatureScore,
 			Category:           metadata.Category,
 			ProbeModTime:       probeModTime,
+			BlurHash:           metadata.BlurHash,
 		}
 
 		// On conflict: always update operational fields but only set stable_id
@@ -343,6 +345,18 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 		t := *row.ProbeModTime
 		metadata.ProbeModTime = &t
 	}
+	metadata.BlurHash = row.BlurHash
 
 	return metadata
+}
+
+// UpdateBlurHash updates the BlurHash for a metadata row by path
+func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path string, blurHash string) error {
+	result := r.db.WithContext(ctx).Model(&mediaMetadataRow{}).
+		Where("path = ?", path).
+		Update("blur_hash", blurHash)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update blur_hash: %w", result.Error)
+	}
+	return nil
 }

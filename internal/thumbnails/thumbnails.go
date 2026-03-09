@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 
+	"github.com/buckket/go-blurhash"
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
@@ -28,22 +30,28 @@ var (
 	ErrThumbnailPending = fmt.Errorf("thumbnail generation pending")
 )
 
+// BlurHashUpdater updates BlurHash in metadata storage (e.g. MediaMetadataRepository)
+type BlurHashUpdater interface {
+	UpdateBlurHash(ctx context.Context, path string, hash string) error
+}
+
 // Module handles thumbnail generation
 type Module struct {
-	log          *logger.Logger
-	config       *config.Manager
-	thumbnailDir string
-	ffmpegPath   string
-	ffprobePath  string
-	jobQueue     chan *ThumbnailJob
-	ctx          context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
-	stats        Stats
-	statsMu      sync.RWMutex
-	healthMu     sync.RWMutex
-	healthy      bool
-	healthMsg    string
+	log             *logger.Logger
+	config          *config.Manager
+	thumbnailDir    string
+	ffmpegPath      string
+	ffprobePath     string
+	jobQueue        chan *ThumbnailJob
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	stats           Stats
+	statsMu         sync.RWMutex
+	healthMu        sync.RWMutex
+	healthy         bool
+	healthMsg       string
+	blurHashUpdater BlurHashUpdater
 	// inFlight tracks output paths currently queued or being processed to
 	// prevent duplicate jobs when the background task and HTTP handlers both
 	// call GenerateThumbnail for the same file before it is written to disk.
@@ -76,8 +84,8 @@ func (m *Module) Name() string {
 	return "thumbnails"
 }
 
-// NewModule creates a new thumbnail module
-func NewModule(cfg *config.Manager) *Module {
+// NewModule creates a new thumbnail module. blurHashUpdater may be nil to skip BlurHash storage.
+func NewModule(cfg *config.Manager, blurHashUpdater BlurHashUpdater) *Module {
 	log := logger.New("thumbnails")
 	currentConfig := cfg.Get()
 
@@ -88,12 +96,13 @@ func NewModule(cfg *config.Manager) *Module {
 	}
 
 	return &Module{
-		log:          log,
-		config:       cfg,
-		thumbnailDir: currentConfig.Directories.Thumbnails,
-		jobQueue:     make(chan *ThumbnailJob, queueSize),
-		healthy:      false,
-		healthMsg:    "", // Empty message to suppress warning before Start() is called
+		log:             log,
+		config:          cfg,
+		thumbnailDir:    currentConfig.Directories.Thumbnails,
+		jobQueue:        make(chan *ThumbnailJob, queueSize),
+		healthy:         false,
+		healthMsg:       "", // Empty message to suppress warning before Start() is called
+		blurHashUpdater: blurHashUpdater,
 	}
 }
 
@@ -587,6 +596,73 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 		m.log.Debug("Thumbnail size: %d bytes", info.Size())
 	}
 
+	// Generate WebP variant (30–50% smaller) for clients that accept it
+	webpPath := m.getThumbnailPathWebp(job.OutputPath)
+	if err := m.generateWebPFromVideo(job.MediaPath, webpPath, job.Width, job.Height, timestamp); err != nil {
+		m.log.Warn("WebP thumbnail generation failed (JPEG served): %v", err)
+		// Non-fatal: JPEG is already available
+	} else if info, err := os.Stat(webpPath); err == nil {
+		m.statsMu.Lock()
+		m.stats.TotalSize += info.Size()
+		m.statsMu.Unlock()
+		m.log.Debug("WebP thumbnail size: %d bytes", info.Size())
+	}
+
+	// Compute and store BlurHash for main thumbnail only (LQIP placeholders)
+	if m.blurHashUpdater != nil && !strings.Contains(filepath.Base(job.OutputPath), "_preview_") {
+		if hash, err := m.computeBlurHash(job.OutputPath); err == nil && hash != "" {
+			bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := m.blurHashUpdater.UpdateBlurHash(bgCtx, job.MediaPath, hash); err != nil {
+				m.log.Warn("Failed to store BlurHash: %v", err)
+			}
+			bgCancel()
+		}
+	}
+
+	return nil
+}
+
+// computeBlurHash reads a JPEG and returns its BlurHash string (4x3 components)
+func (m *Module) computeBlurHash(jpgPath string) (string, error) {
+	f, err := os.Open(jpgPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	img, err := jpeg.Decode(f)
+	if err != nil {
+		return "", err
+	}
+	return blurhash.Encode(4, 3, img)
+}
+
+// generateWebPFromVideo extracts a frame and encodes as WebP
+func (m *Module) generateWebPFromVideo(mediaPath, outputPath string, width, height int, timestamp float64) error {
+	scaleFilter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+		width, height, width, height)
+
+	stream := ffmpeg.Input(mediaPath, ffmpeg.KwArgs{"ss": fmt.Sprintf("%.2f", timestamp)}).
+		Output(outputPath, ffmpeg.KwArgs{
+			"vframes": "1",
+			"vf":      scaleFilter,
+			"c:v":     "libwebp",
+			"q:v":     "80",
+		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
+
+	cmd := stream.Compile()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext.Env = cmd.Env
+	cmdWithContext.Dir = cmd.Dir
+
+	output, err := cmdWithContext.CombinedOutput()
+	if err != nil {
+		m.log.Debug("FFmpeg WebP failed: %v, output: %s", err, string(output))
+		return fmt.Errorf("ffmpeg webp: %w", err)
+	}
 	return nil
 }
 
@@ -626,13 +702,58 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 		return fmt.Errorf("waveform file not created")
 	}
 
+	// Generate WebP variant for audio waveforms
+	webpPath := m.getThumbnailPathWebp(job.OutputPath)
+	if err := m.generateWebPFromAudio(job.MediaPath, webpPath, job.Width, job.Height); err != nil {
+		m.log.Warn("WebP waveform generation failed (JPEG served): %v", err)
+	}
+
+	// Compute and store BlurHash for audio waveforms (main thumbnail only)
+	if m.blurHashUpdater != nil && !strings.Contains(filepath.Base(job.OutputPath), "_preview_") {
+		if hash, err := m.computeBlurHash(job.OutputPath); err == nil && hash != "" {
+			bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := m.blurHashUpdater.UpdateBlurHash(bgCtx, job.MediaPath, hash); err != nil {
+				m.log.Warn("Failed to store BlurHash: %v", err)
+			}
+			bgCancel()
+		}
+	}
 	return nil
+}
+
+// generateWebPFromAudio creates waveform as WebP
+func (m *Module) generateWebPFromAudio(mediaPath, outputPath string, width, height int) error {
+	waveformFilter := fmt.Sprintf("showwavespic=s=%dx%d:colors=#0080ff", width, height)
+
+	stream := ffmpeg.Input(mediaPath).
+		Output(outputPath, ffmpeg.KwArgs{
+			"filter_complex": waveformFilter,
+			"frames:v":       "1",
+			"c:v":            "libwebp",
+			"q:v":            "80",
+		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
+
+	cmd := stream.Compile()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext.Env = cmd.Env
+	cmdWithContext.Dir = cmd.Dir
+
+	_, err := cmdWithContext.CombinedOutput()
+	return err
 }
 
 // getThumbnailPath generates the output path for a thumbnail (index 0 for main thumbnail).
 // mediaID is the stable UUID used as the filename base.
 func (m *Module) getThumbnailPath(mediaID string) string {
 	return m.getThumbnailPathByIndex(mediaID, 0)
+}
+
+// getThumbnailPathWebp returns the WebP path for a given JPEG path.
+func (m *Module) getThumbnailPathWebp(jpgPath string) string {
+	return strings.TrimSuffix(jpgPath, ".jpg") + ".webp"
 }
 
 // getThumbnailPathByIndex generates the output path for a specific thumbnail index.
@@ -660,6 +781,24 @@ func (m *Module) HasThumbnail(mediaID string) bool {
 	path := m.getThumbnailPath(mediaID)
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// HasWebPThumbnail checks if a WebP thumbnail exists for a media ID
+func (m *Module) HasWebPThumbnail(mediaID string) bool {
+	jpgPath := m.getThumbnailPath(mediaID)
+	webpPath := m.getThumbnailPathWebp(jpgPath)
+	_, err := os.Stat(webpPath)
+	return err == nil
+}
+
+// GetThumbnailFilePathWebp returns the absolute file path for WebP variant, or empty if not found
+func (m *Module) GetThumbnailFilePathWebp(mediaID string) string {
+	jpgPath := m.getThumbnailPath(mediaID)
+	webpPath := m.getThumbnailPathWebp(jpgPath)
+	if _, err := os.Stat(webpPath); err == nil {
+		return webpPath
+	}
+	return ""
 }
 
 // HasAllPreviewThumbnails checks if all preview thumbnails exist for a media ID

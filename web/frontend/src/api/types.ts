@@ -125,6 +125,7 @@ export interface MediaItem {
     category?: string
     tags?: string[]
     thumbnail_url?: string
+    blur_hash?: string
     // Backend uses "date_added" and "date_modified" not "created_at"/"modified_at"
     date_added: string
     date_modified: string

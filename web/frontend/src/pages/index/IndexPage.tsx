@@ -1,6 +1,7 @@
 import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
 import {keepPreviousData, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
+import {decode} from 'blurhash'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -12,6 +13,30 @@ import {useEqualizer} from '@/hooks/useEqualizer'
 import {EqualizerPanel} from '@/components/EqualizerPanel'
 import {formatDuration, formatFileSize, formatTitle} from '@/utils/formatters'
 import '@/styles/index.css'
+
+// BlurHashPlaceholder renders a decoded BlurHash as a canvas for LQIP
+function BlurHashPlaceholder({hash, className, style}: { hash: string; className?: string; style?: CSSProperties }) {
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+
+    useEffect(() => {
+        if (!hash || !canvasRef.current) return
+        try {
+            const pixels = decode(hash, 32, 18)
+            const canvas = canvasRef.current
+            const ctx = canvas.getContext('2d')
+            if (!ctx) return
+            canvas.width = 32
+            canvas.height = 18
+            const imageData = ctx.createImageData(32, 18)
+            imageData.data.set(pixels)
+            ctx.putImageData(imageData, 0, 0)
+        } catch {
+            // Invalid hash — ignore
+        }
+    }, [hash])
+
+    return <canvas ref={canvasRef} className={className} style={{...style, display: 'block', width: '100%', height: '100%', objectFit: 'cover'}} aria-hidden />
+}
 
 // ── Upload Modal ──────────────────────────────────────────────────────────────
 
@@ -242,6 +267,9 @@ function UploadModal({onClose, onDone, maxFileSize}: {
 
 // ── MediaCard Component ───────────────────────────────────────────────────────
 
+const THUMBNAIL_RETRY_DELAY_MS = 2500
+const THUMBNAIL_MAX_RETRIES = 3
+
 function MediaCard({
                        item,
                        isPlaying,
@@ -261,6 +289,11 @@ function MediaCard({
     const restricted = item.is_mature && !canViewMature
     const [previewUrls, setPreviewUrls] = useState<string[] | null>(null)
     const [previewIndex, setPreviewIndex] = useState(0)
+    const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(() => item.thumbnail_url ?? null)
+    const [thumbnailError, setThumbnailError] = useState(false)
+    const [imgLoaded, setImgLoaded] = useState(false)
+    const retryCountRef = useRef(0)
+    const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const fetchedRef = useRef(false)
 
@@ -269,6 +302,16 @@ function MediaCard({
         : item.thumbnail_url
 
     const hoveringRef = useRef(false)
+
+    // Keep thumbnailSrc in sync when switching between main and preview
+    useEffect(() => {
+        if (currentThumbnail) {
+            setThumbnailError(false)
+            setThumbnailSrc(currentThumbnail)
+            setImgLoaded(false)
+            retryCountRef.current = 0
+        }
+    }, [currentThumbnail])
 
     function startCycling(urls: string[]) {
         if (intervalRef.current) clearInterval(intervalRef.current)
@@ -308,8 +351,23 @@ function MediaCard({
     useEffect(() => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current)
+            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
         }
     }, [])
+
+    function handleThumbnailError() {
+        const baseUrl = item.thumbnail_url
+        if (!baseUrl || retryCountRef.current >= THUMBNAIL_MAX_RETRIES) {
+            setThumbnailError(true)
+            return
+        }
+        retryCountRef.current += 1
+        retryTimeoutRef.current = setTimeout(() => {
+            retryTimeoutRef.current = null
+            const sep = baseUrl.includes('?') ? '&' : '?'
+            setThumbnailSrc(`${baseUrl}${sep}_=${Date.now()}`)
+        }, THUMBNAIL_RETRY_DELAY_MS)
+    }
 
     function goToPlayer() {
         if (restricted) return
@@ -324,17 +382,36 @@ function MediaCard({
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
             >
-                {item.thumbnail_url ? (
-                    <img
-                        className="media-thumbnail"
-                        src={currentThumbnail || item.thumbnail_url}
-                        alt={formatTitle(item.name)}
-                        loading="lazy"
-                        style={restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : undefined}
-                        onError={e => {
-                            (e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                    />
+                {item.thumbnail_url && !thumbnailError ? (
+                    <>
+                        {item.blur_hash && (
+                            <BlurHashPlaceholder
+                                hash={item.blur_hash}
+                                className="media-thumbnail media-thumbnail-blurhash"
+                                style={{position: 'absolute', inset: 0, opacity: imgLoaded ? 0 : 1, transition: 'opacity 0.2s ease'}}
+                            />
+                        )}
+                        <img
+                            className="media-thumbnail"
+                            src={thumbnailSrc || item.thumbnail_url}
+                            alt={formatTitle(item.name)}
+                            loading="lazy"
+                            style={{
+                                ...(restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : {}),
+                                opacity: imgLoaded ? 1 : (item.blur_hash ? 0 : 1),
+                                transition: 'opacity 0.2s ease',
+                                position: 'relative',
+                                zIndex: 1,
+                            }}
+                            onError={handleThumbnailError}
+                            onLoad={() => {
+                                retryCountRef.current = 0
+                                setImgLoaded(true)
+                            }}
+                        />
+                    </>
+                ) : item.blur_hash ? (
+                    <BlurHashPlaceholder hash={item.blur_hash} className="media-thumbnail" />
                 ) : (
                     <div className="media-thumbnail-placeholder">
                         <i className={item.type === 'video' ? 'bi bi-play-circle' : 'bi bi-music-note-beamed'}/>
