@@ -81,7 +81,8 @@ export function PlayerPage() {
     const [volume, setVolume] = useState(1)
     const [isMuted, setIsMuted] = useState(false)
     const [isLooping, setIsLooping] = useState(false)
-    const [playbackRate, setPlaybackRate] = useState(1)
+    const defaultPlaybackSpeed = user?.preferences?.playback_speed ?? 1
+    const [playbackRate, setPlaybackRate] = useState(defaultPlaybackSpeed)
     const [showControls, setShowControls] = useState(true)
     const [showSettings, setShowSettings] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
@@ -102,6 +103,29 @@ export function PlayerPage() {
     // Rating state
     const [userRating, setUserRating] = useState(0)
     const [ratingHover, setRatingHover] = useState(0)
+
+    // Sync playback speed from user preferences when they change
+    useEffect(() => {
+        const pref = user?.preferences?.playback_speed
+        if (pref != null && pref >= 0.25 && pref <= 2) {
+            setPlaybackRate(pref)
+            const el = getActiveEl()
+            if (el) el.playbackRate = pref
+        }
+    }, [user?.preferences?.playback_speed])
+
+    // Sync default_quality to HLS quality pref (useHLS reads from localStorage)
+    useEffect(() => {
+        const q = user?.preferences?.default_quality
+        if (!q || q === 'auto') return
+        const heightMap: Record<string, number> = { low: 360, medium: 480, high: 720, ultra: 1080 }
+        const height = heightMap[q]
+        if (height) {
+            try {
+                localStorage.setItem('media-server-quality-pref', String(height))
+            } catch { /* storage full */ }
+        }
+    }, [user?.preferences?.default_quality])
 
     // Sync playlist store index when navigating to a media ID that's in the playlist
     useEffect(() => {
@@ -186,7 +210,19 @@ export function PlayerPage() {
         select: data => (data ?? []).slice(0, 8),
     })
 
-    const related = similarData
+    // Fallback: when similar returns empty (e.g. small library), show trending so sidebar is never blank
+    const {data: trendingData = [], isLoading: trendingLoading} = useQuery({
+        queryKey: ['suggestions-trending'],
+        queryFn: () => suggestionsApi.getTrending(),
+        enabled: !!mediaId && !relatedLoading && !similarError && similarData.length === 0,
+        staleTime: 60 * 1000,
+        select: data => (data ?? []).slice(0, 8),
+    })
+
+    const useFallback = similarData.length === 0 && !similarError && !relatedLoading
+    const related = similarData.length > 0 ? similarData : trendingData
+    const relatedLabel = similarData.length > 0 ? 'Similar Media' : 'More to Explore'
+    const relatedStillLoading = relatedLoading || (useFallback && trendingLoading)
 
     // Check mature content
     useEffect(() => {
@@ -224,10 +260,11 @@ export function PlayerPage() {
         el.loop = isLooping
         el.playbackRate = playbackRate
 
-        // Fetch saved position so handleLoadedMetadata can seek to it.
+        // Fetch saved position so handleLoadedMetadata can seek to it (only if user enabled resume)
         resumePositionRef.current = 0
         let positionFetchCancelled = false
-        if (user) {
+        const resumeEnabled = user?.preferences?.resume_playback !== false
+        if (user && resumeEnabled) {
             const elRef = el
             watchHistoryApi.getPosition(mediaId)
                 .then(data => {
@@ -411,8 +448,9 @@ export function PlayerPage() {
             durationRef.current = el.duration
             setDuration(el.duration)
             setIsLoading(false)
+            const resumeEnabled = user?.preferences?.resume_playback !== false
             const saved = resumePositionRef.current
-            if (saved > 5 && el.duration > 0 && saved < el.duration - 5) {
+            if (resumeEnabled && saved > 5 && el.duration > 0 && saved < el.duration - 5) {
                 el.currentTime = saved
             }
             resumePositionRef.current = 0
@@ -558,8 +596,9 @@ export function PlayerPage() {
             })
             fireAnalytics('complete', { duration, position: duration })
         }
-        // Auto-advance to next track in playlist
-        const nextId = playNext()
+        // Auto-advance to next track only when user has autoplay enabled
+        const autoPlayNext = user?.preferences?.auto_play === true
+        const nextId = autoPlayNext ? playNext() : null
         if (nextId) {
             navigate(`/player?id=${encodeURIComponent(nextId)}`, {replace: true})
         }
@@ -1220,18 +1259,18 @@ export function PlayerPage() {
                     <SectionErrorBoundary title="Sidebar unavailable">
                         <div className="player-sidebar">
                             <div className="player-sidebar-card">
-                                <h3><i className="bi bi-play-fill"/> Similar Media</h3>
-                                {relatedLoading ? (
+                                <h3><i className="bi bi-play-fill"/> {relatedLabel}</h3>
+                                {relatedStillLoading ? (
                                     <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading…</p>
                                 ) : similarError ? (
                                     <p style={{color: 'var(--text-muted)', fontSize: 13}}>
-                                        Similar media still loading.{' '}
+                                        Suggestions still loading.{' '}
                                         <button type="button" className="media-action-btn" style={{marginTop: 4}} onClick={() => similarRefetch()}>
                                             Retry
                                         </button>
                                     </p>
                                 ) : related.length === 0 ? (
-                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>No similar media found.</p>
+                                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>No suggestions yet. Add more media to your library.</p>
                                 ) : (
                                     related.map(entry => <SimilarItem key={entry.media_id} entry={entry}/>)
                                 )}

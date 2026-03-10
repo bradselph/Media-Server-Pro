@@ -10,9 +10,34 @@ export function formatDuration(secs: number): string {
     return `${m}:${String(s).padStart(2, '0')}`
 }
 
+/** Strip common media extensions from a filename. */
+function stripExtension(name: string): string {
+    return name.replace(/\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mp3|flac|aac|ogg|wav|opus|m4a|ts|m2ts|vob|rmvb|3gp|asf|divx|xvid|wma|aiff|alac)$/i, '')
+}
+
+/**
+ * Format a media filename into a readable title. Handles:
+ * - Separators (._-) → spaces
+ * - CamelCase/PascalCase (MyCoolVideo → My Cool Video)
+ * - Letter-number boundaries (Video2 → Video 2)
+ * - UPPER_SNAKE (MY_COOL_VIDEO → My Cool Video)
+ * - Mixed styles (myCool_Video-01 → My Cool Video 01)
+ */
 export function formatTitle(name: string): string {
-    const withoutExt = name.replace(/\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mp3|flac|aac|ogg|wav|opus|m4a|ts|m2ts|vob|rmvb|3gp|asf|divx|xvid)$/i, '')
-    const spaced = withoutExt.replace(/[._-]+/g, ' ')
+    if (!name || typeof name !== 'string') return ''
+    const withoutExt = stripExtension(name.trim())
+    if (!withoutExt) return ''
+
+    // Replace separators with spaces
+    let spaced = withoutExt.replace(/[._-]+/g, ' ')
+
+    // Split CamelCase / PascalCase: MyCoolVideo → My Cool Video
+    spaced = spaced.replace(/([a-z])([A-Z])/g, '$1 $2')
+    // Split multiple caps before cap+lower: HTMLLoader → HTML Loader, HDVideo → HD Video
+    spaced = spaced.replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    // Split letter-number boundaries: Video2 → Video 2, Episode01 → Episode 01
+    spaced = spaced.replace(/([a-zA-Z])(\d+)/g, '$1 $2').replace(/(\d+)([a-zA-Z])/g, '$1 $2')
+
     const normalized = spaced.replace(/\s+/g, ' ').trim()
     return normalized.replace(/\b\w/g, c => c.toUpperCase())
 }
