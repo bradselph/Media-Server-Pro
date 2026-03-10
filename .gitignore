@@ -57,3 +57,5 @@ Thumbs.db
 
 /vendor
 # package-lock.json tracked for reproducible builds — do not ignore
+github-runner/setup-runner.sh
+github-runner/.runner.env
