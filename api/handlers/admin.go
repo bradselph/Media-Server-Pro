@@ -172,7 +172,13 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 	if req.Type == "" {
 		req.Type = "standard"
 	}
-	user, err := h.auth.CreateUser(c.Request.Context(), req.Username, req.Password, req.Email, req.Type, req.Role)
+	user, err := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{
+		Username: req.Username,
+		Password: req.Password,
+		Email:    req.Email,
+		UserType: req.Type,
+		Role:     req.Role,
+	})
 	if err != nil {
 		if errors.Is(err, auth.ErrUserExists) {
 			writeError(c, http.StatusConflict, "Username is already taken")

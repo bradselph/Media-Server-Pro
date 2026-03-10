@@ -25,12 +25,13 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	adminSession, adminErr := h.auth.AdminAuthenticate(c.Request.Context(),
-		req.Username,
-		req.Password,
-		c.ClientIP(),
-		c.Request.UserAgent(),
-	)
+	authReq := &auth.AuthRequest{
+		Username:  req.Username,
+		Password:  req.Password,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	}
+	adminSession, adminErr := h.auth.AdminAuthenticate(c.Request.Context(), authReq)
 
 	if adminErr != nil {
 		if errors.Is(adminErr, auth.ErrAccountLocked) {
@@ -46,12 +47,11 @@ func (h *Handler) Login(c *gin.Context) {
 			return
 		}
 	} else {
-		session, sessErr := h.auth.CreateSessionForUser(
-			c.Request.Context(),
-			adminSession.Username,
-			c.ClientIP(),
-			c.Request.UserAgent(),
-		)
+		session, sessErr := h.auth.CreateSessionForUser(c.Request.Context(), &auth.CreateSessionParams{
+			Username:  adminSession.Username,
+			IPAddress: c.ClientIP(),
+			UserAgent: c.Request.UserAgent(),
+		})
 		if sessErr != nil {
 			h.log.Error("Failed to create admin session: %v", sessErr)
 			writeError(c, http.StatusInternalServerError, "Failed to create session")
@@ -77,12 +77,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	session, err := h.auth.Authenticate(c.Request.Context(),
-		req.Username,
-		req.Password,
-		c.ClientIP(),
-		c.Request.UserAgent(),
-	)
+	session, err := h.auth.Authenticate(c.Request.Context(), authReq)
 	if err != nil {
 		if errors.Is(err, auth.ErrAccountLocked) {
 			writeError(c, http.StatusTooManyRequests, "Too many failed login attempts. Please try again later.")
@@ -187,7 +182,13 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := h.auth.CreateUser(c.Request.Context(), req.Username, req.Password, req.Email, "standard", models.RoleViewer)
+	user, err := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{
+		Username: req.Username,
+		Password: req.Password,
+		Email:    req.Email,
+		UserType: "standard",
+		Role:     models.RoleViewer,
+	})
 	if err != nil {
 		if errors.Is(err, auth.ErrUserExists) {
 			writeError(c, http.StatusConflict, "Username is already taken")
@@ -198,11 +199,11 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	session, authErr := h.auth.CreateSessionForUser(c.Request.Context(),
-		req.Username,
-		c.ClientIP(),
-		c.Request.UserAgent(),
-	)
+	session, authErr := h.auth.CreateSessionForUser(c.Request.Context(), &auth.CreateSessionParams{
+		Username:  req.Username,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 	if authErr != nil {
 		h.log.Error("Failed to create session for new user %s: %v", req.Username, authErr)
 		writeError(c, http.StatusInternalServerError, "Account created but login failed")
@@ -274,7 +275,13 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 				h.log.Error("Failed to generate password for admin user record: %v", pwdErr)
 				randomPassword = "FALLBACK_UNUSED_PASSWORD_" + generateRandomString(24)
 			}
-			if _, createErr := h.auth.CreateUser(c.Request.Context(), session.Username, randomPassword, "", "admin", models.RoleAdmin); createErr != nil {
+			if _, createErr := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{
+				Username: session.Username,
+				Password: randomPassword,
+				Email:    "",
+				UserType: "admin",
+				Role:     models.RoleAdmin,
+			}); createErr != nil {
 				h.log.Warn("Could not create admin user record for preferences: %v", createErr)
 			}
 		}
