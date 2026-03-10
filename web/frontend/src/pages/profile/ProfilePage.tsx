@@ -6,6 +6,7 @@ import {useQueryClient} from '@tanstack/react-query'
 import {authApi, permissionsApi as permApi, preferencesApi, storageApi, watchHistoryApi} from '@/api/endpoints'
 import {ApiError} from '@/api/client'
 import {useToast} from '@/components/Toast'
+import {formatTitle} from '@/utils/formatters'
 import type {PermissionsInfo, StorageUsage, UserPreferences, WatchHistoryEntry} from '@/api/types'
 import '@/styles/profile.css'
 
@@ -23,13 +24,11 @@ function formatDuration(seconds: number): string {
     return `${m}m`
 }
 
-function cleanFileName(name: string): string {
-    const base = name.split('/').pop()?.split('\\').pop() || name
-    return base.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
 function displayMediaName(entry: { media_name?: string; media_id: string }): string {
-    if (entry.media_name) return cleanFileName(entry.media_name)
+    if (entry.media_name) {
+        const base = entry.media_name.split('/').pop()?.split('\\').pop() || entry.media_name
+        return formatTitle(base)
+    }
     return 'Unknown title'
 }
 

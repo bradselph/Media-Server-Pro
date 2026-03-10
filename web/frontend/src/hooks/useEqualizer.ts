@@ -1,3 +1,4 @@
+import type {RefObject} from 'react'
 import {useCallback, useEffect, useRef, useState} from 'react'
 
 const FREQ_10 = [31.25, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
@@ -115,12 +116,16 @@ function saveCustomPresets(presets: Record<string, CustomPreset>) {
     }
 }
 
-export function useEqualizer(audioElement: HTMLAudioElement | null): UseEqualizerResult {
+export function useEqualizer(
+    audioRef: RefObject<HTMLAudioElement | null>,
+    isReady: boolean,
+): UseEqualizerResult {
     const audioCtxRef = useRef<AudioContext | null>(null)
     const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
     const filtersRef = useRef<BiquadFilterNode[]>([])
     const analyserRef = useRef<AnalyserNode | null>(null)
     const connectedRef = useRef(false)
+    const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
     const [bands, setBands] = useState<EQBand[]>([])
     const [currentPreset, setCurrentPreset] = useState('flat')
@@ -130,6 +135,7 @@ export function useEqualizer(audioElement: HTMLAudioElement | null): UseEqualize
 
     // Initialize audio context and source (once per audio element)
     const ensureAudioContext = useCallback(() => {
+        const audioElement = audioElementRef.current
         if (!audioElement) return null
         if (!audioCtxRef.current) {
             audioCtxRef.current = new AudioContext()
@@ -145,7 +151,7 @@ export function useEqualizer(audioElement: HTMLAudioElement | null): UseEqualize
             setAnalyser(analyserRef.current)
         }
         return audioCtxRef.current
-    }, [audioElement])
+    }, [])
 
     // Build EQ filter chain
     const buildFilters = useCallback((mode: '10' | '31', gains?: number[]) => {
@@ -202,10 +208,12 @@ export function useEqualizer(audioElement: HTMLAudioElement | null): UseEqualize
         })))
     }, [ensureAudioContext])
 
-    // Initialize on audio element change
+    // Initialize on audio element change (read ref only inside effect to satisfy React rules)
     useEffect(() => {
+        const audioElement = isReady ? audioRef.current : null
         if (!audioElement) return
 
+        audioElementRef.current = audioElement
         const settings = loadSettings()
         const mode = settings.eqBands || '10'
         setCurrentMode(mode)
@@ -233,8 +241,9 @@ export function useEqualizer(audioElement: HTMLAudioElement | null): UseEqualize
             connectedRef.current = false
             filtersRef.current = []
             setAnalyser(null)
+            audioElementRef.current = null
         }
-    }, [audioElement, buildFilters])
+    }, [audioRef, isReady, buildFilters])
 
     const setBandGain = useCallback((index: number, gain: number) => {
         const clamped = Math.max(-20, Math.min(20, gain))

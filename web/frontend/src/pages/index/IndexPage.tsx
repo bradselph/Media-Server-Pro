@@ -1,7 +1,6 @@
 import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
 import {keepPreviousData, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
-import {useVirtualizer} from '@tanstack/react-virtual'
 import {decode} from 'blurhash'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
@@ -39,59 +38,15 @@ function BlurHashPlaceholder({hash, className, style}: { hash: string; className
     return <canvas ref={canvasRef} className={className} style={{...style, display: 'block', width: '100%', height: '100%', objectFit: 'cover'}} aria-hidden />
 }
 
-// Virtualized media grid — renders only visible rows for large libraries
-const ROW_HEIGHT = 220
-const CARD_MIN_WIDTH = 236 // 220 + 16 gap
-
-function VirtualizedMediaGrid({
-    items,
-    columns,
-    getScrollElement,
-    overscan = 2,
-    renderCard,
-}: {
-    items: MediaItem[]
-    columns: number
-    getScrollElement: () => HTMLElement | null
-    overscan?: number
-    renderCard: (item: MediaItem) => React.ReactNode
-}) {
-    const rowCount = Math.ceil(items.length / columns)
-    const rowVirtualizer = useVirtualizer({
-        count: rowCount,
-        getScrollElement,
-        estimateSize: () => ROW_HEIGHT,
-        overscan,
-    })
-
+// Skeleton placeholder for loading cards
+function MediaCardSkeleton() {
     return (
-        <div
-            style={{
-                height: `${rowVirtualizer.getTotalSize()}px`,
-                width: '100%',
-                position: 'relative',
-            }}
-        >
-            {rowVirtualizer.getVirtualItems().map(virtualRow => (
-                <div
-                    key={virtualRow.key}
-                    className="media-grid media-grid-virtual-row"
-                    style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        transform: `translateY(${virtualRow.start}px)`,
-                        ['--grid-cols' as string]: columns,
-                    }}
-                >
-                    {Array.from({length: columns}, (_, col) => {
-                        const idx = virtualRow.index * columns + col
-                        const item = items[idx]
-                        return item ? renderCard(item) : <div key={`empty-${virtualRow.index}-${col}`} style={{minWidth: 220, minHeight: 1}} />
-                    })}
-                </div>
-            ))}
+        <div className="media-card media-card-skeleton" aria-hidden>
+            <div className="media-thumbnail-placeholder media-skeleton-thumb"/>
+            <div className="media-card-body">
+                <div className="media-skeleton-title"/>
+                <div className="media-skeleton-meta"/>
+            </div>
         </div>
     )
 }
@@ -364,14 +319,16 @@ function MediaCard({
 
     const hoveringRef = useRef(false)
 
-    // Keep thumbnailSrc in sync when switching between main and preview
+    // Sync thumbnail state when switching between main and preview (defer setState to avoid sync-in-effect)
     useEffect(() => {
-        if (currentThumbnail) {
+        if (!currentThumbnail) return
+        const thumbnail = currentThumbnail
+        queueMicrotask(() => {
             setThumbnailError(false)
-            setThumbnailSrc(currentThumbnail)
+            setThumbnailSrc(thumbnail)
             setImgLoaded(false)
             retryCountRef.current = 0
-        }
+        })
     }, [currentThumbnail])
 
     function startCycling(urls: string[]) {
@@ -580,7 +537,7 @@ function InlinePlayer({
     const activeRef = isVideo ? videoRef : audioRef
 
     // Wire up equalizer to the audio element (EQ only applies to audio, not video)
-    const eq = useEqualizer(audioReady ? audioRef.current : null)
+    const eq = useEqualizer(audioRef, audioReady)
 
     // Mark audio element as ready after mount
     useEffect(() => {
@@ -1079,17 +1036,25 @@ export function IndexPage() {
     const totalPages = mediaData?.total_pages ?? 1
     const hasNextPage = page < totalPages
 
-    const gridScrollRef = useRef<HTMLDivElement>(null)
-    const [gridColumns, setGridColumns] = useState(4)
+    // Batch prefetch thumbnails — single API call, then preload images into browser cache
     useEffect(() => {
-        const el = gridScrollRef.current
-        if (!el) return
-        const ro = new ResizeObserver(() => {
-            setGridColumns(Math.max(2, Math.floor(el.clientWidth / CARD_MIN_WIDTH)))
-        })
-        ro.observe(el)
-        return () => ro.disconnect()
-    }, [])
+        if (items.length === 0) return
+        const ids = items
+            .filter(m => m.thumbnail_url)
+            .map(m => m.id)
+            .slice(0, 50)
+        if (ids.length === 0) return
+        mediaApi.getThumbnailBatch(ids, 320)
+            .then(res => {
+                const base = window.location.origin
+                Object.values(res.thumbnails ?? {}).forEach(url => {
+                    const full = url.startsWith('/') ? base + url : url
+                    const img = new Image()
+                    img.src = full
+                })
+            })
+            .catch(() => {})
+    }, [items])
 
     // Prefetch next page for faster pagination
     useEffect(() => {
@@ -1211,7 +1176,7 @@ export function IndexPage() {
             <div className="index-header">
                 <h1>Media Streamer Pro</h1>
                 <p>Video and Music Streaming Server</p>
-                {analytics && !analytics.analytics_disabled && (
+                {analytics && !analytics.analytics_disabled && (user?.preferences?.show_analytics !== false) && (
                     <div className="analytics-bar">
                         <span><i
                             className="bi bi-play-circle-fill"/> {(analytics.total_events ?? 0).toLocaleString()} plays</span>
@@ -1426,43 +1391,49 @@ export function IndexPage() {
             {/* Media Grid */}
             <div className="media-section">
                 {mediaError ? (
-                    <div className="empty-state">
-                        <h3>Failed to load media</h3>
-                        <p>{mediaError instanceof Error ? mediaError.message : 'An unexpected error occurred.'}</p>
-                        <button className="controls-btn" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
-                            <i className="bi bi-arrow-clockwise"/> Retry
+                    <div className="empty-state empty-state-error">
+                        <h3>We couldn&apos;t load your library</h3>
+                        <p>{mediaError instanceof Error ? mediaError.message : 'Something went wrong. Please try again.'}</p>
+                        <button className="controls-btn controls-btn-primary" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
+                            <i className="bi bi-arrow-clockwise"/> Try again
                         </button>
                     </div>
                 ) : mediaInitialLoading ? (
-                    <div className="loading-state"><i className="bi bi-film"/> Loading your media library...</div>
+                    <div className="media-grid media-grid-loading">
+                        {Array.from({length: 12}, (_, i) => <MediaCardSkeleton key={i}/>)}
+                    </div>
                 ) : items.length === 0 && mediaData?.scanning ? (
                     <div className="loading-state">
-                        <i className="bi bi-arrow-repeat"/> Scanning your media library&hellip; this may take a moment.
+                        <i className="bi bi-arrow-repeat"/> Scanning your library&hellip; give it a moment.
                     </div>
                 ) : items.length === 0 ? (
                     <div className="empty-state">
                         <h3>No media found</h3>
                         <p>
                             {search
-                                ? `No results for "${search}". Try a different search.`
-                                : 'Add media files to your library to get started.'}
+                                ? `No results for "${search}". Try a different search term.`
+                                : 'Add media files to your library or adjust your filters to get started.'}
                         </p>
+                        {permissions.can_upload && (
+                            <button className="controls-btn controls-btn-primary" onClick={() => setShowUpload(true)}>
+                                <i className="bi bi-cloud-upload-fill"/> Upload media
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div
-                        ref={gridScrollRef}
-                        className="media-grid-scroll"
+                        className="media-grid-wrapper"
                         style={{
-                            overflow: 'auto',
-                            maxHeight: 'min(70vh, 800px)',
-                            ...((mediaFetching && mediaStale) ? {opacity: 0.6, pointerEvents: 'none', transition: 'opacity 0.15s ease'} : {transition: 'opacity 0.15s ease'}),
+                            ...((mediaFetching && mediaStale) ? {opacity: 0.92, transition: 'opacity 0.25s ease'} : {opacity: 1, transition: 'opacity 0.25s ease'}),
                         }}
                     >
-                        <VirtualizedMediaGrid
-                            items={items}
-                            columns={gridColumns}
-                            getScrollElement={() => gridScrollRef.current}
-                            renderCard={item => (
+                        {(mediaFetching && mediaStale) && (
+                            <div className="media-grid-updating" role="status">
+                                <i className="bi bi-arrow-repeat"/> Updating&hellip;
+                            </div>
+                        )}
+                        <div className="media-grid">
+                            {items.map(item => (
                                 <MediaCard
                                     key={item.id}
                                     item={item}
@@ -1472,8 +1443,8 @@ export function IndexPage() {
                                     canViewMature={permissions.can_view_mature && (user?.preferences?.show_mature === true)}
                                     isAuthenticated={isAuthenticated}
                                 />
-                            )}
-                        />
+                            ))}
+                        </div>
                     </div>
                 )}
 

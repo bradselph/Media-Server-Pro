@@ -45,7 +45,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
     )
 
     // Equalizer — only connect once audio element exists (side-effect only)
-    useEqualizer(audioReady ? audioRef.current : null)
+    useEqualizer(audioRef, audioReady)
 
     // Mark audio ready after mount
     useEffect(() => {

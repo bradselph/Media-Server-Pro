@@ -79,7 +79,7 @@ GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 REPO_URL="${REPO_URL:-github.com/bradselph/Media-Server-Pro.git}"
 MASTER_URL="${MASTER_URL:-}"
 
-GO_VERSION="1.26.0"
+GO_VERSION="1.26.1"
 NODE_MAJOR="22"
 
 # ── Slave defaults ───────────────────────────────────────────────────────────
