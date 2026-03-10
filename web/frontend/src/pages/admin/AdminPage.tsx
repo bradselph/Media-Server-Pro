@@ -1,6 +1,7 @@
-import {useState} from 'react'
+import {useEffect, useState} from 'react'
 import {Link, useLocation, useNavigate} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
+import {useSettingsStore} from '@/stores/settingsStore'
 import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {DashboardTab} from './DashboardTab'
 import {UsersTab} from './UsersTab'
@@ -28,25 +29,30 @@ export function AdminPage() {
     const logout = useAuthStore((s) => s.logout)
     const isAdmin = useAuthStore((s) => s.isAdmin)
     const isLoading = useAuthStore((s) => s.isLoading)
+    const features = useSettingsStore((s) => s.serverSettings?.features)
     const initialTab = (location.state as { tab?: string } | null)?.tab
     const [activeTab, setActiveTab] = useState<Tab>(
         VALID_TABS.includes(initialTab as Tab) ? (initialTab as Tab) : 'dashboard'
     )
 
-    if (!isLoading && !isAdmin) {
-        navigate('/login', {replace: true})
-        return null
-    }
-
     const tabs: Array<{ id: Tab; label: string; icon: string }> = [
         {id: 'dashboard', label: 'Dashboard', icon: 'bi-speedometer2'},
         {id: 'users', label: 'Users', icon: 'bi-people-fill'},
         {id: 'media', label: 'Media', icon: 'bi-folder-fill'},
-        {id: 'analytics', label: 'Analytics', icon: 'bi-bar-chart-fill'},
+        ...(features?.enableAnalytics !== false ? [{id: 'analytics' as Tab, label: 'Analytics', icon: 'bi-bar-chart-fill'}] : []),
         {id: 'sources', label: 'Sources', icon: 'bi-cloud-arrow-down-fill'},
-        {id: 'playlists', label: 'Playlists', icon: 'bi-collection-fill'},
+        ...(features?.enablePlaylists !== false ? [{id: 'playlists' as Tab, label: 'Playlists', icon: 'bi-collection-fill'}] : []),
         {id: 'system', label: 'System', icon: 'bi-gear-fill'},
     ]
+
+    useEffect(() => {
+        if (!tabs.some(t => t.id === activeTab)) setActiveTab('dashboard')
+    }, [features])
+
+    if (!isLoading && !isAdmin) {
+        navigate('/login', {replace: true})
+        return null
+    }
 
     async function handleLogout() {
         await logout()

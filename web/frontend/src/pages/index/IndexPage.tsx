@@ -870,6 +870,8 @@ export function IndexPage() {
     const {theme, toggleTheme} = useThemeStore()
     const serverSettings = useSettingsStore((s) => s.serverSettings)
     const uploadsEnabled = serverSettings?.uploads?.enabled ?? true
+    const playlistsEnabled = serverSettings?.features?.enablePlaylists !== false
+    const suggestionsEnabled = serverSettings?.features?.enableSuggestions !== false
 
     // Pagination & filter state persisted in URL so back-navigation restores position
     const [searchParams, setSearchParams] = useSearchParams()
@@ -1038,7 +1040,7 @@ export function IndexPage() {
     } = useQuery<Suggestion[]>({
         queryKey: ['suggestions', canViewMature],
         queryFn: () => suggestionsApi.get(),
-        enabled: showRecommended,
+        enabled: suggestionsEnabled && showRecommended,
         staleTime: 10 * 60 * 1000,
         retry: suggestionsRetry,
         retryDelay: suggestionsRetryDelay,
@@ -1054,7 +1056,7 @@ export function IndexPage() {
     } = useQuery<Suggestion[]>({
         queryKey: ['suggestions-trending', canViewMature],
         queryFn: () => suggestionsApi.getTrending(),
-        enabled: showTrending,
+        enabled: suggestionsEnabled && showTrending,
         staleTime: 10 * 60 * 1000,
         retry: suggestionsRetry,
         retryDelay: suggestionsRetryDelay,
@@ -1285,7 +1287,7 @@ export function IndexPage() {
                     {theme === 'dark' ? <i className="bi bi-sun-fill"/> : <i className="bi bi-moon-fill"/>}
                 </button>
 
-                {permissions.can_create_playlists && (
+                {playlistsEnabled && permissions.can_create_playlists && (
                     <button className="controls-btn" onClick={() => setShowSidebar(true)}><i
                         className="bi bi-collection-fill"/> Playlists</button>
                 )}
@@ -1314,7 +1316,7 @@ export function IndexPage() {
             )}
 
             {/* Recommended For You — shown when enabled; loading/error states with retry */}
-            {showRecommended && (
+            {suggestionsEnabled && showRecommended && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-stars"/> Recommended For You</h3>
                     {suggestionsLoading ? (
@@ -1350,7 +1352,7 @@ export function IndexPage() {
             )}
 
             {/* Trending — shown when enabled; loading/error states with retry */}
-            {showTrending && (
+            {suggestionsEnabled && showTrending && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-fire"/> Trending</h3>
                     {trendingLoading ? (
@@ -1534,7 +1536,7 @@ export function IndexPage() {
             </div>
 
             {/* FAB - Playlists */}
-            {permissions.can_create_playlists && (
+            {playlistsEnabled && permissions.can_create_playlists && (
                 <button className="fab-btn" onClick={() => setShowSidebar(true)} title="Playlists">
                     <i className="bi bi-collection-fill"/>
                 </button>
@@ -1557,7 +1559,7 @@ export function IndexPage() {
             )}
 
             {/* Playlists Sidebar */}
-            {showSidebar && (
+            {playlistsEnabled && showSidebar && (
                 <>
                     <div className="sidebar-overlay" onClick={() => setShowSidebar(false)}/>
                     <div className="sidebar">

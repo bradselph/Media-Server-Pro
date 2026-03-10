@@ -570,14 +570,18 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 		for id, session := range m.sessions {
 			if session.Username == username {
 				delete(m.sessions, id)
-				_ = m.sessionRepo.Delete(ctx, id)
+				if err := m.sessionRepo.Delete(ctx, id); err != nil {
+					m.log.Warn("Failed to delete evicted session %s from DB: %v", id, err)
+				}
 				evicted++
 			}
 		}
 		for id, session := range m.adminSessions {
 			if session.Username == username {
 				delete(m.adminSessions, id)
-				_ = m.sessionRepo.Delete(ctx, id)
+				if err := m.sessionRepo.Delete(ctx, id); err != nil {
+					m.log.Warn("Failed to delete evicted session %s from DB: %v", id, err)
+				}
 				evicted++
 			}
 		}
