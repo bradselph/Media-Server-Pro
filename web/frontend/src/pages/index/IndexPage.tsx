@@ -294,6 +294,21 @@ const THUMBNAIL_RETRY_DELAY_MS = 2500
 const THUMBNAIL_MAX_RETRIES = 3
 const THUMBNAIL_LAZY_MARGIN_PX = 200
 
+/** Append cache-buster for mature thumbnails when user can view them, so the browser
+ * fetches the real image instead of serving the cached censored placeholder after login. */
+function thumbnailUrlForMatureAccess(
+    url: string | undefined,
+    isMature: boolean,
+    canViewMature: boolean,
+): string | undefined {
+    if (!url) return undefined
+    if (isMature && canViewMature) {
+        const sep = url.includes('?') ? '&' : '?'
+        return `${url}${sep}_m=1`
+    }
+    return url
+}
+
 function MediaCard({
                        item,
                        isPlaying,
@@ -313,7 +328,8 @@ function MediaCard({
     const restricted = item.is_mature && !canViewMature
     const [previewUrls, setPreviewUrls] = useState<string[] | null>(null)
     const [previewIndex, setPreviewIndex] = useState(0)
-    const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(() => item.thumbnail_url ?? null)
+    const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(() =>
+        thumbnailUrlForMatureAccess(item.thumbnail_url ?? undefined, !!item.is_mature, canViewMature) ?? null)
     const [thumbnailError, setThumbnailError] = useState(false)
     const [imgLoaded, setImgLoaded] = useState(false)
     const [inView, setInView] = useState(false)
@@ -323,13 +339,19 @@ function MediaCard({
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const fetchedRef = useRef(false)
 
-    const currentThumbnail = previewUrls && previewUrls.length > 0
-        ? previewUrls[previewIndex % previewUrls.length]
-        : item.thumbnail_url
+    const baseThumbnailUrl = thumbnailUrlForMatureAccess(
+        item.thumbnail_url ?? undefined,
+        !!item.is_mature,
+        canViewMature,
+    )
+    const currentThumbnail =
+        previewUrls && previewUrls.length > 0
+            ? previewUrls[previewIndex % previewUrls.length]
+            : baseThumbnailUrl
 
     const hoveringRef = useRef(false)
 
-    // Sync thumbnail state when switching between main and preview (defer setState to avoid sync-in-effect)
+    // Sync thumbnail state when switching main/preview or when canViewMature changes (e.g. after login)
     useEffect(() => {
         if (!currentThumbnail) return
         const thumbnail = currentThumbnail
@@ -398,7 +420,7 @@ function MediaCard({
     }, [])
 
     function handleThumbnailError() {
-        const baseUrl = item.thumbnail_url
+        const baseUrl = baseThumbnailUrl ?? item.thumbnail_url
         if (!baseUrl || retryCountRef.current >= THUMBNAIL_MAX_RETRIES) {
             setThumbnailError(true)
             return
