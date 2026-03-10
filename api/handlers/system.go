@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/admin"
 	"media-server-pro/pkg/models"
 )
 
@@ -418,7 +419,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	if !isSelect {
 		h.log.Warn("Admin %s attempted disallowed mutating query", username)
 		if h.admin != nil {
-			h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query}, c.ClientIP(), false)
+			h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+				UserID: username, Username: username, Action: "execute_query", Resource: "database",
+				Details: map[string]interface{}{"query": query}, IPAddress: c.ClientIP(), Success: false,
+			})
 		}
 		writeError(c, http.StatusForbidden, "Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are permitted")
 		return
@@ -427,7 +431,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		if h.admin != nil {
-			h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query}, c.ClientIP(), false)
+			h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+				UserID: username, Username: username, Action: "execute_query", Resource: "database",
+				Details: map[string]interface{}{"query": query}, IPAddress: c.ClientIP(), Success: false,
+			})
 		}
 		h.log.Error("Query execution failed: %v", err)
 		writeError(c, http.StatusBadRequest, "Query execution failed")
@@ -482,7 +489,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	}
 
 	if h.admin != nil {
-		h.admin.LogAction(c.Request.Context(), username, username, "execute_query", "database", map[string]interface{}{"query": query, "rows": len(results)}, c.ClientIP(), true)
+		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+			UserID: username, Username: username, Action: "execute_query", Resource: "database",
+			Details: map[string]interface{}{"query": query, "rows": len(results)}, IPAddress: c.ClientIP(), Success: true,
+		})
 	}
 
 	writeSuccess(c, map[string]interface{}{

@@ -19,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/admin"
 	"media-server-pro/internal/auth"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/updater"
@@ -741,8 +742,10 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 			return
 		}
 		if h.admin != nil {
-			h.admin.LogAction(context.Background(), "admin", "admin", "apply_source_update",
-				status.Stage, nil, clientIP, status.Error == "")
+			h.admin.LogAction(context.Background(), &admin.AuditLogParams{
+				UserID: "admin", Username: "admin", Action: "apply_source_update",
+				Resource: status.Stage, Details: nil, IPAddress: clientIP, Success: status.Error == "",
+			})
 		}
 	}()
 	initial := h.updater.GetActiveBuildStatus()
