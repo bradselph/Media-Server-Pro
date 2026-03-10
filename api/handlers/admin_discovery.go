@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/autodiscovery"
 )
 
 // DiscoverMedia discovers and suggests organization for media files
@@ -42,7 +44,7 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Directory must be within a configured media path")
 		return
 	}
-	scanResults, err := h.autodiscovery.ScanDirectory(req.Directory)
+	scanResults, err := h.autodiscovery.ScanDirectory(autodiscovery.FilePath(req.Directory))
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
@@ -74,7 +76,7 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 		return
 	}
 
-	if err := h.autodiscovery.ApplySuggestion(req.OriginalPath); err != nil {
+	if err := h.autodiscovery.ApplySuggestion(autodiscovery.FilePath(req.OriginalPath)); err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
@@ -95,6 +97,6 @@ func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
 		return
 	}
 
-	h.autodiscovery.ClearSuggestion(path)
+	h.autodiscovery.ClearSuggestion(autodiscovery.FilePath(path))
 	writeSuccess(c, map[string]string{"message": "Suggestion dismissed"})
 }

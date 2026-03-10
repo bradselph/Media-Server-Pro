@@ -572,13 +572,43 @@ type APIResponse struct {
 }
 
 // AutoDiscoverySuggestion represents a naming suggestion
+// for a media file discovered by the auto-discovery module.
+// It uses dedicated types instead of raw primitives to avoid
+// scattering magic strings and loosely-typed metadata keys.
+type SuggestionType string
+
+const (
+	SuggestionTypeMovie     SuggestionType = "movie"
+	SuggestionTypeTVEpisode SuggestionType = "tv_episode"
+	SuggestionTypeMusic     SuggestionType = "music"
+	SuggestionTypeUnknown   SuggestionType = "unknown"
+)
+
+// SuggestionMetadataKey represents a well-known metadata key for
+// suggestions (e.g. show, season, title).
+type SuggestionMetadataKey string
+
+const (
+	MetadataKeyShow    SuggestionMetadataKey = "show"
+	MetadataKeySeason  SuggestionMetadataKey = "season"
+	MetadataKeyEpisode SuggestionMetadataKey = "episode"
+	MetadataKeyTitle   SuggestionMetadataKey = "title"
+	MetadataKeyYear    SuggestionMetadataKey = "year"
+	MetadataKeyArtist  SuggestionMetadataKey = "artist"
+	MetadataKeyAlbum   SuggestionMetadataKey = "album"
+	MetadataKeyTrack   SuggestionMetadataKey = "track"
+)
+
+// SuggestionMetadata holds key-value metadata for a suggestion.
+type SuggestionMetadata map[SuggestionMetadataKey]string
+
 type AutoDiscoverySuggestion struct {
 	OriginalPath  string            `json:"original_path"`
 	SuggestedName string            `json:"suggested_name"`
 	SuggestedPath string            `json:"-"`
-	Type          string            `json:"type"` // movie, tv_episode, music
+	Type          SuggestionType    `json:"type"` // movie, tv_episode, music
 	Confidence    float64           `json:"confidence"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	Metadata      SuggestionMetadata `json:"metadata,omitempty"`
 }
 
 // RemoteMediaSource represents a remote media source
