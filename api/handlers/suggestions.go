@@ -38,7 +38,8 @@ func (h *Handler) GetSuggestions(c *gin.Context) {
 		limit = l
 	}
 
-	contentSuggestions := h.suggestions.GetSuggestions(userID, limit)
+	canViewMature := h.canViewMatureContent(c)
+	contentSuggestions := h.suggestions.GetSuggestions(userID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(contentSuggestions)
 	writeSuccess(c, contentSuggestions)
 }
@@ -56,7 +57,8 @@ func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
 		limit = l
 	}
 
-	trending := h.suggestions.GetTrendingSuggestions(limit)
+	canViewMature := h.canViewMatureContent(c)
+	trending := h.suggestions.GetTrendingSuggestions(limit, canViewMature)
 	h.enrichSuggestionThumbnails(trending)
 	writeSuccess(c, trending)
 }
@@ -80,7 +82,8 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 	// Pass the StableID directly to the suggestions module which has its own
 	// catalogue indexed by ID. No need to validate via the media module —
 	// the suggestions engine handles unknown IDs gracefully (returns random sample).
-	similar := h.suggestions.GetSimilarMedia(id, limit)
+	canViewMature := h.canViewMatureContent(c)
+	similar := h.suggestions.GetSimilarMedia(id, limit, canViewMature)
 	h.enrichSuggestionThumbnails(similar)
 	writeSuccess(c, similar)
 }
@@ -101,7 +104,8 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 		limit = l
 	}
 
-	items := h.suggestions.GetContinueWatching(session.UserID, limit)
+	canViewMature := h.canViewMatureContent(c)
+	items := h.suggestions.GetContinueWatching(session.UserID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(items)
 	writeSuccess(c, items)
 }
@@ -125,7 +129,8 @@ func (h *Handler) GetPersonalizedSuggestions(c *gin.Context) {
 		limit = l
 	}
 
-	contentSuggestions := h.suggestions.GetSuggestions(session.UserID, limit)
+	canViewMature := h.canViewMatureContent(c)
+	contentSuggestions := h.suggestions.GetSuggestions(session.UserID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(contentSuggestions)
 	writeSuccess(c, contentSuggestions)
 }

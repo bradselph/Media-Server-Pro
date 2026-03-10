@@ -8,7 +8,7 @@ import {SubTabs} from './helpers'
 // ── Tab: Content Review ───────────────────────────────────────────────────────
 
 type ReviewSortKey = 'name' | 'detected_at' | 'confidence'
-function ContentReviewTab() {
+export function ContentReviewTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -250,7 +250,7 @@ function ContentReviewTab() {
 
 // ── Tab: Categorizer (Feature 11) ─────────────────────────────────────────────
 
-function CategorizerTab() {
+export function CategorizerTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [catPath, setCatPath] = useState('')
@@ -504,7 +504,7 @@ function CategorizerTab() {
 
 // ── Tab: Auto-Discovery (Feature 12) ──────────────────────────────────────────
 
-function DiscoveryTab() {
+export function DiscoveryTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [scanDir, setScanDir] = useState('')

@@ -19,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/admin"
 	"media-server-pro/internal/auth"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/updater"
@@ -171,7 +172,13 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 	if req.Type == "" {
 		req.Type = "standard"
 	}
-	user, err := h.auth.CreateUser(c.Request.Context(), req.Username, req.Password, req.Email, req.Type, req.Role)
+	user, err := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{
+		Username: req.Username,
+		Password: req.Password,
+		Email:    req.Email,
+		UserType: req.Type,
+		Role:     req.Role,
+	})
 	if err != nil {
 		if errors.Is(err, auth.ErrUserExists) {
 			writeError(c, http.StatusConflict, "Username is already taken")
@@ -741,8 +748,10 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 			return
 		}
 		if h.admin != nil {
-			h.admin.LogAction(context.Background(), "admin", "admin", "apply_source_update",
-				status.Stage, nil, clientIP, status.Error == "")
+			h.admin.LogAction(context.Background(), &admin.AuditLogParams{
+				UserID: "admin", Username: "admin", Action: "apply_source_update",
+				Resource: status.Stage, Details: nil, IPAddress: clientIP, Success: status.Error == "",
+			})
 		}
 	}()
 	initial := h.updater.GetActiveBuildStatus()

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/hls"
 	"media-server-pro/pkg/models"
 )
 
@@ -32,7 +33,7 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 		return
 	}
 
-	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), absPath, id)
+	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), &hls.CheckOrGenerateHLSParams{MediaPath: absPath, MediaID: id})
 	if err != nil {
 		h.log.Debug("HLS check/generate failed for media %s: %v", id, err)
 		writeError(c, http.StatusNotFound, "HLS stream not available")
@@ -92,7 +93,7 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 		return
 	}
 
-	job, err := h.hls.GenerateHLS(c.Request.Context(), absPath, req.ID, req.Qualities)
+	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: req.ID, Qualities: req.Qualities})
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
@@ -211,7 +212,7 @@ func (h *Handler) ServeVariantPlaylist(c *gin.Context) {
 
 	h.hls.RecordAccess(jobID)
 
-	if err := h.hls.ServeVariantPlaylist(c.Writer, c.Request, jobID, quality); err != nil {
+	if err := h.hls.ServeVariantPlaylist(c.Writer, c.Request, hls.VariantPlaylistParams{JobID: jobID, Quality: quality}); err != nil {
 		writeError(c, http.StatusNotFound, "HLS variant playlist not found")
 		return
 	}
@@ -238,7 +239,7 @@ func (h *Handler) ServeSegment(c *gin.Context) {
 
 	h.hls.RecordAccess(jobID)
 
-	if err := h.hls.ServeSegment(c.Writer, c.Request, jobID, quality, segment); err != nil {
+	if err := h.hls.ServeSegment(c.Writer, c.Request, hls.SegmentParams{JobID: jobID, Quality: quality, Segment: segment}); err != nil {
 		writeError(c, http.StatusNotFound, "HLS segment not found")
 		return
 	}

@@ -310,14 +310,20 @@ func (h *Handler) requireSecurity(c *gin.Context) bool {
 // succeeds.
 func (h *Handler) logAdminAction(c *gin.Context, userID, username, action, target string, details map[string]interface{}) {
 	if h.admin != nil {
-		h.admin.LogAction(c.Request.Context(), userID, username, action, target, details, c.ClientIP(), true)
+		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+			UserID: userID, Username: username, Action: action, Resource: target,
+			Details: details, IPAddress: c.ClientIP(), Success: true,
+		})
 	}
 }
 
 // logAdminActionResult is like logAdminAction but lets the caller specify success/failure.
 func (h *Handler) logAdminActionResult(c *gin.Context, userID, username, action, target string, details map[string]interface{}, success bool) {
 	if h.admin != nil {
-		h.admin.LogAction(c.Request.Context(), userID, username, action, target, details, c.ClientIP(), success)
+		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+			UserID: userID, Username: username, Action: action, Resource: target,
+			Details: details, IPAddress: c.ClientIP(), Success: success,
+		})
 	}
 }
 

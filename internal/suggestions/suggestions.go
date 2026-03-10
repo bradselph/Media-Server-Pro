@@ -376,8 +376,9 @@ func (m *Module) IsCatalogueReady() bool {
 	return m.catalogueSeeded
 }
 
-// GetSuggestions returns personalized suggestions for a user
-func (m *Module) GetSuggestions(userID string, limit int) []*Suggestion {
+// GetSuggestions returns personalized suggestions for a user.
+// canViewMature: when true, mature items are included; when false, they are excluded.
+func (m *Module) GetSuggestions(userID string, limit int, canViewMature bool) []*Suggestion {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -404,8 +405,8 @@ func (m *Module) GetSuggestions(userID string, limit int) []*Suggestion {
 
 	var suggestions []*Suggestion
 	for _, media := range m.mediaData {
-		if media.IsMature {
-			continue // Never surface mature items in public suggestions
+		if media.IsMature && !canViewMature {
+			continue // Exclude mature items when user has not enabled mature content
 		}
 		if recentlyViewed[media.Path] {
 			continue // Skip recently viewed
@@ -611,8 +612,9 @@ func scoreRecentlyViewed(profile *UserProfile, media *MediaInfo, reasons *[]stri
 	return 0
 }
 
-// GetTrendingSuggestions returns trending content
-func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
+// GetTrendingSuggestions returns trending content.
+// canViewMature: when true, mature items are included; when false, they are excluded.
+func (m *Module) GetTrendingSuggestions(limit int, canViewMature bool) []*Suggestion {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -623,8 +625,8 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 	var suggestions []*Suggestion
 
 	for _, media := range m.mediaData {
-		if media.IsMature {
-			continue // Never surface mature items in public suggestions
+		if media.IsMature && !canViewMature {
+			continue // Exclude mature items when user has not enabled mature content
 		}
 
 		// Trending score is primarily driven by view count.  Items with
@@ -669,7 +671,8 @@ func (m *Module) GetTrendingSuggestions(limit int) []*Suggestion {
 // GetSimilarMedia returns media similar to a given item.
 // mediaID is the StableID (UUID) of the source item; path-based lookup is used
 // as a fallback for items not yet indexed by ID.
-func (m *Module) GetSimilarMedia(mediaID string, limit int) []*Suggestion {
+// canViewMature: when true, mature items are included; when false, they are excluded.
+func (m *Module) GetSimilarMedia(mediaID string, limit int, canViewMature bool) []*Suggestion {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -686,14 +689,17 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int) []*Suggestion {
 	// Source not found in catalogue (not yet scanned or catalogue empty):
 	// return a random sample from the library so the sidebar is never blank.
 	if sourceMedia == nil {
-		return m.randomSample(mediaID, limit)
+		return m.randomSample(mediaID, limit, canViewMature)
 	}
 
 	var suggestions []*Suggestion
 
 	for _, media := range m.mediaData {
-		if media.StableID == sourceMedia.StableID || media.Path == sourceMedia.Path || media.IsMature {
+		if media.StableID == sourceMedia.StableID || media.Path == sourceMedia.Path {
 			continue
+		}
+		if media.IsMature && !canViewMature {
+			continue // Exclude mature items when user has not enabled mature content
 		}
 
 		score, reasons := computeSimilarity(sourceMedia, media)
@@ -717,7 +723,7 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int) []*Suggestion {
 	// If we found too few similar items, pad with random library items.
 	// Use low scores so random filler doesn't outrank genuinely similar items.
 	if len(suggestions) < limit/2 {
-		filler := m.randomSample(sourceMedia.StableID, limit)
+		filler := m.randomSample(sourceMedia.StableID, limit, canViewMature)
 		for _, f := range filler {
 			f.Score *= 0.1 // scale down so filler stays below real matches
 		}
@@ -738,13 +744,15 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int) []*Suggestion {
 	return diversify(candidates, limit, sameCategory)
 }
 
-// randomSample returns a random selection of non-mature items from the catalogue,
-// excluding the item with the given StableID.  Used as a fallback when similarity
-// scoring cannot produce enough results.
-func (m *Module) randomSample(excludeID string, n int) []*Suggestion {
+// randomSample returns a random selection from the catalogue, excluding the item
+// with the given StableID. Mature items are excluded when canViewMature is false.
+func (m *Module) randomSample(excludeID string, n int, canViewMature bool) []*Suggestion {
 	pool := make([]*Suggestion, 0, len(m.mediaData))
 	for _, media := range m.mediaData {
-		if media.StableID == excludeID || media.IsMature {
+		if media.StableID == excludeID {
+			continue
+		}
+		if media.IsMature && !canViewMature {
 			continue
 		}
 		pool = append(pool, &Suggestion{
@@ -816,8 +824,9 @@ func computeTitleSimilarity(source, candidate *MediaInfo) float64 {
 	return score
 }
 
-// GetContinueWatching returns items the user started but didn't finish
-func (m *Module) GetContinueWatching(userID string, limit int) []*Suggestion {
+// GetContinueWatching returns items the user started but didn't finish.
+// canViewMature: when true, mature items are included; when false, they are excluded.
+func (m *Module) GetContinueWatching(userID string, limit int, canViewMature bool) []*Suggestion {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -847,8 +856,8 @@ func (m *Module) GetContinueWatching(userID string, limit int) []*Suggestion {
 		title := vh.MediaPath
 		mediaID := ""
 		if media != nil {
-			if media.IsMature {
-				continue // Never surface mature items
+			if media.IsMature && !canViewMature {
+				continue // Exclude mature items when user has not enabled mature content
 			}
 			title = media.Title
 			mediaID = media.StableID

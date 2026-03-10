@@ -113,25 +113,36 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
+// AuditLogParams holds parameters for logging an administrative action.
+type AuditLogParams struct {
+	UserID    string
+	Username  string
+	Action    string
+	Resource  string
+	Details   map[string]interface{}
+	IPAddress string
+	Success   bool
+}
+
 // LogAction logs an administrative action to the audit log
-func (m *Module) LogAction(ctx context.Context, userID, username, action, resource string, details map[string]interface{}, ipAddress string, success bool) {
+func (m *Module) LogAction(ctx context.Context, p *AuditLogParams) {
 	entry := &models.AuditLogEntry{
 		ID:        uuid.New().String(),
 		Timestamp: time.Now(),
-		UserID:    userID,
-		Username:  username,
-		Action:    action,
-		Resource:  resource,
-		Details:   details,
-		IPAddress: ipAddress,
-		Success:   success,
+		UserID:    p.UserID,
+		Username:  p.Username,
+		Action:    p.Action,
+		Resource:  p.Resource,
+		Details:   p.Details,
+		IPAddress: p.IPAddress,
+		Success:   p.Success,
 	}
 
 	if err := m.auditRepo.Create(ctx, entry); err != nil {
 		m.log.Error("Failed to save audit log entry: %v", err)
 	}
 
-	m.log.Info("AUDIT: %s by %s on %s (success: %v)", action, username, resource, success)
+	m.log.Info("AUDIT: %s by %s on %s (success: %v)", p.Action, p.Username, p.Resource, p.Success)
 }
 
 // CleanupAuditLogOlderThan deletes audit log entries older than the given retention days.
@@ -319,63 +330,64 @@ func (m *Module) DeleteBackup(id string) error {
 	return nil
 }
 
+// findBackupFilename returns the backup filename for the given ID, or an error if not found.
+func (m *Module) findBackupFilename(id string) (string, error) {
+	m.backupMu.RLock()
+	defer m.backupMu.RUnlock()
+	for _, backup := range m.backups {
+		if backup.ID == id {
+			return backup.Filename, nil
+		}
+	}
+	return "", fmt.Errorf("backup not found: %s", id)
+}
+
+// loadBackupConfig reads a backup file and returns the parsed config, or an error.
+func (m *Module) loadBackupConfig(path string) (*config.Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read backup: %w", err)
+	}
+	var backupData map[string]interface{}
+	if err := json.Unmarshal(data, &backupData); err != nil {
+		return nil, fmt.Errorf("failed to parse backup: %w", err)
+	}
+	cfgData, ok := backupData["config"]
+	if !ok {
+		return nil, fmt.Errorf("backup does not contain configuration data")
+	}
+	cfgBytes, err := json.Marshal(cfgData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal config from backup: %w", err)
+	}
+	var cfg config.Config
+	if err := json.Unmarshal(cfgBytes, &cfg); err != nil {
+		return nil, fmt.Errorf("backup contains invalid configuration: %w", err)
+	}
+	return &cfg, nil
+}
+
 // RestoreBackup restores from a backup. It creates a pre-restore backup of the
 // current config before applying the restored config, and validates the backup
 // contains parseable configuration data.
 func (m *Module) RestoreBackup(id string) error {
-	m.backupMu.RLock()
-	var filename string
-	for _, backup := range m.backups {
-		if backup.ID == id {
-			filename = backup.Filename
-			break
-		}
+	filename, err := m.findBackupFilename(id)
+	if err != nil {
+		return err
 	}
-	m.backupMu.RUnlock()
-
-	if filename == "" {
-		return fmt.Errorf("backup not found: %s", id)
-	}
-
 	path := filepath.Join(m.backupDir, filename)
-	data, err := os.ReadFile(path)
+	cfg, err := m.loadBackupConfig(path)
 	if err != nil {
-		return fmt.Errorf("failed to read backup: %w", err)
+		return err
 	}
-
-	var backupData map[string]interface{}
-	if err := json.Unmarshal(data, &backupData); err != nil {
-		return fmt.Errorf("failed to parse backup: %w", err)
-	}
-
-	// Validate the backup contains configuration data
-	cfgData, ok := backupData["config"]
-	if !ok {
-		return fmt.Errorf("backup does not contain configuration data")
-	}
-
-	cfgBytes, err := json.Marshal(cfgData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config from backup: %w", err)
-	}
-
-	var cfg config.Config
-	if err := json.Unmarshal(cfgBytes, &cfg); err != nil {
-		return fmt.Errorf("backup contains invalid configuration: %w", err)
-	}
-
-	// Create a pre-restore backup of the current config so the restore can be undone
 	if _, err := m.CreateBackup(fmt.Sprintf("pre-restore automatic backup (before restoring %s)", id)); err != nil {
 		return fmt.Errorf("failed to create pre-restore backup: %w", err)
 	}
-
-	// Apply the restored configuration
 	if err := m.config.Update(func(c *config.Config) {
-		*c = cfg
+		*c = *cfg
 	}); err != nil {
 		return fmt.Errorf("failed to update config during restore: %w", err)
 	}
-
 	m.log.Info("Restored from backup: %s", id)
 	return nil
 }

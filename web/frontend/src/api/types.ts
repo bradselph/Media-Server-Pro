@@ -337,6 +337,12 @@ export interface ServerSettings {
         enableThumbnails: boolean
         enableHLS: boolean
         enableAnalytics: boolean
+        enablePlaylists: boolean
+        enableUserAuth: boolean
+        enableAdminPanel: boolean
+        enableSuggestions: boolean
+        enableAutoDiscovery: boolean
+        enableDuplicateDetection: boolean
     }
     uploads: {
         enabled: boolean

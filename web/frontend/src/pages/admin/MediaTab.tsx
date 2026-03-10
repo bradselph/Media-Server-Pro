@@ -2,7 +2,9 @@ import {useEffect, useRef, useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {AdminMediaListResponse, MediaItem, ThumbnailStats} from '@/api/types'
+import {ContentReviewTab, CategorizerTab, DiscoveryTab} from './ContentTab'
 import {errMsg, formatBytes} from './helpers'
+import {SubTabs} from './helpers'
 
 // ── Tab: Media ────────────────────────────────────────────────────────────────
 
@@ -30,7 +32,7 @@ const MEDIA_SORT_COLUMNS = [
 
 type MediaSortKey = typeof MEDIA_SORT_COLUMNS[number]['key']
 
-export function MediaTab() {
+function MediaLibraryTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [scanning, setScanning] = useState(false)
@@ -734,5 +736,27 @@ function ThumbnailStatsCard() {
                 </button>
             </form>
         </div>
+    )
+}
+
+export function MediaTab() {
+    const [sub, setSub] = useState('library')
+    return (
+        <>
+            <SubTabs
+                items={[
+                    {id: 'library', label: 'Library'},
+                    {id: 'review', label: 'Review'},
+                    {id: 'categorizer', label: 'Categorizer'},
+                    {id: 'discovery', label: 'Discovery'},
+                ]}
+                active={sub}
+                onChange={setSub}
+            />
+            {sub === 'library' && <MediaLibraryTab/>}
+            {sub === 'review' && <ContentReviewTab/>}
+            {sub === 'categorizer' && <CategorizerTab/>}
+            {sub === 'discovery' && <DiscoveryTab/>}
+        </>
     )
 }

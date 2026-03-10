@@ -17,14 +17,24 @@ import '@/styles/player.css'
 
 // ── Similar Media Item ────────────────────────────────────────────────────────
 
-function SimilarItem({entry}: { entry: Suggestion }) {
+function thumbnailUrlWithMatureBuster(url: string | undefined, canViewMature: boolean): string | undefined {
+    if (!url) return undefined
+    if (canViewMature) {
+        const sep = url.includes('?') ? '&' : '?'
+        return `${url}${sep}_m=1`
+    }
+    return url
+}
+
+function SimilarItem({entry, canViewMature}: { entry: Suggestion; canViewMature: boolean }) {
     const name = formatTitle(entry.title || entry.media_id)
+    const thumbUrl = thumbnailUrlWithMatureBuster(entry.thumbnail_url ?? undefined, canViewMature)
     return (
         <Link to={`/player?id=${encodeURIComponent(entry.media_id)}`} className="related-item">
-            {entry.thumbnail_url ? (
+            {thumbUrl ? (
                 <img
                     className="related-thumb"
-                    src={entry.thumbnail_url}
+                    src={thumbUrl}
                     alt={name}
                     loading="lazy"
                     onError={e => {
@@ -55,6 +65,7 @@ export function PlayerPage() {
     const mediaId = searchParams.get('id') ?? ''
     const permissions = useAuthStore((s) => s.permissions)
     const user = useAuthStore((s) => s.user)
+    const canViewMature = permissions.can_view_mature && (user?.preferences?.show_mature === true)
     const {showToast} = useToast()
     const {currentPlaylist, currentIndex, setCurrentIndex, playNext, playPrevious} = usePlaylistStore()
 
@@ -198,7 +209,7 @@ export function PlayerPage() {
         isError: similarError,
         refetch: similarRefetch,
     } = useQuery({
-        queryKey: ['media-similar', mediaId],
+        queryKey: ['media-similar', mediaId, canViewMature],
         queryFn: () => suggestionsApi.getSimilar(mediaId ?? ''),
         enabled: !!mediaId,
         // Retry on 503 (suggestions catalogue not seeded yet during startup)
@@ -212,7 +223,7 @@ export function PlayerPage() {
 
     // Fallback: when similar returns empty (e.g. small library), show trending so sidebar is never blank
     const {data: trendingData = [], isLoading: trendingLoading} = useQuery({
-        queryKey: ['suggestions-trending'],
+        queryKey: ['suggestions-trending', canViewMature],
         queryFn: () => suggestionsApi.getTrending(),
         enabled: !!mediaId && !relatedLoading && !similarError && similarData.length === 0,
         staleTime: 60 * 1000,
@@ -1272,7 +1283,7 @@ export function PlayerPage() {
                                 ) : related.length === 0 ? (
                                     <p style={{color: 'var(--text-muted)', fontSize: 13}}>No suggestions yet. Add more media to your library.</p>
                                 ) : (
-                                    related.map(entry => <SimilarItem key={entry.media_id} entry={entry}/>)
+                                    related.map(entry => <SimilarItem key={entry.media_id} entry={entry} canViewMature={canViewMature}/>)
                                 )}
                             </div>
 
