@@ -582,7 +582,7 @@ function InlinePlayer({
     const activeRef = isVideo ? videoRef : audioRef
 
     // Wire up equalizer to the audio element (EQ only applies to audio, not video)
-    const eq = useEqualizer(audioReady ? audioRef.current : null)
+    const eq = useEqualizer(audioRef, audioReady)
 
     // Mark audio element as ready after mount
     useEffect(() => {

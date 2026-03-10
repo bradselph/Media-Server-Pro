@@ -165,7 +165,7 @@ export function PlayerPage() {
     }, [])
 
     // Wire equalizer to the audio element (EQ only applies to audio content, not video)
-    useEqualizer(audioReady && media?.type === 'audio' ? audioRef.current : null)
+    useEqualizer(audioRef, audioReady && media?.type === 'audio')
 
     // Fetch similar media via suggestions engine (semantic similarity by category/tags/type)
     const {
