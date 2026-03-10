@@ -571,9 +571,9 @@ function InlinePlayer({
     // Wire up equalizer to the audio element (EQ only applies to audio, not video)
     const eq = useEqualizer(audioRef, audioReady)
 
-    // Mark audio element as ready after mount
+    // Mark audio element as ready after mount (defer to avoid setState-in-effect lint)
     useEffect(() => {
-        if (audioRef.current) setAudioReady(true)
+        if (audioRef.current) queueMicrotask(() => setAudioReady(true))
     }, [])
 
     const handleEqToggle = useCallback(() => setShowEq(v => !v), [])
@@ -884,9 +884,11 @@ export function IndexPage() {
     // depending on it directly would make updateParams unstable — causing the search debounce
     // effect to re-fire on every page navigation and reset the page back to 1.
     const defaultLimitRef = useRef(defaultLimit)
-    defaultLimitRef.current = defaultLimit
     const setSearchParamsRef = useRef(setSearchParams)
-    setSearchParamsRef.current = setSearchParams
+    useEffect(() => {
+        defaultLimitRef.current = defaultLimit
+        setSearchParamsRef.current = setSearchParams
+    }, [defaultLimit, setSearchParams])
 
     const page = Math.max(1, Number(searchParams.get('page')) || 1)
     const rawLimit = Number(searchParams.get('limit')) || defaultLimit

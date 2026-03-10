@@ -3,7 +3,7 @@ import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {User} from '@/api/types'
 import {SecurityTab} from './SecurityTab'
-import {errMsg} from './helpers'
+import {errMsg} from './adminUtils'
 import {SubTabs} from './helpers'
 
 function CreateUserModal({onClose, onCreated}: { onClose: () => void; onCreated: () => void }) {

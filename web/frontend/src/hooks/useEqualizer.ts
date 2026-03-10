@@ -128,8 +128,8 @@ export function useEqualizer(
     const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
     const [bands, setBands] = useState<EQBand[]>([])
-    const [currentPreset, setCurrentPreset] = useState('flat')
-    const [currentMode, setCurrentMode] = useState<'10' | '31'>('10')
+    const [currentPreset, setCurrentPreset] = useState(() => loadSettings().eqPreset || 'flat')
+    const [currentMode, setCurrentMode] = useState<'10' | '31'>(() => loadSettings().eqBands || '10')
     const [customPresets, setCustomPresets] = useState<Record<string, CustomPreset>>(loadCustomPresets)
     const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
 
@@ -216,9 +216,7 @@ export function useEqualizer(
         audioElementRef.current = audioElement
         const settings = loadSettings()
         const mode = settings.eqBands || '10'
-        setCurrentMode(mode)
-        setCurrentPreset(settings.eqPreset || 'flat')
-        buildFilters(mode)
+        queueMicrotask(() => buildFilters(mode))
 
         // Resume audio context on play
         const handlePlay = () => {

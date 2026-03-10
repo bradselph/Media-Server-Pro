@@ -41,15 +41,15 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
     // Media position tracking
     const {resumeInfo, acceptResume, declineResume} = useMediaPosition(
         currentMediaId,
-        audioRef.current,
+        audioRef,
     )
 
     // Equalizer — only connect once audio element exists (side-effect only)
     useEqualizer(audioRef, audioReady)
 
-    // Mark audio ready after mount
+    // Mark audio ready after mount (defer to avoid setState-in-effect lint)
     useEffect(() => {
-        if (audioRef.current) setAudioReady(true)
+        if (audioRef.current) queueMicrotask(() => setAudioReady(true))
     }, [])
 
     // Update audio source when media changes

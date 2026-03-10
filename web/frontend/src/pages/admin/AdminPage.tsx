@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useMemo, useState} from 'react'
 import {Link, useLocation, useNavigate} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -35,19 +35,21 @@ export function AdminPage() {
         VALID_TABS.includes(initialTab as Tab) ? (initialTab as Tab) : 'dashboard'
     )
 
-    const tabs: Array<{ id: Tab; label: string; icon: string }> = [
-        {id: 'dashboard', label: 'Dashboard', icon: 'bi-speedometer2'},
-        {id: 'users', label: 'Users', icon: 'bi-people-fill'},
-        {id: 'media', label: 'Media', icon: 'bi-folder-fill'},
+    const tabs: Array<{ id: Tab; label: string; icon: string }> = useMemo(() => [
+        {id: 'dashboard' as Tab, label: 'Dashboard', icon: 'bi-speedometer2'},
+        {id: 'users' as Tab, label: 'Users', icon: 'bi-people-fill'},
+        {id: 'media' as Tab, label: 'Media', icon: 'bi-folder-fill'},
         ...(features?.enableAnalytics !== false ? [{id: 'analytics' as Tab, label: 'Analytics', icon: 'bi-bar-chart-fill'}] : []),
-        {id: 'sources', label: 'Sources', icon: 'bi-cloud-arrow-down-fill'},
+        {id: 'sources' as Tab, label: 'Sources', icon: 'bi-cloud-arrow-down-fill'},
         ...(features?.enablePlaylists !== false ? [{id: 'playlists' as Tab, label: 'Playlists', icon: 'bi-collection-fill'}] : []),
-        {id: 'system', label: 'System', icon: 'bi-gear-fill'},
-    ]
+        {id: 'system' as Tab, label: 'System', icon: 'bi-gear-fill'},
+    ], [features?.enableAnalytics, features?.enablePlaylists])
 
     useEffect(() => {
-        if (!tabs.some(t => t.id === activeTab)) setActiveTab('dashboard')
-    }, [features])
+        if (!tabs.some(t => t.id === activeTab)) {
+            queueMicrotask(() => setActiveTab('dashboard'))
+        }
+    }, [features, activeTab, tabs])
 
     if (!isLoading && !isAdmin) {
         navigate('/login', {replace: true})

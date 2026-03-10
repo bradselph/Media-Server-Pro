@@ -1,0 +1,323 @@
+package config
+
+import "time"
+
+// Config holds all server configuration
+type Config struct {
+	Server        ServerConfig        `json:"server"`
+	Directories   DirectoriesConfig   `json:"directories"`
+	Streaming     StreamingConfig     `json:"streaming"`
+	Download      DownloadConfig      `json:"download"`
+	Thumbnails    ThumbnailsConfig    `json:"thumbnails"`
+	Analytics     AnalyticsConfig     `json:"analytics"`
+	Uploads       UploadsConfig       `json:"uploads"`
+	Security      SecurityConfig      `json:"security"`
+	Admin         AdminConfig         `json:"admin"`
+	Auth          AuthConfig          `json:"auth"`
+	HLS           HLSConfig           `json:"hls"`
+	RemoteMedia   RemoteMediaConfig   `json:"remote_media"`
+	Receiver      ReceiverConfig      `json:"receiver"`
+	Extractor     ExtractorConfig     `json:"extractor"`
+	Crawler       CrawlerConfig       `json:"crawler"`
+	Backup        BackupConfig        `json:"backup"`
+	MatureScanner MatureScannerConfig `json:"mature_scanner"`
+	Logging       LoggingConfig       `json:"logging"`
+	Features      FeaturesConfig      `json:"features"`
+	Database      DatabaseConfig      `json:"database"`
+	Updater       UpdaterConfig       `json:"updater"`
+	AgeGate       AgeGateConfig       `json:"age_gate"`
+	UI            UIConfig            `json:"ui"`
+}
+
+// UIConfig holds frontend display defaults
+type UIConfig struct {
+	ItemsPerPage       int `json:"items_per_page"`
+	MobileItemsPerPage int `json:"mobile_items_per_page"`
+	MobileGridColumns  int `json:"mobile_grid_columns"`
+}
+
+// AgeGateConfig holds age verification gate settings.
+type AgeGateConfig struct {
+	Enabled      bool          `json:"enabled"`
+	BypassIPs    []string      `json:"bypass_ips"`
+	IPVerifyTTL  time.Duration `json:"ip_verify_ttl"`
+	CookieName   string        `json:"cookie_name"`
+	CookieMaxAge int           `json:"cookie_max_age"`
+}
+
+// UpdaterConfig holds settings for the source-based updater.
+type UpdaterConfig struct {
+	AppDir         string `json:"app_dir"`
+	DeployKeyPath  string `json:"deploy_key_path"`
+	GitHubToken    string `json:"github_token"`
+	GitHubUsername string `json:"github_username"`
+	Branch         string `json:"branch"`
+	UpdateMethod   string `json:"update_method"`
+}
+
+// ServerConfig holds server-specific settings
+type ServerConfig struct {
+	Host            string        `json:"host"`
+	Port            int           `json:"port"`
+	ReadTimeout     time.Duration `json:"read_timeout"`
+	WriteTimeout    time.Duration `json:"write_timeout"`
+	IdleTimeout     time.Duration `json:"idle_timeout"`
+	MaxHeaderBytes  int           `json:"max_header_bytes"`
+	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
+	EnableHTTPS     bool          `json:"enable_https"`
+	CertFile        string        `json:"cert_file"`
+	KeyFile         string        `json:"key_file"`
+}
+
+// DirectoriesConfig holds directory paths
+type DirectoriesConfig struct {
+	Videos     string `json:"videos"`
+	Music      string `json:"music"`
+	Thumbnails string `json:"thumbnails"`
+	Playlists  string `json:"playlists"`
+	Uploads    string `json:"uploads"`
+	Analytics  string `json:"analytics"`
+	HLSCache   string `json:"hls_cache"`
+	Data       string `json:"data"`
+	Logs       string `json:"logs"`
+	Temp       string `json:"temp"`
+}
+
+// StreamingConfig holds streaming settings
+type StreamingConfig struct {
+	DefaultChunkSize   int64         `json:"default_chunk_size"`
+	MaxChunkSize       int64         `json:"max_chunk_size"`
+	BufferSize         int           `json:"buffer_size"`
+	KeepAliveEnabled   bool          `json:"keep_alive_enabled"`
+	KeepAliveTimeout   time.Duration `json:"keep_alive_timeout"`
+	Adaptive           bool          `json:"adaptive"`
+	MobileOptimization bool          `json:"mobile_optimization"`
+	MobileChunkSize    int64         `json:"mobile_chunk_size"`
+}
+
+// DownloadConfig holds file download settings
+type DownloadConfig struct {
+	Enabled     bool `json:"enabled"`
+	ChunkSizeKB int  `json:"chunk_size_kb"`
+	RequireAuth bool `json:"require_auth"`
+}
+
+// ThumbnailsConfig holds thumbnail generation settings
+type ThumbnailsConfig struct {
+	Enabled          bool `json:"enabled"`
+	AutoGenerate     bool `json:"auto_generate"`
+	Width            int  `json:"width"`
+	Height           int  `json:"height"`
+	Quality          int  `json:"quality"`
+	VideoInterval    int  `json:"video_interval"`
+	PreviewCount     int  `json:"preview_count"`
+	GenerateOnAccess bool `json:"generate_on_access"`
+	QueueSize        int  `json:"queue_size"`
+	WorkerCount      int  `json:"worker_count"`
+}
+
+// AnalyticsConfig holds analytics settings
+type AnalyticsConfig struct {
+	Enabled         bool          `json:"enabled"`
+	RetentionDays   int           `json:"retention_days"`
+	SessionTimeout  time.Duration `json:"session_timeout"`
+	CleanupInterval time.Duration `json:"cleanup_interval"`
+	TrackPlayback   bool          `json:"track_playback"`
+	TrackViews      bool          `json:"track_views"`
+}
+
+// UploadsConfig holds upload settings
+type UploadsConfig struct {
+	Enabled           bool     `json:"enabled"`
+	MaxFileSize       int64    `json:"max_file_size"`
+	AllowedExtensions []string `json:"allowed_extensions"`
+	RequireAuth       bool     `json:"require_auth"`
+	ScanForMature     bool     `json:"scan_for_mature"`
+}
+
+// SecurityConfig holds security settings
+type SecurityConfig struct {
+	EnableIPWhitelist bool          `json:"enable_ip_whitelist"`
+	IPWhitelist       []string      `json:"ip_whitelist"`
+	EnableIPBlacklist bool          `json:"enable_ip_blacklist"`
+	IPBlacklist       []string      `json:"ip_blacklist"`
+	RateLimitEnabled  bool          `json:"rate_limit_enabled"`
+	RateLimitRequests int           `json:"rate_limit_requests"`
+	RateLimitWindow   time.Duration `json:"rate_limit_window"`
+	BurstLimit        int           `json:"burst_limit"`
+	BurstWindow       time.Duration `json:"burst_window"`
+	ViolationsForBan  int           `json:"violations_for_ban"`
+	BanDuration       time.Duration `json:"ban_duration"`
+	AuthRateLimit     int           `json:"auth_rate_limit"`
+	AuthBurstLimit    int           `json:"auth_burst_limit"`
+	MaxFileSizeMB     int           `json:"max_file_size_mb"`
+	CSPEnabled        bool          `json:"csp_enabled"`
+	CSPPolicy         string        `json:"csp_policy"`
+	HSTSEnabled       bool          `json:"hsts_enabled"`
+	HSTSMaxAge        int           `json:"hsts_max_age"`
+	CORSEnabled       bool          `json:"cors_enabled"`
+	CORSOrigins       []string      `json:"cors_origins"`
+}
+
+// AdminConfig holds admin panel settings
+type AdminConfig struct {
+	Enabled        bool          `json:"enabled"`
+	Username       string        `json:"username"`
+	PasswordHash   string        `json:"password_hash"`
+	SessionTimeout time.Duration `json:"session_timeout"`
+	QueryTimeout   time.Duration `json:"query_timeout"`
+	MaxQueryRows   int           `json:"max_query_rows"`
+}
+
+// AuthConfig holds user authentication settings
+type AuthConfig struct {
+	Enabled          bool          `json:"enabled"`
+	SessionTimeout   time.Duration `json:"session_timeout"`
+	SecureCookies    bool          `json:"secure_cookies"`
+	MaxLoginAttempts int           `json:"max_login_attempts"`
+	LockoutDuration  time.Duration `json:"lockout_duration"`
+	AllowGuests      bool          `json:"allow_guests"`
+	DefaultUserType  string        `json:"default_user_type"`
+	UserTypes        []UserType    `json:"user_types"`
+}
+
+// UserType defines permissions and limits for a user type
+type UserType struct {
+	Name                 string `json:"name"`
+	StorageQuota         int64  `json:"storage_quota"`
+	MaxConcurrentStreams int    `json:"max_concurrent_streams"`
+	AllowDownloads       bool   `json:"allow_downloads"`
+	AllowUploads         bool   `json:"allow_uploads"`
+	AllowPlaylists       bool   `json:"allow_playlists"`
+}
+
+// HLSConfig holds HLS streaming settings
+type HLSConfig struct {
+	Enabled          bool          `json:"enabled"`
+	SegmentDuration  int           `json:"segment_duration"`
+	PlaylistLength   int           `json:"playlist_length"`
+	CleanupEnabled   bool          `json:"cleanup_enabled"`
+	CleanupInterval  time.Duration `json:"cleanup_interval"`
+	RetentionMinutes int           `json:"retention_minutes"`
+	AutoGenerate     bool          `json:"auto_generate"`
+	QualityProfiles  []HLSQuality  `json:"quality_profiles"`
+	ConcurrentLimit  int           `json:"concurrent_limit"`
+	CDNBaseURL       string        `json:"cdn_base_url"`
+	LazyTranscode    bool          `json:"lazy_transcode"`
+}
+
+// HLSQuality defines an HLS quality profile
+type HLSQuality struct {
+	Name         string `json:"name"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
+	Bitrate      int    `json:"bitrate"`
+	AudioBitrate int    `json:"audio_bitrate"`
+}
+
+// RemoteMediaConfig holds remote media source settings
+type RemoteMediaConfig struct {
+	Enabled      bool           `json:"enabled"`
+	Sources      []RemoteSource `json:"sources"`
+	SyncInterval time.Duration  `json:"sync_interval"`
+	CacheEnabled bool           `json:"cache_enabled"`
+	CacheSize    int64          `json:"cache_size"`
+	CacheTTL     time.Duration  `json:"cache_ttl"`
+}
+
+// RemoteSource defines a remote media source connection.
+type RemoteSource struct {
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	Enabled  bool   `json:"enabled"`
+}
+
+// ReceiverConfig holds media receiver (master) settings.
+type ReceiverConfig struct {
+	Enabled       bool          `json:"enabled"`
+	APIKeys       []string      `json:"api_keys"`
+	ProxyTimeout  time.Duration `json:"proxy_timeout"`
+	HealthCheck   time.Duration `json:"health_check_interval"`
+	MaxProxyConns int           `json:"max_proxy_conns"`
+	BufferSize    int           `json:"buffer_size"`
+}
+
+// ExtractorConfig holds settings for the stream extractor/proxy.
+type ExtractorConfig struct {
+	Enabled      bool          `json:"enabled"`
+	ProxyTimeout time.Duration `json:"proxy_timeout"`
+	MaxItems     int           `json:"max_items"`
+}
+
+// CrawlerConfig holds settings for the stream crawler.
+type CrawlerConfig struct {
+	Enabled        bool          `json:"enabled"`
+	BrowserEnabled bool          `json:"browser_enabled"`
+	MaxPages       int           `json:"max_pages"`
+	CrawlTimeout   time.Duration `json:"crawl_timeout"`
+}
+
+// BackupConfig holds backup retention settings
+type BackupConfig struct {
+	RetentionCount int `json:"retention_count"`
+}
+
+// MatureScannerConfig holds content scanning settings
+type MatureScannerConfig struct {
+	Enabled                   bool     `json:"enabled"`
+	AutoFlag                  bool     `json:"auto_flag"`
+	HighConfidenceThreshold   float64  `json:"high_confidence_threshold"`
+	MediumConfidenceThreshold float64  `json:"medium_confidence_threshold"`
+	HighConfidenceKeywords    []string `json:"high_confidence_keywords"`
+	MediumConfidenceKeywords  []string `json:"medium_confidence_keywords"`
+	RequireReview             bool     `json:"require_review"`
+}
+
+// LoggingConfig holds logging settings
+type LoggingConfig struct {
+	Level        string `json:"level"`
+	Format       string `json:"format"`
+	FileEnabled  bool   `json:"file_enabled"`
+	FileRotation bool   `json:"file_rotation"`
+	MaxFileSize  int64  `json:"max_file_size"`
+	MaxBackups   int    `json:"max_backups"`
+	ColorEnabled bool   `json:"color_enabled"`
+}
+
+// FeaturesConfig holds feature toggle settings.
+type FeaturesConfig struct {
+	EnableHLS                bool `json:"enable_hls"`
+	EnableAnalytics          bool `json:"enable_analytics"`
+	EnablePlaylists          bool `json:"enable_playlists"`
+	EnableUploads            bool `json:"enable_uploads"`
+	EnableThumbnails         bool `json:"enable_thumbnails"`
+	EnableMatureScanner      bool `json:"enable_mature_scanner"`
+	EnableRemoteMedia        bool `json:"enable_remote_media"`
+	EnableUserAuth           bool `json:"enable_user_auth"`
+	EnableAdminPanel         bool `json:"enable_admin_panel"`
+	EnableSuggestions        bool `json:"enable_suggestions"`
+	EnableAutoDiscovery      bool `json:"enable_auto_discovery"`
+	EnableReceiver           bool `json:"enable_receiver"`
+	EnableExtractor          bool `json:"enable_extractor"`
+	EnableCrawler            bool `json:"enable_crawler"`
+	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
+}
+
+// DatabaseConfig holds database connection settings
+type DatabaseConfig struct {
+	Enabled         bool          `json:"enabled"`
+	Host            string        `json:"host"`
+	Port            int           `json:"port"`
+	Name            string        `json:"name"`
+	Username        string        `json:"username,omitempty"`
+	Password        string        `json:"password,omitempty"`
+	MaxOpenConns    int           `json:"max_open_conns"`
+	MaxIdleConns    int           `json:"max_idle_conns"`
+	ConnMaxLifetime time.Duration `json:"conn_max_lifetime"`
+	Timeout         time.Duration `json:"timeout"`
+	MaxRetries      int           `json:"max_retries"`
+	RetryInterval   time.Duration `json:"retry_interval"`
+	TLSMode         string        `json:"tls_mode,omitempty"`
+}

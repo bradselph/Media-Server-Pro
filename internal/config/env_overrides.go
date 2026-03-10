@@ -1,0 +1,25 @@
+package config
+
+func (m *Manager) applyEnvOverrides() {
+	m.applyServerEnvOverrides()
+	m.applyDirectoryEnvOverrides()
+	m.applyLoggingEnvOverrides()
+	m.applyAuthEnvOverrides()
+	m.applyAdminEnvOverrides()
+	m.applySecurityEnvOverrides()
+	m.applyStreamingEnvOverrides()
+	m.applyHLSEnvOverrides()
+	m.applyThumbnailsEnvOverrides()
+	m.applyAnalyticsEnvOverrides()
+	m.applyUploadsEnvOverrides()
+	m.applyFeatureEnvOverrides()
+	m.applyBackupEnvOverrides()
+	m.applyMatureScannerEnvOverrides()
+	m.applyRemoteMediaEnvOverrides()
+	m.applyReceiverEnvOverrides()
+	m.applyExtractorEnvOverrides()
+	m.applyCrawlerEnvOverrides()
+	m.applyDatabaseEnvOverrides()
+	m.applyUpdaterEnvOverrides()
+	m.applyAgeGateEnvOverrides()
+}
