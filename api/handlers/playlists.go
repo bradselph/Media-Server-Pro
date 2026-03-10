@@ -332,21 +332,13 @@ func (h *Handler) RemovePlaylistItem(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		ItemID  string `json:"item_id"`
-		MediaID string `json:"media_id"`
-	}
-	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-		req.MediaID = c.Query("media_id")
-		if req.MediaID == "" {
-			req.ItemID = c.Query("item_id")
-		}
-	}
+	mediaID := c.Query("media_id")
+	itemID := c.Query("item_id")
 
 	// Resolve the identifier for removal — prefer media_id, fall back to item_id
-	removeKey := req.MediaID
+	removeKey := mediaID
 	if removeKey == "" {
-		removeKey = req.ItemID
+		removeKey = itemID
 	}
 	if removeKey == "" {
 		writeError(c, http.StatusBadRequest, "media_id or item_id required")
