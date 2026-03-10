@@ -157,6 +157,39 @@ func (p *UserPreferences) MarshalJSON() ([]byte, error) {
 	return json.Marshal(Alias(*p))
 }
 
+// userPrefsHasKey returns whether the key exists in the raw JSON map.
+func userPrefsHasKey(m map[string]interface{}, key string) bool {
+	_, ok := m[key]
+	return ok
+}
+
+// userPrefsCheckAmbiguous returns an error if both canonical and alias keys are present.
+func userPrefsCheckAmbiguous(rawMap map[string]interface{}) error {
+	if userPrefsHasKey(rawMap, "auto_play") && userPrefsHasKey(rawMap, "autoplay") {
+		return fmt.Errorf("ambiguous fields: both 'auto_play' and 'autoplay' provided; use only one")
+	}
+	if userPrefsHasKey(rawMap, "equalizer_preset") && userPrefsHasKey(rawMap, "equalizer_bands") {
+		return fmt.Errorf("ambiguous fields: both 'equalizer_preset' and 'equalizer_bands' provided; use only one")
+	}
+	return nil
+}
+
+// userPrefsAliasAux holds alias fields decoded from JSON for UserPreferences.
+type userPrefsAliasAux struct {
+	Autoplay       *bool   `json:"autoplay"`
+	EqualizerBands *string `json:"equalizer_bands"`
+}
+
+// userPrefsApplyAliasOverrides applies alias field values when the canonical key was not present.
+func userPrefsApplyAliasOverrides(p *UserPreferences, aux *userPrefsAliasAux, rawMap map[string]interface{}) {
+	if aux.Autoplay != nil && !userPrefsHasKey(rawMap, "auto_play") {
+		p.AutoPlay = *aux.Autoplay
+	}
+	if aux.EqualizerBands != nil && !userPrefsHasKey(rawMap, "equalizer_preset") {
+		p.EqualizerPreset = *aux.EqualizerBands
+	}
+}
+
 // UnmarshalJSON accepts both canonical and alias keys.
 // Canonical keys take precedence; aliases are used only if canonical key is absent.
 func (p *UserPreferences) UnmarshalJSON(data []byte) error {
@@ -166,47 +199,19 @@ func (p *UserPreferences) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &rawMap); err != nil {
 		return err
 	}
-
-	hasAutoPlay := false
-	hasAutoplay := false
-	hasEqualizerPreset := false
-	hasEqualizerBands := false
-
-	if _, ok := rawMap["auto_play"]; ok {
-		hasAutoPlay = true
-	}
-	if _, ok := rawMap["autoplay"]; ok {
-		hasAutoplay = true
-	}
-	if _, ok := rawMap["equalizer_preset"]; ok {
-		hasEqualizerPreset = true
-	}
-	if _, ok := rawMap["equalizer_bands"]; ok {
-		hasEqualizerBands = true
-	}
-
-	if hasAutoPlay && hasAutoplay {
-		return fmt.Errorf("ambiguous fields: both 'auto_play' and 'autoplay' provided; use only one")
-	}
-	if hasEqualizerPreset && hasEqualizerBands {
-		return fmt.Errorf("ambiguous fields: both 'equalizer_preset' and 'equalizer_bands' provided; use only one")
+	if err := userPrefsCheckAmbiguous(rawMap); err != nil {
+		return err
 	}
 
 	aux := &struct {
 		*Alias
-		Autoplay       *bool   `json:"autoplay"`
-		EqualizerBands *string `json:"equalizer_bands"`
+		userPrefsAliasAux
 	}{Alias: (*Alias)(p)}
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
 
-	if aux.Autoplay != nil && !hasAutoPlay {
-		p.AutoPlay = *aux.Autoplay
-	}
-	if aux.EqualizerBands != nil && !hasEqualizerPreset {
-		p.EqualizerPreset = *aux.EqualizerBands
-	}
+	userPrefsApplyAliasOverrides(p, &aux.userPrefsAliasAux, rawMap)
 	return nil
 }
 
@@ -251,68 +256,71 @@ func (MediaTag) TableName() string {
 	return "media_tags"
 }
 
+// clampPlaybackSpeed clamps speed to 0.25–3.0 or returns default 1.0 if invalid.
+func clampPlaybackSpeed(v float64) float64 {
+	if v <= 0 || v > 3.0 {
+		return 1.0
+	}
+	if v < 0.25 {
+		return 0.25
+	}
+	return v
+}
+
+// clampVolume clamps volume to 0.0–1.0.
+func clampVolume(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1.0 {
+		return 1.0
+	}
+	return v
+}
+
+// clampItemsPerPage clamps to 1–200 or returns default 20 if non-positive.
+func clampItemsPerPage(n int) int {
+	if n <= 0 {
+		return 20
+	}
+	if n > 200 {
+		return 200
+	}
+	return n
+}
+
+// stringInSetOrDefault returns s if it is in allowed or empty; otherwise defaultVal.
+func stringInSetOrDefault(s string, allowed map[string]bool, defaultVal string) string {
+	if s == "" || allowed[s] {
+		return s
+	}
+	return defaultVal
+}
+
+// truncateString returns s truncated to maxLen if longer.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
+}
+
 // Validate validates and normalizes UserPreferences fields to ensure they contain reasonable values
 func (p *UserPreferences) Validate() {
-	// Clamp PlaybackSpeed to reasonable range (0.25x to 3.0x)
-	if p.PlaybackSpeed <= 0 || p.PlaybackSpeed > 3.0 {
-		p.PlaybackSpeed = 1.0
-	} else if p.PlaybackSpeed < 0.25 {
-		p.PlaybackSpeed = 0.25
-	}
+	p.PlaybackSpeed = clampPlaybackSpeed(p.PlaybackSpeed)
+	p.Volume = clampVolume(p.Volume)
+	p.ItemsPerPage = clampItemsPerPage(p.ItemsPerPage)
 
-	// Clamp Volume to 0.0-1.0 range
-	if p.Volume < 0 {
-		p.Volume = 0
-	} else if p.Volume > 1.0 {
-		p.Volume = 1.0
-	}
+	p.Theme = stringInSetOrDefault(p.Theme, map[string]bool{"light": true, "dark": true, "auto": true}, "auto")
+	p.ViewMode = stringInSetOrDefault(p.ViewMode, map[string]bool{"grid": true, "list": true, "compact": true}, "grid")
+	p.SortOrder = stringInSetOrDefault(p.SortOrder, map[string]bool{"asc": true, "desc": true, "": true}, "asc")
 
-	// Ensure ItemsPerPage is positive and reasonable (between 1 and 200)
-	if p.ItemsPerPage <= 0 {
-		p.ItemsPerPage = 20 // Default
-	} else if p.ItemsPerPage > 200 {
-		p.ItemsPerPage = 200
-	}
-
-	// Validate Theme against known values
-	validThemes := map[string]bool{"light": true, "dark": true, "auto": true}
-	if _, valid := validThemes[p.Theme]; !valid && p.Theme != "" {
-		p.Theme = "auto" // Default to auto if invalid
-	}
-
-	// Validate ViewMode against known values
-	validViewModes := map[string]bool{"grid": true, "list": true, "compact": true}
-	if _, valid := validViewModes[p.ViewMode]; !valid && p.ViewMode != "" {
-		p.ViewMode = "grid" // Default to grid if invalid
-	}
-
-	// Validate SortOrder
-	if p.SortOrder != "asc" && p.SortOrder != "desc" && p.SortOrder != "" {
-		p.SortOrder = "asc"
-	}
-
-	// Home section visibility toggles have no invalid values (they are booleans).
-	// Nothing to clamp or validate here — the zero value (false) is intentional when set.
-
-	// Truncate long strings to prevent abuse
-	if len(p.DefaultQuality) > 50 {
-		p.DefaultQuality = p.DefaultQuality[:50]
-	}
-	if len(p.Language) > 10 {
-		p.Language = p.Language[:10]
-	}
-	if len(p.EqualizerPreset) > 100 {
-		p.EqualizerPreset = p.EqualizerPreset[:100]
-	}
-	if len(p.SortBy) > 50 {
-		p.SortBy = p.SortBy[:50]
-	}
-	if len(p.FilterCategory) > 100 {
-		p.FilterCategory = p.FilterCategory[:100]
-	}
-	if len(p.FilterMediaType) > 50 {
-		p.FilterMediaType = p.FilterMediaType[:50]
-	}
+	p.DefaultQuality = truncateString(p.DefaultQuality, 50)
+	p.Language = truncateString(p.Language, 10)
+	p.EqualizerPreset = truncateString(p.EqualizerPreset, 100)
+	p.SortBy = truncateString(p.SortBy, 50)
+	p.FilterCategory = truncateString(p.FilterCategory, 100)
+	p.FilterMediaType = truncateString(p.FilterMediaType, 50)
 }
 
 // Session represents an authenticated session
