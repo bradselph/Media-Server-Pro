@@ -15,6 +15,7 @@ import type {
     RemoteSourceState,
     SlaveNode,
 } from '@/api/types'
+import {StreamingTab} from './StreamingTab'
 import {errMsg, formatBytes} from './helpers'
 import {SubTabs} from './helpers'
 
@@ -1253,7 +1254,7 @@ function DuplicatesTab() {
 }
 
 export function SourcesTab() {
-    const [sub, setSub] = useState('remote')
+    const [sub, setSub] = useState('hls')
     const {data: stats} = useQuery<ReceiverStats>({
         queryKey: ['admin-receiver-stats'],
         queryFn: () => adminApi.getReceiverStats(),
@@ -1265,12 +1266,14 @@ export function SourcesTab() {
 
     return (<>
         <SubTabs items={[
+            {id: 'hls', label: 'HLS'},
             {id: 'remote', label: 'Remote'},
             {id: 'slaves', label: 'Slaves'},
             {id: 'extractor', label: 'HLS Streams'},
             {id: 'crawler', label: 'Crawler'},
             {id: 'duplicates', label: dupCount > 0 ? `Duplicates (${dupCount})` : 'Duplicates'},
         ]} active={sub} onChange={setSub}/>
+        {sub === 'hls' && <StreamingTab/>}
         {sub === 'remote' && <RemoteTab/>}
         {sub === 'slaves' && <ReceiverTab/>}
         {sub === 'extractor' && <ExtractorTab/>}

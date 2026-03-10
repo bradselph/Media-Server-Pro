@@ -3,6 +3,7 @@ import {useQuery} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {QueryResult} from '@/api/types'
 import {useSettingsStore} from '@/stores/settingsStore'
+import {UpdatesTab} from './UpdatesTab'
 import {errMsg} from './helpers'
 import {SubTabs} from './helpers'
 
@@ -287,9 +288,11 @@ export function SystemTab() {
             {id: 'settings', label: 'Settings'},
             {id: 'logs', label: 'Logs'},
             {id: 'database', label: 'Database'},
+            {id: 'updates', label: 'Updates'},
         ]} active={sub} onChange={setSub}/>
         {sub === 'settings' && <SettingsTab/>}
         {sub === 'logs' && <LogsTab/>}
         {sub === 'database' && <DatabaseTab/>}
+        {sub === 'updates' && <UpdatesTab/>}
     </>)
 }
