@@ -364,14 +364,16 @@ function MediaCard({
 
     const hoveringRef = useRef(false)
 
-    // Keep thumbnailSrc in sync when switching between main and preview
+    // Sync thumbnail state when switching between main and preview (defer setState to avoid sync-in-effect)
     useEffect(() => {
-        if (currentThumbnail) {
+        if (!currentThumbnail) return
+        const thumbnail = currentThumbnail
+        queueMicrotask(() => {
             setThumbnailError(false)
-            setThumbnailSrc(currentThumbnail)
+            setThumbnailSrc(thumbnail)
             setImgLoaded(false)
             retryCountRef.current = 0
-        }
+        })
     }, [currentThumbnail])
 
     function startCycling(urls: string[]) {
