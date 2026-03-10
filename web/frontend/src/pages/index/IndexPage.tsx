@@ -458,9 +458,9 @@ function MediaCard({
                         )}
                         <img
                             className="media-thumbnail"
-                            src={inView ? (thumbnailSrc || item.thumbnail_url) : undefined}
-                            srcSet={(!previewUrls || previewUrls.length === 0) && item.thumbnail_url
-                                ? [160, 320, 640].map(w => `${item.thumbnail_url!}${item.thumbnail_url!.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
+                            src={inView ? (thumbnailSrc || baseThumbnailUrl || item.thumbnail_url) : undefined}
+                            srcSet={(!previewUrls || previewUrls.length === 0) && baseThumbnailUrl
+                                ? [160, 320, 640].map(w => `${baseThumbnailUrl}${baseThumbnailUrl.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
                                 : undefined}
                             sizes={(!previewUrls || previewUrls.length === 0) ? '(max-width: 640px) 160px, (max-width: 1024px) 320px, 640px' : undefined}
                             alt={formatTitle(item.name)}
@@ -1009,6 +1009,7 @@ export function IndexPage() {
     const showContinueWatching = user?.preferences?.show_continue_watching ?? true
     const showRecommended = user?.preferences?.show_recommended ?? true
     const showTrending = user?.preferences?.show_trending ?? true
+    const canViewMature = permissions.can_view_mature && (user?.preferences?.show_mature === true)
 
     // Retry strategy for suggestion queries: retry on 503 (catalogue not seeded yet)
     const suggestionsRetry = (failureCount: number, error: Error) => {
@@ -1019,7 +1020,7 @@ export function IndexPage() {
 
     // Continue watching query — in-progress items for authenticated users
     const {data: continueWatching = []} = useQuery<Suggestion[]>({
-        queryKey: ['continue-watching'],
+        queryKey: ['continue-watching', canViewMature],
         queryFn: () => suggestionsApi.getContinueWatching(),
         enabled: isAuthenticated && showContinueWatching,
         staleTime: 2 * 60 * 1000,
@@ -1035,7 +1036,7 @@ export function IndexPage() {
         isError: suggestionsError,
         refetch: suggestionsRefetch,
     } = useQuery<Suggestion[]>({
-        queryKey: ['suggestions'],
+        queryKey: ['suggestions', canViewMature],
         queryFn: () => suggestionsApi.get(),
         enabled: showRecommended,
         staleTime: 10 * 60 * 1000,
@@ -1051,7 +1052,7 @@ export function IndexPage() {
         isError: trendingError,
         refetch: trendingRefetch,
     } = useQuery<Suggestion[]>({
-        queryKey: ['suggestions-trending'],
+        queryKey: ['suggestions-trending', canViewMature],
         queryFn: () => suggestionsApi.getTrending(),
         enabled: showTrending,
         staleTime: 10 * 60 * 1000,
@@ -1074,7 +1075,8 @@ export function IndexPage() {
     const totalPages = mediaData?.total_pages ?? 1
     const hasNextPage = page < totalPages
 
-    // Batch prefetch thumbnails — single API call, then preload images into browser cache
+    // Batch prefetch thumbnails — single API call, then preload images into browser cache.
+    // For mature items when canViewMature, add cache-buster so we load real thumbnails after login.
     useEffect(() => {
         if (items.length === 0) return
         const ids = items
@@ -1082,17 +1084,24 @@ export function IndexPage() {
             .map(m => m.id)
             .slice(0, 50)
         if (ids.length === 0) return
+        const itemMap = new Map(items.map(m => [m.id, m]))
         mediaApi.getThumbnailBatch(ids, 320)
             .then(res => {
                 const base = window.location.origin
-                Object.values(res.thumbnails ?? {}).forEach(url => {
-                    const full = url.startsWith('/') ? base + url : url
+                Object.entries(res.thumbnails ?? {}).forEach(([id, url]) => {
+                    const item = itemMap.get(id)
+                    const finalUrl = thumbnailUrlForMatureAccess(
+                        url.startsWith('/') ? url : `/${url}`,
+                        !!item?.is_mature,
+                        canViewMature,
+                    ) ?? url
+                    const full = finalUrl.startsWith('/') ? base + finalUrl : finalUrl
                     const img = new Image()
                     img.src = full
                 })
             })
             .catch(() => {})
-    }, [items])
+    }, [items, canViewMature])
 
     // Prefetch next page for faster pagination
     useEffect(() => {
@@ -1478,7 +1487,7 @@ export function IndexPage() {
                                     isPlaying={nowPlaying?.id === item.id}
                                     onPlay={handlePlay}
                                     canDownload={permissions.can_download}
-                                    canViewMature={permissions.can_view_mature && (user?.preferences?.show_mature === true)}
+                                    canViewMature={canViewMature}
                                     isAuthenticated={isAuthenticated}
                                 />
                             ))}
