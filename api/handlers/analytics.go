@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/pkg/models"
 )
 
@@ -151,15 +152,15 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 	}
 
 	if h.analytics != nil {
-		h.analytics.SubmitClientEvent(c.Request.Context(),
-			req.Type,
-			req.MediaID,
-			userID,
-			sessionID,
-			c.ClientIP(),
-			c.Request.UserAgent(),
-			req.Data,
-		)
+		h.analytics.SubmitClientEvent(c.Request.Context(), analytics.ClientEventInput{
+			Type:      req.Type,
+			MediaID:   req.MediaID,
+			UserID:    userID,
+			SessionID: sessionID,
+			IPAddress: c.ClientIP(),
+			UserAgent: c.Request.UserAgent(),
+			Data:      req.Data,
+		})
 	}
 
 	if req.Type == "complete" && h.suggestions != nil && req.MediaID != "" && userID != "" {

@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"fmt"
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/thumbnails"
@@ -389,7 +390,13 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	isInitialRequest := rangeHeader == "" || strings.HasPrefix(rangeHeader, "bytes=0-")
 	if isInitialRequest && h.analytics != nil {
 		// Use the stable UUID (id) so analytics keys match client-submitted events.
-		h.analytics.TrackView(c.Request.Context(), id, userID, sessionID, req.IPAddress, req.UserAgent)
+		h.analytics.TrackView(c.Request.Context(), analytics.ViewParams{
+			MediaID:   id,
+			UserID:    userID,
+			SessionID: sessionID,
+			IPAddress: req.IPAddress,
+			UserAgent: req.UserAgent,
+		})
 	}
 
 	if h.suggestions != nil && userID != "" {
@@ -560,7 +567,13 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 
 	if h.analytics != nil {
 		// Use the stable UUID so analytics keys match client-submitted events.
-		h.analytics.TrackPlayback(c.Request.Context(), req.ID, userID, sessionID, req.Position, req.Duration)
+		h.analytics.TrackPlayback(c.Request.Context(), analytics.PlaybackParams{
+			MediaID:   req.ID,
+			UserID:    userID,
+			SessionID: sessionID,
+			Position:  req.Position,
+			Duration:  req.Duration,
+		})
 	}
 
 	writeSuccess(c, nil)
