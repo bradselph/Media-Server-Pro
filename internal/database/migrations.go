@@ -5,6 +5,414 @@ import (
 	"fmt"
 )
 
+// tableDefs holds CREATE TABLE SQL for ensureSchema. Package-level to avoid string-heavy function arguments.
+var tableDefs = []struct {
+	name string
+	sql  string
+}{
+	{"users", `
+		CREATE TABLE IF NOT EXISTS users (
+			id            VARCHAR(255) PRIMARY KEY,
+			username      VARCHAR(255) UNIQUE NOT NULL,
+			password_hash TEXT         NOT NULL,
+			salt          VARCHAR(255) NOT NULL DEFAULT '',
+			email         VARCHAR(255),
+			role          ENUM('admin','viewer') NOT NULL DEFAULT 'viewer',
+			type          VARCHAR(50)  NOT NULL DEFAULT 'standard',
+			enabled       BOOLEAN      NOT NULL DEFAULT TRUE,
+			created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			last_login    TIMESTAMP    NULL,
+			storage_used  BIGINT       NOT NULL DEFAULT 0,
+			active_streams INT         NOT NULL DEFAULT 0,
+			watch_history JSON,
+			metadata      JSON,
+			INDEX idx_username (username),
+			INDEX idx_email   (email)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"user_permissions", `
+		CREATE TABLE IF NOT EXISTS user_permissions (
+			user_id              VARCHAR(255) PRIMARY KEY,
+			can_stream           BOOLEAN NOT NULL DEFAULT TRUE,
+			can_download         BOOLEAN NOT NULL DEFAULT FALSE,
+			can_upload           BOOLEAN NOT NULL DEFAULT FALSE,
+			can_delete           BOOLEAN NOT NULL DEFAULT FALSE,
+			can_manage           BOOLEAN NOT NULL DEFAULT FALSE,
+			can_view_mature      BOOLEAN NOT NULL DEFAULT FALSE,
+			can_create_playlists BOOLEAN NOT NULL DEFAULT TRUE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"user_preferences", `
+		CREATE TABLE IF NOT EXISTS user_preferences (
+			user_id               VARCHAR(255) PRIMARY KEY,
+			theme                 VARCHAR(50)  DEFAULT 'dark',
+			view_mode             VARCHAR(50)  DEFAULT 'grid',
+			default_quality       VARCHAR(50)  DEFAULT 'auto',
+			auto_play             BOOLEAN      DEFAULT FALSE,
+			playback_speed        FLOAT        DEFAULT 1.0,
+			volume                FLOAT        DEFAULT 1.0,
+			show_mature           BOOLEAN      DEFAULT FALSE,
+			mature_preference_set BOOLEAN      DEFAULT FALSE,
+			language              VARCHAR(10)  DEFAULT 'en',
+			subtitle_lang         VARCHAR(10)  DEFAULT 'en',
+			equalizer_preset      VARCHAR(100),
+			resume_playback       BOOLEAN      DEFAULT TRUE,
+			show_analytics        BOOLEAN      DEFAULT TRUE,
+			items_per_page        INT          DEFAULT 20,
+			sort_by               VARCHAR(50)  DEFAULT 'date_added',
+			sort_order            VARCHAR(10)  DEFAULT 'desc',
+			filter_category       VARCHAR(100),
+			filter_media_type     VARCHAR(50),
+			custom_eq_presets     JSON,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"sessions", `
+		CREATE TABLE IF NOT EXISTS sessions (
+			id            VARCHAR(255) PRIMARY KEY,
+			user_id       VARCHAR(255) NOT NULL,
+			username      VARCHAR(255) NOT NULL,
+			role          ENUM('admin','viewer') NOT NULL,
+			created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			expires_at    TIMESTAMP NOT NULL,
+			last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			ip_address    VARCHAR(45),
+			user_agent    TEXT,
+			INDEX idx_user_id   (user_id),
+			INDEX idx_expires_at (expires_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"media_metadata", `
+		CREATE TABLE IF NOT EXISTS media_metadata (
+			path           VARCHAR(500) PRIMARY KEY,
+			views          INT       DEFAULT 0,
+			last_played    TIMESTAMP NULL,
+			date_added     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			is_mature      BOOLEAN   DEFAULT FALSE,
+			mature_score   FLOAT     DEFAULT 0.0,
+			category       VARCHAR(255),
+			probe_mod_time TIMESTAMP NULL DEFAULT NULL,
+			INDEX idx_category  (category),
+			INDEX idx_date_added (date_added),
+			INDEX idx_views     (views)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"media_tags", `
+		CREATE TABLE IF NOT EXISTS media_tags (
+			path VARCHAR(500),
+			tag  VARCHAR(255),
+			PRIMARY KEY (path, tag),
+			INDEX idx_tag (tag),
+			FOREIGN KEY (path) REFERENCES media_metadata(path) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"playback_positions", `
+		CREATE TABLE IF NOT EXISTS playback_positions (
+			path       VARCHAR(500),
+			user_id    VARCHAR(255),
+			position   FLOAT     NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY (path, user_id),
+			FOREIGN KEY (path)    REFERENCES media_metadata(path) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id)            ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"playlists", `
+		CREATE TABLE IF NOT EXISTS playlists (
+			id          VARCHAR(255) PRIMARY KEY,
+			user_id     VARCHAR(255) NOT NULL,
+			name        VARCHAR(255) NOT NULL,
+			description TEXT,
+			created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			is_public   BOOLEAN   DEFAULT FALSE,
+			cover_image VARCHAR(1024),
+			INDEX idx_user_id (user_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"playlist_items", `
+		CREATE TABLE IF NOT EXISTS playlist_items (
+			playlist_id VARCHAR(255),
+			media_path  VARCHAR(500),
+			title       VARCHAR(255),
+			position    INT       NOT NULL,
+			added_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (playlist_id, media_path),
+			INDEX idx_position (playlist_id, position),
+			FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"analytics_events", `
+		CREATE TABLE IF NOT EXISTS analytics_events (
+			id         VARCHAR(255) PRIMARY KEY,
+			type       VARCHAR(100) NOT NULL,
+			media_id   VARCHAR(255),
+			user_id    VARCHAR(255),
+			session_id VARCHAR(255),
+			ip_address VARCHAR(45),
+			user_agent TEXT,
+			timestamp  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			data       JSON,
+			INDEX idx_type      (type),
+			INDEX idx_media_id  (media_id),
+			INDEX idx_user_id   (user_id),
+			INDEX idx_timestamp (timestamp)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"audit_log", `
+		CREATE TABLE IF NOT EXISTS audit_log (
+			id         VARCHAR(255) PRIMARY KEY,
+			timestamp  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			user_id    VARCHAR(255),
+			username   VARCHAR(255) NOT NULL,
+			action     VARCHAR(255) NOT NULL,
+			resource   VARCHAR(1024),
+			details    JSON,
+			ip_address VARCHAR(45),
+			success    BOOLEAN NOT NULL,
+			INDEX idx_timestamp (timestamp),
+			INDEX idx_user_id   (user_id),
+			INDEX idx_action    (action)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"scan_results", `
+		CREATE TABLE IF NOT EXISTS scan_results (
+			path            VARCHAR(500) PRIMARY KEY,
+			is_mature       BOOLEAN   DEFAULT FALSE,
+			confidence      FLOAT     DEFAULT 0.0,
+			auto_flagged    BOOLEAN   DEFAULT FALSE,
+			needs_review    BOOLEAN   DEFAULT FALSE,
+			scanned_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			reviewed_by     VARCHAR(255) NULL,
+			reviewed_at     TIMESTAMP    NULL,
+			review_decision VARCHAR(50)  NULL,
+			INDEX idx_needs_review (needs_review),
+			INDEX idx_scanned_at   (scanned_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"scan_reasons", `
+		CREATE TABLE IF NOT EXISTS scan_reasons (
+			path   VARCHAR(500),
+			reason TEXT,
+			PRIMARY KEY (path, reason(191)),
+			FOREIGN KEY (path) REFERENCES scan_results(path) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"categorized_items", `
+		CREATE TABLE IF NOT EXISTS categorized_items (
+			path            VARCHAR(500) PRIMARY KEY,
+			id              VARCHAR(64)  NOT NULL,
+			name            VARCHAR(255) NOT NULL,
+			category        VARCHAR(50)  NOT NULL DEFAULT 'uncategorized',
+			confidence      FLOAT        DEFAULT 0.0,
+			detected_title  VARCHAR(255),
+			detected_year   INT,
+			detected_season INT,
+			detected_episode INT,
+			detected_show   VARCHAR(255),
+			detected_artist VARCHAR(255),
+			detected_album  VARCHAR(255),
+			categorized_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			manual_override BOOLEAN      DEFAULT FALSE,
+			INDEX idx_category (category),
+			INDEX idx_id       (id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"hls_jobs", `
+		CREATE TABLE IF NOT EXISTS hls_jobs (
+			id               VARCHAR(64)  PRIMARY KEY,
+			media_path       VARCHAR(500) NOT NULL,
+			output_dir       VARCHAR(500),
+			status           VARCHAR(50)  NOT NULL DEFAULT 'pending',
+			progress         FLOAT        DEFAULT 0.0,
+			qualities        JSON,
+			started_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			completed_at     TIMESTAMP    NULL,
+			last_accessed_at TIMESTAMP    NULL,
+			error_message    TEXT,
+			fail_count       INT          DEFAULT 0,
+			hls_url          VARCHAR(1024),
+			available        BOOLEAN      DEFAULT FALSE,
+			INDEX idx_media_path (media_path),
+			INDEX idx_status     (status)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"validation_results", `
+		CREATE TABLE IF NOT EXISTS validation_results (
+			path            VARCHAR(500) PRIMARY KEY,
+			status          VARCHAR(50)  NOT NULL DEFAULT 'pending',
+			validated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			duration        FLOAT        DEFAULT 0.0,
+			video_codec     VARCHAR(100),
+			audio_codec     VARCHAR(100),
+			width           INT          DEFAULT 0,
+			height          INT          DEFAULT 0,
+			bitrate         BIGINT       DEFAULT 0,
+			container       VARCHAR(100),
+			issues          JSON,
+			error_message   TEXT,
+			video_supported BOOLEAN      DEFAULT FALSE,
+			audio_supported BOOLEAN      DEFAULT FALSE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"suggestion_profiles", `
+		CREATE TABLE IF NOT EXISTS suggestion_profiles (
+			user_id          VARCHAR(255) PRIMARY KEY,
+			category_scores  JSON,
+			type_preferences JSON,
+			total_views      INT     DEFAULT 0,
+			total_watch_time FLOAT   DEFAULT 0.0,
+			last_updated     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"suggestion_view_history", `
+		CREATE TABLE IF NOT EXISTS suggestion_view_history (
+			user_id      VARCHAR(255),
+			media_path   VARCHAR(500),
+			category     VARCHAR(100),
+			media_type   VARCHAR(50),
+			view_count   INT       DEFAULT 0,
+			total_time   FLOAT     DEFAULT 0.0,
+			last_viewed  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			completed_at TIMESTAMP NULL,
+			rating       FLOAT     DEFAULT 0.0,
+			PRIMARY KEY (user_id, media_path(255))
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"autodiscovery_suggestions", `
+		CREATE TABLE IF NOT EXISTS autodiscovery_suggestions (
+			original_path  VARCHAR(500) PRIMARY KEY,
+			suggested_name VARCHAR(500),
+			suggested_path VARCHAR(500),
+			type           VARCHAR(50),
+			confidence     FLOAT   DEFAULT 0.0,
+			metadata       JSON
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"ip_list_config", `
+		CREATE TABLE IF NOT EXISTS ip_list_config (
+			list_type VARCHAR(20)  PRIMARY KEY,
+			name      VARCHAR(100) NOT NULL,
+			enabled   BOOLEAN      DEFAULT FALSE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"ip_list_entries", `
+		CREATE TABLE IF NOT EXISTS ip_list_entries (
+			list_type  VARCHAR(20),
+			ip_value   VARCHAR(100),
+			comment    TEXT,
+			added_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			added_by   VARCHAR(255),
+			expires_at TIMESTAMP NULL,
+			PRIMARY KEY (list_type, ip_value),
+			FOREIGN KEY (list_type) REFERENCES ip_list_config(list_type) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"remote_cache_entries", `
+		CREATE TABLE IF NOT EXISTS remote_cache_entries (
+			remote_url   VARCHAR(500) PRIMARY KEY,
+			local_path   VARCHAR(500),
+			file_size    BIGINT    DEFAULT 0,
+			content_type VARCHAR(100),
+			cached_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			last_access  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			hits         INT       DEFAULT 0
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"backup_manifests", `
+		CREATE TABLE IF NOT EXISTS backup_manifests (
+			id          VARCHAR(255) PRIMARY KEY,
+			filename    VARCHAR(500) NOT NULL,
+			created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			size        BIGINT       DEFAULT 0,
+			type        VARCHAR(50),
+			description TEXT,
+			files       JSON,
+			errors      JSON,
+			version     VARCHAR(50)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"receiver_slaves", `
+		CREATE TABLE IF NOT EXISTS receiver_slaves (
+			id          VARCHAR(255) PRIMARY KEY,
+			name        VARCHAR(255) NOT NULL,
+			base_url    VARCHAR(500) NOT NULL,
+			status      VARCHAR(50)  NOT NULL DEFAULT 'offline',
+			media_count INT          DEFAULT 0,
+			last_seen   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			INDEX idx_receiver_slaves_status (status)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"receiver_media", `
+		CREATE TABLE IF NOT EXISTS receiver_media (
+			id           VARCHAR(255) PRIMARY KEY,
+			slave_id     VARCHAR(255) NOT NULL,
+			remote_path  VARCHAR(500) NOT NULL,
+			name         VARCHAR(500) NOT NULL,
+			media_type   VARCHAR(50),
+			file_size    BIGINT       DEFAULT 0,
+			duration     DOUBLE       DEFAULT 0,
+			content_type VARCHAR(100),
+			width        INT          DEFAULT 0,
+			height       INT          DEFAULT 0,
+			updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_receiver_media_slave (slave_id),
+			INDEX idx_receiver_media_name (name(191))
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"extractor_items", `
+		CREATE TABLE IF NOT EXISTS extractor_items (
+			id               VARCHAR(255) PRIMARY KEY,
+			source_url       VARCHAR(2048) NOT NULL,
+			title            VARCHAR(500)  NOT NULL,
+			stream_url       VARCHAR(2048) NOT NULL,
+			stream_type      VARCHAR(20)   NOT NULL DEFAULT 'hls',
+			content_type     VARCHAR(100),
+			quality          VARCHAR(50),
+			width            INT           DEFAULT 0,
+			height           INT           DEFAULT 0,
+			duration         DOUBLE        DEFAULT 0,
+			site             VARCHAR(255),
+			detection_method VARCHAR(50),
+			status           VARCHAR(50)   NOT NULL DEFAULT 'active',
+			error_message    TEXT,
+			added_by         VARCHAR(255),
+			resolved_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+			expires_at       TIMESTAMP     NULL,
+			created_at       TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+			updated_at       TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_extractor_status (status),
+			INDEX idx_extractor_site (site),
+			INDEX idx_extractor_title (title(191))
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"crawler_targets", `
+		CREATE TABLE IF NOT EXISTS crawler_targets (
+			id           VARCHAR(255) PRIMARY KEY,
+			name         VARCHAR(255) NOT NULL,
+			url          VARCHAR(2048) NOT NULL,
+			site         VARCHAR(255),
+			enabled      TINYINT(1) NOT NULL DEFAULT 1,
+			last_crawled TIMESTAMP  NULL,
+			created_at   TIMESTAMP  DEFAULT CURRENT_TIMESTAMP,
+			updated_at   TIMESTAMP  DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_crawler_target_enabled (enabled),
+			INDEX idx_crawler_target_site (site)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"crawler_discoveries", `
+		CREATE TABLE IF NOT EXISTS crawler_discoveries (
+			id               VARCHAR(255) PRIMARY KEY,
+			target_id        VARCHAR(255) NOT NULL,
+			page_url         VARCHAR(2048) NOT NULL,
+			title            VARCHAR(500)  NOT NULL,
+			stream_url       VARCHAR(2048) NOT NULL,
+			stream_type      VARCHAR(20)   NOT NULL DEFAULT 'hls',
+			quality          INT DEFAULT 0,
+			detection_method VARCHAR(50),
+			status           VARCHAR(50)   NOT NULL DEFAULT 'pending',
+			reviewed_by      VARCHAR(255),
+			reviewed_at      TIMESTAMP     NULL,
+			discovered_at    TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+			INDEX idx_crawler_disc_target (target_id),
+			INDEX idx_crawler_disc_status (status),
+			FOREIGN KEY (target_id) REFERENCES crawler_targets(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"receiver_duplicates", `
+		CREATE TABLE IF NOT EXISTS receiver_duplicates (
+			id              VARCHAR(255) PRIMARY KEY,
+			fingerprint     VARCHAR(64)  NOT NULL,
+			item_a_id       VARCHAR(255) NOT NULL,
+			item_a_slave_id VARCHAR(255) NOT NULL,
+			item_a_name     VARCHAR(500) NOT NULL,
+			item_b_id       VARCHAR(255) NOT NULL,
+			item_b_slave_id VARCHAR(255) NOT NULL,
+			item_b_name     VARCHAR(500) NOT NULL,
+			status          VARCHAR(50)  NOT NULL DEFAULT 'pending',
+			resolved_by     VARCHAR(255),
+			resolved_at     TIMESTAMP    NULL,
+			detected_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			INDEX idx_dup_fingerprint (fingerprint),
+			INDEX idx_dup_status (status)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+}
+
 // ensureSchema idempotently creates all required tables and columns.
 // Safe to call on every startup:
 //   - Fresh database: creates everything from scratch
@@ -13,466 +421,46 @@ import (
 // No migration tracking files or version numbers — just checks information_schema.
 func (m *Module) ensureSchema(ctx context.Context) error {
 	m.log.Info("Ensuring database schema...")
-
-	// ── Step 1: Create tables (all columns included) ─────────────────────────
-	// CREATE TABLE IF NOT EXISTS is a no-op when the table already exists.
-	// Path columns in composite PKs are VARCHAR(500) — keeps utf8mb4 composite
-	// keys under the 3072-byte InnoDB limit: (500+255)*4 = 3020 bytes.
-	tables := []struct {
-		name string
-		sql  string
-	}{
-		{"users", `
-			CREATE TABLE IF NOT EXISTS users (
-				id            VARCHAR(255) PRIMARY KEY,
-				username      VARCHAR(255) UNIQUE NOT NULL,
-				password_hash TEXT         NOT NULL,
-				salt          VARCHAR(255) NOT NULL DEFAULT '',
-				email         VARCHAR(255),
-				role          ENUM('admin','viewer') NOT NULL DEFAULT 'viewer',
-				type          VARCHAR(50)  NOT NULL DEFAULT 'standard',
-				enabled       BOOLEAN      NOT NULL DEFAULT TRUE,
-				created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				last_login    TIMESTAMP    NULL,
-				storage_used  BIGINT       NOT NULL DEFAULT 0,
-				active_streams INT         NOT NULL DEFAULT 0,
-				watch_history JSON,
-				metadata      JSON,
-				INDEX idx_username (username),
-				INDEX idx_email   (email)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"user_permissions", `
-			CREATE TABLE IF NOT EXISTS user_permissions (
-				user_id              VARCHAR(255) PRIMARY KEY,
-				can_stream           BOOLEAN NOT NULL DEFAULT TRUE,
-				can_download         BOOLEAN NOT NULL DEFAULT FALSE,
-				can_upload           BOOLEAN NOT NULL DEFAULT FALSE,
-				can_delete           BOOLEAN NOT NULL DEFAULT FALSE,
-				can_manage           BOOLEAN NOT NULL DEFAULT FALSE,
-				can_view_mature      BOOLEAN NOT NULL DEFAULT FALSE,
-				can_create_playlists BOOLEAN NOT NULL DEFAULT TRUE,
-				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"user_preferences", `
-			CREATE TABLE IF NOT EXISTS user_preferences (
-				user_id               VARCHAR(255) PRIMARY KEY,
-				theme                 VARCHAR(50)  DEFAULT 'dark',
-				view_mode             VARCHAR(50)  DEFAULT 'grid',
-				default_quality       VARCHAR(50)  DEFAULT 'auto',
-				auto_play             BOOLEAN      DEFAULT FALSE,
-				playback_speed        FLOAT        DEFAULT 1.0,
-				volume                FLOAT        DEFAULT 1.0,
-				show_mature           BOOLEAN      DEFAULT FALSE,
-				mature_preference_set BOOLEAN      DEFAULT FALSE,
-				language              VARCHAR(10)  DEFAULT 'en',
-				subtitle_lang         VARCHAR(10)  DEFAULT 'en',
-				equalizer_preset      VARCHAR(100),
-				resume_playback       BOOLEAN      DEFAULT TRUE,
-				show_analytics        BOOLEAN      DEFAULT TRUE,
-				items_per_page        INT          DEFAULT 20,
-				sort_by               VARCHAR(50)  DEFAULT 'date_added',
-				sort_order            VARCHAR(10)  DEFAULT 'desc',
-				filter_category       VARCHAR(100),
-				filter_media_type     VARCHAR(50),
-				custom_eq_presets     JSON,
-				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		// No FK on user_id — admin sessions use an ID that isn't in the users table.
-		{"sessions", `
-			CREATE TABLE IF NOT EXISTS sessions (
-				id            VARCHAR(255) PRIMARY KEY,
-				user_id       VARCHAR(255) NOT NULL,
-				username      VARCHAR(255) NOT NULL,
-				role          ENUM('admin','viewer') NOT NULL,
-				created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				expires_at    TIMESTAMP NOT NULL,
-				last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				ip_address    VARCHAR(45),
-				user_agent    TEXT,
-				INDEX idx_user_id   (user_id),
-				INDEX idx_expires_at (expires_at)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"media_metadata", `
-			CREATE TABLE IF NOT EXISTS media_metadata (
-				path           VARCHAR(500) PRIMARY KEY,
-				views          INT       DEFAULT 0,
-				last_played    TIMESTAMP NULL,
-				date_added     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				is_mature      BOOLEAN   DEFAULT FALSE,
-				mature_score   FLOAT     DEFAULT 0.0,
-				category       VARCHAR(255),
-				probe_mod_time TIMESTAMP NULL DEFAULT NULL,
-				INDEX idx_category  (category),
-				INDEX idx_date_added (date_added),
-				INDEX idx_views     (views)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		// Composite PK: (500+255)*4 = 3020 bytes — under the 3072-byte InnoDB limit.
-		{"media_tags", `
-			CREATE TABLE IF NOT EXISTS media_tags (
-				path VARCHAR(500),
-				tag  VARCHAR(255),
-				PRIMARY KEY (path, tag),
-				INDEX idx_tag (tag),
-				FOREIGN KEY (path) REFERENCES media_metadata(path) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		// Composite PK: (500+255)*4 = 3020 bytes.
-		{"playback_positions", `
-			CREATE TABLE IF NOT EXISTS playback_positions (
-				path       VARCHAR(500),
-				user_id    VARCHAR(255),
-				position   FLOAT     NOT NULL,
-				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				PRIMARY KEY (path, user_id),
-				FOREIGN KEY (path)    REFERENCES media_metadata(path) ON DELETE CASCADE,
-				FOREIGN KEY (user_id) REFERENCES users(id)            ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"playlists", `
-			CREATE TABLE IF NOT EXISTS playlists (
-				id          VARCHAR(255) PRIMARY KEY,
-				user_id     VARCHAR(255) NOT NULL,
-				name        VARCHAR(255) NOT NULL,
-				description TEXT,
-				created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				is_public   BOOLEAN   DEFAULT FALSE,
-				cover_image VARCHAR(1024),
-				INDEX idx_user_id (user_id),
-				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		// Composite PK: (255+500)*4 = 3020 bytes.
-		{"playlist_items", `
-			CREATE TABLE IF NOT EXISTS playlist_items (
-				playlist_id VARCHAR(255),
-				media_path  VARCHAR(500),
-				title       VARCHAR(255),
-				position    INT       NOT NULL,
-				added_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY (playlist_id, media_path),
-				INDEX idx_position (playlist_id, position),
-				FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"analytics_events", `
-			CREATE TABLE IF NOT EXISTS analytics_events (
-				id         VARCHAR(255) PRIMARY KEY,
-				type       VARCHAR(100) NOT NULL,
-				media_id   VARCHAR(255),
-				user_id    VARCHAR(255),
-				session_id VARCHAR(255),
-				ip_address VARCHAR(45),
-				user_agent TEXT,
-				timestamp  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				data       JSON,
-				INDEX idx_type      (type),
-				INDEX idx_media_id  (media_id),
-				INDEX idx_user_id   (user_id),
-				INDEX idx_timestamp (timestamp)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"audit_log", `
-			CREATE TABLE IF NOT EXISTS audit_log (
-				id         VARCHAR(255) PRIMARY KEY,
-				timestamp  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				user_id    VARCHAR(255),
-				username   VARCHAR(255) NOT NULL,
-				action     VARCHAR(255) NOT NULL,
-				resource   VARCHAR(1024),
-				details    JSON,
-				ip_address VARCHAR(45),
-				success    BOOLEAN NOT NULL,
-				INDEX idx_timestamp (timestamp),
-				INDEX idx_user_id   (user_id),
-				INDEX idx_action    (action)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"scan_results", `
-			CREATE TABLE IF NOT EXISTS scan_results (
-				path            VARCHAR(500) PRIMARY KEY,
-				is_mature       BOOLEAN   DEFAULT FALSE,
-				confidence      FLOAT     DEFAULT 0.0,
-				auto_flagged    BOOLEAN   DEFAULT FALSE,
-				needs_review    BOOLEAN   DEFAULT FALSE,
-				scanned_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				reviewed_by     VARCHAR(255) NULL,
-				reviewed_at     TIMESTAMP    NULL,
-				review_decision VARCHAR(50)  NULL,
-				INDEX idx_needs_review (needs_review),
-				INDEX idx_scanned_at   (scanned_at)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		// Composite PK: (500+191)*4 = 2764 bytes.
-		{"scan_reasons", `
-			CREATE TABLE IF NOT EXISTS scan_reasons (
-				path   VARCHAR(500),
-				reason TEXT,
-				PRIMARY KEY (path, reason(191)),
-				FOREIGN KEY (path) REFERENCES scan_results(path) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"categorized_items", `
-			CREATE TABLE IF NOT EXISTS categorized_items (
-				path            VARCHAR(500) PRIMARY KEY,
-				id              VARCHAR(64)  NOT NULL,
-				name            VARCHAR(255) NOT NULL,
-				category        VARCHAR(50)  NOT NULL DEFAULT 'uncategorized',
-				confidence      FLOAT        DEFAULT 0.0,
-				detected_title  VARCHAR(255),
-				detected_year   INT,
-				detected_season INT,
-				detected_episode INT,
-				detected_show   VARCHAR(255),
-				detected_artist VARCHAR(255),
-				detected_album  VARCHAR(255),
-				categorized_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				manual_override BOOLEAN      DEFAULT FALSE,
-				INDEX idx_category (category),
-				INDEX idx_id       (id)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"hls_jobs", `
-			CREATE TABLE IF NOT EXISTS hls_jobs (
-				id               VARCHAR(64)  PRIMARY KEY,
-				media_path       VARCHAR(500) NOT NULL,
-				output_dir       VARCHAR(500),
-				status           VARCHAR(50)  NOT NULL DEFAULT 'pending',
-				progress         FLOAT        DEFAULT 0.0,
-				qualities        JSON,
-				started_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				completed_at     TIMESTAMP    NULL,
-				last_accessed_at TIMESTAMP    NULL,
-				error_message    TEXT,
-				fail_count       INT          DEFAULT 0,
-				hls_url          VARCHAR(1024),
-				available        BOOLEAN      DEFAULT FALSE,
-				INDEX idx_media_path (media_path),
-				INDEX idx_status     (status)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"validation_results", `
-			CREATE TABLE IF NOT EXISTS validation_results (
-				path            VARCHAR(500) PRIMARY KEY,
-				status          VARCHAR(50)  NOT NULL DEFAULT 'pending',
-				validated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				duration        FLOAT        DEFAULT 0.0,
-				video_codec     VARCHAR(100),
-				audio_codec     VARCHAR(100),
-				width           INT          DEFAULT 0,
-				height          INT          DEFAULT 0,
-				bitrate         BIGINT       DEFAULT 0,
-				container       VARCHAR(100),
-				issues          JSON,
-				error_message   TEXT,
-				video_supported BOOLEAN      DEFAULT FALSE,
-				audio_supported BOOLEAN      DEFAULT FALSE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"suggestion_profiles", `
-			CREATE TABLE IF NOT EXISTS suggestion_profiles (
-				user_id          VARCHAR(255) PRIMARY KEY,
-				category_scores  JSON,
-				type_preferences JSON,
-				total_views      INT     DEFAULT 0,
-				total_watch_time FLOAT   DEFAULT 0.0,
-				last_updated     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"suggestion_view_history", `
-			CREATE TABLE IF NOT EXISTS suggestion_view_history (
-				user_id      VARCHAR(255),
-				media_path   VARCHAR(500),
-				category     VARCHAR(100),
-				media_type   VARCHAR(50),
-				view_count   INT       DEFAULT 0,
-				total_time   FLOAT     DEFAULT 0.0,
-				last_viewed  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				completed_at TIMESTAMP NULL,
-				rating       FLOAT     DEFAULT 0.0,
-				PRIMARY KEY (user_id, media_path(255))
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"autodiscovery_suggestions", `
-			CREATE TABLE IF NOT EXISTS autodiscovery_suggestions (
-				original_path  VARCHAR(500) PRIMARY KEY,
-				suggested_name VARCHAR(500),
-				suggested_path VARCHAR(500),
-				type           VARCHAR(50),
-				confidence     FLOAT   DEFAULT 0.0,
-				metadata       JSON
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"ip_list_config", `
-			CREATE TABLE IF NOT EXISTS ip_list_config (
-				list_type VARCHAR(20)  PRIMARY KEY,
-				name      VARCHAR(100) NOT NULL,
-				enabled   BOOLEAN      DEFAULT FALSE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"ip_list_entries", `
-			CREATE TABLE IF NOT EXISTS ip_list_entries (
-				list_type  VARCHAR(20),
-				ip_value   VARCHAR(100),
-				comment    TEXT,
-				added_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				added_by   VARCHAR(255),
-				expires_at TIMESTAMP NULL,
-				PRIMARY KEY (list_type, ip_value),
-				FOREIGN KEY (list_type) REFERENCES ip_list_config(list_type) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"remote_cache_entries", `
-			CREATE TABLE IF NOT EXISTS remote_cache_entries (
-				remote_url   VARCHAR(500) PRIMARY KEY,
-				local_path   VARCHAR(500),
-				file_size    BIGINT    DEFAULT 0,
-				content_type VARCHAR(100),
-				cached_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				last_access  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				hits         INT       DEFAULT 0
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"backup_manifests", `
-			CREATE TABLE IF NOT EXISTS backup_manifests (
-				id          VARCHAR(255) PRIMARY KEY,
-				filename    VARCHAR(500) NOT NULL,
-				created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				size        BIGINT       DEFAULT 0,
-				type        VARCHAR(50),
-				description TEXT,
-				files       JSON,
-				errors      JSON,
-				version     VARCHAR(50)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"receiver_slaves", `
-			CREATE TABLE IF NOT EXISTS receiver_slaves (
-				id          VARCHAR(255) PRIMARY KEY,
-				name        VARCHAR(255) NOT NULL,
-				base_url    VARCHAR(500) NOT NULL,
-				status      VARCHAR(50)  NOT NULL DEFAULT 'offline',
-				media_count INT          DEFAULT 0,
-				last_seen   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				INDEX idx_receiver_slaves_status (status)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"receiver_media", `
-			CREATE TABLE IF NOT EXISTS receiver_media (
-				id           VARCHAR(255) PRIMARY KEY,
-				slave_id     VARCHAR(255) NOT NULL,
-				remote_path  VARCHAR(500) NOT NULL,
-				name         VARCHAR(500) NOT NULL,
-				media_type   VARCHAR(50),
-				file_size    BIGINT       DEFAULT 0,
-				duration     DOUBLE       DEFAULT 0,
-				content_type VARCHAR(100),
-				width        INT          DEFAULT 0,
-				height       INT          DEFAULT 0,
-				updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				INDEX idx_receiver_media_slave (slave_id),
-				INDEX idx_receiver_media_name (name(191))
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"extractor_items", `
-			CREATE TABLE IF NOT EXISTS extractor_items (
-				id               VARCHAR(255) PRIMARY KEY,
-				source_url       VARCHAR(2048) NOT NULL,
-				title            VARCHAR(500)  NOT NULL,
-				stream_url       VARCHAR(2048) NOT NULL,
-				stream_type      VARCHAR(20)   NOT NULL DEFAULT 'hls',
-				content_type     VARCHAR(100),
-				quality          VARCHAR(50),
-				width            INT           DEFAULT 0,
-				height           INT           DEFAULT 0,
-				duration         DOUBLE        DEFAULT 0,
-				site             VARCHAR(255),
-				detection_method VARCHAR(50),
-				status           VARCHAR(50)   NOT NULL DEFAULT 'active',
-				error_message    TEXT,
-				added_by         VARCHAR(255),
-				resolved_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
-				expires_at       TIMESTAMP     NULL,
-				created_at       TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
-				updated_at       TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				INDEX idx_extractor_status (status),
-				INDEX idx_extractor_site (site),
-				INDEX idx_extractor_title (title(191))
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"crawler_targets", `
-			CREATE TABLE IF NOT EXISTS crawler_targets (
-				id           VARCHAR(255) PRIMARY KEY,
-				name         VARCHAR(255) NOT NULL,
-				url          VARCHAR(2048) NOT NULL,
-				site         VARCHAR(255),
-				enabled      TINYINT(1) NOT NULL DEFAULT 1,
-				last_crawled TIMESTAMP  NULL,
-				created_at   TIMESTAMP  DEFAULT CURRENT_TIMESTAMP,
-				updated_at   TIMESTAMP  DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				INDEX idx_crawler_target_enabled (enabled),
-				INDEX idx_crawler_target_site (site)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"crawler_discoveries", `
-			CREATE TABLE IF NOT EXISTS crawler_discoveries (
-				id               VARCHAR(255) PRIMARY KEY,
-				target_id        VARCHAR(255) NOT NULL,
-				page_url         VARCHAR(2048) NOT NULL,
-				title            VARCHAR(500)  NOT NULL,
-				stream_url       VARCHAR(2048) NOT NULL,
-				stream_type      VARCHAR(20)   NOT NULL DEFAULT 'hls',
-				quality          INT DEFAULT 0,
-				detection_method VARCHAR(50),
-				status           VARCHAR(50)   NOT NULL DEFAULT 'pending',
-				reviewed_by      VARCHAR(255),
-				reviewed_at      TIMESTAMP     NULL,
-				discovered_at    TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
-				INDEX idx_crawler_disc_target (target_id),
-				INDEX idx_crawler_disc_status (status),
-				FOREIGN KEY (target_id) REFERENCES crawler_targets(id) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-
-		{"receiver_duplicates", `
-			CREATE TABLE IF NOT EXISTS receiver_duplicates (
-				id              VARCHAR(255) PRIMARY KEY,
-				fingerprint     VARCHAR(64)  NOT NULL,
-				item_a_id       VARCHAR(255) NOT NULL,
-				item_a_slave_id VARCHAR(255) NOT NULL,
-				item_a_name     VARCHAR(500) NOT NULL,
-				item_b_id       VARCHAR(255) NOT NULL,
-				item_b_slave_id VARCHAR(255) NOT NULL,
-				item_b_name     VARCHAR(500) NOT NULL,
-				status          VARCHAR(50)  NOT NULL DEFAULT 'pending',
-				resolved_by     VARCHAR(255),
-				resolved_at     TIMESTAMP    NULL,
-				detected_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				INDEX idx_dup_fingerprint (fingerprint),
-				INDEX idx_dup_status (status)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	if err := m.createTables(ctx); err != nil {
+		return err
 	}
+	// Remove legacy FK on sessions.user_id if it exists (older DBs may block admin sessions).
+	if err := m.dropConstraintIfExists(ctx, dropConstraintSpec{table: "sessions", constraint: "sessions_ibfk_1", constraintType: "FOREIGN KEY"}); err != nil {
+		return fmt.Errorf("failed to remove sessions FK: %w", err)
+	}
+	if err := m.ensureSchemaColumns(ctx); err != nil {
+		return err
+	}
+	if err := m.ensureSchemaIndexes(ctx); err != nil {
+		return err
+	}
+	m.log.Info("Database schema is up to date")
+	return nil
+}
 
+// createTables runs CREATE TABLE IF NOT EXISTS for all schema tables.
+// Path columns in composite PKs are VARCHAR(500) to keep utf8mb4 keys under InnoDB 3072-byte limit.
+func (m *Module) createTables(ctx context.Context) error {
+	tables := m.tableDefinitions()
 	for _, t := range tables {
 		if _, err := m.sqlDB.ExecContext(ctx, t.sql); err != nil {
 			return fmt.Errorf("failed to create table %s: %w", t.name, err)
 		}
 		m.log.Debug("Table OK: %s", t.name)
 	}
+	return nil
+}
 
-	// ── Step 2: Remove legacy FK on sessions.user_id if it exists ────────────
-	// Older databases may have been created with a FK that blocks admin sessions.
-	if err := m.dropConstraintIfExists(ctx, "sessions", "sessions_ibfk_1", "FOREIGN KEY"); err != nil {
-		return fmt.Errorf("failed to remove sessions FK: %w", err)
-	}
+// tableDefinitions returns the list of table names and CREATE TABLE SQL (from package-level tableDefs).
+func (m *Module) tableDefinitions() []struct {
+	name string
+	sql  string
+} {
+	return tableDefs
+}
 
-	// ── Step 3: Ensure all columns exist (handles pre-existing tables) ────────
-	// Each entry is checked via information_schema and only ALTER'd if missing.
+// ensureSchemaColumns adds any missing columns to existing tables (checked via information_schema).
+func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 	columns := []struct {
 		table  string
 		column string
@@ -486,29 +474,22 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 		{"user_preferences", "show_trending", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"analytics_events", "data", "JSON NULL"},
 		{"media_metadata", "probe_mod_time", "TIMESTAMP NULL DEFAULT NULL"},
-		// stable_id: UUID generated once per file path and persisted.
-		// NULL for rows created before this column was added; the media module
-		// generates and saves a UUID for any row missing one.
 		{"media_metadata", "stable_id", "VARCHAR(36) NULL"},
-		// content_fingerprint: SHA-256 of sampled file content (first + last 64KB + size).
-		// Used to detect moved/renamed files and duplicates without relying on paths.
 		{"media_metadata", "content_fingerprint", "VARCHAR(64) NULL"},
-		// blur_hash: compact representation for LQIP placeholders (~20-30 bytes)
 		{"media_metadata", "blur_hash", "VARCHAR(100) NULL"},
-		// content_fingerprint on receiver_media: enables duplicate detection across
-		// local and slave media. Slave nodes compute the same fingerprint algorithm and
-		// push it in their catalog so the master can skip items that match local media.
 		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
 		{"hls_jobs", "last_accessed_at", "TIMESTAMP NULL"},
 	}
-
 	for _, col := range columns {
 		if err := m.ensureColumn(ctx, col.table, col.column, col.def); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	// ── Step 4: Ensure indexes exist ─────────────────────────────────────────
+// ensureSchemaIndexes adds any missing indexes (checked via information_schema).
+func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 	indexes := []struct {
 		table string
 		index string
@@ -523,67 +504,91 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 		{"receiver_media", "idx_receiver_media_fingerprint",
 			"ALTER TABLE receiver_media ADD INDEX idx_receiver_media_fingerprint (content_fingerprint)"},
 	}
-
 	for _, idx := range indexes {
 		if err := m.ensureIndex(ctx, idx.table, idx.index, idx.sql); err != nil {
 			return err
 		}
 	}
-
-	m.log.Info("Database schema is up to date")
 	return nil
+}
+
+// schemaObjectSpec holds parameters for ensureSchemaObject to avoid string-heavy function arguments.
+type schemaObjectSpec struct {
+	table       string
+	name        string
+	checkQuery  string
+	checkArgs   []interface{}
+	apply       func() error
+	logMsg      string
+	errCheckFmt string
+	errApplyFmt string
+}
+
+// ensureSchemaObject checks existence via checkQuery (one bool), then if missing runs apply() and logs logMsg.
+func (m *Module) ensureSchemaObject(ctx context.Context, spec schemaObjectSpec) error {
+	var exists bool
+	if err := m.sqlDB.QueryRowContext(ctx, spec.checkQuery, spec.checkArgs...).Scan(&exists); err != nil {
+		return fmt.Errorf(spec.errCheckFmt, spec.table, spec.name, err)
+	}
+	if exists {
+		return nil
+	}
+	m.log.Info("%s", spec.logMsg)
+	if err := spec.apply(); err != nil {
+		return fmt.Errorf(spec.errApplyFmt, spec.table, spec.name, err)
+	}
+	return nil
+}
+
+// ensureSchemaObjectWithKind builds a schemaObjectSpec with standard error formats and runs ensureSchemaObject.
+func (m *Module) ensureSchemaObjectWithKind(ctx context.Context, kind, table, name, checkQuery string, checkArgs []interface{}, apply func() error, logMsg string) error {
+	return m.ensureSchemaObject(ctx, schemaObjectSpec{
+		table:       table,
+		name:        name,
+		checkQuery:  checkQuery,
+		checkArgs:   checkArgs,
+		apply:       apply,
+		logMsg:      logMsg,
+		errCheckFmt: "check " + kind + " %s.%s: %w",
+		errApplyFmt: "add " + kind + " %s.%s: %w",
+	})
 }
 
 // ensureColumn adds a column to a table if it doesn't already exist.
 func (m *Module) ensureColumn(ctx context.Context, table, column, def string) error {
-	var exists bool
-	err := m.sqlDB.QueryRowContext(ctx, `
-		SELECT COUNT(*) > 0
-		FROM information_schema.COLUMNS
-		WHERE TABLE_SCHEMA = DATABASE()
-		  AND TABLE_NAME   = ?
-		  AND COLUMN_NAME  = ?
-	`, table, column).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("check column %s.%s: %w", table, column, err)
-	}
-	if exists {
-		return nil
-	}
-	m.log.Info("Adding missing column %s.%s", table, column)
-	_, err = m.sqlDB.ExecContext(ctx,
-		fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN `%s` %s", table, column, def))
-	if err != nil {
-		return fmt.Errorf("add column %s.%s: %w", table, column, err)
-	}
-	return nil
+	return m.ensureSchemaObjectWithKind(ctx, "column", table, column,
+		`SELECT COUNT(*) > 0 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+		[]interface{}{table, column},
+		func() error {
+			_, err := m.sqlDB.ExecContext(ctx, fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN `%s` %s", table, column, def))
+			return err
+		},
+		fmt.Sprintf("Adding missing column %s.%s", table, column),
+	)
 }
 
 // ensureIndex adds an index if it doesn't already exist.
 func (m *Module) ensureIndex(ctx context.Context, table, index, alterSQL string) error {
-	var exists bool
-	err := m.sqlDB.QueryRowContext(ctx, `
-		SELECT COUNT(*) > 0
-		FROM information_schema.STATISTICS
-		WHERE TABLE_SCHEMA = DATABASE()
-		  AND TABLE_NAME   = ?
-		  AND INDEX_NAME   = ?
-	`, table, index).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("check index %s.%s: %w", table, index, err)
-	}
-	if exists {
-		return nil
-	}
-	m.log.Info("Adding missing index %s on %s", index, table)
-	if _, err = m.sqlDB.ExecContext(ctx, alterSQL); err != nil {
-		return fmt.Errorf("add index %s.%s: %w", table, index, err)
-	}
-	return nil
+	return m.ensureSchemaObjectWithKind(ctx, "index", table, index,
+		`SELECT COUNT(*) > 0 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+		[]interface{}{table, index},
+		func() error {
+			_, err := m.sqlDB.ExecContext(ctx, alterSQL)
+			return err
+		},
+		fmt.Sprintf("Adding missing index %s on %s", index, table),
+	)
+}
+
+// dropConstraintSpec holds parameters for dropConstraintIfExists.
+type dropConstraintSpec struct {
+	table          string
+	constraint     string
+	constraintType string
 }
 
 // dropConstraintIfExists drops a named constraint from a table if it exists.
-func (m *Module) dropConstraintIfExists(ctx context.Context, table, constraint, constraintType string) error {
+func (m *Module) dropConstraintIfExists(ctx context.Context, spec dropConstraintSpec) error {
 	var count int
 	err := m.sqlDB.QueryRowContext(ctx, `
 		SELECT COUNT(*)
@@ -592,15 +597,15 @@ func (m *Module) dropConstraintIfExists(ctx context.Context, table, constraint, 
 		  AND TABLE_NAME      = ?
 		  AND CONSTRAINT_NAME = ?
 		  AND CONSTRAINT_TYPE = ?
-	`, table, constraint, constraintType).Scan(&count)
+	`, spec.table, spec.constraint, spec.constraintType).Scan(&count)
 	if err != nil {
-		return fmt.Errorf("check constraint %s.%s: %w", table, constraint, err)
+		return fmt.Errorf("check constraint %s.%s: %w", spec.table, spec.constraint, err)
 	}
 	if count == 0 {
 		return nil
 	}
-	m.log.Info("Dropping legacy constraint %s from %s", constraint, table)
+	m.log.Info("Dropping legacy constraint %s from %s", spec.constraint, spec.table)
 	_, err = m.sqlDB.ExecContext(ctx,
-		fmt.Sprintf("ALTER TABLE `%s` DROP FOREIGN KEY `%s`", table, constraint))
+		fmt.Sprintf("ALTER TABLE `%s` DROP FOREIGN KEY `%s`", spec.table, spec.constraint))
 	return err
 }
