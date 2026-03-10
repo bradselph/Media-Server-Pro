@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/upload"
 )
 
 // UploadMedia handles media file upload
@@ -89,7 +91,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 	var totalAdded int64
 
 	for _, fh := range fileHeaders {
-		result, err := h.upload.ProcessFileHeader(fh, session.UserID, category)
+		result, err := h.upload.ProcessFileHeader(fh, upload.UploadScope{UserID: session.UserID, Category: category})
 		if err != nil {
 			h.log.Error("Upload failed for %s: %v", fh.Filename, err)
 			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
@@ -100,7 +102,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
 			continue
 		}
-		uploaded = append(uploaded, uploadedEntry{UploadID: result.UploadID, Filename: result.Filename, Size: result.Size})
+		uploaded = append(uploaded, uploadedEntry{UploadID: string(result.UploadID), Filename: result.Filename, Size: result.Size})
 		totalAdded += result.Size
 
 		if cfg.Uploads.ScanForMature && result.Path != "" && h.scanner != nil {
@@ -137,7 +139,7 @@ func (h *Handler) GetUploadProgress(c *gin.Context) {
 	if !h.requireUpload(c) {
 		return
 	}
-	uploadID := c.Param("id")
+	uploadID := upload.UploadID(c.Param("id"))
 
 	progress, ok := h.upload.GetProgress(uploadID)
 	if !ok {
