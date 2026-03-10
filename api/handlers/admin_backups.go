@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/backup"
 )
 
 // ListBackupsV2 lists backups using the backup module
@@ -39,7 +41,10 @@ func (h *Handler) CreateBackupV2(c *gin.Context) {
 		req.BackupType = "full"
 	}
 
-	backupInfo, err := h.backup.CreateBackup(req.Description, req.BackupType)
+	backupInfo, err := h.backup.CreateBackup(backup.CreateBackupOptions{
+		Description: req.Description,
+		Type:        req.BackupType,
+	})
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")

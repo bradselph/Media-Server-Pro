@@ -76,24 +76,21 @@ type Options struct {
 	BuildDate  string
 }
 
-// New creates a new server instance
-func New(opts Options) (*Server, error) {
-	// Initialize logger - first with defaults (before config is loaded)
+// initServerLogger initializes the base logger before configuration is loaded.
+func initServerLogger(opts Options) (*logger.Logger, error) {
 	logCfg := logger.DefaultConfig()
 	logCfg.MinLevel = opts.LogLevel
 	logCfg.ModuleName = "server"
 	if err := logger.Init(logCfg); err != nil {
 		return nil, fmt.Errorf("failed to initialize logger: %w", err)
 	}
-	log := logger.New("server")
+	return logger.New("server"), nil
+}
 
-	log.Info(logSeparator)
-	log.Info("    Media Server Pro")
-	log.Info(logSeparator)
-	log.Info("Initializing server...")
-
-	// Load configuration
-	cfgPath := opts.ConfigPath
+// loadConfigManager loads the configuration file and returns its manager.
+// It falls back to defaults when loading fails.
+func loadConfigManager(log *logger.Logger, configPath string) *config.Manager {
+	cfgPath := configPath
 	if cfgPath == "" {
 		cfgPath = "config.json"
 	}
@@ -101,43 +98,99 @@ func New(opts Options) (*Server, error) {
 	if err := cfgMgr.Load(); err != nil {
 		log.Warn("Failed to load config, using defaults: %v", err)
 	}
+	return cfgMgr
+}
 
-	// Enable file logging immediately after config load — BEFORE validation — so that
-	// config errors, panics, and all startup messages are captured on disk.
+// configureLoggingFromConfig applies logging-related settings from the loaded configuration.
+func configureLoggingFromConfig(log *logger.Logger, cfgMgr *config.Manager) {
 	appCfg := cfgMgr.Get()
 
 	if appCfg.Logging.Format == "json" {
 		logger.SetJSONFormat(true)
 	}
 
-	if appCfg.Logging.FileEnabled {
-		logDir := appCfg.Directories.Logs
-		if logDir == "" {
-			logDir = "logs"
-		}
-		maxSize := appCfg.Logging.MaxFileSize
-		if !appCfg.Logging.FileRotation {
-			maxSize = 0
-		}
-		if err := logger.EnableFileLogging(logDir, maxSize, appCfg.Logging.MaxBackups); err != nil {
-			log.Warn("Failed to enable file logging: %v", err)
-		} else {
-			log.Info("File logging enabled: directory=%s, max_size=%dMB, max_backups=%d, rotation=%v",
-				logDir, appCfg.Logging.MaxFileSize/(1024*1024), appCfg.Logging.MaxBackups, appCfg.Logging.FileRotation)
-		}
+	if !appCfg.Logging.FileEnabled {
+		return
 	}
 
-	// Validate configuration (errors are now written to disk if file logging is enabled)
+	logDir := appCfg.Directories.Logs
+	if logDir == "" {
+		logDir = "logs"
+	}
+
+	maxSize := appCfg.Logging.MaxFileSize
+	if !appCfg.Logging.FileRotation {
+		maxSize = 0
+	}
+
+	if err := logger.EnableFileLogging(logDir, maxSize, appCfg.Logging.MaxBackups); err != nil {
+		log.Warn("Failed to enable file logging: %v", err)
+		return
+	}
+
+	log.Info("File logging enabled: directory=%s, max_size=%dMB, max_backups=%d, rotation=%v",
+		logDir, appCfg.Logging.MaxFileSize/(1024*1024), appCfg.Logging.MaxBackups, appCfg.Logging.FileRotation)
+}
+
+// validateAndPrepareConfig validates the configuration and ensures required directories exist.
+func validateAndPrepareConfig(cfgMgr *config.Manager, log *logger.Logger) error {
 	if errs := cfgMgr.Validate(); len(errs) > 0 {
 		for _, err := range errs {
 			log.Error("Configuration error: %v", err)
 		}
-		return nil, fmt.Errorf("configuration validation failed with %d errors", len(errs))
+		return fmt.Errorf("configuration validation failed with %d errors", len(errs))
 	}
 
-	// Create necessary directories
 	if err := cfgMgr.CreateDirectories(); err != nil {
-		return nil, fmt.Errorf("failed to create directories: %w", err)
+		return fmt.Errorf("failed to create directories: %w", err)
+	}
+
+	return nil
+}
+
+// createTLSConfig validates certificate/key files and constructs a TLS configuration.
+func createTLSConfig(certFile, keyFile string) (*tls.Config, error) {
+	if certFile == "" {
+		return nil, fmt.Errorf("HTTPS enabled but SERVER_CERT_FILE is not configured")
+	}
+	if keyFile == "" {
+		return nil, fmt.Errorf("HTTPS enabled but SERVER_KEY_FILE is not configured")
+	}
+	if _, err := os.Stat(certFile); err != nil {
+		return nil, fmt.Errorf("TLS certificate file not found or not readable (%s): %w", certFile, err)
+	}
+	if _, err := os.Stat(keyFile); err != nil {
+		return nil, fmt.Errorf("TLS key file not found or not readable (%s): %w", keyFile, err)
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("TLS certificate/key pair is invalid: %w", err)
+	}
+
+	return &tls.Config{
+		Certificates:     []tls.Certificate{cert},
+		MinVersion:       tls.VersionTLS12,
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
+	}, nil
+}
+
+// New creates a new server instance
+func New(opts Options) (*Server, error) {
+	log, err := initServerLogger(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info(logSeparator)
+	log.Info("    Media Server Pro")
+	log.Info(logSeparator)
+	log.Info("Initializing server...")
+
+	cfgMgr := loadConfigManager(log, opts.ConfigPath)
+	configureLoggingFromConfig(log, cfgMgr)
+	if err := validateAndPrepareConfig(cfgMgr, log); err != nil {
+		return nil, err
 	}
 
 	version := opts.Version
@@ -333,32 +386,11 @@ func (s *Server) startHTTP() error {
 func (s *Server) startHTTPS() error {
 	cfg := s.config.Get()
 
-	// Validate cert and key paths before attempting to start the TLS listener,
-	// providing clear error messages instead of the cryptic ones from ListenAndServeTLS.
-	if cfg.Server.CertFile == "" {
-		return fmt.Errorf("HTTPS enabled but SERVER_CERT_FILE is not configured")
-	}
-	if cfg.Server.KeyFile == "" {
-		return fmt.Errorf("HTTPS enabled but SERVER_KEY_FILE is not configured")
-	}
-	if _, err := os.Stat(cfg.Server.CertFile); err != nil {
-		return fmt.Errorf("TLS certificate file not found or not readable (%s): %w", cfg.Server.CertFile, err)
-	}
-	if _, err := os.Stat(cfg.Server.KeyFile); err != nil {
-		return fmt.Errorf("TLS key file not found or not readable (%s): %w", cfg.Server.KeyFile, err)
-	}
-	// Load and verify the cert/key pair before binding to the port
-	cert, err := tls.LoadX509KeyPair(cfg.Server.CertFile, cfg.Server.KeyFile)
+	tlsConfig, err := createTLSConfig(cfg.Server.CertFile, cfg.Server.KeyFile)
 	if err != nil {
-		return fmt.Errorf("TLS certificate/key pair is invalid: %w", err)
+		return err
 	}
 
-	// Configure TLS with the loaded certificate
-	tlsConfig := &tls.Config{
-		Certificates:     []tls.Certificate{cert},
-		MinVersion:       tls.VersionTLS12,
-		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
-	}
 	s.httpServer.TLSConfig = tlsConfig
 
 	ln, err := tls.Listen("tcp", s.httpServer.Addr, tlsConfig)
@@ -397,13 +429,26 @@ func (s *Server) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
-	// Stop HTTP server first
+	s.shutdownHTTPServer(ctx)
+	s.shutdownModules(ctx)
+	s.saveConfigWithRetry()
+
+	s.log.Info("Server shutdown complete")
+
+	// Flush and close log files to ensure all shutdown logs are persisted
+	logger.Shutdown()
+
+	close(s.shutdownCh)
+}
+
+func (s *Server) shutdownHTTPServer(ctx context.Context) {
 	s.log.Info("Stopping HTTP server...")
 	if err := s.httpServer.Shutdown(ctx); err != nil {
 		s.log.Error("HTTP server shutdown error: %v", err)
 	}
+}
 
-	// Stop all modules in reverse order
+func (s *Server) shutdownModules(ctx context.Context) {
 	s.log.Info("Stopping modules...")
 	for i := len(s.modules) - 1; i >= 0; i-- {
 		module := s.modules[i]
@@ -414,7 +459,9 @@ func (s *Server) Shutdown() {
 			s.log.Info("Module %s stopped", module.Name())
 		}
 	}
+}
 
+func (s *Server) saveConfigWithRetry() {
 	// Save configuration with retry logic (graceful degradation on failure)
 	// Retry up to 3 times with 100ms delay to handle temporary filesystem issues
 	saved := false
@@ -432,13 +479,6 @@ func (s *Server) Shutdown() {
 	if !saved {
 		s.log.Error("Configuration save failed after 3 attempts - changes may be lost on restart")
 	}
-
-	s.log.Info("Server shutdown complete")
-
-	// Flush and close log files to ensure all shutdown logs are persisted
-	logger.Shutdown()
-
-	close(s.shutdownCh)
 }
 
 // Wait blocks until the server is shut down

@@ -40,11 +40,32 @@ var (
 	dangerousPatterns = regexp.MustCompile(`[<>:"|?*\x00-\x1f]`)
 )
 
+// UploadStatus represents the state of an upload (replaces primitive string).
+type UploadStatus string
+
+const (
+	UploadStatusUploading UploadStatus = "uploading"
+	UploadStatusCompleted UploadStatus = "completed"
+	UploadStatusFailed    UploadStatus = "failed"
+)
+
+// MediaType represents the kind of media (replaces primitive string).
+type MediaType string
+
+const (
+	MediaTypeVideo   MediaType = "video"
+	MediaTypeAudio   MediaType = "audio"
+	MediaTypeUnknown MediaType = "unknown"
+)
+
+// UploadID uniquely identifies an upload session (replaces primitive string).
+type UploadID string
+
 // Module handles file uploads
 type Module struct {
 	config        *config.Manager
 	log           *logger.Logger
-	activeUploads map[string]*Progress
+	activeUploads map[UploadID]*Progress
 	mu            sync.RWMutex
 	healthy       bool
 	healthMsg     string
@@ -54,28 +75,49 @@ type Module struct {
 
 // Progress tracks upload progress.
 type Progress struct {
-	ID          string     `json:"id"`
-	Filename    string     `json:"filename"`
-	Size        int64      `json:"size"`
-	Uploaded    int64      `json:"uploaded"`
-	Progress    float64    `json:"progress"`
-	Status      string     `json:"status"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Error       string     `json:"error,omitempty"`
-	UserID      string     `json:"user_id"`
-	DestPath    string     `json:"-"`
+	ID          UploadID      `json:"id"`
+	Filename    string        `json:"filename"`
+	Size        int64         `json:"size"`
+	Uploaded    int64         `json:"uploaded"`
+	Progress    float64       `json:"progress"`
+	Status      UploadStatus  `json:"status"`
+	StartedAt   time.Time     `json:"started_at"`
+	CompletedAt *time.Time    `json:"completed_at,omitempty"`
+	Error       string        `json:"error,omitempty"`
+	UserID      string        `json:"user_id"`
+	DestPath    string        `json:"-"`
 }
 
 // Result contains the result of an upload.
 type Result struct {
-	UploadID  string `json:"upload_id"`
-	Success   bool   `json:"success"`
-	Filename  string `json:"filename"`
-	Path      string `json:"path"`
-	Size      int64  `json:"size"`
-	MediaType string `json:"media_type"`
-	Error     string `json:"error,omitempty"`
+	UploadID  UploadID  `json:"upload_id"`
+	Success   bool      `json:"success"`
+	Filename  string    `json:"filename"`
+	Path      string    `json:"path"`
+	Size      int64     `json:"size"`
+	MediaType MediaType `json:"media_type"`
+	Error     string    `json:"error,omitempty"`
+}
+
+// UploadScope identifies the user and optional category for an upload.
+type UploadScope struct {
+	UserID   string
+	Category string
+}
+
+// PreparedUpload holds the validated filename, media type, and destination dir from validation.
+type PreparedUpload struct {
+	Filename  string
+	MediaType MediaType
+	DestDir   string
+}
+
+// ProgressRegistration holds parameters for registering upload progress.
+type ProgressRegistration struct {
+	UploadID UploadID
+	Filename string
+	UserID   string
+	Size     int64
 }
 
 // NewModule creates a new upload module
@@ -83,7 +125,7 @@ func NewModule(cfg *config.Manager) *Module {
 	return &Module{
 		config:        cfg,
 		log:           logger.New("upload"),
-		activeUploads: make(map[string]*Progress),
+		activeUploads: make(map[UploadID]*Progress),
 		uploadDir:     cfg.Get().Directories.Uploads,
 	}
 }
@@ -138,54 +180,13 @@ func (m *Module) Health() models.HealthStatus {
 }
 
 // ProcessFileHeader validates and saves a single uploaded file identified by its
-// multipart file header. userID is used for the per-user subdirectory; category
-// is an optional subdirectory name within the user directory.
-func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category string) (*Result, error) {
-	// Enforce per-file size limit.  HandleUpload applies MaxBytesReader to the
-	// whole request body, but callers that pass individual file headers directly
-	// (e.g. multi-file upload handlers) bypass that check.
-	cfg := m.config.Get()
-	if cfg.Uploads.MaxFileSize > 0 && fh.Size > cfg.Uploads.MaxFileSize {
-		return nil, fmt.Errorf("file size %d bytes exceeds maximum allowed size of %d bytes", fh.Size, cfg.Uploads.MaxFileSize)
-	}
-
-	// Validate filename
-	filename, err := m.sanitizeFilename(fh.Filename)
+// multipart file header. scope identifies the user and optional category for the upload.
+func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) (*Result, error) {
+	prepared, err := m.validateAndPrepareUpload(fh, scope)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validate extension
-	ext := strings.ToLower(filepath.Ext(filename))
-	if !m.isAllowedExtension(ext) {
-		return nil, fmt.Errorf("file type not allowed: %s", ext)
-	}
-
-	// Determine media type
-	mediaType := "unknown"
-	if videoExtensions[ext] {
-		mediaType = "video"
-	} else if audioExtensions[ext] {
-		mediaType = "audio"
-	}
-
-	// Sanitize userID to prevent path traversal (e.g. "../../../etc")
-	safeUserID := filepath.Base(userID)
-	if safeUserID == "" || safeUserID == "." || safeUserID == ".." {
-		return nil, fmt.Errorf("invalid user ID")
-	}
-
-	// Build destination directory
-	destDir := filepath.Join(m.uploadDir, safeUserID)
-	if category != "" {
-		destDir = filepath.Join(m.uploadDir, safeUserID, m.sanitizeCategory(category))
-	}
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	// Open the uploaded file
 	file, err := fh.Open()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -196,77 +197,34 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category st
 		}
 	}()
 
-	// Generate upload ID, store progress, and return the ID in the Result so clients
-	// can poll GET /api/upload/:id/progress. Completed entries linger for 5 minutes.
 	uploadID := m.generateUploadID()
-	progress := &Progress{
-		ID:        uploadID,
-		Filename:  filename,
-		Size:      fh.Size,
-		Status:    "uploading",
-		StartedAt: time.Now(),
-		UserID:    userID,
-	}
+	progress := m.registerUploadProgress(ProgressRegistration{
+		UploadID: UploadID(uploadID),
+		Filename: prepared.Filename,
+		UserID:   scope.UserID,
+		Size:     fh.Size,
+	})
+	defer m.scheduleUnregisterUpload(uploadID, 5*time.Minute)
 
-	m.mu.Lock()
-	m.activeUploads[uploadID] = progress
-	m.mu.Unlock()
-
-	// Remove from activeUploads after a 5-minute grace period so clients can
-	// still poll progress after the upload completes.
-	defer func() {
-		go func() {
-			time.Sleep(5 * time.Minute)
-			m.mu.Lock()
-			delete(m.activeUploads, uploadID)
-			m.mu.Unlock()
-		}()
-	}()
-
-	// Atomically find unique filename and create temp file
-	destPath, destFile, err := m.createUniqueUploadFile(destDir, filename)
+	destPath, destFile, err := m.createUniqueUploadFile(prepared.DestDir, prepared.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create unique file: %w", err)
 	}
 	progress.DestPath = destPath
 	tempPath := destPath + ".tmp"
 
-	// Copy with progress tracking
-	written, err := m.copyWithProgress(destFile, file, progress)
-
-	// Close destFile explicitly before the rename. On Windows, renaming an
-	// open file fails with "The process cannot access the file because it is
-	// being used by another process". The defer-based close runs after the
-	// function returns — too late. We close here, then fall through to the
-	// rename. The double-close from the defer below is safe: Close on an
-	// already-closed *os.File returns an error which is silently ignored.
-	if closeErr := destFile.Close(); closeErr != nil {
-		m.log.Warn("Failed to close temporary file %s: %v", tempPath, closeErr)
-	}
-
+	written, err := m.copyAndRenameUpload(file, destFile, copyPaths{tempPath, destPath}, progress)
 	if err != nil {
-		if removeErr := os.Remove(tempPath); removeErr != nil {
-			m.log.Warn("Failed to remove temporary file %s: %v", tempPath, removeErr)
-		}
-		progress.Status = "failed"
+		progress.Status = UploadStatusFailed
 		progress.Error = err.Error()
 		return nil, fmt.Errorf("upload failed: %w", err)
 	}
 
-	// Atomic rename (file must be closed first, especially on Windows)
-	if err := os.Rename(tempPath, destPath); err != nil {
-		if removeErr := os.Remove(tempPath); removeErr != nil {
-			m.log.Warn("Failed to remove temporary file %s: %v", tempPath, removeErr)
-		}
-		return nil, fmt.Errorf("failed to finalize upload: %w", err)
-	}
-
-	progress.Status = "completed"
+	progress.Status = UploadStatusCompleted
 	completedAt := time.Now()
 	progress.CompletedAt = &completedAt
 	progress.Progress = 100
-
-	m.log.Info("Upload complete: %s (%d bytes) by user %s", filename, written, userID)
+	m.log.Info("Upload complete: %s (%d bytes) by user %s", prepared.Filename, written, scope.UserID)
 
 	return &Result{
 		UploadID:  uploadID,
@@ -274,8 +232,115 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, userID, category st
 		Filename:  filepath.Base(destPath),
 		Path:      destPath,
 		Size:      written,
-		MediaType: mediaType,
+		MediaType: prepared.MediaType,
 	}, nil
+}
+
+// validateAndPrepareUpload checks size/filename/extension, resolves media type and destination directory.
+func (m *Module) validateAndPrepareUpload(fh *multipart.FileHeader, scope UploadScope) (*PreparedUpload, error) {
+	if err := validateUploadSize(m.config.Get(), fh.Size); err != nil {
+		return nil, err
+	}
+	filename, err := m.sanitizeFilename(fh.Filename)
+	if err != nil {
+		return nil, err
+	}
+	ext := strings.ToLower(filepath.Ext(filename))
+	if !m.isAllowedExtension(ext) {
+		return nil, fmt.Errorf("file type not allowed: %s", ext)
+	}
+	destDir, err := m.buildUploadDestDir(scope)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
+	}
+	return &PreparedUpload{
+		Filename:  filename,
+		MediaType: resolveMediaType(ext),
+		DestDir:   destDir,
+	}, nil
+}
+
+// validateUploadSize returns an error if size exceeds the configured maximum.
+func validateUploadSize(cfg *config.Config, size int64) error {
+	if cfg.Uploads.MaxFileSize > 0 && size > cfg.Uploads.MaxFileSize {
+		return fmt.Errorf("file size %d bytes exceeds maximum allowed size of %d bytes", size, cfg.Uploads.MaxFileSize)
+	}
+	return nil
+}
+
+// resolveMediaType returns the media type for the given file extension.
+func resolveMediaType(ext string) MediaType {
+	if videoExtensions[ext] {
+		return MediaTypeVideo
+	}
+	if audioExtensions[ext] {
+		return MediaTypeAudio
+	}
+	return MediaTypeUnknown
+}
+
+// buildUploadDestDir validates scope and returns the destination directory path for the upload.
+func (m *Module) buildUploadDestDir(scope UploadScope) (string, error) {
+	safeUserID := filepath.Base(scope.UserID)
+	if isEmptyOrSpecialFilename(safeUserID) {
+		return "", fmt.Errorf("invalid user ID")
+	}
+	destDir := filepath.Join(m.uploadDir, safeUserID)
+	if scope.Category != "" {
+		destDir = filepath.Join(m.uploadDir, safeUserID, m.sanitizeCategory(scope.Category))
+	}
+	return destDir, nil
+}
+
+// registerUploadProgress creates a Progress, stores it in activeUploads, and returns it.
+func (m *Module) registerUploadProgress(params ProgressRegistration) *Progress {
+	progress := &Progress{
+		ID:        params.UploadID,
+		Filename:  params.Filename,
+		Size:      params.Size,
+		Status:    UploadStatusUploading,
+		StartedAt: time.Now(),
+		UserID:    params.UserID,
+	}
+	m.mu.Lock()
+	m.activeUploads[params.UploadID] = progress
+	m.mu.Unlock()
+	return progress
+}
+
+// scheduleUnregisterUpload removes the upload from activeUploads after the given duration.
+func (m *Module) scheduleUnregisterUpload(uploadID UploadID, after time.Duration) {
+	go func() {
+		time.Sleep(after)
+		m.mu.Lock()
+		delete(m.activeUploads, uploadID)
+		m.mu.Unlock()
+	}()
+}
+
+// copyPaths holds temp and final paths for an upload.
+type copyPaths struct {
+	tempPath, destPath string
+}
+
+// copyAndRenameUpload copies src to destFile with progress, closes destFile, then renames paths.tempPath to paths.destPath.
+func (m *Module) copyAndRenameUpload(src multipart.File, destFile *os.File, paths copyPaths, progress *Progress) (int64, error) {
+	written, err := m.copyWithProgress(destFile, src, progress)
+	if closeErr := destFile.Close(); closeErr != nil {
+		m.log.Warn("Failed to close temporary file %s: %v", paths.tempPath, closeErr)
+	}
+	if err != nil {
+		_ = os.Remove(paths.tempPath)
+		return 0, err
+	}
+	if err := os.Rename(paths.tempPath, paths.destPath); err != nil {
+		_ = os.Remove(paths.tempPath)
+		return written, fmt.Errorf("failed to finalize upload: %w", err)
+	}
+	return written, nil
 }
 
 // HandleUpload processes a multipart file upload (legacy single-file path).
@@ -305,7 +370,27 @@ func (m *Module) HandleUpload(w http.ResponseWriter, r *http.Request, userID str
 		return nil, fmt.Errorf("failed to get file: %w", err)
 	}
 
-	return m.ProcessFileHeader(header, userID, r.FormValue("category"))
+	return m.ProcessFileHeader(header, UploadScope{UserID: userID, Category: r.FormValue("category")})
+}
+
+// containsPathTraversal returns true if s contains path traversal or separator characters.
+func containsPathTraversal(s string) bool {
+	for _, substr := range []string{"..", "/", "\\"} {
+		if strings.Contains(s, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// isEmptyOrSpecialFilename returns true for empty, "." or ".." filenames.
+func isEmptyOrSpecialFilename(s string) bool {
+	switch s {
+	case "", ".", "..":
+		return true
+	default:
+		return false
+	}
 }
 
 // sanitizeFilename validates and cleans a filename
@@ -314,7 +399,7 @@ func (m *Module) sanitizeFilename(filename string) (string, error) {
 	filename = filepath.Base(filename)
 
 	// Check for empty filename
-	if filename == "" || filename == "." || filename == ".." {
+	if isEmptyOrSpecialFilename(filename) {
 		return "", fmt.Errorf("invalid filename")
 	}
 
@@ -324,7 +409,7 @@ func (m *Module) sanitizeFilename(filename string) (string, error) {
 	}
 
 	// Check for path traversal
-	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
+	if containsPathTraversal(filename) {
 		return "", fmt.Errorf("path traversal detected")
 	}
 
@@ -462,17 +547,17 @@ func (m *Module) writeChunkAndTrack(dst io.Writer, chunk []byte, progress *Progr
 }
 
 // generateUploadID creates a unique upload ID
-func (m *Module) generateUploadID() string {
+func (m *Module) generateUploadID() UploadID {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		// Fallback to timestamp-based ID if crypto/rand fails
-		return fmt.Sprintf("%d", time.Now().UnixNano())
+		return UploadID(fmt.Sprintf("%d", time.Now().UnixNano()))
 	}
-	return hex.EncodeToString(b)
+	return UploadID(hex.EncodeToString(b))
 }
 
 // GetProgress returns progress for an upload
-func (m *Module) GetProgress(uploadID string) (*Progress, bool) {
+func (m *Module) GetProgress(uploadID UploadID) (*Progress, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	progress, ok := m.activeUploads[uploadID]

@@ -78,6 +78,10 @@ func GinRequestID() gin.HandlerFunc {
 	}
 }
 
+func isHTTPS(c *gin.Context) bool {
+	return c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+}
+
 // GinSecurityHeaders adds security headers (CSP, HSTS, X-Frame-Options, etc.)
 func GinSecurityHeaders(csp string, hstsMaxAge int) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -90,7 +94,7 @@ func GinSecurityHeaders(csp string, hstsMaxAge int) gin.HandlerFunc {
 			c.Header("Content-Security-Policy", csp)
 		}
 
-		if hstsMaxAge > 0 && (c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https") {
+		if hstsMaxAge > 0 && isHTTPS(c) {
 			c.Header("Strict-Transport-Security",
 				fmt.Sprintf("max-age=%d; includeSubDomains", hstsMaxAge))
 		}
@@ -99,8 +103,15 @@ func GinSecurityHeaders(csp string, hstsMaxAge int) gin.HandlerFunc {
 	}
 }
 
-// GinCORS adds CORS headers to Gin responses
-func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
+// corsConfig holds parsed CORS settings for the handler.
+type corsConfig struct {
+	allowAll       bool
+	allowedOrigins map[string]bool
+	methodsStr     string
+	headersStr     string
+}
+
+func parseCORSConfig(origins, methods, headers []string) corsConfig {
 	allowedOrigins := make(map[string]bool)
 	allowAll := false
 	for _, origin := range origins {
@@ -110,28 +121,39 @@ func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
 		}
 		allowedOrigins[origin] = true
 	}
+	return corsConfig{
+		allowAll:       allowAll,
+		allowedOrigins: allowedOrigins,
+		methodsStr:     strings.Join(methods, ", "),
+		headersStr:     strings.Join(headers, ", "),
+	}
+}
 
-	methodsStr := strings.Join(methods, ", ")
-	headersStr := strings.Join(headers, ", ")
+// allowOrigin returns the value for Access-Control-Allow-Origin and whether CORS is allowed.
+func (cfg *corsConfig) allowOrigin(origin string) (value string, allowed bool) {
+	if cfg.allowAll {
+		if origin != "" {
+			return origin, true
+		}
+		return "*", true
+	}
+	if cfg.allowedOrigins[origin] {
+		return origin, true
+	}
+	return "", false
+}
+
+// GinCORS adds CORS headers to Gin responses
+func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
+	cfg := parseCORSConfig(origins, methods, headers)
 
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-
-		if allowAll || allowedOrigins[origin] {
-			if allowAll {
-				if origin != "" {
-					c.Header("Access-Control-Allow-Origin", origin)
-					c.Header("Vary", "Origin")
-				} else {
-					c.Header("Access-Control-Allow-Origin", "*")
-					c.Header("Vary", "Origin")
-				}
-			} else {
-				c.Header("Access-Control-Allow-Origin", origin)
-				c.Header("Vary", "Origin")
-			}
-			c.Header("Access-Control-Allow-Methods", methodsStr)
-			c.Header("Access-Control-Allow-Headers", headersStr)
+		if value, allowed := cfg.allowOrigin(origin); allowed {
+			c.Header("Access-Control-Allow-Origin", value)
+			c.Header("Vary", "Origin")
+			c.Header("Access-Control-Allow-Methods", cfg.methodsStr)
+			c.Header("Access-Control-Allow-Headers", cfg.headersStr)
 			c.Header("Access-Control-Max-Age", "86400")
 		}
 

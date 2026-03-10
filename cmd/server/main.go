@@ -372,12 +372,12 @@ func registerTasks(
 	log *logger.Logger,
 ) {
 	// Media library scan — discovers new/removed files every hour
-	scheduler.RegisterTask(
-		"media-scan",
-		"Media Library Scan",
-		"Scans configured directories for new and removed media files",
-		1*time.Hour,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "media-scan",
+		Name:        "Media Library Scan",
+		Description: "Scans configured directories for new and removed media files",
+		Schedule:    1 * time.Hour,
+		Func: func(ctx context.Context) error {
 			if err := mediaModule.Scan(); err != nil {
 				return err
 			}
@@ -402,26 +402,26 @@ func registerTasks(
 			}
 			return nil
 		},
-	)
+	})
 
 	// Metadata cleanup — re-scans to prune orphaned entries every 24h
-	scheduler.RegisterTask(
-		"metadata-cleanup",
-		"Metadata Cleanup",
-		"Removes metadata entries for media files that no longer exist on disk",
-		24*time.Hour,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "metadata-cleanup",
+		Name:        "Metadata Cleanup",
+		Description: "Removes metadata entries for media files that no longer exist on disk",
+		Schedule:    24 * time.Hour,
+		Func: func(ctx context.Context) error {
 			return mediaModule.Scan()
 		},
-	)
+	})
 
 	// Thumbnail generation — generates missing thumbnails every 30m
-	scheduler.RegisterTask(
-		"thumbnail-generation",
-		"Thumbnail Generation",
-		"Generates missing thumbnails for media files",
-		30*time.Minute,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "thumbnail-generation",
+		Name:        "Thumbnail Generation",
+		Description: "Generates missing thumbnails for media files",
+		Schedule:    30 * time.Minute,
+		Func: func(ctx context.Context) error {
 			items := mediaModule.ListMedia(media.Filter{})
 			queued := 0
 			for _, item := range items {
@@ -431,10 +431,10 @@ func registerTasks(
 				isAudio := item.Type == "audio"
 				// For video: regenerate if ANY thumbnail (main or preview) is missing.
 				// For audio: only the single waveform thumbnail matters.
-				needsGen := isAudio && !thumbnailsModule.HasThumbnail(item.ID) ||
-					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(item.ID)
+				needsGen := isAudio && !thumbnailsModule.HasThumbnail(thumbnails.MediaID(item.ID)) ||
+					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(thumbnails.MediaID(item.ID))
 				if needsGen {
-					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, item.ID, isAudio, false); err != nil {
+					if _, err := thumbnailsModule.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: false}); err != nil {
 						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
 							log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
 						}
@@ -448,26 +448,26 @@ func registerTasks(
 			}
 			return nil
 		},
-	)
+	})
 
 	// Session cleanup — removes expired sessions every hour
-	scheduler.RegisterTask(
-		"session-cleanup",
-		"Session Cleanup",
-		"Removes expired user sessions from the database",
-		1*time.Hour,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "session-cleanup",
+		Name:        "Session Cleanup",
+		Description: "Removes expired user sessions from the database",
+		Schedule:    1 * time.Hour,
+		Func: func(ctx context.Context) error {
 			return authModule.CleanupExpiredSessions(ctx)
 		},
-	)
+	})
 
 	// Backup cleanup — removes old backups beyond configured retention every 24h
-	scheduler.RegisterTask(
-		"backup-cleanup",
-		"Backup Cleanup",
-		"Removes old backups beyond the configured retention count",
-		24*time.Hour,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "backup-cleanup",
+		Name:        "Backup Cleanup",
+		Description: "Removes old backups beyond the configured retention count",
+		Schedule:    24 * time.Hour,
+		Func: func(ctx context.Context) error {
 			if backupModule == nil {
 				return nil
 			}
@@ -481,16 +481,16 @@ func registerTasks(
 			}
 			return err
 		},
-	)
+	})
 
 	// Mature content scan — scans all media directories for mature content every 12h
 	// and applies auto-flagged results to the media library so ListMedia can filter them.
-	scheduler.RegisterTask(
-		"mature-content-scan",
-		"Mature Content Scan",
-		"Scans media directories for mature content using configured detection models",
-		12*time.Hour,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "mature-content-scan",
+		Name:        "Mature Content Scan",
+		Description: "Scans media directories for mature content using configured detection models",
+		Schedule:    12 * time.Hour,
+		Func: func(ctx context.Context) error {
 			dirs := cfg.Get().Directories
 			var allResults []*scanner.ScanResult
 
@@ -522,26 +522,26 @@ func registerTasks(
 			}
 			return nil
 		},
-	)
+	})
 
 	// Duplicate scan — checks local media library for fingerprint collisions every 24h
-	scheduler.RegisterTask(
-		"duplicate-scan",
-		"Duplicate Media Scan",
-		"Scans local media library for files sharing the same content fingerprint",
-		24*time.Hour,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "duplicate-scan",
+		Name:        "Duplicate Media Scan",
+		Description: "Scans local media library for files sharing the same content fingerprint",
+		Schedule:    24 * time.Hour,
+		Func: func(ctx context.Context) error {
 			return duplicatesModule.ScanLocalMedia(ctx)
 		},
-	)
+	})
 
 	// Audit log cleanup — removes entries older than retention (e.g. 90 days) every 24h
-	scheduler.RegisterTask(
-		"audit-log-cleanup",
-		"Audit Log Cleanup",
-		"Removes audit log entries older than the retention period",
-		24*time.Hour,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "audit-log-cleanup",
+		Name:        "Audit Log Cleanup",
+		Description: "Removes audit log entries older than the retention period",
+		Schedule:    24 * time.Hour,
+		Func: func(ctx context.Context) error {
 			if adminModule == nil {
 				return nil
 			}
@@ -551,15 +551,15 @@ func registerTasks(
 			}
 			return nil
 		},
-	)
+	})
 
 	// Health check — periodic diagnostics and disk space check every 5m
-	scheduler.RegisterTask(
-		"health-check",
-		"Health Check",
-		"Performs system diagnostics and monitors disk space",
-		5*time.Minute,
-		func(ctx context.Context) error {
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "health-check",
+		Name:        "Health Check",
+		Description: "Performs system diagnostics and monitors disk space",
+		Schedule:    5 * time.Minute,
+		Func: func(ctx context.Context) error {
 			appCfg := cfg.Get()
 			dirs := appCfg.Directories
 			for name, dir := range map[string]string{"videos": dirs.Videos, "data": dirs.Data, "logs": dirs.Logs} {
@@ -580,5 +580,5 @@ func registerTasks(
 			log.Debug("Periodic health check complete")
 			return nil
 		},
-	)
+	})
 }

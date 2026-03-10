@@ -36,6 +36,12 @@ type Module struct {
 	healthMu  sync.RWMutex
 }
 
+// CreateBackupOptions holds options for creating a backup
+type CreateBackupOptions struct {
+	Description string // Human-readable description
+	Type        string // "full", "config", or "data"
+}
+
 // Manifest describes a backup
 type Manifest struct {
 	ID          string    `json:"id"`
@@ -112,9 +118,14 @@ func (m *Module) Health() models.HealthStatus {
 }
 
 // CreateBackup creates a full backup of server data
-func (m *Module) CreateBackup(description, backupType string) (*Manifest, error) {
+func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	backupType := opts.Type
+	if backupType == "" {
+		backupType = "full"
+	}
 
 	timestamp := time.Now().Format("20060102_150405")
 	backupID := fmt.Sprintf("backup_%s", timestamp)
@@ -126,55 +137,71 @@ func (m *Module) CreateBackup(description, backupType string) (*Manifest, error)
 		Filename:    filename,
 		CreatedAt:   time.Now(),
 		Type:        backupType,
-		Description: description,
+		Description: opts.Description,
 		Files:       make([]string, 0),
 		Errors:      make([]string, 0),
 		Version:     "3.0.0",
 	}
 
-	// Create zip file
-	zipFile, err := os.Create(backupPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create backup file: %w", err)
-	}
-	defer func() {
-		if err := zipFile.Close(); err != nil {
-			m.log.Warn("Failed to close backup zip file: %v", err)
-		}
-	}()
-
-	zipWriter := zip.NewWriter(zipFile)
-
-	// Files to backup based on type
-	filesToBackup := m.getFilesToBackup(backupType)
-
-	for _, file := range filesToBackup {
-		if err := m.addFileToZip(zipWriter, file, manifest); err != nil {
-			manifest.Errors = append(manifest.Errors, fmt.Sprintf("%s: %v", file, err))
-		}
+	if err := m.writeBackupArchive(backupPath, manifest); err != nil {
+		return nil, err
 	}
 
-	// Close zip writer first to finalize and calculate size
-	if err := zipWriter.Close(); err != nil {
-		// Remove corrupted backup file if finalization failed
-		if removeErr := os.Remove(backupPath); removeErr != nil {
-			m.log.Warn("Failed to remove corrupted backup %s: %v", backupPath, removeErr)
-		}
-		return nil, fmt.Errorf("failed to finalize backup archive: %w", err)
-	}
-
-	// Get file size before writing manifest (so it has correct size)
 	if info, err := os.Stat(backupPath); err == nil {
 		manifest.Size = info.Size()
 	}
 
-	// Save manifest separately for quick access
 	if err := m.saveManifest(manifest); err != nil {
 		m.log.Warn("Failed to save backup manifest: %v", err)
 	}
 
 	m.log.Info("Created backup: %s (%d files, %d bytes)", backupID, len(manifest.Files), manifest.Size)
 	return manifest, nil
+}
+
+// writeBackupArchive creates the zip file and adds all files from manifest.Type.
+func (m *Module) writeBackupArchive(backupPath string, manifest *Manifest) error {
+	zipFile, err := os.Create(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to create backup file: %w", err)
+	}
+	defer m.closeAndWarn(zipFile.Close, "Failed to close backup zip file: %v")
+
+	zipWriter := zip.NewWriter(zipFile)
+	filesToBackup := m.getFilesToBackup(manifest.Type)
+
+	for _, file := range filesToBackup {
+		if addErr := m.addFileToZip(zipWriter, file, manifest); addErr != nil {
+			manifest.Errors = append(manifest.Errors, fmt.Sprintf("%s: %v", file, addErr))
+		}
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		m.removeFileQuietly(removeFileOpts{Path: backupPath, Label: "corrupted backup"})
+		return fmt.Errorf("failed to finalize backup archive: %w", err)
+	}
+
+	return nil
+}
+
+// closeAndWarn invokes closeFn and logs a warning if it returns an error.
+func (m *Module) closeAndWarn(closeFn func() error, msg string) {
+	if err := closeFn(); err != nil {
+		m.log.Warn(msg, err)
+	}
+}
+
+// removeFileOpts specifies which file to remove and how to label it in logs.
+type removeFileOpts struct {
+	Path  string
+	Label string
+}
+
+// removeFileQuietly attempts to remove the file at opts.Path and logs a warning on failure.
+func (m *Module) removeFileQuietly(opts removeFileOpts) {
+	if err := os.Remove(opts.Path); err != nil {
+		m.log.Warn("Failed to remove %s %s: %v", opts.Label, opts.Path, err)
+	}
 }
 
 // getFilesToBackup returns list of files to backup based on type
@@ -272,133 +299,154 @@ func (m *Module) saveManifest(manifest *Manifest) error {
 // the data files are overwritten by restore, those caches become stale. A server
 // restart is required for all modules to reload fresh state from the restored files.
 func (m *Module) RestoreBackup(backupID string) error {
-	// Prevent concurrent restores to avoid race conditions
 	m.restoreMu.Lock()
 	defer m.restoreMu.Unlock()
 
-	// Verify backup exists
 	backupPath := filepath.Join(m.backupDir, backupID+".zip")
 	if _, err := os.Stat(backupPath); err != nil {
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
 
-	// Create a pre-restore backup as safety measure
-	// CreateBackup acquires m.mu internally, so we don't hold it here
-	// restoreMu serializes restore operations preventing concurrent restores
-	m.log.Info("Creating pre-restore backup...")
-	preRestore, err := m.CreateBackup("pre-restore automatic backup", "full")
-	if err != nil {
-		m.log.Warn("Failed to create pre-restore backup: %v", err)
-	} else {
-		m.log.Info("Pre-restore backup created: %s", preRestore.ID)
-	}
+	m.createPreRestoreBackup()
 
-	// Now acquire m.mu for the actual restore operation
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Open zip file
 	reader, err := zip.OpenReader(backupPath)
 	if err != nil {
 		return fmt.Errorf("failed to open backup: %w", err)
 	}
-	defer func() {
-		if err := reader.Close(); err != nil {
-			m.log.Warn("Failed to close backup reader: %v", err)
-		}
-	}()
+	defer m.closeAndWarn(reader.Close, "Failed to close backup reader: %v")
 
-	// Validate total uncompressed size before extracting (zip bomb guard).
-	// Per-file limit is 100 MB (in extractFile); here we cap the archive total.
-	const maxTotalExtractSize = 500 * 1024 * 1024 // 500 MB
-	var totalUncompressed uint64
-	for _, f := range reader.File {
-		totalUncompressed += f.UncompressedSize64
-		if totalUncompressed > maxTotalExtractSize {
-			return fmt.Errorf("backup archive total uncompressed size exceeds the %d MB safety limit", maxTotalExtractSize/(1024*1024))
-		}
+	if err := m.validateBackupArchiveSize(reader.File); err != nil {
+		return err
 	}
 
-	// Extract files
-	for _, file := range reader.File {
-		if err := m.extractFile(file); err != nil {
-			m.log.Error("Failed to extract %s: %v", file.Name, err)
-		}
-	}
+	m.extractAllFiles(reader.File)
 
 	m.log.Info("Restored from backup: %s", backupID)
 	m.log.Warn("Restore complete — a server restart is required for all modules to reload their in-memory caches from the restored data files")
 	return nil
 }
 
+// createPreRestoreBackup creates an automatic backup before restore as a safety measure.
+func (m *Module) createPreRestoreBackup() {
+	m.log.Info("Creating pre-restore backup...")
+	preRestore, err := m.CreateBackup(CreateBackupOptions{Description: "pre-restore automatic backup", Type: "full"})
+	if err != nil {
+		m.log.Warn("Failed to create pre-restore backup: %v", err)
+		return
+	}
+	m.log.Info("Pre-restore backup created: %s", preRestore.ID)
+}
+
+const maxTotalExtractSize = 500 * 1024 * 1024 // 500 MB (zip bomb guard)
+
+// validateBackupArchiveSize ensures the total uncompressed size does not exceed the safety limit.
+func (m *Module) validateBackupArchiveSize(files []*zip.File) error {
+	var totalUncompressed uint64
+	for _, f := range files {
+		totalUncompressed += f.UncompressedSize64
+		if totalUncompressed > maxTotalExtractSize {
+			return fmt.Errorf("backup archive total uncompressed size exceeds the %d MB safety limit", maxTotalExtractSize/(1024*1024))
+		}
+	}
+	return nil
+}
+
+// extractAllFiles extracts all files from the zip archive.
+func (m *Module) extractAllFiles(files []*zip.File) {
+	for _, file := range files {
+		if err := m.extractFile(file); err != nil {
+			m.log.Error("Failed to extract %s: %v", file.Name, err)
+		}
+	}
+}
+
 // extractFile extracts a file from the zip
 func (m *Module) extractFile(file *zip.File) error {
-	// Skip directories
-	if file.FileInfo().IsDir() {
+	if file.FileInfo().IsDir() || file.Name == "manifest.json" {
 		return nil
 	}
-
-	// Skip manifest
-	if file.Name == "manifest.json" {
-		return nil
+	destPath, err := m.validateExtractPath(file.Name)
+	if err != nil {
+		return err
 	}
-
-	// Validate path (prevent zip slip vulnerability)
-	// Use filepath.Rel to detect path traversal attempts - it returns an error
-	// if the target path would escape the data directory
-	destPath := filepath.Join(m.dataDir, file.Name)
-	rel, err := filepath.Rel(m.dataDir, destPath)
-	if err != nil || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || strings.HasPrefix(rel, "..") {
-		m.log.Warn("Zip slip attempt detected: %s (rel: %s)", file.Name, rel)
-		return fmt.Errorf("illegal file path: %s", file.Name)
-	}
-	// Additional check: ensure the cleaned destination path is still within dataDir
-	cleanedDest := filepath.Clean(destPath)
-	cleanedBase := filepath.Clean(m.dataDir)
-	if !strings.HasPrefix(cleanedDest, cleanedBase+string(os.PathSeparator)) && cleanedDest != cleanedBase {
-		m.log.Warn("Path escape attempt detected: %s", file.Name)
-		return fmt.Errorf("illegal file path: %s", file.Name)
-	}
-
-	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return err
 	}
+	return m.copyZipEntryToFile(file, destPath)
+}
 
-	// Create destination file
+// pathCheckArgs holds path arguments for validation to avoid string-parameter confusion.
+type pathCheckArgs struct {
+	zipName  string // original name from zip archive
+	destPath string // resolved destination path
+}
+
+// pathScopeArgs holds path and base for scope checks.
+type pathScopeArgs struct {
+	path string
+	base string
+}
+
+// validateExtractPath validates the destination path and prevents zip slip attacks.
+func (m *Module) validateExtractPath(name string) (string, error) {
+	destPath := filepath.Join(m.dataDir, name)
+	check := pathCheckArgs{zipName: name, destPath: destPath}
+	if m.isPathTraversal(check) {
+		return "", fmt.Errorf("illegal file path: %s", name)
+	}
+	if !pathWithinBase(pathScopeArgs{path: destPath, base: m.dataDir}) {
+		m.log.Warn("Path escape attempt detected: %s", name)
+		return "", fmt.Errorf("illegal file path: %s", name)
+	}
+	return destPath, nil
+}
+
+// isPathTraversal returns true if the path attempts to escape the data directory.
+func (m *Module) isPathTraversal(args pathCheckArgs) bool {
+	rel, err := filepath.Rel(m.dataDir, args.destPath)
+	if err != nil {
+		return true
+	}
+	if strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || strings.HasPrefix(rel, "..") {
+		m.log.Warn("Zip slip attempt detected: %s (rel: %s)", args.zipName, rel)
+		return true
+	}
+	return false
+}
+
+// pathWithinBase returns true if path is within or equal to base.
+func pathWithinBase(args pathScopeArgs) bool {
+	dest := filepath.Clean(args.path)
+	b := filepath.Clean(args.base)
+	return strings.HasPrefix(dest, b+string(os.PathSeparator)) || dest == b
+}
+
+const maxExtractSize = 100 * 1024 * 1024 // 100MB limit to prevent zip bomb attacks
+
+// copyZipEntryToFile copies a zip entry to the destination, enforcing size limits.
+func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := destFile.Close(); err != nil {
-			m.log.Warn("Failed to close destination file %s: %v", destPath, err)
-		}
-	}()
+	defer m.closeAndWarn(destFile.Close, fmt.Sprintf("Failed to close destination file %s: %%v", destPath))
 
-	// Open source file in zip
 	srcFile, err := file.Open()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := srcFile.Close(); err != nil {
-			m.log.Warn("Failed to close source file: %v", err)
-		}
-	}()
+	defer m.closeAndWarn(srcFile.Close, "Failed to close source file: %v")
 
-	// Limit extracted file size to 100MB to prevent zip bomb attacks
-	const maxExtractSize = 100 * 1024 * 1024
 	limitedReader := io.LimitReader(srcFile, maxExtractSize+1)
 	n, err := io.Copy(destFile, limitedReader)
 	if err != nil {
 		return err
 	}
 	if n > maxExtractSize {
-		// Clean up the oversize partial file
-		if removeErr := os.Remove(destPath); removeErr != nil {
-			m.log.Warn("Failed to remove oversize extracted file %s: %v", destPath, removeErr)
-		}
+		m.removeFileQuietly(removeFileOpts{Path: destPath, Label: "oversize extracted file"})
 		return fmt.Errorf("file %s exceeds maximum extract size of %d bytes", file.Name, maxExtractSize)
 	}
 	return nil

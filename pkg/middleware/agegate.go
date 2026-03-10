@@ -35,6 +35,28 @@ type AgeGate struct {
 	log            *logger.Logger
 }
 
+// parseBypassCIDR parses a single bypass IP or CIDR string.
+// Returns the network and true on success; logs and returns (nil, false) for empty or invalid entries.
+func parseBypassCIDR(log *logger.Logger, raw string) (*net.IPNet, bool) {
+	cidr := strings.TrimSpace(raw)
+	if cidr == "" {
+		return nil, false
+	}
+	if !strings.Contains(cidr, "/") {
+		if strings.Contains(cidr, ":") {
+			cidr += "/128" // IPv6
+		} else {
+			cidr += "/32" // IPv4
+		}
+	}
+	_, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		log.Warn("Invalid bypass IP/CIDR %q: %v", cidr, err)
+		return nil, false
+	}
+	return network, true
+}
+
 // NewAgeGate creates an AgeGate from the provided config.
 // Invalid CIDR entries in BypassIPs are logged and skipped.
 func NewAgeGate(cfg config.AgeGateConfig) *AgeGate {
@@ -44,24 +66,9 @@ func NewAgeGate(cfg config.AgeGateConfig) *AgeGate {
 		log:         logger.New("agegate"),
 	}
 	for _, raw := range cfg.BypassIPs {
-		cidr := strings.TrimSpace(raw)
-		if cidr == "" {
-			continue
+		if network, ok := parseBypassCIDR(ag.log, raw); ok {
+			ag.bypassNetworks = append(ag.bypassNetworks, network)
 		}
-		// Support plain IPs without a prefix length
-		if !strings.Contains(cidr, "/") {
-			if strings.Contains(cidr, ":") {
-				cidr += "/128" // IPv6
-			} else {
-				cidr += "/32" // IPv4
-			}
-		}
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			ag.log.Warn("Invalid bypass IP/CIDR %q: %v", cidr, err)
-			continue
-		}
-		ag.bypassNetworks = append(ag.bypassNetworks, network)
 	}
 	if cfg.Enabled {
 		ag.log.Info("Age gate enabled (IP TTL: %v, bypass CIDRs: %d)", cfg.IPVerifyTTL, len(ag.bypassNetworks))

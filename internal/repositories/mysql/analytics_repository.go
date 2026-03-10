@@ -25,40 +25,45 @@ func (r *AnalyticsRepository) Create(ctx context.Context, event *models.Analytic
 	return r.db.WithContext(ctx).Create(event).Error
 }
 
+// listWhereSpec describes a single optional WHERE clause for List filtering.
+type listWhereSpec struct {
+	ok     bool
+	clause string
+	value  interface{}
+}
+
+// applyListFilter applies optional filter conditions to the query via a single loop to keep cyclomatic complexity low.
+func (r *AnalyticsRepository) applyListFilter(query *gorm.DB, filter repositories.AnalyticsFilter) *gorm.DB {
+	specs := []listWhereSpec{
+		{filter.Type != "", "type = ?", filter.Type},
+		{filter.MediaID != "", "media_id = ?", filter.MediaID},
+		{filter.UserID != "", "user_id = ?", filter.UserID},
+		{filter.StartDate != "", "timestamp >= ?", filter.StartDate},
+		{filter.EndDate != "", "timestamp <= ?", filter.EndDate},
+	}
+	for _, s := range specs {
+		if s.ok {
+			query = query.Where(s.clause, s.value)
+		}
+	}
+	return query
+}
+
 // List retrieves analytics events with optional filtering
 func (r *AnalyticsRepository) List(ctx context.Context, filter repositories.AnalyticsFilter) ([]*models.AnalyticsEvent, error) {
 	var events []*models.AnalyticsEvent
 	query := r.db.WithContext(ctx).Model(&models.AnalyticsEvent{})
-
-	if filter.Type != "" {
-		query = query.Where("type = ?", filter.Type)
-	}
-	if filter.MediaID != "" {
-		query = query.Where("media_id = ?", filter.MediaID)
-	}
-	if filter.UserID != "" {
-		query = query.Where("user_id = ?", filter.UserID)
-	}
-	if filter.StartDate != "" {
-		query = query.Where("timestamp >= ?", filter.StartDate)
-	}
-	if filter.EndDate != "" {
-		query = query.Where("timestamp <= ?", filter.EndDate)
-	}
-
+	query = r.applyListFilter(query, filter)
 	if filter.Limit > 0 {
 		query = query.Limit(filter.Limit)
 	}
 	if filter.Offset > 0 {
 		query = query.Offset(filter.Offset)
 	}
-
 	query = query.Order("timestamp DESC")
-
 	if err := query.Find(&events).Error; err != nil {
 		return nil, err
 	}
-
 	return events, nil
 }
 
@@ -115,23 +120,7 @@ func (r *AnalyticsRepository) CountByType(ctx context.Context) (map[string]int, 
 func (r *AnalyticsRepository) Count(ctx context.Context, filter repositories.AnalyticsFilter) (int64, error) {
 	var count int64
 	query := r.db.WithContext(ctx).Model(&models.AnalyticsEvent{})
-
-	if filter.Type != "" {
-		query = query.Where("type = ?", filter.Type)
-	}
-	if filter.MediaID != "" {
-		query = query.Where("media_id = ?", filter.MediaID)
-	}
-	if filter.UserID != "" {
-		query = query.Where("user_id = ?", filter.UserID)
-	}
-	if filter.StartDate != "" {
-		query = query.Where("timestamp >= ?", filter.StartDate)
-	}
-	if filter.EndDate != "" {
-		query = query.Where("timestamp <= ?", filter.EndDate)
-	}
-
+	query = r.applyListFilter(query, filter)
 	err := query.Count(&count).Error
 	return count, err
 }
