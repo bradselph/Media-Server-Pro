@@ -73,7 +73,7 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 		}
 	}
 
-	if err := m.generateMasterPlaylist(job.OutputDir, job.Qualities); err != nil {
+	if err := m.generateMasterPlaylist(&generateMasterPlaylistParams{OutputDir: job.OutputDir, Variants: job.Qualities}); err != nil {
 		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Failed to create master playlist: %v", err), Progress: 0})
 		return
 	}

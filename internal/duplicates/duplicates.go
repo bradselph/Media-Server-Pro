@@ -159,6 +159,55 @@ func (m *Module) CountPending() int {
 	return int(count)
 }
 
+// buildReceiverFingerprintIndex builds a fingerprint -> records index for all
+// receiver media excluding the given slave and entries without a fingerprint.
+func buildReceiverFingerprintIndex(recs []*repositories.ReceiverMediaRecord, excludeSlaveID string) map[string][]*repositories.ReceiverMediaRecord {
+	idx := make(map[string][]*repositories.ReceiverMediaRecord)
+	for _, rec := range recs {
+		if rec.SlaveID == excludeSlaveID || rec.ContentFingerprint == "" {
+			continue
+		}
+		idx[rec.ContentFingerprint] = append(idx[rec.ContentFingerprint], rec)
+	}
+	return idx
+}
+
+// tryRecordReceiverPair checks if the item/existing pair should be recorded as a
+// duplicate (pair not already recorded, no resolved removal for this fingerprint),
+// and if so creates the record. Returns true if a record was created.
+func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item ReceiverItemRef, existing *repositories.ReceiverMediaRecord) bool {
+	exists, err := m.dupRepo.ExistsByPair(ctx, item.OpaqueID, existing.ID)
+	if err != nil {
+		m.log.Warn("RecordDuplicatesFromSlave: pair check failed: %v", err)
+		return false
+	}
+	if exists {
+		return false
+	}
+	if resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); resolved {
+		return false
+	}
+	rec := &repositories.ReceiverDuplicateRecord{
+		ID:           uuid.New().String(),
+		Fingerprint:  item.ContentFingerprint,
+		ItemAID:      item.OpaqueID,
+		ItemASlaveID: slaveID,
+		ItemAName:    item.Name,
+		ItemBID:      existing.ID,
+		ItemBSlaveID: existing.SlaveID,
+		ItemBName:    existing.Name,
+		Status:       "pending",
+		DetectedAt:   time.Now(),
+	}
+	if err := m.dupRepo.Create(ctx, rec); err != nil {
+		m.log.Warn("RecordDuplicatesFromSlave: failed to store record: %v", err)
+		return false
+	}
+	m.log.Info("Receiver duplicate detected: %q (slave %s) ↔ %q (slave %s) [fp=%s…]",
+		item.Name, slaveID, existing.Name, existing.SlaveID, item.ContentFingerprint[:8])
+	return true
+}
+
 // RecordDuplicatesFromSlave compares newly-pushed slave items against the full
 // receiver catalog and persists any new fingerprint collisions.  It is safe to
 // call in a background goroutine.
@@ -174,55 +223,95 @@ func (m *Module) RecordDuplicatesFromSlave(slaveID string, items []ReceiverItemR
 		return
 	}
 
-	// Build fingerprint index of items NOT belonging to this slave.
-	fpIndex := make(map[string][]*repositories.ReceiverMediaRecord)
-	for _, rec := range allRecs {
-		if rec.SlaveID == slaveID || rec.ContentFingerprint == "" {
-			continue
-		}
-		fpIndex[rec.ContentFingerprint] = append(fpIndex[rec.ContentFingerprint], rec)
-	}
+	fpIndex := buildReceiverFingerprintIndex(allRecs, slaveID)
 
 	for _, item := range items {
 		if item.ContentFingerprint == "" {
 			continue
 		}
 		matches := fpIndex[item.ContentFingerprint]
-		if len(matches) == 0 {
+		for _, existing := range matches {
+			m.tryRecordReceiverPair(ctx, slaveID, item, existing)
+		}
+	}
+}
+
+// localFpEntry holds stableID and path for grouping local media by fingerprint.
+type localFpEntry struct {
+	stableID string
+	path     string
+}
+
+// buildLocalFingerprintGroups groups metadata by content fingerprint, ignoring entries without fingerprint or stableID.
+func buildLocalFingerprintGroups(all map[string]*repositories.MediaMetadata) map[string][]localFpEntry {
+	fpGroups := make(map[string][]localFpEntry)
+	for path, meta := range all {
+		if meta.ContentFingerprint == "" || meta.StableID == "" {
 			continue
 		}
-		for _, existing := range matches {
-			exists, err := m.dupRepo.ExistsByPair(ctx, item.OpaqueID, existing.ID)
-			if err != nil {
-				m.log.Warn("RecordDuplicatesFromSlave: pair check failed: %v", err)
-				continue
-			}
-			if exists {
-				continue
-			}
-			// Suppress re-detection when a slave re-pushes an item that was
-			// previously removed via "remove_a"/"remove_b" (new row ID ≠ old ID).
-			if resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); resolved {
-				continue
-			}
-			rec := &repositories.ReceiverDuplicateRecord{
-				ID:           uuid.New().String(),
-				Fingerprint:  item.ContentFingerprint,
-				ItemAID:      item.OpaqueID,
-				ItemASlaveID: slaveID,
-				ItemAName:    item.Name,
-				ItemBID:      existing.ID,
-				ItemBSlaveID: existing.SlaveID,
-				ItemBName:    existing.Name,
-				Status:       "pending",
-				DetectedAt:   time.Now(),
-			}
-			if err := m.dupRepo.Create(ctx, rec); err != nil {
-				m.log.Warn("RecordDuplicatesFromSlave: failed to store record: %v", err)
-			} else {
-				m.log.Info("Receiver duplicate detected: %q (slave %s) ↔ %q (slave %s) [fp=%s…]",
-					item.Name, slaveID, existing.Name, existing.SlaveID, item.ContentFingerprint[:8])
-			}
+		fpGroups[meta.ContentFingerprint] = append(fpGroups[meta.ContentFingerprint], localFpEntry{meta.StableID, path})
+	}
+	return fpGroups
+}
+
+// localPairForRecord groups a fingerprint and two entries for duplicate recording.
+type localPairForRecord struct {
+	fp string
+	a  localFpEntry
+	b  localFpEntry
+}
+
+// tryRecordLocalPair checks whether the pair should be recorded as a duplicate, and if so creates the record.
+// resolvedFPs is updated with per-fingerprint resolved-removal cache. Returns true if a record was created.
+func (m *Module) tryRecordLocalPair(ctx context.Context, pair localPairForRecord, resolvedFPs map[string]bool) bool {
+	fp, a, b := pair.fp, pair.a, pair.b
+	exists, err := m.dupRepo.ExistsByPair(ctx, a.stableID, b.stableID)
+	if err != nil {
+		m.log.Warn("ScanLocalMedia: pair check failed: %v", err)
+		return false
+	}
+	if exists {
+		return false
+	}
+	if m.isResolvedRemovalCached(ctx, fp, resolvedFPs) {
+		return false
+	}
+	rec := &repositories.ReceiverDuplicateRecord{
+		ID:           uuid.New().String(),
+		Fingerprint:  fp,
+		ItemAID:      a.stableID,
+		ItemASlaveID: "",
+		ItemAName:    filepath.Base(a.path),
+		ItemBID:      b.stableID,
+		ItemBSlaveID: "",
+		ItemBName:    filepath.Base(b.path),
+		Status:       "pending",
+		DetectedAt:   time.Now(),
+	}
+	if err := m.dupRepo.Create(ctx, rec); err != nil {
+		m.log.Warn("ScanLocalMedia: failed to store duplicate: %v", err)
+		return false
+	}
+	m.log.Info("Local duplicate detected: %q ↔ %q [fp=%s…]",
+		filepath.Base(a.path), filepath.Base(b.path), fp[:8])
+	return true
+}
+
+// isResolvedRemovalCached returns true if this fingerprint has a resolved removal; updates resolvedFPs cache.
+func (m *Module) isResolvedRemovalCached(ctx context.Context, fp string, resolvedFPs map[string]bool) bool {
+	if resolved, ok := resolvedFPs[fp]; ok {
+		return resolved
+	}
+	resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, fp)
+	resolvedFPs[fp] = resolved
+	return resolved
+}
+
+// processFingerprintGroup records duplicate pairs for all unordered (i,j) pairs in group.
+func (m *Module) processFingerprintGroup(ctx context.Context, fp string, group []localFpEntry, resolvedFPs map[string]bool) {
+	for i := 0; i < len(group); i++ {
+		for j := i + 1; j < len(group); j++ {
+			m.tryRecordLocalPair(ctx, localPairForRecord{fp: fp, a: group[i], b: group[j]}, resolvedFPs)
 		}
 	}
 }
@@ -239,68 +328,14 @@ func (m *Module) ScanLocalMedia(ctx context.Context) error {
 		return fmt.Errorf("failed to list media metadata: %w", err)
 	}
 
-	// Group stable IDs by fingerprint.
-	type entry struct{ stableID, path string }
-	fpGroups := make(map[string][]entry)
-	for path, meta := range all {
-		if meta.ContentFingerprint == "" || meta.StableID == "" {
-			continue
-		}
-		fpGroups[meta.ContentFingerprint] = append(fpGroups[meta.ContentFingerprint], entry{meta.StableID, path})
-	}
-
-	// Cache per-fingerprint resolved-removal results to avoid redundant DB calls.
+	fpGroups := buildLocalFingerprintGroups(all)
 	resolvedFPs := make(map[string]bool)
 
 	for fp, group := range fpGroups {
 		if len(group) < 2 {
 			continue
 		}
-		for i := 0; i < len(group); i++ {
-			for j := i + 1; j < len(group); j++ {
-				a, b := group[i], group[j]
-				exists, err := m.dupRepo.ExistsByPair(ctx, a.stableID, b.stableID)
-				if err != nil {
-					m.log.Warn("ScanLocalMedia: pair check failed: %v", err)
-					continue
-				}
-				if exists {
-					continue
-				}
-				// Suppress re-detection when a previous removal action was recorded for
-				// this fingerprint (handles the case where the file was not deleted from
-				// disk but the metadata row was, causing a new stableID on the next scan).
-				if resolved, ok := resolvedFPs[fp]; ok {
-					if resolved {
-						continue
-					}
-				} else {
-					resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, fp)
-					resolvedFPs[fp] = resolved
-					if resolved {
-						continue
-					}
-				}
-				rec := &repositories.ReceiverDuplicateRecord{
-					ID:           uuid.New().String(),
-					Fingerprint:  fp,
-					ItemAID:      a.stableID,
-					ItemASlaveID: "",
-					ItemAName:    filepath.Base(a.path),
-					ItemBID:      b.stableID,
-					ItemBSlaveID: "",
-					ItemBName:    filepath.Base(b.path),
-					Status:       "pending",
-					DetectedAt:   time.Now(),
-				}
-				if err := m.dupRepo.Create(ctx, rec); err != nil {
-					m.log.Warn("ScanLocalMedia: failed to store duplicate: %v", err)
-				} else {
-					m.log.Info("Local duplicate detected: %q ↔ %q [fp=%s…]",
-						filepath.Base(a.path), filepath.Base(b.path), fp[:8])
-				}
-			}
-		}
+		m.processFingerprintGroup(ctx, fp, group, resolvedFPs)
 	}
 	return nil
 }
@@ -359,83 +394,116 @@ func sourceFor(slaveID string) string {
 	return "receiver"
 }
 
+// ResolveDuplicateInput holds parameters for resolving a duplicate pair.
+type ResolveDuplicateInput struct {
+	ID         string // duplicate record ID
+	Action     string // "remove_a", "remove_b", "keep_both", "ignore"
+	ResolvedBy string // admin user identifier
+}
+
 // ResolveDuplicate acts on an admin decision for a detected duplicate pair.
-// action must be one of: "remove_a", "remove_b", "keep_both", "ignore".
-func (m *Module) ResolveDuplicate(id, action, resolvedBy string) error {
+// Action must be one of: "remove_a", "remove_b", "keep_both", "ignore".
+func (m *Module) ResolveDuplicate(in ResolveDuplicateInput) error {
 	if m.dupRepo == nil {
 		return fmt.Errorf("duplicate detection is not available")
 	}
 	ctx := context.Background()
 
-	rec, err := m.dupRepo.Get(ctx, id)
+	rec, err := m.dupRepo.Get(ctx, in.ID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch duplicate: %w", err)
 	}
 	if rec == nil {
-		return fmt.Errorf("duplicate not found: %s", id)
+		return fmt.Errorf("duplicate not found: %s", in.ID)
 	}
 
-	switch action {
+	switch in.Action {
 	case "remove_a":
-		m.removeItem(ctx, rec.ItemAID, rec.ItemASlaveID)
-		if err := m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy); err != nil {
-			return err
-		}
-		// Cascade: mark all other pending pairs that reference the removed item as resolved.
-		if err := m.dupRepo.UpdateStatusForItem(ctx, rec.ItemAID, action, resolvedBy); err != nil {
-			m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", rec.ItemAID, err)
-		}
-		return nil
+		return m.applyRemoveResolution(ctx, removeResolutionParams{in.ID, in.Action, in.ResolvedBy, rec.ItemAID, rec.ItemASlaveID})
 	case "remove_b":
-		m.removeItem(ctx, rec.ItemBID, rec.ItemBSlaveID)
-		if err := m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy); err != nil {
-			return err
-		}
-		// Cascade: mark all other pending pairs that reference the removed item as resolved.
-		if err := m.dupRepo.UpdateStatusForItem(ctx, rec.ItemBID, action, resolvedBy); err != nil {
-			m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", rec.ItemBID, err)
-		}
-		return nil
+		return m.applyRemoveResolution(ctx, removeResolutionParams{in.ID, in.Action, in.ResolvedBy, rec.ItemBID, rec.ItemBSlaveID})
 	case "keep_both", "ignore":
-		return m.dupRepo.UpdateStatus(ctx, id, action, resolvedBy)
+		return m.dupRepo.UpdateStatus(ctx, in.ID, in.Action, in.ResolvedBy)
 	default:
-		return fmt.Errorf("unknown action %q — must be remove_a, remove_b, keep_both, or ignore", action)
+		return fmt.Errorf("unknown action %q — must be remove_a, remove_b, keep_both, or ignore", in.Action)
 	}
+}
+
+// removeResolutionParams holds parameters for applyRemoveResolution.
+type removeResolutionParams struct {
+	id, action, resolvedBy, itemID, slaveID string
+}
+
+// applyRemoveResolution removes one item of a duplicate pair and updates status for the record and any cascade.
+func (m *Module) applyRemoveResolution(ctx context.Context, p removeResolutionParams) error {
+	m.removeItem(ctx, p.itemID, p.slaveID)
+	if err := m.dupRepo.UpdateStatus(ctx, p.id, p.action, p.resolvedBy); err != nil {
+		return err
+	}
+	if err := m.dupRepo.UpdateStatusForItem(ctx, p.itemID, p.action, p.resolvedBy); err != nil {
+		m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", p.itemID, err)
+	}
+	return nil
 }
 
 // removeItem deletes the item from the appropriate backing store.
 // For receiver items it removes the row from receiver_media.
-// For local items it removes the metadata row (the file on disk is untouched).
+// For local items it removes the metadata row and the file on disk.
 func (m *Module) removeItem(ctx context.Context, itemID, slaveID string) {
 	if slaveID == "" {
-		// Local media — find by stable ID, then delete by path.
-		if m.metaRepo == nil {
-			return
-		}
-		all, err := m.metaRepo.List(ctx)
-		if err != nil {
-			m.log.Warn("removeItem: failed to list metadata: %v", err)
-			return
-		}
-		for path, meta := range all {
-			if meta.StableID == itemID {
-				if err := m.metaRepo.Delete(ctx, path); err != nil {
-					m.log.Warn("removeItem: failed to delete local metadata for %s: %v", path, err)
-				}
-				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-					m.log.Warn("removeItem: failed to delete local file %s: %v", path, err)
-				}
-				return
-			}
-		}
+		m.removeLocalItem(ctx, itemID)
+		return
+	}
+	m.removeReceiverItem(ctx, itemID)
+}
+
+// removeLocalItem finds the local file by stable ID and deletes its metadata and file.
+func (m *Module) removeLocalItem(ctx context.Context, itemID string) {
+	if m.metaRepo == nil {
+		return
+	}
+	path, err := m.findLocalPathByStableID(ctx, itemID)
+	if err != nil {
+		m.log.Warn("removeItem: %v", err)
+		return
+	}
+	if path == "" {
 		m.log.Warn("removeItem: local item %s not found in metadata", itemID)
-	} else {
-		// Receiver media — remove row from receiver_media.
-		if m.receiverRepo == nil {
-			return
+		return
+	}
+	m.deleteLocalFileAndMetadata(ctx, path)
+}
+
+// findLocalPathByStableID returns the file path for the given stable ID, or ("", nil) if not found.
+func (m *Module) findLocalPathByStableID(ctx context.Context, itemID string) (string, error) {
+	all, err := m.metaRepo.List(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to list metadata: %w", err)
+	}
+	for path, meta := range all {
+		if meta.StableID == itemID {
+			return path, nil
 		}
-		if err := m.receiverRepo.DeleteByID(ctx, itemID); err != nil {
-			m.log.Warn("removeItem: failed to delete receiver media %s: %v", itemID, err)
-		}
+	}
+	return "", nil
+}
+
+// deleteLocalFileAndMetadata removes the metadata row and the file on disk for the given path.
+func (m *Module) deleteLocalFileAndMetadata(ctx context.Context, path string) {
+	if err := m.metaRepo.Delete(ctx, path); err != nil {
+		m.log.Warn("removeItem: failed to delete local metadata for %s: %v", path, err)
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		m.log.Warn("removeItem: failed to delete local file %s: %v", path, err)
+	}
+}
+
+// removeReceiverItem deletes the item from receiver_media by ID.
+func (m *Module) removeReceiverItem(ctx context.Context, itemID string) {
+	if m.receiverRepo == nil {
+		return
+	}
+	if err := m.receiverRepo.DeleteByID(ctx, itemID); err != nil {
+		m.log.Warn("removeItem: failed to delete receiver media %s: %v", itemID, err)
 	}
 }

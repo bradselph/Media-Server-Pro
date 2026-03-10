@@ -51,41 +51,63 @@ func (m *Module) Start(ctx context.Context) error {
 		return fmt.Errorf("database is required but disabled in configuration - set DATABASE_ENABLED=true")
 	}
 
-	// Build DSN using mysql.Config.FormatDSN() so passwords containing special
-	// characters (@, :, /, etc.) are properly URL-encoded. Raw fmt.Sprintf DSN
-	// strings break when the password contains these characters.
 	m.log.Info("Database config: Host=%s, Port=%d, Name=%s, User=%s",
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.Name, cfg.Database.Username)
 
-	dsnCfg := driverMysql.NewConfig() // sets AllowNativePasswords=true, Loc=UTC by default
-	dsnCfg.User = cfg.Database.Username
-	dsnCfg.Passwd = cfg.Database.Password
+	dsn := buildDSN(cfg.Database)
+	m.log.Info("Connecting to: %s", safeDSNString(cfg.Database))
+
+	db, sqlDB, err := connectWithRetry(ctx, dsn, cfg.Database, m.log)
+	if err != nil {
+		m.log.Error("Failed to connect to database: %v", err)
+		m.setHealth(false, fmt.Sprintf("Connection failed: %v", err))
+		return fmt.Errorf("database connection failed: %w", err)
+	}
+
+	m.db = db
+	m.sqlDB = sqlDB
+	configurePool(m.sqlDB, cfg.Database)
+
+	m.log.Info("Database connected: %s:%d/%s", cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
+
+	if err := m.ensureSchema(ctx); err != nil {
+		return fmt.Errorf("schema setup failed: %w", err)
+	}
+
+	m.setHealth(true, "Connected")
+	m.log.Info("Database module started successfully")
+	return nil
+}
+
+// buildDSN builds a MySQL DSN from config. Uses FormatDSN so passwords with
+// special characters (@, :, /) are properly URL-encoded.
+func buildDSN(db config.DatabaseConfig) string {
+	dsnCfg := driverMysql.NewConfig()
+	dsnCfg.User = db.Username
+	dsnCfg.Passwd = db.Password
 	dsnCfg.Net = "tcp"
-	dsnCfg.Addr = fmt.Sprintf("%s:%d", cfg.Database.Host, cfg.Database.Port)
-	dsnCfg.DBName = cfg.Database.Name
+	dsnCfg.Addr = fmt.Sprintf("%s:%d", db.Host, db.Port)
+	dsnCfg.DBName = db.Name
 	dsnCfg.Params = map[string]string{"charset": "utf8mb4"}
 	dsnCfg.ParseTime = true
-	dsnCfg.Timeout = cfg.Database.Timeout
-	// TLSMode: "" / "false" = no TLS; "skip-verify" = TLS without cert check;
-	// "true" = TLS with system CA. Required for many hosted/remote database providers.
-	// Note: driverMysql.NewConfig() defaults TLSConfig to "preferred", which
-	// causes failures when the server does not support TLS at all. We must
-	// explicitly set "false" when the user has not requested TLS.
-	if cfg.Database.TLSMode != "" && cfg.Database.TLSMode != "false" {
-		dsnCfg.TLSConfig = cfg.Database.TLSMode
+	dsnCfg.Timeout = db.Timeout
+	if db.TLSMode != "" && db.TLSMode != "false" {
+		dsnCfg.TLSConfig = db.TLSMode
 	} else {
 		dsnCfg.TLSConfig = "false"
 	}
-	dsn := dsnCfg.FormatDSN()
+	return dsnCfg.FormatDSN()
+}
 
-	// Log DSN without password
-	safeDSN := fmt.Sprintf("%s:***@tcp(%s:%d)/%s",
-		cfg.Database.Username, cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
-	m.log.Info("Connecting to: %s", safeDSN)
+// safeDSNString returns a log-safe DSN (password redacted).
+func safeDSNString(db config.DatabaseConfig) string {
+	return fmt.Sprintf("%s:***@tcp(%s:%d)/%s", db.Username, db.Host, db.Port, db.Name)
+}
 
-	// Configure GORM logger — use Error level to avoid leaking paths via slow-query logs
-	gormLog := gormlogger.New(
-		&gormLogWriter{log: m.log},
+// newGORMLogger creates a GORM logger that writes to the module logger (Error level).
+func newGORMLogger(log *logger.Logger) gormlogger.Interface {
+	return gormlogger.New(
+		&gormLogWriter{log: log},
 		gormlogger.Config{
 			SlowThreshold:             500 * time.Millisecond,
 			LogLevel:                  gormlogger.Error,
@@ -93,64 +115,58 @@ func (m *Module) Start(ctx context.Context) error {
 			Colorful:                  false,
 		},
 	)
+}
 
-	// Connect with retry logic
-	var db *gorm.DB
-	var err error
-	for i := 0; i < cfg.Database.MaxRetries; i++ {
-		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
-			Logger: gormLog,
-		})
-		if err == nil {
-			// Get underlying *sql.DB to configure connection pool
-			m.sqlDB, err = db.DB()
-			if err == nil {
-				// Test connection
-				ctxTimeout, cancel := context.WithTimeout(ctx, cfg.Database.Timeout)
-				err = m.sqlDB.PingContext(ctxTimeout)
-				cancel()
-				if err == nil {
-					break
-				}
-			}
-		}
-		m.log.Warn("Database connection attempt %d/%d failed: %v", i+1, cfg.Database.MaxRetries, err)
-		if i < cfg.Database.MaxRetries-1 {
-			time.Sleep(cfg.Database.RetryInterval)
-		}
-	}
-
+// tryConnect opens GORM and pings once; returns (db, sqlDB, nil) on success.
+func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, timeout time.Duration) (*gorm.DB, *sql.DB, error) {
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: gormLog})
 	if err != nil {
-		m.log.Error("Failed to connect to database: %v", err)
-		m.healthMu.Lock()
-		m.healthy = false
-		m.healthMsg = fmt.Sprintf("Connection failed: %v", err)
-		m.healthMu.Unlock()
-		return fmt.Errorf("database connection failed: %w", err)
+		return nil, nil, err
 	}
-
-	m.db = db
-
-	// Configure connection pool
-	m.sqlDB.SetMaxOpenConns(cfg.Database.MaxOpenConns)
-	m.sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConns)
-	m.sqlDB.SetConnMaxLifetime(cfg.Database.ConnMaxLifetime)
-
-	m.log.Info("Database connected: %s:%d/%s", cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
-
-	// Ensure schema is complete — creates tables that don't exist and adds
-	// any missing columns. Idempotent and safe on every startup.
-	if err := m.ensureSchema(ctx); err != nil {
-		return fmt.Errorf("schema setup failed: %w", err)
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, nil, err
 	}
+	ctxTimeout, cancel := context.WithTimeout(ctx, timeout)
+	err = sqlDB.PingContext(ctxTimeout)
+	cancel()
+	if err != nil {
+		return nil, nil, err
+	}
+	return db, sqlDB, nil
+}
 
+// connectWithRetry opens a GORM connection with retries and ping; returns gorm.DB, sql.DB, and error.
+func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (*gorm.DB, *sql.DB, error) {
+	gormLog := newGORMLogger(log)
+	var lastErr error
+	for i := 0; i < dbCfg.MaxRetries; i++ {
+		db, sqlDB, err := tryConnect(ctx, dsn, gormLog, dbCfg.Timeout)
+		if err == nil {
+			return db, sqlDB, nil
+		}
+		lastErr = err
+		log.Warn("Database connection attempt %d/%d failed: %v", i+1, dbCfg.MaxRetries, err)
+		if i < dbCfg.MaxRetries-1 {
+			time.Sleep(dbCfg.RetryInterval)
+		}
+	}
+	return nil, nil, lastErr
+}
+
+// configurePool sets connection pool limits on the underlying sql.DB.
+func configurePool(sqlDB *sql.DB, dbCfg config.DatabaseConfig) {
+	sqlDB.SetMaxOpenConns(dbCfg.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(dbCfg.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(dbCfg.ConnMaxLifetime)
+}
+
+// setHealth updates healthy and healthMsg under healthMu.
+func (m *Module) setHealth(healthy bool, msg string) {
 	m.healthMu.Lock()
-	m.healthy = true
-	m.healthMsg = "Connected"
-	m.healthMu.Unlock()
-
-	m.log.Info("Database module started successfully")
-	return nil
+	defer m.healthMu.Unlock()
+	m.healthy = healthy
+	m.healthMsg = msg
 }
 
 // gormLogWriter adapts our logger to GORM's logger interface
@@ -173,11 +189,7 @@ func (m *Module) Stop(ctx context.Context) error {
 		}
 	}
 
-	m.healthMu.Lock()
-	m.healthy = false
-	m.healthMsg = "Stopped"
-	m.healthMu.Unlock()
-
+	m.setHealth(false, "Stopped")
 	return nil
 }
 

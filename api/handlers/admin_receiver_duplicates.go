@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/duplicates"
 )
 
 // AdminListDuplicates returns detected duplicate media pairs for admin review.
@@ -54,7 +56,11 @@ func (h *Handler) AdminResolveDuplicate(c *gin.Context) {
 		resolvedBy = session.Username
 	}
 
-	if err := h.duplicates.ResolveDuplicate(id, body.Action, resolvedBy); err != nil {
+	if err := h.duplicates.ResolveDuplicate(duplicates.ResolveDuplicateInput{
+		ID:         id,
+		Action:     body.Action,
+		ResolvedBy: resolvedBy,
+	}); err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
