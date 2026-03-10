@@ -172,21 +172,36 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
+// getCachedResult returns a recent validation result for path if one exists (within 7 days).
+func (m *Module) getCachedResult(path string) (*ValidationResult, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result, ok := m.results[path]
+	if !ok || time.Since(result.ValidatedAt) >= 7*24*time.Hour {
+		return nil, false
+	}
+	return result, true
+}
+
+// setFinalStatus sets result.Status based on issues and codec support.
+func setFinalStatus(result *ValidationResult) {
+	if len(result.Issues) > 0 {
+		result.Status = StatusNeedsFix
+	} else if result.VideoSupported && result.AudioSupported {
+		result.Status = StatusValidated
+	} else {
+		result.Status = StatusUnsupported
+	}
+}
+
 // ValidateFile validates a single media file
 func (m *Module) ValidateFile(path string) (*ValidationResult, error) {
 	if m.ffprobePath == "" {
 		return nil, fmt.Errorf("ffprobe not available")
 	}
-
-	// Check if recently validated
-	m.mu.RLock()
-	if result, ok := m.results[path]; ok {
-		if time.Since(result.ValidatedAt) < 7*24*time.Hour {
-			m.mu.RUnlock()
-			return result, nil
-		}
+	if cached, ok := m.getCachedResult(path); ok {
+		return cached, nil
 	}
-	m.mu.RUnlock()
 
 	result := &ValidationResult{
 		Path:        path,
@@ -194,7 +209,6 @@ func (m *Module) ValidateFile(path string) (*ValidationResult, error) {
 		ValidatedAt: time.Now(),
 	}
 
-	// Run ffprobe
 	probeData, err := m.probeFile(path)
 	if err != nil {
 		result.Status = StatusFailed
@@ -203,24 +217,12 @@ func (m *Module) ValidateFile(path string) (*ValidationResult, error) {
 		return result, err
 	}
 
-	// Parse probe data
 	m.parseProbeData(result, probeData)
-
-	// Check codec support
 	m.checkCodecSupport(result)
-
-	// Determine final status
-	if len(result.Issues) > 0 {
-		result.Status = StatusNeedsFix
-	} else if result.VideoSupported && result.AudioSupported {
-		result.Status = StatusValidated
-	} else {
-		result.Status = StatusUnsupported
-	}
+	setFinalStatus(result)
 
 	m.storeResult(result)
 	m.log.Debug("Validated %s: status=%s, codec=%s/%s", path, result.Status, result.VideoCodec, result.AudioCodec)
-
 	return result, nil
 }
 
@@ -295,22 +297,37 @@ func (m *Module) parseProbeData(result *ValidationResult, data *ProbeData) {
 	parseProbeStreams(result, data)
 }
 
+// parseFormatNumber parses s with parseFn; returns (zero, false) on empty or parse error and logs the error.
+func parseFormatNumber[T any](s string, log *logger.Logger, fieldName string, parseFn func(string) (T, error)) (T, bool) {
+	var zero T
+	if s == "" {
+		return zero, false
+	}
+	v, err := parseFn(s)
+	if err != nil {
+		log.Debug("Failed to parse %s %q: %v", fieldName, s, err)
+		return zero, false
+	}
+	return v, true
+}
+
+// parseFormatFloat parses a string to float64; logs and returns false on failure or empty.
+func parseFormatFloat(s string, log *logger.Logger, fieldName string) (float64, bool) {
+	return parseFormatNumber(s, log, fieldName, func(s string) (float64, error) { return strconv.ParseFloat(s, 64) })
+}
+
+// parseFormatInt parses a string to int64; logs and returns false on failure or empty.
+func parseFormatInt(s string, log *logger.Logger, fieldName string) (int64, bool) {
+	return parseFormatNumber(s, log, fieldName, func(s string) (int64, error) { return strconv.ParseInt(s, 10, 64) })
+}
+
 // parseFormatFields parses duration and bitrate from the probe format section.
 func (m *Module) parseFormatFields(result *ValidationResult, data *ProbeData) {
-	if data.Format.Duration != "" {
-		if duration, err := strconv.ParseFloat(data.Format.Duration, 64); err == nil {
-			result.Duration = duration
-		} else {
-			m.log.Debug("Failed to parse duration %q: %v", data.Format.Duration, err)
-		}
+	if v, ok := parseFormatFloat(data.Format.Duration, m.log, "duration"); ok {
+		result.Duration = v
 	}
-
-	if data.Format.BitRate != "" {
-		if bitrate, err := strconv.ParseInt(data.Format.BitRate, 10, 64); err == nil {
-			result.Bitrate = bitrate
-		} else {
-			m.log.Debug("Failed to parse bitrate %q: %v", data.Format.BitRate, err)
-		}
+	if v, ok := parseFormatInt(data.Format.BitRate, m.log, "bitrate"); ok {
+		result.Bitrate = v
 	}
 }
 
@@ -334,31 +351,37 @@ func parseProbeStreams(result *ValidationResult, data *ProbeData) {
 
 // checkCodecSupport checks if codecs are supported
 func (m *Module) checkCodecSupport(result *ValidationResult) {
-	// Check video codec
-	if result.VideoCodec != "" {
-		result.VideoSupported = supportedVideoCodecs[strings.ToLower(result.VideoCodec)]
-		if !result.VideoSupported {
-			result.Issues = append(result.Issues, fmt.Sprintf("Unsupported video codec: %s", result.VideoCodec))
-		}
-	} else {
+	m.checkVideoCodecSupport(result)
+	m.checkAudioCodecSupport(result)
+	m.appendValidationIssues(result)
+}
+
+func (m *Module) checkVideoCodecSupport(result *ValidationResult) {
+	if result.VideoCodec == "" {
 		result.VideoSupported = true // No video is fine for audio files
+		return
 	}
+	result.VideoSupported = supportedVideoCodecs[strings.ToLower(result.VideoCodec)]
+	if !result.VideoSupported {
+		result.Issues = append(result.Issues, fmt.Sprintf("Unsupported video codec: %s", result.VideoCodec))
+	}
+}
 
-	// Check audio codec
-	if result.AudioCodec != "" {
-		result.AudioSupported = supportedAudioCodecs[strings.ToLower(result.AudioCodec)]
-		if !result.AudioSupported {
-			result.Issues = append(result.Issues, fmt.Sprintf("Unsupported audio codec: %s", result.AudioCodec))
-		}
-	} else {
+func (m *Module) checkAudioCodecSupport(result *ValidationResult) {
+	if result.AudioCodec == "" {
 		result.AudioSupported = true // No audio is fine for some video files
+		return
 	}
+	result.AudioSupported = supportedAudioCodecs[strings.ToLower(result.AudioCodec)]
+	if !result.AudioSupported {
+		result.Issues = append(result.Issues, fmt.Sprintf("Unsupported audio codec: %s", result.AudioCodec))
+	}
+}
 
-	// Check for known issues
+func (m *Module) appendValidationIssues(result *ValidationResult) {
 	if result.Duration <= 0 {
 		result.Issues = append(result.Issues, "Could not determine duration")
 	}
-
 	if result.VideoCodec != "" && result.Width <= 0 {
 		result.Issues = append(result.Issues, "Could not determine video dimensions")
 	}
