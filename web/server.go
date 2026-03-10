@@ -17,48 +17,54 @@ var content embed.FS
 // log is the web package logger
 var log = logger.New("web")
 
-// RegisterStaticRoutes sets up static file serving and template routes.
-// This function is safe to call even if embedded files are missing.
-func RegisterStaticRoutes(r *gin.Engine, thumbnailDir string) {
-	// Try to serve static files
+// pathExcludedFromSPA reports whether path is an API, static, or media route that
+// should not be served by the React SPA (should return 404 instead).
+func pathExcludedFromSPA(path string) bool {
+	excludedPrefixes := []string{
+		"/api/", "/web/static/", "/media", "/download", "/thumbnail", "/hls/", "/remote/",
+	}
+	for _, prefix := range excludedPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// registerEmbeddedStatic registers embedded static file routes. Returns true if successful.
+func registerEmbeddedStatic(r *gin.Engine) bool {
 	staticFS, err := fs.Sub(content, "static")
 	if err != nil {
 		log.Warn("Static files not available: %v", err)
-	} else {
-		staticHandler := http.StripPrefix("/web/static/", http.FileServer(http.FS(staticFS)))
-		r.GET("/web/static/*filepath", func(c *gin.Context) {
+		return false
+	}
+	staticHandler := http.StripPrefix("/web/static/", http.FileServer(http.FS(staticFS)))
+	for _, method := range []string{"GET", "HEAD"} {
+		m := method
+		r.Handle(m, "/web/static/*filepath", func(c *gin.Context) {
 			c.Header("Cache-Control", "public, max-age=31536000, immutable")
 			staticHandler.ServeHTTP(c.Writer, c.Request)
 		})
-		r.HEAD("/web/static/*filepath", func(c *gin.Context) {
-			c.Header("Cache-Control", "public, max-age=31536000, immutable")
-			staticHandler.ServeHTTP(c.Writer, c.Request)
-		})
-		log.Info("Static file serving enabled at /web/static/")
+	}
+	log.Info("Static file serving enabled at /web/static/")
+	return true
+}
+
+// spaRoutes are the top-level paths that serve the React SPA index.
+var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "/player", "/admin"}
+
+// RegisterStaticRoutes sets up static file serving and template routes.
+// This function is safe to call even if embedded files are missing.
+func RegisterStaticRoutes(r *gin.Engine, thumbnailDir string) {
+	registerEmbeddedStatic(r)
+
+	spaHandler := ginServeReactApp()
+	for _, path := range spaRoutes {
+		r.GET(path, spaHandler)
 	}
 
-	// All routes serve the React SPA. React Router handles client-side routing.
-	spaHandler := ginServeReactApp()
-	r.GET("/", spaHandler)
-	r.GET("/login", spaHandler)
-	r.GET("/signup", spaHandler)
-	r.GET("/admin-login", spaHandler)
-	r.GET("/profile", spaHandler)
-	r.GET("/player", spaHandler)
-	r.GET("/admin", spaHandler)
-
-	// SPA catch-all: any path not matching an API/static/media route serves the
-	// React app so that client-side routing (React Router) works on page refresh.
 	r.NoRoute(func(c *gin.Context) {
-		p := c.Request.URL.Path
-		// Only serve the SPA for paths that are NOT API, static assets, or media streams.
-		if strings.HasPrefix(p, "/api/") ||
-			strings.HasPrefix(p, "/web/static/") ||
-			strings.HasPrefix(p, "/media") ||
-			strings.HasPrefix(p, "/download") ||
-			strings.HasPrefix(p, "/thumbnail") ||
-			strings.HasPrefix(p, "/hls/") ||
-			strings.HasPrefix(p, "/remote/") {
+		if pathExcludedFromSPA(c.Request.URL.Path) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
 			return
 		}
