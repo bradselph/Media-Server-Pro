@@ -20,6 +20,15 @@ const errTaskNotFoundFmt = "task not found: %s"
 // TaskFunc is a function that performs a task
 type TaskFunc func(ctx context.Context) error
 
+// TaskRegistration holds parameters for registering a scheduled task.
+type TaskRegistration struct {
+	ID          string
+	Name        string
+	Description string
+	Schedule    time.Duration
+	Func        TaskFunc
+}
+
 // Task represents a scheduled task
 type Task struct {
 	ID          string
@@ -154,24 +163,55 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// RegisterTask registers a new scheduled task
-func (m *Module) RegisterTask(id, name, description string, schedule time.Duration, fn TaskFunc) {
+// RegisterTask registers a new scheduled task.
+func (m *Module) RegisterTask(opts TaskRegistration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	task := &Task{
-		ID:          id,
-		Name:        name,
-		Description: description,
-		Schedule:    schedule,
-		Func:        fn,
-		NextRun:     time.Now().Add(schedule),
+		ID:          opts.ID,
+		Name:        opts.Name,
+		Description: opts.Description,
+		Schedule:    opts.Schedule,
+		Func:        opts.Func,
+		NextRun:     time.Now().Add(opts.Schedule),
 		Enabled:     true,
 		reschedule:  make(chan time.Duration, 1),
 	}
 
-	m.tasks[id] = task
-	m.log.Info("Registered task: %s (schedule: %v)", name, schedule)
+	m.tasks[opts.ID] = task
+	m.log.Info("Registered task: %s (schedule: %v)", opts.Name, opts.Schedule)
+}
+
+// waitForStartupDelay waits for the configured startup delay unless ctx is cancelled.
+// Returns false if context was cancelled during the wait, true otherwise.
+func (m *Module) waitForStartupDelay(ctx context.Context, task *Task) bool {
+	m.mu.RLock()
+	delay := m.startupDelay
+	m.mu.RUnlock()
+	if delay == 0 {
+		return true
+	}
+	m.log.Debug("Task %s: waiting %v before first run", task.Name, delay)
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(delay):
+		return true
+	}
+}
+
+// tryRunScheduledTask runs the task on a schedule tick if it is still enabled.
+// Returns false if the task was disabled (caller should stop the loop), true otherwise.
+func (m *Module) tryRunScheduledTask(ctx context.Context, task *Task) bool {
+	m.mu.RLock()
+	enabled := task.Enabled
+	m.mu.RUnlock()
+	if !enabled {
+		return false
+	}
+	m.executeTask(ctx, task)
+	return true
 }
 
 // runTaskLoop runs a task on its schedule
@@ -183,20 +223,8 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 		m.mu.Unlock()
 	}()
 
-	// Wait for the startup delay before the first execution so that all
-	// modules finish initialising and the DB connection pool is fully warmed
-	// up before tasks start making queries.
-	m.mu.RLock()
-	delay := m.startupDelay
-	m.mu.RUnlock()
-
-	if delay > 0 {
-		m.log.Debug("Task %s: waiting %v before first run", task.Name, delay)
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(delay):
-		}
+	if !m.waitForStartupDelay(ctx, task) {
+		return
 	}
 
 	ticker := time.NewTicker(task.Schedule)
@@ -213,18 +241,45 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 			ticker.Stop()
 			ticker = time.NewTicker(newSchedule)
 		case <-ticker.C:
-			// Check if task is still enabled before executing
-			m.mu.RLock()
-			enabled := task.Enabled
-			m.mu.RUnlock()
-
-			if !enabled {
+			if !m.tryRunScheduledTask(ctx, task) {
 				return
 			}
-
-			m.executeTask(ctx, task)
 		}
 	}
+}
+
+// computeTaskTimeout returns the timeout for a task run. Uses task.Timeout if set;
+// otherwise Schedule minus 10s, with min 30s and for short intervals cap at 80% of schedule.
+func computeTaskTimeout(task *Task) time.Duration {
+	if task.Timeout > 0 {
+		return task.Timeout
+	}
+	timeout := task.Schedule - 10*time.Second
+	minTimeout := 30 * time.Second
+	maxTimeout := time.Duration(float64(task.Schedule) * 0.8)
+	if maxTimeout > 0 && maxTimeout < minTimeout {
+		return maxTimeout
+	}
+	if timeout < minTimeout {
+		return minTimeout
+	}
+	return timeout
+}
+
+// recordTaskResult updates task.LastError and logs the outcome of a task run.
+func (m *Module) recordTaskResult(task *Task, err error, start time.Time) {
+	m.mu.Lock()
+	task.LastError = err
+	m.mu.Unlock()
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			m.log.Info("Task %s cancelled: %v", task.Name, err)
+		} else {
+			m.log.Error("Task %s failed: %v", task.Name, err)
+		}
+		return
+	}
+	m.log.Debug("Task %s completed in %v", task.Name, time.Since(start))
 }
 
 // executeTask runs a single task execution
@@ -248,25 +303,9 @@ func (m *Module) executeTask(ctx context.Context, task *Task) {
 
 	m.log.Debug("Executing task: %s", task.Name)
 	start := time.Now()
-
-	// Execute with timeout: use explicit Timeout if set, otherwise default to
-	// Schedule minus 10 seconds. For short-interval tasks, clamp timeout to 80% of
-	// the schedule interval to prevent overlapping executions.
-	timeout := task.Timeout
-	if timeout <= 0 {
-		timeout = task.Schedule - 10*time.Second
-		minTimeout := 30 * time.Second
-		// For short intervals, cap timeout at 80% of schedule to prevent overlap
-		maxTimeout := time.Duration(float64(task.Schedule) * 0.8)
-		if maxTimeout < minTimeout && maxTimeout > 0 {
-			timeout = maxTimeout
-		} else if timeout < minTimeout {
-			timeout = minTimeout
-		}
-	}
+	timeout := computeTaskTimeout(task)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 
-	// Store cancel so DisableTask / StopTask can cancel the running execution.
 	task.stopMu.Lock()
 	task.stopRunning = cancel
 	task.stopMu.Unlock()
@@ -278,22 +317,8 @@ func (m *Module) executeTask(ctx context.Context, task *Task) {
 		task.stopMu.Unlock()
 	}()
 
-	if err := task.Func(ctx); err != nil {
-		m.mu.Lock()
-		task.LastError = err
-		m.mu.Unlock()
-		// Context cancellation during shutdown is expected, not an error.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			m.log.Info("Task %s cancelled: %v", task.Name, err)
-		} else {
-			m.log.Error("Task %s failed: %v", task.Name, err)
-		}
-	} else {
-		m.mu.Lock()
-		task.LastError = nil
-		m.mu.Unlock()
-		m.log.Debug("Task %s completed in %v", task.Name, time.Since(start))
-	}
+	err := task.Func(ctx)
+	m.recordTaskResult(task, err, start)
 }
 
 // RunNow triggers immediate execution of a task
