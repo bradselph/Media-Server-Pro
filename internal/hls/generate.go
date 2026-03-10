@@ -156,9 +156,53 @@ func (m *Module) getQualityProfile(name string) *config.HLSQuality {
 	return nil
 }
 
+// writePlaylistLineOpts holds arguments for writePlaylistLine to avoid string-heavy parameters.
+type writePlaylistLineOpts struct {
+	MasterPath string
+	WrapMsg    string
+}
+
+// writePlaylistLine runs writeFn(); on error removes masterPath and returns a wrapped error.
+func (m *Module) writePlaylistLine(opts *writePlaylistLineOpts, writeFn func() error) error {
+	if err := writeFn(); err != nil {
+		if removeErr := os.Remove(opts.MasterPath); removeErr != nil {
+			m.log.Warn("Failed to remove corrupted playlist %s: %v", opts.MasterPath, removeErr)
+		}
+		return fmt.Errorf("%s: %w", opts.WrapMsg, err)
+	}
+	return nil
+}
+
+// writeVariantEntryOpts holds path and variant name for writeVariantEntry.
+type writeVariantEntryOpts struct {
+	MasterPath string
+	Variant    string
+}
+
+// writeVariantEntry writes one variant's stream info and playlist path to the master playlist file.
+func (m *Module) writeVariantEntry(file *os.File, opts *writeVariantEntryOpts, profile *config.HLSQuality) error {
+	if err := m.writePlaylistLine(&writePlaylistLineOpts{MasterPath: opts.MasterPath, WrapMsg: "failed to write stream info"}, func() error {
+		_, err := fmt.Fprintf(file, "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
+			profile.Bitrate+profile.AudioBitrate, profile.Width, profile.Height, opts.Variant)
+		return err
+	}); err != nil {
+		return err
+	}
+	return m.writePlaylistLine(&writePlaylistLineOpts{MasterPath: opts.MasterPath, WrapMsg: "failed to write variant path"}, func() error {
+		_, err := fmt.Fprintf(file, "%s/playlist.m3u8\n", opts.Variant)
+		return err
+	})
+}
+
+// generateMasterPlaylistParams holds arguments for generateMasterPlaylist.
+type generateMasterPlaylistParams struct {
+	OutputDir string
+	Variants  []string
+}
+
 // generateMasterPlaylist creates the master HLS playlist in outputDir for the given variants.
-func (m *Module) generateMasterPlaylist(outputDir string, variants []string) error {
-	masterPath := filepath.Join(outputDir, masterPlaylistName)
+func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) error {
+	masterPath := filepath.Join(p.OutputDir, masterPlaylistName)
 	file, err := os.Create(masterPath)
 	if err != nil {
 		return err
@@ -169,41 +213,28 @@ func (m *Module) generateMasterPlaylist(outputDir string, variants []string) err
 		}
 	}()
 
-	if _, err := fmt.Fprintln(file, "#EXTM3U"); err != nil {
-		if removeErr := os.Remove(masterPath); removeErr != nil {
-			m.log.Warn("Failed to remove corrupted playlist %s: %v", masterPath, removeErr)
-		}
-		return fmt.Errorf("failed to write playlist header: %w", err)
+	plOpts := &writePlaylistLineOpts{MasterPath: masterPath, WrapMsg: "failed to write playlist header"}
+	if err := m.writePlaylistLine(plOpts, func() error {
+		_, err := fmt.Fprintln(file, "#EXTM3U")
+		return err
+	}); err != nil {
+		return err
 	}
-	if _, err := fmt.Fprintln(file, "#EXT-X-VERSION:3"); err != nil {
-		if removeErr := os.Remove(masterPath); removeErr != nil {
-			m.log.Warn("Failed to remove corrupted playlist %s: %v", masterPath, removeErr)
-		}
-		return fmt.Errorf("failed to write playlist version: %w", err)
+	plOpts.WrapMsg = "failed to write playlist version"
+	if err := m.writePlaylistLine(plOpts, func() error {
+		_, err := fmt.Fprintln(file, "#EXT-X-VERSION:3")
+		return err
+	}); err != nil {
+		return err
 	}
 
-	for _, variant := range variants {
+	for _, variant := range p.Variants {
 		profile := m.getQualityProfile(variant)
 		if profile == nil {
 			continue
 		}
-
-		if _, err := fmt.Fprintf(file, "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
-			profile.Bitrate+profile.AudioBitrate,
-			profile.Width,
-			profile.Height,
-			variant,
-		); err != nil {
-			if removeErr := os.Remove(masterPath); removeErr != nil {
-				m.log.Warn("Failed to remove corrupted playlist %s: %v", masterPath, removeErr)
-			}
-			return fmt.Errorf("failed to write stream info: %w", err)
-		}
-		if _, err := fmt.Fprintf(file, "%s/playlist.m3u8\n", variant); err != nil {
-			if removeErr := os.Remove(masterPath); removeErr != nil {
-				m.log.Warn("Failed to remove corrupted playlist %s: %v", masterPath, removeErr)
-			}
-			return fmt.Errorf("failed to write variant path: %w", err)
+		if err := m.writeVariantEntry(file, &writeVariantEntryOpts{MasterPath: masterPath, Variant: variant}, profile); err != nil {
+			return err
 		}
 	}
 
