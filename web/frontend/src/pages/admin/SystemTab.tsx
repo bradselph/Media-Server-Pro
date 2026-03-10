@@ -4,7 +4,7 @@ import {adminApi} from '@/api/endpoints'
 import type {QueryResult} from '@/api/types'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {UpdatesTab} from './UpdatesTab'
-import {errMsg} from './helpers'
+import {errMsg} from './adminUtils'
 import {SubTabs} from './helpers'
 
 // ── Tab: Logs ─────────────────────────────────────────────────────────────────

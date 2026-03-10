@@ -2,7 +2,7 @@ import {useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {BannedIP, IPEntry, SecurityStats} from '@/api/types'
-import {errMsg} from './helpers'
+import {errMsg} from './adminUtils'
 
 // ── Tab: Security (Feature 10) ────────────────────────────────────────────────
 

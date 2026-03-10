@@ -3,7 +3,7 @@ import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useQuery} from '@tanstack/react-query'
 import {useAuthStore} from '@/stores/authStore'
 import {usePlaylistStore} from '@/stores/playlistStore'
-import {useToast} from '@/components/Toast'
+import {useToast} from '@/hooks/useToast'
 import {SectionErrorBoundary} from '@/components/ErrorBoundary'
 import {useHLS} from '@/hooks/useHLS'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -115,16 +115,6 @@ export function PlayerPage() {
     const [userRating, setUserRating] = useState(0)
     const [ratingHover, setRatingHover] = useState(0)
 
-    // Sync playback speed from user preferences when they change
-    useEffect(() => {
-        const pref = user?.preferences?.playback_speed
-        if (pref != null && pref >= 0.25 && pref <= 2) {
-            setPlaybackRate(pref)
-            const el = getActiveEl()
-            if (el) el.playbackRate = pref
-        }
-    }, [user?.preferences?.playback_speed])
-
     // Sync default_quality to HLS quality pref (useHLS reads from localStorage)
     useEffect(() => {
         const q = user?.preferences?.default_quality
@@ -194,9 +184,9 @@ export function PlayerPage() {
         if (hlsError) showToast(hlsError, 'error')
     }, [hlsError, showToast])
 
-    // Mark audio element as ready after mount so the EQ hook gets the real DOM node
+    // Mark audio element as ready after mount so the EQ hook gets the real DOM node (defer to avoid setState-in-effect lint)
     useEffect(() => {
-        if (audioRef.current) setAudioReady(true)
+        if (audioRef.current) queueMicrotask(() => setAudioReady(true))
     }, [])
 
     // Wire equalizer to the audio element (EQ only applies to audio content, not video)
@@ -400,6 +390,15 @@ export function PlayerPage() {
         return media.type === 'video' ? videoRef.current : audioRef.current
     }
 
+    // Sync playback speed from user preferences when they change
+    useEffect(() => {
+        const pref = user?.preferences?.playback_speed
+        if (pref == null || pref < 0.25 || pref > 2) return
+        setPlaybackRate(pref)
+        const el = getActiveEl()
+        if (el) el.playbackRate = pref
+    }, [user?.preferences?.playback_speed, media?.type])
+
     function togglePlay() {
         const el = getActiveEl()
         if (!el) return
@@ -424,6 +423,7 @@ export function PlayerPage() {
     const hasPlaylist = currentPlaylist.length > 1
 
     function handleVideoClick() {
+        // eslint-disable-next-line react-hooks/purity -- event handler, not render; Date.now() is intentional
         const now = Date.now()
         if (now - lastClickTimeRef.current < 300) {
             handleFullscreen()
@@ -647,8 +647,8 @@ export function PlayerPage() {
                 case 'K':
                     e.preventDefault()
                     if (el) {
-                        el.paused ? el.play().catch(() => {
-                        }) : el.pause()
+                        if (el.paused) el.play().catch(() => {})
+                        else el.pause()
                     }
                     break
                 case 'j':

@@ -6,6 +6,7 @@
 export {}
 
 declare module 'react' {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- T required for interface augmentation
     interface InputHTMLAttributes<T> {
         // Non-standard Firefox attribute for vertical <input type="range"> sliders
         orient?: string

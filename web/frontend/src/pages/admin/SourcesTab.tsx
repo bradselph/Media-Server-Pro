@@ -16,7 +16,7 @@ import type {
     SlaveNode,
 } from '@/api/types'
 import {StreamingTab} from './StreamingTab'
-import {errMsg, formatBytes} from './helpers'
+import {errMsg, formatBytes} from './adminUtils'
 import {SubTabs} from './helpers'
 
 // ── Tab: Remote Sources ───────────────────────────────────────────────────────

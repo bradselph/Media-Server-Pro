@@ -2,7 +2,7 @@ import {useState} from 'react'
 import {useQuery} from '@tanstack/react-query'
 import {adminApi, analyticsApi} from '@/api/endpoints'
 import type {AnalyticsEvent, EventStats, SuggestionStats} from '@/api/types'
-import {errMsg} from './helpers'
+import {errMsg} from './adminUtils'
 
 // ── Tab: Analytics ────────────────────────────────────────────────────────────
 

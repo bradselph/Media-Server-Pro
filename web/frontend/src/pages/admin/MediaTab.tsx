@@ -3,7 +3,7 @@ import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {AdminMediaListResponse, MediaItem, ThumbnailStats} from '@/api/types'
 import {ContentReviewTab, CategorizerTab, DiscoveryTab} from './ContentTab'
-import {errMsg, formatBytes} from './helpers'
+import {errMsg, formatBytes} from './adminUtils'
 import {SubTabs} from './helpers'
 
 // ── Tab: Media ────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import {useState} from 'react'
 import {useQuery} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
-import {errMsg, formatBytes, formatUptime} from './helpers'
+import {errMsg, formatBytes, formatUptime} from './adminUtils'
 
 export function DashboardTab() {
     const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)

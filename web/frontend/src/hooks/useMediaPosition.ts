@@ -1,3 +1,4 @@
+import type {RefObject} from 'react'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {watchHistoryApi} from '@/api/endpoints'
 
@@ -21,7 +22,7 @@ function formatTime(seconds: number): string {
 
 export function useMediaPosition(
     mediaId: string | null,
-    mediaElement: HTMLMediaElement | null,
+    mediaRef: RefObject<HTMLMediaElement | null>,
 ): UseMediaPositionResult {
     const [resumeInfo, setResumeInfo] = useState<ResumeInfo | null>(null)
     const trackingInterval = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -30,7 +31,7 @@ export function useMediaPosition(
     // Load position on media change
     useEffect(() => {
         if (!mediaId) {
-            setResumeInfo(null)
+            queueMicrotask(() => setResumeInfo(null))
             return
         }
 
@@ -76,12 +77,14 @@ export function useMediaPosition(
 
     // Track position every 15s while playing
     useEffect(() => {
-        if (!mediaId || !mediaElement) return
+        const el = mediaRef.current
+        if (!mediaId || !el) return
 
         function trackPosition() {
-            if (!mediaElement || mediaElement.paused || !mediaId) return
-            const currentTime = mediaElement.currentTime
-            const duration = mediaElement.duration
+            const elem = mediaRef.current
+            if (!elem || elem.paused || !mediaId) return
+            const currentTime = elem.currentTime
+            const duration = elem.duration
             if (currentTime > 0 && duration > 0) {
                 watchHistoryApi.trackPosition(mediaId, currentTime, duration).catch(() => {
                 })
@@ -93,29 +96,31 @@ export function useMediaPosition(
         // Save on pause
         const handlePause = () => trackPosition()
         const handleEnded = () => {
-            if (mediaId && mediaElement) {
-                watchHistoryApi.trackPosition(mediaId, mediaElement.duration, mediaElement.duration).catch(() => {
+            const elem = mediaRef.current
+            if (mediaId && elem) {
+                watchHistoryApi.trackPosition(mediaId, elem.duration, elem.duration).catch(() => {
                 })
             }
         }
 
-        mediaElement.addEventListener('pause', handlePause)
-        mediaElement.addEventListener('ended', handleEnded)
+        el.addEventListener('pause', handlePause)
+        el.addEventListener('ended', handleEnded)
 
         return () => {
             if (trackingInterval.current) clearInterval(trackingInterval.current)
-            mediaElement.removeEventListener('pause', handlePause)
-            mediaElement.removeEventListener('ended', handleEnded)
+            el.removeEventListener('pause', handlePause)
+            el.removeEventListener('ended', handleEnded)
         }
-    }, [mediaId, mediaElement])
+    }, [mediaId, mediaRef])
 
     const acceptResume = useCallback(() => {
-        if (resumeInfo && mediaElement) {
-            mediaElement.currentTime = resumeInfo.position
+        const el = mediaRef.current
+        if (resumeInfo && el) {
+            el.currentTime = resumeInfo.position
         }
         setResumeInfo(null)
         if (autoDeclineTimer.current) clearTimeout(autoDeclineTimer.current)
-    }, [resumeInfo, mediaElement])
+    }, [resumeInfo, mediaRef])
 
     const declineResume = useCallback(() => {
         setResumeInfo(null)
