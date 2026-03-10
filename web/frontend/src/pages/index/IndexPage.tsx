@@ -14,6 +14,16 @@ import {EqualizerPanel} from '@/components/EqualizerPanel'
 import {formatDuration, formatFileSize, formatTitle} from '@/utils/formatters'
 import '@/styles/index.css'
 
+// Allowed pagination limits — used to normalize URL/API values so 48/96 etc. work consistently
+const PAGINATION_LIMITS = [12, 24, 48, 96] as const
+
+function normalizeLimit(value: number, fallback: number): number {
+    const n = Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback
+    if (PAGINATION_LIMITS.includes(n as (typeof PAGINATION_LIMITS)[number])) return n
+    const next = PAGINATION_LIMITS.find(m => m >= n)
+    return next ?? PAGINATION_LIMITS[PAGINATION_LIMITS.length - 1]
+}
+
 // BlurHashPlaceholder renders a decoded BlurHash as a canvas for LQIP
 function BlurHashPlaceholder({hash, className, style}: { hash: string; className?: string; style?: CSSProperties }) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -841,7 +851,9 @@ export function IndexPage() {
 
     // Pagination & filter state persisted in URL so back-navigation restores position
     const [searchParams, setSearchParams] = useSearchParams()
-    const defaultLimit = user?.preferences?.items_per_page || serverSettings?.ui?.items_per_page || 24
+    const rawDefault =
+        user?.preferences?.items_per_page ?? serverSettings?.ui?.items_per_page ?? 24
+    const defaultLimit = normalizeLimit(Number(rawDefault) || 24, 24)
 
     // Refs so updateParams stays stable even as defaultLimit or setSearchParams changes.
     // In React Router v7, setSearchParams gets a new identity on each location update, so
@@ -853,7 +865,8 @@ export function IndexPage() {
     setSearchParamsRef.current = setSearchParams
 
     const page = Math.max(1, Number(searchParams.get('page')) || 1)
-    const limit = Number(searchParams.get('limit')) || defaultLimit
+    const rawLimit = Number(searchParams.get('limit')) || defaultLimit
+    const limit = normalizeLimit(rawLimit, defaultLimit)
     const mediaType = searchParams.get('type') || 'all'
     const sortBy = searchParams.get('sort') || 'date'
     const sortOrder = searchParams.get('order') || 'desc'
@@ -888,9 +901,12 @@ export function IndexPage() {
         updateParams({page: newPage})
     }, [page, updateParams])
 
-    const setLimit = useCallback((v: number) => {
-        updateParams({limit: v, page: null})
-    }, [updateParams])
+    const setLimit = useCallback(
+        (v: number) => {
+            updateParams({limit: normalizeLimit(v, defaultLimit), page: null})
+        },
+        [updateParams, defaultLimit],
+    )
 
     const setMediaType = useCallback((v: string) => {
         updateParams({type: v, page: null})
@@ -1466,13 +1482,12 @@ export function IndexPage() {
                                 <select
                                     id="per-page"
                                     className="pagination-select"
-                                    value={limit}
-                                    onChange={e => setLimit(Number(e.target.value))}
+                                    value={String(limit)}
+                                    onChange={e => setLimit(normalizeLimit(Number(e.target.value), defaultLimit))}
                                 >
-                                    <option value="12">12</option>
-                                    <option value="24">24</option>
-                                    <option value="48">48</option>
-                                    <option value="96">96</option>
+                                    {PAGINATION_LIMITS.map(n => (
+                                        <option key={n} value={String(n)}>{n}</option>
+                                    ))}
                                 </select>
                             </div>
                         </div>
