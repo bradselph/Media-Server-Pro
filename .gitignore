@@ -51,5 +51,9 @@ Thumbs.db
 *.sarif
 *.sarif.json
 
+# fix-issues.py (may contain hardcoded API key) and its backups
+/scripts/fix-issues.py
+*.bak
+
 /vendor
 # package-lock.json tracked for reproducible builds — do not ignore

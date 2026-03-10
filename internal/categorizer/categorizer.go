@@ -77,6 +77,23 @@ type Module struct {
 	patterns  *categoryPatterns
 }
 
+// PathContext holds path components used for categorization detection.
+// Replaces primitive obsession with multiple filename/dirPath/fullPath string arguments.
+type PathContext struct {
+	Filename string // base name, typically lowercased
+	DirPath  string // directory path, typically lowercased
+	FullPath string // full path, typically lowercased
+}
+
+// NewPathContext builds a PathContext from an absolute file path.
+func NewPathContext(path string) PathContext {
+	return PathContext{
+		Filename: strings.ToLower(filepath.Base(path)),
+		DirPath:  strings.ToLower(filepath.Dir(path)),
+		FullPath: strings.ToLower(path),
+	}
+}
+
 // categoryPatterns holds compiled regex patterns for detection
 type categoryPatterns struct {
 	tvShowPatterns      []*regexp.Regexp
@@ -208,12 +225,10 @@ func (m *Module) CategorizeFile(path string) *CategorizedItem {
 		CategorizedAt: time.Now(),
 	}
 
-	filename := strings.ToLower(filepath.Base(path))
-	dirPath := strings.ToLower(filepath.Dir(path))
-	fullPath := strings.ToLower(path)
+	ctx := NewPathContext(path)
 
 	// Detect category based on patterns
-	category, confidence, info := m.detectCategory(filename, dirPath, fullPath)
+	category, confidence, info := m.detectCategory(ctx)
 
 	item.Category = category
 	item.Confidence = confidence
@@ -254,28 +269,28 @@ func copyItem(src *CategorizedItem) *CategorizedItem {
 }
 
 // detectCategory determines the category for a file
-func (m *Module) detectCategory(filename, dirPath, fullPath string) (Category, float64, *MediaInfo) {
+func (m *Module) detectCategory(ctx PathContext) (Category, float64, *MediaInfo) {
 	info := &MediaInfo{}
 
-	if cat, conf, ok := m.detectTVShow(filename, dirPath, info); ok {
+	if cat, conf, ok := m.detectTVShow(ctx, info); ok {
 		return cat, conf, info
 	}
-	if cat, conf, ok := m.detectAnime(filename, dirPath, fullPath, info); ok {
+	if cat, conf, ok := m.detectAnime(ctx, info); ok {
 		return cat, conf, info
 	}
-	if cat, conf, ok := m.detectDocumentary(filename, dirPath, fullPath); ok {
+	if cat, conf, ok := m.detectDocumentary(ctx); ok {
 		return cat, conf, info
 	}
-	if cat, conf, ok := m.detectAudiobook(filename, dirPath, fullPath); ok {
+	if cat, conf, ok := m.detectAudiobook(ctx); ok {
 		return cat, conf, info
 	}
-	if cat, conf, ok := m.detectPodcast(filename, dirPath, fullPath); ok {
+	if cat, conf, ok := m.detectPodcast(ctx); ok {
 		return cat, conf, info
 	}
-	if cat, conf, ok := m.detectMusic(filename, dirPath, info); ok {
+	if cat, conf, ok := m.detectMusic(ctx, info); ok {
 		return cat, conf, info
 	}
-	if cat, conf, ok := m.detectMovie(filename, dirPath, info); ok {
+	if cat, conf, ok := m.detectMovie(ctx, info); ok {
 		return cat, conf, info
 	}
 
@@ -283,10 +298,10 @@ func (m *Module) detectCategory(filename, dirPath, fullPath string) (Category, f
 }
 
 // detectTVShow checks for TV show patterns in the filename and directory path.
-func (m *Module) detectTVShow(filename, dirPath string, info *MediaInfo) (Category, float64, bool) {
+func (m *Module) detectTVShow(ctx PathContext, info *MediaInfo) (Category, float64, bool) {
 	for _, pattern := range m.patterns.tvShowPatterns {
-		if matches := pattern.FindStringSubmatch(filename); len(matches) > 0 {
-			info.ShowName = m.extractShowName(filename, pattern)
+		if matches := pattern.FindStringSubmatch(ctx.Filename); len(matches) > 0 {
+			info.ShowName = m.extractShowName(ctx.Filename, pattern)
 			if len(matches) > 1 {
 				info.Season = parseNumber(matches[1])
 			}
@@ -296,22 +311,22 @@ func (m *Module) detectTVShow(filename, dirPath string, info *MediaInfo) (Catego
 			return CategoryTVShows, 0.9, true
 		}
 	}
-	if strings.Contains(dirPath, "tv") || strings.Contains(dirPath, "series") ||
-		strings.Contains(dirPath, "shows") {
+	if strings.Contains(ctx.DirPath, "tv") || strings.Contains(ctx.DirPath, "series") ||
+		strings.Contains(ctx.DirPath, "shows") {
 		return CategoryTVShows, 0.7, true
 	}
 	return "", 0, false
 }
 
 // detectAnime checks for anime patterns in the filename, directory path, and full path.
-func (m *Module) detectAnime(filename, dirPath, fullPath string, _ *MediaInfo) (Category, float64, bool) {
+func (m *Module) detectAnime(ctx PathContext, _ *MediaInfo) (Category, float64, bool) {
 	animeScore := 0.0
 	for _, pattern := range m.patterns.animePatterns {
-		if pattern.MatchString(filename) || pattern.MatchString(fullPath) {
+		if pattern.MatchString(ctx.Filename) || pattern.MatchString(ctx.FullPath) {
 			animeScore += 0.3
 		}
 	}
-	if strings.Contains(dirPath, "anime") {
+	if strings.Contains(ctx.DirPath, "anime") {
 		animeScore += 0.5
 	}
 	if animeScore >= 0.5 {
@@ -321,69 +336,69 @@ func (m *Module) detectAnime(filename, dirPath, fullPath string, _ *MediaInfo) (
 }
 
 // detectDocumentary checks for documentary patterns in the filename, directory path, and full path.
-func (m *Module) detectDocumentary(filename, dirPath, fullPath string) (Category, float64, bool) {
+func (m *Module) detectDocumentary(ctx PathContext) (Category, float64, bool) {
 	for _, pattern := range m.patterns.docPatterns {
-		if pattern.MatchString(filename) || pattern.MatchString(fullPath) {
+		if pattern.MatchString(ctx.Filename) || pattern.MatchString(ctx.FullPath) {
 			return CategoryDocumentaries, 0.8, true
 		}
 	}
-	if strings.Contains(dirPath, "documentary") || strings.Contains(dirPath, "documentaries") ||
-		strings.Contains(dirPath, "docs") {
+	if strings.Contains(ctx.DirPath, "documentary") || strings.Contains(ctx.DirPath, "documentaries") ||
+		strings.Contains(ctx.DirPath, "docs") {
 		return CategoryDocumentaries, 0.7, true
 	}
 	return "", 0, false
 }
 
 // detectAudiobook checks for audiobook patterns in the filename, directory path, and full path.
-func (m *Module) detectAudiobook(filename, dirPath, fullPath string) (Category, float64, bool) {
+func (m *Module) detectAudiobook(ctx PathContext) (Category, float64, bool) {
 	for _, pattern := range m.patterns.audiobookPatterns {
-		if pattern.MatchString(filename) || pattern.MatchString(fullPath) {
+		if pattern.MatchString(ctx.Filename) || pattern.MatchString(ctx.FullPath) {
 			return CategoryAudiobooks, 0.8, true
 		}
 	}
-	if strings.Contains(dirPath, "audiobook") || strings.Contains(dirPath, "audio book") {
+	if strings.Contains(ctx.DirPath, "audiobook") || strings.Contains(ctx.DirPath, "audio book") {
 		return CategoryAudiobooks, 0.7, true
 	}
 	return "", 0, false
 }
 
 // detectPodcast checks for podcast patterns in the filename, directory path, and full path.
-func (m *Module) detectPodcast(filename, dirPath, fullPath string) (Category, float64, bool) {
+func (m *Module) detectPodcast(ctx PathContext) (Category, float64, bool) {
 	for _, pattern := range m.patterns.podcastPatterns {
-		if pattern.MatchString(filename) || pattern.MatchString(fullPath) {
+		if pattern.MatchString(ctx.Filename) || pattern.MatchString(ctx.FullPath) {
 			return CategoryPodcasts, 0.7, true
 		}
 	}
-	if strings.Contains(dirPath, "podcast") {
+	if strings.Contains(ctx.DirPath, "podcast") {
 		return CategoryPodcasts, 0.8, true
 	}
 	return "", 0, false
 }
 
 // detectMusic checks for music patterns in the filename and directory path.
-func (m *Module) detectMusic(filename, dirPath string, info *MediaInfo) (Category, float64, bool) {
+func (m *Module) detectMusic(ctx PathContext, info *MediaInfo) (Category, float64, bool) {
 	for _, pattern := range m.patterns.musicPatterns {
-		if pattern.MatchString(filename) {
-			info.Artist, info.Album = m.extractMusicInfo(filename)
+		if pattern.MatchString(ctx.Filename) {
+			info.Artist, info.Album = m.extractMusicInfo(ctx.Filename)
 			return CategoryMusic, 0.8, true
 		}
 	}
-	if strings.Contains(dirPath, "music") || strings.Contains(dirPath, "albums") ||
-		strings.Contains(dirPath, "artists") {
+	if strings.Contains(ctx.DirPath, "music") || strings.Contains(ctx.DirPath, "albums") ||
+		strings.Contains(ctx.DirPath, "artists") {
 		return CategoryMusic, 0.7, true
 	}
 	return "", 0, false
 }
 
 // detectMovie checks for movie patterns in the filename and directory path.
-func (m *Module) detectMovie(filename, dirPath string, info *MediaInfo) (Category, float64, bool) {
-	if matches := m.patterns.movieYearMatch.FindStringSubmatch(filename); len(matches) > 0 {
-		info.Title = m.extractMovieTitle(filename)
+func (m *Module) detectMovie(ctx PathContext, info *MediaInfo) (Category, float64, bool) {
+	if matches := m.patterns.movieYearMatch.FindStringSubmatch(ctx.Filename); len(matches) > 0 {
+		info.Title = m.extractMovieTitle(ctx.Filename)
 		info.Year = parseNumber(matches[0])
 		return CategoryMovies, 0.7, true
 	}
-	if strings.Contains(dirPath, "movie") || strings.Contains(dirPath, "films") {
-		info.Title = m.extractMovieTitle(filename)
+	if strings.Contains(ctx.DirPath, "movie") || strings.Contains(ctx.DirPath, "films") {
+		info.Title = m.extractMovieTitle(ctx.Filename)
 		return CategoryMovies, 0.6, true
 	}
 	return "", 0, false
