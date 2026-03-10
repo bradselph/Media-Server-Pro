@@ -41,7 +41,7 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 		return
 	}
 
-	_, err := h.thumbnails.GenerateThumbnail(absPath, req.ID, req.IsAudio, true)
+	_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: absPath, MediaID: req.ID, IsAudio: req.IsAudio, HighPriority: true})
 	if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
@@ -127,10 +127,10 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		}
 	}
 
-	if !h.thumbnails.HasThumbnail(id) {
+	if !h.thumbnails.HasThumbnail(thumbnails.MediaID(id)) {
 		isAudio := helpers.IsAudioExtension(filepath.Ext(path))
 
-		_, err := h.thumbnails.GenerateThumbnailSync(path, id, isAudio)
+		_, err := h.thumbnails.GenerateThumbnailSyncRequest(&thumbnails.ThumbnailSyncRequest{MediaPath: path, MediaID: id, IsAudio: isAudio})
 		if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 			h.log.Error("Failed to generate thumbnail for %s: %v", path, err)
 			writeError(c, http.StatusNotFound, "Thumbnail generation failed")
@@ -146,7 +146,7 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	if widthParam != "" {
 		var w int
 		if _, err := fmt.Sscanf(widthParam, "%d", &w); err == nil {
-			if fp := h.thumbnails.GetThumbnailFilePathForSize(id, w); fp != "" {
+			if fp := h.thumbnails.GetThumbnailFilePathForSize(thumbnails.MediaID(id), w); fp != "" {
 				thumbFilePath = fp
 				contentType = "image/webp" // responsive sizes are WebP-only
 			}
@@ -154,9 +154,9 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	}
 	if thumbFilePath == "" {
 		// Fall back to main thumbnail
-		thumbFilePath = h.thumbnails.GetThumbnailFilePath(id)
+		thumbFilePath = h.thumbnails.GetThumbnailFilePath(thumbnails.MediaID(id))
 		if wantWebP {
-			if webpPath := h.thumbnails.GetThumbnailFilePathWebp(id); webpPath != "" {
+			if webpPath := h.thumbnails.GetThumbnailFilePathWebp(thumbnails.MediaID(id)); webpPath != "" {
 				thumbFilePath = webpPath
 				contentType = "image/webp"
 			}

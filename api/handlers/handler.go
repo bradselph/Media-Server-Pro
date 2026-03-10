@@ -593,15 +593,15 @@ func (h *Handler) enrichSuggestionThumbnails(items []*suggestions.Suggestion) {
 	}
 	for _, item := range items {
 		if item.ThumbnailURL == "" {
-			if !h.thumbnails.HasThumbnail(item.MediaID) {
+			if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.MediaID)) {
 				ext := strings.ToLower(filepath.Ext(item.MediaPath))
 				isAudio := isAudioExtension(ext)
-				if _, err := h.thumbnails.GenerateThumbnail(item.MediaPath, item.MediaID, isAudio, true); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
+				if _, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.MediaPath, MediaID: item.MediaID, IsAudio: isAudio, HighPriority: true}); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 					h.log.Warn("Failed to queue thumbnail for %s: %v", item.MediaPath, err)
 				}
 			}
 			// Use stable MediaID so URL survives path changes
-			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(item.MediaID)
+			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.MediaID))
 		}
 	}
 }

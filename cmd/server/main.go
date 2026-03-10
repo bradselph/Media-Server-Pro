@@ -431,10 +431,10 @@ func registerTasks(
 				isAudio := item.Type == "audio"
 				// For video: regenerate if ANY thumbnail (main or preview) is missing.
 				// For audio: only the single waveform thumbnail matters.
-				needsGen := isAudio && !thumbnailsModule.HasThumbnail(item.ID) ||
-					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(item.ID)
+				needsGen := isAudio && !thumbnailsModule.HasThumbnail(thumbnails.MediaID(item.ID)) ||
+					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(thumbnails.MediaID(item.ID))
 				if needsGen {
-					if _, err := thumbnailsModule.GenerateThumbnail(item.Path, item.ID, isAudio, false); err != nil {
+					if _, err := thumbnailsModule.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: false}); err != nil {
 						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
 							log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
 						}
