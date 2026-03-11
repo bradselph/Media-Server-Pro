@@ -17,7 +17,63 @@ import {
     watchHistoryApi,
 } from '@/api/endpoints'
 import type { HLSJob } from '@/api/types'
-import { handlePlayerKeyDown } from './playerKeyboard'
+import { usePlayerKeyboard } from './playerKeyboard'
+
+const QUALITY_HEIGHT_MAP: Record<string, number> = {
+    low: 360,
+    medium: 480,
+    high: 720,
+    ultra: 1080,
+}
+
+function syncQualityPreference(q: string | undefined): void {
+    if (!q || q === 'auto') return
+    const height = QUALITY_HEIGHT_MAP[q]
+    if (!height) return
+    try {
+        localStorage.setItem('media-server-quality-pref', String(height))
+    } catch {
+        /* storage full */
+    }
+}
+
+function syncPlaylistIndex(
+    mediaId: string,
+    playlist: { media_id: string }[],
+    currentIndex: number,
+    setCurrentIndex: (i: number) => void,
+): void {
+    if (!mediaId || playlist.length === 0) return
+    const idx = playlist.findIndex((i) => i.media_id === mediaId)
+    if (idx === -1 || idx === currentIndex) return
+    setCurrentIndex(idx)
+}
+
+function shouldResumeAtPosition(
+    el: HTMLMediaElement,
+    pos: number,
+): boolean {
+    if (pos <= 5 || el.readyState < 1 || el.duration <= 0) return false
+    if (pos >= el.duration - 5 || el.currentTime >= 2) return false
+    return true
+}
+
+/** Syncs user quality/preference and playlist index. Reduces main hook complexity. */
+function usePlayerSyncEffects(
+    user: { preferences?: { default_quality?: string } } | null,
+    mediaId: string,
+    currentPlaylist: { media_id: string }[],
+    currentIndex: number,
+    setCurrentIndex: (i: number) => void,
+) {
+    useEffect(() => {
+        syncQualityPreference(user?.preferences?.default_quality)
+    }, [user?.preferences?.default_quality])
+
+    useEffect(() => {
+        syncPlaylistIndex(mediaId, currentPlaylist, currentIndex, setCurrentIndex)
+    }, [mediaId, currentPlaylist, currentIndex, setCurrentIndex])
+}
 
 export function usePlayerPageState(mediaId: string) {
     const navigate = useNavigate()
@@ -49,9 +105,6 @@ export function usePlayerPageState(mediaId: string) {
     const [showSettings, setShowSettings] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [matureAccepted, setMatureAccepted] = useState(false)
-    const matureAccessGranted =
-        matureAccepted || (user?.preferences?.show_mature === true)
-    const showMatureWarning = !!(media?.is_mature && !matureAccessGranted)
     const [theaterMode, setTheaterMode] = useState(false)
     const [hoverTime, setHoverTime] = useState<number | null>(null)
     const [hoverPos, setHoverPos] = useState(0)
@@ -64,25 +117,7 @@ export function usePlayerPageState(mediaId: string) {
     const [userRating, setUserRating] = useState(0)
     const [ratingHover, setRatingHover] = useState(0)
 
-    useEffect(() => {
-        const q = user?.preferences?.default_quality
-        if (!q || q === 'auto') return
-        const heightMap: Record<string, number> = { low: 360, medium: 480, high: 720, ultra: 1080 }
-        const height = heightMap[q]
-        if (height) {
-            try {
-                localStorage.setItem('media-server-quality-pref', String(height))
-            } catch {
-                /* storage full */
-            }
-        }
-    }, [user?.preferences?.default_quality])
-
-    useEffect(() => {
-        if (!mediaId || currentPlaylist.length === 0) return
-        const idx = currentPlaylist.findIndex((i) => i.media_id === mediaId)
-        if (idx !== -1 && idx !== currentIndex) setCurrentIndex(idx)
-    }, [mediaId, currentPlaylist, currentIndex, setCurrentIndex])
+    usePlayerSyncEffects(user, mediaId, currentPlaylist, currentIndex, setCurrentIndex)
 
     const handleRate = useCallback(
         (rating: number) => {
@@ -109,6 +144,10 @@ export function usePlayerPageState(mediaId: string) {
         },
         retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
     })
+
+    const matureAccessGranted =
+        matureAccepted || (user?.preferences?.show_mature === true)
+    const showMatureWarning = !!(media?.is_mature && !matureAccessGranted)
 
     const onHlsFallback = useCallback(() => setActiveHlsUrl(null), [])
 
@@ -172,16 +211,18 @@ export function usePlayerPageState(mediaId: string) {
         const el = media.type === 'video' ? videoRef.current : audioRef.current
         if (!el) return
 
-        setIsLoading(true)
-        setCurrentTime(0)
-        setDuration(0)
-        setIsPlaying(false)
-        setActiveHlsUrl(null)
-        setHlsAvailable(false)
-        setHlsReadyUrl(null)
-        setHlsJob(null)
-        setHlsPolling(false)
-        setUserRating(0)
+        queueMicrotask(() => {
+            setIsLoading(true)
+            setCurrentTime(0)
+            setDuration(0)
+            setIsPlaying(false)
+            setActiveHlsUrl(null)
+            setHlsAvailable(false)
+            setHlsReadyUrl(null)
+            setHlsJob(null)
+            setHlsPolling(false)
+            setUserRating(0)
+        })
 
         el.src = mediaApi.getStreamUrl(mediaId)
         el.volume = volume
@@ -199,13 +240,7 @@ export function usePlayerPageState(mediaId: string) {
                     if (positionFetchCancelled) return
                     const pos = data?.position ?? 0
                     resumePositionRef.current = pos
-                    if (
-                        pos > 5 &&
-                        elRef.readyState >= 1 &&
-                        elRef.duration > 0 &&
-                        pos < elRef.duration - 5 &&
-                        elRef.currentTime < 2
-                    ) {
+                    if (shouldResumeAtPosition(elRef, pos)) {
                         elRef.currentTime = pos
                     }
                 })
@@ -294,7 +329,7 @@ export function usePlayerPageState(mediaId: string) {
         if (isPlaying) {
             controlsTimerRef.current = setTimeout(() => setShowControls(false), 3000)
         } else {
-            setShowControls(true)
+            queueMicrotask(() => setShowControls(true))
         }
     }, [isPlaying, isVideo])
 
@@ -322,8 +357,8 @@ export function usePlayerPageState(mediaId: string) {
 
     useEffect(() => {
         const pref = user?.preferences?.playback_speed
-        if (pref == null || pref < 0.25 || pref > 2) return
-        setPlaybackRate(pref)
+        if (pref === null || pref === undefined || pref < 0.25 || pref > 2) return
+        queueMicrotask(() => setPlaybackRate(pref))
         const el = getActiveEl()
         if (el) el.playbackRate = pref
     }, [user?.preferences?.playback_speed, media?.type, getActiveEl])
@@ -619,34 +654,29 @@ export function usePlayerPageState(mediaId: string) {
         return () => clearInterval(interval)
     }, [mediaId, isPlaying, duration])
 
-    useEffect(() => {
-        const onKeyDown = (e: KeyboardEvent) => {
-            handlePlayerKeyDown(e, {
-                getActiveEl,
-                togglePlay,
-                setSpeed,
-                setVolume,
-                setIsMuted,
-                handleFullscreen,
-                setTheaterMode,
-                setShowSettings,
-                showSettings,
-                playbackRate,
-            })
-        }
-        document.addEventListener('keydown', onKeyDown)
-        return () => document.removeEventListener('keydown', onKeyDown)
-    }, [getActiveEl, togglePlay, setSpeed, handleFullscreen, showSettings, playbackRate])
+    usePlayerKeyboard({
+        getActiveEl,
+        togglePlay,
+        setSpeed,
+        setVolume,
+        setIsMuted,
+        handleFullscreen,
+        setTheaterMode,
+        setShowSettings,
+        showSettings,
+        playbackRate,
+    })
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-    const qualityBadge =
-        hlsQualities.length === 0
-            ? null
-            : currentQuality === -1
-              ? autoLevel >= 0 && hlsQualities[autoLevel]
-                ? hlsQualities[autoLevel].name
-                : null
-              : hlsQualities.find((q) => q.index === currentQuality)?.name ?? null
+    let qualityBadge: string | null = null
+    if (hlsQualities.length > 0) {
+        if (currentQuality === -1) {
+            const qual = autoLevel >= 0 ? hlsQualities[autoLevel] : undefined
+            qualityBadge = qual?.name ?? null
+        } else {
+            qualityBadge = hlsQualities.find((q) => q.index === currentQuality)?.name ?? null
+        }
+    }
 
     const isAudio = media?.type === 'audio'
 
