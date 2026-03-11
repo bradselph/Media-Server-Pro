@@ -8,7 +8,7 @@
 #   ./deploy.sh --dev                   # shorthand for --branch development
 #   ./deploy.sh --setup                 # first-time VPS provisioning
 #   ./deploy.sh --setup-receiver        # configure master receiver for slave nodes
-#   ./deploy.sh --fix-env               # patch .env on VPS
+#   ./deploy.sh --fix-env               # patch .env on VPS (incl. optional: receiver, Hugging Face)
 #   ./deploy.sh --rollback              # restore server.bak on VPS
 #   ./deploy.sh --dry-run               # preview commands without executing
 #
@@ -752,7 +752,7 @@ if $SETUP; then
     if command -v ufw &>/dev/null; then
       echo '[setup] Configuring UFW firewall...'
       sudo ufw allow ssh 2>/dev/null || true
-      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 8080)
+      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 3000)
       sudo ufw allow \"\${APP_PORT}/tcp\" 2>/dev/null || true
       sudo ufw --force enable 2>/dev/null || true
       echo \"[setup] UFW: opened port \${APP_PORT}/tcp\"
@@ -792,8 +792,17 @@ if $FIX_ENV; then
       fi
       echo \"  \$key=\$val\"
     }
-    patch_or_add SERVER_PORT 8080
-    patch_or_add SERVER_HOST 127.0.0.1
+    add_if_missing() {
+      local key=\$1 val=\$2
+      if ! grep -q \"^\$key=\" \"\$ENV\" 2>/dev/null; then
+        echo \"\$key=\$val\" >> \"\$ENV\"
+        echo \"  \$key=\$val (added)\"
+      else
+        echo \"  \$key=(unchanged)\"
+      fi
+    }
+    add_if_missing SERVER_PORT 8080
+    add_if_missing SERVER_HOST 127.0.0.1
 
     # Add TLS mode for remote databases
     DB_HOST=\$(grep -oP '(?<=^DATABASE_HOST=)\S+' \"\$ENV\" 2>/dev/null || echo localhost)
@@ -817,6 +826,18 @@ if $FIX_ENV; then
       patch_or_add RECEIVER_API_KEYS \"\$RECV_KEY\"
       echo \"  [IMPORTANT] New receiver API key written — give it to your slave nodes\"
     fi
+
+    # Hugging Face visual classification (mature content tagging)
+    echo '  [Hugging Face classification]'
+    patch_or_add HUGGINGFACE_ENABLED false
+    patch_or_add FEATURE_HUGGINGFACE false
+    if ! grep -q '^HUGGINGFACE_API_KEY=' \"\$ENV\" 2>/dev/null; then
+      echo 'HUGGINGFACE_API_KEY=' >> \"\$ENV\"
+      echo '  HUGGINGFACE_API_KEY= (empty — set + FEATURE_HUGGINGFACE=true to enable)'
+    fi
+    patch_or_add HUGGINGFACE_MODEL 'Salesforce/blip-image-captioning-large'
+    patch_or_add HUGGINGFACE_MAX_FRAMES 3
+    patch_or_add HUGGINGFACE_RATE_LIMIT 30
   "
   echo ""
 fi

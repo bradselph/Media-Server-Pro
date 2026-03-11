@@ -501,6 +501,7 @@ func (m *Module) GetConfigMap() map[string]interface{} {
 			"enable_hls":        cfg.Features.EnableHLS,
 			"enable_analytics":  cfg.Features.EnableAnalytics,
 			"enable_uploads":    cfg.Features.EnableUploads,
+			"enable_huggingface": cfg.Features.EnableHuggingFace,
 		},
 		"security": map[string]interface{}{
 			"rate_limit_enabled":  cfg.Security.RateLimitEnabled,
@@ -538,6 +539,16 @@ func (m *Module) GetConfigMap() map[string]interface{} {
 			"high_confidence_threshold":   cfg.MatureScanner.HighConfidenceThreshold,
 			"medium_confidence_threshold": cfg.MatureScanner.MediumConfidenceThreshold,
 			"require_review":              cfg.MatureScanner.RequireReview,
+		},
+		"huggingface": map[string]interface{}{
+			"enabled":         cfg.HuggingFace.Enabled,
+			"api_key_set":     len(cfg.HuggingFace.APIKey) > 0,
+			"model":           cfg.HuggingFace.Model,
+			"endpoint_url":    cfg.HuggingFace.EndpointURL,
+			"max_frames":      cfg.HuggingFace.MaxFrames,
+			"timeout_secs":    cfg.HuggingFace.TimeoutSecs,
+			"rate_limit":     cfg.HuggingFace.RateLimit,
+			"max_concurrent": cfg.HuggingFace.MaxConcurrent,
 		},
 		"database": map[string]interface{}{
 			"enabled":           cfg.Database.Enabled,

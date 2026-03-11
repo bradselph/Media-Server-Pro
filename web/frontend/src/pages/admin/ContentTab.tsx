@@ -1,9 +1,21 @@
-import {useState} from 'react'
+import {useEffect, useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {CategorizedItem, CategoryStats, DiscoverySuggestion} from '@/api/types'
 import {errMsg} from './adminUtils'
 import {SubTabs} from './helpers'
+
+// Shape of huggingface block from GET /api/admin/config (nested under config)
+type HuggingFaceConfigBlock = {
+    enabled?: boolean
+    api_key_set?: boolean
+    model?: string
+    endpoint_url?: string
+    max_frames?: number
+    timeout_secs?: number
+    rate_limit?: number
+    max_concurrent?: number
+}
 
 // ── Tab: Content Review ───────────────────────────────────────────────────────
 
@@ -635,6 +647,316 @@ export function DiscoveryTab() {
                         </table>
                     </div>
                 )}
+            </div>
+        </div>
+    )
+}
+
+// ── Tab: Hugging Face (visual classification) ───────────────────────────────
+
+export function HuggingFaceTab() {
+    const queryClient = useQueryClient()
+    const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+    const [classifyPath, setClassifyPath] = useState('')
+    const [classifyDirPath, setClassifyDirPath] = useState('')
+    const [classifyFileLoading, setClassifyFileLoading] = useState(false)
+    const [classifyDirLoading, setClassifyDirLoading] = useState(false)
+    const [saving, setSaving] = useState(false)
+    const [apiKeyInput, setApiKeyInput] = useState('')
+
+    const {data: status} = useQuery({
+        queryKey: ['classify-status'],
+        queryFn: () => adminApi.getClassifyStatus(),
+    })
+
+    const {data: config} = useQuery({
+        queryKey: ['admin-config'],
+        queryFn: () => adminApi.getConfig(),
+    })
+
+    const hf = (config?.huggingface as HuggingFaceConfigBlock | undefined) ?? {}
+    const [enabled, setEnabled] = useState(hf.enabled ?? false)
+    const [model, setModel] = useState(hf.model ?? '')
+    const [maxFrames, setMaxFrames] = useState(hf.max_frames ?? 3)
+    const [rateLimit, setRateLimit] = useState(hf.rate_limit ?? 30)
+    const [timeoutSecs, setTimeoutSecs] = useState(hf.timeout_secs ?? 30)
+    const [maxConcurrent, setMaxConcurrent] = useState(hf.max_concurrent ?? 2)
+    const [endpointUrl, setEndpointUrl] = useState(hf.endpoint_url ?? '')
+
+    useEffect(() => {
+        if (!config?.huggingface) return
+        const c = config.huggingface as HuggingFaceConfigBlock
+        setEnabled(!!c.enabled)
+        setModel(c.model ?? '')
+        setMaxFrames(c.max_frames ?? 3)
+        setRateLimit(c.rate_limit ?? 30)
+        setTimeoutSecs(c.timeout_secs ?? 30)
+        setMaxConcurrent(c.max_concurrent ?? 2)
+        setEndpointUrl(c.endpoint_url ?? '')
+    }, [config?.huggingface])
+
+    async function handleClassifyFile() {
+        if (!classifyPath.trim()) return
+        setClassifyFileLoading(true)
+        setMsg(null)
+        try {
+            const result = await adminApi.classifyFile(classifyPath.trim())
+            setMsg({ type: 'success', text: `Classified: ${result.tags?.length ?? 0} tags added.` })
+        } catch (err) {
+            setMsg({ type: 'error', text: errMsg(err) })
+        } finally {
+            setClassifyFileLoading(false)
+        }
+    }
+
+    async function handleClassifyDirectory() {
+        if (!classifyDirPath.trim()) return
+        setClassifyDirLoading(true)
+        setMsg(null)
+        try {
+            await adminApi.classifyDirectory(classifyDirPath.trim())
+            setMsg({ type: 'success', text: 'Directory classification completed.' })
+            void queryClient.invalidateQueries({ queryKey: ['classify-status'] })
+        } catch (err) {
+            setMsg({ type: 'error', text: errMsg(err) })
+        } finally {
+            setClassifyDirLoading(false)
+        }
+    }
+
+    async function handleSaveSettings(e: React.FormEvent) {
+        e.preventDefault()
+        setSaving(true)
+        setMsg(null)
+        try {
+            const updates: Record<string, unknown> = {
+                'huggingface.enabled': enabled,
+                'huggingface.model': model || 'Salesforce/blip-image-captioning-large',
+                'huggingface.max_frames': maxFrames,
+                'huggingface.rate_limit': rateLimit,
+                'huggingface.timeout_secs': timeoutSecs,
+                'huggingface.max_concurrent': maxConcurrent,
+                'features.enable_huggingface': enabled,
+            }
+            updates['huggingface.endpoint_url'] = endpointUrl.trim()
+            if (apiKeyInput.trim()) updates['huggingface.api_key'] = apiKeyInput.trim()
+            await adminApi.updateConfig(updates as Record<string, string | number | boolean>)
+            setMsg({ type: 'success', text: 'Settings saved. Some changes may require a restart.' })
+            setApiKeyInput('')
+            void queryClient.invalidateQueries({ queryKey: ['admin-config', 'classify-status'] })
+        } catch (err) {
+            setMsg({ type: 'error', text: errMsg(err) })
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    return (
+        <div>
+            {msg && (
+                <div className={`admin-alert admin-alert-${msg.type === 'success' ? 'success' : 'danger'}`}>
+                    {msg.text}
+                </div>
+            )}
+
+            <div className="admin-card" style={{ marginBottom: 20 }}>
+                <h2>Hugging Face Visual Classification</h2>
+                <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>
+                    Uses the Hugging Face Inference API to analyze video frames and images for content, then adds suggested tags to mature-flagged media. Requires an API key and FFmpeg for video frame extraction.
+                </p>
+                {status && (
+                    <div className="admin-stats-grid" style={{ marginBottom: 12 }}>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{status.configured ? 'Yes' : 'No'}</span>
+                            <span className="admin-stat-label">Configured</span>
+                        </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{status.enabled ? 'On' : 'Off'}</span>
+                            <span className="admin-stat-label">Enabled</span>
+                        </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value" style={{ fontSize: 14 }}>{status.model || '—'}</span>
+                            <span className="admin-stat-label">Model</span>
+                        </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{status.rate_limit}</span>
+                            <span className="admin-stat-label">Rate limit/min</span>
+                        </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{status.max_frames}</span>
+                            <span className="admin-stat-label">Max frames</span>
+                        </div>
+                        <div className="admin-stat-card">
+                            <span className="admin-stat-value">{status.max_concurrent}</span>
+                            <span className="admin-stat-label">Max concurrent</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="admin-card" style={{ marginBottom: 20 }}>
+                <h3>Run classification</h3>
+                <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>
+                    Classify a single file or all mature-flagged files in a directory. Tags are merged with existing ones.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                            type="text"
+                            value={classifyPath}
+                            onChange={e => setClassifyPath(e.target.value)}
+                            placeholder="Absolute path to media file..."
+                            style={{
+                                flex: 1,
+                                minWidth: 200,
+                                padding: '6px 10px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 6,
+                                background: 'var(--input-bg)',
+                                color: 'var(--text-color)',
+                                fontSize: 13,
+                            }}
+                        />
+                        <button
+                            type="button"
+                            className="admin-btn admin-btn-primary"
+                            onClick={handleClassifyFile}
+                            disabled={classifyFileLoading || !status?.configured}
+                        >
+                            {classifyFileLoading ? 'Classifying…' : 'Classify file'}
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                            type="text"
+                            value={classifyDirPath}
+                            onChange={e => setClassifyDirPath(e.target.value)}
+                            placeholder="Absolute path to directory..."
+                            style={{
+                                flex: 1,
+                                minWidth: 200,
+                                padding: '6px 10px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 6,
+                                background: 'var(--input-bg)',
+                                color: 'var(--text-color)',
+                                fontSize: 13,
+                            }}
+                        />
+                        <button
+                            type="button"
+                            className="admin-btn admin-btn-primary"
+                            onClick={handleClassifyDirectory}
+                            disabled={classifyDirLoading || !status?.configured}
+                        >
+                            {classifyDirLoading ? 'Classifying…' : 'Classify directory'}
+                        </button>
+                    </div>
+                </div>
+                {status && !status.configured && (
+                    <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
+                        Set an API key below and save to enable classification.
+                    </p>
+                )}
+            </div>
+
+            <div className="admin-card">
+                <h3>Settings</h3>
+                <form onSubmit={handleSaveSettings}>
+                    <div className="admin-form-group">
+                        <label>
+                            <input
+                                type="checkbox"
+                                checked={enabled}
+                                onChange={e => setEnabled(e.target.checked)}
+                            />
+                            {' '}Enable Hugging Face classification
+                        </label>
+                    </div>
+                    <div className="admin-form-group">
+                        <label>API key</label>
+                        <input
+                            type="password"
+                            className="admin-input"
+                            value={apiKeyInput}
+                            onChange={e => setApiKeyInput(e.target.value)}
+                            placeholder={hf.api_key_set ? '•••••••• (leave blank to keep current)' : 'Enter Hugging Face API token'}
+                            autoComplete="off"
+                        />
+                        {hf.api_key_set && !apiKeyInput && (
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}> Current key is set.</span>
+                        )}
+                    </div>
+                    <div className="admin-form-group">
+                        <label>Model</label>
+                        <input
+                            type="text"
+                            className="admin-input"
+                            value={model}
+                            onChange={e => setModel(e.target.value)}
+                            placeholder="Salesforce/blip-image-captioning-large"
+                        />
+                    </div>
+                    <div className="admin-form-group">
+                        <label>Endpoint URL (optional)</label>
+                        <input
+                            type="text"
+                            className="admin-input"
+                            value={endpointUrl}
+                            onChange={e => setEndpointUrl(e.target.value)}
+                            placeholder="https://api-inference.huggingface.co"
+                        />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
+                        <div className="admin-form-group">
+                            <label>Max frames</label>
+                            <input
+                                type="number"
+                                className="admin-input"
+                                min={1}
+                                max={20}
+                                value={maxFrames}
+                                onChange={e => setMaxFrames(Number(e.target.value) || 1)}
+                            />
+                        </div>
+                        <div className="admin-form-group">
+                            <label>Rate limit (req/min)</label>
+                            <input
+                                type="number"
+                                className="admin-input"
+                                min={1}
+                                max={120}
+                                value={rateLimit}
+                                onChange={e => setRateLimit(Number(e.target.value) || 1)}
+                            />
+                        </div>
+                        <div className="admin-form-group">
+                            <label>Timeout (sec)</label>
+                            <input
+                                type="number"
+                                className="admin-input"
+                                min={5}
+                                max={120}
+                                value={timeoutSecs}
+                                onChange={e => setTimeoutSecs(Number(e.target.value) || 30)}
+                            />
+                        </div>
+                        <div className="admin-form-group">
+                            <label>Max concurrent</label>
+                            <input
+                                type="number"
+                                className="admin-input"
+                                min={1}
+                                max={10}
+                                value={maxConcurrent}
+                                onChange={e => setMaxConcurrent(Number(e.target.value) || 1)}
+                            />
+                        </div>
+                    </div>
+                    <button type="submit" className="admin-btn admin-btn-primary" disabled={saving}>
+                        {saving ? 'Saving…' : 'Save settings'}
+                    </button>
+                </form>
             </div>
         </div>
     )

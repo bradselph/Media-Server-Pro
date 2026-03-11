@@ -225,6 +225,13 @@ EOF
   prompt_yn FEAT_SUGGESTIONS "Content suggestions?"             "y"
   prompt_yn FEAT_RECEIVER    "Receiver (accept slave nodes)?"   "n"
   prompt_yn FEAT_REMOTE      "Remote media proxy?"              "n"
+  prompt_yn FEAT_HUGGINGFACE "Hugging Face visual classification (mature content tagging)?" "n"
+
+  HUGGINGFACE_API_KEY=""
+  if [[ "$FEAT_HUGGINGFACE" == "true" ]]; then
+    prompt_secret HUGGINGFACE_API_KEY "Hugging Face API token (from huggingface.co/settings/tokens)"
+    success "Hugging Face classification will be enabled"
+  fi
 
   RECV_API_KEY=""
   if [[ "$FEAT_RECEIVER" == "true" ]]; then
@@ -369,6 +376,14 @@ MATURE_SCANNER_HIGH_CONFIDENCE_THRESHOLD=0.85
 MATURE_SCANNER_AUTO_FLAG=false
 MATURE_SCANNER_REQUIRE_REVIEW=true
 
+# ── Hugging Face (visual classification for mature content) ──
+HUGGINGFACE_ENABLED=$FEAT_HUGGINGFACE
+HUGGINGFACE_API_KEY=$HUGGINGFACE_API_KEY
+HUGGINGFACE_MODEL=Salesforce/blip-image-captioning-large
+HUGGINGFACE_MAX_FRAMES=3
+HUGGINGFACE_TIMEOUT_SECS=30
+HUGGINGFACE_RATE_LIMIT=30
+
 # ── Logging ───────────────────────────────────────────────────
 LOG_LEVEL=$LOG_LEVEL
 LOG_FORMAT=text
@@ -388,6 +403,7 @@ FEATURE_PLAYLISTS=true
 FEATURE_THUMBNAILS=true
 FEATURE_USER_AUTH=true
 FEATURE_MATURE_SCANNER=true
+FEATURE_HUGGINGFACE=$FEAT_HUGGINGFACE
 FEATURE_AUTO_DISCOVERY=true
 FEATURE_DUPLICATE_DETECTION=true
 FEATURE_EXTRACTOR=false

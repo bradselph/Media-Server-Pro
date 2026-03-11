@@ -484,6 +484,16 @@ export interface ScannerStats {
     pending_review: number
 }
 
+// Hugging Face visual classification status (GET /api/admin/classify/status)
+export interface ClassifyStatus {
+    configured: boolean
+    enabled: boolean
+    model: string
+    rate_limit: number
+    max_frames: number
+    max_concurrent: number
+}
+
 // Matches backend models.MatureReviewItem JSON
 export interface ScanResultItem {
     id: string

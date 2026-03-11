@@ -18,6 +18,7 @@ import type {
     CachedMediaResult,
     CategorizedItem,
     CategoryStats,
+    ClassifyStatus,
     DailyStats,
     DatabaseStatus,
     DiscoverySuggestion,
@@ -580,6 +581,14 @@ export const adminApi = {
 
     clearReviewQueue: () =>
         api.delete<void>('/api/admin/scanner/queue'),
+
+    // Hugging Face visual classification
+    getClassifyStatus: () =>
+        api.get<ClassifyStatus>('/api/admin/classify/status'),
+    classifyFile: (path: string) =>
+        api.post<{ path: string; tags: string[] }>('/api/admin/classify/file', {path}),
+    classifyDirectory: (path: string) =>
+        api.post<{ directory: string; results: Record<string, string[]> }>('/api/admin/classify/directory', {path}),
 
     // HLS admin
     getHLSStats: () =>
