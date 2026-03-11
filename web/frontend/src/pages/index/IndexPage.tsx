@@ -309,6 +309,99 @@ function thumbnailUrlForMatureAccess(
     return url
 }
 
+function MediaCardThumbnailBlock({
+    item,
+    restricted,
+    thumbnailError,
+    imgLoaded,
+    inView,
+    thumbnailSrc,
+    baseThumbnailUrl,
+    previewUrls,
+    onError,
+    onLoad,
+}: {
+    item: MediaItem
+    restricted: boolean
+    thumbnailError: boolean
+    imgLoaded: boolean
+    inView: boolean
+    thumbnailSrc: string | null
+    baseThumbnailUrl: string | undefined
+    previewUrls: string[] | null
+    onError: () => void
+    onLoad: () => void
+}) {
+    if (item.thumbnail_url && !thumbnailError) {
+        return (
+            <>
+                {item.blur_hash && (
+                    <BlurHashPlaceholder
+                        hash={item.blur_hash}
+                        className="media-thumbnail media-thumbnail-blurhash"
+                        style={{ position: 'absolute', inset: 0, opacity: imgLoaded ? 0 : 1, transition: 'opacity 0.2s ease' }}
+                    />
+                )}
+                <img
+                    className="media-thumbnail"
+                    src={inView ? (thumbnailSrc || baseThumbnailUrl || item.thumbnail_url) : undefined}
+                    srcSet={(!previewUrls || previewUrls.length === 0) && baseThumbnailUrl
+                        ? [160, 320, 640].map(w => `${baseThumbnailUrl}${baseThumbnailUrl.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
+                        : undefined}
+                    sizes={(!previewUrls || previewUrls.length === 0) ? '(max-width: 640px) 160px, (max-width: 1024px) 320px, 640px' : undefined}
+                    alt={formatTitle({ value: item.name })}
+                    loading={inView ? 'eager' : 'lazy'}
+                    style={{
+                        ...(restricted ? { filter: 'blur(16px)', pointerEvents: 'none' } : {}),
+                        opacity: imgLoaded ? 1 : (item.blur_hash ? 0 : 1),
+                        transition: 'opacity 0.2s ease',
+                        position: 'relative',
+                        zIndex: 1,
+                    }}
+                    onError={onError}
+                    onLoad={onLoad}
+                />
+            </>
+        )
+    }
+    if (item.blur_hash) {
+        return <BlurHashPlaceholder hash={item.blur_hash} className="media-thumbnail" />
+    }
+    return (
+        <div className="media-thumbnail-placeholder">
+            <i className={item.type === 'video' ? 'bi bi-play-circle' : 'bi bi-music-note-beamed'} />
+        </div>
+    )
+}
+
+function MediaCardMatureOverlay({ item, isAuthenticated }: { item: MediaItem; isAuthenticated: boolean }) {
+    return (
+        <div className="mature-gate-overlay">
+            <i className="bi bi-shield-lock-fill" />
+            <span>18+ Content</span>
+            {isAuthenticated
+                ? (
+                    <Link
+                        to={`/profile?mature_redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
+                        className="mature-gate-login"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        Enable in profile settings
+                    </Link>
+                )
+                : (
+                    <Link
+                        to={`/login?redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
+                        className="mature-gate-login"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        Sign in to view
+                    </Link>
+                )}
+        </div>
+    )
+}
+
 function MediaCard({
                        item,
                        isPlaying,
@@ -351,7 +444,6 @@ function MediaCard({
 
     const hoveringRef = useRef(false)
 
-    // Sync thumbnail state when switching main/preview or when canViewMature changes (e.g. after login)
     useEffect(() => {
         if (!currentThumbnail) return
         const thumbnail = currentThumbnail
@@ -383,7 +475,7 @@ function MediaCard({
                     setPreviewUrls(data.previews)
                     if (hoveringRef.current) startCycling(data.previews)
                 }
-            }).catch(() => { /* no previews available */ })
+            }).catch(() => {})
         } else if (previewUrls && previewUrls.length > 1) {
             startCycling(previewUrls)
         }
@@ -405,18 +497,15 @@ function MediaCard({
         }
     }, [])
 
-    // IntersectionObserver: load thumbnail 200px before card enters viewport
     useEffect(() => {
         const el = containerRef.current
         if (!el) return
         const obs = new IntersectionObserver(
-            ([entry]) => {
-                if (entry?.isIntersecting) setInView(true)
-            },
-            {rootMargin: `${THUMBNAIL_LAZY_MARGIN_PX}px`}
+            ([entry]) => { if (entry?.isIntersecting) setInView(true) },
+            { rootMargin: `${THUMBNAIL_LAZY_MARGIN_PX}px` }
         )
         obs.observe(el)
-        return () => { obs.disconnect(); }
+        return () => obs.disconnect()
     }, [])
 
     function handleThumbnailError() {
@@ -443,81 +532,32 @@ function MediaCard({
             <div
                 ref={containerRef}
                 onClick={goToPlayer}
-                style={{cursor: restricted ? 'default' : 'pointer', position: 'relative'}}
+                style={{ cursor: restricted ? 'default' : 'pointer', position: 'relative' }}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
             >
-                {item.thumbnail_url && !thumbnailError ? (
-                    <>
-                        {item.blur_hash && (
-                            <BlurHashPlaceholder
-                                hash={item.blur_hash}
-                                className="media-thumbnail media-thumbnail-blurhash"
-                                style={{position: 'absolute', inset: 0, opacity: imgLoaded ? 0 : 1, transition: 'opacity 0.2s ease'}}
-                            />
-                        )}
-                        <img
-                            className="media-thumbnail"
-                            src={inView ? (thumbnailSrc || baseThumbnailUrl || item.thumbnail_url) : undefined}
-                            srcSet={(!previewUrls || previewUrls.length === 0) && baseThumbnailUrl
-                                ? [160, 320, 640].map(w => `${baseThumbnailUrl}${baseThumbnailUrl.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
-                                : undefined}
-                            sizes={(!previewUrls || previewUrls.length === 0) ? '(max-width: 640px) 160px, (max-width: 1024px) 320px, 640px' : undefined}
-                            alt={formatTitle({ value: item.name })}
-                            loading={inView ? 'eager' : 'lazy'}
-                            style={{
-                                ...(restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : {}),
-                                opacity: imgLoaded ? 1 : (item.blur_hash ? 0 : 1),
-                                transition: 'opacity 0.2s ease',
-                                position: 'relative',
-                                zIndex: 1,
-                            }}
-                            onError={handleThumbnailError}
-                            onLoad={() => {
-                                retryCountRef.current = 0
-                                setImgLoaded(true)
-                            }}
-                        />
-                    </>
-                ) : item.blur_hash ? (
-                    <BlurHashPlaceholder hash={item.blur_hash} className="media-thumbnail" />
-                ) : (
-                    <div className="media-thumbnail-placeholder">
-                        <i className={item.type === 'video' ? 'bi bi-play-circle' : 'bi bi-music-note-beamed'}/>
-                    </div>
-                )}
-                {restricted && (
-                    <div className="mature-gate-overlay">
-                        <i className="bi bi-shield-lock-fill"/>
-                        <span>18+ Content</span>
-                        {isAuthenticated ? (
-                            <Link
-                                to={`/profile?mature_redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
-                                className="mature-gate-login"
-                                onClick={(e) => { e.stopPropagation(); }}
-                            >
-                                Enable in profile settings
-                            </Link>
-                        ) : (
-                            <Link
-                                to={`/login?redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
-                                className="mature-gate-login"
-                                onClick={(e) => { e.stopPropagation(); }}
-                            >
-                                Sign in to view
-                            </Link>
-                        )}
-                    </div>
-                )}
+                <MediaCardThumbnailBlock
+                    item={item}
+                    restricted={restricted}
+                    thumbnailError={thumbnailError}
+                    imgLoaded={imgLoaded}
+                    inView={inView}
+                    thumbnailSrc={thumbnailSrc}
+                    baseThumbnailUrl={baseThumbnailUrl}
+                    previewUrls={previewUrls}
+                    onError={handleThumbnailError}
+                    onLoad={() => { retryCountRef.current = 0; setImgLoaded(true) }}
+                />
+                {restricted && <MediaCardMatureOverlay item={item} isAuthenticated={isAuthenticated} />}
             </div>
             <div className="media-card-body">
                 <div className="media-card-title">{formatTitle({ value: item.name })}</div>
                 <div className="media-card-meta">
-          <span>
-            <span className={`media-card-type-badge badge-${item.type}`}>{item.type}</span>
-          </span>
-                    {item.duration > 0 && <span><i className="bi bi-clock"/> {formatDuration({ seconds: item.duration })}</span>}
-                    {item.views > 0 && <span><i className="bi bi-eye"/> {item.views}</span>}
+                    <span>
+                        <span className={`media-card-type-badge badge-${item.type}`}>{item.type}</span>
+                    </span>
+                    {item.duration > 0 && <span><i className="bi bi-clock" /> {formatDuration({ seconds: item.duration })}</span>}
+                    {item.views > 0 && <span><i className="bi bi-eye" /> {item.views}</span>}
                     {item.is_mature && <span className="media-card-type-badge badge-mature">18+</span>}
                 </div>
                 <div className="media-card-actions">
@@ -527,17 +567,15 @@ function MediaCard({
                         disabled={restricted}
                         title={restricted ? (isAuthenticated ? 'Enable mature content in profile settings' : 'Sign in to play 18+ content') : undefined}
                     >
-                        <i className="bi bi-play-fill"/> Play
+                        <i className="bi bi-play-fill" /> Play
                     </button>
                     {canDownload && !restricted && (
-                        <a href={mediaApi.getDownloadUrl(item.id)} download style={{flex: 1}}>
-                            <button className="media-card-btn" style={{width: '100%'}}><i className="bi bi-download"/>
-                            </button>
+                        <a href={mediaApi.getDownloadUrl(item.id)} download style={{ flex: 1 }}>
+                            <button className="media-card-btn" style={{ width: '100%' }}><i className="bi bi-download" /></button>
                         </a>
                     )}
                     {!restricted && (
-                        <button className="media-card-btn" onClick={goToPlayer} title="Full player"><i
-                            className="bi bi-box-arrow-up-right"/></button>
+                        <button className="media-card-btn" onClick={goToPlayer} title="Full player"><i className="bi bi-box-arrow-up-right" /></button>
                     )}
                 </div>
             </div>
@@ -859,7 +897,9 @@ function SuggestionThumbnail({url, mediaType}: { url?: string; mediaType?: strin
 }
 
 // ── Main IndexPage ────────────────────────────────────────────────────────────
-
+// Cognitive complexity is high due to many URL-driven filters, queries, and conditional sections.
+// TODO: extract useIndexPageState() + IndexPageContent to reduce complexity under 25.
+/* eslint-disable sonarjs/cognitive-complexity -- index page orchestrates many conditional sections; split in future refactor */
 export function IndexPage() {
     const navigate = useNavigate()
     const queryClient = useQueryClient()
