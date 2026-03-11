@@ -3,20 +3,25 @@
 # pre-push-check.sh — Run all CI checks locally before pushing to GitHub
 #
 # Mirrors every job in .github/workflows/ci.yml so failures are caught before
-# consuming GitHub Actions minutes.
+# consuming GitHub Actions minutes. Also applies version bumps (like release-
+# and dev-version.yml) and can run fix-issues.py for diagnostics.
 #
 # Usage:
 #   ./scripts/pre-push-check.sh [OPTIONS]
 #
 # Options:
-#   --install-hook      Install this script as a git pre-push hook
-#   --skip-go           Skip all Go checks
-#   --skip-frontend     Skip all frontend checks
-#   --skip-security     Skip govulncheck + npm audit (slow/network)
-#   --skip-tests        Skip go test + vitest
-#   --fast              Alias for --skip-security --skip-tests
-#   --fix               Auto-run 'go fmt' before checking
-#   -h, --help          Show this help
+#   --install-hook         Install this script as a git pre-push hook
+#   --bump-version TYPE    Bump version (major|minor|patch) and update files
+#   --sync-version         Sync cmd/server/main.go from VERSION (no bump)
+#   --bump-dev             On development: stamp main.go with -dev.SHA label
+#   --skip-go              Skip all Go checks
+#   --skip-frontend        Skip all frontend checks
+#   --skip-security        Skip govulncheck + npm audit (slow/network)
+#   --skip-tests           Skip go test + vitest
+#   --fast                 Alias for --skip-security --skip-tests
+#   --fix                  Auto-run 'go fmt' before checking
+#   --fix-issues           Run fix-issues.py --dry-run to report Go/TS issues
+#   -h, --help             Show this help
 # =============================================================================
 
 set -euo pipefail
@@ -37,6 +42,9 @@ WARN="${YELLOW}⚠${RESET}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MAIN_GO="${REPO_ROOT}/cmd/server/main.go"
+VERSION_FILE="${REPO_ROOT}/VERSION"
+CHANGELOG_FILE="${REPO_ROOT}/CHANGELOG.md"
 
 FAILED_STEPS=()
 SKIPPED_STEPS=()
@@ -49,23 +57,197 @@ OPT_SKIP_FRONTEND=false
 OPT_SKIP_SECURITY=false
 OPT_SKIP_TESTS=false
 OPT_FIX=false
+OPT_FIX_ISSUES=false
+OPT_BUMP_VERSION=""
+OPT_SYNC_VERSION=false
+OPT_BUMP_DEV=false
 
-for arg in "$@"; do
+while [[ $# -gt 0 ]]; do
+  arg="$1"
+  shift
   case "$arg" in
     --install-hook)   OPT_INSTALL_HOOK=true ;;
+    --bump-version=*) OPT_BUMP_VERSION="${arg#*=}" ;;
+    --bump-version)
+      if [[ $# -gt 0 && "$1" =~ ^(major|minor|patch)$ ]]; then
+        OPT_BUMP_VERSION="$1"; shift
+      else
+        OPT_BUMP_VERSION="minor"
+      fi ;;
+    --bump-dev)       OPT_BUMP_DEV=true ;;
+    --sync-version)   OPT_SYNC_VERSION=true ;;
     --skip-go)        OPT_SKIP_GO=true ;;
     --skip-frontend)  OPT_SKIP_FRONTEND=true ;;
     --skip-security)  OPT_SKIP_SECURITY=true ;;
     --skip-tests)     OPT_SKIP_TESTS=true ;;
     --fast)           OPT_SKIP_SECURITY=true; OPT_SKIP_TESTS=true ;;
     --fix)            OPT_FIX=true ;;
+    --fix-issues)     OPT_FIX_ISSUES=true ;;
     -h|--help)
-      grep '^#' "$0" | sed 's/^# \{0,2\}//' | sed -n '2,18p'
+      grep '^#' "$0" | sed 's/^# \{0,2\}//' | sed -n '2,24p'
       exit 0
       ;;
     *) echo -e "${RED}Unknown option: $arg${RESET}" >&2; exit 1 ;;
   esac
 done
+
+# ── Version bump / sync (modeled on release-version.yml, dev-version.yml) ─────
+# In-place replace Version = "..." in main.go (portable: sed, then Python fallback)
+update_main_go_version() {
+  local new_ver="$1"
+  local re='Version   = "[^"]*"'
+  local repl="Version   = \"${new_ver}\""
+
+  if [[ ! -f "$MAIN_GO" ]]; then return 1; fi
+
+  if command -v sed &>/dev/null; then
+    if sed -i.bak "s/${re}/${repl}/" "$MAIN_GO" 2>/dev/null; then
+      rm -f "${MAIN_GO}.bak" 2>/dev/null
+      return 0
+    fi
+    if sed -i '' "s/${re}/${repl}/" "$MAIN_GO" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  if command -v python3 &>/dev/null || command -v python &>/dev/null; then
+    local py=python3; command -v python3 &>/dev/null || py=python
+    if $py - "$MAIN_GO" "$new_ver" <<'PYEOF' 2>/dev/null; then
+import re, sys
+path, newv = sys.argv[1], sys.argv[2]
+with open(path, 'r', encoding='utf-8') as f: c = f.read()
+with open(path, 'w', encoding='utf-8') as f: f.write(re.sub(r'Version   = "[^"]*"', 'Version   = "' + newv + '"', c))
+PYEOF
+      return 0
+    fi
+  fi
+  return 1
+}
+
+apply_version_bump() {
+  local bump_type="${1:-minor}"
+  local current new_v maj min pat
+
+  if [[ ! -f "$VERSION_FILE" ]]; then
+    echo -e "${RED}VERSION file not found${RESET}" >&2
+    return 1
+  fi
+  current=$(tr -d '[:space:]' < "$VERSION_FILE")
+  IFS='.' read -r maj min pat <<< "$current"
+
+  case "$bump_type" in
+    major) maj=$((maj + 1)); min=0; pat=0 ;;
+    minor) min=$((min + 1)); pat=0 ;;
+    patch) pat=$((pat + 1)) ;;
+    *) echo -e "${RED}Invalid bump type: $bump_type (use major|minor|patch)${RESET}" >&2; return 1 ;;
+  esac
+
+  new_v="${maj}.${min}.${pat}"
+  echo "$new_v" > "$VERSION_FILE"
+  echo -e "  ${PASS} VERSION: ${current} → ${BOLD}${new_v}${RESET}"
+
+  if update_main_go_version "$new_v"; then
+    echo -e "  ${PASS} cmd/server/main.go updated"
+  fi
+
+  # Update CHANGELOG (like release-version.yml)
+  local date_iso commits prev_tag new_entry heading rest
+  date_iso=$(date +%Y-%m-%d)
+  prev_tag=$(git -C "$REPO_ROOT" describe --tags --abbrev=0 2>/dev/null || echo "")
+  if [[ -n "$prev_tag" ]]; then
+    commits=$(git -C "$REPO_ROOT" log --pretty=format:"- %s" "${prev_tag}..HEAD" 2>/dev/null | grep -v '\[auto-version\]' || true)
+  else
+    commits=$(git -C "$REPO_ROOT" log --pretty=format:"- %s" -20 2>/dev/null | grep -v '\[auto-version\]' || true)
+  fi
+  [[ -z "$commits" ]] && commits="- (no commits)"
+
+  new_entry="## [${new_v}] - ${date_iso} (${bump_type})"$'\n\n'"${commits}"$'\n\n'
+  if [[ -f "$CHANGELOG_FILE" ]]; then
+    heading=$(head -1 "$CHANGELOG_FILE")
+    rest=$(tail -n +2 "$CHANGELOG_FILE")
+    printf '%s\n\n%s%s' "$heading" "$new_entry" "$rest" > "$CHANGELOG_FILE"
+  else
+    printf '# Changelog\n\n%s' "$new_entry" > "$CHANGELOG_FILE"
+  fi
+  echo -e "  ${PASS} CHANGELOG.md prepended"
+  echo ""
+  echo -e "  ${DIM}Commit with: git add VERSION cmd/server/main.go CHANGELOG.md && git commit -m \"chore: release ${new_v} (${bump_type} bump)\"${RESET}"
+  echo ""
+}
+
+sync_version_from_file() {
+  local v
+  if [[ ! -f "$VERSION_FILE" ]]; then
+    echo -e "${RED}VERSION file not found${RESET}" >&2
+    return 1
+  fi
+  v=$(tr -d '[:space:]' < "$VERSION_FILE")
+  if update_main_go_version "$v"; then
+    echo -e "${PASS} Synced main.go to VERSION: ${v}"
+    return 0
+  fi
+  echo -e "${RED}Failed to update main.go${RESET}" >&2
+  return 1
+}
+
+apply_dev_label() {
+  local current short_sha dev_label
+  current=$(tr -d '[:space:]' < "$VERSION_FILE" 2>/dev/null || echo "0.0.0")
+  short_sha=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  dev_label="${current}-dev.${short_sha}"
+
+  if update_main_go_version "$dev_label"; then
+    echo -e "${PASS} Stamped main.go with dev label: ${BOLD}${dev_label}${RESET}"
+    return 0
+  fi
+  echo -e "${RED}Failed to update main.go${RESET}" >&2
+  return 1
+}
+
+if [[ -n "$OPT_BUMP_VERSION" ]]; then
+  echo ""
+  echo -e "${BOLD}${CYAN}── Version bump (release-version.yml) ────────────────────────${RESET}"
+  cd "$REPO_ROOT"
+  apply_version_bump "$OPT_BUMP_VERSION"
+  exit 0
+fi
+
+if $OPT_SYNC_VERSION; then
+  echo ""
+  echo -e "${BOLD}${CYAN}── Sync version ─────────────────────────────────────────────${RESET}"
+  cd "$REPO_ROOT"
+  sync_version_from_file
+  exit 0
+fi
+
+if $OPT_BUMP_DEV; then
+  echo ""
+  echo -e "${BOLD}${CYAN}── Dev label (dev-version.yml) ──────────────────────────────${RESET}"
+  cd "$REPO_ROOT"
+  apply_dev_label
+  exit 0
+fi
+
+# ── fix-issues.py dry-run (report Go + TS issues by file) ─────────────────────
+if $OPT_FIX_ISSUES; then
+  echo ""
+  echo -e "${BOLD}${CYAN}── fix-issues.py (dry-run) ───────────────────────────────────${RESET}"
+  cd "$REPO_ROOT"
+  FIX_SCRIPT="${SCRIPT_DIR}/fix-issues.py"
+  if [[ -f "$FIX_SCRIPT" ]]; then
+    if command -v python3 &>/dev/null; then
+      python3 "$FIX_SCRIPT" --dry-run
+    elif command -v python &>/dev/null; then
+      python "$FIX_SCRIPT" --dry-run
+    else
+      echo -e "${RED}Python not found — cannot run fix-issues.py${RESET}" >&2
+      exit 1
+    fi
+  else
+    echo -e "${RED}fix-issues.py not found at ${FIX_SCRIPT}${RESET}" >&2
+    exit 1
+  fi
+  exit 0
+fi
 
 # ── Install git hook ──────────────────────────────────────────────────────────
 if $OPT_INSTALL_HOOK; then
@@ -211,6 +393,25 @@ fe_step() {
 }
 
 fe_step "npm run lint"       "$OPT_SKIP_FRONTEND" "npm run lint"
+# tsc --noEmit (from fix-issues.py — catches TS errors without full build)
+SKIP_TSC="$(skip_if "$OPT_SKIP_FRONTEND")"
+if [[ "$SKIP_TSC" == "false" ]]; then
+  printf "  ${CYAN}▶${RESET} %-48s" "tsc --noEmit"
+  t0=$(date +%s)
+  tsc_out=$(cd "$FRONTEND_DIR" && npx tsc --noEmit --pretty false 2>&1) && tsc_rc=0 || tsc_rc=$?
+  elapsed=$(( $(date +%s) - t0 ))
+  if [[ $tsc_rc -eq 0 ]]; then
+    echo -e "${PASS} ${DIM}${elapsed}s${RESET}"
+  else
+    echo -e "${FAIL} ${DIM}${elapsed}s${RESET}"
+    echo ""
+    echo -e "${RED}─── TypeScript errors (file:line) ─────────────────────────────${RESET}"
+    echo "$tsc_out" | grep -E '\.tsx?\([0-9]+,' | head -30 | sed 's/^/    /'
+    echo -e "${RED}─────────────────────────────────────────────────────────────${RESET}"
+    echo ""
+    FAILED_STEPS+=("tsc --noEmit")
+  fi
+fi
 fe_step "npm run build"      "$OPT_SKIP_FRONTEND" "npm run build"
 
 # vitest — mirror CI: warn instead of fail when no test files exist
@@ -241,28 +442,33 @@ fe_step "npm audit (high+)"  "$SKIP_AUDIT" "npm audit --audit-level=high"
 
 echo ""
 
-# ── Dev version label (mirrors dev-version.yml) ───────────────────────────────
+# ── Version Info (mirrors dev-version.yml / release-version.yml) ───────────────
 section "Version Info"
 CURRENT_VER=$(tr -d '[:space:]' < "${REPO_ROOT}/VERSION" 2>/dev/null || echo "unknown")
 SHORT_SHA=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+MAIN_GO_VER=$(grep -oE 'Version\s+=\s+"[^"]+"' "${REPO_ROOT}/cmd/server/main.go" 2>/dev/null | sed 's/.*"\([^"]*\)".*/\1/' || echo "")
+
+# Warn if VERSION and main.go are out of sync
+if [[ -n "$MAIN_GO_VER" && "$MAIN_GO_VER" != "$CURRENT_VER" && "$MAIN_GO_VER" != *"-dev."* ]]; then
+  echo -e "  ${WARN} VERSION (${CURRENT_VER}) ≠ main.go (${MAIN_GO_VER}) — run ${BOLD}--sync-version${RESET} to fix"
+fi
 
 if [[ "$BRANCH" == "development" ]]; then
   DEV_LABEL="${CURRENT_VER}-dev.${SHORT_SHA}"
   echo -e "  ${PASS} Dev build label: ${BOLD}${DEV_LABEL}${RESET}"
-  echo -e "  ${DIM}(This is what dev-version.yml would tag this commit as)${RESET}"
+  echo -e "  ${DIM}Apply locally: ${BOLD}--bump-dev${RESET}${RESET}"
 elif [[ "$BRANCH" == "main" ]]; then
-  echo -e "  ${DIM}On main — release-version.yml will bump VERSION from ${CURRENT_VER}${RESET}"
-  # Show what the bump would be based on last commit message
+  echo -e "  ${DIM}On main — apply bump: ${BOLD}--bump-version=minor${RESET}${DIM} (or major|patch)${RESET}"
   LAST_MSG=$(git -C "$REPO_ROOT" log -1 --pretty=%s 2>/dev/null || echo "")
   if echo "$LAST_MSG" | grep -qiE '(BREAKING CHANGE:|^major:)'; then
     IFS='.' read -r MAJ MIN PAT <<< "$CURRENT_VER"
-    echo -e "  ${WARN} BREAKING CHANGE detected — would bump MAJOR: ${CURRENT_VER} → $((MAJ+1)).0.0"
+    echo -e "  ${WARN} BREAKING CHANGE detected — use ${BOLD}--bump-version=major${RESET} → $((MAJ+1)).0.0"
   else
     IFS='.' read -r MAJ MIN PAT <<< "$CURRENT_VER"
-    echo -e "  ${DIM}Would bump minor: ${CURRENT_VER} → ${MAJ}.$((MIN+1)).0${RESET}"
+    echo -e "  ${DIM}Minor bump would be: ${CURRENT_VER} → ${MAJ}.$((MIN+1)).0${RESET}"
   fi
 else
-  echo -e "  ${DIM}Branch '${BRANCH}' — version workflows only run on main/development${RESET}"
+  echo -e "  ${DIM}Branch '${BRANCH}' — version workflows run on main/development${RESET}"
 fi
 
 echo ""

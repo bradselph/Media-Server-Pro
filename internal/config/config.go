@@ -92,6 +92,7 @@ func (m *Manager) syncFeatureToggles() {
 	disableIfOff(f.EnableExtractor, &cfg.Extractor.Enabled)
 	disableIfOff(f.EnableCrawler, &cfg.Crawler.Enabled)
 	disableIfOff(f.EnableMatureScanner, &cfg.MatureScanner.Enabled)
+	disableIfOff(f.EnableHuggingFace, &cfg.HuggingFace.Enabled)
 	disableIfOff(f.EnableThumbnails, &cfg.Thumbnails.Enabled)
 	disableIfOff(f.EnableUploads, &cfg.Uploads.Enabled)
 	disableIfOff(f.EnableUserAuth, &cfg.Auth.Enabled)

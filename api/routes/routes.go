@@ -449,6 +449,11 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.POST("/scanner/approve/:id", h.ApproveContent)
 	adminGrp.POST("/scanner/reject/:id", h.RejectContent)
 
+	// Hugging Face visual classification (admin)
+	adminGrp.GET("/classify/status", h.ClassifyStatus)
+	adminGrp.POST("/classify/file", h.ClassifyFile)
+	adminGrp.POST("/classify/directory", h.ClassifyDirectory)
+
 	// Thumbnail admin routes
 	adminGrp.POST("/thumbnails/generate", h.GenerateThumbnail)
 	adminGrp.GET("/thumbnails/stats", h.GetThumbnailStats)

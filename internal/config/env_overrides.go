@@ -15,6 +15,7 @@ func (m *Manager) applyEnvOverrides() {
 	m.applyFeatureEnvOverrides()
 	m.applyBackupEnvOverrides()
 	m.applyMatureScannerEnvOverrides()
+	m.applyHuggingFaceEnvOverrides()
 	m.applyRemoteMediaEnvOverrides()
 	m.applyReceiverEnvOverrides()
 	m.applyExtractorEnvOverrides()

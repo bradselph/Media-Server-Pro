@@ -33,6 +33,7 @@ func DefaultConfig() *Config {
 		Extractor:     defaultExtractorConfig(),
 		Crawler:       defaultCrawlerConfig(),
 		MatureScanner: defaultMatureScannerConfig(),
+		HuggingFace:   defaultHuggingFaceConfig(),
 		Backup:        BackupConfig{RetentionCount: 10},
 		Logging:       defaultLoggingConfig(),
 		Features:      defaultFeaturesConfig(),
@@ -233,6 +234,17 @@ func defaultMatureScannerConfig() MatureScannerConfig {
 	}
 }
 
+func defaultHuggingFaceConfig() HuggingFaceConfig {
+	return HuggingFaceConfig{
+		Enabled:       false,
+		Model:         "Salesforce/blip-image-captioning-large",
+		MaxFrames:     3,
+		TimeoutSecs:   30,
+		RateLimit:     30,
+		MaxConcurrent: 2,
+	}
+}
+
 func defaultLoggingConfig() LoggingConfig {
 	return LoggingConfig{
 		Level:        "info",
@@ -262,6 +274,7 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableExtractor:          false,
 		EnableCrawler:            false,
 		EnableDuplicateDetection: true,
+		EnableHuggingFace:        false,
 	}
 }
 

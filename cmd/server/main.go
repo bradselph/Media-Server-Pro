@@ -40,6 +40,7 @@ import (
 	"media-server-pro/internal/updater"
 	"media-server-pro/internal/upload"
 	"media-server-pro/internal/validator"
+	"media-server-pro/pkg/huggingface"
 	"media-server-pro/pkg/middleware"
 	"media-server-pro/pkg/models"
 )
@@ -146,6 +147,21 @@ func main() {
 		os.Exit(1)
 	}
 	mustRegister(srv, scannerModule)
+
+	// Hugging Face client for visual classification (optional)
+	if hfCfg := cfg.Get().HuggingFace; hfCfg.Enabled && hfCfg.APIKey != "" {
+		timeout := 30 * time.Second
+		if hfCfg.TimeoutSecs > 0 {
+			timeout = time.Duration(hfCfg.TimeoutSecs) * time.Second
+		}
+		rateLimit := hfCfg.RateLimit
+		if rateLimit <= 0 {
+			rateLimit = 30
+		}
+		hfClient := huggingface.NewClient(hfCfg.APIKey, hfCfg.Model, hfCfg.EndpointURL, rateLimit, timeout, log)
+		scannerModule.SetHFClient(hfClient)
+		log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
+	}
 
 	// Thumbnails (critical — optional BlurHash storage via metadata repo)
 	metadataRepo := mysql.NewMediaMetadataRepository(dbModule.GORM())
@@ -520,9 +536,68 @@ func registerTasks(
 			if applied > 0 {
 				log.Info("Mature scan complete: %d scanned, %d flagged", len(allResults), applied)
 			}
+			// Visual classification via Hugging Face for mature content
+			if scannerModule.HasHuggingFace() {
+				for _, result := range allResults {
+					if !result.IsMature {
+						continue
+					}
+					if ctx.Err() != nil {
+						break
+					}
+					tags, err := scannerModule.ClassifyMatureContent(ctx, result.Path)
+					if err != nil {
+						log.Warn("HF classification failed for %s: %v", result.Path, err)
+						continue
+					}
+					if len(tags) > 0 {
+						if err := mediaModule.UpdateTags(result.Path, tags); err != nil {
+							log.Warn("Failed to update tags for %s: %v", result.Path, err)
+						}
+					}
+				}
+			}
 			return nil
 		},
 	})
+
+	// HF classification — runs visual classification on mature content that has no tags yet (e.g. every 12h)
+	if scannerModule.HasHuggingFace() {
+		scheduler.RegisterTask(tasks.TaskRegistration{
+			ID:          "hf-classification",
+			Name:        "Hugging Face Classification",
+			Description: "Runs visual classification on mature content that has not been tagged yet",
+			Schedule:    12 * time.Hour,
+			Func: func(ctx context.Context) error {
+				items := mediaModule.ListMedia(media.Filter{})
+				classified := 0
+				for _, item := range items {
+					if ctx.Err() != nil {
+						break
+					}
+					if !item.IsMature || len(item.Tags) > 0 {
+						continue
+					}
+					tags, err := scannerModule.ClassifyMatureContent(ctx, item.Path)
+					if err != nil {
+						log.Warn("HF classification failed for %s: %v", item.Path, err)
+						continue
+					}
+					if len(tags) > 0 {
+						if err := mediaModule.UpdateTags(item.Path, tags); err != nil {
+							log.Warn("Failed to update tags for %s: %v", item.Path, err)
+						} else {
+							classified++
+						}
+					}
+				}
+				if classified > 0 {
+					log.Info("HF classification: tagged %d mature items", classified)
+				}
+				return nil
+			},
+		})
+	}
 
 	// Duplicate scan — checks local media library for fingerprint collisions every 24h
 	scheduler.RegisterTask(tasks.TaskRegistration{
