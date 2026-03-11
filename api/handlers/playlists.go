@@ -1,25 +1,40 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/playlist"
 	"media-server-pro/pkg/models"
 )
+
+// requirePlaylistIDAndSession ensures playlist module is available, path param "id" is present, and session exists.
+// Returns (id, session, true) or ("", nil, false) after writing an error.
+func (h *Handler) requirePlaylistIDAndSession(c *gin.Context) (id string, session *models.Session, ok bool) {
+	if !h.requirePlaylist(c) {
+		return "", nil, false
+	}
+	id, ok = RequireParamID(c, "id")
+	if !ok {
+		return "", nil, false
+	}
+	session = RequireSession(c)
+	if session == nil {
+		return "", nil, false
+	}
+	return id, session, true
+}
 
 // ListPlaylists returns user's playlists
 func (h *Handler) ListPlaylists(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
-
 	playlists := h.playlist.ListPlaylists(session.UserID, true)
 	if playlists == nil {
 		playlists = []*models.Playlist{}
@@ -32,12 +47,10 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
-
 	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
 	if err != nil || user == nil {
 		writeError(c, http.StatusInternalServerError, "Failed to retrieve user permissions")
@@ -53,11 +66,9 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 		Description string `json:"description"`
 		IsPublic    bool   `json:"is_public"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-
 	if req.Name == "" {
 		writeError(c, http.StatusBadRequest, "Playlist name required")
 		return
@@ -78,14 +89,14 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
 	}
-	id := c.Param("id")
-
-	session := getSession(c)
-	var userID string
-	if session != nil {
-		userID = session.UserID
+	id, ok := RequireParamID(c, "id")
+	if !ok {
+		return
 	}
-
+	userID := ""
+	if s := getSession(c); s != nil {
+		userID = s.UserID
+	}
 	pl, err := h.playlist.GetPlaylistForUser(id, userID)
 	if err != nil {
 		writeError(c, http.StatusNotFound, "Playlist not found")
@@ -97,23 +108,14 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 
 // UpdatePlaylist updates playlist metadata (name, description, is_public, cover_image)
 func (h *Handler) UpdatePlaylist(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	id, session, ok := h.requirePlaylistIDAndSession(c)
+	if !ok {
 		return
 	}
-	id := c.Param("id")
-
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-
 	var updates map[string]interface{}
-	if err := json.NewDecoder(c.Request.Body).Decode(&updates); err != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &updates, errInvalidRequest) {
 		return
 	}
-
 	if err := h.playlist.UpdatePlaylist(c.Request.Context(), id, session.UserID, updates); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot update playlist")
 		return
@@ -130,17 +132,10 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 
 // DeletePlaylist deletes a playlist
 func (h *Handler) DeletePlaylist(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	id, session, ok := h.requirePlaylistIDAndSession(c)
+	if !ok {
 		return
 	}
-	id := c.Param("id")
-
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-
 	if err := h.playlist.DeletePlaylist(c.Request.Context(), id, session.UserID); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot delete playlist")
 		return
@@ -149,31 +144,28 @@ func (h *Handler) DeletePlaylist(c *gin.Context) {
 	writeSuccess(c, nil)
 }
 
-// ExportPlaylist exports a playlist in JSON format
+// ExportPlaylist exports a playlist in JSON or M3U format
 func (h *Handler) ExportPlaylist(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	id, session, ok := h.requirePlaylistIDAndSession(c)
+	if !ok {
 		return
 	}
-	id := c.Param("id")
-
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-
 	format := c.Query("format")
 	if format == "" {
 		format = "json"
 	}
-
 	export, err := h.playlist.ExportPlaylist(id, session.UserID, format)
 	if err != nil {
 		writeError(c, http.StatusForbidden, "Cannot export playlist")
 		return
 	}
+	h.writeExportResponse(c, format, export)
+}
 
-	if (format == "m3u" || format == "m3u8") && export.M3UContent != "" {
+func (h *Handler) writeExportResponse(c *gin.Context, format string, export *playlist.Export) {
+	isM3U := format == "m3u" || format == "m3u8"
+	hasM3UContent := export.M3UContent != ""
+	if isM3U && hasM3UContent {
 		ext := format
 		c.Header(headerContentDisposition, safeContentDisposition(export.Name+"."+ext))
 		c.Header(headerContentType, "audio/x-mpegurl")
@@ -182,34 +174,24 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 		}
 		return
 	}
-
 	c.Header(headerContentDisposition, safeContentDisposition(export.Name+".json"))
 	writeSuccess(c, export)
 }
 
 // AddPlaylistItem adds an item to a playlist
 func (h *Handler) AddPlaylistItem(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	playlistID, session, ok := h.requirePlaylistIDAndSession(c)
+	if !ok {
 		return
 	}
-	playlistID := c.Param("id")
-
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-
 	var req struct {
 		MediaID string `json:"media_id"`
 		Title   string `json:"title"`
 		Name    string `json:"name"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-
 	if req.MediaID == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
 		return
@@ -235,25 +217,16 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 
 // ReorderPlaylistItems reorders items in a playlist
 func (h *Handler) ReorderPlaylistItems(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	playlistID, session, ok := h.requirePlaylistIDAndSession(c)
+	if !ok {
 		return
 	}
-	playlistID := c.Param("id")
-
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-
 	var req struct {
 		Positions []int `json:"positions"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-
 	if err := h.playlist.ReorderItems(c.Request.Context(), playlistID, session.UserID, req.Positions); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot reorder playlist items")
 		return
@@ -264,17 +237,10 @@ func (h *Handler) ReorderPlaylistItems(c *gin.Context) {
 
 // ClearPlaylist removes all items from a playlist
 func (h *Handler) ClearPlaylist(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	playlistID, session, ok := h.requirePlaylistIDAndSession(c)
+	if !ok {
 		return
 	}
-	playlistID := c.Param("id")
-
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-
 	if err := h.playlist.ClearPlaylist(c.Request.Context(), playlistID, session.UserID); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot clear playlist")
 		return
@@ -285,25 +251,16 @@ func (h *Handler) ClearPlaylist(c *gin.Context) {
 
 // CopyPlaylist duplicates a playlist with a new name
 func (h *Handler) CopyPlaylist(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	sourceID, session, ok := h.requirePlaylistIDAndSession(c)
+	if !ok {
 		return
 	}
-	sourceID := c.Param("id")
-
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-
 	var req struct {
 		Name string `json:"name"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-
 	if req.Name == "" {
 		writeError(c, http.StatusBadRequest, "Playlist name required")
 		return
@@ -321,24 +278,13 @@ func (h *Handler) CopyPlaylist(c *gin.Context) {
 
 // RemovePlaylistItem removes an item from a playlist
 func (h *Handler) RemovePlaylistItem(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	playlistID, session, ok := h.requirePlaylistIDAndSession(c)
+	if !ok {
 		return
 	}
-	playlistID := c.Param("id")
-
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-
-	mediaID := c.Query("media_id")
-	itemID := c.Query("item_id")
-
-	// Resolve the identifier for removal — prefer media_id, fall back to item_id
-	removeKey := mediaID
+	removeKey := c.Query("media_id")
 	if removeKey == "" {
-		removeKey = itemID
+		removeKey = c.Query("item_id")
 	}
 	if removeKey == "" {
 		writeError(c, http.StatusBadRequest, "media_id or item_id required")

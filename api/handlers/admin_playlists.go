@@ -4,32 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/pkg/models"
 )
-
-// parsePositiveQueryInt returns the integer value if s is a valid positive integer, otherwise defaultVal.
-func parsePositiveQueryInt(s string, defaultVal int) int {
-	if s == "" {
-		return defaultVal
-	}
-	v, err := strconv.Atoi(s)
-	if err != nil || v <= 0 {
-		return defaultVal
-	}
-	return v
-}
-
-// parseAdminPlaylistListParams reads limit and page from query; returns defaults 100 and 1 when missing or invalid.
-func parseAdminPlaylistListParams(c *gin.Context) (limit, page int) {
-	limit = parsePositiveQueryInt(c.Query("limit"), 100)
-	page = parsePositiveQueryInt(c.Query("page"), 1)
-	return limit, page
-}
 
 // filterPlaylistsBySearch returns playlists whose name contains the given search term (case-insensitive).
 func filterPlaylistsBySearch(playlists []*models.Playlist, search string) []*models.Playlist {
@@ -65,7 +45,8 @@ func (h *Handler) AdminListPlaylists(c *gin.Context) {
 	}
 	all := h.playlist.ListAllPlaylists()
 	search := strings.ToLower(strings.TrimSpace(c.Query("search")))
-	limit, page := parseAdminPlaylistListParams(c)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 100, Min: 1, Max: 1000})
+	page := ParseQueryInt(c, "page", QueryIntOpts{Default: 1, Min: 1, Max: 10000})
 	filtered := filterPlaylistsBySearch(all, search)
 	writeSuccess(c, paginatePlaylists(filtered, page, limit))
 }
@@ -108,8 +89,7 @@ func (h *Handler) validateBulkDeletePlaylistsRequest(c *gin.Context) ([]string, 
 	var req struct {
 		IDs []string `json:"ids"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return nil, false
 	}
 	if len(req.IDs) == 0 {
@@ -144,8 +124,10 @@ func (h *Handler) AdminDeletePlaylist(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
 	}
-	playlistID := c.Param("id")
-
+	playlistID, ok := RequireParamID(c, "id")
+	if !ok {
+		return
+	}
 	if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), playlistID); err != nil {
 		writeError(c, http.StatusNotFound, "Playlist not found")
 		return

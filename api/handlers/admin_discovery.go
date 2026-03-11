@@ -34,8 +34,7 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 	var req struct {
 		Directory string `json:"directory"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
 	dirs := h.config.Get().Directories
@@ -70,11 +69,9 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 	var req struct {
 		OriginalPath string `json:"original_path"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-
 	if err := h.autodiscovery.ApplySuggestion(autodiscovery.FilePath(req.OriginalPath)); err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
