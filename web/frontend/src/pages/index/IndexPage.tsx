@@ -1,4 +1,4 @@
-import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
+import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useMemo, useRef, useState,} from 'react'
 import {keepPreviousData, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {decode} from 'blurhash'
@@ -16,6 +16,10 @@ import '@/styles/index.css'
 
 // Allowed pagination limits — used to normalize URL/API values so 48/96 etc. work consistently
 const PAGINATION_LIMITS = [12, 24, 48, 96] as const
+
+const FONT_SIZE_SMALL = 13
+const COLOR_TEXT_MUTED = 'var(--text-muted)'
+const MUTED_TEXT_STYLE: React.CSSProperties = {color: COLOR_TEXT_MUTED, fontSize: FONT_SIZE_SMALL}
 
 function normalizeLimit(value: number, fallback: number): number {
     const n = Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback
@@ -221,7 +225,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                             </div>
 
                             {sizeError && (
-                                <div style={{color: '#ef4444', fontSize: 13, marginTop: 8}}>
+                                <div style={{color: '#ef4444', fontSize: FONT_SIZE_SMALL, marginTop: 8}}>
                                     <i className="bi bi-exclamation-triangle"/> {sizeError}
                                 </div>
                             )}
@@ -294,6 +298,58 @@ const THUMBNAIL_RETRY_DELAY_MS = 2500
 const THUMBNAIL_MAX_RETRIES = 3
 const THUMBNAIL_LAZY_MARGIN_PX = 200
 
+function usePreviewHover(item: MediaItem, restricted: boolean) {
+    const [previewUrls, setPreviewUrls] = useState<string[] | null>(null)
+    const [previewIndex, setPreviewIndex] = useState(0)
+    const hoveringRef = useRef(false)
+    const fetchedRef = useRef(false)
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+    function startCycling(urls: string[]) {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+        if (urls.length > 1) {
+            setPreviewIndex(0)
+            intervalRef.current = setInterval(() => setPreviewIndex(i => i + 1), 800)
+        }
+    }
+
+    function handleMouseEnter() {
+        if (restricted || item.type !== 'video' || !item.thumbnail_url) return
+        hoveringRef.current = true
+        if (!fetchedRef.current) {
+            fetchedRef.current = true
+            mediaApi.getThumbnailPreviews(item.id).then(data => {
+                if (data.previews?.length > 1) {
+                    setPreviewUrls(data.previews)
+                    if (hoveringRef.current) startCycling(data.previews)
+                }
+            }).catch(() => {})
+        } else if (previewUrls && previewUrls.length > 1) {
+            startCycling(previewUrls)
+        }
+    }
+
+    function handleMouseLeave() {
+        hoveringRef.current = false
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+        }
+        setPreviewIndex(0)
+    }
+
+    useEffect(() => () => {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+    }, [])
+
+    const currentThumbnail =
+        previewUrls && previewUrls.length > 0
+            ? previewUrls[previewIndex % previewUrls.length]
+            : null
+
+    return {previewUrls, previewIndex, currentThumbnail, handleMouseEnter, handleMouseLeave}
+}
+
 /** Append cache-buster for mature thumbnails when user can view them, so the browser
  * fetches the real image instead of serving the cached censored placeholder after login. */
 function thumbnailUrlForMatureAccess(
@@ -353,7 +409,7 @@ function MediaCardThumbnailBlock({
                     loading={inView ? 'eager' : 'lazy'}
                     style={{
                         ...(restricted ? { filter: 'blur(16px)', pointerEvents: 'none' } : {}),
-                        opacity: imgLoaded ? 1 : (item.blur_hash ? 0 : 1),
+                        opacity: !imgLoaded && item.blur_hash ? 0 : 1,
                         transition: 'opacity 0.2s ease',
                         position: 'relative',
                         zIndex: 1,
@@ -372,6 +428,11 @@ function MediaCardThumbnailBlock({
             <i className={item.type === 'video' ? 'bi bi-play-circle' : 'bi bi-music-note-beamed'} />
         </div>
     )
+}
+
+function getRestrictedPlayTitle(restricted: boolean, isAuthenticated: boolean): string | undefined {
+    if (!restricted) return undefined
+    return isAuthenticated ? 'Enable mature content in profile settings' : 'Sign in to play 18+ content'
 }
 
 function MediaCardMatureOverlay({ item, isAuthenticated }: { item: MediaItem; isAuthenticated: boolean }) {
@@ -419,8 +480,14 @@ function MediaCard({
 }) {
     const navigate = useNavigate()
     const restricted = item.is_mature && !canViewMature
-    const [previewUrls, setPreviewUrls] = useState<string[] | null>(null)
-    const [previewIndex, setPreviewIndex] = useState(0)
+    const previewHover = usePreviewHover(item, restricted)
+    const baseThumbnailUrl = thumbnailUrlForMatureAccess(
+        item.thumbnail_url ?? undefined,
+        !!item.is_mature,
+        canViewMature,
+    )
+    const currentThumbnail = previewHover.currentThumbnail ?? baseThumbnailUrl
+
     const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(() =>
         thumbnailUrlForMatureAccess(item.thumbnail_url ?? undefined, !!item.is_mature, canViewMature) ?? null)
     const [thumbnailError, setThumbnailError] = useState(false)
@@ -429,20 +496,6 @@ function MediaCard({
     const containerRef = useRef<HTMLDivElement>(null)
     const retryCountRef = useRef(0)
     const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-    const fetchedRef = useRef(false)
-
-    const baseThumbnailUrl = thumbnailUrlForMatureAccess(
-        item.thumbnail_url ?? undefined,
-        !!item.is_mature,
-        canViewMature,
-    )
-    const currentThumbnail =
-        previewUrls && previewUrls.length > 0
-            ? previewUrls[previewIndex % previewUrls.length]
-            : baseThumbnailUrl
-
-    const hoveringRef = useRef(false)
 
     useEffect(() => {
         if (!currentThumbnail) return
@@ -455,46 +508,8 @@ function MediaCard({
         })
     }, [currentThumbnail])
 
-    function startCycling(urls: string[]) {
-        if (intervalRef.current) clearInterval(intervalRef.current)
-        if (urls.length > 1) {
-            setPreviewIndex(0)
-            intervalRef.current = setInterval(() => {
-                setPreviewIndex(i => i + 1)
-            }, 800)
-        }
-    }
-
-    function handleMouseEnter() {
-        if (restricted || item.type !== 'video' || !item.thumbnail_url) return
-        hoveringRef.current = true
-        if (!fetchedRef.current) {
-            fetchedRef.current = true
-            mediaApi.getThumbnailPreviews(item.id).then(data => {
-                if (data.previews && data.previews.length > 1) {
-                    setPreviewUrls(data.previews)
-                    if (hoveringRef.current) startCycling(data.previews)
-                }
-            }).catch(() => {})
-        } else if (previewUrls && previewUrls.length > 1) {
-            startCycling(previewUrls)
-        }
-    }
-
-    function handleMouseLeave() {
-        hoveringRef.current = false
-        if (intervalRef.current) {
-            clearInterval(intervalRef.current)
-            intervalRef.current = null
-        }
-        setPreviewIndex(0)
-    }
-
-    useEffect(() => {
-        return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current)
-            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
-        }
+    useEffect(() => () => {
+        if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
     }, [])
 
     useEffect(() => {
@@ -533,8 +548,8 @@ function MediaCard({
                 ref={containerRef}
                 onClick={goToPlayer}
                 style={{ cursor: restricted ? 'default' : 'pointer', position: 'relative' }}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
+                onMouseEnter={previewHover.handleMouseEnter}
+                onMouseLeave={previewHover.handleMouseLeave}
             >
                 <MediaCardThumbnailBlock
                     item={item}
@@ -544,7 +559,7 @@ function MediaCard({
                     inView={inView}
                     thumbnailSrc={thumbnailSrc}
                     baseThumbnailUrl={baseThumbnailUrl}
-                    previewUrls={previewUrls}
+                    previewUrls={previewHover.previewUrls}
                     onError={handleThumbnailError}
                     onLoad={() => { retryCountRef.current = 0; setImgLoaded(true) }}
                 />
@@ -565,7 +580,7 @@ function MediaCard({
                         className="media-card-btn media-card-btn-play"
                         onClick={() => !restricted && onPlay(item)}
                         disabled={restricted}
-                        title={restricted ? (isAuthenticated ? 'Enable mature content in profile settings' : 'Sign in to play 18+ content') : undefined}
+                        title={getRestrictedPlayTitle(restricted, isAuthenticated)}
                     >
                         <i className="bi bi-play-fill" /> Play
                     </button>
@@ -898,8 +913,7 @@ function SuggestionThumbnail({url, mediaType}: { url?: string; mediaType?: strin
 
 // ── Main IndexPage ────────────────────────────────────────────────────────────
 // Cognitive complexity is high due to many URL-driven filters, queries, and conditional sections.
-// TODO: extract useIndexPageState() + IndexPageContent to reduce complexity under 25.
-/* eslint-disable sonarjs/cognitive-complexity -- index page orchestrates many conditional sections; split in future refactor */
+// NOTE: Consider extracting useIndexPageState() + IndexPageContent to reduce complexity.
 export function IndexPage() {
     const navigate = useNavigate()
     const queryClient = useQueryClient()
@@ -1115,7 +1129,7 @@ export function IndexPage() {
         select: (data) => data ?? [],
     })
 
-    const items = mediaData?.items ?? []
+    const items = useMemo(() => mediaData?.items ?? [], [mediaData?.items])
     const totalPages = mediaData?.total_pages ?? 1
     const hasNextPage = page < totalPages
 
@@ -1261,6 +1275,153 @@ export function IndexPage() {
         queryClient.invalidateQueries({queryKey: ['media']})
     }
 
+    function renderSuggestionSection(
+        loading: boolean,
+        error: boolean,
+        items: Suggestion[],
+        onRetry: () => void,
+        loadingLabel: string,
+        errorMessage: string,
+        emptyMessage: string,
+        renderMeta: (entry: Suggestion) => React.ReactNode
+    ) {
+        if (loading) return <p style={MUTED_TEXT_STYLE}>Loading {loadingLabel}…</p>
+        if (error) {
+            return (
+                <p style={MUTED_TEXT_STYLE}>
+                    {errorMessage}{' '}
+                    <button type="button" className="controls-btn" style={{marginLeft: 4}} onClick={onRetry}>
+                        Retry
+                    </button>
+                </p>
+            )
+        }
+        if (items.length > 0) {
+            return (
+                <div className="continue-watching-row">
+                    {items.map(entry => (
+                        <Link
+                            key={entry.media_id}
+                            className="continue-card"
+                            to={`/player?id=${encodeURIComponent(entry.media_id)}`}
+                        >
+                            <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
+                            <div className="continue-card-name">{formatTitle({value: entry.title || entry.media_id})}</div>
+                            {renderMeta(entry)}
+                        </Link>
+                    ))}
+                </div>
+            )
+        }
+        return <p style={MUTED_TEXT_STYLE}>{emptyMessage}</p>
+    }
+
+    function renderSuggestionsState() {
+        return renderSuggestionSection(
+            suggestionsLoading,
+            suggestionsError,
+            suggestions,
+            () => suggestionsRefetch(),
+            'suggestions',
+            'Suggestions are still loading (catalogue may be scanning).',
+            'No recommendations yet. Watch some media to get personalized picks.',
+            (entry) => entry.score !== null && entry.score !== undefined
+                ? <div className="continue-card-meta"><i className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
+                : null
+        )
+    }
+
+    function renderTrendingState() {
+        return renderSuggestionSection(
+            trendingLoading,
+            trendingError,
+            trending,
+            () => trendingRefetch(),
+            'trending',
+            'Trending is still loading.',
+            'No trending items yet.',
+            () => <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
+        )
+    }
+
+    function getMediaErrorMessage(err: unknown): string {
+        return err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+    }
+
+    function getEmptyMediaMessage(): string {
+        return search
+            ? `No results for "${search}". Try a different search term.`
+            : 'Add media files to your library or adjust your filters to get started.'
+    }
+
+    function renderMediaGridState() {
+        if (mediaError) {
+            return (
+                <div className="empty-state empty-state-error">
+                    <h3>We couldn&apos;t load your library</h3>
+                    <p>{getMediaErrorMessage(mediaError)}</p>
+                    <button className="controls-btn controls-btn-primary" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
+                        <i className="bi bi-arrow-clockwise"/> Try again
+                    </button>
+                </div>
+            )
+        }
+        if (mediaInitialLoading) {
+            return (
+                <div className="media-grid media-grid-loading">
+                    {Array.from({length: 12}, (_, i) => <MediaCardSkeleton key={i}/>)}
+                </div>
+            )
+        }
+        if (items.length === 0 && mediaData?.scanning) {
+            return (
+                <div className="loading-state">
+                    <i className="bi bi-arrow-repeat"/> Scanning your library&hellip; give it a moment.
+                </div>
+            )
+        }
+        if (items.length === 0) {
+            return (
+                <div className="empty-state">
+                    <h3>No media found</h3>
+                    <p>{getEmptyMediaMessage()}</p>
+                    {permissions.can_upload && (
+                        <button className="controls-btn controls-btn-primary" onClick={() => setShowUpload(true)}>
+                            <i className="bi bi-cloud-upload-fill"/> Upload media
+                        </button>
+                    )}
+                </div>
+            )
+        }
+        return (
+            <div
+                className="media-grid-wrapper"
+                style={{
+                    ...((mediaFetching && mediaStale) ? {opacity: 0.92, transition: 'opacity 0.25s ease'} : {opacity: 1, transition: 'opacity 0.25s ease'}),
+                }}
+            >
+                {(mediaFetching && mediaStale) && (
+                    <div className="media-grid-updating" role="status">
+                        <i className="bi bi-arrow-repeat"/> Updating&hellip;
+                    </div>
+                )}
+                <div className="media-grid">
+                    {items.map(item => (
+                        <MediaCard
+                            key={item.id}
+                            item={item}
+                            isPlaying={nowPlaying?.id === item.id}
+                            onPlay={handlePlay}
+                            canDownload={permissions.can_download}
+                            canViewMature={canViewMature}
+                            isAuthenticated={isAuthenticated}
+                        />
+                    ))}
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="index-page" data-theme={theme}>
             {/* Header */}
@@ -1361,35 +1522,7 @@ export function IndexPage() {
             {suggestionsEnabled && showRecommended && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-stars"/> Recommended For You</h3>
-                    {suggestionsLoading ? (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading suggestions…</p>
-                    ) : suggestionsError ? (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>
-                            Suggestions are still loading (catalogue may be scanning).{' '}
-                            <button type="button" className="controls-btn" style={{marginLeft: 4}} onClick={() => suggestionsRefetch()}>
-                                Retry
-                            </button>
-                        </p>
-                    ) : suggestions.length > 0 ? (
-                        <div className="continue-watching-row">
-                            {suggestions.map(entry => (
-                                <Link
-                                    key={entry.media_id}
-                                    className="continue-card"
-                                    to={`/player?id=${encodeURIComponent(entry.media_id)}`}
-                                >
-                                    <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                    <div className="continue-card-name">{formatTitle({ value: entry.title || entry.media_id })}</div>
-                                    {entry.score != null && (
-                                        <div className="continue-card-meta"><i
-                                            className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
-                                    )}
-                                </Link>
-                            ))}
-                        </div>
-                    ) : (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>No recommendations yet. Watch some media to get personalized picks.</p>
-                    )}
+                    {renderSuggestionsState()}
                 </div>
             )}
 
@@ -1397,32 +1530,7 @@ export function IndexPage() {
             {suggestionsEnabled && showTrending && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-fire"/> Trending</h3>
-                    {trendingLoading ? (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading trending…</p>
-                    ) : trendingError ? (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>
-                            Trending is still loading.{' '}
-                            <button type="button" className="controls-btn" style={{marginLeft: 4}} onClick={() => trendingRefetch()}>
-                                Retry
-                            </button>
-                        </p>
-                    ) : trending.length > 0 ? (
-                        <div className="continue-watching-row">
-                            {trending.map(entry => (
-                                <Link
-                                    key={entry.media_id}
-                                    className="continue-card"
-                                    to={`/player?id=${encodeURIComponent(entry.media_id)}`}
-                                >
-                                    <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                    <div className="continue-card-name">{formatTitle({ value: entry.title || entry.media_id })}</div>
-                                    <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
-                                </Link>
-                            ))}
-                        </div>
-                    ) : (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>No trending items yet.</p>
-                    )}
+                    {renderTrendingState()}
                 </div>
             )}
 
@@ -1481,63 +1589,7 @@ export function IndexPage() {
 
             {/* Media Grid */}
             <div className="media-section">
-                {mediaError ? (
-                    <div className="empty-state empty-state-error">
-                        <h3>We couldn&apos;t load your library</h3>
-                        <p>{mediaError instanceof Error ? mediaError.message : 'Something went wrong. Please try again.'}</p>
-                        <button className="controls-btn controls-btn-primary" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
-                            <i className="bi bi-arrow-clockwise"/> Try again
-                        </button>
-                    </div>
-                ) : mediaInitialLoading ? (
-                    <div className="media-grid media-grid-loading">
-                        {Array.from({length: 12}, (_, i) => <MediaCardSkeleton key={i}/>)}
-                    </div>
-                ) : items.length === 0 && mediaData?.scanning ? (
-                    <div className="loading-state">
-                        <i className="bi bi-arrow-repeat"/> Scanning your library&hellip; give it a moment.
-                    </div>
-                ) : items.length === 0 ? (
-                    <div className="empty-state">
-                        <h3>No media found</h3>
-                        <p>
-                            {search
-                                ? `No results for "${search}". Try a different search term.`
-                                : 'Add media files to your library or adjust your filters to get started.'}
-                        </p>
-                        {permissions.can_upload && (
-                            <button className="controls-btn controls-btn-primary" onClick={() => setShowUpload(true)}>
-                                <i className="bi bi-cloud-upload-fill"/> Upload media
-                            </button>
-                        )}
-                    </div>
-                ) : (
-                    <div
-                        className="media-grid-wrapper"
-                        style={{
-                            ...((mediaFetching && mediaStale) ? {opacity: 0.92, transition: 'opacity 0.25s ease'} : {opacity: 1, transition: 'opacity 0.25s ease'}),
-                        }}
-                    >
-                        {(mediaFetching && mediaStale) && (
-                            <div className="media-grid-updating" role="status">
-                                <i className="bi bi-arrow-repeat"/> Updating&hellip;
-                            </div>
-                        )}
-                        <div className="media-grid">
-                            {items.map(item => (
-                                <MediaCard
-                                    key={item.id}
-                                    item={item}
-                                    isPlaying={nowPlaying?.id === item.id}
-                                    onPlay={handlePlay}
-                                    canDownload={permissions.can_download}
-                                    canViewMature={canViewMature}
-                                    isAuthenticated={isAuthenticated}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {renderMediaGridState()}
 
                 {/* Pagination */}
                 {totalPages > 1 && (
@@ -1552,7 +1604,7 @@ export function IndexPage() {
                         <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
                             <span className="pagination-info">Page {page} of {totalPages}</span>
                             <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
-                                <label htmlFor="per-page" style={{fontSize: 13, color: 'var(--text-muted)'}}>Per
+                                <label htmlFor="per-page" style={{fontSize: FONT_SIZE_SMALL, color: COLOR_TEXT_MUTED}}>Per
                                     page:</label>
                                 <select
                                     id="per-page"
@@ -1617,7 +1669,7 @@ export function IndexPage() {
                                     borderRadius: 6,
                                     padding: '6px 10px',
                                     marginBottom: 10,
-                                    fontSize: 13
+                                    fontSize: FONT_SIZE_SMALL
                                 }}>
                                     {playlistError}
                                 </div>
@@ -1637,7 +1689,7 @@ export function IndexPage() {
                                             borderRadius: 6,
                                             background: 'var(--input-bg)',
                                             color: 'var(--text-color)',
-                                            fontSize: 13,
+                                            fontSize: FONT_SIZE_SMALL,
                                         }}
                                         onKeyDown={e => e.key === 'Enter' && handleCreatePlaylist()}
                                     />
@@ -1649,7 +1701,7 @@ export function IndexPage() {
                             </div>
 
                             {playlists.length === 0 ? (
-                                <p style={{textAlign: 'center', color: 'var(--text-muted)', fontSize: 14}}>
+                                <p style={{textAlign: 'center', color: COLOR_TEXT_MUTED, fontSize: 14}}>
                                     No playlists yet
                                 </p>
                             ) : (
@@ -1673,7 +1725,7 @@ export function IndexPage() {
                                                             borderRadius: 4,
                                                             background: 'var(--input-bg)',
                                                             color: 'var(--text-color)',
-                                                            fontSize: 13,
+                                                            fontSize: FONT_SIZE_SMALL,
                                                         }}
                                                     />
                                                     <button
@@ -1692,7 +1744,7 @@ export function IndexPage() {
                                                         style={{
                                                             background: 'none',
                                                             border: 'none',
-                                                            color: 'var(--text-muted)',
+                                                            color: COLOR_TEXT_MUTED,
                                                             cursor: 'pointer'
                                                         }}
                                                     >
@@ -1711,7 +1763,7 @@ export function IndexPage() {
                                                         style={{
                                                             background: 'none',
                                                             border: 'none',
-                                                            color: 'var(--text-muted)',
+                                                            color: COLOR_TEXT_MUTED,
                                                             cursor: 'pointer',
                                                             padding: '2px 3px'
                                                         }}
@@ -1744,7 +1796,7 @@ export function IndexPage() {
                                                     style={{
                                                         background: 'none',
                                                         border: 'none',
-                                                        color: 'var(--text-muted)',
+                                                        color: COLOR_TEXT_MUTED,
                                                         cursor: 'pointer',
                                                         fontSize: 11,
                                                         padding: 0
