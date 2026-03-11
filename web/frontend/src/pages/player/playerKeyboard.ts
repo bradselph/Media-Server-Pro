@@ -1,5 +1,7 @@
 /** Keyboard shortcut handler for the media player. */
 
+import { useEffect, useRef } from 'react'
+
 /** Domain constants and type for player shortcut keys (avoids primitive string obsession). */
 const PlayerKeys = {
     PLAY_PAUSE: [' ', 'k', 'K'] as const,
@@ -200,6 +202,17 @@ const KEY_HANDLERS: KeyHandler[] = [
     handleSpeedDown,
     handleSpeedUp,
 ]
+
+/** Attaches global keydown listener for player shortcuts. Extracted to reduce main hook complexity. */
+export function usePlayerKeyboard(handlers: PlayerKeyHandlers): void {
+    const ref = useRef(handlers)
+    ref.current = handlers
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => handlePlayerKeyDown(e, ref.current)
+        document.addEventListener('keydown', onKeyDown)
+        return () => document.removeEventListener('keydown', onKeyDown)
+    }, [])
+}
 
 export function handlePlayerKeyDown(e: KeyboardEvent, handlers: PlayerKeyHandlers): void {
     const target = e.target as HTMLElement
