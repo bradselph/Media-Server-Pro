@@ -6,14 +6,33 @@ on:
   pull_request:
     branches: [main, development]
 
+# Cancel in-progress runs when a new push/PR arrives — reduces redundant runs
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Skip CI for doc-only, asset-only, or config-only changes
+paths-ignore:
+  - '**.md'
+  - 'docs/**'
+  - 'LICENSE'
+  - '.gitignore'
+  - '**.png'
+  - '**.jpg'
+  - '**.gif'
+  - '**.svg'
+  - '**.ico'
+  - 'assets/**'
+  - '*.editorconfig'
+
 permissions:
   contents: read
 
 jobs:
-  # ─── Go build & vet ────────────────────────────────────────────────────────
-  go-build:
-    name: Go Build & Vet
-    runs-on: ubuntu-latest
+  # ─── Go: build, vet, test, security ────────────────────────────────────────
+  go:
+    name: Go Build, Test & Security
+    runs-on: [self-hosted, Linux, X64, media-server]
     steps:
       - uses: actions/checkout@v4
 
@@ -32,45 +51,18 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-  # ─── Go tests ──────────────────────────────────────────────────────────────
-  go-test:
-    name: Go Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run tests
+      - name: Test
         run: go test -race -timeout 120s ./...
 
-  # ─── Security scanning ─────────────────────────────────────────────────────
-  go-security:
-    name: Go Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Security scan (govulncheck)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-      - name: Run govulncheck
-        run: govulncheck ./...
-
-  # ─── Frontend build & lint ─────────────────────────────────────────────────
+  # ─── Frontend: lint, build, test, audit ─────────────────────────────────────
   frontend:
-    name: Frontend Build & Lint
-    runs-on: ubuntu-latest
+    name: Frontend Lint, Build & Test
+    runs-on: [self-hosted, Linux, X64, media-server]
     defaults:
       run:
         working-directory: web/frontend
@@ -93,48 +85,8 @@ jobs:
       - name: Build
         run: npm run build
 
-  # ─── Frontend tests ────────────────────────────────────────────────────────
-  frontend-test:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web/frontend
-    steps:
-      - uses: actions/checkout@v4
+      - name: Test
+        run: npm run test
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: web/frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npx vitest run 2>/dev/null || echo "::warning::Frontend tests not yet configured — add Vitest to run tests here"
-
-  # ─── npm audit ─────────────────────────────────────────────────────────────
-  npm-audit:
-    name: npm Security Audit
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web/frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: web/frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Audit (high severity and above)
+      - name: npm audit
         run: npm audit --audit-level=high

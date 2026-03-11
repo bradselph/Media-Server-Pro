@@ -7,12 +7,16 @@ on:
       - 'VERSION'
       - 'CHANGELOG.md'
 
+concurrency:
+  group: dev-version-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
 jobs:
   bump-patch:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, media-server]
     if: "!contains(github.event.head_commit.message, '[auto-version]')"
 
     steps:
