@@ -21,6 +21,11 @@
 #   --fast                 Alias for --skip-security --skip-tests
 #   --fix                  Auto-run 'go fmt' before checking
 #   --fix-issues           Run fix-issues.py --dry-run to report Go/TS issues
+#   --report [FILE]        Run fix-issues.py --report (Cursor-style diagnostics)
+#   --report-format FMT    Report format: md (default) | html | json
+#   --staticcheck          Include staticcheck in Go diagnostics (--report mode)
+#   --lint                 Include ESLint in TypeScript diagnostics (--report mode)
+#   --all-sources          Enable all diagnostic sources (--report mode)
 #   -h, --help             Show this help
 # =============================================================================
 
@@ -58,6 +63,11 @@ OPT_SKIP_SECURITY=false
 OPT_SKIP_TESTS=false
 OPT_FIX=false
 OPT_FIX_ISSUES=false
+OPT_REPORT=""
+OPT_REPORT_FORMAT="md"
+OPT_STATICCHECK=false
+OPT_LINT=false
+OPT_ALL_SOURCES=false
 OPT_BUMP_VERSION=""
 OPT_SYNC_VERSION=false
 OPT_BUMP_DEV=false
@@ -83,8 +93,21 @@ while [[ $# -gt 0 ]]; do
     --fast)           OPT_SKIP_SECURITY=true; OPT_SKIP_TESTS=true ;;
     --fix)            OPT_FIX=true ;;
     --fix-issues)     OPT_FIX_ISSUES=true ;;
+    --report=*)       OPT_REPORT="${arg#*=}" ;;
+    --report)
+      if [[ $# -gt 0 && ! "$1" =~ ^-- ]]; then
+        OPT_REPORT="$1"; shift
+      else
+        OPT_REPORT="issues-report.md"
+      fi ;;
+    --report-format=*) OPT_REPORT_FORMAT="${arg#*=}" ;;
+    --report-format)
+      if [[ $# -gt 0 ]]; then OPT_REPORT_FORMAT="$1"; shift; fi ;;
+    --staticcheck)    OPT_STATICCHECK=true ;;
+    --lint)           OPT_LINT=true ;;
+    --all-sources)    OPT_ALL_SOURCES=true ;;
     -h|--help)
-      grep '^#' "$0" | sed 's/^# \{0,2\}//' | sed -n '2,24p'
+      grep '^#' "$0" | sed 's/^# \{0,2\}//' | sed -n '2,30p'
       exit 0
       ;;
     *) echo -e "${RED}Unknown option: $arg${RESET}" >&2; exit 1 ;;
@@ -246,6 +269,35 @@ if $OPT_FIX_ISSUES; then
     echo -e "${RED}fix-issues.py not found at ${FIX_SCRIPT}${RESET}" >&2
     exit 1
   fi
+  exit 0
+fi
+
+# ── fix-issues.py --report (Cursor IDE Problems panel report) ─────────────────
+if [[ -n "$OPT_REPORT" ]]; then
+  echo ""
+  echo -e "${BOLD}${CYAN}── fix-issues.py --report (Cursor diagnostics) ──────────────${RESET}"
+  cd "$REPO_ROOT"
+  FIX_SCRIPT="${SCRIPT_DIR}/fix-issues.py"
+  if [[ ! -f "$FIX_SCRIPT" ]]; then
+    echo -e "${RED}fix-issues.py not found at ${FIX_SCRIPT}${RESET}" >&2
+    exit 1
+  fi
+  PY=""
+  command -v python3 &>/dev/null && PY=python3
+  command -v python  &>/dev/null && [[ -z "$PY" ]] && PY=python
+  if [[ -z "$PY" ]]; then
+    echo -e "${RED}Python not found — cannot run fix-issues.py${RESET}" >&2
+    exit 1
+  fi
+  REPORT_ARGS=("--report" "$OPT_REPORT" "--report-format" "$OPT_REPORT_FORMAT")
+  $OPT_STATICCHECK  && REPORT_ARGS+=("--staticcheck")
+  $OPT_LINT         && REPORT_ARGS+=("--lint")
+  $OPT_ALL_SOURCES  && REPORT_ARGS+=("--all-sources")
+  $OPT_SKIP_GO      && REPORT_ARGS+=("--ts-only")
+  $OPT_SKIP_FRONTEND && REPORT_ARGS+=("--go-only")
+  "$PY" "$FIX_SCRIPT" "${REPORT_ARGS[@]}"
+  echo ""
+  echo -e "${PASS}  Report: ${BOLD}${OPT_REPORT}${RESET}"
   exit 0
 fi
 

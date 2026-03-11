@@ -49,32 +49,43 @@ type Client struct {
 	log         *logger.Logger
 }
 
-// NewClient creates a new Hugging Face API client. If apiKey is empty, the client
+// ClientConfig holds options for creating a Hugging Face API client.
+type ClientConfig struct {
+	APIKey             string
+	Model              string
+	EndpointURL        string
+	RequestsPerMinute  int
+	Timeout            time.Duration
+	Log                *logger.Logger
+}
+
+// NewClient creates a new Hugging Face API client. If APIKey is empty, the client
 // will return empty results without making requests (graceful degradation).
-func NewClient(apiKey, model, endpointURL string, requestsPerMinute int, timeout time.Duration, log *logger.Logger) *Client {
-	if requestsPerMinute <= 0 {
-		requestsPerMinute = 30
+func NewClient(cfg ClientConfig) *Client {
+	rpm := cfg.RequestsPerMinute
+	if rpm <= 0 {
+		rpm = 30
 	}
-	rps := float64(requestsPerMinute) / 60.0
+	rps := float64(rpm) / 60.0
 	if rps < 0.5 {
 		rps = 0.5
 	}
 	rl := rate.NewLimiter(rate.Limit(rps), 2)
 
 	baseURL := defaultBaseURL
-	if endpointURL != "" {
-		baseURL = strings.TrimSuffix(endpointURL, "/")
+	if cfg.EndpointURL != "" {
+		baseURL = strings.TrimSuffix(cfg.EndpointURL, "/")
 	}
 
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: timeout,
+			Timeout: cfg.Timeout,
 		},
-		apiKey:      apiKey,
-		model:       model,
+		apiKey:      cfg.APIKey,
+		model:       cfg.Model,
 		endpointURL: baseURL,
 		rateLimiter: rl,
-		log:         log,
+		log:         cfg.Log,
 	}
 }
 

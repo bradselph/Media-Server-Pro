@@ -480,88 +480,130 @@ type SystemInfo struct {
 	StartTime    time.Time `json:"start_time"`
 }
 
+// configMapSection builds one top-level section of the admin config map.
+type configMapSection func(cfg *config.Config, qualityNames []string) map[string]interface{}
+
+func buildConfigServerMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"port":         cfg.Server.Port,
+		"host":         cfg.Server.Host,
+		"enable_https": cfg.Server.EnableHTTPS,
+	}
+}
+
+func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enable_thumbnails":  cfg.Features.EnableThumbnails,
+		"enable_hls":         cfg.Features.EnableHLS,
+		"enable_analytics":   cfg.Features.EnableAnalytics,
+		"enable_uploads":    cfg.Features.EnableUploads,
+		"enable_huggingface": cfg.Features.EnableHuggingFace,
+	}
+}
+
+func buildConfigSecurityMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"rate_limit_enabled":  cfg.Security.RateLimitEnabled,
+		"rate_limit_requests": cfg.Security.RateLimitRequests,
+		"enable_ip_whitelist": cfg.Security.EnableIPWhitelist,
+		"enable_ip_blacklist": cfg.Security.EnableIPBlacklist,
+	}
+}
+
+func buildConfigHLSMap(cfg *config.Config, qualityNames []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":          cfg.HLS.Enabled,
+		"auto_generate":    cfg.HLS.AutoGenerate,
+		"concurrent_limit": cfg.HLS.ConcurrentLimit,
+		"segment_duration": cfg.HLS.SegmentDuration,
+		"quality_profiles": qualityNames,
+	}
+}
+
+func buildConfigThumbnailsMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"auto_generate":      cfg.Thumbnails.AutoGenerate,
+		"width":              cfg.Thumbnails.Width,
+		"height":             cfg.Thumbnails.Height,
+		"quality":            cfg.Thumbnails.Quality,
+		"video_interval":     cfg.Thumbnails.VideoInterval,
+		"preview_count":      cfg.Thumbnails.PreviewCount,
+		"generate_on_access": cfg.Thumbnails.GenerateOnAccess,
+	}
+}
+
+func buildConfigAnalyticsMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":        cfg.Features.EnableAnalytics,
+		"track_playback": cfg.Analytics.TrackPlayback,
+		"track_views":    cfg.Analytics.TrackViews,
+	}
+}
+
+func buildConfigMatureScannerMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":                     cfg.MatureScanner.Enabled,
+		"auto_flag":                   cfg.MatureScanner.AutoFlag,
+		"high_confidence_threshold":   cfg.MatureScanner.HighConfidenceThreshold,
+		"medium_confidence_threshold": cfg.MatureScanner.MediumConfidenceThreshold,
+		"require_review":              cfg.MatureScanner.RequireReview,
+	}
+}
+
+func buildConfigHuggingFaceMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":         cfg.HuggingFace.Enabled,
+		"api_key_set":     len(cfg.HuggingFace.APIKey) > 0,
+		"model":           cfg.HuggingFace.Model,
+		"endpoint_url":    cfg.HuggingFace.EndpointURL,
+		"max_frames":      cfg.HuggingFace.MaxFrames,
+		"timeout_secs":    cfg.HuggingFace.TimeoutSecs,
+		"rate_limit":      cfg.HuggingFace.RateLimit,
+		"max_concurrent":  cfg.HuggingFace.MaxConcurrent,
+	}
+}
+
+func buildConfigDatabaseMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":           cfg.Database.Enabled,
+		"host":              cfg.Database.Host,
+		"port":              cfg.Database.Port,
+		"name":              cfg.Database.Name,
+		"username":          cfg.Database.Username,
+		"max_open_conns":    cfg.Database.MaxOpenConns,
+		"max_idle_conns":    cfg.Database.MaxIdleConns,
+		"conn_max_lifetime": cfg.Database.ConnMaxLifetime,
+		"timeout":           cfg.Database.Timeout,
+		"max_retries":       cfg.Database.MaxRetries,
+		"retry_interval":    cfg.Database.RetryInterval,
+	}
+}
+
 // GetConfigMap returns config as a map for JSON serialization
 func (m *Module) GetConfigMap() map[string]interface{} {
 	cfg := m.config.Get()
-
-	// Build quality profile names list for the admin panel
 	qualityNames := make([]string, 0, len(cfg.HLS.QualityProfiles))
 	for _, qp := range cfg.HLS.QualityProfiles {
 		qualityNames = append(qualityNames, qp.Name)
 	}
-
-	return map[string]interface{}{
-		"server": map[string]interface{}{
-			"port":         cfg.Server.Port,
-			"host":         cfg.Server.Host,
-			"enable_https": cfg.Server.EnableHTTPS,
-		},
-		"features": map[string]interface{}{
-			"enable_thumbnails": cfg.Features.EnableThumbnails,
-			"enable_hls":        cfg.Features.EnableHLS,
-			"enable_analytics":  cfg.Features.EnableAnalytics,
-			"enable_uploads":    cfg.Features.EnableUploads,
-			"enable_huggingface": cfg.Features.EnableHuggingFace,
-		},
-		"security": map[string]interface{}{
-			"rate_limit_enabled":  cfg.Security.RateLimitEnabled,
-			"rate_limit_requests": cfg.Security.RateLimitRequests,
-			"enable_ip_whitelist": cfg.Security.EnableIPWhitelist,
-			"enable_ip_blacklist": cfg.Security.EnableIPBlacklist,
-		},
-		"directories": map[string]interface{}{
-			"configured": true,
-		},
-		"hls": map[string]interface{}{
-			"enabled":          cfg.HLS.Enabled,
-			"auto_generate":    cfg.HLS.AutoGenerate,
-			"concurrent_limit": cfg.HLS.ConcurrentLimit,
-			"segment_duration": cfg.HLS.SegmentDuration,
-			"quality_profiles": qualityNames,
-		},
-		"thumbnails": map[string]interface{}{
-			"auto_generate":      cfg.Thumbnails.AutoGenerate,
-			"width":              cfg.Thumbnails.Width,
-			"height":             cfg.Thumbnails.Height,
-			"quality":            cfg.Thumbnails.Quality,
-			"video_interval":     cfg.Thumbnails.VideoInterval,
-			"preview_count":      cfg.Thumbnails.PreviewCount,
-			"generate_on_access": cfg.Thumbnails.GenerateOnAccess,
-		},
-		"analytics": map[string]interface{}{
-			"enabled":        cfg.Features.EnableAnalytics,
-			"track_playback": cfg.Analytics.TrackPlayback,
-			"track_views":    cfg.Analytics.TrackViews,
-		},
-		"mature_scanner": map[string]interface{}{
-			"enabled":                     cfg.MatureScanner.Enabled,
-			"auto_flag":                   cfg.MatureScanner.AutoFlag,
-			"high_confidence_threshold":   cfg.MatureScanner.HighConfidenceThreshold,
-			"medium_confidence_threshold": cfg.MatureScanner.MediumConfidenceThreshold,
-			"require_review":              cfg.MatureScanner.RequireReview,
-		},
-		"huggingface": map[string]interface{}{
-			"enabled":         cfg.HuggingFace.Enabled,
-			"api_key_set":     len(cfg.HuggingFace.APIKey) > 0,
-			"model":           cfg.HuggingFace.Model,
-			"endpoint_url":    cfg.HuggingFace.EndpointURL,
-			"max_frames":      cfg.HuggingFace.MaxFrames,
-			"timeout_secs":    cfg.HuggingFace.TimeoutSecs,
-			"rate_limit":     cfg.HuggingFace.RateLimit,
-			"max_concurrent": cfg.HuggingFace.MaxConcurrent,
-		},
-		"database": map[string]interface{}{
-			"enabled":           cfg.Database.Enabled,
-			"host":              cfg.Database.Host,
-			"port":              cfg.Database.Port,
-			"name":              cfg.Database.Name,
-			"username":          cfg.Database.Username,
-			"max_open_conns":    cfg.Database.MaxOpenConns,
-			"max_idle_conns":    cfg.Database.MaxIdleConns,
-			"conn_max_lifetime": cfg.Database.ConnMaxLifetime,
-			"timeout":           cfg.Database.Timeout,
-			"max_retries":       cfg.Database.MaxRetries,
-			"retry_interval":    cfg.Database.RetryInterval,
-		},
+	sections := []struct {
+		key string
+		fn  configMapSection
+	}{
+		{"server", buildConfigServerMap},
+		{"features", buildConfigFeaturesMap},
+		{"security", buildConfigSecurityMap},
+		{"hls", buildConfigHLSMap},
+		{"thumbnails", buildConfigThumbnailsMap},
+		{"analytics", buildConfigAnalyticsMap},
+		{"mature_scanner", buildConfigMatureScannerMap},
+		{"huggingface", buildConfigHuggingFaceMap},
+		{"database", buildConfigDatabaseMap},
 	}
+	out := make(map[string]interface{}, len(sections)+1)
+	out["directories"] = map[string]interface{}{"configured": true}
+	for _, s := range sections {
+		out[s.key] = s.fn(cfg, qualityNames)
+	}
+	return out
 }

@@ -158,7 +158,14 @@ func main() {
 		if rateLimit <= 0 {
 			rateLimit = 30
 		}
-		hfClient := huggingface.NewClient(hfCfg.APIKey, hfCfg.Model, hfCfg.EndpointURL, rateLimit, timeout, log)
+		hfClient := huggingface.NewClient(huggingface.ClientConfig{
+			APIKey:            hfCfg.APIKey,
+			Model:             hfCfg.Model,
+			EndpointURL:       hfCfg.EndpointURL,
+			RequestsPerMinute: rateLimit,
+			Timeout:           timeout,
+			Log:               log,
+		})
 		scannerModule.SetHFClient(hfClient)
 		log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
 	}
