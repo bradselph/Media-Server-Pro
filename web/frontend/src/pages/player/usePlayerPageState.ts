@@ -17,7 +17,7 @@ import {
     suggestionsApi,
     watchHistoryApi,
 } from '@/api/endpoints'
-import type { HLSJob, User } from '@/api/types'
+import type { HLSJob, Suggestion, User, UserPermissions } from '@/api/types'
 import { usePlayerKeyboard } from './playerKeyboard'
 
 const QUALITY_HEIGHT_MAP: Record<string, number> = {
@@ -76,17 +76,37 @@ function usePlayerSyncEffects(
     }, [mediaId, currentPlaylist, currentIndex, setCurrentIndex])
 }
 
+function shouldRetryMediaQuery(failureCount: number, error: unknown): boolean {
+    if (error instanceof ApiError && error.status === 503) return failureCount < 5
+    return failureCount < 1
+}
+
+const mediaQueryRetryDelay = (attempt: number) => Math.min(1000 * 2 ** attempt, 10000)
+
+function deriveRelatedData(
+    similarData: Suggestion[],
+    similarError: boolean,
+    relatedLoading: boolean,
+    trendingData: Suggestion[],
+    trendingLoading: boolean,
+) {
+    const useFallback = similarData.length === 0 && !similarError && !relatedLoading
+    const hasSimilar = similarData.length > 0
+    return {
+        related: hasSimilar ? similarData : trendingData,
+        relatedLabel: hasSimilar ? 'Similar Media' : 'More to Explore',
+        relatedStillLoading: relatedLoading || (useFallback && trendingLoading),
+    }
+}
+
 /** Media + similar + trending queries. Isolates query logic from main hook. */
 function usePlayerMediaQueries(mediaId: string, canViewMature: boolean) {
     const { data: media, isLoading: mediaLoading, error: mediaError } = useQuery({
         queryKey: ['media-item', mediaId],
         queryFn: () => mediaApi.get(mediaId),
         enabled: !!mediaId,
-        retry: (failureCount, error) => {
-            if (error instanceof ApiError && error.status === 503) return failureCount < 5
-            return failureCount < 1
-        },
-        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
+        retry: shouldRetryMediaQuery,
+        retryDelay: mediaQueryRetryDelay,
     })
 
     const {
@@ -94,31 +114,32 @@ function usePlayerMediaQueries(mediaId: string, canViewMature: boolean) {
         isLoading: relatedLoading,
         isError: similarError,
         refetch: similarRefetch,
-    } = useQuery({
+    } = useQuery<Suggestion[]>({
         queryKey: ['media-similar', mediaId, canViewMature],
         queryFn: () => suggestionsApi.getSimilar(mediaId ?? ''),
         enabled: !!mediaId,
-        retry: (failureCount, error) => {
-            if (error instanceof ApiError && error.status === 503) return failureCount < 5
-            return failureCount < 1
-        },
-        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
+        retry: shouldRetryMediaQuery,
+        retryDelay: mediaQueryRetryDelay,
         select: (data) => (data ?? []).slice(0, 8),
     })
 
-    const { data: trendingData = [], isLoading: trendingLoading } = useQuery({
+    const trendingEnabled =
+        !!mediaId && !relatedLoading && !similarError && similarData.length === 0
+    const { data: trendingData = [], isLoading: trendingLoading } = useQuery<Suggestion[]>({
         queryKey: ['suggestions-trending', canViewMature],
         queryFn: () => suggestionsApi.getTrending(),
-        enabled:
-            !!mediaId && !relatedLoading && !similarError && similarData.length === 0,
+        enabled: trendingEnabled,
         staleTime: 60 * 1000,
         select: (data) => (data ?? []).slice(0, 8),
     })
 
-    const useFallback = similarData.length === 0 && !similarError && !relatedLoading
-    const related = similarData.length > 0 ? similarData : trendingData
-    const relatedLabel = similarData.length > 0 ? 'Similar Media' : 'More to Explore'
-    const relatedStillLoading = relatedLoading || (useFallback && trendingLoading)
+    const { related, relatedLabel, relatedStillLoading } = deriveRelatedData(
+        similarData,
+        similarError,
+        relatedLoading,
+        trendingData,
+        trendingLoading,
+    )
 
     return {
         media,
@@ -132,40 +153,46 @@ function usePlayerMediaQueries(mediaId: string, canViewMature: boolean) {
     }
 }
 
+type HlsCheckSetters = {
+    setHlsAvailable: (v: boolean) => void
+    setHlsReadyUrl: (v: string | null) => void
+    setHlsJob: (v: HLSJob | null) => void
+    setHlsPolling: (v: boolean) => void
+}
+
+function applyHlsCheckResult(
+    hls: { available?: boolean; hls_url?: string; job_id?: string; status?: string; progress?: number; qualities?: unknown[]; started_at?: string; error?: string },
+    setters: HlsCheckSetters,
+): void {
+    if (hls.available && hls.hls_url) {
+        setters.setHlsAvailable(true)
+        setters.setHlsReadyUrl(hls.hls_url)
+        return
+    }
+    if (hls.job_id && hls.status === 'running') {
+        setters.setHlsJob({
+            id: hls.job_id,
+            status: 'running',
+            progress: hls.progress ?? 0,
+            qualities: (hls.qualities ?? []) as string[],
+            started_at: hls.started_at ?? '',
+            error: hls.error ?? '',
+            available: false,
+        })
+        setters.setHlsPolling(true)
+    }
+}
+
 /** Effect: check HLS availability and start polling if job is running. */
 function useHlsCheckEffect(
     mediaId: string,
     media: { type: string } | undefined,
     hlsEnabled: boolean,
-    setters: {
-        setHlsAvailable: (v: boolean) => void
-        setHlsReadyUrl: (v: string | null) => void
-        setHlsJob: (v: HLSJob | null) => void
-        setHlsPolling: (v: boolean) => void
-    },
+    setters: HlsCheckSetters,
 ) {
     useEffect(() => {
         if (!mediaId || media?.type !== 'video' || !hlsEnabled) return
-        hlsApi
-            .check(mediaId)
-            .then((hls) => {
-                if (hls.available && hls.hls_url) {
-                    setters.setHlsAvailable(true)
-                    setters.setHlsReadyUrl(hls.hls_url)
-                } else if (hls.job_id && hls.status === 'running') {
-                    setters.setHlsJob({
-                        id: hls.job_id,
-                        status: 'running',
-                        progress: hls.progress ?? 0,
-                        qualities: hls.qualities ?? [],
-                        started_at: hls.started_at ?? '',
-                        error: hls.error ?? '',
-                        available: false,
-                    })
-                    setters.setHlsPolling(true)
-                }
-            })
-            .catch(() => {})
+        hlsApi.check(mediaId).then((hls) => applyHlsCheckResult(hls, setters)).catch(() => {})
     }, [mediaId, media, hlsEnabled, setters])
 }
 
@@ -1017,6 +1044,123 @@ function usePlayerPageHandlers(opts: {
     }
 }
 
+type PlayerPageReturnOpts = {
+    mediaId: string
+    permissions: UserPermissions
+    user: User | null
+    canViewMature: boolean
+    showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void
+    state: ReturnType<typeof usePlayerRefsAndState>
+    mediaHls: ReturnType<typeof usePlayerMediaHlsAndEffects>
+    handlers: ReturnType<typeof usePlayerPageHandlers>
+    handleRate: (rating: number) => void
+    resetControlsTimer: () => void
+    progress: number
+    qualityBadge: string | null
+    isAudio: boolean
+}
+
+function getPlayerReturnStateAndMedia(opts: PlayerPageReturnOpts) {
+    const { mediaId, permissions, user, canViewMature, showToast, state, mediaHls, progress, qualityBadge, isAudio } = opts
+    return {
+        mediaId,
+        media: mediaHls.media,
+        mediaLoading: mediaHls.mediaLoading,
+        mediaError: mediaHls.mediaError,
+        videoRef: state.videoRef,
+        audioRef: state.audioRef,
+        permissions,
+        user,
+        canViewMature,
+        showToast,
+        isPlaying: state.isPlaying,
+        currentTime: state.currentTime,
+        duration: state.duration,
+        buffered: state.buffered,
+        volume: state.volume,
+        isMuted: state.isMuted,
+        isLooping: state.isLooping,
+        playbackRate: state.playbackRate,
+        showControls: state.showControls,
+        showSettings: state.showSettings,
+        isLoading: state.isLoading,
+        showMatureWarning: mediaHls.showMatureWarning,
+        setMatureAccepted: state.setMatureAccepted,
+        theaterMode: state.theaterMode,
+        setTheaterMode: state.setTheaterMode,
+        setShowControls: state.setShowControls,
+        setShowSettings: state.setShowSettings,
+        hoverTime: state.hoverTime,
+        hoverPos: state.hoverPos,
+        hlsJob: mediaHls.hlsJob,
+        activeHlsUrl: mediaHls.activeHlsUrl,
+        hlsAvailable: mediaHls.hlsAvailable,
+        hlsReadyUrl: mediaHls.hlsReadyUrl,
+        setActiveHlsUrl: mediaHls.setActiveHlsUrl,
+        setHlsAvailable: mediaHls.setHlsAvailable,
+        hlsIsLoading: mediaHls.hlsIsLoading,
+        related: mediaHls.related,
+        relatedLabel: mediaHls.relatedLabel,
+        relatedStillLoading: mediaHls.relatedStillLoading,
+        similarError: mediaHls.similarError,
+        similarRefetch: mediaHls.similarRefetch,
+        isAudio,
+        isVideo: mediaHls.isVideo,
+        progress,
+        qualityBadge,
+        hlsQualities: mediaHls.hlsQualities,
+        currentQuality: mediaHls.currentQuality,
+        autoLevel: mediaHls.autoLevel,
+        bandwidth: mediaHls.bandwidth,
+        setUserRating: state.setUserRating,
+        setRatingHover: state.setRatingHover,
+        ratingHover: state.ratingHover,
+        userRating: state.userRating,
+    }
+}
+
+function getPlayerReturnHandlers(opts: PlayerPageReturnOpts) {
+    const { handlers, handleRate, resetControlsTimer } = opts
+    return {
+        resetControlsTimer,
+        getActiveEl: handlers.getActiveEl,
+        togglePlay: handlers.togglePlay,
+        handlePrevTrack: handlers.handlePrevTrack,
+        handleNextTrack: handlers.handleNextTrack,
+        hasPlaylist: handlers.hasPlaylist,
+        handleVideoClick: handlers.handleVideoClick,
+        handleTimeUpdate: handlers.handleTimeUpdate,
+        handleLoadedMetadata: handlers.handleLoadedMetadata,
+        handlePause: handlers.handlePause,
+        handleDurationChange: handlers.handleDurationChange,
+        handleProgressClick: handlers.handleProgressClick,
+        handleProgressTouch: handlers.handleProgressTouch,
+        handleProgressHover: handlers.handleProgressHover,
+        handleProgressLeave: handlers.handleProgressLeave,
+        handleSeeked: handlers.handleSeeked,
+        handleVolumeChange: handlers.handleVolumeChange,
+        toggleMute: handlers.toggleMute,
+        toggleLoop: handlers.toggleLoop,
+        setSpeed: handlers.setSpeed,
+        handleFullscreen: handlers.handleFullscreen,
+        handlePlay: handlers.handlePlay,
+        handleWaiting: handlers.handleWaiting,
+        handleCanPlay: handlers.handleCanPlay,
+        handleSelectQualityWithAnalytics: handlers.handleSelectQualityWithAnalytics,
+        handlePiP: handlers.handlePiP,
+        handleEnded: handlers.handleEnded,
+        handleRate,
+    }
+}
+
+/** Builds and returns the player page state object. Keeps usePlayerPageState under LoC limit. */
+function usePlayerPageReturn(opts: PlayerPageReturnOpts) {
+    return {
+        ...getPlayerReturnStateAndMedia(opts),
+        ...getPlayerReturnHandlers(opts),
+    }
+}
+
 /** Media queries, HLS, equalizer, and effects. Isolates data/effect wiring from main hook. */
 function usePlayerMediaHlsAndEffects(opts: {
     mediaId: string
@@ -1152,6 +1296,31 @@ function usePlayerMediaHlsAndEffects(opts: {
     }
 }
 
+/** Callbacks for rating and controls timer. Reduces usePlayerPageState complexity. */
+function usePlayerPageCallbacks(opts: {
+    mediaId: string
+    state: ReturnType<typeof usePlayerRefsAndState>
+    controlsTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>
+    isPlayingRef: MutableRefObject<boolean>
+}) {
+    const { mediaId, state, controlsTimerRef, isPlayingRef } = opts
+    const handleRate = useCallback(
+        (rating: number) => {
+            state.setUserRating(rating)
+            if (mediaId) ratingsApi.record(mediaId, rating).catch(() => {})
+        },
+        [mediaId, state],
+    )
+    const resetControlsTimer = useCallback(() => {
+        if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
+        state.setShowControls(true)
+        controlsTimerRef.current = setTimeout(() => {
+            if (isPlayingRef.current) state.setShowControls(false)
+        }, 3000)
+    }, [state, controlsTimerRef, isPlayingRef])
+    return { handleRate, resetControlsTimer }
+}
+
 export function usePlayerPageState(mediaId: string) {
     const navigate = useNavigate()
     const permissions = useAuthStore((s) => s.permissions)
@@ -1166,13 +1335,12 @@ export function usePlayerPageState(mediaId: string) {
     const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const isPlayingRef = useRef(false)
 
-    const handleRate = useCallback(
-        (rating: number) => {
-            state.setUserRating(rating)
-            if (mediaId) ratingsApi.record(mediaId, rating).catch(() => {})
-        },
-        [mediaId, state],
-    )
+    const { handleRate, resetControlsTimer } = usePlayerPageCallbacks({
+        mediaId,
+        state,
+        controlsTimerRef,
+        isPlayingRef,
+    })
 
     const mediaHls = usePlayerMediaHlsAndEffects({
         mediaId,
@@ -1198,14 +1366,6 @@ export function usePlayerPageState(mediaId: string) {
         playPrevious,
         currentPlaylist,
     })
-
-    const resetControlsTimer = useCallback(() => {
-        if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
-        state.setShowControls(true)
-        controlsTimerRef.current = setTimeout(() => {
-            if (isPlayingRef.current) state.setShowControls(false)
-        }, 3000)
-    }, [state])
 
     useFullscreenAnalytics(mediaId, handlers.fireAnalytics)
     usePeriodicPositionTracking({
@@ -1237,89 +1397,21 @@ export function usePlayerPageState(mediaId: string) {
     )
     const isAudio = mediaHls.media?.type === 'audio'
 
-    return {
+    return usePlayerPageReturn({
         mediaId,
-        media: mediaHls.media,
-        mediaLoading: mediaHls.mediaLoading,
-        mediaError: mediaHls.mediaError,
-        videoRef: state.videoRef,
-        audioRef: state.audioRef,
         permissions,
         user,
         canViewMature,
         showToast,
-        isPlaying: state.isPlaying,
-        currentTime: state.currentTime,
-        duration: state.duration,
-        buffered: state.buffered,
-        volume: state.volume,
-        isMuted: state.isMuted,
-        isLooping: state.isLooping,
-        playbackRate: state.playbackRate,
-        showControls: state.showControls,
-        showSettings: state.showSettings,
-        isLoading: state.isLoading,
-        showMatureWarning: mediaHls.showMatureWarning,
-        setMatureAccepted: state.setMatureAccepted,
-        theaterMode: state.theaterMode,
-        setTheaterMode: state.setTheaterMode,
-        setShowControls: state.setShowControls,
-        setShowSettings: state.setShowSettings,
-        hoverTime: state.hoverTime,
-        hoverPos: state.hoverPos,
-        hlsJob: mediaHls.hlsJob,
-        activeHlsUrl: mediaHls.activeHlsUrl,
-        hlsAvailable: mediaHls.hlsAvailable,
-        hlsReadyUrl: mediaHls.hlsReadyUrl,
-        setActiveHlsUrl: mediaHls.setActiveHlsUrl,
-        setHlsAvailable: mediaHls.setHlsAvailable,
-        hlsIsLoading: mediaHls.hlsIsLoading,
-        related: mediaHls.related,
-        relatedLabel: mediaHls.relatedLabel,
-        relatedStillLoading: mediaHls.relatedStillLoading,
-        similarError: mediaHls.similarError,
-        similarRefetch: mediaHls.similarRefetch,
-        isAudio,
-        isVideo: mediaHls.isVideo,
-        resetControlsTimer,
-        getActiveEl: handlers.getActiveEl,
-        togglePlay: handlers.togglePlay,
-        handlePrevTrack: handlers.handlePrevTrack,
-        handleNextTrack: handlers.handleNextTrack,
-        hasPlaylist: handlers.hasPlaylist,
-        handleVideoClick: handlers.handleVideoClick,
-        handleTimeUpdate: handlers.handleTimeUpdate,
-        handleLoadedMetadata: handlers.handleLoadedMetadata,
-        handlePause: handlers.handlePause,
-        handleDurationChange: handlers.handleDurationChange,
-        handleProgressClick: handlers.handleProgressClick,
-        handleProgressTouch: handlers.handleProgressTouch,
-        handleProgressHover: handlers.handleProgressHover,
-        handleProgressLeave: handlers.handleProgressLeave,
-        handleSeeked: handlers.handleSeeked,
-        handleVolumeChange: handlers.handleVolumeChange,
-        toggleMute: handlers.toggleMute,
-        toggleLoop: handlers.toggleLoop,
-        setSpeed: handlers.setSpeed,
-        handleFullscreen: handlers.handleFullscreen,
-        handlePlay: handlers.handlePlay,
-        handleWaiting: handlers.handleWaiting,
-        handleCanPlay: handlers.handleCanPlay,
-        handleSelectQualityWithAnalytics: handlers.handleSelectQualityWithAnalytics,
-        handlePiP: handlers.handlePiP,
-        handleEnded: handlers.handleEnded,
+        state,
+        mediaHls,
+        handlers,
         handleRate,
-        setUserRating: state.setUserRating,
-        setRatingHover: state.setRatingHover,
-        ratingHover: state.ratingHover,
-        userRating: state.userRating,
+        resetControlsTimer,
         progress,
         qualityBadge,
-        hlsQualities: mediaHls.hlsQualities,
-        currentQuality: mediaHls.currentQuality,
-        autoLevel: mediaHls.autoLevel,
-        bandwidth: mediaHls.bandwidth,
-    }
+        isAudio,
+    })
 }
 
 export type PlayerPageState = ReturnType<typeof usePlayerPageState>
