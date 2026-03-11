@@ -1,24 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MutableRefObject, RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useToast } from '@/hooks/useToast'
-import { useHLS } from '@/hooks/useHLS'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useEqualizer } from '@/hooks/useEqualizer'
-import { ApiError } from '@/api/client'
 import {
     analyticsApi,
-    hlsApi,
     mediaApi,
     ratingsApi,
-    suggestionsApi,
     watchHistoryApi,
 } from '@/api/endpoints'
-import type { HLSJob, Suggestion, User, UserPermissions } from '@/api/types'
+import type { HLSJob, User, UserPermissions } from '@/api/types'
 import { usePlayerKeyboard } from './playerKeyboard'
+import { usePlayerMediaQueries } from './playerMediaQueries'
+import { usePlayerHLS } from './playerHLS'
+
+/** Params for playlist index sync. */
+interface PlaylistSyncParams {
+    mediaId: string
+    playlist: { media_id: string }[]
+    currentIndex: number
+    setCurrentIndex: (i: number) => void
+}
+
+/** Params for resume-position check. */
+interface ResumeCheckParams {
+    element: HTMLMediaElement
+    position: number
+}
 
 const QUALITY_HEIGHT_MAP: Record<string, number> = {
     low: 360,
@@ -38,22 +49,16 @@ function syncQualityPreference(q: string | undefined): void {
     }
 }
 
-function syncPlaylistIndex(
-    mediaId: string,
-    playlist: { media_id: string }[],
-    currentIndex: number,
-    setCurrentIndex: (i: number) => void,
-): void {
+function syncPlaylistIndex(params: PlaylistSyncParams): void {
+    const { mediaId, playlist, currentIndex, setCurrentIndex } = params
     if (!mediaId || playlist.length === 0) return
     const idx = playlist.findIndex((i) => i.media_id === mediaId)
     if (idx === -1 || idx === currentIndex) return
     setCurrentIndex(idx)
 }
 
-function shouldResumeAtPosition(
-    el: HTMLMediaElement,
-    pos: number,
-): boolean {
+function shouldResumeAtPosition(params: ResumeCheckParams): boolean {
+    const { element: el, position: pos } = params
     if (pos <= 5 || el.readyState < 1 || el.duration <= 0) return false
     if (pos >= el.duration - 5 || el.currentTime >= 2) return false
     return true
@@ -72,231 +77,8 @@ function usePlayerSyncEffects(
     }, [user?.preferences?.default_quality])
 
     useEffect(() => {
-        syncPlaylistIndex(mediaId, currentPlaylist, currentIndex, setCurrentIndex)
+        syncPlaylistIndex({ mediaId, playlist: currentPlaylist, currentIndex, setCurrentIndex })
     }, [mediaId, currentPlaylist, currentIndex, setCurrentIndex])
-}
-
-function shouldRetryMediaQuery(failureCount: number, error: unknown): boolean {
-    if (error instanceof ApiError && error.status === 503) return failureCount < 5
-    return failureCount < 1
-}
-
-const mediaQueryRetryDelay = (attempt: number) => Math.min(1000 * 2 ** attempt, 10000)
-
-function deriveRelatedData(
-    similarData: Suggestion[],
-    similarError: boolean,
-    relatedLoading: boolean,
-    trendingData: Suggestion[],
-    trendingLoading: boolean,
-) {
-    const useFallback = similarData.length === 0 && !similarError && !relatedLoading
-    const hasSimilar = similarData.length > 0
-    return {
-        related: hasSimilar ? similarData : trendingData,
-        relatedLabel: hasSimilar ? 'Similar Media' : 'More to Explore',
-        relatedStillLoading: relatedLoading || (useFallback && trendingLoading),
-    }
-}
-
-/** Media + similar + trending queries. Isolates query logic from main hook. */
-function usePlayerMediaQueries(mediaId: string, canViewMature: boolean) {
-    const { data: media, isLoading: mediaLoading, error: mediaError } = useQuery({
-        queryKey: ['media-item', mediaId],
-        queryFn: () => mediaApi.get(mediaId),
-        enabled: !!mediaId,
-        retry: shouldRetryMediaQuery,
-        retryDelay: mediaQueryRetryDelay,
-    })
-
-    const {
-        data: similarData = [],
-        isLoading: relatedLoading,
-        isError: similarError,
-        refetch: similarRefetch,
-    } = useQuery<Suggestion[]>({
-        queryKey: ['media-similar', mediaId, canViewMature],
-        queryFn: () => suggestionsApi.getSimilar(mediaId ?? ''),
-        enabled: !!mediaId,
-        retry: shouldRetryMediaQuery,
-        retryDelay: mediaQueryRetryDelay,
-        select: (data) => (data ?? []).slice(0, 8),
-    })
-
-    const trendingEnabled =
-        !!mediaId && !relatedLoading && !similarError && similarData.length === 0
-    const { data: trendingData = [], isLoading: trendingLoading } = useQuery<Suggestion[]>({
-        queryKey: ['suggestions-trending', canViewMature],
-        queryFn: () => suggestionsApi.getTrending(),
-        enabled: trendingEnabled,
-        staleTime: 60 * 1000,
-        select: (data) => (data ?? []).slice(0, 8),
-    })
-
-    const { related, relatedLabel, relatedStillLoading } = deriveRelatedData(
-        similarData,
-        similarError,
-        relatedLoading,
-        trendingData,
-        trendingLoading,
-    )
-
-    return {
-        media,
-        mediaLoading,
-        mediaError,
-        related,
-        relatedLabel,
-        relatedStillLoading,
-        similarError,
-        similarRefetch,
-    }
-}
-
-type HlsCheckSetters = {
-    setHlsAvailable: (v: boolean) => void
-    setHlsReadyUrl: (v: string | null) => void
-    setHlsJob: (v: HLSJob | null) => void
-    setHlsPolling: (v: boolean) => void
-}
-
-function applyHlsCheckResult(
-    hls: { available?: boolean; hls_url?: string; job_id?: string; status?: string; progress?: number; qualities?: unknown[]; started_at?: string; error?: string },
-    setters: HlsCheckSetters,
-): void {
-    if (hls.available && hls.hls_url) {
-        setters.setHlsAvailable(true)
-        setters.setHlsReadyUrl(hls.hls_url)
-        return
-    }
-    if (hls.job_id && hls.status === 'running') {
-        setters.setHlsJob({
-            id: hls.job_id,
-            status: 'running',
-            progress: hls.progress ?? 0,
-            qualities: (hls.qualities ?? []) as string[],
-            started_at: hls.started_at ?? '',
-            error: hls.error ?? '',
-            available: false,
-        })
-        setters.setHlsPolling(true)
-    }
-}
-
-/** Effect: check HLS availability and start polling if job is running. */
-function useHlsCheckEffect(
-    mediaId: string,
-    media: { type: string } | undefined,
-    hlsEnabled: boolean,
-    setters: HlsCheckSetters,
-) {
-    useEffect(() => {
-        if (!mediaId || media?.type !== 'video' || !hlsEnabled) return
-        hlsApi.check(mediaId).then((hls) => applyHlsCheckResult(hls, setters)).catch(() => {})
-    }, [mediaId, media, hlsEnabled, setters])
-}
-
-/** Effect: poll HLS job status until completed or failed. */
-function useHlsPollingEffect(
-    hlsPolling: boolean,
-    hlsJob: HLSJob | null,
-    setters: {
-        setHlsJob: (v: HLSJob | null) => void
-        setHlsPolling: (v: boolean) => void
-        setHlsAvailable: (v: boolean) => void
-        setHlsReadyUrl: (v: string | null) => void
-    },
-) {
-    useEffect(() => {
-        if (!hlsPolling || !hlsJob) return
-        const interval = setInterval(async () => {
-            try {
-                const updated = await hlsApi.getStatus(hlsJob.id)
-                setters.setHlsJob(updated)
-                if (updated.status === 'completed') {
-                    setters.setHlsPolling(false)
-                    setters.setHlsAvailable(true)
-                    setters.setHlsReadyUrl(hlsApi.getMasterPlaylistUrl(updated.id))
-                } else if (updated.status === 'failed') {
-                    setters.setHlsPolling(false)
-                }
-            } catch {
-                setters.setHlsPolling(false)
-            }
-        }, 3000)
-        return () => clearInterval(interval)
-    }, [hlsPolling, hlsJob, setters])
-}
-
-/** HLS state, check/poll effects, and useHLS. Isolates HLS logic from main hook. */
-function usePlayerHLS(
-    mediaId: string,
-    media: { type: string; is_mature?: boolean } | undefined,
-    hlsEnabled: boolean,
-    videoRef: RefObject<HTMLVideoElement | null>,
-) {
-    const [hlsJob, setHlsJob] = useState<HLSJob | null>(null)
-    const [hlsPolling, setHlsPolling] = useState(false)
-    const [activeHlsUrl, setActiveHlsUrl] = useState<string | null>(null)
-    const [hlsAvailable, setHlsAvailable] = useState(false)
-    const [hlsReadyUrl, setHlsReadyUrl] = useState<string | null>(null)
-
-    const onHlsFallback = useCallback(() => setActiveHlsUrl(null), [])
-
-    const {
-        qualities: hlsQualities,
-        currentQuality,
-        autoLevel,
-        selectQuality,
-        isLoading: hlsIsLoading,
-        error: hlsError,
-        bandwidth,
-    } = useHLS(
-        videoRef,
-        media?.type === 'video' && hlsEnabled ? activeHlsUrl : null,
-        onHlsFallback,
-    )
-
-    const hlsCheckSetters = useMemo(
-        () => ({
-            setHlsAvailable,
-            setHlsReadyUrl,
-            setHlsJob,
-            setHlsPolling,
-        }),
-        [],
-    )
-    useHlsCheckEffect(mediaId, media, hlsEnabled, hlsCheckSetters)
-
-    const hlsPollingSetters = useMemo(
-        () => ({
-            setHlsJob,
-            setHlsPolling,
-            setHlsAvailable,
-            setHlsReadyUrl,
-        }),
-        [],
-    )
-    useHlsPollingEffect(hlsPolling, hlsJob, hlsPollingSetters)
-
-    return {
-        hlsJob,
-        setHlsJob,
-        setHlsPolling,
-        activeHlsUrl,
-        setActiveHlsUrl,
-        hlsAvailable,
-        setHlsAvailable,
-        hlsReadyUrl,
-        setHlsReadyUrl,
-        hlsQualities,
-        currentQuality,
-        autoLevel,
-        selectQuality,
-        hlsIsLoading,
-        hlsError,
-        bandwidth,
-    }
 }
 
 /** Runs media source setup (src, resume, analytics). Called from effect in main hook. */
@@ -355,7 +137,7 @@ function runMediaSourceSetup(
                 if (positionFetchCancelled) return
                 const pos = data?.position ?? 0
                 resumePositionRef.current = pos
-                if (shouldResumeAtPosition(elRef, pos)) {
+                if (shouldResumeAtPosition({ element: elRef, position: pos })) {
                     elRef.currentTime = pos
                 }
             })
@@ -1199,7 +981,7 @@ function usePlayerMediaHlsAndEffects(opts: {
         relatedStillLoading,
         similarError,
         similarRefetch,
-    } = usePlayerMediaQueries(mediaId, canViewMature)
+    } = usePlayerMediaQueries({ mediaId, canViewMature })
 
     const matureAccessGranted =
         state.matureAccepted || (user?.preferences?.show_mature === true)
@@ -1321,7 +1103,8 @@ function usePlayerPageCallbacks(opts: {
     return { handleRate, resetControlsTimer }
 }
 
-export function usePlayerPageState(mediaId: string) {
+/** Assembles stores, refs, callbacks, mediaHls, and handlers. Reduces usePlayerPageState LoC. */
+function usePlayerPageCore(mediaId: string) {
     const navigate = useNavigate()
     const permissions = useAuthStore((s) => s.permissions)
     const user = useAuthStore((s) => s.user)
@@ -1367,38 +1150,7 @@ export function usePlayerPageState(mediaId: string) {
         currentPlaylist,
     })
 
-    useFullscreenAnalytics(mediaId, handlers.fireAnalytics)
-    usePeriodicPositionTracking({
-        mediaId,
-        isPlaying: state.isPlaying,
-        duration: state.duration,
-        currentTimeRef: state.currentTimeRef,
-        durationRef: state.durationRef,
-    })
-
-    usePlayerKeyboard({
-        getActiveEl: handlers.getActiveEl,
-        togglePlay: handlers.togglePlay,
-        setSpeed: handlers.setSpeed,
-        setVolume: state.setVolume,
-        setIsMuted: state.setIsMuted,
-        handleFullscreen: handlers.handleFullscreen,
-        setTheaterMode: state.setTheaterMode,
-        setShowSettings: state.setShowSettings,
-        showSettings: state.showSettings,
-        playbackRate: state.playbackRate,
-    })
-
-    const progress = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0
-    const qualityBadge = computeQualityBadge(
-        mediaHls.hlsQualities,
-        mediaHls.currentQuality,
-        mediaHls.autoLevel,
-    )
-    const isAudio = mediaHls.media?.type === 'audio'
-
-    return usePlayerPageReturn({
-        mediaId,
+    return {
         permissions,
         user,
         canViewMature,
@@ -1408,6 +1160,53 @@ export function usePlayerPageState(mediaId: string) {
         handlers,
         handleRate,
         resetControlsTimer,
+    }
+}
+
+export function usePlayerPageState(mediaId: string) {
+    const core = usePlayerPageCore(mediaId)
+
+    useFullscreenAnalytics(mediaId, core.handlers.fireAnalytics)
+    usePeriodicPositionTracking({
+        mediaId,
+        isPlaying: core.state.isPlaying,
+        duration: core.state.duration,
+        currentTimeRef: core.state.currentTimeRef,
+        durationRef: core.state.durationRef,
+    })
+
+    usePlayerKeyboard({
+        getActiveEl: core.handlers.getActiveEl,
+        togglePlay: core.handlers.togglePlay,
+        setSpeed: core.handlers.setSpeed,
+        setVolume: core.state.setVolume,
+        setIsMuted: core.state.setIsMuted,
+        handleFullscreen: core.handlers.handleFullscreen,
+        setTheaterMode: core.state.setTheaterMode,
+        setShowSettings: core.state.setShowSettings,
+        showSettings: core.state.showSettings,
+        playbackRate: core.state.playbackRate,
+    })
+
+    const progress = core.state.duration > 0 ? (core.state.currentTime / core.state.duration) * 100 : 0
+    const qualityBadge = computeQualityBadge(
+        core.mediaHls.hlsQualities,
+        core.mediaHls.currentQuality,
+        core.mediaHls.autoLevel,
+    )
+    const isAudio = core.mediaHls.media?.type === 'audio'
+
+    return usePlayerPageReturn({
+        mediaId,
+        permissions: core.permissions,
+        user: core.user,
+        canViewMature: core.canViewMature,
+        showToast: core.showToast,
+        state: core.state,
+        mediaHls: core.mediaHls,
+        handlers: core.handlers,
+        handleRate: core.handleRate,
+        resetControlsTimer: core.resetControlsTimer,
         progress,
         qualityBadge,
         isAudio,

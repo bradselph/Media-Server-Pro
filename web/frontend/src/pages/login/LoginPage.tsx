@@ -4,6 +4,33 @@ import {useAuthStore} from '@/stores/authStore'
 import {ApiError} from '@/api/client'
 import '@/styles/auth.css'
 
+type LoginResult = { isAdmin: boolean }
+
+function navigateAfterLogin(
+    navigate: (path: string, opts?: { replace?: boolean }) => void,
+    result: LoginResult,
+    redirectTo: string
+): void {
+    if (result.isAdmin) {
+        navigate('/admin', {replace: true})
+        return
+    }
+    if (redirectTo.startsWith('/player')) {
+        const state = useAuthStore.getState()
+        const canView = state.permissions.can_view_mature
+        const showMature = state.user?.preferences?.show_mature
+        if (canView && showMature) {
+            navigate(redirectTo, {replace: true})
+        } else if (canView) {
+            navigate(`/profile?mature_redirect=${encodeURIComponent(redirectTo)}`, {replace: true})
+        } else {
+            navigate('/', {replace: true})
+        }
+        return
+    }
+    navigate(redirectTo, {replace: true})
+}
+
 export function LoginPage() {
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
@@ -23,33 +50,11 @@ export function LoginPage() {
         e.preventDefault()
         setError('')
         setIsSubmitting(true)
-
         try {
             const result = await login(username, password)
-            if (result.isAdmin) {
-                navigate('/admin', {replace: true})
-            } else if (redirectTo.startsWith('/player')) {
-                // Mature content redirect flow: check if user can actually view it
-                const state = useAuthStore.getState()
-                if (state.permissions.can_view_mature && state.user?.preferences?.show_mature) {
-                    // Full access — go straight to the player
-                    navigate(redirectTo, {replace: true})
-                } else if (state.permissions.can_view_mature) {
-                    // Has permission but show_mature is off — send to profile to enable
-                    navigate(`/profile?mature_redirect=${encodeURIComponent(redirectTo)}`, {replace: true})
-                } else {
-                    // Admin hasn't granted permission — go home
-                    navigate('/', {replace: true})
-                }
-            } else {
-                navigate(redirectTo, {replace: true})
-            }
+            navigateAfterLogin(navigate, result, redirectTo)
         } catch (err: unknown) {
-            if (err instanceof ApiError) {
-                setError(err.message)
-            } else {
-                setError('Login failed. Please try again.')
-            }
+            setError(err instanceof ApiError ? err.message : 'Login failed. Please try again.')
         } finally {
             setIsSubmitting(false)
         }

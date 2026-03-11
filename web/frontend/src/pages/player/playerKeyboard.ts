@@ -206,7 +206,9 @@ const KEY_HANDLERS: KeyHandler[] = [
 /** Attaches global keydown listener for player shortcuts. Extracted to reduce main hook complexity. */
 export function usePlayerKeyboard(handlers: PlayerKeyHandlers): void {
     const ref = useRef(handlers)
-    ref.current = handlers
+    useEffect(() => {
+        ref.current = handlers
+    })
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => handlePlayerKeyDown(e, ref.current)
         document.addEventListener('keydown', onKeyDown)
