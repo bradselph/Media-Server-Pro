@@ -3,6 +3,14 @@ import {persist} from 'zustand/middleware'
 import {playlistApi} from '@/api/endpoints'
 import type {Playlist, PlaylistItem} from '@/api/types'
 
+/** Random index in [0, max) using crypto for linter/safety (shuffle is non-security but avoids PRNG warning). */
+function randomIndex(max: number): number {
+    if (max <= 0) return 0
+    const arr = new Uint32Array(1)
+    crypto.getRandomValues(arr)
+    return Math.floor((arr[0] / (0x100000000)) * max)
+}
+
 interface PlaylistState {
     currentPlaylist: PlaylistItem[]
     currentIndex: number
@@ -138,7 +146,7 @@ export const usePlaylistStore = create<PlaylistState>()(
                 if (repeatMode === 'one') {
                     nextIndex = currentIndex
                 } else if (shuffleMode) {
-                    nextIndex = Math.floor(Math.random() * currentPlaylist.length)
+                    nextIndex = randomIndex(currentPlaylist.length)
                 } else {
                     nextIndex = currentIndex + 1
                     if (nextIndex >= currentPlaylist.length) {

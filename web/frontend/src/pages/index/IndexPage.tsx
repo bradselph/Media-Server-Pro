@@ -95,7 +95,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
         if (maxFileSize && maxFileSize > 0) {
             const oversized = Array.from(fileList).filter(f => f.size > maxFileSize)
             if (oversized.length > 0) {
-                setSizeError(`${oversized.map(f => f.name).join(', ')} exceed${oversized.length === 1 ? 's' : ''} the ${formatFileSize(maxFileSize, '0 B')} limit`)
+                setSizeError(`${oversized.map(f => f.name).join(', ')} exceed${oversized.length === 1 ? 's' : ''} the ${formatFileSize({ bytes: maxFileSize }, '0 B')} limit`)
                 return
             }
         }
@@ -133,7 +133,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
             if (e.lengthComputable) {
                 const pct = Math.round((e.loaded / e.total) * 100)
                 setProgress(pct)
-                setStatusText(`Uploading... ${pct}% (${formatFileSize(e.loaded, '0 B')} / ${formatFileSize(e.total, '0 B')})`)
+                setStatusText(`Uploading... ${pct}% (${formatFileSize({ bytes: e.loaded }, '0 B')} / ${formatFileSize({ bytes: e.total }, '0 B')})`)
             }
         })
 
@@ -233,7 +233,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                                     {files.map((f, i) => (
                                         <div key={i} className="upload-file-item">
                                             <span className="upload-file-name">{f.name}</span>
-                                            <span className="upload-file-size">{formatFileSize(f.size, '0 B')}</span>
+                                            <span className="upload-file-size">{formatFileSize({ bytes: f.size }, '0 B')}</span>
                                             <button className="upload-remove-btn" onClick={() => { removeFile(i); }}>×
                                             </button>
                                         </div>
@@ -269,7 +269,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                             <h3 style={{margin: '0 0 8px 0', fontSize: 15}}>Upload Results</h3>
                             {results.uploaded.map((r, i) => (
                                 <div key={i} className="upload-success"><i
-                                    className="bi bi-check-circle-fill"/> {r.filename} ({formatFileSize(r.size ?? 0, '0 B')})
+                                    className="bi bi-check-circle-fill"/> {r.filename} ({formatFileSize({ bytes: r.size ?? 0 }, '0 B')})
                                 </div>
                             ))}
                             {results.errors.map((r, i) => (
@@ -463,7 +463,7 @@ function MediaCard({
                                 ? [160, 320, 640].map(w => `${baseThumbnailUrl}${baseThumbnailUrl.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
                                 : undefined}
                             sizes={(!previewUrls || previewUrls.length === 0) ? '(max-width: 640px) 160px, (max-width: 1024px) 320px, 640px' : undefined}
-                            alt={formatTitle(item.name)}
+                            alt={formatTitle({ value: item.name })}
                             loading={inView ? 'eager' : 'lazy'}
                             style={{
                                 ...(restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : {}),
@@ -511,12 +511,12 @@ function MediaCard({
                 )}
             </div>
             <div className="media-card-body">
-                <div className="media-card-title">{formatTitle(item.name)}</div>
+                <div className="media-card-title">{formatTitle({ value: item.name })}</div>
                 <div className="media-card-meta">
           <span>
             <span className={`media-card-type-badge badge-${item.type}`}>{item.type}</span>
           </span>
-                    {item.duration > 0 && <span><i className="bi bi-clock"/> {formatDuration(item.duration)}</span>}
+                    {item.duration > 0 && <span><i className="bi bi-clock"/> {formatDuration({ seconds: item.duration })}</span>}
                     {item.views > 0 && <span><i className="bi bi-eye"/> {item.views}</span>}
                     {item.is_mature && <span className="media-card-type-badge badge-mature">18+</span>}
                 </div>
@@ -679,7 +679,7 @@ function InlinePlayer({
                 <div className="player-info">
                     <div className="player-title">{nowPlaying.name}</div>
                     <div className="player-meta">
-                        <i className={isVideo ? 'bi bi-play-fill' : 'bi bi-music-note-beamed'}/> {isVideo ? 'Video' : 'Audio'} · {formatDuration(duration)}
+                        <i className={isVideo ? 'bi bi-play-fill' : 'bi bi-music-note-beamed'}/> {isVideo ? 'Video' : 'Audio'} · {formatDuration({ seconds: duration })}
                     </div>
                 </div>
 
@@ -694,11 +694,11 @@ function InlinePlayer({
                             className="bi bi-skip-end-fill"/></button>
                     </div>
                     <div className="player-progress-row">
-                        <span>{formatDuration(currentTime)}</span>
+                        <span>{formatDuration({ seconds: currentTime })}</span>
                         <div className="player-progress-bar" onClick={handleProgressClick}>
                             <div className="player-progress-fill" style={{width: `${progress}%`}}/>
                         </div>
-                        <span>{formatDuration(duration)}</span>
+                        <span>{formatDuration({ seconds: duration })}</span>
                     </div>
                 </div>
 
@@ -1309,7 +1309,7 @@ export function IndexPage() {
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
+                                <div className="continue-card-name">{formatTitle({ value: entry.title || entry.media_id })}</div>
                                 <div className="continue-card-meta"><i className="bi bi-play-circle"/> Continue</div>
                             </Link>
                         ))}
@@ -1339,7 +1339,7 @@ export function IndexPage() {
                                     to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                                 >
                                     <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                    <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
+                                    <div className="continue-card-name">{formatTitle({ value: entry.title || entry.media_id })}</div>
                                     {entry.score != null && (
                                         <div className="continue-card-meta"><i
                                             className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
@@ -1375,7 +1375,7 @@ export function IndexPage() {
                                     to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                                 >
                                     <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                    <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
+                                    <div className="continue-card-name">{formatTitle({ value: entry.title || entry.media_id })}</div>
                                     <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
                                 </Link>
                             ))}

@@ -27,7 +27,7 @@ function thumbnailUrlWithMatureBuster(url: string | undefined, canViewMature: bo
 }
 
 function SimilarItem({entry, canViewMature}: { entry: Suggestion; canViewMature: boolean }) {
-    const name = formatTitle(entry.title || entry.media_id)
+    const name = formatTitle({ value: entry.title || entry.media_id })
     const thumbUrl = thumbnailUrlWithMatureBuster(entry.thumbnail_url ?? undefined, canViewMature)
     return (
         <Link to={`/player?id=${encodeURIComponent(entry.media_id)}`} className="related-item">
@@ -918,7 +918,7 @@ export function PlayerPage() {
                                     <div className="audio-visualizer">
                                         <div className="audio-visualizer-icon"><i className="bi bi-music-note-beamed"/>
                                         </div>
-                                        <div className="audio-visualizer-title">{formatTitle(media.name)}</div>
+                                        <div className="audio-visualizer-title">{formatTitle({ value: media.name })}</div>
                                     </div>
                                 </>
                             )}
@@ -968,7 +968,7 @@ export function PlayerPage() {
                                             className="ctrl-progress-tooltip"
                                             style={{left: `${hoverPos}px`}}
                                         >
-                                            {formatDuration(hoverTime)}
+                                            {formatDuration({ seconds: hoverTime })}
                                         </div>
                                     )}
                                 </div>
@@ -1020,7 +1020,7 @@ export function PlayerPage() {
                                         />
                                     </div>
                                     <span
-                                        className="ctrl-time">{formatDuration(currentTime)} / {formatDuration(duration)}</span>
+                                        className="ctrl-time">{formatDuration({ seconds: currentTime })} / {formatDuration({ seconds: duration })}</span>
                                     <div className="ctrl-spacer"/>
                                     {/* Quality badge indicator */}
                                     {qualityBadge && (
@@ -1095,7 +1095,7 @@ export function PlayerPage() {
                                                 className="ctrl-progress-tooltip ctrl-progress-tooltip--audio"
                                                 style={{left: `${hoverPos}px`}}
                                             >
-                                                {formatDuration(hoverTime)}
+                                                {formatDuration({ seconds: hoverTime })}
                                             </div>
                                         )}
                                     </div>
@@ -1140,7 +1140,7 @@ export function PlayerPage() {
                                         whiteSpace: 'nowrap',
                                         marginLeft: 4,
                                     }}>
-                                        {formatDuration(currentTime)} / {formatDuration(duration)}
+                                        {formatDuration({ seconds: currentTime })} / {formatDuration({ seconds: duration })}
                                     </span>
                                     <div style={{flex: 1}}/>
                                     <button
@@ -1226,13 +1226,13 @@ export function PlayerPage() {
 
                         {/* Media info */}
                         <div className="media-info-card">
-                            <h1 className="media-page-title">{formatTitle(media.name)}</h1>
+                            <h1 className="media-page-title">{formatTitle({ value: media.name })}</h1>
                             <div className="media-page-stats">
                                 <span><i className="bi bi-eye"/> {media.views} views</span>
                                 {media.date_added && <span><i
                                     className="bi bi-calendar3"/> {new Date(media.date_added).toLocaleDateString()}</span>}
-                                <span><i className="bi bi-hdd-fill"/> {formatFileSize(media.size)}</span>
-                                <span><i className="bi bi-clock"/> {formatDuration(media.duration)}</span>
+                                <span><i className="bi bi-hdd-fill"/> {formatFileSize({ bytes: media.size })}</span>
+                                <span><i className="bi bi-clock"/> {formatDuration({ seconds: media.duration })}</span>
                                 {media.width && media.height &&
                                     <span><i className="bi bi-aspect-ratio"/> {media.width}x{media.height}</span>}
                                 {media.container && <span><i className="bi bi-file-play"/> {media.container}</span>}
