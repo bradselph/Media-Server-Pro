@@ -281,7 +281,7 @@ export function ProfilePage() {
                     </span>
                     <button
                         className="btn btn-sm"
-                        onClick={() => navigate('/', {replace: true})}
+                        onClick={() => { navigate('/', {replace: true}); }}
                         style={{whiteSpace: 'nowrap'}}
                     >
                         Skip
@@ -418,7 +418,7 @@ export function ProfilePage() {
                                 id="current-password"
                                 type="password"
                                 value={currentPassword}
-                                onChange={e => setCurrentPassword(e.target.value)}
+                                onChange={e => { setCurrentPassword(e.target.value); }}
                                 required
                                 autoComplete="current-password"
                             />
@@ -429,7 +429,7 @@ export function ProfilePage() {
                                 id="new-password"
                                 type="password"
                                 value={newPassword}
-                                onChange={e => setNewPassword(e.target.value)}
+                                onChange={e => { setNewPassword(e.target.value); }}
                                 required
                                 minLength={8}
                                 autoComplete="new-password"
@@ -442,7 +442,7 @@ export function ProfilePage() {
                                 id="confirm-password"
                                 type="password"
                                 value={confirmPassword}
-                                onChange={e => setConfirmPassword(e.target.value)}
+                                onChange={e => { setConfirmPassword(e.target.value); }}
                                 required
                                 autoComplete="new-password"
                             />
@@ -468,7 +468,7 @@ export function ProfilePage() {
                                 <select
                                     id="default-quality"
                                     value={preferences?.default_quality || 'auto'}
-                                    onChange={e => updatePref('default_quality', e.target.value)}
+                                    onChange={e => { updatePref('default_quality', e.target.value); }}
                                 >
                                     <option value="auto">Auto</option>
                                     <option value="low">Low (360p)</option>
@@ -483,7 +483,7 @@ export function ProfilePage() {
                                 <select
                                     id="theme-preference"
                                     value={preferences?.theme || theme}
-                                    onChange={e => updatePref('theme', e.target.value as UserPreferences['theme'])}
+                                    onChange={e => { updatePref('theme', e.target.value as UserPreferences['theme']); }}
                                 >
                                     <option value="auto">Auto (System)</option>
                                     <option value="light">Light</option>
@@ -496,7 +496,7 @@ export function ProfilePage() {
                                 <select
                                     id="eq-bands"
                                     value={preferences?.equalizer_preset || '10'}
-                                    onChange={e => updatePref('equalizer_preset', e.target.value)}
+                                    onChange={e => { updatePref('equalizer_preset', e.target.value); }}
                                 >
                                     <option value="10">10-Band (Standard)</option>
                                     <option value="31">31-Band (Professional)</option>
@@ -508,7 +508,7 @@ export function ProfilePage() {
                                 <select
                                     id="items-per-page"
                                     value={preferences?.items_per_page ?? 24}
-                                    onChange={e => updatePref('items_per_page', Number(e.target.value))}
+                                    onChange={e => { updatePref('items_per_page', Number(e.target.value)); }}
                                 >
                                     <option value={12}>12</option>
                                     <option value={24}>24 (default)</option>
@@ -522,7 +522,7 @@ export function ProfilePage() {
                                 <select
                                     id="playback-speed"
                                     value={preferences?.playback_speed ?? 1}
-                                    onChange={e => updatePref('playback_speed', Number(e.target.value))}
+                                    onChange={e => { updatePref('playback_speed', Number(e.target.value)); }}
                                 >
                                     <option value={0.5}>0.5×</option>
                                     <option value={0.75}>0.75×</option>
@@ -538,7 +538,7 @@ export function ProfilePage() {
                                     <input
                                         type="checkbox"
                                         checked={preferences?.auto_play ?? false}
-                                        onChange={e => updatePref('auto_play', e.target.checked)}
+                                        onChange={e => { updatePref('auto_play', e.target.checked); }}
                                     />
                                     Autoplay next track
                                 </label>
@@ -546,7 +546,7 @@ export function ProfilePage() {
                                     <input
                                         type="checkbox"
                                         checked={preferences?.resume_playback ?? true}
-                                        onChange={e => updatePref('resume_playback', e.target.checked)}
+                                        onChange={e => { updatePref('resume_playback', e.target.checked); }}
                                     />
                                     Resume playback position
                                 </label>
@@ -554,7 +554,7 @@ export function ProfilePage() {
                                     <input
                                         type="checkbox"
                                         checked={preferences?.show_analytics ?? false}
-                                        onChange={e => updatePref('show_analytics', e.target.checked)}
+                                        onChange={e => { updatePref('show_analytics', e.target.checked); }}
                                     />
                                     Show analytics bar
                                 </label>
@@ -566,7 +566,7 @@ export function ProfilePage() {
                                     <input
                                         type="checkbox"
                                         checked={preferences?.show_mature ?? false}
-                                        onChange={e => updatePref('show_mature', e.target.checked)}
+                                        onChange={e => { updatePref('show_mature', e.target.checked); }}
                                     />
                                     Allow mature content (18+)
                                 </label>
@@ -581,7 +581,7 @@ export function ProfilePage() {
                                     <input
                                         type="checkbox"
                                         checked={preferences?.show_continue_watching ?? true}
-                                        onChange={e => updatePref('show_continue_watching', e.target.checked)}
+                                        onChange={e => { updatePref('show_continue_watching', e.target.checked); }}
                                     />
                                     Continue Watching
                                 </label>
@@ -589,7 +589,7 @@ export function ProfilePage() {
                                     <input
                                         type="checkbox"
                                         checked={preferences?.show_recommended ?? true}
-                                        onChange={e => updatePref('show_recommended', e.target.checked)}
+                                        onChange={e => { updatePref('show_recommended', e.target.checked); }}
                                     />
                                     Recommended For You
                                 </label>
@@ -597,7 +597,7 @@ export function ProfilePage() {
                                     <input
                                         type="checkbox"
                                         checked={preferences?.show_trending ?? true}
-                                        onChange={e => updatePref('show_trending', e.target.checked)}
+                                        onChange={e => { updatePref('show_trending', e.target.checked); }}
                                     />
                                     Trending
                                 </label>
@@ -625,12 +625,12 @@ export function ProfilePage() {
                                     type="text"
                                     placeholder="Search history..."
                                     value={historySearch}
-                                    onChange={e => setHistorySearch(e.target.value)}
+                                    onChange={e => { setHistorySearch(e.target.value); }}
                                     style={{flex: '1 1 160px', minWidth: 120, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-color)', fontSize: 13}}
                                 />
                                 <select
                                     value={historySortBy}
-                                    onChange={e => setHistorySortBy(e.target.value as typeof historySortBy)}
+                                    onChange={e => { setHistorySortBy(e.target.value as typeof historySortBy); }}
                                     style={{padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-color)', fontSize: 13}}
                                 >
                                     <option value="watched_at">Date Watched</option>
@@ -640,7 +640,7 @@ export function ProfilePage() {
                                 </select>
                                 <button
                                     className="btn btn-sm"
-                                    onClick={() => setHistorySortDesc(d => !d)}
+                                    onClick={() => { setHistorySortDesc(d => !d); }}
                                     title={historySortDesc ? 'Descending' : 'Ascending'}
                                     style={{padding: '6px 10px', fontSize: 13, minWidth: 32}}
                                 >
@@ -687,7 +687,7 @@ export function ProfilePage() {
                         {!showDeleteConfirm ? (
                             <div>
                                 <p className="form-hint">Permanently delete your account and all associated data.</p>
-                                <button className="btn btn-danger" onClick={() => setShowDeleteConfirm(true)}>
+                                <button className="btn btn-danger" onClick={() => { setShowDeleteConfirm(true); }}>
                                     Delete Account
                                 </button>
                             </div>
@@ -702,7 +702,7 @@ export function ProfilePage() {
                                         id="delete-password"
                                         type="password"
                                         value={deletePassword}
-                                        onChange={e => setDeletePassword(e.target.value)}
+                                        onChange={e => { setDeletePassword(e.target.value); }}
                                         required
                                         autoComplete="current-password"
                                     />

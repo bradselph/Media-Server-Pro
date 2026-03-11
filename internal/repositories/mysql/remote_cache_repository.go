@@ -26,6 +26,24 @@ func parseTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unable to parse time: %s", s)
 }
 
+// parseTimeDefault returns the parsed time or zero value on error (for required time fields).
+func parseTimeDefault(s string) time.Time {
+	t, _ := parseTime(s)
+	return t
+}
+
+// parseOptionalTime returns the parsed time or nil on error (for optional time fields).
+func parseOptionalTime(s *string) *time.Time {
+	if s == nil {
+		return nil
+	}
+	t, err := parseTime(*s)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
 type remoteCacheRow struct {
 	RemoteURL   string `gorm:"column:remote_url;primaryKey"`
 	LocalPath   string `gorm:"column:local_path"`

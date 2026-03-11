@@ -47,7 +47,7 @@ export function AdminPage() {
 
     useEffect(() => {
         if (!tabs.some(t => t.id === activeTab)) {
-            queueMicrotask(() => setActiveTab('dashboard'))
+            queueMicrotask(() => { setActiveTab('dashboard'); })
         }
     }, [features, activeTab, tabs])
 
@@ -78,7 +78,7 @@ export function AdminPage() {
                     <button
                         key={tab.id}
                         className={`admin-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => { setActiveTab(tab.id); }}
                     >
                         <i className={`bi ${tab.icon}`}/> {tab.label}
                     </button>

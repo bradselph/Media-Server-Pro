@@ -42,33 +42,41 @@ func (h *Handler) GetWhitelist(c *gin.Context) {
 	writeSuccess(c, entries)
 }
 
-// AddToWhitelist adds an IP to the whitelist
-func (h *Handler) AddToWhitelist(c *gin.Context) {
+type addIPListReq struct {
+	IP        string     `json:"ip"`
+	Comment   string     `json:"comment"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+func (h *Handler) addToIPList(c *gin.Context, addFn func(ip, comment, addedBy string, expiresAt *time.Time) error, successMsg string) {
 	if !h.requireSecurity(c) {
 		return
 	}
-	var req struct {
-		IP        string     `json:"ip"`
-		Comment   string     `json:"comment"`
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	}
+	var req addIPListReq
 	if c.ShouldBindJSON(&req) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
-
 	session := getSession(c)
 	addedBy := "admin"
 	if session != nil {
 		addedBy = session.Username
 	}
-
-	if err := h.security.AddToWhitelist(req.IP, req.Comment, addedBy, req.ExpiresAt); err != nil {
+	if err := addFn(req.IP, req.Comment, addedBy, req.ExpiresAt); err != nil {
 		writeError(c, http.StatusBadRequest, "Invalid IP address")
 		return
 	}
+	writeSuccess(c, map[string]string{"message": successMsg})
+}
 
-	writeSuccess(c, map[string]string{"message": "Added to whitelist"})
+// AddToWhitelist adds an IP to the whitelist
+func (h *Handler) AddToWhitelist(c *gin.Context) {
+	h.addToIPList(c, h.security.AddToWhitelist, "Added to whitelist")
+}
+
+// AddToBlacklist adds an IP to the blacklist
+func (h *Handler) AddToBlacklist(c *gin.Context) {
+	h.addToIPList(c, h.security.AddToBlacklist, "Added to blacklist")
 }
 
 // RemoveFromWhitelist removes an IP from the whitelist
@@ -110,35 +118,6 @@ func (h *Handler) GetBlacklist(c *gin.Context) {
 		entries[i] = ipEntry{IP: e.Value, Comment: e.Comment, AddedBy: e.AddedBy, AddedAt: e.AddedAt, ExpiresAt: e.ExpiresAt}
 	}
 	writeSuccess(c, entries)
-}
-
-// AddToBlacklist adds an IP to the blacklist
-func (h *Handler) AddToBlacklist(c *gin.Context) {
-	if !h.requireSecurity(c) {
-		return
-	}
-	var req struct {
-		IP        string     `json:"ip"`
-		Comment   string     `json:"comment"`
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
-		return
-	}
-
-	session := getSession(c)
-	addedBy := "admin"
-	if session != nil {
-		addedBy = session.Username
-	}
-
-	if err := h.security.AddToBlacklist(req.IP, req.Comment, addedBy, req.ExpiresAt); err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid IP address")
-		return
-	}
-
-	writeSuccess(c, map[string]string{"message": "Added to blacklist"})
 }
 
 // RemoveFromBlacklist removes an IP from the blacklist

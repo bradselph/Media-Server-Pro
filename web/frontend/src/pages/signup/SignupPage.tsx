@@ -64,7 +64,7 @@ export function SignupPage() {
                             id="username"
                             type="text"
                             value={username}
-                            onChange={(e) => setUsername(e.target.value)}
+                            onChange={(e) => { setUsername(e.target.value); }}
                             placeholder="Choose a username"
                             required
                             autoComplete="username"
@@ -90,7 +90,7 @@ export function SignupPage() {
                             id="password"
                             type="password"
                             value={password}
-                            onChange={(e) => setPassword(e.target.value)}
+                            onChange={(e) => { setPassword(e.target.value); }}
                             placeholder="Choose a password (min 8 characters)"
                             required
                             minLength={8}
@@ -104,7 +104,7 @@ export function SignupPage() {
                             id="confirm-password"
                             type="password"
                             value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            onChange={(e) => { setConfirmPassword(e.target.value); }}
                             placeholder="Confirm your password"
                             required
                             autoComplete="new-password"

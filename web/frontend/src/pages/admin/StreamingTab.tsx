@@ -153,7 +153,7 @@ export function StreamingTab() {
             <div className="admin-card">
                 <h2>HLS Jobs</h2>
                 <div style={{marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center'}}>
-                    <select value={hlsFilterStatus} onChange={e => setHlsFilterStatus(e.target.value)}
+                    <select value={hlsFilterStatus} onChange={e => { setHlsFilterStatus(e.target.value); }}
                             style={{padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
                                     background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}>
                         <option value="">All Status</option>
@@ -165,7 +165,7 @@ export function StreamingTab() {
                     </select>
                     {hlsFilterStatus && (
                         <button className="admin-btn" style={{fontSize: 12, padding: '4px 10px'}}
-                                onClick={() => setHlsFilterStatus('')}>
+                                onClick={() => { setHlsFilterStatus(''); }}>
                             <i className="bi bi-x-circle"/> Clear
                         </button>
                     )}
@@ -305,11 +305,11 @@ export function StreamingTab() {
 
             {/* Feature 8: HLS Validation Result Modal */}
             {validationResult && (
-                <div className="admin-modal-overlay" onClick={() => setValidationResult(null)}>
-                    <div className="admin-modal-box" onClick={e => e.stopPropagation()}>
+                <div className="admin-modal-overlay" onClick={() => { setValidationResult(null); }}>
+                    <div className="admin-modal-box" onClick={e => { e.stopPropagation(); }}>
                         <div className="admin-modal-header">
                             <h3><i className="bi bi-check2-circle"/> HLS Validation Result</h3>
-                            <button className="admin-modal-close" onClick={() => setValidationResult(null)}>×</button>
+                            <button className="admin-modal-close" onClick={() => { setValidationResult(null); }}>×</button>
                         </div>
                         <div className="admin-modal-body">
                             <p><strong>Job ID:</strong> {validationResult.job_id}</p>

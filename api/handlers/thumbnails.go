@@ -55,26 +55,45 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 	})
 }
 
-// getThumbnailFilePathAndType resolves the thumbnail file path and content type (including responsive w= and WebP).
-func (h *Handler) getThumbnailFilePathAndType(c *gin.Context, id, path string) (thumbFilePath, contentType string) {
-	contentType = "image/jpeg"
+// getResponsiveThumbPath returns the path and content type for ?w=N when available. ok is false when not used.
+func (h *Handler) getResponsiveThumbPath(c *gin.Context, id string) (path, contentType string, ok bool) {
 	widthParam := strings.TrimSpace(c.Query("w"))
-	wantWebP := acceptsWebP(c.Request)
-	if widthParam != "" {
-		var w int
-		if _, err := fmt.Sscanf(widthParam, "%d", &w); err == nil {
-			if fp := h.thumbnails.GetThumbnailFilePathForSize(thumbnails.MediaID(id), w); fp != "" {
-				return fp, "image/webp"
-			}
-		}
+	if widthParam == "" {
+		return "", "", false
+	}
+	var w int
+	if _, err := fmt.Sscanf(widthParam, "%d", &w); err != nil {
+		return "", "", false
+	}
+	fp := h.thumbnails.GetThumbnailFilePathForSize(thumbnails.MediaID(id), w)
+	if fp == "" {
+		return "", "", false
+	}
+	return fp, "image/webp", true
+}
+
+// getWebPThumbPath returns the WebP path when the client accepts WebP and it exists. ok is false otherwise.
+func (h *Handler) getWebPThumbPath(id string, wantWebP bool) (path, contentType string, ok bool) {
+	if !wantWebP {
+		return "", "", false
+	}
+	webpPath := h.thumbnails.GetThumbnailFilePathWebp(thumbnails.MediaID(id))
+	if webpPath == "" {
+		return "", "", false
+	}
+	return webpPath, "image/webp", true
+}
+
+// getThumbnailFilePathAndType resolves the thumbnail file path and content type (including responsive w= and WebP).
+func (h *Handler) getThumbnailFilePathAndType(c *gin.Context, id string) (thumbFilePath, contentType string) {
+	if fp, ct, ok := h.getResponsiveThumbPath(c, id); ok {
+		return fp, ct
 	}
 	thumbFilePath = h.thumbnails.GetThumbnailFilePath(thumbnails.MediaID(id))
-	if wantWebP {
-		if webpPath := h.thumbnails.GetThumbnailFilePathWebp(thumbnails.MediaID(id)); webpPath != "" {
-			return webpPath, "image/webp"
-		}
+	if fp, ct, ok := h.getWebPThumbPath(id, acceptsWebP(c.Request)); ok {
+		return fp, ct
 	}
-	return thumbFilePath, contentType
+	return thumbFilePath, "image/jpeg"
 }
 
 // tryServePlaceholderByType serves a placeholder image when type is placeholder/audio_placeholder/censored. Returns true if served.
@@ -152,13 +171,45 @@ func (h *Handler) tryServeCensoredIfMature(c *gin.Context, path, _ string) bool 
 	return true
 }
 
+// ensureThumbnailGenerated generates the thumbnail synchronously if missing. Returns false if generation failed (error already written).
+func (h *Handler) ensureThumbnailGenerated(c *gin.Context, path, id string) bool {
+	if h.thumbnails.HasThumbnail(thumbnails.MediaID(id)) {
+		return true
+	}
+	isAudio := helpers.IsAudioExtension(filepath.Ext(path))
+	_, err := h.thumbnails.GenerateThumbnailSyncRequest(&thumbnails.ThumbnailSyncRequest{MediaPath: path, MediaID: id, IsAudio: isAudio})
+	if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
+		h.log.Error("Failed to generate thumbnail for %s: %v", path, err)
+		writeError(c, http.StatusNotFound, "Thumbnail generation failed")
+		return false
+	}
+	return true
+}
+
+// serveThumbnailFileResponse writes the thumbnail file to the response (or HEAD). Returns false if file missing (error written).
+func (h *Handler) serveThumbnailFileResponse(c *gin.Context, thumbFilePath, contentType string) bool {
+	if _, err := os.Stat(thumbFilePath); os.IsNotExist(err) {
+		h.log.Error("Thumbnail file does not exist: %s", thumbFilePath)
+		writeError(c, http.StatusNotFound, "Thumbnail not found")
+		return false
+	}
+	if c.Request.Method == http.MethodHead {
+		c.Header(headerContentType, contentType)
+		c.Status(http.StatusOK)
+		return true
+	}
+	c.Header("Cache-Control", "public, max-age=604800")
+	c.Header("Content-Type", contentType)
+	http.ServeFile(c.Writer, c.Request, thumbFilePath)
+	return true
+}
+
 // GetThumbnail returns a thumbnail image.
 func (h *Handler) GetThumbnail(c *gin.Context) {
 	if !h.requireThumbnails(c) {
 		return
 	}
-	thumbnailType := c.Query("type")
-	if h.tryServePlaceholderByType(c, thumbnailType) {
+	if h.tryServePlaceholderByType(c, c.Query("type")) {
 		return
 	}
 	id := c.Query("id")
@@ -172,29 +223,11 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	if h.tryServeCensoredIfMature(c, path, id) {
 		return
 	}
-	if !h.thumbnails.HasThumbnail(thumbnails.MediaID(id)) {
-		isAudio := helpers.IsAudioExtension(filepath.Ext(path))
-		_, err := h.thumbnails.GenerateThumbnailSyncRequest(&thumbnails.ThumbnailSyncRequest{MediaPath: path, MediaID: id, IsAudio: isAudio})
-		if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
-			h.log.Error("Failed to generate thumbnail for %s: %v", path, err)
-			writeError(c, http.StatusNotFound, "Thumbnail generation failed")
-			return
-		}
-	}
-	thumbFilePath, contentType := h.getThumbnailFilePathAndType(c, id, path)
-	if _, err := os.Stat(thumbFilePath); os.IsNotExist(err) {
-		h.log.Error("Thumbnail file does not exist: %s", thumbFilePath)
-		writeError(c, http.StatusNotFound, "Thumbnail not found")
+	if !h.ensureThumbnailGenerated(c, path, id) {
 		return
 	}
-	if c.Request.Method == http.MethodHead {
-		c.Header(headerContentType, contentType)
-		c.Status(http.StatusOK)
-		return
-	}
-	c.Header("Cache-Control", "public, max-age=604800")
-	c.Header("Content-Type", contentType)
-	http.ServeFile(c.Writer, c.Request, thumbFilePath)
+	thumbFilePath, contentType := h.getThumbnailFilePathAndType(c, id)
+	h.serveThumbnailFileResponse(c, thumbFilePath, contentType)
 }
 
 // ServeThumbnailFile serves a thumbnail image file by filename from the thumbnails directory

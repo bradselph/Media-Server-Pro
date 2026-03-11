@@ -70,7 +70,7 @@ export function LoginPage() {
                             id="username"
                             type="text"
                             value={username}
-                            onChange={(e) => setUsername(e.target.value)}
+                            onChange={(e) => { setUsername(e.target.value); }}
                             placeholder="Enter your username"
                             required
                             autoComplete="username"
@@ -84,7 +84,7 @@ export function LoginPage() {
                             id="password"
                             type="password"
                             value={password}
-                            onChange={(e) => setPassword(e.target.value)}
+                            onChange={(e) => { setPassword(e.target.value); }}
                             placeholder="Enter your password"
                             required
                             autoComplete="current-password"
@@ -110,7 +110,7 @@ export function LoginPage() {
                                 border: '1px solid var(--border-color)',
                                 color: 'var(--text-muted)'
                             }}
-                            onClick={() => navigate(redirectTo)}
+                            onClick={() => { navigate(redirectTo); }}
                         >
                             Browse as Guest
                         </button>

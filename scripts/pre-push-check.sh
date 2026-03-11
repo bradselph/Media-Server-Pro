@@ -379,8 +379,14 @@ section "Go"
 cd "$REPO_ROOT"
 
 if $OPT_FIX && ! $OPT_SKIP_GO; then
-  echo -e "  ${CYAN}▶${RESET} Auto-formatting with go fmt..."
+  echo -e "  ${CYAN}▶${RESET} Auto-formatting with go fmt + goimports..."
   go fmt ./... 2>&1 | sed 's/^/    /'
+  if ! command -v goimports &>/dev/null; then
+    go install golang.org/x/tools/cmd/goimports@latest 2>/dev/null || true
+  fi
+  if command -v goimports &>/dev/null; then
+    goimports -w . 2>&1 | sed 's/^/    /'
+  fi
   echo ""
 fi
 
@@ -388,6 +394,24 @@ run_step "go mod download"        "$OPT_SKIP_GO"  go mod download
 run_step "go build (linux/amd64)" "$OPT_SKIP_GO"  \
          env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...
 run_step "go vet"                 "$OPT_SKIP_GO"  go vet ./...
+
+# golangci-lint: auto-install if missing
+SKIP_LINT="$OPT_SKIP_GO"
+if [[ "$SKIP_LINT" == "false" ]] && ! command -v golangci-lint &>/dev/null; then
+  printf "  ${CYAN}▶${RESET} %-48s" "install golangci-lint"
+  if go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest 2>/dev/null; then
+    echo -e "${PASS} ${DIM}installed${RESET}"
+  else
+    echo -e "${WARN} ${DIM}install failed — skipping golangci-lint${RESET}"
+    SKIP_LINT=true
+  fi
+fi
+if $OPT_FIX; then
+  run_step "golangci-lint (--fix)" "$SKIP_LINT"  golangci-lint run --fix ./...
+else
+  run_step "golangci-lint"          "$SKIP_LINT"  golangci-lint run ./...
+fi
+
 run_step "go test -race"          "$(skip_if "$OPT_SKIP_GO" "$OPT_SKIP_TESTS")" \
          go test -race -timeout 120s ./...
 
@@ -444,7 +468,11 @@ fe_step() {
   run_step "$label" "$skip" bash -c "cd '${FRONTEND_DIR}' && $*"
 }
 
-fe_step "npm run lint"       "$OPT_SKIP_FRONTEND" "npm run lint"
+if $OPT_FIX; then
+  fe_step "npm run lint (--fix)" "$OPT_SKIP_FRONTEND" "npx eslint --fix ."
+else
+  fe_step "npm run lint"         "$OPT_SKIP_FRONTEND" "npm run lint"
+fi
 # tsc --noEmit (from fix-issues.py — catches TS errors without full build)
 SKIP_TSC="$(skip_if "$OPT_SKIP_FRONTEND")"
 if [[ "$SKIP_TSC" == "false" ]]; then

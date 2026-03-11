@@ -163,7 +163,7 @@ export function PlayerPage() {
 
     // Stable fallback callback — must not be recreated on every render or
     // useHLS will tear down and rebuild the HLS instance on every time-update.
-    const onHlsFallback = useCallback(() => setActiveHlsUrl(null), [])
+    const onHlsFallback = useCallback(() => { setActiveHlsUrl(null); }, [])
 
     // Attach hls.js for video HLS playback when a stream URL is available
     const {
@@ -186,7 +186,7 @@ export function PlayerPage() {
 
     // Mark audio element as ready after mount so the EQ hook gets the real DOM node (defer to avoid setState-in-effect lint)
     useEffect(() => {
-        if (audioRef.current) queueMicrotask(() => setAudioReady(true))
+        if (audioRef.current) queueMicrotask(() => { setAudioReady(true); })
     }, [])
 
     // Wire equalizer to the audio element (EQ only applies to audio content, not video)
@@ -329,7 +329,7 @@ export function PlayerPage() {
                 setHlsPolling(false)
             }
         }, 3000)
-        return () => clearInterval(interval)
+        return () => { clearInterval(interval); }
     }, [hlsPolling, hlsJob])
     // Restore direct stream when HLS becomes inactive
     useEffect(() => {
@@ -364,7 +364,7 @@ export function PlayerPage() {
         isPlayingRef.current = isPlaying
         if (isPlaying) {
             if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
-            controlsTimerRef.current = setTimeout(() => setShowControls(false), 3000)
+            controlsTimerRef.current = setTimeout(() => { setShowControls(false); }, 3000)
         } else {
             if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
             setShowControls(true)
@@ -382,7 +382,7 @@ export function PlayerPage() {
         }
 
         document.addEventListener('visibilitychange', handleVisibilityChange)
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+        return () => { document.removeEventListener('visibilitychange', handleVisibilityChange); }
     }, [mediaId])
 
     function getActiveEl() {
@@ -622,7 +622,7 @@ export function PlayerPage() {
             }
         }
         document.addEventListener('fullscreenchange', onFullscreenChange)
-        return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+        return () => { document.removeEventListener('fullscreenchange', onFullscreenChange); }
     }, [mediaId, fireAnalytics])
 
     // Save position periodically
@@ -634,7 +634,7 @@ export function PlayerPage() {
                 })
             }
         }, 30000)
-        return () => clearInterval(interval)
+        return () => { clearInterval(interval); }
     }, [mediaId, isPlaying, duration])
     // Keyboard shortcuts
     useEffect(() => {
@@ -741,7 +741,7 @@ export function PlayerPage() {
         }
 
         document.addEventListener('keydown', onKeyDown)
-        return () => document.removeEventListener('keydown', onKeyDown)
+        return () => { document.removeEventListener('keydown', onKeyDown); }
     }, [media?.type, showSettings, playbackRate])
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0
     // Quality badge for the controls bar
@@ -864,7 +864,7 @@ export function PlayerPage() {
                                 >
                                     <i className="bi bi-check-circle"/> I am 18+, Continue
                                 </button>
-                                <button className="media-action-btn" onClick={() => navigate('/')}>
+                                <button className="media-action-btn" onClick={() => { navigate('/'); }}>
                                     <i className="bi bi-arrow-left"/> Go Back
                                 </button>
                             </div>
@@ -882,7 +882,7 @@ export function PlayerPage() {
                     {isVideo && (
                         <button
                             className={`player-theater-btn ${theaterMode ? 'player-theater-btn--active' : ''}`}
-                            onClick={() => setTheaterMode(t => !t)}
+                            onClick={() => { setTheaterMode(t => !t); }}
                             title="Theater mode (T)"
                         >
                             <i className={theaterMode ? 'bi bi-arrows-angle-contract' : 'bi bi-arrows-angle-expand'}/>
@@ -896,7 +896,7 @@ export function PlayerPage() {
                         <div
                             className={`video-wrapper${isVideo && isPlaying && !showControls ? ' playing-idle' : ''}`}
                             onMouseMove={isVideo ? resetControlsTimer : undefined}
-                            onMouseLeave={isVideo && isPlaying ? () => setShowControls(false) : undefined}
+                            onMouseLeave={isVideo && isPlaying ? () => { setShowControls(false); } : undefined}
                             onClick={isVideo ? handleVideoClick : undefined}
                         >
                             {/* Hidden audio element for audio type */}
@@ -949,7 +949,7 @@ export function PlayerPage() {
                             {/* Custom controls */}
                             <div
                                 className={`custom-controls ${showControls || !isPlaying ? 'show' : ''}`}
-                                onClick={e => e.stopPropagation()}
+                                onClick={e => { e.stopPropagation(); }}
                             >
                                 {/* Progress bar */}
                                 <div
@@ -1016,7 +1016,7 @@ export function PlayerPage() {
                                             min="0" max="1" step="0.05"
                                             value={isMuted ? 0 : volume}
                                             onChange={handleVolumeChange}
-                                            onClick={e => e.stopPropagation()}
+                                            onClick={e => { e.stopPropagation(); }}
                                         />
                                     </div>
                                     <span
@@ -1038,7 +1038,7 @@ export function PlayerPage() {
                                     <div className="ctrl-settings-wrapper">
                                         <button
                                             className={`ctrl-btn ${showSettings ? 'active' : ''}`}
-                                            onClick={() => setShowSettings(s => !s)}
+                                            onClick={() => { setShowSettings(s => !s); }}
                                             title="Settings"
                                         >
                                             <i className={`bi bi-gear-fill ${showSettings ? 'ctrl-gear-spin' : ''}`}/>
@@ -1056,7 +1056,7 @@ export function PlayerPage() {
                                                 showPiP={isVideo}
                                                 onPiP={handlePiP}
                                                 bandwidth={bandwidth}
-                                                onClose={() => setShowSettings(false)}
+                                                onClose={() => { setShowSettings(false); }}
                                             />
                                         )}
                                     </div>
@@ -1203,7 +1203,7 @@ export function PlayerPage() {
                                     </button>
                                     <button
                                         className="hls-dismiss-btn"
-                                        onClick={() => setHlsAvailable(false)}
+                                        onClick={() => { setHlsAvailable(false); }}
                                     >
                                         Dismiss
                                     </button>
@@ -1295,9 +1295,9 @@ export function PlayerPage() {
                                         {[1, 2, 3, 4, 5].map(star => (
                                             <button
                                                 key={star}
-                                                onClick={() => handleRate(star)}
-                                                onMouseEnter={() => setRatingHover(star)}
-                                                onMouseLeave={() => setRatingHover(0)}
+                                                onClick={() => { handleRate(star); }}
+                                                onMouseEnter={() => { setRatingHover(star); }}
+                                                onMouseLeave={() => { setRatingHover(0); }}
                                                 style={{
                                                     background: 'none',
                                                     border: 'none',

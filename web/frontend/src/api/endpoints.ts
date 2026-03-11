@@ -104,7 +104,7 @@ export const ratingsApi = {
 export const uploadApi = {
     upload: (files: File[], category?: string): Promise<UploadResult> => {
         const formData = new FormData()
-        files.forEach(f => formData.append('files', f))
+        files.forEach(f => { formData.append('files', f); })
         if (category) formData.append('category', category)
         return api.upload<UploadResult>('/api/upload', formData)
     },

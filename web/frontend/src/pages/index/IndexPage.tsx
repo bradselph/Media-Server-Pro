@@ -124,7 +124,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
         setStatusText('Uploading...')
 
         const formData = new FormData()
-        files.forEach(f => formData.append('files', f.file))
+        files.forEach(f => { formData.append('files', f.file); })
 
         const xhr = new XMLHttpRequest()
         xhrRef.current = xhr
@@ -198,7 +198,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                                     e.preventDefault();
                                     setDragOver(true)
                                 }}
-                                onDragLeave={() => setDragOver(false)}
+                                onDragLeave={() => { setDragOver(false); }}
                                 onDrop={handleDrop}
                                 onClick={() => fileInputRef.current?.click()}
                             >
@@ -234,7 +234,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                                         <div key={i} className="upload-file-item">
                                             <span className="upload-file-name">{f.name}</span>
                                             <span className="upload-file-size">{formatFileSize(f.size, '0 B')}</span>
-                                            <button className="upload-remove-btn" onClick={() => removeFile(i)}>×
+                                            <button className="upload-remove-btn" onClick={() => { removeFile(i); }}>×
                                             </button>
                                         </div>
                                     ))}
@@ -242,7 +242,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                                         <button className="controls-btn controls-btn-success" onClick={startUpload}>
                                             Start Upload
                                         </button>
-                                        <button className="controls-btn" onClick={() => setFiles([])}>
+                                        <button className="controls-btn" onClick={() => { setFiles([]); }}>
                                             Clear All
                                         </button>
                                     </div>
@@ -416,7 +416,7 @@ function MediaCard({
             {rootMargin: `${THUMBNAIL_LAZY_MARGIN_PX}px`}
         )
         obs.observe(el)
-        return () => obs.disconnect()
+        return () => { obs.disconnect(); }
     }, [])
 
     function handleThumbnailError() {
@@ -494,7 +494,7 @@ function MediaCard({
                             <Link
                                 to={`/profile?mature_redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
                                 className="mature-gate-login"
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e) => { e.stopPropagation(); }}
                             >
                                 Enable in profile settings
                             </Link>
@@ -502,7 +502,7 @@ function MediaCard({
                             <Link
                                 to={`/login?redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
                                 className="mature-gate-login"
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e) => { e.stopPropagation(); }}
                             >
                                 Sign in to view
                             </Link>
@@ -573,10 +573,10 @@ function InlinePlayer({
 
     // Mark audio element as ready after mount (defer to avoid setState-in-effect lint)
     useEffect(() => {
-        if (audioRef.current) queueMicrotask(() => setAudioReady(true))
+        if (audioRef.current) queueMicrotask(() => { setAudioReady(true); })
     }, [])
 
-    const handleEqToggle = useCallback(() => setShowEq(v => !v), [])
+    const handleEqToggle = useCallback(() => { setShowEq(v => !v); }, [])
 
     // Load new media when nowPlaying changes
     useEffect(() => {
@@ -585,14 +585,14 @@ function InlinePlayer({
         if (!el) return
         el.src = mediaApi.getStreamUrl(nowPlaying.id)
         el.volume = volume
-        el.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false))
+        el.play().then(() => { setIsPlaying(true); }).catch(() => setIsPlaying(false))
     }, [nowPlaying]) // eslint-disable-line react-hooks/exhaustive-deps
 
     function togglePlay() {
         const el = activeRef.current
         if (!el || !nowPlaying) return
         if (el.paused) {
-            el.play().then(() => setIsPlaying(true)).catch(() => {
+            el.play().then(() => { setIsPlaying(true); }).catch(() => {
             })
         } else {
             el.pause()
@@ -663,8 +663,8 @@ function InlinePlayer({
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 onEnded={handleEnded}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
+                onPlay={() => { setIsPlaying(true); }}
+                onPause={() => { setIsPlaying(false); }}
             />
             <video
                 ref={videoRef}
@@ -672,8 +672,8 @@ function InlinePlayer({
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 onEnded={handleEnded}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
+                onPlay={() => { setIsPlaying(true); }}
+                onPause={() => { setIsPlaying(false); }}
             />
             <div className="player-content">
                 <div className="player-info">
@@ -757,8 +757,8 @@ function UserMenu() {
     if (!isAuthenticated) {
         return (
             <div className="user-auth-section">
-                <button className="controls-btn" onClick={() => navigate('/login')}>Login</button>
-                <button className="controls-btn" onClick={() => navigate('/signup')}>Sign Up</button>
+                <button className="controls-btn" onClick={() => { navigate('/login'); }}>Login</button>
+                <button className="controls-btn" onClick={() => { navigate('/signup'); }}>Sign Up</button>
             </div>
         )
     }
@@ -766,13 +766,13 @@ function UserMenu() {
     return (
         <div className="user-auth-section">
             <div className="user-dropdown-wrapper">
-                <button className="controls-btn" onClick={() => setOpen(o => !o)}>
+                <button className="controls-btn" onClick={() => { setOpen(o => !o); }}>
                     <i className="bi bi-person-fill"/> {user?.username}
                     {isAdmin && <span className="admin-badge">Admin</span>}
                 </button>
                 {open && (
                     <>
-                        <div style={{position: 'fixed', inset: 0, zIndex: 999}} onClick={() => setOpen(false)}/>
+                        <div style={{position: 'fixed', inset: 0, zIndex: 999}} onClick={() => { setOpen(false); }}/>
                         <div className="user-dropdown-menu" style={{zIndex: 1000}}>
                             <div className="user-dropdown-header">{user?.username} · {user?.role}</div>
                             <div className="user-dropdown-divider"/>
@@ -853,7 +853,7 @@ function SuggestionThumbnail({url, mediaType}: { url?: string; mediaType?: strin
             alt=""
             loading="lazy"
             style={THUMB_STYLE}
-            onError={() => setFailed(true)}
+            onError={() => { setFailed(true); }}
         />
     )
 }
@@ -967,8 +967,8 @@ export function IndexPage() {
     // Auto-clear playlist errors after 5 seconds
     useEffect(() => {
         if (!playlistError) return
-        const t = setTimeout(() => setPlaylistError(null), 5000)
-        return () => clearTimeout(t)
+        const t = setTimeout(() => { setPlaylistError(null); }, 5000)
+        return () => { clearTimeout(t); }
     }, [playlistError])
 
     // Debounced search — syncs typed input to URL param
@@ -1242,7 +1242,7 @@ export function IndexPage() {
 
             {/* Controls Bar */}
             <div className="controls-bar">
-                <button className="controls-btn" onClick={() => setShowFilters(f => !f)}>
+                <button className="controls-btn" onClick={() => { setShowFilters(f => !f); }}>
                     <i className="bi bi-funnel-fill"/> {showFilters ? 'Hide Filters' : 'Filters'}
                 </button>
 
@@ -1251,7 +1251,7 @@ export function IndexPage() {
                     className="controls-search"
                     placeholder="Search your media library..."
                     value={searchInput}
-                    onChange={e => setSearchInput(e.target.value)}
+                    onChange={e => { setSearchInput(e.target.value); }}
                 />
 
                 <button className="controls-btn" onClick={handleRefresh} title="Refresh"><i
@@ -1276,7 +1276,7 @@ export function IndexPage() {
                 </button>
 
                 {permissions.can_upload && uploadsEnabled && (
-                    <button className="controls-btn" onClick={() => setShowUpload(true)}><i
+                    <button className="controls-btn" onClick={() => { setShowUpload(true); }}><i
                         className="bi bi-cloud-upload-fill"/> Upload</button>
                 )}
 

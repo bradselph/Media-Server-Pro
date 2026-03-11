@@ -31,7 +31,7 @@ export function useMediaPosition(
     // Load position on media change
     useEffect(() => {
         if (!mediaId) {
-            queueMicrotask(() => setResumeInfo(null))
+            queueMicrotask(() => { setResumeInfo(null); })
             return
         }
 
@@ -94,7 +94,7 @@ export function useMediaPosition(
         trackingInterval.current = setInterval(trackPosition, 15000)
 
         // Save on pause
-        const handlePause = () => trackPosition()
+        const handlePause = () => { trackPosition(); }
         const handleEnded = () => {
             const elem = mediaRef.current
             if (mediaId && elem) {

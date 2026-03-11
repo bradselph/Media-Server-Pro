@@ -53,7 +53,7 @@ export function PlayerSettingsPanel({
             }
         }
         document.addEventListener('mousedown', handleClick)
-        return () => document.removeEventListener('mousedown', handleClick)
+        return () => { document.removeEventListener('mousedown', handleClick); }
     }, [onClose])
 
     const handleSpeedSelect = useCallback((speed: number) => {
@@ -67,21 +67,25 @@ export function PlayerSettingsPanel({
     }, [onSelectQuality])
 
     // Derive display labels
-    const currentQualityLabel = currentQuality === -1
-        ? 'Auto' + (autoLevel >= 0 && qualities[autoLevel] ? ` (${qualities[autoLevel].name})` : '')
-        : qualities.find(q => q.index === currentQuality)?.name ?? 'Auto'
+    let currentQualityLabel: string
+    if (currentQuality === -1) {
+        const autoSuffix = autoLevel >= 0 && qualities[autoLevel] ? ` (${qualities[autoLevel].name})` : ''
+        currentQualityLabel = 'Auto' + autoSuffix
+    } else {
+        currentQualityLabel = qualities.find(q => q.index === currentQuality)?.name ?? 'Auto'
+    }
 
     const speedLabel = playbackRate === 1 ? 'Normal' : `${playbackRate}x`
 
     return (
-        <div className="settings-panel" ref={panelRef} onClick={e => e.stopPropagation()}>
+        <div className="settings-panel" ref={panelRef} onClick={e => { e.stopPropagation(); }}>
             {view === 'main' && (
                 <div className="settings-panel__menu">
                     {/* Quality */}
                     {qualities.length > 0 && (
                         <button
                             className="settings-panel__item"
-                            onClick={() => setView('quality')}
+                            onClick={() => { setView('quality'); }}
                         >
                             <span className="settings-panel__item-left">
                                 <i className="bi bi-badge-hd"/>
@@ -96,7 +100,7 @@ export function PlayerSettingsPanel({
                     {/* Speed */}
                     <button
                         className="settings-panel__item"
-                        onClick={() => setView('speed')}
+                        onClick={() => { setView('speed'); }}
                     >
                         <span className="settings-panel__item-left">
                             <i className="bi bi-speedometer2"/>
@@ -144,7 +148,7 @@ export function PlayerSettingsPanel({
                 <div className="settings-panel__menu">
                     <button
                         className="settings-panel__back"
-                        onClick={() => setView('main')}
+                        onClick={() => { setView('main'); }}
                     >
                         <i className="bi bi-chevron-left"/>
                         <span>Quality</span>
@@ -153,7 +157,7 @@ export function PlayerSettingsPanel({
                     {/* Auto option */}
                     <button
                         className={`settings-panel__item ${currentQuality === -1 ? 'settings-panel__item--active' : ''}`}
-                        onClick={() => handleQualitySelect(-1)}
+                        onClick={() => { handleQualitySelect(-1); }}
                     >
                         <span className="settings-panel__item-left">
                             {currentQuality === -1 && <i className="bi bi-check-lg"/>}
@@ -170,7 +174,7 @@ export function PlayerSettingsPanel({
                         <button
                             key={q.index}
                             className={`settings-panel__item ${currentQuality === q.index ? 'settings-panel__item--active' : ''}`}
-                            onClick={() => handleQualitySelect(q.index)}
+                            onClick={() => { handleQualitySelect(q.index); }}
                         >
                             <span className="settings-panel__item-left">
                                 {currentQuality === q.index && <i className="bi bi-check-lg"/>}
@@ -184,7 +188,7 @@ export function PlayerSettingsPanel({
                             </span>
                         </button>
                     ))}
-                    {bandwidth != null && bandwidth > 0 && (
+                    {bandwidth !== null && bandwidth > 0 && (
                         <>
                             <div className="settings-panel__divider"/>
                             <div className="settings-panel__bandwidth">
@@ -200,7 +204,7 @@ export function PlayerSettingsPanel({
                 <div className="settings-panel__menu">
                     <button
                         className="settings-panel__back"
-                        onClick={() => setView('main')}
+                        onClick={() => { setView('main'); }}
                     >
                         <i className="bi bi-chevron-left"/>
                         <span>Speed</span>
@@ -210,7 +214,7 @@ export function PlayerSettingsPanel({
                         <button
                             key={speed}
                             className={`settings-panel__item ${playbackRate === speed ? 'settings-panel__item--active' : ''}`}
-                            onClick={() => handleSpeedSelect(speed)}
+                            onClick={() => { handleSpeedSelect(speed); }}
                         >
                             <span className="settings-panel__item-left">
                                 {playbackRate === speed && <i className="bi bi-check-lg"/>}

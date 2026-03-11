@@ -64,7 +64,7 @@ function MediaLibraryTab() {
 
     useEffect(() => {
         if (mediaSearchTimer.current) clearTimeout(mediaSearchTimer.current)
-        mediaSearchTimer.current = setTimeout(() => setDebouncedMediaSearch(mediaSearch), 300)
+        mediaSearchTimer.current = setTimeout(() => { setDebouncedMediaSearch(mediaSearch); }, 300)
         return () => {
             if (mediaSearchTimer.current) clearTimeout(mediaSearchTimer.current)
         }
@@ -298,7 +298,7 @@ function MediaLibraryTab() {
                     <button className="admin-btn" onClick={() => adminApi.clearCache().then(() => setMsg({
                         type: 'success',
                         text: 'Cache cleared.'
-                    })).catch(err => setMsg({type: 'error', text: errMsg(err)}))}>
+                    })).catch(err => { setMsg({type: 'error', text: errMsg(err)}); })}>
                         <i className="bi bi-trash-fill"/> Clear Cache
                     </button>
                 </div>
@@ -387,7 +387,7 @@ function MediaLibraryTab() {
                             type="text"
                             placeholder="Category…"
                             value={bulkCategory}
-                            onChange={e => setBulkCategory(e.target.value)}
+                            onChange={e => { setBulkCategory(e.target.value); }}
                             style={{
                                 padding: '4px 8px',
                                 border: '1px solid var(--border-color)',
@@ -400,7 +400,7 @@ function MediaLibraryTab() {
                         />
                         <select
                             value={bulkMature === null ? '' : String(bulkMature)}
-                            onChange={e => setBulkMature(e.target.value === '' ? null : e.target.value === 'true')}
+                            onChange={e => { setBulkMature(e.target.value === '' ? null : e.target.value === 'true'); }}
                             style={{
                                 padding: '4px 8px',
                                 border: '1px solid var(--border-color)',
@@ -422,7 +422,7 @@ function MediaLibraryTab() {
                                 style={{fontSize: 12, padding: '4px 10px'}}>
                             <i className="bi bi-trash-fill"/> Delete Selected
                         </button>
-                        <button className="admin-btn" onClick={() => setSelected(new Set())}
+                        <button className="admin-btn" onClick={() => { setSelected(new Set()); }}
                                 style={{fontSize: 12, padding: '4px 10px'}}>
                             Clear
                         </button>
@@ -435,7 +435,7 @@ function MediaLibraryTab() {
                         <div style={{display: 'grid', gap: 8}}>
                             <label style={{fontSize: 13}}>Name
                                 <input value={editItem.name}
-                                       onChange={e => setEditItem({...editItem, name: e.target.value})}
+                                       onChange={e => { setEditItem({...editItem, name: e.target.value}); }}
                                        style={{
                                            display: 'block',
                                            width: '100%',
@@ -449,7 +449,7 @@ function MediaLibraryTab() {
                             </label>
                             <label style={{fontSize: 13}}>Category
                                 <input value={editItem.category ?? ''}
-                                       onChange={e => setEditItem({...editItem, category: e.target.value})}
+                                       onChange={e => { setEditItem({...editItem, category: e.target.value}); }}
                                        style={{
                                            display: 'block',
                                            width: '100%',
@@ -463,7 +463,7 @@ function MediaLibraryTab() {
                             </label>
                             <label style={{fontSize: 13}}>Tags (comma-separated)
                                 <input value={(editItem.tags ?? []).join(', ')}
-                                       onChange={e => setEditItem({...editItem, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)})}
+                                       onChange={e => { setEditItem({...editItem, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)}); }}
                                        style={{
                                            display: 'block',
                                            width: '100%',
@@ -477,7 +477,7 @@ function MediaLibraryTab() {
                             </label>
                             <label style={{fontSize: 13, display: 'flex', alignItems: 'center', gap: 8}}>
                                 <input type="checkbox" checked={editItem.is_mature}
-                                       onChange={e => setEditItem({...editItem, is_mature: e.target.checked})}/>
+                                       onChange={e => { setEditItem({...editItem, is_mature: e.target.checked}); }}/>
                                 Mature content (18+)
                             </label>
                         </div>
@@ -485,7 +485,7 @@ function MediaLibraryTab() {
                             <button className="admin-btn admin-btn-primary" onClick={handleSaveEdit}><i
                                 className="bi bi-check-lg"/> Save
                             </button>
-                            <button className="admin-btn" onClick={() => setEditItem(null)}>Cancel</button>
+                            <button className="admin-btn" onClick={() => { setEditItem(null); }}>Cancel</button>
                         </div>
                     </div>
                 )}
@@ -499,7 +499,7 @@ function MediaLibraryTab() {
                                        title={allSelected ? 'Deselect all' : 'Select all on page'}/>
                             </th>
                             {MEDIA_SORT_COLUMNS.map(col => (
-                                <th key={col.key} style={thSortStyle} onClick={() => handleSort(col.key)}>
+                                <th key={col.key} style={thSortStyle} onClick={() => { handleSort(col.key); }}>
                                     {col.label}{sortIndicator(col.key)}
                                 </th>
                             ))}
@@ -512,7 +512,7 @@ function MediaLibraryTab() {
                                 style={selected.has(item.id) ? {background: 'color-mix(in srgb, var(--accent-color) 8%, transparent)'} : undefined}>
                                 <td>
                                     <input type="checkbox" checked={selected.has(item.id)}
-                                           onChange={() => toggleSelect(item.id)}/>
+                                           onChange={() => { toggleSelect(item.id); }}/>
                                 </td>
                                 <td style={{
                                     maxWidth: 240,
@@ -531,7 +531,7 @@ function MediaLibraryTab() {
                                 <td>
                                     <div style={{display: 'flex', gap: 4}}>
                                         <button className="admin-btn" style={{padding: '3px 8px', fontSize: 12}}
-                                                onClick={() => setEditItem(item)}>
+                                                onClick={() => { setEditItem(item); }}>
                                             <i className="bi bi-pencil-fill"/>
                                         </button>
                                         <button className="admin-btn admin-btn-danger"
@@ -555,14 +555,14 @@ function MediaLibraryTab() {
                     </table>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'center', gap: 8, marginTop: 8, alignItems: 'center'}}>
-                    <button className="admin-btn" disabled={mediaPage <= 1} onClick={() => setMediaPage(p => p - 1)}>←
+                    <button className="admin-btn" disabled={mediaPage <= 1} onClick={() => { setMediaPage(p => p - 1); }}>←
                         Prev
                     </button>
                     <span style={{fontSize: 13, color: 'var(--text-muted)', padding: '4px 0'}}>
                         Page {mediaPage} of {totalPages}
                     </span>
                     <button className="admin-btn" disabled={mediaPage >= totalPages}
-                            onClick={() => setMediaPage(p => p + 1)}>Next →
+                            onClick={() => { setMediaPage(p => p + 1); }}>Next →
                     </button>
                 </div>
             </div>
@@ -623,9 +623,9 @@ function SortableBackupsTable({backups, onRestore, onDelete}: {
             <table className="admin-table">
                 <thead>
                 <tr>
-                    <th style={thS} onClick={() => handleSort('filename')}>Name{ind('filename')}</th>
-                    <th style={thS} onClick={() => handleSort('size')}>Size{ind('size')}</th>
-                    <th style={thS} onClick={() => handleSort('created_at')}>Created{ind('created_at')}</th>
+                    <th style={thS} onClick={() => { handleSort('filename'); }}>Name{ind('filename')}</th>
+                    <th style={thS} onClick={() => { handleSort('size'); }}>Size{ind('size')}</th>
+                    <th style={thS} onClick={() => { handleSort('created_at'); }}>Created{ind('created_at')}</th>
                     <th>Actions</th>
                 </tr>
                 </thead>
@@ -638,10 +638,10 @@ function SortableBackupsTable({backups, onRestore, onDelete}: {
                         <td>
                             <div style={{display: 'flex', gap: 6}}>
                                 <button className="admin-btn admin-btn-warning"
-                                        onClick={() => onRestore(b.id, b.filename)}>Restore
+                                        onClick={() => { onRestore(b.id, b.filename); }}>Restore
                                 </button>
                                 <button className="admin-btn admin-btn-danger"
-                                        onClick={() => onDelete(b.id, b.filename)}>
+                                        onClick={() => { onDelete(b.id, b.filename); }}>
                                     <i className="bi bi-trash-fill"/>
                                 </button>
                             </div>
@@ -718,7 +718,7 @@ function ThumbnailStatsCard() {
                 <input
                     type="text"
                     value={thumbPath}
-                    onChange={e => setThumbPath(e.target.value)}
+                    onChange={e => { setThumbPath(e.target.value); }}
                     placeholder="Media ID to generate thumbnail..."
                     style={{
                         flex: 1,

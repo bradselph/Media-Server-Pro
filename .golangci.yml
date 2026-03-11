@@ -1,0 +1,179 @@
+# golangci-lint v2 configuration — SonarCloud-equivalent Go analysis
+# Install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Run:     golangci-lint run ./...
+version: "2"
+
+run:
+  timeout: 5m
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters:
+  default: none
+  enable:
+    # — Bug detection —
+    - errcheck          # unchecked errors
+    - govet             # go vet checks
+    - staticcheck       # comprehensive static analysis (SA*, S*, ST*, QF*)
+    - bodyclose         # unclosed HTTP response bodies
+    - nilerr            # returning nil after checking err != nil
+    - nilnil            # returning nil,nil where both matter
+    - sqlclosecheck     # unclosed sql.Rows
+
+    # — Security —
+    - gosec             # security issues (G101-G601)
+
+    # — Code quality —
+    - revive            # extensible linter, superset of golint
+    - gocritic          # opinionated style + performance checks
+    - unconvert         # unnecessary type conversions
+    - unparam           # unused function parameters
+    - unused            # unused code
+    - ineffassign       # ineffectual assignments
+    - misspell          # spelling mistakes in comments/strings
+    - prealloc          # slice preallocation opportunities
+    - copyloopvar       # loop variable capture bugs
+    - durationcheck     # time.Duration multiplication bugs
+    - errname           # error type naming conventions
+    - makezero          # append to non-zero-length slices
+
+    # — Complexity —
+    - cyclop            # cyclomatic complexity
+    - gocognit          # cognitive complexity
+    - nestif            # deeply nested if statements
+    - funlen            # function length
+
+    # — Error handling —
+    - errorlint         # error wrapping issues (Go 1.13+)
+
+    # — Duplication —
+    - dupl              # code duplication detection
+
+    # — Style —
+    - whitespace        # unnecessary blank lines
+
+  settings:
+    cyclop:
+      max-complexity: 20
+
+    gocognit:
+      min-complexity: 25
+
+    funlen:
+      lines: 120
+      statements: 60
+
+    nestif:
+      min-complexity: 6
+
+    dupl:
+      threshold: 120
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+          disabled: true
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+
+    gosec:
+      excludes:
+        - G104   # unhandled errors — covered by errcheck
+        - G304   # file path from variable — too noisy for a media server
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    misspell:
+      locale: US
+
+    staticcheck:
+      checks:
+        - all
+        - "-SA1019"
+
+  exclusions:
+    # Show all issues (don't cap per-linter)
+    max-issues-per-linter: 0
+    max-same-issues: 0
+
+    rules:
+      # Test files get relaxed rules
+      - path: _test\.go
+        linters:
+          - funlen
+          - dupl
+          - gocritic
+          - cyclop
+          - gocognit
+          - errcheck
+
+      # Generated/embedded files
+      - path: web/server\.go
+        linters:
+          - funlen
+
+      # Main entry point tends to be long
+      - path: cmd/server/main\.go
+        linters:
+          - funlen
+          - cyclop
+          - gocognit
+
+    paths:
+      - _old_code
+      - vendor
+      - web/static
+      - web/frontend
+
+output:
+  formats:
+    text:
+      path: stdout
+  sort-results: true
+  sort-order:
+    - linter
+    - severity
+    - file

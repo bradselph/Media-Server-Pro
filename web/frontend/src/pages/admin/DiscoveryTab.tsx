@@ -14,6 +14,8 @@ const inputStyle = {
     fontSize: 13,
 } as const
 
+const DISCOVERY_SUGGESTIONS_KEY = ['admin-discovery-suggestions'] as const
+
 export function DiscoveryTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -21,7 +23,7 @@ export function DiscoveryTab() {
     const [scanning, setScanning] = useState(false)
 
     const { data: suggestions = [] } = useQuery<DiscoverySuggestion[]>({
-        queryKey: ['admin-discovery-suggestions'],
+        queryKey: DISCOVERY_SUGGESTIONS_KEY,
         queryFn: () => adminApi.getDiscoverySuggestions(),
     })
 
@@ -33,7 +35,7 @@ export function DiscoveryTab() {
         try {
             await adminApi.discoveryScan(scanDir.trim())
             setMsg({ type: 'success', text: 'Discovery scan complete. Refresh suggestions below.' })
-            await queryClient.invalidateQueries({ queryKey: ['admin-discovery-suggestions'] })
+            await queryClient.invalidateQueries({ queryKey: DISCOVERY_SUGGESTIONS_KEY })
             setScanDir('')
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
@@ -46,7 +48,7 @@ export function DiscoveryTab() {
         try {
             await adminApi.applyDiscoverySuggestion(originalPath)
             setMsg({ type: 'success', text: 'Suggestion applied.' })
-            await queryClient.invalidateQueries({ queryKey: ['admin-discovery-suggestions'] })
+            await queryClient.invalidateQueries({ queryKey: DISCOVERY_SUGGESTIONS_KEY })
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
         }
@@ -55,7 +57,7 @@ export function DiscoveryTab() {
     async function handleDismiss(originalPath: string) {
         try {
             await adminApi.dismissDiscoverySuggestion(originalPath)
-            await queryClient.invalidateQueries({ queryKey: ['admin-discovery-suggestions'] })
+            await queryClient.invalidateQueries({ queryKey: DISCOVERY_SUGGESTIONS_KEY })
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
         }
@@ -78,7 +80,7 @@ export function DiscoveryTab() {
                     <input
                         type="text"
                         value={scanDir}
-                        onChange={(e) => setScanDir(e.target.value)}
+                        onChange={(e) => { setScanDir(e.target.value); }}
                         placeholder="Directory path to scan..."
                         style={inputStyle}
                     />

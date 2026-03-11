@@ -270,14 +270,8 @@ func (r *CrawlerDiscoveryRepository) rowToRecord(row *crawlerDiscoveryRow) *repo
 		DetectionMethod: row.DetectionMethod,
 		Status:          row.Status,
 		ReviewedBy:      row.ReviewedBy,
-	}
-	if t, err := parseTime(row.DiscoveredAt); err == nil {
-		rec.DiscoveredAt = t
-	}
-	if row.ReviewedAt != nil {
-		if t, err := parseTime(*row.ReviewedAt); err == nil {
-			rec.ReviewedAt = &t
-		}
+		DiscoveredAt:    parseTimeDefault(row.DiscoveredAt),
+		ReviewedAt:      parseOptionalTime(row.ReviewedAt),
 	}
 	return rec
 }

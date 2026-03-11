@@ -14,7 +14,7 @@ const inputStyle = {
     fontSize: 13,
 } as const
 
-type Message = { type: 'success' | 'error'; text: string }
+interface Message { type: 'success' | 'error'; text: string }
 
 function useCategorizer() {
     const queryClient = useQueryClient()
@@ -207,7 +207,7 @@ function CategorizeFileCard({
                 <input
                     type="text"
                     value={catPath}
-                    onChange={(e) => setCatPath(e.target.value)}
+                    onChange={(e) => { setCatPath(e.target.value); }}
                     placeholder="Media file path..."
                     style={inputStyle}
                 />
@@ -264,14 +264,14 @@ function SetCategoryCard({
                 <input
                     type="text"
                     value={setPath}
-                    onChange={(e) => setSetPath(e.target.value)}
+                    onChange={(e) => { setSetPath(e.target.value); }}
                     placeholder="Media file path..."
                     style={{ ...inputStyle, flex: 2 }}
                 />
                 <input
                     type="text"
                     value={setCategory}
-                    onChange={(e) => setSetCategoryValue(e.target.value)}
+                    onChange={(e) => { setSetCategoryValue(e.target.value); }}
                     placeholder="Category name..."
                     style={inputStyle}
                 />
@@ -304,7 +304,7 @@ function BrowseByCategoryCard({
         <div className="admin-card">
             <h3>Browse by Category</h3>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                <select value={browseCat} onChange={(e) => setBrowseCat(e.target.value)} style={inputStyle}>
+                <select value={browseCat} onChange={(e) => { setBrowseCat(e.target.value); }} style={inputStyle}>
                     <option value="">Select category...</option>
                     {categories.map((c) => (
                         <option key={c} value={c}>

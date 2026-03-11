@@ -205,7 +205,7 @@ function RemoteTab() {
 
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
                 <h3 style={{margin: 0}}>Remote Sources</h3>
-                <button className="admin-btn admin-btn-primary" onClick={() => setShowAdd(s => !s)}>
+                <button className="admin-btn admin-btn-primary" onClick={() => { setShowAdd(s => !s); }}>
                     <i className={`bi bi-${showAdd ? 'x-lg' : 'plus-lg'}`}/> {showAdd ? 'Cancel' : 'Add Source'}
                 </button>
             </div>
@@ -233,7 +233,7 @@ function RemoteTab() {
                                 style={{display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>URL
                                 *</label>
                             <input className="admin-input" placeholder="https://example.com/media" value={addURL}
-                                   onChange={e => setAddURL(e.target.value)} required/>
+                                   onChange={e => { setAddURL(e.target.value); }} required/>
                         </div>
                         <div>
                             <label
@@ -247,7 +247,7 @@ function RemoteTab() {
                                 style={{display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>Password
                                 (optional)</label>
                             <input className="admin-input" type="password" placeholder="••••••" value={addPass}
-                                   onChange={e => setAddPass(e.target.value)} autoComplete="new-password"/>
+                                   onChange={e => { setAddPass(e.target.value); }} autoComplete="new-password"/>
                         </div>
                     </div>
                     <button className="admin-btn admin-btn-primary" type="submit" disabled={adding}>
@@ -505,7 +505,7 @@ function ReceiverTab() {
                 <div className={`admin-alert admin-alert-${msg.type === 'success' ? 'success' : 'danger'}`}
                      style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                     <span><i className={`bi ${msg.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}/> {msg.text}</span>
-                    <button onClick={() => setMsg(null)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7}}>×</button>
+                    <button onClick={() => { setMsg(null); }} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7}}>×</button>
                 </div>
             )}
 
@@ -755,7 +755,7 @@ function ExtractorTab() {
                 <input
                     type="url"
                     value={newUrl}
-                    onChange={e => setNewUrl(e.target.value)}
+                    onChange={e => { setNewUrl(e.target.value); }}
                     placeholder="M3U8 playlist URL..."
                     required
                     style={{flex: 2, minWidth: '250px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
@@ -763,7 +763,7 @@ function ExtractorTab() {
                 <input
                     type="text"
                     value={newTitle}
-                    onChange={e => setNewTitle(e.target.value)}
+                    onChange={e => { setNewTitle(e.target.value); }}
                     placeholder="Title (optional)"
                     style={{flex: 1, minWidth: '150px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
                 />
@@ -961,7 +961,7 @@ function CrawlerTab() {
                 <input
                     type="url"
                     value={newUrl}
-                    onChange={e => setNewUrl(e.target.value)}
+                    onChange={e => { setNewUrl(e.target.value); }}
                     placeholder="Site URL to crawl..."
                     required
                     style={{flex: 2, minWidth: '250px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
@@ -969,7 +969,7 @@ function CrawlerTab() {
                 <input
                     type="text"
                     value={newName}
-                    onChange={e => setNewName(e.target.value)}
+                    onChange={e => { setNewName(e.target.value); }}
                     placeholder="Name (optional)"
                     style={{flex: 1, minWidth: '120px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
                 />
@@ -1023,12 +1023,12 @@ function CrawlerTab() {
                     <button
                         className={`admin-btn ${reviewView === 'pending' ? 'admin-btn-primary' : ''}`}
                         style={{fontSize: 12, padding: '4px 10px'}}
-                        onClick={() => setReviewView('pending')}
+                        onClick={() => { setReviewView('pending'); }}
                     >Pending</button>
                     <button
                         className={`admin-btn ${reviewView === 'all' ? 'admin-btn-primary' : ''}`}
                         style={{fontSize: 12, padding: '4px 10px'}}
-                        onClick={() => setReviewView('all')}
+                        onClick={() => { setReviewView('all'); }}
                     >All</button>
                 </div>
             </div>
@@ -1155,7 +1155,7 @@ function DuplicatesTab() {
                 <div className={`admin-alert admin-alert-${msg.type === 'success' ? 'success' : 'danger'}`}
                      style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                     <span><i className={`bi ${msg.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}/> {msg.text}</span>
-                    <button onClick={() => setMsg(null)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7}}>×</button>
+                    <button onClick={() => { setMsg(null); }} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7}}>×</button>
                 </div>
             )}
 
@@ -1165,7 +1165,7 @@ function DuplicatesTab() {
                 </div>
                 <div style={{display: 'flex', gap: 8}}>
                     <button className={`admin-btn ${showAll ? 'admin-btn-primary' : ''}`} style={{fontSize: 12, padding: '5px 10px'}}
-                            onClick={() => setShowAll(v => !v)}>
+                            onClick={() => { setShowAll(v => !v); }}>
                         <i className={`bi ${showAll ? 'bi-funnel-fill' : 'bi-funnel'}`}/> {showAll ? 'Showing All' : 'Show All'}
                     </button>
                     <button className="admin-btn" style={{fontSize: 12, padding: '5px 10px'}}

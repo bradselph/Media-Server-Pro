@@ -6,6 +6,15 @@ import { errMsg } from './adminUtils'
 
 type ReviewSortKey = 'name' | 'detected_at' | 'confidence'
 
+const EMPTY_LABEL = '—'
+const REVIEW_QUEUE_KEY = ['review-queue'] as const
+
+function confidenceColor(confidence: number): string {
+    if (confidence > 0.8) return '#ef4444'
+    if (confidence > 0.5) return '#f59e0b'
+    return '#10b981'
+}
+
 function sortQueue(
     queue: ScanResultItem[],
     sortBy: ReviewSortKey,
@@ -96,7 +105,7 @@ function ReviewQueueRow({
                 {item.name}
             </td>
             <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {item.detected_at ? new Date(item.detected_at).toLocaleDateString() : '—'}
+                {item.detected_at ? new Date(item.detected_at).toLocaleDateString() : EMPTY_LABEL}
             </td>
             <td>
                 <div style={{ fontSize: 12 }}>{Math.round(item.confidence * 100)}%</div>
@@ -105,14 +114,13 @@ function ReviewQueueRow({
                         className="admin-progress-fill"
                         style={{
                             width: `${item.confidence * 100}%`,
-                            background:
-                                item.confidence > 0.8 ? '#ef4444' : item.confidence > 0.5 ? '#f59e0b' : '#10b981',
+                            background: confidenceColor(item.confidence),
                         }}
                     />
                 </div>
             </td>
             <td style={{ maxWidth: 160, fontSize: 11, color: 'var(--text-muted)' }}>
-                {(item.reasons ?? []).join(', ') || '—'}
+                {(item.reasons ?? []).join(', ') || EMPTY_LABEL}
             </td>
             <td>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -126,7 +134,7 @@ function ReviewQueueRow({
                             adminApi
                                 .batchReview('reject', [item.id])
                                 .then(onInvalidate)
-                                .catch((err) => setMsg({ type: 'error', text: errMsg(err) }))
+                                .catch((err) => { setMsg({ type: 'error', text: errMsg(err) }); })
                                 .finally(onApprove)
                         }}
                     >
@@ -142,7 +150,7 @@ function ReviewQueueRow({
                             adminApi
                                 .batchReview('approve', [item.id])
                                 .then(onInvalidate)
-                                .catch((err) => setMsg({ type: 'error', text: errMsg(err) }))
+                                .catch((err) => { setMsg({ type: 'error', text: errMsg(err) }); })
                                 .finally(onApprove)
                         }}
                     >
@@ -159,7 +167,7 @@ function ReviewQueueRow({
                             adminApi
                                 .rejectContent(item.id)
                                 .then(onInvalidate)
-                                .catch((err) => setMsg({ type: 'error', text: errMsg(err) }))
+                                .catch((err) => { setMsg({ type: 'error', text: errMsg(err) }); })
                                 .finally(onApprove)
                         }}
                     >
@@ -221,7 +229,7 @@ function ReviewQueueTable({
                     type="text"
                     placeholder="Search files..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => { setSearch(e.target.value); }}
                     style={{
                         padding: '6px 10px',
                         border: '1px solid var(--border-color)',
@@ -241,18 +249,18 @@ function ReviewQueueTable({
                             <th>
                                 <input
                                     type="checkbox"
-                                    onChange={(e) =>
-                                        setSelected(e.target.checked ? new Set(sortedQueue.map((i) => i.id)) : new Set())
-                                    }
+                                    onChange={(e) => {
+                                        setSelected(e.target.checked ? new Set(sortedQueue.map((i) => i.id)) : new Set());
+                                    }}
                                 />
                             </th>
-                            <th style={thStyle} onClick={() => handleSort('name')}>
+                            <th style={thStyle} onClick={() => { handleSort('name'); }}>
                                 File{sortIndicator('name')}
                             </th>
-                            <th style={thStyle} onClick={() => handleSort('detected_at')}>
+                            <th style={thStyle} onClick={() => { handleSort('detected_at'); }}>
                                 Detected{sortIndicator('detected_at')}
                             </th>
-                            <th style={thStyle} onClick={() => handleSort('confidence')}>
+                            <th style={thStyle} onClick={() => { handleSort('confidence'); }}>
                                 Confidence{sortIndicator('confidence')}
                             </th>
                             <th>Reasons</th>
@@ -274,7 +282,7 @@ function ReviewQueueTable({
                                     })
                                 }}
                                 processingPaths={processingPaths}
-                                onReject={() => setProcessingPaths((prev) => new Set(prev).add(item.id))}
+                                onReject={() => { setProcessingPaths((prev) => new Set(prev).add(item.id)); }}
                                 onApprove={() =>
                                     setProcessingPaths((prev) => {
                                         const next = new Set(prev)
@@ -429,7 +437,7 @@ export function ContentReviewTab() {
     })
 
     const { data: queue = [], isLoading } = useQuery({
-        queryKey: ['review-queue'],
+        queryKey: REVIEW_QUEUE_KEY,
         queryFn: () => adminApi.getReviewQueue(),
     })
 
@@ -442,7 +450,7 @@ export function ContentReviewTab() {
             await adminApi.batchReview(action, ids)
             setSelected(new Set())
             setMsg({ type: 'success', text: `"${action}" applied to ${ids.length} item(s).` })
-            await queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+            await queryClient.invalidateQueries({ queryKey: REVIEW_QUEUE_KEY })
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
         }
@@ -465,10 +473,10 @@ export function ContentReviewTab() {
         adminApi
             .clearReviewQueue()
             .then(() => {
-                void queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+                queryClient.invalidateQueries({ queryKey: REVIEW_QUEUE_KEY })
                 setMsg({ type: 'success', text: 'Queue cleared.' })
             })
-            .catch((err) => setMsg({ type: 'error', text: errMsg(err) }))
+            .catch((err) => { setMsg({ type: 'error', text: errMsg(err) }); })
     }
 
     return (
@@ -493,7 +501,7 @@ export function ContentReviewTab() {
                 processingPaths={processingPaths}
                 setProcessingPaths={setProcessingPaths}
                 setMsg={setMsg}
-                onInvalidate={() => queryClient.invalidateQueries({ queryKey: ['review-queue'] })}
+                onInvalidate={() => queryClient.invalidateQueries({ queryKey: REVIEW_QUEUE_KEY })}
                 sortBy={reviewSortBy}
                 setSortBy={setReviewSortBy}
                 sortOrder={reviewSortOrder}

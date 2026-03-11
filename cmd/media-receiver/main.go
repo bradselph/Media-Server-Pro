@@ -226,8 +226,11 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 		HandshakeTimeout: 15 * time.Second,
 	}
 
-	conn, _, err := dialer.DialContext(ctx, wsURL, nil)
+	conn, resp, err := dialer.DialContext(ctx, wsURL, nil)
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 		return fmt.Errorf("WebSocket dial failed: %w", err)
 	}
 	defer conn.Close()
@@ -424,10 +427,8 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	httpReq.Header.Set("X-Stream-Status", fmt.Sprintf("%d", statusCode))
 	httpReq.ContentLength = contentLength
 
-	if extraHeaders != nil {
-		for k, v := range extraHeaders {
-			httpReq.Header.Set(k, v)
-		}
+	for k, v := range extraHeaders {
+		httpReq.Header.Set(k, v)
 	}
 
 	resp, err := streamHTTPClient.Do(httpReq)

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/api/endpoints'
 import { errMsg } from './adminUtils'
 
-type HuggingFaceConfigBlock = {
+interface HuggingFaceConfigBlock {
     enabled?: boolean
     api_key_set?: boolean
     model?: string
@@ -27,7 +27,7 @@ function HuggingFaceStatusCards({ status }: { status: ClassifyStatus }) {
             </div>
             <div className="admin-stat-card">
                 <span className="admin-stat-value" style={{ fontSize: 14 }}>
-                    {status.model || '—'}
+                    {status.model ?? '—'}
                 </span>
                 <span className="admin-stat-label">Model</span>
             </div>
@@ -56,7 +56,7 @@ const inputBaseStyle = {
     fontSize: 13,
 }
 
-type ClassifyStatus = {
+interface ClassifyStatus {
     configured: boolean
     enabled: boolean
     model?: string
@@ -81,7 +81,7 @@ function buildHuggingFaceConfigUpdates(params: {
     const concurrent = Math.max(1, Math.min(10, Number(params.maxConcurrent) || 2))
     const updates: Record<string, string | number | boolean> = {
         'huggingface.enabled': params.enabled,
-        'huggingface.model': (params.model && params.model.trim()) || 'Salesforce/blip-image-captioning-large',
+        'huggingface.model': (params.model?.trim()) || 'Salesforce/blip-image-captioning-large',
         'huggingface.max_frames': frames,
         'huggingface.rate_limit': rate,
         'huggingface.timeout_secs': timeout,
@@ -109,7 +109,7 @@ function HuggingFaceFormApiKey({
                 type="password"
                 className="admin-input"
                 value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
+                onChange={(e) => { setApiKeyInput(e.target.value); }}
                 placeholder={
                     apiKeySet ? '•••••••• (leave blank to keep current)' : 'Enter Hugging Face API token'
                 }
@@ -141,7 +141,7 @@ function HuggingFaceFormModelAndEndpoint({
                     type="text"
                     className="admin-input"
                     value={model}
-                    onChange={(e) => setModel(e.target.value)}
+                    onChange={(e) => { setModel(e.target.value); }}
                     placeholder="Salesforce/blip-image-captioning-large"
                 />
             </div>
@@ -151,7 +151,7 @@ function HuggingFaceFormModelAndEndpoint({
                     type="text"
                     className="admin-input"
                     value={endpointUrl}
-                    onChange={(e) => setEndpointUrl(e.target.value)}
+                    onChange={(e) => { setEndpointUrl(e.target.value); }}
                     placeholder="https://api-inference.huggingface.co"
                 />
             </div>
@@ -194,7 +194,7 @@ function HuggingFaceFormNumericOptions({
                     min={1}
                     max={20}
                     value={maxFrames}
-                    onChange={(e) => setMaxFrames(Number(e.target.value) || 1)}
+                    onChange={(e) => { setMaxFrames(Number(e.target.value) || 1); }}
                 />
             </div>
             <div className="admin-form-group">
@@ -205,7 +205,7 @@ function HuggingFaceFormNumericOptions({
                     min={1}
                     max={120}
                     value={rateLimit}
-                    onChange={(e) => setRateLimit(Number(e.target.value) || 1)}
+                    onChange={(e) => { setRateLimit(Number(e.target.value) || 1); }}
                 />
             </div>
             <div className="admin-form-group">
@@ -216,7 +216,7 @@ function HuggingFaceFormNumericOptions({
                     min={5}
                     max={120}
                     value={timeoutSecs}
-                    onChange={(e) => setTimeoutSecs(Number(e.target.value) || 30)}
+                    onChange={(e) => { setTimeoutSecs(Number(e.target.value) || 30); }}
                 />
             </div>
             <div className="admin-form-group">
@@ -227,7 +227,7 @@ function HuggingFaceFormNumericOptions({
                     min={1}
                     max={10}
                     value={maxConcurrent}
-                    onChange={(e) => setMaxConcurrent(Number(e.target.value) || 1)}
+                    onChange={(e) => { setMaxConcurrent(Number(e.target.value) || 1); }}
                 />
             </div>
         </div>
@@ -279,7 +279,7 @@ function HuggingFaceSettingsForm({
         <form onSubmit={onSave}>
             <div className="admin-form-group">
                 <label>
-                    <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enable
+                    <input type="checkbox" checked={enabled} onChange={(e) => { setEnabled(e.target.checked); }} /> Enable
                     Hugging Face classification
                 </label>
             </div>
@@ -333,7 +333,7 @@ function ClassifyPathRow({
             <input
                 type="text"
                 value={value}
-                onChange={(e) => onChange(e.target.value)}
+                onChange={(e) => { onChange(e.target.value); }}
                 placeholder={placeholder}
                 style={{ flex: 1, minWidth: 200, ...inputBaseStyle }}
             />
@@ -481,7 +481,7 @@ function useHuggingFaceTab() {
                 type: 'success',
                 text: result?.message ?? 'Directory classification started in background.',
             })
-            void queryClient.invalidateQueries({ queryKey: ['classify-status'] })
+            queryClient.invalidateQueries({ queryKey: ['classify-status'] })
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
         } finally {
@@ -507,7 +507,7 @@ function useHuggingFaceTab() {
             await adminApi.updateConfig(updates)
             setMsg({ type: 'success', text: 'Settings saved. Some changes may require a restart.' })
             setApiKeyInput('')
-            void queryClient.invalidateQueries({ queryKey: ['admin-config', 'classify-status'] })
+            queryClient.invalidateQueries({ queryKey: ['admin-config', 'classify-status'] })
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
         } finally {

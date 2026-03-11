@@ -4,6 +4,8 @@ import {adminApi, analyticsApi} from '@/api/endpoints'
 import type {AnalyticsEvent, EventStats, SuggestionStats} from '@/api/types'
 import {errMsg} from './adminUtils'
 
+const ADMIN_STAT_CARD = 'admin-stat-card'
+
 // ── Tab: Analytics ────────────────────────────────────────────────────────────
 
 export function AnalyticsTab() {
@@ -81,41 +83,41 @@ export function AnalyticsTab() {
                 )}
                 {summary && !summary.analytics_disabled && (
                     <div className="admin-stats-grid">
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(summary.total_events ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Total Events</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(summary.unique_clients ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Unique Clients</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{summary.active_sessions ?? 0}</span>
                             <span className="admin-stat-label">Active Now</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(summary.total_views ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Total Views</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(summary.today_views ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Views Today</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(summary.total_media ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Media Tracked</span>
                         </div>
                     </div>
                 )}
                 {/* Feature 5: Event detail stats — guard empty/partial response when analytics disabled */}
-                {eventStats && (eventStats.total_events != null || (eventStats.event_counts && Object.keys(eventStats.event_counts).length > 0) || (eventStats.hourly_events?.length ?? 0) > 0) && (
+                {eventStats && (eventStats.total_events !== null || (eventStats.event_counts && Object.keys(eventStats.event_counts).length > 0) || (eventStats.hourly_events?.length ?? 0) > 0) && (
                     <>
                     <div className="admin-stats-grid" style={{marginTop: 12}}>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(eventStats.event_counts && Object.keys(eventStats.event_counts).length) ?? 0}</span>
                             <span className="admin-stat-label">Event Types</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(eventStats.total_events ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Total Tracked</span>
                         </div>
@@ -146,19 +148,19 @@ export function AnalyticsTab() {
                 {/* Feature 9: Suggestion stats — guard partial/empty when suggestions module unavailable */}
                 {suggestionStats && (
                     <div className="admin-stats-grid" style={{marginTop: 12}}>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(suggestionStats.total_profiles ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">User Profiles</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(suggestionStats.total_media ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Media Tracked</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(suggestionStats.total_views ?? 0).toLocaleString()}</span>
                             <span className="admin-stat-label">Views Tracked</span>
                         </div>
-                        <div className="admin-stat-card">
+                        <div className={ADMIN_STAT_CARD}>
                             <span className="admin-stat-value">{(suggestionStats.total_watch_time ?? 0) > 3600 ? `${((suggestionStats.total_watch_time ?? 0) / 3600).toFixed(1)}h` : `${Math.round((suggestionStats.total_watch_time ?? 0) / 60)}m`}</span>
                             <span className="admin-stat-label">Watch Time</span>
                         </div>
@@ -263,7 +265,7 @@ export function AnalyticsTab() {
                         <select
                             className="admin-select"
                             value={eventsByTypeFilter}
-                            onChange={e => setEventsByTypeFilter(e.target.value)}
+                            onChange={e => { setEventsByTypeFilter(e.target.value); }}
                         >
                             <option value="">— Select type —</option>
                             {Object.keys(eventCounts).sort().map(t => (
@@ -307,7 +309,7 @@ export function AnalyticsTab() {
                         className="admin-input"
                         placeholder="Media ID"
                         value={eventsByMediaId}
-                        onChange={e => setEventsByMediaId(e.target.value)}
+                        onChange={e => { setEventsByMediaId(e.target.value); }}
                         style={{minWidth: 200}}
                     />
                 </div>
