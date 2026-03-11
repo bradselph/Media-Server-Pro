@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MutableRefObject, RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
@@ -16,7 +17,7 @@ import {
     suggestionsApi,
     watchHistoryApi,
 } from '@/api/endpoints'
-import type { HLSJob } from '@/api/types'
+import type { HLSJob, User } from '@/api/types'
 import { usePlayerKeyboard } from './playerKeyboard'
 
 const QUALITY_HEIGHT_MAP: Record<string, number> = {
@@ -60,14 +61,14 @@ function shouldResumeAtPosition(
 
 /** Syncs user quality/preference and playlist index. Reduces main hook complexity. */
 function usePlayerSyncEffects(
-    user: { preferences?: { default_quality?: string } } | null,
+    user: { preferences?: Record<string, unknown> } | null,
     mediaId: string,
     currentPlaylist: { media_id: string }[],
     currentIndex: number,
     setCurrentIndex: (i: number) => void,
 ) {
     useEffect(() => {
-        syncQualityPreference(user?.preferences?.default_quality)
+        syncQualityPreference(user?.preferences?.default_quality as string | undefined)
     }, [user?.preferences?.default_quality])
 
     useEffect(() => {
@@ -75,66 +76,9 @@ function usePlayerSyncEffects(
     }, [mediaId, currentPlaylist, currentIndex, setCurrentIndex])
 }
 
-export function usePlayerPageState(mediaId: string) {
-    const navigate = useNavigate()
-    const permissions = useAuthStore((s) => s.permissions)
-    const user = useAuthStore((s) => s.user)
-    const canViewMature = permissions.can_view_mature && (user?.preferences?.show_mature === true)
-    const { showToast } = useToast()
-    const { currentPlaylist, currentIndex, setCurrentIndex, playNext, playPrevious } =
-        usePlaylistStore()
-
-    const videoRef = useRef<HTMLVideoElement>(null)
-    const audioRef = useRef<HTMLAudioElement>(null)
-    const resumePositionRef = useRef(0)
-    const currentTimeRef = useRef(0)
-    const durationRef = useRef(0)
-    const isPlayingRef = useRef(false)
-    const [audioReady, setAudioReady] = useState(false)
-
-    const [isPlaying, setIsPlaying] = useState(false)
-    const [currentTime, setCurrentTime] = useState(0)
-    const [duration, setDuration] = useState(0)
-    const [buffered, setBuffered] = useState(0)
-    const [volume, setVolume] = useState(1)
-    const [isMuted, setIsMuted] = useState(false)
-    const [isLooping, setIsLooping] = useState(false)
-    const defaultPlaybackSpeed = user?.preferences?.playback_speed ?? 1
-    const [playbackRate, setPlaybackRate] = useState(defaultPlaybackSpeed)
-    const [showControls, setShowControls] = useState(true)
-    const [showSettings, setShowSettings] = useState(false)
-    const [isLoading, setIsLoading] = useState(true)
-    const [matureAccepted, setMatureAccepted] = useState(false)
-    const [theaterMode, setTheaterMode] = useState(false)
-    const [hoverTime, setHoverTime] = useState<number | null>(null)
-    const [hoverPos, setHoverPos] = useState(0)
-    const [hlsJob, setHlsJob] = useState<HLSJob | null>(null)
-    const [hlsPolling, setHlsPolling] = useState(false)
-    const [activeHlsUrl, setActiveHlsUrl] = useState<string | null>(null)
-    const [hlsAvailable, setHlsAvailable] = useState(false)
-    const [hlsReadyUrl, setHlsReadyUrl] = useState<string | null>(null)
-    const hlsEnabled = useSettingsStore((s) => s.serverSettings?.features?.enableHLS ?? true)
-    const [userRating, setUserRating] = useState(0)
-    const [ratingHover, setRatingHover] = useState(0)
-
-    usePlayerSyncEffects(user, mediaId, currentPlaylist, currentIndex, setCurrentIndex)
-
-    const handleRate = useCallback(
-        (rating: number) => {
-            setUserRating(rating)
-            if (mediaId) ratingsApi.record(mediaId, rating).catch(() => {})
-        },
-        [mediaId],
-    )
-
-    const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const lastClickTimeRef = useRef(0)
-
-    const {
-        data: media,
-        isLoading: mediaLoading,
-        error: mediaError,
-    } = useQuery({
+/** Media + similar + trending queries. Isolates query logic from main hook. */
+function usePlayerMediaQueries(mediaId: string, canViewMature: boolean) {
+    const { data: media, isLoading: mediaLoading, error: mediaError } = useQuery({
         queryKey: ['media-item', mediaId],
         queryFn: () => mediaApi.get(mediaId),
         enabled: !!mediaId,
@@ -144,36 +88,6 @@ export function usePlayerPageState(mediaId: string) {
         },
         retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
     })
-
-    const matureAccessGranted =
-        matureAccepted || (user?.preferences?.show_mature === true)
-    const showMatureWarning = !!(media?.is_mature && !matureAccessGranted)
-
-    const onHlsFallback = useCallback(() => setActiveHlsUrl(null), [])
-
-    const {
-        qualities: hlsQualities,
-        currentQuality,
-        autoLevel,
-        selectQuality,
-        isLoading: hlsIsLoading,
-        error: hlsError,
-        bandwidth,
-    } = useHLS(
-        videoRef,
-        media?.type === 'video' && hlsEnabled ? activeHlsUrl : null,
-        onHlsFallback,
-    )
-
-    useEffect(() => {
-        if (hlsError) showToast(hlsError, 'error')
-    }, [hlsError, showToast])
-
-    useEffect(() => {
-        if (audioRef.current) queueMicrotask(() => setAudioReady(true))
-    }, [])
-
-    useEqualizer(audioRef, audioReady && media?.type === 'audio')
 
     const {
         data: similarData = [],
@@ -206,63 +120,40 @@ export function usePlayerPageState(mediaId: string) {
     const relatedLabel = similarData.length > 0 ? 'Similar Media' : 'More to Explore'
     const relatedStillLoading = relatedLoading || (useFallback && trendingLoading)
 
-    useEffect(() => {
-        if (!mediaId || !media || (media.is_mature && !matureAccessGranted)) return
-        const el = media.type === 'video' ? videoRef.current : audioRef.current
-        if (!el) return
+    return {
+        media,
+        mediaLoading,
+        mediaError,
+        related,
+        relatedLabel,
+        relatedStillLoading,
+        similarError,
+        similarRefetch,
+    }
+}
 
-        queueMicrotask(() => {
-            setIsLoading(true)
-            setCurrentTime(0)
-            setDuration(0)
-            setIsPlaying(false)
-            setActiveHlsUrl(null)
-            setHlsAvailable(false)
-            setHlsReadyUrl(null)
-            setHlsJob(null)
-            setHlsPolling(false)
-            setUserRating(0)
-        })
-
-        el.src = mediaApi.getStreamUrl(mediaId)
-        el.volume = volume
-        el.loop = isLooping
-        el.playbackRate = playbackRate
-
-        resumePositionRef.current = 0
-        let positionFetchCancelled = false
-        const resumeEnabled = user?.preferences?.resume_playback !== false
-        if (user && resumeEnabled) {
-            const elRef = el
-            watchHistoryApi
-                .getPosition(mediaId)
-                .then((data) => {
-                    if (positionFetchCancelled) return
-                    const pos = data?.position ?? 0
-                    resumePositionRef.current = pos
-                    if (shouldResumeAtPosition(elRef, pos)) {
-                        elRef.currentTime = pos
-                    }
-                })
-                .catch(() => {})
-        }
-        analyticsApi.trackEvent({ type: 'view', media_id: media.id }).catch(() => {})
-
-        return () => {
-            positionFetchCancelled = true
-        }
-    }, [mediaId, media, matureAccessGranted]) // eslint-disable-line react-hooks/exhaustive-deps
-
+/** Effect: check HLS availability and start polling if job is running. */
+function useHlsCheckEffect(
+    mediaId: string,
+    media: { type: string } | undefined,
+    hlsEnabled: boolean,
+    setters: {
+        setHlsAvailable: (v: boolean) => void
+        setHlsReadyUrl: (v: string | null) => void
+        setHlsJob: (v: HLSJob | null) => void
+        setHlsPolling: (v: boolean) => void
+    },
+) {
     useEffect(() => {
         if (!mediaId || media?.type !== 'video' || !hlsEnabled) return
         hlsApi
             .check(mediaId)
             .then((hls) => {
                 if (hls.available && hls.hls_url) {
-                    setHlsAvailable(true)
-                    setHlsReadyUrl(hls.hls_url)
+                    setters.setHlsAvailable(true)
+                    setters.setHlsReadyUrl(hls.hls_url)
                 } else if (hls.job_id && hls.status === 'running') {
-                    setHlsJob({
+                    setters.setHlsJob({
                         id: hls.job_id,
                         status: 'running',
                         progress: hls.progress ?? 0,
@@ -271,116 +162,215 @@ export function usePlayerPageState(mediaId: string) {
                         error: hls.error ?? '',
                         available: false,
                     })
-                    setHlsPolling(true)
+                    setters.setHlsPolling(true)
                 }
             })
             .catch(() => {})
-    }, [mediaId, media, hlsEnabled])
+    }, [mediaId, media, hlsEnabled, setters])
+}
 
+/** Effect: poll HLS job status until completed or failed. */
+function useHlsPollingEffect(
+    hlsPolling: boolean,
+    hlsJob: HLSJob | null,
+    setters: {
+        setHlsJob: (v: HLSJob | null) => void
+        setHlsPolling: (v: boolean) => void
+        setHlsAvailable: (v: boolean) => void
+        setHlsReadyUrl: (v: string | null) => void
+    },
+) {
     useEffect(() => {
         if (!hlsPolling || !hlsJob) return
         const interval = setInterval(async () => {
             try {
                 const updated = await hlsApi.getStatus(hlsJob.id)
-                setHlsJob(updated)
+                setters.setHlsJob(updated)
                 if (updated.status === 'completed') {
-                    setHlsPolling(false)
-                    setHlsAvailable(true)
-                    setHlsReadyUrl(hlsApi.getMasterPlaylistUrl(updated.id))
+                    setters.setHlsPolling(false)
+                    setters.setHlsAvailable(true)
+                    setters.setHlsReadyUrl(hlsApi.getMasterPlaylistUrl(updated.id))
                 } else if (updated.status === 'failed') {
-                    setHlsPolling(false)
+                    setters.setHlsPolling(false)
                 }
             } catch {
-                setHlsPolling(false)
+                setters.setHlsPolling(false)
             }
         }, 3000)
         return () => clearInterval(interval)
-    }, [hlsPolling, hlsJob])
+    }, [hlsPolling, hlsJob, setters])
+}
 
-    useEffect(() => {
-        if (activeHlsUrl !== null || !mediaId || !media || (media.is_mature && !matureAccessGranted))
-            return
-        const el = media.type === 'video' ? videoRef.current : audioRef.current
-        if (!el || (el.src && el.src !== '' && el.src !== window.location.href)) return
-        el.src = mediaApi.getStreamUrl(mediaId)
-    }, [activeHlsUrl, mediaId, media, matureAccessGranted])
+/** HLS state, check/poll effects, and useHLS. Isolates HLS logic from main hook. */
+function usePlayerHLS(
+    mediaId: string,
+    media: { type: string; is_mature?: boolean } | undefined,
+    hlsEnabled: boolean,
+    videoRef: RefObject<HTMLVideoElement | null>,
+) {
+    const [hlsJob, setHlsJob] = useState<HLSJob | null>(null)
+    const [hlsPolling, setHlsPolling] = useState(false)
+    const [activeHlsUrl, setActiveHlsUrl] = useState<string | null>(null)
+    const [hlsAvailable, setHlsAvailable] = useState(false)
+    const [hlsReadyUrl, setHlsReadyUrl] = useState<string | null>(null)
 
-    const isVideo = media?.type === 'video'
+    const onHlsFallback = useCallback(() => setActiveHlsUrl(null), [])
 
-    const resetControlsTimer = useCallback(() => {
-        if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
-        setShowControls(true)
-        controlsTimerRef.current = setTimeout(() => {
-            if (isPlayingRef.current) setShowControls(false)
-        }, 3000)
-    }, [])
-
-    useEffect(
-        () => () => {
-            if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
-        },
-        [],
+    const {
+        qualities: hlsQualities,
+        currentQuality,
+        autoLevel,
+        selectQuality,
+        isLoading: hlsIsLoading,
+        error: hlsError,
+        bandwidth,
+    } = useHLS(
+        videoRef,
+        media?.type === 'video' && hlsEnabled ? activeHlsUrl : null,
+        onHlsFallback,
     )
 
-    useEffect(() => {
-        if (!isVideo) return
-        isPlayingRef.current = isPlaying
-        if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
-        if (isPlaying) {
-            controlsTimerRef.current = setTimeout(() => setShowControls(false), 3000)
-        } else {
-            queueMicrotask(() => setShowControls(true))
-        }
-    }, [isPlaying, isVideo])
+    const hlsCheckSetters = useMemo(
+        () => ({
+            setHlsAvailable,
+            setHlsReadyUrl,
+            setHlsJob,
+            setHlsPolling,
+        }),
+        [],
+    )
+    useHlsCheckEffect(mediaId, media, hlsEnabled, hlsCheckSetters)
 
-    useEffect(() => {
-        if (!mediaId) return
-        const handleVisibilityChange = () => {
-            if (
-                document.visibilityState === 'hidden' &&
-                currentTimeRef.current > 0 &&
-                durationRef.current > 0
-            ) {
-                watchHistoryApi
-                    .trackPosition(mediaId, currentTimeRef.current, durationRef.current)
-                    .catch(() => {})
-            }
-        }
-        document.addEventListener('visibilitychange', handleVisibilityChange)
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }, [mediaId])
+    const hlsPollingSetters = useMemo(
+        () => ({
+            setHlsJob,
+            setHlsPolling,
+            setHlsAvailable,
+            setHlsReadyUrl,
+        }),
+        [],
+    )
+    useHlsPollingEffect(hlsPolling, hlsJob, hlsPollingSetters)
 
+    return {
+        hlsJob,
+        setHlsJob,
+        setHlsPolling,
+        activeHlsUrl,
+        setActiveHlsUrl,
+        hlsAvailable,
+        setHlsAvailable,
+        hlsReadyUrl,
+        setHlsReadyUrl,
+        hlsQualities,
+        currentQuality,
+        autoLevel,
+        selectQuality,
+        hlsIsLoading,
+        hlsError,
+        bandwidth,
+    }
+}
+
+/** Runs media source setup (src, resume, analytics). Called from effect in main hook. */
+function runMediaSourceSetup(
+    mediaId: string,
+    media: { id: string; type: string; is_mature?: boolean },
+    videoRef: RefObject<HTMLVideoElement | null>,
+    audioRef: RefObject<HTMLAudioElement | null>,
+    user: { preferences?: { resume_playback?: boolean } } | null,
+    volume: number,
+    isLooping: boolean,
+    playbackRate: number,
+    setters: {
+        setIsLoading: (v: boolean) => void
+        setCurrentTime: (v: number) => void
+        setDuration: (v: number) => void
+        setIsPlaying: (v: boolean) => void
+        setActiveHlsUrl: (v: string | null) => void
+        setHlsAvailable: (v: boolean) => void
+        setHlsReadyUrl: (v: string | null) => void
+        setHlsJob: (v: HLSJob | null) => void
+        setHlsPolling: (v: boolean) => void
+        setUserRating: (v: number) => void
+    },
+    resumePositionRef: MutableRefObject<number>,
+) {
+    const el = media.type === 'video' ? videoRef.current : audioRef.current
+    if (!el) return () => {}
+
+    queueMicrotask(() => {
+        setters.setIsLoading(true)
+        setters.setCurrentTime(0)
+        setters.setDuration(0)
+        setters.setIsPlaying(false)
+        setters.setActiveHlsUrl(null)
+        setters.setHlsAvailable(false)
+        setters.setHlsReadyUrl(null)
+        setters.setHlsJob(null)
+        setters.setHlsPolling(false)
+        setters.setUserRating(0)
+    })
+
+    el.src = mediaApi.getStreamUrl(mediaId)
+    el.volume = volume
+    el.loop = isLooping
+    el.playbackRate = playbackRate
+
+    resumePositionRef.current = 0
+    let positionFetchCancelled = false
+    const resumeEnabled = user?.preferences?.resume_playback !== false
+    if (user && resumeEnabled) {
+        const elRef = el
+        watchHistoryApi
+            .getPosition(mediaId)
+            .then((data) => {
+                if (positionFetchCancelled) return
+                const pos = data?.position ?? 0
+                resumePositionRef.current = pos
+                if (shouldResumeAtPosition(elRef, pos)) {
+                    elRef.currentTime = pos
+                }
+            })
+            .catch(() => {})
+    }
+    analyticsApi.trackEvent({ type: 'view', media_id: media.id }).catch(() => {})
+
+    return () => {
+        positionFetchCancelled = true
+    }
+}
+
+/** Playback event handlers and getActiveEl. Isolates callback logic from main hook. */
+function usePlayerPlaybackHandlers(
+    media: { type: string } | undefined,
+    videoRef: RefObject<HTMLVideoElement | null>,
+    audioRef: RefObject<HTMLAudioElement | null>,
+    mediaId: string,
+    user: { preferences?: { resume_playback?: boolean } } | null,
+    currentTimeRef: MutableRefObject<number>,
+    durationRef: MutableRefObject<number>,
+    resumePositionRef: MutableRefObject<number>,
+    setters: {
+        setCurrentTime: (v: number) => void
+        setDuration: (v: number) => void
+        setIsPlaying: (v: boolean) => void
+        setBuffered: (v: number) => void
+        setIsLoading: (v: boolean) => void
+        setVolume: (v: number) => void
+        setIsMuted: (v: boolean) => void
+        setIsLooping: (v: boolean) => void
+        setPlaybackRate: (v: number) => void
+        setHoverTime: (v: number | null) => void
+        setHoverPos: (v: number) => void
+    },
+    isLooping: boolean,
+    duration: number,
+) {
     const getActiveEl = useCallback(() => {
         if (!media) return null
         return media.type === 'video' ? videoRef.current : audioRef.current
-    }, [media])
-
-    useEffect(() => {
-        const pref = user?.preferences?.playback_speed
-        if (pref === null || pref === undefined || pref < 0.25 || pref > 2) return
-        queueMicrotask(() => setPlaybackRate(pref))
-        const el = getActiveEl()
-        if (el) el.playbackRate = pref
-    }, [user?.preferences?.playback_speed, media?.type, getActiveEl])
-
-    const togglePlay = useCallback(() => {
-        const el = getActiveEl()
-        if (!el) return
-        if (el.paused) el.play().catch(() => {})
-        else el.pause()
-    }, [getActiveEl])
-
-    const handlePrevTrack = useCallback(() => {
-        const prevId = playPrevious()
-        if (prevId) navigate(`/player?id=${encodeURIComponent(prevId)}`, { replace: true })
-    }, [playPrevious, navigate])
-
-    const handleNextTrack = useCallback(() => {
-        const nextId = playNext()
-        if (nextId) navigate(`/player?id=${encodeURIComponent(nextId)}`, { replace: true })
-    }, [playNext, navigate])
-
-    const hasPlaylist = currentPlaylist.length > 1
+    }, [media, videoRef, audioRef])
 
     const fireAnalytics = useCallback(
         (type: string, data?: Record<string, unknown>) => {
@@ -390,65 +380,48 @@ export function usePlayerPageState(mediaId: string) {
         [mediaId],
     )
 
-    const handleFullscreen = useCallback(() => {
-        const wrapper = videoRef.current?.parentElement
-        if (!wrapper) return
-        if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
-        else wrapper.requestFullscreen().catch(() => {})
-    }, [])
-
-    const handleVideoClick = useCallback(() => {
-        const now = Date.now()
-        if (now - lastClickTimeRef.current < 300) {
-            handleFullscreen()
-            lastClickTimeRef.current = 0
-            return
-        }
-        lastClickTimeRef.current = now
-        setTimeout(() => {
-            if (lastClickTimeRef.current === now) togglePlay()
-        }, 300)
-    }, [handleFullscreen, togglePlay])
+    const togglePlay = useCallback(() => {
+        const el = getActiveEl()
+        if (!el) return
+        if (el.paused) el.play().catch(() => {})
+        else el.pause()
+    }, [getActiveEl])
 
     const handleTimeUpdate = useCallback(() => {
         const el = getActiveEl()
         if (!el) return
         currentTimeRef.current = el.currentTime
-        setCurrentTime(el.currentTime)
+        setters.setCurrentTime(el.currentTime)
         if (el.buffered.length > 0) {
-            setBuffered(
+            setters.setBuffered(
                 (el.buffered.end(el.buffered.length - 1) / el.duration) * 100,
             )
         }
-    }, [getActiveEl])
+    }, [getActiveEl, currentTimeRef, setters])
 
     const handleLoadedMetadata = useCallback(() => {
         const el = getActiveEl()
         if (!el) return
         durationRef.current = el.duration
-        setDuration(el.duration)
-        setIsLoading(false)
+        setters.setDuration(el.duration)
+        setters.setIsLoading(false)
         const resumeEnabled = user?.preferences?.resume_playback !== false
         const saved = resumePositionRef.current
-        if (
-            resumeEnabled &&
-            saved > 5 &&
-            el.duration > 0 &&
-            saved < el.duration - 5
-        ) {
+        const hasValidDuration = el.duration > 0
+        const savedInRange =
+            saved > 5 && hasValidDuration && saved < el.duration - 5
+        if (resumeEnabled && savedInRange) {
             el.currentTime = saved
         }
         resumePositionRef.current = 0
         el.play().catch(() => {})
-    }, [getActiveEl, user?.preferences?.resume_playback])
+    }, [getActiveEl, user?.preferences?.resume_playback, durationRef, resumePositionRef, setters])
 
     const handlePause = useCallback(() => {
-        setIsPlaying(false)
-        if (
-            mediaId &&
-            currentTimeRef.current > 0 &&
-            durationRef.current > 0
-        ) {
+        setters.setIsPlaying(false)
+        const hasValidPosition =
+            mediaId && currentTimeRef.current > 0 && durationRef.current > 0
+        if (hasValidPosition) {
             watchHistoryApi
                 .trackPosition(
                     mediaId,
@@ -461,15 +434,15 @@ export function usePlayerPageState(mediaId: string) {
             position: currentTimeRef.current,
             duration: durationRef.current,
         })
-    }, [mediaId, fireAnalytics])
+    }, [mediaId, fireAnalytics, currentTimeRef, durationRef, setters])
 
     const handleDurationChange = useCallback(() => {
         const el = getActiveEl()
-        if (el && isFinite(el.duration) && el.duration > 0) {
-            durationRef.current = el.duration
-            setDuration(el.duration)
-        }
-    }, [getActiveEl])
+        if (!el) return
+        if (!isFinite(el.duration) || el.duration <= 0) return
+        durationRef.current = el.duration
+        setters.setDuration(el.duration)
+    }, [getActiveEl, durationRef, setters])
 
     const handleProgressClick = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
@@ -507,20 +480,18 @@ export function usePlayerPageState(mediaId: string) {
                 0,
                 Math.min(1, (e.clientX - rect.left) / rect.width),
             )
-            setHoverTime(ratio * duration)
-            setHoverPos(e.clientX - rect.left)
+            setters.setHoverTime(ratio * duration)
+            setters.setHoverPos(e.clientX - rect.left)
         },
-        [duration],
+        [duration, setters],
     )
 
-    const handleProgressLeave = useCallback(() => setHoverTime(null), [])
+    const handleProgressLeave = useCallback(() => setters.setHoverTime(null), [setters])
 
     const handleSeeked = useCallback(() => {
-        if (
-            mediaId &&
-            currentTimeRef.current > 5 &&
-            durationRef.current > 0
-        ) {
+        const shouldTrackPosition =
+            !!mediaId && currentTimeRef.current > 5 && durationRef.current > 0
+        if (shouldTrackPosition) {
             watchHistoryApi
                 .trackPosition(
                     mediaId,
@@ -533,70 +504,193 @@ export function usePlayerPageState(mediaId: string) {
             position: currentTimeRef.current,
             duration: durationRef.current,
         })
-    }, [mediaId, fireAnalytics])
+    }, [mediaId, fireAnalytics, currentTimeRef, durationRef])
 
     const handleVolumeChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const v = parseFloat(e.target.value)
-            setVolume(v)
+            setters.setVolume(v)
             const el = getActiveEl()
             if (el) el.volume = v
         },
-        [getActiveEl],
+        [getActiveEl, setters],
     )
 
     const toggleMute = useCallback(() => {
         const el = getActiveEl()
         if (!el) return
         el.muted = !el.muted
-        setIsMuted(el.muted)
-    }, [getActiveEl])
+        setters.setIsMuted(el.muted)
+    }, [getActiveEl, setters])
 
     const toggleLoop = useCallback(() => {
         const el = getActiveEl()
         const newLoop = !isLooping
-        setIsLooping(newLoop)
+        setters.setIsLooping(newLoop)
         if (el) el.loop = newLoop
-    }, [getActiveEl, isLooping])
+    }, [getActiveEl, isLooping, setters])
 
     const setSpeed = useCallback(
         (speed: number) => {
             const el = getActiveEl()
-            setPlaybackRate(speed)
+            setters.setPlaybackRate(speed)
             if (el) el.playbackRate = speed
         },
-        [getActiveEl],
+        [getActiveEl, setters],
     )
 
     const handlePlay = useCallback(() => {
-        setIsPlaying(true)
+        setters.setIsPlaying(true)
         fireAnalytics(
             'play',
             durationRef.current > 0 ? { duration: durationRef.current } : undefined,
         )
-    }, [fireAnalytics])
+    }, [fireAnalytics, durationRef, setters])
 
     const handleWaiting = useCallback(() => {
-        setIsLoading(true)
+        setters.setIsLoading(true)
         fireAnalytics('buffering', { state: 'start' })
-    }, [fireAnalytics])
+    }, [fireAnalytics, setters])
 
     const handleCanPlay = useCallback(() => {
-        setIsLoading(false)
+        setters.setIsLoading(false)
         fireAnalytics('buffering', { state: 'end' })
-    }, [fireAnalytics])
+    }, [fireAnalytics, setters])
 
-    const handleSelectQualityWithAnalytics = useCallback(
-        (index: number) => {
-            selectQuality(index)
-            const name =
-                index === -1
-                    ? 'Auto'
-                    : hlsQualities.find((q) => q.index === index)?.name ?? String(index)
-            fireAnalytics('quality_change', { quality_index: index, quality_name: name })
-        },
-        [selectQuality, hlsQualities, fireAnalytics],
-    )
+    return {
+        getActiveEl,
+        togglePlay,
+        handleTimeUpdate,
+        handleLoadedMetadata,
+        handlePause,
+        handleDurationChange,
+        handleProgressClick,
+        handleProgressTouch,
+        handleProgressHover,
+        handleProgressLeave,
+        handleSeeked,
+        handleVolumeChange,
+        toggleMute,
+        toggleLoop,
+        setSpeed,
+        handlePlay,
+        handleWaiting,
+        handleCanPlay,
+        fireAnalytics,
+    }
+}
+
+/** Pure helper: compute quality badge from HLS state. */
+function computeQualityBadge(
+    hlsQualities: { index: number; name: string }[],
+    currentQuality: number,
+    autoLevel: number,
+): string | null {
+    if (hlsQualities.length === 0) return null
+    if (currentQuality === -1) {
+        const qual = autoLevel >= 0 ? hlsQualities[autoLevel] : undefined
+        return qual?.name ?? null
+    }
+    return hlsQualities.find((q) => q.index === currentQuality)?.name ?? null
+}
+
+/** Tracks fullscreen change for analytics. */
+function useFullscreenAnalytics(mediaId: string, fireAnalytics: (type: string, data?: Record<string, unknown>) => void): void {
+    useEffect(() => {
+        const onFullscreenChange = () => {
+            if (mediaId) {
+                fireAnalytics('fullscreen', {
+                    active: !!document.fullscreenElement,
+                })
+            }
+        }
+        document.addEventListener('fullscreenchange', onFullscreenChange)
+        return () =>
+            document.removeEventListener('fullscreenchange', onFullscreenChange)
+    }, [mediaId, fireAnalytics])
+}
+
+/** Tracks playback position every 30s while playing. */
+function usePeriodicPositionTracking(opts: {
+    mediaId: string
+    isPlaying: boolean
+    duration: number
+    currentTimeRef: MutableRefObject<number>
+    durationRef: MutableRefObject<number>
+}): void {
+    const { mediaId, isPlaying, duration, currentTimeRef, durationRef } = opts
+    useEffect(() => {
+        if (!mediaId || !isPlaying || !duration) return
+        const interval = setInterval(() => {
+            if (durationRef.current > 0 && currentTimeRef.current > 0) {
+                watchHistoryApi
+                    .trackPosition(
+                        mediaId,
+                        currentTimeRef.current,
+                        durationRef.current,
+                    )
+                    .catch(() => {})
+            }
+        }, 30000)
+        return () => clearInterval(interval)
+    }, [mediaId, isPlaying, duration, currentTimeRef, durationRef])
+}
+
+/** Navigation handlers (prev/next) and playlist flag. */
+function usePlayerNavigation(
+    playPrevious: () => string | null | undefined,
+    playNext: () => string | null | undefined,
+    navigate: ReturnType<typeof useNavigate>,
+    currentPlaylist: { media_id: string }[],
+) {
+    const handlePrevTrack = useCallback(() => {
+        const prevId = playPrevious()
+        if (prevId) navigate(`/player?id=${encodeURIComponent(prevId)}`, { replace: true })
+    }, [playPrevious, navigate])
+
+    const handleNextTrack = useCallback(() => {
+        const nextId = playNext()
+        if (nextId) navigate(`/player?id=${encodeURIComponent(nextId)}`, { replace: true })
+    }, [playNext, navigate])
+
+    const hasPlaylist = currentPlaylist.length > 1
+    return { handlePrevTrack, handleNextTrack, hasPlaylist }
+}
+
+/** Video-specific handlers: fullscreen, click-to-play/pause, PiP, ended. */
+function usePlayerVideoHandlers(opts: {
+    videoRef: RefObject<HTMLVideoElement | null>
+    togglePlay: () => void
+    mediaId: string
+    duration: number
+    user: { preferences?: { auto_play?: boolean } } | null
+    playNext: () => string | null | undefined
+    navigate: ReturnType<typeof useNavigate>
+    fireAnalytics: (type: string, data?: Record<string, unknown>) => void
+}) {
+    const { videoRef, togglePlay, mediaId, duration, user, playNext, navigate, fireAnalytics } =
+        opts
+    const lastClickTimeRef = useRef(0)
+
+    const handleFullscreen = useCallback(() => {
+        const wrapper = videoRef.current?.parentElement
+        if (!wrapper) return
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+        else wrapper.requestFullscreen().catch(() => {})
+    }, [videoRef])
+
+    const handleVideoClick = useCallback(() => {
+        const now = Date.now()
+        if (now - lastClickTimeRef.current < 300) {
+            handleFullscreen()
+            lastClickTimeRef.current = 0
+            return
+        }
+        lastClickTimeRef.current = now
+        setTimeout(() => {
+            if (lastClickTimeRef.current === now) togglePlay()
+        }, 300)
+    }, [handleFullscreen, togglePlay])
 
     const handlePiP = useCallback(() => {
         const vid = videoRef.current
@@ -606,7 +700,7 @@ export function usePlayerPageState(mediaId: string) {
         } else {
             vid.requestPictureInPicture().catch(() => {})
         }
-    }, [])
+    }, [videoRef])
 
     const handleEnded = useCallback(() => {
         if (mediaId) {
@@ -622,26 +716,191 @@ export function usePlayerPageState(mediaId: string) {
         }
     }, [mediaId, duration, user?.preferences?.auto_play, playNext, navigate, fireAnalytics])
 
+    return { handleFullscreen, handleVideoClick, handlePiP, handleEnded }
+}
+
+/** Refs and primitive state. Isolates useState/useRef from main hook. */
+function usePlayerRefsAndState(
+    user: { preferences?: { playback_speed?: number } } | null,
+) {
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const audioRef = useRef<HTMLAudioElement>(null)
+    const resumePositionRef = useRef(0)
+    const currentTimeRef = useRef(0)
+    const durationRef = useRef(0)
+
+    const [audioReady, setAudioReady] = useState(false)
+    const [isPlaying, setIsPlaying] = useState(false)
+    const [currentTime, setCurrentTime] = useState(0)
+    const [duration, setDuration] = useState(0)
+    const [buffered, setBuffered] = useState(0)
+    const [volume, setVolume] = useState(1)
+    const [isMuted, setIsMuted] = useState(false)
+    const [isLooping, setIsLooping] = useState(false)
+    const defaultPlaybackSpeed = user?.preferences?.playback_speed ?? 1
+    const [playbackRate, setPlaybackRate] = useState(defaultPlaybackSpeed)
+    const [showControls, setShowControls] = useState(true)
+    const [showSettings, setShowSettings] = useState(false)
+    const [isLoading, setIsLoading] = useState(true)
+    const [matureAccepted, setMatureAccepted] = useState(false)
+    const [theaterMode, setTheaterMode] = useState(false)
+    const [hoverTime, setHoverTime] = useState<number | null>(null)
+    const [hoverPos, setHoverPos] = useState(0)
+    const [userRating, setUserRating] = useState(0)
+    const [ratingHover, setRatingHover] = useState(0)
+
+    return {
+        videoRef,
+        audioRef,
+        resumePositionRef,
+        currentTimeRef,
+        durationRef,
+        audioReady,
+        setAudioReady,
+        isPlaying,
+        setIsPlaying,
+        currentTime,
+        setCurrentTime,
+        duration,
+        setDuration,
+        buffered,
+        setBuffered,
+        volume,
+        setVolume,
+        isMuted,
+        setIsMuted,
+        isLooping,
+        setIsLooping,
+        playbackRate,
+        setPlaybackRate,
+        showControls,
+        setShowControls,
+        showSettings,
+        setShowSettings,
+        isLoading,
+        setIsLoading,
+        matureAccepted,
+        setMatureAccepted,
+        theaterMode,
+        setTheaterMode,
+        hoverTime,
+        setHoverTime,
+        hoverPos,
+        setHoverPos,
+        userRating,
+        setUserRating,
+        ratingHover,
+        setRatingHover,
+    }
+}
+
+/** Runs player-side effects (toast, audio ready, media source, fallback src, controls timer, visibility, playback rate). */
+function usePlayerEffects(
+    mediaId: string,
+    media: { id?: string; type: string; is_mature?: boolean } | undefined,
+    matureAccessGranted: boolean,
+    videoRef: RefObject<HTMLVideoElement | null>,
+    audioRef: RefObject<HTMLAudioElement | null>,
+    activeHlsUrl: string | null,
+    user: { preferences?: { resume_playback?: boolean; playback_speed?: number } } | null,
+    volume: number,
+    isLooping: boolean,
+    playbackRate: number,
+    isPlaying: boolean,
+    isVideo: boolean,
+    hlsError: string | null,
+    showToast: (msg: string, type: 'error' | 'info') => void,
+    setters: {
+        setAudioReady: (v: boolean) => void
+        setIsLoading: (v: boolean) => void
+        setCurrentTime: (v: number) => void
+        setDuration: (v: number) => void
+        setIsPlaying: (v: boolean) => void
+        setActiveHlsUrl: (v: string | null) => void
+        setHlsAvailable: (v: boolean) => void
+        setHlsReadyUrl: (v: string | null) => void
+        setHlsJob: (v: HLSJob | null) => void
+        setHlsPolling: (v: boolean) => void
+        setUserRating: (v: number) => void
+        setShowControls: (v: boolean) => void
+        setPlaybackRate: (v: number) => void
+    },
+    currentTimeRef: MutableRefObject<number>,
+    durationRef: MutableRefObject<number>,
+    resumePositionRef: MutableRefObject<number>,
+    controlsTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+    isPlayingRef: MutableRefObject<boolean>,
+) {
     useEffect(() => {
-        const onFullscreenChange = () => {
-            if (mediaId) {
-                fireAnalytics('fullscreen', {
-                    active: !!document.fullscreenElement,
-                })
-            }
-        }
-        document.addEventListener('fullscreenchange', onFullscreenChange)
-        return () =>
-            document.removeEventListener('fullscreenchange', onFullscreenChange)
-    }, [mediaId, fireAnalytics])
+        if (hlsError) showToast(hlsError, 'error')
+    }, [hlsError, showToast])
 
     useEffect(() => {
-        if (!mediaId || !isPlaying || !duration) return
-        const interval = setInterval(() => {
-            if (
-                durationRef.current > 0 &&
-                currentTimeRef.current > 0
-            ) {
+        if (audioRef.current) queueMicrotask(() => setters.setAudioReady(true))
+    }, [audioRef, setters])
+
+    useEffect(() => {
+        if (!mediaId || !media || !media.id || (media.is_mature && !matureAccessGranted)) return
+        const mediaWithId = media as { id: string; type: string; is_mature?: boolean }
+        const cleanup = runMediaSourceSetup(
+            mediaId,
+            mediaWithId,
+            videoRef,
+            audioRef,
+            user,
+            volume,
+            isLooping,
+            playbackRate,
+            {
+                setIsLoading: setters.setIsLoading,
+                setCurrentTime: setters.setCurrentTime,
+                setDuration: setters.setDuration,
+                setIsPlaying: setters.setIsPlaying,
+                setActiveHlsUrl: setters.setActiveHlsUrl,
+                setHlsAvailable: setters.setHlsAvailable,
+                setHlsReadyUrl: setters.setHlsReadyUrl,
+                setHlsJob: setters.setHlsJob,
+            setHlsPolling: setters.setHlsPolling,
+            setUserRating: setters.setUserRating,
+            },
+            resumePositionRef,
+        )
+        return cleanup
+    }, [mediaId, media, matureAccessGranted]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (activeHlsUrl !== null || !mediaId || !media || (media.is_mature && !matureAccessGranted))
+            return
+        const el = media.type === 'video' ? videoRef.current : audioRef.current
+        if (!el || (el.src && el.src !== '' && el.src !== window.location.href)) return
+        el.src = mediaApi.getStreamUrl(mediaId)
+    }, [activeHlsUrl, mediaId, media, matureAccessGranted, videoRef, audioRef])
+
+    useEffect(
+        () => () => {
+            if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
+        },
+        [controlsTimerRef],
+    )
+
+    useEffect(() => {
+        if (!isVideo) return
+        isPlayingRef.current = isPlaying
+        if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
+        if (isPlaying) {
+            controlsTimerRef.current = setTimeout(() => setters.setShowControls(false), 3000)
+        } else {
+            queueMicrotask(() => setters.setShowControls(true))
+        }
+    }, [isPlaying, isVideo, controlsTimerRef, isPlayingRef, setters])
+
+    useEffect(() => {
+        if (!mediaId) return
+        const handleVisibilityChange = () => {
+            const isHidden = document.visibilityState === 'hidden'
+            const hasValidPosition =
+                currentTimeRef.current > 0 && durationRef.current > 0
+            if (isHidden && hasValidPosition) {
                 watchHistoryApi
                     .trackPosition(
                         mediaId,
@@ -650,118 +909,416 @@ export function usePlayerPageState(mediaId: string) {
                     )
                     .catch(() => {})
             }
-        }, 30000)
-        return () => clearInterval(interval)
-    }, [mediaId, isPlaying, duration])
-
-    usePlayerKeyboard({
-        getActiveEl,
-        togglePlay,
-        setSpeed,
-        setVolume,
-        setIsMuted,
-        handleFullscreen,
-        setTheaterMode,
-        setShowSettings,
-        showSettings,
-        playbackRate,
-    })
-
-    const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-    let qualityBadge: string | null = null
-    if (hlsQualities.length > 0) {
-        if (currentQuality === -1) {
-            const qual = autoLevel >= 0 ? hlsQualities[autoLevel] : undefined
-            qualityBadge = qual?.name ?? null
-        } else {
-            qualityBadge = hlsQualities.find((q) => q.index === currentQuality)?.name ?? null
         }
-    }
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }, [mediaId, currentTimeRef, durationRef])
 
-    const isAudio = media?.type === 'audio'
+    useEffect(() => {
+        const pref = user?.preferences?.playback_speed
+        if (pref === null || pref === undefined || pref < 0.25 || pref > 2) return
+        queueMicrotask(() => setters.setPlaybackRate(pref))
+        const el = media?.type === 'video' ? videoRef.current : audioRef.current
+        if (el) el.playbackRate = pref
+    }, [user?.preferences?.playback_speed, media?.type, videoRef, audioRef, setters])
+}
 
-    return {
+/** Playback setters, handlers, navigation, video handlers, quality selection. Reduces main hook size. */
+function usePlayerPageHandlers(opts: {
+    state: ReturnType<typeof usePlayerRefsAndState>
+    mediaHls: ReturnType<typeof usePlayerMediaHlsAndEffects>
+    mediaId: string
+    user: User | null
+    navigate: ReturnType<typeof useNavigate>
+    playNext: () => string | null | undefined
+    playPrevious: () => string | null | undefined
+    currentPlaylist: { media_id: string }[]
+}) {
+    const { state, mediaHls, mediaId, user, navigate, playNext, playPrevious, currentPlaylist } = opts
+    const playbackSetters = useMemo(
+        () => ({
+            setCurrentTime: state.setCurrentTime,
+            setDuration: state.setDuration,
+            setIsPlaying: state.setIsPlaying,
+            setBuffered: state.setBuffered,
+            setIsLoading: state.setIsLoading,
+            setVolume: state.setVolume,
+            setIsMuted: state.setIsMuted,
+            setIsLooping: state.setIsLooping,
+            setPlaybackRate: state.setPlaybackRate,
+            setHoverTime: state.setHoverTime,
+            setHoverPos: state.setHoverPos,
+        }),
+        [
+            state.setCurrentTime,
+            state.setDuration,
+            state.setIsPlaying,
+            state.setBuffered,
+            state.setIsLoading,
+            state.setVolume,
+            state.setIsMuted,
+            state.setIsLooping,
+            state.setPlaybackRate,
+            state.setHoverTime,
+            state.setHoverPos,
+        ],
+    )
+    const playbackHandlers = usePlayerPlaybackHandlers(
+        mediaHls.media,
+        state.videoRef,
+        state.audioRef,
         mediaId,
+        user,
+        state.currentTimeRef,
+        state.durationRef,
+        state.resumePositionRef,
+        playbackSetters,
+        state.isLooping,
+        state.duration,
+    )
+    const { handlePrevTrack, handleNextTrack, hasPlaylist } = usePlayerNavigation(
+        playPrevious,
+        playNext,
+        navigate,
+        currentPlaylist,
+    )
+    const { handleFullscreen, handleVideoClick, handlePiP, handleEnded } =
+        usePlayerVideoHandlers({
+            videoRef: state.videoRef,
+            togglePlay: playbackHandlers.togglePlay,
+            mediaId,
+            duration: state.duration,
+            user,
+            playNext,
+            navigate,
+            fireAnalytics: playbackHandlers.fireAnalytics,
+        })
+    const handleSelectQualityWithAnalytics = useCallback(
+        (index: number) => {
+            mediaHls.selectQuality(index)
+            const name =
+                index === -1
+                    ? 'Auto'
+                    : mediaHls.hlsQualities.find((q) => q.index === index)?.name ?? String(index)
+            playbackHandlers.fireAnalytics('quality_change', { quality_index: index, quality_name: name })
+        },
+        [mediaHls, playbackHandlers],
+    )
+    return {
+        ...playbackHandlers,
+        handlePrevTrack,
+        handleNextTrack,
+        hasPlaylist,
+        handleVideoClick,
+        handleFullscreen,
+        handlePiP,
+        handleEnded,
+        handleSelectQualityWithAnalytics,
+    }
+}
+
+/** Media queries, HLS, equalizer, and effects. Isolates data/effect wiring from main hook. */
+function usePlayerMediaHlsAndEffects(opts: {
+    mediaId: string
+    canViewMature: boolean
+    user: { preferences?: { show_mature?: boolean; resume_playback?: boolean; playback_speed?: number } } | null
+    currentPlaylist: { media_id: string }[]
+    currentIndex: number
+    setCurrentIndex: (i: number) => void
+    state: ReturnType<typeof usePlayerRefsAndState>
+    controlsTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>
+    isPlayingRef: MutableRefObject<boolean>
+    hlsEnabled: boolean
+    showToast: (msg: string, type: 'error' | 'info') => void
+}) {
+    const {
+        mediaId,
+        canViewMature,
+        user,
+        currentPlaylist,
+        currentIndex,
+        setCurrentIndex,
+        state,
+        controlsTimerRef,
+        isPlayingRef,
+        hlsEnabled,
+        showToast,
+    } = opts
+    usePlayerSyncEffects(user, mediaId, currentPlaylist, currentIndex, setCurrentIndex)
+
+    const {
         media,
         mediaLoading,
         mediaError,
-        videoRef,
-        audioRef,
-        permissions,
-        user,
-        canViewMature,
-        showToast,
-        isPlaying,
-        currentTime,
-        duration,
-        buffered,
-        volume,
-        isMuted,
-        isLooping,
-        playbackRate,
-        showControls,
-        showSettings,
-        isLoading,
-        showMatureWarning,
-        setMatureAccepted,
-        theaterMode,
-        setTheaterMode,
-        setShowControls,
-        setShowSettings,
-        hoverTime,
-        hoverPos,
-        hlsJob,
-        activeHlsUrl,
-        hlsAvailable,
-        hlsReadyUrl,
-        setActiveHlsUrl,
-        setHlsAvailable,
-        hlsIsLoading,
         related,
         relatedLabel,
         relatedStillLoading,
         similarError,
         similarRefetch,
-        isAudio,
-        isVideo,
-        resetControlsTimer,
-        getActiveEl,
-        togglePlay,
-        handlePrevTrack,
-        handleNextTrack,
-        hasPlaylist,
-        handleVideoClick,
-        handleTimeUpdate,
-        handleLoadedMetadata,
-        handlePause,
-        handleDurationChange,
-        handleProgressClick,
-        handleProgressTouch,
-        handleProgressHover,
-        handleProgressLeave,
-        handleSeeked,
-        handleVolumeChange,
-        toggleMute,
-        toggleLoop,
-        setSpeed,
-        handleFullscreen,
-        handlePlay,
-        handleWaiting,
-        handleCanPlay,
-        handleSelectQualityWithAnalytics,
-        handlePiP,
-        handleEnded,
-        handleRate,
-        setUserRating,
-        setRatingHover,
-        ratingHover,
-        userRating,
-        progress,
-        qualityBadge,
+    } = usePlayerMediaQueries(mediaId, canViewMature)
+
+    const matureAccessGranted =
+        state.matureAccepted || (user?.preferences?.show_mature === true)
+    const showMatureWarning = !!(media?.is_mature && !matureAccessGranted)
+
+    const {
+        hlsJob,
+        setHlsJob,
+        setHlsPolling,
+        activeHlsUrl,
+        setActiveHlsUrl,
+        hlsAvailable,
+        setHlsAvailable,
+        hlsReadyUrl,
+        setHlsReadyUrl,
         hlsQualities,
         currentQuality,
         autoLevel,
+        selectQuality,
+        hlsIsLoading,
+        hlsError,
         bandwidth,
+    } = usePlayerHLS(mediaId, media, hlsEnabled, state.videoRef)
+
+    useEqualizer(state.audioRef, state.audioReady && media?.type === 'audio')
+
+    const isVideo = media?.type === 'video'
+
+    usePlayerEffects(
+        mediaId,
+        media ?? undefined,
+        matureAccessGranted,
+        state.videoRef,
+        state.audioRef,
+        activeHlsUrl,
+        user,
+        state.volume,
+        state.isLooping,
+        state.playbackRate,
+        state.isPlaying,
+        isVideo,
+        hlsError ?? null,
+        showToast,
+        {
+            setAudioReady: state.setAudioReady,
+            setIsLoading: state.setIsLoading,
+            setCurrentTime: state.setCurrentTime,
+            setDuration: state.setDuration,
+            setIsPlaying: state.setIsPlaying,
+            setActiveHlsUrl,
+            setHlsAvailable,
+            setHlsReadyUrl,
+            setHlsJob,
+            setHlsPolling,
+            setUserRating: state.setUserRating,
+            setShowControls: state.setShowControls,
+            setPlaybackRate: state.setPlaybackRate,
+        },
+        state.currentTimeRef,
+        state.durationRef,
+        state.resumePositionRef,
+        controlsTimerRef,
+        isPlayingRef,
+    )
+
+    return {
+        media,
+        mediaLoading,
+        mediaError,
+        related,
+        relatedLabel,
+        relatedStillLoading,
+        similarError,
+        similarRefetch,
+        matureAccessGranted,
+        showMatureWarning,
+        hlsJob,
+        setHlsJob,
+        setHlsPolling,
+        activeHlsUrl,
+        setActiveHlsUrl,
+        hlsAvailable,
+        setHlsAvailable,
+        hlsReadyUrl,
+        setHlsReadyUrl,
+        hlsQualities,
+        currentQuality,
+        autoLevel,
+        selectQuality,
+        hlsIsLoading,
+        hlsError,
+        bandwidth,
+        isVideo,
+    }
+}
+
+export function usePlayerPageState(mediaId: string) {
+    const navigate = useNavigate()
+    const permissions = useAuthStore((s) => s.permissions)
+    const user = useAuthStore((s) => s.user)
+    const canViewMature = permissions.can_view_mature && (user?.preferences?.show_mature === true)
+    const { showToast } = useToast()
+    const { currentPlaylist, currentIndex, setCurrentIndex, playNext, playPrevious } =
+        usePlaylistStore()
+    const hlsEnabled = useSettingsStore((s) => s.serverSettings?.features?.enableHLS ?? true)
+
+    const state = usePlayerRefsAndState(user)
+    const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const isPlayingRef = useRef(false)
+
+    const handleRate = useCallback(
+        (rating: number) => {
+            state.setUserRating(rating)
+            if (mediaId) ratingsApi.record(mediaId, rating).catch(() => {})
+        },
+        [mediaId, state],
+    )
+
+    const mediaHls = usePlayerMediaHlsAndEffects({
+        mediaId,
+        canViewMature,
+        user,
+        currentPlaylist,
+        currentIndex,
+        setCurrentIndex,
+        state,
+        controlsTimerRef,
+        isPlayingRef,
+        hlsEnabled,
+        showToast,
+    })
+
+    const handlers = usePlayerPageHandlers({
+        state,
+        mediaHls,
+        mediaId,
+        user,
+        navigate,
+        playNext,
+        playPrevious,
+        currentPlaylist,
+    })
+
+    const resetControlsTimer = useCallback(() => {
+        if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
+        state.setShowControls(true)
+        controlsTimerRef.current = setTimeout(() => {
+            if (isPlayingRef.current) state.setShowControls(false)
+        }, 3000)
+    }, [state])
+
+    useFullscreenAnalytics(mediaId, handlers.fireAnalytics)
+    usePeriodicPositionTracking({
+        mediaId,
+        isPlaying: state.isPlaying,
+        duration: state.duration,
+        currentTimeRef: state.currentTimeRef,
+        durationRef: state.durationRef,
+    })
+
+    usePlayerKeyboard({
+        getActiveEl: handlers.getActiveEl,
+        togglePlay: handlers.togglePlay,
+        setSpeed: handlers.setSpeed,
+        setVolume: state.setVolume,
+        setIsMuted: state.setIsMuted,
+        handleFullscreen: handlers.handleFullscreen,
+        setTheaterMode: state.setTheaterMode,
+        setShowSettings: state.setShowSettings,
+        showSettings: state.showSettings,
+        playbackRate: state.playbackRate,
+    })
+
+    const progress = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0
+    const qualityBadge = computeQualityBadge(
+        mediaHls.hlsQualities,
+        mediaHls.currentQuality,
+        mediaHls.autoLevel,
+    )
+    const isAudio = mediaHls.media?.type === 'audio'
+
+    return {
+        mediaId,
+        media: mediaHls.media,
+        mediaLoading: mediaHls.mediaLoading,
+        mediaError: mediaHls.mediaError,
+        videoRef: state.videoRef,
+        audioRef: state.audioRef,
+        permissions,
+        user,
+        canViewMature,
+        showToast,
+        isPlaying: state.isPlaying,
+        currentTime: state.currentTime,
+        duration: state.duration,
+        buffered: state.buffered,
+        volume: state.volume,
+        isMuted: state.isMuted,
+        isLooping: state.isLooping,
+        playbackRate: state.playbackRate,
+        showControls: state.showControls,
+        showSettings: state.showSettings,
+        isLoading: state.isLoading,
+        showMatureWarning: mediaHls.showMatureWarning,
+        setMatureAccepted: state.setMatureAccepted,
+        theaterMode: state.theaterMode,
+        setTheaterMode: state.setTheaterMode,
+        setShowControls: state.setShowControls,
+        setShowSettings: state.setShowSettings,
+        hoverTime: state.hoverTime,
+        hoverPos: state.hoverPos,
+        hlsJob: mediaHls.hlsJob,
+        activeHlsUrl: mediaHls.activeHlsUrl,
+        hlsAvailable: mediaHls.hlsAvailable,
+        hlsReadyUrl: mediaHls.hlsReadyUrl,
+        setActiveHlsUrl: mediaHls.setActiveHlsUrl,
+        setHlsAvailable: mediaHls.setHlsAvailable,
+        hlsIsLoading: mediaHls.hlsIsLoading,
+        related: mediaHls.related,
+        relatedLabel: mediaHls.relatedLabel,
+        relatedStillLoading: mediaHls.relatedStillLoading,
+        similarError: mediaHls.similarError,
+        similarRefetch: mediaHls.similarRefetch,
+        isAudio,
+        isVideo: mediaHls.isVideo,
+        resetControlsTimer,
+        getActiveEl: handlers.getActiveEl,
+        togglePlay: handlers.togglePlay,
+        handlePrevTrack: handlers.handlePrevTrack,
+        handleNextTrack: handlers.handleNextTrack,
+        hasPlaylist: handlers.hasPlaylist,
+        handleVideoClick: handlers.handleVideoClick,
+        handleTimeUpdate: handlers.handleTimeUpdate,
+        handleLoadedMetadata: handlers.handleLoadedMetadata,
+        handlePause: handlers.handlePause,
+        handleDurationChange: handlers.handleDurationChange,
+        handleProgressClick: handlers.handleProgressClick,
+        handleProgressTouch: handlers.handleProgressTouch,
+        handleProgressHover: handlers.handleProgressHover,
+        handleProgressLeave: handlers.handleProgressLeave,
+        handleSeeked: handlers.handleSeeked,
+        handleVolumeChange: handlers.handleVolumeChange,
+        toggleMute: handlers.toggleMute,
+        toggleLoop: handlers.toggleLoop,
+        setSpeed: handlers.setSpeed,
+        handleFullscreen: handlers.handleFullscreen,
+        handlePlay: handlers.handlePlay,
+        handleWaiting: handlers.handleWaiting,
+        handleCanPlay: handlers.handleCanPlay,
+        handleSelectQualityWithAnalytics: handlers.handleSelectQualityWithAnalytics,
+        handlePiP: handlers.handlePiP,
+        handleEnded: handlers.handleEnded,
+        handleRate,
+        setUserRating: state.setUserRating,
+        setRatingHover: state.setRatingHover,
+        ratingHover: state.ratingHover,
+        userRating: state.userRating,
+        progress,
+        qualityBadge,
+        hlsQualities: mediaHls.hlsQualities,
+        currentQuality: mediaHls.currentQuality,
+        autoLevel: mediaHls.autoLevel,
+        bandwidth: mediaHls.bandwidth,
     }
 }
 
