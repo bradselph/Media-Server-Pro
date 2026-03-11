@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.82.0] - 2026-03-11 (minor)
+
+- Merge pull request #80 from bradselph/development
+- Merge branch 'main' into development
+- Enhance CI workflows with concurrency and path-ignore features
+- Merge pull request #79 from bradselph/development
+- Delete DATABASE_TABLE_AUDIT.md
+- Update .gitignore
+- fix: resolve ESLint and npm audit issues for pre-push CI
+- refactor(categorizer): introduce PathContext for improved file categorization
+- Merge pull request #78 from bradselph/development
+- refactor(backup): introduce structured options for backup creation and enhance error handling
+- refactor(analytics): restructure event tracking and session management
+- refactor(scheduler): enhance task registration and execution handling
+- refactor(upload): enhance upload handling with structured types and improved processing
+- refactor(validator): streamline validation logic and enhance caching mechanisms
+- refactor(userPreferences): enhance JSON handling and validation for user preferences
+- chore(dependencies): update Go version and clean up go.sum
+- refactor(server): improve server initialization and configuration management
+- Merge branch 'main' into development
+- refactor(thumbnails): standardize thumbnail generation with structured requests
+- refactor(thumbnails): introduce structured types for thumbnail generation
+- Merge pull request #77 from bradselph/development
+- Merge branch 'main' into development
+- refactor(duplicates and hls): enhance duplicate detection and playlist generation
+- refactor(database): improve database connection handling and schema management
+- refactor(autodiscovery): introduce domain types for clarity and maintainability
+- Merge pull request #76 from bradselph/development
+- refactor(auth and hls): streamline user creation and session management
+- refactor(admin logging): update LogAction method to use AuditLogParams struct
+- fix(auth): improve session deletion error handling
+- refactor(playlists): simplify playlist item removal logic
+- refactor(admin tabs): streamline admin page tabs and enhance component structure
+- refactor(mature content): enhance handling of mature content visibility in media components
+- refactor(thumbnails): enhance thumbnail URL handling for mature content
+- refactor(pagination): normalize pagination limits and improve default limit handling
+- refactor(suggestions): enhance suggestion retrieval with mature content filtering
+- Merge pull request #75 from bradselph/development
+- Merge branch 'main' into development
+- refactor(media): streamline media grid and enhance user experience
+- refactor(audio): update useEqualizer hook to accept audioRef and readiness state
+- refactor(thumbnails): improve thumbnail state synchronization in IndexPage
+- update go
+- Update IndexPage.tsx
+- chore(dependencies): update indirect dependencies in go.mod and go.sum
+- Merge pull request #74 from bradselph/development
+- feat(virtualization): implement virtualized media grid for improved performance
+- refactor(thumbnails): enhance thumbnail generation with priority queue
+- feat(thumbnails): implement responsive thumbnail sizes for improved media loading
+- feat(thumbnails): add batch thumbnail retrieval endpoint
+- feat(thumbnails): add WebP support and BlurHash generation for thumbnails
+- Merge pull request #73 from bradselph/development
+- fix(admin): defensive null check for watch time, type updates for sources/extractor
+- feat(audit): enhance audit log functionality and add user-specific event retrieval
+- add todos
+- feat(config): enable incremental builds in TypeScript configuration
+- Merge pull request #72 from bradselph/development
+- fix(stats): handle potential null values in analytics and dashboard components
+- feat(admin): expand Analytics and Dashboard stats
+- fix(media): improve category assignment fallback mechanism
+- feat(media): enhance category assignment logic for media items
+- feat(config): unify feature flags into single source of truth; improve suggestions resilience
+- chore(cleanup): remove dead ReceiverProxyStream handler and stale scan_metadata field
+- Create Repository-API-Structure-Report.md
+- Create Repository-API-Structure-Report.md
+- refactor(media): replace suggestions seeding poll loop with callback-based approach
+
+
 ## [0.65.0] - 2026-03-07 (minor)
 
 - Merge pull request #68 from bradselph/development
