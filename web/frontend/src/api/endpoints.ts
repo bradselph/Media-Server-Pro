@@ -588,7 +588,7 @@ export const adminApi = {
     classifyFile: (path: string) =>
         api.post<{ path: string; tags: string[] }>('/api/admin/classify/file', {path}),
     classifyDirectory: (path: string) =>
-        api.post<{ directory: string; results: Record<string, string[]> }>('/api/admin/classify/directory', {path}),
+        api.post<{ message: string; directory: string }>('/api/admin/classify/directory', {path}),
 
     // HLS admin
     getHLSStats: () =>

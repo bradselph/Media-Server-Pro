@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -73,45 +74,59 @@ func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
 	}
+	ids, ok := h.validateBulkDeletePlaylistsRequest(c)
+	if !ok {
+		return
+	}
+	successCount, failedCount, errs := h.bulkDeletePlaylistsByIDs(c.Request.Context(), ids)
+	if errs == nil {
+		errs = []string{}
+	}
+	h.logAdminActionResult(c, &adminLogResultParams{
+		UserID: "admin", Username: "admin", Action: "bulk_delete_playlists",
+		Target: fmt.Sprintf("%d playlists", successCount), Details: nil, Success: failedCount == 0,
+	})
+	writeSuccess(c, map[string]interface{}{
+		"success": successCount,
+		"failed":  failedCount,
+		"errors":  errs,
+	})
+}
+
+// validateBulkDeletePlaylistsRequest binds and validates the bulk delete request. On failure writes the error and returns (nil, false).
+func (h *Handler) validateBulkDeletePlaylistsRequest(c *gin.Context) ([]string, bool) {
 	var req struct {
 		IDs []string `json:"ids"`
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
-		return
+		return nil, false
 	}
 	if len(req.IDs) == 0 {
 		writeError(c, http.StatusBadRequest, "ids must not be empty")
-		return
+		return nil, false
 	}
 	if len(req.IDs) > 500 {
 		writeError(c, http.StatusBadRequest, "too many ids (max 500)")
-		return
+		return nil, false
 	}
+	return req.IDs, true
+}
 
-	var successCount, failedCount int
-	var errs []string
-	for _, id := range req.IDs {
+// bulkDeletePlaylistsByIDs deletes each non-empty ID and returns success count, failed count, and error messages.
+func (h *Handler) bulkDeletePlaylistsByIDs(ctx context.Context, ids []string) (successCount, failedCount int, errs []string) {
+	for _, id := range ids {
 		if id == "" {
 			continue
 		}
-		if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), id); err != nil {
+		if err := h.playlist.AdminDeletePlaylist(ctx, id); err != nil {
 			failedCount++
 			errs = append(errs, fmt.Sprintf("%s: %v", id, err))
 		} else {
 			successCount++
 		}
 	}
-	if errs == nil {
-		errs = []string{}
-	}
-	h.logAdminActionResult(c, "admin", "admin", "bulk_delete_playlists",
-		fmt.Sprintf("%d playlists", successCount), nil, failedCount == 0)
-	writeSuccess(c, map[string]interface{}{
-		"success": successCount,
-		"failed":  failedCount,
-		"errors":  errs,
-	})
+	return successCount, failedCount, errs
 }
 
 // AdminDeletePlaylist deletes a playlist as admin

@@ -1147,7 +1147,7 @@ func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) 
 	if maxFrames <= 0 {
 		maxFrames = 3
 	}
-	framePaths, err := huggingface.ExtractFrames(ctx, path, maxFrames, s.tempDir)
+	framePaths, err := huggingface.ExtractFrames(ctx, huggingface.ExtractFramesOptions{VideoPath: path, Count: maxFrames, TempDir: s.tempDir})
 	if err != nil {
 		s.log.Warn("HF frame extraction failed for %s: %v", path, err)
 		return nil, err
@@ -1174,6 +1174,10 @@ func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) 
 		result, err := s.hfClient.ClassifyImage(ctx, data)
 		if err != nil {
 			s.log.Warn("HF ClassifyImage failed for %s: %v", framePath, err)
+			// Propagate auth/rate errors so admin sees them; skip only transient per-frame failures
+			if strings.Contains(err.Error(), "API key") || strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "429") {
+				return nil, err
+			}
 			continue
 		}
 		for _, t := range result.Tags {

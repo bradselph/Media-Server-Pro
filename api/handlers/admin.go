@@ -120,8 +120,8 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 	}
 
 	writeSuccess(c, map[string]interface{}{
-		"version":      h.version,
-		"build_date":   h.buildDate,
+		"version":      h.buildInfo.Version,
+		"build_date":   h.buildInfo.BuildDate,
 		"os":           runtime.GOOS,
 		"arch":         runtime.GOARCH,
 		"go_version":   info.GoVersion,
@@ -189,7 +189,7 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, "admin", "admin", "create_user", req.Username, nil)
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "create_user", Target: req.Username})
 
 	writeSuccess(c, user)
 }
@@ -241,7 +241,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, "admin", "admin", "update_user", username, updates)
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "update_user", Target: username, Details: updates})
 
 	user, err := h.auth.GetUser(c.Request.Context(), username)
 	if err != nil {
@@ -267,7 +267,7 @@ func (h *Handler) AdminDeleteUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, "admin", "admin", "delete_user", username, nil)
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "delete_user", Target: username})
 	writeSuccess(c, nil)
 }
 
@@ -299,7 +299,7 @@ func (h *Handler) AdminChangePassword(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, "admin", "admin", "change_password", username, nil)
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "change_password", Target: username})
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -329,7 +329,7 @@ func (h *Handler) AdminChangeOwnPassword(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, "admin", "admin", "change_admin_password", "", nil)
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "change_admin_password", Target: ""})
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -368,17 +368,17 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		case "delete":
 			opErr = h.auth.DeleteUser(c.Request.Context(), username)
 			if opErr == nil {
-				h.logAdminAction(c, "admin", "admin", "bulk_delete_user", username, nil)
+				h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_delete_user", Target: username})
 			}
 		case "enable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": true})
 			if opErr == nil {
-				h.logAdminAction(c, "admin", "admin", "bulk_enable_user", username, nil)
+				h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_enable_user", Target: username})
 			}
 		case "disable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": false})
 			if opErr == nil {
-				h.logAdminAction(c, "admin", "admin", "bulk_disable_user", username, nil)
+				h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_disable_user", Target: username})
 			}
 		}
 		if opErr != nil {
@@ -664,7 +664,7 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 		h.security.SetBlacklistEnabled(updatedCfg.Security.EnableIPBlacklist)
 	}
 
-	h.logAdminAction(c, "admin", "admin", "update_config", "configuration", updates)
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "update_config", Target: "configuration", Details: updates})
 	writeSuccess(c, h.admin.GetConfigMap())
 }
 
@@ -725,7 +725,9 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 		return
 	}
 
-	h.logAdminActionResult(c, "admin", "admin", "apply_update", status.Stage, nil, status.Error == "")
+	h.logAdminActionResult(c, &adminLogResultParams{
+		UserID: "admin", Username: "admin", Action: "apply_update", Target: status.Stage, Details: nil, Success: status.Error == "",
+	})
 	writeSuccess(c, status)
 }
 
@@ -841,8 +843,8 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, "admin", "admin", "update_updater_config", "updater_settings",
-		map[string]interface{}{"update_method": req.UpdateMethod, "branch": req.Branch})
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "update_updater_config", Target: "updater_settings",
+		Details: map[string]interface{}{"update_method": req.UpdateMethod, "branch": req.Branch}})
 
 	cfg := h.config.Get()
 	writeSuccess(c, map[string]interface{}{
@@ -854,7 +856,7 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 // RestartServer initiates a graceful server restart via self-exec.
 func (h *Handler) RestartServer(c *gin.Context) {
 	h.log.Warn("Server restart requested by admin")
-	h.logAdminAction(c, "admin", "admin", "restart_server", "initiated", nil)
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "restart_server", Target: "initiated"})
 
 	writeSuccess(c, map[string]interface{}{
 		"message": "Server restart initiated. The server will restart in a few seconds.",
@@ -907,7 +909,7 @@ func (h *Handler) RestartServer(c *gin.Context) {
 // ShutdownServer initiates a graceful server shutdown
 func (h *Handler) ShutdownServer(c *gin.Context) {
 	h.log.Warn("Server shutdown requested by admin")
-	h.logAdminAction(c, "admin", "admin", "shutdown_server", "initiated", nil)
+	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "shutdown_server", Target: "initiated"})
 
 	writeSuccess(c, map[string]interface{}{
 		"message": "Server shutdown initiated. The server will shut down in a few seconds.",

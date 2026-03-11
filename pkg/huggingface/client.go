@@ -82,71 +82,105 @@ func NewClient(apiKey, model, endpointURL string, requestsPerMinute int, timeout
 // generated captions/tags. On error or if the client is not configured (no API key),
 // returns an empty result without failing (graceful degradation).
 func (c *Client) ClassifyImage(ctx context.Context, imageData []byte) (*ClassificationResult, error) {
+	empty := &ClassificationResult{Model: c.model}
 	if c.apiKey == "" {
-		return &ClassificationResult{Model: c.model}, nil
+		return empty, nil
 	}
-
 	if err := c.rateLimiter.Wait(ctx); err != nil {
-		return &ClassificationResult{Model: c.model}, nil
+		return empty, nil
 	}
-
 	url := c.endpointURL + "/models/" + c.model
+	return c.runWithRetry(ctx, url, imageData)
+}
+
+// runWithRetry runs doOneRequest up to maxRetries times and returns result or empty.
+func (c *Client) runWithRetry(ctx context.Context, url string, imageData []byte) (*ClassificationResult, error) {
+	empty := &ClassificationResult{Model: c.model}
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			delay := initialRetryDelay
-			for i := 0; i < attempt-1; i++ {
-				delay = time.Duration(float64(delay) * retryBackoffFactor)
-			}
-			select {
-			case <-ctx.Done():
-				return &ClassificationResult{Model: c.model}, nil
-			case <-time.After(delay):
-			}
+		if attempt > 0 && !c.sleepBeforeRetry(ctx, attempt) {
+			return empty, nil
 		}
-
-		// New request per attempt: body reader is consumed by Do(), so retries would send empty body otherwise.
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(imageData))
-		if err != nil {
-			c.log.Warn("HF client: failed to create request: %v", err)
-			return &ClassificationResult{Model: c.model}, nil
+		result, retry, retryErr, fatalErr := c.doOneRequest(ctx, url, imageData, attempt)
+		if fatalErr != nil {
+			return nil, fatalErr
 		}
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-		req.Header.Set("Content-Type", "application/octet-stream")
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			lastErr = err
-			c.log.Warn("HF client: request failed: %v", err)
-			continue
-		}
-
-		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-
-		if resp.StatusCode == http.StatusOK {
-			result, err := c.parseResponse(body)
-			if err != nil {
-				c.log.Warn("HF client: parse response: %v", err)
-				return &ClassificationResult{Model: c.model}, nil
-			}
-			result.Model = c.model
-			result.Tags = parseTagsFromCaption(result.Caption)
+		if result != nil {
 			return result, nil
 		}
-
-		if resp.StatusCode == 503 {
-			lastErr = fmt.Errorf("model loading (503)")
-			c.log.Debug("HF client: model loading (503), retry %d/%d", attempt+1, maxRetries)
-			continue
+		if !retry {
+			return empty, nil
 		}
+		lastErr = retryErr
+	}
+	c.log.Warn("HF client: all retries failed: %v", lastErr)
+	return empty, nil
+}
 
-		c.log.Warn("HF client: unexpected status %d: %s", resp.StatusCode, string(body))
-		return &ClassificationResult{Model: c.model}, nil
+// sleepBeforeRetry sleeps for the backoff delay. Returns false if context is done.
+func (c *Client) sleepBeforeRetry(ctx context.Context, attempt int) bool {
+	delay := initialRetryDelay
+	for i := 0; i < attempt-1; i++ {
+		delay = time.Duration(float64(delay) * retryBackoffFactor)
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(delay):
+		return true
+	}
+}
+
+// doOneRequest performs a single HTTP request. Returns (result, retry, retryErr, fatalErr).
+// result != nil: success. fatalErr != nil: caller must return (nil, fatalErr).
+// retry true: caller should try again and may log retryErr; false: return empty result.
+func (c *Client) doOneRequest(ctx context.Context, url string, imageData []byte, attempt int) (*ClassificationResult, bool, error, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(imageData))
+	if err != nil {
+		c.log.Warn("HF client: failed to create request: %v", err)
+		return nil, false, nil, nil
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.log.Warn("HF client: request failed: %v", err)
+		return nil, true, err, nil
 	}
 
-	c.log.Warn("HF client: all retries failed: %v", lastErr)
-	return &ClassificationResult{Model: c.model}, nil
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	return c.handleResponse(body, resp.StatusCode, attempt)
+}
+
+// handleResponse interprets HTTP response. Returns (result, retry, retryErr, fatalErr).
+func (c *Client) handleResponse(body []byte, statusCode int, attempt int) (*ClassificationResult, bool, error, error) {
+	if statusCode == http.StatusOK {
+		result, err := c.parseResponse(body)
+		if err != nil {
+			c.log.Warn("HF client: parse response: %v", err)
+			return nil, false, nil, nil
+		}
+		result.Model = c.model
+		result.Tags = parseTagsFromCaption(result.Caption)
+		return result, false, nil, nil
+	}
+	if statusCode == 503 {
+		c.log.Debug("HF client: model loading (503), retry %d/%d", attempt+1, maxRetries)
+		return nil, true, fmt.Errorf("model loading (503)"), nil
+	}
+	if statusCode == http.StatusUnauthorized {
+		c.log.Warn("HF client: invalid API key (401)")
+		return nil, false, nil, fmt.Errorf("Hugging Face API key invalid or expired (401)")
+	}
+	if statusCode == 429 {
+		c.log.Debug("HF client: rate limit (429), retry %d/%d", attempt+1, maxRetries)
+		return nil, true, fmt.Errorf("rate limit (429)"), nil
+	}
+	c.log.Warn("HF client: unexpected status %d: %s", statusCode, string(body))
+	return nil, false, nil, nil
 }
 
 func (c *Client) parseResponse(body []byte) (*ClassificationResult, error) {
