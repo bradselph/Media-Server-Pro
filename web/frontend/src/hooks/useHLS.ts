@@ -1,4 +1,5 @@
 import {type RefObject, useCallback, useEffect, useRef, useState} from 'react'
+import type { ErrorData } from 'hls.js'
 
 export interface HLSQuality {
     index: number
@@ -227,7 +228,7 @@ export function useHLS(
                 if (!cancelled && hlsRef.current) hlsRef.current.startLoad()
             }
 
-            function onError(_event: unknown, data: { fatal?: boolean; type?: number }) {
+            function onError(_event: unknown, data: ErrorData) {
                 if (cancelled || !data.fatal) return
                 if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                     networkRetryCount.current++
