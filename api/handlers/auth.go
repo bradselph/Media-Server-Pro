@@ -454,14 +454,27 @@ func (h *Handler) ClearWatchHistory(c *gin.Context) {
 	}
 
 	if mediaID := c.Query("id"); mediaID != "" {
-		// Resolve ID to path for internal operations — fall back to receiver media if not local.
+		// Resolve ID to path for internal operations — fall back to receiver media, then
+		// to the stored path in the user's own watch history for items whose media has
+		// since been deleted from the library (allows users to clean up stale entries).
 		var mediaPath string
 		item, err := h.media.GetMediaByID(mediaID)
 		if err != nil {
-			// Check receiver media before returning 404
+			// Check receiver media
 			if h.receiver != nil {
 				if ri := h.receiver.GetMediaItem(mediaID); ri != nil {
 					mediaPath = "receiver:" + mediaID
+				}
+			}
+			// Fall back to the path stored in watch history for deleted media
+			if mediaPath == "" {
+				if history, herr := h.auth.GetWatchHistory(session.Username); herr == nil {
+					for _, hi := range history {
+						if hi.MediaID == mediaID {
+							mediaPath = hi.MediaPath
+							break
+						}
+					}
 				}
 			}
 			if mediaPath == "" {

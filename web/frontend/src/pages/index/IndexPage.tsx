@@ -79,12 +79,14 @@ interface UploadResult {
     error?: string
 }
 
-function UploadModal({onClose, onDone, maxFileSize}: {
+function UploadModal({onClose, onDone, maxFileSize, categories = []}: {
     onClose: () => void;
     onDone: () => void;
-    maxFileSize?: number
+    maxFileSize?: number;
+    categories?: MediaCategory[];
 }) {
     const [files, setFiles] = useState<UploadFile[]>([])
+    const [selectedCategory, setSelectedCategory] = useState('')
     const [phase, setPhase] = useState<'select' | 'uploading' | 'done'>('select')
     const [progress, setProgress] = useState(0)
     const [statusText, setStatusText] = useState('')
@@ -129,6 +131,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
 
         const formData = new FormData()
         files.forEach(f => { formData.append('files', f.file); })
+        if (selectedCategory) formData.append('category', selectedCategory)
 
         const xhr = new XMLHttpRequest()
         xhrRef.current = xhr
@@ -227,6 +230,19 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                             {sizeError && (
                                 <div style={{color: '#ef4444', fontSize: FONT_SIZE_SMALL, marginTop: 8}}>
                                     <i className="bi bi-exclamation-triangle"/> {sizeError}
+                                </div>
+                            )}
+
+                            {categories.length > 0 && (
+                                <div className="filter-group" style={{marginTop: 12}}>
+                                    <label htmlFor="upload-category">Category</label>
+                                    <select id="upload-category" className="filter-select" value={selectedCategory}
+                                            onChange={e => setSelectedCategory(e.target.value)}>
+                                        <option value="">Default</option>
+                                        {categories.map(c => (
+                                            <option key={c.name} value={c.name}>{c.display_name || c.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             )}
 
@@ -1649,6 +1665,7 @@ export function IndexPage() {
                     onClose={() => setShowUpload(false)}
                     onDone={handleUploadDone}
                     maxFileSize={serverSettings?.uploads?.maxFileSize}
+                    categories={categories}
                 />
             )}
 

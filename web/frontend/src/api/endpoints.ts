@@ -346,7 +346,7 @@ export const suggestionsApi = {
     getSimilar: (id: string) =>
         api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
 
-    // Returns Suggestion[] (media_path, title, thumbnail_url, score) — not WatchHistoryEntry
+    // Returns Suggestion[] (media_id, title, thumbnail_url, score) — not WatchHistoryEntry
     getContinueWatching: () =>
         api.get<Suggestion[]>('/api/suggestions/continue'),
 
@@ -795,6 +795,9 @@ export const adminApi = {
     // Feature 9: Suggestion stats + scanner reject
     getSuggestionStats: () =>
         api.get<SuggestionStats>('/api/admin/suggestions/stats'),
+
+    approveContent: (id: string) =>
+        api.post<void>(`/api/admin/scanner/approve/${encodeURIComponent(id)}`),
 
     rejectContent: (id: string) =>
         api.post<void>(`/api/admin/scanner/reject/${encodeURIComponent(id)}`),

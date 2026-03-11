@@ -155,12 +155,12 @@ func (h *Handler) RecordRating(c *gin.Context) {
 		return
 	}
 
-	absPath, ok := h.resolveMediaByID(c, req.ID)
+	mediaPath, _, ok := h.resolveMediaPathOrReceiver(c, req.ID)
 	if !ok {
 		return
 	}
 
-	h.suggestions.RecordRating(session.UserID, absPath, req.Rating)
+	h.suggestions.RecordRating(session.UserID, mediaPath, req.Rating)
 	writeSuccess(c, nil)
 }
 

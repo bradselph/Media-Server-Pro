@@ -636,10 +636,11 @@ func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 }
 
 // resolveMediaPathOrReceiver is like resolveMediaByID but falls back to receiver
-// items when the ID is not found locally. For receiver items it returns a
-// synthetic path "receiver:<id>" suitable for use as a database key (position
-// tracking, watch history) but NOT for local file operations.
-func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path string, receiverName string, ok bool) {
+// and extractor items when the ID is not found locally. For receiver items it
+// returns a synthetic path "receiver:<id>" and for extractor items "extractor:<id>".
+// These synthetic paths are suitable as database keys (position tracking, watch
+// history, ratings) but NOT for local file operations.
+func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path string, itemName string, ok bool) {
 	mid := MediaID(strings.TrimSpace(id))
 	if mid == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
@@ -653,6 +654,12 @@ func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path st
 	if h.receiver != nil {
 		if ri := h.receiver.GetMediaItem(string(mid)); ri != nil {
 			return "receiver:" + string(mid), ri.Name, true
+		}
+	}
+	// Fallback: check extractor items
+	if h.extractor != nil {
+		if ei := h.extractor.GetItem(string(mid)); ei != nil && ei.Status == "active" {
+			return "extractor:" + string(mid), ei.Title, true
 		}
 	}
 	if !h.media.IsReady() {
