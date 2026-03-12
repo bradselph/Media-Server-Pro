@@ -5,14 +5,12 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/pkg/helpers"
 )
 
 // AddExtractorItem adds an M3U8 stream URL to the library.
 // POST /api/admin/extractor/items  { "url": "https://...m3u8", "title": "..." }
-// TODO(feature-gap): The URL is passed directly to the extractor without validation. An admin could
-// add internal/private URLs (e.g. http://localhost:..., http://192.168.x.x/...) which
-// the server would then proxy to external clients, creating an SSRF (Server-Side Request
-// Forgery) vector. Consider validating that the URL is not an internal/private address.
 func (h *Handler) AddExtractorItem(c *gin.Context) {
 	if !h.checkExtractorEnabled(c) {
 		return
@@ -24,6 +22,11 @@ func (h *Handler) AddExtractorItem(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "url is required")
+		return
+	}
+
+	if err := helpers.ValidateURLForSSRF(req.URL); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 

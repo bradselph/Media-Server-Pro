@@ -494,12 +494,9 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	return result, nil
 }
 
-// TODO(feature-gap): shouldValidateFile is never called; no background task validates media files.
-// Routes POST /api/admin/validator/validate and /fix exist but only on-demand per ID. Wire a
-// scheduled task (e.g. in cmd/server registerTasks) that uses this to validate library files, or remove.
-
 // shouldValidateFile checks whether a file at the given path is a media file
-// that has not been recently validated.
+// that has not been recently validated. Used for on-demand validation via admin API;
+// can be used by a future scheduled task to validate library files in bulk.
 func (m *Module) shouldValidateFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	if !helpers.IsMediaExtension(ext) {

@@ -619,9 +619,7 @@ export const adminApi = {
             threshold: string
         }>('/api/admin/hls/clean/inactive', maxAge !== undefined ? {max_age_hours: maxAge} : {}),
 
-    // Validator (backend routes exist in api/routes/routes.go and api/handlers/admin_validator.go;
-    // TODO(feature-gap): no admin UI calls these — no tab or section invokes validateMedia, fixMedia,
-    // or getValidatorStats. Add a Validator section under Media or System to surface validate/fix/stats.)
+    // Validator — surfaced in Admin Media > Validator tab
     validateMedia: (id: string) =>
         api.post<ValidationResult>('/api/admin/validator/validate', {id}),
 

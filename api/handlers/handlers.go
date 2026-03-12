@@ -4,7 +4,7 @@
 //   - handler.go      - Handler struct, HandlerDeps, NewHandler, helper functions
 //   - media.go        - Media handlers
 //   - auth.go         - Authentication handlers
-//   - hls.go          - HLS streaming handlers
+//   - hls.go          - HLS streaming and admin HLS handlers (/api/admin/hls/*)
 //   - playlists.go    - Playlist handlers
 //   - analytics.go    - Analytics handlers
 //   - suggestions.go  - Suggestions handlers
@@ -12,7 +12,6 @@
 //   - thumbnails.go   - Thumbnail handlers
 //   - admin.go        - Admin handlers
 //   - admin_media.go  - Admin media handlers
-//   - admin_hls.go    - Admin HLS handlers (thin, delegates to hls.go)
 //   - admin_scanner.go       - Admin scanner handlers
 //   - admin_security.go      - Admin security handlers
 //   - admin_remote.go        - Admin remote media handlers

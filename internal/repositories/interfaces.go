@@ -11,9 +11,10 @@ import (
 
 // Repository-level errors
 var (
-	ErrUserExists      = errors.New("user already exists")
-	ErrUserNotFound    = errors.New("user not found")
-	ErrSessionNotFound = errors.New("session not found")
+	ErrUserExists          = errors.New("user already exists")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrSessionNotFound     = errors.New("session not found")
+	ErrScanResultNotFound  = errors.New("scan result not found")
 )
 
 // UserRepository provides user data access methods
@@ -64,7 +65,8 @@ type MediaFilter struct {
 	Offset   int    // skip N results
 }
 
-// ScanResultRepository provides mature content scan result storage
+// ScanResultRepository provides mature content scan result storage.
+// Get returns (nil, ErrScanResultNotFound) when no result exists for the path.
 type ScanResultRepository interface {
 	Save(ctx context.Context, result *ScanResult) error
 	Get(ctx context.Context, path string) (*ScanResult, error)

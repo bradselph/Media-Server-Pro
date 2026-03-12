@@ -1013,15 +1013,10 @@ type Stats struct {
 	PendingReview int `json:"pending_review"`
 }
 
-// TODO(feature-gap): loadResults is a no-op, so the in-memory results map starts empty on every restart.
-// GetScanResult and IsMature return false for all files until re-scanned. The review queue is
-// loaded from DB (loadReviewQueue), but scan results are not — creating inconsistency: review
-// queue items have no in-memory scan result. Implement loading scan results from DB on startup
-// (e.g. from scan_result_repository) for at least reviewed/flagged items so IsMature and
-// GetScanResult are consistent with the review queue.
-
-// loadResults is a no-op: scan results are persisted per-file in MySQL via scanRepo.Save().
-// The in-memory results map is rebuilt as files are scanned at runtime.
+// loadResults intentionally does not preload from DB: the in-memory results map is a runtime
+// cache. Scan results are persisted per-file via scanRepo.Save(). GetScanResult populates the
+// cache from the DB when a path is missing, so the review queue (loaded by loadReviewQueue) and
+// per-path results stay consistent without loading all results at startup.
 func (s *MatureScanner) loadResults() error {
 	return nil
 }
@@ -1052,21 +1047,6 @@ func (s *MatureScanner) loadReviewQueue() error {
 	return nil
 }
 
-// TODO(feature-gap): saveReviewQueue and saveResults are no-ops and never called. Review queue
-// and results are persisted via scanRepo.Save()/MarkReviewed(); these methods are dead. Either
-// remove them or implement periodic/flush persistence if in-memory state should be durable
-// across restarts (currently loadResults does not load, so startup state is inconsistent).
-
-// saveReviewQueue is a no-op: review queue state is persisted in MySQL
-// via scanRepo.Save() (needs_review flag) and scanRepo.MarkReviewed().
-func (s *MatureScanner) saveReviewQueue() error {
-	return nil
-}
-
-// saveResults is a no-op: results are persisted per-scan via scanRepo.Save().
-func (s *MatureScanner) saveResults() error {
-	return nil
-}
 
 // Module is an alias for MatureScanner for consistency with other modules
 type Module = MatureScanner

@@ -3,6 +3,7 @@ import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {AdminMediaListResponse, MediaItem, ThumbnailStats} from '@/api/types'
 import {ContentReviewTab, CategorizerTab, DiscoveryTab, HuggingFaceTab} from './ContentTab'
+import {ValidatorTab} from './ValidatorTab'
 import {errMsg, formatBytes} from './adminUtils'
 import {SubTabs} from './helpers'
 
@@ -757,6 +758,7 @@ export function MediaTab() {
                     {id: 'categorizer', label: 'Categorizer'},
                     {id: 'classification', label: 'Hugging Face'},
                     {id: 'discovery', label: 'Discovery'},
+                    {id: 'validator', label: 'Validator'},
                 ]}
                 active={sub}
                 onChange={setSub}
@@ -766,6 +768,7 @@ export function MediaTab() {
             {sub === 'categorizer' && <CategorizerTab/>}
             {sub === 'classification' && <HuggingFaceTab/>}
             {sub === 'discovery' && <DiscoveryTab/>}
+            {sub === 'validator' && <ValidatorTab/>}
         </>
     )
 }

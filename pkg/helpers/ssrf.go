@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -44,6 +45,40 @@ func isPrivateIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+// ValidateURLForSSRF parses rawURL, enforces http/https scheme, and rejects URLs
+// whose host resolves to private/loopback/link-local/reserved IP addresses.
+// It is intended for validating admin-supplied URLs before any server-side
+// HTTP fetching occurs.
+func ValidateURLForSSRF(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported URL scheme: %s", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("invalid URL: missing host")
+	}
+
+	ips, err := net.DefaultResolver.LookupIP(context.Background(), "ip", host)
+	if err != nil {
+		return fmt.Errorf("failed to resolve host %s: %w", host, err)
+	}
+	if len(ips) == 0 {
+		return fmt.Errorf("no addresses resolved for %s", host)
+	}
+
+	for _, ip := range ips {
+		if isPrivateIP(ip) {
+			return fmt.Errorf("URL resolves to private/reserved address %s", host)
+		}
+	}
+
+	return nil
 }
 
 // TODO: Bug — TOCTOU race condition: DNS is resolved and validated here, but the

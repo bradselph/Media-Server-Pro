@@ -103,16 +103,12 @@ func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.Sc
 	})
 }
 
-// TODO(feature-gap): Get returns (nil, nil) when no record is found, while MediaMetadataRepository.Get
-// returns (nil, error). Callers must handle both patterns; standardize on (nil, ErrNotFound) or
-// document (nil, nil) for not-found across ScanResultRepository and interfaces.go contract.
-
-// Get retrieves a scan result by path
+// Get retrieves a scan result by path. Returns (nil, ErrScanResultNotFound) when no record exists.
 func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositories.ScanResult, error) {
 	var row scanResultRow
 	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, repositories.ErrScanResultNotFound
 		}
 		return nil, fmt.Errorf("failed to query scan result: %w", err)
 	}

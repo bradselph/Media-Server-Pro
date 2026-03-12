@@ -59,11 +59,9 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 	}
 }
 
-// adminAuth requires an authenticated session with role=admin.
+// adminAuth requires an authenticated session with role=admin and an enabled account.
 // Admin and regular users both use the session_id cookie; this checks the role set by sessionAuth.
-// TODO(feature-gap): adminAuth does not check user.Enabled; a disabled admin can still access
-// admin endpoints while the session is valid. requireAuth() checks user.Enabled — add the same
-// check here and return 403 Forbidden (not 401) for non-admin so semantics match (authenticated but not authorized).
+// Disabled admins receive 403 Forbidden (authenticated but not authorized).
 func adminAuth(_ *auth.Module) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userVal, exists := c.Get("user")
@@ -75,6 +73,11 @@ func adminAuth(_ *auth.Module) gin.HandlerFunc {
 		user, ok := userVal.(*models.User)
 		if !ok || user.Role != models.RoleAdmin {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+		if !user.Enabled {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Account disabled"})
 			c.Abort()
 			return
 		}
