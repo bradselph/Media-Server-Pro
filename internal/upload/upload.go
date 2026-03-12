@@ -199,7 +199,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 
 	uploadID := m.generateUploadID()
 	progress := m.registerUploadProgress(ProgressRegistration{
-		UploadID: UploadID(uploadID),
+		UploadID: uploadID,
 		Filename: prepared.Filename,
 		UserID:   scope.UserID,
 		Size:     fh.Size,
