@@ -499,13 +499,13 @@ function MediaCard({
     const previewHover = usePreviewHover(item, restricted)
     const baseThumbnailUrl = thumbnailUrlForMatureAccess(
         item.thumbnail_url ?? undefined,
-        !!item.is_mature,
+        item.is_mature,
         canViewMature,
     )
     const currentThumbnail = previewHover.currentThumbnail ?? baseThumbnailUrl
 
     const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(() =>
-        thumbnailUrlForMatureAccess(item.thumbnail_url ?? undefined, !!item.is_mature, canViewMature) ?? null)
+        thumbnailUrlForMatureAccess(item.thumbnail_url ?? undefined, item.is_mature, canViewMature) ?? null)
     const [thumbnailError, setThumbnailError] = useState(false)
     const [imgLoaded, setImgLoaded] = useState(false)
     const [inView, setInView] = useState(false)
