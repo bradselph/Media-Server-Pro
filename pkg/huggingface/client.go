@@ -184,7 +184,7 @@ func (c *Client) handleResponse(body []byte, statusCode int, attempt int) (*Clas
 	}
 	if statusCode == http.StatusUnauthorized {
 		c.log.Warn("HF client: invalid API key (401)")
-		return nil, false, nil, fmt.Errorf("Hugging Face API key invalid or expired (401)")
+		return nil, false, nil, fmt.Errorf("hugging face API key invalid or expired (401)")
 	}
 	if statusCode == 429 {
 		c.log.Debug("HF client: rate limit (429), retry %d/%d", attempt+1, maxRetries)

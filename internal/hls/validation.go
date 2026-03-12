@@ -49,7 +49,7 @@ func (m *Module) readMasterPlaylist(outputDir string) ([]byte, error) {
 	masterPath := filepath.Join(outputDir, masterPlaylistName)
 	data, err := os.ReadFile(masterPath)
 	if err != nil {
-		return nil, fmt.Errorf("Master playlist not found: %w", err)
+		return nil, fmt.Errorf("master playlist not found: %w", err)
 	}
 	return data, nil
 }
