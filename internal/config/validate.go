@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -200,6 +201,9 @@ func (m *Manager) validateHuggingFace() []error {
 	}
 	if m.config.HuggingFace.APIKey == "" {
 		m.log.Warn("huggingface enabled but api_key is empty — classification requests will fail")
+	}
+	if strings.TrimSpace(m.config.HuggingFace.Model) == "" {
+		m.log.Warn("huggingface enabled but model is empty — set HUGGINGFACE_MODEL to an image-classification or image-to-text model (e.g. Falconsai/nsfw_image_detection)")
 	}
 	return nil
 }
