@@ -181,9 +181,9 @@ type webPFromAudioOpts struct {
 // jobHeap implements heap.Interface for priority queue (lower priority value = higher priority)
 type jobHeap []*priorityJob
 
-func (h jobHeap) Len() int            { return len(h) }
-func (h jobHeap) Less(i, j int) bool  { return h[i].priority < h[j].priority }
-func (h jobHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
+func (h *jobHeap) Len() int            { return len(*h) }
+func (h *jobHeap) Less(i, j int) bool  { return (*h)[i].priority < (*h)[j].priority }
+func (h *jobHeap) Swap(i, j int)       { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
 func (h *jobHeap) Push(x interface{}) { *h = append(*h, x.(*priorityJob)) }
 func (h *jobHeap) Pop() interface{} {
 	old := *h
