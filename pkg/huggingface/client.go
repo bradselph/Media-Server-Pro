@@ -23,6 +23,7 @@ const (
 	maxRetries         = 3
 	initialRetryDelay  = 2 * time.Second
 	retryBackoffFactor = 2.0
+	maxResponseSize    = 10 * 1024 * 1024 // 10MB cap for HF API responses
 )
 
 // ClassificationResult holds the result of an image classification/caption request.
@@ -77,13 +78,13 @@ func NewClient(cfg ClientConfig) *Client {
 		baseURL = strings.TrimSuffix(cfg.EndpointURL, "/")
 	}
 
-	// TODO: Bug — if cfg.Timeout is zero (the zero value for time.Duration), the
-	// http.Client will have no timeout, meaning requests can hang indefinitely.
-	// This happens when the caller does not set Timeout in ClientConfig. Add a
-	// default timeout (e.g. 30s) when cfg.Timeout <= 0.
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: cfg.Timeout,
+			Timeout: timeout,
 		},
 		apiKey:      cfg.APIKey,
 		model:       cfg.Model,
@@ -171,11 +172,7 @@ func (c *Client) doOneRequest(ctx context.Context, url string, imageData []byte,
 		return nil, true, err, nil
 	}
 
-	// TODO: Bug — io.ReadAll has no size limit. A malicious or misconfigured HF
-	// endpoint could return an arbitrarily large response body, exhausting server
-	// memory. Use io.LimitReader(resp.Body, maxResponseSize) to cap the read
-	// (e.g. 10MB should be more than sufficient for JSON classification responses).
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	_ = resp.Body.Close()
 
 	return c.handleResponse(body, resp.StatusCode, attempt)

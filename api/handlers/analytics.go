@@ -262,14 +262,20 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	startDate := endDate.AddDate(0, -1, 0)
 
 	if v := c.Query("start_date"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			startDate = t
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "start_date must be YYYY-MM-DD")
+			return
 		}
+		startDate = t
 	}
 	if v := c.Query("end_date"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			endDate = t
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "end_date must be YYYY-MM-DD")
+			return
 		}
+		endDate = t
 	}
 
 	if startDate.After(endDate) {

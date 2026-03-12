@@ -40,12 +40,15 @@ func (r *SessionRepository) Get(ctx context.Context, id string) (*models.Session
 	return &session, nil
 }
 
-// TODO: Silent failure — Delete does not check RowsAffected. If the session ID does
-// not exist, the operation succeeds silently. This is inconsistent with the Get method
-// which returns repositories.ErrSessionNotFound. Consider checking RowsAffected and
-// returning ErrSessionNotFound when no rows are deleted.
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Session{}, "id = ?", id).Error
+	result := r.db.WithContext(ctx).Delete(&models.Session{}, "id = ?", id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrSessionNotFound
+	}
+	return nil
 }
 
 // DeleteExpired removes all expired sessions

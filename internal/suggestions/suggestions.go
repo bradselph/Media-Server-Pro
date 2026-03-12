@@ -4,10 +4,7 @@ package suggestions
 import (
 	"context"
 	"math"
-	// TODO: math/rand is used without seeding (deprecated behavior). In Go 1.20+, the
-	// default source is automatically seeded, but this import should ideally use
-	// math/rand/v2 to make the intent clear and avoid confusion about seeding.
-	"math/rand"
+	"math/rand" // Go 1.20+ auto-seeds the default source
 	"sort"
 	"strings"
 	"sync"

@@ -188,15 +188,7 @@ export function PlayerSettingsPanel({
                             </span>
                         </button>
                     ))}
-                    {/* TODO: Type mismatch — `bandwidth` is typed as `number | undefined` in the
-                        props interface, but this check uses `!== null`. Since `undefined !== null`
-                        is always true, the null check never filters out an absent value.
-                        WHY: When bandwidth is undefined (not provided), `undefined !== null` is
-                        true and `undefined > 0` is false, so it happens to work by accident.
-                        But the intent is unclear and fragile.
-                        FIX: Change to `bandwidth != null && bandwidth > 0` (loose equality
-                        catches both null and undefined) or simply `bandwidth && bandwidth > 0`. */}
-                    {bandwidth !== null && bandwidth > 0 && (
+                    {bandwidth != null && bandwidth > 0 && (
                         <>
                             <div className="settings-panel__divider"/>
                             <div className="settings-panel__bandwidth">

@@ -92,9 +92,9 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 	now := time.Now()
 	user.LastLogin = &now
 	m.usersMu.Unlock()
-	// TODO: Bug — user.LastLogin is updated in memory but never persisted to the database
-	// via m.userRepo.Update(). The updated LastLogin will be lost on restart. Should call
-	// m.userRepo.Update(ctx, user) here or in a background goroutine.
+	if err := m.userRepo.Update(ctx, user); err != nil {
+		m.log.Warn("Failed to persist LastLogin for %s: %v", req.Username, err)
+	}
 	m.log.Info("User logged in: %s from %s", req.Username, req.IPAddress)
 	return session, nil
 }
