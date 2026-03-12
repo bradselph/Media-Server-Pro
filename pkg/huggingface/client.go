@@ -1,5 +1,5 @@
-// Package huggingface provides a client for the Hugging Face Inference API
-// for image captioning and visual classification of media content.
+// Package huggingface provides a client for the Hugging Face Inference Providers API
+// for image classification of media content.
 package huggingface
 
 import (
@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -19,28 +18,27 @@ import (
 )
 
 const (
-	defaultBaseURL     = "https://router.huggingface.co/hf-inference"
-	maxRetries         = 3
-	initialRetryDelay  = 2 * time.Second
-	retryBackoffFactor = 2.0
-	maxResponseSize    = 10 * 1024 * 1024 // 10MB cap for HF API responses
+	defaultBaseURL    = "https://router.huggingface.co/hf-inference"
+	maxRetries        = 3
+	initialRetryDelay = 2 * time.Second
+	maxResponseSize   = 10 * 1024 * 1024 // 10MB cap for HF API responses
 )
 
-// ClassificationResult holds the result of an image classification/caption request.
+// ClassificationResult holds the result of an image classification request.
 type ClassificationResult struct {
-	Caption    string   // Raw generated text from image-to-text model
-	Tags       []string // Parsed tags from caption
-	Confidence float64  // Model confidence (if available)
-	Model      string   // Model used
+	Labels     []LabelScore // All labels with scores from the model
+	Tags       []string     // Label names extracted as tags
+	Confidence float64      // Top label confidence score
+	Model      string       // Model used
 }
 
-// hfImageCaptionResponse is the JSON response from HF image-to-text/captioning models.
-// Format: [{"generated_text": "..."}]
-type hfImageCaptionResponse []struct {
-	GeneratedText string `json:"generated_text"`
+// LabelScore is a single label + confidence pair from image classification.
+type LabelScore struct {
+	Label string  `json:"label"`
+	Score float64 `json:"score"`
 }
 
-// Client handles communication with the Hugging Face Inference API.
+// Client handles communication with the Hugging Face Inference Providers API.
 type Client struct {
 	httpClient  *http.Client
 	apiKey      string
@@ -94,9 +92,9 @@ func NewClient(cfg ClientConfig) *Client {
 	}
 }
 
-// ClassifyImage sends an image to the Hugging Face Inference API and returns
-// generated captions/tags. On error or if the client is not configured (no API key),
-// returns an empty result without failing (graceful degradation).
+// ClassifyImage sends an image to the Hugging Face Inference Providers API and returns
+// classification labels with confidence scores. On error or if the client is not
+// configured (no API key), returns an empty result without failing (graceful degradation).
 func (c *Client) ClassifyImage(ctx context.Context, imageData []byte) (*ClassificationResult, error) {
 	empty := &ClassificationResult{Model: c.model}
 	if c.apiKey == "" {
@@ -181,7 +179,6 @@ func (c *Client) handleResponse(body []byte, statusCode int, attempt int) (*Clas
 			return nil, false, nil, nil
 		}
 		result.Model = c.model
-		result.Tags = parseTagsFromCaption(result.Caption)
 		return result, false, nil, nil
 	}
 	if statusCode == 503 {
@@ -200,36 +197,52 @@ func (c *Client) handleResponse(body []byte, statusCode int, attempt int) (*Clas
 	return nil, false, nil, nil
 }
 
+// parseResponse handles both image-classification ([{"label","score"}]) and
+// image-to-text ([{"generated_text"}]) response formats from the HF API.
 func (c *Client) parseResponse(body []byte) (*ClassificationResult, error) {
-	var parsed hfImageCaptionResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, err
+	// Try image-classification format first: [{"label": "nsfw", "score": 0.95}]
+	var classLabels []LabelScore
+	if err := json.Unmarshal(body, &classLabels); err == nil && len(classLabels) > 0 && classLabels[0].Label != "" {
+		result := &ClassificationResult{Labels: classLabels}
+		for _, ls := range classLabels {
+			tag := strings.ToLower(strings.TrimSpace(ls.Label))
+			if tag != "" {
+				result.Tags = append(result.Tags, tag)
+			}
+			if ls.Score > result.Confidence {
+				result.Confidence = ls.Score
+			}
+		}
+		return result, nil
 	}
-	if len(parsed) == 0 {
+
+	// Fallback: image-to-text format: [{"generated_text": "..."}]
+	var captions []struct {
+		GeneratedText string `json:"generated_text"`
+	}
+	if err := json.Unmarshal(body, &captions); err != nil {
+		return nil, fmt.Errorf("unrecognized HF response format: %w", err)
+	}
+	if len(captions) == 0 || captions[0].GeneratedText == "" {
 		return &ClassificationResult{}, nil
 	}
+	caption := strings.TrimSpace(captions[0].GeneratedText)
 	return &ClassificationResult{
-		Caption: strings.TrimSpace(parsed[0].GeneratedText),
+		Tags:       parseWordsAsTags(caption),
+		Confidence: 1.0,
 	}, nil
 }
 
-// parseTagsFromCaption turns a caption string into a list of normalized tags
-// (lowercase, alphanumeric + spaces, split on punctuation).
-var tagWordRegex = regexp.MustCompile(`[a-zA-Z0-9]+`)
-
-func parseTagsFromCaption(caption string) []string {
-	if caption == "" {
-		return nil
-	}
+// parseWordsAsTags extracts lowercase alphanumeric words (2+ chars) from a caption string.
+func parseWordsAsTags(caption string) []string {
 	lower := strings.ToLower(caption)
-	words := tagWordRegex.FindAllString(lower, -1)
+	fields := strings.FieldsFunc(lower, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	})
 	seen := make(map[string]bool)
 	var tags []string
-	for _, w := range words {
-		if len(w) < 2 {
-			continue
-		}
-		if seen[w] {
+	for _, w := range fields {
+		if len(w) < 2 || seen[w] {
 			continue
 		}
 		seen[w] = true
