@@ -18,6 +18,9 @@ import (
 	"media-server-pro/internal/logger"
 )
 
+// ImageData represents raw image bytes sent to the Hugging Face API.
+type ImageData []byte
+
 const (
 	// defaultBaseURL is the official Inference API for image/embedding tasks. The router
 	// (router.huggingface.co/v1) is for chat completions only and returns 404 for image tasks.
@@ -121,7 +124,7 @@ func NewClient(cfg ClientConfig) *Client {
 // ClassifyImage sends an image to the Hugging Face Inference Providers API and returns
 // classification labels with confidence scores. On error or if the client is not
 // configured (no API key), returns an empty result without failing (graceful degradation).
-func (c *Client) ClassifyImage(ctx context.Context, imageData []byte) (*ClassificationResult, error) {
+func (c *Client) ClassifyImage(ctx context.Context, imageData ImageData) (*ClassificationResult, error) {
 	empty := &ClassificationResult{Model: c.model}
 	if c.apiKey == "" {
 		return empty, nil
@@ -134,7 +137,7 @@ func (c *Client) ClassifyImage(ctx context.Context, imageData []byte) (*Classifi
 }
 
 // runWithRetry runs doOneRequest up to maxRetries times and returns result or empty.
-func (c *Client) runWithRetry(ctx context.Context, url string, imageData []byte) (*ClassificationResult, error) {
+func (c *Client) runWithRetry(ctx context.Context, url string, imageData ImageData) (*ClassificationResult, error) {
 	empty := &ClassificationResult{Model: c.model}
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -175,7 +178,7 @@ func (c *Client) sleepBeforeRetry(ctx context.Context, attempt int) bool {
 // doOneRequest performs a single HTTP request. Returns (result, retry, retryErr, fatalErr).
 // result != nil: success. fatalErr != nil: caller must return (nil, fatalErr).
 // retry true: caller should try again and may log retryErr; false: return empty result.
-func (c *Client) doOneRequest(ctx context.Context, url string, imageData []byte, attempt int) (*ClassificationResult, bool, error, error) {
+func (c *Client) doOneRequest(ctx context.Context, url string, imageData ImageData, attempt int) (*ClassificationResult, bool, error, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(imageData))
 	if err != nil {
 		c.log.Warn("HF client: failed to create request: %v", err)
@@ -271,7 +274,10 @@ func (c *Client) parseResponse(body []byte) (*ClassificationResult, error) {
 // parseClassificationFormat parses [{"label": "...", "score": n}] format. Returns (nil, false) if body doesn't match.
 func parseClassificationFormat(body []byte) (*ClassificationResult, bool) {
 	var classLabels []LabelScore
-	if err := json.Unmarshal(body, &classLabels); err != nil || len(classLabels) == 0 || classLabels[0].Label == "" {
+	if err := json.Unmarshal(body, &classLabels); err != nil {
+		return nil, false
+	}
+	if len(classLabels) == 0 || classLabels[0].Label == "" {
 		return nil, false
 	}
 	result := &ClassificationResult{Labels: classLabels}
