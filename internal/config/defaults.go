@@ -237,7 +237,7 @@ func defaultMatureScannerConfig() MatureScannerConfig {
 func defaultHuggingFaceConfig() HuggingFaceConfig {
 	return HuggingFaceConfig{
 		Enabled:       false,
-		Model:         "Salesforce/blip-image-captioning-large",
+		Model:         "Falconsai/nsfw_image_detection",
 		MaxFrames:     3,
 		TimeoutSecs:   30,
 		RateLimit:     30,
