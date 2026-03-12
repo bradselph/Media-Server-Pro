@@ -22,9 +22,9 @@ import (
 type ImageData []byte
 
 const (
-	// defaultBaseURL: HF deprecated api-inference.huggingface.co (410 Gone). Use router for serverless inference.
-	// See https://huggingface.co/docs/inference-providers/index
-	defaultBaseURL    = "https://router.huggingface.co"
+	// defaultBaseURL: HF deprecated api-inference.huggingface.co (410). Use router/hf-inference (HF Inference provider).
+	// Path: /models/{model}. See https://huggingface.co/docs/inference-providers/index
+	defaultBaseURL    = "https://router.huggingface.co/hf-inference"
 	maxRetries        = 3
 	initialRetryDelay = 2 * time.Second
 	maxResponseSize   = 10 * 1024 * 1024 // 10MB cap for HF API responses
