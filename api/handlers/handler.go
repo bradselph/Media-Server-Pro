@@ -263,6 +263,12 @@ func randIntn(n int) int {
 // requireModule checks that the given module pointer is non-nil. Returns false
 // (and writes a 503 error) if the module failed to initialise or is disabled.
 // Use at the top of handlers that depend on optional modules.
+// TODO: This function checks "module == nil" which works for untyped nil but does NOT
+// detect typed nil pointers. If a *Module field in Handler is assigned as
+// (*hls.Module)(nil), the interface value is non-nil (it has a type), so this check
+// passes and the caller will dereference a nil pointer. AdminGetSystemInfo handles this
+// correctly using reflect.ValueOf(p).IsNil(). Consider using the same approach here,
+// or ensure that all optional module fields are never assigned typed nil values.
 func requireModule(c *gin.Context, module any, name string) bool {
 	if module == nil {
 		writeError(c, http.StatusServiceUnavailable, name+" is not available")
@@ -475,6 +481,13 @@ func (h *Handler) allowedMediaDirs() AllowedDirs {
 	cfg := h.media.GetConfig()
 	return AllowedDirs{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads}
 }
+
+// TODO: resolvePathToAbsolute does NOT verify that the resolved absolute path is within
+// allowedDirs when the input is already absolute. An absolute path like "/etc/passwd"
+// passes through resolveAbsPath which only calls filepath.Abs — no containment check.
+// Callers that need containment must call validatePathInDirsAndStat separately, but this
+// function's name implies it is safe. Consider adding an isPathWithinDirs check here or
+// renaming to clarify that the caller is responsible for containment validation.
 
 // resolvePathToAbsolute resolves path (absolute or relative) to an absolute path under
 // allowedDirs. Writes error and returns ("", false) on failure.

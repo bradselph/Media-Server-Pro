@@ -144,6 +144,11 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		}
 	}
 
+	// TODO: Race condition — if two upload requests complete concurrently, both will read the
+	// same user.StorageUsed value and both will set storage_used = old + their own totalAdded.
+	// The second write overwrites the first, so one upload's size is lost. Should use an
+	// atomic increment (e.g., SQL UPDATE users SET storage_used = storage_used + ? WHERE ...)
+	// instead of read-then-write.
 	if totalAdded > 0 && user.ID != "admin" {
 		if err := h.auth.UpdateUser(c.Request.Context(), user.Username, map[string]interface{}{
 			"storage_used": user.StorageUsed + totalAdded,

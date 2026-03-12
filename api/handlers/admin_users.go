@@ -19,6 +19,10 @@ func (h *Handler) AdminListUsers(c *gin.Context) {
 }
 
 // AdminCreateUser creates a user
+// TODO: The Role field is accepted from the request without validation. An admin could
+// pass an arbitrary role string (e.g., "superadmin") that may be stored but not recognized,
+// leading to undefined behavior in permission checks. Should validate against known roles
+// (models.RoleAdmin, models.RoleViewer, etc.).
 func (h *Handler) AdminCreateUser(c *gin.Context) {
 	var req struct {
 		Username string          `json:"username"`
@@ -87,6 +91,11 @@ func (h *Handler) AdminGetUser(c *gin.Context) {
 }
 
 // AdminUpdateUser updates a user's details
+// TODO: The user being updated could be the built-in "admin" account. An admin could
+// set another admin's role to "viewer" or disable themselves by passing their own
+// username. While AdminDeleteUser prevents self-deletion, AdminUpdateUser allows
+// self-demotion/self-disabling which could lock the admin out. Should add a guard
+// against demoting the last admin account.
 func (h *Handler) AdminUpdateUser(c *gin.Context) {
 	username := c.Param("username")
 

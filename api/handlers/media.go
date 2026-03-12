@@ -163,6 +163,10 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		items = items[:limit]
 	}
 
+	// TODO: h.thumbnails is accessed without a nil check. The thumbnails module is in
+	// HandlerOptionalDeps and can be nil if the feature is disabled. This will panic with
+	// a nil pointer dereference. Wrap in "if h.thumbnails != nil" or add a requireThumbnails
+	// guard. The same issue exists in GetMedia below.
 	for _, item := range items {
 		if item.ThumbnailURL == "" && item.Path != "" {
 			// Only generate thumbnails for local media (receiver items have no local path)
@@ -260,6 +264,8 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		}
 	}
 
+	// TODO: h.thumbnails is accessed without a nil check here (same issue as ListMedia).
+	// If the thumbnails module is nil (disabled), this will panic.
 	if item.ThumbnailURL == "" {
 		if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.ID)) {
 			isAudio := item.Type == "audio"
@@ -386,6 +392,9 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		RangeHeader: c.Request.Header.Get("Range"),
 	}
 
+	// TODO: rangeHeader is read a second time here — it was already read above as part of
+	// StreamRequest (line 389: RangeHeader: c.Request.Header.Get("Range")). Use the req.RangeHeader
+	// field instead of re-reading the header to avoid the duplication.
 	rangeHeader := c.Request.Header.Get("Range")
 	isInitialRequest := rangeHeader == "" || strings.HasPrefix(rangeHeader, "bytes=0-")
 	if isInitialRequest && h.analytics != nil {
@@ -409,6 +418,11 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		h.log.Warn("Failed to increment view count for %s: %v", absPath, err)
 	}
 
+	// TODO: When streaming fails due to a client disconnect (broken pipe, connection reset),
+	// an error is logged and a JSON error response is attempted. However, if the response
+	// has already been partially written (HTTP headers sent, partial body), writing a JSON
+	// error will either fail silently or corrupt the response. Should check c.Writer.Written()
+	// and isClientDisconnect(err) before writing, similar to how ReceiverProxyStream does it.
 	if err := h.streaming.Stream(c.Writer, c.Request, req); err != nil {
 		if errors.Is(err, streaming.ErrFileNotFound) {
 			writeError(c, http.StatusNotFound, errFileNotFound)
@@ -429,6 +443,11 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		return
 	}
 
+	// TODO: When RequireAuth is false and the user is unauthenticated (session == nil),
+	// the CanDownload permission check is skipped entirely, allowing anonymous downloads
+	// with no permission enforcement. If downloads should always require auth, this block
+	// should use the user from context (getUser) rather than re-fetching; if anonymous
+	// downloads are intentional, this is fine but should be documented.
 	if session != nil {
 		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
 		if err != nil || user == nil {

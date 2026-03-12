@@ -53,6 +53,11 @@ func (h *Handler) AdminExportAuditLog(c *gin.Context) {
 		return
 	}
 
+	// TODO: The Content-Disposition header uses fmt.Sprintf with %q (Go-style quoting) which
+	// adds backslash escapes for special characters. HTTP Content-Disposition expects RFC 6266
+	// quoting. Should use safeContentDisposition() instead (defined in response.go), which
+	// properly sanitizes the filename. The analytics export (AdminExportAnalytics) uses
+	// safeContentDisposition correctly, but this handler does not.
 	c.Header(headerContentDisposition, fmt.Sprintf("attachment; filename=%q", filepath.Base(filename)))
 	c.Header(headerContentType, "text/csv")
 	http.ServeFile(c.Writer, c.Request, filename)

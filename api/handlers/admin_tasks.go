@@ -7,6 +7,10 @@ import (
 )
 
 // AdminListTasks returns scheduled tasks
+// TODO: h.tasks is an optional module but is accessed without a nil check. If the tasks
+// module failed to initialize, this will panic. Should add a requireModule guard or check
+// for nil. The same issue applies to AdminRunTask, AdminEnableTask, AdminDisableTask, and
+// AdminStopTask below.
 func (h *Handler) AdminListTasks(c *gin.Context) {
 	taskList := h.tasks.ListTasks()
 	writeSuccess(c, taskList)

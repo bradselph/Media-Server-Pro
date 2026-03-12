@@ -55,6 +55,13 @@ func (h *Handler) CreateBackupV2(c *gin.Context) {
 }
 
 // RestoreBackup restores from a backup (v2 API - by ID path param)
+// TODO: Backup restore runs synchronously and can take a long time for large backups.
+// There is no audit logging of the restore action. If the restore modifies the database,
+// the server state may be inconsistent until a restart. Consider:
+// 1. Adding an audit log entry for restore operations.
+// 2. Running restore async and returning 202 Accepted (like ClassifyDirectory).
+// 3. Validating the backup ID format to prevent path traversal (if backup files are
+//    stored on disk and the ID is used as a filename).
 func (h *Handler) RestoreBackup(c *gin.Context) {
 	if !h.requireBackup(c) {
 		return

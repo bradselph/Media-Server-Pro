@@ -63,6 +63,9 @@ func (h *Handler) ScanContent(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
+	// TODO: req.Path is passed directly to ScanFile without path validation. An admin could
+	// scan any file on the filesystem. Should validate against allowed media directories
+	// using resolvePathForAdmin, similar to how ClassifyFile does it.
 	if req.Path != "" {
 		result := h.scanner.ScanFile(req.Path)
 		writeSuccess(c, result)

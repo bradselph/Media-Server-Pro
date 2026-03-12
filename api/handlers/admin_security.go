@@ -155,6 +155,10 @@ func (h *Handler) GetBannedIPs(c *gin.Context) {
 }
 
 // BanIP manually bans an IP
+// TODO: No validation that the IP address format is valid (IPv4 or IPv6). An admin could
+// ban "not-an-ip" which would be stored but never match any real client. Also, there is no
+// guard against banning the admin's own IP, which would lock them out of the admin panel.
+// Consider validating with net.ParseIP and warning if the IP matches c.ClientIP().
 func (h *Handler) BanIP(c *gin.Context) {
 	if !h.requireSecurity(c) {
 		return
@@ -174,6 +178,8 @@ func (h *Handler) BanIP(c *gin.Context) {
 		return
 	}
 
+	// TODO: Negative duration_minutes values will produce a negative duration, causing
+	// the ban to expire immediately or produce undefined behavior. Should clamp to > 0.
 	duration := time.Duration(req.Duration) * time.Minute
 	if duration == 0 {
 		duration = 15 * time.Minute
