@@ -984,7 +984,7 @@ func computeContentFingerprint(path string) string {
 	// Read first 64 KB (or entire file if smaller)
 	head := make([]byte, sampleSize)
 	n, err := io.ReadFull(f, head)
-	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return ""
 	}
 	h.Write(head[:n])
@@ -994,7 +994,7 @@ func computeContentFingerprint(path string) string {
 		tail := make([]byte, sampleSize)
 		offset := size - int64(sampleSize)
 		n, err = f.ReadAt(tail, offset)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return ""
 		}
 		h.Write(tail[:n])
