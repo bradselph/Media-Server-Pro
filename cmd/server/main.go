@@ -606,35 +606,8 @@ func registerTasks(
 			if applied > 0 {
 				log.Info("Mature scan complete: %d scanned, %d flagged", len(allResults), applied)
 			}
-			// Visual classification via Hugging Face for mature content
-			// TODO: REDUNDANT — This HF classification block inside "mature-content-scan"
-			// duplicates the logic of the separate "hf-classification" task registered below
-			// (line ~575). Both iterate over mature items and call ClassifyMatureContent +
-			// UpdateTags. The difference is subtle: this one classifies items just scanned
-			// (allResults), while the dedicated task classifies items with no tags. This
-			// means mature items may be classified twice on each cycle. Consider removing
-			// this inline block and relying solely on the dedicated "hf-classification"
-			// task, or merging the logic into one place.
-			if scannerModule.HasHuggingFace() {
-				for _, result := range allResults {
-					if !result.IsMature {
-						continue
-					}
-					if ctx.Err() != nil {
-						break
-					}
-					tags, err := scannerModule.ClassifyMatureContent(ctx, result.Path)
-					if err != nil {
-						log.Warn("HF classification failed for %s: %v", result.Path, err)
-						continue
-					}
-					if len(tags) > 0 {
-						if err := mediaModule.UpdateTags(result.Path, tags); err != nil {
-							log.Warn("Failed to update tags for %s: %v", result.Path, err)
-						}
-					}
-				}
-			}
+			// HF visual classification is handled by the dedicated "hf-classification" task
+			// (registered below) to avoid duplicate work and keep concerns separated.
 			return nil
 		},
 	})

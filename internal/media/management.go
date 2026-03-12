@@ -316,23 +316,26 @@ func (m *Module) SetTags(path string, tags []string) error {
 }
 
 // UpdateTags merges new tags with existing tags for a media file (deduplicated, case-insensitive).
-// TODO: Race condition - reads current tags under RLock, then releases the lock,
-// then calls SetTags (which calls UpdateMetadata, which acquires a write Lock).
-// Between the RLock release and the write Lock acquisition, another goroutine could
-// modify the tags (e.g. AddTag or RemoveTag), and those changes would be lost because
-// SetTags replaces the entire tag list with the snapshot taken before the lock release.
+// The merge and write happen atomically under a single write lock to prevent lost updates.
 func (m *Module) UpdateTags(path string, tags []string) error {
-	var current []string
-	m.mu.RLock()
-	if meta, ok := m.metadata[path]; ok && meta != nil {
-		current = make([]string, len(meta.Tags))
-		copy(current, meta.Tags)
+	m.mu.Lock()
+
+	meta, exists := m.metadata[path]
+	if !exists {
+		meta = &Metadata{
+			PlaybackPos: make(map[string]float64),
+			CustomMeta:  make(map[string]string),
+			Tags:        []string{},
+		}
+		m.metadata[path] = meta
 	}
-	m.mu.RUnlock()
+
 	seen := make(map[string]bool)
-	for _, t := range current {
+	for _, t := range meta.Tags {
 		seen[strings.ToLower(t)] = true
 	}
+	merged := make([]string, len(meta.Tags))
+	copy(merged, meta.Tags)
 	for _, t := range tags {
 		if t == "" {
 			continue
@@ -340,10 +343,27 @@ func (m *Module) UpdateTags(path string, tags []string) error {
 		key := strings.ToLower(t)
 		if !seen[key] {
 			seen[key] = true
-			current = append(current, t)
+			merged = append(merged, t)
 		}
 	}
-	return m.SetTags(path, current)
+
+	meta.Tags = merged
+	if item, ok := m.media[path]; ok {
+		tagsCopy := make([]string, len(merged))
+		copy(tagsCopy, merged)
+		item.Tags = tagsCopy
+	}
+	m.mu.Unlock()
+
+	m.log.Debug("Updated tags for: %s", path)
+
+	go func() {
+		if err := m.saveMetadataItem(path); err != nil {
+			m.log.Warn("Failed to save metadata after tag update: %v", err)
+		}
+	}()
+
+	return nil
 }
 
 // AddTag adds a tag to a media file

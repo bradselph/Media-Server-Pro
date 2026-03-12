@@ -1179,7 +1179,7 @@ func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) 
 			s.log.Warn("Failed to read frame %s: %v", framePath, err)
 			continue
 		}
-		result, err := s.hfClient.ClassifyImage(ctx, data)
+		result, err := hfClient.ClassifyImage(ctx, data)
 		if err != nil {
 			s.log.Warn("HF ClassifyImage failed for %s: %v", framePath, err)
 			// Propagate auth/rate errors so admin sees them; skip only transient per-frame failures
@@ -1202,7 +1202,7 @@ func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) 
 // ClassifyMatureDirectory runs visual classification on all mature-flagged files in a directory.
 // Returns a map of file path to generated tags. Skips files that are not mature.
 func (s *MatureScanner) ClassifyMatureDirectory(ctx context.Context, dir string) (map[string][]string, error) {
-	if s.hfClient == nil {
+	if s.getHFClient() == nil {
 		return nil, nil
 	}
 	results, err := s.ScanDirectory(dir)
