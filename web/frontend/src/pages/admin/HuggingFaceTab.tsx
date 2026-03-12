@@ -572,7 +572,7 @@ function useHuggingFaceTab() {
     const { data: status } = useQuery({
         queryKey: ['classify-status'],
         queryFn: () => adminApi.getClassifyStatus(),
-        refetchInterval: status?.task_running ? 5000 : false,
+        refetchInterval: (query) => query.state.data?.task_running ? 5000 : false,
     })
 
     const { data: stats } = useQuery({

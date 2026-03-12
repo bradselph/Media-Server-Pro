@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -263,11 +264,14 @@ func randIntn(n int) int {
 // requireModule checks that the given module pointer is non-nil. Returns false
 // (and writes a 503 error) if the module failed to initialise or is disabled.
 // Use at the top of handlers that depend on optional modules.
-// TODO(feature-gap): This only checks "module == nil"; typed nil (*Module)(nil) is not detected,
-// so callers can panic if an optional module is assigned typed nil. Use reflect.ValueOf(module).IsNil()
-// like AdminGetSystemInfo, or guarantee optional fields are never typed nils.
+// Handles both interface nil and typed nil (e.g. (*extractor.Module)(nil)).
 func requireModule(c *gin.Context, module any, name string) bool {
 	if module == nil {
+		writeError(c, http.StatusServiceUnavailable, name+" is not available")
+		return false
+	}
+	v := reflect.ValueOf(module)
+	if v.Kind() == reflect.Ptr && v.IsNil() {
 		writeError(c, http.StatusServiceUnavailable, name+" is not available")
 		return false
 	}
