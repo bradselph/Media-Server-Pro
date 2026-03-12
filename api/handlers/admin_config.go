@@ -17,13 +17,10 @@ func (h *Handler) AdminGetConfig(c *gin.Context) {
 }
 
 // AdminUpdateConfig updates the configuration
-// TODO: The raw updates map is passed directly to h.admin.UpdateConfig without any
-// validation or sanitization. A malicious admin could potentially set dangerous config
-// values (e.g., changing allowed directories to "/", changing database credentials to
-// point at a rogue server, etc.). Consider validating allowed keys and value ranges.
-// Also, only whitelist/blacklist config changes are applied at runtime — other security
-// settings, streaming settings, etc. require a restart to take effect, but there is no
-// indication of this to the user.
+// TODO(feature-gap): The raw updates map is passed to h.admin.UpdateConfig without validation.
+// Implement key allowlisting and value validation (e.g. directories, DB credentials) to prevent
+// dangerous config. Also document or indicate in API/UI which changes require restart (only
+// whitelist/blacklist are applied at runtime).
 func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	if !h.requireAdmin(c) {
 		return

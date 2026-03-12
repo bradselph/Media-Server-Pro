@@ -5,13 +5,14 @@ import (
 	"time"
 )
 
-// TODO: Incomplete — Validate only checks 6 of 21 config sections. Many sections with
+// TODO(feature-gap): Incomplete — Validate only checks 6 of 21 config sections. Many sections with
 // critical constraints have no validation at all: Auth (negative LockoutDuration, zero
 // MaxLoginAttempts), Thumbnails (zero or negative Width/Height/WorkerCount), Analytics
 // (negative RetentionDays), Receiver (empty APIKeys when enabled), Uploads (zero
 // MaxFileSize), Backup (zero or negative RetentionCount), and HuggingFace (enabled
 // with empty APIKey). Invalid values in these sections pass silently and cause runtime
-// failures. Should add validation for each section that has constraints.
+// failures. Add validation for each section that has constraints (config keys and defaults
+// exist in config/types.go and defaults.go).
 //
 // Validate validates the current configuration
 func (m *Manager) Validate() []error {

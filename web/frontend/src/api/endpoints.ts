@@ -18,6 +18,7 @@ import type {
     CachedMediaResult,
     CategorizedItem,
     CategoryStats,
+    ClassifyStats,
     ClassifyStatus,
     DailyStats,
     DatabaseStatus,
@@ -585,10 +586,18 @@ export const adminApi = {
     // Hugging Face visual classification
     getClassifyStatus: () =>
         api.get<ClassifyStatus>('/api/admin/classify/status'),
+    getClassifyStats: () =>
+        api.get<ClassifyStats>('/api/admin/classify/stats'),
     classifyFile: (path: string) =>
         api.post<{ path: string; tags: string[] }>('/api/admin/classify/file', {path}),
     classifyDirectory: (path: string) =>
         api.post<{ message: string; directory: string }>('/api/admin/classify/directory', {path}),
+    classifyRunTask: () =>
+        api.post<{ message: string }>('/api/admin/classify/run-task'),
+    classifyClearTags: (id: string) =>
+        api.post<{ message: string; id: string }>('/api/admin/classify/clear-tags', {id}),
+    classifyAllPending: () =>
+        api.post<{ message: string; count: number }>('/api/admin/classify/all-pending'),
 
     // HLS admin
     getHLSStats: () =>
@@ -610,7 +619,9 @@ export const adminApi = {
             threshold: string
         }>('/api/admin/hls/clean/inactive', maxAge !== undefined ? {max_age_hours: maxAge} : {}),
 
-    // Validator
+    // Validator (backend routes exist in api/routes/routes.go and api/handlers/admin_validator.go;
+    // TODO(feature-gap): no admin UI calls these — no tab or section invokes validateMedia, fixMedia,
+    // or getValidatorStats. Add a Validator section under Media or System to surface validate/fix/stats.)
     validateMedia: (id: string) =>
         api.post<ValidationResult>('/api/admin/validator/validate', {id}),
 

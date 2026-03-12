@@ -1591,3 +1591,74 @@ func (m *Module) convertInternalToRepo(path string, meta *Metadata) *repositorie
 
 	return repoMeta
 }
+
+// ClassifyStats holds classification progress statistics.
+type ClassifyStats struct {
+	TotalMedia       int              `json:"total_media"`
+	MatureTotal      int              `json:"mature_total"`
+	MatureClassified int              `json:"mature_classified"`
+	MaturePending    int              `json:"mature_pending"`
+	RecentItems      []ClassifiedItem `json:"recent_items"`
+}
+
+// ClassifiedItem is a summary of a mature item that has been classified with tags.
+type ClassifiedItem struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Tags         []string `json:"tags"`
+	MatureScore  float64  `json:"mature_score"`
+	DateModified string   `json:"date_modified"`
+}
+
+// GetClassifyStats returns classification progress: how many mature items have been
+// classified (tagged) vs pending. Also returns the most recently modified classified items.
+func (m *Module) GetClassifyStats(recentLimit int) ClassifyStats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var stats ClassifyStats
+	stats.TotalMedia = len(m.media)
+
+	type scored struct {
+		item *models.MediaItem
+		mod  time.Time
+	}
+	var classified []scored
+
+	for path, item := range m.media {
+		if !item.IsMature {
+			continue
+		}
+		stats.MatureTotal++
+		if len(item.Tags) > 0 {
+			stats.MatureClassified++
+			mod := item.DateModified
+			if meta, ok := m.metadata[path]; ok && meta != nil && !meta.DateAdded.IsZero() {
+				mod = meta.DateAdded
+			}
+			classified = append(classified, scored{item: item, mod: mod})
+		} else {
+			stats.MaturePending++
+		}
+	}
+
+	// Sort by modification time descending to get most recent
+	sort.Slice(classified, func(i, j int) bool {
+		return classified[i].mod.After(classified[j].mod)
+	})
+	if len(classified) > recentLimit {
+		classified = classified[:recentLimit]
+	}
+
+	stats.RecentItems = make([]ClassifiedItem, len(classified))
+	for i, c := range classified {
+		stats.RecentItems[i] = ClassifiedItem{
+			ID:           c.item.ID,
+			Name:         c.item.Name,
+			Tags:         c.item.Tags,
+			MatureScore:  c.item.MatureScore,
+			DateModified: c.mod.Format(time.RFC3339),
+		}
+	}
+	return stats
+}

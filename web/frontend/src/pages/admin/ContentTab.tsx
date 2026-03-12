@@ -9,13 +9,11 @@ export { CategorizerTab } from './CategorizerTab'
 export { DiscoveryTab } from './DiscoveryTab'
 export { HuggingFaceTab } from './HuggingFaceTab'
 
-// TODO: Dead code — `ContentTab` component is never imported or rendered anywhere.
-// WHY: MediaTab.tsx imports the individual sub-tabs (ContentReviewTab, CategorizerTab,
-// DiscoveryTab, HuggingFaceTab) directly from this file's re-exports, but never uses
-// the `ContentTab` composite component itself. This component was likely superseded
-// when the admin layout was restructured to nest content sub-tabs under MediaTab.
-// FIX: Remove this dead component. Keep the re-exports above since MediaTab.tsx
-// depends on them, or move those re-exports into a barrel index if preferred.
+// TODO(feature-gap): Dead code — `ContentTab` is never imported or rendered. AdminPage.tsx
+// has no "Content" top-level tab; MediaTab renders Review/Categorizer/Hugging Face/Discovery
+// as sub-tabs and imports those components from this file's re-exports. Either remove
+// ContentTab and keep only the re-exports, or add a top-level Content tab in AdminPage
+// that renders <ContentTab /> so this composite is reachable.
 export function ContentTab() {
     const [sub, setSub] = useState('review')
     return (

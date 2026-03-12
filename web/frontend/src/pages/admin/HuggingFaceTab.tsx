@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/api/endpoints'
+import type { ClassifyStatus, ClassifyStats, ClassifiedItem } from '@/api/types'
 import { errMsg } from './adminUtils'
 
 interface HuggingFaceConfigBlock {
@@ -13,6 +14,8 @@ interface HuggingFaceConfigBlock {
     rate_limit?: number
     max_concurrent?: number
 }
+
+/* ─── Status cards ────────────────────────────────────────────── */
 
 function HuggingFaceStatusCards({ status }: { status: ClassifyStatus }) {
     return (
@@ -27,7 +30,7 @@ function HuggingFaceStatusCards({ status }: { status: ClassifyStatus }) {
             </div>
             <div className="admin-stat-card">
                 <span className="admin-stat-value" style={{ fontSize: 14 }}>
-                    {status.model ?? '—'}
+                    {status.model ?? '\u2014'}
                 </span>
                 <span className="admin-stat-label">Model</span>
             </div>
@@ -47,6 +50,226 @@ function HuggingFaceStatusCards({ status }: { status: ClassifyStatus }) {
     )
 }
 
+/* ─── Classification progress ─────────────────────────────────── */
+
+function ClassificationProgress({ stats }: { stats: ClassifyStats }) {
+    const pct = stats.mature_total > 0
+        ? Math.round((stats.mature_classified / stats.mature_total) * 100)
+        : 0
+
+    return (
+        <div className="admin-card" style={{ marginBottom: 20 }}>
+            <h3>Classification progress</h3>
+            <div className="admin-stats-grid" style={{ marginBottom: 16 }}>
+                <div className="admin-stat-card">
+                    <span className="admin-stat-value">{stats.total_media}</span>
+                    <span className="admin-stat-label">Total media</span>
+                </div>
+                <div className="admin-stat-card">
+                    <span className="admin-stat-value">{stats.mature_total}</span>
+                    <span className="admin-stat-label">Mature items</span>
+                </div>
+                <div className="admin-stat-card">
+                    <span className="admin-stat-value">{stats.mature_classified}</span>
+                    <span className="admin-stat-label">Classified</span>
+                </div>
+                <div className="admin-stat-card">
+                    <span className="admin-stat-value">{stats.mature_pending}</span>
+                    <span className="admin-stat-label">Pending</span>
+                </div>
+            </div>
+            {stats.mature_total > 0 && (
+                <div>
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: 12,
+                        color: 'var(--text-muted)',
+                        marginBottom: 4,
+                    }}>
+                        <span>{stats.mature_classified} of {stats.mature_total} classified</span>
+                        <span>{pct}%</span>
+                    </div>
+                    <div style={{
+                        height: 8,
+                        borderRadius: 4,
+                        background: 'var(--border-color)',
+                        overflow: 'hidden',
+                    }}>
+                        <div style={{
+                            height: '100%',
+                            width: `${pct}%`,
+                            borderRadius: 4,
+                            background: pct === 100
+                                ? 'var(--success-color, #22c55e)'
+                                : 'var(--primary-color, #3b82f6)',
+                            transition: 'width 0.3s ease',
+                        }} />
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+/* ─── Background task control ─────────────────────────────────── */
+
+function formatTime(iso?: string): string {
+    if (!iso) return '\u2014'
+    const d = new Date(iso)
+    if (isNaN(d.getTime()) || d.getFullYear() <= 1) return '\u2014'
+    return d.toLocaleString()
+}
+
+function BackgroundTaskControl({
+    status,
+    onRunTask,
+    onRunAllPending,
+    taskLoading,
+    allPendingLoading,
+    pendingCount,
+}: {
+    status: ClassifyStatus
+    onRunTask: () => void
+    onRunAllPending: () => void
+    taskLoading: boolean
+    allPendingLoading: boolean
+    pendingCount: number
+}) {
+    return (
+        <div className="admin-card" style={{ marginBottom: 20 }}>
+            <h3>Background task</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 13 }}>
+                The <strong>hf-classification</strong> task runs every 12 hours and classifies
+                all mature items that have no tags yet.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 13, marginBottom: 16 }}>
+                <span style={{ color: 'var(--text-muted)' }}>Status:</span>
+                <span>{status.task_running
+                    ? <span style={{ color: 'var(--warning-color, #f59e0b)', fontWeight: 600 }}>Running</span>
+                    : <span style={{ color: 'var(--text-color)' }}>Idle</span>}
+                </span>
+                <span style={{ color: 'var(--text-muted)' }}>Last run:</span>
+                <span>{formatTime(status.task_last_run)}</span>
+                <span style={{ color: 'var(--text-muted)' }}>Next run:</span>
+                <span>{formatTime(status.task_next_run)}</span>
+                {status.task_last_error && (
+                    <>
+                        <span style={{ color: 'var(--text-muted)' }}>Last error:</span>
+                        <span style={{ color: 'var(--danger-color, #ef4444)' }}>{status.task_last_error}</span>
+                    </>
+                )}
+                <span style={{ color: 'var(--text-muted)' }}>Enabled:</span>
+                <span>{status.task_enabled ? 'Yes' : 'No'}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                    type="button"
+                    className="admin-btn admin-btn-primary"
+                    onClick={onRunTask}
+                    disabled={taskLoading || status.task_running === true}
+                >
+                    {taskLoading ? 'Starting...' : status.task_running ? 'Task running...' : 'Run scheduled task now'}
+                </button>
+                <button
+                    type="button"
+                    className="admin-btn admin-btn-primary"
+                    onClick={onRunAllPending}
+                    disabled={allPendingLoading || pendingCount === 0}
+                    title={pendingCount === 0 ? 'No pending items' : `Classify ${pendingCount} pending items`}
+                >
+                    {allPendingLoading ? 'Starting...' : `Classify all pending (${pendingCount})`}
+                </button>
+            </div>
+        </div>
+    )
+}
+
+/* ─── Recently classified items ───────────────────────────────── */
+
+function RecentlyClassifiedTable({
+    items,
+    onClearTags,
+    clearingId,
+}: {
+    items: ClassifiedItem[]
+    onClearTags: (id: string) => void
+    clearingId: string | null
+}) {
+    if (items.length === 0) {
+        return (
+            <div className="admin-card" style={{ marginBottom: 20 }}>
+                <h3>Recently classified</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                    No classified items yet. Run classification on mature content to see results here.
+                </p>
+            </div>
+        )
+    }
+
+    return (
+        <div className="admin-card" style={{ marginBottom: 20 }}>
+            <h3>Recently classified ({items.length})</h3>
+            <div style={{ overflowX: 'auto' }}>
+                <table className="admin-table" style={{ width: '100%', fontSize: 13 }}>
+                    <thead>
+                        <tr>
+                            <th style={{ textAlign: 'left' }}>Name</th>
+                            <th style={{ textAlign: 'left' }}>Tags</th>
+                            <th style={{ textAlign: 'right' }}>Score</th>
+                            <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items.map((item) => (
+                            <tr key={item.id}>
+                                <td style={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {item.name}
+                                </td>
+                                <td>
+                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                        {item.tags.map((tag) => (
+                                            <span
+                                                key={tag}
+                                                style={{
+                                                    display: 'inline-block',
+                                                    padding: '1px 6px',
+                                                    borderRadius: 4,
+                                                    background: 'var(--tag-bg, rgba(59,130,246,0.15))',
+                                                    color: 'var(--tag-color, #60a5fa)',
+                                                    fontSize: 11,
+                                                }}
+                                            >
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </td>
+                                <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                                    {(item.mature_score * 100).toFixed(0)}%
+                                </td>
+                                <td style={{ textAlign: 'right' }}>
+                                    <button
+                                        type="button"
+                                        className="admin-btn"
+                                        style={{ fontSize: 11, padding: '2px 8px' }}
+                                        onClick={() => { onClearTags(item.id); }}
+                                        disabled={clearingId === item.id}
+                                    >
+                                        {clearingId === item.id ? 'Clearing...' : 'Clear tags'}
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    )
+}
+
+/* ─── Settings form (unchanged logic) ─────────────────────────── */
+
 const inputBaseStyle = {
     padding: '6px 10px',
     border: '1px solid var(--border-color)',
@@ -54,22 +277,6 @@ const inputBaseStyle = {
     background: 'var(--input-bg)',
     color: 'var(--text-color)',
     fontSize: 13,
-}
-
-// TODO: Duplicate type — this local `ClassifyStatus` interface duplicates the exported
-// `ClassifyStatus` in `@/api/types.ts` (line 488). The local version has `model?` optional
-// while types.ts has `model` required, which is an inconsistency.
-// WHY: If the backend shape changes, only one copy may be updated, causing silent type
-// drift. The optional vs required `model` difference could also mask bugs.
-// FIX: Remove this local interface and import `ClassifyStatus` from `@/api/types.ts`.
-// Verify which optionality (`model` vs `model?`) is correct per the backend response.
-interface ClassifyStatus {
-    configured: boolean
-    enabled: boolean
-    model?: string
-    rate_limit: number
-    max_frames: number
-    max_concurrent: number
 }
 
 function buildHuggingFaceConfigUpdates(params: {
@@ -98,147 +305,6 @@ function buildHuggingFaceConfigUpdates(params: {
     }
     if (params.apiKeyInput.trim()) updates['huggingface.api_key'] = params.apiKeyInput.trim()
     return updates
-}
-
-function HuggingFaceFormApiKey({
-    apiKeyInput,
-    setApiKeyInput,
-    apiKeySet,
-}: {
-    apiKeyInput: string
-    setApiKeyInput: (v: string) => void
-    apiKeySet: boolean
-}) {
-    return (
-        <div className="admin-form-group">
-            <label>API key</label>
-            <input
-                type="password"
-                className="admin-input"
-                value={apiKeyInput}
-                onChange={(e) => { setApiKeyInput(e.target.value); }}
-                placeholder={
-                    apiKeySet ? '•••••••• (leave blank to keep current)' : 'Enter Hugging Face API token'
-                }
-                autoComplete="off"
-            />
-            {apiKeySet && !apiKeyInput && (
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}> Current key is set.</span>
-            )}
-        </div>
-    )
-}
-
-function HuggingFaceFormModelAndEndpoint({
-    model,
-    setModel,
-    endpointUrl,
-    setEndpointUrl,
-}: {
-    model: string
-    setModel: (v: string) => void
-    endpointUrl: string
-    setEndpointUrl: (v: string) => void
-}) {
-    return (
-        <>
-            <div className="admin-form-group">
-                <label>Model</label>
-                <input
-                    type="text"
-                    className="admin-input"
-                    value={model}
-                    onChange={(e) => { setModel(e.target.value); }}
-                    placeholder="Salesforce/blip-image-captioning-large"
-                />
-            </div>
-            <div className="admin-form-group">
-                <label>Endpoint URL (optional)</label>
-                <input
-                    type="text"
-                    className="admin-input"
-                    value={endpointUrl}
-                    onChange={(e) => { setEndpointUrl(e.target.value); }}
-                    placeholder="https://api-inference.huggingface.co"
-                />
-            </div>
-        </>
-    )
-}
-
-function HuggingFaceFormNumericOptions({
-    maxFrames,
-    setMaxFrames,
-    rateLimit,
-    setRateLimit,
-    timeoutSecs,
-    setTimeoutSecs,
-    maxConcurrent,
-    setMaxConcurrent,
-}: {
-    maxFrames: number
-    setMaxFrames: (v: number) => void
-    rateLimit: number
-    setRateLimit: (v: number) => void
-    timeoutSecs: number
-    setTimeoutSecs: (v: number) => void
-    maxConcurrent: number
-    setMaxConcurrent: (v: number) => void
-}) {
-    return (
-        <div
-            style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                gap: 12,
-            }}
-        >
-            <div className="admin-form-group">
-                <label>Max frames</label>
-                <input
-                    type="number"
-                    className="admin-input"
-                    min={1}
-                    max={20}
-                    value={maxFrames}
-                    onChange={(e) => { setMaxFrames(Number(e.target.value) || 1); }}
-                />
-            </div>
-            <div className="admin-form-group">
-                <label>Rate limit (req/min)</label>
-                <input
-                    type="number"
-                    className="admin-input"
-                    min={1}
-                    max={120}
-                    value={rateLimit}
-                    onChange={(e) => { setRateLimit(Number(e.target.value) || 1); }}
-                />
-            </div>
-            <div className="admin-form-group">
-                <label>Timeout (sec)</label>
-                <input
-                    type="number"
-                    className="admin-input"
-                    min={5}
-                    max={120}
-                    value={timeoutSecs}
-                    onChange={(e) => { setTimeoutSecs(Number(e.target.value) || 30); }}
-                />
-            </div>
-            <div className="admin-form-group">
-                <label>Max concurrent</label>
-                <input
-                    type="number"
-                    className="admin-input"
-                    min={1}
-                    max={10}
-                    value={maxConcurrent}
-                    onChange={(e) => { setMaxConcurrent(Number(e.target.value) || 1); }}
-                />
-            </div>
-        </div>
-    )
 }
 
 function HuggingFaceSettingsForm({
@@ -290,33 +356,102 @@ function HuggingFaceSettingsForm({
                     Hugging Face classification
                 </label>
             </div>
-            <HuggingFaceFormApiKey
-                apiKeyInput={apiKeyInput}
-                setApiKeyInput={setApiKeyInput}
-                apiKeySet={apiKeySet}
-            />
-            <HuggingFaceFormModelAndEndpoint
-                model={model}
-                setModel={setModel}
-                endpointUrl={endpointUrl}
-                setEndpointUrl={setEndpointUrl}
-            />
-            <HuggingFaceFormNumericOptions
-                maxFrames={maxFrames}
-                setMaxFrames={setMaxFrames}
-                rateLimit={rateLimit}
-                setRateLimit={setRateLimit}
-                timeoutSecs={timeoutSecs}
-                setTimeoutSecs={setTimeoutSecs}
-                maxConcurrent={maxConcurrent}
-                setMaxConcurrent={setMaxConcurrent}
-            />
+            <div className="admin-form-group">
+                <label>API key</label>
+                <input
+                    type="password"
+                    className="admin-input"
+                    value={apiKeyInput}
+                    onChange={(e) => { setApiKeyInput(e.target.value); }}
+                    placeholder={
+                        apiKeySet ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (leave blank to keep current)' : 'Enter Hugging Face API token'
+                    }
+                    autoComplete="off"
+                />
+                {apiKeySet && !apiKeyInput && (
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}> Current key is set.</span>
+                )}
+            </div>
+            <div className="admin-form-group">
+                <label>Model</label>
+                <input
+                    type="text"
+                    className="admin-input"
+                    value={model}
+                    onChange={(e) => { setModel(e.target.value); }}
+                    placeholder="Salesforce/blip-image-captioning-large"
+                />
+            </div>
+            <div className="admin-form-group">
+                <label>Endpoint URL (optional)</label>
+                <input
+                    type="text"
+                    className="admin-input"
+                    value={endpointUrl}
+                    onChange={(e) => { setEndpointUrl(e.target.value); }}
+                    placeholder="https://api-inference.huggingface.co"
+                />
+            </div>
+            <div
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                    gap: 12,
+                }}
+            >
+                <div className="admin-form-group">
+                    <label>Max frames</label>
+                    <input
+                        type="number"
+                        className="admin-input"
+                        min={1}
+                        max={20}
+                        value={maxFrames}
+                        onChange={(e) => { setMaxFrames(Number(e.target.value) || 1); }}
+                    />
+                </div>
+                <div className="admin-form-group">
+                    <label>Rate limit (req/min)</label>
+                    <input
+                        type="number"
+                        className="admin-input"
+                        min={1}
+                        max={120}
+                        value={rateLimit}
+                        onChange={(e) => { setRateLimit(Number(e.target.value) || 1); }}
+                    />
+                </div>
+                <div className="admin-form-group">
+                    <label>Timeout (sec)</label>
+                    <input
+                        type="number"
+                        className="admin-input"
+                        min={5}
+                        max={120}
+                        value={timeoutSecs}
+                        onChange={(e) => { setTimeoutSecs(Number(e.target.value) || 30); }}
+                    />
+                </div>
+                <div className="admin-form-group">
+                    <label>Max concurrent</label>
+                    <input
+                        type="number"
+                        className="admin-input"
+                        min={1}
+                        max={10}
+                        value={maxConcurrent}
+                        onChange={(e) => { setMaxConcurrent(Number(e.target.value) || 1); }}
+                    />
+                </div>
+            </div>
             <button type="submit" className="admin-btn admin-btn-primary" disabled={saving}>
-                {saving ? 'Saving…' : 'Save settings'}
+                {saving ? 'Saving\u2026' : 'Save settings'}
             </button>
         </form>
     )
 }
+
+/* ─── Run classification section ──────────────────────────────── */
 
 function ClassifyPathRow({
     value,
@@ -350,22 +485,9 @@ function ClassifyPathRow({
                 onClick={onAction}
                 disabled={disabled}
             >
-                {loading ? 'Classifying…' : actionLabel}
+                {loading ? 'Classifying\u2026' : actionLabel}
             </button>
         </div>
-    )
-}
-
-function ClassifyStatusHint({ configured }: { configured: boolean | undefined }) {
-    if (configured === undefined) return null
-    const style = { color: 'var(--text-muted)', marginTop: 8 } as const
-    if (!configured) {
-        return <p style={{ ...style, fontSize: 13 }}>Set an API key below and save to enable classification.</p>
-    }
-    return (
-        <p style={{ ...style, fontSize: 12 }}>
-            Supported: video (mp4, mkv, avi, etc.) and image (jpg, png, webp) files.
-        </p>
     )
 }
 
@@ -393,7 +515,7 @@ function HuggingFaceRunClassification({
     const configured = status?.configured
     return (
         <div className="admin-card" style={{ marginBottom: 20 }}>
-            <h3>Run classification</h3>
+            <h3>Manual classification</h3>
             <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>
                 Classify a single file or all mature-flagged files in a directory. Path must be under your
                 configured media directories (Videos, Music, Uploads). Tags are merged with existing ones.
@@ -418,10 +540,21 @@ function HuggingFaceRunClassification({
                     actionLabel="Classify directory"
                 />
             </div>
-            <ClassifyStatusHint configured={configured} />
+            {configured === false && (
+                <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: 13 }}>
+                    Set an API key below and save to enable classification.
+                </p>
+            )}
+            {configured && (
+                <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: 12 }}>
+                    Supported: video (mp4, mkv, avi, etc.) and image (jpg, png, webp) files.
+                </p>
+            )}
         </div>
     )
 }
+
+/* ─── Main hook ───────────────────────────────────────────────── */
 
 function useHuggingFaceTab() {
     const queryClient = useQueryClient()
@@ -430,12 +563,21 @@ function useHuggingFaceTab() {
     const [classifyDirPath, setClassifyDirPath] = useState('')
     const [classifyFileLoading, setClassifyFileLoading] = useState(false)
     const [classifyDirLoading, setClassifyDirLoading] = useState(false)
+    const [taskLoading, setTaskLoading] = useState(false)
+    const [allPendingLoading, setAllPendingLoading] = useState(false)
+    const [clearingId, setClearingId] = useState<string | null>(null)
     const [saving, setSaving] = useState(false)
     const [apiKeyInput, setApiKeyInput] = useState('')
 
     const { data: status } = useQuery({
         queryKey: ['classify-status'],
         queryFn: () => adminApi.getClassifyStatus(),
+        refetchInterval: status?.task_running ? 5000 : false,
+    })
+
+    const { data: stats } = useQuery({
+        queryKey: ['classify-stats'],
+        queryFn: () => adminApi.getClassifyStats(),
     })
 
     const { data: config } = useQuery({
@@ -464,6 +606,11 @@ function useHuggingFaceTab() {
         setEndpointUrl(c.endpoint_url ?? '')
     }, [config?.huggingface])
 
+    function invalidateAll() {
+        queryClient.invalidateQueries({ queryKey: ['classify-status'] })
+        queryClient.invalidateQueries({ queryKey: ['classify-stats'] })
+    }
+
     async function handleClassifyFile() {
         if (!classifyPath.trim()) return
         setClassifyFileLoading(true)
@@ -471,6 +618,7 @@ function useHuggingFaceTab() {
         try {
             const result = await adminApi.classifyFile(classifyPath.trim())
             setMsg({ type: 'success', text: `Classified: ${result.tags?.length ?? 0} tags added.` })
+            invalidateAll()
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
         } finally {
@@ -488,11 +636,57 @@ function useHuggingFaceTab() {
                 type: 'success',
                 text: result?.message ?? 'Directory classification started in background.',
             })
-            queryClient.invalidateQueries({ queryKey: ['classify-status'] })
+            invalidateAll()
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
         } finally {
             setClassifyDirLoading(false)
+        }
+    }
+
+    async function handleRunTask() {
+        setTaskLoading(true)
+        setMsg(null)
+        try {
+            const result = await adminApi.classifyRunTask()
+            setMsg({ type: 'success', text: result.message })
+            invalidateAll()
+        } catch (err) {
+            setMsg({ type: 'error', text: errMsg(err) })
+        } finally {
+            setTaskLoading(false)
+        }
+    }
+
+    async function handleRunAllPending() {
+        setAllPendingLoading(true)
+        setMsg(null)
+        try {
+            const result = await adminApi.classifyAllPending()
+            setMsg({
+                type: 'success',
+                text: result.count > 0
+                    ? `Classification started for ${result.count} pending items.`
+                    : 'No pending items to classify.',
+            })
+            invalidateAll()
+        } catch (err) {
+            setMsg({ type: 'error', text: errMsg(err) })
+        } finally {
+            setAllPendingLoading(false)
+        }
+    }
+
+    async function handleClearTags(id: string) {
+        setClearingId(id)
+        try {
+            await adminApi.classifyClearTags(id)
+            setMsg({ type: 'success', text: 'Tags cleared.' })
+            invalidateAll()
+        } catch (err) {
+            setMsg({ type: 'error', text: errMsg(err) })
+        } finally {
+            setClearingId(null)
         }
     }
 
@@ -514,15 +708,8 @@ function useHuggingFaceTab() {
             await adminApi.updateConfig(updates)
             setMsg({ type: 'success', text: 'Settings saved. Some changes may require a restart.' })
             setApiKeyInput('')
-            // TODO: Bug — this passes ['admin-config', 'classify-status'] as a single queryKey,
-            // which only matches queries whose key is exactly that two-element array. It does NOT
-            // invalidate both the 'admin-config' and 'classify-status' queries separately.
-            // WHY: TanStack Query uses prefix matching on queryKey arrays. A query registered with
-            // queryKey: ['admin-config'] won't match ['admin-config', 'classify-status'].
-            // FIX: Call invalidateQueries twice with separate keys:
-            //   queryClient.invalidateQueries({ queryKey: ['admin-config'] })
-            //   queryClient.invalidateQueries({ queryKey: ['classify-status'] })
-            queryClient.invalidateQueries({ queryKey: ['admin-config', 'classify-status'] })
+            queryClient.invalidateQueries({ queryKey: ['admin-config'] })
+            queryClient.invalidateQueries({ queryKey: ['classify-status'] })
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })
         } finally {
@@ -531,37 +718,27 @@ function useHuggingFaceTab() {
     }
 
     return {
-        msg,
-        status,
-        classifyPath,
-        setClassifyPath,
-        classifyDirPath,
-        setClassifyDirPath,
-        handleClassifyFile,
-        handleClassifyDirectory,
-        classifyFileLoading,
-        classifyDirLoading,
-        saving,
-        apiKeyInput,
-        setApiKeyInput,
-        enabled,
-        setEnabled,
-        model,
-        setModel,
-        endpointUrl,
-        setEndpointUrl,
-        maxFrames,
-        setMaxFrames,
-        rateLimit,
-        setRateLimit,
-        timeoutSecs,
-        setTimeoutSecs,
-        maxConcurrent,
-        setMaxConcurrent,
-        handleSaveSettings,
-        hf,
+        msg, status, stats,
+        classifyPath, setClassifyPath,
+        classifyDirPath, setClassifyDirPath,
+        handleClassifyFile, handleClassifyDirectory,
+        classifyFileLoading, classifyDirLoading,
+        handleRunTask, taskLoading,
+        handleRunAllPending, allPendingLoading,
+        handleClearTags, clearingId,
+        saving, apiKeyInput, setApiKeyInput,
+        enabled, setEnabled,
+        model, setModel,
+        endpointUrl, setEndpointUrl,
+        maxFrames, setMaxFrames,
+        rateLimit, setRateLimit,
+        timeoutSecs, setTimeoutSecs,
+        maxConcurrent, setMaxConcurrent,
+        handleSaveSettings, hf,
     }
 }
+
+/* ─── Main component ──────────────────────────────────────────── */
 
 export function HuggingFaceTab() {
     const state = useHuggingFaceTab()
@@ -582,6 +759,27 @@ export function HuggingFaceTab() {
                 </p>
                 {state.status && <HuggingFaceStatusCards status={state.status} />}
             </div>
+
+            {state.stats && <ClassificationProgress stats={state.stats} />}
+
+            {state.status && (
+                <BackgroundTaskControl
+                    status={state.status}
+                    onRunTask={state.handleRunTask}
+                    onRunAllPending={state.handleRunAllPending}
+                    taskLoading={state.taskLoading}
+                    allPendingLoading={state.allPendingLoading}
+                    pendingCount={state.stats?.mature_pending ?? 0}
+                />
+            )}
+
+            {state.stats && (
+                <RecentlyClassifiedTable
+                    items={state.stats.recent_items ?? []}
+                    onClearTags={state.handleClearTags}
+                    clearingId={state.clearingId}
+                />
+            )}
 
             <HuggingFaceRunClassification
                 classifyPath={state.classifyPath}

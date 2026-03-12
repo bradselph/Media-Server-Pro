@@ -6,23 +6,96 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/media"
 	"media-server-pro/pkg/models"
 )
 
-// ClassifyStatus returns the Hugging Face integration status (configured, model, rate limit).
+// ClassifyStatus returns the Hugging Face integration status (configured, model, rate limit)
+// plus the background task state so the admin can see whether a run is in progress.
 // GET /api/admin/classify/status
 func (h *Handler) ClassifyStatus(c *gin.Context) {
 	if !h.requireScanner(c) {
 		return
 	}
 	cfg := h.config.Get().HuggingFace
-	writeSuccess(c, map[string]interface{}{
+
+	resp := map[string]interface{}{
 		"configured":     h.scanner.HasHuggingFace(),
 		"enabled":        cfg.Enabled,
 		"model":          cfg.Model,
 		"rate_limit":     cfg.RateLimit,
 		"max_frames":     cfg.MaxFrames,
 		"max_concurrent": cfg.MaxConcurrent,
+	}
+
+	// Include background task info if the tasks module is available.
+	if h.tasks != nil {
+		if info, err := h.tasks.GetTask("hf-classification"); err == nil {
+			resp["task_running"] = info.Running
+			resp["task_last_run"] = info.LastRun
+			resp["task_next_run"] = info.NextRun
+			resp["task_last_error"] = info.LastError
+			resp["task_enabled"] = info.Enabled
+		}
+	}
+
+	writeSuccess(c, resp)
+}
+
+// ClassifyStats returns classification progress: how many mature items have been
+// classified (tagged) vs still pending, plus the most recently classified items.
+// GET /api/admin/classify/stats
+func (h *Handler) ClassifyStats(c *gin.Context) {
+	if h.media == nil {
+		writeError(c, http.StatusServiceUnavailable, "Media module not available")
+		return
+	}
+	stats := h.media.GetClassifyStats(20)
+	writeSuccess(c, stats)
+}
+
+// ClassifyRunTask triggers the hf-classification background task immediately.
+// POST /api/admin/classify/run-task
+func (h *Handler) ClassifyRunTask(c *gin.Context) {
+	if h.tasks == nil {
+		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		return
+	}
+	if err := h.tasks.RunNow("hf-classification"); err != nil {
+		writeError(c, http.StatusConflict, err.Error())
+		return
+	}
+	writeSuccess(c, map[string]interface{}{
+		"message": "HF classification task started.",
+	})
+}
+
+// ClassifyClearTags removes all tags from a specific media item.
+// POST /api/admin/classify/clear-tags — body: { "id": "media-uuid" }
+func (h *Handler) ClassifyClearTags(c *gin.Context) {
+	if h.media == nil {
+		writeError(c, http.StatusServiceUnavailable, "Media module not available")
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if c.ShouldBindJSON(&req) != nil || req.ID == "" {
+		writeError(c, http.StatusBadRequest, "id is required")
+		return
+	}
+	item, err := h.media.GetMediaByID(req.ID)
+	if err != nil {
+		writeError(c, http.StatusNotFound, "Media item not found")
+		return
+	}
+	if err := h.media.SetTags(item.Path, []string{}); err != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to clear tags: "+err.Error())
+		return
+	}
+	writeSuccess(c, map[string]interface{}{
+		"message": "Tags cleared.",
+		"id":      req.ID,
 	})
 }
 
@@ -130,4 +203,76 @@ func (h *Handler) ClassifyDirectory(c *gin.Context) {
 			"directory": dirPath,
 		},
 	})
+}
+
+// ClassifyAllPending triggers classification on all mature items that have no tags yet.
+// POST /api/admin/classify/all-pending
+func (h *Handler) ClassifyAllPending(c *gin.Context) {
+	if !h.requireScanner(c) {
+		return
+	}
+	if !h.scanner.HasHuggingFace() {
+		writeError(c, http.StatusServiceUnavailable, "Hugging Face classification is not configured")
+		return
+	}
+	if h.media == nil {
+		writeError(c, http.StatusServiceUnavailable, "Media module not available")
+		return
+	}
+
+	isMature := true
+	items := h.media.ListMedia(media.Filter{IsMature: &isMature})
+	var pending []string
+	for _, item := range items {
+		if len(item.Tags) == 0 {
+			pending = append(pending, item.Path)
+		}
+	}
+
+	if len(pending) == 0 {
+		writeSuccess(c, map[string]interface{}{
+			"message": "No pending items to classify.",
+			"count":   0,
+		})
+		return
+	}
+
+	go h.runClassifyAllPendingBackground(pending)
+
+	c.JSON(http.StatusAccepted, models.APIResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"message": "Classification started for all pending items.",
+			"count":   len(pending),
+		},
+	})
+}
+
+// runClassifyAllPendingBackground classifies a list of file paths in the background.
+func (h *Handler) runClassifyAllPendingBackground(paths []string) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.log.Warn("ClassifyAllPending panic: %v", r)
+		}
+	}()
+	ctx := context.Background()
+	tagged := 0
+	for _, path := range paths {
+		if ctx.Err() != nil {
+			break
+		}
+		tags, err := h.scanner.ClassifyMatureContent(ctx, path)
+		if err != nil {
+			h.log.Warn("ClassifyAllPending failed for %s: %v", path, err)
+			continue
+		}
+		if len(tags) > 0 {
+			if err := h.media.UpdateTags(path, tags); err != nil {
+				h.log.Warn("Failed to update tags for %s: %v", path, err)
+			} else {
+				tagged++
+			}
+		}
+	}
+	h.log.Info("ClassifyAllPending completed: tagged %d of %d items", tagged, len(paths))
 }

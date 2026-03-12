@@ -263,12 +263,9 @@ func randIntn(n int) int {
 // requireModule checks that the given module pointer is non-nil. Returns false
 // (and writes a 503 error) if the module failed to initialise or is disabled.
 // Use at the top of handlers that depend on optional modules.
-// TODO: This function checks "module == nil" which works for untyped nil but does NOT
-// detect typed nil pointers. If a *Module field in Handler is assigned as
-// (*hls.Module)(nil), the interface value is non-nil (it has a type), so this check
-// passes and the caller will dereference a nil pointer. AdminGetSystemInfo handles this
-// correctly using reflect.ValueOf(p).IsNil(). Consider using the same approach here,
-// or ensure that all optional module fields are never assigned typed nil values.
+// TODO(feature-gap): This only checks "module == nil"; typed nil (*Module)(nil) is not detected,
+// so callers can panic if an optional module is assigned typed nil. Use reflect.ValueOf(module).IsNil()
+// like AdminGetSystemInfo, or guarantee optional fields are never typed nils.
 func requireModule(c *gin.Context, module any, name string) bool {
 	if module == nil {
 		writeError(c, http.StatusServiceUnavailable, name+" is not available")

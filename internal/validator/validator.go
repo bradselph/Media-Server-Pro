@@ -494,10 +494,9 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	return result, nil
 }
 
-// TODO: shouldValidateFile is defined but never called from within this package or
-// from any handler. It appears to be dead code — likely intended to be used by a
-// background task that validates all files, but no such task exists. Either wire it
-// into the task scheduler or remove it.
+// TODO(feature-gap): shouldValidateFile is never called; no background task validates media files.
+// Routes POST /api/admin/validator/validate and /fix exist but only on-demand per ID. Wire a
+// scheduled task (e.g. in cmd/server registerTasks) that uses this to validate library files, or remove.
 
 // shouldValidateFile checks whether a file at the given path is a media file
 // that has not been recently validated.

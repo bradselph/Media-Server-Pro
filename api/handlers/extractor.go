@@ -9,7 +9,7 @@ import (
 
 // AddExtractorItem adds an M3U8 stream URL to the library.
 // POST /api/admin/extractor/items  { "url": "https://...m3u8", "title": "..." }
-// TODO: The URL is passed directly to the extractor without validation. An admin could
+// TODO(feature-gap): The URL is passed directly to the extractor without validation. An admin could
 // add internal/private URLs (e.g. http://localhost:..., http://192.168.x.x/...) which
 // the server would then proxy to external clients, creating an SSRF (Server-Side Request
 // Forgery) vector. Consider validating that the URL is not an internal/private address.

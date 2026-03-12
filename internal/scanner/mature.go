@@ -1013,13 +1013,12 @@ type Stats struct {
 	PendingReview int `json:"pending_review"`
 }
 
-// TODO: loadResults is a no-op, so the in-memory results map starts empty on every restart.
-// This means GetScanResult and IsMature will return false for all files until they are
-// re-scanned. The review queue is loaded from DB (loadReviewQueue), but scan results are
-// not. This creates an inconsistency: the review queue references items that have no
-// corresponding in-memory scan result, leading to the ReviewItem fallback path being
-// triggered every time. Consider loading scan results from DB on startup, at least for
-// reviewed/flagged items, to maintain consistency.
+// TODO(feature-gap): loadResults is a no-op, so the in-memory results map starts empty on every restart.
+// GetScanResult and IsMature return false for all files until re-scanned. The review queue is
+// loaded from DB (loadReviewQueue), but scan results are not — creating inconsistency: review
+// queue items have no in-memory scan result. Implement loading scan results from DB on startup
+// (e.g. from scan_result_repository) for at least reviewed/flagged items so IsMature and
+// GetScanResult are consistent with the review queue.
 
 // loadResults is a no-op: scan results are persisted per-file in MySQL via scanRepo.Save().
 // The in-memory results map is rebuilt as files are scanned at runtime.
@@ -1053,9 +1052,10 @@ func (s *MatureScanner) loadReviewQueue() error {
 	return nil
 }
 
-// TODO: saveReviewQueue and saveResults are no-ops but still exist as methods.
-// They are never called from outside this package. Consider removing these dead
-// methods to reduce confusion and code surface.
+// TODO(feature-gap): saveReviewQueue and saveResults are no-ops and never called. Review queue
+// and results are persisted via scanRepo.Save()/MarkReviewed(); these methods are dead. Either
+// remove them or implement periodic/flush persistence if in-memory state should be durable
+// across restarts (currently loadResults does not load, so startup state is inconsistent).
 
 // saveReviewQueue is a no-op: review queue state is persisted in MySQL
 // via scanRepo.Save() (needs_review flag) and scanRepo.MarkReviewed().

@@ -61,12 +61,9 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 
 // adminAuth requires an authenticated session with role=admin.
 // Admin and regular users both use the session_id cookie; this checks the role set by sessionAuth.
-// TODO: adminAuth does not check if the user account is enabled (user.Enabled). A disabled
-// admin account can still access admin endpoints as long as the session cookie is valid.
-// The requireAuth() middleware checks user.Enabled, but adminAuth does not — it only checks
-// user.Role. Should add the same user.Enabled check here.
-// Also, adminAuth returns 401 Unauthorized for non-admin users, but 403 Forbidden would be
-// more semantically correct (the user IS authenticated, just not authorized).
+// TODO(feature-gap): adminAuth does not check user.Enabled; a disabled admin can still access
+// admin endpoints while the session is valid. requireAuth() checks user.Enabled — add the same
+// check here and return 403 Forbidden (not 401) for non-admin so semantics match (authenticated but not authorized).
 func adminAuth(_ *auth.Module) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userVal, exists := c.Get("user")
@@ -483,8 +480,12 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 
 	// Hugging Face visual classification (admin)
 	adminGrp.GET("/classify/status", h.ClassifyStatus)
+	adminGrp.GET("/classify/stats", h.ClassifyStats)
 	adminGrp.POST("/classify/file", h.ClassifyFile)
 	adminGrp.POST("/classify/directory", h.ClassifyDirectory)
+	adminGrp.POST("/classify/run-task", h.ClassifyRunTask)
+	adminGrp.POST("/classify/clear-tags", h.ClassifyClearTags)
+	adminGrp.POST("/classify/all-pending", h.ClassifyAllPending)
 
 	// Thumbnail admin routes
 	adminGrp.POST("/thumbnails/generate", h.GenerateThumbnail)

@@ -103,13 +103,9 @@ func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.Sc
 	})
 }
 
-// TODO: Integration issue — Get returns (nil, nil) when no record is found, while
-// MediaMetadataRepository.Get returns (nil, error) with a "not found" message. This
-// inconsistency forces callers to use different nil-checking patterns depending on
-// which repository they are calling. Consider standardizing: either all repos return
-// (nil, nil) for not-found, or all return (nil, ErrNotFound). The same (nil, nil)
-// pattern is used by AutoDiscoverySuggestionRepository, BackupManifestRepository,
-// HLSJobRepository, CategorizedItemRepository, and ValidationResultRepository.
+// TODO(feature-gap): Get returns (nil, nil) when no record is found, while MediaMetadataRepository.Get
+// returns (nil, error). Callers must handle both patterns; standardize on (nil, ErrNotFound) or
+// document (nil, nil) for not-found across ScanResultRepository and interfaces.go contract.
 
 // Get retrieves a scan result by path
 func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositories.ScanResult, error) {

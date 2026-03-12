@@ -492,6 +492,28 @@ export interface ClassifyStatus {
     rate_limit: number
     max_frames: number
     max_concurrent: number
+    task_running?: boolean
+    task_last_run?: string
+    task_next_run?: string
+    task_last_error?: string
+    task_enabled?: boolean
+}
+
+// Classification progress stats (GET /api/admin/classify/stats)
+export interface ClassifyStats {
+    total_media: number
+    mature_total: number
+    mature_classified: number
+    mature_pending: number
+    recent_items: ClassifiedItem[]
+}
+
+export interface ClassifiedItem {
+    id: string
+    name: string
+    tags: string[]
+    mature_score: number
+    date_modified: string
 }
 
 // Matches backend models.MatureReviewItem JSON

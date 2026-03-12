@@ -51,13 +51,9 @@ export function AdminPage() {
         }
     }, [features, activeTab, tabs])
 
-    // TODO: Side effect during render — calling `navigate()` directly in the render
-    // body violates React rules. Navigation is a side effect and should happen inside
-    // a `useEffect`. During React 18+ concurrent rendering, this can cause warnings
-    // or inconsistent behavior because the render function may be called multiple times.
-    // FIX: Move the redirect into a `useEffect`:
-    //   useEffect(() => { if (!isLoading && !isAdmin) navigate('/login', { replace: true }) }, [isLoading, isAdmin, navigate])
-    // and return a loading/null fallback in the render body.
+    // TODO(feature-gap): Side effect during render — navigate() is called in render body, which
+    // violates React rules; move redirect into useEffect so it runs as a side effect and return
+    // a loading fallback here to avoid concurrent-render issues.
     if (!isLoading && !isAdmin) {
         navigate('/login', {replace: true})
         return null

@@ -13,8 +13,7 @@ import (
 
 // adminHLSPlaceholder ensures the file compiles even though all admin HLS handlers
 // live in hls.go (no duplication needed).
-// TODO: This file exists only as a placeholder. The unused variable trick (var _ = ...)
-// is a code smell — a blank file with just a package declaration would suffice, or
-// this file should be removed entirely since the handlers.go index file already
-// documents the split.
+// TODO(feature-gap): This file is a placeholder only; no handler logic lives here. Routes
+// GET/POST/DELETE /api/admin/hls/* are registered in routes.go and implemented in hls.go.
+// Remove this file or keep a single package doc — the var _ trick is redundant.
 var _ = (*gin.Context)(nil)

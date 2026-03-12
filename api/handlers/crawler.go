@@ -10,7 +10,7 @@ import (
 
 // AddCrawlerTarget adds a new crawl target.
 // POST /api/admin/crawler/targets  { "url": "https://...", "name": "..." }
-// TODO: Same SSRF concern as AddExtractorItem — the URL is not validated against internal
+// TODO(feature-gap): Same SSRF concern as AddExtractorItem — the URL is not validated against internal
 // addresses. The crawler will fetch the URL to discover M3U8 streams, potentially
 // reaching internal services.
 func (h *Handler) AddCrawlerTarget(c *gin.Context) {

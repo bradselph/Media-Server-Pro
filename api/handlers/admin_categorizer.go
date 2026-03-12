@@ -9,10 +9,10 @@ import (
 )
 
 // CategorizeFile categorizes a single file and propagates the result to the media module.
-// TODO: The path is passed directly to the categorizer without validation. There is no
+// TODO(feature-gap): The path is passed directly to the categorizer without validation. There is no
 // check that the path is within allowed media directories (unlike ClassifyFile which uses
-// resolvePathForAdmin). This allows an admin to categorize arbitrary files on the filesystem,
-// which could be a security concern if the categorizer reads file content.
+// resolvePathForAdmin). Implement path validation against allowed media dirs so admins cannot
+// categorize arbitrary filesystem paths.
 func (h *Handler) CategorizeFile(c *gin.Context) {
 	if !h.requireCategorizer(c) {
 		return
@@ -37,8 +37,8 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 }
 
 // CategorizeDirectory categorizes all files in a directory.
-// TODO: Same path validation issue as CategorizeFile — the directory path is not validated
-// against allowed media directories. Should use resolvePathForAdmin or similar.
+// TODO(feature-gap): Same path validation issue as CategorizeFile — the directory path is not validated
+// against allowed media directories. Use resolvePathForAdmin or similar before calling categorizer.
 func (h *Handler) CategorizeDirectory(c *gin.Context) {
 	if !h.requireCategorizer(c) {
 		return
@@ -81,7 +81,7 @@ func (h *Handler) GetCategoryStats(c *gin.Context) {
 }
 
 // SetMediaCategory manually sets a category for a file
-// TODO: Same path validation issue — req.Path is not validated against allowed directories.
+// TODO(feature-gap): req.Path is not validated against allowed directories; same gap as CategorizeFile.
 func (h *Handler) SetMediaCategory(c *gin.Context) {
 	if !h.requireCategorizer(c) {
 		return
