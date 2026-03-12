@@ -500,9 +500,8 @@ func (m *Module) probeForStreams(pageURL string) ([]detectedStream, string) {
 			m.log.Warn("Browser probe failed for %s: %v — falling back to HTML", pageURL, err)
 		} else if len(result.Streams) > 0 {
 			return result.Streams, result.Title
-		} else {
-			m.log.Debug("Browser found no streams on %s, trying HTML fallback", pageURL)
 		}
+		m.log.Debug("Browser found no streams on %s, trying HTML fallback", pageURL)
 	}
 
 	// Fallback: fetch raw HTML and regex-match M3U8 URLs
