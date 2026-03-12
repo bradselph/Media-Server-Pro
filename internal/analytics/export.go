@@ -12,9 +12,6 @@ import (
 )
 
 // ExportCSV exports analytics data to CSV.
-// TODO: Bug — the analytics directory (m.config.Get().Directories.Analytics) may not exist;
-// os.Create will fail if it hasn't been created. The config paths module creates directories
-// but only at startup. Also, like admin.ExportAuditLog, exported files accumulate indefinitely.
 func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (string, error) {
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
 		StartDate: startDate.Format(time.RFC3339),
@@ -24,7 +21,11 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 		return "", fmt.Errorf("failed to fetch events: %w", err)
 	}
 
-	filename := filepath.Join(m.config.Get().Directories.Analytics, fmt.Sprintf("export_%s.csv", time.Now().Format("20060102_150405")))
+	dir := m.config.Get().Directories.Analytics
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create analytics directory: %w", err)
+	}
+	filename := filepath.Join(dir, fmt.Sprintf("export_%s.csv", time.Now().Format("20060102_150405")))
 	file, err := os.Create(filename)
 	if err != nil {
 		return "", fmt.Errorf("failed to create export file: %w", err)

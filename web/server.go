@@ -20,13 +20,9 @@ var log = logger.New("web")
 // pathExcludedFromSPA reports whether path is an API, static, or media route that
 // should not be served by the React SPA (should return 404 instead).
 func pathExcludedFromSPA(path string) bool {
-	// TODO: Missing "/extractor/" prefix — requests to non-existent extractor
-	// paths (e.g. /extractor/foo) will serve the SPA HTML instead of returning 404.
-	// Also missing "/health" and "/metrics" which are top-level routes.
-	// "/thumbnails/" (plural) is a registered route prefix but only "/thumbnail"
-	// (singular) is excluded here — both forms should be listed.
 	excludedPrefixes := []string{
-		"/api/", "/web/static/", "/media", "/download", "/thumbnail", "/hls/", "/remote/",
+		"/api/", "/web/static/", "/media", "/download", "/thumbnail", "/thumbnails/", "/hls/", "/remote/",
+		"/extractor/", "/health", "/metrics",
 	}
 	for _, prefix := range excludedPrefixes {
 		if strings.HasPrefix(path, prefix) {
