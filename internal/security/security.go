@@ -56,6 +56,9 @@ type Module struct {
 	authRateLimiter  *RateLimiter // stricter limits for auth endpoints
 	healthy          bool
 	healthMsg        string
+	// TODO: totalBlocked and totalRateLimited are read/written under mu (RWMutex)
+	// but would be more efficiently handled with atomic.Int64 since they are simple
+	// counters incremented in a hot path (every blocked/rate-limited request).
 	totalBlocked     int64
 	totalRateLimited int64
 	mu               sync.RWMutex
@@ -495,6 +498,11 @@ func (m *Module) SetBlacklistEnabled(enabled bool) {
 	m.log.Info("Blacklist enabled: %v", enabled)
 }
 
+// TODO: GetWhitelist and GetBlacklist return the internal *IPList pointer directly,
+// allowing callers to read Entries without holding IPList.mu. Callers in handlers
+// should use Snapshot() to get a safe copy. Consider returning a copy or providing
+// only Snapshot()-based access to prevent unsynchronized reads.
+
 // GetWhitelist returns the whitelist entries
 func (m *Module) GetWhitelist() *IPList {
 	return m.whitelist
@@ -643,6 +651,10 @@ func (m *Module) saveIPLists() error {
 	}
 
 	// Save blacklist
+	// TODO: There is a TOCTOU gap in saveIPLists for both whitelist and blacklist:
+	// the config and entries are saved in separate DB calls after releasing the RLock.
+	// If entries change between SaveListConfig and SaveEntries, the persisted state
+	// may be inconsistent. Consider saving config + entries inside a single transaction.
 	m.blacklist.mu.RLock()
 	if err := m.repo.SaveListConfig(ctx, "blacklist", m.blacklist.Name, m.blacklist.Enabled); err != nil {
 		m.blacklist.mu.RUnlock()
@@ -689,6 +701,10 @@ func (r *RateLimiter) StartCleanup(whitelist, blacklist *IPList) {
 		}
 	}()
 }
+
+// TODO: StopCleanup is unsafe if called twice — closing an already-closed channel panics.
+// This can happen if Stop() is called multiple times on the Module. Should use sync.Once
+// or check/set a flag before closing stopCleanup.
 
 // StopCleanup stops the background cleanup
 func (r *RateLimiter) StopCleanup() {

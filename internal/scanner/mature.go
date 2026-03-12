@@ -517,6 +517,12 @@ func (s *MatureScanner) computeConfidence(filename, dirPath string, result *Scan
 	return confidence
 }
 
+// TODO: scanConfigKeywords uses strings.Contains() for custom keywords, which does NOT
+// apply word-boundary matching like the built-in keyword lists (compiledHighConf/compiledMedConf).
+// This inconsistency means custom keywords will produce false positives (e.g., custom keyword "ass"
+// will match "class"). Should use buildKeywordPatterns() or equivalent boundary-aware matching
+// for user-configured keywords to match the behavior of built-in keywords.
+
 // scanConfigKeywords checks the filename against user-configured keywords.
 func scanConfigKeywords(filename string, keywords []string, boost float64, label string, result *ScanResult) float64 {
 	var confidence float64
@@ -955,6 +961,10 @@ func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature
 	result.ReviewedAt = &reviewedAt
 
 	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
+	// TODO: convertScannerToRepo is called below after Unlock, but result is still
+	// referenced without the lock. Another goroutine could modify result concurrently
+	// between Unlock and convertScannerToRepo. Should copy the result while holding
+	// the lock or call convertScannerToRepo before unlocking.
 	s.mu.Unlock()
 
 	// Persist change to MySQL
@@ -1003,6 +1013,14 @@ type Stats struct {
 	PendingReview int `json:"pending_review"`
 }
 
+// TODO: loadResults is a no-op, so the in-memory results map starts empty on every restart.
+// This means GetScanResult and IsMature will return false for all files until they are
+// re-scanned. The review queue is loaded from DB (loadReviewQueue), but scan results are
+// not. This creates an inconsistency: the review queue references items that have no
+// corresponding in-memory scan result, leading to the ReviewItem fallback path being
+// triggered every time. Consider loading scan results from DB on startup, at least for
+// reviewed/flagged items, to maintain consistency.
+
 // loadResults is a no-op: scan results are persisted per-file in MySQL via scanRepo.Save().
 // The in-memory results map is rebuilt as files are scanned at runtime.
 func (s *MatureScanner) loadResults() error {
@@ -1034,6 +1052,10 @@ func (s *MatureScanner) loadReviewQueue() error {
 
 	return nil
 }
+
+// TODO: saveReviewQueue and saveResults are no-ops but still exist as methods.
+// They are never called from outside this package. Consider removing these dead
+// methods to reduce confusion and code surface.
 
 // saveReviewQueue is a no-op: review queue state is persisted in MySQL
 // via scanRepo.Save() (needs_review flag) and scanRepo.MarkReviewed().
@@ -1124,6 +1146,10 @@ func (s *MatureScanner) ClearReviewQueue() {
 	s.reviewQueue = make(map[string]*models.MatureReviewItem)
 	s.mu.Unlock()
 }
+
+// TODO: SetHFClient is not thread-safe. hfClient is read by ClassifyMatureContent and
+// HasHuggingFace without synchronization, while SetHFClient can be called from main.go
+// at any time. Should use atomic.Pointer or protect with a mutex.
 
 // SetHFClient sets the Hugging Face client for visual classification. Call with nil to disable.
 func (s *MatureScanner) SetHFClient(c *huggingface.Client) {

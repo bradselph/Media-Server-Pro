@@ -154,6 +154,9 @@ func (m *Module) getPreviewURLsFromRequest(req *getPreviewURLsRequest) []string 
 		return []string{}
 	}
 	cfg := m.config.Get()
+	// TODO: Dead code: the condition "req.Count <= 0" is checked but the "count == 0"
+	// check below can never be true because we already returned for count <= 0 above.
+	// The fallback to cfg.Thumbnails.PreviewCount is unreachable.
 	if !cfg.Thumbnails.Enabled || req.Count <= 0 {
 		return []string{}
 	}
