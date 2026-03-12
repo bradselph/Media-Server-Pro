@@ -51,6 +51,13 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	})
 }
 
+// TODO: Bug — errors from permsRepo.Get and prefsRepo.Get are silently swallowed.
+// If the database returns a transient error (e.g. connection timeout), the user is
+// returned with zero-value Permissions/Preferences instead of failing. This could
+// grant or deny access incorrectly (e.g. CanViewMature defaults to false, CanStream
+// defaults to false). At minimum, non-ErrRecordNotFound errors should be propagated.
+// The same issue exists in GetByID and List below.
+
 // GetByUsername retrieves a user by username with all related data
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
 	var user models.User
@@ -136,6 +143,11 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id).Error
 }
+
+// TODO: Performance — N+1 query problem: List loads all users, then issues 2 queries
+// per user (permissions + preferences). For 100 users, this means 201 queries.
+// Consider batch-loading permissions and preferences with WHERE user_id IN (...)
+// similar to how PlaylistRepository.batchLoadItems works.
 
 // List retrieves all users
 func (r *UserRepository) List(ctx context.Context) ([]*models.User, error) {

@@ -31,6 +31,13 @@ func NewAutoDiscoverySuggestionRepository(db *gorm.DB) repositories.AutoDiscover
 	return &AutoDiscoverySuggestionRepository{db: db}
 }
 
+// TODO: Silent failure — json.Marshal error is discarded with `_ =`. While
+// map[string]string marshaling is unlikely to fail, if Metadata contains invalid
+// UTF-8 strings (possible from filesystem paths), Marshal will produce invalid JSON
+// that will be stored in the database and fail on Unmarshal later. Consider logging
+// or returning the error. Same issue exists in backup_manifest_repository.go Save(),
+// hls_job_repository.go jobToRow(), suggestion_profile_repository.go SaveProfile(),
+// and validation_result_repository.go recordToRow().
 func (r *AutoDiscoverySuggestionRepository) Save(ctx context.Context, suggestion *repositories.AutoDiscoveryRecord) error {
 	metaJSON, _ := json.Marshal(suggestion.Metadata)
 	row := autodiscoveryRow{

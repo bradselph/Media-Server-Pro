@@ -228,9 +228,11 @@ type WatchHistoryItem struct {
 }
 
 // PlaybackPosition represents a user's playback position for a media file.
-// Known issue: the composite primary key is (Path, UserID). When a file is renamed
-// or moved the position is orphaned. A future migration should move the key to
-// (MediaID, UserID) using the stable UUID, consistent with WatchHistoryItem.MediaID.
+// TODO: Incomplete feature — the composite primary key is (Path, UserID). When a file
+// is renamed or moved the position is orphaned. A future migration should move the key
+// to (MediaID, UserID) using the stable UUID, consistent with WatchHistoryItem.MediaID.
+// The related repository methods (UpdatePlaybackPosition, GetPlaybackPosition) also use
+// path as the lookup key and must be updated in tandem.
 type PlaybackPosition struct {
 	Path      string    `json:"path" db:"path" gorm:"primaryKey;size:500"`
 	UserID    string    `json:"user_id" db:"user_id" gorm:"primaryKey;size:255"`
@@ -297,7 +299,10 @@ func stringInSetOrDefault(s string, allowed map[string]bool, defaultVal string) 
 	return defaultVal
 }
 
-// truncateString returns s truncated to maxLen if longer.
+// TODO: Bug — truncateString truncates by byte count (len(s)) not rune count.
+// For multi-byte UTF-8 strings (e.g. Japanese, emoji), this can split a multi-byte
+// character in the middle, producing invalid UTF-8. Use utf8.RuneCountInString and
+// iterate runes to truncate safely, or use a library like golang.org/x/text/unicode/norm.
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
@@ -340,6 +345,13 @@ type Session struct {
 func (*Session) TableName() string {
 	return "sessions"
 }
+
+// TODO: Bug — the 1-second grace period extends the session lifetime BEYOND ExpiresAt,
+// meaning a session that should have expired at T is still valid until T+1s. This is
+// backwards: if the intent is to handle clock skew, the grace should be subtracted
+// (expire slightly early, not late). An expired session being valid for an extra second
+// is a security issue. Consider removing the grace entirely or using IsStrictlyExpired
+// as the default.
 
 // IsExpired returns true if the session has expired.
 // Includes a 1-second grace period to account for clock skew and timing precision.

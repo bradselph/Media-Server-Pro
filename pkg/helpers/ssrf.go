@@ -46,6 +46,18 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
+// TODO: Bug — TOCTOU race condition: DNS is resolved and validated here, but the
+// actual connection in d.DialContext uses ips[0] which was validated. However, a
+// DNS rebinding attack could return a public IP on first lookup and a private IP on
+// subsequent lookups. The resolved IP should be dialed directly instead of re-resolving.
+// This is partially mitigated by dialing ips[0] directly, but the validation loop
+// checks ALL resolved IPs while only the first is dialed. If the first IP is public
+// but a later IP is private, the connection proceeds but a warning could be logged.
+// Additionally, if ALL IPs are private the connection is blocked, but a mixed set
+// (public first, private second) will connect to the public IP which is correct behavior.
+// The real risk is the opposite: if ips[0] is private but ips[1] is public, the check
+// correctly blocks. So this is acceptable but worth documenting.
+
 // SafeHTTPTransport returns an *http.Transport whose DialContext resolves the
 // target hostname and rejects connections to private/loopback IP addresses.
 // Use this for any server-side HTTP client that fetches user-supplied URLs.

@@ -45,6 +45,10 @@ func NewExtractorItemRepository(db *gorm.DB) repositories.ExtractorItemRepositor
 	return &ExtractorItemRepository{db: db}
 }
 
+// TODO: Bug — Upsert's OnConflict DoUpdates list does not include "updated_at", so
+// re-upserting an existing item preserves the original updated_at timestamp. The
+// "added_by" and "created_at" columns are also excluded from updates (intentionally,
+// as they should be immutable), but "updated_at" should be refreshed on conflict.
 func (r *ExtractorItemRepository) Upsert(ctx context.Context, item *repositories.ExtractorItemRecord) error {
 	row := r.recordToRow(item)
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
@@ -102,6 +106,12 @@ func (r *ExtractorItemRepository) ListActive(ctx context.Context) ([]*repositori
 	return records, nil
 }
 
+// TODO: Bug — UpdateStatus does not update the "updated_at" column. When the status
+// changes (e.g. "active" -> "expired"), the updated_at timestamp still reflects the
+// original creation/upsert time. Add "updated_at" to the updates map with the current
+// timestamp. Same issue exists in CrawlerDiscoveryRepository.UpdateStatus and
+// ReceiverDuplicateRepository.UpdateStatus (which does update resolved_at but not
+// a general updated_at).
 func (r *ExtractorItemRepository) UpdateStatus(ctx context.Context, id, status, errorMsg string) error {
 	updates := map[string]interface{}{
 		"status":        status,

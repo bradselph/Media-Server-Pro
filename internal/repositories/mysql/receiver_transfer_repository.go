@@ -14,6 +14,13 @@ import (
 
 // --- Slave Repository ---
 
+// TODO: Bug — LastSeen and CreatedAt are stored as strings (formatted timestamps)
+// rather than time.Time. This prevents GORM from using proper MySQL DATETIME
+// handling and forces manual time formatting/parsing via parseTime(). If the
+// database stores these as DATETIME columns, GORM can scan them directly into
+// time.Time fields, eliminating the fragile string-based parsing. This pattern
+// also exists in receiverMediaRow.UpdatedAt, receiverDuplicateRow.DetectedAt,
+// extractorItemRow timestamp fields, and crawlerTargetRow/crawlerDiscoveryRow.
 type receiverSlaveRow struct {
 	ID         string `gorm:"column:id;primaryKey"`
 	Name       string `gorm:"column:name"`
@@ -216,6 +223,9 @@ func (r *ReceiverMediaRepository) DeleteByID(ctx context.Context, id string) err
 	return nil
 }
 
+// TODO: Bug — same LIKE wildcard injection issue as in media_metadata_repository.go
+// ListFiltered: the search query is not escaped for SQL LIKE meta-characters (% and _).
+// A search for "100%" will match any name containing "100" followed by anything.
 func (r *ReceiverMediaRepository) Search(ctx context.Context, query string) ([]*repositories.ReceiverMediaRecord, error) {
 	var rows []receiverMediaRow
 	pattern := "%" + query + "%"

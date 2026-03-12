@@ -186,6 +186,14 @@ func (r *MediaMetadataRepository) List(ctx context.Context) (map[string]*reposit
 		results[rows[i].Path] = metadata
 	}
 
+	// TODO: Bug — this loads ALL tags from the media_tags table (no WHERE clause),
+	// then filters in Go. For a large media library, this loads tags for media items
+	// that may have been deleted or are not in the results map. This is wasteful and
+	// could be slow with millions of tag rows. Additionally, the error from Find is
+	// silently ignored — a database error here means results are returned with empty
+	// tags and no indication of failure. Consider using WHERE path IN (...) like
+	// ListFiltered does, and propagating the error.
+
 	// Batch-load all tags in a single query
 	if len(results) > 0 {
 		var allTags []mediaTagRow
@@ -213,6 +221,12 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 	if filter.IsMature != nil {
 		query = query.Where("is_mature = ?", *filter.IsMature)
 	}
+	// TODO: Bug — SQL injection risk via LIKE wildcards: the search string is used
+	// directly in a LIKE pattern without escaping SQL LIKE meta-characters (% and _).
+	// A user searching for "100%" will match any path containing "100" followed by
+	// any characters. While this is parameterized (not raw string interpolation), the
+	// LIKE wildcards within the value itself are not escaped. Use ESCAPE clause and
+	// replace % with \% and _ with \_ in the search term before wrapping with %.
 	if filter.Search != "" {
 		like := "%" + filter.Search + "%"
 		query = query.Where("path LIKE ? OR category LIKE ?", like, like)
@@ -349,6 +363,12 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 
 	return metadata
 }
+
+// TODO: Silent failure — UpdateBlurHash does not check result.RowsAffected. If the
+// path does not exist, the update silently succeeds with 0 rows affected. This is
+// inconsistent with Delete() which checks RowsAffected and returns "not found".
+// Consider checking RowsAffected == 0 and returning an error, or documenting that
+// this is intentional (e.g. BlurHash generation may race with metadata deletion).
 
 // UpdateBlurHash updates the BlurHash for a metadata row by path
 func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path string, blurHash string) error {

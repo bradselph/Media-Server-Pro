@@ -58,6 +58,12 @@ func isTrustedProxy(remoteAddr string) bool {
 	return false
 }
 
+// TODO: Bug — GinRequestID does not honor an existing X-Request-ID header from the
+// client or upstream proxy. In distributed systems, it is standard practice to
+// propagate an incoming X-Request-ID if present, and only generate a new one if
+// absent. This breaks request tracing across services (e.g. a load balancer sets
+// X-Request-ID, but this middleware overwrites it with a local counter).
+
 // GinRequestID adds a unique request ID to each request via X-Request-ID header.
 // The request ID is stored in:
 //   - Gin context (c.Set) for handler access
@@ -75,6 +81,12 @@ func GinRequestID() gin.HandlerFunc {
 	}
 }
 
+// TODO: Bug — isHTTPS trusts X-Forwarded-Proto from any client without checking
+// if the request came through a trusted proxy. An attacker can send
+// X-Forwarded-Proto: https on a plain HTTP connection to trick the server into
+// setting HSTS headers over insecure transport. This should use isTrustedProxy()
+// to validate the source before honoring the header, similar to extractClientIP
+// in agegate.go.
 func isHTTPS(c *gin.Context) bool {
 	return c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 }
@@ -139,6 +151,15 @@ func (cfg *corsConfig) allowOrigin(origin string) (value string, allowed bool) {
 	}
 	return "", false
 }
+
+// TODO: Bug — when allowAll is true and a specific origin is present, the handler
+// echoes back the request Origin as Access-Control-Allow-Origin but never sets
+// Access-Control-Allow-Credentials. If the frontend sends credentials (cookies),
+// browsers require both Access-Control-Allow-Credentials: true AND a specific
+// (non-wildcard) origin. Since this server uses cookie-based session auth
+// (session_id cookie), credentialed CORS requests from different origins will
+// fail silently. Either add Allow-Credentials when echoing a specific origin,
+// or document that cross-origin cookie-based auth is not supported.
 
 // GinCORS adds CORS headers to Gin responses
 func GinCORS(origins, methods, headers []string) gin.HandlerFunc {

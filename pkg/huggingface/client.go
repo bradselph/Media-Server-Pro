@@ -77,6 +77,10 @@ func NewClient(cfg ClientConfig) *Client {
 		baseURL = strings.TrimSuffix(cfg.EndpointURL, "/")
 	}
 
+	// TODO: Bug — if cfg.Timeout is zero (the zero value for time.Duration), the
+	// http.Client will have no timeout, meaning requests can hang indefinitely.
+	// This happens when the caller does not set Timeout in ClientConfig. Add a
+	// default timeout (e.g. 30s) when cfg.Timeout <= 0.
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
@@ -128,6 +132,13 @@ func (c *Client) runWithRetry(ctx context.Context, url string, imageData []byte)
 	return empty, nil
 }
 
+// TODO: Bug — on attempt=1 (second attempt, first retry), the loop runs
+// `for i := 0; i < 0; i++` which executes zero times, so the delay is always
+// initialRetryDelay (2s) for the first retry. On attempt=2, the loop runs once,
+// giving 4s. This means retries are: 2s, 4s — which is correct exponential backoff
+// starting from attempt 1. However, the loop condition `i < attempt-1` is confusing
+// and could be simplified to `delay = initialRetryDelay * 2^(attempt-1)` for clarity.
+
 // sleepBeforeRetry sleeps for the backoff delay. Returns false if context is done.
 func (c *Client) sleepBeforeRetry(ctx context.Context, attempt int) bool {
 	delay := initialRetryDelay
@@ -160,6 +171,10 @@ func (c *Client) doOneRequest(ctx context.Context, url string, imageData []byte,
 		return nil, true, err, nil
 	}
 
+	// TODO: Bug — io.ReadAll has no size limit. A malicious or misconfigured HF
+	// endpoint could return an arbitrarily large response body, exhausting server
+	// memory. Use io.LimitReader(resp.Body, maxResponseSize) to cap the read
+	// (e.g. 10MB should be more than sufficient for JSON classification responses).
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 

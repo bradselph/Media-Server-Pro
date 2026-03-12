@@ -7,6 +7,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// TODO: Bug — firstByUserID does not translate gorm.ErrRecordNotFound into a domain
+// error. When UserPermissionsRepository.Get or UserPreferencesRepository.Get is called
+// and no record exists, the raw GORM error propagates. In UserRepository.GetByUsername,
+// the caller uses `if err == nil` to check success, so ErrRecordNotFound causes the
+// permissions/preferences to silently use zero values. But direct callers of
+// permsRepo.Get/prefsRepo.Get outside UserRepository will receive a GORM-specific error.
+// Consider checking for gorm.ErrRecordNotFound and returning nil, nil (not found is
+// not an error for optional sub-records) or a domain-specific sentinel.
+
 // firstByUserID loads the first record with the given user_id into dest.
 // dest must be a pointer to a struct (e.g. &models.UserPermissions{}).
 func firstByUserID[T any](ctx context.Context, db *gorm.DB, userID string) (*T, error) {

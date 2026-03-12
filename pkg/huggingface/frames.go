@@ -20,7 +20,12 @@ var imageExtensions = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".bmp": true, ".gif": true,
 }
 
-// videoExtensions are file extensions that ffprobe/ffmpeg can read for frame extraction.
+// TODO: Integration issue — videoExtensions here is a subset of the canonical media
+// extensions in helpers.mediaExts (which also includes .3gp, .ts, .m2ts, .vob, .ogv).
+// Files with those extensions are recognized as media by IsMediaExtension() but will
+// be rejected by ExtractFrames with "unsupported file type for classification". These
+// two extension lists should be kept in sync, or videoExtensions should reference
+// helpers.IsMediaExtension minus audio-only extensions.
 var videoExtensions = map[string]bool{
 	".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true, ".flv": true,
 	".webm": true, ".m4v": true, ".mpeg": true, ".mpg": true,
@@ -110,6 +115,13 @@ type extractFramesAtTimestampsParams struct {
 	tempDir    string
 }
 
+// TODO: Resource leak — when extractFramesAtTimestamps fails partway through, it
+// removes only the failed frame file (os.Remove(outPath)) but does not clean up
+// previously extracted frames in the `paths` slice. The caller (ExtractFrames) does
+// not clean up either — it just returns the error. The doc comment says "caller is
+// responsible for cleanup" of tempDir, but on error the caller receives nil paths
+// and may not know which files were created. Consider cleaning up all extracted
+// files on error, or returning the partial paths alongside the error.
 func extractFramesAtTimestamps(ctx context.Context, p extractFramesAtTimestampsParams) ([]string, error) {
 	paths := make([]string, 0, len(p.timestamps))
 	for i, ts := range p.timestamps {

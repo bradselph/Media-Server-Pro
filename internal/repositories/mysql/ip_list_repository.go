@@ -149,6 +149,11 @@ func (r *IPListRepository) RemoveEntry(ctx context.Context, listType string, ipV
 	return nil
 }
 
+// TODO: Silent failure — SetEnabled does not check RowsAffected. If the listType
+// does not exist in ip_list_config, the update silently succeeds with 0 rows. The
+// caller will think the list was toggled but nothing was actually changed. Consider
+// checking RowsAffected == 0 and returning an error, or auto-creating the config
+// row via Upsert.
 func (r *IPListRepository) SetEnabled(ctx context.Context, listType string, enabled bool) error {
 	if err := r.db.WithContext(ctx).Model(&ipListConfigRow{}).Where("list_type = ?", listType).Update("enabled", enabled).Error; err != nil {
 		return fmt.Errorf("failed to set IP list enabled: %w", err)

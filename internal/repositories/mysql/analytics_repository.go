@@ -67,6 +67,12 @@ func (r *AnalyticsRepository) List(ctx context.Context, filter repositories.Anal
 	return events, nil
 }
 
+// TODO: Bug — GetByMediaID and GetByUserID have no LIMIT clause. For a heavily-viewed
+// media item or active user, this could return millions of events, exhausting memory
+// and causing slow queries. These methods should accept a limit parameter or impose a
+// reasonable default cap. The List method correctly supports filter.Limit but these
+// convenience methods bypass it.
+
 // GetByMediaID retrieves all events for a specific media item
 func (r *AnalyticsRepository) GetByMediaID(ctx context.Context, mediaID string) ([]*models.AnalyticsEvent, error) {
 	var events []*models.AnalyticsEvent

@@ -6,6 +6,12 @@ import (
 	"os"
 )
 
+// TODO: Incomplete feature — this file has no build constraint (!windows) but uses
+// "unixgram" sockets which do not exist on Windows. While NOTIFY_SOCKET will never be
+// set on Windows (making this a no-op), the net.Dial("unixgram", ...) call would fail
+// at runtime if NOTIFY_SOCKET were somehow set. Consider adding a //go:build !windows
+// constraint and providing a no-op stub for Windows, similar to diskspace_windows.go.
+
 // SDNotify sends a sd_notify message to the systemd service manager via the
 // NOTIFY_SOCKET unix datagram socket. It is a silent no-op when NOTIFY_SOCKET
 // is not set, so it is safe to call unconditionally on non-systemd systems.

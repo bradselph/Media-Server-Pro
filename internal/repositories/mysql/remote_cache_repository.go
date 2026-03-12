@@ -44,6 +44,11 @@ func parseOptionalTime(s *string) *time.Time {
 	return &t
 }
 
+// TODO: Bug — CachedAt and LastAccess are strings instead of time.Time, requiring
+// manual time format/parse roundtrips. If the database stores these as DATETIME,
+// GORM can handle the conversion natively. When parseTime fails in rowToRecord,
+// the returned RemoteCacheRecord has zero-value time.Time for CachedAt/LastAccess,
+// which could cause issues in cache eviction logic (a zero time looks infinitely old).
 type remoteCacheRow struct {
 	RemoteURL   string `gorm:"column:remote_url;primaryKey"`
 	LocalPath   string `gorm:"column:local_path"`
