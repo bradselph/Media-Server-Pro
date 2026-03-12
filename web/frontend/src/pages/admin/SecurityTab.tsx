@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import {useMemo, useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {BannedIP, IPEntry, SecurityStats} from '@/api/types'
@@ -8,6 +8,33 @@ import {errMsg} from './adminUtils'
 
 type IPSortKey = 'ip' | 'comment' | 'added_by' | 'added_at'
 type BanSortKey = 'ip' | 'reason' | 'banned_at' | 'expires_at'
+
+const SECURITY_STATS_KEY = ['admin-security-stats'] as const
+const SECURITY_WHITELIST_KEY = ['admin-security-whitelist'] as const
+const SECURITY_BLACKLIST_KEY = ['admin-security-blacklist'] as const
+const SECURITY_BANNED_KEY = ['admin-security-banned'] as const
+
+const inputBaseStyle: React.CSSProperties = {
+    padding: '6px 10px',
+    border: '1px solid var(--border-color)',
+    borderRadius: 6,
+    background: 'var(--input-bg)',
+    color: 'var(--text-color)',
+    fontSize: 13,
+}
+
+const mutedStyle: React.CSSProperties = { fontSize: 12, color: 'var(--text-muted)' }
+const thSortStyle: React.CSSProperties = { cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }
+
+function ipSortIndicator(col: IPSortKey, sortBy: IPSortKey, sortOrder: 'asc' | 'desc') {
+    if (sortBy !== col) return <span style={{ opacity: 0.3, marginLeft: 4 }}>&#x21C5;</span>
+    return <span style={{ marginLeft: 4 }}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+}
+
+function banSortIndicator(col: BanSortKey, sortBy: BanSortKey, sortOrder: 'asc' | 'desc') {
+    if (sortBy !== col) return <span style={{ opacity: 0.3, marginLeft: 4 }}>&#x21C5;</span>
+    return <span style={{ marginLeft: 4 }}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+}
 
 export function SecurityTab() {
     const queryClient = useQueryClient()
@@ -33,26 +60,65 @@ export function SecurityTab() {
     const [ipSearch, setIpSearch] = useState('')
 
     const {data: secStats} = useQuery<SecurityStats>({
-        queryKey: ['admin-security-stats'],
+        queryKey: SECURITY_STATS_KEY,
         queryFn: () => adminApi.getSecurityStats(),
         refetchInterval: 30000,
     })
 
     const {data: whitelist = []} = useQuery<IPEntry[]>({
-        queryKey: ['admin-security-whitelist'],
+        queryKey: SECURITY_WHITELIST_KEY,
         queryFn: () => adminApi.getWhitelist(),
     })
 
     const {data: blacklist = []} = useQuery<IPEntry[]>({
-        queryKey: ['admin-security-blacklist'],
+        queryKey: SECURITY_BLACKLIST_KEY,
         queryFn: () => adminApi.getBlacklist(),
     })
 
     const {data: bannedIPs = []} = useQuery<BannedIP[]>({
-        queryKey: ['admin-security-banned'],
+        queryKey: SECURITY_BANNED_KEY,
         queryFn: () => adminApi.getBannedIPs(),
         refetchInterval: 30000,
     })
+
+    const sortedWl = useMemo(() => whitelist
+        .filter(e => !ipSearch || e.ip.includes(ipSearch) || (e.comment || '').toLowerCase().includes(ipSearch.toLowerCase()))
+        .sort((a, b) => {
+            let cmp = 0
+            switch (wlSortBy) {
+                case 'ip': cmp = a.ip.localeCompare(b.ip); break
+                case 'comment': cmp = (a.comment || '').localeCompare(b.comment || ''); break
+                case 'added_by': cmp = (a.added_by || '').localeCompare(b.added_by || ''); break
+                case 'added_at': cmp = a.added_at.localeCompare(b.added_at); break
+            }
+            return wlSortOrder === 'desc' ? -cmp : cmp
+        }), [whitelist, ipSearch, wlSortBy, wlSortOrder])
+
+    const sortedBl = useMemo(() => blacklist
+        .filter(e => !ipSearch || e.ip.includes(ipSearch) || (e.comment || '').toLowerCase().includes(ipSearch.toLowerCase()))
+        .sort((a, b) => {
+            let cmp = 0
+            switch (blSortBy) {
+                case 'ip': cmp = a.ip.localeCompare(b.ip); break
+                case 'comment': cmp = (a.comment || '').localeCompare(b.comment || ''); break
+                case 'added_by': cmp = (a.added_by || '').localeCompare(b.added_by || ''); break
+                case 'added_at': cmp = a.added_at.localeCompare(b.added_at); break
+            }
+            return blSortOrder === 'desc' ? -cmp : cmp
+        }), [blacklist, ipSearch, blSortBy, blSortOrder])
+
+    const sortedBans = useMemo(() => bannedIPs
+        .filter(b => !ipSearch || b.ip.includes(ipSearch) || (b.reason || '').toLowerCase().includes(ipSearch.toLowerCase()))
+        .sort((a, b) => {
+            let cmp = 0
+            switch (banSortBy) {
+                case 'ip': cmp = a.ip.localeCompare(b.ip); break
+                case 'reason': cmp = (a.reason || '').localeCompare(b.reason || ''); break
+                case 'banned_at': cmp = a.banned_at.localeCompare(b.banned_at); break
+                case 'expires_at': cmp = (a.expires_at || 'z').localeCompare(b.expires_at || 'z'); break
+            }
+            return banSortOrder === 'desc' ? -cmp : cmp
+        }), [bannedIPs, ipSearch, banSortBy, banSortOrder])
 
     async function handleAddWhitelist(e: React.FormEvent) {
         e.preventDefault()
@@ -62,8 +128,8 @@ export function SecurityTab() {
             setMsg({type: 'success', text: `${wlIp} added to whitelist`})
             setWlIp('');
             setWlComment('')
-            await queryClient.invalidateQueries({queryKey: ['admin-security-whitelist']})
-            await queryClient.invalidateQueries({queryKey: ['admin-security-stats']})
+            await queryClient.invalidateQueries({ queryKey: SECURITY_WHITELIST_KEY })
+            await queryClient.invalidateQueries({ queryKey: SECURITY_STATS_KEY })
         } catch (err) {
             setMsg({type: 'error', text: errMsg(err)})
         }
@@ -78,7 +144,7 @@ export function SecurityTab() {
             setBlIp('');
             setBlComment('')
             await queryClient.invalidateQueries({queryKey: ['admin-security-blacklist']})
-            await queryClient.invalidateQueries({queryKey: ['admin-security-stats']})
+            await queryClient.invalidateQueries({ queryKey: SECURITY_STATS_KEY })
         } catch (err) {
             setMsg({type: 'error', text: errMsg(err)})
         }
@@ -91,8 +157,8 @@ export function SecurityTab() {
             await adminApi.banIP(banIp.trim(), banDuration)
             setMsg({type: 'success', text: `${banIp} banned for ${banDuration} minutes`})
             setBanIp('')
-            await queryClient.invalidateQueries({queryKey: ['admin-security-banned']})
-            await queryClient.invalidateQueries({queryKey: ['admin-security-stats']})
+            await queryClient.invalidateQueries({ queryKey: SECURITY_BANNED_KEY })
+            await queryClient.invalidateQueries({ queryKey: SECURITY_STATS_KEY })
         } catch (err) {
             setMsg({type: 'error', text: errMsg(err)})
         }
@@ -125,9 +191,8 @@ export function SecurityTab() {
             {/* IP search across all lists */}
             <div style={{marginBottom: 16}}>
                 <input type="text" placeholder="Search IPs across all lists..." value={ipSearch}
-                       onChange={e => setIpSearch(e.target.value)}
-                       style={{width: '100%', maxWidth: 300, padding: '6px 10px', border: '1px solid var(--border-color)',
-                               borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}} />
+                       onChange={e => { setIpSearch(e.target.value); }}
+                       style={{ width: '100%', maxWidth: 300, ...inputBaseStyle }} />
             </div>
 
             {/* Whitelist */}
@@ -136,46 +201,24 @@ export function SecurityTab() {
                     style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>({whitelist.length} IPs)</span>
                 </h3>
                 <form onSubmit={handleAddWhitelist} style={{display: 'flex', gap: 8, marginBottom: 12}}>
-                    <input type="text" value={wlIp} onChange={e => setWlIp(e.target.value)} placeholder="IP address"
+                    <input type="text" value={wlIp} onChange={e => { setWlIp(e.target.value); }} placeholder="IP address"
                            style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
                                background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
-                    <input type="text" value={wlComment} onChange={e => setWlComment(e.target.value)}
+                    <input type="text" value={wlComment} onChange={e => { setWlComment(e.target.value); }}
                            placeholder="Comment (optional)" style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)',
                         borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
                     <button type="submit" className="admin-btn admin-btn-primary"><i className="bi bi-plus-lg"/> Add
                     </button>
                 </form>
-                {whitelist.length > 0 && (() => {
-                    const sortedWl = whitelist
-                        .filter(e => !ipSearch || e.ip.includes(ipSearch) || (e.comment || '').toLowerCase().includes(ipSearch.toLowerCase()))
-                        .sort((a, b) => {
-                            let cmp = 0
-                            switch (wlSortBy) {
-                                case 'ip': cmp = a.ip.localeCompare(b.ip); break
-                                case 'comment': cmp = (a.comment || '').localeCompare(b.comment || ''); break
-                                case 'added_by': cmp = (a.added_by || '').localeCompare(b.added_by || ''); break
-                                case 'added_at': cmp = a.added_at.localeCompare(b.added_at); break
-                            }
-                            return wlSortOrder === 'desc' ? -cmp : cmp
-                        })
-                    const thS: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
-                    function wlInd(col: IPSortKey) {
-                        if (wlSortBy !== col) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
-                        return <span style={{marginLeft: 4}}>{wlSortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
-                    }
-                    function handleWlSort(col: IPSortKey) {
-                        if (wlSortBy === col) setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc')
-                        else { setWlSortBy(col); setWlSortOrder('asc') }
-                    }
-                    return (
+                {whitelist.length > 0 && (
                     <div className="admin-table-wrapper">
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th style={thS} onClick={() => handleWlSort('ip')}>IP{wlInd('ip')}</th>
-                                <th style={thS} onClick={() => handleWlSort('comment')}>Comment{wlInd('comment')}</th>
-                                <th style={thS} onClick={() => handleWlSort('added_by')}>Added By{wlInd('added_by')}</th>
-                                <th style={thS} onClick={() => handleWlSort('added_at')}>Added{wlInd('added_at')}</th>
+                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'ip') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('ip'); setWlSortOrder('asc'); } }}>IP{ipSortIndicator('ip', wlSortBy, wlSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'comment') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('comment'); setWlSortOrder('asc'); } }}>Comment{ipSortIndicator('comment', wlSortBy, wlSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'added_by') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('added_by'); setWlSortOrder('asc'); } }}>Added By{ipSortIndicator('added_by', wlSortBy, wlSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'added_at') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('added_at'); setWlSortOrder('asc'); } }}>Added{ipSortIndicator('added_at', wlSortBy, wlSortOrder)}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
@@ -183,12 +226,12 @@ export function SecurityTab() {
                             {sortedWl.map(entry => (
                                 <tr key={entry.ip}>
                                     <td><code>{entry.ip}</code></td>
-                                    <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.comment || '—'}</td>
-                                    <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.added_by || '—'}</td>
-                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(entry.added_at).toLocaleDateString()}</td>
+                                    <td style={mutedStyle}>{entry.comment || '—'}</td>
+                                    <td style={mutedStyle}>{entry.added_by || '—'}</td>
+                                    <td style={mutedStyle}>{new Date(entry.added_at).toLocaleDateString()}</td>
                                     <td>
                                         <button className="admin-btn admin-btn-danger" style={{padding: '3px 8px'}}
-                                                onClick={() => adminApi.removeFromWhitelist(entry.ip).then(() => void queryClient.invalidateQueries({queryKey: ['admin-security-whitelist']})).catch(err => setMsg({
+                                                onClick={() => adminApi.removeFromWhitelist(entry.ip).then(() => queryClient.invalidateQueries({ queryKey: SECURITY_WHITELIST_KEY })).catch(err => setMsg({
                                                     type: 'error', text: errMsg(err)
                                                 }))}>
                                             <i className="bi bi-trash-fill"/>
@@ -198,8 +241,8 @@ export function SecurityTab() {
                             ))}
                             </tbody>
                         </table>
-                    </div>)
-                })()}
+                    </div>
+                )}
             </div>
 
             {/* Blacklist */}
@@ -208,46 +251,24 @@ export function SecurityTab() {
                     style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>({blacklist.length} IPs)</span>
                 </h3>
                 <form onSubmit={handleAddBlacklist} style={{display: 'flex', gap: 8, marginBottom: 12}}>
-                    <input type="text" value={blIp} onChange={e => setBlIp(e.target.value)} placeholder="IP address"
+                    <input type="text" value={blIp} onChange={e => { setBlIp(e.target.value); }} placeholder="IP address"
                            style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
                                background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
-                    <input type="text" value={blComment} onChange={e => setBlComment(e.target.value)}
+                    <input type="text" value={blComment} onChange={e => { setBlComment(e.target.value); }}
                            placeholder="Comment (optional)" style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)',
                         borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
                     <button type="submit" className="admin-btn admin-btn-danger"><i className="bi bi-plus-lg"/> Block
                     </button>
                 </form>
-                {blacklist.length > 0 && (() => {
-                    const sortedBl = blacklist
-                        .filter(e => !ipSearch || e.ip.includes(ipSearch) || (e.comment || '').toLowerCase().includes(ipSearch.toLowerCase()))
-                        .sort((a, b) => {
-                            let cmp = 0
-                            switch (blSortBy) {
-                                case 'ip': cmp = a.ip.localeCompare(b.ip); break
-                                case 'comment': cmp = (a.comment || '').localeCompare(b.comment || ''); break
-                                case 'added_by': cmp = (a.added_by || '').localeCompare(b.added_by || ''); break
-                                case 'added_at': cmp = a.added_at.localeCompare(b.added_at); break
-                            }
-                            return blSortOrder === 'desc' ? -cmp : cmp
-                        })
-                    const thS: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
-                    function blInd(col: IPSortKey) {
-                        if (blSortBy !== col) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
-                        return <span style={{marginLeft: 4}}>{blSortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
-                    }
-                    function handleBlSort(col: IPSortKey) {
-                        if (blSortBy === col) setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc')
-                        else { setBlSortBy(col); setBlSortOrder('asc') }
-                    }
-                    return (
+                {blacklist.length > 0 && (
                     <div className="admin-table-wrapper">
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th style={thS} onClick={() => handleBlSort('ip')}>IP{blInd('ip')}</th>
-                                <th style={thS} onClick={() => handleBlSort('comment')}>Comment{blInd('comment')}</th>
-                                <th style={thS} onClick={() => handleBlSort('added_by')}>Added By{blInd('added_by')}</th>
-                                <th style={thS} onClick={() => handleBlSort('added_at')}>Added{blInd('added_at')}</th>
+                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'ip') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('ip'); setBlSortOrder('asc'); } }}>IP{ipSortIndicator('ip', blSortBy, blSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'comment') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('comment'); setBlSortOrder('asc'); } }}>Comment{ipSortIndicator('comment', blSortBy, blSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'added_by') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('added_by'); setBlSortOrder('asc'); } }}>Added By{ipSortIndicator('added_by', blSortBy, blSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'added_at') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('added_at'); setBlSortOrder('asc'); } }}>Added{ipSortIndicator('added_at', blSortBy, blSortOrder)}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
@@ -255,12 +276,12 @@ export function SecurityTab() {
                             {sortedBl.map(entry => (
                                 <tr key={entry.ip}>
                                     <td><code>{entry.ip}</code></td>
-                                    <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.comment || '—'}</td>
-                                    <td style={{color: 'var(--text-muted)', fontSize: 12}}>{entry.added_by || '—'}</td>
-                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(entry.added_at).toLocaleDateString()}</td>
+                                    <td style={mutedStyle}>{entry.comment || '—'}</td>
+                                    <td style={mutedStyle}>{entry.added_by || '—'}</td>
+                                    <td style={mutedStyle}>{new Date(entry.added_at).toLocaleDateString()}</td>
                                     <td>
                                         <button className="admin-btn admin-btn-success" style={{padding: '3px 8px'}}
-                                                onClick={() => adminApi.removeFromBlacklist(entry.ip).then(() => void queryClient.invalidateQueries({queryKey: ['admin-security-blacklist']})).catch(err => setMsg({
+                                                onClick={() => adminApi.removeFromBlacklist(entry.ip).then(() => queryClient.invalidateQueries({ queryKey: SECURITY_BLACKLIST_KEY })).catch(err => setMsg({
                                                     type: 'error', text: errMsg(err)
                                                 }))}>
                                             <i className="bi bi-check-lg"/> Unblock
@@ -270,18 +291,18 @@ export function SecurityTab() {
                             ))}
                             </tbody>
                         </table>
-                    </div>)
-                })()}
+                    </div>
+                )}
             </div>
 
             {/* Banned IPs */}
             <div className="admin-card">
                 <h3>Banned IPs <span style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>({bannedIPs.length} active)</span></h3>
                 <form onSubmit={handleBan} style={{display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap'}}>
-                    <input type="text" value={banIp} onChange={e => setBanIp(e.target.value)} placeholder="IP address"
+                    <input type="text" value={banIp} onChange={e => { setBanIp(e.target.value); }} placeholder="IP address"
                            style={{flex: 1, minWidth: 140, padding: '6px 10px', border: '1px solid var(--border-color)',
                                borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
-                    <select value={banDuration} onChange={e => setBanDuration(Number(e.target.value))} style={{
+                    <select value={banDuration} onChange={e => { setBanDuration(Number(e.target.value)); }} style={{
                         padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
                         background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}>
                         <option value={15}>15 min</option>
@@ -291,37 +312,15 @@ export function SecurityTab() {
                     </select>
                     <button type="submit" className="admin-btn admin-btn-danger"><i className="bi bi-ban"/> Ban</button>
                 </form>
-                {bannedIPs.length > 0 && (() => {
-                    const sortedBans = bannedIPs
-                        .filter(b => !ipSearch || b.ip.includes(ipSearch) || (b.reason || '').toLowerCase().includes(ipSearch.toLowerCase()))
-                        .sort((a, b) => {
-                            let cmp = 0
-                            switch (banSortBy) {
-                                case 'ip': cmp = a.ip.localeCompare(b.ip); break
-                                case 'reason': cmp = (a.reason || '').localeCompare(b.reason || ''); break
-                                case 'banned_at': cmp = a.banned_at.localeCompare(b.banned_at); break
-                                case 'expires_at': cmp = (a.expires_at || 'z').localeCompare(b.expires_at || 'z'); break
-                            }
-                            return banSortOrder === 'desc' ? -cmp : cmp
-                        })
-                    const thS: React.CSSProperties = {cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap'}
-                    function banInd(col: BanSortKey) {
-                        if (banSortBy !== col) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
-                        return <span style={{marginLeft: 4}}>{banSortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
-                    }
-                    function handleBanSort(col: BanSortKey) {
-                        if (banSortBy === col) setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc')
-                        else { setBanSortBy(col); setBanSortOrder('asc') }
-                    }
-                    return (
+                {bannedIPs.length > 0 && (
                     <div className="admin-table-wrapper">
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th style={thS} onClick={() => handleBanSort('ip')}>IP{banInd('ip')}</th>
-                                <th style={thS} onClick={() => handleBanSort('reason')}>Reason{banInd('reason')}</th>
-                                <th style={thS} onClick={() => handleBanSort('banned_at')}>Banned At{banInd('banned_at')}</th>
-                                <th style={thS} onClick={() => handleBanSort('expires_at')}>Expires{banInd('expires_at')}</th>
+                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'ip') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('ip'); setBanSortOrder('asc'); } }}>IP{banSortIndicator('ip', banSortBy, banSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'reason') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('reason'); setBanSortOrder('asc'); } }}>Reason{banSortIndicator('reason', banSortBy, banSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'banned_at') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('banned_at'); setBanSortOrder('asc'); } }}>Banned At{banSortIndicator('banned_at', banSortBy, banSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'expires_at') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('expires_at'); setBanSortOrder('asc'); } }}>Expires{banSortIndicator('expires_at', banSortBy, banSortOrder)}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
@@ -329,12 +328,12 @@ export function SecurityTab() {
                             {sortedBans.map(ban => (
                                 <tr key={ban.ip}>
                                     <td><code>{ban.ip}</code></td>
-                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{ban.reason || '—'}</td>
-                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(ban.banned_at).toLocaleString()}</td>
-                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{ban.expires_at ? new Date(ban.expires_at).toLocaleString() : 'Permanent'}</td>
+                                    <td style={mutedStyle}>{ban.reason || '—'}</td>
+                                    <td style={mutedStyle}>{new Date(ban.banned_at).toLocaleString()}</td>
+                                    <td style={mutedStyle}>{ban.expires_at ? new Date(ban.expires_at).toLocaleString() : 'Permanent'}</td>
                                     <td>
                                         <button className="admin-btn admin-btn-success" style={{padding: '3px 8px'}}
-                                                onClick={() => adminApi.unbanIP(ban.ip).then(() => void queryClient.invalidateQueries({queryKey: ['admin-security-banned']})).catch(err => setMsg({
+                                                onClick={() => adminApi.unbanIP(ban.ip).then(() => queryClient.invalidateQueries({ queryKey: SECURITY_BANNED_KEY })).catch(err => setMsg({
                                                     type: 'error', text: errMsg(err)
                                                 }))}>
                                             <i className="bi bi-check-lg"/> Unban
@@ -344,8 +343,8 @@ export function SecurityTab() {
                             ))}
                             </tbody>
                         </table>
-                    </div>)
-                })()}
+                    </div>
+                )}
             </div>
         </div>
     )

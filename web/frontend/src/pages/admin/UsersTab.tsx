@@ -40,20 +40,20 @@ function CreateUserModal({onClose, onCreated}: { onClose: () => void; onCreated:
                     <form onSubmit={handleSubmit}>
                         <div className="admin-form-group" style={{marginBottom: 10}}>
                             <label>Username *</label>
-                            <input value={username} onChange={e => setUsername(e.target.value)} required/>
+                            <input value={username} onChange={e => { setUsername(e.target.value); }} required/>
                         </div>
                         <div className="admin-form-group" style={{marginBottom: 10}}>
                             <label>Password *</label>
-                            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
+                            <input type="password" value={password} onChange={e => { setPassword(e.target.value); }} required
                                    minLength={8}/>
                         </div>
                         <div className="admin-form-group" style={{marginBottom: 10}}>
                             <label>Email</label>
-                            <input type="email" value={email} onChange={e => setEmail(e.target.value)}/>
+                            <input type="email" value={email} onChange={e => { setEmail(e.target.value); }}/>
                         </div>
                         <div className="admin-form-group" style={{marginBottom: 16}}>
                             <label>Role</label>
-                            <select value={role} onChange={e => setRole(e.target.value as 'admin' | 'viewer')}>
+                            <select value={role} onChange={e => { setRole(e.target.value as 'admin' | 'viewer'); }}>
                                 <option value="viewer">Viewer</option>
                                 <option value="admin">Admin</option>
                             </select>
@@ -110,7 +110,7 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
                         <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
                             <div className="admin-form-group" style={{flex: 1}}>
                                 <label>Role</label>
-                                <select value={role} onChange={e => setRole(e.target.value as 'admin' | 'viewer')}>
+                                <select value={role} onChange={e => { setRole(e.target.value as 'admin' | 'viewer'); }}>
                                     <option value="viewer">Viewer</option>
                                     <option value="admin">Admin</option>
                                 </select>
@@ -118,7 +118,7 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
                             <div className="admin-form-group" style={{flex: 1}}>
                                 <label>Status</label>
                                 <select value={enabled ? 'enabled' : 'disabled'}
-                                        onChange={e => setEnabled(e.target.value === 'enabled')}>
+                                        onChange={e => { setEnabled(e.target.value === 'enabled'); }}>
                                     <option value="enabled">Enabled</option>
                                     <option value="disabled">Disabled</option>
                                 </select>
@@ -127,11 +127,11 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
                         <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
                             <div className="admin-form-group" style={{flex: 1}}>
                                 <label>Email</label>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)}/>
+                                <input type="email" value={email} onChange={e => { setEmail(e.target.value); }}/>
                             </div>
                             <div className="admin-form-group" style={{flex: 1}}>
                                 <label>New Password (blank to keep current)</label>
-                                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                                <input type="password" value={newPassword} onChange={e => { setNewPassword(e.target.value); }}
                                        minLength={8}/>
                             </div>
                         </div>
@@ -155,7 +155,7 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
                                         <input
                                             type="checkbox"
                                             checked={permissions[key]}
-                                            onChange={() => setPermissions(p => ({...p, [key]: !p[key]}))}
+                                            onChange={() => { setPermissions(p => ({...p, [key]: !p[key]})); }}
                                         />
                                         {key.replace('can_', '').replace(/_/g, ' ')}
                                     </label>
@@ -312,21 +312,21 @@ function UsersListTab() {
             {msg && <div
                 className={`admin-alert admin-alert-${msg.type === 'success' ? 'success' : 'danger'}`}>{msg.text}</div>}
             <div className="admin-action-row">
-                <button className="admin-btn admin-btn-primary" onClick={() => setShowCreate(true)}><i
+                <button className="admin-btn admin-btn-primary" onClick={() => { setShowCreate(true); }}><i
                     className="bi bi-person-plus-fill"/> Create User
                 </button>
             </div>
 
             <div style={{marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
                 <input type="text" placeholder="Search users..." value={userSearch}
-                       onChange={e => setUserSearch(e.target.value)}
+                       onChange={e => { setUserSearch(e.target.value); }}
                        style={{...selectStyle, flex: 1, minWidth: 160}} />
-                <select value={filterRole} onChange={e => setFilterRole(e.target.value)} style={selectStyle}>
+                <select value={filterRole} onChange={e => { setFilterRole(e.target.value); }} style={selectStyle}>
                     <option value="">All Roles</option>
                     <option value="admin">Admin</option>
                     <option value="viewer">Viewer</option>
                 </select>
-                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
+                <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); }} style={selectStyle}>
                     <option value="">All Status</option>
                     <option value="enabled">Active</option>
                     <option value="disabled">Disabled</option>
@@ -371,7 +371,7 @@ function UsersListTab() {
                             disabled={bulkWorking} style={{fontSize: 12, padding: '4px 10px'}}>
                         <i className="bi bi-trash-fill"/> Delete
                     </button>
-                    <button className="admin-btn" onClick={() => setSelected(new Set())}
+                    <button className="admin-btn" onClick={() => { setSelected(new Set()); }}
                             style={{fontSize: 12, padding: '4px 10px'}}>Clear
                     </button>
                 </div>
@@ -389,7 +389,7 @@ function UsersListTab() {
                                        title={allSelected ? 'Deselect all' : 'Select all (except admin)'}/>
                             </th>
                             {USER_SORT_COLUMNS.map(col => (
-                                <th key={col.key} style={thSortStyle} onClick={() => handleSort(col.key)}>
+                                <th key={col.key} style={thSortStyle} onClick={() => { handleSort(col.key); }}>
                                     {col.label}{sortIndicator(col.key)}
                                 </th>
                             ))}
@@ -423,7 +423,7 @@ function UsersListTab() {
                                 <td>{new Date(user.created_at).toLocaleDateString()}</td>
                                 <td>
                                     <div style={{display: 'flex', gap: 6}}>
-                                        <button className="admin-btn" onClick={() => setEditUser(user)}>Edit</button>
+                                        <button className="admin-btn" onClick={() => { setEditUser(user); }}>Edit</button>
                                         <button className="admin-btn"
                                                 onClick={() => handleToggle(user)}>{user.enabled ? 'Disable' : 'Enable'}</button>
                                         <button className="admin-btn admin-btn-danger"
@@ -447,7 +447,7 @@ function UsersListTab() {
             )}
             {showCreate && (
                 <CreateUserModal
-                    onClose={() => setShowCreate(false)}
+                    onClose={() => { setShowCreate(false); }}
                     onCreated={() => {
                         setShowCreate(false);
                         void queryClient.invalidateQueries({queryKey: ['admin-users']});
@@ -458,7 +458,7 @@ function UsersListTab() {
             {editUser && (
                 <EditUserModal
                     user={editUser}
-                    onClose={() => setEditUser(null)}
+                    onClose={() => { setEditUser(null); }}
                     onSaved={() => {
                         setEditUser(null);
                         void queryClient.invalidateQueries({queryKey: ['admin-users']});

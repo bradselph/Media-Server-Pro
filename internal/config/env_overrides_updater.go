@@ -1,28 +1,27 @@
 package config
 
 import (
-	"os"
 	"strings"
 	"time"
 )
 
 func (m *Manager) applyUpdaterEnvOverrides() {
-	if val := os.Getenv("UPDATER_APP_DIR"); val != "" {
+	if val := envGetStr("UPDATER_APP_DIR"); val != "" {
 		m.config.Updater.AppDir = val
 	}
-	if val := os.Getenv("UPDATER_DEPLOY_KEY_PATH"); val != "" {
+	if val := envGetStr("UPDATER_DEPLOY_KEY_PATH"); val != "" {
 		m.config.Updater.DeployKeyPath = val
 	}
-	if val := os.Getenv("UPDATER_GITHUB_TOKEN"); val != "" {
+	if val := envGetStr("UPDATER_GITHUB_TOKEN"); val != "" {
 		m.config.Updater.GitHubToken = val
 	}
-	if val := os.Getenv("UPDATER_GITHUB_USERNAME"); val != "" {
+	if val := envGetStr("UPDATER_GITHUB_USERNAME"); val != "" {
 		m.config.Updater.GitHubUsername = val
 	}
-	if val := os.Getenv("UPDATER_BRANCH"); val != "" {
+	if val := envGetStr("UPDATER_BRANCH"); val != "" {
 		m.config.Updater.Branch = val
 	}
-	if val := os.Getenv("UPDATER_METHOD"); val != "" {
+	if val := envGetStr("UPDATER_METHOD"); val != "" {
 		m.config.Updater.UpdateMethod = val
 	}
 }

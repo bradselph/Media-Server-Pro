@@ -60,11 +60,66 @@ const (
 	headerContentDisposition = "Content-Disposition"
 )
 
+// BuildInfo holds version and build metadata (avoids passing raw strings).
+type BuildInfo struct {
+	Version   string
+	BuildDate string
+}
+
+// MediaID is the stable UUID for a media item (avoids primitive obsession for ID parameters).
+type MediaID string
+
+// ResolvedPath is an absolute, validated path under allowed directories (avoids raw path strings).
+type ResolvedPath string
+
+// AllowedDirs is a list of base directories allowed for path resolution (avoids raw []string).
+type AllowedDirs []string
+
+// HandlerCoreDeps groups critical and core module dependencies.
+type HandlerCoreDeps struct {
+	Config    *config.Manager
+	Media     *media.Module
+	Streaming *streaming.Module
+	HLS       *hls.Module
+	Auth      *auth.Module
+	Database  *database.Module
+}
+
+// HandlerOptionalDeps groups optional feature modules (nil when feature is disabled).
+type HandlerOptionalDeps struct {
+	Admin         *admin.Module
+	Tasks         *tasks.Module
+	Upload        *upload.Module
+	Scanner       *scanner.Module
+	Thumbnails    *thumbnails.Module
+	Validator     *validator.Module
+	Backup        *backup.Module
+	Autodiscovery *autodiscovery.Module
+	Suggestions   *suggestions.Module
+	Security      *security.Module
+	Categorizer   *categorizer.Module
+	Updater       *updater.Module
+	Remote        *remote.Module
+	Receiver      *receiver.Module
+	Extractor     *extractor.Module
+	Crawler       *crawler.Module
+	Duplicates    *duplicates.Module
+	Analytics     *analytics.Module
+	Playlist      *playlist.Module
+}
+
+// HandlerDeps holds all module dependencies needed to create a Handler.
+// Dependencies are grouped to avoid primitive obsession (many separate fields).
+type HandlerDeps struct {
+	BuildInfo BuildInfo
+	Core      HandlerCoreDeps
+	Optional  HandlerOptionalDeps
+}
+
 // Handler holds dependencies for HTTP handlers
 type Handler struct {
 	log           *logger.Logger
-	version       string
-	buildDate     string
+	buildInfo     BuildInfo
 	media         *media.Module
 	streaming     *streaming.Module
 	hls           *hls.Module
@@ -92,74 +147,43 @@ type Handler struct {
 	config        *config.Manager
 }
 
-// HandlerDeps holds all module dependencies needed to create a Handler.
-// This avoids passing each dependency as a separate parameter.
-type HandlerDeps struct {
-	Version       string
-	BuildDate     string
-	Config        *config.Manager
-	Media         *media.Module
-	Streaming     *streaming.Module
-	HLS           *hls.Module
-	Auth          *auth.Module
-	Analytics     *analytics.Module
-	Playlist      *playlist.Module
-	Admin         *admin.Module
-	Database      *database.Module
-	Tasks         *tasks.Module
-	Upload        *upload.Module
-	Scanner       *scanner.Module
-	Thumbnails    *thumbnails.Module
-	Validator     *validator.Module
-	Backup        *backup.Module
-	Autodiscovery *autodiscovery.Module
-	Suggestions   *suggestions.Module
-	Security      *security.Module
-	Categorizer   *categorizer.Module
-	Updater       *updater.Module
-	Remote        *remote.Module
-	Receiver      *receiver.Module
-	Extractor     *extractor.Module
-	Crawler       *crawler.Module
-	Duplicates    *duplicates.Module
-}
-
 // NewHandler creates a new handler with dependencies.
 // Panics if critical modules (Media, Auth, Streaming) are nil.
 func NewHandler(deps HandlerDeps) *Handler {
-	if deps.Media == nil || deps.Auth == nil || deps.Streaming == nil {
+	c, o := deps.Core, deps.Optional
+	missingCritical := c.Media == nil || c.Auth == nil || c.Streaming == nil
+	if missingCritical {
 		panic("NewHandler: critical module dependency is nil (Media, Auth, or Streaming)")
 	}
 
 	return &Handler{
 		log:           logger.New("handlers"),
-		version:       deps.Version,
-		buildDate:     deps.BuildDate,
-		media:         deps.Media,
-		streaming:     deps.Streaming,
-		hls:           deps.HLS,
-		auth:          deps.Auth,
-		analytics:     deps.Analytics,
-		playlist:      deps.Playlist,
-		admin:         deps.Admin,
-		database:      deps.Database,
-		tasks:         deps.Tasks,
-		upload:        deps.Upload,
-		scanner:       deps.Scanner,
-		thumbnails:    deps.Thumbnails,
-		validator:     deps.Validator,
-		backup:        deps.Backup,
-		autodiscovery: deps.Autodiscovery,
-		suggestions:   deps.Suggestions,
-		security:      deps.Security,
-		categorizer:   deps.Categorizer,
-		updater:       deps.Updater,
-		remote:        deps.Remote,
-		receiver:      deps.Receiver,
-		extractor:     deps.Extractor,
-		crawler:       deps.Crawler,
-		duplicates:    deps.Duplicates,
-		config:        deps.Config,
+		buildInfo:     deps.BuildInfo,
+		media:         c.Media,
+		streaming:     c.Streaming,
+		hls:           c.HLS,
+		auth:          c.Auth,
+		database:      c.Database,
+		config:        c.Config,
+		analytics:     o.Analytics,
+		playlist:      o.Playlist,
+		admin:         o.Admin,
+		tasks:         o.Tasks,
+		upload:        o.Upload,
+		scanner:       o.Scanner,
+		thumbnails:    o.Thumbnails,
+		validator:     o.Validator,
+		backup:        o.Backup,
+		autodiscovery: o.Autodiscovery,
+		suggestions:   o.Suggestions,
+		security:      o.Security,
+		categorizer:   o.Categorizer,
+		updater:       o.Updater,
+		remote:        o.Remote,
+		receiver:      o.Receiver,
+		extractor:     o.Extractor,
+		crawler:       o.Crawler,
+		duplicates:    o.Duplicates,
 	}
 }
 
@@ -181,30 +205,6 @@ func getUser(c *gin.Context) *models.User {
 		}
 	}
 	return nil
-}
-
-// writeSuccess writes a successful JSON response.
-func writeSuccess(c *gin.Context, data interface{}) {
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: data})
-}
-
-// writeError writes an error JSON response.
-func writeError(c *gin.Context, status int, message string) {
-	c.JSON(status, models.APIResponse{Success: false, Error: message})
-}
-
-// safeContentDisposition returns a Content-Disposition header value with the
-// filename sanitized to prevent header injection. Characters that could break
-// the header (quotes, backslashes, newlines, control chars) are removed.
-func safeContentDisposition(filename string) string {
-	var safe strings.Builder
-	for _, r := range filename {
-		if r == '"' || r == '\\' || r == '\n' || r == '\r' || r < 0x20 {
-			continue
-		}
-		safe.WriteRune(r)
-	}
-	return fmt.Sprintf("attachment; filename=\"%s\"", safe.String())
 }
 
 // isClientDisconnect returns true for network errors that indicate the client
@@ -304,34 +304,53 @@ func (h *Handler) requireSecurity(c *gin.Context) bool {
 	return requireModule(c, h.security, "Security feature")
 }
 
+// adminLogActionParams groups arguments for logAdminAction to avoid excess parameters.
+type adminLogActionParams struct {
+	UserID   string
+	Username string
+	Action   string
+	Target   string
+	Details  map[string]interface{}
+}
+
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
 // is best-effort — if the admin module is unavailable the action is silently
 // skipped so that the primary operation (user create, media delete, etc.) still
 // succeeds.
-func (h *Handler) logAdminAction(c *gin.Context, userID, username, action, target string, details map[string]interface{}) {
+func (h *Handler) logAdminAction(c *gin.Context, p *adminLogActionParams) {
 	if h.admin != nil {
 		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
-			UserID: userID, Username: username, Action: action, Resource: target,
-			Details: details, IPAddress: c.ClientIP(), Success: true,
+			UserID: p.UserID, Username: p.Username, Action: p.Action, Resource: p.Target,
+			Details: p.Details, IPAddress: c.ClientIP(), Success: true,
 		})
 	}
 }
 
+// adminLogResultParams groups arguments for logAdminActionResult to avoid excess parameters.
+type adminLogResultParams struct {
+	UserID   string
+	Username string
+	Action   string
+	Target   string
+	Details  map[string]interface{}
+	Success  bool
+}
+
 // logAdminActionResult is like logAdminAction but lets the caller specify success/failure.
-func (h *Handler) logAdminActionResult(c *gin.Context, userID, username, action, target string, details map[string]interface{}, success bool) {
+func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) {
 	if h.admin != nil {
 		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
-			UserID: userID, Username: username, Action: action, Resource: target,
-			Details: details, IPAddress: c.ClientIP(), Success: success,
+			UserID: p.UserID, Username: p.Username, Action: p.Action, Resource: p.Target,
+			Details: p.Details, IPAddress: c.ClientIP(), Success: p.Success,
 		})
 	}
 }
 
 // resolveAndValidatePath resolves a file path against allowed directories, prevents path
-// traversal, and verifies the file exists. Returns the absolute path and true on success,
+// traversal, and verifies the file exists. Returns the resolved path and true on success,
 // or writes an error response and returns ("", false) on failure.
-func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDirs []string) (string, bool) {
-	validPath := h.resolveRelativePath(path, allowedDirs)
+func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDirs AllowedDirs) (ResolvedPath, bool) {
+	validPath := h.resolveRelativePath(path, []string(allowedDirs))
 	if validPath == "" {
 		writeError(c, http.StatusNotFound, errFileNotFound)
 		return "", false
@@ -348,7 +367,7 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 		return "", false
 	}
 
-	if !isPathWithinDirs(absPath, allowedDirs) {
+	if !isPathWithinDirs(absPath, []string(allowedDirs)) {
 		h.log.Warn("Path traversal attempt detected: %s", path)
 		writeError(c, http.StatusForbidden, "Access denied: path outside allowed directories")
 		return "", false
@@ -363,7 +382,7 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 		return "", false
 	}
 
-	return absPath, true
+	return ResolvedPath(absPath), true
 }
 
 // resolveRelativePath resolves a relative path against the allowed directories.
@@ -391,7 +410,11 @@ func isPathWithinDirs(absPath string, dirs []string) bool {
 			continue
 		}
 		relPath, err := filepath.Rel(absDir, absPath)
-		if err == nil && !strings.HasPrefix(relPath, ".."+string(filepath.Separator)) && relPath != ".." {
+		if err != nil {
+			continue
+		}
+		escapesUp := strings.HasPrefix(relPath, ".."+string(filepath.Separator)) || relPath == ".."
+		if !escapesUp {
 			return true
 		}
 	}
@@ -402,7 +425,13 @@ func isPathWithinDirs(absPath string, dirs []string) bool {
 // the given path. Returns true if access is allowed or irrelevant, false if denied.
 func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
 	item, err := h.media.GetMedia(absPath)
-	if err != nil || item == nil || !item.IsMature {
+	if err != nil {
+		return true
+	}
+	if item == nil {
+		return true
+	}
+	if !item.IsMature {
 		return true
 	}
 
@@ -443,9 +472,140 @@ func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
 }
 
 // allowedMediaDirs returns the directories from which media can be served.
-func (h *Handler) allowedMediaDirs() []string {
+func (h *Handler) allowedMediaDirs() AllowedDirs {
 	cfg := h.media.GetConfig()
-	return []string{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads}
+	return AllowedDirs{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads}
+}
+
+// resolvePathToAbsolute resolves path (absolute or relative) to an absolute path under
+// allowedDirs. Writes error and returns ("", false) on failure.
+func resolvePathToAbsolute(c *gin.Context, path string, allowedDirs []string) (string, bool) {
+	absPath, err := resolvePathToAbsoluteNoWrite(path, allowedDirs)
+	if err == nil {
+		return absPath, true
+	}
+	writePathResolveError(c, err)
+	return "", false
+}
+
+func writePathResolveError(c *gin.Context, err error) {
+	if err == errInvalidPath {
+		writeError(c, http.StatusBadRequest, "Invalid path")
+		return
+	}
+	writeError(c, http.StatusNotFound, "Path not found under media directories")
+}
+
+var (
+	errInvalidPath  = errors.New("invalid path")
+	errPathNotFound = errors.New("path not found")
+)
+
+func resolveAbsPath(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", errInvalidPath
+	}
+	return absPath, nil
+}
+
+func resolvePathToAbsoluteNoWrite(path string, allowedDirs []string) (string, error) {
+	if filepath.IsAbs(path) {
+		return resolveAbsPath(path)
+	}
+	absPath, ok := resolveRelativePathInDirs(path, allowedDirs)
+	if ok {
+		return absPath, nil
+	}
+	return "", errPathNotFound
+}
+
+func resolveRelativePathInDirs(path string, allowedDirs []string) (string, bool) {
+	for _, d := range allowedDirs {
+		if absPath, ok := resolveRelativeInDir(path, d); ok {
+			return absPath, true
+		}
+	}
+	return "", false
+}
+
+func resolveRelativeInDir(path, dir string) (string, bool) {
+	if dir == "" {
+		return "", false
+	}
+	candidate := filepath.Join(dir, path)
+	if _, err := os.Stat(candidate); err != nil {
+		return "", false
+	}
+	absPath, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", false
+	}
+	return absPath, true
+}
+
+// statPathForValidation stats absPath and writes an appropriate error on failure.
+// Returns (info, true) on success, (nil, false) on failure.
+func statPathForValidation(c *gin.Context, absPath string) (os.FileInfo, bool) {
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeError(c, http.StatusNotFound, "Path not found")
+		} else {
+			writeError(c, http.StatusInternalServerError, "Error accessing path")
+		}
+		return nil, false
+	}
+	return info, true
+}
+
+// validatePathType checks that info matches mustBeDir (true = directory, false = file).
+// Writes error and returns false on mismatch.
+func validatePathType(c *gin.Context, info os.FileInfo, mustBeDir bool) bool {
+	if mustBeDir && !info.IsDir() {
+		writeError(c, http.StatusBadRequest, "Path must be a directory")
+		return false
+	}
+	if !mustBeDir && info.IsDir() {
+		writeError(c, http.StatusBadRequest, "Path must be a file")
+		return false
+	}
+	return true
+}
+
+// validatePathInDirsAndStat checks absPath is under allowedDirs, exists, and matches
+// mustBeDir (true = directory, false = file). Writes error and returns false on failure.
+func validatePathInDirsAndStat(c *gin.Context, absPath string, allowedDirs []string, mustBeDir bool) bool {
+	if !isPathWithinDirs(absPath, allowedDirs) {
+		writeError(c, http.StatusForbidden, "Access denied: path outside allowed media directories")
+		return false
+	}
+	info, ok := statPathForValidation(c, absPath)
+	if !ok {
+		return false
+	}
+	return validatePathType(c, info, mustBeDir)
+}
+
+// resolvePathForAdmin validates a path (absolute or relative) for admin operations such as
+// classify file/directory. It ensures the path is under allowed media directories and exists.
+// If mustBeDir is true, the path must be a directory; otherwise it must be a regular file.
+// Returns the absolute path and true on success; on failure writes an error and returns ("", false).
+func (h *Handler) resolvePathForAdmin(c *gin.Context, path string, mustBeDir bool) (string, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		writeError(c, http.StatusBadRequest, "path is required")
+		return "", false
+	}
+	allowedDirs := h.allowedMediaDirs()
+	absPath, ok := resolvePathToAbsolute(c, path, []string(allowedDirs))
+	if !ok {
+		return "", false
+	}
+	if !validatePathInDirsAndStat(c, absPath, []string(allowedDirs), mustBeDir) {
+		return "", false
+	}
+	return absPath, true
 }
 
 // resolveMediaByID looks up a media item by its stable UUID and returns the
@@ -457,11 +617,12 @@ func (h *Handler) allowedMediaDirs() []string {
 // 503 instead of 404 so clients know to retry rather than treating the item as
 // permanently missing.
 func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
-	if id == "" {
+	mid := MediaID(strings.TrimSpace(id))
+	if mid == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
 		return "", false
 	}
-	item, err := h.media.GetMediaByID(id)
+	item, err := h.media.GetMediaByID(string(mid))
 	if err != nil {
 		if !h.media.IsReady() {
 			c.Header("Retry-After", "3")
@@ -475,22 +636,30 @@ func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 }
 
 // resolveMediaPathOrReceiver is like resolveMediaByID but falls back to receiver
-// items when the ID is not found locally. For receiver items it returns a
-// synthetic path "receiver:<id>" suitable for use as a database key (position
-// tracking, watch history) but NOT for local file operations.
-func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path string, receiverName string, ok bool) {
-	if id == "" {
+// and extractor items when the ID is not found locally. For receiver items it
+// returns a synthetic path "receiver:<id>" and for extractor items "extractor:<id>".
+// These synthetic paths are suitable as database keys (position tracking, watch
+// history, ratings) but NOT for local file operations.
+func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path string, itemName string, ok bool) {
+	mid := MediaID(strings.TrimSpace(id))
+	if mid == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
 		return "", "", false
 	}
-	item, err := h.media.GetMediaByID(id)
+	item, err := h.media.GetMediaByID(string(mid))
 	if err == nil {
 		return item.Path, item.Name, true
 	}
 	// Fallback: check receiver media
 	if h.receiver != nil {
-		if ri := h.receiver.GetMediaItem(id); ri != nil {
-			return "receiver:" + id, ri.Name, true
+		if ri := h.receiver.GetMediaItem(string(mid)); ri != nil {
+			return "receiver:" + string(mid), ri.Name, true
+		}
+	}
+	// Fallback: check extractor items
+	if h.extractor != nil {
+		if ei := h.extractor.GetItem(string(mid)); ei != nil && ei.Status == "active" {
+			return "extractor:" + string(mid), ei.Title, true
 		}
 	}
 	if !h.media.IsReady() {
@@ -592,17 +761,23 @@ func (h *Handler) enrichSuggestionThumbnails(items []*suggestions.Suggestion) {
 		return
 	}
 	for _, item := range items {
-		if item.ThumbnailURL == "" {
-			if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.MediaID)) {
-				ext := strings.ToLower(filepath.Ext(item.MediaPath))
-				isAudio := isAudioExtension(ext)
-				if _, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.MediaPath, MediaID: item.MediaID, IsAudio: isAudio, HighPriority: true}); err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
-					h.log.Warn("Failed to queue thumbnail for %s: %v", item.MediaPath, err)
-				}
-			}
-			// Use stable MediaID so URL survives path changes
-			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.MediaID))
+		if item.ThumbnailURL != "" {
+			continue
 		}
+		mediaID := thumbnails.MediaID(item.MediaID)
+		if h.thumbnails.HasThumbnail(mediaID) {
+			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(mediaID)
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(item.MediaPath))
+		isAudio := isAudioExtension(ext)
+		_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{
+			MediaPath: item.MediaPath, MediaID: item.MediaID, IsAudio: isAudio, HighPriority: true,
+		})
+		if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
+			h.log.Warn("Failed to queue thumbnail for %s: %v", item.MediaPath, err)
+		}
+		item.ThumbnailURL = h.thumbnails.GetThumbnailURL(mediaID)
 	}
 }
 

@@ -33,6 +33,7 @@ func DefaultConfig() *Config {
 		Extractor:     defaultExtractorConfig(),
 		Crawler:       defaultCrawlerConfig(),
 		MatureScanner: defaultMatureScannerConfig(),
+		HuggingFace:   defaultHuggingFaceConfig(),
 		Backup:        BackupConfig{RetentionCount: 10},
 		Logging:       defaultLoggingConfig(),
 		Features:      defaultFeaturesConfig(),
@@ -167,14 +168,14 @@ func defaultAuthConfig() AuthConfig {
 
 func defaultHLSConfig() HLSConfig {
 	return HLSConfig{
-		Enabled:         true,
-		SegmentDuration: 6,
-		PlaylistLength:  0,
-		CleanupEnabled:  true,
-		CleanupInterval: 1 * time.Hour,
+		Enabled:          true,
+		SegmentDuration:  6,
+		PlaylistLength:   0,
+		CleanupEnabled:   true,
+		CleanupInterval:  1 * time.Hour,
 		RetentionMinutes: 60,
-		AutoGenerate:    false,
-		ConcurrentLimit: 2,
+		AutoGenerate:     false,
+		ConcurrentLimit:  2,
 		QualityProfiles: []HLSQuality{
 			{Name: "1080p", Width: 1920, Height: 1080, Bitrate: 5000000, AudioBitrate: 192000},
 			{Name: "720p", Width: 1280, Height: 720, Bitrate: 2500000, AudioBitrate: 128000},
@@ -233,6 +234,17 @@ func defaultMatureScannerConfig() MatureScannerConfig {
 	}
 }
 
+func defaultHuggingFaceConfig() HuggingFaceConfig {
+	return HuggingFaceConfig{
+		Enabled:       false,
+		Model:         "Salesforce/blip-image-captioning-large",
+		MaxFrames:     3,
+		TimeoutSecs:   30,
+		RateLimit:     30,
+		MaxConcurrent: 2,
+	}
+}
+
 func defaultLoggingConfig() LoggingConfig {
 	return LoggingConfig{
 		Level:        "info",
@@ -262,6 +274,7 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableExtractor:          false,
 		EnableCrawler:            false,
 		EnableDuplicateDetection: true,
+		EnableHuggingFace:        false,
 	}
 }
 

@@ -75,17 +75,17 @@ type Module struct {
 
 // Progress tracks upload progress.
 type Progress struct {
-	ID          UploadID      `json:"id"`
-	Filename    string        `json:"filename"`
-	Size        int64         `json:"size"`
-	Uploaded    int64         `json:"uploaded"`
-	Progress    float64       `json:"progress"`
-	Status      UploadStatus  `json:"status"`
-	StartedAt   time.Time     `json:"started_at"`
-	CompletedAt *time.Time    `json:"completed_at,omitempty"`
-	Error       string        `json:"error,omitempty"`
-	UserID      string        `json:"user_id"`
-	DestPath    string        `json:"-"`
+	ID          UploadID     `json:"id"`
+	Filename    string       `json:"filename"`
+	Size        int64        `json:"size"`
+	Uploaded    int64        `json:"uploaded"`
+	Progress    float64      `json:"progress"`
+	Status      UploadStatus `json:"status"`
+	StartedAt   time.Time    `json:"started_at"`
+	CompletedAt *time.Time   `json:"completed_at,omitempty"`
+	Error       string       `json:"error,omitempty"`
+	UserID      string       `json:"user_id"`
+	DestPath    string       `json:"-"`
 }
 
 // Result contains the result of an upload.

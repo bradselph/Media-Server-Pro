@@ -74,7 +74,7 @@ func (h *Handler) GetHealth(c *gin.Context) {
 
 	resp := map[string]interface{}{
 		"status":    status,
-		"version":   h.version,
+		"version":   h.buildInfo.Version,
 		"timestamp": time.Now().Unix(),
 		"modules":   modules,
 	}
@@ -92,7 +92,7 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 	// Server info
 	_, _ = fmt.Fprintf(&b, "# HELP media_server_info Server information\n")
 	_, _ = fmt.Fprintf(&b, "# TYPE media_server_info gauge\n")
-	_, _ = fmt.Fprintf(&b, "media_server_info{version=\"%s\"} 1\n", h.version)
+	_, _ = fmt.Fprintf(&b, "media_server_info{version=\"%s\"} 1\n", h.buildInfo.Version)
 
 	// Media stats
 	mediaStats := h.media.GetStats()
@@ -224,14 +224,14 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enabled": cfg.Analytics.Enabled,
 		},
 		"features": map[string]interface{}{
-			"enableThumbnails":        cfg.Thumbnails.Enabled,
-			"enableHLS":               cfg.HLS.Enabled,
-			"enableAnalytics":         cfg.Analytics.Enabled,
-			"enablePlaylists":         cfg.Features.EnablePlaylists,
-			"enableUserAuth":          cfg.Features.EnableUserAuth,
-			"enableAdminPanel":        cfg.Features.EnableAdminPanel,
-			"enableSuggestions":       cfg.Features.EnableSuggestions,
-			"enableAutoDiscovery":     cfg.Features.EnableAutoDiscovery,
+			"enableThumbnails":         cfg.Thumbnails.Enabled,
+			"enableHLS":                cfg.HLS.Enabled,
+			"enableAnalytics":          cfg.Analytics.Enabled,
+			"enablePlaylists":          cfg.Features.EnablePlaylists,
+			"enableUserAuth":           cfg.Features.EnableUserAuth,
+			"enableAdminPanel":         cfg.Features.EnableAdminPanel,
+			"enableSuggestions":        cfg.Features.EnableSuggestions,
+			"enableAutoDiscovery":      cfg.Features.EnableAutoDiscovery,
 			"enableDuplicateDetection": cfg.Features.EnableDuplicateDetection,
 		},
 		"uploads": map[string]interface{}{
@@ -358,7 +358,7 @@ func (h *Handler) AdminGetDatabaseStatus(c *gin.Context) {
 	cfg := h.media.GetConfig()
 	status := map[string]interface{}{
 		"connected":       connected,
-		"app_version":     h.version,
+		"app_version":     h.buildInfo.Version,
 		"repository_type": repositoryType,
 		"message":         health.Message,
 		"checked_at":      health.CheckedAt,

@@ -20,6 +20,7 @@ import (
 	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
+	"media-server-pro/pkg/huggingface"
 	"media-server-pro/pkg/models"
 )
 
@@ -245,6 +246,8 @@ type MatureScanner struct {
 	reviewQueue map[string]*models.MatureReviewItem
 	mu          sync.RWMutex
 	dataDir     string
+	tempDir     string              // for HF frame extraction
+	hfClient    *huggingface.Client // nil if HuggingFace not configured
 	healthy     bool
 	healthMsg   string
 	healthMu    sync.RWMutex
@@ -271,12 +274,18 @@ type ScanResult struct {
 
 // NewMatureScanner creates a new mature content scanner
 func NewMatureScanner(cfg *config.Manager) *MatureScanner {
+	dirs := cfg.Get().Directories
+	tempDir := dirs.Temp
+	if tempDir == "" {
+		tempDir = filepath.Join(dirs.Data, "temp")
+	}
 	return &MatureScanner{
 		config:      cfg,
 		log:         logger.New("scanner"),
 		results:     make(map[string]*ScanResult),
 		reviewQueue: make(map[string]*models.MatureReviewItem),
-		dataDir:     cfg.Get().Directories.Data,
+		dataDir:     dirs.Data,
+		tempDir:     tempDir,
 	}
 }
 
@@ -1114,4 +1123,100 @@ func (s *MatureScanner) ClearReviewQueue() {
 	s.mu.Lock()
 	s.reviewQueue = make(map[string]*models.MatureReviewItem)
 	s.mu.Unlock()
+}
+
+// SetHFClient sets the Hugging Face client for visual classification. Call with nil to disable.
+func (s *MatureScanner) SetHFClient(c *huggingface.Client) {
+	s.hfClient = c
+}
+
+// HasHuggingFace returns true if visual classification via Hugging Face is configured.
+func (s *MatureScanner) HasHuggingFace() bool {
+	return s.hfClient != nil
+}
+
+// ClassifyMatureContent performs visual classification on a file already detected as mature.
+// Extracts frames (for video) or uses the file (for images), sends them to the HF API,
+// and returns aggregated, deduplicated tags. Returns nil if HF is not configured or on error.
+func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) ([]string, error) {
+	if s.hfClient == nil {
+		return nil, nil
+	}
+	cfg := s.config.Get()
+	maxFrames := cfg.HuggingFace.MaxFrames
+	if maxFrames <= 0 {
+		maxFrames = 3
+	}
+	framePaths, err := huggingface.ExtractFrames(ctx, huggingface.ExtractFramesOptions{VideoPath: path, Count: maxFrames, TempDir: s.tempDir})
+	if err != nil {
+		s.log.Warn("HF frame extraction failed for %s: %v", path, err)
+		return nil, err
+	}
+	defer func() {
+		for _, p := range framePaths {
+			if p != path {
+				_ = os.Remove(p)
+			}
+		}
+	}()
+
+	seen := make(map[string]bool)
+	var allTags []string
+	for _, framePath := range framePaths {
+		if ctx.Err() != nil {
+			break
+		}
+		data, err := os.ReadFile(framePath)
+		if err != nil {
+			s.log.Warn("Failed to read frame %s: %v", framePath, err)
+			continue
+		}
+		result, err := s.hfClient.ClassifyImage(ctx, data)
+		if err != nil {
+			s.log.Warn("HF ClassifyImage failed for %s: %v", framePath, err)
+			// Propagate auth/rate errors so admin sees them; skip only transient per-frame failures
+			if strings.Contains(err.Error(), "API key") || strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "429") {
+				return nil, err
+			}
+			continue
+		}
+		for _, t := range result.Tags {
+			key := strings.ToLower(t)
+			if !seen[key] {
+				seen[key] = true
+				allTags = append(allTags, t)
+			}
+		}
+	}
+	return allTags, nil
+}
+
+// ClassifyMatureDirectory runs visual classification on all mature-flagged files in a directory.
+// Returns a map of file path to generated tags. Skips files that are not mature.
+func (s *MatureScanner) ClassifyMatureDirectory(ctx context.Context, dir string) (map[string][]string, error) {
+	if s.hfClient == nil {
+		return nil, nil
+	}
+	results, err := s.ScanDirectory(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]string)
+	for _, result := range results {
+		if !result.IsMature {
+			continue
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		tags, err := s.ClassifyMatureContent(ctx, result.Path)
+		if err != nil {
+			s.log.Warn("ClassifyMatureContent failed for %s: %v", result.Path, err)
+			continue
+		}
+		if len(tags) > 0 {
+			out[result.Path] = tags
+		}
+	}
+	return out, nil
 }

@@ -18,6 +18,7 @@ import type {
     CachedMediaResult,
     CategorizedItem,
     CategoryStats,
+    ClassifyStatus,
     DailyStats,
     DatabaseStatus,
     DiscoverySuggestion,
@@ -103,7 +104,7 @@ export const ratingsApi = {
 export const uploadApi = {
     upload: (files: File[], category?: string): Promise<UploadResult> => {
         const formData = new FormData()
-        files.forEach(f => formData.append('files', f))
+        files.forEach(f => { formData.append('files', f); })
         if (category) formData.append('category', category)
         return api.upload<UploadResult>('/api/upload', formData)
     },
@@ -345,7 +346,7 @@ export const suggestionsApi = {
     getSimilar: (id: string) =>
         api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
 
-    // Returns Suggestion[] (media_path, title, thumbnail_url, score) — not WatchHistoryEntry
+    // Returns Suggestion[] (media_id, title, thumbnail_url, score) — not WatchHistoryEntry
     getContinueWatching: () =>
         api.get<Suggestion[]>('/api/suggestions/continue'),
 
@@ -581,6 +582,14 @@ export const adminApi = {
     clearReviewQueue: () =>
         api.delete<void>('/api/admin/scanner/queue'),
 
+    // Hugging Face visual classification
+    getClassifyStatus: () =>
+        api.get<ClassifyStatus>('/api/admin/classify/status'),
+    classifyFile: (path: string) =>
+        api.post<{ path: string; tags: string[] }>('/api/admin/classify/file', {path}),
+    classifyDirectory: (path: string) =>
+        api.post<{ message: string; directory: string }>('/api/admin/classify/directory', {path}),
+
     // HLS admin
     getHLSStats: () =>
         api.get<HLSStats>('/api/admin/hls/stats'),
@@ -786,6 +795,9 @@ export const adminApi = {
     // Feature 9: Suggestion stats + scanner reject
     getSuggestionStats: () =>
         api.get<SuggestionStats>('/api/admin/suggestions/stats'),
+
+    approveContent: (id: string) =>
+        api.post<void>(`/api/admin/scanner/approve/${encodeURIComponent(id)}`),
 
     rejectContent: (id: string) =>
         api.post<void>(`/api/admin/scanner/reject/${encodeURIComponent(id)}`),

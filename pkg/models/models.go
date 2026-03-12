@@ -611,11 +611,11 @@ const (
 type SuggestionMetadata map[SuggestionMetadataKey]string
 
 type AutoDiscoverySuggestion struct {
-	OriginalPath  string            `json:"original_path"`
-	SuggestedName string            `json:"suggested_name"`
-	SuggestedPath string            `json:"-"`
-	Type          SuggestionType    `json:"type"` // movie, tv_episode, music
-	Confidence    float64           `json:"confidence"`
+	OriginalPath  string             `json:"original_path"`
+	SuggestedName string             `json:"suggested_name"`
+	SuggestedPath string             `json:"-"`
+	Type          SuggestionType     `json:"type"` // movie, tv_episode, music
+	Confidence    float64            `json:"confidence"`
 	Metadata      SuggestionMetadata `json:"metadata,omitempty"`
 }
 

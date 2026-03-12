@@ -21,6 +21,7 @@ type Config struct {
 	Crawler       CrawlerConfig       `json:"crawler"`
 	Backup        BackupConfig        `json:"backup"`
 	MatureScanner MatureScannerConfig `json:"mature_scanner"`
+	HuggingFace   HuggingFaceConfig   `json:"huggingface"`
 	Logging       LoggingConfig       `json:"logging"`
 	Features      FeaturesConfig      `json:"features"`
 	Database      DatabaseConfig      `json:"database"`
@@ -275,6 +276,18 @@ type MatureScannerConfig struct {
 	RequireReview             bool     `json:"require_review"`
 }
 
+// HuggingFaceConfig holds settings for Hugging Face Inference API (visual classification).
+type HuggingFaceConfig struct {
+	Enabled       bool   `json:"enabled"`
+	APIKey        string `json:"api_key"`
+	Model         string `json:"model"`
+	EndpointURL   string `json:"endpoint_url"`
+	MaxFrames     int    `json:"max_frames"`
+	TimeoutSecs   int    `json:"timeout_secs"`
+	RateLimit     int    `json:"rate_limit"`
+	MaxConcurrent int    `json:"max_concurrent"`
+}
+
 // LoggingConfig holds logging settings
 type LoggingConfig struct {
 	Level        string `json:"level"`
@@ -303,6 +316,7 @@ type FeaturesConfig struct {
 	EnableExtractor          bool `json:"enable_extractor"`
 	EnableCrawler            bool `json:"enable_crawler"`
 	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
+	EnableHuggingFace        bool `json:"enable_huggingface"`
 }
 
 // DatabaseConfig holds database connection settings

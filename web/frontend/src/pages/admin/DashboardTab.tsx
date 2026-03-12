@@ -30,6 +30,9 @@ export function DashboardTab() {
 
     const diskPct = stats ? Math.round(((stats.disk_usage ?? 0) / ((stats.disk_total ?? 0) || 1)) * 100) : 0
     const memPct = system ? Math.round(((system.memory_used ?? 0) / ((system.memory_total ?? 0) || 1)) * 100) : 0
+    let diskFillClass = ''
+    if (diskPct > 90) diskFillClass = 'danger'
+    else if (diskPct > 70) diskFillClass = 'warning'
 
     return (
         <div>
@@ -88,7 +91,7 @@ export function DashboardTab() {
                             </div>
                             <div className="disk-usage-bar">
                                 <div
-                                    className={`disk-usage-fill ${diskPct > 90 ? 'danger' : diskPct > 70 ? 'warning' : ''}`}
+                                    className={`disk-usage-fill ${diskFillClass}`}
                                     style={{width: `${diskPct}%`}}
                                 />
                             </div>
@@ -151,7 +154,7 @@ export function DashboardTab() {
                     <button className="admin-btn admin-btn-warning" onClick={() => {
                         if (window.confirm('Restart the server? Active streams will be interrupted.')) {
                             handleAction(() => adminApi.restartServer(), 'Server restarting… page will reload in 10s')
-                            setTimeout(() => window.location.reload(), 10000)
+                            setTimeout(() => { window.location.reload(); }, 10000)
                         }
                     }}>
                         <i className="bi bi-arrow-clockwise"/> Restart Server

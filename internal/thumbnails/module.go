@@ -187,7 +187,9 @@ func (m *Module) Health() models.HealthStatus {
 	}
 
 	return models.HealthStatus{
-		Status:  status,
-		Message: m.healthMsg,
+		Name:      m.Name(),
+		Status:    status,
+		Message:   m.healthMsg,
+		CheckedAt: time.Now(),
 	}
 }

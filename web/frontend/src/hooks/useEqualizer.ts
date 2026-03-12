@@ -216,7 +216,7 @@ export function useEqualizer(
         audioElementRef.current = audioElement
         const settings = loadSettings()
         const mode = settings.eqBands || '10'
-        queueMicrotask(() => buildFilters(mode))
+        queueMicrotask(() => { buildFilters(mode); })
 
         // Resume audio context on play
         const handlePlay = () => {

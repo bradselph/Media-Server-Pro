@@ -43,8 +43,8 @@ type qualityCheckParams struct {
 
 // validateExistingHLSParams holds arguments for validating existing HLS content on disk.
 type validateExistingHLSParams struct {
-	OutputDir           string
-	RequestedQualities  []string
+	OutputDir          string
+	RequestedQualities []string
 }
 
 // createOrReuseHLSJobLocked creates or reuses an HLS job; caller must hold m.jobsMu.

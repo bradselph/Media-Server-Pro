@@ -5,6 +5,33 @@ import (
 	"time"
 )
 
+func (m *Manager) applyHuggingFaceEnvOverrides() {
+	if val, ok := envGetBool("HUGGINGFACE_ENABLED"); ok {
+		m.config.HuggingFace.Enabled = val
+	}
+	if val := envGetStr("HUGGINGFACE_API_KEY"); val != "" {
+		m.config.HuggingFace.APIKey = val
+	}
+	if val := envGetStr("HUGGINGFACE_MODEL"); val != "" {
+		m.config.HuggingFace.Model = val
+	}
+	if val := envGetStr("HUGGINGFACE_ENDPOINT_URL"); val != "" {
+		m.config.HuggingFace.EndpointURL = val
+	}
+	if val, ok := envGetInt("HUGGINGFACE_MAX_FRAMES"); ok {
+		m.config.HuggingFace.MaxFrames = val
+	}
+	if val, ok := envGetInt("HUGGINGFACE_TIMEOUT_SECS"); ok {
+		m.config.HuggingFace.TimeoutSecs = val
+	}
+	if val, ok := envGetInt("HUGGINGFACE_RATE_LIMIT"); ok {
+		m.config.HuggingFace.RateLimit = val
+	}
+	if val, ok := envGetInt("HUGGINGFACE_MAX_CONCURRENT"); ok {
+		m.config.HuggingFace.MaxConcurrent = val
+	}
+}
+
 func (m *Manager) applyMatureScannerEnvOverrides() {
 	if val, ok := envGetBool("MATURE_SCANNER_ENABLED"); ok {
 		m.config.MatureScanner.Enabled = val

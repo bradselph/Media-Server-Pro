@@ -8,7 +8,7 @@ export function SubTabs({items, active, onChange}: {
             {items.map(item => (
                 <button key={item.id}
                         className={`admin-subtab-btn ${active === item.id ? 'active' : ''}`}
-                        onClick={() => onChange(item.id)}>
+                        onClick={() => { onChange(item.id); }}>
                     {item.label}
                 </button>
             ))}

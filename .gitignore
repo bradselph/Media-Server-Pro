@@ -48,6 +48,7 @@ dev-tools/
 Thumbs.db
 
 /issues/
+/reports/
 *.sarif
 *.sarif.json
 
@@ -59,3 +60,8 @@ Thumbs.db
 # package-lock.json tracked for reproducible builds — do not ignore
 github-runner/setup-runner.sh
 github-runner/.runner.env
+
+
+#Ignore cursor AI rules
+.cursor\rules\codacy.mdc
+/scripts/__pycache__

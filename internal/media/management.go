@@ -291,6 +291,32 @@ func (m *Module) SetTags(path string, tags []string) error {
 	return m.UpdateMetadata(path, map[string]interface{}{"tags": tags})
 }
 
+// UpdateTags merges new tags with existing tags for a media file (deduplicated, case-insensitive).
+func (m *Module) UpdateTags(path string, tags []string) error {
+	var current []string
+	m.mu.RLock()
+	if meta, ok := m.metadata[path]; ok && meta != nil {
+		current = make([]string, len(meta.Tags))
+		copy(current, meta.Tags)
+	}
+	m.mu.RUnlock()
+	seen := make(map[string]bool)
+	for _, t := range current {
+		seen[strings.ToLower(t)] = true
+	}
+	for _, t := range tags {
+		if t == "" {
+			continue
+		}
+		key := strings.ToLower(t)
+		if !seen[key] {
+			seen[key] = true
+			current = append(current, t)
+		}
+	}
+	return m.SetTags(path, current)
+}
+
 // AddTag adds a tag to a media file
 func (m *Module) AddTag(path, tag string) error {
 	m.mu.Lock()

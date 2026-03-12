@@ -1,77 +1,101 @@
 package handlers
 
 import (
+	"mime/multipart"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/config"
 	"media-server-pro/internal/upload"
+	"media-server-pro/pkg/models"
 )
 
-// UploadMedia handles media file upload
-func (h *Handler) UploadMedia(c *gin.Context) {
+// requireUploadSessionAndConfig ensures upload module, session, CanUpload, and uploads enabled.
+// Returns (session, user, cfg, true) or (nil, nil, nil, false) after writing an error.
+func (h *Handler) requireUploadSessionAndConfig(c *gin.Context) (session *models.Session, user *models.User, cfg *config.Config, ok bool) {
 	if !h.requireUpload(c) {
-		return
+		return nil, nil, nil, false
 	}
-	session := getSession(c)
+	session = getSession(c)
 	if session == nil {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
+		return nil, nil, nil, false
 	}
-
-	user := getUser(c)
+	user = getUser(c)
 	if user == nil {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
+		return nil, nil, nil, false
 	}
-
 	if !user.Permissions.CanUpload {
 		writeError(c, http.StatusForbidden, "Upload not allowed for your account")
-		return
+		return nil, nil, nil, false
 	}
-
-	cfg := h.media.GetConfig()
-
+	cfg = h.media.GetConfig()
 	if !cfg.Uploads.Enabled {
 		writeError(c, http.StatusForbidden, "Uploads are disabled")
-		return
+		return nil, nil, nil, false
 	}
+	return session, user, cfg, true
+}
 
+// parseUploadFormAndGetFiles parses the multipart form and returns file headers. Caller must call the returned cleanup.
+func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context, cfg *config.Config) ([]*multipart.FileHeader, func(), bool) {
 	if cfg.Uploads.MaxFileSize > 0 {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, cfg.Uploads.MaxFileSize)
 	}
-
 	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
 		writeError(c, http.StatusBadRequest, "Failed to parse upload form")
-		return
+		return nil, func() {}, false
 	}
-	defer func() {
+	cleanup := func() {
 		if c.Request.MultipartForm != nil {
 			if err := c.Request.MultipartForm.RemoveAll(); err != nil {
 				h.log.Warn("Failed to clean multipart form: %v", err)
 			}
 		}
-	}()
-
+	}
 	fileHeaders := c.Request.MultipartForm.File["files"]
 	if len(fileHeaders) == 0 {
 		fileHeaders = c.Request.MultipartForm.File["file"]
 	}
 	if len(fileHeaders) == 0 {
 		writeError(c, http.StatusBadRequest, "No files provided")
+		return nil, cleanup, false
+	}
+	return fileHeaders, cleanup, true
+}
+
+// checkUploadStorageQuota returns false and writes an error if user would exceed quota. Otherwise true.
+func (h *Handler) checkUploadStorageQuota(c *gin.Context, cfg *config.Config, user *models.User, fileHeaders []*multipart.FileHeader) bool {
+	userType := h.getUserType(cfg, user)
+	if userType == nil || userType.StorageQuota <= 0 {
+		return true
+	}
+	var totalIncoming int64
+	for _, fh := range fileHeaders {
+		totalIncoming += fh.Size
+	}
+	if user.StorageUsed+totalIncoming <= userType.StorageQuota {
+		return true
+	}
+	writeError(c, http.StatusForbidden, "Storage quota exceeded")
+	return false
+}
+
+// UploadMedia handles media file upload
+func (h *Handler) UploadMedia(c *gin.Context) {
+	session, user, cfg, ok := h.requireUploadSessionAndConfig(c)
+	if !ok {
 		return
 	}
-
-	userType := h.getUserType(cfg, user)
-	if userType != nil && userType.StorageQuota > 0 {
-		var totalIncoming int64
-		for _, fh := range fileHeaders {
-			totalIncoming += fh.Size
-		}
-		if user.StorageUsed+totalIncoming > userType.StorageQuota {
-			writeError(c, http.StatusForbidden, "Storage quota exceeded")
-			return
-		}
+	fileHeaders, cleanup, ok := h.parseUploadFormAndGetFiles(c, cfg)
+	defer cleanup()
+	if !ok {
+		return
+	}
+	if !h.checkUploadStorageQuota(c, cfg, user, fileHeaders) {
+		return
 	}
 
 	category := c.Request.FormValue("category")

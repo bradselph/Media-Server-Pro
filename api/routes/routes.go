@@ -366,9 +366,10 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.GET("/upload/:id/progress", requireAuth(), h.GetUploadProgress)
 
 	// Receiver slave API routes (authenticated via X-API-Key, not session cookie)
-	api.POST("/receiver/register", h.ReceiverRegisterSlave)
-	api.POST("/receiver/catalog", h.ReceiverPushCatalog)
-	api.POST("/receiver/heartbeat", h.ReceiverHeartbeat)
+	receiverSlave := api.Group("/receiver", h.RequireReceiverWithAPIKey())
+	receiverSlave.POST("/register", h.ReceiverRegisterSlave)
+	receiverSlave.POST("/catalog", h.ReceiverPushCatalog)
+	receiverSlave.POST("/heartbeat", h.ReceiverHeartbeat)
 	// Stream push — slave delivers file data in response to a WS stream_request
 	api.POST("/receiver/stream-push/:token", h.ReceiverStreamPush)
 
@@ -448,6 +449,11 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.DELETE(pathScannerQueue, h.ClearReviewQueue)
 	adminGrp.POST("/scanner/approve/:id", h.ApproveContent)
 	adminGrp.POST("/scanner/reject/:id", h.RejectContent)
+
+	// Hugging Face visual classification (admin)
+	adminGrp.GET("/classify/status", h.ClassifyStatus)
+	adminGrp.POST("/classify/file", h.ClassifyFile)
+	adminGrp.POST("/classify/directory", h.ClassifyDirectory)
 
 	// Thumbnail admin routes
 	adminGrp.POST("/thumbnails/generate", h.GenerateThumbnail)

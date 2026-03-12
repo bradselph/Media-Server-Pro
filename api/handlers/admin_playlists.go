@@ -1,15 +1,43 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/playlist"
 	"media-server-pro/pkg/models"
 )
+
+// filterPlaylistsBySearch returns playlists whose name contains the given search term (case-insensitive).
+func filterPlaylistsBySearch(playlists []*models.Playlist, search string) []*models.Playlist {
+	if search == "" {
+		return playlists
+	}
+	kept := make([]*models.Playlist, 0, len(playlists))
+	for _, p := range playlists {
+		if strings.Contains(strings.ToLower(p.Name), search) {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// paginatePlaylists returns the slice for the given page and limit, or empty if start is past the end.
+func paginatePlaylists(playlists []*models.Playlist, page, limit int) []*models.Playlist {
+	start := (page - 1) * limit
+	if start >= len(playlists) {
+		return []*models.Playlist{}
+	}
+	end := start + limit
+	if end > len(playlists) {
+		end = len(playlists)
+	}
+	return playlists[start:end]
+}
 
 // AdminListPlaylists returns all playlists for admin with optional search and pagination.
 func (h *Handler) AdminListPlaylists(c *gin.Context) {
@@ -17,46 +45,11 @@ func (h *Handler) AdminListPlaylists(c *gin.Context) {
 		return
 	}
 	all := h.playlist.ListAllPlaylists()
-
 	search := strings.ToLower(strings.TrimSpace(c.Query("search")))
-	limitStr := c.Query("limit")
-	pageStr := c.Query("page")
-
-	limit := 100
-	if limitStr != "" {
-		if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
-			limit = v
-		}
-	}
-	page := 1
-	if pageStr != "" {
-		if v, err := strconv.Atoi(pageStr); err == nil && v > 0 {
-			page = v
-		}
-	}
-
-	filtered := all
-	if search != "" {
-		kept := make([]*models.Playlist, 0, len(all))
-		for _, p := range all {
-			if strings.Contains(strings.ToLower(p.Name), search) {
-				kept = append(kept, p)
-			}
-		}
-		filtered = kept
-	}
-
-	start := (page - 1) * limit
-	if start >= len(filtered) {
-		writeSuccess(c, []*models.Playlist{})
-		return
-	}
-	end := start + limit
-	if end > len(filtered) {
-		end = len(filtered)
-	}
-
-	writeSuccess(c, filtered[start:end])
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 100, Min: 1, Max: 1000})
+	page := ParseQueryInt(c, "page", QueryIntOpts{Default: 1, Min: 1, Max: 10000})
+	filtered := filterPlaylistsBySearch(all, search)
+	writeSuccess(c, paginatePlaylists(filtered, page, limit))
 }
 
 // AdminPlaylistStats returns playlist statistics
@@ -73,40 +66,18 @@ func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
 	}
-	var req struct {
-		IDs []string `json:"ids"`
-	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	ids, ok := h.validateBulkDeletePlaylistsRequest(c)
+	if !ok {
 		return
 	}
-	if len(req.IDs) == 0 {
-		writeError(c, http.StatusBadRequest, "ids must not be empty")
-		return
-	}
-	if len(req.IDs) > 500 {
-		writeError(c, http.StatusBadRequest, "too many ids (max 500)")
-		return
-	}
-
-	var successCount, failedCount int
-	var errs []string
-	for _, id := range req.IDs {
-		if id == "" {
-			continue
-		}
-		if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), id); err != nil {
-			failedCount++
-			errs = append(errs, fmt.Sprintf("%s: %v", id, err))
-		} else {
-			successCount++
-		}
-	}
+	successCount, failedCount, errs := h.bulkDeletePlaylistsByIDs(c.Request.Context(), ids)
 	if errs == nil {
 		errs = []string{}
 	}
-	h.logAdminActionResult(c, "admin", "admin", "bulk_delete_playlists",
-		fmt.Sprintf("%d playlists", successCount), nil, failedCount == 0)
+	h.logAdminActionResult(c, &adminLogResultParams{
+		UserID: "admin", Username: "admin", Action: "bulk_delete_playlists",
+		Target: fmt.Sprintf("%d playlists", successCount), Details: nil, Success: failedCount == 0,
+	})
 	writeSuccess(c, map[string]interface{}{
 		"success": successCount,
 		"failed":  failedCount,
@@ -114,14 +85,51 @@ func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
 	})
 }
 
+// validateBulkDeletePlaylistsRequest binds and validates the bulk delete request. On failure writes the error and returns (nil, false).
+func (h *Handler) validateBulkDeletePlaylistsRequest(c *gin.Context) ([]string, bool) {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if !BindJSON(c, &req, errInvalidRequest) {
+		return nil, false
+	}
+	if len(req.IDs) == 0 {
+		writeError(c, http.StatusBadRequest, "ids must not be empty")
+		return nil, false
+	}
+	if len(req.IDs) > 500 {
+		writeError(c, http.StatusBadRequest, "too many ids (max 500)")
+		return nil, false
+	}
+	return req.IDs, true
+}
+
+// bulkDeletePlaylistsByIDs deletes each non-empty ID and returns success count, failed count, and error messages.
+func (h *Handler) bulkDeletePlaylistsByIDs(ctx context.Context, ids []string) (successCount, failedCount int, errs []string) {
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if err := h.playlist.AdminDeletePlaylist(ctx, playlist.PlaylistID(id)); err != nil {
+			failedCount++
+			errs = append(errs, fmt.Sprintf("%s: %v", id, err))
+		} else {
+			successCount++
+		}
+	}
+	return successCount, failedCount, errs
+}
+
 // AdminDeletePlaylist deletes a playlist as admin
 func (h *Handler) AdminDeletePlaylist(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
 	}
-	playlistID := c.Param("id")
-
-	if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), playlistID); err != nil {
+	playlistID, ok := RequireParamID(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), playlist.PlaylistID(playlistID)); err != nil {
 		writeError(c, http.StatusNotFound, "Playlist not found")
 		return
 	}

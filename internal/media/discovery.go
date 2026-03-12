@@ -724,13 +724,13 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	}
 
 	if hasMeta {
-	item.Views = meta.Views
-	item.LastPlayed = meta.LastPlayed
-	item.DateAdded = meta.DateAdded
-	item.IsMature = meta.IsMature
-	item.MatureScore = meta.MatureScore
-	item.Tags = meta.Tags
-	item.BlurHash = meta.BlurHash
+		item.Views = meta.Views
+		item.LastPlayed = meta.LastPlayed
+		item.DateAdded = meta.DateAdded
+		item.IsMature = meta.IsMature
+		item.MatureScore = meta.MatureScore
+		item.Tags = meta.Tags
+		item.BlurHash = meta.BlurHash
 
 		if meta.StableID != "" {
 			item.ID = meta.StableID

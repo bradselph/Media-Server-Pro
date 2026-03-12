@@ -16,6 +16,8 @@ require (
 	gorm.io/gorm v1.31.1
 )
 
+require golang.org/x/time v0.15.0
+
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/aws/aws-sdk-go v1.55.8 // indirect

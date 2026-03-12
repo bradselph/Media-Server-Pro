@@ -1,4 +1,6 @@
 // Package mysql provides MySQL/GORM implementations of repositories
+//
+//nolint:dupl // Parallel to user_permissions_repository by design; shared logic in user_scoped_helpers.go
 package mysql
 
 import (
@@ -22,21 +24,15 @@ func NewUserPreferencesRepository(db *gorm.DB) repositories.UserPreferencesRepos
 
 // Upsert creates or updates user preferences
 func (r *UserPreferencesRepository) Upsert(ctx context.Context, prefs *models.UserPreferences) error {
-	// Use GORM's Save which does INSERT or UPDATE
 	return r.db.WithContext(ctx).Save(prefs).Error
 }
 
 // Get retrieves user preferences
 func (r *UserPreferencesRepository) Get(ctx context.Context, userID string) (*models.UserPreferences, error) {
-	var prefs models.UserPreferences
-	err := r.db.WithContext(ctx).First(&prefs, "user_id = ?", userID).Error
-	if err != nil {
-		return nil, err
-	}
-	return &prefs, nil
+	return firstByUserID[models.UserPreferences](ctx, r.db, userID)
 }
 
 // Delete removes user preferences
 func (r *UserPreferencesRepository) Delete(ctx context.Context, userID string) error {
-	return r.db.WithContext(ctx).Delete(&models.UserPreferences{}, "user_id = ?", userID).Error
+	return deleteByUserID(ctx, r.db, &models.UserPreferences{}, userID)
 }

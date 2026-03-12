@@ -31,9 +31,9 @@ type qualityRunParams struct {
 
 // transcodePaths holds paths for a single variant transcode (output dir and segment pattern).
 type transcodePaths struct {
-	MediaPath       string
-	PlaylistPath    string
-	SegmentPattern  string
+	MediaPath      string
+	PlaylistPath   string
+	SegmentPattern string
 }
 
 // transcodeErrorContext holds context for reporting a failed transcode (job, quality, paths, stderr).

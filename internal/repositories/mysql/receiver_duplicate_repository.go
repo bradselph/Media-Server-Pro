@@ -192,14 +192,8 @@ func (r *ReceiverDuplicateRepository) rowToRecord(row *receiverDuplicateRow) *re
 		ItemBName:    row.ItemBName,
 		Status:       row.Status,
 		ResolvedBy:   row.ResolvedBy,
-	}
-	if t, err := parseTime(row.DetectedAt); err == nil {
-		rec.DetectedAt = t
-	}
-	if row.ResolvedAt != nil {
-		if t, err := parseTime(*row.ResolvedAt); err == nil {
-			rec.ResolvedAt = &t
-		}
+		DetectedAt:   parseTimeDefault(row.DetectedAt),
+		ResolvedAt:   parseOptionalTime(row.ResolvedAt),
 	}
 	return rec
 }

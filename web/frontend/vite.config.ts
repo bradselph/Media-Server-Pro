@@ -68,6 +68,8 @@ export default defineConfig({
             '/metrics': 'http://localhost:8080',
             '/remote': 'http://localhost:8080',
             '/health': 'http://localhost:8080',
+            '/ws': {target: 'http://localhost:8080', ws: true},
+            '/extractor': 'http://localhost:8080',
         },
     },
 })

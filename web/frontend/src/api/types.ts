@@ -158,8 +158,6 @@ export interface MediaListParams {
     type?: string
     category?: string
     search?: string
-    // DEPRECATED: IC-12 — duplicate of is_mature below; the backend filter param is is_mature
-    mature?: string
     // Comma-separated tag filter (e.g. "comedy,drama")
     tags?: string
     // Filter by mature flag: "true" or "false"
@@ -433,6 +431,8 @@ export interface AuditLogEntry {
     action: string
     // Backend uses "resource" not "target"
     resource: string
+    // Backend json:"details,omitempty" — arbitrary key-value metadata, absent when empty
+    details?: Record<string, unknown>
     // Backend uses "ip_address" not "ip"
     ip_address?: string
     // Backend models.AuditLogEntry.Success bool json:"success" (no omitempty) — always present
@@ -482,6 +482,16 @@ export interface ScannerStats {
     mature_count: number
     auto_flagged: number
     pending_review: number
+}
+
+// Hugging Face visual classification status (GET /api/admin/classify/status)
+export interface ClassifyStatus {
+    configured: boolean
+    enabled: boolean
+    model: string
+    rate_limit: number
+    max_frames: number
+    max_concurrent: number
 }
 
 // Matches backend models.MatureReviewItem JSON

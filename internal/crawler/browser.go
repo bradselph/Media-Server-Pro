@@ -144,8 +144,11 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		return nil, fmt.Errorf("connect CDP: %w", err)
 	}
 
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 		return nil, fmt.Errorf("dial CDP: %w", err)
 	}
 	defer conn.Close()
@@ -356,15 +359,15 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	}
 
 	// --- 9. Click play buttons to trigger stream loading ---
-	bd.triggerVideoPlayback(ctx, send)
+	bd.triggerVideoPlayback(send)
 	sleep(ctx, 4*time.Second)
 
 	// Second round of clicking (some players need it)
-	bd.triggerVideoPlayback(ctx, send)
+	bd.triggerVideoPlayback(send)
 	sleep(ctx, 2*time.Second)
 
 	// --- 10. Extract embedded video URLs from DOM/scripts ---
-	bd.extractEmbeddedURLs(ctx, send, result, &streamsMu, seen)
+	bd.extractEmbeddedURLs(send, result, &streamsMu, seen)
 
 	// Let any final network events settle
 	sleep(ctx, 1*time.Second)
@@ -448,7 +451,7 @@ func (bd *browserDetector) handleAgeVerification(ctx context.Context, send func(
 
 // triggerVideoPlayback finds and clicks play buttons and video elements.
 // Mirrors the downloader's triggerVideoPlayback logic.
-func (bd *browserDetector) triggerVideoPlayback(ctx context.Context, send func(string, interface{}) (json.RawMessage, error)) {
+func (bd *browserDetector) triggerVideoPlayback(send func(string, interface{}) (json.RawMessage, error)) {
 	// JavaScript to mute videos and click play buttons.
 	// Selector list mirrors the downloader's videoDetector.js triggerVideoPlayback.
 	js := `(function() {
@@ -510,7 +513,6 @@ func (bd *browserDetector) triggerVideoPlayback(ctx context.Context, send func(s
 // extractors (PornHub flashvars, XVideos setVideoHLS, etc.) plus a generic
 // fallback that scans all <script> contents.
 func (bd *browserDetector) extractEmbeddedURLs(
-	ctx context.Context,
 	send func(string, interface{}) (json.RawMessage, error),
 	result *browserProbeResult,
 	mu *sync.Mutex,

@@ -673,6 +673,44 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 	return tmpFile.Name(), nil
 }
 
+type releaseAsset struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
+func findChecksumAssetURL(assets []releaseAsset) string {
+	for _, asset := range assets {
+		lName := strings.ToLower(asset.Name)
+		if lName == "sha256sums" || lName == "sha256sums.txt" || lName == "checksums.txt" {
+			return asset.BrowserDownloadURL
+		}
+	}
+	return ""
+}
+
+func parseExpectedHashFromChecksum(checksumData []byte, assetName string) string {
+	for _, line := range strings.Split(string(checksumData), "\n") {
+		parts := strings.Fields(line)
+		if len(parts) == 2 && strings.EqualFold(parts[1], assetName) {
+			return strings.ToLower(parts[0])
+		}
+	}
+	return ""
+}
+
+func computeFileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 // verifyBinaryChecksum downloads the SHA256SUMS file from the release and
 // verifies that the downloaded binary matches the published checksum.
 // If no SHA256SUMS asset is available in the release the check is skipped with
@@ -680,60 +718,66 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 // checksum publishing).  A mismatch returns a non-nil error and the caller
 // must reject the update.
 func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) error {
-	// Try to fetch SHA256SUMS from the release.
+	checksumURL2, err := m.fetchChecksumAssetURL(version)
+	if err != nil || checksumURL2 == "" {
+		return nil // already logged
+	}
+	expectedHash, err := m.downloadAndParseChecksum(checksumURL2, assetName)
+	if err != nil || expectedHash == "" {
+		return nil
+	}
+	actualHash, err := computeFileSHA256(binaryPath)
+	if err != nil {
+		return fmt.Errorf("open binary for hashing: %w", err)
+	}
+	if actualHash != expectedHash {
+		return fmt.Errorf("SHA256 mismatch for %s: expected %s, got %s — update rejected", assetName, expectedHash, actualHash)
+	}
+	m.log.Info("Binary integrity verified: SHA256 %s matches published checksum", actualHash[:16]+"…")
+	return nil
+}
+
+func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 	checksumURL := fmt.Sprintf("%s/repos/%s/%s/releases/tags/v%s",
 		GitHubAPI, GitHubOwner, GitHubRepo, version)
 	req, err := http.NewRequest("GET", checksumURL, nil)
 	if err != nil {
-		return fmt.Errorf("build checksum request: %w", err)
+		m.log.Warn("Could not build checksum request: %v — skipping", err)
+		return "", nil
 	}
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
 		m.log.Warn("Could not reach GitHub API for checksum lookup: %v — skipping integrity check", err)
-		return nil
+		return "", nil
 	}
 	defer func() { _ = resp.Body.Close() }()
-
 	if resp.StatusCode != http.StatusOK {
 		m.log.Warn("GitHub API returned %d for release lookup — skipping checksum check", resp.StatusCode)
-		return nil
+		return "", nil
 	}
-
 	var release struct {
-		Assets []struct {
-			Name               string `json:"name"`
-			BrowserDownloadURL string `json:"browser_download_url"`
-		} `json:"assets"`
+		Assets []releaseAsset `json:"assets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		m.log.Warn("Failed to decode release JSON for checksum: %v — skipping", err)
-		return nil
+		return "", nil
 	}
-
-	// Look for an asset named "SHA256SUMS" or "checksums.txt".
-	var checksumURL2 string
-	for _, asset := range release.Assets {
-		lName := strings.ToLower(asset.Name)
-		if lName == "sha256sums" || lName == "sha256sums.txt" || lName == "checksums.txt" {
-			checksumURL2 = asset.BrowserDownloadURL
-			break
-		}
-	}
-	if checksumURL2 == "" {
+	url := findChecksumAssetURL(release.Assets)
+	if url == "" {
 		m.log.Warn("No SHA256SUMS asset found in release v%s — skipping integrity check (add SHA256SUMS to future releases)", version)
-		return nil
 	}
+	return url, nil
+}
 
-	// Download the checksum file.
+func (m *Module) downloadAndParseChecksum(checksumURL2, assetName string) (string, error) {
 	cReq, err := http.NewRequest("GET", checksumURL2, nil)
 	if err != nil {
 		m.log.Warn("Could not build checksum download request: %v — skipping", err)
-		return nil
+		return "", nil
 	}
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
 		cReq.Header.Set("Authorization", "Bearer "+token)
@@ -741,47 +785,19 @@ func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) err
 	cResp, err := m.httpClient.Do(cReq)
 	if err != nil {
 		m.log.Warn("Could not download SHA256SUMS: %v — skipping integrity check", err)
-		return nil
+		return "", nil
 	}
 	defer func() { _ = cResp.Body.Close() }()
 	checksumData, err := io.ReadAll(io.LimitReader(cResp.Body, 1*1024*1024))
 	if err != nil {
 		m.log.Warn("Failed to read SHA256SUMS: %v — skipping", err)
-		return nil
+		return "", nil
 	}
-
-	// Parse lines of the form: <sha256hex>  <filename>
-	expectedHash := ""
-	for _, line := range strings.Split(string(checksumData), "\n") {
-		parts := strings.Fields(line)
-		if len(parts) == 2 && strings.EqualFold(parts[1], assetName) {
-			expectedHash = strings.ToLower(parts[0])
-			break
-		}
-	}
+	expectedHash := parseExpectedHashFromChecksum(checksumData, assetName)
 	if expectedHash == "" {
 		m.log.Warn("Asset %q not found in SHA256SUMS — skipping integrity check", assetName)
-		return nil
 	}
-
-	// Compute SHA256 of the downloaded binary.
-	f, err := os.Open(binaryPath)
-	if err != nil {
-		return fmt.Errorf("open binary for hashing: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return fmt.Errorf("hash binary: %w", err)
-	}
-	actualHash := hex.EncodeToString(h.Sum(nil))
-
-	if actualHash != expectedHash {
-		return fmt.Errorf("SHA256 mismatch for %s: expected %s, got %s — update rejected", assetName, expectedHash, actualHash)
-	}
-
-	m.log.Info("Binary integrity verified: SHA256 %s matches published checksum", actualHash[:16]+"…")
-	return nil
+	return expectedHash, nil
 }
 
 // isValidBinary checks the magic bytes of a file to confirm it is a native executable.

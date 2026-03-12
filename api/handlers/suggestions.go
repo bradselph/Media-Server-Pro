@@ -7,6 +7,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// parseSuggestionsLimit parses the limit query param; returns defaultVal if missing/invalid.
+func parseSuggestionsLimit(c *gin.Context, defaultVal, max int) int {
+	l, err := strconv.Atoi(c.Query("limit"))
+	if err != nil {
+		return defaultVal
+	}
+	if l <= 0 || l > max {
+		return defaultVal
+	}
+	return l
+}
+
 // requireSuggestionsCatalogue checks that the suggestions module's media
 // catalogue has been seeded. Returns 503 with Retry-After if the catalogue
 // is empty (server just started, initial scan still in progress).
@@ -17,6 +29,15 @@ func (h *Handler) requireSuggestionsCatalogue(c *gin.Context) bool {
 		return false
 	}
 	return true
+}
+
+// respondSuggestions fetches personalized suggestions and writes the response.
+func (h *Handler) respondSuggestions(c *gin.Context, userID string, defaultLimit, maxLimit int) {
+	limit := parseSuggestionsLimit(c, defaultLimit, maxLimit)
+	canViewMature := h.canViewMatureContent(c)
+	suggestions := h.suggestions.GetSuggestions(userID, limit, canViewMature)
+	h.enrichSuggestionThumbnails(suggestions)
+	writeSuccess(c, suggestions)
 }
 
 // GetSuggestions returns personalized content suggestions
@@ -32,16 +53,7 @@ func (h *Handler) GetSuggestions(c *gin.Context) {
 	if session != nil {
 		userID = session.UserID
 	}
-
-	limit := 10
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
-		limit = l
-	}
-
-	canViewMature := h.canViewMatureContent(c)
-	contentSuggestions := h.suggestions.GetSuggestions(userID, limit, canViewMature)
-	h.enrichSuggestionThumbnails(contentSuggestions)
-	writeSuccess(c, contentSuggestions)
+	h.respondSuggestions(c, userID, 10, 100)
 }
 
 // GetTrendingSuggestions returns trending content
@@ -52,11 +64,7 @@ func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
 	if !h.requireSuggestionsCatalogue(c) {
 		return
 	}
-	limit := 10
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
-		limit = l
-	}
-
+	limit := parseSuggestionsLimit(c, 10, 100)
 	canViewMature := h.canViewMatureContent(c)
 	trending := h.suggestions.GetTrendingSuggestions(limit, canViewMature)
 	h.enrichSuggestionThumbnails(trending)
@@ -74,10 +82,7 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 		return
 	}
 
-	limit := 10
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
-		limit = l
-	}
+	limit := parseSuggestionsLimit(c, 10, 100)
 
 	// Pass the StableID directly to the suggestions module which has its own
 	// catalogue indexed by ID. No need to validate via the media module —
@@ -99,11 +104,7 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 		return
 	}
 
-	limit := 10
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 50 {
-		limit = l
-	}
-
+	limit := parseSuggestionsLimit(c, 10, 50)
 	canViewMature := h.canViewMatureContent(c)
 	items := h.suggestions.GetContinueWatching(session.UserID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(items)
@@ -123,16 +124,7 @@ func (h *Handler) GetPersonalizedSuggestions(c *gin.Context) {
 		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
-
-	limit := 10
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
-		limit = l
-	}
-
-	canViewMature := h.canViewMatureContent(c)
-	contentSuggestions := h.suggestions.GetSuggestions(session.UserID, limit, canViewMature)
-	h.enrichSuggestionThumbnails(contentSuggestions)
-	writeSuccess(c, contentSuggestions)
+	h.respondSuggestions(c, session.UserID, 10, 100)
 }
 
 // RecordRating records a user rating for a media item
@@ -155,12 +147,12 @@ func (h *Handler) RecordRating(c *gin.Context) {
 		return
 	}
 
-	absPath, ok := h.resolveMediaByID(c, req.ID)
+	mediaPath, _, ok := h.resolveMediaPathOrReceiver(c, req.ID)
 	if !ok {
 		return
 	}
 
-	h.suggestions.RecordRating(session.UserID, absPath, req.Rating)
+	h.suggestions.RecordRating(session.UserID, mediaPath, req.Rating)
 	writeSuccess(c, nil)
 }
 

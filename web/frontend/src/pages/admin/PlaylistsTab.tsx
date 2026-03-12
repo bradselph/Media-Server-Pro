@@ -80,7 +80,11 @@ export function PlaylistsTab() {
             case 'name': cmp = a.name.localeCompare(b.name); break
             case 'user_id': cmp = a.user_id.localeCompare(b.user_id); break
             case 'items': cmp = (a.items?.length ?? 0) - (b.items?.length ?? 0); break
-            case 'is_public': cmp = (a.is_public === b.is_public ? 0 : a.is_public ? -1 : 1); break
+            case 'is_public': {
+                if (a.is_public === b.is_public) cmp = 0
+                else cmp = a.is_public ? -1 : 1
+                break
+            }
             case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break
         }
         return sortOrder === 'desc' ? -cmp : cmp
@@ -95,7 +99,8 @@ export function PlaylistsTab() {
 
     function sortIndicator(column: PlaylistSortKey) {
         if (sortBy !== column) return <span style={{opacity: 0.3, marginLeft: 4}}>&#x21C5;</span>
-        return <span style={{marginLeft: 4}}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
+        const arrow = sortOrder === 'asc' ? '\u25B2' : '\u25BC'
+        return <span style={{marginLeft: 4}}>{arrow}</span>
     }
 
     function toggleSelectAll() {
@@ -146,10 +151,10 @@ export function PlaylistsTab() {
                         type="search"
                         placeholder="Search playlists..."
                         value={search}
-                        onChange={e => setSearch(e.target.value)}
+                        onChange={e => { setSearch(e.target.value); }}
                         style={{...selectStyle, flex: 1, minWidth: 160}}
                     />
-                    <select value={filterVisibility} onChange={e => setFilterVisibility(e.target.value)} style={selectStyle}>
+                    <select value={filterVisibility} onChange={e => { setFilterVisibility(e.target.value); }} style={selectStyle}>
                         <option value="">All Visibility</option>
                         <option value="public">Public Only</option>
                         <option value="private">Private Only</option>
@@ -179,7 +184,7 @@ export function PlaylistsTab() {
                                 style={{fontSize: 12, padding: '4px 10px'}}>
                             <i className="bi bi-trash-fill"/> Delete Selected
                         </button>
-                        <button className="admin-btn" onClick={() => setSelected(new Set())}
+                        <button className="admin-btn" onClick={() => { setSelected(new Set()); }}
                                 style={{fontSize: 12, padding: '4px 10px'}}>Clear
                         </button>
                     </div>
@@ -192,7 +197,7 @@ export function PlaylistsTab() {
                                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}/>
                             </th>
                             {PLAYLIST_SORT_COLUMNS.map(col => (
-                                <th key={col.key} style={thSortStyle} onClick={() => handleSort(col.key)}>
+                                <th key={col.key} style={thSortStyle} onClick={() => { handleSort(col.key); }}>
                                     {col.label}{sortIndicator(col.key)}
                                 </th>
                             ))}

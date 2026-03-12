@@ -26,7 +26,7 @@ function LogsTab() {
                 <div className="admin-form-row" style={{marginBottom: 12}}>
                     <div className="admin-form-group">
                         <label>Level</label>
-                        <select value={level} onChange={e => setLevel(e.target.value)}>
+                        <select value={level} onChange={e => { setLevel(e.target.value); }}>
                             <option value="">All</option>
                             <option value="debug">Debug</option>
                             <option value="info">Info</option>
@@ -36,7 +36,7 @@ function LogsTab() {
                     </div>
                     <div className="admin-form-group">
                         <label>Module</label>
-                        <input value={module} onChange={e => setModule(e.target.value)} placeholder="Filter module..."/>
+                        <input value={module} onChange={e => { setModule(e.target.value); }} placeholder="Filter module..."/>
                     </div>
                     <button className="admin-btn" onClick={() => refetch()}><i
                         className="bi bi-arrow-counterclockwise"/> Refresh
@@ -143,13 +143,13 @@ function SettingsTab() {
                     <div className="admin-form-group">
                         <label htmlFor="pw-current">Current Password</label>
                         <input id="pw-current" type="password" className="admin-input"
-                               value={pwCurrent} onChange={e => setPwCurrent(e.target.value)}
+                               value={pwCurrent} onChange={e => { setPwCurrent(e.target.value); }}
                                autoComplete="current-password" required/>
                     </div>
                     <div className="admin-form-group">
                         <label htmlFor="pw-new">New Password</label>
                         <input id="pw-new" type="password" className="admin-input"
-                               value={pwNew} onChange={e => setPwNew(e.target.value)}
+                               value={pwNew} onChange={e => { setPwNew(e.target.value); }}
                                autoComplete="new-password" minLength={8} required/>
                     </div>
                     <div className="admin-form-group">
@@ -174,7 +174,7 @@ function SettingsTab() {
                     <i className="bi bi-exclamation-triangle-fill"/> Editing configuration directly can break the
                     server. Know what you're changing.
                 </div>
-                <textarea className="config-editor" value={configText} onChange={e => setConfigText(e.target.value)}/>
+                <textarea className="config-editor" value={configText} onChange={e => { setConfigText(e.target.value); }}/>
                 <div className="admin-action-row" style={{marginTop: 10}}>
                     <button className="admin-btn admin-btn-primary" onClick={handleSave} disabled={loading}>
                         {loading ? 'Saving...' : <><i className="bi bi-floppy-fill"/> Save Configuration</>}
@@ -250,7 +250,7 @@ function DatabaseTab() {
                 </div>
                 <form onSubmit={handleQuery}>
                     <textarea className="config-editor" style={{minHeight: 100}} value={query}
-                              onChange={e => setQuery(e.target.value)} placeholder="SELECT * FROM users LIMIT 10;"/>
+                              onChange={e => { setQuery(e.target.value); }} placeholder="SELECT * FROM users LIMIT 10;"/>
                     <div className="admin-action-row" style={{marginTop: 8}}>
                         <button type="submit" className="admin-btn admin-btn-primary" disabled={querying}>
                             {querying ? 'Executing...' : <><i className="bi bi-play-fill"/> Execute</>}

@@ -1,4 +1,4 @@
-import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useRef, useState,} from 'react'
+import React, {type ChangeEvent, type CSSProperties, type DragEvent, useCallback, useEffect, useMemo, useRef, useState,} from 'react'
 import {keepPreviousData, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {decode} from 'blurhash'
@@ -16,6 +16,10 @@ import '@/styles/index.css'
 
 // Allowed pagination limits — used to normalize URL/API values so 48/96 etc. work consistently
 const PAGINATION_LIMITS = [12, 24, 48, 96] as const
+
+const FONT_SIZE_SMALL = 13
+const COLOR_TEXT_MUTED = 'var(--text-muted)'
+const MUTED_TEXT_STYLE: React.CSSProperties = {color: COLOR_TEXT_MUTED, fontSize: FONT_SIZE_SMALL}
 
 function normalizeLimit(value: number, fallback: number): number {
     const n = Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback
@@ -75,12 +79,14 @@ interface UploadResult {
     error?: string
 }
 
-function UploadModal({onClose, onDone, maxFileSize}: {
+function UploadModal({onClose, onDone, maxFileSize, categories = []}: {
     onClose: () => void;
     onDone: () => void;
-    maxFileSize?: number
+    maxFileSize?: number;
+    categories?: MediaCategory[];
 }) {
     const [files, setFiles] = useState<UploadFile[]>([])
+    const [selectedCategory, setSelectedCategory] = useState('')
     const [phase, setPhase] = useState<'select' | 'uploading' | 'done'>('select')
     const [progress, setProgress] = useState(0)
     const [statusText, setStatusText] = useState('')
@@ -95,7 +101,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
         if (maxFileSize && maxFileSize > 0) {
             const oversized = Array.from(fileList).filter(f => f.size > maxFileSize)
             if (oversized.length > 0) {
-                setSizeError(`${oversized.map(f => f.name).join(', ')} exceed${oversized.length === 1 ? 's' : ''} the ${formatFileSize(maxFileSize, '0 B')} limit`)
+                setSizeError(`${oversized.map(f => f.name).join(', ')} exceed${oversized.length === 1 ? 's' : ''} the ${formatFileSize({ bytes: maxFileSize }, '0 B')} limit`)
                 return
             }
         }
@@ -124,7 +130,8 @@ function UploadModal({onClose, onDone, maxFileSize}: {
         setStatusText('Uploading...')
 
         const formData = new FormData()
-        files.forEach(f => formData.append('files', f.file))
+        files.forEach(f => { formData.append('files', f.file); })
+        if (selectedCategory) formData.append('category', selectedCategory)
 
         const xhr = new XMLHttpRequest()
         xhrRef.current = xhr
@@ -133,7 +140,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
             if (e.lengthComputable) {
                 const pct = Math.round((e.loaded / e.total) * 100)
                 setProgress(pct)
-                setStatusText(`Uploading... ${pct}% (${formatFileSize(e.loaded, '0 B')} / ${formatFileSize(e.total, '0 B')})`)
+                setStatusText(`Uploading... ${pct}% (${formatFileSize({ bytes: e.loaded }, '0 B')} / ${formatFileSize({ bytes: e.total }, '0 B')})`)
             }
         })
 
@@ -198,7 +205,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                                     e.preventDefault();
                                     setDragOver(true)
                                 }}
-                                onDragLeave={() => setDragOver(false)}
+                                onDragLeave={() => { setDragOver(false); }}
                                 onDrop={handleDrop}
                                 onClick={() => fileInputRef.current?.click()}
                             >
@@ -221,8 +228,21 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                             </div>
 
                             {sizeError && (
-                                <div style={{color: '#ef4444', fontSize: 13, marginTop: 8}}>
+                                <div style={{color: '#ef4444', fontSize: FONT_SIZE_SMALL, marginTop: 8}}>
                                     <i className="bi bi-exclamation-triangle"/> {sizeError}
+                                </div>
+                            )}
+
+                            {categories.length > 0 && (
+                                <div className="filter-group" style={{marginTop: 12}}>
+                                    <label htmlFor="upload-category">Category</label>
+                                    <select id="upload-category" className="filter-select" value={selectedCategory}
+                                            onChange={e => setSelectedCategory(e.target.value)}>
+                                        <option value="">Default</option>
+                                        {categories.map(c => (
+                                            <option key={c.name} value={c.name}>{c.display_name || c.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             )}
 
@@ -233,8 +253,8 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                                     {files.map((f, i) => (
                                         <div key={i} className="upload-file-item">
                                             <span className="upload-file-name">{f.name}</span>
-                                            <span className="upload-file-size">{formatFileSize(f.size, '0 B')}</span>
-                                            <button className="upload-remove-btn" onClick={() => removeFile(i)}>×
+                                            <span className="upload-file-size">{formatFileSize({ bytes: f.size }, '0 B')}</span>
+                                            <button className="upload-remove-btn" onClick={() => { removeFile(i); }}>×
                                             </button>
                                         </div>
                                     ))}
@@ -242,7 +262,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                                         <button className="controls-btn controls-btn-success" onClick={startUpload}>
                                             Start Upload
                                         </button>
-                                        <button className="controls-btn" onClick={() => setFiles([])}>
+                                        <button className="controls-btn" onClick={() => { setFiles([]); }}>
                                             Clear All
                                         </button>
                                     </div>
@@ -269,7 +289,7 @@ function UploadModal({onClose, onDone, maxFileSize}: {
                             <h3 style={{margin: '0 0 8px 0', fontSize: 15}}>Upload Results</h3>
                             {results.uploaded.map((r, i) => (
                                 <div key={i} className="upload-success"><i
-                                    className="bi bi-check-circle-fill"/> {r.filename} ({formatFileSize(r.size ?? 0, '0 B')})
+                                    className="bi bi-check-circle-fill"/> {r.filename} ({formatFileSize({ bytes: r.size ?? 0 }, '0 B')})
                                 </div>
                             ))}
                             {results.errors.map((r, i) => (
@@ -294,6 +314,58 @@ const THUMBNAIL_RETRY_DELAY_MS = 2500
 const THUMBNAIL_MAX_RETRIES = 3
 const THUMBNAIL_LAZY_MARGIN_PX = 200
 
+function usePreviewHover(item: MediaItem, restricted: boolean) {
+    const [previewUrls, setPreviewUrls] = useState<string[] | null>(null)
+    const [previewIndex, setPreviewIndex] = useState(0)
+    const hoveringRef = useRef(false)
+    const fetchedRef = useRef(false)
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+    function startCycling(urls: string[]) {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+        if (urls.length > 1) {
+            setPreviewIndex(0)
+            intervalRef.current = setInterval(() => setPreviewIndex(i => i + 1), 800)
+        }
+    }
+
+    function handleMouseEnter() {
+        if (restricted || item.type !== 'video' || !item.thumbnail_url) return
+        hoveringRef.current = true
+        if (!fetchedRef.current) {
+            fetchedRef.current = true
+            mediaApi.getThumbnailPreviews(item.id).then(data => {
+                if (data.previews?.length > 1) {
+                    setPreviewUrls(data.previews)
+                    if (hoveringRef.current) startCycling(data.previews)
+                }
+            }).catch(() => {})
+        } else if (previewUrls && previewUrls.length > 1) {
+            startCycling(previewUrls)
+        }
+    }
+
+    function handleMouseLeave() {
+        hoveringRef.current = false
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+        }
+        setPreviewIndex(0)
+    }
+
+    useEffect(() => () => {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+    }, [])
+
+    const currentThumbnail =
+        previewUrls && previewUrls.length > 0
+            ? previewUrls[previewIndex % previewUrls.length]
+            : null
+
+    return {previewUrls, previewIndex, currentThumbnail, handleMouseEnter, handleMouseLeave}
+}
+
 /** Append cache-buster for mature thumbnails when user can view them, so the browser
  * fetches the real image instead of serving the cached censored placeholder after login. */
 function thumbnailUrlForMatureAccess(
@@ -307,6 +379,104 @@ function thumbnailUrlForMatureAccess(
         return `${url}${sep}_m=1`
     }
     return url
+}
+
+function MediaCardThumbnailBlock({
+    item,
+    restricted,
+    thumbnailError,
+    imgLoaded,
+    inView,
+    thumbnailSrc,
+    baseThumbnailUrl,
+    previewUrls,
+    onError,
+    onLoad,
+}: {
+    item: MediaItem
+    restricted: boolean
+    thumbnailError: boolean
+    imgLoaded: boolean
+    inView: boolean
+    thumbnailSrc: string | null
+    baseThumbnailUrl: string | undefined
+    previewUrls: string[] | null
+    onError: () => void
+    onLoad: () => void
+}) {
+    if (item.thumbnail_url && !thumbnailError) {
+        return (
+            <>
+                {item.blur_hash && (
+                    <BlurHashPlaceholder
+                        hash={item.blur_hash}
+                        className="media-thumbnail media-thumbnail-blurhash"
+                        style={{ position: 'absolute', inset: 0, opacity: imgLoaded ? 0 : 1, transition: 'opacity 0.2s ease' }}
+                    />
+                )}
+                <img
+                    className="media-thumbnail"
+                    src={inView ? (thumbnailSrc || baseThumbnailUrl || item.thumbnail_url) : undefined}
+                    srcSet={(!previewUrls || previewUrls.length === 0) && baseThumbnailUrl
+                        ? [160, 320, 640].map(w => `${baseThumbnailUrl}${baseThumbnailUrl.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
+                        : undefined}
+                    sizes={(!previewUrls || previewUrls.length === 0) ? '(max-width: 640px) 160px, (max-width: 1024px) 320px, 640px' : undefined}
+                    alt={formatTitle({ value: item.name })}
+                    loading={inView ? 'eager' : 'lazy'}
+                    style={{
+                        ...(restricted ? { filter: 'blur(16px)', pointerEvents: 'none' } : {}),
+                        opacity: !imgLoaded && item.blur_hash ? 0 : 1,
+                        transition: 'opacity 0.2s ease',
+                        position: 'relative',
+                        zIndex: 1,
+                    }}
+                    onError={onError}
+                    onLoad={onLoad}
+                />
+            </>
+        )
+    }
+    if (item.blur_hash) {
+        return <BlurHashPlaceholder hash={item.blur_hash} className="media-thumbnail" />
+    }
+    return (
+        <div className="media-thumbnail-placeholder">
+            <i className={item.type === 'video' ? 'bi bi-play-circle' : 'bi bi-music-note-beamed'} />
+        </div>
+    )
+}
+
+function getRestrictedPlayTitle(restricted: boolean, isAuthenticated: boolean): string | undefined {
+    if (!restricted) return undefined
+    return isAuthenticated ? 'Enable mature content in profile settings' : 'Sign in to play 18+ content'
+}
+
+function MediaCardMatureOverlay({ item, isAuthenticated }: { item: MediaItem; isAuthenticated: boolean }) {
+    return (
+        <div className="mature-gate-overlay">
+            <i className="bi bi-shield-lock-fill" />
+            <span>18+ Content</span>
+            {isAuthenticated
+                ? (
+                    <Link
+                        to={`/profile?mature_redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
+                        className="mature-gate-login"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        Enable in profile settings
+                    </Link>
+                )
+                : (
+                    <Link
+                        to={`/login?redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
+                        className="mature-gate-login"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        Sign in to view
+                    </Link>
+                )}
+        </div>
+    )
 }
 
 function MediaCard({
@@ -326,8 +496,14 @@ function MediaCard({
 }) {
     const navigate = useNavigate()
     const restricted = item.is_mature && !canViewMature
-    const [previewUrls, setPreviewUrls] = useState<string[] | null>(null)
-    const [previewIndex, setPreviewIndex] = useState(0)
+    const previewHover = usePreviewHover(item, restricted)
+    const baseThumbnailUrl = thumbnailUrlForMatureAccess(
+        item.thumbnail_url ?? undefined,
+        !!item.is_mature,
+        canViewMature,
+    )
+    const currentThumbnail = previewHover.currentThumbnail ?? baseThumbnailUrl
+
     const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(() =>
         thumbnailUrlForMatureAccess(item.thumbnail_url ?? undefined, !!item.is_mature, canViewMature) ?? null)
     const [thumbnailError, setThumbnailError] = useState(false)
@@ -336,22 +512,7 @@ function MediaCard({
     const containerRef = useRef<HTMLDivElement>(null)
     const retryCountRef = useRef(0)
     const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-    const fetchedRef = useRef(false)
 
-    const baseThumbnailUrl = thumbnailUrlForMatureAccess(
-        item.thumbnail_url ?? undefined,
-        !!item.is_mature,
-        canViewMature,
-    )
-    const currentThumbnail =
-        previewUrls && previewUrls.length > 0
-            ? previewUrls[previewIndex % previewUrls.length]
-            : baseThumbnailUrl
-
-    const hoveringRef = useRef(false)
-
-    // Sync thumbnail state when switching main/preview or when canViewMature changes (e.g. after login)
     useEffect(() => {
         if (!currentThumbnail) return
         const thumbnail = currentThumbnail
@@ -363,57 +524,16 @@ function MediaCard({
         })
     }, [currentThumbnail])
 
-    function startCycling(urls: string[]) {
-        if (intervalRef.current) clearInterval(intervalRef.current)
-        if (urls.length > 1) {
-            setPreviewIndex(0)
-            intervalRef.current = setInterval(() => {
-                setPreviewIndex(i => i + 1)
-            }, 800)
-        }
-    }
-
-    function handleMouseEnter() {
-        if (restricted || item.type !== 'video' || !item.thumbnail_url) return
-        hoveringRef.current = true
-        if (!fetchedRef.current) {
-            fetchedRef.current = true
-            mediaApi.getThumbnailPreviews(item.id).then(data => {
-                if (data.previews && data.previews.length > 1) {
-                    setPreviewUrls(data.previews)
-                    if (hoveringRef.current) startCycling(data.previews)
-                }
-            }).catch(() => { /* no previews available */ })
-        } else if (previewUrls && previewUrls.length > 1) {
-            startCycling(previewUrls)
-        }
-    }
-
-    function handleMouseLeave() {
-        hoveringRef.current = false
-        if (intervalRef.current) {
-            clearInterval(intervalRef.current)
-            intervalRef.current = null
-        }
-        setPreviewIndex(0)
-    }
-
-    useEffect(() => {
-        return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current)
-            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
-        }
+    useEffect(() => () => {
+        if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
     }, [])
 
-    // IntersectionObserver: load thumbnail 200px before card enters viewport
     useEffect(() => {
         const el = containerRef.current
         if (!el) return
         const obs = new IntersectionObserver(
-            ([entry]) => {
-                if (entry?.isIntersecting) setInView(true)
-            },
-            {rootMargin: `${THUMBNAIL_LAZY_MARGIN_PX}px`}
+            ([entry]) => { if (entry?.isIntersecting) setInView(true) },
+            { rootMargin: `${THUMBNAIL_LAZY_MARGIN_PX}px` }
         )
         obs.observe(el)
         return () => obs.disconnect()
@@ -443,81 +563,32 @@ function MediaCard({
             <div
                 ref={containerRef}
                 onClick={goToPlayer}
-                style={{cursor: restricted ? 'default' : 'pointer', position: 'relative'}}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
+                style={{ cursor: restricted ? 'default' : 'pointer', position: 'relative' }}
+                onMouseEnter={previewHover.handleMouseEnter}
+                onMouseLeave={previewHover.handleMouseLeave}
             >
-                {item.thumbnail_url && !thumbnailError ? (
-                    <>
-                        {item.blur_hash && (
-                            <BlurHashPlaceholder
-                                hash={item.blur_hash}
-                                className="media-thumbnail media-thumbnail-blurhash"
-                                style={{position: 'absolute', inset: 0, opacity: imgLoaded ? 0 : 1, transition: 'opacity 0.2s ease'}}
-                            />
-                        )}
-                        <img
-                            className="media-thumbnail"
-                            src={inView ? (thumbnailSrc || baseThumbnailUrl || item.thumbnail_url) : undefined}
-                            srcSet={(!previewUrls || previewUrls.length === 0) && baseThumbnailUrl
-                                ? [160, 320, 640].map(w => `${baseThumbnailUrl}${baseThumbnailUrl.includes('?') ? '&' : '?'}w=${w} ${w}w`).join(', ')
-                                : undefined}
-                            sizes={(!previewUrls || previewUrls.length === 0) ? '(max-width: 640px) 160px, (max-width: 1024px) 320px, 640px' : undefined}
-                            alt={formatTitle(item.name)}
-                            loading={inView ? 'eager' : 'lazy'}
-                            style={{
-                                ...(restricted ? {filter: 'blur(16px)', pointerEvents: 'none'} : {}),
-                                opacity: imgLoaded ? 1 : (item.blur_hash ? 0 : 1),
-                                transition: 'opacity 0.2s ease',
-                                position: 'relative',
-                                zIndex: 1,
-                            }}
-                            onError={handleThumbnailError}
-                            onLoad={() => {
-                                retryCountRef.current = 0
-                                setImgLoaded(true)
-                            }}
-                        />
-                    </>
-                ) : item.blur_hash ? (
-                    <BlurHashPlaceholder hash={item.blur_hash} className="media-thumbnail" />
-                ) : (
-                    <div className="media-thumbnail-placeholder">
-                        <i className={item.type === 'video' ? 'bi bi-play-circle' : 'bi bi-music-note-beamed'}/>
-                    </div>
-                )}
-                {restricted && (
-                    <div className="mature-gate-overlay">
-                        <i className="bi bi-shield-lock-fill"/>
-                        <span>18+ Content</span>
-                        {isAuthenticated ? (
-                            <Link
-                                to={`/profile?mature_redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
-                                className="mature-gate-login"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                Enable in profile settings
-                            </Link>
-                        ) : (
-                            <Link
-                                to={`/login?redirect=${encodeURIComponent(`/player?id=${item.id}`)}`}
-                                className="mature-gate-login"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                Sign in to view
-                            </Link>
-                        )}
-                    </div>
-                )}
+                <MediaCardThumbnailBlock
+                    item={item}
+                    restricted={restricted}
+                    thumbnailError={thumbnailError}
+                    imgLoaded={imgLoaded}
+                    inView={inView}
+                    thumbnailSrc={thumbnailSrc}
+                    baseThumbnailUrl={baseThumbnailUrl}
+                    previewUrls={previewHover.previewUrls}
+                    onError={handleThumbnailError}
+                    onLoad={() => { retryCountRef.current = 0; setImgLoaded(true) }}
+                />
+                {restricted && <MediaCardMatureOverlay item={item} isAuthenticated={isAuthenticated} />}
             </div>
             <div className="media-card-body">
-                <div className="media-card-title">{formatTitle(item.name)}</div>
+                <div className="media-card-title">{formatTitle({ value: item.name })}</div>
                 <div className="media-card-meta">
-          <span>
-            <span className={`media-card-type-badge badge-${item.type}`}>{item.type}</span>
-          </span>
-                    {item.duration > 0 && <span><i className="bi bi-clock"/> {formatDuration(item.duration)}</span>}
-                    {item.views > 0 && <span><i className="bi bi-eye"/> {item.views}</span>}
+                    <span>
+                        <span className={`media-card-type-badge badge-${item.type}`}>{item.type}</span>
+                    </span>
+                    {item.duration > 0 && <span><i className="bi bi-clock" /> {formatDuration({ seconds: item.duration })}</span>}
+                    {item.views > 0 && <span><i className="bi bi-eye" /> {item.views}</span>}
                     {item.is_mature && <span className="media-card-type-badge badge-mature">18+</span>}
                 </div>
                 <div className="media-card-actions">
@@ -525,19 +596,17 @@ function MediaCard({
                         className="media-card-btn media-card-btn-play"
                         onClick={() => !restricted && onPlay(item)}
                         disabled={restricted}
-                        title={restricted ? (isAuthenticated ? 'Enable mature content in profile settings' : 'Sign in to play 18+ content') : undefined}
+                        title={getRestrictedPlayTitle(restricted, isAuthenticated)}
                     >
-                        <i className="bi bi-play-fill"/> Play
+                        <i className="bi bi-play-fill" /> Play
                     </button>
                     {canDownload && !restricted && (
-                        <a href={mediaApi.getDownloadUrl(item.id)} download style={{flex: 1}}>
-                            <button className="media-card-btn" style={{width: '100%'}}><i className="bi bi-download"/>
-                            </button>
+                        <a href={mediaApi.getDownloadUrl(item.id)} download style={{ flex: 1 }}>
+                            <button className="media-card-btn" style={{ width: '100%' }}><i className="bi bi-download" /></button>
                         </a>
                     )}
                     {!restricted && (
-                        <button className="media-card-btn" onClick={goToPlayer} title="Full player"><i
-                            className="bi bi-box-arrow-up-right"/></button>
+                        <button className="media-card-btn" onClick={goToPlayer} title="Full player"><i className="bi bi-box-arrow-up-right" /></button>
                     )}
                 </div>
             </div>
@@ -573,10 +642,10 @@ function InlinePlayer({
 
     // Mark audio element as ready after mount (defer to avoid setState-in-effect lint)
     useEffect(() => {
-        if (audioRef.current) queueMicrotask(() => setAudioReady(true))
+        if (audioRef.current) queueMicrotask(() => { setAudioReady(true); })
     }, [])
 
-    const handleEqToggle = useCallback(() => setShowEq(v => !v), [])
+    const handleEqToggle = useCallback(() => { setShowEq(v => !v); }, [])
 
     // Load new media when nowPlaying changes
     useEffect(() => {
@@ -585,14 +654,14 @@ function InlinePlayer({
         if (!el) return
         el.src = mediaApi.getStreamUrl(nowPlaying.id)
         el.volume = volume
-        el.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false))
+        el.play().then(() => { setIsPlaying(true); }).catch(() => setIsPlaying(false))
     }, [nowPlaying]) // eslint-disable-line react-hooks/exhaustive-deps
 
     function togglePlay() {
         const el = activeRef.current
         if (!el || !nowPlaying) return
         if (el.paused) {
-            el.play().then(() => setIsPlaying(true)).catch(() => {
+            el.play().then(() => { setIsPlaying(true); }).catch(() => {
             })
         } else {
             el.pause()
@@ -663,8 +732,8 @@ function InlinePlayer({
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 onEnded={handleEnded}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
+                onPlay={() => { setIsPlaying(true); }}
+                onPause={() => { setIsPlaying(false); }}
             />
             <video
                 ref={videoRef}
@@ -672,14 +741,14 @@ function InlinePlayer({
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 onEnded={handleEnded}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
+                onPlay={() => { setIsPlaying(true); }}
+                onPause={() => { setIsPlaying(false); }}
             />
             <div className="player-content">
                 <div className="player-info">
                     <div className="player-title">{nowPlaying.name}</div>
                     <div className="player-meta">
-                        <i className={isVideo ? 'bi bi-play-fill' : 'bi bi-music-note-beamed'}/> {isVideo ? 'Video' : 'Audio'} · {formatDuration(duration)}
+                        <i className={isVideo ? 'bi bi-play-fill' : 'bi bi-music-note-beamed'}/> {isVideo ? 'Video' : 'Audio'} · {formatDuration({ seconds: duration })}
                     </div>
                 </div>
 
@@ -694,11 +763,11 @@ function InlinePlayer({
                             className="bi bi-skip-end-fill"/></button>
                     </div>
                     <div className="player-progress-row">
-                        <span>{formatDuration(currentTime)}</span>
+                        <span>{formatDuration({ seconds: currentTime })}</span>
                         <div className="player-progress-bar" onClick={handleProgressClick}>
                             <div className="player-progress-fill" style={{width: `${progress}%`}}/>
                         </div>
-                        <span>{formatDuration(duration)}</span>
+                        <span>{formatDuration({ seconds: duration })}</span>
                     </div>
                 </div>
 
@@ -757,8 +826,8 @@ function UserMenu() {
     if (!isAuthenticated) {
         return (
             <div className="user-auth-section">
-                <button className="controls-btn" onClick={() => navigate('/login')}>Login</button>
-                <button className="controls-btn" onClick={() => navigate('/signup')}>Sign Up</button>
+                <button className="controls-btn" onClick={() => { navigate('/login'); }}>Login</button>
+                <button className="controls-btn" onClick={() => { navigate('/signup'); }}>Sign Up</button>
             </div>
         )
     }
@@ -766,13 +835,13 @@ function UserMenu() {
     return (
         <div className="user-auth-section">
             <div className="user-dropdown-wrapper">
-                <button className="controls-btn" onClick={() => setOpen(o => !o)}>
+                <button className="controls-btn" onClick={() => { setOpen(o => !o); }}>
                     <i className="bi bi-person-fill"/> {user?.username}
                     {isAdmin && <span className="admin-badge">Admin</span>}
                 </button>
                 {open && (
                     <>
-                        <div style={{position: 'fixed', inset: 0, zIndex: 999}} onClick={() => setOpen(false)}/>
+                        <div style={{position: 'fixed', inset: 0, zIndex: 999}} onClick={() => { setOpen(false); }}/>
                         <div className="user-dropdown-menu" style={{zIndex: 1000}}>
                             <div className="user-dropdown-header">{user?.username} · {user?.role}</div>
                             <div className="user-dropdown-divider"/>
@@ -853,13 +922,14 @@ function SuggestionThumbnail({url, mediaType}: { url?: string; mediaType?: strin
             alt=""
             loading="lazy"
             style={THUMB_STYLE}
-            onError={() => setFailed(true)}
+            onError={() => { setFailed(true); }}
         />
     )
 }
 
 // ── Main IndexPage ────────────────────────────────────────────────────────────
-
+// Cognitive complexity is high due to many URL-driven filters, queries, and conditional sections.
+// NOTE: Consider extracting useIndexPageState() + IndexPageContent to reduce complexity.
 export function IndexPage() {
     const navigate = useNavigate()
     const queryClient = useQueryClient()
@@ -967,8 +1037,8 @@ export function IndexPage() {
     // Auto-clear playlist errors after 5 seconds
     useEffect(() => {
         if (!playlistError) return
-        const t = setTimeout(() => setPlaylistError(null), 5000)
-        return () => clearTimeout(t)
+        const t = setTimeout(() => { setPlaylistError(null); }, 5000)
+        return () => { clearTimeout(t); }
     }, [playlistError])
 
     // Debounced search — syncs typed input to URL param
@@ -1075,7 +1145,7 @@ export function IndexPage() {
         select: (data) => data ?? [],
     })
 
-    const items = mediaData?.items ?? []
+    const items = useMemo(() => mediaData?.items ?? [], [mediaData?.items])
     const totalPages = mediaData?.total_pages ?? 1
     const hasNextPage = page < totalPages
 
@@ -1221,6 +1291,153 @@ export function IndexPage() {
         queryClient.invalidateQueries({queryKey: ['media']})
     }
 
+    function renderSuggestionSection(
+        loading: boolean,
+        error: boolean,
+        items: Suggestion[],
+        onRetry: () => void,
+        loadingLabel: string,
+        errorMessage: string,
+        emptyMessage: string,
+        renderMeta: (entry: Suggestion) => React.ReactNode
+    ) {
+        if (loading) return <p style={MUTED_TEXT_STYLE}>Loading {loadingLabel}…</p>
+        if (error) {
+            return (
+                <p style={MUTED_TEXT_STYLE}>
+                    {errorMessage}{' '}
+                    <button type="button" className="controls-btn" style={{marginLeft: 4}} onClick={onRetry}>
+                        Retry
+                    </button>
+                </p>
+            )
+        }
+        if (items.length > 0) {
+            return (
+                <div className="continue-watching-row">
+                    {items.map(entry => (
+                        <Link
+                            key={entry.media_id}
+                            className="continue-card"
+                            to={`/player?id=${encodeURIComponent(entry.media_id)}`}
+                        >
+                            <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
+                            <div className="continue-card-name">{formatTitle({value: entry.title || entry.media_id})}</div>
+                            {renderMeta(entry)}
+                        </Link>
+                    ))}
+                </div>
+            )
+        }
+        return <p style={MUTED_TEXT_STYLE}>{emptyMessage}</p>
+    }
+
+    function renderSuggestionsState() {
+        return renderSuggestionSection(
+            suggestionsLoading,
+            suggestionsError,
+            suggestions,
+            () => suggestionsRefetch(),
+            'suggestions',
+            'Suggestions are still loading (catalogue may be scanning).',
+            'No recommendations yet. Watch some media to get personalized picks.',
+            (entry) => entry.score !== null && entry.score !== undefined
+                ? <div className="continue-card-meta"><i className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
+                : null
+        )
+    }
+
+    function renderTrendingState() {
+        return renderSuggestionSection(
+            trendingLoading,
+            trendingError,
+            trending,
+            () => trendingRefetch(),
+            'trending',
+            'Trending is still loading.',
+            'No trending items yet.',
+            () => <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
+        )
+    }
+
+    function getMediaErrorMessage(err: unknown): string {
+        return err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+    }
+
+    function getEmptyMediaMessage(): string {
+        return search
+            ? `No results for "${search}". Try a different search term.`
+            : 'Add media files to your library or adjust your filters to get started.'
+    }
+
+    function renderMediaGridState() {
+        if (mediaError) {
+            return (
+                <div className="empty-state empty-state-error">
+                    <h3>We couldn&apos;t load your library</h3>
+                    <p>{getMediaErrorMessage(mediaError)}</p>
+                    <button className="controls-btn controls-btn-primary" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
+                        <i className="bi bi-arrow-clockwise"/> Try again
+                    </button>
+                </div>
+            )
+        }
+        if (mediaInitialLoading) {
+            return (
+                <div className="media-grid media-grid-loading">
+                    {Array.from({length: 12}, (_, i) => <MediaCardSkeleton key={i}/>)}
+                </div>
+            )
+        }
+        if (items.length === 0 && mediaData?.scanning) {
+            return (
+                <div className="loading-state">
+                    <i className="bi bi-arrow-repeat"/> Scanning your library&hellip; give it a moment.
+                </div>
+            )
+        }
+        if (items.length === 0) {
+            return (
+                <div className="empty-state">
+                    <h3>No media found</h3>
+                    <p>{getEmptyMediaMessage()}</p>
+                    {permissions.can_upload && (
+                        <button className="controls-btn controls-btn-primary" onClick={() => setShowUpload(true)}>
+                            <i className="bi bi-cloud-upload-fill"/> Upload media
+                        </button>
+                    )}
+                </div>
+            )
+        }
+        return (
+            <div
+                className="media-grid-wrapper"
+                style={{
+                    ...((mediaFetching && mediaStale) ? {opacity: 0.92, transition: 'opacity 0.25s ease'} : {opacity: 1, transition: 'opacity 0.25s ease'}),
+                }}
+            >
+                {(mediaFetching && mediaStale) && (
+                    <div className="media-grid-updating" role="status">
+                        <i className="bi bi-arrow-repeat"/> Updating&hellip;
+                    </div>
+                )}
+                <div className="media-grid">
+                    {items.map(item => (
+                        <MediaCard
+                            key={item.id}
+                            item={item}
+                            isPlaying={nowPlaying?.id === item.id}
+                            onPlay={handlePlay}
+                            canDownload={permissions.can_download}
+                            canViewMature={canViewMature}
+                            isAuthenticated={isAuthenticated}
+                        />
+                    ))}
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="index-page" data-theme={theme}>
             {/* Header */}
@@ -1242,7 +1459,7 @@ export function IndexPage() {
 
             {/* Controls Bar */}
             <div className="controls-bar">
-                <button className="controls-btn" onClick={() => setShowFilters(f => !f)}>
+                <button className="controls-btn" onClick={() => { setShowFilters(f => !f); }}>
                     <i className="bi bi-funnel-fill"/> {showFilters ? 'Hide Filters' : 'Filters'}
                 </button>
 
@@ -1251,7 +1468,7 @@ export function IndexPage() {
                     className="controls-search"
                     placeholder="Search your media library..."
                     value={searchInput}
-                    onChange={e => setSearchInput(e.target.value)}
+                    onChange={e => { setSearchInput(e.target.value); }}
                 />
 
                 <button className="controls-btn" onClick={handleRefresh} title="Refresh"><i
@@ -1276,7 +1493,7 @@ export function IndexPage() {
                 </button>
 
                 {permissions.can_upload && uploadsEnabled && (
-                    <button className="controls-btn" onClick={() => setShowUpload(true)}><i
+                    <button className="controls-btn" onClick={() => { setShowUpload(true); }}><i
                         className="bi bi-cloud-upload-fill"/> Upload</button>
                 )}
 
@@ -1309,7 +1526,7 @@ export function IndexPage() {
                                 to={`/player?id=${encodeURIComponent(entry.media_id)}`}
                             >
                                 <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
+                                <div className="continue-card-name">{formatTitle({ value: entry.title || entry.media_id })}</div>
                                 <div className="continue-card-meta"><i className="bi bi-play-circle"/> Continue</div>
                             </Link>
                         ))}
@@ -1321,35 +1538,7 @@ export function IndexPage() {
             {suggestionsEnabled && showRecommended && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-stars"/> Recommended For You</h3>
-                    {suggestionsLoading ? (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading suggestions…</p>
-                    ) : suggestionsError ? (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>
-                            Suggestions are still loading (catalogue may be scanning).{' '}
-                            <button type="button" className="controls-btn" style={{marginLeft: 4}} onClick={() => suggestionsRefetch()}>
-                                Retry
-                            </button>
-                        </p>
-                    ) : suggestions.length > 0 ? (
-                        <div className="continue-watching-row">
-                            {suggestions.map(entry => (
-                                <Link
-                                    key={entry.media_id}
-                                    className="continue-card"
-                                    to={`/player?id=${encodeURIComponent(entry.media_id)}`}
-                                >
-                                    <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                    <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
-                                    {entry.score != null && (
-                                        <div className="continue-card-meta"><i
-                                            className="bi bi-stars"/> {Math.round(entry.score * 100)}% match</div>
-                                    )}
-                                </Link>
-                            ))}
-                        </div>
-                    ) : (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>No recommendations yet. Watch some media to get personalized picks.</p>
-                    )}
+                    {renderSuggestionsState()}
                 </div>
             )}
 
@@ -1357,32 +1546,7 @@ export function IndexPage() {
             {suggestionsEnabled && showTrending && (
                 <div className="continue-watching-section">
                     <h3 className="section-heading"><i className="bi bi-fire"/> Trending</h3>
-                    {trendingLoading ? (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading trending…</p>
-                    ) : trendingError ? (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>
-                            Trending is still loading.{' '}
-                            <button type="button" className="controls-btn" style={{marginLeft: 4}} onClick={() => trendingRefetch()}>
-                                Retry
-                            </button>
-                        </p>
-                    ) : trending.length > 0 ? (
-                        <div className="continue-watching-row">
-                            {trending.map(entry => (
-                                <Link
-                                    key={entry.media_id}
-                                    className="continue-card"
-                                    to={`/player?id=${encodeURIComponent(entry.media_id)}`}
-                                >
-                                    <SuggestionThumbnail url={entry.thumbnail_url} mediaType={entry.media_type}/>
-                                    <div className="continue-card-name">{formatTitle(entry.title || entry.media_id)}</div>
-                                    <div className="continue-card-meta"><i className="bi bi-fire"/> Trending</div>
-                                </Link>
-                            ))}
-                        </div>
-                    ) : (
-                        <p style={{color: 'var(--text-muted)', fontSize: 13}}>No trending items yet.</p>
-                    )}
+                    {renderTrendingState()}
                 </div>
             )}
 
@@ -1441,63 +1605,7 @@ export function IndexPage() {
 
             {/* Media Grid */}
             <div className="media-section">
-                {mediaError ? (
-                    <div className="empty-state empty-state-error">
-                        <h3>We couldn&apos;t load your library</h3>
-                        <p>{mediaError instanceof Error ? mediaError.message : 'Something went wrong. Please try again.'}</p>
-                        <button className="controls-btn controls-btn-primary" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
-                            <i className="bi bi-arrow-clockwise"/> Try again
-                        </button>
-                    </div>
-                ) : mediaInitialLoading ? (
-                    <div className="media-grid media-grid-loading">
-                        {Array.from({length: 12}, (_, i) => <MediaCardSkeleton key={i}/>)}
-                    </div>
-                ) : items.length === 0 && mediaData?.scanning ? (
-                    <div className="loading-state">
-                        <i className="bi bi-arrow-repeat"/> Scanning your library&hellip; give it a moment.
-                    </div>
-                ) : items.length === 0 ? (
-                    <div className="empty-state">
-                        <h3>No media found</h3>
-                        <p>
-                            {search
-                                ? `No results for "${search}". Try a different search term.`
-                                : 'Add media files to your library or adjust your filters to get started.'}
-                        </p>
-                        {permissions.can_upload && (
-                            <button className="controls-btn controls-btn-primary" onClick={() => setShowUpload(true)}>
-                                <i className="bi bi-cloud-upload-fill"/> Upload media
-                            </button>
-                        )}
-                    </div>
-                ) : (
-                    <div
-                        className="media-grid-wrapper"
-                        style={{
-                            ...((mediaFetching && mediaStale) ? {opacity: 0.92, transition: 'opacity 0.25s ease'} : {opacity: 1, transition: 'opacity 0.25s ease'}),
-                        }}
-                    >
-                        {(mediaFetching && mediaStale) && (
-                            <div className="media-grid-updating" role="status">
-                                <i className="bi bi-arrow-repeat"/> Updating&hellip;
-                            </div>
-                        )}
-                        <div className="media-grid">
-                            {items.map(item => (
-                                <MediaCard
-                                    key={item.id}
-                                    item={item}
-                                    isPlaying={nowPlaying?.id === item.id}
-                                    onPlay={handlePlay}
-                                    canDownload={permissions.can_download}
-                                    canViewMature={canViewMature}
-                                    isAuthenticated={isAuthenticated}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {renderMediaGridState()}
 
                 {/* Pagination */}
                 {totalPages > 1 && (
@@ -1512,7 +1620,7 @@ export function IndexPage() {
                         <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
                             <span className="pagination-info">Page {page} of {totalPages}</span>
                             <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
-                                <label htmlFor="per-page" style={{fontSize: 13, color: 'var(--text-muted)'}}>Per
+                                <label htmlFor="per-page" style={{fontSize: FONT_SIZE_SMALL, color: COLOR_TEXT_MUTED}}>Per
                                     page:</label>
                                 <select
                                     id="per-page"
@@ -1557,6 +1665,7 @@ export function IndexPage() {
                     onClose={() => setShowUpload(false)}
                     onDone={handleUploadDone}
                     maxFileSize={serverSettings?.uploads?.maxFileSize}
+                    categories={categories}
                 />
             )}
 
@@ -1577,7 +1686,7 @@ export function IndexPage() {
                                     borderRadius: 6,
                                     padding: '6px 10px',
                                     marginBottom: 10,
-                                    fontSize: 13
+                                    fontSize: FONT_SIZE_SMALL
                                 }}>
                                     {playlistError}
                                 </div>
@@ -1597,7 +1706,7 @@ export function IndexPage() {
                                             borderRadius: 6,
                                             background: 'var(--input-bg)',
                                             color: 'var(--text-color)',
-                                            fontSize: 13,
+                                            fontSize: FONT_SIZE_SMALL,
                                         }}
                                         onKeyDown={e => e.key === 'Enter' && handleCreatePlaylist()}
                                     />
@@ -1609,7 +1718,7 @@ export function IndexPage() {
                             </div>
 
                             {playlists.length === 0 ? (
-                                <p style={{textAlign: 'center', color: 'var(--text-muted)', fontSize: 14}}>
+                                <p style={{textAlign: 'center', color: COLOR_TEXT_MUTED, fontSize: 14}}>
                                     No playlists yet
                                 </p>
                             ) : (
@@ -1633,7 +1742,7 @@ export function IndexPage() {
                                                             borderRadius: 4,
                                                             background: 'var(--input-bg)',
                                                             color: 'var(--text-color)',
-                                                            fontSize: 13,
+                                                            fontSize: FONT_SIZE_SMALL,
                                                         }}
                                                     />
                                                     <button
@@ -1652,7 +1761,7 @@ export function IndexPage() {
                                                         style={{
                                                             background: 'none',
                                                             border: 'none',
-                                                            color: 'var(--text-muted)',
+                                                            color: COLOR_TEXT_MUTED,
                                                             cursor: 'pointer'
                                                         }}
                                                     >
@@ -1671,7 +1780,7 @@ export function IndexPage() {
                                                         style={{
                                                             background: 'none',
                                                             border: 'none',
-                                                            color: 'var(--text-muted)',
+                                                            color: COLOR_TEXT_MUTED,
                                                             cursor: 'pointer',
                                                             padding: '2px 3px'
                                                         }}
@@ -1704,7 +1813,7 @@ export function IndexPage() {
                                                     style={{
                                                         background: 'none',
                                                         border: 'none',
-                                                        color: 'var(--text-muted)',
+                                                        color: COLOR_TEXT_MUTED,
                                                         cursor: 'pointer',
                                                         fontSize: 11,
                                                         padding: 0

@@ -49,7 +49,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
 
     // Mark audio ready after mount (defer to avoid setState-in-effect lint)
     useEffect(() => {
-        if (audioRef.current) queueMicrotask(() => setAudioReady(true))
+        if (audioRef.current) queueMicrotask(() => { setAudioReady(true); })
     }, [])
 
     // Update audio source when media changes
@@ -170,6 +170,10 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
+    let volumeIconClass = 'bi-volume-up-fill'
+    if (isMuted || currentVolume === 0) volumeIconClass = 'bi-volume-mute-fill'
+    else if (currentVolume < 0.5) volumeIconClass = 'bi-volume-down-fill'
+
     if (!currentMediaId) return <audio ref={audioRef} preload="auto"/>
 
     return (
@@ -224,7 +228,7 @@ export function AudioPlayer({onEqualizerToggle, equalizerVisible}: AudioPlayerPr
                 <div className="audio-player__right">
                     {/* Volume */}
                     <button className="audio-player__btn" onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>
-                        <i className={`bi ${isMuted || currentVolume === 0 ? 'bi-volume-mute-fill' : currentVolume < 0.5 ? 'bi-volume-down-fill' : 'bi-volume-up-fill'}`}/>
+                        <i className={`bi ${volumeIconClass}`}/>
                     </button>
                     <input
                         className="audio-player__volume"

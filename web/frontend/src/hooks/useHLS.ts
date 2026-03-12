@@ -1,4 +1,5 @@
 import {type RefObject, useCallback, useEffect, useRef, useState} from 'react'
+import type { ErrorData } from 'hls.js'
 
 export interface HLSQuality {
     index: number
@@ -20,6 +21,17 @@ export interface UseHLSResult {
 }
 
 const QUALITY_PREF_KEY = 'media-server-quality-pref'
+
+function mapLevelsToQualities(levels: Array<{ height: number; width: number; bitrate: number; videoCodec?: string }>): HLSQuality[] {
+    return levels.map((level, i) => ({
+        index: i,
+        height: level.height,
+        width: level.width,
+        bitrate: level.bitrate,
+        name: getQualityName(level.height),
+        codec: level.videoCodec || undefined,
+    }))
+}
 
 function getQualityName(height: number): string {
     if (height >= 2160) return '4K'
@@ -176,20 +188,11 @@ export function useHLS(
 
             hlsRef.current = hls
 
-            hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+            function onManifestParsed(_event: unknown, data: { levels: Array<{ height: number; width: number; bitrate: number; videoCodec?: string }> }) {
                 if (cancelled) return
-                const q: HLSQuality[] = data.levels.map((level, i) => ({
-                    index: i,
-                    height: level.height,
-                    width: level.width,
-                    bitrate: level.bitrate,
-                    name: getQualityName(level.height),
-                    codec: level.videoCodec || undefined,
-                }))
+                const q = mapLevelsToQualities(data.levels)
                 setQualities(q)
                 setIsLoading(false)
-
-                // Apply saved quality preference
                 const savedHeight = getSavedQualityPref()
                 if (savedHeight > 0) {
                     const match = q.find(level => level.height === savedHeight)
@@ -199,77 +202,62 @@ export function useHLS(
                         return
                     }
                 }
-                // Default to auto
                 setCurrentQuality(-1)
-            })
+            }
 
-            hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+            function onLevelSwitched(_event: unknown, data: { level: number }) {
                 if (cancelled) return
-                // When in auto mode (currentLevel === -1), track what ABR chose
-                if (hls.currentLevel === -1) {
-                    setAutoLevel(data.level)
-                } else {
-                    setCurrentQuality(data.level)
-                }
-            })
+                if (hls.currentLevel === -1) setAutoLevel(data.level)
+                else setCurrentQuality(data.level)
+            }
 
-            hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+            function onFragLoaded(_event: unknown, data: { frag: { stats: { loaded: number; loading: { start: number; end: number } } } }) {
                 if (cancelled) return
                 const stats = data.frag.stats
-                if (stats.loaded && stats.loading.end && stats.loading.start) {
-                    const loadTime = stats.loading.end - stats.loading.start
-                    if (loadTime > 0) {
-                        const bw = (stats.loaded * 8) / (loadTime / 1000)
-                        setBandwidth(bw)
-                        if (bw < 1_000_000) {
-                            hls.config.maxBufferLength = 30
-                        } else if (bw < 3_000_000) {
-                            hls.config.maxBufferLength = 45
-                        } else {
-                            hls.config.maxBufferLength = 60
-                        }
-                    }
-                }
-            })
+                if (!stats.loaded || !stats.loading?.end || !stats.loading?.start) return
+                const loadTime = stats.loading.end - stats.loading.start
+                if (loadTime <= 0) return
+                const bw = (stats.loaded * 8) / (loadTime / 1000)
+                setBandwidth(bw)
+                if (bw < 1_000_000) hls.config.maxBufferLength = 30
+                else if (bw < 3_000_000) hls.config.maxBufferLength = 45
+                else hls.config.maxBufferLength = 60
+            }
 
-            hls.on(Hls.Events.ERROR, (_event, data) => {
-                if (cancelled) return
-                if (!data.fatal) return
+            function doStartLoad() {
+                if (!cancelled && hlsRef.current) hlsRef.current.startLoad()
+            }
 
+            function onError(_event: unknown, data: ErrorData) {
+                if (cancelled || !data.fatal) return
                 if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                     networkRetryCount.current++
                     if (networkRetryCount.current <= 3) {
                         const delay = Math.min(1000 * Math.pow(2, networkRetryCount.current - 1), 8000)
-                        setTimeout(() => {
-                            if (!cancelled && hlsRef.current) {
-                                hlsRef.current.startLoad()
-                            }
-                        }, delay)
+                        setTimeout(doStartLoad, delay)
                         return
                     }
                 }
-
                 if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                     mediaRetryCount.current++
                     if (mediaRetryCount.current <= 2) {
-                        // Per hls.js docs: swap audio codec before second recovery
-                        // attempt to handle AAC/MP3 codec mismatch issues.
-                        if (mediaRetryCount.current === 2) {
-                            hls.swapAudioCodec()
-                        }
+                        if (mediaRetryCount.current === 2) hls.swapAudioCodec()
                         hls.recoverMediaError()
                         return
                     }
                 }
-
-                // All retries exhausted — fallback
                 if (!cancelled) {
                     setError('HLS playback failed, falling back to direct streaming')
                     hls.destroy()
                     hlsRef.current = null
                     onFallbackRef.current?.()
                 }
-            })
+            }
+
+            hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed)
+            hls.on(Hls.Events.LEVEL_SWITCHED, onLevelSwitched)
+            hls.on(Hls.Events.FRAG_LOADED, onFragLoaded)
+            hls.on(Hls.Events.ERROR, onError)
 
             hls.loadSource(hlsUrl!)
             hls.attachMedia(el)

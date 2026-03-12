@@ -180,7 +180,7 @@ export function UpdatesTab() {
         try {
             await adminApi.restartServer()
             setMsg({type: 'success', text: 'Restart initiated. The page will reload shortly…'})
-            setTimeout(() => window.location.reload(), 5000)
+            setTimeout(() => { window.location.reload(); }, 5000)
         } catch (err) {
             setMsg({type: 'error', text: errMsg(err)})
         }
@@ -453,7 +453,7 @@ export function UpdatesTab() {
                         </button>
                     )}
                     {build?.done && (
-                        <button className="admin-btn" onClick={() => setBuild(null)}>
+                        <button className="admin-btn" onClick={() => { setBuild(null); }}>
                             Dismiss
                         </button>
                     )}

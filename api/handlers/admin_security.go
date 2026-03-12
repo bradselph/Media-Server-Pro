@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/security"
 )
 
 // GetSecurityStats returns security module statistics
@@ -22,127 +24,76 @@ func (h *Handler) GetSecurityStats(c *gin.Context) {
 	})
 }
 
-// GetWhitelist returns the IP whitelist as a flat array.
-func (h *Handler) GetWhitelist(c *gin.Context) {
+// ipListEntryJSON is the JSON shape for a whitelist/blacklist entry.
+type ipListEntryJSON struct {
+	IP        string     `json:"ip"`
+	Comment   string     `json:"comment"`
+	AddedBy   string     `json:"added_by"`
+	AddedAt   time.Time  `json:"added_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+func ipEntriesToJSON(raw []security.IPEntry) []ipListEntryJSON {
+	entries := make([]ipListEntryJSON, len(raw))
+	for i, e := range raw {
+		entries[i] = ipListEntryJSON{IP: e.Value, Comment: e.Comment, AddedBy: e.AddedBy, AddedAt: e.AddedAt, ExpiresAt: e.ExpiresAt}
+	}
+	return entries
+}
+
+// getIPList returns an IP list (whitelist or blacklist) as JSON. getSnapshot returns the list snapshot.
+func (h *Handler) getIPList(c *gin.Context, getSnapshot func() []security.IPEntry) {
 	if !h.requireSecurity(c) {
 		return
 	}
-	type ipEntry struct {
-		IP        string     `json:"ip"`
-		Comment   string     `json:"comment"`
-		AddedBy   string     `json:"added_by"`
-		AddedAt   time.Time  `json:"added_at"`
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	raw := getSnapshot()
+	writeSuccess(c, ipEntriesToJSON(raw))
+}
+
+// GetWhitelist returns the IP whitelist as a flat array.
+func (h *Handler) GetWhitelist(c *gin.Context) {
+	h.getIPList(c, func() []security.IPEntry { return h.security.GetWhitelist().Snapshot() })
+}
+
+type addIPListReq struct {
+	IP        string     `json:"ip"`
+	Comment   string     `json:"comment"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+func (h *Handler) addToIPList(c *gin.Context, addFn func(ip, comment, addedBy string, expiresAt *time.Time) error, successMsg string) {
+	if !h.requireSecurity(c) {
+		return
 	}
-	raw := h.security.GetWhitelist().Snapshot()
-	entries := make([]ipEntry, len(raw))
-	for i, e := range raw {
-		entries[i] = ipEntry{IP: e.Value, Comment: e.Comment, AddedBy: e.AddedBy, AddedAt: e.AddedAt, ExpiresAt: e.ExpiresAt}
+	var req addIPListReq
+	if c.ShouldBindJSON(&req) != nil {
+		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
 	}
-	writeSuccess(c, entries)
+	session := getSession(c)
+	addedBy := "admin"
+	if session != nil {
+		addedBy = session.Username
+	}
+	if err := addFn(req.IP, req.Comment, addedBy, req.ExpiresAt); err != nil {
+		writeError(c, http.StatusBadRequest, "Invalid IP address")
+		return
+	}
+	writeSuccess(c, map[string]string{"message": successMsg})
 }
 
 // AddToWhitelist adds an IP to the whitelist
 func (h *Handler) AddToWhitelist(c *gin.Context) {
-	if !h.requireSecurity(c) {
-		return
-	}
-	var req struct {
-		IP        string     `json:"ip"`
-		Comment   string     `json:"comment"`
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
-		return
-	}
-
-	session := getSession(c)
-	addedBy := "admin"
-	if session != nil {
-		addedBy = session.Username
-	}
-
-	if err := h.security.AddToWhitelist(req.IP, req.Comment, addedBy, req.ExpiresAt); err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid IP address")
-		return
-	}
-
-	writeSuccess(c, map[string]string{"message": "Added to whitelist"})
-}
-
-// RemoveFromWhitelist removes an IP from the whitelist
-func (h *Handler) RemoveFromWhitelist(c *gin.Context) {
-	if !h.requireSecurity(c) {
-		return
-	}
-	var req struct {
-		IP string `json:"ip"`
-	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
-		return
-	}
-
-	if !h.security.RemoveFromWhitelist(req.IP) {
-		writeError(c, http.StatusNotFound, "IP not found in whitelist")
-		return
-	}
-
-	writeSuccess(c, nil)
-}
-
-// GetBlacklist returns the IP blacklist as a flat array.
-func (h *Handler) GetBlacklist(c *gin.Context) {
-	if !h.requireSecurity(c) {
-		return
-	}
-	type ipEntry struct {
-		IP        string     `json:"ip"`
-		Comment   string     `json:"comment"`
-		AddedBy   string     `json:"added_by"`
-		AddedAt   time.Time  `json:"added_at"`
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	}
-	raw := h.security.GetBlacklist().Snapshot()
-	entries := make([]ipEntry, len(raw))
-	for i, e := range raw {
-		entries[i] = ipEntry{IP: e.Value, Comment: e.Comment, AddedBy: e.AddedBy, AddedAt: e.AddedAt, ExpiresAt: e.ExpiresAt}
-	}
-	writeSuccess(c, entries)
+	h.addToIPList(c, h.security.AddToWhitelist, "Added to whitelist")
 }
 
 // AddToBlacklist adds an IP to the blacklist
 func (h *Handler) AddToBlacklist(c *gin.Context) {
-	if !h.requireSecurity(c) {
-		return
-	}
-	var req struct {
-		IP        string     `json:"ip"`
-		Comment   string     `json:"comment"`
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
-		return
-	}
-
-	session := getSession(c)
-	addedBy := "admin"
-	if session != nil {
-		addedBy = session.Username
-	}
-
-	if err := h.security.AddToBlacklist(req.IP, req.Comment, addedBy, req.ExpiresAt); err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid IP address")
-		return
-	}
-
-	writeSuccess(c, map[string]string{"message": "Added to blacklist"})
+	h.addToIPList(c, h.security.AddToBlacklist, "Added to blacklist")
 }
 
-// RemoveFromBlacklist removes an IP from the blacklist
-func (h *Handler) RemoveFromBlacklist(c *gin.Context) {
+// removeFromIPList binds the JSON body (ip), calls removeFn(ip), and responds with 404 and notFoundMsg if not found.
+func (h *Handler) removeFromIPList(c *gin.Context, removeFn func(string) bool, notFoundMsg string) {
 	if !h.requireSecurity(c) {
 		return
 	}
@@ -153,13 +104,26 @@ func (h *Handler) RemoveFromBlacklist(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
-
-	if !h.security.RemoveFromBlacklist(req.IP) {
-		writeError(c, http.StatusNotFound, "IP not found in blacklist")
+	if !removeFn(req.IP) {
+		writeError(c, http.StatusNotFound, notFoundMsg)
 		return
 	}
-
 	writeSuccess(c, nil)
+}
+
+// RemoveFromWhitelist removes an IP from the whitelist
+func (h *Handler) RemoveFromWhitelist(c *gin.Context) {
+	h.removeFromIPList(c, h.security.RemoveFromWhitelist, "IP not found in whitelist")
+}
+
+// GetBlacklist returns the IP blacklist as a flat array.
+func (h *Handler) GetBlacklist(c *gin.Context) {
+	h.getIPList(c, func() []security.IPEntry { return h.security.GetBlacklist().Snapshot() })
+}
+
+// RemoveFromBlacklist removes an IP from the blacklist
+func (h *Handler) RemoveFromBlacklist(c *gin.Context) {
+	h.removeFromIPList(c, h.security.RemoveFromBlacklist, "IP not found in blacklist")
 }
 
 // GetBannedIPs returns currently banned IPs as a typed array.

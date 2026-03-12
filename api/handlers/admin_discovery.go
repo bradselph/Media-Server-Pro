@@ -11,6 +11,21 @@ import (
 	"media-server-pro/internal/autodiscovery"
 )
 
+// isDirectoryWithinMediaPaths returns true if cleanPath is under one of the allowed roots.
+// Used to prevent arbitrary filesystem traversal by admins.
+func isDirectoryWithinMediaPaths(cleanPath string, allowedRoots []string) bool {
+	for _, root := range allowedRoots {
+		if root == "" {
+			continue
+		}
+		cleanRoot := filepath.Clean(root)
+		if cleanPath == cleanRoot || strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
 // DiscoverMedia discovers and suggests organization for media files
 func (h *Handler) DiscoverMedia(c *gin.Context) {
 	if !h.requireAutodiscovery(c) {
@@ -19,28 +34,12 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 	var req struct {
 		Directory string `json:"directory"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-
-	// Validate that the requested directory is within a configured media path to prevent
-	// arbitrary filesystem traversal by admins.
 	dirs := h.config.Get().Directories
 	allowedRoots := []string{dirs.Videos, dirs.Music, dirs.Uploads}
-	cleanReq := filepath.Clean(req.Directory)
-	allowed := false
-	for _, root := range allowedRoots {
-		if root == "" {
-			continue
-		}
-		cleanRoot := filepath.Clean(root)
-		if cleanReq == cleanRoot || strings.HasPrefix(cleanReq, cleanRoot+string(filepath.Separator)) {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
+	if !isDirectoryWithinMediaPaths(filepath.Clean(req.Directory), allowedRoots) {
 		writeError(c, http.StatusBadRequest, "Directory must be within a configured media path")
 		return
 	}
@@ -50,7 +49,6 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-
 	writeSuccess(c, scanResults)
 }
 
@@ -71,11 +69,9 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 	var req struct {
 		OriginalPath string `json:"original_path"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-
 	if err := h.autodiscovery.ApplySuggestion(autodiscovery.FilePath(req.OriginalPath)); err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
