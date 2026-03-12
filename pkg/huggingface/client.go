@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultBaseURL     = "https://api-inference.huggingface.co"
+	defaultBaseURL     = "https://router.huggingface.co/hf-inference"
 	maxRetries         = 3
 	initialRetryDelay  = 2 * time.Second
 	retryBackoffFactor = 2.0
