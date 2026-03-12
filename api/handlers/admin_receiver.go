@@ -37,16 +37,28 @@ func (h *Handler) requireReceiverAPIKey(c *gin.Context) bool {
 	return true
 }
 
+// requireReceiverWithAPIKey ensures the receiver feature is enabled and a valid API key is present.
+func (h *Handler) requireReceiverWithAPIKey(c *gin.Context) bool {
+	return h.checkReceiverEnabled(c) && h.requireReceiverAPIKey(c)
+}
+
+// RequireReceiverWithAPIKey returns Gin middleware that enforces receiver enabled + valid X-API-Key.
+// Use for route groups that require slave authentication (register, catalog, heartbeat).
+func (h *Handler) RequireReceiverWithAPIKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !h.requireReceiverWithAPIKey(c) {
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // ReceiverRegisterSlave registers a new slave node with the master.
 // POST /api/receiver/register
 func (h *Handler) ReceiverRegisterSlave(c *gin.Context) {
-	if !h.checkReceiverEnabled(c) || !h.requireReceiverAPIKey(c) {
-		return
-	}
-
 	var req receiver.RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+	if !BindJSON(c, &req, "Invalid request") {
 		return
 	}
 
@@ -62,13 +74,8 @@ func (h *Handler) ReceiverRegisterSlave(c *gin.Context) {
 // ReceiverPushCatalog receives a media catalog update from a slave.
 // POST /api/receiver/catalog
 func (h *Handler) ReceiverPushCatalog(c *gin.Context) {
-	if !h.checkReceiverEnabled(c) || !h.requireReceiverAPIKey(c) {
-		return
-	}
-
 	var req receiver.CatalogPushRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+	if !BindJSON(c, &req, "Invalid request") {
 		return
 	}
 
@@ -87,15 +94,10 @@ func (h *Handler) ReceiverPushCatalog(c *gin.Context) {
 // ReceiverHeartbeat processes a heartbeat from a slave.
 // POST /api/receiver/heartbeat
 func (h *Handler) ReceiverHeartbeat(c *gin.Context) {
-	if !h.checkReceiverEnabled(c) || !h.requireReceiverAPIKey(c) {
-		return
-	}
-
 	var body struct {
 		SlaveID string `json:"slave_id"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+	if !BindJSON(c, &body, "Invalid request") {
 		return
 	}
 

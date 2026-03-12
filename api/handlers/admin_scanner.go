@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -121,6 +122,37 @@ func (h *Handler) GetReviewQueue(c *gin.Context) {
 	writeSuccess(c, enriched)
 }
 
+// applyReviewActionToItem runs approve or reject for one item; returns true if the item was updated.
+func (h *Handler) applyReviewActionToItem(ctx context.Context, action string, id string) bool {
+	item, err := h.media.GetMediaByID(id)
+	if err != nil || item == nil {
+		return false
+	}
+	path := item.Path
+	if action == "approve" {
+		if err := h.scanner.ApproveContent(ctx, path); err != nil {
+			return false
+		}
+		confidence := 0.0
+		var reasons []string
+		if result, ok := h.scanner.GetScanResult(path); ok {
+			confidence = result.Confidence
+			reasons = result.Reasons
+		}
+		if setErr := h.media.SetMatureFlag(path, true, confidence, reasons); setErr != nil {
+			h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
+		}
+		return true
+	}
+	if err := h.scanner.RejectContent(ctx, path); err != nil {
+		return false
+	}
+	if setErr := h.media.SetMatureFlag(path, false, 0, nil); setErr != nil {
+		h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
+	}
+	return true
+}
+
 // BatchReviewAction applies approve/reject action to multiple review queue items
 func (h *Handler) BatchReviewAction(c *gin.Context) {
 	if !h.requireScanner(c) {
@@ -134,7 +166,6 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
-
 	if req.Action != "approve" && req.Action != "reject" {
 		writeError(c, http.StatusBadRequest, "Invalid action: must be 'approve' or 'reject'")
 		return
@@ -142,34 +173,7 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 
 	updated := 0
 	for _, id := range req.IDs {
-		item, err := h.media.GetMediaByID(id)
-		if err != nil || item == nil {
-			continue
-		}
-		path := item.Path
-
-		if req.Action == "approve" {
-			err = h.scanner.ApproveContent(c.Request.Context(), path)
-			if err == nil {
-				confidence := 0.0
-				var reasons []string
-				if result, ok := h.scanner.GetScanResult(path); ok {
-					confidence = result.Confidence
-					reasons = result.Reasons
-				}
-				if setErr := h.media.SetMatureFlag(path, true, confidence, reasons); setErr != nil {
-					h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
-				}
-			}
-		} else {
-			err = h.scanner.RejectContent(c.Request.Context(), path)
-			if err == nil {
-				if setErr := h.media.SetMatureFlag(path, false, 0, nil); setErr != nil {
-					h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
-				}
-			}
-		}
-		if err == nil {
+		if h.applyReviewActionToItem(c.Request.Context(), req.Action, id) {
 			updated++
 		}
 	}
