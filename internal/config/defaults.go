@@ -234,6 +234,10 @@ func defaultMatureScannerConfig() MatureScannerConfig {
 	}
 }
 
+// defaultHuggingFaceConfig returns defaults for Hugging Face visual classification.
+// Model must be an image-classification or image-to-text model from the Hub (e.g.
+// Falconsai/nsfw_image_detection or Salesforce/blip-image-captioning-large).
+// Token needs "Inference Providers" or serverless inference permission.
 func defaultHuggingFaceConfig() HuggingFaceConfig {
 	return HuggingFaceConfig{
 		Enabled:       false,
