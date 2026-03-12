@@ -98,6 +98,7 @@ type RateLimiter struct {
 	mu          sync.RWMutex
 	cleanupTick *time.Ticker
 	stopCleanup chan struct{}
+	stopOnce    sync.Once
 }
 
 // RateLimitConfig holds rate limiter configuration
@@ -702,16 +703,14 @@ func (r *RateLimiter) StartCleanup(whitelist, blacklist *IPList) {
 	}()
 }
 
-// TODO: StopCleanup is unsafe if called twice — closing an already-closed channel panics.
-// This can happen if Stop() is called multiple times on the Module. Should use sync.Once
-// or check/set a flag before closing stopCleanup.
-
-// StopCleanup stops the background cleanup
+// StopCleanup stops the background cleanup. Safe to call multiple times.
 func (r *RateLimiter) StopCleanup() {
-	if r.cleanupTick != nil {
-		r.cleanupTick.Stop()
-	}
-	close(r.stopCleanup)
+	r.stopOnce.Do(func() {
+		if r.cleanupTick != nil {
+			r.cleanupTick.Stop()
+		}
+		close(r.stopCleanup)
+	})
 }
 
 // CheckRequest checks if a request should be allowed
