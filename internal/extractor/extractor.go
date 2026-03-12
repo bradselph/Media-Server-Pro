@@ -308,7 +308,7 @@ func (m *Module) GetStats() Stats {
 
 // ProxyHLSMaster fetches the upstream master M3U8 playlist and rewrites variant
 // URLs to route through MSP's HLS proxy endpoints.
-func (m *Module) ProxyHLSMaster(w http.ResponseWriter, r *http.Request, itemID string) error {
+func (m *Module) ProxyHLSMaster(w http.ResponseWriter, _ *http.Request, itemID string) error {
 	item := m.GetItem(itemID)
 	if item == nil {
 		return fmt.Errorf("item not found: %s", itemID)

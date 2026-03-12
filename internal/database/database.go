@@ -179,7 +179,7 @@ func (w *gormLogWriter) Printf(format string, args ...interface{}) {
 }
 
 // Stop closes the database connection
-func (m *Module) Stop(ctx context.Context) error {
+func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping database module...")
 
 	if m.sqlDB != nil {

@@ -44,7 +44,7 @@ func NewModule(cfg *config.Manager, blurHashUpdater BlurHashUpdater) *Module {
 }
 
 // Start initializes the thumbnail module
-func (m *Module) Start(ctx context.Context) error {
+func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting thumbnail module...")
 
 	// Ensure thumbnail directory exists
@@ -145,7 +145,7 @@ func (m *Module) evictStaleInFlight(ctx context.Context) {
 }
 
 // Stop shuts down the module
-func (m *Module) Stop(ctx context.Context) error {
+func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping thumbnail module...")
 
 	if m.cancel != nil {

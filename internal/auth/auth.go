@@ -205,7 +205,7 @@ func (m *Module) startCleanupLoop() {
 }
 
 // Stop gracefully stops the module
-func (m *Module) Stop(ctx context.Context) error {
+func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping authentication module...")
 
 	m.stopOnce.Do(func() {

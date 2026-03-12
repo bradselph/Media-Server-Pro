@@ -55,7 +55,7 @@ var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "
 
 // RegisterStaticRoutes sets up static file serving and template routes.
 // This function is safe to call even if embedded files are missing.
-func RegisterStaticRoutes(r *gin.Engine, thumbnailDir string) {
+func RegisterStaticRoutes(r *gin.Engine, _ string) {
 	registerEmbeddedStatic(r)
 
 	spaHandler := ginServeReactApp()

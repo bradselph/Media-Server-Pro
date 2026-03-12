@@ -84,7 +84,7 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 }
 
 // ChangeAdminPassword verifies the current admin password and replaces it with a new one.
-func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPassword string) error {
+func (m *Module) ChangeAdminPassword(_ context.Context, currentPassword, newPassword string) error {
 	cfg := m.config.Get()
 
 	if err := bcrypt.CompareHashAndPassword([]byte(cfg.Admin.PasswordHash), []byte(currentPassword)); err != nil {
