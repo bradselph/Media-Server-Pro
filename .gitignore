@@ -64,3 +64,4 @@ github-runner/.runner.env
 
 #Ignore cursor AI rules
 .cursor\rules\codacy.mdc
+/scripts/__pycache__

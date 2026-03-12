@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Re-exec with bash if invoked as sh (e.g. "sh pre-push-check.sh") so bash-isms work
+[ -z "${BASH:-}" ] && exec bash "$0" "$@"
 # =============================================================================
 # pre-push-check.sh — Run all CI checks locally before pushing to GitHub
 #
@@ -27,26 +29,15 @@
 #   --staticcheck          Include staticcheck in Go diagnostics (--report mode)
 #   --lint                 Include ESLint in TypeScript diagnostics (--report mode)
 #   --all-sources          Enable all diagnostic sources (--report mode)
+#   --save-reports         Generate JSON/HTML reports in reports/ after checks
 #   -h, --help             Show this help
 # =============================================================================
 
 set -euo pipefail
 
-# ── Colours ──────────────────────────────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-DIM='\033[2m'
-RESET='\033[0m'
-
-PASS="${GREEN}✔${RESET}"
-FAIL="${RED}✘${RESET}"
-SKIP_MARK="${YELLOW}⊘${RESET}"
-WARN="${YELLOW}⚠${RESET}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+source "${SCRIPT_DIR}/lib.sh"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MAIN_GO="${REPO_ROOT}/cmd/server/main.go"
 VERSION_FILE="${REPO_ROOT}/VERSION"
@@ -70,6 +61,7 @@ OPT_REPORT_FORMAT="md"
 OPT_STATICCHECK=false
 OPT_LINT=false
 OPT_ALL_SOURCES=false
+OPT_SAVE_REPORTS=false
 OPT_BUMP_VERSION=""
 OPT_SYNC_VERSION=false
 OPT_BUMP_DEV=false
@@ -109,6 +101,7 @@ while [[ $# -gt 0 ]]; do
     --staticcheck)    OPT_STATICCHECK=true ;;
     --lint)           OPT_LINT=true ;;
     --all-sources)    OPT_ALL_SOURCES=true ;;
+    --save-reports)   OPT_SAVE_REPORTS=true ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,2\}//' | sed -n '2,30p'
       exit 0
@@ -260,10 +253,8 @@ if $OPT_FIX_ISSUES; then
   cd "$REPO_ROOT"
   FIX_SCRIPT="${SCRIPT_DIR}/fix-issues.py"
   if [[ -f "$FIX_SCRIPT" ]]; then
-    if command -v python3 &>/dev/null; then
-      python3 "$FIX_SCRIPT" --dry-run
-    elif command -v python &>/dev/null; then
-      python "$FIX_SCRIPT" --dry-run
+    if find_python; then
+      "$PY" "$FIX_SCRIPT" --dry-run
     else
       echo -e "${RED}Python not found — cannot run fix-issues.py${RESET}" >&2
       exit 1
@@ -285,10 +276,7 @@ if [[ -n "$OPT_REPORT" ]]; then
     echo -e "${RED}fix-issues.py not found at ${FIX_SCRIPT}${RESET}" >&2
     exit 1
   fi
-  PY=""
-  command -v python3 &>/dev/null && PY=python3
-  command -v python  &>/dev/null && [[ -z "$PY" ]] && PY=python
-  if [[ -z "$PY" ]]; then
+  if ! find_python; then
     echo -e "${RED}Python not found — cannot run fix-issues.py${RESET}" >&2
     exit 1
   fi
@@ -317,6 +305,9 @@ HOOK
   echo -e "${DIM}To bypass once:  git push --no-verify${RESET}"
   exit 0
 fi
+
+# ── Run from repo root so all scans and paths are from codebase root ─────────
+cd "$REPO_ROOT"
 
 # ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
@@ -379,7 +370,6 @@ run_step() {
 
 # ── Go checks ─────────────────────────────────────────────────────────────────
 section "Go"
-cd "$REPO_ROOT"
 
 if $OPT_FIX && ! $OPT_SKIP_GO; then
   echo -e "  ${CYAN}▶${RESET} Auto-formatting with go fmt + goimports..."
@@ -394,8 +384,8 @@ if $OPT_FIX && ! $OPT_SKIP_GO; then
 fi
 
 run_step "go mod download"        "$OPT_SKIP_GO"  go mod download
-run_step "go build (linux/amd64)" "$OPT_SKIP_GO"  \
-         env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...
+run_step "go build [linux/amd64]" "$OPT_SKIP_GO" \
+  env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...
 run_step "go vet"                 "$OPT_SKIP_GO"  go vet ./...
 
 # golangci-lint: auto-install if missing
@@ -538,11 +528,7 @@ if [[ "$SKIP_CODESCENE" == "false" ]]; then
 fi
 
 if [[ "$SKIP_CODESCENE" == "false" ]]; then
-  # Find Python
-  CODESCENE_PY=""
-  command -v python3 &>/dev/null && CODESCENE_PY=python3
-  [[ -z "$CODESCENE_PY" ]] && command -v python &>/dev/null && CODESCENE_PY=python
-  if [[ -z "$CODESCENE_PY" ]]; then
+  if ! find_python; then
     echo -e "  ${WARN} Python not found — skipping code health analysis"
     SKIP_CODESCENE=true
   fi
@@ -561,7 +547,7 @@ if [[ "$SKIP_CODESCENE" == "false" ]]; then
 
   printf "  ${CYAN}▶${RESET} %-48s" "CodeScene code health analysis"
   t0=$(date +%s)
-  cs_out=$("$CODESCENE_PY" "$CODESCENE_SCRIPT" "${CS_ARGS[@]}" 2>&1) && cs_rc=0 || cs_rc=$?
+  cs_out=$("$PY" "$CODESCENE_SCRIPT" "${CS_ARGS[@]}" 2>&1) && cs_rc=0 || cs_rc=$?
   elapsed=$(( $(date +%s) - t0 ))
 
   if [[ $cs_rc -eq 0 ]]; then
@@ -618,6 +604,52 @@ else
 fi
 
 echo ""
+
+# ── Generate Reports (--save-reports) ─────────────────────────────────────────
+if $OPT_SAVE_REPORTS; then
+  section "Reports"
+  mkdir -p "${REPO_ROOT}/reports"
+
+  # golangci-lint → JSON + HTML
+  if ! $OPT_SKIP_GO && command -v golangci-lint &>/dev/null; then
+    printf "  ${CYAN}▶${RESET} %-48s" "golangci-lint → reports/"
+    golangci-lint run \
+      --output.json.path "${REPO_ROOT}/reports/go-lint.json" \
+      --output.html.path "${REPO_ROOT}/reports/go-lint.html" \
+      --output.text.path /dev/null \
+      ./... 2>/dev/null || true
+    echo -e "${PASS} ${DIM}go-lint.json, go-lint.html${RESET}"
+  fi
+
+  # govulncheck → JSON
+  if ! $OPT_SKIP_GO && command -v govulncheck &>/dev/null; then
+    printf "  ${CYAN}▶${RESET} %-48s" "govulncheck → reports/"
+    govulncheck -format json ./... > "${REPO_ROOT}/reports/go-vulns.json" 2>/dev/null || true
+    echo -e "${PASS} ${DIM}go-vulns.json${RESET}"
+  fi
+
+  # ESLint → JSON
+  if ! $OPT_SKIP_FRONTEND && [[ -d "${FRONTEND_DIR:-}" ]]; then
+    printf "  ${CYAN}▶${RESET} %-48s" "eslint → reports/"
+    (cd "$FRONTEND_DIR" && npx eslint --format json -o "${REPO_ROOT}/reports/eslint.json" . 2>/dev/null) || true
+    echo -e "${PASS} ${DIM}eslint.json${RESET}"
+
+    printf "  ${CYAN}▶${RESET} %-48s" "npm audit → reports/"
+    (cd "$FRONTEND_DIR" && npm audit --json > "${REPO_ROOT}/reports/npm-audit.json" 2>/dev/null) || true
+    echo -e "${PASS} ${DIM}npm-audit.json${RESET}"
+  fi
+
+  # CodeScene → JSON
+  if find_python && ! $OPT_SKIP_CODESCENE && [[ -f "${SCRIPT_DIR}/codescene-check.py" ]]; then
+    printf "  ${CYAN}▶${RESET} %-48s" "code health → reports/"
+    "$PY" "${SCRIPT_DIR}/codescene-check.py" --all --json > "${REPO_ROOT}/reports/codescene.json" 2>/dev/null || true
+    echo -e "${PASS} ${DIM}codescene.json${RESET}"
+  fi
+
+  echo ""
+  echo -e "  Reports saved to: ${BOLD}${REPO_ROOT}/reports/${RESET}"
+  echo ""
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 TOTAL=$(( $(date +%s) - START_TIME ))

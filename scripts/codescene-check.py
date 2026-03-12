@@ -164,6 +164,27 @@ def filter_source_files(files: list[str]) -> tuple[list[str], list[str]]:
 
 # ── Go tool helpers ─────────────────────────────────────────────────────────
 
+def _extract_filepath(file_loc: str) -> str:
+    """Extract file path from gocyclo/gocognit output like 'path/file.go:42:1'.
+
+    Handles Windows drive letters: 'D:\\path\\file.go:42:1' where naive
+    split(':') would break on the drive letter colon.
+    """
+    # Check for Windows drive letter (e.g. "D:\...")
+    if len(file_loc) >= 2 and file_loc[1] == ':' and file_loc[0].isalpha():
+        # Split after the drive prefix, then strip line:col
+        rest = file_loc[2:]  # everything after "D:"
+        # Find the first colon that's a line number separator (after .go or .ts)
+        ext_pos = rest.rfind(".go:")
+        if ext_pos < 0:
+            ext_pos = rest.rfind(".ts:")
+        if ext_pos >= 0:
+            return file_loc[:2] + rest[:ext_pos + 3]  # include ".go" or ".ts"
+        return file_loc  # no line:col suffix
+    else:
+        return file_loc.split(":")[0]
+
+
 def find_go_tool(name: str, install_pkg: str) -> Optional[str]:
     """Find a Go tool in PATH, or auto-install it."""
     # Check PATH
@@ -225,7 +246,8 @@ def run_gocyclo(tool_path: str, files: list[str], repo_root: str) -> dict[str, d
     except (subprocess.CalledProcessError, FileNotFoundError):
         return {}
 
-    # Output format: "15 pkg FuncName path/to/file.go:42:1"
+    # Output format: "38 handlers (*Handler).UpdatePreferences api/handlers/auth.go:257:1"
+    # On Windows: "38 handlers (*Handler).Foo D:\path\file.go:257:1" (drive letter colon!)
     results: dict[str, dict[str, int]] = {}
     for line in output.splitlines():
         line = line.strip()
@@ -238,9 +260,13 @@ def run_gocyclo(tool_path: str, files: list[str], repo_root: str) -> dict[str, d
             cc = int(parts[0])
         except ValueError:
             continue
-        func_name = parts[2]
+        raw_name = parts[2]
+        # Strip receiver prefix: "(*Handler).Foo" -> "Foo", "Handler.Foo" -> "Foo"
+        func_name = raw_name.rsplit(".", 1)[-1] if "." in raw_name else raw_name
         # File path is the last part, may contain :line:col
-        file_part = parts[-1].split(":")[0]
+        # Handle Windows drive letters (e.g. "D:\path\file.go:42:1")
+        file_loc = parts[-1]
+        file_part = _extract_filepath(file_loc)
         # Normalize path
         if os.path.isabs(file_part):
             rel_path = os.path.relpath(file_part, repo_root).replace("\\", "/")
@@ -269,7 +295,7 @@ def run_gocognit(tool_path: str, files: list[str], repo_root: str) -> dict[str, 
     except (subprocess.CalledProcessError, FileNotFoundError):
         return {}
 
-    # Output format same as gocyclo: "15 pkg FuncName path/to/file.go:42:1"
+    # Output format same as gocyclo: "38 handlers (*Handler).Foo api/handlers/auth.go:257:1"
     results: dict[str, dict[str, int]] = {}
     for line in output.splitlines():
         line = line.strip()
@@ -282,8 +308,10 @@ def run_gocognit(tool_path: str, files: list[str], repo_root: str) -> dict[str, 
             cog = int(parts[0])
         except ValueError:
             continue
-        func_name = parts[2]
-        file_part = parts[-1].split(":")[0]
+        raw_name = parts[2]
+        func_name = raw_name.rsplit(".", 1)[-1] if "." in raw_name else raw_name
+        file_loc = parts[-1]
+        file_part = _extract_filepath(file_loc)
         if os.path.isabs(file_part):
             rel_path = os.path.relpath(file_part, repo_root).replace("\\", "/")
         else:
