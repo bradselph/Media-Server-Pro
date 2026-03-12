@@ -8,6 +8,7 @@ package receiver
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -300,16 +301,13 @@ func (m *Module) markStaleSlaves() {
 }
 
 // ValidateAPIKey reports whether the provided key is in the configured API key list.
-// TODO: Bug - API key comparison uses == (constant-time is not guaranteed).
-// An attacker can use timing side-channels to brute-force valid keys one
-// character at a time. Use crypto/subtle.ConstantTimeCompare() for each key
-// comparison.
+// Uses constant-time comparison to prevent timing side-channel attacks.
 func (m *Module) ValidateAPIKey(key string) bool {
 	if key == "" {
 		return false
 	}
 	for _, k := range m.config.Get().Receiver.APIKeys {
-		if k == key {
+		if subtle.ConstantTimeCompare([]byte(k), []byte(key)) == 1 {
 			return true
 		}
 	}

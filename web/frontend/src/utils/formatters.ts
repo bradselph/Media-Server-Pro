@@ -137,6 +137,16 @@ export function formatTitle(name: MediaFileName): string {
     return normalized.replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+/** Format a duration as a human-readable string (e.g. "1h 30m", "45m"). */
+export function formatDurationHuman(d: Duration): string {
+    const secs = d.seconds
+    if (!secs || secs <= 0) return '0m'
+    const h = Math.floor(secs / 3600)
+    const m = Math.floor((secs % 3600) / 60)
+    if (h > 0) return `${h}h ${m}m`
+    return `${m}m`
+}
+
 // fallback is returned when bytes is 0 or falsy.
 // IndexPage uses '0 B' (upload contexts); PlayerPage uses '—' (metadata display).
 export function formatFileSize(fs: FileSize, fallback = '—'): string {

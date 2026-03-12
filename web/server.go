@@ -22,7 +22,7 @@ var log = logger.New("web")
 func pathExcludedFromSPA(path string) bool {
 	excludedPrefixes := []string{
 		"/api/", "/web/static/", "/media", "/download", "/thumbnail", "/thumbnails/", "/hls/", "/remote/",
-		"/extractor/", "/health", "/metrics",
+		"/extractor/", "/ws/", "/health", "/metrics",
 	}
 	for _, prefix := range excludedPrefixes {
 		if strings.HasPrefix(path, prefix) {

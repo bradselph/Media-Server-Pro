@@ -6,7 +6,7 @@ import {useQueryClient} from '@tanstack/react-query'
 import {authApi, permissionsApi as permApi, preferencesApi, storageApi, watchHistoryApi} from '@/api/endpoints'
 import {ApiError} from '@/api/client'
 import {useToast} from '@/hooks/useToast'
-import {formatTitle} from '@/utils/formatters'
+import {formatDurationHuman, formatTitle} from '@/utils/formatters'
 import type {PermissionsInfo, StorageUsage, User, UserPreferences, WatchHistoryEntry} from '@/api/types'
 import '@/styles/profile.css'
 
@@ -18,22 +18,6 @@ function formatDate(timestamp: string | undefined): string {
     return date.toLocaleDateString(undefined, {year: 'numeric', month: 'long', day: 'numeric'})
 }
 
-// TODO: Duplicate — this local `formatDuration` duplicates the shared version in
-// `@/utils/formatters.ts` (which uses the Duration value object pattern).
-// A similar duplicate also exists in `MediaTab.tsx`.
-// WHY: Three copies of duration formatting create maintenance burden and inconsistent
-// output formats ('0m' here vs '0:00' in formatters.ts vs '—' in MediaTab.tsx).
-// FIX: Import and use `formatDuration` from `@/utils/formatters.ts`, wrapping the
-// raw seconds value: `formatDuration({ seconds })`. If the human-readable format
-// ('1h 30m') is intentionally different from the clock format ('1:30:00'), create a
-// separate named export like `formatDurationHuman` in formatters.ts.
-function formatDuration(seconds: number): string {
-    if (!seconds || seconds <= 0) return '0m'
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    if (h > 0) return `${h}h ${m}m`
-    return `${m}m`
-}
 
 function getStorageBarColor(percentage: number): string {
     if (percentage > 90) return '#ef4444'
@@ -533,7 +517,7 @@ function ProfileWatchHistoryCard({
                                         {displayMediaName(entry)}
                                     </Link>
                                     <span className="history-meta">
-                                        {formatDuration(entry.duration)} &middot; {Math.round(entry.progress * 100)}% watched
+                                        {formatDurationHuman({ seconds: entry.duration })} &middot; {Math.round(entry.progress * 100)}% watched
                                     </span>
                                 </div>
                                 <span className="history-date">{formatDate(entry.watched_at)}</span>

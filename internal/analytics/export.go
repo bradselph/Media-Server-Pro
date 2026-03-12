@@ -21,11 +21,7 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 		return "", fmt.Errorf("failed to fetch events: %w", err)
 	}
 
-	dir := m.config.Get().Directories.Analytics
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create analytics directory: %w", err)
-	}
-	filename := filepath.Join(dir, fmt.Sprintf("export_%s.csv", time.Now().Format("20060102_150405")))
+	filename := filepath.Join(m.config.Get().Directories.Analytics, fmt.Sprintf("export_%s.csv", time.Now().Format("20060102_150405")))
 	file, err := os.Create(filename)
 	if err != nil {
 		return "", fmt.Errorf("failed to create export file: %w", err)
