@@ -58,24 +58,21 @@ func isTrustedProxy(remoteAddr string) bool {
 	return false
 }
 
-// TODO: Bug — GinRequestID does not honor an existing X-Request-ID header from the
-// client or upstream proxy. In distributed systems, it is standard practice to
-// propagate an incoming X-Request-ID if present, and only generate a new one if
-// absent. This breaks request tracing across services (e.g. a load balancer sets
-// X-Request-ID, but this middleware overwrites it with a local counter).
-
 // GinRequestID adds a unique request ID to each request via X-Request-ID header.
+// If the client or upstream proxy sends X-Request-ID, it is propagated; otherwise a new ID is generated.
 // The request ID is stored in:
 //   - Gin context (c.Set) for handler access
 //   - c.Request.Context() for framework-agnostic module access via logger.RequestIDFromContext
 func GinRequestID() gin.HandlerFunc {
 	var counter uint64
 	return func(c *gin.Context) {
-		id := atomic.AddUint64(&counter, 1)
-		requestID := fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" {
+			id := atomic.AddUint64(&counter, 1)
+			requestID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
+			c.Header("X-Request-ID", requestID)
+		}
 		c.Set(string(RequestIDKey), requestID)
-		c.Header("X-Request-ID", requestID)
-		// Also store in request context so modules can extract it via logger.RequestIDFromContext
 		c.Request = c.Request.WithContext(logger.ContextWithRequestID(c.Request.Context(), requestID))
 		c.Next()
 	}

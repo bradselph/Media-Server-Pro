@@ -124,10 +124,10 @@ func computeAdminListTotalPages(totalItems int64, limit int) int {
 	return n
 }
 
-// TODO: enrichAdminListThumbnails calls h.thumbnails methods without a nil check.
-// The thumbnails module is optional and can be nil. This will panic if thumbnails are
-// disabled. Should guard with "if h.thumbnails == nil { return }".
 func (h *Handler) enrichAdminListThumbnails(items []*models.MediaItem) {
+	if h.thumbnails == nil {
+		return
+	}
 	for _, item := range items {
 		if item.ThumbnailURL != "" {
 			continue
@@ -297,12 +297,6 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 		return
 	}
 
-	// TODO: The audit log always records UserID/Username as "admin" instead of using the
-	// actual admin user's session info. This means audit logs cannot distinguish between
-	// different admin users. Should extract the session and use session.UserID/session.Username.
-	// This same issue exists in AdminDeleteMedia, AdminBulkMedia, AdminUpdateConfig,
-	// RestartServer, ShutdownServer, AdminCreateUser, AdminDeleteUser, AdminChangePassword,
-	// AdminChangeOwnPassword, AdminBulkUsers, and other admin handlers.
 	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "update_media", Target: path})
 
 	updatedItem, getErr := h.media.GetMedia(path)

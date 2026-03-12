@@ -11,46 +11,37 @@ import (
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
-// getMediaDuration uses ffmpeg-go's Probe to get media duration in seconds.
-// TODO: Bug - ffmpeg.ProbeWithTimeout does not use the provided ctx parameter
-// for cancellation. The method accepts a ctx but passes a hardcoded 15-second
-// timeout to ProbeWithTimeout instead. If ctx is cancelled (e.g. during shutdown),
-// ProbeWithTimeout continues for up to 15 seconds. Use exec.CommandContext
-// directly (as the fallback path does) to honor the parent context.
+// getMediaDuration uses ffprobe to get media duration in seconds. Prefers the context-aware
+// exec path when ffprobePath is set so ctx cancellation (e.g. shutdown) is honored.
 func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64 {
 	if m.ffprobePath == "" && m.ffmpegPath == "" {
 		return 0
 	}
 
-	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaPath, 15*time.Second, nil)
-	if err == nil {
-		duration := m.parseProbeDuration(probeJSON)
-		if duration > 0 {
-			return duration
+	if m.ffprobePath != "" {
+		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(probeCtx, m.ffprobePath,
+			"-v", "quiet",
+			"-print_format", "json",
+			"-show_format",
+			mediaPath,
+		)
+		output, err := cmd.Output()
+		if err == nil {
+			if d := m.parseProbeDuration(string(output)); d > 0 {
+				return d
+			}
+		} else {
+			m.log.Debug("Failed to probe media duration: %v", err)
 		}
 	}
-	m.log.Debug("ffmpeg-go probe failed, trying raw ffprobe: %v", err)
-
-	if m.ffprobePath == "" {
-		return 0
-	}
-
-	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(probeCtx, m.ffprobePath,
-		"-v", "quiet",
-		"-print_format", "json",
-		"-show_format",
-		mediaPath,
-	)
-	output, err := cmd.Output()
+	// Fallback when ffprobePath is unset or context path failed (no ctx cancellation in fallback)
+	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaPath, 15*time.Second, nil)
 	if err != nil {
-		m.log.Debug("Failed to probe media duration: %v", err)
 		return 0
 	}
-
-	return m.parseProbeDuration(string(output))
+	return m.parseProbeDuration(probeJSON)
 }
 
 func (m *Module) parseProbeDuration(probeJSON string) float64 {

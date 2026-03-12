@@ -28,18 +28,17 @@ func (h *Handler) GetHealth(c *gin.Context) {
 		name   string
 		health func() models.HealthStatus
 	}
-	// TODO: h.security and h.tasks are optional modules (in HandlerOptionalDeps) and can be nil.
-	// Accessing .Health on a nil pointer will panic. h.security is nil-checked in GetMetrics
-	// (line 134/185) but NOT here. h.tasks is also optional per CLAUDE.md but is always assumed
-	// non-nil here. Either add nil checks, or move these to the core deps and enforce non-nil
-	// in NewHandler.
 	critical := []moduleEntry{
 		{"database", h.database.Health},
 		{"auth", h.auth.Health},
 		{"media", h.media.Health},
 		{"streaming", h.streaming.Health},
-		{"security", h.security.Health},
-		{"tasks", h.tasks.Health},
+	}
+	if h.security != nil {
+		critical = append(critical, moduleEntry{"security", h.security.Health})
+	}
+	if h.tasks != nil {
+		critical = append(critical, moduleEntry{"tasks", h.tasks.Health})
 	}
 
 	modules := make(map[string]string, len(critical))

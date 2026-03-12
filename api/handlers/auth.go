@@ -606,7 +606,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if h.auth.VerifyPassword(user.Username, req.CurrentPassword) != nil {
+	if h.auth.VerifyPassword(c.Request.Context(), user.Username, req.CurrentPassword) != nil {
 		writeError(c, http.StatusUnauthorized, "Current password is incorrect")
 		return
 	}
@@ -646,7 +646,7 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	if h.auth.VerifyPassword(user.Username, req.Password) != nil {
+	if h.auth.VerifyPassword(c.Request.Context(), user.Username, req.Password) != nil {
 		writeError(c, http.StatusUnauthorized, "Incorrect password")
 		return
 	}

@@ -321,14 +321,20 @@ type adminLogActionParams struct {
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
 // is best-effort — if the admin module is unavailable the action is silently
 // skipped so that the primary operation (user create, media delete, etc.) still
-// succeeds.
+// succeeds. Uses the session user when available so audit logs distinguish admins.
 func (h *Handler) logAdminAction(c *gin.Context, p *adminLogActionParams) {
-	if h.admin != nil {
-		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
-			UserID: p.UserID, Username: p.Username, Action: p.Action, Resource: p.Target,
-			Details: p.Details, IPAddress: c.ClientIP(), Success: true,
-		})
+	if h.admin == nil {
+		return
 	}
+	userID, username := p.UserID, p.Username
+	if session := getSession(c); session != nil {
+		userID = session.UserID
+		username = session.Username
+	}
+	h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+		UserID: userID, Username: username, Action: p.Action, Resource: p.Target,
+		Details: p.Details, IPAddress: c.ClientIP(), Success: true,
+	})
 }
 
 // adminLogResultParams groups arguments for logAdminActionResult to avoid excess parameters.
@@ -343,12 +349,18 @@ type adminLogResultParams struct {
 
 // logAdminActionResult is like logAdminAction but lets the caller specify success/failure.
 func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) {
-	if h.admin != nil {
-		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
-			UserID: p.UserID, Username: p.Username, Action: p.Action, Resource: p.Target,
-			Details: p.Details, IPAddress: c.ClientIP(), Success: p.Success,
-		})
+	if h.admin == nil {
+		return
 	}
+	userID, username := p.UserID, p.Username
+	if session := getSession(c); session != nil {
+		userID = session.UserID
+		username = session.Username
+	}
+	h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+		UserID: userID, Username: username, Action: p.Action, Resource: p.Target,
+		Details: p.Details, IPAddress: c.ClientIP(), Success: p.Success,
+	})
 }
 
 // resolveAndValidatePath resolves a file path against allowed directories, prevents path

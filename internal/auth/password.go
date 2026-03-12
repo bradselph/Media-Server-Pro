@@ -10,13 +10,8 @@ import (
 	"media-server-pro/internal/config"
 )
 
-// UpdatePassword updates a user's password
-// TODO: Race condition — the user pointer obtained under RLock is the same pointer stored
-// in the map. Between RUnlock and the subsequent Lock, another goroutine could modify the
-// user (e.g., UpdateUser or another UpdatePassword). The old password check uses stale
-// local copies (currentHash/currentSalt) which is correct, but the write modifies the
-// shared pointer directly. Should make a copy of the user before modifying, similar to
-// how UpdateUser does `userCopy := *user`.
+// UpdatePassword updates a user's password. Holds the write lock only while updating
+// in-memory fields and re-checks that the stored hash is unchanged to avoid races.
 func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newPassword string) error {
 	if len(newPassword) < 8 {
 		return fmt.Errorf("password must be at least 8 characters")
@@ -43,6 +38,11 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 	}
 
 	m.usersMu.Lock()
+	user, exists = m.users[username]
+	if !exists || user.PasswordHash != currentHash {
+		m.usersMu.Unlock()
+		return ErrUserNotFound
+	}
 	user.PasswordHash = string(hash)
 	user.Salt = salt
 	m.usersMu.Unlock()
@@ -116,22 +116,12 @@ func (m *Module) ChangeAdminPassword(_ context.Context, currentPassword, newPass
 	return nil
 }
 
-// VerifyPassword verifies a user's password without creating a session
-// TODO: Bug — unlike Authenticate, VerifyPassword does not use the cache-refresh
-// pattern (verifyPasswordWithCacheRefresh). If the user changed their password via
-// another server instance, VerifyPassword will reject the new password because it
-// only checks the cached hash. Should fall back to DB like Authenticate does.
-func (m *Module) VerifyPassword(username, password string) error {
-	m.usersMu.RLock()
-	user, exists := m.users[username]
-	m.usersMu.RUnlock()
-
-	if !exists {
+// VerifyPassword verifies a user's password without creating a session.
+// Uses the same cache-refresh as Authenticate so password changes from another instance are visible.
+func (m *Module) VerifyPassword(ctx context.Context, username, password string) error {
+	user, err := m.getOrLoadUser(ctx, username)
+	if err != nil || user == nil {
 		return ErrUserNotFound
 	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password+user.Salt)); err != nil {
-		return ErrInvalidCredentials
-	}
-	return nil
+	return m.verifyPasswordWithCacheRefresh(ctx, user, &creds{Username: username, Password: password})
 }

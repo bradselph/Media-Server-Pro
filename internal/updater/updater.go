@@ -46,7 +46,6 @@ type Module struct {
 	mu             sync.RWMutex
 	lastCheck      *UpdateCheckResult
 	checkTicker    *time.Ticker
-	checkDone      chan struct{}
 	backupDir      string
 	currentVersion string
 
@@ -61,6 +60,10 @@ type Module struct {
 	// the HTTP handler, so we need our own guard separate from buildMu.
 	applyMu      sync.Mutex
 	applyRunning bool
+
+	stopOnce   sync.Once
+	checkDone  chan struct{} // closed in Stop to signal checkLoop to exit
+	checkExited chan struct{} // closed by checkLoop when it exits
 }
 
 // UpdateCheckResult holds the result of an update check
@@ -101,14 +104,14 @@ type GitHubRelease struct {
 	Draft      bool `json:"draft"`
 }
 
+// DefaultVersion is the fallback when no version is supplied via ldflags; must match server default.
+const DefaultVersion = "4.0.0"
+
 // NewModule creates a new updater module. version should be the build-time version
-// string (e.g. from -ldflags), falling back to "3.0.0" if empty.
-// TODO: The fallback version "3.0.0" is stale — server.go uses "4.0.0" as its default.
-// These should be consistent. Consider using a shared constant or always requiring
-// the version parameter.
+// string (e.g. from -ldflags), falling back to DefaultVersion if empty.
 func NewModule(cfg *config.Manager, version string) *Module {
 	if version == "" {
-		version = "3.0.0"
+		version = DefaultVersion
 	}
 	return &Module{
 		config:         cfg,
@@ -117,8 +120,9 @@ func NewModule(cfg *config.Manager, version string) *Module {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		checkDone: make(chan struct{}),
-		backupDir: filepath.Join(cfg.Get().Directories.Data, "backups", "updates"),
+		checkDone:   make(chan struct{}),
+		checkExited: make(chan struct{}),
+		backupDir:   filepath.Join(cfg.Get().Directories.Data, "backups", "updates"),
 	}
 }
 
@@ -192,19 +196,19 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
-// Stop gracefully stops the module
-// TODO: Stop does not wait for the checkLoop goroutine to exit after closing checkDone.
-// Also, if Stop is called twice, close(m.checkDone) will panic on the second call.
-// Should use sync.Once or set checkDone to nil after closing. Additionally, the initial
-// update check goroutine (started in Start) is not tracked and may still be running
-// when Stop returns.
+// Stop gracefully stops the module. It stops the ticker, signals checkLoop to exit,
+// and waits for checkLoop to finish. Safe to call multiple times (sync.Once).
+// The initial update check goroutine started in Start is not awaited and may still run after return.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping updater module...")
 
-	if m.checkTicker != nil {
-		m.checkTicker.Stop()
+	m.stopOnce.Do(func() {
+		if m.checkTicker != nil {
+			m.checkTicker.Stop()
+		}
 		close(m.checkDone)
-	}
+		<-m.checkExited
+	})
 
 	m.healthMu.Lock()
 	m.healthy = false
@@ -227,6 +231,7 @@ func (m *Module) Health() models.HealthStatus {
 
 // checkLoop periodically checks for updates
 func (m *Module) checkLoop() {
+	defer close(m.checkExited)
 	for {
 		select {
 		case <-m.checkTicker.C:

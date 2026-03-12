@@ -264,10 +264,6 @@ func (m *Module) applyBasicUserUpdates(user *models.User, updates map[string]int
 }
 
 // applyPasswordUpdateFromMap updates user password hash and salt if a non-empty password is present.
-// TODO: Bug — on bcrypt hash failure, this returns nil (no error) silently. The caller
-// has no way to know the password was NOT updated. The comment says "preserve prior behavior"
-// but this is a silent failure that could lead to security issues — an admin thinks they've
-// set a new password but the old one remains active. Should return the error.
 func (m *Module) applyPasswordUpdateFromMap(user *models.User, passwordVal interface{}) error {
 	password, ok := passwordVal.(string)
 	if !ok || password == "" {
@@ -279,7 +275,7 @@ func (m *Module) applyPasswordUpdateFromMap(user *models.User, passwordVal inter
 	salt := generateSalt()
 	hash, err := bcrypt.GenerateFromPassword([]byte(password+salt), bcrypt.DefaultCost)
 	if err != nil {
-		return nil // preserve prior behavior: ignore hash failure, do not overwrite
+		return fmt.Errorf("failed to hash password: %w", err)
 	}
 	user.PasswordHash = string(hash)
 	user.Salt = salt

@@ -7,17 +7,21 @@ import (
 )
 
 // AdminListTasks returns scheduled tasks
-// TODO: h.tasks is an optional module but is accessed without a nil check. If the tasks
-// module failed to initialize, this will panic. Should add a requireModule guard or check
-// for nil. The same issue applies to AdminRunTask, AdminEnableTask, AdminDisableTask, and
-// AdminStopTask below.
 func (h *Handler) AdminListTasks(c *gin.Context) {
+	if h.tasks == nil {
+		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		return
+	}
 	taskList := h.tasks.ListTasks()
 	writeSuccess(c, taskList)
 }
 
 // AdminRunTask runs a task immediately
 func (h *Handler) AdminRunTask(c *gin.Context) {
+	if h.tasks == nil {
+		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		return
+	}
 	taskID := c.Param("id")
 
 	if err := h.tasks.RunNow(taskID); err != nil {
@@ -30,6 +34,10 @@ func (h *Handler) AdminRunTask(c *gin.Context) {
 
 // AdminEnableTask enables a background task
 func (h *Handler) AdminEnableTask(c *gin.Context) {
+	if h.tasks == nil {
+		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		return
+	}
 	taskID := c.Param("id")
 
 	if err := h.tasks.EnableTask(taskID); err != nil {
@@ -42,6 +50,10 @@ func (h *Handler) AdminEnableTask(c *gin.Context) {
 
 // AdminDisableTask disables a background task
 func (h *Handler) AdminDisableTask(c *gin.Context) {
+	if h.tasks == nil {
+		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		return
+	}
 	taskID := c.Param("id")
 
 	if err := h.tasks.DisableTask(taskID); err != nil {
@@ -54,6 +66,10 @@ func (h *Handler) AdminDisableTask(c *gin.Context) {
 
 // AdminStopTask force-cancels a running task without disabling future runs
 func (h *Handler) AdminStopTask(c *gin.Context) {
+	if h.tasks == nil {
+		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		return
+	}
 	taskID := c.Param("id")
 
 	if err := h.tasks.StopTask(taskID); err != nil {

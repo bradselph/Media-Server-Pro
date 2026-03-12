@@ -203,11 +203,12 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 		m.log.Warn("RecordDuplicatesFromSlave: failed to store record: %v", err)
 		return false
 	}
-	// TODO: Bug — item.ContentFingerprint[:8] will panic if the fingerprint string is
-	// shorter than 8 characters. While SHA-256 fingerprints are 64 hex chars, corrupted
-	// or placeholder data could be shorter. Should guard with a length check.
+	fpPreview := item.ContentFingerprint
+	if len(fpPreview) > 8 {
+		fpPreview = fpPreview[:8]
+	}
 	m.log.Info("Receiver duplicate detected: %q (slave %s) ↔ %q (slave %s) [fp=%s…]",
-		item.Name, slaveID, existing.Name, existing.SlaveID, item.ContentFingerprint[:8])
+		item.Name, slaveID, existing.Name, existing.SlaveID, fpPreview)
 	return true
 }
 

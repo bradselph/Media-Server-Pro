@@ -66,11 +66,6 @@ func (m *Module) ClearWatchHistory(ctx context.Context, username string) error {
 }
 
 // RemoveWatchHistoryItem removes a single item from a user's watch history by media path
-// TODO: Bug — `user.WatchHistory[:0]` reuses the underlying array. This means `updated`
-// shares memory with the original slice. While this works correctly in practice (the loop
-// only appends items that don't match, so the length is always <= original), it may cause
-// subtle issues if the WatchHistory slice is concurrently read by GetWatchHistory which
-// does NOT copy the data (see TODO on GetWatchHistory).
 func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath string) error {
 	m.usersMu.Lock()
 
@@ -80,7 +75,7 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 		return ErrUserNotFound
 	}
 
-	updated := user.WatchHistory[:0]
+	updated := make([]models.WatchHistoryItem, 0, len(user.WatchHistory))
 	for _, item := range user.WatchHistory {
 		if item.MediaPath != mediaPath {
 			updated = append(updated, item)
@@ -97,10 +92,7 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 	return nil
 }
 
-// GetWatchHistory returns a user's watch history
-// TODO: Bug — returns the internal WatchHistory slice directly without copying. Callers
-// can append to or modify the returned slice, mutating the user's internal state without
-// proper locking. Should return a copy of the slice.
+// GetWatchHistory returns a copy of a user's watch history so callers cannot mutate internal state.
 func (m *Module) GetWatchHistory(username string) ([]models.WatchHistoryItem, error) {
 	m.usersMu.RLock()
 	defer m.usersMu.RUnlock()
@@ -109,5 +101,10 @@ func (m *Module) GetWatchHistory(username string) ([]models.WatchHistoryItem, er
 	if !exists {
 		return nil, ErrUserNotFound
 	}
-	return user.WatchHistory, nil
+	if len(user.WatchHistory) == 0 {
+		return nil, nil
+	}
+	out := make([]models.WatchHistoryItem, len(user.WatchHistory))
+	copy(out, user.WatchHistory)
+	return out, nil
 }

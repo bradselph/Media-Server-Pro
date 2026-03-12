@@ -19,10 +19,6 @@ func (h *Handler) AdminListUsers(c *gin.Context) {
 }
 
 // AdminCreateUser creates a user
-// TODO: The Role field is accepted from the request without validation. An admin could
-// pass an arbitrary role string (e.g., "superadmin") that may be stored but not recognized,
-// leading to undefined behavior in permission checks. Should validate against known roles
-// (models.RoleAdmin, models.RoleViewer, etc.).
 func (h *Handler) AdminCreateUser(c *gin.Context) {
 	var req struct {
 		Username string          `json:"username"`
@@ -50,6 +46,9 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 	if len(req.Password) < 8 {
 		writeError(c, http.StatusBadRequest, "Password must be at least 8 characters")
 		return
+	}
+	if req.Role != models.RoleAdmin && req.Role != models.RoleViewer {
+		req.Role = models.RoleViewer
 	}
 
 	if req.Type == "" {
@@ -90,12 +89,7 @@ func (h *Handler) AdminGetUser(c *gin.Context) {
 	writeSuccess(c, user)
 }
 
-// AdminUpdateUser updates a user's details
-// TODO: The user being updated could be the built-in "admin" account. An admin could
-// set another admin's role to "viewer" or disable themselves by passing their own
-// username. While AdminDeleteUser prevents self-deletion, AdminUpdateUser allows
-// self-demotion/self-disabling which could lock the admin out. Should add a guard
-// against demoting the last admin account.
+// AdminUpdateUser updates a user's details. Prevents demoting or disabling the last admin.
 func (h *Handler) AdminUpdateUser(c *gin.Context) {
 	username := c.Param("username")
 
@@ -109,6 +103,32 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
+	demotingToViewer := req.Role == string(models.RoleViewer)
+	disabling := req.Enabled != nil && !*req.Enabled
+	if demotingToViewer || disabling {
+		user, err := h.auth.GetUser(c.Request.Context(), username)
+		if err != nil {
+			writeError(c, http.StatusNotFound, errUserNotFound)
+			return
+		}
+		if user.Role == models.RoleAdmin {
+			users := h.auth.ListUsers(c.Request.Context())
+			adminCount := 0
+			for _, u := range users {
+				if u.Role == models.RoleAdmin && u.Enabled {
+					adminCount++
+				}
+			}
+			if adminCount <= 1 {
+				writeError(c, http.StatusBadRequest, "Cannot demote or disable the last admin account")
+				return
+			}
+		}
+	}
+	if req.Role != "" && req.Role != string(models.RoleAdmin) && req.Role != string(models.RoleViewer) {
+		req.Role = string(models.RoleViewer)
+	}
+
 	updates := map[string]interface{}{}
 	if req.Role != "" {
 		updates["role"] = req.Role
