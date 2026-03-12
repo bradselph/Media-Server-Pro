@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.83.0] - 2026-03-12 (minor)
+
+- Merge pull request #81 from bradselph/development
+- Refactor admin handlers for improved modularity and clarity
+- Refactor admin media handling and enhance receiver API security
+- Update analysis scripts and improve report generation
+- Refactor playlist handling and enhance upload functionality
+- Refactor suggestion handling in API to improve limit parsing and response structure
+- Enhance media resolution logic and update API endpoints
+- Implement preview hover functionality and refactor thumbnail handling in MediaCard component
+- Refactor LoginPage component for improved readability and functionality
+- Enhance ESLint configuration and refactor player keyboard hook
+- Refactor usePlayerPageState.ts to improve media query handling and HLS checks
+- Update usePlayerPageState.ts
+- Update usePlayerPageState.ts
+- Update playerKeyboard.ts
+- Add MediaCardThumbnailBlock and MediaCardMatureOverlay components for enhanced media display
+- Refactor formatting utilities to use value objects for improved type safety
+- Update TypeScript configuration for improved build performance and compatibility
+- Fix bandwidth null check in PlayerSettingsPanel and update error handling type in useHLS hook
+- Enhance project structure and linting capabilities
+- Refactor request handling in admin handlers for improved clarity and maintainability
+- Refactor admin handlers for improved request handling and configuration mapping
+- Refactor admin classification handlers to improve path resolution and logging
+- Admin: Hugging Face tab — view status, run classification, edit settings
+- feat: integrate Hugging Face visual classification support
+
+
 ## [0.82.0] - 2026-03-11 (minor)
 
 - Merge pull request #80 from bradselph/development
