@@ -60,8 +60,7 @@ function syncPlaylistIndex(params: PlaylistSyncParams): void {
 function shouldResumeAtPosition(params: ResumeCheckParams): boolean {
     const { element: el, position: pos } = params
     if (pos <= 5 || el.readyState < 1 || el.duration <= 0) return false
-    if (pos >= el.duration - 5 || el.currentTime >= 2) return false
-    return true
+    return pos < el.duration - 5 && el.currentTime < 2
 }
 
 /** Syncs user quality/preference and playlist index. Reduces main hook complexity. */
@@ -651,7 +650,7 @@ function usePlayerEffects(
     useEffect(() => {
         if (!mediaId || !media || !media.id || (media.is_mature && !matureAccessGranted)) return
         const mediaWithId = media as { id: string; type: string; is_mature?: boolean }
-        const cleanup = runMediaSourceSetup(
+        return runMediaSourceSetup(
             mediaId,
             mediaWithId,
             videoRef,
@@ -674,7 +673,6 @@ function usePlayerEffects(
             },
             resumePositionRef,
         )
-        return cleanup
     }, [mediaId, media, matureAccessGranted]) // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
