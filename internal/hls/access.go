@@ -13,6 +13,12 @@ type AccessTracker struct {
 
 // RecordAccess records an access to an HLS job and persists the timestamp
 // so that access times survive restarts.
+// TODO: Race condition - job.LastAccessedAt is modified without holding jobsMu
+// write lock. The RLock only prevents the map from being modified but does not
+// prevent concurrent writes to the job struct itself. Two concurrent RecordAccess
+// calls could race on job.LastAccessedAt. Also, saveJob is called on every access
+// which could be a performance issue under high traffic; consider debouncing the
+// DB write (e.g. only persist if last save was >30s ago).
 func (m *Module) RecordAccess(jobID string) {
 	now := time.Now()
 	m.accessTracker.mu.Lock()

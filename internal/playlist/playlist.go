@@ -224,6 +224,12 @@ func (m *Module) UpdatePlaylist(ctx context.Context, id PlaylistID, userID UserI
 
 	playlist.ModifiedAt = time.Now()
 
+	// TODO: Bug - if the DB update fails, the error is logged but the in-memory
+	// changes are kept and nil is returned to the caller. This creates an inconsistency
+	// where the in-memory state diverges from the DB. On restart, the old DB values will
+	// be loaded, silently reverting the user's changes. The same pattern exists in
+	// DeletePlaylist, AddItem, RemoveItem, and ClearPlaylist. These should either
+	// return the error or roll back the in-memory change.
 	if err := m.playlistRepo.Update(ctx, playlist); err != nil {
 		m.log.Error("Failed to update playlist in database: %v", err)
 	}
@@ -297,6 +303,10 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 		return ErrAccessDenied
 	}
 
+	// TODO: Bug - duplicate check uses MediaPath but does not also check MediaID.
+	// If the same media file is added with different paths (e.g. symlinks or
+	// after a file move), duplicates can slip through. Consider checking
+	// MediaID as well, or at minimum document that path-based dedup is intentional.
 	// Check if already in playlist
 	for _, item := range playlist.Items {
 		if item.MediaPath == input.MediaPath {
@@ -347,6 +357,12 @@ func (m *Module) removeItemLocked(ctx context.Context, playlistID PlaylistID, us
 	m.log.Debug("Removed item from playlist %s: %s", string(playlistID), mediaPath)
 	return nil
 }
+
+// TODO: Redundant code - getPlaylistAndFilterItemLocked and doGetPlaylistAndFilterItemLocked
+// are trivial wrappers that each just delegate to the next function in a 3-layer chain:
+// getPlaylistAndFilterItemLocked -> doGetPlaylistAndFilterItemLocked -> resolvePlaylistAndFilterItemByPath.
+// All three methods have identical signatures and zero added logic. Collapse into a single
+// method (resolvePlaylistAndFilterItemByPath) and call it directly from removeItemLocked.
 
 // getPlaylistAndFilterItemLocked resolves playlist, removes the item by mediaPath from DB and returns new slice. Caller must hold m.mu.
 func (m *Module) getPlaylistAndFilterItemLocked(ctx context.Context, playlistID PlaylistID, userID UserID, mediaPath string) (*models.Playlist, []models.PlaylistItem, error) {
@@ -510,6 +526,11 @@ func (m *Module) CopyPlaylist(ctx context.Context, sourceID PlaylistID, userID U
 		return nil, fmt.Errorf("failed to create playlist: %w", err)
 	}
 
+	// TODO: Bug - if AddItem fails for some items in the middle, the playlist is
+	// left in a partially-copied state in the DB but the in-memory cache has all items.
+	// On restart, the DB state (partial) is loaded, losing items that failed to persist.
+	// Consider using a transaction for atomic copy, or at minimum return an error if
+	// any item fails to persist.
 	for _, item := range items {
 		item.PlaylistID = newPlaylist.ID
 		item.ID = uuid.New().String()

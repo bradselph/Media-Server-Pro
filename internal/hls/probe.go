@@ -12,6 +12,11 @@ import (
 )
 
 // getMediaDuration uses ffmpeg-go's Probe to get media duration in seconds.
+// TODO: Bug - ffmpeg.ProbeWithTimeout does not use the provided ctx parameter
+// for cancellation. The method accepts a ctx but passes a hardcoded 15-second
+// timeout to ProbeWithTimeout instead. If ctx is cancelled (e.g. during shutdown),
+// ProbeWithTimeout continues for up to 15 seconds. Use exec.CommandContext
+// directly (as the fallback path does) to honor the parent context.
 func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64 {
 	if m.ffprobePath == "" && m.ffmpegPath == "" {
 		return 0

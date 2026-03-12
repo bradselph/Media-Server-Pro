@@ -97,6 +97,10 @@ func (s *slaveWS) sendJSON(msgType string, data interface{}) error {
 	return s.conn.WriteJSON(msg)
 }
 
+// TODO: Bug - CheckOrigin always returns true, which is appropriate for slave
+// WebSocket connections, but the comment should note that API key authentication
+// (validated at the top of HandleWebSocket) provides the actual access control.
+// If the WS endpoint is ever exposed without the API key gate, this is an open relay.
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
@@ -129,6 +133,11 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		done: make(chan struct{}),
 	}
 
+	// TODO: Bug - SetReadDeadline errors are silently ignored throughout this
+	// function. While unlikely to fail, if SetReadDeadline returns an error,
+	// the connection may timeout prematurely or never timeout. Also, the
+	// 60-second read deadline and 25-second ping interval are hardcoded;
+	// they should derive from config (e.g. Receiver.HealthCheck interval).
 	// Configure keep-alive via ping/pong
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(string) error {
@@ -327,6 +336,14 @@ func (m *Module) DeliverStream(token string) (*PendingStream, bool) {
 }
 
 // cleanupStalePending removes pending streams older than 30 seconds.
+// TODO: Bug - closing ps.Ready may panic if proxyViaWS has already received on
+// the channel and the channel is buffered with capacity 1. Closing an already-
+// drained channel is safe, but if proxyViaWS times out and also closes the
+// Ready channel (it doesn't currently, but the pattern is fragile), a double-
+// close would panic. Consider using a sync.Once to guard the close, or simply
+// let stale pending streams be garbage collected after the timeout in proxyViaWS.
+// Also, the 30-second threshold is hardcoded and should match or exceed
+// the ProxyTimeout config value; currently they could diverge.
 func (m *Module) cleanupStalePending() {
 	m.pendingMu.Lock()
 	defer m.pendingMu.Unlock()

@@ -183,6 +183,11 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop implements server.Module.
+// TODO: Incomplete feature - Stop does not close active WebSocket connections.
+// Connected slaves continue sending heartbeats and catalog pushes to a stopped
+// module. Should iterate m.wsConns and close each connection, and drain
+// m.pendingStreams by closing their Ready channels. The healthCheckLoop goroutine
+// is correctly stopped via healthDone, but wsConns cleanup is missing.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping receiver module...")
 	if m.healthTicker != nil {
@@ -295,6 +300,10 @@ func (m *Module) markStaleSlaves() {
 }
 
 // ValidateAPIKey reports whether the provided key is in the configured API key list.
+// TODO: Bug - API key comparison uses == (constant-time is not guaranteed).
+// An attacker can use timing side-channels to brute-force valid keys one
+// character at a time. Use crypto/subtle.ConstantTimeCompare() for each key
+// comparison.
 func (m *Module) ValidateAPIKey(key string) bool {
 	if key == "" {
 		return false
@@ -457,6 +466,10 @@ func (m *Module) Heartbeat(slaveID string) error {
 	m.mu.Unlock()
 
 	// Debounce: only write to DB if the last persist was >60s ago
+	// TODO: Race condition - node is read outside the lock here. Between m.mu.Unlock()
+	// and this point, another goroutine could modify node's fields (e.g. a concurrent
+	// PushCatalog changing MediaCount). nodeToSlaveRecord copies the current state, but
+	// the state may be inconsistent. Consider snapshotting the record under the lock.
 	if time.Since(prevLastSeen) < 60*time.Second {
 		return nil
 	}
@@ -617,6 +630,11 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 		m.log.Warn("WS stream failed for %s, trying HTTP fallback: %v", mediaID, err)
 	}
 
+	// TODO: Bug - when WS proxy fails and falls back to HTTP, the slave
+	// variable was read under RLock above but the slave may have been removed
+	// from m.slaves by a concurrent UnregisterSlave call between the read and
+	// here. The slave pointer itself is still valid (Go doesn't free it) but
+	// its data may be stale. Consider re-reading under lock before fallback.
 	// Fallback: HTTP proxy through the slave's BaseURL.
 	return m.proxyViaHTTP(w, r, slave, item)
 }
@@ -685,6 +703,10 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 
 // proxyViaHTTP fetches the media from the slave's HTTP endpoint and relays it
 // to the client.  This is the fallback when the slave has no active WebSocket.
+// TODO: Bug - the targetURL is constructed by concatenating item.Path directly
+// into the query string without URL-encoding. If item.Path contains special
+// characters (spaces, &, =, etc.), the URL is malformed or the query can be
+// injected. Use url.QueryEscape(item.Path) or url.Values to build the query.
 func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *SlaveNode, item *MediaItem) error {
 	baseURL := slave.BaseURL
 	if baseURL == "" || baseURL == "ws-connected" {
@@ -710,6 +732,11 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 		timeout = 30 * time.Second
 	}
 
+	// TODO: Bug - a new http.Client is created per proxy request, which creates
+	// a new transport and leaks idle connections. Use a shared client on the Module.
+	// Also, for streaming large media files, a timeout on the entire HTTP call
+	// (including body read) will prematurely kill long downloads. Consider using
+	// a transport-level timeout or context-based cancellation instead.
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {

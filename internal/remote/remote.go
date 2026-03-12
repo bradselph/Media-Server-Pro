@@ -97,7 +97,14 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		config:   cfg,
 		log:      logger.New("remote"),
 		dbModule: dbModule,
-		httpClient: &http.Client{
+		// TODO: Bug - the SSRF redirect check only validates literal IP addresses.
+	// If a redirect target uses a hostname that resolves to a private IP
+	// (e.g. "internal.corp.example.com" -> 10.0.0.1), the check is bypassed
+	// because net.ParseIP returns nil for hostnames. The CheckRedirect should
+	// resolve the hostname to IPs (like validateURL does) before checking.
+	// Also consider using helpers.SafeHTTPTransport() for consistency with
+	// the extractor module.
+	httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
@@ -180,6 +187,12 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module
+// TODO: Bug - if syncTicker is nil (remote media disabled in config or
+// SyncInterval <= 0), syncDone is never closed. But syncLoop was never started
+// either so this is currently harmless. However, the goroutine launched by
+// "go m.syncAllSources()" in Start() may still be running when Stop() is
+// called. There is no mechanism (context or done channel) to cancel that
+// in-flight sync, which could delay shutdown or cause use-after-stop races.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping remote media module...")
 
@@ -382,6 +395,11 @@ func (m *Module) GetSources() []*SourceState {
 // GetSourceMedia returns media from a specific source.
 // If the cache is empty (e.g. initial sync not yet complete), it triggers a
 // live sync for that source before returning, so callers always get fresh data.
+// TODO: Bug - GetSourceMedia calls syncSource on empty caches, which acquires
+// m.mu.Lock() inside syncSource. If two concurrent callers both see empty=true
+// and call syncSource simultaneously, one will block until the other finishes.
+// This is correct for lock safety but causes request serialization. Consider
+// using sync.Once per source or a "syncing" status check to avoid redundant syncs.
 func (m *Module) GetSourceMedia(sourceName string) ([]*MediaItem, error) {
 	m.mu.RLock()
 	state, exists := m.sources[sourceName]
@@ -477,6 +495,12 @@ func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL 
 		}
 	}()
 
+	// TODO: Bug - using a header denylist instead of an allowlist. Headers like
+	// "Server", "X-Powered-By", "X-Request-Id" from the remote will leak to
+	// the client, potentially exposing infrastructure details. The receiver
+	// module uses an allowlist (allowedProxyHeaders) which is the safer pattern.
+	// Also, this sensitiveHeaders map is rebuilt on every call — extract to a
+	// package-level var for consistency with the extractor module.
 	// Copy safe response headers, excluding security-sensitive ones
 	sensitiveHeaders := map[string]bool{
 		"Set-Cookie":       true,
@@ -595,6 +619,12 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 		source = state.Source
 	}
 
+	// TODO: Bug - CacheMedia creates requests without a context, so downloads
+	// cannot be cancelled on module shutdown. Use http.NewRequestWithContext
+	// with a context parameter (or the module's shutdown context).
+	// Also, there is no size limit on the download — a malicious remote could
+	// serve an infinitely large response and fill the disk. Add an io.LimitReader
+	// or check Content-Length against a configured maximum.
 	// Create request
 	req, err := http.NewRequest("GET", remoteURL, nil)
 	if err != nil {
@@ -839,6 +869,10 @@ func (m *Module) CleanCache() int {
 		currentSize += cached.Size
 	}
 
+	// TODO: Bug - when maxSize is 0 (unconfigured), this condition is always true,
+	// meaning LRU eviction is never triggered even if the cache grows unbounded.
+	// Add a guard: if maxSize <= 0, skip LRU eviction entirely (or default to
+	// a reasonable max). The config default should be documented.
 	if currentSize <= maxSize {
 		if removed > 0 {
 			m.log.Info("Cleaned %d expired cache items", removed)
@@ -907,6 +941,11 @@ func validateURL(rawURL string) error {
 
 // Helper functions
 
+// TODO: Bug - generateID uses a weak 32-bit polynomial hash that has high
+// collision risk. Two different URLs can produce the same 8-character hex ID,
+// causing cache overwrites and incorrect media serving. Use crypto/sha256
+// (like the extractor module does) or uuid for collision-resistant IDs.
+// The same weak hash is used in generateCacheFilename, compounding the risk.
 func generateID(input string) string {
 	// Simple hash for ID generation
 	h := uint32(0)

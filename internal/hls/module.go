@@ -68,6 +68,10 @@ type Module struct {
 }
 
 // NewModule creates a new HLS module
+// TODO: Bug - if hlsCfg.ConcurrentLimit is 0 (unconfigured), transSem is created
+// with capacity 0, which means no transcoding can ever proceed (all sends to the
+// semaphore will block forever). Add a guard: if ConcurrentLimit <= 0, default
+// to a reasonable value (e.g. runtime.NumCPU() or 2).
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	hlsCfg := cfg.Get().HLS
 	return &Module{

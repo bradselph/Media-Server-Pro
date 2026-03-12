@@ -21,6 +21,10 @@ func (m *Module) cleanupLoop() {
 }
 
 // cleanupOldSegments removes HLS segments older than retention period.
+// TODO: Bug - if RetentionMinutes is 0 (unconfigured), retention is 0 and
+// cutoff equals time.Now(). This means ALL segments are considered "old" and
+// eligible for cleanup, which would delete every HLS job (except running/pending
+// ones). Add a guard to skip cleanup when RetentionMinutes <= 0.
 func (m *Module) cleanupOldSegments() {
 	cfg := m.config.Get()
 	retention := time.Duration(cfg.HLS.RetentionMinutes) * time.Minute

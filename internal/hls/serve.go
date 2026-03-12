@@ -57,6 +57,12 @@ type servePlaylistOpts struct {
 }
 
 // servePlaylist writes the playlist to w, rewriting URLs for CDN if cdnBase is set.
+// TODO: Bug - when cdnBase is empty, Content-Type and Cache-Control headers are
+// set before calling http.ServeFile, but ServeFile will overwrite Content-Type
+// based on file extension detection and may add its own Cache-Control. The
+// explicit header sets are effectively overridden. Either use http.ServeContent
+// with a bytes.Reader for consistent header control, or remove the redundant
+// header sets.
 func servePlaylist(w http.ResponseWriter, r *http.Request, opts servePlaylistOpts) error {
 	if opts.cdnBase == "" {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -127,6 +133,11 @@ type SegmentParams struct {
 }
 
 // ServeSegment serves an HLS segment.
+// TODO: Bug - p.Quality and p.Segment are used directly in filepath.Join without
+// sanitization. A malicious quality or segment value like "../../etc/passwd"
+// could escape the job output directory via path traversal. Validate that the
+// resulting segmentPath is actually within job.OutputDir, or reject values
+// containing ".." or path separators.
 func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentParams) error {
 	job, err := m.GetJobStatus(p.JobID)
 	if err != nil {

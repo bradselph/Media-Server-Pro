@@ -20,6 +20,10 @@ var (
 )
 
 // RenameMedia renames a media file
+// TODO: Bug - RenameMedia does not call m.validatePath(oldPath) to verify the
+// source is within allowed directories before performing the rename. A caller
+// could potentially rename files outside the configured media directories.
+// MoveMedia and DeleteMedia both validate the path; RenameMedia should too.
 func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	// Validate old path exists (no lock needed for stat)
 	if _, err := os.Stat(oldPath); err != nil {
@@ -46,6 +50,14 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 		return "", fmt.Errorf("failed to rename: %w", err)
 	}
 
+	// TODO: Bug - the mediaByID secondary index is not updated during rename.
+	// The old entry in mediaByID still points to the same *models.MediaItem
+	// (whose Path is now updated), so ID lookups still work, but the key
+	// association relies on pointer identity. This is fragile — if the item
+	// is ever replaced (e.g. during a scan), the stale mediaByID entry breaks.
+	// Also, the fingerprintIndex is not updated — the old path remains in the
+	// fingerprint map. On next scan, this could cause the renamed file to be
+	// misidentified as a "moved" file from itself.
 	// Update in-memory indexes (media + metadata share mu)
 	m.mu.Lock()
 	if item, exists := m.media[oldPath]; exists {
@@ -71,6 +83,10 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 }
 
 // MoveMedia moves a media file to a new directory
+// TODO: Bug - same fingerprintIndex issue as RenameMedia: the old path remains
+// in the fingerprint map after the move. Also, MoveMedia does not validate that
+// oldPath is within allowed directories (only validates newDir). A file outside
+// allowed dirs could be moved into them.
 func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	// Validate old path exists (no lock needed for stat)
 	if _, err := os.Stat(oldPath); err != nil {
@@ -126,6 +142,11 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 }
 
 // DeleteMedia removes a media file from the filesystem
+// TODO: Bug - fingerprintIndex is not cleaned up when a file is deleted. The
+// stale fingerprint entry will cause createMediaItem on next scan to incorrectly
+// detect the deleted path as the "old path" of a moved file if a new file with
+// the same fingerprint appears. Delete the fingerprint from m.fingerprintIndex
+// using the metadata's ContentFingerprint value.
 func (m *Module) DeleteMedia(ctx context.Context, path string) error {
 	// Validate path exists and is within allowed directories (no lock needed)
 	if _, err := os.Stat(path); err != nil {
@@ -164,6 +185,10 @@ func (m *Module) DeleteMedia(ctx context.Context, path string) error {
 
 // RemoveMedia removes a media entry from the index without deleting the file.
 // This is used for cleanup when files have already been deleted externally.
+// TODO: Bug - same fingerprintIndex issue as DeleteMedia: the stale fingerprint
+// entry is not removed. Also, RenameMedia and MoveMedia do not call m.version++
+// but RemoveMedia does — the version bump behavior is inconsistent. All mutation
+// methods should bump the version for cache invalidation.
 func (m *Module) RemoveMedia(path string) error {
 	m.mu.Lock()
 	delete(m.metadata, path)
@@ -292,6 +317,11 @@ func (m *Module) SetTags(path string, tags []string) error {
 }
 
 // UpdateTags merges new tags with existing tags for a media file (deduplicated, case-insensitive).
+// TODO: Race condition - reads current tags under RLock, then releases the lock,
+// then calls SetTags (which calls UpdateMetadata, which acquires a write Lock).
+// Between the RLock release and the write Lock acquisition, another goroutine could
+// modify the tags (e.g. AddTag or RemoveTag), and those changes would be lost because
+// SetTags replaces the entire tag list with the snapshot taken before the lock release.
 func (m *Module) UpdateTags(path string, tags []string) error {
 	var current []string
 	m.mu.RLock()
@@ -492,6 +522,9 @@ func validateDirectory(dir string, cfg *config.Config) (string, error) {
 }
 
 // GetMediaLog returns a logger for media operations
+// TODO: Redundant code - this getter exposes the internal logger, which breaks
+// encapsulation. External callers should use their own logger. This method is
+// never called anywhere in the codebase (confirmed via grep). Remove it.
 func (m *Module) GetMediaLog() *logger.Logger {
 	return m.log
 }
