@@ -46,16 +46,16 @@ func init() {
 
 // Module handles security controls
 type Module struct {
-	config           *config.Manager
-	log              *logger.Logger
-	dbModule         *database.Module
-	repo             repositories.IPListRepository
-	whitelist        *IPList
-	blacklist        *IPList
-	rateLimiter      *RateLimiter
-	authRateLimiter  *RateLimiter // stricter limits for auth endpoints
-	healthy          bool
-	healthMsg        string
+	config          *config.Manager
+	log             *logger.Logger
+	dbModule        *database.Module
+	repo            repositories.IPListRepository
+	whitelist       *IPList
+	blacklist       *IPList
+	rateLimiter     *RateLimiter
+	authRateLimiter *RateLimiter // stricter limits for auth endpoints
+	healthy         bool
+	healthMsg       string
 	// TODO: totalBlocked and totalRateLimited are read/written under mu (RWMutex)
 	// but would be more efficiently handled with atomic.Int64 since they are simple
 	// counters incremented in a hot path (every blocked/rate-limited request).

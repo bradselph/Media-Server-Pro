@@ -4,25 +4,15 @@ import {adminApi} from '@/api/endpoints'
 import type {AdminMediaListResponse, MediaItem, ThumbnailStats} from '@/api/types'
 import {ContentReviewTab, CategorizerTab, DiscoveryTab, HuggingFaceTab} from './ContentTab'
 import {ValidatorTab} from './ValidatorTab'
+import {formatDuration} from '@/utils/formatters'
 import {errMsg, formatBytes} from './adminUtils'
 import {SubTabs} from './helpers'
 
 // ── Tab: Media ────────────────────────────────────────────────────────────────
 
-// TODO: Duplicate — this local `formatDuration` duplicates the shared version in
-// `@/utils/formatters.ts`. Another copy exists in `ProfilePage.tsx`.
-// WHY: Multiple copies cause maintenance burden and inconsistent fallback values
-// ('—' here vs '0:00' in formatters.ts vs '0m' in ProfilePage.tsx).
-// FIX: Import `formatDuration` from `@/utils/formatters.ts` and use it:
-// `formatDuration({ seconds: secs })`. Adjust the fallback in formatters.ts or
-// add a fallback parameter if different defaults are needed per context.
-function formatDuration(secs: number): string {
+function formatDurationDisplay(secs: number): string {
     if (!secs || secs <= 0) return '—'
-    const h = Math.floor(secs / 3600)
-    const m = Math.floor((secs % 3600) / 60)
-    const s = Math.floor(secs % 60)
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    return `${m}:${String(s).padStart(2, '0')}`
+    return formatDuration({ seconds: secs })
 }
 
 // Sortable column header definitions for the admin media table.
@@ -530,7 +520,7 @@ function MediaLibraryTab() {
                                 }}>{item.name}</td>
                                 <td>{item.type}</td>
                                 <td style={{whiteSpace: 'nowrap'}}>{formatBytes(item.size)}</td>
-                                <td style={{whiteSpace: 'nowrap'}}>{formatDuration(item.duration)}</td>
+                                <td style={{whiteSpace: 'nowrap'}}>{formatDurationDisplay(item.duration)}</td>
                                 <td>{item.category || '—'}</td>
                                 <td style={{whiteSpace: 'nowrap'}}>{new Date(item.date_added).toLocaleDateString()}</td>
                                 <td style={{whiteSpace: 'nowrap'}}>{new Date(item.date_modified).toLocaleDateString()}</td>

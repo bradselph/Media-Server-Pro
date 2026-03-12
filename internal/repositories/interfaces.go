@@ -11,10 +11,10 @@ import (
 
 // Repository-level errors
 var (
-	ErrUserExists          = errors.New("user already exists")
-	ErrUserNotFound        = errors.New("user not found")
-	ErrSessionNotFound     = errors.New("session not found")
-	ErrScanResultNotFound  = errors.New("scan result not found")
+	ErrUserExists         = errors.New("user already exists")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrSessionNotFound    = errors.New("session not found")
+	ErrScanResultNotFound = errors.New("scan result not found")
 )
 
 // UserRepository provides user data access methods

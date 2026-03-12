@@ -98,13 +98,13 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		log:      logger.New("remote"),
 		dbModule: dbModule,
 		// TODO: Bug - the SSRF redirect check only validates literal IP addresses.
-	// If a redirect target uses a hostname that resolves to a private IP
-	// (e.g. "internal.corp.example.com" -> 10.0.0.1), the check is bypassed
-	// because net.ParseIP returns nil for hostnames. The CheckRedirect should
-	// resolve the hostname to IPs (like validateURL does) before checking.
-	// Also consider using helpers.SafeHTTPTransport() for consistency with
-	// the extractor module.
-	httpClient: &http.Client{
+		// If a redirect target uses a hostname that resolves to a private IP
+		// (e.g. "internal.corp.example.com" -> 10.0.0.1), the check is bypassed
+		// because net.ParseIP returns nil for hostnames. The CheckRedirect should
+		// resolve the hostname to IPs (like validateURL does) before checking.
+		// Also consider using helpers.SafeHTTPTransport() for consistency with
+		// the extractor module.
+		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {

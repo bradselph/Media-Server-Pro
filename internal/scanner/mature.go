@@ -246,9 +246,9 @@ type MatureScanner struct {
 	reviewQueue map[string]*models.MatureReviewItem
 	mu          sync.RWMutex
 	dataDir     string
-	tempDir      string                                 // for HF frame extraction
-	hfClientPtr  atomic.Pointer[huggingface.Client]    // thread-safe; nil if HuggingFace not configured
-	healthy      bool
+	tempDir     string                             // for HF frame extraction
+	hfClientPtr atomic.Pointer[huggingface.Client] // thread-safe; nil if HuggingFace not configured
+	healthy     bool
 	healthMsg   string
 	healthMu    sync.RWMutex
 	scanRepo    repositories.ScanResultRepository // Repository for persistent scan results
@@ -1046,7 +1046,6 @@ func (s *MatureScanner) loadReviewQueue() error {
 
 	return nil
 }
-
 
 // Module is an alias for MatureScanner for consistency with other modules
 type Module = MatureScanner

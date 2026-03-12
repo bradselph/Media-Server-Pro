@@ -61,8 +61,8 @@ type Module struct {
 	applyMu      sync.Mutex
 	applyRunning bool
 
-	stopOnce   sync.Once
-	checkDone  chan struct{} // closed in Stop to signal checkLoop to exit
+	stopOnce    sync.Once
+	checkDone   chan struct{} // closed in Stop to signal checkLoop to exit
 	checkExited chan struct{} // closed by checkLoop when it exits
 }
 
@@ -884,12 +884,12 @@ func (m *Module) installUpdate(updateFile string) error {
 
 // restoreFromBackup restores from a backup
 // TODO: restoreFromBackup has two issues:
-// 1. The .tar.gz branch uses exec.Command("tar", ...) which may not exist on Windows.
-//    The createBackup method never creates .tar.gz backups (it uses copyFile), so the
-//    tar.gz branch is dead code.
-// 2. If backupPath is empty (backup creation failed earlier), this function will try
-//    to copy an empty-string path, causing a confusing error. The caller (ApplyUpdate)
-//    does pass backupPath even when backup failed, so this could try to restore from "".
+//  1. The .tar.gz branch uses exec.Command("tar", ...) which may not exist on Windows.
+//     The createBackup method never creates .tar.gz backups (it uses copyFile), so the
+//     tar.gz branch is dead code.
+//  2. If backupPath is empty (backup creation failed earlier), this function will try
+//     to copy an empty-string path, causing a confusing error. The caller (ApplyUpdate)
+//     does pass backupPath even when backup failed, so this could try to restore from "".
 func (m *Module) restoreFromBackup(backupPath string) error {
 	if strings.HasSuffix(backupPath, ".tar.gz") {
 		execPath, err := os.Executable()

@@ -28,7 +28,7 @@ const (
 	maxRetries        = 3
 	initialRetryDelay = 2 * time.Second
 	maxResponseSize   = 10 * 1024 * 1024 // 10MB cap for HF API responses
-	maxLogBodyLen     = 300               // truncate response body in logs to avoid flooding (e.g. HTML error pages)
+	maxLogBodyLen     = 300              // truncate response body in logs to avoid flooding (e.g. HTML error pages)
 	// Token must have "Inference Providers" or serverless inference permission (e.g. inference.serverless.write for fine-grained).
 	jpegMagic = "\xff\xd8\xff"
 )
