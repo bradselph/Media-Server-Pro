@@ -209,7 +209,7 @@ function DatabaseTab() {
         try {
             const r = await adminApi.executeQuery(query)
             setResult(r)
-            setQueryMsg(r.rows_affected != null ? `${r.rows_affected} row(s) affected` : `${r.rows?.length ?? 0} row(s) returned`)
+            setQueryMsg(r.rows_affected !== null ? `${r.rows_affected} row(s) affected` : `${r.rows?.length ?? 0} row(s) returned`)
         } catch (err) {
             setQueryMsg('Error: ' + errMsg(err))
         } finally {
