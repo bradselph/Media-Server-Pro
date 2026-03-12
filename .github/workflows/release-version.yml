@@ -76,6 +76,11 @@ jobs:
       - name: Update VERSION file
         run: echo "${{ steps.bump.outputs.new }}" > VERSION
 
+      # TODO: The sed pattern is fragile — it requires exactly 3 spaces between
+      # 'Version' and '='. If the alignment changes (e.g., during a refactor of the
+      # var block), the substitution will silently fail and the binary will ship with
+      # a stale version string. Use a more robust pattern like:
+      #   sed -i 's/Version\s*=\s*"[^"]*"/Version   = "${{ steps.bump.outputs.new }}"/' cmd/server/main.go
       - name: Update main.go fallback version
         run: |
           sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.bump.outputs.new }}\"/" cmd/server/main.go
