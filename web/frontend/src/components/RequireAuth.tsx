@@ -14,15 +14,9 @@ export function RequireAuth({children, adminOnly}: Props) {
         return <div className="loading-screen">Loading...</div>
     }
 
-    // TODO: Query string and hash are lost — only `location.pathname` is encoded in the
-    // redirect parameter. If the user was at e.g. `/player?id=abc123`, the redirect will
-    // be `/login?redirect=%2Fplayer` and the `?id=abc123` query string is dropped.
-    // WHY: After login, the user is redirected back to `/player` without the media ID,
-    // resulting in a "no media selected" empty state instead of resuming their content.
-    // FIX: Include `location.search` (and optionally `location.hash`) in the redirect:
-    //   `/login?redirect=${encodeURIComponent(location.pathname + location.search + location.hash)}`
     if (!isAuthenticated) {
-        return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace/>
+        const redirect = location.pathname + location.search + location.hash
+        return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace/>
     }
 
     if (adminOnly && !isAdmin) {

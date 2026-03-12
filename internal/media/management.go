@@ -19,12 +19,11 @@ var (
 	dangerousPatterns = regexp.MustCompile(`[<>:"|?*\x00-\x1f]`)
 )
 
-// RenameMedia renames a media file
-// TODO: Bug - RenameMedia does not call m.validatePath(oldPath) to verify the
-// source is within allowed directories before performing the rename. A caller
-// could potentially rename files outside the configured media directories.
-// MoveMedia and DeleteMedia both validate the path; RenameMedia should too.
+// RenameMedia renames a media file. Validates oldPath is within allowed directories.
 func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
+	if err := m.validatePath(oldPath); err != nil {
+		return "", err
+	}
 	// Validate old path exists (no lock needed for stat)
 	if _, err := os.Stat(oldPath); err != nil {
 		return "", fmt.Errorf("source file not found: %w", err)

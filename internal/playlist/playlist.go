@@ -224,14 +224,9 @@ func (m *Module) UpdatePlaylist(ctx context.Context, id PlaylistID, userID UserI
 
 	playlist.ModifiedAt = time.Now()
 
-	// TODO: Bug - if the DB update fails, the error is logged but the in-memory
-	// changes are kept and nil is returned to the caller. This creates an inconsistency
-	// where the in-memory state diverges from the DB. On restart, the old DB values will
-	// be loaded, silently reverting the user's changes. The same pattern exists in
-	// DeletePlaylist, AddItem, RemoveItem, and ClearPlaylist. These should either
-	// return the error or roll back the in-memory change.
 	if err := m.playlistRepo.Update(ctx, playlist); err != nil {
 		m.log.Error("Failed to update playlist in database: %v", err)
+		return err
 	}
 
 	m.log.Info("Updated playlist: %s", string(id))
@@ -255,6 +250,7 @@ func (m *Module) DeletePlaylist(ctx context.Context, id PlaylistID, userID UserI
 
 	if err := m.playlistRepo.Delete(ctx, string(id)); err != nil {
 		m.log.Error("Failed to delete playlist from database: %v", err)
+		return err
 	}
 
 	delete(m.playlists, id)
@@ -303,13 +299,9 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 		return ErrAccessDenied
 	}
 
-	// TODO: Bug - duplicate check uses MediaPath but does not also check MediaID.
-	// If the same media file is added with different paths (e.g. symlinks or
-	// after a file move), duplicates can slip through. Consider checking
-	// MediaID as well, or at minimum document that path-based dedup is intentional.
-	// Check if already in playlist
+	// Check if already in playlist (by path or by media ID to avoid symlink/move duplicates)
 	for _, item := range playlist.Items {
-		if item.MediaPath == input.MediaPath {
+		if item.MediaPath == input.MediaPath || (input.MediaID != "" && item.MediaID == input.MediaID) {
 			return nil // Already exists
 		}
 	}

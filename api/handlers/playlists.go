@@ -93,13 +93,7 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 	writeSuccess(c, pl)
 }
 
-// GetPlaylist returns a playlist
-// TODO: GetPlaylist is behind requireAuth() in routes.go, but this handler also tries to
-// handle unauthenticated access by using an empty userID. If the session is nil (which
-// shouldn't happen due to requireAuth middleware), GetPlaylistForUser is called with an
-// empty UserID, potentially exposing private playlists or returning confusing errors.
-// This is dead code given the middleware, but it's misleading. Either remove the nil
-// session fallback or make the route public if public playlist access is desired.
+// GetPlaylist returns a playlist. Route is behind requireAuth(); session is required.
 func (h *Handler) GetPlaylist(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
@@ -108,10 +102,12 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	userID := playlist.UserID("")
-	if s := getSession(c); s != nil {
-		userID = playlist.UserID(s.UserID)
+	s := getSession(c)
+	if s == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
 	}
+	userID := playlist.UserID(s.UserID)
 	pl, err := h.playlist.GetPlaylistForUser(playlist.PlaylistID(id), userID)
 	if err != nil {
 		writeError(c, http.StatusNotFound, "Playlist not found")

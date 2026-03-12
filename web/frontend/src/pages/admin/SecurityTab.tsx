@@ -26,20 +26,7 @@ const inputBaseStyle: React.CSSProperties = {
 const mutedStyle: React.CSSProperties = { fontSize: 12, color: 'var(--text-muted)' }
 const thSortStyle: React.CSSProperties = { cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }
 
-// TODO: Duplicate sort indicator functions — `ipSortIndicator` and `banSortIndicator`
-// are identical in logic, differing only in the generic type of the column key.
-// This same pattern (sortIndicator, handleSort, thSortStyle) is duplicated across
-// PlaylistsTab, MediaTab, UsersTab, and this file.
-// WHY: Each admin tab re-implements the same sorting UI boilerplate, making it harder
-// to maintain consistent behavior and introducing more code to keep in sync.
-// FIX: Extract a generic `SortIndicator` component or a `useSortable` hook into
-// `adminUtils.ts` or `helpers.tsx` that works with any column key type.
-function ipSortIndicator(col: IPSortKey, sortBy: IPSortKey, sortOrder: 'asc' | 'desc') {
-    if (sortBy !== col) return <span style={{ opacity: 0.3, marginLeft: 4 }}>&#x21C5;</span>
-    return <span style={{ marginLeft: 4 }}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
-}
-
-function banSortIndicator(col: BanSortKey, sortBy: BanSortKey, sortOrder: 'asc' | 'desc') {
+function sortIndicator<T extends string>(col: T, sortBy: T, sortOrder: 'asc' | 'desc') {
     if (sortBy !== col) return <span style={{ opacity: 0.3, marginLeft: 4 }}>&#x21C5;</span>
     return <span style={{ marginLeft: 4 }}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
 }
@@ -227,10 +214,10 @@ export function SecurityTab() {
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'ip') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('ip'); setWlSortOrder('asc'); } }}>IP{ipSortIndicator('ip', wlSortBy, wlSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'comment') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('comment'); setWlSortOrder('asc'); } }}>Comment{ipSortIndicator('comment', wlSortBy, wlSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'added_by') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('added_by'); setWlSortOrder('asc'); } }}>Added By{ipSortIndicator('added_by', wlSortBy, wlSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'added_at') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('added_at'); setWlSortOrder('asc'); } }}>Added{ipSortIndicator('added_at', wlSortBy, wlSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'ip') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('ip'); setWlSortOrder('asc'); } }}>IP{sortIndicator('ip', wlSortBy, wlSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'comment') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('comment'); setWlSortOrder('asc'); } }}>Comment{sortIndicator('comment', wlSortBy, wlSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'added_by') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('added_by'); setWlSortOrder('asc'); } }}>Added By{sortIndicator('added_by', wlSortBy, wlSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (wlSortBy === 'added_at') setWlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setWlSortBy('added_at'); setWlSortOrder('asc'); } }}>Added{sortIndicator('added_at', wlSortBy, wlSortOrder)}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
@@ -277,10 +264,10 @@ export function SecurityTab() {
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'ip') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('ip'); setBlSortOrder('asc'); } }}>IP{ipSortIndicator('ip', blSortBy, blSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'comment') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('comment'); setBlSortOrder('asc'); } }}>Comment{ipSortIndicator('comment', blSortBy, blSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'added_by') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('added_by'); setBlSortOrder('asc'); } }}>Added By{ipSortIndicator('added_by', blSortBy, blSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'added_at') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('added_at'); setBlSortOrder('asc'); } }}>Added{ipSortIndicator('added_at', blSortBy, blSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'ip') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('ip'); setBlSortOrder('asc'); } }}>IP{sortIndicator('ip', blSortBy, blSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'comment') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('comment'); setBlSortOrder('asc'); } }}>Comment{sortIndicator('comment', blSortBy, blSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'added_by') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('added_by'); setBlSortOrder('asc'); } }}>Added By{sortIndicator('added_by', blSortBy, blSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (blSortBy === 'added_at') setBlSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBlSortBy('added_at'); setBlSortOrder('asc'); } }}>Added{sortIndicator('added_at', blSortBy, blSortOrder)}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
@@ -329,10 +316,10 @@ export function SecurityTab() {
                         <table className="admin-table">
                             <thead>
                             <tr>
-                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'ip') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('ip'); setBanSortOrder('asc'); } }}>IP{banSortIndicator('ip', banSortBy, banSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'reason') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('reason'); setBanSortOrder('asc'); } }}>Reason{banSortIndicator('reason', banSortBy, banSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'banned_at') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('banned_at'); setBanSortOrder('asc'); } }}>Banned At{banSortIndicator('banned_at', banSortBy, banSortOrder)}</th>
-                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'expires_at') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('expires_at'); setBanSortOrder('asc'); } }}>Expires{banSortIndicator('expires_at', banSortBy, banSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'ip') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('ip'); setBanSortOrder('asc'); } }}>IP{sortIndicator('ip', banSortBy, banSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'reason') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('reason'); setBanSortOrder('asc'); } }}>Reason{sortIndicator('reason', banSortBy, banSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'banned_at') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('banned_at'); setBanSortOrder('asc'); } }}>Banned At{sortIndicator('banned_at', banSortBy, banSortOrder)}</th>
+                                <th style={thSortStyle} onClick={() => { if (banSortBy === 'expires_at') setBanSortOrder(p => p === 'asc' ? 'desc' : 'asc'); else { setBanSortBy('expires_at'); setBanSortOrder('asc'); } }}>Expires{sortIndicator('expires_at', banSortBy, banSortOrder)}</th>
                                 <th>Actions</th>
                             </tr>
                             </thead>
