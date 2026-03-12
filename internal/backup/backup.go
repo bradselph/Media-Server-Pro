@@ -316,7 +316,11 @@ func (m *Module) RestoreBackup(backupID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open backup: %w", err)
 	}
-	defer m.closeAndWarn(reader.Close, "Failed to close backup reader: %v")
+	defer func() {
+		if cerr := reader.Close(); cerr != nil {
+			m.log.Warn("Failed to close backup reader: %v", cerr)
+		}
+	}()
 
 	if err := m.validateBackupArchiveSize(reader.File); err != nil {
 		return err
@@ -432,7 +436,11 @@ func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer m.closeAndWarn(destFile.Close, fmt.Sprintf("Failed to close destination file %s: %%v", destPath))
+	defer func() {
+		if cerr := destFile.Close(); cerr != nil {
+			m.log.Warn("Failed to close destination file %s: %v", destPath, cerr)
+		}
+	}()
 
 	srcFile, err := file.Open()
 	if err != nil {
