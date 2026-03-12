@@ -4,6 +4,7 @@ package huggingface
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -188,7 +189,8 @@ func getDuration(ctx context.Context, p getDurationParams) (float64, error) {
 	)
 	out, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
 			return 0, fmt.Errorf("%s: %w", string(exitErr.Stderr), err)
 		}
 		return 0, err
@@ -221,7 +223,8 @@ func extractOneFrame(ctx context.Context, p extractFrameParams) error {
 	cmd := exec.CommandContext(ctx, p.ffmpegPath, args...)
 	_, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
 			return fmt.Errorf("%s: %w", string(exitErr.Stderr), err)
 		}
 		return err
