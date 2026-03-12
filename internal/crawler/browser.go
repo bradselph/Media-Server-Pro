@@ -153,6 +153,12 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	}
 	defer conn.Close()
 
+	// TODO: Resource leak — the read pump goroutine (below) runs until conn.ReadJSON errors.
+	// If the context is cancelled but the WebSocket connection is not closed first, the
+	// goroutine can block on ReadJSON indefinitely. The deferred conn.Close() should
+	// happen before waiting for the goroutine to finish. Also, the events channel is
+	// never drained after probe returns, and the event-processing goroutine may leak
+	// if events channel is full when close(events) is called by the read pump.
 	// Channels for responses and events
 	responses := make(map[int]chan cdpMsg)
 	var responsesMu sync.Mutex
@@ -228,6 +234,9 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	}
 
 	// --- 4. Enable domains ---
+	// TODO: Bug — errors from send() are silently ignored here. If Network.enable fails
+	// (e.g., Chrome version incompatibility), the entire probe will silently produce no
+	// results instead of reporting the failure.
 	send("Network.enable", map[string]interface{}{})
 	send("Page.enable", map[string]interface{}{})
 	send("Runtime.enable", map[string]interface{}{})

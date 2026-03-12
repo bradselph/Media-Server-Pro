@@ -68,6 +68,9 @@ func (m *Module) cleanupExpiredSessions() {
 }
 
 // CleanupExpiredSessions removes expired sessions from storage and cache (public method for background tasks).
+// TODO: Redundant work — this calls sessionRepo.DeleteExpired, then calls
+// cleanupExpiredSessions which ALSO calls sessionRepo.DeleteExpired. The DB deletion
+// happens twice per call. Should refactor so the DB deletion only happens once.
 func (m *Module) CleanupExpiredSessions(ctx context.Context) error {
 	if err := m.sessionRepo.DeleteExpired(ctx); err != nil {
 		return err
@@ -121,6 +124,9 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	if !user.Enabled {
 		return nil, nil, ErrAccountDisabled
 	}
+	// TODO: Bug — LastActivity is updated in memory on the cached session but never
+	// persisted to the database. After a restart, session activity timestamps revert
+	// to their original values. Should periodically flush LastActivity to the DB.
 	session.LastActivity = time.Now()
 	return session, user, nil
 }

@@ -93,6 +93,10 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module.
+// TODO: Race condition — close(m.done) is called before m.cleanupTicker.Stop(). If the
+// backgroundLoop goroutine is currently executing cleanup() when Stop is called, there is
+// no synchronization to wait for it to finish. Also, calling Stop() twice will panic on
+// double-close of m.done. Consider using sync.Once like the auth module does.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping analytics module...")
 

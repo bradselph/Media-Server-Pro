@@ -137,6 +137,10 @@ func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, t
 }
 
 // connectWithRetry opens a GORM connection with retries and ping; returns gorm.DB, sql.DB, and error.
+// TODO: Bug — the retry loop uses time.Sleep which blocks the goroutine and ignores the
+// context. If the parent context is cancelled (e.g., during shutdown), the retries will
+// continue sleeping for the full retry duration instead of aborting immediately. Should
+// use a select on ctx.Done() and a timer instead of time.Sleep.
 func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (*gorm.DB, *sql.DB, error) {
 	gormLog := newGORMLogger(log)
 	var lastErr error
@@ -179,6 +183,11 @@ func (w *gormLogWriter) Printf(format string, args ...interface{}) {
 }
 
 // Stop closes the database connection
+// TODO: Bug — after Stop() closes the sqlDB connection, m.db (GORM) is not set to nil.
+// Any module that still holds a reference to m.db and tries to use it after Stop will
+// get "sql: database is closed" errors rather than a clean nil check. Should set m.db
+// and m.sqlDB to nil after close so IsConnected() returns false via the health check
+// and callers get clear nil-pointer behavior instead of opaque DB errors.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping database module...")
 

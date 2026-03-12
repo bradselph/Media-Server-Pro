@@ -77,6 +77,14 @@ func (m *Manager) Load() error {
 	return nil
 }
 
+// TODO: Bug — syncFeatureToggles only disables module-level Enabled flags when the
+// corresponding feature toggle is false, but never enables them. If a feature toggle
+// is set to true but the module's own Enabled flag was explicitly set to false in
+// config.json, the module stays disabled despite the feature being "enabled". This
+// one-directional sync creates confusing behavior where Features.EnableHLS=true but
+// HLS.Enabled=false. Either sync should be bidirectional, or the relationship between
+// feature toggles and module Enabled flags should be documented as "feature toggle is
+// a master kill-switch only."
 func (m *Manager) syncFeatureToggles() {
 	disableIfOff := func(enabled bool, target *bool) {
 		if !enabled {
@@ -106,6 +114,13 @@ func (m *Manager) Save() error {
 	return m.save()
 }
 
+// TODO: Bug — save() has a race window on all platforms: it removes the old config file
+// before renaming the temp file. If the process crashes or loses power between Remove
+// and Rename, the config file is lost entirely. On Unix, os.Rename is atomic and
+// overwrites the destination, so the Remove is unnecessary. On Windows, os.Rename cannot
+// overwrite an existing file, which is why Remove is used — but this creates the race.
+// Should use platform-specific atomic-write (e.g., MoveFileEx on Windows with
+// MOVEFILE_REPLACE_EXISTING, or a library like renameio).
 func (m *Manager) save() error {
 	data, err := json.MarshalIndent(m.config, "", "  ")
 	if err != nil {
@@ -143,6 +158,10 @@ func (m *Manager) Get() *Config {
 	return m.getCopy()
 }
 
+// TODO: Bug — getCopy performs a shallow struct copy (`cp := *m.config`) and then
+// deep-copies some slice fields, but misses Receiver.APIKeys. A caller that modifies
+// the returned config's APIKeys slice will mutate the internal state. Should also
+// deep-copy Receiver.APIKeys: `cp.Receiver.APIKeys = append([]string(nil), m.config.Receiver.APIKeys...)`.
 func (m *Manager) getCopy() *Config {
 	cp := *m.config
 	cp.Security.IPWhitelist = append([]string(nil), m.config.Security.IPWhitelist...)

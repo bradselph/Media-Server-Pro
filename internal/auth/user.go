@@ -264,6 +264,10 @@ func (m *Module) applyBasicUserUpdates(user *models.User, updates map[string]int
 }
 
 // applyPasswordUpdateFromMap updates user password hash and salt if a non-empty password is present.
+// TODO: Bug — on bcrypt hash failure, this returns nil (no error) silently. The caller
+// has no way to know the password was NOT updated. The comment says "preserve prior behavior"
+// but this is a silent failure that could lead to security issues — an admin thinks they've
+// set a new password but the old one remains active. Should return the error.
 func (m *Module) applyPasswordUpdateFromMap(user *models.User, passwordVal interface{}) error {
 	password, ok := passwordVal.(string)
 	if !ok || password == "" {
@@ -350,6 +354,12 @@ func (m *Module) evictUserFromAdminSessionMap(ctx context.Context, sessions map[
 }
 
 // DeleteUser removes a user.
+// TODO: Bug — admin sessions for the deleted user are NOT cleaned up. Only m.sessions
+// is iterated; m.adminSessions is not checked. If the deleted user had admin sessions,
+// those sessions remain valid in memory (and in DB) until they expire naturally.
+// Also, deleted sessions are removed from the in-memory map but NOT from the database
+// via sessionRepo.Delete. Compare with evictSessionsForUser which handles both maps
+// and deletes from DB.
 func (m *Module) DeleteUser(ctx context.Context, username string) error {
 	user, err := m.GetUser(ctx, username)
 	if err != nil {
@@ -400,6 +410,10 @@ func (m *Module) ListUsers(ctx context.Context) []*models.User {
 }
 
 // UpdateUserPreferences updates and persists user preferences.
+// TODO: Bug — if the userRepo.Update call fails after we've already mutated the shared
+// user pointer, the in-memory state diverges from the database. Unlike UpdateUser which
+// works on a copy, this modifies the original pointer directly under the lock. A failed
+// DB persist leaves the cache with changes that won't survive a restart.
 func (m *Module) UpdateUserPreferences(ctx context.Context, username string, prefs models.UserPreferences) error {
 	prefs.Validate()
 

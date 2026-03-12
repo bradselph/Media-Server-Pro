@@ -11,6 +11,12 @@ import (
 )
 
 // UpdatePassword updates a user's password
+// TODO: Race condition — the user pointer obtained under RLock is the same pointer stored
+// in the map. Between RUnlock and the subsequent Lock, another goroutine could modify the
+// user (e.g., UpdateUser or another UpdatePassword). The old password check uses stale
+// local copies (currentHash/currentSalt) which is correct, but the write modifies the
+// shared pointer directly. Should make a copy of the user before modifying, similar to
+// how UpdateUser does `userCopy := *user`.
 func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newPassword string) error {
 	if len(newPassword) < 8 {
 		return fmt.Errorf("password must be at least 8 characters")
@@ -111,6 +117,10 @@ func (m *Module) ChangeAdminPassword(_ context.Context, currentPassword, newPass
 }
 
 // VerifyPassword verifies a user's password without creating a session
+// TODO: Bug — unlike Authenticate, VerifyPassword does not use the cache-refresh
+// pattern (verifyPasswordWithCacheRefresh). If the user changed their password via
+// another server instance, VerifyPassword will reject the new password because it
+// only checks the cached hash. Should fall back to DB like Authenticate does.
 func (m *Module) VerifyPassword(username, password string) error {
 	m.usersMu.RLock()
 	user, exists := m.users[username]

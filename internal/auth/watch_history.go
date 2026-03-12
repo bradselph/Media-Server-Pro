@@ -66,6 +66,11 @@ func (m *Module) ClearWatchHistory(ctx context.Context, username string) error {
 }
 
 // RemoveWatchHistoryItem removes a single item from a user's watch history by media path
+// TODO: Bug — `user.WatchHistory[:0]` reuses the underlying array. This means `updated`
+// shares memory with the original slice. While this works correctly in practice (the loop
+// only appends items that don't match, so the length is always <= original), it may cause
+// subtle issues if the WatchHistory slice is concurrently read by GetWatchHistory which
+// does NOT copy the data (see TODO on GetWatchHistory).
 func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath string) error {
 	m.usersMu.Lock()
 
@@ -93,6 +98,9 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 }
 
 // GetWatchHistory returns a user's watch history
+// TODO: Bug — returns the internal WatchHistory slice directly without copying. Callers
+// can append to or modify the returned slice, mutating the user's internal state without
+// proper locking. Should return a copy of the slice.
 func (m *Module) GetWatchHistory(username string) ([]models.WatchHistoryItem, error) {
 	m.usersMu.RLock()
 	defer m.usersMu.RUnlock()

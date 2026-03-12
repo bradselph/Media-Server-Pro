@@ -319,6 +319,10 @@ func (m *Module) detectTVShow(ctx PathContext, info *MediaInfo) (Category, float
 }
 
 // detectAnime checks for anime patterns in the filename, directory path, and full path.
+// TODO: Bug — animeScore can exceed 1.0 (e.g., if 3+ patterns match, score = 0.9 + 0.5 = 1.4).
+// Confidence is meant to be 0.0–1.0 but this is unbounded. Should cap at 1.0 or normalize.
+// Also, the resolution quality patterns (720p/1080p + hevc/x264) are very generic and match
+// non-anime content, inflating the anime score for any media with quality tags in the name.
 func (m *Module) detectAnime(ctx PathContext, _ *MediaInfo) (Category, float64, bool) {
 	animeScore := 0.0
 	for _, pattern := range m.patterns.animePatterns {
@@ -391,6 +395,13 @@ func (m *Module) detectMusic(ctx PathContext, info *MediaInfo) (Category, float6
 }
 
 // detectMovie checks for movie patterns in the filename and directory path.
+// TODO: Bug — parseNumber(matches[0]) receives the full regex match (e.g., ".2020." or
+// "(2020)") not just the capture group. parseNumber handles this by extracting digits,
+// but the regex pattern `[.\s(]?(19|20)\d{2}[.\s)]?` has a capture group at index 1
+// that gives the century prefix (e.g., "20"), not the full year. matches[0] is the
+// correct source for the full year, but the intent seems wrong — if the filename is
+// "movie.2020.1080p", matches[0] = "2020" which works, but ".2020." or "(2020)" also
+// match and parseNumber extracts 2020 from those too, so it works by accident.
 func (m *Module) detectMovie(ctx PathContext, info *MediaInfo) (Category, float64, bool) {
 	if matches := m.patterns.movieYearMatch.FindStringSubmatch(ctx.Filename); len(matches) > 0 {
 		info.Title = m.extractMovieTitle(ctx.Filename)
@@ -481,6 +492,11 @@ func parseNumber(s string) int {
 }
 
 // CategorizeDirectory categorizes all files in a directory
+// TODO: Performance — CategorizeFile acquires m.mu.Lock() for each file. For directories
+// with thousands of files, this means thousands of lock/unlock cycles plus one DB upsert
+// per file. Should batch the work: collect paths, lock once, categorize all, then batch
+// persist. The current approach also holds the write lock during DB I/O in saveItem,
+// blocking all reads (GetCategory, GetByCategory, GetStats) for the entire duration.
 func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 	var results []*CategorizedItem
 

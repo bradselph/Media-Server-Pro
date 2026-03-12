@@ -130,6 +130,12 @@ func (m *Module) Start(_ context.Context) error {
 		return nil
 	}
 
+	// TODO: Bug — when the crawler is disabled, targetRepo and discoveryRepo remain nil.
+	// All public methods (AddTarget, GetTargets, etc.) check for nil repos and return
+	// errDisabled, which is correct. However, GetStats accesses targetRepo and discoveryRepo
+	// with nil checks, but GetDiscoveries only checks discoveryRepo, not targetRepo. If
+	// the module is later enabled at runtime without restart, repos stay nil. Should
+	// initialize repos regardless of the enabled flag, or re-initialize on config change.
 	m.targetRepo = mysqlrepo.NewCrawlerTargetRepository(m.dbModule.GORM())
 	m.discoveryRepo = mysqlrepo.NewCrawlerDiscoveryRepository(m.dbModule.GORM())
 
@@ -391,6 +397,9 @@ func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) 
 }
 
 // fetchPage fetches a page's HTML body.
+// TODO: Bug — this creates requests without a context, so there is no way to cancel
+// in-flight requests when the module is stopped or when a crawl timeout fires. Should
+// use http.NewRequestWithContext to propagate cancellation from doCrawl/probe callers.
 func (m *Module) fetchPage(rawURL string) (string, error) {
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
@@ -650,6 +659,10 @@ func (m *Module) DeleteDiscovery(id string) error {
 // --- Stats ---
 
 // GetStats returns crawler statistics.
+// TODO: Performance — fetches ALL targets and ALL discoveries into memory just to count
+// them. For large crawl histories, this loads thousands of records. Should use SQL
+// COUNT queries instead. Both repositories should expose CountByStatus-style methods
+// to avoid fetching all records.
 func (m *Module) GetStats() Stats {
 	stats := Stats{}
 
@@ -686,6 +699,9 @@ func (m *Module) GetStats() Stats {
 }
 
 // IsCrawling returns whether a crawl is currently in progress.
+// TODO: Minor — uses m.crawlMu.Lock() (write lock) for a read-only operation. Should use
+// a sync.RWMutex or simply read the bool atomically. The current Mutex works but blocks
+// other readers unnecessarily.
 func (m *Module) IsCrawling() bool {
 	m.crawlMu.Lock()
 	defer m.crawlMu.Unlock()

@@ -92,6 +92,9 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 	now := time.Now()
 	user.LastLogin = &now
 	m.usersMu.Unlock()
+	// TODO: Bug — user.LastLogin is updated in memory but never persisted to the database
+	// via m.userRepo.Update(). The updated LastLogin will be lost on restart. Should call
+	// m.userRepo.Update(ctx, user) here or in a background goroutine.
 	m.log.Info("User logged in: %s from %s", req.Username, req.IPAddress)
 	return session, nil
 }
@@ -154,6 +157,11 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 }
 
 // ValidateAdminSession validates an admin session
+// TODO: Bug — expired admin sessions are removed from the in-memory map but NOT from
+// the session repository (database). Over time, expired admin sessions accumulate in the
+// DB. The cleanupExpiredSessions method does handle this but only runs every 5 minutes,
+// so there is a window. Also, unlike ValidateSession, this does not update LastActivity
+// on the session, so admin sessions never refresh their expiry on use.
 func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, error) {
 	m.sessionsMu.RLock()
 	session, exists := m.adminSessions[sessionID]
@@ -172,6 +180,12 @@ func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, e
 }
 
 // isLockedOut returns whether the IP is currently locked out due to failed attempts.
+// TODO: Bug — when the lockout duration expires, isLockedOut returns false but the
+// loginAttempt record is NOT reset. The next single failed attempt will immediately
+// re-lock the IP because attempt.Count is still >= MaxLoginAttempts. The attempt
+// should be cleared or reset when the lockout expires. The recordFailedAttempt method
+// partially handles this but uses LockoutDuration for the reset window which means
+// the lockout effectively doubles in duration.
 func (m *Module) isLockedOut(ip string) bool {
 	m.attemptsMu.RLock()
 	defer m.attemptsMu.RUnlock()
