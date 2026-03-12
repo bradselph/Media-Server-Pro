@@ -1,5 +1,6 @@
-// Package huggingface provides a client for the Hugging Face Inference Providers API
-// for image classification of media content.
+// Package huggingface provides a client for the Hugging Face Inference API
+// for image classification of media content (see https://huggingface.co/docs/inference-providers/index
+// and https://huggingface.co/docs/inference-providers/en/tasks/image-classification).
 package huggingface
 
 import (
@@ -18,7 +19,9 @@ import (
 )
 
 const (
-	defaultBaseURL    = "https://router.huggingface.co/hf-inference"
+	// defaultBaseURL is the official Inference API for image/embedding tasks. The router
+	// (router.huggingface.co/v1) is for chat completions only and returns 404 for image tasks.
+	defaultBaseURL    = "https://api-inference.huggingface.co"
 	maxRetries        = 3
 	initialRetryDelay = 2 * time.Second
 	maxResponseSize   = 10 * 1024 * 1024 // 10MB cap for HF API responses
