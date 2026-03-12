@@ -246,8 +246,8 @@ type MatureScanner struct {
 	reviewQueue map[string]*models.MatureReviewItem
 	mu          sync.RWMutex
 	dataDir     string
-	tempDir     string               // for HF frame extraction
-	hfClient    *huggingface.Client  // nil if HuggingFace not configured
+	tempDir     string              // for HF frame extraction
+	hfClient    *huggingface.Client // nil if HuggingFace not configured
 	healthy     bool
 	healthMsg   string
 	healthMu    sync.RWMutex

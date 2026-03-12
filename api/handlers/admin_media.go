@@ -25,43 +25,63 @@ type adminListParams struct {
 	page   int
 }
 
-func parseAdminListQuery(c *gin.Context) adminListParams {
+func parseAdminListSortBy(c *gin.Context) string {
 	sortBy := c.Query("sort")
 	if sortBy == "date" {
-		sortBy = "date_modified"
+		return "date_modified"
 	}
-	var tags []string
-	if t := c.Query("tags"); t != "" {
-		tags = strings.Split(t, ",")
+	return sortBy
+}
+
+func parseAdminListTags(c *gin.Context) []string {
+	t := c.Query("tags")
+	if t == "" {
+		return nil
 	}
-	var isMature *bool
-	if im := c.Query("is_mature"); im != "" {
-		v := im == "true" || im == "1"
-		isMature = &v
+	return strings.Split(t, ",")
+}
+
+func parseAdminListIsMature(c *gin.Context) *bool {
+	im := c.Query("is_mature")
+	if im == "" {
+		return nil
 	}
-	limit := 50
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
-		if l > 1000 {
-			l = 1000
-		}
-		limit = l
+	v := im == "true" || im == "1"
+	return &v
+}
+
+func parseAdminListLimit(c *gin.Context) int {
+	l, err := strconv.Atoi(c.Query("limit"))
+	if err != nil || l <= 0 {
+		return 50
 	}
-	page := 1
-	if p, err := strconv.Atoi(c.Query("page")); err == nil && p > 1 {
-		page = p
+	if l > 1000 {
+		return 1000
 	}
+	return l
+}
+
+func parseAdminListPage(c *gin.Context) int {
+	p, err := strconv.Atoi(c.Query("page"))
+	if err != nil || p < 1 {
+		return 1
+	}
+	return p
+}
+
+func parseAdminListQuery(c *gin.Context) adminListParams {
 	return adminListParams{
 		filter: media.Filter{
 			Type:     models.MediaType(c.Query("type")),
 			Category: c.Query("category"),
 			Search:   c.Query("search"),
-			Tags:     tags,
-			IsMature: isMature,
-			SortBy:   sortBy,
+			Tags:     parseAdminListTags(c),
+			IsMature: parseAdminListIsMature(c),
+			SortBy:   parseAdminListSortBy(c),
 			SortDesc: c.Query("sort_order") == "desc",
 		},
-		limit: limit,
-		page:  page,
+		limit: parseAdminListLimit(c),
+		page:  parseAdminListPage(c),
 	}
 }
 

@@ -168,14 +168,14 @@ func defaultAuthConfig() AuthConfig {
 
 func defaultHLSConfig() HLSConfig {
 	return HLSConfig{
-		Enabled:         true,
-		SegmentDuration: 6,
-		PlaylistLength:  0,
-		CleanupEnabled:  true,
-		CleanupInterval: 1 * time.Hour,
+		Enabled:          true,
+		SegmentDuration:  6,
+		PlaylistLength:   0,
+		CleanupEnabled:   true,
+		CleanupInterval:  1 * time.Hour,
 		RetentionMinutes: 60,
-		AutoGenerate:    false,
-		ConcurrentLimit: 2,
+		AutoGenerate:     false,
+		ConcurrentLimit:  2,
 		QualityProfiles: []HLSQuality{
 			{Name: "1080p", Width: 1920, Height: 1080, Bitrate: 5000000, AudioBitrate: 192000},
 			{Name: "720p", Width: 1280, Height: 720, Bitrate: 2500000, AudioBitrate: 128000},

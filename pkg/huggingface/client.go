@@ -51,12 +51,12 @@ type Client struct {
 
 // ClientConfig holds options for creating a Hugging Face API client.
 type ClientConfig struct {
-	APIKey             string
-	Model              string
-	EndpointURL        string
-	RequestsPerMinute  int
-	Timeout            time.Duration
-	Log                *logger.Logger
+	APIKey            string
+	Model             string
+	EndpointURL       string
+	RequestsPerMinute int
+	Timeout           time.Duration
+	Log               *logger.Logger
 }
 
 // NewClient creates a new Hugging Face API client. If APIKey is empty, the client

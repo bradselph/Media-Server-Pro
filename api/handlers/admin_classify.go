@@ -17,11 +17,11 @@ func (h *Handler) ClassifyStatus(c *gin.Context) {
 	}
 	cfg := h.config.Get().HuggingFace
 	writeSuccess(c, map[string]interface{}{
-		"configured":   h.scanner.HasHuggingFace(),
-		"enabled":      cfg.Enabled,
-		"model":        cfg.Model,
-		"rate_limit":   cfg.RateLimit,
-		"max_frames":   cfg.MaxFrames,
+		"configured":     h.scanner.HasHuggingFace(),
+		"enabled":        cfg.Enabled,
+		"model":          cfg.Model,
+		"rate_limit":     cfg.RateLimit,
+		"max_frames":     cfg.MaxFrames,
 		"max_concurrent": cfg.MaxConcurrent,
 	})
 }

@@ -7,9 +7,48 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/config"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/pkg/models"
 )
+
+// scanConfiguredDirectories runs the scanner on Videos, Music, and Uploads dirs from cfg and returns combined results.
+func (h *Handler) scanConfiguredDirectories(cfg *config.Config) []*scanner.ScanResult {
+	var all []*scanner.ScanResult
+	for _, dir := range []string{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads} {
+		if dir == "" {
+			continue
+		}
+		results, err := h.scanner.ScanDirectory(dir)
+		if err != nil {
+			h.log.Error("Failed to scan directory %q: %v", dir, err)
+			continue
+		}
+		all = append(all, results...)
+	}
+	return all
+}
+
+// processScanResults counts autoFlagged/reviewNeeded/clean and optionally applies mature flags; returns the three counts.
+func (h *Handler) processScanResults(results []*scanner.ScanResult, autoApply bool) (autoFlagged, reviewNeeded, clean int) {
+	for _, r := range results {
+		if r.AutoFlagged {
+			autoFlagged++
+		}
+		if r.NeedsReview {
+			reviewNeeded++
+		}
+		if !r.IsMature && !r.NeedsReview {
+			clean++
+		}
+		if autoApply && r.IsMature {
+			if err := h.media.SetMatureFlag(r.Path, true, r.Confidence, r.Reasons); err != nil {
+				h.log.Error("Failed to set mature flag for %s: %v", r.Path, err)
+			}
+		}
+	}
+	return autoFlagged, reviewNeeded, clean
+}
 
 // ScanContent scans media files for mature content
 func (h *Handler) ScanContent(c *gin.Context) {
@@ -24,7 +63,6 @@ func (h *Handler) ScanContent(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
-
 	if req.Path != "" {
 		result := h.scanner.ScanFile(req.Path)
 		writeSuccess(c, result)
@@ -32,59 +70,11 @@ func (h *Handler) ScanContent(c *gin.Context) {
 	}
 
 	cfg := h.media.GetConfig()
-	allResults := make([]*scanner.ScanResult, 0)
+	allResults := h.scanConfiguredDirectories(cfg)
+	autoFlagged, reviewNeeded, clean := h.processScanResults(allResults, req.AutoApply)
 
-	if cfg.Directories.Videos != "" {
-		results, err := h.scanner.ScanDirectory(cfg.Directories.Videos)
-		if err != nil {
-			h.log.Error("Failed to scan videos directory: %v", err)
-		} else {
-			allResults = append(allResults, results...)
-		}
-	}
-
-	if cfg.Directories.Music != "" {
-		results, err := h.scanner.ScanDirectory(cfg.Directories.Music)
-		if err != nil {
-			h.log.Error("Failed to scan music directory: %v", err)
-		} else {
-			allResults = append(allResults, results...)
-		}
-	}
-
-	if cfg.Directories.Uploads != "" {
-		results, err := h.scanner.ScanDirectory(cfg.Directories.Uploads)
-		if err != nil {
-			h.log.Error("Failed to scan uploads directory: %v", err)
-		} else {
-			allResults = append(allResults, results...)
-		}
-	}
-
-	autoFlagged := 0
-	reviewNeeded := 0
-	clean := 0
-	for _, result := range allResults {
-		if result.AutoFlagged {
-			autoFlagged++
-		}
-		if result.NeedsReview {
-			reviewNeeded++
-		}
-		if !result.IsMature && !result.NeedsReview {
-			clean++
-		}
-
-		if req.AutoApply && result.IsMature {
-			if err := h.media.SetMatureFlag(result.Path, true, result.Confidence, result.Reasons); err != nil {
-				h.log.Error("Failed to set mature flag for %s: %v", result.Path, err)
-			}
-		}
-	}
-
-	stats := h.scanner.GetStats()
 	writeSuccess(c, map[string]interface{}{
-		"stats":              stats,
+		"stats":              h.scanner.GetStats(),
 		"scanned":            len(allResults),
 		"auto_flagged_count": autoFlagged,
 		"review_queue_count": reviewNeeded,

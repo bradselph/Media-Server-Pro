@@ -94,10 +94,10 @@ func sanitizeBaseName(videoPath string) string {
 
 // extractFrameParams holds arguments for extracting a single frame (avoids excess function args).
 type extractFrameParams struct {
-	ffmpegPath  string
-	input       string
-	timestamp   float64
-	outputPath  string
+	ffmpegPath string
+	input      string
+	timestamp  float64
+	outputPath string
 }
 
 // extractFramesAtTimestampsParams holds arguments for batch frame extraction (avoids excess function args).

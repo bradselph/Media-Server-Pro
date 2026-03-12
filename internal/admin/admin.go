@@ -496,7 +496,7 @@ func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]interface
 		"enable_thumbnails":  cfg.Features.EnableThumbnails,
 		"enable_hls":         cfg.Features.EnableHLS,
 		"enable_analytics":   cfg.Features.EnableAnalytics,
-		"enable_uploads":    cfg.Features.EnableUploads,
+		"enable_uploads":     cfg.Features.EnableUploads,
 		"enable_huggingface": cfg.Features.EnableHuggingFace,
 	}
 }
@@ -552,14 +552,14 @@ func buildConfigMatureScannerMap(cfg *config.Config, _ []string) map[string]inte
 
 func buildConfigHuggingFaceMap(cfg *config.Config, _ []string) map[string]interface{} {
 	return map[string]interface{}{
-		"enabled":         cfg.HuggingFace.Enabled,
-		"api_key_set":     len(cfg.HuggingFace.APIKey) > 0,
-		"model":           cfg.HuggingFace.Model,
-		"endpoint_url":    cfg.HuggingFace.EndpointURL,
-		"max_frames":      cfg.HuggingFace.MaxFrames,
-		"timeout_secs":    cfg.HuggingFace.TimeoutSecs,
-		"rate_limit":      cfg.HuggingFace.RateLimit,
-		"max_concurrent":  cfg.HuggingFace.MaxConcurrent,
+		"enabled":        cfg.HuggingFace.Enabled,
+		"api_key_set":    len(cfg.HuggingFace.APIKey) > 0,
+		"model":          cfg.HuggingFace.Model,
+		"endpoint_url":   cfg.HuggingFace.EndpointURL,
+		"max_frames":     cfg.HuggingFace.MaxFrames,
+		"timeout_secs":   cfg.HuggingFace.TimeoutSecs,
+		"rate_limit":     cfg.HuggingFace.RateLimit,
+		"max_concurrent": cfg.HuggingFace.MaxConcurrent,
 	}
 }
 

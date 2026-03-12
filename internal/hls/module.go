@@ -63,8 +63,8 @@ type Module struct {
 	ffprobePath   string
 	accessTracker *AccessTracker
 	activeJobs    sync.WaitGroup // Tracks active transcoding jobs for graceful shutdown
-	stopping      atomic.Bool   // Set to true during Stop() to distinguish cancellation from real failures
-	qualityLocks  sync.Map      // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
+	stopping      atomic.Bool    // Set to true during Stop() to distinguish cancellation from real failures
+	qualityLocks  sync.Map       // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
 }
 
 // NewModule creates a new HLS module

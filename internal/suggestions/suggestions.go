@@ -60,18 +60,18 @@ type Suggestion struct {
 // analytics view events with the suggestion engine for personalized recommendations.
 // Suggestion data is stored in MySQL via the SuggestionProfileRepository.
 type Module struct {
-	config    *config.Manager
-	log       *logger.Logger
-	dbModule  *database.Module
-	repo      repositories.SuggestionProfileRepository
-	profiles  map[string]*UserProfile
+	config          *config.Manager
+	log             *logger.Logger
+	dbModule        *database.Module
+	repo            repositories.SuggestionProfileRepository
+	profiles        map[string]*UserProfile
 	mediaData       map[string]*MediaInfo // keyed by filesystem path
 	mediaByID       map[string]*MediaInfo // keyed by StableID (secondary index)
 	catalogueSeeded bool                  // true after first non-empty UpdateMediaData
 	mu              sync.RWMutex
-	healthy   bool
-	healthMsg string
-	healthMu  sync.RWMutex
+	healthy         bool
+	healthMsg       string
+	healthMu        sync.RWMutex
 	// ctx/cancel drive the background profile-eviction goroutine.
 	ctx    context.Context
 	cancel context.CancelFunc

@@ -118,8 +118,8 @@ type HandlerDeps struct {
 
 // Handler holds dependencies for HTTP handlers
 type Handler struct {
-	log       *logger.Logger
-	buildInfo BuildInfo
+	log           *logger.Logger
+	buildInfo     BuildInfo
 	media         *media.Module
 	streaming     *streaming.Module
 	hls           *hls.Module
@@ -497,8 +497,8 @@ func writePathResolveError(c *gin.Context, err error) {
 }
 
 var (
-	errInvalidPath   = errors.New("invalid path")
-	errPathNotFound  = errors.New("path not found")
+	errInvalidPath  = errors.New("invalid path")
+	errPathNotFound = errors.New("path not found")
 )
 
 func resolveAbsPath(path string) (string, error) {
