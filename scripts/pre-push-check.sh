@@ -16,6 +16,7 @@
 #   --bump-dev             On development: stamp main.go with -dev.SHA label
 #   --skip-go              Skip all Go checks
 #   --skip-frontend        Skip all frontend checks
+#   --skip-codescene       Skip CodeScene-style code health analysis
 #   --skip-security        Skip govulncheck + npm audit (slow/network)
 #   --skip-tests           Skip go test + vitest
 #   --fast                 Alias for --skip-security --skip-tests
@@ -59,6 +60,7 @@ START_TIME=$(date +%s)
 OPT_INSTALL_HOOK=false
 OPT_SKIP_GO=false
 OPT_SKIP_FRONTEND=false
+OPT_SKIP_CODESCENE=false
 OPT_SKIP_SECURITY=false
 OPT_SKIP_TESTS=false
 OPT_FIX=false
@@ -88,6 +90,7 @@ while [[ $# -gt 0 ]]; do
     --sync-version)   OPT_SYNC_VERSION=true ;;
     --skip-go)        OPT_SKIP_GO=true ;;
     --skip-frontend)  OPT_SKIP_FRONTEND=true ;;
+    --skip-codescene) OPT_SKIP_CODESCENE=true ;;
     --skip-security)  OPT_SKIP_SECURITY=true ;;
     --skip-tests)     OPT_SKIP_TESTS=true ;;
     --fast)           OPT_SKIP_SECURITY=true; OPT_SKIP_TESTS=true ;;
@@ -519,6 +522,69 @@ fi
 
 SKIP_AUDIT="$(skip_if "$OPT_SKIP_FRONTEND" "$OPT_SKIP_SECURITY")"
 fe_step "npm audit (high+)"  "$SKIP_AUDIT" "npm audit --audit-level=high"
+
+echo ""
+
+# ── Code Health (CodeScene-style analysis) ─────────────────────────────────────
+section "Code Health (CodeScene-style)"
+
+SKIP_CODESCENE="$OPT_SKIP_CODESCENE"
+if [[ "$SKIP_CODESCENE" == "false" ]]; then
+  CODESCENE_SCRIPT="${SCRIPT_DIR}/codescene-check.py"
+  if [[ ! -f "$CODESCENE_SCRIPT" ]]; then
+    echo -e "  ${WARN} codescene-check.py not found — skipping code health analysis"
+    SKIP_CODESCENE=true
+  fi
+fi
+
+if [[ "$SKIP_CODESCENE" == "false" ]]; then
+  # Find Python
+  CODESCENE_PY=""
+  command -v python3 &>/dev/null && CODESCENE_PY=python3
+  [[ -z "$CODESCENE_PY" ]] && command -v python &>/dev/null && CODESCENE_PY=python
+  if [[ -z "$CODESCENE_PY" ]]; then
+    echo -e "  ${WARN} Python not found — skipping code health analysis"
+    SKIP_CODESCENE=true
+  fi
+fi
+
+if [[ "$SKIP_CODESCENE" == "false" ]]; then
+  # Build args: pass through skip flags + detect base branch
+  CS_ARGS=()
+  if [[ "$BRANCH" == "development" || "$BRANCH" == "main" ]]; then
+    CS_ARGS+=("--base" "main")
+  else
+    CS_ARGS+=("--base" "development")
+  fi
+  $OPT_SKIP_GO       && CS_ARGS+=("--skip-go")
+  $OPT_SKIP_FRONTEND && CS_ARGS+=("--skip-ts")
+
+  printf "  ${CYAN}▶${RESET} %-48s" "CodeScene code health analysis"
+  t0=$(date +%s)
+  cs_out=$("$CODESCENE_PY" "$CODESCENE_SCRIPT" "${CS_ARGS[@]}" 2>&1) && cs_rc=0 || cs_rc=$?
+  elapsed=$(( $(date +%s) - t0 ))
+
+  if [[ $cs_rc -eq 0 ]]; then
+    echo -e "${PASS} ${DIM}${elapsed}s${RESET}"
+    # Show analysis output (indented)
+    if [[ -n "$cs_out" ]]; then
+      echo ""
+      echo "$cs_out"
+      echo ""
+    fi
+  else
+    echo -e "${FAIL} ${DIM}${elapsed}s${RESET}"
+    echo ""
+    echo -e "${RED}─── Code Health Issues ──────────────────────────────────────────${RESET}"
+    echo "$cs_out"
+    echo -e "${RED}─────────────────────────────────────────────────────────────────${RESET}"
+    echo ""
+    FAILED_STEPS+=("CodeScene code health")
+  fi
+else
+  echo -e "  ${SKIP_MARK} ${DIM}CodeScene code health analysis (skipped)${RESET}"
+  SKIPPED_STEPS+=("CodeScene code health")
+fi
 
 echo ""
 

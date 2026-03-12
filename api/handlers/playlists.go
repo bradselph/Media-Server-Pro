@@ -26,6 +26,28 @@ func (h *Handler) requirePlaylistIDAndSession(c *gin.Context) (id string, sessio
 	return id, session, true
 }
 
+// requireSessionWithPlaylistCreate ensures playlist module, session, and CanCreatePlaylists permission.
+// Returns (session, true) or (nil, false) after writing an error.
+func (h *Handler) requireSessionWithPlaylistCreate(c *gin.Context) (session *models.Session, ok bool) {
+	if !h.requirePlaylist(c) {
+		return nil, false
+	}
+	session = RequireSession(c)
+	if session == nil {
+		return nil, false
+	}
+	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
+	if err != nil || user == nil {
+		writeError(c, http.StatusInternalServerError, "Failed to retrieve user permissions")
+		return nil, false
+	}
+	if !user.Permissions.CanCreatePlaylists {
+		writeError(c, http.StatusForbidden, "Playlist creation not allowed for your user type")
+		return nil, false
+	}
+	return session, true
+}
+
 // ListPlaylists returns user's playlists
 func (h *Handler) ListPlaylists(c *gin.Context) {
 	if !h.requirePlaylist(c) {
@@ -35,7 +57,7 @@ func (h *Handler) ListPlaylists(c *gin.Context) {
 	if session == nil {
 		return
 	}
-	playlists := h.playlist.ListPlaylists(session.UserID, true)
+	playlists := h.playlist.ListPlaylists(playlist.UserID(session.UserID), true)
 	if playlists == nil {
 		playlists = []*models.Playlist{}
 	}
@@ -44,23 +66,10 @@ func (h *Handler) ListPlaylists(c *gin.Context) {
 
 // CreatePlaylist creates a new playlist
 func (h *Handler) CreatePlaylist(c *gin.Context) {
-	if !h.requirePlaylist(c) {
+	session, ok := h.requireSessionWithPlaylistCreate(c)
+	if !ok {
 		return
 	}
-	session := RequireSession(c)
-	if session == nil {
-		return
-	}
-	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-	if err != nil || user == nil {
-		writeError(c, http.StatusInternalServerError, "Failed to retrieve user permissions")
-		return
-	}
-	if !user.Permissions.CanCreatePlaylists {
-		writeError(c, http.StatusForbidden, "Playlist creation not allowed for your user type")
-		return
-	}
-
 	var req struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
@@ -73,14 +82,14 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Playlist name required")
 		return
 	}
-
-	pl, err := h.playlist.CreatePlaylist(c.Request.Context(), req.Name, req.Description, session.UserID, req.IsPublic)
+	pl, err := h.playlist.CreatePlaylist(c.Request.Context(), playlist.CreatePlaylistInput{
+		Name: req.Name, Description: req.Description, UserID: playlist.UserID(session.UserID), IsPublic: req.IsPublic,
+	})
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-
 	writeSuccess(c, pl)
 }
 
@@ -93,11 +102,11 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	userID := ""
+	userID := playlist.UserID("")
 	if s := getSession(c); s != nil {
-		userID = s.UserID
+		userID = playlist.UserID(s.UserID)
 	}
-	pl, err := h.playlist.GetPlaylistForUser(id, userID)
+	pl, err := h.playlist.GetPlaylistForUser(playlist.PlaylistID(id), userID)
 	if err != nil {
 		writeError(c, http.StatusNotFound, "Playlist not found")
 		return
@@ -116,12 +125,12 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 	if !BindJSON(c, &updates, errInvalidRequest) {
 		return
 	}
-	if err := h.playlist.UpdatePlaylist(c.Request.Context(), id, session.UserID, updates); err != nil {
+	if err := h.playlist.UpdatePlaylist(c.Request.Context(), playlist.PlaylistID(id), playlist.UserID(session.UserID), updates); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot update playlist")
 		return
 	}
 
-	updatedPlaylist, err := h.playlist.GetPlaylistForUser(id, session.UserID)
+	updatedPlaylist, err := h.playlist.GetPlaylistForUser(playlist.PlaylistID(id), playlist.UserID(session.UserID))
 	if err != nil || updatedPlaylist == nil {
 		h.log.Warn("UpdatePlaylist: update succeeded but failed to fetch updated playlist %s: %v", id, err)
 		writeSuccess(c, map[string]string{"message": "Playlist updated"})
@@ -136,7 +145,7 @@ func (h *Handler) DeletePlaylist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.playlist.DeletePlaylist(c.Request.Context(), id, session.UserID); err != nil {
+	if err := h.playlist.DeletePlaylist(c.Request.Context(), playlist.PlaylistID(id), playlist.UserID(session.UserID)); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot delete playlist")
 		return
 	}
@@ -154,7 +163,7 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 	if format == "" {
 		format = "json"
 	}
-	export, err := h.playlist.ExportPlaylist(id, session.UserID, format)
+	export, err := h.playlist.ExportPlaylist(playlist.PlaylistID(id), playlist.UserID(session.UserID), format)
 	if err != nil {
 		writeError(c, http.StatusForbidden, "Cannot export playlist")
 		return
@@ -207,7 +216,13 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 		title = req.Name
 	}
 
-	if err := h.playlist.AddItem(c.Request.Context(), playlistID, session.UserID, req.MediaID, mediaPath, title); err != nil {
+	if err := h.playlist.AddItem(c.Request.Context(), playlist.AddItemInput{
+		PlaylistID: playlist.PlaylistID(playlistID),
+		UserID:     playlist.UserID(session.UserID),
+		MediaID:    req.MediaID,
+		MediaPath:  mediaPath,
+		Title:      title,
+	}); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot add item to playlist")
 		return
 	}
@@ -227,7 +242,7 @@ func (h *Handler) ReorderPlaylistItems(c *gin.Context) {
 	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-	if err := h.playlist.ReorderItems(c.Request.Context(), playlistID, session.UserID, req.Positions); err != nil {
+	if err := h.playlist.ReorderItems(c.Request.Context(), playlist.PlaylistID(playlistID), playlist.UserID(session.UserID), req.Positions); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot reorder playlist items")
 		return
 	}
@@ -241,7 +256,7 @@ func (h *Handler) ClearPlaylist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.playlist.ClearPlaylist(c.Request.Context(), playlistID, session.UserID); err != nil {
+	if err := h.playlist.ClearPlaylist(c.Request.Context(), playlist.PlaylistID(playlistID), playlist.UserID(session.UserID)); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot clear playlist")
 		return
 	}
@@ -266,7 +281,7 @@ func (h *Handler) CopyPlaylist(c *gin.Context) {
 		return
 	}
 
-	pl, err := h.playlist.CopyPlaylist(c.Request.Context(), sourceID, session.UserID, req.Name)
+	pl, err := h.playlist.CopyPlaylist(c.Request.Context(), playlist.PlaylistID(sourceID), playlist.UserID(session.UserID), req.Name)
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
@@ -291,7 +306,7 @@ func (h *Handler) RemovePlaylistItem(c *gin.Context) {
 		return
 	}
 
-	if err := h.playlist.RemoveItem(c.Request.Context(), playlistID, session.UserID, removeKey); err != nil {
+	if err := h.playlist.RemoveItem(c.Request.Context(), playlist.PlaylistID(playlistID), playlist.UserID(session.UserID), removeKey); err != nil {
 		writeError(c, http.StatusForbidden, "Cannot remove item from playlist")
 		return
 	}

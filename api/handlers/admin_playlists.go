@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/playlist"
 	"media-server-pro/pkg/models"
 )
 
@@ -109,7 +110,7 @@ func (h *Handler) bulkDeletePlaylistsByIDs(ctx context.Context, ids []string) (s
 		if id == "" {
 			continue
 		}
-		if err := h.playlist.AdminDeletePlaylist(ctx, id); err != nil {
+		if err := h.playlist.AdminDeletePlaylist(ctx, playlist.PlaylistID(id)); err != nil {
 			failedCount++
 			errs = append(errs, fmt.Sprintf("%s: %v", id, err))
 		} else {
@@ -128,7 +129,7 @@ func (h *Handler) AdminDeletePlaylist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), playlistID); err != nil {
+	if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), playlist.PlaylistID(playlistID)); err != nil {
 		writeError(c, http.StatusNotFound, "Playlist not found")
 		return
 	}
