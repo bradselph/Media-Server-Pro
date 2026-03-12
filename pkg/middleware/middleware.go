@@ -20,9 +20,6 @@ type ContextKey string
 
 const (
 	RequestIDKey ContextKey = "request_id"
-	UserKey      ContextKey = "user"
-	SessionKey   ContextKey = "session"
-	StartTimeKey ContextKey = "start_time"
 )
 
 // trustedProxies is a configurable set of trusted proxy IPs/CIDRs.
