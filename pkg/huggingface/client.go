@@ -96,7 +96,9 @@ func NewClient(cfg ClientConfig) *Client {
 	rl := rate.NewLimiter(rate.Limit(rps), 2)
 
 	baseURL := resolveBaseURL(cfg.EndpointURL)
-	if cfg.Log != nil && cfg.EndpointURL != "" && strings.Contains(strings.TrimSuffix(cfg.EndpointURL, "/"), routerHost) {
+	trimmedEndpoint := strings.TrimSuffix(cfg.EndpointURL, "/")
+	isRouterEndpoint := cfg.EndpointURL != "" && strings.Contains(trimmedEndpoint, routerHost)
+	if cfg.Log != nil && isRouterEndpoint {
 		cfg.Log.Info("Hugging Face endpoint is the chat-only router; using Inference API (api-inference.huggingface.co) for image classification")
 	}
 
@@ -260,23 +262,33 @@ func (c *Client) handleUnexpectedStatus(body []byte, statusCode int) (*Classific
 // parseResponse handles both image-classification ([{"label","score"}]) and
 // image-to-text ([{"generated_text"}]) response formats from the HF API.
 func (c *Client) parseResponse(body []byte) (*ClassificationResult, error) {
-	// Try image-classification format first: [{"label": "nsfw", "score": 0.95}]
-	var classLabels []LabelScore
-	if err := json.Unmarshal(body, &classLabels); err == nil && len(classLabels) > 0 && classLabels[0].Label != "" {
-		result := &ClassificationResult{Labels: classLabels}
-		for _, ls := range classLabels {
-			tag := strings.ToLower(strings.TrimSpace(ls.Label))
-			if tag != "" {
-				result.Tags = append(result.Tags, tag)
-			}
-			if ls.Score > result.Confidence {
-				result.Confidence = ls.Score
-			}
-		}
+	if result, ok := parseClassificationFormat(body); ok {
 		return result, nil
 	}
+	return parseCaptionFormat(body)
+}
 
-	// Fallback: image-to-text format: [{"generated_text": "..."}]
+// parseClassificationFormat parses [{"label": "...", "score": n}] format. Returns (nil, false) if body doesn't match.
+func parseClassificationFormat(body []byte) (*ClassificationResult, bool) {
+	var classLabels []LabelScore
+	if err := json.Unmarshal(body, &classLabels); err != nil || len(classLabels) == 0 || classLabels[0].Label == "" {
+		return nil, false
+	}
+	result := &ClassificationResult{Labels: classLabels}
+	for _, ls := range classLabels {
+		tag := strings.ToLower(strings.TrimSpace(ls.Label))
+		if tag != "" {
+			result.Tags = append(result.Tags, tag)
+		}
+		if ls.Score > result.Confidence {
+			result.Confidence = ls.Score
+		}
+	}
+	return result, true
+}
+
+// parseCaptionFormat parses [{"generated_text": "..."}] format.
+func parseCaptionFormat(body []byte) (*ClassificationResult, error) {
 	var captions []struct {
 		GeneratedText string `json:"generated_text"`
 	}
