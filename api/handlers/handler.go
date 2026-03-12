@@ -213,8 +213,7 @@ func isClientDisconnect(err error) bool {
 	if err == nil {
 		return false
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
+	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
 		return true
 	}
 	msg := err.Error()
@@ -350,7 +349,7 @@ func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) 
 // traversal, and verifies the file exists. Returns the resolved path and true on success,
 // or writes an error response and returns ("", false) on failure.
 func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDirs AllowedDirs) (ResolvedPath, bool) {
-	validPath := h.resolveRelativePath(path, []string(allowedDirs))
+	validPath := h.resolveRelativePath(path, allowedDirs)
 	if validPath == "" {
 		writeError(c, http.StatusNotFound, errFileNotFound)
 		return "", false
@@ -367,7 +366,7 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 		return "", false
 	}
 
-	if !isPathWithinDirs(absPath, []string(allowedDirs)) {
+	if !isPathWithinDirs(absPath, allowedDirs) {
 		h.log.Warn("Path traversal attempt detected: %s", path)
 		writeError(c, http.StatusForbidden, "Access denied: path outside allowed directories")
 		return "", false
@@ -489,7 +488,7 @@ func resolvePathToAbsolute(c *gin.Context, path string, allowedDirs []string) (s
 }
 
 func writePathResolveError(c *gin.Context, err error) {
-	if err == errInvalidPath {
+	if errors.Is(err, errInvalidPath) {
 		writeError(c, http.StatusBadRequest, "Invalid path")
 		return
 	}
@@ -598,11 +597,11 @@ func (h *Handler) resolvePathForAdmin(c *gin.Context, path string, mustBeDir boo
 		return "", false
 	}
 	allowedDirs := h.allowedMediaDirs()
-	absPath, ok := resolvePathToAbsolute(c, path, []string(allowedDirs))
+	absPath, ok := resolvePathToAbsolute(c, path, allowedDirs)
 	if !ok {
 		return "", false
 	}
-	if !validatePathInDirsAndStat(c, absPath, []string(allowedDirs), mustBeDir) {
+	if !validatePathInDirsAndStat(c, absPath, allowedDirs, mustBeDir) {
 		return "", false
 	}
 	return absPath, true

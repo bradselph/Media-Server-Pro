@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -166,7 +167,7 @@ func computeContentFingerprint(path string) (string, error) {
 	// Read first 64 KB (or entire file if smaller)
 	head := make([]byte, sampleSize)
 	n, err := io.ReadFull(f, head)
-	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("read head of %s: %w", path, err)
 	}
 	h.Write(head[:n])
@@ -176,7 +177,7 @@ func computeContentFingerprint(path string) (string, error) {
 		tail := make([]byte, sampleSize)
 		offset := size - int64(sampleSize)
 		n, err = f.ReadAt(tail, offset)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return "", fmt.Errorf("read tail of %s: %w", path, err)
 		}
 		h.Write(tail[:n])
@@ -296,7 +297,7 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module
-func (m *Module) Stop(ctx context.Context) error {
+func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping media module...")
 
 	// Cancel any running background scans (also cancels in-flight background saves)
