@@ -246,9 +246,9 @@ type MatureScanner struct {
 	reviewQueue map[string]*models.MatureReviewItem
 	mu          sync.RWMutex
 	dataDir     string
-	tempDir     string              // for HF frame extraction
-	hfClient    *huggingface.Client // nil if HuggingFace not configured
-	healthy     bool
+	tempDir      string                                 // for HF frame extraction
+	hfClientPtr  atomic.Pointer[huggingface.Client]    // thread-safe; nil if HuggingFace not configured
+	healthy      bool
 	healthMsg   string
 	healthMu    sync.RWMutex
 	scanRepo    repositories.ScanResultRepository // Repository for persistent scan results
@@ -1127,25 +1127,27 @@ func (s *MatureScanner) ClearReviewQueue() {
 	s.mu.Unlock()
 }
 
-// TODO: SetHFClient is not thread-safe. hfClient is read by ClassifyMatureContent and
-// HasHuggingFace without synchronization, while SetHFClient can be called from main.go
-// at any time. Should use atomic.Pointer or protect with a mutex.
-
 // SetHFClient sets the Hugging Face client for visual classification. Call with nil to disable.
 func (s *MatureScanner) SetHFClient(c *huggingface.Client) {
-	s.hfClient = c
+	s.hfClientPtr.Store(c)
 }
 
 // HasHuggingFace returns true if visual classification via Hugging Face is configured.
 func (s *MatureScanner) HasHuggingFace() bool {
-	return s.hfClient != nil
+	return s.hfClientPtr.Load() != nil
+}
+
+// getHFClient returns the current Hugging Face client (thread-safe).
+func (s *MatureScanner) getHFClient() *huggingface.Client {
+	return s.hfClientPtr.Load()
 }
 
 // ClassifyMatureContent performs visual classification on a file already detected as mature.
 // Extracts frames (for video) or uses the file (for images), sends them to the HF API,
 // and returns aggregated, deduplicated tags. Returns nil if HF is not configured or on error.
 func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) ([]string, error) {
-	if s.hfClient == nil {
+	hfClient := s.getHFClient()
+	if hfClient == nil {
 		return nil, nil
 	}
 	cfg := s.config.Get()
