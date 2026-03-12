@@ -21,10 +21,14 @@ import (
 const (
 	// defaultBaseURL is the official Inference API for image/embedding tasks. The router
 	// (router.huggingface.co/v1) is for chat completions only and returns 404 for image tasks.
+	// See https://huggingface.co/docs/inference-providers/index and
+	// https://huggingface.co/docs/inference-providers/en/tasks/image-classification
 	defaultBaseURL    = "https://api-inference.huggingface.co"
 	maxRetries        = 3
 	initialRetryDelay = 2 * time.Second
 	maxResponseSize   = 10 * 1024 * 1024 // 10MB cap for HF API responses
+	// Token must have "Inference Providers" or serverless inference permission (e.g. inference.serverless.write for fine-grained).
+	jpegMagic = "\xff\xd8\xff"
 )
 
 // ClassificationResult holds the result of an image classification request.
@@ -61,6 +65,23 @@ type ClientConfig struct {
 	Log               *logger.Logger
 }
 
+// routerHost is the chat-only Inference Providers host; image/embedding tasks must use api-inference.huggingface.co.
+const routerHost = "router.huggingface.co"
+
+// resolveBaseURL returns the base URL for image classification. If the configured URL is the
+// chat-only router (router.huggingface.co), returns the Inference API URL to avoid 404s.
+func resolveBaseURL(configured string) string {
+	base := strings.TrimSuffix(configured, "/")
+	if base == "" {
+		return defaultBaseURL
+	}
+	// Router is for chat completions only; image classification requires api-inference.huggingface.co
+	if strings.Contains(base, routerHost) {
+		return defaultBaseURL
+	}
+	return base
+}
+
 // NewClient creates a new Hugging Face API client. If APIKey is empty, the client
 // will return empty results without making requests (graceful degradation).
 func NewClient(cfg ClientConfig) *Client {
@@ -74,9 +95,9 @@ func NewClient(cfg ClientConfig) *Client {
 	}
 	rl := rate.NewLimiter(rate.Limit(rps), 2)
 
-	baseURL := defaultBaseURL
-	if cfg.EndpointURL != "" {
-		baseURL = strings.TrimSuffix(cfg.EndpointURL, "/")
+	baseURL := resolveBaseURL(cfg.EndpointURL)
+	if cfg.Log != nil && cfg.EndpointURL != "" && strings.Contains(strings.TrimSuffix(cfg.EndpointURL, "/"), routerHost) {
+		cfg.Log.Info("Hugging Face endpoint is the chat-only router; using Inference API (api-inference.huggingface.co) for image classification")
 	}
 
 	timeout := cfg.Timeout
@@ -159,7 +180,11 @@ func (c *Client) doOneRequest(ctx context.Context, url string, imageData []byte,
 		return nil, false, nil, nil
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Content-Type", "application/octet-stream")
+	contentType := "application/octet-stream"
+	if len(imageData) >= 3 && string(imageData[:3]) == jpegMagic {
+		contentType = "image/jpeg"
+	}
+	req.Header.Set("Content-Type", contentType)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -173,9 +198,21 @@ func (c *Client) doOneRequest(ctx context.Context, url string, imageData []byte,
 	return c.handleResponse(body, resp.StatusCode, attempt)
 }
 
+// parseErrorBody extracts an error message from HF API JSON body, e.g. {"error": "..."}.
+func parseErrorBody(body []byte) string {
+	var v struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &v); err == nil && v.Error != "" {
+		return strings.TrimSpace(v.Error)
+	}
+	return ""
+}
+
 // handleResponse interprets HTTP response. Returns (result, retry, retryErr, fatalErr).
 func (c *Client) handleResponse(body []byte, statusCode int, attempt int) (*ClassificationResult, bool, error, error) {
-	if statusCode == http.StatusOK {
+	switch statusCode {
+	case http.StatusOK:
 		result, err := c.parseResponse(body)
 		if err != nil {
 			c.log.Warn("HF client: parse response: %v", err)
@@ -183,20 +220,40 @@ func (c *Client) handleResponse(body []byte, statusCode int, attempt int) (*Clas
 		}
 		result.Model = c.model
 		return result, false, nil, nil
-	}
-	if statusCode == 503 {
+	case http.StatusNotFound:
+		return c.handleNotFound(body)
+	case 503:
 		c.log.Debug("HF client: model loading (503), retry %d/%d", attempt+1, maxRetries)
 		return nil, true, fmt.Errorf("model loading (503)"), nil
-	}
-	if statusCode == http.StatusUnauthorized {
+	case http.StatusUnauthorized:
 		c.log.Warn("HF client: invalid API key (401)")
 		return nil, false, nil, fmt.Errorf("hugging face API key invalid or expired (401)")
-	}
-	if statusCode == 429 {
+	case 429:
 		c.log.Debug("HF client: rate limit (429), retry %d/%d", attempt+1, maxRetries)
 		return nil, true, fmt.Errorf("rate limit (429)"), nil
+	default:
+		return c.handleUnexpectedStatus(body, statusCode)
 	}
-	c.log.Warn("HF client: unexpected status %d: %s", statusCode, string(body))
+}
+
+func (c *Client) handleNotFound(body []byte) (*ClassificationResult, bool, error, error) {
+	msg := parseErrorBody(body)
+	hint := "check HUGGINGFACE_MODEL and endpoint URL (use https://api-inference.huggingface.co for image tasks)"
+	if msg != "" {
+		c.log.Warn("HF client: model not found (404): %s — %s", msg, hint)
+	} else {
+		c.log.Warn("HF client: model not found (404): %s", hint)
+	}
+	return nil, false, nil, nil
+}
+
+func (c *Client) handleUnexpectedStatus(body []byte, statusCode int) (*ClassificationResult, bool, error, error) {
+	msg := parseErrorBody(body)
+	if msg != "" {
+		c.log.Warn("HF client: unexpected status %d: %s", statusCode, msg)
+	} else {
+		c.log.Warn("HF client: unexpected status %d: %s", statusCode, string(body))
+	}
 	return nil, false, nil, nil
 }
 
