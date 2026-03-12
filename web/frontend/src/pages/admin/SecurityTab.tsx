@@ -26,6 +26,14 @@ const inputBaseStyle: React.CSSProperties = {
 const mutedStyle: React.CSSProperties = { fontSize: 12, color: 'var(--text-muted)' }
 const thSortStyle: React.CSSProperties = { cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }
 
+// TODO: Duplicate sort indicator functions — `ipSortIndicator` and `banSortIndicator`
+// are identical in logic, differing only in the generic type of the column key.
+// This same pattern (sortIndicator, handleSort, thSortStyle) is duplicated across
+// PlaylistsTab, MediaTab, UsersTab, and this file.
+// WHY: Each admin tab re-implements the same sorting UI boilerplate, making it harder
+// to maintain consistent behavior and introducing more code to keep in sync.
+// FIX: Extract a generic `SortIndicator` component or a `useSortable` hook into
+// `adminUtils.ts` or `helpers.tsx` that works with any column key type.
 function ipSortIndicator(col: IPSortKey, sortBy: IPSortKey, sortOrder: 'asc' | 'desc') {
     if (sortBy !== col) return <span style={{ opacity: 0.3, marginLeft: 4 }}>&#x21C5;</span>
     return <span style={{ marginLeft: 4 }}>{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>
@@ -200,6 +208,10 @@ export function SecurityTab() {
                 <h3>Whitelist <span
                     style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>({whitelist.length} IPs)</span>
                 </h3>
+                {/* TODO: Inline styles on these inputs duplicate `inputBaseStyle` defined at the
+                    top of this file. The whitelist and blacklist forms both repeat the same
+                    6-property style object instead of using the shared constant.
+                    FIX: Use `style={{flex: 1, ...inputBaseStyle}}` on these inputs. */}
                 <form onSubmit={handleAddWhitelist} style={{display: 'flex', gap: 8, marginBottom: 12}}>
                     <input type="text" value={wlIp} onChange={e => { setWlIp(e.target.value); }} placeholder="IP address"
                            style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,

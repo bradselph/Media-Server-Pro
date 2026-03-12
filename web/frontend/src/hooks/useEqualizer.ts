@@ -243,6 +243,16 @@ export function useEqualizer(
         }
     }, [audioRef, isReady, buildFilters])
 
+    // TODO: Potential stale closure — `currentMode` is in the dependency array, but
+    // `customPresets` is referenced in `setPreset` (same pattern). More importantly,
+    // `setBandGain` captures `currentMode` from closure but `currentMode` is a React
+    // state value. If `switchMode` is called and then `setBandGain` is called in the
+    // same render cycle before re-render, the persisted key could be stale.
+    // WHY: useCallback captures the state value at the time the callback is created.
+    // If `currentMode` changes but the callback hasn't been recreated yet (between
+    // renders), it will use the old mode when deciding which storage key to write to.
+    // FIX: Use a ref for `currentMode` in persistence logic, or read it from the
+    // ref inside the callback instead of relying on the closure.
     const setBandGain = useCallback((index: number, gain: number) => {
         const clamped = Math.max(-20, Math.min(20, gain))
         if (filtersRef.current[index]) {
@@ -310,6 +320,10 @@ export function useEqualizer(
         if (currentPreset === name) setCurrentPreset('flat')
     }, [customPresets, currentPreset])
 
+    // TODO: `presets` is recomputed on every render without memoization. Since it depends
+    // on `currentMode` and `customPresets`, it should use `useMemo` to avoid unnecessary
+    // array allocations and downstream re-renders in components that receive this array.
+    // FIX: Wrap in `useMemo(() => [...], [currentMode, customPresets])`.
     const presets = [
         ...Object.keys(currentMode === '31' ? PRESETS_31 : PRESETS_10),
         ...Object.keys(customPresets).filter(k => customPresets[k].bands === currentMode),

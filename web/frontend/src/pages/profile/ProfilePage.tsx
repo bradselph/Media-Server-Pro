@@ -18,6 +18,15 @@ function formatDate(timestamp: string | undefined): string {
     return date.toLocaleDateString(undefined, {year: 'numeric', month: 'long', day: 'numeric'})
 }
 
+// TODO: Duplicate — this local `formatDuration` duplicates the shared version in
+// `@/utils/formatters.ts` (which uses the Duration value object pattern).
+// A similar duplicate also exists in `MediaTab.tsx`.
+// WHY: Three copies of duration formatting create maintenance burden and inconsistent
+// output formats ('0m' here vs '0:00' in formatters.ts vs '—' in MediaTab.tsx).
+// FIX: Import and use `formatDuration` from `@/utils/formatters.ts`, wrapping the
+// raw seconds value: `formatDuration({ seconds })`. If the human-readable format
+// ('1h 30m') is intentionally different from the clock format ('1:30:00'), create a
+// separate named export like `formatDurationHuman` in formatters.ts.
 function formatDuration(seconds: number): string {
     if (!seconds || seconds <= 0) return '0m'
     const h = Math.floor(seconds / 3600)
@@ -643,6 +652,16 @@ function useProfilePage() {
     const [deleteSubmitting, setDeleteSubmitting] = useState(false)
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
+    // TODO: Missing dependencies in useEffect — the eslint-disable suppresses the
+    // exhaustive-deps warning, but these functions are recreated on every render (they
+    // are defined as regular functions inside the custom hook, not memoized). This works
+    // because the empty deps array means it only runs once, but it's fragile.
+    // WHY: If any of these functions ever reference state that changes (e.g., `setTheme`),
+    // they would use stale values. This pattern also prevents re-fetching when dependencies
+    // like `user` change (e.g., after re-login without page reload).
+    // FIX: Either memoize the load functions with useCallback, or refactor to use
+    // TanStack Query (useQuery) for these data-fetching operations, which handles
+    // caching, refetching, and dependencies automatically.
     useEffect(() => {
         loadPreferences()
         loadWatchHistory()
@@ -664,6 +683,14 @@ function useProfilePage() {
         try {
             const prefs = await preferencesApi.get()
             setPreferences(prefs)
+            // TODO: Incomplete theme sync — when the server preference is 'auto', the local
+            // theme store is NOT updated, meaning the user's stored theme (from a previous
+            // manual selection) remains active instead of switching to 'auto'.
+            // WHY: If a user sets theme to 'auto' on another device and then visits their
+            // profile, the local theme won't update to 'auto'. The same issue exists in
+            // `handlePreferencesSubmit` below.
+            // FIX: Call `setTheme(prefs.theme)` unconditionally (the themeStore's `setTheme`
+            // already handles 'auto' via `resolveTheme`).
             if (prefs.theme && prefs.theme !== 'auto') {
                 setTheme(prefs.theme as 'light' | 'dark')
             }

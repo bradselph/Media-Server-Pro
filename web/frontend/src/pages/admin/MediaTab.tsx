@@ -8,6 +8,13 @@ import {SubTabs} from './helpers'
 
 // ── Tab: Media ────────────────────────────────────────────────────────────────
 
+// TODO: Duplicate — this local `formatDuration` duplicates the shared version in
+// `@/utils/formatters.ts`. Another copy exists in `ProfilePage.tsx`.
+// WHY: Multiple copies cause maintenance burden and inconsistent fallback values
+// ('—' here vs '0:00' in formatters.ts vs '0m' in ProfilePage.tsx).
+// FIX: Import `formatDuration` from `@/utils/formatters.ts` and use it:
+// `formatDuration({ seconds: secs })`. Adjust the fallback in formatters.ts or
+// add a fallback parameter if different defaults are needed per context.
 function formatDuration(secs: number): string {
     if (!secs || secs <= 0) return '—'
     const h = Math.floor(secs / 3600)

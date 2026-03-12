@@ -139,6 +139,12 @@ export function formatTitle(name: MediaFileName): string {
 
 // fallback is returned when bytes is 0 or falsy.
 // IndexPage uses '0 B' (upload contexts); PlayerPage uses '—' (metadata display).
+// TODO: Missing 'TB' in sizes array — files or storage values > 1 TB will produce
+// `undefined` for the unit because `i` will be 4 but `sizes[4]` doesn't exist.
+// The duplicate in `adminUtils.ts` (`formatBytes`) already includes 'TB'.
+// WHY: Any media library with > 1 TB total size will show e.g. "1.0 undefined"
+// in the UI wherever this function is used (IndexPage file size display, etc.).
+// FIX: Add 'TB' to the sizes array: `['B', 'KB', 'MB', 'GB', 'TB']`.
 export function formatFileSize(fs: FileSize, fallback = '—'): string {
     const bytes = fs.bytes
     if (!bytes) return fallback

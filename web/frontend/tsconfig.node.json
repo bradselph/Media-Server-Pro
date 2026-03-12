@@ -23,6 +23,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
+  // TODO: The include array only lists vite.config.ts, but eslint.config.js is
+  // also a root-level Node config file. Since it's .js (not .ts), TypeScript
+  // won't check it anyway — but if it's ever converted to .ts, add it here.
   "include": [
     "vite.config.ts"
   ]

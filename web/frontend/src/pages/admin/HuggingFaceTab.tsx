@@ -56,6 +56,13 @@ const inputBaseStyle = {
     fontSize: 13,
 }
 
+// TODO: Duplicate type — this local `ClassifyStatus` interface duplicates the exported
+// `ClassifyStatus` in `@/api/types.ts` (line 488). The local version has `model?` optional
+// while types.ts has `model` required, which is an inconsistency.
+// WHY: If the backend shape changes, only one copy may be updated, causing silent type
+// drift. The optional vs required `model` difference could also mask bugs.
+// FIX: Remove this local interface and import `ClassifyStatus` from `@/api/types.ts`.
+// Verify which optionality (`model` vs `model?`) is correct per the backend response.
 interface ClassifyStatus {
     configured: boolean
     enabled: boolean
@@ -507,6 +514,14 @@ function useHuggingFaceTab() {
             await adminApi.updateConfig(updates)
             setMsg({ type: 'success', text: 'Settings saved. Some changes may require a restart.' })
             setApiKeyInput('')
+            // TODO: Bug — this passes ['admin-config', 'classify-status'] as a single queryKey,
+            // which only matches queries whose key is exactly that two-element array. It does NOT
+            // invalidate both the 'admin-config' and 'classify-status' queries separately.
+            // WHY: TanStack Query uses prefix matching on queryKey arrays. A query registered with
+            // queryKey: ['admin-config'] won't match ['admin-config', 'classify-status'].
+            // FIX: Call invalidateQueries twice with separate keys:
+            //   queryClient.invalidateQueries({ queryKey: ['admin-config'] })
+            //   queryClient.invalidateQueries({ queryKey: ['classify-status'] })
             queryClient.invalidateQueries({ queryKey: ['admin-config', 'classify-status'] })
         } catch (err) {
             setMsg({ type: 'error', text: errMsg(err) })

@@ -37,6 +37,11 @@ export default defineConfig({
                     // (useHLS.ts: await import('hls.js')), so this chunk is truly lazy.
                     if (id.includes('node_modules')) {
                         if (id.includes('hls.js')) return 'vendor-hls'
+                        // TODO: The check `id.includes('react/')` may match unrelated
+                        // packages that happen to have 'react/' in their path (e.g.,
+                        // 'eslint-plugin-react/...'). Since this runs on id paths from
+                        // node_modules, it's unlikely to cause issues in practice, but
+                        // a more specific check like '/node_modules/react/' would be safer.
                         if (id.includes('react-dom') || id.includes('react/')) return 'vendor-react'
                         if (id.includes('react-router')) return 'vendor-router'
                         if (id.includes('@tanstack')) return 'vendor-query'
@@ -58,6 +63,10 @@ export default defineConfig({
     },
     server: {
         // Proxy API requests to Go backend during development
+        // TODO: The proxy target port (8080) must match SERVER_PORT in .env.
+        // config.json uses port 3000, so if running with config.json alone
+        // (no .env override), the dev proxy will fail to connect. Consider
+        // reading from an env var or documenting the required .env setting.
         proxy: {
             '/api': 'http://localhost:8080',
             '/media': 'http://localhost:8080',

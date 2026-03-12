@@ -51,6 +51,13 @@ export function UpdatesTab() {
     }
 
     // Poll /api/admin/update/source/progress every 2s while a build is running
+    // TODO: Stale closure risk — the `build?.inProgress` dependency means the effect
+    // re-runs whenever that boolean changes, but `setBuild` inside the interval callback
+    // captures the initial `build` reference. This works because it only reads `p` (the
+    // API response), not `build` from closure. However, the `clearInterval(pollRef.current!)`
+    // inside the callback uses a non-null assertion that could fail if the ref was already
+    // cleared by the cleanup function racing with the callback.
+    // FIX: Guard with `if (pollRef.current) clearInterval(pollRef.current)` instead of `!`.
     useEffect(() => {
         if (!build?.inProgress) {
             if (pollRef.current) {

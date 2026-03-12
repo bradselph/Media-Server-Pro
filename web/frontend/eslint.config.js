@@ -7,6 +7,9 @@ import tseslint from 'typescript-eslint'
 import {defineConfig, globalIgnores} from 'eslint/config'
 
 export default defineConfig([
+    // TODO: The ignore pattern 'dist' won't match because the build output goes
+    // to '../static/react/' (configured in vite.config.ts outDir), not 'dist/'.
+    // This ignore is a no-op. Either remove it or change to '../static/react'.
     globalIgnores(['dist']),
     {
         files: ['**/*.{ts,tsx}'],

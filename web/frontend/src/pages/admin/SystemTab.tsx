@@ -76,6 +76,15 @@ function SettingsTab() {
     const [pwMsg, setPwMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [pwLoading, setPwLoading] = useState(false)
 
+    // TODO: Anti-pattern — calling `setConfigText` inside `queryFn` is a side effect
+    // during the query function. TanStack Query may call queryFn multiple times (retries,
+    // refetches, background refetches), which will overwrite any user edits in the textarea.
+    // WHY: If the user is editing config JSON and a background refetch triggers, their
+    // edits will be silently replaced by the freshly fetched data.
+    // FIX: Use the `data` return value from useQuery and initialize `configText` from it
+    // in a separate useEffect that only runs on first load (or use `onSuccess` / `select`).
+    // Alternatively, set `staleTime: Infinity` and `refetchOnWindowFocus: false` to prevent
+    // unexpected overwrites.
     useQuery({
         queryKey: ['admin-config'],
         queryFn: async () => {

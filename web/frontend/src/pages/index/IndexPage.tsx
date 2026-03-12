@@ -648,6 +648,15 @@ function InlinePlayer({
     const handleEqToggle = useCallback(() => { setShowEq(v => !v); }, [])
 
     // Load new media when nowPlaying changes
+    // TODO: Missing dependencies — `activeRef`, `volume`, and `mediaApi.getStreamUrl`
+    // are used inside the effect but excluded from the dependency array (suppressed by
+    // eslint-disable). `volume` is particularly concerning: if the user changes volume
+    // before a new track loads, the old volume value from the closure will be used.
+    // WHY: Stale `volume` closure means the volume slider change won't take effect until
+    // the next track change. `activeRef` changing between audio/video refs when `isVideo`
+    // changes also won't trigger a re-setup.
+    // FIX: Add `volume` to the dependency array (or read it from a ref), and consider
+    // splitting volume sync into its own effect.
     useEffect(() => {
         if (!nowPlaying) return
         const el = activeRef.current
