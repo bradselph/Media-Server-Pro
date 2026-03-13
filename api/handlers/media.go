@@ -163,12 +163,8 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		items = items[:limit]
 	}
 
-	// TODO: h.thumbnails is accessed without a nil check. The thumbnails module is in
-	// HandlerOptionalDeps and can be nil if the feature is disabled. This will panic with
-	// a nil pointer dereference. Wrap in "if h.thumbnails != nil" or add a requireThumbnails
-	// guard. The same issue exists in GetMedia below.
 	for _, item := range items {
-		if item.ThumbnailURL == "" && item.Path != "" {
+		if item.ThumbnailURL == "" && item.Path != "" && h.thumbnails != nil {
 			// Only generate thumbnails for local media (receiver items have no local path)
 			if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.ID)) {
 				isAudio := item.Type == "audio"
@@ -264,9 +260,7 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		}
 	}
 
-	// TODO: h.thumbnails is accessed without a nil check here (same issue as ListMedia).
-	// If the thumbnails module is nil (disabled), this will panic.
-	if item.ThumbnailURL == "" {
+	if item.ThumbnailURL == "" && h.thumbnails != nil {
 		if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.ID)) {
 			isAudio := item.Type == "audio"
 			_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: true})
