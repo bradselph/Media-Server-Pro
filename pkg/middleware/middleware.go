@@ -78,14 +78,22 @@ func GinRequestID() gin.HandlerFunc {
 	}
 }
 
-// TODO: Bug — isHTTPS trusts X-Forwarded-Proto from any client without checking
-// if the request came through a trusted proxy. An attacker can send
-// X-Forwarded-Proto: https on a plain HTTP connection to trick the server into
-// setting HSTS headers over insecure transport. This should use isTrustedProxy()
-// to validate the source before honoring the header, similar to extractClientIP
-// in agegate.go.
+// isHTTPS returns true when the connection is HTTPS, either via TLS or via
+// X-Forwarded-Proto from a trusted proxy. X-Forwarded-Proto is only honored when
+// the request came from a trusted proxy to prevent clients from spoofing HTTPS
+// and tricking the server into setting HSTS over insecure transport.
 func isHTTPS(c *gin.Context) bool {
-	return c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+	if c.Request.TLS != nil {
+		return true
+	}
+	remoteIP, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err != nil {
+		remoteIP = c.Request.RemoteAddr
+	}
+	if isTrustedProxy(remoteIP) && c.GetHeader("X-Forwarded-Proto") == "https" {
+		return true
+	}
+	return false
 }
 
 // GinSecurityHeaders adds security headers (CSP, HSTS, X-Frame-Options, etc.)
