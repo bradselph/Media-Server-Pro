@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -86,23 +87,16 @@ func RegisterStaticRoutes(r *gin.Engine, _ string) {
 	log.Info("Web routes registered")
 }
 
-// TODO: Performance — ginServeReactApp reads the embedded index.html from the
-// embed.FS on every request via content.ReadFile. While embed.FS reads are fast
-// (in-memory), this still involves a map lookup and byte slice copy per request.
-// The file content is immutable at runtime, so it should be read once at init time
-// and served from a pre-read []byte. Also, no Cache-Control header is set for the
-// SPA HTML, so browsers may cache a stale index.html after deployments. Consider
-// adding Cache-Control: no-cache or using ETag-based caching for the HTML.
+var (
+	indexHTMLOnce sync.Once
+	cachedIndex   []byte
+	cachedIndexErr error
+)
 
 // ginServeReactApp returns a gin handler that serves the React SPA's index.html.
+// Index HTML is read once on first request and cached to avoid per-request embed reads.
 func ginServeReactApp() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		data, err := content.ReadFile("static/react/index.html")
-		if err != nil {
-			log.Warn("React SPA not available, falling back: %v", err)
-			c.Header("Content-Type", "text/html; charset=utf-8")
-			c.Status(http.StatusNotFound)
-			_, _ = c.Writer.WriteString(`<!DOCTYPE html>
+	const fallbackHTML = `<!DOCTYPE html>
 <html>
 <head><title>Page Not Found</title></head>
 <body>
@@ -110,10 +104,20 @@ func ginServeReactApp() gin.HandlerFunc {
 <p>The React frontend has not been built yet. Run: cd web/frontend && npm run build</p>
 <p><a href="/">Return to Home</a></p>
 </body>
-</html>`)
+</html>`
+	return func(c *gin.Context) {
+		indexHTMLOnce.Do(func() {
+			cachedIndex, cachedIndexErr = content.ReadFile("static/react/index.html")
+		})
+		if cachedIndexErr != nil {
+			log.Warn("React SPA not available, falling back: %v", cachedIndexErr)
+			c.Header("Content-Type", "text/html; charset=utf-8")
+			c.Status(http.StatusNotFound)
+			_, _ = c.Writer.WriteString(fallbackHTML)
 			return
 		}
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_, _ = c.Writer.Write(data)
+		c.Header("Cache-Control", "no-cache")
+		_, _ = c.Writer.Write(cachedIndex)
 	}
 }
