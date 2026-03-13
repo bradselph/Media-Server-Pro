@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.87.0] - 2026-03-13 (minor)
+
+- Merge pull request #86 from bradselph/development
+- fix(models): truncateString by rune count to avoid splitting UTF-8 characters
+- fix(analytics): add default LIMIT to GetByMediaID and GetByUserID to prevent unbounded queries
+- Update ci.yml
+- fix(extractor): remove redundant in-memory add in AddItem (item already added under lock at line 234)
+- Merge pull request #85 from bradselph/development
+- Update ci.yml
+
+
 ## [0.86.0] - 2026-03-13 (minor)
 
 - Merge pull request #84 from bradselph/development
