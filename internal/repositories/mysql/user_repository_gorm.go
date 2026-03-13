@@ -51,14 +51,8 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	})
 }
 
-// TODO: Bug — errors from permsRepo.Get and prefsRepo.Get are silently swallowed.
-// If the database returns a transient error (e.g. connection timeout), the user is
-// returned with zero-value Permissions/Preferences instead of failing. This could
-// grant or deny access incorrectly (e.g. CanViewMature defaults to false, CanStream
-// defaults to false). At minimum, non-ErrRecordNotFound errors should be propagated.
-// The same issue exists in GetByID and List below.
-
-// GetByUsername retrieves a user by username with all related data
+// GetByUsername retrieves a user by username with all related data.
+// Errors from permsRepo.Get and prefsRepo.Get are propagated so transient DB failures fail the request.
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
 	var user models.User
 	err := r.db.WithContext(ctx).First(&user, "username = ?", username).Error
@@ -69,15 +63,19 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 		return nil, err
 	}
 
-	// Load permissions
 	perms, err := r.permsRepo.Get(ctx, user.ID)
-	if err == nil {
+	if err != nil {
+		return nil, err
+	}
+	if perms != nil {
 		user.Permissions = *perms
 	}
 
-	// Load preferences
 	prefs, err := r.prefsRepo.Get(ctx, user.ID)
-	if err == nil {
+	if err != nil {
+		return nil, err
+	}
+	if prefs != nil {
 		user.Preferences = *prefs
 	}
 
@@ -95,15 +93,19 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 		return nil, err
 	}
 
-	// Load permissions
 	perms, err := r.permsRepo.Get(ctx, user.ID)
-	if err == nil {
+	if err != nil {
+		return nil, err
+	}
+	if perms != nil {
 		user.Permissions = *perms
 	}
 
-	// Load preferences
 	prefs, err := r.prefsRepo.Get(ctx, user.ID)
-	if err == nil {
+	if err != nil {
+		return nil, err
+	}
+	if prefs != nil {
 		user.Preferences = *prefs
 	}
 
@@ -157,15 +159,20 @@ func (r *UserRepository) List(ctx context.Context) ([]*models.User, error) {
 		return nil, err
 	}
 
-	// Load permissions and preferences for each user
 	for _, user := range users {
 		perms, err := r.permsRepo.Get(ctx, user.ID)
-		if err == nil {
+		if err != nil {
+			return nil, err
+		}
+		if perms != nil {
 			user.Permissions = *perms
 		}
 
 		prefs, err := r.prefsRepo.Get(ctx, user.ID)
-		if err == nil {
+		if err != nil {
+			return nil, err
+		}
+		if prefs != nil {
 			user.Preferences = *prefs
 		}
 	}
