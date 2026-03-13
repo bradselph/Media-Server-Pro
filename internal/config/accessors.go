@@ -6,34 +6,19 @@ import (
 	"strings"
 )
 
-// TODO: Bug — GetValue and SetValue use different field-matching logic. GetValue uses
-// strings.EqualFold (case-insensitive exact match), while SetValue uses navigateToField
-// which calls normalizeFieldName (lowercases AND strips underscores). For example, the
-// path "hls.cdn_base_url" would fail in GetValue (no field named "cdn_base_url") but
-// succeed in SetValue (normalizes to "cdnbaseurl" matching "CDNBaseURL"). This
-// inconsistency means some paths work with SetValue but not GetValue. Should unify both
-// methods to use the same normalizeFieldName approach.
-//
-// GetValue gets a configuration value by dot-notation path
+// GetValue gets a configuration value by dot-notation path.
+// Uses the same normalizeFieldName logic as SetValue (lowercase, strip underscores)
+// so paths like "hls.cdn_base_url" work consistently for both get and set.
 func (m *Manager) GetValue(path string) (interface{}, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	parts := strings.Split(path, ".")
-	v := reflect.ValueOf(m.config).Elem()
-	for _, part := range parts {
-		if v.Kind() == reflect.Struct {
-			v = v.FieldByNameFunc(func(name string) bool {
-				return strings.EqualFold(name, part)
-			})
-			if !v.IsValid() {
-				return nil, fmt.Errorf(errConfigPathNotFoundFmt, path)
-			}
-		} else {
-			return nil, fmt.Errorf(errConfigPathNotFoundFmt, path)
-		}
+	field, err := navigateToField(reflect.ValueOf(m.config).Elem(), parts, path)
+	if err != nil {
+		return nil, err
 	}
-	return v.Interface(), nil
+	return field.Interface(), nil
 }
 
 func normalizeFieldName(name string) string {
