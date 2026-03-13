@@ -175,9 +175,22 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 }
 
 // GetEventStats returns detailed event statistics
+// TODO: API Contract Mismatch - When analytics is nil, returns an empty object {}
+// but frontend adminApi.getEventStats() (web/frontend/src/api/endpoints.ts:767) is typed as
+// EventStats (web/frontend/src/api/types.ts:832-836) which has required fields:
+//   total_events: number, event_counts: Record<string,number>, hourly_events: number[]
+// An empty {} response means .total_events will be undefined (not 0), .event_counts will
+// be undefined (not {}), and .hourly_events will be undefined (not []). Callers iterating
+// hourly_events or summing total_events will see unexpected NaN/undefined values.
+// Fix: return a zero-value EventStats struct: { total_events: 0, event_counts: {}, hourly_events: [] }
+// or use requireAnalytics(c) / writeError(c, http.StatusServiceUnavailable, ...) instead.
 func (h *Handler) GetEventStats(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, map[string]interface{}{})
+		writeSuccess(c, map[string]interface{}{
+			"total_events":  0,
+			"event_counts":  map[string]interface{}{},
+			"hourly_events": []int{},
+		})
 		return
 	}
 	stats := h.analytics.GetEventStats(c.Request.Context())

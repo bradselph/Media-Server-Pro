@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -40,11 +41,11 @@ func (h *Handler) GetRemoteSources(c *gin.Context) {
 	// field here and populate it from h.remote.GetSourceMedia(s.Source.Name).
 	// Consumer: adminApi.getRemoteSources() in web/frontend/src/api/endpoints.ts:687.
 	type safeState struct {
-		Source     safeSource  `json:"source"`
-		Status     string      `json:"status"`
-		LastSync   interface{} `json:"last_sync"`
-		MediaCount int         `json:"media_count"`
-		Error      string      `json:"error,omitempty"`
+		Source     safeSource `json:"source"`
+		Status     string     `json:"status"`
+		LastSync   string     `json:"last_sync"`
+		MediaCount int        `json:"media_count"`
+		Error      string     `json:"error,omitempty"`
 	}
 	safe := make([]safeState, len(sources))
 	for i, s := range sources {
@@ -56,7 +57,7 @@ func (h *Handler) GetRemoteSources(c *gin.Context) {
 				Enabled:  s.Source.Enabled,
 			},
 			Status:     s.Status,
-			LastSync:   s.LastSync,
+			LastSync:   s.LastSync.Format(time.RFC3339),
 			MediaCount: s.MediaCount,
 			Error:      s.Error,
 		}

@@ -83,12 +83,7 @@ export interface LoginResponse {
     expires_at: string
 }
 
-// TODO: API Contract Mismatch - Section label is wrong. UserSession is an Auth type,
-// not a Media type. This section should be "// ── Auth ──" not "// ── Media ──".
-// The duplicate "// ── Media ──" label below (line 99) is the correct one for the
-// media interfaces. The wrong label here makes it harder to locate auth types.
-// Rename this section comment to "// ── Auth (Sessions) ──".
-// ── Media ──
+// ── Auth (Sessions) ──
 export interface UserSession {
     id: string
     user_id: string
@@ -242,6 +237,7 @@ export interface HLSJob {
     available: boolean
     error?: string
     fail_count?: number
+    last_accessed_at?: string
 }
 
 // ── Playlists ──
@@ -418,22 +414,12 @@ export interface SystemInfo {
     modules: ModuleHealth[]
 }
 
-// TODO: API Contract Mismatch - "last_check" optionality should be required, not optional.
-// Backend AdminGetSystemInfo (api/handlers/admin.go:89) serializes the field as:
-//   LastCheck: hs.CheckedAt.Format(time.RFC3339)   (always set, non-empty string)
-// The field is json:"last_check,omitempty" on the backend struct, but time.RFC3339 format
-// is never an empty string, so "omitempty" never omits it. "last_check" is always present
-// in every module health entry. The TypeScript "last_check?: string" optional marking is
-// therefore misleading — callers must guard "(module.last_check ?? '')" unnecessarily.
-// Change to "last_check: string" (required) to match the actual backend guarantee.
-// Caller: adminApi.getSystemInfo() in endpoints.ts:368.
-// Handler: AdminGetSystemInfo in api/handlers/admin.go:89 (always formats hs.CheckedAt).
 export interface ModuleHealth {
     name: string
     // Backend constants: "healthy" | "unhealthy". "degraded"/"failed"/"disabled" kept for display logic.
     status: 'healthy' | 'unhealthy' | 'degraded' | 'failed' | 'disabled'
     message?: string
-    last_check?: string
+    last_check: string
 }
 
 // Backend models.AuditLogEntry JSON fields
@@ -448,16 +434,8 @@ export interface AuditLogEntry {
     resource: string
     // Backend json:"details,omitempty" — arbitrary key-value metadata, absent when empty
     details?: Record<string, unknown>
-    // TODO: API Contract Mismatch - ip_address should be required (string), not optional.
-    // Backend models.AuditLogEntry.IPAddress has json:"ip_address" with NO omitempty
-    // (pkg/models/models.go:531). It is always serialized — an empty string ("") when
-    // the IP is unavailable, never absent. TypeScript "ip_address?: string" is wrong;
-    // callers using "(entry.ip_address ?? '')" are guarding unnecessarily.
-    // Change to "ip_address: string" to match the backend guarantee.
-    // Handler: AdminGetAuditLog in api/handlers/admin_audit.go returns []AuditLogEntry via admin module.
-    // Caller: adminApi.getAuditLog() in endpoints.ts:507.
-    // Backend uses "ip_address" not "ip"
-    ip_address?: string
+    // Backend uses "ip_address" not "ip"; no omitempty — always present (empty string when unavailable)
+    ip_address: string
     // Backend models.AuditLogEntry.Success bool json:"success" (no omitempty) — always present
     success: boolean
 }
@@ -518,6 +496,32 @@ export interface ScannerStats {
     mature_count: number
     auto_flagged: number
     pending_review: number
+}
+
+// Matches internal/scanner.ScanResult — returned when runScan is called with a specific path
+export interface FileScanResult {
+    path: string
+    is_mature: boolean
+    confidence: number
+    reasons: string[]
+    auto_flagged: boolean
+    needs_review: boolean
+    scanned_at: string
+    reviewed_by?: string
+    reviewed_at?: string
+    review_decision?: string
+    high_conf_matches?: string[]
+    med_conf_matches?: string[]
+}
+
+// Returned when runScan is called without a path (directory scan)
+export interface DirectoryScanResult {
+    stats: ScannerStats
+    scanned: number
+    auto_flagged_count: number
+    review_queue_count: number
+    clean: number
+    message: string
 }
 
 // Hugging Face visual classification status (GET /api/admin/classify/status)
@@ -654,17 +658,6 @@ export interface RemoteMediaItem {
     cached_at?: string
 }
 
-// TODO: API Contract Mismatch - "media" field will always be undefined at runtime.
-// Backend GetRemoteSources (api/handlers/admin_remote.go:13-48) strips passwords
-// by returning a local "safeState" struct with fields: source, status, last_sync,
-// media_count, error. This struct has NO "media" field and never populates one.
-// The TypeScript "media?: RemoteMediaItem[]" field was added to the interface but
-// is not returned by any backend handler. Accessing "state.media" will always
-// produce undefined. Remove this field from the interface, or add a corresponding
-// field to the safeState struct in api/handlers/admin_remote.go:26-32 if the
-// frontend needs to display per-source media inline.
-// Caller: adminApi.getRemoteSources() in endpoints.ts:687.
-// Handler: GetRemoteSources in api/handlers/admin_remote.go (safeState struct has no media field).
 export interface RemoteSourceState {
     source: RemoteSourceResponse
     status: string       // "idle" | "syncing" | "error"
@@ -672,7 +665,6 @@ export interface RemoteSourceState {
     last_sync: string
     media_count: number
     error?: string
-    media?: RemoteMediaItem[]
 }
 
 export interface RemoteStats {
@@ -736,18 +728,12 @@ export interface DuplicateItem {
 }
 
 // Matches internal/duplicates/duplicates.go DuplicateGroup struct
-// TODO: API Contract Mismatch - item_a and item_b are typed as required DuplicateItem but the backend
-// Go type uses pointer fields (*DuplicateItem json:"item_a" and *DuplicateItem json:"item_b") in
-// internal/duplicates/duplicates.go:37-38. A nil pointer serializes as JSON null, which violates
-// the required TypeScript type. If the backend can produce null item_a or item_b (e.g., when a
-// media file is deleted after detection), frontend code reading item_a.id will throw at runtime.
-// Change to: item_a: DuplicateItem | null and item_b: DuplicateItem | null, and guard callers.
-// Affected callers: adminApi.listDuplicates() in web/frontend/src/api/endpoints.ts.
 export interface ReceiverDuplicate {
     id: string
     fingerprint: string
-    item_a: DuplicateItem
-    item_b: DuplicateItem
+    // Pointer fields in Go — serialize as null when the media entry has been deleted
+    item_a: DuplicateItem | null
+    item_b: DuplicateItem | null
     item_a_name: string
     item_b_name: string
     // "pending" | "remove_a" | "remove_b" | "keep_both" | "ignore"
@@ -887,17 +873,10 @@ export interface SecurityStats {
     total_blocks_today: number
 }
 
-// TODO: API Contract Mismatch - comment and added_by are typed as optional (?) but the backend
-// api/handlers/admin_security.go:ipListEntryJSON struct serializes these fields without omitempty:
-//   Comment string json:"comment" — always serialized, even as empty string
-//   AddedBy string json:"added_by" — always serialized, even as empty string
-// The backend GetWhitelist/GetBlacklist handlers (admin_security.go:55-57 and 121-123) always
-// return these fields. TypeScript callers need not null-guard them, but marking them optional
-// creates a false impression that they might be absent. Change to: comment: string, added_by: string.
 export interface IPEntry {
     ip: string
-    comment?: string
-    added_by?: string
+    comment: string
+    added_by: string
     added_at: string
     expires_at?: string
 }
