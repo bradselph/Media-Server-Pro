@@ -242,14 +242,6 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 		}
 	}
 
-	// TODO: Redundant code - this item was already added to m.items at line 223 under
-	// the write lock. This second lock acquisition and map write is a no-op duplicate
-	// that adds unnecessary lock contention. Remove this block.
-	// Add to in-memory cache
-	m.mu.Lock()
-	m.items[id] = item
-	m.mu.Unlock()
-
 	m.log.Info("Added extractor item: %s -> %s", item.Title, item.StreamURL)
 	return item, nil
 }
