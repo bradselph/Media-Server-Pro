@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.86.0] - 2026-03-13 (minor)
+
+- Merge pull request #84 from bradselph/development
+- Merge branch 'main' into development
+- fix(ci): update CI workflows to improve efficiency and versioning
+- fix(config): skip redundant filepath.Abs in CreateDirectories when path is already absolute
+- fix(database): make connectWithRetry respect context cancellation
+- fix(admin): cap audit log export at 100k rows to avoid OOM
+- fix(backup): check database IsConnected before using GORM in Start
+- fix(auth): delete user evicts admin sessions and removes sessions from DB
+
+
 ## [0.85.0] - 2026-03-13 (minor)
 
 - Merge pull request #83 from bradselph/development
