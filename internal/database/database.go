@@ -137,10 +137,6 @@ func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, t
 }
 
 // connectWithRetry opens a GORM connection with retries and ping; returns gorm.DB, sql.DB, and error.
-// TODO: Bug — the retry loop uses time.Sleep which blocks the goroutine and ignores the
-// context. If the parent context is cancelled (e.g., during shutdown), the retries will
-// continue sleeping for the full retry duration instead of aborting immediately. Should
-// use a select on ctx.Done() and a timer instead of time.Sleep.
 func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (*gorm.DB, *sql.DB, error) {
 	gormLog := newGORMLogger(log)
 	var lastErr error
@@ -152,7 +148,13 @@ func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConf
 		lastErr = err
 		log.Warn("Database connection attempt %d/%d failed: %v", i+1, dbCfg.MaxRetries, err)
 		if i < dbCfg.MaxRetries-1 {
-			time.Sleep(dbCfg.RetryInterval)
+			timer := time.NewTimer(dbCfg.RetryInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, nil, ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	return nil, nil, lastErr
