@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.88.0] - 2026-03-13 (minor)
+
+- Merge branch 'main' into development
+- perf(web): cache SPA index.html on first request and set Cache-Control: no-cache
+- chore(api): remove stale TODOs, use typed response for CreateRemoteSource (omitempty username)
+
+
 ## [0.87.0] - 2026-03-13 (minor)
 
 - Merge pull request #86 from bradselph/development
