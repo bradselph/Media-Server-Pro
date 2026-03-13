@@ -24,6 +24,9 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+// exportAuditLogMaxRows caps how many audit log rows are loaded for CSV export to avoid OOM.
+const exportAuditLogMaxRows = 100_000
+
 // Module implements admin functionality
 type Module struct {
 	config    *config.Manager
@@ -205,10 +208,9 @@ func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	// TODO: Bug — List with empty filter fetches ALL audit log entries with no limit.
-	// For large deployments this could load millions of rows into memory and cause OOM.
-	// Should paginate or stream results, or at minimum set a reasonable Limit.
-	entries, err := m.auditRepo.List(ctx, repositories.AuditLogFilter{})
+	entries, err := m.auditRepo.List(ctx, repositories.AuditLogFilter{
+		Limit: exportAuditLogMaxRows,
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to retrieve audit log: %w", err)
 	}
