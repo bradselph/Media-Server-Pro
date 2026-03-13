@@ -163,12 +163,8 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// RegisterTask registers a new scheduled task.
-// TODO: If RegisterTask is called after Start(), the new task is registered but its
-// runTaskLoop goroutine is never started (Start only launches goroutines for tasks
-// registered at that point). The task will sit idle until EnableTask is called.
-// This is not documented and may surprise callers. Consider starting the loop
-// immediately if m.ctx is already set (i.e., Start() was already called).
+// RegisterTask registers a new scheduled task. If the scheduler has already been
+// started (m.ctx set), the task's runTaskLoop is started immediately so it is not idle.
 func (m *Module) RegisterTask(opts TaskRegistration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -186,6 +182,12 @@ func (m *Module) RegisterTask(opts TaskRegistration) {
 
 	m.tasks[opts.ID] = task
 	m.log.Info("Registered task: %s (schedule: %v)", opts.Name, opts.Schedule)
+
+	if m.ctx != nil && task.Enabled && !task.loopRunning {
+		task.loopRunning = true
+		m.wg.Add(1)
+		go m.runTaskLoop(m.ctx, task)
+	}
 }
 
 // waitForStartupDelay waits for the configured startup delay unless ctx is cancelled.
