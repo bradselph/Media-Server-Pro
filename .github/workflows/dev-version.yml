@@ -26,19 +26,27 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      # TODO: This workflow generates a dev build label but never commits it or
-      # uses it anywhere. It only writes to GITHUB_OUTPUT and GITHUB_STEP_SUMMARY.
-      # The label is not written to the VERSION file or used to tag. If the intent
-      # is to update VERSION with the dev label, a commit step is missing. If this
-      # is purely informational, consider whether the workflow is needed at all.
-      - name: Generate dev build label
+      - name: Generate and commit dev build label
         id: bump
         run: |
           CURRENT=$(cat VERSION | tr -d '[:space:]')
+          # Strip any existing -dev suffix to get the base version
+          BASE_VERSION=$(echo "$CURRENT" | sed 's/-dev\..*//')
           SHORT_SHA=$(git rev-parse --short HEAD)
-          DEV_VERSION="${CURRENT}-dev.${SHORT_SHA}"
+          DEV_VERSION="${BASE_VERSION}-dev.${SHORT_SHA}"
+
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
           echo "new=$DEV_VERSION" >> "$GITHUB_OUTPUT"
           echo "Dev build label: $DEV_VERSION"
+
+          echo "$DEV_VERSION" > VERSION
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: dev build ${DEV_VERSION} [auto-version]"
+          git push
+
           echo "## Dev Build Label" >> "$GITHUB_STEP_SUMMARY"
           echo "\`${DEV_VERSION}\`" >> "$GITHUB_STEP_SUMMARY"

@@ -42,15 +42,10 @@ func (m *Manager) resolveAbsolutePaths() {
 	}
 }
 
-// TODO: Redundant — CreateDirectories calls filepath.Abs on every directory, but
-// resolveAbsolutePaths (called during Load) has already resolved all directory paths
-// to absolute. The second filepath.Abs call is redundant if Load was called first.
-// More importantly, if CreateDirectories is called without Load (or if resolveAbsolutePaths
-// was skipped), the resolution depends on the current working directory at call time,
-// which may differ from the cwd at Load time. Should either assert paths are already
-// absolute or document the dependency on Load having been called first.
-//
-// CreateDirectories ensures all configured directories exist
+// CreateDirectories ensures all configured directories exist.
+// Paths are typically already absolute after Load/resolveAbsolutePaths; we only call
+// filepath.Abs when the path is relative so behavior is correct if CreateDirectories
+// runs without a prior Load.
 func (m *Manager) CreateDirectories() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -69,9 +64,13 @@ func (m *Manager) CreateDirectories() error {
 	}
 
 	for _, dir := range dirs {
-		absDir, err := filepath.Abs(dir)
-		if err != nil {
-			return fmt.Errorf("failed to resolve path %s: %w", dir, err)
+		absDir := dir
+		if !filepath.IsAbs(dir) {
+			var err error
+			absDir, err = filepath.Abs(dir)
+			if err != nil {
+				return fmt.Errorf("failed to resolve path %s: %w", dir, err)
+			}
 		}
 		if err := os.MkdirAll(absDir, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", absDir, err)

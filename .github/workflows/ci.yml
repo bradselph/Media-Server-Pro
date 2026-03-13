@@ -1,24 +1,35 @@
 name: CI
 
-# TODO(BUG): paths-ignore is at the top level (line 15) but that is NOT valid
-# GitHub Actions syntax. It must be nested under each trigger (push/pull_request).
-# As written, the paths-ignore block is silently ignored and CI runs on every push,
-# even for doc-only changes. Fix by moving paths-ignore under both push: and
-# pull_request: blocks, like:
-#   on:
-#     push:
-#       branches: [main, development]
-#       paths-ignore: [...]
-#     pull_request:
-#       branches: [main, development]
-#       paths-ignore: [...]
 on:
   push:
     branches: [main, development]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '**.png'
+      - '**.jpg'
+      - '**.gif'
+      - '**.svg'
+      - '**.ico'
+      - 'assets/**'
+      - '*.editorconfig'
   pull_request:
     branches: [main, development]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '**.png'
+      - '**.jpg'
+      - '**.gif'
+      - '**.svg'
+      - '**.ico'
+      - 'assets/**'
+      - '*.editorconfig'
 
-# Cancel in-progress runs when a new push/PR arrives — reduces redundant runs
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -63,26 +74,17 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # TODO: Installing golangci-lint@latest on every CI run is slow and
-      # non-reproducible — the version changes without notice. Pin to a specific
-      # version (e.g. v2.1.0) or use the official golangci-lint-action@v6.
       - name: golangci-lint
-        run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          golangci-lint run ./...
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.1.0
 
-      # TODO: -race requires CGO_ENABLED=1 (the default), but the build step above
-      # uses CGO_ENABLED=0. If the self-hosted runner has no C compiler, this test
-      # step will fail with a confusing error. Either remove -race or ensure CGO is
-      # available and consistent across steps.
       - name: Test
-        run: go test -race -timeout 120s ./...
+        run: CGO_ENABLED=0 go test -timeout 120s ./...
 
-      # TODO: Same as golangci-lint — govulncheck@latest is non-reproducible.
-      # Pin to a specific version for deterministic CI.
       - name: Security scan (govulncheck)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           govulncheck ./...
 
   # ─── Frontend: lint, build, test, audit ─────────────────────────────────────
@@ -114,9 +116,5 @@ jobs:
       - name: Test
         run: npm run test
 
-      # TODO: npm audit with --audit-level=high will fail the CI pipeline on any
-      # high-severity vulnerability, even in devDependencies (which don't ship in
-      # the production bundle). Consider adding --omit=dev to only audit production
-      # dependencies, or use --audit-level=critical for a less noisy threshold.
       - name: npm audit
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high

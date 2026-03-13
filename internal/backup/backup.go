@@ -71,13 +71,13 @@ func (m *Module) Name() string {
 	return "backup"
 }
 
-// Start initializes the backup module
-// TODO: Bug — unlike other modules that check m.dbModule.IsConnected() before using the
-// DB, this module calls m.dbModule.GORM() unconditionally. If the database module is
-// unhealthy or not yet started, this could return a nil *gorm.DB, causing panics later.
+// Start initializes the backup module.
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting backup module...")
 
+	if !m.dbModule.IsConnected() {
+		return fmt.Errorf("database is not connected")
+	}
 	m.repo = mysqlrepo.NewBackupManifestRepository(m.dbModule.GORM())
 
 	// Ensure backup directory exists

@@ -349,13 +349,7 @@ func (m *Module) evictUserFromAdminSessionMap(ctx context.Context, sessions map[
 	return n
 }
 
-// DeleteUser removes a user.
-// TODO: Bug — admin sessions for the deleted user are NOT cleaned up. Only m.sessions
-// is iterated; m.adminSessions is not checked. If the deleted user had admin sessions,
-// those sessions remain valid in memory (and in DB) until they expire naturally.
-// Also, deleted sessions are removed from the in-memory map but NOT from the database
-// via sessionRepo.Delete. Compare with evictSessionsForUser which handles both maps
-// and deletes from DB.
+// DeleteUser removes a user and evicts all of their sessions (user + admin) from memory and DB.
 func (m *Module) DeleteUser(ctx context.Context, username string) error {
 	user, err := m.GetUser(ctx, username)
 	if err != nil {
@@ -370,13 +364,7 @@ func (m *Module) DeleteUser(ctx context.Context, username string) error {
 	delete(m.users, username)
 	m.usersMu.Unlock()
 
-	m.sessionsMu.Lock()
-	for id, session := range m.sessions {
-		if session.Username == username {
-			delete(m.sessions, id)
-		}
-	}
-	m.sessionsMu.Unlock()
+	m.evictSessionsForUser(ctx, username, "user deleted")
 
 	m.log.Info("Deleted user: %s", username)
 	return nil

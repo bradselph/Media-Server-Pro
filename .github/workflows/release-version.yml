@@ -32,6 +32,9 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       !contains(github.event.head_commit.message, '[auto-version]')
+    outputs:
+      new_version: ${{ steps.bump.outputs.new }}
+      tag: ${{ steps.bump.outputs.tag }}
 
     steps:
       - name: Checkout repository
@@ -49,15 +52,12 @@ jobs:
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual dispatch: use the selected bump type
             BUMP_TYPE="${{ github.event.inputs.bump_type }}"
           else
-            # Automatic: inspect the merge commit message
             MERGE_MSG="${{ github.event.head_commit.message }}"
             if echo "$MERGE_MSG" | grep -qiE '(BREAKING CHANGE:|^major:)'; then
               BUMP_TYPE="major"
             else
-              # Default on every merge to main is a minor bump
               BUMP_TYPE="minor"
             fi
           fi
@@ -71,19 +71,15 @@ jobs:
           NEW="${MAJOR}.${MINOR}.${PATCH}"
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
           echo "type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
+          echo "tag=v${NEW}" >> "$GITHUB_OUTPUT"
           echo "Bumping $BUMP_TYPE: $CURRENT → $NEW"
 
       - name: Update VERSION file
         run: echo "${{ steps.bump.outputs.new }}" > VERSION
 
-      # TODO: The sed pattern is fragile — it requires exactly 3 spaces between
-      # 'Version' and '='. If the alignment changes (e.g., during a refactor of the
-      # var block), the substitution will silently fail and the binary will ship with
-      # a stale version string. Use a more robust pattern like:
-      #   sed -i 's/Version\s*=\s*"[^"]*"/Version   = "${{ steps.bump.outputs.new }}"/' cmd/server/main.go
       - name: Update main.go fallback version
         run: |
-          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.bump.outputs.new }}\"/" cmd/server/main.go
+          sed -i 's/Version\s*=\s*"[^"]*"/Version   = "${{ steps.bump.outputs.new }}"/' cmd/server/main.go
 
       - name: Generate CHANGELOG entry
         run: |
@@ -98,11 +94,9 @@ jobs:
           VERSION="${{ steps.bump.outputs.new }}"
           BUMP_TYPE="${{ steps.bump.outputs.type }}"
 
-          # Build new entry
           NEW_ENTRY="## [${VERSION}] - ${DATE} (${BUMP_TYPE})\n\n${COMMITS}\n"
 
           if [ -f CHANGELOG.md ]; then
-            # Prepend new entry after the first line (the # Changelog heading)
             HEADING=$(head -1 CHANGELOG.md)
             REST=$(tail -n +2 CHANGELOG.md)
             printf '%s\n\n%b\n%s' "$HEADING" "$NEW_ENTRY" "$REST" > CHANGELOG.md
@@ -129,3 +123,123 @@ jobs:
           else
             echo "Tag $TAG already exists — skipping"
           fi
+
+  # ─── Build binaries for all platforms ───────────────────────────────────────
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: bump-release
+    runs-on: [self-hosted, Linux, X64, media-server]
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ''
+          - goos: linux
+            goarch: arm64
+            suffix: ''
+          - goos: windows
+            goarch: amd64
+            suffix: '.exe'
+          - goos: darwin
+            goarch: amd64
+            suffix: ''
+          - goos: darwin
+            goarch: arm64
+            suffix: ''
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.bump-release.outputs.new_version }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build frontend
+        working-directory: web/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build server binary
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION="${{ needs.bump-release.outputs.new_version }}"
+          BUILD_DATE=$(date -u +%Y-%m-%d)
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}"
+
+          go build -ldflags "${LDFLAGS}" -o "media-server-pro-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}" ./cmd/server
+
+      - name: Build media-receiver binary
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION="${{ needs.bump-release.outputs.new_version }}"
+          BUILD_DATE=$(date -u +%Y-%m-%d)
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}"
+
+          go build -ldflags "${LDFLAGS}" -o "media-receiver-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}" ./cmd/media-receiver
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            media-server-pro-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
+            media-receiver-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
+          retention-days: 1
+
+  # ─── Create GitHub Release with all binaries ────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [bump-release, build]
+    runs-on: [self-hosted, Linux, X64, media-server]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.bump-release.outputs.new_version }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: artifacts
+        run: sha256sum * > checksums-sha256.txt
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${{ needs.bump-release.outputs.new_version }}"
+          # Extract the section for this version from CHANGELOG.md
+          NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/{ /^## \[${VERSION}\]/p; /^## \[${VERSION}\]/!{ /^## \[/!p; } }" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="Release v${VERSION}"
+          fi
+          # Write to file to avoid escaping issues
+          echo "$NOTES" > release_notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.bump-release.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --notes-file release_notes.md \
+            artifacts/*
