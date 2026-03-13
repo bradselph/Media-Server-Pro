@@ -300,12 +300,9 @@ func (m *Module) saveJob(job *models.HLSJob) {
 	}
 }
 
-// SaveJobsToFile is a public wrapper for saveJobs() to allow external callers (e.g. pregenerate tool) to persist job state.
-// TODO: Redundant code - the name "SaveJobsToFile" is misleading; jobs are saved
-// to the database (via m.repo.Save), not to a file. The method was likely named
-// before the migration from JSON file persistence to MySQL. Rename to SaveJobs()
-// or SaveJobsToDB() for clarity.
-func (m *Module) SaveJobsToFile() error {
+// SaveJobs persists all in-memory HLS jobs to the database. Exposed for external
+// callers (e.g. pregenerate tool). Jobs are saved via m.repo.Save, not to a file.
+func (m *Module) SaveJobs() error {
 	return m.saveJobs()
 }
 

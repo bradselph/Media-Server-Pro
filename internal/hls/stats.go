@@ -18,16 +18,14 @@ type Stats struct {
 	CacheDir      string `json:"-"`
 }
 
-// GetStats returns HLS module statistics
+// GetStats returns HLS module statistics. Cache size is computed after releasing
+// the job lock so filepath.Walk does not block job mutations.
 func (m *Module) GetStats() Stats {
 	m.jobsMu.RLock()
-	defer m.jobsMu.RUnlock()
-
 	stats := Stats{
 		TotalJobs: len(m.jobs),
 		CacheDir:  m.cacheDir,
 	}
-
 	for _, job := range m.jobs {
 		switch job.Status {
 		case models.HLSStatusCompleted:
@@ -40,18 +38,13 @@ func (m *Module) GetStats() Stats {
 			stats.PendingJobs++
 		}
 	}
+	m.jobsMu.RUnlock()
 
 	stats.CacheSize = m.calculateCacheSize()
-
 	return stats
 }
 
-// TODO: Bug - calculateCacheSize is called from GetStats which holds jobsMu.RLock.
-// filepath.Walk performs synchronous I/O on every file in the cache directory,
-// which can be very slow for large caches (thousands of segments). This holds
-// the read lock for the entire walk duration, blocking all job mutations.
-// Consider caching the size and updating it asynchronously, or computing it
-// outside the lock.
+// calculateCacheSize walks the cache directory to sum file sizes. Called without holding jobsMu.
 func (m *Module) calculateCacheSize() int64 {
 	var size int64
 

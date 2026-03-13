@@ -57,30 +57,23 @@ type servePlaylistOpts struct {
 }
 
 // servePlaylist writes the playlist to w, rewriting URLs for CDN if cdnBase is set.
-// TODO: Bug - when cdnBase is empty, Content-Type and Cache-Control headers are
-// set before calling http.ServeFile, but ServeFile will overwrite Content-Type
-// based on file extension detection and may add its own Cache-Control. The
-// explicit header sets are effectively overridden. Either use http.ServeContent
-// with a bytes.Reader for consistent header control, or remove the redundant
-// header sets.
+// When cdnBase is empty, the file is read and written with explicit headers so
+// Content-Type and Cache-Control are not overwritten by http.ServeFile.
 func servePlaylist(w http.ResponseWriter, r *http.Request, opts servePlaylistOpts) error {
-	if opts.cdnBase == "" {
-		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		http.ServeFile(w, r, opts.path)
-		return nil
-	}
-
 	data, err := os.ReadFile(opts.path)
 	if err != nil {
 		return fmt.Errorf("failed to read playlist: %w", err)
 	}
-	rewritten := rewritePlaylistLines(data, opts.cdnBase+"/hls/"+opts.urlPath+"/")
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "public, max-age=60")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Write(rewritten)
+	if opts.cdnBase == "" {
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(data)
+	} else {
+		rewritten := rewritePlaylistLines(data, opts.cdnBase+"/hls/"+opts.urlPath+"/")
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.Write(rewritten)
+	}
 	return nil
 }
 
@@ -132,12 +125,8 @@ type SegmentParams struct {
 	Segment string
 }
 
-// ServeSegment serves an HLS segment.
-// TODO: Bug - p.Quality and p.Segment are used directly in filepath.Join without
-// sanitization. A malicious quality or segment value like "../../etc/passwd"
-// could escape the job output directory via path traversal. Validate that the
-// resulting segmentPath is actually within job.OutputDir, or reject values
-// containing ".." or path separators.
+// ServeSegment serves an HLS segment. Path traversal is prevented by validating
+// that the resolved segment path lies under job.OutputDir via filepath.Rel.
 func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentParams) error {
 	job, err := m.GetJobStatus(p.JobID)
 	if err != nil {

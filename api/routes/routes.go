@@ -589,7 +589,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	adminGrp.DELETE(pathMedia+"/:id", h.AdminDeleteMedia)
 
 	// Static file serving and template routes (using embedded filesystem)
-	web.RegisterStaticRoutes(r, cfg.Get().Directories.Thumbnails)
+	web.RegisterStaticRoutes(r)
 
 	log.Info("Routes configured")
 }
