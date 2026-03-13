@@ -44,6 +44,7 @@ func (h *Handler) CreateBackupV2(c *gin.Context) {
 	backupInfo, err := h.backup.CreateBackup(backup.CreateBackupOptions{
 		Description: req.Description,
 		Type:        req.BackupType,
+		Version:     h.buildInfo.Version,
 	})
 	if err != nil {
 		h.log.Error("%v", err)

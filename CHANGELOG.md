@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.89.0] - 2026-03-13 (minor)
+
+- Update sync-development.yml
+- Update dev-version.yml
+- Update release-version.yml
+- Update ci.yml
+- docs: add TODO count audit (approx. 140 remaining)
+- refactor(hls): rename SaveJobsToFile to SaveJobs (jobs are persisted to DB, not file)
+- fix(tasks): start runTaskLoop when RegisterTask is called after Start()
+- fix(hls): compute cache size outside jobsMu to avoid blocking job mutations during Walk
+- fix(repositories): propagate perms/prefs Get errors in user repo (GetByUsername, GetByID, List)
+- chore(web): remove unused thumbnails param from RegisterStaticRoutes; shorten spaRoutes TODO
+- fix(tasks): track RunNow goroutine in wg so Stop() waits for it
+- chore(admin): make last_check explicit in health response (remove omitempty)
+- fix(hls): serve playlist with explicit headers when cdnBase empty; remove stale path-traversal TODO
+- chore(middleware): remove unused net/http AgeGate handlers (only Gin handlers are registered)
+
+
 ## [0.88.0] - 2026-03-13 (minor)
 
 - Merge branch 'main' into development

@@ -40,6 +40,7 @@ type Module struct {
 type CreateBackupOptions struct {
 	Description string // Human-readable description
 	Type        string // "full", "config", or "data"
+	Version     string // Application version (empty falls back to defaultVersion)
 }
 
 // Manifest describes a backup
@@ -53,6 +54,15 @@ type Manifest struct {
 	Files       []string  `json:"files"`
 	Errors      []string  `json:"errors,omitempty"`
 	Version     string    `json:"version"`
+}
+
+const defaultVersionFallback = "3.0.0"
+
+func defaultBackupVersion(v string) string {
+	if v != "" {
+		return v
+	}
+	return defaultVersionFallback
 }
 
 // NewModule creates a new backup module
@@ -145,10 +155,7 @@ func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 		Description: opts.Description,
 		Files:       make([]string, 0),
 		Errors:      make([]string, 0),
-		// TODO: Hardcoded version — the Version field is hardcoded to "3.0.0" instead of
-		// reading from the actual application version. This makes it impossible to detect
-		// version mismatches during restore. Should accept or look up the current version.
-		Version: "3.0.0",
+		Version:     defaultBackupVersion(opts.Version),
 	}
 
 	if err := m.writeBackupArchive(backupPath, manifest); err != nil {
