@@ -36,13 +36,8 @@ var (
 		".m4a": true, ".wma": true, ".aiff": true, ".alac": true, ".opus": true,
 	}
 
-	// Dangerous patterns in filenames
-	// TODO: This regex allows backslash (\) through, which is a path separator on
-	// Windows and could enable path traversal on that platform. containsPathTraversal
-	// catches explicit "\\" but not single backslash in filenames. Also note that
-	// double-quote (") IS matched here but is also used in Content-Disposition headers
-	// in the streaming module — ensure consistency across upload and download paths.
-	dangerousPatterns = regexp.MustCompile(`[<>:"|?*\x00-\x1f]`)
+	// Dangerous patterns in filenames (include backslash for Windows path traversal)
+	dangerousPatterns = regexp.MustCompile(`[<>:"|?*\\\x00-\x1f]`)
 )
 
 // UploadStatus represents the state of an upload (replaces primitive string).
