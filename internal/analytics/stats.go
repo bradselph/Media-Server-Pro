@@ -217,10 +217,8 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 		totalEvents = 0
 	}
 
-	m.sessionsMu.RLock()
 	cfg := m.config.Get()
 	activeSessions := m.countActiveSessions(cfg.Analytics.SessionTimeout)
-	m.sessionsMu.RUnlock()
 
 	m.statsMu.RLock()
 	summary := Summary{
@@ -242,11 +240,11 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 
 // GetStats returns analytics statistics for metrics.
 func (m *Module) GetStats() Stats {
-	m.sessionsMu.RLock()
 	cfg := m.config.Get()
+	m.sessionsMu.RLock()
 	uniqueClients := len(m.sessions)
-	activeSessions := m.countActiveSessions(cfg.Analytics.SessionTimeout)
 	m.sessionsMu.RUnlock()
+	activeSessions := m.countActiveSessions(cfg.Analytics.SessionTimeout)
 
 	m.statsMu.RLock()
 	totalViews := 0
