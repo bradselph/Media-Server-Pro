@@ -172,14 +172,15 @@ type AdminConfig struct {
 
 // AuthConfig holds user authentication settings
 type AuthConfig struct {
-	Enabled          bool          `json:"enabled"`
-	SessionTimeout   time.Duration `json:"session_timeout"`
-	SecureCookies    bool          `json:"secure_cookies"`
-	MaxLoginAttempts int           `json:"max_login_attempts"`
-	LockoutDuration  time.Duration `json:"lockout_duration"`
-	AllowGuests      bool          `json:"allow_guests"`
-	DefaultUserType  string        `json:"default_user_type"`
-	UserTypes        []UserType    `json:"user_types"`
+	Enabled            bool          `json:"enabled"`
+	SessionTimeout     time.Duration `json:"session_timeout"`
+	SecureCookies      bool          `json:"secure_cookies"`
+	MaxLoginAttempts   int           `json:"max_login_attempts"`
+	LockoutDuration    time.Duration `json:"lockout_duration"`
+	AllowGuests        bool          `json:"allow_guests"`
+	AllowRegistration bool          `json:"allow_registration"`
+	DefaultUserType    string        `json:"default_user_type"`
+	UserTypes          []UserType    `json:"user_types"`
 }
 
 // UserType defines permissions and limits for a user type

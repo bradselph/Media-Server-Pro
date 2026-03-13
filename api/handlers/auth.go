@@ -151,10 +151,12 @@ func (h *Handler) CheckSession(c *gin.Context) {
 }
 
 // Register creates a new user account
-// TODO: Registration does not check whether self-registration is enabled in config
-// (e.g. cfg.Auth.AllowRegistration). Any unauthenticated client can create accounts.
-// If there is a config flag to control this, it should be checked here.
 func (h *Handler) Register(c *gin.Context) {
+	cfg := h.config.Get()
+	if !cfg.Auth.AllowRegistration {
+		writeError(c, http.StatusForbidden, "Registration is disabled")
+		return
+	}
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
