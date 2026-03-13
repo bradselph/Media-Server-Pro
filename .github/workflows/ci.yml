@@ -34,20 +34,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Skip CI for doc-only, asset-only, or config-only changes
-paths-ignore:
-  - '**.md'
-  - 'docs/**'
-  - 'LICENSE'
-  - '.gitignore'
-  - '**.png'
-  - '**.jpg'
-  - '**.gif'
-  - '**.svg'
-  - '**.ico'
-  - 'assets/**'
-  - '*.editorconfig'
-
 permissions:
   contents: read
 
