@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +25,9 @@ import (
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
+
+// ErrNotFound is returned when an extractor item does not exist.
+var ErrNotFound = errors.New("extractor item not found")
 
 // playlistCacheTTL is the maximum age of a cached HLS playlist entry.
 // After this duration the entry is treated as a cache miss and the upstream
@@ -251,14 +255,14 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 }
 
 // RemoveItem removes a proxied stream from the library.
-// TODO: Bug - RemoveItem does not verify the item exists before deleting.
-// It always returns nil even if the ID is invalid. Callers have no way to
-// distinguish a successful delete from a no-op on a non-existent ID.
-// Return ErrNotFound when the item doesn't exist.
 func (m *Module) RemoveItem(id string) error {
 	m.mu.Lock()
+	_, existed := m.items[id]
 	delete(m.items, id)
 	m.mu.Unlock()
+	if !existed {
+		return ErrNotFound
+	}
 
 	if m.repo != nil {
 		if err := m.repo.Delete(context.Background(), id); err != nil {

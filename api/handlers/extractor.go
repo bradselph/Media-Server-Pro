@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/extractor"
 	"media-server-pro/pkg/helpers"
 )
 
@@ -69,6 +71,10 @@ func (h *Handler) RemoveExtractorItem(c *gin.Context) {
 	}
 
 	if err := h.extractor.RemoveItem(id); err != nil {
+		if errors.Is(err, extractor.ErrNotFound) {
+			writeError(c, http.StatusNotFound, "Item not found")
+			return
+		}
 		h.log.Error("Failed to remove extractor item %s: %v", id, err)
 		writeError(c, http.StatusInternalServerError, "Failed to remove item")
 		return
