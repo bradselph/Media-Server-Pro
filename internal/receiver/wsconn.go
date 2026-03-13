@@ -97,14 +97,13 @@ func (s *slaveWS) sendJSON(msgType string, data interface{}) error {
 	return s.conn.WriteJSON(msg)
 }
 
-// TODO: Bug - CheckOrigin always returns true, which is appropriate for slave
-// WebSocket connections, but the comment should note that API key authentication
-// (validated at the top of HandleWebSocket) provides the actual access control.
-// If the WS endpoint is ever exposed without the API key gate, this is an open relay.
+// upgrader accepts WebSocket connections from any origin. Access control is enforced
+// by API key validation in HandleWebSocket (X-API-Key header or api_key query).
+// If the WS endpoint is exposed without that gate, it would be an open relay.
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
-	CheckOrigin:     func(r *http.Request) bool { return true }, // slaves connect from anywhere
+	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
 // HandleWebSocket upgrades an HTTP connection to a WebSocket for a slave node.
