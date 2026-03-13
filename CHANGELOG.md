@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.84.0] - 2026-03-13 (minor)
+
+- Merge pull request #82 from bradselph/development
+- Fix API contract mismatches across backend handlers and frontend types
+- Address API contract mismatches in remote source handling and system info responses
+- Delete Repository-API-Structure-Report.md
+- Fix bugs identified in code review: SPA routing, Stop panic, timing side-channel, duplicate formatter
+- Fix analytics CSV export by ensuring the analytics directory is created if it doesn't exist
+- Refactor and clean up code across multiple files
+- Update default base URL in Hugging Face client to reflect new inference provider path
+- Update Hugging Face client to use new router endpoint and improve error logging
+- Refactor Hugging Face client to use ImageData type for image classification
+- Update client.go
+- Update client.go
+- Update validate.go
+- Update defaults.go
+- Update Hugging Face client documentation and default base URL for Inference API
+- Update defaults.go
+- Update client.go
+- Merge branch 'main' into development
+- Update default base URL for Hugging Face client to new router endpoint
+- Fix HuggingFace pipeline: race conditions, resource leak, and redundant classification
+- Refactor MatureScanner to improve thread safety for Hugging Face client
+- Implement path validation for categorization and media handling
+- Enhance module validation and configuration checks
+- Enhance classification functionality and add new endpoints
+- Fix HLS module concurrency limit and enhance rate limiter cleanup safety
+- Refactor admin handlers and improve error handling
+- Refactor playlist and media management functions for improved validation and error handling
+- Enhance error handling and validation across admin handlers
+- Add TODO annotations for config, build, and deployment files
+- Add TODO annotations for frontend React/TypeScript code
+- Add TODO annotations for pkg/, repositories, and web/server.go
+- Add TODO annotations for internal/ modules (batch 3)
+- Add TODO annotations for internal/ modules (batch 2)
+- Add TODO annotations for internal/ modules (batch 1)
+- Add TODO annotations for api/ handlers and routes
+- Add TODO annotations for cmd/ entry points
+- Remove redundant await in test assertion
+- Use strict equality operators in frontend code
+- Remove pointless double negation on is_mature
+- Simplify trivial if statements and remove redundant variable
+- Use consistent pointer receivers on jobHeap methods
+- Remove redundant else after return in crawler
+- Remove unused constants from middleware package
+- Prefix unused function parameters with underscore
+- Remove redundant type conversion in upload.go
+- Rename variable 'copy' to avoid shadowing Go builtin
+- Lowercase error strings per Go conventions
+- Use errors.Is for error comparisons instead of == operator
+- Use errors.As instead of type assertions on errors
+- Fix resource leaks in backup.go
+- Update main.go
+- Delete duplicate-code-consolidation.md
+
+
 ## [0.83.0] - 2026-03-12 (minor)
 
 - Merge pull request #81 from bradselph/development
