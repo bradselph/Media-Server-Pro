@@ -80,12 +80,7 @@ func filterLogEntries(entries []map[string]interface{}, levelFilter, moduleFilte
 	if levelFilter == "" && moduleFilter == "" {
 		return entries
 	}
-	// TODO: filtered := entries[:0] reuses the backing array of entries, which means the
-	// filtered slice and the original entries slice share memory. If the caller retains a
-	// reference to the original entries slice, its later elements may be overwritten. In
-	// this case it's likely safe since entries is not used after filterLogEntries returns,
-	// but this is fragile and non-obvious. Consider allocating a new slice for clarity.
-	filtered := entries[:0]
+	filtered := make([]map[string]interface{}, 0, len(entries))
 	for _, entry := range entries {
 		if levelFilter != "" {
 			entryLevel, _ := entry["level"].(string)
