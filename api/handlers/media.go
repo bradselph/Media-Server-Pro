@@ -386,11 +386,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		RangeHeader: c.Request.Header.Get("Range"),
 	}
 
-	// TODO: rangeHeader is read a second time here — it was already read above as part of
-	// StreamRequest (line 389: RangeHeader: c.Request.Header.Get("Range")). Use the req.RangeHeader
-	// field instead of re-reading the header to avoid the duplication.
-	rangeHeader := c.Request.Header.Get("Range")
-	isInitialRequest := rangeHeader == "" || strings.HasPrefix(rangeHeader, "bytes=0-")
+	isInitialRequest := req.RangeHeader == "" || strings.HasPrefix(req.RangeHeader, "bytes=0-")
 	if isInitialRequest && h.analytics != nil {
 		// Use the stable UUID (id) so analytics keys match client-submitted events.
 		h.analytics.TrackView(c.Request.Context(), analytics.ViewParams{
