@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.85.0] - 2026-03-13 (minor)
+
+- Merge pull request #83 from bradselph/development
+- feat(auth): add AllowRegistration config; Register returns 403 when disabled
+- fix(auth): delete expired admin session from repository in ValidateAdminSession
+- fix(security): GetWhitelist and GetBlacklist return copies to prevent mutation
+- fix(database): set m.db and m.sqlDB to nil after Stop so GORM() returns nil
+- fix(remote): always close syncDone in Stop so waiters do not hang when syncTicker was nil
+- fix(config): deep-copy Receiver.APIKeys in getCopy to prevent mutation of internal state
+- fix(repo): escape LIKE wildcards in receiver_transfer_repository Search
+- fix(auth): reset login attempt when lockout expires so next failure does not re-lock immediately
+- fix(repo): escape LIKE wildcards (% and _) in media_metadata_repository search
+- fix(handlers): requireReceiverAPIKey accepts api_key query param as well as X-API-Key header
+- fix(handlers): verify absolute paths are under allowedDirs in resolvePathToAbsoluteNoWrite
+- fix(extractor): RemoveItem returns ErrNotFound when item does not exist; handler returns 404
+- fix(streaming): sanitize Content-Disposition filename to prevent header injection
+- fix(categorizer): cap animeScore at 1.0
+- fix(upload): reject backslash in filenames to prevent Windows path traversal
+- fix(streaming): respond with 416 and Content-Range when parseRange fails in Stream
+- fix(analytics): return copies from GetDailyStats and GetMediaStats to prevent mutation
+- docs(receiver): clarify CheckOrigin and API key as access control
+- fix(hls): validate Quality and Segment in ServeSegment to prevent path traversal
+- fix(handlers): use req.RangeHeader instead of re-reading Range in StreamMedia
+- fix(analytics): countActiveSessions acquires sessionsMu internally; adjust callers
+- fix(hls): skip cleanup when RetentionMinutes <= 0 to avoid deleting all segments
+- fix(repo): extractor Upsert and UpdateStatus include updated_at
+- fix(thumbnails): use PreviewCount when req.Count <= 0, remove dead code
+- fix(repo): propagate json.Marshal error in HLS job Save
+- fix(repo): crawler Upsert includes updated_at in DoUpdates
+- fix(repo): propagate json.Marshal error in autodiscovery Save
+- fix(hls): recognize .aac and .m4s/.mp4 segment types in validation
+- fix(handlers): filterLogEntries allocates new slice instead of reusing backing array
+- fix(repo): firstByUserID returns (nil, nil) for ErrRecordNotFound
+- fix(repo): UpdateBlurHash returns error when path not found (RowsAffected 0)
+- fix(frontend): handle null items in DuplicatesTab itemCard function
+- chore: remove outdated TODO in AdminExportAnalytics (date validation already returns 400)
+- fix(middleware): prevent unbounded goroutines in age gate eviction
+- fix(repo): playlist Get returns ErrPlaylistNotFound instead of gorm.ErrRecordNotFound
+- fix(handlers): validate paths for ApplyDiscoverySuggestion and DismissDiscoverySuggestion
+- fix(handlers): validate path for ScanContent before scanning
+- fix(handlers): avoid leaking internal error details in extractor API
+- fix(handlers): validate email with net/mail.ParseAddress in Register
+- fix(frontend): toggleTheme cycles through dark, light, and auto
+- fix(config): unify GetValue and SetValue field-matching logic
+- fix(handlers): add nil check for thumbnails in ListMedia and GetMedia
+- fix(repo): ip_list SetEnabled returns error when config row not found
+- fix(middleware): add Access-Control-Allow-Credentials for credentialed CORS
+- fix(middleware): only trust X-Forwarded-Proto from trusted proxies
+
+
 ## [0.84.0] - 2026-03-13 (minor)
 
 - Merge pull request #82 from bradselph/development
