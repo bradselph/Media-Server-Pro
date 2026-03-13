@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.91.0] - 2026-03-13 (minor)
+
+- Merge pull request #90 from bradselph/development
+- refactor: improve mobile responsiveness and UI elements across frontend
+
+
 ## [0.90.0] - 2026-03-13 (minor)
 
 - Merge pull request #89 from bradselph/development
