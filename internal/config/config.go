@@ -158,10 +158,6 @@ func (m *Manager) Get() *Config {
 	return m.getCopy()
 }
 
-// TODO: Bug — getCopy performs a shallow struct copy (`cp := *m.config`) and then
-// deep-copies some slice fields, but misses Receiver.APIKeys. A caller that modifies
-// the returned config's APIKeys slice will mutate the internal state. Should also
-// deep-copy Receiver.APIKeys: `cp.Receiver.APIKeys = append([]string(nil), m.config.Receiver.APIKeys...)`.
 func (m *Manager) getCopy() *Config {
 	cp := *m.config
 	cp.Security.IPWhitelist = append([]string(nil), m.config.Security.IPWhitelist...)
@@ -174,6 +170,7 @@ func (m *Manager) getCopy() *Config {
 	cp.MatureScanner.HighConfidenceKeywords = append([]string(nil), m.config.MatureScanner.HighConfidenceKeywords...)
 	cp.MatureScanner.MediumConfidenceKeywords = append([]string(nil), m.config.MatureScanner.MediumConfidenceKeywords...)
 	cp.AgeGate.BypassIPs = append([]string(nil), m.config.AgeGate.BypassIPs...)
+	cp.Receiver.APIKeys = append([]string(nil), m.config.Receiver.APIKeys...)
 	return &cp
 }
 

@@ -14,6 +14,7 @@ var (
 	ErrUserExists         = errors.New("user already exists")
 	ErrUserNotFound       = errors.New("user not found")
 	ErrSessionNotFound    = errors.New("session not found")
+	ErrPlaylistNotFound   = errors.New("playlist not found")
 	ErrScanResultNotFound = errors.New("scan result not found")
 )
 

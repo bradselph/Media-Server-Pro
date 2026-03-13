@@ -319,10 +319,6 @@ func (m *Module) detectTVShow(ctx PathContext, info *MediaInfo) (Category, float
 }
 
 // detectAnime checks for anime patterns in the filename, directory path, and full path.
-// TODO: Bug — animeScore can exceed 1.0 (e.g., if 3+ patterns match, score = 0.9 + 0.5 = 1.4).
-// Confidence is meant to be 0.0–1.0 but this is unbounded. Should cap at 1.0 or normalize.
-// Also, the resolution quality patterns (720p/1080p + hevc/x264) are very generic and match
-// non-anime content, inflating the anime score for any media with quality tags in the name.
 func (m *Module) detectAnime(ctx PathContext, _ *MediaInfo) (Category, float64, bool) {
 	animeScore := 0.0
 	for _, pattern := range m.patterns.animePatterns {
@@ -332,6 +328,9 @@ func (m *Module) detectAnime(ctx PathContext, _ *MediaInfo) (Category, float64, 
 	}
 	if strings.Contains(ctx.DirPath, "anime") {
 		animeScore += 0.5
+	}
+	if animeScore > 1.0 {
+		animeScore = 1.0
 	}
 	if animeScore >= 0.5 {
 		return CategoryAnime, animeScore, true

@@ -31,13 +31,10 @@ export const useThemeStore = create<ThemeState>()(
                 set({theme})
             },
 
-            // TODO: toggleTheme only cycles between 'dark' and 'light', skipping 'auto'.
-            // WHY: The Theme type includes 'auto' (IC-11: OS prefers-color-scheme), but
-            // toggling never reaches it, so users can only get to 'auto' via setTheme().
-            // FIX: Cycle through all three: dark → light → auto → dark, or document that
-            // toggle intentionally skips auto and auto is only available via the profile dropdown.
             toggleTheme: () => {
-                const next: Theme = get().theme === 'dark' ? 'light' : 'dark'
+                const cycle: Theme[] = ['dark', 'light', 'auto']
+                const i = cycle.indexOf(get().theme)
+                const next = cycle[(i + 1) % cycle.length]
                 applyTheme(next)
                 set({theme: next})
             },

@@ -112,16 +112,16 @@ func (m *Module) parseVariantStreams(content string) []string {
 	return variants
 }
 
-// isSegmentLine returns true if the line is a non-empty, non-comment segment filename (.ts)
-// TODO: Bug - only .ts segments are recognized. HLS also supports .aac audio
-// segments and fMP4 segments (.m4s, .mp4). If the server ever supports
-// hls_segment_type=fmp4, this check will miss all segments, causing validation
-// to report "no segments found" for valid jobs. Should also check for .m4s and .aac.
+// isSegmentLine returns true if the line is a non-empty, non-comment segment filename.
+// Supports .ts (MPEG-TS), .aac (audio-only), and .m4s/.mp4 (fMP4) segment types.
 func isSegmentLine(line string) bool {
 	if line == "" || strings.HasPrefix(line, "#") {
 		return false
 	}
-	return strings.HasSuffix(line, ".ts")
+	return strings.HasSuffix(line, ".ts") ||
+		strings.HasSuffix(line, ".aac") ||
+		strings.HasSuffix(line, ".m4s") ||
+		strings.HasSuffix(line, ".mp4")
 }
 
 // parseSegments extracts segment filenames from a variant playlist

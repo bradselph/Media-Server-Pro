@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -150,10 +151,12 @@ func (h *Handler) CheckSession(c *gin.Context) {
 }
 
 // Register creates a new user account
-// TODO: Registration does not check whether self-registration is enabled in config
-// (e.g. cfg.Auth.AllowRegistration). Any unauthenticated client can create accounts.
-// If there is a config flag to control this, it should be checked here.
 func (h *Handler) Register(c *gin.Context) {
+	cfg := h.config.Get()
+	if !cfg.Auth.AllowRegistration {
+		writeError(c, http.StatusForbidden, "Registration is disabled")
+		return
+	}
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -180,12 +183,11 @@ func (h *Handler) Register(c *gin.Context) {
 			return
 		}
 	}
-	// TODO: Email validation only checks for "@" which accepts clearly invalid values like
-	// "@", "@@", etc. Consider using a proper validation (e.g. net/mail.ParseAddress) or at
-	// minimum require characters before and after the "@".
-	if req.Email != "" && !strings.Contains(req.Email, "@") {
-		writeError(c, http.StatusBadRequest, "Invalid email address")
-		return
+	if req.Email != "" {
+		if _, parseErr := mail.ParseAddress(req.Email); parseErr != nil {
+			writeError(c, http.StatusBadRequest, "Invalid email address")
+			return
+		}
 	}
 
 	user, err := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{

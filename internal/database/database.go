@@ -183,11 +183,6 @@ func (w *gormLogWriter) Printf(format string, args ...interface{}) {
 }
 
 // Stop closes the database connection
-// TODO: Bug — after Stop() closes the sqlDB connection, m.db (GORM) is not set to nil.
-// Any module that still holds a reference to m.db and tries to use it after Stop will
-// get "sql: database is closed" errors rather than a clean nil check. Should set m.db
-// and m.sqlDB to nil after close so IsConnected() returns false via the health check
-// and callers get clear nil-pointer behavior instead of opaque DB errors.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping database module...")
 
@@ -196,6 +191,8 @@ func (m *Module) Stop(_ context.Context) error {
 			m.log.Error("Failed to close database: %v", err)
 			return err
 		}
+		m.sqlDB = nil
+		m.db = nil
 	}
 
 	m.setHealth(false, "Stopped")

@@ -44,12 +44,9 @@ func (m *Module) updateSession(event models.AnalyticsEvent) {
 }
 
 // countActiveSessions counts sessions active within the configured timeout.
-// TODO: Bug — this method reads m.sessions without holding sessionsMu. Callers like
-// GetSummary and GetStats acquire sessionsMu.RLock before calling this, but the method
-// itself does not document or enforce that the lock must be held. If any future caller
-// forgets to lock, this is a data race. Consider either adding a lock assertion or
-// making this method acquire the lock internally.
 func (m *Module) countActiveSessions(timeout time.Duration) int {
+	m.sessionsMu.RLock()
+	defer m.sessionsMu.RUnlock()
 	active := 0
 	for _, session := range m.sessions {
 		if time.Since(session.LastActivity) < timeout {

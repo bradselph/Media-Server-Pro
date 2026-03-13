@@ -3,6 +3,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"media-server-pro/internal/repositories"
@@ -26,18 +27,14 @@ func (r *PlaylistRepository) Create(ctx context.Context, playlist *models.Playli
 	return r.db.WithContext(ctx).Create(playlist).Error
 }
 
-// TODO: Bug — Get does not translate gorm.ErrRecordNotFound into a domain error.
-// When a playlist is not found, it returns a raw GORM error. The caller must know
-// to check for gorm.ErrRecordNotFound, which leaks the persistence layer into the
-// domain. Other repositories (e.g. UserRepository, SessionRepository) translate
-// this into domain errors like repositories.ErrUserNotFound. Consider adding
-// a repositories.ErrPlaylistNotFound sentinel error.
-
 // Get retrieves a playlist by ID with its items
 func (r *PlaylistRepository) Get(ctx context.Context, id string) (*models.Playlist, error) {
 	var playlist models.Playlist
 	err := r.db.WithContext(ctx).First(&playlist, "id = ?", id).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, repositories.ErrPlaylistNotFound
+		}
 		return nil, err
 	}
 

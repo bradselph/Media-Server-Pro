@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/extractor"
 	"media-server-pro/pkg/helpers"
 )
 
@@ -36,12 +38,10 @@ func (h *Handler) AddExtractorItem(c *gin.Context) {
 		addedBy = user.Username
 	}
 
-	// TODO: err.Error() is returned directly to the client. Internal error details
-	// (file paths, stack traces) could leak. Consider returning a generic error message.
 	item, err := h.extractor.AddItem(req.URL, req.Title, addedBy)
 	if err != nil {
 		h.log.Error("Failed to add extractor item: %v", err)
-		writeError(c, http.StatusBadRequest, err.Error())
+		writeError(c, http.StatusBadRequest, "Failed to add item")
 		return
 	}
 
@@ -71,7 +71,12 @@ func (h *Handler) RemoveExtractorItem(c *gin.Context) {
 	}
 
 	if err := h.extractor.RemoveItem(id); err != nil {
-		writeError(c, http.StatusInternalServerError, err.Error())
+		if errors.Is(err, extractor.ErrNotFound) {
+			writeError(c, http.StatusNotFound, "Item not found")
+			return
+		}
+		h.log.Error("Failed to remove extractor item %s: %v", id, err)
+		writeError(c, http.StatusInternalServerError, "Failed to remove item")
 		return
 	}
 

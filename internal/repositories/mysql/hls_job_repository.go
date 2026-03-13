@@ -41,7 +41,10 @@ func NewHLSJobRepository(db *gorm.DB) repositories.HLSJobRepository {
 }
 
 func (r *HLSJobRepository) Save(ctx context.Context, job *models.HLSJob) error {
-	row := r.jobToRow(job)
+	row, err := r.jobToRow(job)
+	if err != nil {
+		return fmt.Errorf("failed to serialize HLS job: %w", err)
+	}
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -85,12 +88,11 @@ func (r *HLSJobRepository) List(ctx context.Context) ([]*models.HLSJob, error) {
 	return jobs, nil
 }
 
-// TODO: Silent failure — json.Marshal error for Qualities is discarded. If Qualities
-// contains invalid data, qualJSON will be "null" and stored in the DB, silently losing
-// the quality list. On read, this unmarshals to nil and is replaced with []string{},
-// so the job appears to have no qualities configured.
-func (r *HLSJobRepository) jobToRow(job *models.HLSJob) hlsJobRow {
-	qualJSON, _ := json.Marshal(job.Qualities)
+func (r *HLSJobRepository) jobToRow(job *models.HLSJob) (hlsJobRow, error) {
+	qualJSON, err := json.Marshal(job.Qualities)
+	if err != nil {
+		return hlsJobRow{}, fmt.Errorf("failed to marshal qualities: %w", err)
+	}
 	row := hlsJobRow{
 		ID:        job.ID,
 		MediaPath: job.MediaPath,
@@ -114,7 +116,7 @@ func (r *HLSJobRepository) jobToRow(job *models.HLSJob) hlsJobRow {
 	if job.HLSUrl != "" {
 		row.HLSUrl = &job.HLSUrl
 	}
-	return row
+	return row, nil
 }
 
 func (r *HLSJobRepository) rowToJob(row *hlsJobRow) *models.HLSJob {

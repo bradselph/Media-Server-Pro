@@ -33,6 +33,8 @@ type AgeGate struct {
 	verifiedIPs    map[string]time.Time
 	bypassNetworks []*net.IPNet
 	log            *logger.Logger
+	evictMu        sync.Mutex
+	evicting       bool
 }
 
 // parseBypassCIDR parses a single bypass IP or CIDR string.
@@ -140,14 +142,27 @@ func (ag *AgeGate) IsVerified(r *http.Request) bool {
 	return ag.isBypass(ip) || ag.hasCookie(r) || ag.isIPVerified(ip)
 }
 
-// TODO: Bug — evictExpired is called via `go ag.evictExpired()` on every POST
-// /api/age-verify request. Under high traffic this spawns unbounded goroutines
-// that each acquire a write lock and iterate the entire map. This creates lock
-// contention and unbounded goroutine growth. Consider using a time.Ticker in a
-// single background goroutine started from NewAgeGate, or using a sync.Once
-// guard to ensure only one eviction runs at a time.
+// scheduleEvict runs evictExpired in a goroutine but only if no eviction is
+// already in progress, preventing unbounded goroutine growth under high traffic.
+func (ag *AgeGate) scheduleEvict() {
+	ag.evictMu.Lock()
+	if ag.evicting {
+		ag.evictMu.Unlock()
+		return
+	}
+	ag.evicting = true
+	ag.evictMu.Unlock()
+	go func() {
+		defer func() {
+			ag.evictMu.Lock()
+			ag.evicting = false
+			ag.evictMu.Unlock()
+		}()
+		ag.evictExpired()
+	}()
+}
 
-// evictExpired removes stale IP entries from the verified map (called async).
+// evictExpired removes stale IP entries from the verified map.
 func (ag *AgeGate) evictExpired() {
 	if ag.cfg.IPVerifyTTL <= 0 {
 		return
@@ -207,8 +222,7 @@ func (ag *AgeGate) VerifyHandler(w http.ResponseWriter, r *http.Request) {
 		ag.verifiedIPs[ip] = time.Now()
 		ag.mu.Unlock()
 
-		// Async GC so eviction doesn't block the response
-		go ag.evictExpired()
+		ag.scheduleEvict()
 
 		http.SetCookie(w, &http.Cookie{
 			Name:     ag.cfg.CookieName,
@@ -246,7 +260,7 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 			ag.mu.Lock()
 			ag.verifiedIPs[ip] = time.Now()
 			ag.mu.Unlock()
-			go ag.evictExpired()
+			ag.scheduleEvict()
 			http.SetCookie(c.Writer, &http.Cookie{
 				Name:     ag.cfg.CookieName,
 				Value:    "1",

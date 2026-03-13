@@ -150,13 +150,14 @@ func defaultAdminConfig() AdminConfig {
 
 func defaultAuthConfig() AuthConfig {
 	return AuthConfig{
-		Enabled:          true,
-		SessionTimeout:   7 * 24 * time.Hour,
-		SecureCookies:    false,
-		MaxLoginAttempts: 5,
-		LockoutDuration:  15 * time.Minute,
-		AllowGuests:      true,
-		DefaultUserType:  "standard",
+		Enabled:            true,
+		SessionTimeout:     7 * 24 * time.Hour,
+		SecureCookies:      false,
+		MaxLoginAttempts:   5,
+		LockoutDuration:    15 * time.Minute,
+		AllowGuests:        true,
+		AllowRegistration:  true,
+		DefaultUserType:    "standard",
 		UserTypes: []UserType{
 			{Name: "premium", StorageQuota: 100 * 1024 * 1024 * 1024, MaxConcurrentStreams: 5, AllowDownloads: true, AllowUploads: true, AllowPlaylists: true},
 			{Name: "standard", StorageQuota: 10 * 1024 * 1024 * 1024, MaxConcurrentStreams: 2, AllowDownloads: true, AllowUploads: false, AllowPlaylists: true},

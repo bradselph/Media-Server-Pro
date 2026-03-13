@@ -78,14 +78,22 @@ func GinRequestID() gin.HandlerFunc {
 	}
 }
 
-// TODO: Bug — isHTTPS trusts X-Forwarded-Proto from any client without checking
-// if the request came through a trusted proxy. An attacker can send
-// X-Forwarded-Proto: https on a plain HTTP connection to trick the server into
-// setting HSTS headers over insecure transport. This should use isTrustedProxy()
-// to validate the source before honoring the header, similar to extractClientIP
-// in agegate.go.
+// isHTTPS returns true when the connection is HTTPS, either via TLS or via
+// X-Forwarded-Proto from a trusted proxy. X-Forwarded-Proto is only honored when
+// the request came from a trusted proxy to prevent clients from spoofing HTTPS
+// and tricking the server into setting HSTS over insecure transport.
 func isHTTPS(c *gin.Context) bool {
-	return c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+	if c.Request.TLS != nil {
+		return true
+	}
+	remoteIP, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err != nil {
+		remoteIP = c.Request.RemoteAddr
+	}
+	if isTrustedProxy(remoteIP) && c.GetHeader("X-Forwarded-Proto") == "https" {
+		return true
+	}
+	return false
 }
 
 // GinSecurityHeaders adds security headers (CSP, HSTS, X-Frame-Options, etc.)
@@ -149,16 +157,9 @@ func (cfg *corsConfig) allowOrigin(origin string) (value string, allowed bool) {
 	return "", false
 }
 
-// TODO: Bug — when allowAll is true and a specific origin is present, the handler
-// echoes back the request Origin as Access-Control-Allow-Origin but never sets
-// Access-Control-Allow-Credentials. If the frontend sends credentials (cookies),
-// browsers require both Access-Control-Allow-Credentials: true AND a specific
-// (non-wildcard) origin. Since this server uses cookie-based session auth
-// (session_id cookie), credentialed CORS requests from different origins will
-// fail silently. Either add Allow-Credentials when echoing a specific origin,
-// or document that cross-origin cookie-based auth is not supported.
-
-// GinCORS adds CORS headers to Gin responses
+// GinCORS adds CORS headers to Gin responses.
+// When allowAll is true and a specific Origin is present, Access-Control-Allow-Credentials
+// is set so cookie-based session auth works for cross-origin credentialed requests.
 func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
 	cfg := parseCORSConfig(origins, methods, headers)
 
@@ -170,6 +171,9 @@ func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Methods", cfg.methodsStr)
 			c.Header("Access-Control-Allow-Headers", cfg.headersStr)
 			c.Header("Access-Control-Max-Age", "86400")
+			if value != "*" {
+				c.Header("Access-Control-Allow-Credentials", "true")
+			}
 		}
 
 		if c.Request.Method == http.MethodOptions {

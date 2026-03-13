@@ -187,19 +187,13 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module
-// TODO: Bug - if syncTicker is nil (remote media disabled in config or
-// SyncInterval <= 0), syncDone is never closed. But syncLoop was never started
-// either so this is currently harmless. However, the goroutine launched by
-// "go m.syncAllSources()" in Start() may still be running when Stop() is
-// called. There is no mechanism (context or done channel) to cancel that
-// in-flight sync, which could delay shutdown or cause use-after-stop races.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping remote media module...")
 
 	if m.syncTicker != nil {
 		m.syncTicker.Stop()
-		close(m.syncDone)
 	}
+	close(m.syncDone)
 
 	// Save cache index
 	m.saveCacheIndex()

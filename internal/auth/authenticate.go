@@ -156,12 +156,8 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 	return session, nil
 }
 
-// ValidateAdminSession validates an admin session
-// TODO: Bug — expired admin sessions are removed from the in-memory map but NOT from
-// the session repository (database). Over time, expired admin sessions accumulate in the
-// DB. The cleanupExpiredSessions method does handle this but only runs every 5 minutes,
-// so there is a window. Also, unlike ValidateSession, this does not update LastActivity
-// on the session, so admin sessions never refresh their expiry on use.
+// ValidateAdminSession validates an admin session.
+// When a session is expired, it is removed from the in-memory map and from the session repository.
 func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, error) {
 	m.sessionsMu.RLock()
 	session, exists := m.adminSessions[sessionID]
@@ -174,21 +170,19 @@ func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, e
 		m.sessionsMu.Lock()
 		delete(m.adminSessions, sessionID)
 		m.sessionsMu.Unlock()
+		if err := m.sessionRepo.Delete(context.Background(), sessionID); err != nil {
+			m.log.Warn("Failed to delete expired admin session from repository: %v", err)
+		}
 		return nil, ErrSessionExpired
 	}
 	return session, nil
 }
 
 // isLockedOut returns whether the IP is currently locked out due to failed attempts.
-// TODO: Bug — when the lockout duration expires, isLockedOut returns false but the
-// loginAttempt record is NOT reset. The next single failed attempt will immediately
-// re-lock the IP because attempt.Count is still >= MaxLoginAttempts. The attempt
-// should be cleared or reset when the lockout expires. The recordFailedAttempt method
-// partially handles this but uses LockoutDuration for the reset window which means
-// the lockout effectively doubles in duration.
+// When lockout has expired, the attempt is reset so the next failure starts a fresh count.
 func (m *Module) isLockedOut(ip string) bool {
-	m.attemptsMu.RLock()
-	defer m.attemptsMu.RUnlock()
+	m.attemptsMu.Lock()
+	defer m.attemptsMu.Unlock()
 
 	attempt, exists := m.loginAttempts[ip]
 	if !exists {
@@ -200,6 +194,9 @@ func (m *Module) isLockedOut(ip string) bool {
 		if time.Since(*attempt.LockedAt) < cfg.Auth.LockoutDuration {
 			return true
 		}
+		// Lockout expired — reset so next failed attempt doesn't immediately re-lock
+		attempt.Count = 0
+		attempt.LockedAt = nil
 	}
 	return false
 }

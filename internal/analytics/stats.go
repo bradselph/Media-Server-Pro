@@ -152,9 +152,7 @@ func updateCompletionRate(stats *models.ViewStats) {
 	}
 }
 
-// GetDailyStats returns daily statistics.
-// TODO: Bug — returns pointers to internal DailyStats structs. Callers can mutate these
-// pointers and corrupt the in-memory stats. Should return copies instead of pointers.
+// GetDailyStats returns copies of daily statistics so callers cannot mutate internal state.
 func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 	m.statsMu.RLock()
 	defer m.statsMu.RUnlock()
@@ -165,22 +163,22 @@ func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 	for i := 0; i < days; i++ {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		if daily, ok := m.dailyStats[date]; ok {
-			stats = append(stats, daily)
+			cp := *daily
+			stats = append(stats, &cp)
 		}
 	}
 
 	return stats
 }
 
-// GetMediaStats returns statistics for a media item.
-// TODO: Bug — same as GetDailyStats: returns a pointer to internal ViewStats. Callers can
-// mutate it and corrupt in-memory state. Should return a copy.
+// GetMediaStats returns a copy of statistics for a media item so callers cannot mutate internal state.
 func (m *Module) GetMediaStats(mediaID string) *models.ViewStats {
 	m.statsMu.RLock()
 	defer m.statsMu.RUnlock()
 
 	if stats, ok := m.mediaStats[mediaID]; ok {
-		return stats
+		cp := *stats
+		return &cp
 	}
 	return &models.ViewStats{}
 }
@@ -217,10 +215,8 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 		totalEvents = 0
 	}
 
-	m.sessionsMu.RLock()
 	cfg := m.config.Get()
 	activeSessions := m.countActiveSessions(cfg.Analytics.SessionTimeout)
-	m.sessionsMu.RUnlock()
 
 	m.statsMu.RLock()
 	summary := Summary{
@@ -242,11 +238,11 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 
 // GetStats returns analytics statistics for metrics.
 func (m *Module) GetStats() Stats {
-	m.sessionsMu.RLock()
 	cfg := m.config.Get()
+	m.sessionsMu.RLock()
 	uniqueClients := len(m.sessions)
-	activeSessions := m.countActiveSessions(cfg.Analytics.SessionTimeout)
 	m.sessionsMu.RUnlock()
+	activeSessions := m.countActiveSessions(cfg.Analytics.SessionTimeout)
 
 	m.statsMu.RLock()
 	totalViews := 0
