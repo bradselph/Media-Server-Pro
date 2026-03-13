@@ -156,12 +156,8 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 	return session, nil
 }
 
-// ValidateAdminSession validates an admin session
-// TODO: Bug — expired admin sessions are removed from the in-memory map but NOT from
-// the session repository (database). Over time, expired admin sessions accumulate in the
-// DB. The cleanupExpiredSessions method does handle this but only runs every 5 minutes,
-// so there is a window. Also, unlike ValidateSession, this does not update LastActivity
-// on the session, so admin sessions never refresh their expiry on use.
+// ValidateAdminSession validates an admin session.
+// When a session is expired, it is removed from the in-memory map and from the session repository.
 func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, error) {
 	m.sessionsMu.RLock()
 	session, exists := m.adminSessions[sessionID]
@@ -174,6 +170,9 @@ func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, e
 		m.sessionsMu.Lock()
 		delete(m.adminSessions, sessionID)
 		m.sessionsMu.Unlock()
+		if err := m.sessionRepo.Delete(context.Background(), sessionID); err != nil {
+			m.log.Warn("Failed to delete expired admin session from repository: %v", err)
+		}
 		return nil, ErrSessionExpired
 	}
 	return session, nil
