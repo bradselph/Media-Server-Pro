@@ -52,23 +52,13 @@ func registerEmbeddedStatic(r *gin.Engine) bool {
 	return true
 }
 
-// TODO: Incomplete feature — spaRoutes is a hardcoded list that must be manually kept
-// in sync with the React router in web/frontend/src/App.tsx. If a new route is added
-// to the frontend (e.g. "/settings"), it will work via the NoRoute fallback but will
-// not be pre-registered, meaning Gin's route tree won't match it directly. This works
-// but is fragile. Consider removing the explicit route registrations and relying solely
-// on the NoRoute handler for SPA routing, since the NoRoute handler already serves the
-// SPA for non-excluded paths.
+// spaRoutes are pre-registered so Gin matches them directly; other SPA paths are still
+// served via NoRoute. Keep in sync with web/frontend/src/App.tsx when adding top-level routes.
 var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "/player", "/admin"}
-
-// TODO: Redundant code — the second parameter (_ string) is accepted but ignored.
-// The call site passes cfg.Get().Directories.Thumbnails but it is discarded. Either
-// remove the parameter to clarify the API, or use it if thumbnail directory info is
-// needed for static serving.
 
 // RegisterStaticRoutes sets up static file serving and template routes.
 // This function is safe to call even if embedded files are missing.
-func RegisterStaticRoutes(r *gin.Engine, _ string) {
+func RegisterStaticRoutes(r *gin.Engine) {
 	registerEmbeddedStatic(r)
 
 	spaHandler := ginServeReactApp()
