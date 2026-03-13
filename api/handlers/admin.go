@@ -82,6 +82,14 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 		h.categorizer, h.updater, h.remote, h.receiver,
 		h.extractor, h.crawler, h.duplicates,
 	}
+	// TODO: API Contract Note - LastCheck is json:"last_check,omitempty" but is always
+	// populated via hs.CheckedAt.Format(time.RFC3339) — a non-empty RFC3339 string.
+	// omitempty on a string only omits empty string "", which never occurs here.
+	// The effective contract is that "last_check" is always present in every entry.
+	// Consumer web/frontend/src/api/types.ts ModuleHealth.last_check is typed as
+	// optional (last_check?: string) — callers may unnecessarily guard with "?? ''".
+	// Consider removing omitempty to make the contract explicit, OR document that
+	// "last_check" is always present so frontend callers need not null-guard it.
 	type moduleHealthItem struct {
 		Name      string `json:"name"`
 		Status    string `json:"status"`

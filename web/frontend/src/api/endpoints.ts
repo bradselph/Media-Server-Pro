@@ -683,9 +683,22 @@ export const adminApi = {
         api.post<QueryResult>('/api/admin/database/query', {query}),
 
     // last_sync "0001-01-01T00:00:00Z" means never synced. Returns 404 if remote feature disabled.
+    // TODO: API Contract Mismatch - RemoteSourceState.media (types.ts:628) is declared on
+    // the TypeScript type but is NEVER returned by the backend GetRemoteSources handler
+    // (api/handlers/admin_remote.go:13-48). The handler uses a local "safeState" struct
+    // with no "media" field. Any code reading "source.media" on results from this call
+    // will always get undefined. Remove "media?" from RemoteSourceState, or add the field
+    // to the backend safeState struct if per-source inline media is needed.
     getRemoteSources: () =>
         api.get<RemoteSourceState[]>('/api/admin/remote/sources'),
 
+    // TODO: API Contract Mismatch - Return type is RemoteSource (types.ts:591-597) but the
+    // backend CreateRemoteSource (api/handlers/admin_remote.go:81-86) returns a plain map
+    // with { name, url, username, enabled } — never includes "password". The RemoteSource
+    // type includes "password?" which implies it might be present on the response shape.
+    // The return type should be RemoteSourceResponse (types.ts:601-606) which correctly
+    // omits the password field. Using RemoteSource as return type is misleading and could
+    // cause callers to assume "password" might be accessible from the response.
     createRemoteSource: (data: { name: string; url: string; username?: string; password?: string }) =>
         api.post<RemoteSource>('/api/admin/remote/sources', {...data, enabled: true}),
 
