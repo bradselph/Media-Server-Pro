@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.90.0] - 2026-03-13 (minor)
+
+- Merge pull request #89 from bradselph/development
+- Merge branch 'main' into development
+- Update sanitize.go
+- Update server.go
+- fix(backup): use app version in manifest via CreateBackupOptions.Version (handler passes buildInfo)
+- fix(admin): log ReadDir errors in scanBackups for operator diagnostics
+- Merge pull request #88 from bradselph/claude/fix-workflow-cycle-PDVd3
+- fix: break workflow cycle by using workflow_run trigger and path guards
+- Merge pull request #87 from bradselph/development
+
+
 ## [0.89.0] - 2026-03-13 (minor)
 
 - Update sync-development.yml
