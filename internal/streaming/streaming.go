@@ -176,15 +176,12 @@ func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamReques
 	// Get chunk size based on quality and device
 	chunkSize := m.getChunkSize(req.Quality, req.UserAgent)
 
-	// TODO: When parseRange returns ErrInvalidRange, the caller should respond with
-	// HTTP 416 Range Not Satisfiable (as done in Download), but here it just returns
-	// the error. The HTTP handler that calls Stream must handle this, but nothing
-	// prevents a valid 416 response with the Content-Range header from being set.
-	// Compare with how Download handles the same situation (lines 554-559).
 	// Parse range header
 	start, end, err := m.parseRange(req.RangeHeader, fileSize)
 	if err != nil {
-		return ErrInvalidRange
+		w.Header().Set(headerContentRange, fmt.Sprintf("bytes */%d", fileSize))
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return nil
 	}
 
 	// Track session
