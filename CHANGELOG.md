@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.92.0] - 2026-03-13 (minor)
+
+- Merge pull request #91 from bradselph/development
+- Merge branch 'main' into development
+- feat: add public version endpoint and display in footer
+- fix: ensure user preferences update does not desynchronize cache and database
+- fix: resolve timestamp collision in backup creation and enhance cleanup logic
+- feat: enhance security and session management
+
+
 ## [0.91.0] - 2026-03-13 (minor)
 
 - Merge pull request #90 from bradselph/development
