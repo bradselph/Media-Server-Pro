@@ -157,16 +157,9 @@ func (cfg *corsConfig) allowOrigin(origin string) (value string, allowed bool) {
 	return "", false
 }
 
-// TODO: Bug — when allowAll is true and a specific origin is present, the handler
-// echoes back the request Origin as Access-Control-Allow-Origin but never sets
-// Access-Control-Allow-Credentials. If the frontend sends credentials (cookies),
-// browsers require both Access-Control-Allow-Credentials: true AND a specific
-// (non-wildcard) origin. Since this server uses cookie-based session auth
-// (session_id cookie), credentialed CORS requests from different origins will
-// fail silently. Either add Allow-Credentials when echoing a specific origin,
-// or document that cross-origin cookie-based auth is not supported.
-
-// GinCORS adds CORS headers to Gin responses
+// GinCORS adds CORS headers to Gin responses.
+// When allowAll is true and a specific Origin is present, Access-Control-Allow-Credentials
+// is set so cookie-based session auth works for cross-origin credentialed requests.
 func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
 	cfg := parseCORSConfig(origins, methods, headers)
 
@@ -178,6 +171,9 @@ func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Methods", cfg.methodsStr)
 			c.Header("Access-Control-Allow-Headers", cfg.headersStr)
 			c.Header("Access-Control-Max-Age", "86400")
+			if value != "*" {
+				c.Header("Access-Control-Allow-Credentials", "true")
+			}
 		}
 
 		if c.Request.Method == http.MethodOptions {
