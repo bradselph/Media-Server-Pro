@@ -2,10 +2,11 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
-// Validate validates the current configuration
+// Validate validates the current configuration and returns any blocking errors.
 func (m *Manager) Validate() []error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -17,6 +18,13 @@ func (m *Manager) Validate() []error {
 	errors = append(errors, m.validateSecurity()...)
 	errors = append(errors, m.validateHLS()...)
 	errors = append(errors, m.validateDatabase()...)
+	errors = append(errors, m.validateAuth()...)
+	errors = append(errors, m.validateThumbnails()...)
+	errors = append(errors, m.validateAnalytics()...)
+	errors = append(errors, m.validateReceiver()...)
+	errors = append(errors, m.validateUploads()...)
+	errors = append(errors, m.validateBackup()...)
+	errors = append(errors, m.validateHuggingFace()...)
 	m.warnCORS()
 	return errors
 }
@@ -117,6 +125,87 @@ func (m *Manager) validateDatabase() []error {
 		errs = append(errs, fmt.Errorf("database name is required"))
 	}
 	return errs
+}
+
+func (m *Manager) validateAuth() []error {
+	if !m.config.Auth.Enabled {
+		return nil
+	}
+	var errs []error
+	if m.config.Auth.LockoutDuration < 0 {
+		errs = append(errs, fmt.Errorf("auth lockout_duration cannot be negative"))
+	}
+	if m.config.Auth.MaxLoginAttempts < 0 {
+		errs = append(errs, fmt.Errorf("auth max_login_attempts cannot be negative"))
+	}
+	if m.config.Auth.MaxLoginAttempts == 0 {
+		m.log.Warn("auth max_login_attempts is 0 — lockout will not trigger")
+	}
+	return errs
+}
+
+func (m *Manager) validateThumbnails() []error {
+	if !m.config.Thumbnails.Enabled {
+		return nil
+	}
+	var errs []error
+	if m.config.Thumbnails.Width < 1 || m.config.Thumbnails.Height < 1 {
+		errs = append(errs, fmt.Errorf("thumbnails width and height must be positive when enabled, got %dx%d", m.config.Thumbnails.Width, m.config.Thumbnails.Height))
+	}
+	if m.config.Thumbnails.WorkerCount < 0 {
+		errs = append(errs, fmt.Errorf("thumbnails worker_count cannot be negative"))
+	}
+	return errs
+}
+
+func (m *Manager) validateAnalytics() []error {
+	if !m.config.Analytics.Enabled {
+		return nil
+	}
+	if m.config.Analytics.RetentionDays < 0 {
+		return []error{fmt.Errorf("analytics retention_days cannot be negative")}
+	}
+	return nil
+}
+
+func (m *Manager) validateReceiver() []error {
+	if !m.config.Receiver.Enabled {
+		return nil
+	}
+	if len(m.config.Receiver.APIKeys) == 0 {
+		m.log.Warn("receiver enabled but no api_keys configured — slave connections will be rejected")
+	}
+	return nil
+}
+
+func (m *Manager) validateUploads() []error {
+	if !m.config.Uploads.Enabled {
+		return nil
+	}
+	if m.config.Uploads.MaxFileSize < 1 {
+		return []error{fmt.Errorf("uploads max_file_size must be positive when uploads enabled")}
+	}
+	return nil
+}
+
+func (m *Manager) validateBackup() []error {
+	if m.config.Backup.RetentionCount < 0 {
+		return []error{fmt.Errorf("backup retention_count cannot be negative")}
+	}
+	return nil
+}
+
+func (m *Manager) validateHuggingFace() []error {
+	if !m.config.HuggingFace.Enabled {
+		return nil
+	}
+	if m.config.HuggingFace.APIKey == "" {
+		m.log.Warn("huggingface enabled but api_key is empty — classification requests will fail")
+	}
+	if strings.TrimSpace(m.config.HuggingFace.Model) == "" {
+		m.log.Warn("huggingface enabled but model is empty — set HUGGINGFACE_MODEL to an image-classification or image-to-text model (e.g. Falconsai/nsfw_image_detection)")
+	}
+	return nil
 }
 
 func (m *Manager) warnCORS() {

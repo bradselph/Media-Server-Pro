@@ -51,8 +51,13 @@ export function AdminPage() {
         }
     }, [features, activeTab, tabs])
 
+    useEffect(() => {
+        if (!isLoading && !isAdmin) {
+            navigate('/login', {replace: true})
+        }
+    }, [isLoading, isAdmin, navigate])
+
     if (!isLoading && !isAdmin) {
-        navigate('/login', {replace: true})
         return null
     }
 

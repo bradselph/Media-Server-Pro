@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"net"
 	"net/http"
 	"time"
 
@@ -154,7 +155,7 @@ func (h *Handler) GetBannedIPs(c *gin.Context) {
 	writeSuccess(c, result)
 }
 
-// BanIP manually bans an IP
+// BanIP manually bans an IP. Validates IPv4/IPv6 and rejects banning the caller's IP.
 func (h *Handler) BanIP(c *gin.Context) {
 	if !h.requireSecurity(c) {
 		return
@@ -173,9 +174,17 @@ func (h *Handler) BanIP(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "IP address is required")
 		return
 	}
+	if net.ParseIP(req.IP) == nil {
+		writeError(c, http.StatusBadRequest, "Invalid IP address format")
+		return
+	}
+	if req.IP == c.ClientIP() {
+		writeError(c, http.StatusBadRequest, "Cannot ban your own IP address")
+		return
+	}
 
 	duration := time.Duration(req.Duration) * time.Minute
-	if duration == 0 {
+	if duration <= 0 {
 		duration = 15 * time.Minute
 	}
 

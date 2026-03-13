@@ -59,7 +59,7 @@ describe('apiRequest', () => {
             makeResponse({success: false}, 500),
         )
 
-        await expect(apiRequest('/api/fail')).rejects.toMatchObject({
+        expect(apiRequest('/api/fail')).rejects.toMatchObject({
             message: 'Unknown error',
             status: 500,
         })

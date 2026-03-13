@@ -227,6 +227,12 @@ func (m *Module) ValidateFile(path string) (*ValidationResult, error) {
 }
 
 // probeFile runs ffprobe on a file using ffmpeg-go
+// TODO: Unlike thumbnails/probe.go which uses m.ffprobePath with ffmpeg.ProbeWithTimeout,
+// this function calls ffmpeg.Probe(path) without a timeout and without passing the
+// explicit ffprobe path. This means: (1) it relies on ffprobe being in PATH, which may
+// fail under systemd; and (2) it has no timeout, so a corrupted file could hang
+// ffprobe indefinitely. Should use ffmpeg.ProbeWithTimeout with m.ffprobePath like the
+// thumbnails module does.
 func (m *Module) probeFile(path string) (*ProbeData, error) {
 	// Try ffmpeg-go Probe first
 	probeJSON, probeErr := ffmpeg.Probe(path)
@@ -401,6 +407,11 @@ func (m *Module) storeResult(result *ValidationResult) {
 }
 
 // FixFile attempts to transcode a file to a supported format
+// TODO: FixFile reads 'result' from m.results under RLock but then modifies it later
+// under a write Lock (line 476-479). Between the RLock release and the write Lock
+// acquisition, another goroutine could modify or replace the result. The pointer
+// 'result' obtained under RLock may become stale. Should re-fetch under the write lock
+// or use a copy-on-write approach.
 func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	if m.ffmpegPath == "" {
 		return nil, fmt.Errorf("ffmpeg not available")
@@ -484,7 +495,8 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 }
 
 // shouldValidateFile checks whether a file at the given path is a media file
-// that has not been recently validated.
+// that has not been recently validated. Used for on-demand validation via admin API;
+// can be used by a future scheduled task to validate library files in bulk.
 func (m *Module) shouldValidateFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	if !helpers.IsMediaExtension(ext) {

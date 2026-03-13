@@ -28,6 +28,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -90,6 +91,10 @@ type fpCacheEntry struct {
 	fingerprint string
 }
 
+// TODO: UNBOUNDED CACHE — fpCache grows without bound as files are discovered.
+// If files are deleted from the media directories, their entries remain in the
+// cache forever, leaking memory. Consider pruning entries for paths that no longer
+// exist during each scan cycle, or switching to an LRU cache with a max size.
 var (
 	fpCache   = make(map[string]fpCacheEntry)
 	fpCacheMu sync.Mutex
@@ -118,6 +123,14 @@ func getCachedFingerprint(path string, info os.FileInfo) string {
 
 // streamHTTPClient is reused across all stream deliveries to benefit from
 // connection pooling (keep-alive) to the master.
+// TODO: NO TLS VERIFICATION — The Transport does not configure TLS certificate
+// verification explicitly, so it uses Go's default (verify against system roots).
+// This is correct, but there is no option for users to provide a custom CA
+// certificate for self-signed master servers, which is a common deployment
+// scenario. Consider adding a -tls-skip-verify flag or -ca-cert flag.
+// Also, Timeout=0 means there is no overall request timeout. If the master
+// hangs after accepting the connection, the POST will block forever. Consider
+// adding a per-stream timeout or using context-based cancellation.
 var streamHTTPClient = &http.Client{
 	Timeout: 0, // no overall timeout for streaming
 	Transport: &http.Transport{
@@ -129,6 +142,11 @@ var streamHTTPClient = &http.Client{
 
 // lastCatalogHash stores a SHA-256 of the last pushed catalog items so we can
 // skip redundant full pushes when nothing has changed.
+// TODO: GLOBAL STATE — lastCatalogHash is a package-level global that is read/written
+// from the main goroutine (in the scan ticker select case). While currently safe because
+// it's only accessed from one goroutine, this is fragile — if the reconnect logic changes
+// or concurrency is introduced, it would become a data race. Consider moving it into the
+// connectAndRun function scope or the slaveConfig struct.
 var lastCatalogHash string
 
 func main() {
@@ -222,6 +240,10 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 	wsURL := buildWSURL(cfg.MasterURL, cfg.APIKey)
 	fmt.Printf("Connecting to %s...\n", maskKey(wsURL))
 
+	// TODO: NO TLS CONFIG — The dialer uses the default TLS configuration,
+	// which means self-signed certificates on the master will cause connection
+	// failures. Consider adding a -tls-skip-verify flag and/or -ca-cert flag
+	// to the CLI for non-production or custom CA deployments.
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 15 * time.Second,
 	}
@@ -240,6 +262,14 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 	// If no data arrives within 90s (3x the master's 25s ping interval),
 	// the connection is considered dead and we reconnect.
 	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+	// TODO: BUG — RACE CONDITION — The PingHandler calls conn.WriteMessage() to send a
+	// pong, but this handler runs on the read goroutine. Meanwhile, the main goroutine
+	// writes heartbeats and catalog pushes via sendWSJSON() protected by writeMu. However,
+	// the PingHandler does NOT acquire writeMu, so a pong write can race with a heartbeat
+	// or catalog write on the same conn, causing corrupted frames or panics. gorilla/websocket
+	// documents that "Connections support one concurrent reader and one concurrent writer."
+	// Fix by acquiring writeMu in the PingHandler before calling WriteMessage, or by
+	// using conn.WriteControl() which is safe for concurrent use.
 	conn.SetPingHandler(func(data string) error {
 		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 		return conn.WriteMessage(websocket.PongMessage, []byte(data))
@@ -300,6 +330,12 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 					continue
 				}
 				// Handle stream delivery in background
+				// TODO: UNBOUNDED GOROUTINES — Each stream request spawns a new goroutine
+				// with no concurrency limit. A burst of stream requests (or a malicious
+				// master) could spawn thousands of goroutines, each opening a file and
+				// performing an HTTP POST, exhausting file descriptors and memory. Consider
+				// adding a semaphore or worker pool to limit concurrent stream deliveries
+				// (e.g., to MaxIdleConns=10 to match the HTTP client's connection pool).
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -356,6 +392,11 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 
 		case <-ctx.Done():
 			streamCancel()
+			// TODO: MISSING ERROR HANDLING — The error from conn.WriteMessage is ignored.
+			// If the connection is already broken, this will fail silently, which is
+			// acceptable during shutdown. However, there is no write deadline set before
+			// this write, so if the master is unresponsive, this could block indefinitely
+			// and prevent clean shutdown. Set a short write deadline before this call.
 			conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "shutdown"))
 			wg.Wait()
@@ -398,6 +439,12 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	var extraHeaders map[string]string
 
 	// Handle Range requests
+	// TODO: SILENT FAILURE — If parseRange returns an error (malformed Range header),
+	// the error is silently ignored and the full file is served with status 200 instead
+	// of returning HTTP 416 Range Not Satisfiable. Similarly, if file.Seek fails, the
+	// error is silently ignored and the file is served from the current offset (likely
+	// position 0) with incorrect content. Both error cases should be logged and ideally
+	// reported back to the master.
 	if req.Range != "" {
 		start, end, err := parseRange(req.Range, stat.Size())
 		if err == nil {
@@ -482,6 +529,11 @@ func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
 	return start, end, nil
 }
 
+// TODO: BUG — SILENT PARSE FAILURE — fmt.Sscanf silently returns 0 on unparseable
+// input (e.g., "abc" or ""), and the error is discarded. This means a malformed
+// Range header like "bytes=abc-def" will be parsed as start=0, end=0, which passes
+// the bounds check and serves the first byte. Use strconv.ParseInt instead and
+// propagate the error to the caller (parseRange) so it can return an error.
 func parseInt64(s string) int64 {
 	var n int64
 	fmt.Sscanf(s, "%d", &n)
@@ -489,6 +541,14 @@ func parseInt64(s string) int64 {
 }
 
 // sendWSJSON sends a typed JSON message over the WebSocket.
+// TODO: NOT THREAD-SAFE — This function writes to the WebSocket without any
+// synchronization. Callers in connectAndRun use writeMu to serialize writes from
+// the scan and heartbeat tickers, but the initial registration and catalog writes
+// (before the tickers start) call sendWSJSON without writeMu. This is safe only
+// because those writes happen before the reader goroutine starts, so there is no
+// concurrent writer yet. However, the PingHandler also writes without writeMu
+// (see the race condition TODO above). Consider making this function accept a
+// *sync.Mutex parameter, or moving write serialization into sendWSJSON itself.
 func sendWSJSON(conn *websocket.Conn, msgType string, data interface{}) error {
 	raw, err := json.Marshal(data)
 	if err != nil {
@@ -499,6 +559,12 @@ func sendWSJSON(conn *websocket.Conn, msgType string, data interface{}) error {
 }
 
 // buildWSURL converts a master HTTP URL to a WebSocket URL.
+// TODO: SECURITY — The API key is passed as a query parameter (?api_key=...), which
+// means it appears in server access logs, proxy logs, and browser history. While
+// WebSocket upgrade requests are not typically cached, intermediary proxies or load
+// balancers may log the full URL. The master already supports X-API-Key header
+// authentication; consider passing the key in the websocket.Dialer.Header instead
+// of the query string. This would require updating the dialer call in connectAndRun.
 func buildWSURL(masterURL, apiKey string) string {
 	u, err := url.Parse(masterURL)
 	if err != nil {
@@ -685,6 +751,11 @@ func loadConfigJSON(path string) *configJSONPartial {
 }
 
 // deriveMasterURL builds a master URL from host, port, and HTTPS flag.
+// TODO: INCONSISTENT DEFAULT — The default HTTP port here is 8080, but the
+// master server's actual default port (in internal/config/defaults.go) may be
+// different. If the master is configured to use a different port and PORT is
+// not explicitly set, this function will derive the wrong URL. Consider reading
+// the master's actual default from a shared constant or documenting the assumption.
 func deriveMasterURL(host string, port string, enableHTTPS string) string {
 	if host == "" {
 		return ""
@@ -711,6 +782,14 @@ func deriveMasterURL(host string, port string, enableHTTPS string) string {
 // autoDiscover fills in missing slaveConfig values from local config files.
 // Discovery order: .deploy.env → .slave.env → .env → config.json.
 // Only values that are still empty are filled — explicit flags/env always win.
+// TODO: MISLEADING AUTO-DISCOVERY — This reads the master's config files (config.json,
+// .env) to derive the master URL and API keys, which only works when the slave binary
+// is run from the master's project directory. In production deployments, the slave runs
+// on a separate machine where these files don't exist, making auto-discovery silently
+// ineffective. The doc comment and usage tip mention "run from the project root" but
+// this is a development convenience that may confuse production deployments. Consider
+// logging when auto-discovery finds no files, and documenting that production slaves
+// should always use explicit flags or environment variables.
 func autoDiscover(cfg *slaveConfig) autoDiscovered {
 	var disc autoDiscovered
 
@@ -826,6 +905,14 @@ func autoDiscover(cfg *slaveConfig) autoDiscovered {
 }
 
 // resolveAndValidate ensures the path is within one of the allowed directories.
+// TODO: WEAK VALIDATION — The path traversal check (strings.Contains(path, ".."))
+// is a blocklist approach that may miss edge cases on certain OS/filesystem
+// combinations (e.g., symbolic links that escape the allowed directory). The
+// filepath.Rel check below is more robust and catches ".." in the resolved path,
+// but the initial string check is redundant with it and gives a false sense of
+// additional security. Consider removing the string check and relying solely on
+// the filepath.Rel-based containment check. Additionally, on Windows, paths with
+// alternate data streams (e.g., "file.txt::$DATA") or UNC paths are not validated.
 func resolveAndValidate(path string, allowedDirs []string) (string, error) {
 	// Prevent path traversal
 	if strings.Contains(path, "..") {
@@ -867,6 +954,10 @@ func resolveAndValidate(path string, allowedDirs []string) (string, error) {
 }
 
 // scanMediaDirs scans all configured directories for media files.
+// TODO: NO SYMLINK PROTECTION — filepath.Walk follows symbolic links, which could
+// cause infinite loops if a symlink points to a parent directory. Consider using
+// filepath.WalkDir (available since Go 1.16) which provides DirEntry and can detect
+// symlinks via d.Type()&fs.ModeSymlink, or track visited inodes to detect cycles.
 func scanMediaDirs(dirs []string) []catalogItem {
 	var items []catalogItem
 
@@ -879,6 +970,9 @@ func scanMediaDirs(dirs []string) []catalogItem {
 
 		err = filepath.Walk(absDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
+				// TODO: SILENT ERROR — Walk errors (permission denied, broken symlinks, etc.)
+				// are silently swallowed. Consider logging them at debug/warn level so
+				// operators can diagnose missing files in the catalog.
 				return nil // skip errors
 			}
 			if info.IsDir() {
@@ -930,6 +1024,12 @@ func scanMediaDirs(dirs []string) []catalogItem {
 	return items
 }
 
+// TODO: BUG — EXTENSION MISMATCH — The extension lists here do not match the master's
+// lists in internal/media/discovery.go. Missing video extensions: ".3gp", ".m2ts",
+// ".vob", ".ogv". Missing audio extensions: ".aiff", ".ape", ".mka". This means the
+// slave will not discover files with these extensions, causing them to be missing from
+// the catalog pushed to the master. Keep these lists in sync with the master, or
+// extract them into a shared package (e.g. pkg/mediaext/) that both binaries import.
 func classifyFile(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
@@ -942,6 +1042,14 @@ func classifyFile(name string) string {
 	}
 }
 
+// TODO: FRAGILE ID GENERATION — File IDs are derived from the absolute path,
+// which means moving a file to a different directory (or renaming it) produces a
+// different ID. The master uses stable UUIDs (stored in media_metadata.stable_id)
+// that persist across renames. This ID is used as the catalog item's ID field, and
+// the master stores it in receiver_media. If the slave restarts from a different
+// working directory (changing the absolute path), all IDs change and the master
+// sees them as new files, potentially creating duplicates. Consider using the
+// content fingerprint as the ID instead, or persisting assigned IDs locally.
 func generateFileID(path string) string {
 	h := sha256.Sum256([]byte(path))
 	return hex.EncodeToString(h[:16])
@@ -949,6 +1057,14 @@ func generateFileID(path string) string {
 
 // hashCatalog produces a deterministic hash of the catalog so we can detect
 // when nothing has changed between scans and skip redundant pushes.
+// TODO: NON-DETERMINISTIC — The hash is computed by iterating over the items slice
+// in the order returned by filepath.Walk (alphabetical within each directory).
+// This IS deterministic for a single directory, but if cfg.MediaDirs contains
+// multiple directories, the relative ordering of items from different directories
+// depends on the iteration order of the dirs slice, which is stable. However,
+// the hash does not include the item's ID, MediaType, or ContentType fields —
+// if only those fields change (without a file rename/resize), the hash stays
+// the same and the updated catalog is not pushed.
 func hashCatalog(items []catalogItem) string {
 	h := sha256.New()
 	for _, item := range items {
@@ -961,6 +1077,13 @@ func hashCatalog(items []catalogItem) string {
 // This MUST match the algorithm in internal/media/discovery.go so the master
 // can detect duplicates between local and slave media. It samples the first
 // 64 KB, the last 64 KB, and the file size — fast even for very large files.
+// TODO: DUPLICATION — This function is a copy of internal/media/discovery.go's
+// computeContentFingerprint(). The two implementations must stay in sync or
+// duplicate detection between master and slave breaks silently. Extract into a
+// shared package (e.g. pkg/fingerprint/) that both cmd/server and cmd/media-receiver
+// can import. Note the return signature differs: the master returns (string, error)
+// while this version returns string (empty on error), so the shared version should
+// use the (string, error) signature and this caller should handle the error.
 func computeContentFingerprint(path string) string {
 	const sampleSize = 64 * 1024 // 64 KB
 
@@ -984,7 +1107,7 @@ func computeContentFingerprint(path string) string {
 	// Read first 64 KB (or entire file if smaller)
 	head := make([]byte, sampleSize)
 	n, err := io.ReadFull(f, head)
-	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return ""
 	}
 	h.Write(head[:n])
@@ -994,7 +1117,7 @@ func computeContentFingerprint(path string) string {
 		tail := make([]byte, sampleSize)
 		offset := size - int64(sampleSize)
 		n, err = f.ReadAt(tail, offset)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return ""
 		}
 		h.Write(tail[:n])

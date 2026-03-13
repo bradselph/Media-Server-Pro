@@ -47,14 +47,9 @@ func (m *Module) cleanupExpiredLoginAttempts() {
 	}
 }
 
-// cleanupExpiredSessions removes expired sessions and old login attempts.
-// Lock order: sessionsMu first, then attemptsMu (cleanup is the only place both are held).
-func (m *Module) cleanupExpiredSessions() {
-	ctx := context.Background()
-	if err := m.sessionRepo.DeleteExpired(ctx); err != nil {
-		m.log.Warn("Failed to cleanup expired sessions: %v", err)
-	}
-
+// cleanupExpiredSessionsCache removes expired sessions from in-memory maps and login attempts.
+// Caller is responsible for calling sessionRepo.DeleteExpired once if DB cleanup is desired.
+func (m *Module) cleanupExpiredSessionsCache() {
 	m.sessionsMu.Lock()
 	now := time.Now()
 	expired := deleteExpiredFromMap(m.sessions, now, func(s *models.Session) time.Time { return s.ExpiresAt })
@@ -67,12 +62,20 @@ func (m *Module) cleanupExpiredSessions() {
 	m.cleanupExpiredLoginAttempts()
 }
 
+// cleanupExpiredSessions removes expired sessions from DB and cache (used by internal ticker).
+func (m *Module) cleanupExpiredSessions() {
+	if err := m.sessionRepo.DeleteExpired(context.Background()); err != nil {
+		m.log.Warn("Failed to cleanup expired sessions: %v", err)
+	}
+	m.cleanupExpiredSessionsCache()
+}
+
 // CleanupExpiredSessions removes expired sessions from storage and cache (public method for background tasks).
 func (m *Module) CleanupExpiredSessions(ctx context.Context) error {
 	if err := m.sessionRepo.DeleteExpired(ctx); err != nil {
 		return err
 	}
-	m.cleanupExpiredSessions()
+	m.cleanupExpiredSessionsCache()
 	return nil
 }
 
@@ -121,6 +124,9 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	if !user.Enabled {
 		return nil, nil, ErrAccountDisabled
 	}
+	// TODO: Bug — LastActivity is updated in memory on the cached session but never
+	// persisted to the database. After a restart, session activity timestamps revert
+	// to their original values. Should periodically flush LastActivity to the DB.
 	session.LastActivity = time.Now()
 	return session, user, nil
 }

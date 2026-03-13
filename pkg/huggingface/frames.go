@@ -4,6 +4,7 @@ package huggingface
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,10 +20,10 @@ var imageExtensions = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".bmp": true, ".gif": true,
 }
 
-// videoExtensions are file extensions that ffprobe/ffmpeg can read for frame extraction.
 var videoExtensions = map[string]bool{
 	".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true, ".flv": true,
 	".webm": true, ".m4v": true, ".mpeg": true, ".mpg": true,
+	".3gp": true, ".ts": true, ".m2ts": true, ".vob": true, ".ogv": true,
 }
 
 const maxBaseNameLen = 200
@@ -116,6 +117,10 @@ func extractFramesAtTimestamps(ctx context.Context, p extractFramesAtTimestampsP
 		oneParams := extractFrameParams{ffmpegPath: p.ffmpegPath, input: p.videoPath, timestamp: ts, outputPath: outPath}
 		if err := extractOneFrame(ctx, oneParams); err != nil {
 			_ = os.Remove(outPath)
+			// Clean up all previously extracted frames on failure
+			for _, prev := range paths {
+				_ = os.Remove(prev)
+			}
 			return nil, fmt.Errorf("extract frame at %.2fs: %w", ts, err)
 		}
 		paths = append(paths, outPath)
@@ -188,7 +193,8 @@ func getDuration(ctx context.Context, p getDurationParams) (float64, error) {
 	)
 	out, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
 			return 0, fmt.Errorf("%s: %w", string(exitErr.Stderr), err)
 		}
 		return 0, err
@@ -221,7 +227,8 @@ func extractOneFrame(ctx context.Context, p extractFrameParams) error {
 	cmd := exec.CommandContext(ctx, p.ffmpegPath, args...)
 	_, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
 			return fmt.Errorf("%s: %w", string(exitErr.Stderr), err)
 		}
 		return err

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -53,7 +52,7 @@ func (h *Handler) AdminExportAuditLog(c *gin.Context) {
 		return
 	}
 
-	c.Header(headerContentDisposition, fmt.Sprintf("attachment; filename=%q", filepath.Base(filename)))
+	c.Header(headerContentDisposition, safeContentDisposition(filepath.Base(filename)))
 	c.Header(headerContentType, "text/csv")
 	http.ServeFile(c.Writer, c.Request, filename)
 }

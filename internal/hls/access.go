@@ -19,11 +19,13 @@ func (m *Module) RecordAccess(jobID string) {
 	m.accessTracker.lastAccess[jobID] = now
 	m.accessTracker.mu.Unlock()
 
-	m.jobsMu.RLock()
+	m.jobsMu.Lock()
 	job, exists := m.jobs[jobID]
-	m.jobsMu.RUnlock()
 	if exists {
 		job.LastAccessedAt = &now
+	}
+	m.jobsMu.Unlock()
+	if exists {
 		m.saveJob(job)
 	}
 }

@@ -62,6 +62,10 @@ func (h *Handler) GetDiscoverySuggestions(c *gin.Context) {
 }
 
 // ApplyDiscoverySuggestion applies a suggested organization
+// TODO: req.OriginalPath is not validated against allowed media directories. While the
+// autodiscovery module presumably only suggests paths it discovered within media dirs,
+// a crafted API call could pass any path. The DiscoverMedia handler validates the
+// directory, but ApplyDiscoverySuggestion does not re-validate the path.
 func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 	if !h.requireAutodiscovery(c) {
 		return

@@ -33,8 +33,12 @@ func (h *Handler) GetHealth(c *gin.Context) {
 		{"auth", h.auth.Health},
 		{"media", h.media.Health},
 		{"streaming", h.streaming.Health},
-		{"security", h.security.Health},
-		{"tasks", h.tasks.Health},
+	}
+	if h.security != nil {
+		critical = append(critical, moduleEntry{"security", h.security.Health})
+	}
+	if h.tasks != nil {
+		critical = append(critical, moduleEntry{"tasks", h.tasks.Health})
 	}
 
 	modules := make(map[string]string, len(critical))
@@ -327,6 +331,9 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 }
 
 // ClearMediaCache clears the media cache and rescans
+// TODO: This runs h.media.Scan() synchronously (blocking the HTTP request). For large
+// libraries this can take a long time and exceed client/proxy timeouts. Compare with
+// ScanMedia which runs the scan in a goroutine. Consider making this async too.
 func (h *Handler) ClearMediaCache(c *gin.Context) {
 	if err := h.media.Scan(); err != nil {
 		h.log.Error("Failed to clear cache and rescan media: %v", err)
@@ -403,6 +410,12 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 
 	h.log.Info("Admin %s executing query: %s", username, query)
 
+	// TODO: SQL injection risk — the isSelect check uses a prefix match on the raw query
+	// string. An attacker can bypass this with leading whitespace (already handled by
+	// TrimSpace), but multi-statement queries like "SELECT 1; DROP TABLE users" will pass
+	// the prefix check. The DB driver may or may not execute multiple statements, but this
+	// should be hardened with a parameterized approach or by explicitly disabling
+	// multi-statement execution in the DB connection string (multiStatements=false).
 	isSelect := strings.HasPrefix(strings.ToUpper(query), "SELECT") ||
 		strings.HasPrefix(strings.ToUpper(query), "SHOW") ||
 		strings.HasPrefix(strings.ToUpper(query), "DESCRIBE") ||

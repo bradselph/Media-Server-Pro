@@ -93,7 +93,7 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 	writeSuccess(c, pl)
 }
 
-// GetPlaylist returns a playlist
+// GetPlaylist returns a playlist. Route is behind requireAuth(); session is required.
 func (h *Handler) GetPlaylist(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
@@ -102,10 +102,12 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	userID := playlist.UserID("")
-	if s := getSession(c); s != nil {
-		userID = playlist.UserID(s.UserID)
+	s := getSession(c)
+	if s == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
 	}
+	userID := playlist.UserID(s.UserID)
 	pl, err := h.playlist.GetPlaylistForUser(playlist.PlaylistID(id), userID)
 	if err != nil {
 		writeError(c, http.StatusNotFound, "Playlist not found")

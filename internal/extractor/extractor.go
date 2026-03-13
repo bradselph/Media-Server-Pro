@@ -137,6 +137,9 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
+// TODO: Incomplete feature - Stop does not clean up the playlistCache (sync.Map).
+// Stale cached entries survive and hold references to upstream URLs. Also, the
+// httpClient is never explicitly closed — its idle connections are not drained.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping extractor module...")
 	m.setHealth(false, "Stopped")
@@ -201,6 +204,10 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 		CreatedAt: now,
 	}
 
+	// TODO: Bug - no SSRF validation is performed on streamURL before fetching.
+	// Unlike the remote module which calls validateURL(), the extractor trusts
+	// user-supplied M3U8 URLs and will fetch from private/loopback addresses.
+	// Add URL validation similar to remote.validateURL() before calling fetchURL.
 	// Verify the M3U8 URL is reachable (outside the lock — can be slow)
 	if _, _, err := m.fetchURL(streamURL); err != nil {
 		item.Status = "error"
@@ -231,6 +238,9 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 		}
 	}
 
+	// TODO: Redundant code - this item was already added to m.items at line 223 under
+	// the write lock. This second lock acquisition and map write is a no-op duplicate
+	// that adds unnecessary lock contention. Remove this block.
 	// Add to in-memory cache
 	m.mu.Lock()
 	m.items[id] = item
@@ -241,6 +251,10 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 }
 
 // RemoveItem removes a proxied stream from the library.
+// TODO: Bug - RemoveItem does not verify the item exists before deleting.
+// It always returns nil even if the ID is invalid. Callers have no way to
+// distinguish a successful delete from a no-op on a non-existent ID.
+// Return ErrNotFound when the item doesn't exist.
 func (m *Module) RemoveItem(id string) error {
 	m.mu.Lock()
 	delete(m.items, id)
@@ -308,7 +322,7 @@ func (m *Module) GetStats() Stats {
 
 // ProxyHLSMaster fetches the upstream master M3U8 playlist and rewrites variant
 // URLs to route through MSP's HLS proxy endpoints.
-func (m *Module) ProxyHLSMaster(w http.ResponseWriter, r *http.Request, itemID string) error {
+func (m *Module) ProxyHLSMaster(w http.ResponseWriter, _ *http.Request, itemID string) error {
 	item := m.GetItem(itemID)
 	if item == nil {
 		return fmt.Errorf("item not found: %s", itemID)
@@ -487,6 +501,11 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 
 	req.Header.Set("User-Agent", "MediaServerPro/4.0")
 
+	// TODO: Bug - a new http.Client is created per proxy request, which defeats
+	// connection pooling and leaks transports. Use m.httpClient (or a dedicated
+	// proxy client) instead. Also, the module-level httpClient has SSRF-safe
+	// transport (helpers.SafeHTTPTransport) while this ad-hoc client does not,
+	// allowing proxied requests to reach private/loopback addresses.
 	client := &http.Client{Timeout: cfg.Extractor.ProxyTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -494,6 +513,13 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	}
 	defer resp.Body.Close()
 
+	// TODO: Bug - sensitiveHeaders check is case-sensitive but HTTP headers from
+	// resp.Header are canonicalized by Go (e.g. "Set-Cookie"). This works for
+	// the listed headers because Go's canonical form matches the map keys, but
+	// the pattern is fragile. Use http.CanonicalHeaderKey() or textproto.CanonicalMIMEHeaderKey()
+	// for robustness. Also consider using an allowlist (like receiver's
+	// allowedProxyHeaders) instead of a denylist, which is safer against
+	// leaking unexpected headers like X-Powered-By or Server.
 	// Copy safe response headers
 	sensitiveHeaders := map[string]bool{
 		"Set-Cookie": true, "Authorization": true,
@@ -519,6 +545,9 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	return nil
 }
 
+// TODO: Bug - fetchURL creates requests without a context, so they cannot be
+// cancelled on module shutdown or request timeout. Use http.NewRequestWithContext
+// and accept a context parameter.
 func (m *Module) fetchURL(rawURL string) (string, string, error) {
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {

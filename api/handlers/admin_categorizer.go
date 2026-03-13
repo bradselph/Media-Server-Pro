@@ -9,6 +9,7 @@ import (
 )
 
 // CategorizeFile categorizes a single file and propagates the result to the media module.
+// Path must be under allowed media directories (validated via resolvePathForAdmin).
 func (h *Handler) CategorizeFile(c *gin.Context) {
 	if !h.requireCategorizer(c) {
 		return
@@ -21,18 +22,24 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 		return
 	}
 
-	result := h.categorizer.CategorizeFile(req.Path)
+	absPath, ok := h.resolvePathForAdmin(c, req.Path, false)
+	if !ok {
+		return
+	}
+
+	result := h.categorizer.CategorizeFile(absPath)
 	if result != nil && string(result.Category) != "" {
-		if err := h.media.UpdateMetadata(req.Path, map[string]interface{}{
+		if err := h.media.UpdateMetadata(absPath, map[string]interface{}{
 			"category": string(result.Category),
 		}); err != nil {
-			h.log.Warn("Categorizer: failed to update media metadata for %s: %v", req.Path, err)
+			h.log.Warn("Categorizer: failed to update media metadata for %s: %v", absPath, err)
 		}
 	}
 	writeSuccess(c, result)
 }
 
 // CategorizeDirectory categorizes all files in a directory.
+// Directory must be under allowed media directories (validated via resolvePathForAdmin).
 func (h *Handler) CategorizeDirectory(c *gin.Context) {
 	if !h.requireCategorizer(c) {
 		return
@@ -45,7 +52,12 @@ func (h *Handler) CategorizeDirectory(c *gin.Context) {
 		return
 	}
 
-	results, err := h.categorizer.CategorizeDirectory(req.Directory)
+	absDir, ok := h.resolvePathForAdmin(c, req.Directory, true)
+	if !ok {
+		return
+	}
+
+	results, err := h.categorizer.CategorizeDirectory(absDir)
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
@@ -74,7 +86,8 @@ func (h *Handler) GetCategoryStats(c *gin.Context) {
 	writeSuccess(c, stats)
 }
 
-// SetMediaCategory manually sets a category for a file
+// SetMediaCategory manually sets a category for a file.
+// Path must be under allowed media directories (validated via resolvePathForAdmin).
 func (h *Handler) SetMediaCategory(c *gin.Context) {
 	if !h.requireCategorizer(c) {
 		return
@@ -88,14 +101,19 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 		return
 	}
 
-	h.categorizer.SetCategory(req.Path, req.Category)
+	absPath, ok := h.resolvePathForAdmin(c, req.Path, false)
+	if !ok {
+		return
+	}
+
+	h.categorizer.SetCategory(absPath, req.Category)
 	// Propagate the new category to the in-memory media catalog immediately so
 	// ListMedia/GetMedia reflect the change without waiting for the next scan.
 	if string(req.Category) != "" {
-		if updateErr := h.media.UpdateMetadata(req.Path, map[string]interface{}{
+		if updateErr := h.media.UpdateMetadata(absPath, map[string]interface{}{
 			"category": string(req.Category),
 		}); updateErr != nil {
-			h.log.Warn("Categorizer: failed to update media metadata for %s: %v", req.Path, updateErr)
+			h.log.Warn("Categorizer: failed to update media metadata for %s: %v", absPath, updateErr)
 		}
 	}
 	writeSuccess(c, map[string]string{"message": "Category set"})

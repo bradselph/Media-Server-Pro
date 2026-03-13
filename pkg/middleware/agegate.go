@@ -140,6 +140,13 @@ func (ag *AgeGate) IsVerified(r *http.Request) bool {
 	return ag.isBypass(ip) || ag.hasCookie(r) || ag.isIPVerified(ip)
 }
 
+// TODO: Bug — evictExpired is called via `go ag.evictExpired()` on every POST
+// /api/age-verify request. Under high traffic this spawns unbounded goroutines
+// that each acquire a write lock and iterate the entire map. This creates lock
+// contention and unbounded goroutine growth. Consider using a time.Ticker in a
+// single background goroutine started from NewAgeGate, or using a sync.Once
+// guard to ensure only one eviction runs at a time.
+
 // evictExpired removes stale IP entries from the verified map (called async).
 func (ag *AgeGate) evictExpired() {
 	if ag.cfg.IPVerifyTTL <= 0 {
@@ -169,6 +176,12 @@ func ageGateSecure(r *http.Request) bool {
 	}
 	return false
 }
+
+// TODO: Redundant code — StatusHandler and VerifyHandler (net/http variants below)
+// are never called. Only the Gin variants (GinStatusHandler, GinVerifyHandler) are
+// registered in api/routes/routes.go. These net/http handlers are dead code and should
+// be removed to reduce maintenance burden, or kept only if there is a plan to support
+// non-Gin HTTP servers.
 
 // StatusHandler handles GET /api/age-gate/status.
 // Returns { enabled, verified } so the frontend can decide whether to show the overlay.

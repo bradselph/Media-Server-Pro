@@ -46,6 +46,12 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
+// TODO: Bug - calculateCacheSize is called from GetStats which holds jobsMu.RLock.
+// filepath.Walk performs synchronous I/O on every file in the cache directory,
+// which can be very slow for large caches (thousands of segments). This holds
+// the read lock for the entire walk duration, blocking all job mutations.
+// Consider caching the size and updating it asynchronously, or computing it
+// outside the lock.
 func (m *Module) calculateCacheSize() int64 {
 	var size int64
 

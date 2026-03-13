@@ -275,7 +275,7 @@ func (m *Module) applyPasswordUpdateFromMap(user *models.User, passwordVal inter
 	salt := generateSalt()
 	hash, err := bcrypt.GenerateFromPassword([]byte(password+salt), bcrypt.DefaultCost)
 	if err != nil {
-		return nil // preserve prior behavior: ignore hash failure, do not overwrite
+		return fmt.Errorf("failed to hash password: %w", err)
 	}
 	user.PasswordHash = string(hash)
 	user.Salt = salt
@@ -350,6 +350,12 @@ func (m *Module) evictUserFromAdminSessionMap(ctx context.Context, sessions map[
 }
 
 // DeleteUser removes a user.
+// TODO: Bug — admin sessions for the deleted user are NOT cleaned up. Only m.sessions
+// is iterated; m.adminSessions is not checked. If the deleted user had admin sessions,
+// those sessions remain valid in memory (and in DB) until they expire naturally.
+// Also, deleted sessions are removed from the in-memory map but NOT from the database
+// via sessionRepo.Delete. Compare with evictSessionsForUser which handles both maps
+// and deletes from DB.
 func (m *Module) DeleteUser(ctx context.Context, username string) error {
 	user, err := m.GetUser(ctx, username)
 	if err != nil {
@@ -400,6 +406,10 @@ func (m *Module) ListUsers(ctx context.Context) []*models.User {
 }
 
 // UpdateUserPreferences updates and persists user preferences.
+// TODO: Bug — if the userRepo.Update call fails after we've already mutated the shared
+// user pointer, the in-memory state diverges from the database. Unlike UpdateUser which
+// works on a copy, this modifies the original pointer directly under the lock. A failed
+// DB persist leaves the cache with changes that won't survive a restart.
 func (m *Module) UpdateUserPreferences(ctx context.Context, username string, prefs models.UserPreferences) error {
 	prefs.Validate()
 

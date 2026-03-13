@@ -131,6 +131,11 @@ func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, st
 	}
 }
 
+// TODO: Bug — running average calculation is incorrect. It divides by TotalViews which
+// counts view events, but AvgWatchDuration should be averaged over playback events.
+// A view event increments TotalViews but a playback event does not, so the denominator
+// does not match the numerator. This produces incorrect averages, especially when
+// view and playback events are tracked at different rates.
 func updateAvgWatchDuration(stats *models.ViewStats, dur float64) {
 	if stats.TotalViews > 0 {
 		stats.AvgWatchDuration = (stats.AvgWatchDuration*float64(stats.TotalViews-1) + dur) / float64(stats.TotalViews)
@@ -148,6 +153,8 @@ func updateCompletionRate(stats *models.ViewStats) {
 }
 
 // GetDailyStats returns daily statistics.
+// TODO: Bug — returns pointers to internal DailyStats structs. Callers can mutate these
+// pointers and corrupt the in-memory stats. Should return copies instead of pointers.
 func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 	m.statsMu.RLock()
 	defer m.statsMu.RUnlock()
@@ -166,6 +173,8 @@ func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 }
 
 // GetMediaStats returns statistics for a media item.
+// TODO: Bug — same as GetDailyStats: returns a pointer to internal ViewStats. Callers can
+// mutate it and corrupt in-memory state. Should return a copy.
 func (m *Module) GetMediaStats(mediaID string) *models.ViewStats {
 	m.statsMu.RLock()
 	defer m.statsMu.RUnlock()
@@ -276,6 +285,11 @@ func (m *Module) reconstructStats() {
 }
 
 // rebuildStatsFromEvent updates the in-memory maps from a single stored event.
+// TODO: Incomplete feature — reconstruction only rebuilds TotalViews and LastViewed.
+// UniqueUsers (dailyUsers map), UniqueViewers (mediaViewers map), AvgWatchDuration, and
+// CompletionRate are NOT reconstructed from stored events. After a restart, these stats
+// are lost until new events repopulate them. The real-time updateStats path populates
+// all of these but reconstruct does not, causing stat inconsistency after restarts.
 func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 	today := event.Timestamp.Format(dateFormat)
 	daily, exists := m.dailyStats[today]

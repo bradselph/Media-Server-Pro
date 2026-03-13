@@ -77,6 +77,10 @@ export const usePlaybackStore = create<PlaybackState>()(
                 }
 
                 // Track playback
+                // TODO: Redundant try/catch — `watchHistoryApi.trackPosition()` returns a Promise,
+                // and `.catch(() => {})` already swallows rejections. The outer try/catch never
+                // fires because the Promise constructor itself won't throw synchronously.
+                // FIX: Remove the outer try/catch; the `.catch()` is sufficient.
                 try {
                     watchHistoryApi.trackPosition(id, 0, 0).catch(() => {
                     })

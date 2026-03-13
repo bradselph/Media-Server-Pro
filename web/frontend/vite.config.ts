@@ -37,7 +37,7 @@ export default defineConfig({
                     // (useHLS.ts: await import('hls.js')), so this chunk is truly lazy.
                     if (id.includes('node_modules')) {
                         if (id.includes('hls.js')) return 'vendor-hls'
-                        if (id.includes('react-dom') || id.includes('react/')) return 'vendor-react'
+                        if (id.includes('react-dom') || id.includes('node_modules/react')) return 'vendor-react'
                         if (id.includes('react-router')) return 'vendor-router'
                         if (id.includes('@tanstack')) return 'vendor-query'
                         if (id.includes('zustand')) return 'vendor-state'
@@ -58,6 +58,10 @@ export default defineConfig({
     },
     server: {
         // Proxy API requests to Go backend during development
+        // TODO: The proxy target port (8080) must match SERVER_PORT in .env.
+        // config.json uses port 3000, so if running with config.json alone
+        // (no .env override), the dev proxy will fail to connect. Consider
+        // reading from an env var or documenting the required .env setting.
         proxy: {
             '/api': 'http://localhost:8080',
             '/media': 'http://localhost:8080',

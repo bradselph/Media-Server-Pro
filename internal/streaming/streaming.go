@@ -51,6 +51,11 @@ type Module struct {
 }
 
 // StreamStats holds streaming statistics
+// TODO: TotalStreams, TotalBytesSent, and PeakConcurrent are modified under statsMu
+// but could benefit from atomic operations for better performance. Additionally,
+// TotalStreams and TotalBytesSent will reset to zero on server restart since they
+// are not persisted. Consider documenting this as expected behavior or persisting
+// cumulative stats to the database.
 type StreamStats struct {
 	TotalStreams   int64 `json:"total_streams"`
 	ActiveStreams  int   `json:"active_streams"`
@@ -88,6 +93,11 @@ func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Streaming module started")
 	return nil
 }
+
+// TODO: Stop does not clean up or wait for active streaming sessions. Long-running
+// streams will continue to reference the module after it is marked as stopped.
+// Consider tracking active goroutines and waiting for them to finish, or at least
+// logging how many active sessions are being abandoned.
 
 // Stop gracefully stops the module
 func (m *Module) Stop(_ context.Context) error {
@@ -166,6 +176,11 @@ func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamReques
 	// Get chunk size based on quality and device
 	chunkSize := m.getChunkSize(req.Quality, req.UserAgent)
 
+	// TODO: When parseRange returns ErrInvalidRange, the caller should respond with
+	// HTTP 416 Range Not Satisfiable (as done in Download), but here it just returns
+	// the error. The HTTP handler that calls Stream must handle this, but nothing
+	// prevents a valid 416 response with the Content-Range header from being set.
+	// Compare with how Download handles the same situation (lines 554-559).
 	// Parse range header
 	start, end, err := m.parseRange(req.RangeHeader, fileSize)
 	if err != nil {
@@ -596,11 +611,21 @@ func (m *Module) validateDownloadFileSize(fileSize int64) error {
 // setDownloadHeaders sets HTTP response headers and writes the status code for a download.
 func (m *Module) setDownloadHeaders(w http.ResponseWriter, filename, contentType, rangeHeader string, fileSize, start, end int64) {
 	w.Header().Set("Content-Type", contentType)
+	// TODO: Content-Disposition filename is not escaped for special characters. If the
+	// filename contains a double-quote, it could break the HTTP header. The response.go
+	// helper safeContentDisposition exists for this purpose (see api/handlers/response.go)
+	// but is not used here. Should use RFC 6266 encoding or at minimum escape quotes.
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Cache-Control", "no-cache")
 
 	// Handle range request
+	// TODO: This logic for determining partial content is incorrect: when rangeHeader
+	// is present but the parsed range covers the entire file (start=0, end=fileSize-1),
+	// a 200 OK is sent instead of 206 Partial Content. Per RFC 7233, a valid Range
+	// header should still result in 206 even if the range covers the whole file, since
+	// the client explicitly requested a range. This can confuse download managers that
+	// rely on 206 to confirm range support.
 	if rangeHeader != "" && (start != 0 || end != fileSize-1) {
 		w.Header().Set(headerContentLength, strconv.FormatInt(end-start+1, 10))
 		w.Header().Set(headerContentRange, fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
@@ -649,6 +674,11 @@ func (m *Module) getDownloadChunkSize() int {
 
 // writeChunkedData writes file content to the response writer in chunks.
 // It returns the number of bytes sent and any error that interrupted the transfer.
+// TODO: Unlike streamContent (which handles short writes by retrying in a loop),
+// writeChunkedData does a single w.Write call per chunk. If Write returns fewer
+// bytes than requested (short write), the remaining bytes are silently lost and
+// the 'remaining' counter is decremented by the short-written amount, causing data
+// corruption. Should use the same short-write handling loop as streamContent.
 func (m *Module) writeChunkedData(w http.ResponseWriter, file *os.File, filename string, totalBytes int64, chunkSize int) (int64, error) {
 	// Reuse a buffer from the pool to reduce GC pressure under concurrent downloads.
 	bufInterface := m.bufferPool.Get()

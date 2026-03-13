@@ -181,6 +181,9 @@ func (m *Module) GetAuditLog(ctx context.Context, limit, offset int, userID stri
 }
 
 // ExportAuditLog exports audit log to CSV
+// TODO: Bug — exported CSV file is written to m.dataDir but never cleaned up.
+// There is no mechanism to delete old exports, so they accumulate indefinitely on disk.
+// Consider adding a cleanup routine or returning the data as an in-memory stream instead of a file.
 func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 	filename := filepath.Join(m.dataDir, fmt.Sprintf("audit_log_%s.csv", time.Now().Format("20060102_150405")))
 	file, err := os.Create(filename)
@@ -202,7 +205,9 @@ func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	// Get all audit log entries from repository
+	// TODO: Bug — List with empty filter fetches ALL audit log entries with no limit.
+	// For large deployments this could load millions of rows into memory and cause OOM.
+	// Should paginate or stream results, or at minimum set a reasonable Limit.
 	entries, err := m.auditRepo.List(ctx, repositories.AuditLogFilter{})
 	if err != nil {
 		return "", fmt.Errorf("failed to retrieve audit log: %w", err)
@@ -242,6 +247,9 @@ func (m *Module) GetServerStats() models.ServerStats {
 
 // CreateBackup creates a backup of server configuration data
 // Note: This backs up config only, not media metadata or playlists.
+// TODO: Bug — backup ID is timestamp-based with second precision. Two calls within the
+// same second will produce the same backupID, causing the second to silently overwrite
+// the first backup file. Use a UUID or append a random suffix.
 func (m *Module) CreateBackup(description string) (*models.BackupInfo, error) {
 	backupID := fmt.Sprintf("backup_%s", time.Now().Format("20060102_150405"))
 	backupPath := filepath.Join(m.backupDir, backupID+".json")
@@ -393,6 +401,10 @@ func (m *Module) RestoreBackup(id string) error {
 }
 
 // scanBackups scans the backup directory for existing backups
+// TODO: Bug — silently swallows ReadDir errors (e.g. permission denied). Should log a
+// warning so operators can diagnose missing backups. Also, scanned backups are appended
+// without checking for duplicates; if scanBackups is called multiple times, the same
+// backups will appear multiple times in the list.
 func (m *Module) scanBackups() {
 	entries, err := os.ReadDir(m.backupDir)
 	if err != nil {
@@ -432,6 +444,10 @@ func (m *Module) GetConfig() *config.Config {
 }
 
 // UpdateConfig updates configuration
+// TODO: Bug — partial application: if one SetValue call fails mid-iteration, previously
+// applied values are already persisted (SetValue saves on each call). There is no
+// transactional rollback, leaving config in an inconsistent half-updated state.
+// Should collect all changes and apply atomically via config.Update().
 func (m *Module) UpdateConfig(updates map[string]interface{}) error {
 	for path, value := range updates {
 		if err := m.config.SetValue(path, value); err != nil {

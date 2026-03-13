@@ -1,30 +1,7 @@
-import { useState } from 'react'
-import { SubTabs } from './helpers'
-import { ContentReviewTab } from './ContentReviewTab'
-import { CategorizerTab } from './CategorizerTab'
-import { DiscoveryTab } from './DiscoveryTab'
-
+// Barrel file: re-exports content-related admin tabs used by MediaTab
+// (Review, Categorizer, Discovery, Hugging Face). No composite ContentTab component —
+// MediaTab renders these as sub-tabs directly.
 export { ContentReviewTab } from './ContentReviewTab'
 export { CategorizerTab } from './CategorizerTab'
 export { DiscoveryTab } from './DiscoveryTab'
 export { HuggingFaceTab } from './HuggingFaceTab'
-
-export function ContentTab() {
-    const [sub, setSub] = useState('review')
-    return (
-        <>
-            <SubTabs
-                items={[
-                    { id: 'review', label: 'Review' },
-                    { id: 'categorizer', label: 'Categorizer' },
-                    { id: 'discovery', label: 'Discovery' },
-                ]}
-                active={sub}
-                onChange={setSub}
-            />
-            {sub === 'review' && <ContentReviewTab />}
-            {sub === 'categorizer' && <CategorizerTab />}
-            {sub === 'discovery' && <DiscoveryTab />}
-        </>
-    )
-}

@@ -164,6 +164,11 @@ func (m *Module) Health() models.HealthStatus {
 }
 
 // RegisterTask registers a new scheduled task.
+// TODO: If RegisterTask is called after Start(), the new task is registered but its
+// runTaskLoop goroutine is never started (Start only launches goroutines for tasks
+// registered at that point). The task will sit idle until EnableTask is called.
+// This is not documented and may surprise callers. Consider starting the loop
+// immediately if m.ctx is already set (i.e., Start() was already called).
 func (m *Module) RegisterTask(opts TaskRegistration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -322,6 +327,10 @@ func (m *Module) executeTask(ctx context.Context, task *Task) {
 }
 
 // RunNow triggers immediate execution of a task
+// TODO: The goroutine spawned here is not tracked by m.wg, so Stop() will not wait
+// for it to complete. If RunNow is called right before shutdown, the task goroutine
+// may be abandoned mid-execution. Should add m.wg.Add(1) before the goroutine and
+// defer m.wg.Done() inside it.
 func (m *Module) RunNow(taskID string) error {
 	m.mu.RLock()
 	task, exists := m.tasks[taskID]

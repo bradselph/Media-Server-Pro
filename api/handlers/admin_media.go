@@ -125,6 +125,9 @@ func computeAdminListTotalPages(totalItems int64, limit int) int {
 }
 
 func (h *Handler) enrichAdminListThumbnails(items []*models.MediaItem) {
+	if h.thumbnails == nil {
+		return
+	}
 	for _, item := range items {
 		if item.ThumbnailURL != "" {
 			continue

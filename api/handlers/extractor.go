@@ -5,6 +5,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/pkg/helpers"
 )
 
 // AddExtractorItem adds an M3U8 stream URL to the library.
@@ -23,12 +25,19 @@ func (h *Handler) AddExtractorItem(c *gin.Context) {
 		return
 	}
 
+	if err := helpers.ValidateURLForSSRF(req.URL); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	user := getUser(c)
 	addedBy := ""
 	if user != nil {
 		addedBy = user.Username
 	}
 
+	// TODO: err.Error() is returned directly to the client. Internal error details
+	// (file paths, stack traces) could leak. Consider returning a generic error message.
 	item, err := h.extractor.AddItem(req.URL, req.Title, addedBy)
 	if err != nil {
 		h.log.Error("Failed to add extractor item: %v", err)

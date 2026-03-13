@@ -246,8 +246,8 @@ type MatureScanner struct {
 	reviewQueue map[string]*models.MatureReviewItem
 	mu          sync.RWMutex
 	dataDir     string
-	tempDir     string              // for HF frame extraction
-	hfClient    *huggingface.Client // nil if HuggingFace not configured
+	tempDir     string                             // for HF frame extraction
+	hfClientPtr atomic.Pointer[huggingface.Client] // thread-safe; nil if HuggingFace not configured
 	healthy     bool
 	healthMsg   string
 	healthMu    sync.RWMutex
@@ -295,7 +295,7 @@ func (s *MatureScanner) Name() string {
 }
 
 // Start initializes the scanner
-func (s *MatureScanner) Start(ctx context.Context) error {
+func (s *MatureScanner) Start(_ context.Context) error {
 	s.log.Info("Starting mature content scanner...")
 
 	// Initialize MySQL repository (database is required)
@@ -344,7 +344,7 @@ func (s *MatureScanner) Start(ctx context.Context) error {
 }
 
 // Stop gracefully stops the scanner
-func (s *MatureScanner) Stop(ctx context.Context) error {
+func (s *MatureScanner) Stop(_ context.Context) error {
 	s.log.Info("Stopping mature content scanner...")
 
 	s.healthMu.Lock()
@@ -517,6 +517,12 @@ func (s *MatureScanner) computeConfidence(filename, dirPath string, result *Scan
 	return confidence
 }
 
+// TODO: scanConfigKeywords uses strings.Contains() for custom keywords, which does NOT
+// apply word-boundary matching like the built-in keyword lists (compiledHighConf/compiledMedConf).
+// This inconsistency means custom keywords will produce false positives (e.g., custom keyword "ass"
+// will match "class"). Should use buildKeywordPatterns() or equivalent boundary-aware matching
+// for user-configured keywords to match the behavior of built-in keywords.
+
 // scanConfigKeywords checks the filename against user-configured keywords.
 func scanConfigKeywords(filename string, keywords []string, boost float64, label string, result *ScanResult) float64 {
 	var confidence float64
@@ -630,7 +636,7 @@ var maturePatterns = []struct {
 	{regexp.MustCompile(`(?i)\b(jav|av)[\-_ ]?\d+\b`), 0.75, "JAV-style ID pattern"},
 
 	// Studio code patterns (increased from 0.10 to 0.15)
-	{regexp.MustCompile(`(?i)\b[a-z]{2,5}\-?\d{3,5}\b`), 0.15, "Studio content code pattern"},
+	{regexp.MustCompile(`(?i)\b[a-z]{2,5}-?\d{3,5}\b`), 0.15, "Studio content code pattern"},
 
 	// Performer name patterns with explicit context (increased from 0.85 to 0.90)
 	{regexp.MustCompile(`(?i)\b(creampie|gangbang|anal|oral|facial|dp|pov)[\-_ ](compilation|comp|mix|best)\b`), 0.90, "Explicit compilation"},
@@ -955,6 +961,10 @@ func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature
 	result.ReviewedAt = &reviewedAt
 
 	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
+	// TODO: convertScannerToRepo is called below after Unlock, but result is still
+	// referenced without the lock. Another goroutine could modify result concurrently
+	// between Unlock and convertScannerToRepo. Should copy the result while holding
+	// the lock or call convertScannerToRepo before unlocking.
 	s.mu.Unlock()
 
 	// Persist change to MySQL
@@ -1003,8 +1013,10 @@ type Stats struct {
 	PendingReview int `json:"pending_review"`
 }
 
-// loadResults is a no-op: scan results are persisted per-file in MySQL via scanRepo.Save().
-// The in-memory results map is rebuilt as files are scanned at runtime.
+// loadResults intentionally does not preload from DB: the in-memory results map is a runtime
+// cache. Scan results are persisted per-file via scanRepo.Save(). GetScanResult populates the
+// cache from the DB when a path is missing, so the review queue (loaded by loadReviewQueue) and
+// per-path results stay consistent without loading all results at startup.
 func (s *MatureScanner) loadResults() error {
 	return nil
 }
@@ -1032,17 +1044,6 @@ func (s *MatureScanner) loadReviewQueue() error {
 		}
 	}
 
-	return nil
-}
-
-// saveReviewQueue is a no-op: review queue state is persisted in MySQL
-// via scanRepo.Save() (needs_review flag) and scanRepo.MarkReviewed().
-func (s *MatureScanner) saveReviewQueue() error {
-	return nil
-}
-
-// saveResults is a no-op: results are persisted per-scan via scanRepo.Save().
-func (s *MatureScanner) saveResults() error {
 	return nil
 }
 
@@ -1127,19 +1128,25 @@ func (s *MatureScanner) ClearReviewQueue() {
 
 // SetHFClient sets the Hugging Face client for visual classification. Call with nil to disable.
 func (s *MatureScanner) SetHFClient(c *huggingface.Client) {
-	s.hfClient = c
+	s.hfClientPtr.Store(c)
 }
 
 // HasHuggingFace returns true if visual classification via Hugging Face is configured.
 func (s *MatureScanner) HasHuggingFace() bool {
-	return s.hfClient != nil
+	return s.hfClientPtr.Load() != nil
+}
+
+// getHFClient returns the current Hugging Face client (thread-safe).
+func (s *MatureScanner) getHFClient() *huggingface.Client {
+	return s.hfClientPtr.Load()
 }
 
 // ClassifyMatureContent performs visual classification on a file already detected as mature.
 // Extracts frames (for video) or uses the file (for images), sends them to the HF API,
 // and returns aggregated, deduplicated tags. Returns nil if HF is not configured or on error.
 func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) ([]string, error) {
-	if s.hfClient == nil {
+	hfClient := s.getHFClient()
+	if hfClient == nil {
 		return nil, nil
 	}
 	cfg := s.config.Get()
@@ -1171,7 +1178,7 @@ func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) 
 			s.log.Warn("Failed to read frame %s: %v", framePath, err)
 			continue
 		}
-		result, err := s.hfClient.ClassifyImage(ctx, data)
+		result, err := hfClient.ClassifyImage(ctx, huggingface.ImageData(data))
 		if err != nil {
 			s.log.Warn("HF ClassifyImage failed for %s: %v", framePath, err)
 			// Propagate auth/rate errors so admin sees them; skip only transient per-frame failures
@@ -1194,7 +1201,7 @@ func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) 
 // ClassifyMatureDirectory runs visual classification on all mature-flagged files in a directory.
 // Returns a map of file path to generated tags. Skips files that are not mature.
 func (s *MatureScanner) ClassifyMatureDirectory(ctx context.Context, dir string) (map[string][]string, error) {
-	if s.hfClient == nil {
+	if s.getHFClient() == nil {
 		return nil, nil
 	}
 	results, err := s.ScanDirectory(dir)

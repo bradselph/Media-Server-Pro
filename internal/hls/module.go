@@ -70,13 +70,17 @@ type Module struct {
 // NewModule creates a new HLS module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	hlsCfg := cfg.Get().HLS
+	concurrentLimit := hlsCfg.ConcurrentLimit
+	if concurrentLimit <= 0 {
+		concurrentLimit = 2
+	}
 	return &Module{
 		config:        cfg,
 		log:           logger.New("hls"),
 		dbModule:      dbModule,
 		jobs:          make(map[string]*models.HLSJob),
 		jobCancels:    make(map[string]context.CancelFunc),
-		transSem:      make(chan struct{}, hlsCfg.ConcurrentLimit),
+		transSem:      make(chan struct{}, concurrentLimit),
 		cacheDir:      cfg.Get().Directories.HLSCache,
 		cleanupDone:   make(chan struct{}),
 		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time)},

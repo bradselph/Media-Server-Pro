@@ -75,7 +75,7 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 		return ErrUserNotFound
 	}
 
-	updated := user.WatchHistory[:0]
+	updated := make([]models.WatchHistoryItem, 0, len(user.WatchHistory))
 	for _, item := range user.WatchHistory {
 		if item.MediaPath != mediaPath {
 			updated = append(updated, item)
@@ -92,7 +92,7 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 	return nil
 }
 
-// GetWatchHistory returns a user's watch history
+// GetWatchHistory returns a copy of a user's watch history so callers cannot mutate internal state.
 func (m *Module) GetWatchHistory(username string) ([]models.WatchHistoryItem, error) {
 	m.usersMu.RLock()
 	defer m.usersMu.RUnlock()
@@ -101,5 +101,10 @@ func (m *Module) GetWatchHistory(username string) ([]models.WatchHistoryItem, er
 	if !exists {
 		return nil, ErrUserNotFound
 	}
-	return user.WatchHistory, nil
+	if len(user.WatchHistory) == 0 {
+		return nil, nil
+	}
+	out := make([]models.WatchHistoryItem, len(user.WatchHistory))
+	copy(out, user.WatchHistory)
+	return out, nil
 }

@@ -234,6 +234,13 @@ func (m *Module) CancelJob(jobID string) error {
 }
 
 // DeleteJob removes a job and its files
+// TODO: Bug - DeleteJob does not cancel a running job before deleting it.
+// If the job is currently transcoding (status Running), the ffmpeg process
+// continues writing to the OutputDir that is being removed, which may cause
+// ffmpeg errors and orphaned processes. Should call CancelJob first or check
+// status. Also, the accessTracker entry is not cleaned up (unlike
+// removeSegmentDirAndState which does clean it), and the DB record (m.repo)
+// is not deleted — the stale job will reappear on next loadJobs().
 func (m *Module) DeleteJob(jobID string) error {
 	m.jobsMu.Lock()
 	job, ok := m.jobs[jobID]
@@ -267,6 +274,12 @@ func (m *Module) loadJobs() error {
 	return nil
 }
 
+// TODO: Bug - saveJobs iterates all jobs under RLock and saves each to the DB.
+// If one save fails, it returns immediately without saving the remaining jobs.
+// This means a transient DB error on one job prevents all subsequent jobs from
+// being persisted. Consider collecting errors and continuing, or at minimum
+// logging which job failed. Also, accessing job fields (Status, Progress, etc.)
+// under RLock while the transcode goroutine may be modifying them is a data race.
 func (m *Module) saveJobs() error {
 	m.jobsMu.RLock()
 	defer m.jobsMu.RUnlock()
@@ -288,6 +301,10 @@ func (m *Module) saveJob(job *models.HLSJob) {
 }
 
 // SaveJobsToFile is a public wrapper for saveJobs() to allow external callers (e.g. pregenerate tool) to persist job state.
+// TODO: Redundant code - the name "SaveJobsToFile" is misleading; jobs are saved
+// to the database (via m.repo.Save), not to a file. The method was likely named
+// before the migration from JSON file persistence to MySQL. Rename to SaveJobs()
+// or SaveJobsToDB() for clarity.
 func (m *Module) SaveJobsToFile() error {
 	return m.saveJobs()
 }

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -23,12 +24,28 @@ func (h *Handler) GetRemoteSources(c *gin.Context) {
 		Username string `json:"username,omitempty"`
 		Enabled  bool   `json:"enabled"`
 	}
+	// TODO: API Contract Mismatch - safeState.LastSync is typed as interface{} instead of time.Time.
+	// The remote module's SourceState.LastSync is time.Time, and assigning it to interface{}
+	// causes json.Marshal to produce either a valid RFC3339 string (non-zero) or the string
+	// "0001-01-01T00:00:00Z" (zero value) — NOT JSON null. This happens to match the
+	// TypeScript RemoteSourceState.last_sync: string, but it is a fragile implicit contract:
+	// if the remote module changes LastSync to a pointer (*time.Time), a nil value would
+	// serialize as JSON null, breaking the TypeScript type which expects a string.
+	// Change LastSync to time.Time to make the contract explicit and type-safe.
+	// Consumer: web/frontend/src/api/types.ts RemoteSourceState.last_sync (line ~624).
+	//
+	// TODO: API Contract Mismatch - safeState has no "media" field, but the TypeScript type
+	// RemoteSourceState (web/frontend/src/api/types.ts) declares "media?: RemoteMediaItem[]".
+	// The frontend field will always be undefined — backend never serializes a "media" array
+	// in this response. If per-source inline media listing is needed, add a Media []remoteMediaJSON
+	// field here and populate it from h.remote.GetSourceMedia(s.Source.Name).
+	// Consumer: adminApi.getRemoteSources() in web/frontend/src/api/endpoints.ts:687.
 	type safeState struct {
-		Source     safeSource  `json:"source"`
-		Status     string      `json:"status"`
-		LastSync   interface{} `json:"last_sync"`
-		MediaCount int         `json:"media_count"`
-		Error      string      `json:"error,omitempty"`
+		Source     safeSource `json:"source"`
+		Status     string     `json:"status"`
+		LastSync   string     `json:"last_sync"`
+		MediaCount int        `json:"media_count"`
+		Error      string     `json:"error,omitempty"`
 	}
 	safe := make([]safeState, len(sources))
 	for i, s := range sources {
@@ -40,7 +57,7 @@ func (h *Handler) GetRemoteSources(c *gin.Context) {
 				Enabled:  s.Source.Enabled,
 			},
 			Status:     s.Status,
-			LastSync:   s.LastSync,
+			LastSync:   s.LastSync.Format(time.RFC3339),
 			MediaCount: s.MediaCount,
 			Error:      s.Error,
 		}
@@ -78,6 +95,17 @@ func (h *Handler) CreateRemoteSource(c *gin.Context) {
 		// Source is active in memory but won't survive a restart
 	}
 
+	// TODO: API Contract Mismatch - Response shape does not match the TypeScript RemoteSource type.
+	// Frontend adminApi.createRemoteSource() (endpoints.ts:690) is typed to return RemoteSource
+	// (web/frontend/src/api/types.ts:591-597) which includes an optional "password?" field.
+	// This handler correctly omits password from the response (security: never echo credentials),
+	// but the TypeScript return type RemoteSource implies password might be present on the response.
+	// The frontend type should use RemoteSourceResponse (types.ts:601-606) — the read-only shape
+	// without the password field — as the return type for createRemoteSource() instead of RemoteSource.
+	// Currently the "username" field is emitted unconditionally as a string (empty string when unset);
+	// RemoteSourceResponse.username is optional (omitempty on backend). An empty-string username
+	// should either be omitted (use omitempty equivalent) or the TypeScript type must accept "".
+	// Caller: adminApi.createRemoteSource() in web/frontend/src/api/endpoints.ts:690.
 	writeSuccess(c, map[string]interface{}{
 		"name":     source.Name,
 		"url":      source.URL,
@@ -220,6 +248,11 @@ func (h *Handler) CleanRemoteCache(c *gin.Context) {
 
 // StreamRemoteMedia proxies and optionally caches a remote media stream.
 // This endpoint is public (no admin auth) so the frontend player can use it directly.
+// TODO: SSRF risk — the "url" query parameter is a user-controlled URL that the server
+// will fetch and proxy. An authenticated user (requireAuth in routes.go) can make the
+// server fetch any URL, including internal services (localhost, private IPs, cloud metadata
+// endpoints like 169.254.169.254). Should validate the URL against a configured allowlist
+// of remote source base URLs, or restrict to URLs belonging to a known remote source.
 func (h *Handler) StreamRemoteMedia(c *gin.Context) {
 	if !h.checkRemoteMediaEnabled(c) {
 		return

@@ -10,7 +10,8 @@ import (
 	"media-server-pro/internal/config"
 )
 
-// UpdatePassword updates a user's password
+// UpdatePassword updates a user's password. Holds the write lock only while updating
+// in-memory fields and re-checks that the stored hash is unchanged to avoid races.
 func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newPassword string) error {
 	if len(newPassword) < 8 {
 		return fmt.Errorf("password must be at least 8 characters")
@@ -37,6 +38,11 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 	}
 
 	m.usersMu.Lock()
+	user, exists = m.users[username]
+	if !exists || user.PasswordHash != currentHash {
+		m.usersMu.Unlock()
+		return ErrUserNotFound
+	}
 	user.PasswordHash = string(hash)
 	user.Salt = salt
 	m.usersMu.Unlock()
@@ -84,7 +90,7 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 }
 
 // ChangeAdminPassword verifies the current admin password and replaces it with a new one.
-func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPassword string) error {
+func (m *Module) ChangeAdminPassword(_ context.Context, currentPassword, newPassword string) error {
 	cfg := m.config.Get()
 
 	if err := bcrypt.CompareHashAndPassword([]byte(cfg.Admin.PasswordHash), []byte(currentPassword)); err != nil {
@@ -110,18 +116,12 @@ func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPa
 	return nil
 }
 
-// VerifyPassword verifies a user's password without creating a session
-func (m *Module) VerifyPassword(username, password string) error {
-	m.usersMu.RLock()
-	user, exists := m.users[username]
-	m.usersMu.RUnlock()
-
-	if !exists {
+// VerifyPassword verifies a user's password without creating a session.
+// Uses the same cache-refresh as Authenticate so password changes from another instance are visible.
+func (m *Module) VerifyPassword(ctx context.Context, username, password string) error {
+	user, err := m.getOrLoadUser(ctx, username)
+	if err != nil || user == nil {
 		return ErrUserNotFound
 	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password+user.Salt)); err != nil {
-		return ErrInvalidCredentials
-	}
-	return nil
+	return m.verifyPasswordWithCacheRefresh(ctx, user, &creds{Username: username, Password: password})
 }

@@ -20,9 +20,6 @@ type ContextKey string
 
 const (
 	RequestIDKey ContextKey = "request_id"
-	UserKey      ContextKey = "user"
-	SessionKey   ContextKey = "session"
-	StartTimeKey ContextKey = "start_time"
 )
 
 // trustedProxies is a configurable set of trusted proxy IPs/CIDRs.
@@ -62,22 +59,31 @@ func isTrustedProxy(remoteAddr string) bool {
 }
 
 // GinRequestID adds a unique request ID to each request via X-Request-ID header.
+// If the client or upstream proxy sends X-Request-ID, it is propagated; otherwise a new ID is generated.
 // The request ID is stored in:
 //   - Gin context (c.Set) for handler access
 //   - c.Request.Context() for framework-agnostic module access via logger.RequestIDFromContext
 func GinRequestID() gin.HandlerFunc {
 	var counter uint64
 	return func(c *gin.Context) {
-		id := atomic.AddUint64(&counter, 1)
-		requestID := fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" {
+			id := atomic.AddUint64(&counter, 1)
+			requestID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
+			c.Header("X-Request-ID", requestID)
+		}
 		c.Set(string(RequestIDKey), requestID)
-		c.Header("X-Request-ID", requestID)
-		// Also store in request context so modules can extract it via logger.RequestIDFromContext
 		c.Request = c.Request.WithContext(logger.ContextWithRequestID(c.Request.Context(), requestID))
 		c.Next()
 	}
 }
 
+// TODO: Bug — isHTTPS trusts X-Forwarded-Proto from any client without checking
+// if the request came through a trusted proxy. An attacker can send
+// X-Forwarded-Proto: https on a plain HTTP connection to trick the server into
+// setting HSTS headers over insecure transport. This should use isTrustedProxy()
+// to validate the source before honoring the header, similar to extractClientIP
+// in agegate.go.
 func isHTTPS(c *gin.Context) bool {
 	return c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 }
@@ -142,6 +148,15 @@ func (cfg *corsConfig) allowOrigin(origin string) (value string, allowed bool) {
 	}
 	return "", false
 }
+
+// TODO: Bug — when allowAll is true and a specific origin is present, the handler
+// echoes back the request Origin as Access-Control-Allow-Origin but never sets
+// Access-Control-Allow-Credentials. If the frontend sends credentials (cookies),
+// browsers require both Access-Control-Allow-Credentials: true AND a specific
+// (non-wildcard) origin. Since this server uses cookie-based session auth
+// (session_id cookie), credentialed CORS requests from different origins will
+// fail silently. Either add Allow-Credentials when echoing a specific origin,
+// or document that cross-origin cookie-based auth is not supported.
 
 // GinCORS adds CORS headers to Gin responses
 func GinCORS(origins, methods, headers []string) gin.HandlerFunc {

@@ -18,6 +18,7 @@ import type {
     CachedMediaResult,
     CategorizedItem,
     CategoryStats,
+    ClassifyStats,
     ClassifyStatus,
     DailyStats,
     DatabaseStatus,
@@ -43,10 +44,13 @@ import type {
     QueryResult,
     RemoteMediaItem,
     RemoteSource,
+    RemoteSourceResponse,
     RemoteSourceState,
     RemoteStats,
     ScannerStats,
     ScanResultItem,
+    FileScanResult,
+    DirectoryScanResult,
     ScheduledTask,
     SecurityStats,
     ServerConfig,
@@ -567,8 +571,9 @@ export const adminApi = {
     getScannerStats: () =>
         api.get<ScannerStats>('/api/admin/scanner/stats'),
 
+    // Returns FileScanResult when path is given; DirectoryScanResult when scanning all configured directories.
     runScan: (path?: string, autoApply?: boolean) =>
-        api.post<void>('/api/admin/scanner/scan', {
+        api.post<FileScanResult | DirectoryScanResult>('/api/admin/scanner/scan', {
             path: path ?? '',
             auto_apply: autoApply ?? false,
         }),
@@ -585,10 +590,18 @@ export const adminApi = {
     // Hugging Face visual classification
     getClassifyStatus: () =>
         api.get<ClassifyStatus>('/api/admin/classify/status'),
+    getClassifyStats: () =>
+        api.get<ClassifyStats>('/api/admin/classify/stats'),
     classifyFile: (path: string) =>
         api.post<{ path: string; tags: string[] }>('/api/admin/classify/file', {path}),
     classifyDirectory: (path: string) =>
         api.post<{ message: string; directory: string }>('/api/admin/classify/directory', {path}),
+    classifyRunTask: () =>
+        api.post<{ message: string }>('/api/admin/classify/run-task'),
+    classifyClearTags: (id: string) =>
+        api.post<{ message: string; id: string }>('/api/admin/classify/clear-tags', {id}),
+    classifyAllPending: () =>
+        api.post<{ message: string; count: number }>('/api/admin/classify/all-pending'),
 
     // HLS admin
     getHLSStats: () =>
@@ -610,7 +623,7 @@ export const adminApi = {
             threshold: string
         }>('/api/admin/hls/clean/inactive', maxAge !== undefined ? {max_age_hours: maxAge} : {}),
 
-    // Validator
+    // Validator — surfaced in Admin Media > Validator tab
     validateMedia: (id: string) =>
         api.post<ValidationResult>('/api/admin/validator/validate', {id}),
 
@@ -678,7 +691,7 @@ export const adminApi = {
         api.get<RemoteSourceState[]>('/api/admin/remote/sources'),
 
     createRemoteSource: (data: { name: string; url: string; username?: string; password?: string }) =>
-        api.post<RemoteSource>('/api/admin/remote/sources', {...data, enabled: true}),
+        api.post<RemoteSourceResponse>('/api/admin/remote/sources', {...data, enabled: true}),
 
     deleteRemoteSource: (name: string) =>
         api.delete<void>(`/api/admin/remote/sources/${encodeURIComponent(name)}`),

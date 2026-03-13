@@ -72,8 +72,7 @@ export function PlaylistsTab() {
     const filtered = playlists.filter(p => {
         if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.user_id.toLowerCase().includes(search.toLowerCase())) return false
         if (filterVisibility === 'public' && !p.is_public) return false
-        if (filterVisibility === 'private' && p.is_public) return false
-        return true
+        return !(filterVisibility === 'private' && p.is_public)
     }).sort((a, b) => {
         let cmp = 0
         switch (sortBy) {
@@ -81,8 +80,7 @@ export function PlaylistsTab() {
             case 'user_id': cmp = a.user_id.localeCompare(b.user_id); break
             case 'items': cmp = (a.items?.length ?? 0) - (b.items?.length ?? 0); break
             case 'is_public': {
-                if (a.is_public === b.is_public) cmp = 0
-                else cmp = a.is_public ? -1 : 1
+                cmp = a.is_public === b.is_public ? 0 : a.is_public ? -1 : 1
                 break
             }
             case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break

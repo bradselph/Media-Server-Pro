@@ -175,9 +175,22 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 }
 
 // GetEventStats returns detailed event statistics
+// TODO: API Contract Mismatch - When analytics is nil, returns an empty object {}
+// but frontend adminApi.getEventStats() (web/frontend/src/api/endpoints.ts:767) is typed as
+// EventStats (web/frontend/src/api/types.ts:832-836) which has required fields:
+//   total_events: number, event_counts: Record<string,number>, hourly_events: number[]
+// An empty {} response means .total_events will be undefined (not 0), .event_counts will
+// be undefined (not {}), and .hourly_events will be undefined (not []). Callers iterating
+// hourly_events or summing total_events will see unexpected NaN/undefined values.
+// Fix: return a zero-value EventStats struct: { total_events: 0, event_counts: {}, hourly_events: [] }
+// or use requireAnalytics(c) / writeError(c, http.StatusServiceUnavailable, ...) instead.
 func (h *Handler) GetEventStats(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, map[string]interface{}{})
+		writeSuccess(c, map[string]interface{}{
+			"total_events":  0,
+			"event_counts":  map[string]interface{}{},
+			"hourly_events": []int{},
+		})
 		return
 	}
 	stats := h.analytics.GetEventStats(c.Request.Context())
@@ -250,6 +263,9 @@ func (h *Handler) GetEventTypeCounts(c *gin.Context) {
 }
 
 // AdminExportAnalytics exports analytics data as a CSV file download.
+// TODO: Invalid date format in start_date or end_date query params is silently ignored
+// (falls back to the default 1-month range). Consider returning a 400 error for
+// malformed date strings so the admin knows their filter isn't being applied.
 func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	if h.analytics == nil {
 		writeError(c, http.StatusServiceUnavailable, "Analytics is not available")
@@ -259,14 +275,20 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	startDate := endDate.AddDate(0, -1, 0)
 
 	if v := c.Query("start_date"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			startDate = t
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "start_date must be YYYY-MM-DD")
+			return
 		}
+		startDate = t
 	}
 	if v := c.Query("end_date"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			endDate = t
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "end_date must be YYYY-MM-DD")
+			return
 		}
+		endDate = t
 	}
 
 	if startDate.After(endDate) {
@@ -281,6 +303,10 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 		return
 	}
 
+	// TODO: The exported CSV file is served directly from disk via http.ServeFile.
+	// After serving, the temporary file is never cleaned up. If ExportCSV creates
+	// temp files, they will accumulate on disk over time. Should defer os.Remove(filename)
+	// or clean up after ServeFile completes.
 	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))
 	c.Header(headerContentType, "text/csv")
 	http.ServeFile(c.Writer, c.Request, filename)

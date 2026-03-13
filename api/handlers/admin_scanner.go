@@ -63,6 +63,9 @@ func (h *Handler) ScanContent(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
+	// TODO: req.Path is passed directly to ScanFile without path validation. An admin could
+	// scan any file on the filesystem. Should validate against allowed media directories
+	// using resolvePathForAdmin, similar to how ClassifyFile does it.
 	if req.Path != "" {
 		result := h.scanner.ScanFile(req.Path)
 		writeSuccess(c, result)
@@ -103,11 +106,11 @@ func (h *Handler) GetReviewQueue(c *gin.Context) {
 	// Build response copies so we don't mutate the scanner's internal state.
 	enriched := make([]*models.MatureReviewItem, len(queue))
 	for i, item := range queue {
-		copy := *item // shallow copy
+		scanCopy := *item // shallow copy
 		if mediaItem, err := h.media.GetMedia(item.MediaPath); err == nil && mediaItem != nil {
-			copy.ID = mediaItem.ID // Replace MD5 hash with stable UUID
+			scanCopy.ID = mediaItem.ID // Replace MD5 hash with stable UUID
 		}
-		enriched[i] = &copy
+		enriched[i] = &scanCopy
 	}
 	writeSuccess(c, enriched)
 }

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -166,7 +167,7 @@ func computeContentFingerprint(path string) (string, error) {
 	// Read first 64 KB (or entire file if smaller)
 	head := make([]byte, sampleSize)
 	n, err := io.ReadFull(f, head)
-	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("read head of %s: %w", path, err)
 	}
 	h.Write(head[:n])
@@ -176,7 +177,7 @@ func computeContentFingerprint(path string) (string, error) {
 		tail := make([]byte, sampleSize)
 		offset := size - int64(sampleSize)
 		n, err = f.ReadAt(tail, offset)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return "", fmt.Errorf("read tail of %s: %w", path, err)
 		}
 		h.Write(tail[:n])
@@ -296,7 +297,13 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module
-func (m *Module) Stop(ctx context.Context) error {
+// TODO: Bug - if EnableAutoDiscovery is false, scanTicker is nil and scanDone is
+// never closed. But the initial scan goroutine (started in Start) uses scanCtx
+// for cancellation, not scanDone, so it is correctly cancelled. However, if
+// Stop is called before the initial scan goroutine finishes loadMetadata, the
+// scanCancel() will interrupt it. The goroutine may then try to update healthMu
+// fields after Stop has already set them to "Stopped", creating a brief inconsistency.
+func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping media module...")
 
 	// Cancel any running background scans (also cancels in-flight background saves)
@@ -436,6 +443,12 @@ func (m *Module) Scan() error {
 	// representative entry.  The winner is the copy with the most views;
 	// ties are broken by earliest DateAdded so the original discovery
 	// date is preserved.
+	// TODO: Bug - this dedup block reads from m.metadata under RLock and
+	// mutates newMedia (which was built by scanDirectory which also reads
+	// m.metadata under RLock). The fingerprint comparison uses fp[:12] for
+	// logging, but if the fingerprint is shorter than 12 characters (which
+	// shouldn't happen for SHA-256 hex but could if the field is corrupted),
+	// this will panic with an index out of range. Add a bounds check.
 	var dupsRemoved int
 	m.mu.RLock()
 	fpWinner := make(map[string]string, len(newMedia)) // fingerprint -> winning path
@@ -555,6 +568,13 @@ func (m *Module) Scan() error {
 	m.healthMsg = fmt.Sprintf("Running (%d items)", len(newMedia))
 	m.healthMu.Unlock()
 
+	// TODO: Bug - saveMetadata is launched in a background goroutine but there is
+	// no mechanism to wait for it to complete before the next Scan() call. If a
+	// periodic scan triggers while a previous save is still running, two concurrent
+	// saveMetadata calls will race. The saveMu serializes individual DB writes but
+	// the full save loops will interleave, potentially causing unnecessary duplicate
+	// writes and increased DB load. Consider tracking the save goroutine with a
+	// WaitGroup or ensuring only one save runs at a time.
 	// Save metadata in background using the module's scan context so
 	// that shutdown cancellation can interrupt a long-running save.
 	go func() {
@@ -1226,6 +1246,12 @@ type Stats struct {
 }
 
 // IncrementViews increments view count for a media item.
+// TODO: Bug - the DB increment and in-memory increment are not atomic. If the
+// DB increment succeeds but the process crashes before the in-memory update,
+// the DB has views=N+1 but in-memory has views=N. On next scan, the old value
+// may overwrite the DB value (see saveMetadata which writes the in-memory value
+// back to the DB). The in-memory value should be updated first, or the DB
+// increment should be the source of truth with the in-memory value derived from it.
 func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	// Use repository if available
 	if m.metadataRepo != nil {
@@ -1330,6 +1356,11 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 
 // ClearAllPlaybackPositions removes every saved resume position for a given user.
 // Called when the user clears their entire watch history.
+// TODO: Incomplete feature - DB rows are never cleaned up for this user. The
+// in-memory deletion only lasts until the next restart, at which point stale
+// playback positions from the DB will be reloaded. Add a repository method like
+// DeleteAllPlaybackPositionsByUser(ctx, userID) and call it here to ensure
+// the clear operation is durable. The current behavior silently reverts on restart.
 func (m *Module) ClearAllPlaybackPositions(userID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1559,4 +1590,75 @@ func (m *Module) convertInternalToRepo(path string, meta *Metadata) *repositorie
 	}
 
 	return repoMeta
+}
+
+// ClassifyStats holds classification progress statistics.
+type ClassifyStats struct {
+	TotalMedia       int              `json:"total_media"`
+	MatureTotal      int              `json:"mature_total"`
+	MatureClassified int              `json:"mature_classified"`
+	MaturePending    int              `json:"mature_pending"`
+	RecentItems      []ClassifiedItem `json:"recent_items"`
+}
+
+// ClassifiedItem is a summary of a mature item that has been classified with tags.
+type ClassifiedItem struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Tags         []string `json:"tags"`
+	MatureScore  float64  `json:"mature_score"`
+	DateModified string   `json:"date_modified"`
+}
+
+// GetClassifyStats returns classification progress: how many mature items have been
+// classified (tagged) vs pending. Also returns the most recently modified classified items.
+func (m *Module) GetClassifyStats(recentLimit int) ClassifyStats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var stats ClassifyStats
+	stats.TotalMedia = len(m.media)
+
+	type scored struct {
+		item *models.MediaItem
+		mod  time.Time
+	}
+	var classified []scored
+
+	for path, item := range m.media {
+		if !item.IsMature {
+			continue
+		}
+		stats.MatureTotal++
+		if len(item.Tags) > 0 {
+			stats.MatureClassified++
+			mod := item.DateModified
+			if meta, ok := m.metadata[path]; ok && meta != nil && !meta.DateAdded.IsZero() {
+				mod = meta.DateAdded
+			}
+			classified = append(classified, scored{item: item, mod: mod})
+		} else {
+			stats.MaturePending++
+		}
+	}
+
+	// Sort by modification time descending to get most recent
+	sort.Slice(classified, func(i, j int) bool {
+		return classified[i].mod.After(classified[j].mod)
+	})
+	if len(classified) > recentLimit {
+		classified = classified[:recentLimit]
+	}
+
+	stats.RecentItems = make([]ClassifiedItem, len(classified))
+	for i, c := range classified {
+		stats.RecentItems[i] = ClassifiedItem{
+			ID:           c.item.ID,
+			Name:         c.item.Name,
+			Tags:         c.item.Tags,
+			MatureScore:  c.item.MatureScore,
+			DateModified: c.mod.Format(time.RFC3339),
+		}
+	}
+	return stats
 }

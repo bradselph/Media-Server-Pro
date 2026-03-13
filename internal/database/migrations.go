@@ -555,6 +555,12 @@ func (m *Module) ensureSchemaObjectWithKind(ctx context.Context, kind, table, na
 }
 
 // ensureColumn adds a column to a table if it doesn't already exist.
+// TODO: Bug — SQL injection risk: the table, column, and def parameters are interpolated
+// directly into the SQL string via fmt.Sprintf without sanitization. While these values
+// currently come from hardcoded schema definitions (not user input), if this function is
+// ever called with external input it would be exploitable. The backtick-quoting of table
+// and column names helps but does not protect against backtick injection in the names
+// themselves. Consider validating that table/column names match [a-zA-Z0-9_]+.
 func (m *Module) ensureColumn(ctx context.Context, table, column, def string) error {
 	return m.ensureSchemaObjectWithKind(ctx, "column", table, column,
 		`SELECT COUNT(*) > 0 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,

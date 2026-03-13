@@ -72,6 +72,9 @@ func (m *Module) Name() string {
 }
 
 // Start initializes the backup module
+// TODO: Bug — unlike other modules that check m.dbModule.IsConnected() before using the
+// DB, this module calls m.dbModule.GORM() unconditionally. If the database module is
+// unhealthy or not yet started, this could return a nil *gorm.DB, causing panics later.
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting backup module...")
 
@@ -127,6 +130,8 @@ func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 		backupType = "full"
 	}
 
+	// TODO: Bug — same timestamp collision issue as admin.CreateBackup. Two calls within
+	// the same second produce the same ID, overwriting the previous backup file.
 	timestamp := time.Now().Format("20060102_150405")
 	backupID := fmt.Sprintf("backup_%s", timestamp)
 	filename := backupID + ".zip"
@@ -140,7 +145,10 @@ func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 		Description: opts.Description,
 		Files:       make([]string, 0),
 		Errors:      make([]string, 0),
-		Version:     "3.0.0",
+		// TODO: Hardcoded version — the Version field is hardcoded to "3.0.0" instead of
+		// reading from the actual application version. This makes it impossible to detect
+		// version mismatches during restore. Should accept or look up the current version.
+		Version: "3.0.0",
 	}
 
 	if err := m.writeBackupArchive(backupPath, manifest); err != nil {
@@ -216,6 +224,10 @@ func (m *Module) getFilesToBackup(backupType string) []string {
 	// Note: all application data (playlists, analytics, scan results, etc.) is stored in MySQL
 	// and is not included in file-based backups. Use a database-level backup tool for full data
 	// protection. The "data" type backs up config only; "full" is an alias for the same.
+	// TODO: Incomplete feature — "data" and "full" backup types are identical to "config",
+	// all three only back up config.json. The UI and API expose "full" and "data" as distinct
+	// options which misleads users into thinking they get different coverage. Either implement
+	// actual differentiation or consolidate into a single type with clear documentation.
 	case "data", "full":
 		files = []string{
 			"config.json",
@@ -316,7 +328,11 @@ func (m *Module) RestoreBackup(backupID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open backup: %w", err)
 	}
-	defer m.closeAndWarn(reader.Close, "Failed to close backup reader: %v")
+	defer func() {
+		if cerr := reader.Close(); cerr != nil {
+			m.log.Warn("Failed to close backup reader: %v", cerr)
+		}
+	}()
 
 	if err := m.validateBackupArchiveSize(reader.File); err != nil {
 		return err
@@ -432,7 +448,11 @@ func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer m.closeAndWarn(destFile.Close, fmt.Sprintf("Failed to close destination file %s: %%v", destPath))
+	defer func() {
+		if cerr := destFile.Close(); cerr != nil {
+			m.log.Warn("Failed to close destination file %s: %v", destPath, cerr)
+		}
+	}()
 
 	srcFile, err := file.Open()
 	if err != nil {
@@ -522,6 +542,11 @@ func (m *Module) recordToManifest(rec *repositories.BackupManifestRecord) *Manif
 }
 
 // CleanOldBackups removes backups older than retention period
+// TODO: Bug — the comment says "Backups are already sorted newest first" but ListBackups
+// returns records from m.repo.List() and there is no documented sort guarantee from the
+// repository. If the repository returns records in insertion order or unsorted, this will
+// delete the wrong backups (potentially the newest ones). Should explicitly sort by
+// CreatedAt descending before slicing.
 func (m *Module) CleanOldBackups(keepCount int) (int, error) {
 	backups, err := m.ListBackups()
 	if err != nil {

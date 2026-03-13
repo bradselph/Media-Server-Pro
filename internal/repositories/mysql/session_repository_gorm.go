@@ -40,9 +40,15 @@ func (r *SessionRepository) Get(ctx context.Context, id string) (*models.Session
 	return &session, nil
 }
 
-// Delete removes a session
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Session{}, "id = ?", id).Error
+	result := r.db.WithContext(ctx).Delete(&models.Session{}, "id = ?", id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrSessionNotFound
+	}
+	return nil
 }
 
 // DeleteExpired removes all expired sessions

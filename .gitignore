@@ -2,9 +2,20 @@
 /server
 /server.exe
 
+# TODO: config.json is gitignored here but if it was previously committed, the
+# .gitignore entry only prevents future tracking — already-tracked files are NOT
+# affected by .gitignore. Run `git ls-files config.json` to confirm. If it IS
+# still tracked, either `git rm --cached config.json` to stop tracking, or remove
+# this line from .gitignore since config.json serves as a default template.
 config.json
+# TODO(SECURITY): .env contains real credentials (database password, GitHub PAT,
+# receiver API key). Verify it is not in git history with `git log --all -- .env`.
+# If it was ever committed, those credentials are exposed in history and should be
+# rotated. The .env.example pattern (tracked template + gitignored .env) is safer.
 .env
 .env.generated
+# TODO(SECURITY): .deploy.env contains VPS password in plaintext, SSH details, and
+# GitHub PAT. Same concern — verify it was never committed to history.
 .deploy.env
 .slave.env
 .media-receiver.pid
@@ -63,5 +74,8 @@ github-runner/.runner.env
 
 
 #Ignore cursor AI rules
+# TODO(BUG): Backslashes are not valid path separators in .gitignore — only
+# forward slashes work. This rule does nothing. Change to:
+#   .cursor/rules/codacy.mdc
 .cursor\rules\codacy.mdc
 /scripts/__pycache__

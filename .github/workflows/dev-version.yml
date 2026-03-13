@@ -26,6 +26,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      # TODO: This workflow generates a dev build label but never commits it or
+      # uses it anywhere. It only writes to GITHUB_OUTPUT and GITHUB_STEP_SUMMARY.
+      # The label is not written to the VERSION file or used to tag. If the intent
+      # is to update VERSION with the dev label, a commit step is missing. If this
+      # is purely informational, consider whether the workflow is needed at all.
       - name: Generate dev build label
         id: bump
         run: |

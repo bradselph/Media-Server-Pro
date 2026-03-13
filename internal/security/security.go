@@ -46,16 +46,19 @@ func init() {
 
 // Module handles security controls
 type Module struct {
-	config           *config.Manager
-	log              *logger.Logger
-	dbModule         *database.Module
-	repo             repositories.IPListRepository
-	whitelist        *IPList
-	blacklist        *IPList
-	rateLimiter      *RateLimiter
-	authRateLimiter  *RateLimiter // stricter limits for auth endpoints
-	healthy          bool
-	healthMsg        string
+	config          *config.Manager
+	log             *logger.Logger
+	dbModule        *database.Module
+	repo            repositories.IPListRepository
+	whitelist       *IPList
+	blacklist       *IPList
+	rateLimiter     *RateLimiter
+	authRateLimiter *RateLimiter // stricter limits for auth endpoints
+	healthy         bool
+	healthMsg       string
+	// TODO: totalBlocked and totalRateLimited are read/written under mu (RWMutex)
+	// but would be more efficiently handled with atomic.Int64 since they are simple
+	// counters incremented in a hot path (every blocked/rate-limited request).
 	totalBlocked     int64
 	totalRateLimited int64
 	mu               sync.RWMutex
@@ -95,6 +98,7 @@ type RateLimiter struct {
 	mu          sync.RWMutex
 	cleanupTick *time.Ticker
 	stopCleanup chan struct{}
+	stopOnce    sync.Once
 }
 
 // RateLimitConfig holds rate limiter configuration
@@ -495,6 +499,11 @@ func (m *Module) SetBlacklistEnabled(enabled bool) {
 	m.log.Info("Blacklist enabled: %v", enabled)
 }
 
+// TODO: GetWhitelist and GetBlacklist return the internal *IPList pointer directly,
+// allowing callers to read Entries without holding IPList.mu. Callers in handlers
+// should use Snapshot() to get a safe copy. Consider returning a copy or providing
+// only Snapshot()-based access to prevent unsynchronized reads.
+
 // GetWhitelist returns the whitelist entries
 func (m *Module) GetWhitelist() *IPList {
 	return m.whitelist
@@ -643,6 +652,10 @@ func (m *Module) saveIPLists() error {
 	}
 
 	// Save blacklist
+	// TODO: There is a TOCTOU gap in saveIPLists for both whitelist and blacklist:
+	// the config and entries are saved in separate DB calls after releasing the RLock.
+	// If entries change between SaveListConfig and SaveEntries, the persisted state
+	// may be inconsistent. Consider saving config + entries inside a single transaction.
 	m.blacklist.mu.RLock()
 	if err := m.repo.SaveListConfig(ctx, "blacklist", m.blacklist.Name, m.blacklist.Enabled); err != nil {
 		m.blacklist.mu.RUnlock()
@@ -690,12 +703,14 @@ func (r *RateLimiter) StartCleanup(whitelist, blacklist *IPList) {
 	}()
 }
 
-// StopCleanup stops the background cleanup
+// StopCleanup stops the background cleanup. Safe to call multiple times.
 func (r *RateLimiter) StopCleanup() {
-	if r.cleanupTick != nil {
-		r.cleanupTick.Stop()
-	}
-	close(r.stopCleanup)
+	r.stopOnce.Do(func() {
+		if r.cleanupTick != nil {
+			r.cleanupTick.Stop()
+		}
+		close(r.stopCleanup)
+	})
 }
 
 // CheckRequest checks if a request should be allowed

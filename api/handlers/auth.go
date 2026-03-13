@@ -150,6 +150,9 @@ func (h *Handler) CheckSession(c *gin.Context) {
 }
 
 // Register creates a new user account
+// TODO: Registration does not check whether self-registration is enabled in config
+// (e.g. cfg.Auth.AllowRegistration). Any unauthenticated client can create accounts.
+// If there is a config flag to control this, it should be checked here.
 func (h *Handler) Register(c *gin.Context) {
 	var req struct {
 		Username string `json:"username"`
@@ -177,6 +180,9 @@ func (h *Handler) Register(c *gin.Context) {
 			return
 		}
 	}
+	// TODO: Email validation only checks for "@" which accepts clearly invalid values like
+	// "@", "@@", etc. Consider using a proper validation (e.g. net/mail.ParseAddress) or at
+	// minimum require characters before and after the "@".
 	if req.Email != "" && !strings.Contains(req.Email, "@") {
 		writeError(c, http.StatusBadRequest, "Invalid email address")
 		return
@@ -268,6 +274,11 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 		return
 	}
 
+	// TODO: When the admin user record doesn't exist, a new user is silently created with a
+	// random password. If CreateUser fails (line 284), a warning is logged but execution
+	// continues. The subsequent GetUser call (line 290) will then fail too, and the handler
+	// returns 404 "User not found" — a confusing error for the admin who just wants to save
+	// preferences. Consider returning a clearer error message or retrying the lookup.
 	if session.Role == models.RoleAdmin {
 		if _, err := h.auth.GetUser(c.Request.Context(), session.Username); err != nil {
 			randomPassword, pwdErr := h.auth.GenerateSecurePassword(32)
@@ -595,7 +606,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if h.auth.VerifyPassword(user.Username, req.CurrentPassword) != nil {
+	if h.auth.VerifyPassword(c.Request.Context(), user.Username, req.CurrentPassword) != nil {
 		writeError(c, http.StatusUnauthorized, "Current password is incorrect")
 		return
 	}
@@ -635,7 +646,7 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	if h.auth.VerifyPassword(user.Username, req.Password) != nil {
+	if h.auth.VerifyPassword(c.Request.Context(), user.Username, req.Password) != nil {
 		writeError(c, http.StatusUnauthorized, "Incorrect password")
 		return
 	}

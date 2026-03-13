@@ -226,6 +226,7 @@ func (m *Module) UpdatePlaylist(ctx context.Context, id PlaylistID, userID UserI
 
 	if err := m.playlistRepo.Update(ctx, playlist); err != nil {
 		m.log.Error("Failed to update playlist in database: %v", err)
+		return err
 	}
 
 	m.log.Info("Updated playlist: %s", string(id))
@@ -249,6 +250,7 @@ func (m *Module) DeletePlaylist(ctx context.Context, id PlaylistID, userID UserI
 
 	if err := m.playlistRepo.Delete(ctx, string(id)); err != nil {
 		m.log.Error("Failed to delete playlist from database: %v", err)
+		return err
 	}
 
 	delete(m.playlists, id)
@@ -297,9 +299,9 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 		return ErrAccessDenied
 	}
 
-	// Check if already in playlist
+	// Check if already in playlist (by path or by media ID to avoid symlink/move duplicates)
 	for _, item := range playlist.Items {
-		if item.MediaPath == input.MediaPath {
+		if item.MediaPath == input.MediaPath || (input.MediaID != "" && item.MediaID == input.MediaID) {
 			return nil // Already exists
 		}
 	}
@@ -347,6 +349,12 @@ func (m *Module) removeItemLocked(ctx context.Context, playlistID PlaylistID, us
 	m.log.Debug("Removed item from playlist %s: %s", string(playlistID), mediaPath)
 	return nil
 }
+
+// TODO: Redundant code - getPlaylistAndFilterItemLocked and doGetPlaylistAndFilterItemLocked
+// are trivial wrappers that each just delegate to the next function in a 3-layer chain:
+// getPlaylistAndFilterItemLocked -> doGetPlaylistAndFilterItemLocked -> resolvePlaylistAndFilterItemByPath.
+// All three methods have identical signatures and zero added logic. Collapse into a single
+// method (resolvePlaylistAndFilterItemByPath) and call it directly from removeItemLocked.
 
 // getPlaylistAndFilterItemLocked resolves playlist, removes the item by mediaPath from DB and returns new slice. Caller must hold m.mu.
 func (m *Module) getPlaylistAndFilterItemLocked(ctx context.Context, playlistID PlaylistID, userID UserID, mediaPath string) (*models.Playlist, []models.PlaylistItem, error) {
@@ -510,6 +518,11 @@ func (m *Module) CopyPlaylist(ctx context.Context, sourceID PlaylistID, userID U
 		return nil, fmt.Errorf("failed to create playlist: %w", err)
 	}
 
+	// TODO: Bug - if AddItem fails for some items in the middle, the playlist is
+	// left in a partially-copied state in the DB but the in-memory cache has all items.
+	// On restart, the DB state (partial) is loaded, losing items that failed to persist.
+	// Consider using a transaction for atomic copy, or at minimum return an error if
+	// any item fails to persist.
 	for _, item := range items {
 		item.PlaylistID = newPlaylist.ID
 		item.ID = uuid.New().String()

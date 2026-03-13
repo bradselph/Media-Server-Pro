@@ -15,7 +15,8 @@ export function RequireAuth({children, adminOnly}: Props) {
     }
 
     if (!isAuthenticated) {
-        return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace/>
+        const redirect = location.pathname + location.search + location.hash
+        return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace/>
     }
 
     if (adminOnly && !isAdmin) {

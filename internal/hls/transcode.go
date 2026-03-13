@@ -179,6 +179,12 @@ func (m *Module) prepareVariantDir(job *models.HLSJob, quality string) (variantD
 	return variantDir, playlistPath, segmentPattern, nil
 }
 
+// TODO: Bug - the GOP size calculation assumes 30fps (SegmentDuration * 30).
+// For media files with different frame rates (24fps, 60fps, etc.), this creates
+// incorrect keyframe intervals. The GOP should be calculated as
+// SegmentDuration * actual_fps (obtained from ffprobe), or use "-force_key_frames"
+// with an expression like "expr:gte(t,n_forced*segment_duration)" for frame-rate-
+// independent keyframe placement.
 func (m *Module) buildFFmpegTranscodeCmd(ctx context.Context, paths *transcodePaths, profile *config.HLSQuality) *exec.Cmd {
 	cfg := m.config.Get()
 	stream := ffmpeg.Input(paths.MediaPath)

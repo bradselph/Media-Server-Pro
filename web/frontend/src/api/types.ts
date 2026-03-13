@@ -83,7 +83,7 @@ export interface LoginResponse {
     expires_at: string
 }
 
-// ── Media ──
+// ── Auth (Sessions) ──
 export interface UserSession {
     id: string
     user_id: string
@@ -237,6 +237,7 @@ export interface HLSJob {
     available: boolean
     error?: string
     fail_count?: number
+    last_accessed_at?: string
 }
 
 // ── Playlists ──
@@ -418,7 +419,7 @@ export interface ModuleHealth {
     // Backend constants: "healthy" | "unhealthy". "degraded"/"failed"/"disabled" kept for display logic.
     status: 'healthy' | 'unhealthy' | 'degraded' | 'failed' | 'disabled'
     message?: string
-    last_check?: string
+    last_check: string
 }
 
 // Backend models.AuditLogEntry JSON fields
@@ -433,8 +434,8 @@ export interface AuditLogEntry {
     resource: string
     // Backend json:"details,omitempty" — arbitrary key-value metadata, absent when empty
     details?: Record<string, unknown>
-    // Backend uses "ip_address" not "ip"
-    ip_address?: string
+    // Backend uses "ip_address" not "ip"; no omitempty — always present (empty string when unavailable)
+    ip_address: string
     // Backend models.AuditLogEntry.Success bool json:"success" (no omitempty) — always present
     success: boolean
 }
@@ -465,6 +466,19 @@ export interface ScheduledTask {
     last_error?: string
 }
 
+// TODO: API Contract Mismatch - BackupEntry is an incomplete representation of the
+// backend response. ListBackupsV2 (api/handlers/admin_backups.go:17) returns
+// h.backup.ListBackups() which returns []*backup.Manifest (internal/backup/backup.go:46-56).
+// backup.Manifest has additional fields not present in this interface:
+//   files    []string json:"files"            — list of files included in the backup
+//   errors   []string json:"errors,omitempty" — any non-fatal errors during backup creation
+//   version  string   json:"version"          — server version that created the backup
+// CreateBackupV2 (api/handlers/admin_backups.go:27) also returns a full backup.Manifest.
+// Frontend adminApi.createBackup() (endpoints.ts:556) is typed to return BackupEntry but
+// receives a Manifest — the extra fields are silently ignored. If the frontend ever needs
+// to display the files list or creation errors, this interface must be extended.
+// Callers: adminApi.listBackups() (endpoints.ts:553), adminApi.createBackup() (endpoints.ts:556).
+// Handlers: ListBackupsV2, CreateBackupV2 in api/handlers/admin_backups.go.
 // Matches backend models.BackupInfo JSON tags.
 // created_at is RFC3339 — use new Date(entry.created_at). type defaults to "full" if not specified.
 export interface BackupEntry {
@@ -484,6 +498,32 @@ export interface ScannerStats {
     pending_review: number
 }
 
+// Matches internal/scanner.ScanResult — returned when runScan is called with a specific path
+export interface FileScanResult {
+    path: string
+    is_mature: boolean
+    confidence: number
+    reasons: string[]
+    auto_flagged: boolean
+    needs_review: boolean
+    scanned_at: string
+    reviewed_by?: string
+    reviewed_at?: string
+    review_decision?: string
+    high_conf_matches?: string[]
+    med_conf_matches?: string[]
+}
+
+// Returned when runScan is called without a path (directory scan)
+export interface DirectoryScanResult {
+    stats: ScannerStats
+    scanned: number
+    auto_flagged_count: number
+    review_queue_count: number
+    clean: number
+    message: string
+}
+
 // Hugging Face visual classification status (GET /api/admin/classify/status)
 export interface ClassifyStatus {
     configured: boolean
@@ -492,6 +532,28 @@ export interface ClassifyStatus {
     rate_limit: number
     max_frames: number
     max_concurrent: number
+    task_running?: boolean
+    task_last_run?: string
+    task_next_run?: string
+    task_last_error?: string
+    task_enabled?: boolean
+}
+
+// Classification progress stats (GET /api/admin/classify/stats)
+export interface ClassifyStats {
+    total_media: number
+    mature_total: number
+    mature_classified: number
+    mature_pending: number
+    recent_items: ClassifiedItem[]
+}
+
+export interface ClassifiedItem {
+    id: string
+    name: string
+    tags: string[]
+    mature_score: number
+    date_modified: string
 }
 
 // Matches backend models.MatureReviewItem JSON
@@ -603,7 +665,6 @@ export interface RemoteSourceState {
     last_sync: string
     media_count: number
     error?: string
-    media?: RemoteMediaItem[]
 }
 
 export interface RemoteStats {
@@ -670,8 +731,9 @@ export interface DuplicateItem {
 export interface ReceiverDuplicate {
     id: string
     fingerprint: string
-    item_a: DuplicateItem
-    item_b: DuplicateItem
+    // Pointer fields in Go — serialize as null when the media entry has been deleted
+    item_a: DuplicateItem | null
+    item_b: DuplicateItem | null
     item_a_name: string
     item_b_name: string
     // "pending" | "remove_a" | "remove_b" | "keep_both" | "ignore"
@@ -813,8 +875,8 @@ export interface SecurityStats {
 
 export interface IPEntry {
     ip: string
-    comment?: string
-    added_by?: string
+    comment: string
+    added_by: string
     added_at: string
     expires_at?: string
 }

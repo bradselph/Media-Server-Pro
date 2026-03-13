@@ -103,6 +103,11 @@ func (m *Module) resolveHLSQualities(ctx context.Context, p *resolveQualitiesPar
 // tryResolveExistingJob returns an existing job if it is valid and usable.
 // If the job is completed but master.m3u8 is missing, the job is invalidated and (nil, false) is returned.
 // Second return is true when the caller should use the returned job.
+// TODO: Bug - GetJobStatus acquires RLock, then after releasing it, the method
+// acquires a write Lock to delete the job. Between these two lock acquisitions,
+// another goroutine could start a new job with the same ID. The delete would
+// then remove the newly-created job instead of the stale one. This is a TOCTOU
+// race. Consider using a single write lock for the entire check-and-delete.
 func (m *Module) tryResolveExistingJob(mediaID string) (*models.HLSJob, bool) {
 	job, err := m.GetJobStatus(mediaID)
 	if err != nil {

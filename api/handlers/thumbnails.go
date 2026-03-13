@@ -230,7 +230,7 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	h.serveThumbnailFileResponse(c, thumbFilePath, contentType)
 }
 
-// ServeThumbnailFile serves a thumbnail image file by filename from the thumbnails directory
+// ServeThumbnailFile serves a thumbnail image file by filename from the thumbnails directory.
 func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	if !h.requireThumbnails(c) {
 		return
@@ -246,7 +246,9 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	filePath := filepath.Join(h.thumbnails.GetThumbnailDir(), filename)
 
 	ext := strings.ToLower(filepath.Ext(filename))
-	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp":
+	default:
 		writeError(c, http.StatusBadRequest, "Invalid thumbnail format")
 		return
 	}
@@ -278,8 +280,13 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 
 	// Content negotiation: serve WebP when client accepts it
 	contentType := "image/jpeg"
-	if acceptsWebP(c.Request) {
-		webpPath := strings.TrimSuffix(filePath, ".jpg") + ".webp"
+	if ext == ".png" {
+		contentType = "image/png"
+	} else if ext == ".webp" {
+		contentType = "image/webp"
+	}
+	if acceptsWebP(c.Request) && ext != ".webp" {
+		webpPath := strings.TrimSuffix(filePath, ext) + ".webp"
 		if webpPath != filePath {
 			if _, err := os.Stat(webpPath); err == nil {
 				filePath = webpPath

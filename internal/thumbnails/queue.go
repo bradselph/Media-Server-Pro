@@ -74,6 +74,12 @@ func (m *Module) queueMainPreviewThumbnail(opts *queueMainPreviewThumbnailOpts) 
 }
 
 // dequeue blocks until a job is available or ctx is cancelled. Returns nil when ctx is done.
+// TODO: This uses sync.Cond.Wait() which only wakes on Signal/Broadcast. When ctx is
+// cancelled (shutdown), the goroutine stays blocked on Wait() until the next Broadcast
+// (sent in Stop()). If Stop() never calls Broadcast (e.g., panic during shutdown), the
+// worker goroutine will leak. The current Stop() does call Broadcast, but this is fragile.
+// Additionally, ctx.Err() is checked only at the top of the loop; if ctx is cancelled
+// while a job is being processed, dequeue will still return the next job instead of nil.
 func (m *Module) dequeue(ctx context.Context) *ThumbnailJob {
 	m.jobMu.Lock()
 	defer m.jobMu.Unlock()

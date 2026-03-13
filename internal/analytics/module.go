@@ -6,6 +6,7 @@ package analytics
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -38,6 +39,7 @@ type Module struct {
 	healthMu      sync.RWMutex
 	cleanupTicker *time.Ticker
 	done          chan struct{}
+	stopOnce      sync.Once
 	maxEvents     int
 }
 
@@ -80,6 +82,9 @@ func (m *Module) Start(_ context.Context) error {
 	m.reconstructStats()
 
 	cfg := m.config.Get()
+	if err := os.MkdirAll(cfg.Directories.Analytics, 0755); err != nil {
+		return fmt.Errorf("failed to create analytics directory: %w", err)
+	}
 	m.cleanupTicker = time.NewTicker(cfg.Analytics.CleanupInterval)
 
 	go m.backgroundLoop()
@@ -92,14 +97,16 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
-// Stop gracefully stops the module.
+// Stop gracefully stops the module. Safe to call multiple times.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping analytics module...")
 
-	close(m.done)
-	if m.cleanupTicker != nil {
-		m.cleanupTicker.Stop()
-	}
+	m.stopOnce.Do(func() {
+		if m.cleanupTicker != nil {
+			m.cleanupTicker.Stop()
+		}
+		close(m.done)
+	})
 
 	m.healthMu.Lock()
 	m.healthy = false

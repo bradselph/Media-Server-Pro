@@ -49,7 +49,7 @@ func (m *Module) readMasterPlaylist(outputDir string) ([]byte, error) {
 	masterPath := filepath.Join(outputDir, masterPlaylistName)
 	data, err := os.ReadFile(masterPath)
 	if err != nil {
-		return nil, fmt.Errorf("Master playlist not found: %w", err)
+		return nil, fmt.Errorf("master playlist not found: %w", err)
 	}
 	return data, nil
 }
@@ -113,6 +113,10 @@ func (m *Module) parseVariantStreams(content string) []string {
 }
 
 // isSegmentLine returns true if the line is a non-empty, non-comment segment filename (.ts)
+// TODO: Bug - only .ts segments are recognized. HLS also supports .aac audio
+// segments and fMP4 segments (.m4s, .mp4). If the server ever supports
+// hls_segment_type=fmp4, this check will miss all segments, causing validation
+// to report "no segments found" for valid jobs. Should also check for .m4s and .aac.
 func isSegmentLine(line string) bool {
 	if line == "" || strings.HasPrefix(line, "#") {
 		return false

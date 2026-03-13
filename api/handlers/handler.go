@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -213,8 +214,7 @@ func isClientDisconnect(err error) bool {
 	if err == nil {
 		return false
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
+	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
 		return true
 	}
 	msg := err.Error()
@@ -264,8 +264,14 @@ func randIntn(n int) int {
 // requireModule checks that the given module pointer is non-nil. Returns false
 // (and writes a 503 error) if the module failed to initialise or is disabled.
 // Use at the top of handlers that depend on optional modules.
+// Handles both interface nil and typed nil (e.g. (*extractor.Module)(nil)).
 func requireModule(c *gin.Context, module any, name string) bool {
 	if module == nil {
+		writeError(c, http.StatusServiceUnavailable, name+" is not available")
+		return false
+	}
+	v := reflect.ValueOf(module)
+	if v.Kind() == reflect.Ptr && v.IsNil() {
 		writeError(c, http.StatusServiceUnavailable, name+" is not available")
 		return false
 	}
@@ -316,14 +322,20 @@ type adminLogActionParams struct {
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
 // is best-effort — if the admin module is unavailable the action is silently
 // skipped so that the primary operation (user create, media delete, etc.) still
-// succeeds.
+// succeeds. Uses the session user when available so audit logs distinguish admins.
 func (h *Handler) logAdminAction(c *gin.Context, p *adminLogActionParams) {
-	if h.admin != nil {
-		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
-			UserID: p.UserID, Username: p.Username, Action: p.Action, Resource: p.Target,
-			Details: p.Details, IPAddress: c.ClientIP(), Success: true,
-		})
+	if h.admin == nil {
+		return
 	}
+	userID, username := p.UserID, p.Username
+	if session := getSession(c); session != nil {
+		userID = session.UserID
+		username = session.Username
+	}
+	h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+		UserID: userID, Username: username, Action: p.Action, Resource: p.Target,
+		Details: p.Details, IPAddress: c.ClientIP(), Success: true,
+	})
 }
 
 // adminLogResultParams groups arguments for logAdminActionResult to avoid excess parameters.
@@ -338,19 +350,25 @@ type adminLogResultParams struct {
 
 // logAdminActionResult is like logAdminAction but lets the caller specify success/failure.
 func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) {
-	if h.admin != nil {
-		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
-			UserID: p.UserID, Username: p.Username, Action: p.Action, Resource: p.Target,
-			Details: p.Details, IPAddress: c.ClientIP(), Success: p.Success,
-		})
+	if h.admin == nil {
+		return
 	}
+	userID, username := p.UserID, p.Username
+	if session := getSession(c); session != nil {
+		userID = session.UserID
+		username = session.Username
+	}
+	h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+		UserID: userID, Username: username, Action: p.Action, Resource: p.Target,
+		Details: p.Details, IPAddress: c.ClientIP(), Success: p.Success,
+	})
 }
 
 // resolveAndValidatePath resolves a file path against allowed directories, prevents path
 // traversal, and verifies the file exists. Returns the resolved path and true on success,
 // or writes an error response and returns ("", false) on failure.
 func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDirs AllowedDirs) (ResolvedPath, bool) {
-	validPath := h.resolveRelativePath(path, []string(allowedDirs))
+	validPath := h.resolveRelativePath(path, allowedDirs)
 	if validPath == "" {
 		writeError(c, http.StatusNotFound, errFileNotFound)
 		return "", false
@@ -367,7 +385,7 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 		return "", false
 	}
 
-	if !isPathWithinDirs(absPath, []string(allowedDirs)) {
+	if !isPathWithinDirs(absPath, allowedDirs) {
 		h.log.Warn("Path traversal attempt detected: %s", path)
 		writeError(c, http.StatusForbidden, "Access denied: path outside allowed directories")
 		return "", false
@@ -477,6 +495,13 @@ func (h *Handler) allowedMediaDirs() AllowedDirs {
 	return AllowedDirs{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads}
 }
 
+// TODO: resolvePathToAbsolute does NOT verify that the resolved absolute path is within
+// allowedDirs when the input is already absolute. An absolute path like "/etc/passwd"
+// passes through resolveAbsPath which only calls filepath.Abs — no containment check.
+// Callers that need containment must call validatePathInDirsAndStat separately, but this
+// function's name implies it is safe. Consider adding an isPathWithinDirs check here or
+// renaming to clarify that the caller is responsible for containment validation.
+
 // resolvePathToAbsolute resolves path (absolute or relative) to an absolute path under
 // allowedDirs. Writes error and returns ("", false) on failure.
 func resolvePathToAbsolute(c *gin.Context, path string, allowedDirs []string) (string, bool) {
@@ -489,7 +514,7 @@ func resolvePathToAbsolute(c *gin.Context, path string, allowedDirs []string) (s
 }
 
 func writePathResolveError(c *gin.Context, err error) {
-	if err == errInvalidPath {
+	if errors.Is(err, errInvalidPath) {
 		writeError(c, http.StatusBadRequest, "Invalid path")
 		return
 	}
@@ -598,11 +623,11 @@ func (h *Handler) resolvePathForAdmin(c *gin.Context, path string, mustBeDir boo
 		return "", false
 	}
 	allowedDirs := h.allowedMediaDirs()
-	absPath, ok := resolvePathToAbsolute(c, path, []string(allowedDirs))
+	absPath, ok := resolvePathToAbsolute(c, path, allowedDirs)
 	if !ok {
 		return "", false
 	}
-	if !validatePathInDirsAndStat(c, absPath, []string(allowedDirs), mustBeDir) {
+	if !validatePathInDirsAndStat(c, absPath, allowedDirs, mustBeDir) {
 		return "", false
 	}
 	return absPath, true

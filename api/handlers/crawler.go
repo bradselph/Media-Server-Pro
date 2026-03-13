@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/pkg/helpers"
 )
 
 // --- Crawler Target Handlers ---
@@ -21,6 +23,11 @@ func (h *Handler) AddCrawlerTarget(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "url is required")
+		return
+	}
+
+	if err := helpers.ValidateURLForSSRF(req.URL); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 

@@ -31,6 +31,11 @@ export function AgeGateProvider({children}: { children: React.ReactNode }) {
         },
     })
 
+    // TODO: Unstable dependency — `mutation` is a new object reference on every render
+    // from `useMutation`, so this `useCallback` is effectively recreated every render,
+    // defeating its memoization purpose.
+    // FIX: Use `mutation.mutate` directly as the onClick handler, or change the
+    // dependency to `[mutation.mutate]` (mutate is a stable reference).
     const handleConfirm = useCallback(() => {
         mutation.mutate()
     }, [mutation])
@@ -50,6 +55,15 @@ export function AgeGateProvider({children}: { children: React.ReactNode }) {
     return (
         <>
             {/* Render children underneath so the DOM is ready — gate sits on top */}
+            {/* TODO: Children are mounted (hidden) behind the age gate, which means React
+                components inside will still execute effects, fire API requests, and allocate
+                resources (e.g. HLS player, media queries, analytics tracking) even though the
+                user hasn't been verified yet.
+                WHY: This causes unnecessary network traffic, potential data leaks of media
+                metadata to unverified users (visible in browser DevTools), and wasted resources.
+                FIX: Either render `null` instead of hidden children (and accept the flash when
+                the gate dismisses), or use a lightweight placeholder/skeleton that doesn't mount
+                the full app tree until verification completes. */}
             <div aria-hidden="true" style={{visibility: 'hidden', pointerEvents: 'none'}}>
                 {children}
             </div>

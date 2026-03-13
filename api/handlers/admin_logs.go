@@ -80,6 +80,11 @@ func filterLogEntries(entries []map[string]interface{}, levelFilter, moduleFilte
 	if levelFilter == "" && moduleFilter == "" {
 		return entries
 	}
+	// TODO: filtered := entries[:0] reuses the backing array of entries, which means the
+	// filtered slice and the original entries slice share memory. If the caller retains a
+	// reference to the original entries slice, its later elements may be overwritten. In
+	// this case it's likely safe since entries is not used after filterLogEntries returns,
+	// but this is fragile and non-obvious. Consider allocating a new slice for clarity.
 	filtered := entries[:0]
 	for _, entry := range entries {
 		if levelFilter != "" {
@@ -100,6 +105,10 @@ func filterLogEntries(entries []map[string]interface{}, levelFilter, moduleFilte
 }
 
 // readLastNLines reads the last N lines from a file
+// TODO: This reads the entire file into memory to get the last N lines. For large log files
+// (hundreds of MB), this will cause excessive memory usage. Consider reading the file in
+// reverse from the end (e.g., seeking to EOF and reading backwards) or using a ring buffer
+// approach to only keep the last N lines in memory.
 func readLastNLines(filePath string, n int) ([]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {

@@ -42,6 +42,14 @@ func (m *Manager) resolveAbsolutePaths() {
 	}
 }
 
+// TODO: Redundant — CreateDirectories calls filepath.Abs on every directory, but
+// resolveAbsolutePaths (called during Load) has already resolved all directory paths
+// to absolute. The second filepath.Abs call is redundant if Load was called first.
+// More importantly, if CreateDirectories is called without Load (or if resolveAbsolutePaths
+// was skipped), the resolution depends on the current working directory at call time,
+// which may differ from the cwd at Load time. Should either assert paths are already
+// absolute or document the dependency on Load having been called first.
+//
 // CreateDirectories ensures all configured directories exist
 func (m *Manager) CreateDirectories() error {
 	m.mu.RLock()

@@ -103,12 +103,12 @@ func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.Sc
 	})
 }
 
-// Get retrieves a scan result by path
+// Get retrieves a scan result by path. Returns (nil, ErrScanResultNotFound) when no record exists.
 func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositories.ScanResult, error) {
 	var row scanResultRow
 	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, repositories.ErrScanResultNotFound
 		}
 		return nil, fmt.Errorf("failed to query scan result: %w", err)
 	}

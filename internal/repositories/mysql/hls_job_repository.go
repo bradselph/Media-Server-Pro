@@ -85,6 +85,10 @@ func (r *HLSJobRepository) List(ctx context.Context) ([]*models.HLSJob, error) {
 	return jobs, nil
 }
 
+// TODO: Silent failure — json.Marshal error for Qualities is discarded. If Qualities
+// contains invalid data, qualJSON will be "null" and stored in the DB, silently losing
+// the quality list. On read, this unmarshals to nil and is replaced with []string{},
+// so the job appears to have no qualities configured.
 func (r *HLSJobRepository) jobToRow(job *models.HLSJob) hlsJobRow {
 	qualJSON, _ := json.Marshal(job.Qualities)
 	row := hlsJobRow{

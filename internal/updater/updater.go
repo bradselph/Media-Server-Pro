@@ -46,7 +46,6 @@ type Module struct {
 	mu             sync.RWMutex
 	lastCheck      *UpdateCheckResult
 	checkTicker    *time.Ticker
-	checkDone      chan struct{}
 	backupDir      string
 	currentVersion string
 
@@ -61,6 +60,10 @@ type Module struct {
 	// the HTTP handler, so we need our own guard separate from buildMu.
 	applyMu      sync.Mutex
 	applyRunning bool
+
+	stopOnce    sync.Once
+	checkDone   chan struct{} // closed in Stop to signal checkLoop to exit
+	checkExited chan struct{} // closed by checkLoop when it exits
 }
 
 // UpdateCheckResult holds the result of an update check
@@ -101,11 +104,14 @@ type GitHubRelease struct {
 	Draft      bool `json:"draft"`
 }
 
+// DefaultVersion is the fallback when no version is supplied via ldflags; must match server default.
+const DefaultVersion = "4.0.0"
+
 // NewModule creates a new updater module. version should be the build-time version
-// string (e.g. from -ldflags), falling back to "3.0.0" if empty.
+// string (e.g. from -ldflags), falling back to DefaultVersion if empty.
 func NewModule(cfg *config.Manager, version string) *Module {
 	if version == "" {
-		version = "3.0.0"
+		version = DefaultVersion
 	}
 	return &Module{
 		config:         cfg,
@@ -114,8 +120,9 @@ func NewModule(cfg *config.Manager, version string) *Module {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		checkDone: make(chan struct{}),
-		backupDir: filepath.Join(cfg.Get().Directories.Data, "backups", "updates"),
+		checkDone:   make(chan struct{}),
+		checkExited: make(chan struct{}),
+		backupDir:   filepath.Join(cfg.Get().Directories.Data, "backups", "updates"),
 	}
 }
 
@@ -189,14 +196,19 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
-// Stop gracefully stops the module
+// Stop gracefully stops the module. It stops the ticker, signals checkLoop to exit,
+// and waits for checkLoop to finish. Safe to call multiple times (sync.Once).
+// The initial update check goroutine started in Start is not awaited and may still run after return.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping updater module...")
 
-	if m.checkTicker != nil {
-		m.checkTicker.Stop()
+	m.stopOnce.Do(func() {
+		if m.checkTicker != nil {
+			m.checkTicker.Stop()
+		}
 		close(m.checkDone)
-	}
+		<-m.checkExited
+	})
 
 	m.healthMu.Lock()
 	m.healthy = false
@@ -219,6 +231,7 @@ func (m *Module) Health() models.HealthStatus {
 
 // checkLoop periodically checks for updates
 func (m *Module) checkLoop() {
+	defer close(m.checkExited)
 	for {
 		select {
 		case <-m.checkTicker.C:
@@ -870,6 +883,13 @@ func (m *Module) installUpdate(updateFile string) error {
 }
 
 // restoreFromBackup restores from a backup
+// TODO: restoreFromBackup has two issues:
+//  1. The .tar.gz branch uses exec.Command("tar", ...) which may not exist on Windows.
+//     The createBackup method never creates .tar.gz backups (it uses copyFile), so the
+//     tar.gz branch is dead code.
+//  2. If backupPath is empty (backup creation failed earlier), this function will try
+//     to copy an empty-string path, causing a confusing error. The caller (ApplyUpdate)
+//     does pass backupPath even when backup failed, so this could try to restore from "".
 func (m *Module) restoreFromBackup(backupPath string) error {
 	if strings.HasSuffix(backupPath, ".tar.gz") {
 		execPath, err := os.Executable()
@@ -1059,6 +1079,11 @@ func (m *Module) GetActiveBuildStatus() *UpdateStatus {
 	return &snap
 }
 
+// TODO: IsBuildRunning and IsUpdateRunning use Mutex.Lock (exclusive lock) for read-only
+// operations. Since these are polling endpoints called frequently, they should use
+// sync.RWMutex with RLock to allow concurrent reads without blocking each other.
+// buildMu is already a sync.Mutex (not RWMutex), so it would need to be changed.
+
 // IsBuildRunning reports whether a source build is currently in progress.
 func (m *Module) IsBuildRunning() bool {
 	m.buildMu.Lock()
@@ -1080,6 +1105,9 @@ func (m *Module) IsUpdateRunning() bool {
 //  4. atomic rename          (replaces running binary on disk)
 //
 // The caller is responsible for restarting the service after this returns.
+// TODO: SourceUpdate has no guard against concurrent calls, unlike ApplyUpdate which
+// uses applyMu. Two simultaneous SourceUpdate calls could corrupt the build. Should
+// add a similar concurrency guard (e.g., check IsBuildRunning at entry and set a flag).
 func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	cfg := m.config.Get()
 	dir, err := m.appDir()
@@ -1145,6 +1173,11 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		return status, fmt.Errorf("git checkout: %w", cerr)
 	}
 
+	// TODO: This "already up to date" check compares HEAD with origin/branch AFTER
+	// the checkout -B has already been performed (which resets the local branch to
+	// origin/branch). So HEAD and origin/branch will ALWAYS be equal at this point,
+	// making the check always true and short-circuiting the build. The check should
+	// be performed BEFORE the checkout, comparing the OLD local HEAD with origin/branch.
 	// Check whether there are actually any new commits
 	localOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
 	remoteOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()

@@ -3,18 +3,16 @@ import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {AdminMediaListResponse, MediaItem, ThumbnailStats} from '@/api/types'
 import {ContentReviewTab, CategorizerTab, DiscoveryTab, HuggingFaceTab} from './ContentTab'
+import {ValidatorTab} from './ValidatorTab'
+import {formatDuration} from '@/utils/formatters'
 import {errMsg, formatBytes} from './adminUtils'
 import {SubTabs} from './helpers'
 
 // ── Tab: Media ────────────────────────────────────────────────────────────────
 
-function formatDuration(secs: number): string {
+function formatDurationDisplay(secs: number): string {
     if (!secs || secs <= 0) return '—'
-    const h = Math.floor(secs / 3600)
-    const m = Math.floor((secs % 3600) / 60)
-    const s = Math.floor(secs % 60)
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    return `${m}:${String(s).padStart(2, '0')}`
+    return formatDuration({ seconds: secs })
 }
 
 // Sortable column header definitions for the admin media table.
@@ -522,7 +520,7 @@ function MediaLibraryTab() {
                                 }}>{item.name}</td>
                                 <td>{item.type}</td>
                                 <td style={{whiteSpace: 'nowrap'}}>{formatBytes(item.size)}</td>
-                                <td style={{whiteSpace: 'nowrap'}}>{formatDuration(item.duration)}</td>
+                                <td style={{whiteSpace: 'nowrap'}}>{formatDurationDisplay(item.duration)}</td>
                                 <td>{item.category || '—'}</td>
                                 <td style={{whiteSpace: 'nowrap'}}>{new Date(item.date_added).toLocaleDateString()}</td>
                                 <td style={{whiteSpace: 'nowrap'}}>{new Date(item.date_modified).toLocaleDateString()}</td>
@@ -750,6 +748,7 @@ export function MediaTab() {
                     {id: 'categorizer', label: 'Categorizer'},
                     {id: 'classification', label: 'Hugging Face'},
                     {id: 'discovery', label: 'Discovery'},
+                    {id: 'validator', label: 'Validator'},
                 ]}
                 active={sub}
                 onChange={setSub}
@@ -759,6 +758,7 @@ export function MediaTab() {
             {sub === 'categorizer' && <CategorizerTab/>}
             {sub === 'classification' && <HuggingFaceTab/>}
             {sub === 'discovery' && <DiscoveryTab/>}
+            {sub === 'validator' && <ValidatorTab/>}
         </>
     )
 }
