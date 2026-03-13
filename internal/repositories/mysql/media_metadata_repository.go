@@ -364,12 +364,6 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 	return metadata
 }
 
-// TODO: Silent failure — UpdateBlurHash does not check result.RowsAffected. If the
-// path does not exist, the update silently succeeds with 0 rows affected. This is
-// inconsistent with Delete() which checks RowsAffected and returns "not found".
-// Consider checking RowsAffected == 0 and returning an error, or documenting that
-// this is intentional (e.g. BlurHash generation may race with metadata deletion).
-
 // UpdateBlurHash updates the BlurHash for a metadata row by path
 func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path string, blurHash string) error {
 	result := r.db.WithContext(ctx).Model(&mediaMetadataRow{}).
@@ -377,6 +371,9 @@ func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path strin
 		Update("blur_hash", blurHash)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update blur_hash: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("metadata not found for path %q", path)
 	}
 	return nil
 }
