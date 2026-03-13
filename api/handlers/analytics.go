@@ -263,9 +263,6 @@ func (h *Handler) GetEventTypeCounts(c *gin.Context) {
 }
 
 // AdminExportAnalytics exports analytics data as a CSV file download.
-// TODO: Invalid date format in start_date or end_date query params is silently ignored
-// (falls back to the default 1-month range). Consider returning a 400 error for
-// malformed date strings so the admin knows their filter isn't being applied.
 func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	if h.analytics == nil {
 		writeError(c, http.StatusServiceUnavailable, "Analytics is not available")
