@@ -23,17 +23,14 @@ func (h *Handler) checkReceiverEnabled(c *gin.Context) bool {
 	})
 }
 
-// requireReceiverAPIKey validates the X-API-Key header against configured receiver keys.
-// TODO: This function does not check for the api_key query parameter, which is the
-// documented alternative to the X-API-Key header (see ReceiverWebSocket comment and
-// CLAUDE.md: "Slaves authenticate via X-API-Key header or api_key query param").
-// The WebSocket handler delegates auth to h.receiver.HandleWebSocket which presumably
-// checks both, but this function only checks the header. The REST endpoints
-// (register, catalog, heartbeat, stream-push) thus only accept header-based auth.
+// requireReceiverAPIKey validates the receiver API key from X-API-Key header or api_key query param.
 func (h *Handler) requireReceiverAPIKey(c *gin.Context) bool {
 	apiKey := c.GetHeader("X-API-Key")
 	if apiKey == "" {
-		writeError(c, http.StatusUnauthorized, "Missing X-API-Key header")
+		apiKey = c.Query("api_key")
+	}
+	if apiKey == "" {
+		writeError(c, http.StatusUnauthorized, "Missing X-API-Key header or api_key query parameter")
 		return false
 	}
 	if !h.receiver.ValidateAPIKey(apiKey) {
