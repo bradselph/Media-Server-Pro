@@ -32,6 +32,7 @@ type UserRepository interface {
 type SessionRepository interface {
 	Create(ctx context.Context, session *models.Session) error
 	Get(ctx context.Context, id string) (*models.Session, error)
+	Update(ctx context.Context, session *models.Session) error
 	Delete(ctx context.Context, id string) error
 	DeleteExpired(ctx context.Context) error
 	List(ctx context.Context) ([]*models.Session, error)

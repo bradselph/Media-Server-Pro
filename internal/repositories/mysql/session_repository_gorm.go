@@ -40,6 +40,18 @@ func (r *SessionRepository) Get(ctx context.Context, id string) (*models.Session
 	return &session, nil
 }
 
+// Update persists changes to an existing session (e.g. LastActivity)
+func (r *SessionRepository) Update(ctx context.Context, session *models.Session) error {
+	result := r.db.WithContext(ctx).Model(session).Where("id = ?", session.ID).Update("last_activity", session.LastActivity)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrSessionNotFound
+	}
+	return nil
+}
+
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).Delete(&models.Session{}, "id = ?", id)
 	if result.Error != nil {
