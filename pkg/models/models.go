@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"unicode/utf8"
 )
 
 // MediaType represents the type of media
@@ -299,15 +300,19 @@ func stringInSetOrDefault(s string, allowed map[string]bool, defaultVal string) 
 	return defaultVal
 }
 
-// TODO: Bug — truncateString truncates by byte count (len(s)) not rune count.
-// For multi-byte UTF-8 strings (e.g. Japanese, emoji), this can split a multi-byte
-// character in the middle, producing invalid UTF-8. Use utf8.RuneCountInString and
-// iterate runes to truncate safely, or use a library like golang.org/x/text/unicode/norm.
+// truncateString truncates s to at most maxLen runes, never splitting a multi-byte UTF-8 character.
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if maxLen <= 0 || utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen]
+	n := 0
+	for i := range s {
+		if n == maxLen {
+			return s[:i]
+		}
+		n++
+	}
+	return s
 }
 
 // Validate validates and normalizes UserPreferences fields to ensure they contain reasonable values
