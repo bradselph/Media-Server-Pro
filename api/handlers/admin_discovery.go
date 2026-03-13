@@ -62,10 +62,6 @@ func (h *Handler) GetDiscoverySuggestions(c *gin.Context) {
 }
 
 // ApplyDiscoverySuggestion applies a suggested organization
-// TODO: req.OriginalPath is not validated against allowed media directories. While the
-// autodiscovery module presumably only suggests paths it discovered within media dirs,
-// a crafted API call could pass any path. The DiscoverMedia handler validates the
-// directory, but ApplyDiscoverySuggestion does not re-validate the path.
 func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 	if !h.requireAutodiscovery(c) {
 		return
@@ -76,7 +72,11 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
-	if err := h.autodiscovery.ApplySuggestion(autodiscovery.FilePath(req.OriginalPath)); err != nil {
+	absPath, ok := h.resolvePathForAdmin(c, req.OriginalPath, false)
+	if !ok {
+		return
+	}
+	if err := h.autodiscovery.ApplySuggestion(autodiscovery.FilePath(absPath)); err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
@@ -96,7 +96,11 @@ func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errPathParamRequired)
 		return
 	}
+	absPath, ok := h.resolvePathForAdmin(c, path, false)
+	if !ok {
+		return
+	}
 
-	h.autodiscovery.ClearSuggestion(autodiscovery.FilePath(path))
+	h.autodiscovery.ClearSuggestion(autodiscovery.FilePath(absPath))
 	writeSuccess(c, map[string]string{"message": "Suggestion dismissed"})
 }
