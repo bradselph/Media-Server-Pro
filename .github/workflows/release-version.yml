@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - 'VERSION'
       - 'CHANGELOG.md'
+      - 'cmd/server/main.go'
 
   workflow_dispatch:
     inputs:

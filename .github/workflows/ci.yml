@@ -15,6 +15,8 @@ on:
       - '**.ico'
       - 'assets/**'
       - '*.editorconfig'
+      - 'VERSION'
+      - 'CHANGELOG.md'
   pull_request:
     branches: [main, development]
     paths-ignore:
@@ -29,6 +31,8 @@ on:
       - '**.ico'
       - 'assets/**'
       - '*.editorconfig'
+      - 'VERSION'
+      - 'CHANGELOG.md'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -42,6 +46,7 @@ jobs:
   go:
     name: Go Build, Test & Security
     runs-on: [self-hosted, Linux, X64, media-server]
+    if: "!contains(github.event.head_commit.message, '[auto-version]')"
     steps:
       - uses: actions/checkout@v5
 
@@ -77,6 +82,7 @@ jobs:
   frontend:
     name: Frontend Lint, Build & Test
     runs-on: [self-hosted, Linux, X64, media-server]
+    if: "!contains(github.event.head_commit.message, '[auto-version]')"
     defaults:
       run:
         working-directory: web/frontend
