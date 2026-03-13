@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -11,6 +12,15 @@ import (
 
 	"media-server-pro/internal/repositories"
 )
+
+// escapeLike escapes SQL LIKE meta-characters (% and _) and backslash so the value
+// can be safely used in a LIKE pattern with ESCAPE '\\'.
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
+}
 
 // mediaMetadataRow maps to the media_metadata table.
 type mediaMetadataRow struct {
@@ -221,15 +231,9 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 	if filter.IsMature != nil {
 		query = query.Where("is_mature = ?", *filter.IsMature)
 	}
-	// TODO: Bug — SQL injection risk via LIKE wildcards: the search string is used
-	// directly in a LIKE pattern without escaping SQL LIKE meta-characters (% and _).
-	// A user searching for "100%" will match any path containing "100" followed by
-	// any characters. While this is parameterized (not raw string interpolation), the
-	// LIKE wildcards within the value itself are not escaped. Use ESCAPE clause and
-	// replace % with \% and _ with \_ in the search term before wrapping with %.
 	if filter.Search != "" {
-		like := "%" + filter.Search + "%"
-		query = query.Where("path LIKE ? OR category LIKE ?", like, like)
+		like := "%" + escapeLike(filter.Search) + "%"
+		query = query.Where("path LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\'", like, like)
 	}
 
 	// Count total matches before pagination
