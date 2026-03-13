@@ -763,7 +763,7 @@
     height: 58px;
     border-radius: 6px;
     object-fit: cover;
-    background: #1a1a3e;
+    background: var(--card-bg);
     flex-shrink: 0;
 }
 
@@ -977,8 +977,50 @@
 }
 /* ── Mobile Improvements ── */
 
+/* Tablets — simplify layout */
+@media (max-width: 1024px) {
+    .player-page-container {
+        padding: 12px 16px;
+    }
+
+    .media-page-title {
+        font-size: 20px;
+    }
+
+    .media-page-stats {
+        gap: 10px;
+        font-size: 12px;
+    }
+}
+
 /* On mobile the volume hover-expand doesn't work — always show the slider */
 @media (max-width: 640px) {
+    .player-page-container {
+        padding: 8px 10px;
+    }
+
+    .player-header {
+        margin-bottom: 10px;
+        padding: 4px 0;
+    }
+
+    .player-back-btn {
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+
+    /* Video wrapper — remove fixed aspect-ratio on mobile so it uses native size */
+    .video-wrapper {
+        border-radius: 8px;
+        /* Let video determine height on mobile for better use of screen real estate */
+        aspect-ratio: 16/9;
+        max-height: 60vh;
+    }
+
+    .video-wrapper video {
+        object-fit: contain;
+    }
+
     .ctrl-volume-slider {
         width: 52px !important;
         opacity: 1 !important;
@@ -1000,28 +1042,44 @@
         box-sizing: content-box;
     }
 
+    /* Controls row: allow wrapping and better spacing */
     .ctrl-row {
-        gap: 4px;
+        gap: 2px;
+        flex-wrap: wrap;
     }
 
     .ctrl-time {
         font-size: 11px;
+        order: 10; /* push time to end of first row */
+    }
+
+    .ctrl-spacer {
+        flex-basis: 100%;
+        height: 0;
     }
 
     /* Give the settings menu enough room at the bottom */
     .custom-controls {
-        padding: 28px 10px 14px;
+        padding: 28px 10px 10px;
     }
 
     /* Sidebar stacks on small screens */
     .player-layout {
         grid-template-columns: 1fr;
+        gap: 12px;
     }
 
-    /* Settings panel full-width on mobile */
+    /* Settings panel: position fixed on mobile for better UX */
     .settings-panel {
-        min-width: 220px;
-        right: -10px;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        top: auto;
+        min-width: unset;
+        border-radius: 12px 12px 0 0;
+        max-height: 60vh;
+        z-index: 100;
     }
 
     /* Hide shortcuts card on mobile */
@@ -1032,6 +1090,88 @@
     /* Hide quality/speed badges on very small screens */
     .ctrl-quality-badge,
     .ctrl-speed-badge {
+        display: none;
+    }
+
+    /* Media info card — tighter on mobile */
+    .media-info-card {
+        padding: 14px;
+        border-radius: 8px;
+    }
+
+    .media-page-title {
+        font-size: 18px;
+        margin-bottom: 8px;
+    }
+
+    .media-page-stats {
+        gap: 8px;
+        font-size: 12px;
+        margin-bottom: 10px;
+    }
+
+    .media-action-buttons {
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .media-action-btn {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    /* Player sidebar cards — tighter */
+    .player-sidebar-card {
+        padding: 12px;
+        border-radius: 8px;
+    }
+
+    .player-sidebar-card h3 {
+        font-size: 15px;
+        margin-bottom: 8px;
+    }
+
+    /* Related items — smaller thumbnails on mobile */
+    .related-thumb,
+    .related-thumb-placeholder {
+        width: 80px;
+        height: 46px;
+    }
+
+    .related-item {
+        padding: 6px;
+        margin-bottom: 4px;
+    }
+
+    .related-title {
+        font-size: 12px;
+    }
+
+    /* Audio card: tighter on mobile */
+    .audio-visualizer-icon {
+        font-size: 56px;
+    }
+
+    .audio-visualizer-title {
+        font-size: 16px;
+    }
+
+    /* HLS banner — stack on mobile */
+    .hls-available-banner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        font-size: 12px;
+        padding: 8px 12px;
+    }
+
+    /* Theater mode disabled on mobile */
+    .player-theater-btn {
+        display: none;
+    }
+
+    /* Seek button labels */
+    .ctrl-btn-label {
         display: none;
     }
 }

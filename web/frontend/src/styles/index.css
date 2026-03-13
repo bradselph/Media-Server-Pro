@@ -332,9 +332,15 @@
     width: 100%;
     aspect-ratio: 16/9;
     object-fit: cover;
-    background: #1a1a3e;
+    background: var(--card-bg);
     display: block;
     transition: opacity 0.15s ease;
+}
+
+/* Hide broken image icon when src fails */
+.media-thumbnail[src=""],
+.media-thumbnail:not([src]) {
+    visibility: hidden;
 }
 
 .media-thumbnail-placeholder {
@@ -613,6 +619,11 @@
     border-radius: 2px;
     cursor: pointer;
     position: relative;
+    /* Expand touch target without visual change */
+    padding: 6px 0;
+    margin: -6px 0;
+    box-sizing: content-box;
+    touch-action: none;
 }
 
 .player-progress-fill {
@@ -1097,4 +1108,220 @@
 .continue-card-meta {
     font-size: 11px;
     color: var(--text-muted);
+}
+
+/* ── Mobile Responsive ── */
+
+/* Tablet breakpoint */
+@media (max-width: 768px) {
+    .index-header h1 {
+        font-size: 22px;
+    }
+
+    .index-header {
+        padding: 14px 14px 10px;
+    }
+
+    .analytics-bar {
+        gap: 12px;
+        font-size: 12px;
+    }
+
+    /* Controls bar — wrap better on smaller screens */
+    .controls-bar {
+        padding: 8px 12px;
+        gap: 6px;
+    }
+
+    .controls-search {
+        min-width: 120px;
+        order: -1; /* search first on mobile */
+        flex-basis: 100%;
+    }
+
+    .controls-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    /* Filter panel — stack vertically */
+    .filter-panel {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    /* Media grid — smaller min card width for phones */
+    .media-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 10px;
+    }
+
+    .media-section {
+        padding: 12px;
+    }
+
+    .media-card-body {
+        padding: 8px 10px;
+    }
+
+    .media-card-title {
+        font-size: 13px;
+    }
+
+    .media-card-meta {
+        font-size: 10px;
+        gap: 6px;
+    }
+
+    .media-card-actions {
+        gap: 4px;
+    }
+
+    .media-card-btn {
+        padding: 5px 6px;
+        font-size: 11px;
+    }
+
+    /* Inline player — stack layout on mobile */
+    .inline-player {
+        padding: 8px 12px;
+    }
+
+    .player-content {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .player-right {
+        justify-content: center;
+    }
+
+    .player-volume-slider {
+        width: 50px;
+    }
+
+    /* Pagination */
+    .pagination {
+        gap: 8px;
+        padding: 14px 12px;
+        flex-wrap: wrap;
+    }
+
+    .pagination-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    /* FAB adjusted for mobile inline player */
+    .fab-btn {
+        bottom: 140px;
+        right: 14px;
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+    }
+
+    /* User dropdown */
+    .user-auth-section {
+        gap: 4px;
+    }
+
+    /* Continue watching */
+    .continue-card {
+        width: 150px;
+        padding: 10px;
+    }
+
+    .continue-watching-row {
+        gap: 8px;
+    }
+
+    /* Upload modal */
+    .modal-box {
+        max-width: 100%;
+        margin: 0 8px;
+    }
+
+    /* Sidebar (playlists) */
+    .sidebar {
+        width: 280px;
+    }
+}
+
+/* Small phone breakpoint */
+@media (max-width: 480px) {
+    .index-header h1 {
+        font-size: 18px;
+    }
+
+    .index-header p {
+        font-size: 12px;
+    }
+
+    .analytics-bar {
+        gap: 8px;
+        font-size: 11px;
+    }
+
+    /* 2-column grid on very small screens */
+    .media-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .media-section {
+        padding: 8px;
+    }
+
+    .media-card {
+        border-radius: 8px;
+    }
+
+    .media-card-body {
+        padding: 6px 8px;
+    }
+
+    .media-card-title {
+        font-size: 12px;
+    }
+
+    .media-card-meta {
+        font-size: 9px;
+        gap: 4px;
+        margin-bottom: 4px;
+    }
+
+    .media-card-btn {
+        padding: 4px 5px;
+        font-size: 10px;
+    }
+
+    .media-card-type-badge {
+        font-size: 9px;
+        padding: 1px 4px;
+    }
+
+    /* Index page bottom padding reduced for smaller inline player */
+    .index-page {
+        padding-bottom: 130px;
+    }
+
+    /* Player buttons — larger touch targets */
+    .player-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 18px;
+    }
+
+    .player-btn-play {
+        width: 44px;
+        height: 44px;
+        font-size: 22px;
+    }
+
+    /* Pagination — more compact */
+    .pagination {
+        gap: 6px;
+        padding: 10px 8px;
+    }
 }

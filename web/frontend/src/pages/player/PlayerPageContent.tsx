@@ -183,6 +183,8 @@ function PlayerMediaElements(props: {
                     onWaiting={handleWaiting}
                     onCanPlay={handleCanPlay}
                     preload="auto"
+                    playsInline
+                    webkit-playsinline=""
                 />
             )}
         </>
@@ -929,6 +931,14 @@ function PlayerMainColumn(props: PlayerMainColumnProps) {
                 onMouseMove={isVideo ? resetControlsTimer : undefined}
                 onMouseLeave={isVideo && isPlaying ? () => setShowControls(() => false) : undefined}
                 onClick={isVideo ? handleVideoClick : undefined}
+                onTouchEnd={isVideo ? (e) => {
+                    // On mobile, tap should toggle controls visibility, not bubble to onClick
+                    // which would toggle play/pause. Only handle taps on the video area itself.
+                    if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'VIDEO') {
+                        e.preventDefault()
+                        resetControlsTimer()
+                    }
+                } : undefined}
             >
                 <PlayerVideoAudioBlock {...videoBlockProps} />
             </div>

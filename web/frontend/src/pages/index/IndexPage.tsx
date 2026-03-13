@@ -414,6 +414,11 @@ function MediaCardThumbnailBlock({
                         style={{ position: 'absolute', inset: 0, opacity: imgLoaded ? 0 : 1, transition: 'opacity 0.2s ease' }}
                     />
                 )}
+                {!item.blur_hash && !imgLoaded && (
+                    <div className="media-thumbnail-placeholder" style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+                        <i className={item.type === 'video' ? 'bi bi-play-circle' : 'bi bi-music-note-beamed'} />
+                    </div>
+                )}
                 <img
                     className="media-thumbnail"
                     src={inView ? (thumbnailSrc || baseThumbnailUrl || item.thumbnail_url) : undefined}
@@ -436,6 +441,7 @@ function MediaCardThumbnailBlock({
             </>
         )
     }
+    // Thumbnail failed or not available — show blur hash or gradient placeholder
     if (item.blur_hash) {
         return <BlurHashPlaceholder hash={item.blur_hash} className="media-thumbnail" />
     }
@@ -752,6 +758,7 @@ function InlinePlayer({
                 onEnded={handleEnded}
                 onPlay={() => { setIsPlaying(true); }}
                 onPause={() => { setIsPlaying(false); }}
+                playsInline
             />
             <div className="player-content">
                 <div className="player-info">
@@ -773,7 +780,31 @@ function InlinePlayer({
                     </div>
                     <div className="player-progress-row">
                         <span>{formatDuration({ seconds: currentTime })}</span>
-                        <div className="player-progress-bar" onClick={handleProgressClick}>
+                        <div
+                            className="player-progress-bar"
+                            onClick={handleProgressClick}
+                            onTouchStart={(e) => {
+                                e.preventDefault()
+                                const touch = e.touches[0]
+                                if (!touch) return
+                                const el = activeRef.current
+                                if (!el || !duration) return
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                const ratio = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+                                el.currentTime = ratio * duration
+                            }}
+                            onTouchMove={(e) => {
+                                e.preventDefault()
+                                const touch = e.touches[0]
+                                if (!touch) return
+                                const el = activeRef.current
+                                if (!el || !duration) return
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                const ratio = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+                                el.currentTime = ratio * duration
+                            }}
+                            style={{ touchAction: 'none' }}
+                        >
                             <div className="player-progress-fill" style={{width: `${progress}%`}}/>
                         </div>
                         <span>{formatDuration({ seconds: duration })}</span>
