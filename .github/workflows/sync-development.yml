@@ -1,11 +1,13 @@
 name: Sync Development After Release
 
 on:
-  push:
-    branches: [ main ]
+  workflow_run:
+    workflows: ["Release Version"]
+    types: [completed]
+    branches: [main]
 
 concurrency:
-  group: sync-development-${{ github.ref }}
+  group: sync-development
   cancel-in-progress: true
 
 permissions:
@@ -14,15 +16,7 @@ permissions:
 jobs:
   sync-development:
     runs-on: [self-hosted, Linux, X64, media-server]
-    # TODO: This trigger fires on every push to main but only runs if the commit
-    # message contains [auto-version]. The release-version workflow pushes its
-    # own [auto-version] commit, which triggers this workflow — creating a
-    # push → release → sync chain. However, the sync commit itself also pushes
-    # to development with [auto-version] in the message, which could re-trigger
-    # dev-version.yml. The dev-version.yml has a guard against [auto-version]
-    # commits, but this chain is fragile. Consider using workflow_run trigger
-    # instead of push + message matching.
-    if: contains(github.event.head_commit.message, '[auto-version]')
+    if: github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout repository
@@ -43,8 +37,6 @@ jobs:
           git pull origin development
 
           # Merge the release bump commit from main into development.
-          # This should always be conflict-free: the only thing that changed on
-          # main after the PR merge is VERSION and main.go (both set by the bot).
           if git merge origin/main --no-ff -m "chore: sync development with main after release [auto-version]"; then
             git push origin development
             echo "Development synced successfully."
