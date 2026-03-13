@@ -249,11 +249,8 @@ func (m *Module) GetServerStats() models.ServerStats {
 
 // CreateBackup creates a backup of server configuration data
 // Note: This backs up config only, not media metadata or playlists.
-// TODO: Bug — backup ID is timestamp-based with second precision. Two calls within the
-// same second will produce the same backupID, causing the second to silently overwrite
-// the first backup file. Use a UUID or append a random suffix.
 func (m *Module) CreateBackup(description string) (*models.BackupInfo, error) {
-	backupID := fmt.Sprintf("backup_%s", time.Now().Format("20060102_150405"))
+	backupID := fmt.Sprintf("backup_%s", time.Now().Format("20060102_150405.000000000"))
 	backupPath := filepath.Join(m.backupDir, backupID+".json")
 
 	// Gather data to back up

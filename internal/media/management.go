@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/logger"
 )
 
 var (
@@ -538,12 +537,4 @@ func validateDirectory(dir string, cfg *config.Config) (string, error) {
 	}
 
 	return "", fmt.Errorf("directory not allowed: %s", dir)
-}
-
-// GetMediaLog returns a logger for media operations
-// TODO: Redundant code - this getter exposes the internal logger, which breaks
-// encapsulation. External callers should use their own logger. This method is
-// never called anywhere in the codebase (confirmed via grep). Remove it.
-func (m *Module) GetMediaLog() *logger.Logger {
-	return m.log
 }
