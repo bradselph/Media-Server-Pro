@@ -293,6 +293,9 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// -----------------------------------------------------------------------
 	api := r.Group("/api")
 
+	// Version — public, no auth (index page footer)
+	api.GET("/version", h.GetVersion)
+
 	// Media routes (mostly public)
 	api.GET(pathMedia, h.ListMedia)
 	api.GET(pathMedia+pathStats, h.GetMediaStats)

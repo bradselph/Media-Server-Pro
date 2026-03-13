@@ -7,7 +7,7 @@ import {useThemeStore} from '@/stores/themeStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {usePlaylistStore} from '@/stores/playlistStore'
 import {ApiError} from '@/api/client'
-import {analyticsApi, mediaApi, playlistApi, suggestionsApi} from '@/api/endpoints'
+import {analyticsApi, mediaApi, playlistApi, suggestionsApi, versionApi} from '@/api/endpoints'
 import type {AnalyticsSummary, MediaCategory, MediaItem, Playlist, Suggestion} from '@/api/types'
 import {useEqualizer} from '@/hooks/useEqualizer'
 import {EqualizerPanel} from '@/components/EqualizerPanel'
@@ -1185,6 +1185,13 @@ export function IndexPage() {
         select: (data) => data ?? [],
     })
 
+    // Server version (from deploy script / VERSION file) — shown in footer
+    const {data: versionData} = useQuery({
+        queryKey: ['version'],
+        queryFn: () => versionApi.get(),
+        staleTime: 5 * 60 * 1000,
+    })
+
     const items = useMemo(() => mediaData?.items ?? [], [mediaData?.items])
     const totalPages = mediaData?.total_pages ?? 1
     const hasNextPage = page < totalPages
@@ -1886,6 +1893,13 @@ export function IndexPage() {
                     </div>
                 </>
             )}
+
+            {/* Version footer — matches deployed version from deploy script (VERSION file → ldflags) */}
+            <footer className="index-version-footer" aria-label="Application version">
+                {versionData?.version != null ? (
+                    <span>v{versionData.version}</span>
+                ) : null}
+            </footer>
         </div>
     )
 }

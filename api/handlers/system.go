@@ -20,6 +20,13 @@ import (
 // serverStartTime records when the server started, for uptime metrics.
 var serverStartTime = time.Now()
 
+// GetVersion returns the server version (from build ldflags, set by deploy script from VERSION file).
+// Public, unauthenticated — used by the index page footer to display deployed version.
+func (h *Handler) GetVersion(c *gin.Context) {
+	c.Header("Cache-Control", "no-cache, no-store")
+	writeSuccess(c, map[string]string{"version": h.buildInfo.Version})
+}
+
 // GetHealth returns server health status for uptime monitors, nginx health checks, and the
 // systemd healthcheck script. Returns 200 when healthy, 503 when any critical module is
 // degraded or unhealthy. This endpoint is intentionally unauthenticated.
