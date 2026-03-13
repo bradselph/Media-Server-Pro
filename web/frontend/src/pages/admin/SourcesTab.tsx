@@ -1119,7 +1119,15 @@ function DuplicatesTab() {
         }
     }
 
-    function itemCard(item: DuplicateItem, label: string) {
+    function itemCard(item: DuplicateItem | null, label: string) {
+        if (!item) {
+            return (
+                <div style={{flex: 1, minWidth: 0, background: 'var(--input-bg)', borderRadius: 6, padding: '10px 14px', color: 'var(--text-muted)'}}>
+                    <div style={{fontSize: 11, fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1}}>{label}</div>
+                    <div style={{fontStyle: 'italic', fontSize: 13}}>(missing)</div>
+                </div>
+            )
+        }
         return (
             <div style={{flex: 1, minWidth: 0, background: 'var(--input-bg)', borderRadius: 6, padding: '10px 14px'}}>
                 <div style={{fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1}}>{label}</div>
