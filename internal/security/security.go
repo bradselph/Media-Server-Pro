@@ -499,19 +499,22 @@ func (m *Module) SetBlacklistEnabled(enabled bool) {
 	m.log.Info("Blacklist enabled: %v", enabled)
 }
 
-// TODO: GetWhitelist and GetBlacklist return the internal *IPList pointer directly,
-// allowing callers to read Entries without holding IPList.mu. Callers in handlers
-// should use Snapshot() to get a safe copy. Consider returning a copy or providing
-// only Snapshot()-based access to prevent unsynchronized reads.
-
-// GetWhitelist returns the whitelist entries
+// GetWhitelist returns a copy of the whitelist so callers cannot mutate internal state.
 func (m *Module) GetWhitelist() *IPList {
-	return m.whitelist
+	entries := m.whitelist.Snapshot()
+	m.whitelist.mu.RLock()
+	name, enabled := m.whitelist.Name, m.whitelist.Enabled
+	m.whitelist.mu.RUnlock()
+	return &IPList{Name: name, Enabled: enabled, Entries: entries}
 }
 
-// GetBlacklist returns the blacklist entries
+// GetBlacklist returns a copy of the blacklist so callers cannot mutate internal state.
 func (m *Module) GetBlacklist() *IPList {
-	return m.blacklist
+	entries := m.blacklist.Snapshot()
+	m.blacklist.mu.RLock()
+	name, enabled := m.blacklist.Name, m.blacklist.Enabled
+	m.blacklist.mu.RUnlock()
+	return &IPList{Name: name, Enabled: enabled, Entries: entries}
 }
 
 // GetStats returns security statistics
