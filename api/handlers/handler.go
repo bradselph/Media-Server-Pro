@@ -495,13 +495,6 @@ func (h *Handler) allowedMediaDirs() AllowedDirs {
 	return AllowedDirs{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads}
 }
 
-// TODO: resolvePathToAbsolute does NOT verify that the resolved absolute path is within
-// allowedDirs when the input is already absolute. An absolute path like "/etc/passwd"
-// passes through resolveAbsPath which only calls filepath.Abs — no containment check.
-// Callers that need containment must call validatePathInDirsAndStat separately, but this
-// function's name implies it is safe. Consider adding an isPathWithinDirs check here or
-// renaming to clarify that the caller is responsible for containment validation.
-
 // resolvePathToAbsolute resolves path (absolute or relative) to an absolute path under
 // allowedDirs. Writes error and returns ("", false) on failure.
 func resolvePathToAbsolute(c *gin.Context, path string, allowedDirs []string) (string, bool) {
@@ -536,13 +529,35 @@ func resolveAbsPath(path string) (string, error) {
 
 func resolvePathToAbsoluteNoWrite(path string, allowedDirs []string) (string, error) {
 	if filepath.IsAbs(path) {
-		return resolveAbsPath(path)
+		absPath, err := resolveAbsPath(path)
+		if err != nil {
+			return "", err
+		}
+		if !isPathUnderDirs(absPath, allowedDirs) {
+			return "", errPathNotFound
+		}
+		return absPath, nil
 	}
 	absPath, ok := resolveRelativePathInDirs(path, allowedDirs)
 	if ok {
 		return absPath, nil
 	}
 	return "", errPathNotFound
+}
+
+// isPathUnderDirs returns true if absPath is under at least one of the given directories.
+func isPathUnderDirs(absPath string, dirs []string) bool {
+	cleanPath := filepath.Clean(absPath)
+	for _, d := range dirs {
+		if d == "" {
+			continue
+		}
+		cleanDir := filepath.Clean(d)
+		if cleanDir == cleanPath || strings.HasPrefix(cleanPath, cleanDir+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveRelativePathInDirs(path string, allowedDirs []string) (string, bool) {
