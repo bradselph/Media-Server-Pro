@@ -180,15 +180,10 @@ func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, e
 }
 
 // isLockedOut returns whether the IP is currently locked out due to failed attempts.
-// TODO: Bug — when the lockout duration expires, isLockedOut returns false but the
-// loginAttempt record is NOT reset. The next single failed attempt will immediately
-// re-lock the IP because attempt.Count is still >= MaxLoginAttempts. The attempt
-// should be cleared or reset when the lockout expires. The recordFailedAttempt method
-// partially handles this but uses LockoutDuration for the reset window which means
-// the lockout effectively doubles in duration.
+// When lockout has expired, the attempt is reset so the next failure starts a fresh count.
 func (m *Module) isLockedOut(ip string) bool {
-	m.attemptsMu.RLock()
-	defer m.attemptsMu.RUnlock()
+	m.attemptsMu.Lock()
+	defer m.attemptsMu.Unlock()
 
 	attempt, exists := m.loginAttempts[ip]
 	if !exists {
@@ -200,6 +195,9 @@ func (m *Module) isLockedOut(ip string) bool {
 		if time.Since(*attempt.LockedAt) < cfg.Auth.LockoutDuration {
 			return true
 		}
+		// Lockout expired — reset so next failed attempt doesn't immediately re-lock
+		attempt.Count = 0
+		attempt.LockedAt = nil
 	}
 	return false
 }
