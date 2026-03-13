@@ -2,7 +2,6 @@
 package middleware
 
 import (
-	"encoding/json"
 	"net"
 	"net/http"
 	"strings"
@@ -190,53 +189,6 @@ func ageGateSecure(r *http.Request) bool {
 		return true
 	}
 	return false
-}
-
-// TODO: Redundant code — StatusHandler and VerifyHandler (net/http variants below)
-// are never called. Only the Gin variants (GinStatusHandler, GinVerifyHandler) are
-// registered in api/routes/routes.go. These net/http handlers are dead code and should
-// be removed to reduce maintenance burden, or kept only if there is a plan to support
-// non-Gin HTTP servers.
-
-// StatusHandler handles GET /api/age-gate/status.
-// Returns { enabled, verified } so the frontend can decide whether to show the overlay.
-// This endpoint is intentionally public — no auth required.
-func (ag *AgeGate) StatusHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data": map[string]interface{}{
-			"enabled":  ag.cfg.Enabled,
-			"verified": ag.IsVerified(r),
-		},
-	})
-}
-
-// VerifyHandler handles POST /api/age-verify.
-// Records the visitor's age confirmation: sets a persistent cookie and caches the IP.
-func (ag *AgeGate) VerifyHandler(w http.ResponseWriter, r *http.Request) {
-	if ag.cfg.Enabled {
-		ip := extractClientIP(r)
-
-		ag.mu.Lock()
-		ag.verifiedIPs[ip] = time.Now()
-		ag.mu.Unlock()
-
-		ag.scheduleEvict()
-
-		http.SetCookie(w, &http.Cookie{
-			Name:     ag.cfg.CookieName,
-			Value:    "1",
-			MaxAge:   ag.cfg.CookieMaxAge,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-			Secure:   ageGateSecure(r),
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
 // GinStatusHandler returns a gin handler for GET /api/age-gate/status
