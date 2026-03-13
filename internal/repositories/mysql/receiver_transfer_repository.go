@@ -223,13 +223,10 @@ func (r *ReceiverMediaRepository) DeleteByID(ctx context.Context, id string) err
 	return nil
 }
 
-// TODO: Bug — same LIKE wildcard injection issue as in media_metadata_repository.go
-// ListFiltered: the search query is not escaped for SQL LIKE meta-characters (% and _).
-// A search for "100%" will match any name containing "100" followed by anything.
 func (r *ReceiverMediaRepository) Search(ctx context.Context, query string) ([]*repositories.ReceiverMediaRecord, error) {
 	var rows []receiverMediaRow
-	pattern := "%" + query + "%"
-	if err := r.db.WithContext(ctx).Where("name LIKE ?", pattern).Limit(100).Find(&rows).Error; err != nil {
+	pattern := "%" + escapeLike(query) + "%"
+	if err := r.db.WithContext(ctx).Where("name LIKE ? ESCAPE '\\\\'", pattern).Limit(100).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to search receiver media: %w", err)
 	}
 	return r.rowsToMediaRecords(rows), nil
