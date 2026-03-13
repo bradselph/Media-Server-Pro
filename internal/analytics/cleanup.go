@@ -22,17 +22,18 @@ func (m *Module) cleanup() {
 	m.log.Debug("Completed cleanup of old analytics data")
 }
 
-// cleanupOldDailyStats removes daily stats older than cutoffDate.
-// TODO: Incomplete cleanup — dailyUsers map is never cleaned up here. It is keyed by date
-// like dailyStats, but only dailyStats entries are deleted. Over time, dailyUsers will
-// accumulate stale date entries that leak memory. Should also delete m.dailyUsers[date]
-// for old dates.
+// cleanupOldDailyStats removes daily stats and dailyUsers entries older than cutoffDate.
 func (m *Module) cleanupOldDailyStats(cutoffDate string) {
 	m.statsMu.Lock()
 	defer m.statsMu.Unlock()
 	for date := range m.dailyStats {
 		if date < cutoffDate {
 			delete(m.dailyStats, date)
+		}
+	}
+	for date := range m.dailyUsers {
+		if date < cutoffDate {
+			delete(m.dailyUsers, date)
 		}
 	}
 }

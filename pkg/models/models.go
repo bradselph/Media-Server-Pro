@@ -351,23 +351,13 @@ func (*Session) TableName() string {
 	return "sessions"
 }
 
-// TODO: Bug — the 1-second grace period extends the session lifetime BEYOND ExpiresAt,
-// meaning a session that should have expired at T is still valid until T+1s. This is
-// backwards: if the intent is to handle clock skew, the grace should be subtracted
-// (expire slightly early, not late). An expired session being valid for an extra second
-// is a security issue. Consider removing the grace entirely or using IsStrictlyExpired
-// as the default.
-
-// IsExpired returns true if the session has expired.
-// Includes a 1-second grace period to account for clock skew and timing precision.
-// For security-critical operations, use IsStrictlyExpired() instead.
+// IsExpired returns true if the session has expired (now >= ExpiresAt).
 func (s *Session) IsExpired() bool {
-	return time.Now().After(s.ExpiresAt.Add(1 * time.Second))
+	return time.Now().After(s.ExpiresAt)
 }
 
-// IsStrictlyExpired returns true if the session has expired without any grace period.
-// Use this for security-sensitive operations like admin actions or password changes
-// where no timing tolerance should be allowed.
+// IsStrictlyExpired returns true if the session has expired. Same as IsExpired;
+// kept for API compatibility and to signal strict checks at call sites.
 func (s *Session) IsStrictlyExpired() bool {
 	return time.Now().After(s.ExpiresAt)
 }

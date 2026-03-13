@@ -20,6 +20,13 @@ import (
 // serverStartTime records when the server started, for uptime metrics.
 var serverStartTime = time.Now()
 
+// GetVersion returns the server version (from build ldflags, set by deploy script from VERSION file).
+// Public, unauthenticated — used by the index page footer to display deployed version.
+func (h *Handler) GetVersion(c *gin.Context) {
+	c.Header("Cache-Control", "no-cache, no-store")
+	writeSuccess(c, map[string]string{"version": h.buildInfo.Version})
+}
+
 // GetHealth returns server health status for uptime monitors, nginx health checks, and the
 // systemd healthcheck script. Returns 200 when healthy, 503 when any critical module is
 // degraded or unhealthy. This endpoint is intentionally unauthenticated.
@@ -401,6 +408,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Query cannot be empty")
 		return
 	}
+	if strings.Contains(query, ";") {
+		writeError(c, http.StatusBadRequest, "Multi-statement queries are not permitted")
+		return
+	}
 
 	session := getSession(c)
 	username := "unknown"
@@ -410,12 +421,6 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 
 	h.log.Info("Admin %s executing query: %s", username, query)
 
-	// TODO: SQL injection risk — the isSelect check uses a prefix match on the raw query
-	// string. An attacker can bypass this with leading whitespace (already handled by
-	// TrimSpace), but multi-statement queries like "SELECT 1; DROP TABLE users" will pass
-	// the prefix check. The DB driver may or may not execute multiple statements, but this
-	// should be hardened with a parameterized approach or by explicitly disabling
-	// multi-statement execution in the DB connection string (multiStatements=false).
 	isSelect := strings.HasPrefix(strings.ToUpper(query), "SELECT") ||
 		strings.HasPrefix(strings.ToUpper(query), "SHOW") ||
 		strings.HasPrefix(strings.ToUpper(query), "DESCRIBE") ||

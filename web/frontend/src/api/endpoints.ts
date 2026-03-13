@@ -83,6 +83,13 @@ import type {
     CrawlerStats,
 } from './types'
 
+// ── Version (public, for index footer) ──
+
+export const versionApi = {
+    get: () =>
+        api.get<{ version: string }>('/api/version'),
+}
+
 // ── Feature 1: Storage Usage & Permissions ──
 
 export const storageApi = {

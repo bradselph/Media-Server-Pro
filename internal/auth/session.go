@@ -124,10 +124,11 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	if !user.Enabled {
 		return nil, nil, ErrAccountDisabled
 	}
-	// TODO: Bug — LastActivity is updated in memory on the cached session but never
-	// persisted to the database. After a restart, session activity timestamps revert
-	// to their original values. Should periodically flush LastActivity to the DB.
 	session.LastActivity = time.Now()
+	// Persist LastActivity in background so request latency is not increased
+	go func(s *models.Session) {
+		_ = m.sessionRepo.Update(context.Background(), s)
+	}(session)
 	return session, user, nil
 }
 

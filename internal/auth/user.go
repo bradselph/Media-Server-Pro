@@ -394,10 +394,7 @@ func (m *Module) ListUsers(ctx context.Context) []*models.User {
 }
 
 // UpdateUserPreferences updates and persists user preferences.
-// TODO: Bug — if the userRepo.Update call fails after we've already mutated the shared
-// user pointer, the in-memory state diverges from the database. Unlike UpdateUser which
-// works on a copy, this modifies the original pointer directly under the lock. A failed
-// DB persist leaves the cache with changes that won't survive a restart.
+// Works on a copy so a failed DB update does not leave the cache out of sync with the DB.
 func (m *Module) UpdateUserPreferences(ctx context.Context, username string, prefs models.UserPreferences) error {
 	prefs.Validate()
 
@@ -407,16 +404,19 @@ func (m *Module) UpdateUserPreferences(ctx context.Context, username string, pre
 		m.usersMu.Unlock()
 		return ErrUserNotFound
 	}
-
-	user.Preferences = prefs
-	if prefs.ShowMature && !user.Permissions.CanViewMature {
-		user.Permissions.CanViewMature = true
+	userCopy := *user
+	userCopy.Preferences = prefs
+	if prefs.ShowMature && !userCopy.Permissions.CanViewMature {
+		userCopy.Permissions.CanViewMature = true
 	}
 	m.usersMu.Unlock()
 
-	if err := m.userRepo.Update(ctx, user); err != nil {
+	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after preference update: %v", err)
 		return err
 	}
+	m.usersMu.Lock()
+	m.users[username] = &userCopy
+	m.usersMu.Unlock()
 	return nil
 }

@@ -140,9 +140,7 @@ func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 		backupType = "full"
 	}
 
-	// TODO: Bug — same timestamp collision issue as admin.CreateBackup. Two calls within
-	// the same second produce the same ID, overwriting the previous backup file.
-	timestamp := time.Now().Format("20060102_150405")
+	timestamp := time.Now().Format("20060102_150405.000000000")
 	backupID := fmt.Sprintf("backup_%s", timestamp)
 	filename := backupID + ".zip"
 	backupPath := filepath.Join(m.backupDir, filename)

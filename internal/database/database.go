@@ -88,7 +88,7 @@ func buildDSN(db config.DatabaseConfig) string {
 	dsnCfg.Net = "tcp"
 	dsnCfg.Addr = fmt.Sprintf("%s:%d", db.Host, db.Port)
 	dsnCfg.DBName = db.Name
-	dsnCfg.Params = map[string]string{"charset": "utf8mb4"}
+	dsnCfg.Params = map[string]string{"charset": "utf8mb4", "multiStatements": "false"}
 	dsnCfg.ParseTime = true
 	dsnCfg.Timeout = db.Timeout
 	if db.TLSMode != "" && db.TLSMode != "false" {
