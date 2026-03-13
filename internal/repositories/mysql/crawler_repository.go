@@ -35,14 +35,11 @@ func NewCrawlerTargetRepository(db *gorm.DB) repositories.CrawlerTargetRepositor
 	return &CrawlerTargetRepository{db: db}
 }
 
-// TODO: Bug — Upsert's OnConflict DoUpdates list does not include "updated_at".
-// When an existing crawler target is updated, its updated_at timestamp is not
-// refreshed, making it impossible to know when the target was last modified.
 func (r *CrawlerTargetRepository) Upsert(ctx context.Context, target *repositories.CrawlerTargetRecord) error {
 	row := r.recordToRow(target)
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"name", "url", "site", "enabled"}),
+		DoUpdates: clause.AssignmentColumns([]string{"name", "url", "site", "enabled", "updated_at"}),
 	}).Create(&row).Error; err != nil {
 		return fmt.Errorf("failed to upsert crawler target: %w", err)
 	}
