@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -180,12 +181,11 @@ func (h *Handler) Register(c *gin.Context) {
 			return
 		}
 	}
-	// TODO: Email validation only checks for "@" which accepts clearly invalid values like
-	// "@", "@@", etc. Consider using a proper validation (e.g. net/mail.ParseAddress) or at
-	// minimum require characters before and after the "@".
-	if req.Email != "" && !strings.Contains(req.Email, "@") {
-		writeError(c, http.StatusBadRequest, "Invalid email address")
-		return
+	if req.Email != "" {
+		if _, parseErr := mail.ParseAddress(req.Email); parseErr != nil {
+			writeError(c, http.StatusBadRequest, "Invalid email address")
+			return
+		}
 	}
 
 	user, err := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{
