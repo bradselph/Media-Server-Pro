@@ -1012,8 +1012,7 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 // ListMediaPaginated returns a page of media items using DB-level filtering and pagination.
 // Use this for admin or large libraries to avoid loading the full catalog. Total is the
 // total matching rows in the DB; items may be fewer if some paths are no longer in the
-// current scan (e.g. deleted files not yet pruned). Filter.Type and Filter.Tags are
-// applied in-memory on the page, so the returned slice can be shorter than limit.
+// current scan (e.g. deleted files not yet pruned). Type and Tags are filtered at DB level.
 func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, offset int) (items []*models.MediaItem, total int64, err error) {
 	if m.metadataRepo == nil {
 		return nil, 0, fmt.Errorf("metadata repository not available")
@@ -1056,10 +1055,6 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 		}
 	}
 
-	// ListFiltered already applied sort in DB; re-sort only if we need Type/Tags ordering
-	if filter.Type != "" || len(filter.Tags) > 0 {
-		filter.SortItems(items)
-	}
 	return items, total, nil
 }
 
