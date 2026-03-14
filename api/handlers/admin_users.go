@@ -272,6 +272,21 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		return
 	}
 
+	sess := getSession(c)
+	currentUser := ""
+	if sess != nil {
+		currentUser = sess.Username
+	}
+
+	adminSet := make(map[string]struct{})
+	if req.Action == "delete" || req.Action == "disable" {
+		for _, u := range h.auth.ListUsers(c.Request.Context()) {
+			if u.Role == models.RoleAdmin && u.Enabled {
+				adminSet[u.Username] = struct{}{}
+			}
+		}
+	}
+
 	var successCount, failedCount int
 	errs := make([]string, 0)
 
@@ -279,11 +294,24 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		if username == "" || username == "admin" {
 			continue
 		}
+		if username == currentUser && (req.Action == "delete" || req.Action == "disable") {
+			failedCount++
+			errs = append(errs, fmt.Sprintf("%s: cannot %s your own account", username, req.Action))
+			continue
+		}
+		if (req.Action == "delete" || req.Action == "disable") {
+			if _, isAdmin := adminSet[username]; isAdmin && len(adminSet) <= 1 {
+				failedCount++
+				errs = append(errs, fmt.Sprintf("%s: cannot %s the last admin account", username, req.Action))
+				continue
+			}
+		}
 		var opErr error
 		switch req.Action {
 		case "delete":
 			opErr = h.auth.DeleteUser(c.Request.Context(), username)
 			if opErr == nil {
+				delete(adminSet, username)
 				h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_delete_user", Target: username})
 			}
 		case "enable":
@@ -294,6 +322,7 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		case "disable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": false})
 			if opErr == nil {
+				delete(adminSet, username)
 				h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_disable_user", Target: username})
 			}
 		}
