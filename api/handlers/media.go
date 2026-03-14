@@ -191,7 +191,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 // GetMedia returns a single media item
 func (h *Handler) GetMedia(c *gin.Context) {
-	id := c.Param("id")
+	id := strings.TrimSpace(c.Param("id"))
 
 	item, err := h.media.GetMediaByID(id)
 	if err != nil {
@@ -298,7 +298,7 @@ func (h *Handler) GetCategories(c *gin.Context) {
 
 // StreamMedia streams a media file
 func (h *Handler) StreamMedia(c *gin.Context) {
-	id := c.Query("id")
+	id := strings.TrimSpace(c.Query("id"))
 	if id == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
 		return
@@ -447,7 +447,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		}
 	}
 
-	id := c.Query("id")
+	id := strings.TrimSpace(c.Query("id"))
 	if id == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
 		return

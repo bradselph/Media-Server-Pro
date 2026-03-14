@@ -1,6 +1,7 @@
 package hls
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"time"
@@ -76,7 +77,8 @@ func (m *Module) shouldCleanupSegmentDir(entry os.DirEntry, job *models.HLSJob, 
 	return !lastActivity.IsZero() && lastActivity.Before(cutoff)
 }
 
-// removeSegmentDirAndState deletes the segment directory and its in-memory state. Returns true if removed successfully.
+// removeSegmentDirAndState deletes the segment directory, its in-memory state,
+// and the persisted DB record. Returns true if removed successfully.
 func (m *Module) removeSegmentDirAndState(jobID string) bool {
 	path := filepath.Join(m.cacheDir, jobID)
 	if err := os.RemoveAll(path); err != nil {
@@ -89,6 +91,9 @@ func (m *Module) removeSegmentDirAndState(jobID string) bool {
 	m.accessTracker.mu.Lock()
 	delete(m.accessTracker.lastAccess, jobID)
 	m.accessTracker.mu.Unlock()
+	if m.repo != nil {
+		_ = m.repo.Delete(context.Background(), jobID)
+	}
 	return true
 }
 
