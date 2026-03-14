@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -46,6 +47,13 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 	if len(req.Password) < 8 {
 		writeError(c, http.StatusBadRequest, "Password must be at least 8 characters")
 		return
+	}
+	req.Email = strings.TrimSpace(req.Email)
+	if req.Email != "" {
+		if _, parseErr := mail.ParseAddress(req.Email); parseErr != nil {
+			writeError(c, http.StatusBadRequest, "Invalid email address")
+			return
+		}
 	}
 	if req.Role != models.RoleAdmin && req.Role != models.RoleViewer {
 		req.Role = models.RoleViewer
