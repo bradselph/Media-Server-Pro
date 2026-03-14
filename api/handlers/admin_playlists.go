@@ -12,14 +12,31 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-// filterPlaylistsBySearch returns playlists whose name contains the given search term (case-insensitive).
+// filterPlaylistsBySearch returns playlists whose name or user_id contains the search term (case-insensitive).
 func filterPlaylistsBySearch(playlists []*models.Playlist, search string) []*models.Playlist {
 	if search == "" {
 		return playlists
 	}
 	kept := make([]*models.Playlist, 0, len(playlists))
+	low := strings.ToLower(search)
 	for _, p := range playlists {
-		if strings.Contains(strings.ToLower(p.Name), search) {
+		if strings.Contains(strings.ToLower(p.Name), low) || strings.Contains(strings.ToLower(p.UserID), low) {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// filterPlaylistsByVisibility filters by is_public. visibility: "public" | "private" | ""
+func filterPlaylistsByVisibility(playlists []*models.Playlist, visibility string) []*models.Playlist {
+	if visibility == "" {
+		return playlists
+	}
+	kept := make([]*models.Playlist, 0, len(playlists))
+	for _, p := range playlists {
+		if visibility == "public" && p.IsPublic {
+			kept = append(kept, p)
+		} else if visibility == "private" && !p.IsPublic {
 			kept = append(kept, p)
 		}
 	}
@@ -47,9 +64,11 @@ func (h *Handler) AdminListPlaylists(c *gin.Context) {
 	}
 	all := h.playlist.ListAllPlaylists()
 	search := strings.ToLower(strings.TrimSpace(c.Query("search")))
+	visibility := strings.TrimSpace(c.Query("visibility")) // "public" | "private" | ""
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 100, Min: 1, Max: 1000})
 	page := ParseQueryInt(c, "page", QueryIntOpts{Default: 1, Min: 1, Max: 10000})
 	filtered := filterPlaylistsBySearch(all, search)
+	filtered = filterPlaylistsByVisibility(filtered, visibility)
 	totalItems := len(filtered)
 	totalPages := 1
 	if limit > 0 && totalItems > 0 {

@@ -786,7 +786,7 @@ export const adminApi = {
     },
 
     // Feature 6: Admin playlists management — backend returns { items, total_items, total_pages }
-    listAllPlaylists: (params?: { page?: number; limit?: number; search?: string }) => {
+    listAllPlaylists: (params?: { page?: number; limit?: number; search?: string; visibility?: string }) => {
         const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString() : ''
         return api.get<AdminPlaylistListResponse>(`/api/admin/playlists${qs}`)
     },

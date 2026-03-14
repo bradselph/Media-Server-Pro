@@ -37,9 +37,10 @@ export function PlaylistsTab() {
     }, [search])
 
     const {data: playlistResponse} = useQuery({
-        queryKey: ['admin-playlists', debouncedSearch],
+        queryKey: ['admin-playlists', debouncedSearch, filterVisibility],
         queryFn: () => adminApi.listAllPlaylists({
             search: debouncedSearch || undefined,
+            visibility: filterVisibility || undefined,
             limit: 500,
         }),
     })
@@ -83,11 +84,7 @@ export function PlaylistsTab() {
         }
     }
 
-    const filtered = playlists.filter(p => {
-        if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.user_id.toLowerCase().includes(search.toLowerCase())) return false
-        if (filterVisibility === 'public' && !p.is_public) return false
-        return !(filterVisibility === 'private' && p.is_public)
-    }).sort((a, b) => {
+    const filtered = playlists.sort((a, b) => {
         let cmp = 0
         switch (sortBy) {
             case 'name': cmp = a.name.localeCompare(b.name); break
@@ -178,7 +175,7 @@ export function PlaylistsTab() {
                         </button>
                     )}
                     <span style={{fontSize: 12, color: 'var(--text-muted)'}}>
-                        {filtered.length} of {playlistResponse?.total_items ?? playlists.length} playlist{(playlistResponse?.total_items ?? playlists.length) !== 1 ? 's' : ''}
+                        {playlists.length} of {playlistResponse?.total_items ?? 0} playlist{(playlistResponse?.total_items ?? 0) !== 1 ? 's' : ''}
                     </span>
                 </div>
                 {selected.size > 0 && (
