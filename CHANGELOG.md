@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.97.0] - 2026-03-14 (minor)
+
+- Merge pull request #96 from bradselph/development
+- Merge branch 'main' into development
+- fix(lint): improve variable naming consistency in UpdatesTab by renaming TEXT_MUTED constant
+- fix(lint): extract duplicated var(--text-muted) literal into TEXT_MUTED constant in UpdatesTab
+- fix(todo): reject update when SHA256SUMS download/parse fails instead of silently skipping
+- chore(audit-loop): cycle 6/25
+- fix(errors): propagate item deletion errors in duplicates applyRemoveResolution instead of silent log-and-continue
+- fix(contract): enforce pending-status check in IgnoreDiscovery to match ApproveDiscovery contract
+- fix(edge-cases): guard against short fingerprint panic in tryRecordLocalPair
+- fix(feature): use RLock in crawler GetStats and log query errors instead of silencing them
+- fix(lint): use strict inequality in PlayerSettingsPanel bandwidth check
+- fix(todo): propagate context through crawler crawl pipeline for cancellation support
+- fix(PlayerSettingsPanel): narrow bandwidth type for formatBitrate call
+- chore(audit-loop): cycle 5/25
+- fix(errors): log ignored DB errors in duplicates CountPending and isResolvedRemovalCached
+- fix(contract): validate email format in AdminUpdateUser to match AdminCreateUser contract
+- fix(edge-cases): harden extractAllFiles to report partial restore failures instead of silent success
+- fix(feature): complete execution path for RestoreBackup/DeleteBackup — validate backupID against path traversal
+- fix(lint): extract duplicated var(--text-muted) literal into TEXT_MUTED constant in AnalyticsTab
+- fix(todo): add self-action and last-admin protection to AdminBulkUsers
+- chore(audit-loop): cycle 4/25
+- fix(errors): remove silent Flush failure and orphaned file in analytics ExportCSV
+- fix(contract): validate BaseURL scheme and host in RegisterSlave before use in proxyViaHTTP
+- fix(edge-cases): prevent panic in sanitizeFilename when extension exceeds 255 chars
+- fix(feature): complete execution path for ExportAuditLog — clean up orphaned files on error, check Flush
+- fix(lint): extract duplicated var(--text-muted) literal into TEXT_MUTED constant in SourcesTab
+- chore(audit-loop): cycle 3/25
+- fix(errors): propagate file removal error in admin DeleteBackup instead of silent log
+- fix(contract): validate email format in AdminCreateUser to match Register handler
+- fix(edge-cases): validate URL format in CreateRemoteSource and require URL in CacheRemoteMedia
+- fix(feature): enforce admin permissions after applyPermissionsFromMap in UpdateUser
+- fix(lint): resolve react-hooks/exhaustive-deps warnings in IndexPage mini-player
+- fix(todo): enforce http/https scheme in remote module validateURL
+
+
 ## [0.96.0] - 2026-03-14 (minor)
 
 - Merge pull request #95 from bradselph/development
