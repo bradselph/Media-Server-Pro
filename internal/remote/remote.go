@@ -37,6 +37,20 @@ const (
 	userAgentValue       = "MediaServerPro/4.0"
 )
 
+// allowedRemoteHeaders is the set of response headers forwarded from the remote
+// origin to the client. Only media-relevant headers are allowed to avoid leaking
+// server identity or infrastructure details (Server, X-Powered-By, etc.).
+var allowedRemoteHeaders = map[string]bool{
+	"Content-Type":        true,
+	"Content-Length":      true,
+	"Content-Range":       true,
+	"Content-Disposition": true,
+	"Accept-Ranges":       true,
+	"Last-Modified":       true,
+	"Etag":                true,
+	"Cache-Control":       true,
+}
+
 // Module handles remote media sources
 type Module struct {
 	config     *config.Manager
@@ -483,21 +497,9 @@ func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL 
 		}
 	}()
 
-	// TODO: Bug - using a header denylist instead of an allowlist. Headers like
-	// "Server", "X-Powered-By", "X-Request-Id" from the remote will leak to
-	// the client, potentially exposing infrastructure details. The receiver
-	// module uses an allowlist (allowedProxyHeaders) which is the safer pattern.
-	// Also, this sensitiveHeaders map is rebuilt on every call — extract to a
-	// package-level var for consistency with the extractor module.
-	// Copy safe response headers, excluding security-sensitive ones
-	sensitiveHeaders := map[string]bool{
-		"Set-Cookie":       true,
-		"Authorization":    true,
-		"Cookie":           true,
-		"Www-Authenticate": true,
-	}
+	// Copy only allowed response headers (allowlist to avoid leaking Server, X-Powered-By, etc.)
 	for key, values := range resp.Header {
-		if sensitiveHeaders[key] {
+		if !allowedRemoteHeaders[http.CanonicalHeaderKey(key)] {
 			continue
 		}
 		for _, value := range values {
@@ -607,14 +609,8 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 		source = state.Source
 	}
 
-	// TODO: Bug - CacheMedia creates requests without a context, so downloads
-	// cannot be cancelled on module shutdown. Use http.NewRequestWithContext
-	// with a context parameter (or the module's shutdown context).
-	// Also, there is no size limit on the download — a malicious remote could
-	// serve an infinitely large response and fill the disk. Add an io.LimitReader
-	// or check Content-Length against a configured maximum.
-	// Create request
-	req, err := http.NewRequest("GET", remoteURL, nil)
+	// Create request with context so it can be cancelled (e.g. on shutdown).
+	req, err := http.NewRequestWithContext(context.Background(), "GET", remoteURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -639,6 +635,12 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
+	// Cap single-file download size to avoid unbounded disk use (default 2GB).
+	const maxSingleCacheFile = 2 * 1024 * 1024 * 1024
+	if resp.ContentLength > 0 && resp.ContentLength > maxSingleCacheFile {
+		return nil, fmt.Errorf("remote file too large: %d bytes (max %d)", resp.ContentLength, maxSingleCacheFile)
+	}
+
 	// Generate cache filename
 	filename := generateCacheFilename(remoteURL)
 	localPath := filepath.Join(m.cacheDir, filename)
@@ -654,8 +656,8 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 		}
 	}()
 
-	// Copy content
-	size, err := io.Copy(file, resp.Body)
+	// Copy content (limited to maxSingleCacheFile to avoid unbounded disk use)
+	size, err := io.Copy(file, io.LimitReader(resp.Body, maxSingleCacheFile))
 	if err != nil {
 		if removeErr := os.Remove(localPath); removeErr != nil {
 			m.log.Warn("Failed to remove incomplete cache file %s: %v", localPath, removeErr)
@@ -851,17 +853,12 @@ func (m *Module) CleanCache() int {
 		}
 	}
 
-	// Phase 2: LRU eviction if still over size limit
+	// Phase 2: LRU eviction if over size limit (skip when maxSize <= 0 = no limit).
 	var currentSize int64
 	for _, cached := range m.mediaCache {
 		currentSize += cached.Size
 	}
-
-	// TODO: Bug - when maxSize is 0 (unconfigured), this condition is always true,
-	// meaning LRU eviction is never triggered even if the cache grows unbounded.
-	// Add a guard: if maxSize <= 0, skip LRU eviction entirely (or default to
-	// a reasonable max). The config default should be documented.
-	if currentSize <= maxSize {
+	if maxSize <= 0 || currentSize <= maxSize {
 		if removed > 0 {
 			m.log.Info("Cleaned %d expired cache items", removed)
 		}

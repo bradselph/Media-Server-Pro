@@ -250,4 +250,5 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	// ProxyStream (the consumer) finishes reading or the pipe is closed.
 	_, copyErr := io.Copy(pw, c.Request.Body)
 	pw.CloseWithError(copyErr) // signals EOF (or error) to the reader
+	writeSuccess(c, gin.H{"status": "ok"})
 }

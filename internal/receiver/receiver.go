@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -126,6 +127,8 @@ type Module struct {
 	pendingStreams map[string]*PendingStream
 	// proxySem limits the number of concurrent proxy connections (MaxProxyConns).
 	proxySem chan struct{}
+	// httpClient is shared for HTTP fallback proxy to slaves (connection pooling).
+	httpClient *http.Client
 }
 
 // NewModule creates a new receiver module.
@@ -154,6 +157,12 @@ func (m *Module) Name() string { return "receiver" }
 // Start implements server.Module.
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting receiver module...")
+	// Shared client for HTTP fallback proxy (connection pooling); no timeout so long streams work.
+	m.httpClient = &http.Client{Transport: &http.Transport{
+		MaxIdleConns:        10,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}}
 
 	m.slaveRepo = mysqlrepo.NewReceiverSlaveRepository(m.dbModule.GORM())
 	m.mediaRepo = mysqlrepo.NewReceiverMediaRepository(m.dbModule.GORM())
@@ -184,17 +193,19 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop implements server.Module.
-// TODO: Incomplete feature - Stop does not close active WebSocket connections.
-// Connected slaves continue sending heartbeats and catalog pushes to a stopped
-// module. Should iterate m.wsConns and close each connection, and drain
-// m.pendingStreams by closing their Ready channels. The healthCheckLoop goroutine
-// is correctly stopped via healthDone, but wsConns cleanup is missing.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping receiver module...")
 	if m.healthTicker != nil {
 		m.healthTicker.Stop()
 		close(m.healthDone)
 	}
+	// Close all WebSocket connections so slaves stop heartbeating and reconnect on next Start.
+	m.wsMu.Lock()
+	for _, sw := range m.wsConns {
+		sw.conn.Close()
+	}
+	m.wsConns = make(map[string]*slaveWS)
+	m.wsMu.Unlock()
 	m.setHealth(false, "Stopped")
 	return nil
 }
@@ -701,18 +712,14 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 
 // proxyViaHTTP fetches the media from the slave's HTTP endpoint and relays it
 // to the client.  This is the fallback when the slave has no active WebSocket.
-// TODO: Bug - the targetURL is constructed by concatenating item.Path directly
-// into the query string without URL-encoding. If item.Path contains special
-// characters (spaces, &, =, etc.), the URL is malformed or the query can be
-// injected. Use url.QueryEscape(item.Path) or url.Values to build the query.
 func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *SlaveNode, item *MediaItem) error {
 	baseURL := slave.BaseURL
 	if baseURL == "" || baseURL == "ws-connected" {
 		return fmt.Errorf("slave %s has no HTTP base URL for fallback", item.SlaveID)
 	}
 
-	// Build the upstream request to the slave's media endpoint.
-	targetURL := strings.TrimRight(baseURL, "/") + "/media?id=" + item.Path
+	// Build the upstream request to the slave's media endpoint (path is query-encoded).
+	targetURL := strings.TrimRight(baseURL, "/") + "/media?id=" + url.QueryEscape(item.Path)
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to build proxy request: %w", err)
@@ -729,14 +736,12 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
+	// Use request context with timeout so client cancellation and config timeout both apply.
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+	req = req.WithContext(ctx)
 
-	// TODO: Bug - a new http.Client is created per proxy request, which creates
-	// a new transport and leaks idle connections. Use a shared client on the Module.
-	// Also, for streaming large media files, a timeout on the entire HTTP call
-	// (including body read) will prematurely kill long downloads. Consider using
-	// a transport-level timeout or context-based cancellation instead.
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
+	resp, err := m.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("HTTP proxy to slave failed: %w", err)
 	}

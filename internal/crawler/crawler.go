@@ -38,7 +38,7 @@ type Module struct {
 	httpClient *http.Client
 	browser    *browserDetector
 
-	crawlMu   sync.Mutex
+	crawlMu   sync.RWMutex
 	crawling  bool
 	healthMu  sync.RWMutex
 	healthy   bool
@@ -699,12 +699,9 @@ func (m *Module) GetStats() Stats {
 }
 
 // IsCrawling returns whether a crawl is currently in progress.
-// TODO: Minor — uses m.crawlMu.Lock() (write lock) for a read-only operation. Should use
-// a sync.RWMutex or simply read the bool atomically. The current Mutex works but blocks
-// other readers unnecessarily.
 func (m *Module) IsCrawling() bool {
-	m.crawlMu.Lock()
-	defer m.crawlMu.Unlock()
+	m.crawlMu.RLock()
+	defer m.crawlMu.RUnlock()
 	return m.crawling
 }
 

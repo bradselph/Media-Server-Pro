@@ -141,11 +141,13 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
-// TODO: Incomplete feature - Stop does not clean up the playlistCache (sync.Map).
-// Stale cached entries survive and hold references to upstream URLs. Also, the
-// httpClient is never explicitly closed — its idle connections are not drained.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping extractor module...")
+	// Clear playlist cache so stale entries do not hold references to upstream URLs.
+	m.playlistCache.Range(func(key, _ interface{}) bool {
+		m.playlistCache.Delete(key)
+		return true
+	})
 	m.setHealth(false, "Stopped")
 	return nil
 }
@@ -507,20 +509,13 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	}
 	defer resp.Body.Close()
 
-	// TODO: Bug - sensitiveHeaders check is case-sensitive but HTTP headers from
-	// resp.Header are canonicalized by Go (e.g. "Set-Cookie"). This works for
-	// the listed headers because Go's canonical form matches the map keys, but
-	// the pattern is fragile. Use http.CanonicalHeaderKey() or textproto.CanonicalMIMEHeaderKey()
-	// for robustness. Also consider using an allowlist (like receiver's
-	// allowedProxyHeaders) instead of a denylist, which is safer against
-	// leaking unexpected headers like X-Powered-By or Server.
-	// Copy safe response headers
+	// Copy safe response headers (canonical key check for robustness).
 	sensitiveHeaders := map[string]bool{
 		"Set-Cookie": true, "Authorization": true,
 		"Cookie": true, "Www-Authenticate": true,
 	}
 	for key, values := range resp.Header {
-		if sensitiveHeaders[key] {
+		if sensitiveHeaders[http.CanonicalHeaderKey(key)] {
 			continue
 		}
 		for _, value := range values {

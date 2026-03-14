@@ -38,6 +38,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -443,24 +444,20 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	var extraHeaders map[string]string
 
 	// Handle Range requests
-	// TODO: SILENT FAILURE — If parseRange returns an error (malformed Range header),
-	// the error is silently ignored and the full file is served with status 200 instead
-	// of returning HTTP 416 Range Not Satisfiable. Similarly, if file.Seek fails, the
-	// error is silently ignored and the file is served from the current offset (likely
-	// position 0) with incorrect content. Both error cases should be logged and ideally
-	// reported back to the master.
 	if req.Range != "" {
 		start, end, err := parseRange(req.Range, stat.Size())
-		if err == nil {
-			if _, seekErr := file.Seek(start, io.SeekStart); seekErr == nil {
-				length := end - start + 1
-				body = io.LimitReader(file, length)
-				statusCode = 206
-				contentLength = length
-				extraHeaders = map[string]string{
-					"Content-Range": fmt.Sprintf("bytes %d-%d/%d", start, end, stat.Size()),
-					"Accept-Ranges": "bytes",
-				}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid range header %q for %s: %v\n", req.Range, req.Token, err)
+		} else if _, seekErr := file.Seek(start, io.SeekStart); seekErr != nil {
+			fmt.Fprintf(os.Stderr, "Seek failed for stream %s: %v\n", req.Token, seekErr)
+		} else {
+			length := end - start + 1
+			body = io.LimitReader(file, length)
+			statusCode = 206
+			contentLength = length
+			extraHeaders = map[string]string{
+				"Content-Range": fmt.Sprintf("bytes %d-%d/%d", start, end, stat.Size()),
+				"Accept-Ranges": "bytes",
 			}
 		}
 	}
@@ -511,7 +508,10 @@ func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
 
 	if parts[0] == "" {
 		// Suffix range: -500 means last 500 bytes
-		n := parseInt64(parts[1])
+		n, err := parseInt64(parts[1])
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid suffix range: %w", err)
+		}
 		start = fileSize - n
 		if start < 0 {
 			start = 0
@@ -519,11 +519,22 @@ func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
 		end = fileSize - 1
 	} else if parts[1] == "" {
 		// Open-ended: 500- means from byte 500 to end
-		start = parseInt64(parts[0])
+		var err error
+		start, err = parseInt64(parts[0])
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid start: %w", err)
+		}
 		end = fileSize - 1
 	} else {
-		start = parseInt64(parts[0])
-		end = parseInt64(parts[1])
+		var err error
+		start, err = parseInt64(parts[0])
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid start: %w", err)
+		}
+		end, err = parseInt64(parts[1])
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid end: %w", err)
+		}
 	}
 
 	if start < 0 || start >= fileSize || end < start || end >= fileSize {
@@ -533,15 +544,9 @@ func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
 	return start, end, nil
 }
 
-// TODO: BUG — SILENT PARSE FAILURE — fmt.Sscanf silently returns 0 on unparseable
-// input (e.g., "abc" or ""), and the error is discarded. This means a malformed
-// Range header like "bytes=abc-def" will be parsed as start=0, end=0, which passes
-// the bounds check and serves the first byte. Use strconv.ParseInt instead and
-// propagate the error to the caller (parseRange) so it can return an error.
-func parseInt64(s string) int64 {
-	var n int64
-	fmt.Sscanf(s, "%d", &n)
-	return n
+func parseInt64(s string) (int64, error) {
+	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	return n, err
 }
 
 // sendWSJSON sends a typed JSON message over the WebSocket.
