@@ -1,5 +1,7 @@
 # Audit: Remaining issues (as of last full scan)
 
+Five fix loops completed: config/docs (CONFIG-NOTES, AUDIT-REMAINING), cleanup (.bak removed), UsersTab (void + nested ternary), HuggingFaceTab (duplicate string + nested ternary), PlaylistsTab (nested ternary). Frontend lint: ~21 errors, ~33 warnings remain (useHLS nesting, more nested ternaries/duplicate strings elsewhere).
+
 ## Resolved / Low priority
 - **TODOs**: Project Go/TS/TSX and scripts have been audited; remaining TODOs are in `node_modules`, CHANGELOG (historical), and docs that reference the word "TODO".
 - **panic/recover**: Intentional in handler (nil deps), auth (crypto/rand), config (recover in Apply), admin_classify (recover in classify), hls/jobs (recover in worker). All documented or obvious.
