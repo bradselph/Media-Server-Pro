@@ -34,18 +34,11 @@ func parseAdminListSortBy(c *gin.Context) string {
 }
 
 func parseAdminListTags(c *gin.Context) []string {
-	t := strings.TrimSpace(c.Query("tags"))
+	t := c.Query("tags")
 	if t == "" {
 		return nil
 	}
-	parts := strings.Split(t, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if s := strings.TrimSpace(p); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
+	return strings.Split(t, ",")
 }
 
 func parseAdminListIsMature(c *gin.Context) *bool {
@@ -79,13 +72,13 @@ func parseAdminListPage(c *gin.Context) int {
 func parseAdminListQuery(c *gin.Context) adminListParams {
 	return adminListParams{
 		filter: media.Filter{
-			Type:     models.MediaType(strings.TrimSpace(c.Query("type"))),
-			Category: strings.TrimSpace(c.Query("category")),
-			Search:   strings.TrimSpace(c.Query("search")),
+			Type:     models.MediaType(c.Query("type")),
+			Category: c.Query("category"),
+			Search:   c.Query("search"),
 			Tags:     parseAdminListTags(c),
 			IsMature: parseAdminListIsMature(c),
 			SortBy:   parseAdminListSortBy(c),
-			SortDesc: strings.TrimSpace(c.Query("sort_order")) == "desc",
+			SortDesc: c.Query("sort_order") == "desc",
 		},
 		limit: parseAdminListLimit(c),
 		page:  parseAdminListPage(c),

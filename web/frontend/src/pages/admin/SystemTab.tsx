@@ -1,4 +1,4 @@
-import {type FormEvent, useEffect, useState} from 'react'
+import {type FormEvent, useState} from 'react'
 import {useQuery} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {QueryResult} from '@/api/types'
@@ -76,16 +76,23 @@ function SettingsTab() {
     const [pwMsg, setPwMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [pwLoading, setPwLoading] = useState(false)
 
-    const {data: configData} = useQuery({
+    // TODO: Anti-pattern — calling `setConfigText` inside `queryFn` is a side effect
+    // during the query function. TanStack Query may call queryFn multiple times (retries,
+    // refetches, background refetches), which will overwrite any user edits in the textarea.
+    // WHY: If the user is editing config JSON and a background refetch triggers, their
+    // edits will be silently replaced by the freshly fetched data.
+    // FIX: Use the `data` return value from useQuery and initialize `configText` from it
+    // in a separate useEffect that only runs on first load (or use `onSuccess` / `select`).
+    // Alternatively, set `staleTime: Infinity` and `refetchOnWindowFocus: false` to prevent
+    // unexpected overwrites.
+    useQuery({
         queryKey: ['admin-config'],
-        queryFn: () => adminApi.getConfig(),
-        staleTime: Infinity,
-        refetchOnWindowFocus: false,
+        queryFn: async () => {
+            const data = await adminApi.getConfig()
+            setConfigText(JSON.stringify(data, null, 2))
+            return data
+        },
     })
-
-    useEffect(() => {
-        if (configData) setConfigText(JSON.stringify(configData, null, 2))
-    }, [configData])
 
     async function handleSave() {
         setMsg(null)

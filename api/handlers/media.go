@@ -408,9 +408,6 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		h.log.Warn("Failed to increment view count for %s: %v", absPath, err)
 	}
 
-	// When streaming fails due to client disconnect (broken pipe, connection reset),
-	// we check c.Writer.Written() and isClientDisconnect(err) before writing an error
-	// to avoid corrupting a partially written response.
 	if err := h.streaming.Stream(c.Writer, c.Request, req); err != nil {
 		if errors.Is(err, streaming.ErrFileNotFound) {
 			writeError(c, http.StatusNotFound, errFileNotFound)

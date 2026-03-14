@@ -3,7 +3,6 @@ package config
 func (m *Manager) applyDirectoryEnvOverrides() {
 	m.applyDirectoryVideoMusicOverrides()
 	m.applyDirectoryOtherOverrides()
-	m.applyDirectoryCustomStaticOverride()
 }
 
 func (m *Manager) applyDirectoryVideoMusicOverrides() {
@@ -21,12 +20,6 @@ func (m *Manager) applyDirectoryVideoMusicOverrides() {
 	}
 	if val := envGetStr("UPLOADS_DIR"); val != "" {
 		m.config.Directories.Uploads = val
-	}
-}
-
-func (m *Manager) applyDirectoryCustomStaticOverride() {
-	if val := envGetStr("CUSTOM_STATIC_DIR"); val != "" {
-		m.config.Directories.CustomStatic = val
 	}
 }
 

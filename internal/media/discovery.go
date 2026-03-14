@@ -1055,6 +1055,10 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 		}
 	}
 
+	// ListFiltered already applied sort in DB; re-sort only if we need Type/Tags ordering
+	if filter.Type != "" || len(filter.Tags) > 0 {
+		filter.SortItems(items)
+	}
 	return items, total, nil
 }
 
