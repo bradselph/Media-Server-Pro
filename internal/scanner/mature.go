@@ -961,14 +961,9 @@ func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature
 	result.ReviewedAt = &reviewedAt
 
 	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
-	// TODO: convertScannerToRepo is called below after Unlock, but result is still
-	// referenced without the lock. Another goroutine could modify result concurrently
-	// between Unlock and convertScannerToRepo. Should copy the result while holding
-	// the lock or call convertScannerToRepo before unlocking.
+	repoResult := s.convertScannerToRepo(result)
 	s.mu.Unlock()
 
-	// Persist change to MySQL
-	repoResult := s.convertScannerToRepo(result)
 	if err := s.scanRepo.Save(ctx, repoResult); err != nil {
 		s.log.Error("Failed to persist mature flag to database: %v", err)
 		return fmt.Errorf("failed to persist mature flag: %w", err)
