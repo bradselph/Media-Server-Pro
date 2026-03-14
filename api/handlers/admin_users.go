@@ -19,6 +19,19 @@ func (h *Handler) AdminListUsers(c *gin.Context) {
 	writeSuccess(c, users)
 }
 
+// validUsername checks that name is 3–64 chars of [a-zA-Z0-9_-].
+func validUsername(name string) error {
+	if len(name) < 3 || len(name) > 64 {
+		return fmt.Errorf("Username must be between 3 and 64 characters")
+	}
+	for _, ch := range name {
+		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_' && ch != '-' {
+			return fmt.Errorf("Username may only contain letters, numbers, underscores, and hyphens")
+		}
+	}
+	return nil
+}
+
 // AdminCreateUser creates a user
 func (h *Handler) AdminCreateUser(c *gin.Context) {
 	var req struct {
@@ -34,15 +47,9 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
-	if len(req.Username) < 3 || len(req.Username) > 64 {
-		writeError(c, http.StatusBadRequest, "Username must be between 3 and 64 characters")
+	if err := validUsername(req.Username); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
-	}
-	for _, ch := range req.Username {
-		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_' && ch != '-' {
-			writeError(c, http.StatusBadRequest, "Username may only contain letters, numbers, underscores, and hyphens")
-			return
-		}
 	}
 	if len(req.Password) < 8 {
 		writeError(c, http.StatusBadRequest, "Password must be at least 8 characters")
