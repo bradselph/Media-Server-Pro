@@ -486,12 +486,7 @@ func (s *Server) Wait() {
 	<-s.shutdownCh
 }
 
-// TODO: handleHealth is defined as a method on Server but is never registered as a
-// route in setupBaseRoutes. The comment on setupBaseRoutes says "/health is registered
-// by api/routes/routes.go", so this method appears to be dead code. It was likely
-// replaced by the handler in routes.go but not removed.
-
-// handleHealth returns overall server health
+// handleHealth returns overall server health (not registered; /health is in api/routes).
 func (s *Server) handleHealth(c *gin.Context) {
 	health := s.GetHealth()
 	status := http.StatusOK
@@ -550,12 +545,7 @@ func (s *Server) handleModuleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: health})
 }
 
-// GetHealth returns overall system health
-// TODO: GetHealth is only called from handleHealth (which itself is dead code — never
-// registered as a route). This method marks the system unhealthy if ANY module (including
-// non-critical ones) reports unhealthy, which is inconsistent with the actual /health
-// endpoint in api/handlers/system.go that only checks critical modules. Since both
-// handleHealth and GetHealth appear to be dead code, consider removing them.
+// GetHealth returns overall system health (used by handleHealth; actual /health is in handlers).
 func (s *Server) GetHealth() models.SystemHealth {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
