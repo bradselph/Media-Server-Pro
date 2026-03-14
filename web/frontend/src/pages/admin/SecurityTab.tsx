@@ -195,17 +195,11 @@ export function SecurityTab() {
                 <h3>Whitelist <span
                     style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>({whitelist.length} IPs)</span>
                 </h3>
-                {/* TODO: Inline styles on these inputs duplicate `inputBaseStyle` defined at the
-                    top of this file. The whitelist and blacklist forms both repeat the same
-                    6-property style object instead of using the shared constant.
-                    FIX: Use `style={{flex: 1, ...inputBaseStyle}}` on these inputs. */}
                 <form onSubmit={handleAddWhitelist} style={{display: 'flex', gap: 8, marginBottom: 12}}>
                     <input type="text" value={wlIp} onChange={e => { setWlIp(e.target.value); }} placeholder="IP address"
-                           style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
-                               background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
+                           style={{flex: 1, ...inputBaseStyle}}/>
                     <input type="text" value={wlComment} onChange={e => { setWlComment(e.target.value); }}
-                           placeholder="Comment (optional)" style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)',
-                        borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
+                           placeholder="Comment (optional)" style={{flex: 1, ...inputBaseStyle}}/>
                     <button type="submit" className="admin-btn admin-btn-primary"><i className="bi bi-plus-lg"/> Add
                     </button>
                 </form>
@@ -251,11 +245,9 @@ export function SecurityTab() {
                 </h3>
                 <form onSubmit={handleAddBlacklist} style={{display: 'flex', gap: 8, marginBottom: 12}}>
                     <input type="text" value={blIp} onChange={e => { setBlIp(e.target.value); }} placeholder="IP address"
-                           style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
-                               background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
+                           style={{flex: 1, ...inputBaseStyle}}/>
                     <input type="text" value={blComment} onChange={e => { setBlComment(e.target.value); }}
-                           placeholder="Comment (optional)" style={{flex: 1, padding: '6px 10px', border: '1px solid var(--border-color)',
-                        borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
+                           placeholder="Comment (optional)" style={{flex: 1, ...inputBaseStyle}}/>
                     <button type="submit" className="admin-btn admin-btn-danger"><i className="bi bi-plus-lg"/> Block
                     </button>
                 </form>
@@ -299,11 +291,8 @@ export function SecurityTab() {
                 <h3>Banned IPs <span style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>({bannedIPs.length} active)</span></h3>
                 <form onSubmit={handleBan} style={{display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap'}}>
                     <input type="text" value={banIp} onChange={e => { setBanIp(e.target.value); }} placeholder="IP address"
-                           style={{flex: 1, minWidth: 140, padding: '6px 10px', border: '1px solid var(--border-color)',
-                               borderRadius: 6, background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}/>
-                    <select value={banDuration} onChange={e => { setBanDuration(Number(e.target.value)); }} style={{
-                        padding: '6px 10px', border: '1px solid var(--border-color)', borderRadius: 6,
-                        background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: 13}}>
+                           style={{flex: 1, minWidth: 140, ...inputBaseStyle}}/>
+                    <select value={banDuration} onChange={e => { setBanDuration(Number(e.target.value)); }} style={inputBaseStyle}>
                         <option value={15}>15 min</option>
                         <option value={60}>1 hour</option>
                         <option value={1440}>24 hours</option>
