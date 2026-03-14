@@ -7,6 +7,8 @@ package remote
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -926,18 +928,10 @@ func validateURL(rawURL string) error {
 
 // Helper functions
 
-// TODO: Bug - generateID uses a weak 32-bit polynomial hash that has high
-// collision risk. Two different URLs can produce the same 8-character hex ID,
-// causing cache overwrites and incorrect media serving. Use crypto/sha256
-// (like the extractor module does) or uuid for collision-resistant IDs.
-// The same weak hash is used in generateCacheFilename, compounding the risk.
+// generateID returns a collision-resistant 16-char hex ID from the input (e.g. URL).
 func generateID(input string) string {
-	// Simple hash for ID generation
-	h := uint32(0)
-	for _, c := range input {
-		h = h*31 + uint32(c)
-	}
-	return fmt.Sprintf("%08x", h)
+	sum := sha256.Sum256([]byte(input))
+	return hex.EncodeToString(sum[:8])
 }
 
 func generateCacheFilename(remoteURL string) string {
