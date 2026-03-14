@@ -308,6 +308,16 @@ func (m *Module) saveManifest(manifest *Manifest) error {
 	return m.repo.Save(context.Background(), rec)
 }
 
+// resolveBackupPath validates that backupID does not escape backupDir via path
+// traversal and returns the resolved zip file path.
+func (m *Module) resolveBackupPath(backupID string) (string, error) {
+	backupPath := filepath.Join(m.backupDir, backupID+".zip")
+	if !pathWithinBase(pathScopeArgs{path: backupPath, base: m.backupDir}) {
+		return "", fmt.Errorf("invalid backup ID: %s", backupID)
+	}
+	return backupPath, nil
+}
+
 // RestoreBackup restores from a backup. All modules maintain in-memory caches
 // (auth users/sessions, media metadata, etc.) that are loaded at startup. After
 // the data files are overwritten by restore, those caches become stale. A server
@@ -316,7 +326,10 @@ func (m *Module) RestoreBackup(backupID string) error {
 	m.restoreMu.Lock()
 	defer m.restoreMu.Unlock()
 
-	backupPath := filepath.Join(m.backupDir, backupID+".zip")
+	backupPath, err := m.resolveBackupPath(backupID)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(backupPath); err != nil {
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
@@ -497,8 +510,10 @@ func (m *Module) DeleteBackup(backupID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Delete zip file
-	backupPath := filepath.Join(m.backupDir, backupID+".zip")
+	backupPath, err := m.resolveBackupPath(backupID)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
