@@ -481,6 +481,12 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	}
 	m.mu.Unlock()
 
+	// Persist the updated status so it survives server restarts
+	rec := m.resultToRecord(result)
+	if err := m.repo.Upsert(context.Background(), rec); err != nil {
+		m.log.Error("Failed to persist fix result for %s: %v", path, err)
+	}
+
 	m.log.Info("Fixed media file: %s -> %s", path, outputPath)
 	return result, nil
 }
