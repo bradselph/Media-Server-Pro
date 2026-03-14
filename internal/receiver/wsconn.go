@@ -140,6 +140,10 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		done: make(chan struct{}),
 	}
 
+	// Limit incoming message size to prevent memory exhaustion from malicious slaves.
+	// 16 MB accommodates large catalog pushes while bounding memory usage.
+	conn.SetReadLimit(16 * 1024 * 1024)
+
 	// Configure keep-alive via ping/pong
 	setReadDeadline(conn, 60*time.Second, m.log)
 	conn.SetPongHandler(func(string) error {
