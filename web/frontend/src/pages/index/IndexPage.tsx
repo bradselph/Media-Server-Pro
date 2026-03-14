@@ -1915,7 +1915,7 @@ export function IndexPage() {
 
             {/* Version footer — matches deployed version from deploy script (VERSION file → ldflags) */}
             <footer className="index-version-footer" aria-label="Application version">
-                {versionData?.version != null ? (
+                {versionData?.version !== null ? (
                     <span>v{versionData.version}</span>
                 ) : null}
             </footer>
