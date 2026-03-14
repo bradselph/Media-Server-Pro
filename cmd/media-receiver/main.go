@@ -689,6 +689,9 @@ func loadEnvFile(path string) map[string]string {
 		}
 		env[key] = val
 	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: error reading %s: %v\n", path, err)
+	}
 	return env
 }
 
