@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.96.0] - 2026-03-14 (minor)
+
+- Merge pull request #95 from bradselph/development
+- Merge branch 'main' into development
+- chore(audit-loop): cycle 2/25
+- fix(errors): propagate proxy copy error in extractor proxyStream
+- fix(contract): pass userID instead of username to GetUserStorageUsed
+- fix(edge-cases): set WebSocket read limit to prevent memory exhaustion
+- fix(feature): guard writeError after partial stream/download writes
+- fix(lint): resolve eqeqeq warnings in PlayerSettingsPanel and IndexPage
+- fix(todo): persist validator FixFile status to database
+- chore(audit-loop): cycle 1/25
+- fix(errors): eliminate silent failure in GetServerLogs ReadDir error path
+- fix(edge-cases): harden readLastNLines with ring buffer and scanner limits
+- fix(feature): complete execution path for DeleteMedia version tracking
+- fix(lint): resolve sonarjs/no-nested-functions in useHLS hook
+- fix(todo): return error for unsupported bulk action in processOneBulkMediaItem
+
+
 ## [0.95.0] - 2026-03-14 (minor)
 
 - Merge pull request #94 from bradselph/development
