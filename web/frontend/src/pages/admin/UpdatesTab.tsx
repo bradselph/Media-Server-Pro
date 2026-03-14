@@ -5,6 +5,8 @@ import {errMsg} from './adminUtils'
 
 // ── Tab: Updates ──────────────────────────────────────────────────────────────
 
+const TEXT_MUTED = 'var(--text-muted)'
+
 type BuildProgress = {
     inProgress: boolean
     stage: string
@@ -217,7 +219,7 @@ export function UpdatesTab() {
             {/* Update Settings */}
             <div className="admin-card" style={{maxWidth: 640, marginBottom: 20}}>
                 <h2>Update Settings</h2>
-                <p style={{fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px 0'}}>
+                <p style={{fontSize: 13, color: TEXT_MUTED, margin: '0 0 16px 0'}}>
                     Configure how updates are applied. For <strong>main</strong> branch releases,
                     you can choose between downloading a pre-built binary or building from source.
                     The <strong>development</strong> branch always builds from source.
@@ -225,7 +227,7 @@ export function UpdatesTab() {
 
                 <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16}}>
                     <div>
-                        <label style={{fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4}}>
+                        <label style={{fontSize: 12, color: TEXT_MUTED, display: 'block', marginBottom: 4}}>
                             Update Method
                         </label>
                         <select
@@ -247,13 +249,13 @@ export function UpdatesTab() {
                             <option value="binary">Binary Download (GitHub Release)</option>
                         </select>
                         {activeBranch === 'development' && (
-                            <p style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 4}}>
+                            <p style={{fontSize: 11, color: TEXT_MUTED, marginTop: 4}}>
                                 Development branch always uses source builds.
                             </p>
                         )}
                     </div>
                     <div>
-                        <label style={{fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4}}>
+                        <label style={{fontSize: 12, color: TEXT_MUTED, display: 'block', marginBottom: 4}}>
                             Branch
                         </label>
                         <select
@@ -287,7 +289,7 @@ export function UpdatesTab() {
                     borderRadius: 6,
                     padding: '10px 14px',
                     fontSize: 12,
-                    color: 'var(--text-muted)',
+                    color: TEXT_MUTED,
                 }}>
                     <strong style={{color: 'var(--text-color)'}}>Current config:</strong>{' '}
                     {activeMethod === 'binary' ? 'Binary download' : 'Source build'} from <code>{activeBranch}</code> branch
@@ -296,17 +298,17 @@ export function UpdatesTab() {
 
             {/* GitHub Releases update — shown when method is "binary" or always for release checks */}
             <div className="admin-card" style={{maxWidth: 640, marginBottom: 20}}>
-                <h2>Software Updates <span style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>— GitHub Releases</span>
+                <h2>Software Updates <span style={{fontSize: 13, fontWeight: 400, color: TEXT_MUTED}}>— GitHub Releases</span>
                 </h2>
 
                 <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20}}>
                     <div>
-                        <div style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>Current Version</div>
+                        <div style={{fontSize: 12, color: TEXT_MUTED, marginBottom: 4}}>Current Version</div>
                         <div style={{fontWeight: 600, fontSize: 18}}>{status?.current_version || '—'}</div>
                     </div>
                     {status?.checked_at && (
                         <div>
-                            <div style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>Latest Version
+                            <div style={{fontSize: 12, color: TEXT_MUTED, marginBottom: 4}}>Latest Version
                             </div>
                             <div style={{fontWeight: 600, fontSize: 18}}>
                                 {status.latest_version || '—'}
@@ -326,14 +328,14 @@ export function UpdatesTab() {
                 </div>
 
                 {status?.checked_at && (
-                    <p style={{fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px 0'}}>
+                    <p style={{fontSize: 12, color: TEXT_MUTED, margin: '0 0 16px 0'}}>
                         Last checked: {new Date(status.checked_at).toLocaleString()}
                         {status.error && <span style={{color: '#ef4444', marginLeft: 8}}>— {status.error}</span>}
                     </p>
                 )}
 
                 {!status?.checked_at && (
-                    <p style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 16}}>
+                    <p style={{fontSize: 13, color: TEXT_MUTED, marginBottom: 16}}>
                         No update check has been performed yet.
                     </p>
                 )}
@@ -351,7 +353,7 @@ export function UpdatesTab() {
                         whiteSpace: 'pre-wrap',
                     }}>
                         <strong>Release Notes</strong>
-                        <div style={{marginTop: 6, color: 'var(--text-muted)'}}>{status.release_notes}</div>
+                        <div style={{marginTop: 6, color: TEXT_MUTED}}>{status.release_notes}</div>
                     </div>
                 )}
 
@@ -379,7 +381,7 @@ export function UpdatesTab() {
                 </div>
 
                 {activeMethod === 'source' && status?.update_available && (
-                    <p style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 12}}>
+                    <p style={{fontSize: 12, color: TEXT_MUTED, marginTop: 12}}>
                         Update method is set to <strong>Source Build</strong> — use the Source Update
                         section below to pull and build the new version.
                     </p>
@@ -388,10 +390,10 @@ export function UpdatesTab() {
 
             {/* Source-based update (git pull + go build) */}
             <div className="admin-card" style={{maxWidth: 640}}>
-                <h2>Source Update <span style={{fontSize: 13, fontWeight: 400, color: 'var(--text-muted)'}}>
+                <h2>Source Update <span style={{fontSize: 13, fontWeight: 400, color: TEXT_MUTED}}>
                     — git pull + build ({activeBranch})
                 </span></h2>
-                <p style={{fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px 0'}}>
+                <p style={{fontSize: 13, color: TEXT_MUTED, margin: '0 0 16px 0'}}>
                     Pull the latest code from the <code>{activeBranch}</code> branch, rebuild the frontend and
                     server binary in-place. Requires build tools (git, npm, go) and the GitHub
                     token (UPDATER_GITHUB_TOKEN) to be configured on the server.
@@ -428,7 +430,7 @@ export function UpdatesTab() {
                             }}>
                                 {buildStatusLabel(build)}
                             </span>
-                            <span style={{color: 'var(--text-muted)'}}>{Math.round(build.progress)}%</span>
+                            <span style={{color: TEXT_MUTED}}>{Math.round(build.progress)}%</span>
                         </div>
                         <div style={{
                             height: 8,
@@ -473,7 +475,7 @@ export function UpdatesTab() {
                     )}
                 </div>
                 {!build && (
-                    <p style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 12}}>
+                    <p style={{fontSize: 12, color: TEXT_MUTED, marginTop: 12}}>
                         After a successful build, use the{' '}
                         <strong>Restart Server</strong> button or run:{' '}
                         <code style={{background: 'var(--hover-bg)', padding: '2px 6px', borderRadius: 4}}>
