@@ -389,8 +389,10 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 
 		case <-ctx.Done():
 			streamCancel()
+			writeMu.Lock()
 			_ = conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "shutdown"))
+			writeMu.Unlock()
 			wg.Wait()
 			return nil
 		}

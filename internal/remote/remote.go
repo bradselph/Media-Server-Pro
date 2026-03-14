@@ -67,9 +67,10 @@ type Module struct {
 	healthMsg  string
 	healthMu   sync.RWMutex
 	cacheDir   string
-	syncTicker *time.Ticker
-	syncDone   chan struct{}
-	cacheSem   chan struct{} // bounds concurrent background cache downloads
+	syncTicker    *time.Ticker
+	syncDone      chan struct{}
+	syncDoneOnce  sync.Once // guards close(syncDone) to avoid double-close panic
+	cacheSem      chan struct{} // bounds concurrent background cache downloads
 }
 
 // SourceState tracks the state of a remote source.
@@ -203,7 +204,7 @@ func (m *Module) Stop(_ context.Context) error {
 	if m.syncTicker != nil {
 		m.syncTicker.Stop()
 	}
-	close(m.syncDone)
+	m.syncDoneOnce.Do(func() { close(m.syncDone) })
 
 	// Save cache index
 	m.saveCacheIndex()
