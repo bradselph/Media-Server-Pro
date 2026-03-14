@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bufio"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,7 +33,12 @@ func (h *Handler) GetServerLogs(c *gin.Context) {
 
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
-		writeSuccess(c, []interface{}{})
+		if os.IsNotExist(err) {
+			writeSuccess(c, []interface{}{})
+			return
+		}
+		h.log.Warn("Failed to read logs directory %s: %v", logsDir, err)
+		writeError(c, http.StatusInternalServerError, "Failed to read logs directory")
 		return
 	}
 

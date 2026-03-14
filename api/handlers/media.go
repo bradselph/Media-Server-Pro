@@ -378,6 +378,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 
 	req := streaming.StreamRequest{
 		Path:        absPath,
+		MediaID:     id,
 		Quality:     c.Query("quality"),
 		UserID:      userID,
 		SessionID:   sessionID,
