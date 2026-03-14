@@ -49,9 +49,11 @@ func (r *AuditLogRepository) List(ctx context.Context, filter repositories.Audit
 		query = query.Where("timestamp <= ?", filter.EndDate)
 	}
 
-	if filter.Limit > 0 {
-		query = query.Limit(filter.Limit)
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 100000 // cap to avoid OOM; ExportAuditLog uses same ceiling
 	}
+	query = query.Limit(limit)
 	if filter.Offset > 0 {
 		query = query.Offset(filter.Offset)
 	}

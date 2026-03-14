@@ -513,17 +513,17 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	}
 	defer resp.Body.Close()
 
-	// Copy safe response headers (canonical key check for robustness).
-	sensitiveHeaders := map[string]bool{
-		"Set-Cookie": true, "Authorization": true,
-		"Cookie": true, "Www-Authenticate": true,
+	// Copy only media-relevant headers (allowlist avoids leaking CDN/server infra).
+	allowedProxyHeaders := map[string]bool{
+		"Content-Type": true, "Content-Length": true, "Content-Range": true,
+		"Content-Disposition": true, "Accept-Ranges": true,
+		"Last-Modified": true, "Etag": true, "Cache-Control": true,
 	}
 	for key, values := range resp.Header {
-		if sensitiveHeaders[http.CanonicalHeaderKey(key)] {
-			continue
-		}
-		for _, value := range values {
-			w.Header().Add(key, value)
+		if allowedProxyHeaders[http.CanonicalHeaderKey(key)] {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
 		}
 	}
 

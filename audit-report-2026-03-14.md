@@ -7,7 +7,7 @@
 
 ---
 
-## FIXED ITEMS (34/193 — verified 2026-03-14)
+## FIXED ITEMS (39/193 — verified 2026-03-14)
 
 | Finding | Status |
 |---------|--------|
@@ -43,20 +43,24 @@
 | **[FIXED]** P3-13 godotenv.Load error discarded | ✅ Log non-NotFound errors |
 | **[FIXED]** P1-13 evictStaleProfiles TOCTOU | ✅ Re-check LastUpdated under lock |
 | **[FIXED]** P2-26 scheduleUnregisterUpload leak | ✅ done chan, select on shutdown |
+| **[FIXED]** P2-23 List Limit=0 OOM risk | ✅ Default cap analytics/audit_log |
+| **[FIXED]** P0-5 Extractor proxyStream header denylist | ✅ Allowlist |
+| **[FIXED]** P1-7 No rollback on startup failure | ✅ Stop started modules in reverse |
+| **[FIXED]** P2-5 HLS RecordAccess saveJob outside lock | ✅ Call saveJob under lock |
 
 ---
 
-## REMAINING ISSUES — Reprioritized (159 findings)
+## REMAINING ISSUES — Reprioritized (154 findings)
 
 ### Priority counts:
 ```
-P0 — CRITICAL (security + broken):   8 remaining
-P1 — HIGH (user-facing bugs):        4 remaining
-P2 — MEDIUM (tech debt / fragile):   38 remaining
+P0 — CRITICAL (security + broken):   7 remaining
+P1 — HIGH (user-facing bugs):        3 remaining
+P2 — MEDIUM (tech debt / fragile):   36 remaining
 P3 — LOW (cleanup / style):          12 remaining
 Additional findings by module:       ~100 remaining
 ────────────────────────────────────
-TOTAL REMAINING:                     159
+TOTAL REMAINING:                     154
 ```
 
 ---
@@ -83,10 +87,8 @@ TOTAL REMAINING:                     159
 - **Impact:** Malicious JS on target page can access local network
 - **Fix:** Add `--proxy-server` or `--host-resolver-rules` to block private IPs
 
-### P0-5 [SECURITY] Extractor proxyStream uses header denylist
-- **File:** `internal/extractor/extractor.go:490-541`
-- **Impact:** CDN infrastructure headers disclosed to end users
-- **Fix:** Switch to allowlist like receiver/remote modules
+### P0-5 [SECURITY] Extractor proxyStream header denylist — **[FIXED]**
+- **Fix applied:** Allowlist (Content-Type, Content-Length, Content-Range, etc.).
 
 ### P0-6 [SECURITY] GitHub credentials visible in process environment
 - **File:** `internal/updater/updater.go:940-941`
@@ -132,10 +134,8 @@ TOTAL REMAINING:                     159
 ### P1-6 [FRAGILE] WriteTimeout kills long streams — **[FIXED]**
 - **Fix applied:** Default WriteTimeout set to 0 in config/defaults.go.
 
-### P1-7 [GAP] No rollback of started modules on critical failure
-- **File:** `internal/server/server.go:302-303`
-- **Impact:** DB connections and goroutines leaked on partial startup
-- **Fix:** Stop already-started modules in reverse order on failure
+### P1-7 [GAP] No rollback on startup failure — **[FIXED]**
+- **Fix applied:** Stop already-started modules in reverse order on critical failure.
 
 ### P1-8 [FRAGILE] JSON parse on non-JSON — **[FIXED]**
 - **Fix applied:** Read text + JSON.parse in try/catch; throw ApiError with status and preview.
@@ -173,7 +173,7 @@ TOTAL REMAINING:                     159
 - **P2-2** `internal/auth/session.go:127-132` — ValidateSession fires background goroutine with shared pointer
 - **P2-3** `internal/auth/auth.go:194-205` — Cleanup goroutine exits permanently after panic (no restart loop)
 - **P2-4** ~~cleanup TOCTOU~~ — **[FIXED]** Re-check under write lock before removal
-- **P2-5** `internal/hls/access.go:29` — RecordAccess calls saveJob outside lock (shared pointer race)
+- **P2-5** ~~RecordAccess saveJob outside lock~~ — **[FIXED]** Call saveJob under lock
 - **P2-6** ~~cleanupDone double-close~~ — **[FIXED]** cleanupDoneOnce sync.Once
 - **P2-7** `internal/server/server.go:502` — handleStatus reads len(s.modules) outside lock
 
@@ -195,7 +195,7 @@ TOTAL REMAINING:                     159
 - **P2-20** `internal/repositories/mysql/playlist_repository.go:56-58` — Playlist Save() cascades to Items
 - **P2-21** `internal/repositories/mysql/user_repository_gorm.go:116-140` — User Update uses Save() (full update)
 - **P2-22** `internal/repositories/mysql/session_repository_gorm.go:44-53` — Session Update only persists LastActivity
-- **P2-23** `analytics_repository.go + audit_log_repository.go` — List with Limit=0 returns all rows (OOM risk)
+- **P2-23** ~~List Limit=0 OOM risk~~ — **[FIXED]** Default cap (10K analytics, 100K audit)
 - **P2-24** Multiple repositories — Delete methods don't check RowsAffected
 
 ### Resource / Lifecycle
