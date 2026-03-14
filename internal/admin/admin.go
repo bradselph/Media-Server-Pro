@@ -190,16 +190,21 @@ func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	succeeded := false
 	defer func() {
 		if err := file.Close(); err != nil {
 			m.log.Warn("Failed to close audit log file: %v", err)
 		}
+		if !succeeded {
+			if removeErr := os.Remove(filename); removeErr != nil && !os.IsNotExist(removeErr) {
+				m.log.Warn("Failed to remove partial export file %s: %v", filename, removeErr)
+			}
+		}
 	}()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
-	// Header
 	header := []string{"Timestamp", "Username", "Action", "Resource", "IP Address", "Success"}
 	if err := writer.Write(header); err != nil {
 		return "", err
@@ -212,7 +217,6 @@ func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to retrieve audit log: %w", err)
 	}
 
-	// Write data
 	for _, entry := range entries {
 		row := []string{
 			entry.Timestamp.Format(time.RFC3339),
@@ -227,6 +231,12 @@ func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 		}
 	}
 
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return "", fmt.Errorf("failed to flush CSV writer: %w", err)
+	}
+
+	succeeded = true
 	m.log.Info("Exported audit log to %s", filename)
 	return filename, nil
 }
