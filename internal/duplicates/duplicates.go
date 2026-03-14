@@ -155,7 +155,11 @@ func (m *Module) CountPending() int {
 	if !m.enabled() {
 		return 0
 	}
-	count, _ := m.dupRepo.CountPending(context.Background())
+	count, err := m.dupRepo.CountPending(context.Background())
+	if err != nil {
+		m.log.Warn("CountPending: failed to query pending duplicates: %v", err)
+		return 0
+	}
 	return int(count)
 }
 
@@ -304,7 +308,10 @@ func (m *Module) isResolvedRemovalCached(ctx context.Context, fp string, resolve
 	if resolved, ok := resolvedFPs[fp]; ok {
 		return resolved
 	}
-	resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, fp)
+	resolved, err := m.dupRepo.ExistsResolvedRemoval(ctx, fp)
+	if err != nil {
+		m.log.Warn("isResolvedRemovalCached: failed to check fingerprint %s: %v", fp, err)
+	}
 	resolvedFPs[fp] = resolved
 	return resolved
 }
