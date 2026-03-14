@@ -16,9 +16,6 @@ require (
 	gorm.io/gorm v1.31.1
 )
 
-// TODO: golang.org/x/time is a direct dependency (used for rate limiting) but is
-// listed in a separate require block instead of the main one above. Move it into
-// the primary require block for consistency and clarity.
 require golang.org/x/time v0.15.0
 
 require (

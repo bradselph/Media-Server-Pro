@@ -193,12 +193,7 @@ setup_ssh_auth() {
     echo ""
   fi
 
-  # 2. Remove passphrase if present — BatchMode=yes cannot prompt
-  # TODO(SECURITY): Silently removing the SSH key passphrase degrades security.
-  # The key was likely passphrase-protected for a reason. Consider using
-  # ssh-agent instead, or at minimum warn the user more prominently that their
-  # key's security is being downgraded. This also modifies the user's personal
-  # SSH key without confirmation beyond "Enter the CURRENT key passphrase".
+  # 2. Remove passphrase if present (BatchMode=yes cannot prompt)
   if ! ssh-keygen -y -P "" -f "$keyfile" &>/dev/null; then
     warn "SSH key has a passphrase — removing it for automated deploys."
     echo "    Enter the CURRENT key passphrase when prompted:"
