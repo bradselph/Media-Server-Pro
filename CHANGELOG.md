@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.94.0] - 2026-03-14 (minor)
+
+- Merge pull request #93 from bradselph/development
+- Merge branch 'main' into development
+- audit(suggestions+categorizer): saveProfiles continue on error; clarify detectMovie parseNumber
+- audit(middleware): ETag skip for responses >1MB to avoid buffering large bodies
+- audit(config+db): syncFeatureToggles bidirectional; UserRepository.List batch-load perms/prefs
+- audit(frontend): sync theme from server including 'auto' on profile load and save
+- audit(analytics): AvgWatchDuration over playback-event count, not TotalViews
+- audit(scanner+thumbnails): convertScannerToRepo under lock; audio thumbnail size stats
+- audit(playlists): collapse redundant filter helpers; return error on copy AddItem failure
+- audit(admin): cleanup temp CSV after audit log export send
+- audit(remote+extractor): SHA-256 generateID; fetchURL with context for cancellation
+- audit(receiver): snapshot slave record under lock in Heartbeat; clarify stream-push TODO
+- audit(streaming+HLS): range 206, short-write handling, Stop log, tryResolveExistingJob lock, force_key_frames
+- audit(media): fingerprintIndex and dedup fixes
+- audit(auth): clearer error on admin preferences when user record create fails; login/signup error a11y
+- fix: receiver/updater/wsconn TODOs and index page audit
+- fix: address TODOs — security, bugs, perf, cleanup
+- refactor: enhance security and performance in media handling
+- refactor(admin): update playlist query to return items directly
+- refactor: streamline query parameter handling and static file serving
+- refactor(admin): improve query parameter handling and tag parsing
+- fix(admin): avoid config text overwrite from query side effect
+- fix: address TODOs - tag loading, backup sort, dead code
+- Merge branch 'main' into development
+- config: resolve CustomStatic path in resolveAbsolutePaths
+
+
 ## [0.93.0] - 2026-03-14 (minor)
 
 - Merge pull request #92 from bradselph/split-development
