@@ -197,13 +197,7 @@ func (h *Handler) ReceiverWebSocket(c *gin.Context) {
 // ReceiverStreamPush receives file data from a slave delivering a stream.
 // POST /api/receiver/stream-push/:token
 // The slave opens this connection in response to a stream_request sent over WebSocket.
-// TODO: This handler never writes a success response to the slave. After the io.Copy
-// completes, the function returns without calling writeSuccess or setting a status code.
-// Gin will default to 200, but the slave gets no body. Also, if DeliverStream returns
-// ok=false, the handler returns after writing "no pending stream for token", but the
-// io.Pipe is never created. If DeliverStream returns ok=true, the function blocks on
-// io.Copy until the consumer finishes. If the consumer errors out or the pipe is never
-// read, this handler will block indefinitely. Consider adding a timeout.
+// On success, writeSuccess is called so the slave receives a JSON body.
 func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	if !h.checkReceiverEnabled(c) {
 		return

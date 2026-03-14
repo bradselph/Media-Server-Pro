@@ -472,17 +472,14 @@ func (m *Module) Heartbeat(slaveID string) error {
 	prevLastSeen := node.LastSeen
 	node.Status = "online"
 	node.LastSeen = time.Now()
+	// Snapshot the record under the lock so Upsert uses consistent state if we persist.
+	record := nodeToSlaveRecord(node)
 	m.mu.Unlock()
 
-	// Debounce: only write to DB if the last persist was >60s ago
-	// TODO: Race condition - node is read outside the lock here. Between m.mu.Unlock()
-	// and this point, another goroutine could modify node's fields (e.g. a concurrent
-	// PushCatalog changing MediaCount). nodeToSlaveRecord copies the current state, but
-	// the state may be inconsistent. Consider snapshotting the record under the lock.
 	if time.Since(prevLastSeen) < 60*time.Second {
 		return nil
 	}
-	return m.slaveRepo.Upsert(context.Background(), nodeToSlaveRecord(node))
+	return m.slaveRepo.Upsert(context.Background(), record)
 }
 
 // UnregisterSlave removes a slave and its entire media catalog.
