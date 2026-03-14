@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.99.0] - 2026-03-14 (minor)
+
+- Merge pull request #98 from bradselph/development
+- Merge branch 'main' into development
+- audit fixes batch 5: P2-23, P0-5, P1-7, P2-5
+- audit fixes batch 4: P3-13, P1-13, P2-26
+- audit fixes batch 3: P1-5, P2-4
+- audit fixes batch 2: P0-8, P1-1, P1-12, P2-6
+- audit fixes batch 1: P0-10, P1-2/3/4/6/8/11
+- fix(api): improve JSON parsing error handling and enhance media loading feedback
+- refactor(scheduler): reduce default startup delay for task execution
+- feat(player): enhance HLS handling and fallback mechanism for video sources
+- fix(analytics): enhance CSV export error handling and ensure proper file cleanup
+
+
 ## [0.98.0] - 2026-03-14 (minor)
 
 - Merge pull request #97 from bradselph/development
