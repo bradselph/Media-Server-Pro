@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.93.0] - 2026-03-14 (minor)
+
+- Merge pull request #92 from bradselph/split-development
+- feat(admin): add visibility filter and owner search for playlists
+- docs: update ListMediaPaginated comment, remove redundant re-sort
+- fix(admin): add Tags filter at DB level for admin media pagination
+- fix(admin): media pagination and playlists API
+- docs: document custom static overlay and CUSTOM_STATIC_DIR in CLAUDE.md
+- config: resolve CustomStatic path in resolveAbsolutePaths
+- feat: implement custom static file serving with optional overrides
+- refactor: remove unused ReceiverProxyStream handler and clean up streaming error handling
+
+
 ## [0.92.0] - 2026-03-13 (minor)
 
 - Merge pull request #91 from bradselph/development
