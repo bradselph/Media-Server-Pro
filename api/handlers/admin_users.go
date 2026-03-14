@@ -145,6 +145,10 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		updates["enabled"] = *req.Enabled
 	}
 	if req.Email != "" {
+		if _, parseErr := mail.ParseAddress(req.Email); parseErr != nil {
+			writeError(c, http.StatusBadRequest, "Invalid email address")
+			return
+		}
 		updates["email"] = req.Email
 	}
 	if req.Permissions != nil {
