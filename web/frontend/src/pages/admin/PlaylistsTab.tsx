@@ -1,7 +1,7 @@
-import {useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
-import type {AdminPlaylistStats, Playlist} from '@/api/types'
+import type {AdminPlaylistStats} from '@/api/types'
 import {errMsg} from './adminUtils'
 
 // ── Tab: Playlists (Feature 6) ────────────────────────────────────────────────
@@ -25,11 +25,26 @@ export function PlaylistsTab() {
     const [sortBy, setSortBy] = useState<PlaylistSortKey>('name')
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
     const [filterVisibility, setFilterVisibility] = useState<string>('')
+    const [debouncedSearch, setDebouncedSearch] = useState('')
+    const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const {data: playlists = []} = useQuery<Playlist[]>({
-        queryKey: ['admin-playlists'],
-        queryFn: () => adminApi.listAllPlaylists(),
+    useEffect(() => {
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+        searchTimerRef.current = setTimeout(() => { setDebouncedSearch(search); }, 300)
+        return () => {
+            if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+        }
+    }, [search])
+
+    const {data: playlistResponse} = useQuery({
+        queryKey: ['admin-playlists', debouncedSearch, filterVisibility],
+        queryFn: () => adminApi.listAllPlaylists({
+            search: debouncedSearch || undefined,
+            visibility: filterVisibility || undefined,
+            limit: 500,
+        }),
     })
+    const playlists = playlistResponse?.items ?? []
 
     const {data: playlistStats} = useQuery<AdminPlaylistStats>({
         queryKey: ['admin-playlist-stats'],
@@ -69,11 +84,7 @@ export function PlaylistsTab() {
         }
     }
 
-    const filtered = playlists.filter(p => {
-        if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.user_id.toLowerCase().includes(search.toLowerCase())) return false
-        if (filterVisibility === 'public' && !p.is_public) return false
-        return !(filterVisibility === 'private' && p.is_public)
-    }).sort((a, b) => {
+    const filtered = playlists.sort((a, b) => {
         let cmp = 0
         switch (sortBy) {
             case 'name': cmp = a.name.localeCompare(b.name); break
@@ -164,7 +175,7 @@ export function PlaylistsTab() {
                         </button>
                     )}
                     <span style={{fontSize: 12, color: 'var(--text-muted)'}}>
-                        {filtered.length} of {playlists.length} playlist{playlists.length !== 1 ? 's' : ''}
+                        {playlists.length} of {playlistResponse?.total_items ?? 0} playlist{(playlistResponse?.total_items ?? 0) !== 1 ? 's' : ''}
                     </span>
                 </div>
                 {selected.size > 0 && (

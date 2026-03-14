@@ -408,6 +408,11 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		h.log.Warn("Failed to increment view count for %s: %v", absPath, err)
 	}
 
+	// TODO: When streaming fails due to a client disconnect (broken pipe, connection reset),
+	// an error is logged and a JSON error response is attempted. However, if the response
+	// has already been partially written (HTTP headers sent, partial body), writing a JSON
+	// error will either fail silently or corrupt the response. Should check c.Writer.Written()
+	// and isClientDisconnect(err) before writing, similar to how ReceiverProxyStream does it.
 	if err := h.streaming.Stream(c.Writer, c.Request, req); err != nil {
 		if errors.Is(err, streaming.ErrFileNotFound) {
 			writeError(c, http.StatusNotFound, errFileNotFound)

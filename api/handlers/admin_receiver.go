@@ -112,6 +112,35 @@ func (h *Handler) ReceiverHeartbeat(c *gin.Context) {
 	writeSuccess(c, gin.H{"status": "ok"})
 }
 
+// ReceiverProxyStream proxies a media stream from a slave to the client.
+// GET /receiver/stream/:id
+// TODO: This handler is defined but never registered in routes.go. No route maps to
+// ReceiverProxyStream. Receiver stream proxying is instead handled inline within
+// StreamMedia (media.go) and DownloadMedia (media.go) when local media is not found.
+// This appears to be dead code — verify and either register the route or remove the handler.
+func (h *Handler) ReceiverProxyStream(c *gin.Context) {
+	if !h.checkReceiverEnabled(c) {
+		return
+	}
+
+	mediaID := c.Param("id")
+	if mediaID == "" {
+		writeError(c, http.StatusBadRequest, "media ID required")
+		return
+	}
+
+	if err := h.receiver.ProxyStream(c.Writer, c.Request, mediaID); err != nil {
+		// Don't write error if headers already sent (stream started)
+		if !c.Writer.Written() {
+			if isClientDisconnect(err) {
+				return
+			}
+			writeError(c, http.StatusBadGateway, err.Error())
+		}
+		return
+	}
+}
+
 // ReceiverListMedia returns all media from all online slaves.
 // GET /api/receiver/media
 func (h *Handler) ReceiverListMedia(c *gin.Context) {
