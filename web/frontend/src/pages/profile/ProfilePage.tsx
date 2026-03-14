@@ -667,16 +667,8 @@ function useProfilePage() {
         try {
             const prefs = await preferencesApi.get()
             setPreferences(prefs)
-            // TODO: Incomplete theme sync — when the server preference is 'auto', the local
-            // theme store is NOT updated, meaning the user's stored theme (from a previous
-            // manual selection) remains active instead of switching to 'auto'.
-            // WHY: If a user sets theme to 'auto' on another device and then visits their
-            // profile, the local theme won't update to 'auto'. The same issue exists in
-            // `handlePreferencesSubmit` below.
-            // FIX: Call `setTheme(prefs.theme)` unconditionally (the themeStore's `setTheme`
-            // already handles 'auto' via `resolveTheme`).
-            if (prefs.theme && prefs.theme !== 'auto') {
-                setTheme(prefs.theme as 'light' | 'dark')
+            if (prefs.theme) {
+                setTheme(prefs.theme as 'light' | 'dark' | 'auto')
             }
         } catch (err) {
             if (!(err instanceof ApiError && err.status === 404)) {
@@ -731,8 +723,8 @@ function useProfilePage() {
         setPrefsSubmitting(true)
         try {
             await preferencesApi.update(preferences)
-            if (preferences.theme && preferences.theme !== 'auto') {
-                setTheme(preferences.theme as 'light' | 'dark')
+            if (preferences.theme) {
+                setTheme(preferences.theme as 'light' | 'dark' | 'auto')
             }
             if (preferences.equalizer_preset === '10' || preferences.equalizer_preset === '31') {
                 try {
