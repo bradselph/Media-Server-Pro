@@ -233,14 +233,7 @@ func (m *Module) CancelJob(jobID string) error {
 	return nil
 }
 
-// DeleteJob removes a job and its files
-// TODO: Bug - DeleteJob does not cancel a running job before deleting it.
-// If the job is currently transcoding (status Running), the ffmpeg process
-// continues writing to the OutputDir that is being removed, which may cause
-// ffmpeg errors and orphaned processes. Should call CancelJob first or check
-// status. Also, the accessTracker entry is not cleaned up (unlike
-// removeSegmentDirAndState which does clean it), and the DB record (m.repo)
-// is not deleted — the stale job will reappear on next loadJobs().
+// DeleteJob cancels a running job, removes its files, and deletes the DB record.
 func (m *Module) DeleteJob(jobID string) error {
 	m.jobsMu.Lock()
 	job, ok := m.jobs[jobID]
@@ -248,13 +241,21 @@ func (m *Module) DeleteJob(jobID string) error {
 		m.jobsMu.Unlock()
 		return fmt.Errorf(errJobNotFoundFmt, jobID)
 	}
+	// Cancel running transcode so ffmpeg stops before we remove OutputDir.
+	if cancel, ok := m.jobCancels[jobID]; ok {
+		cancel()
+		delete(m.jobCancels, jobID)
+	}
 	delete(m.jobs, jobID)
+	outputDir := job.OutputDir
 	m.jobsMu.Unlock()
 
-	if err := os.RemoveAll(job.OutputDir); err != nil {
+	if err := os.RemoveAll(outputDir); err != nil {
 		m.log.Warn("Failed to remove HLS directory: %v", err)
 	}
-
+	if m.repo != nil {
+		_ = m.repo.Delete(context.Background(), jobID)
+	}
 	m.log.Info("Deleted HLS job %s", jobID)
 	return nil
 }
@@ -274,23 +275,23 @@ func (m *Module) loadJobs() error {
 	return nil
 }
 
-// TODO: Bug - saveJobs iterates all jobs under RLock and saves each to the DB.
-// If one save fails, it returns immediately without saving the remaining jobs.
-// This means a transient DB error on one job prevents all subsequent jobs from
-// being persisted. Consider collecting errors and continuing, or at minimum
-// logging which job failed. Also, accessing job fields (Status, Progress, etc.)
-// under RLock while the transcode goroutine may be modifying them is a data race.
 func (m *Module) saveJobs() error {
 	m.jobsMu.RLock()
-	defer m.jobsMu.RUnlock()
+	jobs := make([]*models.HLSJob, 0, len(m.jobs))
+	for _, j := range m.jobs {
+		jobs = append(jobs, j)
+	}
+	m.jobsMu.RUnlock()
 
 	ctx := context.Background()
-	for _, job := range m.jobs {
+	var lastErr error
+	for _, job := range jobs {
 		if err := m.repo.Save(ctx, job); err != nil {
-			return err
+			m.log.Warn("Failed to save HLS job %s: %v", job.ID, err)
+			lastErr = err
 		}
 	}
-	return nil
+	return lastErr
 }
 
 // saveJob persists a single job to the database.

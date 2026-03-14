@@ -964,21 +964,20 @@ func (m *Module) loadProfiles() error {
 	return nil
 }
 
-// TODO: saveProfiles aborts on the first error, leaving remaining profiles unsaved.
-// This means a single DB failure (e.g., one profile with bad data) prevents all
-// subsequent profiles from being persisted. Consider collecting errors and continuing
-// to save all profiles, then returning a combined error.
+// saveProfiles persists all profiles; continues on error and returns the last error.
 func (m *Module) saveProfiles() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	ctx := context.Background()
+	var lastErr error
 	for _, profile := range m.profiles {
 		if err := m.saveOneProfile(ctx, profile); err != nil {
-			return err
+			m.log.Warn("Failed to save suggestion profile for %s: %v", profile.UserID, err)
+			lastErr = err
 		}
 	}
-	return nil
+	return lastErr
 }
 
 // saveOneProfile persists a single user profile and its view history to MySQL.

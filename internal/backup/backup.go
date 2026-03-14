@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -546,12 +547,8 @@ func (m *Module) recordToManifest(rec *repositories.BackupManifestRecord) *Manif
 	}
 }
 
-// CleanOldBackups removes backups older than retention period
-// TODO: Bug — the comment says "Backups are already sorted newest first" but ListBackups
-// returns records from m.repo.List() and there is no documented sort guarantee from the
-// repository. If the repository returns records in insertion order or unsorted, this will
-// delete the wrong backups (potentially the newest ones). Should explicitly sort by
-// CreatedAt descending before slicing.
+// CleanOldBackups removes backups older than retention period.
+// Sorts by CreatedAt descending (newest first) so we keep the most recent keepCount.
 func (m *Module) CleanOldBackups(keepCount int) (int, error) {
 	backups, err := m.ListBackups()
 	if err != nil {
@@ -562,7 +559,9 @@ func (m *Module) CleanOldBackups(keepCount int) (int, error) {
 		return 0, nil
 	}
 
-	// Backups are already sorted newest first
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].CreatedAt.After(backups[j].CreatedAt)
+	})
 	removed := 0
 	for i := keepCount; i < len(backups); i++ {
 		if err := m.DeleteBackup(backups[i].ID); err != nil {

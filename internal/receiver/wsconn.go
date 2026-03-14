@@ -66,6 +66,7 @@ type PendingStream struct {
 	Range     string
 	Ready     chan *StreamDelivery // slave posts delivery here
 	CreatedAt time.Time
+	readyOnce sync.Once // guards close(Ready) to prevent double-close panic
 }
 
 // StreamDelivery is the data the slave sends back for a pending stream.
@@ -95,6 +96,13 @@ func (s *slaveWS) sendJSON(msgType string, data interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.conn.WriteJSON(msg)
+}
+
+// setReadDeadline sets the read deadline and logs if it fails.
+func setReadDeadline(conn *websocket.Conn, d time.Duration, log *logger.Logger) {
+	if err := conn.SetReadDeadline(time.Now().Add(d)); err != nil && log != nil {
+		log.Warn("SetReadDeadline failed: %v", err)
+	}
 }
 
 // upgrader accepts WebSocket connections from any origin. Access control is enforced
@@ -132,15 +140,10 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		done: make(chan struct{}),
 	}
 
-	// TODO: Bug - SetReadDeadline errors are silently ignored throughout this
-	// function. While unlikely to fail, if SetReadDeadline returns an error,
-	// the connection may timeout prematurely or never timeout. Also, the
-	// 60-second read deadline and 25-second ping interval are hardcoded;
-	// they should derive from config (e.g. Receiver.HealthCheck interval).
 	// Configure keep-alive via ping/pong
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	setReadDeadline(conn, 60*time.Second, m.log)
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		setReadDeadline(conn, 60*time.Second, m.log)
 		return nil
 	})
 
@@ -213,7 +216,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			m.log.Info("Slave %s registered via WebSocket (name: %s)", node.ID, node.Name)
 
 			// Reset read deadline after successful registration
-			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+			setReadDeadline(conn, 60*time.Second, m.log)
 
 		case msgTypeCatalog:
 			var data wsCatalogData
@@ -233,7 +236,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Reset read deadline
-			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+			setReadDeadline(conn, 60*time.Second, m.log)
 
 		case msgTypeHeartbeat:
 			var data wsHeartbeatData
@@ -246,7 +249,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Reset read deadline
-			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+			setReadDeadline(conn, 60*time.Second, m.log)
 
 		default:
 			m.log.Debug("Unknown WS message type: %s", msg.Type)
@@ -335,20 +338,13 @@ func (m *Module) DeliverStream(token string) (*PendingStream, bool) {
 }
 
 // cleanupStalePending removes pending streams older than 30 seconds.
-// TODO: Bug - closing ps.Ready may panic if proxyViaWS has already received on
-// the channel and the channel is buffered with capacity 1. Closing an already-
-// drained channel is safe, but if proxyViaWS times out and also closes the
-// Ready channel (it doesn't currently, but the pattern is fragile), a double-
-// close would panic. Consider using a sync.Once to guard the close, or simply
-// let stale pending streams be garbage collected after the timeout in proxyViaWS.
-// Also, the 30-second threshold is hardcoded and should match or exceed
-// the ProxyTimeout config value; currently they could diverge.
+// Uses readyOnce to prevent double-close panic if the channel is closed elsewhere.
 func (m *Module) cleanupStalePending() {
 	m.pendingMu.Lock()
 	defer m.pendingMu.Unlock()
 	for token, ps := range m.pendingStreams {
 		if time.Since(ps.CreatedAt) > 30*time.Second {
-			close(ps.Ready)
+			ps.readyOnce.Do(func() { close(ps.Ready) })
 			delete(m.pendingStreams, token)
 		}
 	}

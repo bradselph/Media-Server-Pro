@@ -642,25 +642,24 @@ export const adminApi = {
 
     // AdminListMedia supports full sorting, filtering, and pagination — returns { items, total_items, total_pages }.
     listMedia: (params?: AdminMediaListParams) => {
-        const searchParams = new URLSearchParams()
+        const sp = new URLSearchParams()
         if (params) {
-            const {page, limit, sort_order, ...rest} = params
-            Object.entries(rest).forEach(([key, value]) => {
-                if (value !== undefined && value !== '') {
-                    searchParams.set(key, String(value))
-                }
-            })
-            if (limit !== undefined) {
-                searchParams.set('limit', String(limit))
+            if (params.page != null) sp.set('page', String(params.page))
+            if (params.limit != null) sp.set('limit', String(params.limit))
+            const str = (v: string | undefined) => (typeof v === 'string' ? v.trim() : '') || undefined
+            const setStr = (key: string, v: string | undefined) => {
+                const val = str(v)
+                if (val) sp.set(key, val)
             }
-            if (page !== undefined) {
-                searchParams.set('page', String(page))
-            }
-            if (sort_order !== undefined && sort_order !== '') {
-                searchParams.set('sort_order', sort_order)
-            }
+            setStr('search', params.search)
+            setStr('sort', params.sort)
+            setStr('sort_order', params.sort_order)
+            setStr('type', params.type)
+            setStr('category', params.category)
+            setStr('is_mature', params.is_mature)
+            setStr('tags', params.tags)
         }
-        const qs = searchParams.toString()
+        const qs = sp.toString()
         return api.get<AdminMediaListResponse>(`/api/admin/media${qs ? `?${qs}` : ''}`)
     },
 

@@ -38,6 +38,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -91,10 +92,6 @@ type fpCacheEntry struct {
 	fingerprint string
 }
 
-// TODO: UNBOUNDED CACHE — fpCache grows without bound as files are discovered.
-// If files are deleted from the media directories, their entries remain in the
-// cache forever, leaking memory. Consider pruning entries for paths that no longer
-// exist during each scan cycle, or switching to an LRU cache with a max size.
 var (
 	fpCache   = make(map[string]fpCacheEntry)
 	fpCacheMu sync.Mutex
@@ -120,6 +117,22 @@ func getCachedFingerprint(path string, info os.FileInfo) string {
 	}
 	return fp
 }
+
+// pruneFpCache removes cache entries for paths that no longer exist (files deleted since last scan).
+func pruneFpCache(keep map[string]bool) {
+	fpCacheMu.Lock()
+	defer fpCacheMu.Unlock()
+	for path := range fpCache {
+		if !keep[path] {
+			delete(fpCache, path)
+		}
+	}
+}
+
+// streamSem limits concurrent stream deliveries to avoid goroutine/file descriptor exhaustion.
+const maxConcurrentStreams = 10
+
+var streamSem = make(chan struct{}, maxConcurrentStreams)
 
 // streamHTTPClient is reused across all stream deliveries to benefit from
 // connection pooling (keep-alive) to the master.
@@ -262,16 +275,11 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 	// If no data arrives within 90s (3x the master's 25s ping interval),
 	// the connection is considered dead and we reconnect.
 	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
-	// TODO: BUG — RACE CONDITION — The PingHandler calls conn.WriteMessage() to send a
-	// pong, but this handler runs on the read goroutine. Meanwhile, the main goroutine
-	// writes heartbeats and catalog pushes via sendWSJSON() protected by writeMu. However,
-	// the PingHandler does NOT acquire writeMu, so a pong write can race with a heartbeat
-	// or catalog write on the same conn, causing corrupted frames or panics. gorilla/websocket
-	// documents that "Connections support one concurrent reader and one concurrent writer."
-	// Fix by acquiring writeMu in the PingHandler before calling WriteMessage, or by
-	// using conn.WriteControl() which is safe for concurrent use.
+	var writeMu sync.Mutex
 	conn.SetPingHandler(func(data string) error {
 		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+		writeMu.Lock()
+		defer writeMu.Unlock()
 		return conn.WriteMessage(websocket.PongMessage, []byte(data))
 	})
 
@@ -329,17 +337,16 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 					fmt.Fprintf(os.Stderr, "Invalid stream request: %v\n", err)
 					continue
 				}
-				// Handle stream delivery in background
-				// TODO: UNBOUNDED GOROUTINES — Each stream request spawns a new goroutine
-				// with no concurrency limit. A burst of stream requests (or a malicious
-				// master) could spawn thousands of goroutines, each opening a file and
-				// performing an HTTP POST, exhausting file descriptors and memory. Consider
-				// adding a semaphore or worker pool to limit concurrent stream deliveries
-				// (e.g., to MaxIdleConns=10 to match the HTTP client's connection pool).
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					deliverStream(streamCtx, cfg, req)
+					select {
+					case streamSem <- struct{}{}:
+						defer func() { <-streamSem }()
+						deliverStream(streamCtx, cfg, req)
+					case <-streamCtx.Done():
+						return
+					}
 				}()
 			}
 		}
@@ -350,8 +357,6 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 	heartbeatTicker := time.NewTicker(cfg.HeartbeatInterval)
 	defer scanTicker.Stop()
 	defer heartbeatTicker.Stop()
-
-	var writeMu sync.Mutex
 
 	for {
 		select {
@@ -439,24 +444,20 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	var extraHeaders map[string]string
 
 	// Handle Range requests
-	// TODO: SILENT FAILURE — If parseRange returns an error (malformed Range header),
-	// the error is silently ignored and the full file is served with status 200 instead
-	// of returning HTTP 416 Range Not Satisfiable. Similarly, if file.Seek fails, the
-	// error is silently ignored and the file is served from the current offset (likely
-	// position 0) with incorrect content. Both error cases should be logged and ideally
-	// reported back to the master.
 	if req.Range != "" {
 		start, end, err := parseRange(req.Range, stat.Size())
-		if err == nil {
-			if _, seekErr := file.Seek(start, io.SeekStart); seekErr == nil {
-				length := end - start + 1
-				body = io.LimitReader(file, length)
-				statusCode = 206
-				contentLength = length
-				extraHeaders = map[string]string{
-					"Content-Range": fmt.Sprintf("bytes %d-%d/%d", start, end, stat.Size()),
-					"Accept-Ranges": "bytes",
-				}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid range header %q for %s: %v\n", req.Range, req.Token, err)
+		} else if _, seekErr := file.Seek(start, io.SeekStart); seekErr != nil {
+			fmt.Fprintf(os.Stderr, "Seek failed for stream %s: %v\n", req.Token, seekErr)
+		} else {
+			length := end - start + 1
+			body = io.LimitReader(file, length)
+			statusCode = 206
+			contentLength = length
+			extraHeaders = map[string]string{
+				"Content-Range": fmt.Sprintf("bytes %d-%d/%d", start, end, stat.Size()),
+				"Accept-Ranges": "bytes",
 			}
 		}
 	}
@@ -507,7 +508,10 @@ func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
 
 	if parts[0] == "" {
 		// Suffix range: -500 means last 500 bytes
-		n := parseInt64(parts[1])
+		n, err := parseInt64(parts[1])
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid suffix range: %w", err)
+		}
 		start = fileSize - n
 		if start < 0 {
 			start = 0
@@ -515,11 +519,22 @@ func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
 		end = fileSize - 1
 	} else if parts[1] == "" {
 		// Open-ended: 500- means from byte 500 to end
-		start = parseInt64(parts[0])
+		var err error
+		start, err = parseInt64(parts[0])
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid start: %w", err)
+		}
 		end = fileSize - 1
 	} else {
-		start = parseInt64(parts[0])
-		end = parseInt64(parts[1])
+		var err error
+		start, err = parseInt64(parts[0])
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid start: %w", err)
+		}
+		end, err = parseInt64(parts[1])
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid end: %w", err)
+		}
 	}
 
 	if start < 0 || start >= fileSize || end < start || end >= fileSize {
@@ -529,15 +544,9 @@ func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
 	return start, end, nil
 }
 
-// TODO: BUG — SILENT PARSE FAILURE — fmt.Sscanf silently returns 0 on unparseable
-// input (e.g., "abc" or ""), and the error is discarded. This means a malformed
-// Range header like "bytes=abc-def" will be parsed as start=0, end=0, which passes
-// the bounds check and serves the first byte. Use strconv.ParseInt instead and
-// propagate the error to the caller (parseRange) so it can return an error.
-func parseInt64(s string) int64 {
-	var n int64
-	fmt.Sscanf(s, "%d", &n)
-	return n
+func parseInt64(s string) (int64, error) {
+	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	return n, err
 }
 
 // sendWSJSON sends a typed JSON message over the WebSocket.
@@ -960,6 +969,7 @@ func resolveAndValidate(path string, allowedDirs []string) (string, error) {
 // symlinks via d.Type()&fs.ModeSymlink, or track visited inodes to detect cycles.
 func scanMediaDirs(dirs []string) []catalogItem {
 	var items []catalogItem
+	discoveredPaths := make(map[string]bool)
 
 	for _, dir := range dirs {
 		absDir, err := filepath.Abs(dir)
@@ -1003,6 +1013,7 @@ func scanMediaDirs(dirs []string) []catalogItem {
 			}
 
 			fp := getCachedFingerprint(path, info)
+			discoveredPaths[path] = true
 
 			items = append(items, catalogItem{
 				ID:                 id,
@@ -1021,6 +1032,7 @@ func scanMediaDirs(dirs []string) []catalogItem {
 		}
 	}
 
+	pruneFpCache(discoveredPaths)
 	return items
 }
 

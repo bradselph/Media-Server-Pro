@@ -205,10 +205,6 @@ func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
 }
 
 // generateAudioThumbnail creates waveform for audio using ffmpeg-go
-// TODO: Audio thumbnail generation does not add size stats for the main JPEG file
-// (unlike generateVideoThumbnail which calls addFileSizeToStats). The only stats
-// update happens if verifyAndPostProcessAudioThumbnail succeeds with WebP, but the
-// main JPEG size is never counted. Compare with generateVideoThumbnail line 133.
 func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 	m.log.Info("Generating audio waveform for: %s", job.MediaPath)
 
@@ -239,6 +235,7 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 		return fmt.Errorf("ffmpeg waveform failed: %w", err)
 	}
 
+	m.addFileSizeToStats(job.OutputPath)
 	if err := m.verifyAndPostProcessAudioThumbnail(job); err != nil {
 		return err
 	}

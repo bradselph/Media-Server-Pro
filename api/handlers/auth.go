@@ -276,11 +276,6 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 		return
 	}
 
-	// TODO: When the admin user record doesn't exist, a new user is silently created with a
-	// random password. If CreateUser fails (line 284), a warning is logged but execution
-	// continues. The subsequent GetUser call (line 290) will then fail too, and the handler
-	// returns 404 "User not found" — a confusing error for the admin who just wants to save
-	// preferences. Consider returning a clearer error message or retrying the lookup.
 	if session.Role == models.RoleAdmin {
 		if _, err := h.auth.GetUser(c.Request.Context(), session.Username); err != nil {
 			randomPassword, pwdErr := h.auth.GenerateSecurePassword(32)
@@ -296,6 +291,8 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 				Role:     models.RoleAdmin,
 			}); createErr != nil {
 				h.log.Warn("Could not create admin user record for preferences: %v", createErr)
+				writeError(c, http.StatusServiceUnavailable, "User record could not be created. Please try again later.")
+				return
 			}
 		}
 	}

@@ -179,25 +179,21 @@ func (m *Module) prepareVariantDir(job *models.HLSJob, quality string) (variantD
 	return variantDir, playlistPath, segmentPattern, nil
 }
 
-// TODO: Bug - the GOP size calculation assumes 30fps (SegmentDuration * 30).
-// For media files with different frame rates (24fps, 60fps, etc.), this creates
-// incorrect keyframe intervals. The GOP should be calculated as
-// SegmentDuration * actual_fps (obtained from ffprobe), or use "-force_key_frames"
-// with an expression like "expr:gte(t,n_forced*segment_duration)" for frame-rate-
-// independent keyframe placement.
+// buildFFmpegTranscodeCmd builds the ffmpeg command for HLS transcoding.
+// Keyframes are placed at segment boundaries via force_key_frames (frame-rate independent).
 func (m *Module) buildFFmpegTranscodeCmd(ctx context.Context, paths *transcodePaths, profile *config.HLSQuality) *exec.Cmd {
 	cfg := m.config.Get()
 	stream := ffmpeg.Input(paths.MediaPath)
 	stream = stream.Output(paths.PlaylistPath,
 		ffmpeg.KwArgs{
-			"c:v":          "libx264",
-			"preset":       "fast",
-			"vf":           fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
-			"b:v":          fmt.Sprintf("%dk", profile.Bitrate/1000),
-			"maxrate":      fmt.Sprintf("%dk", profile.Bitrate/1000),
-			"bufsize":      fmt.Sprintf("%dk", profile.Bitrate*2/1000),
-			"g":            strconv.Itoa(cfg.HLS.SegmentDuration * 30),
-			"sc_threshold": "0",
+			"c:v":             "libx264",
+			"preset":          "fast",
+			"vf":              fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
+			"b:v":             fmt.Sprintf("%dk", profile.Bitrate/1000),
+			"maxrate":         fmt.Sprintf("%dk", profile.Bitrate/1000),
+			"bufsize":         fmt.Sprintf("%dk", profile.Bitrate*2/1000),
+			"force_key_frames": fmt.Sprintf("expr:gte(t,n_forced*%d)", cfg.HLS.SegmentDuration),
+			"sc_threshold":    "0",
 
 			"c:a": "aac",
 			"b:a": fmt.Sprintf("%dk", profile.AudioBitrate/1000),

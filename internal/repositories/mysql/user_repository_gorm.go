@@ -146,36 +146,46 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id).Error
 }
 
-// TODO: Performance — N+1 query problem: List loads all users, then issues 2 queries
-// per user (permissions + preferences). For 100 users, this means 201 queries.
-// Consider batch-loading permissions and preferences with WHERE user_id IN (...)
-// similar to how PlaylistRepository.batchLoadItems works.
-
-// List retrieves all users
+// List retrieves all users with permissions and preferences (batch-loaded to avoid N+1).
 func (r *UserRepository) List(ctx context.Context) ([]*models.User, error) {
 	var users []*models.User
-	err := r.db.WithContext(ctx).Find(&users).Error
-	if err != nil {
+	if err := r.db.WithContext(ctx).Find(&users).Error; err != nil {
 		return nil, err
+	}
+	if len(users) == 0 {
+		return users, nil
+	}
+
+	ids := make([]string, len(users))
+	for i, u := range users {
+		ids[i] = u.ID
+	}
+
+	var allPerms []models.UserPermissions
+	if err := r.db.WithContext(ctx).Where("user_id IN ?", ids).Find(&allPerms).Error; err != nil {
+		return nil, err
+	}
+	permsByUser := make(map[string]*models.UserPermissions)
+	for i := range allPerms {
+		permsByUser[allPerms[i].UserID] = &allPerms[i]
+	}
+
+	var allPrefs []models.UserPreferences
+	if err := r.db.WithContext(ctx).Where("user_id IN ?", ids).Find(&allPrefs).Error; err != nil {
+		return nil, err
+	}
+	prefsByUser := make(map[string]*models.UserPreferences)
+	for i := range allPrefs {
+		prefsByUser[allPrefs[i].UserID] = &allPrefs[i]
 	}
 
 	for _, user := range users {
-		perms, err := r.permsRepo.Get(ctx, user.ID)
-		if err != nil {
-			return nil, err
+		if p := permsByUser[user.ID]; p != nil {
+			user.Permissions = *p
 		}
-		if perms != nil {
-			user.Permissions = *perms
-		}
-
-		prefs, err := r.prefsRepo.Get(ctx, user.ID)
-		if err != nil {
-			return nil, err
-		}
-		if prefs != nil {
-			user.Preferences = *prefs
+		if p := prefsByUser[user.ID]; p != nil {
+			user.Preferences = *p
 		}
 	}
-
 	return users, nil
 }

@@ -183,10 +183,7 @@ func (m *Module) GetAuditLog(ctx context.Context, limit, offset int, userID stri
 	return result
 }
 
-// ExportAuditLog exports audit log to CSV
-// TODO: Bug — exported CSV file is written to m.dataDir but never cleaned up.
-// There is no mechanism to delete old exports, so they accumulate indefinitely on disk.
-// Consider adding a cleanup routine or returning the data as an in-memory stream instead of a file.
+// ExportAuditLog exports audit log to CSV. The caller (handler) should remove the file after sending the response.
 func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 	filename := filepath.Join(m.dataDir, fmt.Sprintf("audit_log_%s.csv", time.Now().Format("20060102_150405")))
 	file, err := os.Create(filename)
@@ -399,19 +396,18 @@ func (m *Module) RestoreBackup(id string) error {
 	return nil
 }
 
-// scanBackups scans the backup directory for existing backups
-// TODO: Bug — silently swallows ReadDir errors (e.g. permission denied). Should log a
-// warning so operators can diagnose missing backups. Also, scanned backups are appended
-// without checking for duplicates; if scanBackups is called multiple times, the same
-// backups will appear multiple times in the list.
+// scanBackups scans the backup directory for existing backups.
+// Replaces m.backups with a fresh list so repeated calls do not duplicate entries.
 func (m *Module) scanBackups() {
 	entries, err := os.ReadDir(m.backupDir)
 	if err != nil {
+		m.log.Warn("Failed to read backup directory %s: %v", m.backupDir, err)
 		return
 	}
 
 	m.backupMu.Lock()
 	defer m.backupMu.Unlock()
+	m.backups = nil
 
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -423,6 +419,7 @@ func (m *Module) scanBackups() {
 
 		info, err := entry.Info()
 		if err != nil {
+			m.log.Warn("Failed to stat backup entry %s: %v", entry.Name(), err)
 			continue
 		}
 

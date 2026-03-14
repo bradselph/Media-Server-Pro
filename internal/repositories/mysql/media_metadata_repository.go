@@ -196,22 +196,20 @@ func (r *MediaMetadataRepository) List(ctx context.Context) (map[string]*reposit
 		results[rows[i].Path] = metadata
 	}
 
-	// TODO: Bug — this loads ALL tags from the media_tags table (no WHERE clause),
-	// then filters in Go. For a large media library, this loads tags for media items
-	// that may have been deleted or are not in the results map. This is wasteful and
-	// could be slow with millions of tag rows. Additionally, the error from Find is
-	// silently ignored — a database error here means results are returned with empty
-	// tags and no indication of failure. Consider using WHERE path IN (...) like
-	// ListFiltered does, and propagating the error.
-
-	// Batch-load all tags in a single query
+	// Batch-load tags only for the paths we have (WHERE path IN), avoiding loading
+	// the entire media_tags table for large libraries.
 	if len(results) > 0 {
-		var allTags []mediaTagRow
-		if err := r.db.WithContext(ctx).Find(&allTags).Error; err == nil {
-			for _, t := range allTags {
-				if meta, ok := results[t.Path]; ok {
-					meta.Tags = append(meta.Tags, t.Tag)
-				}
+		paths := make([]string, 0, len(results))
+		for p := range results {
+			paths = append(paths, p)
+		}
+		var tags []mediaTagRow
+		if err := r.db.WithContext(ctx).Where("path IN ?", paths).Find(&tags).Error; err != nil {
+			return nil, fmt.Errorf("failed to load media tags: %w", err)
+		}
+		for _, t := range tags {
+			if meta, ok := results[t.Path]; ok {
+				meta.Tags = append(meta.Tags, t.Tag)
 			}
 		}
 	}

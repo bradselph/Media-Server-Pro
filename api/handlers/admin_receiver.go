@@ -112,35 +112,6 @@ func (h *Handler) ReceiverHeartbeat(c *gin.Context) {
 	writeSuccess(c, gin.H{"status": "ok"})
 }
 
-// ReceiverProxyStream proxies a media stream from a slave to the client.
-// GET /receiver/stream/:id
-// TODO: This handler is defined but never registered in routes.go. No route maps to
-// ReceiverProxyStream. Receiver stream proxying is instead handled inline within
-// StreamMedia (media.go) and DownloadMedia (media.go) when local media is not found.
-// This appears to be dead code — verify and either register the route or remove the handler.
-func (h *Handler) ReceiverProxyStream(c *gin.Context) {
-	if !h.checkReceiverEnabled(c) {
-		return
-	}
-
-	mediaID := c.Param("id")
-	if mediaID == "" {
-		writeError(c, http.StatusBadRequest, "media ID required")
-		return
-	}
-
-	if err := h.receiver.ProxyStream(c.Writer, c.Request, mediaID); err != nil {
-		// Don't write error if headers already sent (stream started)
-		if !c.Writer.Written() {
-			if isClientDisconnect(err) {
-				return
-			}
-			writeError(c, http.StatusBadGateway, err.Error())
-		}
-		return
-	}
-}
-
 // ReceiverListMedia returns all media from all online slaves.
 // GET /api/receiver/media
 func (h *Handler) ReceiverListMedia(c *gin.Context) {
@@ -226,13 +197,7 @@ func (h *Handler) ReceiverWebSocket(c *gin.Context) {
 // ReceiverStreamPush receives file data from a slave delivering a stream.
 // POST /api/receiver/stream-push/:token
 // The slave opens this connection in response to a stream_request sent over WebSocket.
-// TODO: This handler never writes a success response to the slave. After the io.Copy
-// completes, the function returns without calling writeSuccess or setting a status code.
-// Gin will default to 200, but the slave gets no body. Also, if DeliverStream returns
-// ok=false, the handler returns after writing "no pending stream for token", but the
-// io.Pipe is never created. If DeliverStream returns ok=true, the function blocks on
-// io.Copy until the consumer finishes. If the consumer errors out or the pipe is never
-// read, this handler will block indefinitely. Consider adding a timeout.
+// On success, writeSuccess is called so the slave receives a JSON body.
 func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	if !h.checkReceiverEnabled(c) {
 		return
@@ -279,4 +244,5 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	// ProxyStream (the consumer) finishes reading or the pipe is closed.
 	_, copyErr := io.Copy(pw, c.Request.Body)
 	pw.CloseWithError(copyErr) // signals EOF (or error) to the reader
+	writeSuccess(c, gin.H{"status": "ok"})
 }

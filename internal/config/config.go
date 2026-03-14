@@ -77,34 +77,26 @@ func (m *Manager) Load() error {
 	return nil
 }
 
-// TODO: Bug — syncFeatureToggles only disables module-level Enabled flags when the
-// corresponding feature toggle is false, but never enables them. If a feature toggle
-// is set to true but the module's own Enabled flag was explicitly set to false in
-// config.json, the module stays disabled despite the feature being "enabled". This
-// one-directional sync creates confusing behavior where Features.EnableHLS=true but
-// HLS.Enabled=false. Either sync should be bidirectional, or the relationship between
-// feature toggles and module Enabled flags should be documented as "feature toggle is
-// a master kill-switch only."
+// syncFeatureToggles makes feature toggles the master: when true, module is enabled;
+// when false, module is disabled. This overrides module-level Enabled in config.json.
 func (m *Manager) syncFeatureToggles() {
-	disableIfOff := func(enabled bool, target *bool) {
-		if !enabled {
-			*target = false
-		}
+	syncToggle := func(enabled bool, target *bool) {
+		*target = enabled
 	}
 	f := &m.config.Features
 	cfg := m.config
-	disableIfOff(f.EnableHLS, &cfg.HLS.Enabled)
-	disableIfOff(f.EnableAnalytics, &cfg.Analytics.Enabled)
-	disableIfOff(f.EnableRemoteMedia, &cfg.RemoteMedia.Enabled)
-	disableIfOff(f.EnableReceiver, &cfg.Receiver.Enabled)
-	disableIfOff(f.EnableExtractor, &cfg.Extractor.Enabled)
-	disableIfOff(f.EnableCrawler, &cfg.Crawler.Enabled)
-	disableIfOff(f.EnableMatureScanner, &cfg.MatureScanner.Enabled)
-	disableIfOff(f.EnableHuggingFace, &cfg.HuggingFace.Enabled)
-	disableIfOff(f.EnableThumbnails, &cfg.Thumbnails.Enabled)
-	disableIfOff(f.EnableUploads, &cfg.Uploads.Enabled)
-	disableIfOff(f.EnableUserAuth, &cfg.Auth.Enabled)
-	disableIfOff(f.EnableAdminPanel, &cfg.Admin.Enabled)
+	syncToggle(f.EnableHLS, &cfg.HLS.Enabled)
+	syncToggle(f.EnableAnalytics, &cfg.Analytics.Enabled)
+	syncToggle(f.EnableRemoteMedia, &cfg.RemoteMedia.Enabled)
+	syncToggle(f.EnableReceiver, &cfg.Receiver.Enabled)
+	syncToggle(f.EnableExtractor, &cfg.Extractor.Enabled)
+	syncToggle(f.EnableCrawler, &cfg.Crawler.Enabled)
+	syncToggle(f.EnableMatureScanner, &cfg.MatureScanner.Enabled)
+	syncToggle(f.EnableHuggingFace, &cfg.HuggingFace.Enabled)
+	syncToggle(f.EnableThumbnails, &cfg.Thumbnails.Enabled)
+	syncToggle(f.EnableUploads, &cfg.Uploads.Enabled)
+	syncToggle(f.EnableUserAuth, &cfg.Auth.Enabled)
+	syncToggle(f.EnableAdminPanel, &cfg.Admin.Enabled)
 }
 
 // Save saves the current configuration to file

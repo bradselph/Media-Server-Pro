@@ -141,11 +141,13 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
-// TODO: Incomplete feature - Stop does not clean up the playlistCache (sync.Map).
-// Stale cached entries survive and hold references to upstream URLs. Also, the
-// httpClient is never explicitly closed — its idle connections are not drained.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping extractor module...")
+	// Clear playlist cache so stale entries do not hold references to upstream URLs.
+	m.playlistCache.Range(func(key, _ interface{}) bool {
+		m.playlistCache.Delete(key)
+		return true
+	})
 	m.setHealth(false, "Stopped")
 	return nil
 }
@@ -208,12 +210,15 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 		CreatedAt: now,
 	}
 
-	// TODO: Bug - no SSRF validation is performed on streamURL before fetching.
-	// Unlike the remote module which calls validateURL(), the extractor trusts
-	// user-supplied M3U8 URLs and will fetch from private/loopback addresses.
-	// Add URL validation similar to remote.validateURL() before calling fetchURL.
+	// SSRF: validate URL before fetching (SafeHTTPTransport also blocks private IPs at connect time)
+	if err := helpers.ValidateURLForSSRF(streamURL); err != nil {
+		item.Status = "error"
+		item.ErrorMessage = fmt.Sprintf("Invalid URL: %v", err)
+		m.log.Warn("M3U8 URL rejected: %s — %v", streamURL, err)
+		return item, nil
+	}
 	// Verify the M3U8 URL is reachable (outside the lock — can be slow)
-	if _, _, err := m.fetchURL(streamURL); err != nil {
+	if _, _, err := m.fetchURL(context.Background(), streamURL); err != nil {
 		item.Status = "error"
 		item.ErrorMessage = fmt.Sprintf("Failed to fetch M3U8: %v", err)
 		m.log.Warn("M3U8 URL unreachable: %s — %v", streamURL, err)
@@ -318,7 +323,7 @@ func (m *Module) GetStats() Stats {
 
 // ProxyHLSMaster fetches the upstream master M3U8 playlist and rewrites variant
 // URLs to route through MSP's HLS proxy endpoints.
-func (m *Module) ProxyHLSMaster(w http.ResponseWriter, _ *http.Request, itemID string) error {
+func (m *Module) ProxyHLSMaster(w http.ResponseWriter, r *http.Request, itemID string) error {
 	item := m.GetItem(itemID)
 	if item == nil {
 		return fmt.Errorf("item not found: %s", itemID)
@@ -328,7 +333,7 @@ func (m *Module) ProxyHLSMaster(w http.ResponseWriter, _ *http.Request, itemID s
 	}
 
 	// Fetch the upstream master playlist
-	playlistBody, playlistURL, err := m.fetchURL(item.StreamURL)
+	playlistBody, playlistURL, err := m.fetchURL(r.Context(), item.StreamURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch master playlist: %w", err)
 	}
@@ -370,7 +375,7 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 		if item == nil {
 			return fmt.Errorf("item not found: %s", itemID)
 		}
-		playlistBody, playlistURL, err := m.fetchURL(item.StreamURL)
+		playlistBody, playlistURL, err := m.fetchURL(r.Context(), item.StreamURL)
 		if err != nil {
 			return fmt.Errorf("failed to fetch master for variant lookup: %w", err)
 		}
@@ -384,13 +389,13 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 	master := cached.(*cachedPlaylist)
 	if qualityIdx < 0 || qualityIdx >= len(master.variants) {
 		// It's possible this is a media playlist directly, not a master.
-		return m.proxyMediaPlaylist(w, r, itemID, qualityIdx)
+		return m.proxyMediaPlaylist(r.Context(), w, r, itemID, qualityIdx)
 	}
 
 	variantURL := master.variants[qualityIdx].originalURL
 
 	// Fetch the variant playlist
-	playlistBody, playlistURL, err := m.fetchURL(variantURL)
+	playlistBody, playlistURL, err := m.fetchURL(r.Context(), variantURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch variant playlist: %w", err)
 	}
@@ -454,13 +459,13 @@ func (m *Module) ProxyHLSSegment(w http.ResponseWriter, r *http.Request, itemID 
 
 // --- Internal helpers ---
 
-func (m *Module) proxyMediaPlaylist(w http.ResponseWriter, _ *http.Request, itemID string, qualityIdx int) error {
+func (m *Module) proxyMediaPlaylist(ctx context.Context, w http.ResponseWriter, _ *http.Request, itemID string, qualityIdx int) error {
 	item := m.GetItem(itemID)
 	if item == nil {
 		return fmt.Errorf("item not found: %s", itemID)
 	}
 
-	playlistBody, playlistURL, err := m.fetchURL(item.StreamURL)
+	playlistBody, playlistURL, err := m.fetchURL(ctx, item.StreamURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch media playlist: %w", err)
 	}
@@ -497,32 +502,20 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 
 	req.Header.Set("User-Agent", "MediaServerPro/4.0")
 
-	// TODO: Bug - a new http.Client is created per proxy request, which defeats
-	// connection pooling and leaks transports. Use m.httpClient (or a dedicated
-	// proxy client) instead. Also, the module-level httpClient has SSRF-safe
-	// transport (helpers.SafeHTTPTransport) while this ad-hoc client does not,
-	// allowing proxied requests to reach private/loopback addresses.
-	client := &http.Client{Timeout: cfg.Extractor.ProxyTimeout}
+	client := &http.Client{Transport: m.httpClient.Transport, Timeout: cfg.Extractor.ProxyTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("proxy request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// TODO: Bug - sensitiveHeaders check is case-sensitive but HTTP headers from
-	// resp.Header are canonicalized by Go (e.g. "Set-Cookie"). This works for
-	// the listed headers because Go's canonical form matches the map keys, but
-	// the pattern is fragile. Use http.CanonicalHeaderKey() or textproto.CanonicalMIMEHeaderKey()
-	// for robustness. Also consider using an allowlist (like receiver's
-	// allowedProxyHeaders) instead of a denylist, which is safer against
-	// leaking unexpected headers like X-Powered-By or Server.
-	// Copy safe response headers
+	// Copy safe response headers (canonical key check for robustness).
 	sensitiveHeaders := map[string]bool{
 		"Set-Cookie": true, "Authorization": true,
 		"Cookie": true, "Www-Authenticate": true,
 	}
 	for key, values := range resp.Header {
-		if sensitiveHeaders[key] {
+		if sensitiveHeaders[http.CanonicalHeaderKey(key)] {
 			continue
 		}
 		for _, value := range values {
@@ -541,11 +534,8 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	return nil
 }
 
-// TODO: Bug - fetchURL creates requests without a context, so they cannot be
-// cancelled on module shutdown or request timeout. Use http.NewRequestWithContext
-// and accept a context parameter.
-func (m *Module) fetchURL(rawURL string) (string, string, error) {
-	req, err := http.NewRequest("GET", rawURL, nil)
+func (m *Module) fetchURL(ctx context.Context, rawURL string) (string, string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		return "", "", err
 	}
