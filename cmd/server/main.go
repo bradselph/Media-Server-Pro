@@ -503,12 +503,8 @@ func registerTasks(
 				isAudio := item.Type == "audio"
 				// For video: regenerate if ANY thumbnail (main or preview) is missing.
 				// For audio: only the single waveform thumbnail matters.
-				// TODO: CLARITY — The operator precedence here is correct (&& binds tighter
-				// than ||), but the lack of explicit parentheses makes this expression fragile
-				// and hard to read. Add parentheses:
-				//   needsGen := (isAudio && !HasThumbnail(...)) || (!isAudio && !HasAllPreviewThumbnails(...))
-				needsGen := isAudio && !thumbnailsModule.HasThumbnail(thumbnails.MediaID(item.ID)) ||
-					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(thumbnails.MediaID(item.ID))
+				needsGen := (isAudio && !thumbnailsModule.HasThumbnail(thumbnails.MediaID(item.ID))) ||
+					(!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(thumbnails.MediaID(item.ID)))
 				if needsGen {
 					if _, err := thumbnailsModule.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: false}); err != nil {
 						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
