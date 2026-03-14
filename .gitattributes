@@ -22,10 +22,6 @@ Dockerfile        text eol=lf
 *.yml  text eol=lf
 *.toml text eol=lf
 *.md   text eol=lf
-# TODO: .env files (*.env) are not listed here, so they use the default auto-detect.
-# If .env files are ever committed (e.g., as .env.example), they may get CRLF on
-# Windows and break when deployed to Linux. Add: *.env text eol=lf
-
 # Binary files — no line ending conversion
 *.exe  binary
 *.dll  binary
