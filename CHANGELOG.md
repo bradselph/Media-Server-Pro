@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.98.0] - 2026-03-14 (minor)
+
+- Merge pull request #97 from bradselph/development
+- fix(media-receiver): improve error handling for range requests and ensure full file delivery on failure
+- fix(errors): eliminate silent json.Unmarshal failure in hls_job_repository
+- chore(verbose-audit-loop): cycle 2/10
+- chore(verbose-audit-loop): cycle 2/10
+- fix(validation): fix cross-platform path tests for Windows compatibility
+- fix(errors): check scanner.Err() in media-receiver loadEnvFile to surface I/O failures
+- fix(edge-cases): harden copyZipEntryToFile — close file before cleanup on oversize/error
+- fix(feature): complete execution path for analytics CSV export cleanup
+- fix(lint): remove unused BackupInfo struct from models
+- fix(feature): complete execution path for writeBackupArchive — propagate zipFile.Close errors
+- fix(lint): remove unused shouldValidateFile function (U1000)
+- fix(player-settings): ensure bandwidth check is type-safe by validating as a number
+- fix(todo): add missing config validation for extractor and crawler sections
+- chore(verbose-audit-loop): cycle 1/10
+- chore(verbose-audit-loop): cycle 1/10
+- chore(verbose-audit-loop): cycle 1/10
+- fix(errors): eliminate silent json.Unmarshal failures in suggestion_profile_repository
+- fix(contract): reconcile interface mismatch in NewHandler critical dependency validation
+- fix(edge-cases): harden WebSocket slave registration to use authoritative node ID
+- fix(edge-cases): harden extractor proxyStream with zero-timeout fallback
+- fix(feature): complete execution path for HLS cleanup by deleting orphaned DB records
+- fix(feature): complete execution path for media ID resolution with consistent trimming
+- fix(lint): extract validUsername to reduce AdminCreateUser cyclomatic complexity
+- fix(lint): check w.Write return values in servePlaylist
+- Merge branch 'main' into development
+- refactor(preview): handle media duration error gracefully
+- fix(todo): propagate DB error in AddToWatchHistory update path
+- chore(new-audit-loop): cycle 1/10
+- fix(errors): log silent GetUser failure in StreamMedia stream limit check
+- fix(contract): remove dead handleHealth/GetHealth from server (replaced by api/handlers)
+- fix(edge-cases): harden CleanOldBackups negative keepCount and GetBackupStats ordering
+- fix(feature): complete execution path for DownloadMedia IsReady check
+- fix(lint): remove unused slave variable assignment in receiver proxy
+
+
 ## [0.97.0] - 2026-03-14 (minor)
 
 - Merge pull request #96 from bradselph/development
