@@ -85,16 +85,6 @@ export function useHLS(
     const networkRetryCount = useRef(0)
     const mediaRetryCount = useRef(0)
 
-    // Stable ref for onFallback so the effect doesn't re-run when the
-    // consumer passes a new function reference on each render.
-    // TODO: This ref assignment (`onFallbackRef.current = onFallback`) runs during render,
-    // which is a side effect. In React 18+ concurrent mode / strict mode, render functions
-    // can be called multiple times without committing, so refs should be assigned in
-    // useEffect or useLayoutEffect.
-    // WHY: In practice this works fine because the ref is read asynchronously (inside error
-    // handlers), but it violates React's rules and could cause subtle bugs in future React
-    // versions with concurrent features.
-    // FIX: Move the ref update into a `useEffect(() => { onFallbackRef.current = onFallback })`.
     const onFallbackRef = useRef(onFallback)
     onFallbackRef.current = onFallback
 

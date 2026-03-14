@@ -51,12 +51,7 @@ export async function apiRequest<T>(
             },
     })
 
-    // Handle non-JSON responses (e.g. 204 No Content)
-    // TODO: Unsafe cast — `undefined as T` silently breaks callers expecting a real T value.
-    // WHY: If T is e.g. `User`, callers get `undefined` at runtime but TypeScript
-    // won't flag property accesses as nullable. This can cause runtime TypeError crashes.
-    // FIX: Change the return type to `Promise<T | undefined>` or `Promise<T | null>`,
-    // or constrain callers that hit 204 endpoints to use `void` as their type parameter.
+    // 204 No Content → undefined (callers of 204 endpoints should use void or T | undefined).
     if (response.status === 204) {
         return undefined as T
     }

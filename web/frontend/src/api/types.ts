@@ -466,21 +466,7 @@ export interface ScheduledTask {
     last_error?: string
 }
 
-// TODO: API Contract Mismatch - BackupEntry is an incomplete representation of the
-// backend response. ListBackupsV2 (api/handlers/admin_backups.go:17) returns
-// h.backup.ListBackups() which returns []*backup.Manifest (internal/backup/backup.go:46-56).
-// backup.Manifest has additional fields not present in this interface:
-//   files    []string json:"files"            — list of files included in the backup
-//   errors   []string json:"errors,omitempty" — any non-fatal errors during backup creation
-//   version  string   json:"version"          — server version that created the backup
-// CreateBackupV2 (api/handlers/admin_backups.go:27) also returns a full backup.Manifest.
-// Frontend adminApi.createBackup() (endpoints.ts:556) is typed to return BackupEntry but
-// receives a Manifest — the extra fields are silently ignored. If the frontend ever needs
-// to display the files list or creation errors, this interface must be extended.
-// Callers: adminApi.listBackups() (endpoints.ts:553), adminApi.createBackup() (endpoints.ts:556).
-// Handlers: ListBackupsV2, CreateBackupV2 in api/handlers/admin_backups.go.
-// Matches backend models.BackupInfo JSON tags.
-// created_at is RFC3339 — use new Date(entry.created_at). type defaults to "full" if not specified.
+// BackupEntry: subset of backend backup.Manifest (files, errors, version omitted).
 export interface BackupEntry {
     id: string
     filename: string
