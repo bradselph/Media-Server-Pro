@@ -104,18 +104,20 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
-// TODO: Stop does not clean up or wait for active streaming sessions. Long-running
-// streams will continue to reference the module after it is marked as stopped.
-// Consider tracking active goroutines and waiting for them to finish, or at least
-// logging how many active sessions are being abandoned.
-
-// Stop gracefully stops the module
+// Stop gracefully stops the module. Active stream sessions are not waited on;
+// they are left to finish or close on their own; we log the count for visibility.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping streaming module...")
 	m.healthMu.Lock()
 	m.healthy = false
 	m.healthMsg = "Stopped"
 	m.healthMu.Unlock()
+	m.sessionMu.Lock()
+	activeCount := len(m.activeSessions)
+	m.sessionMu.Unlock()
+	if activeCount > 0 {
+		m.log.Info("Leaving %d active stream session(s) to finish or close", activeCount)
+	}
 	return nil
 }
 
@@ -622,18 +624,15 @@ func (m *Module) setDownloadHeaders(w http.ResponseWriter, filename, contentType
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Cache-Control", "no-cache")
 
-	// Handle range request
-	// TODO: This logic for determining partial content is incorrect: when rangeHeader
-	// is present but the parsed range covers the entire file (start=0, end=fileSize-1),
-	// a 200 OK is sent instead of 206 Partial Content. Per RFC 7233, a valid Range
-	// header should still result in 206 even if the range covers the whole file, since
-	// the client explicitly requested a range. This can confuse download managers that
-	// rely on 206 to confirm range support.
-	if rangeHeader != "" && (start != 0 || end != fileSize-1) {
-		w.Header().Set(headerContentLength, strconv.FormatInt(end-start+1, 10))
+	// Handle range request: per RFC 7233, send 206 whenever Range was present
+	if rangeHeader != "" {
+		contentLen := end - start + 1
+		w.Header().Set(headerContentLength, strconv.FormatInt(contentLen, 10))
 		w.Header().Set(headerContentRange, fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
 		w.WriteHeader(http.StatusPartialContent)
-		m.log.Info("Resume download: bytes %d-%d/%d for %s", start, end, fileSize, filename)
+		if start != 0 || end != fileSize-1 {
+			m.log.Info("Resume download: bytes %d-%d/%d for %s", start, end, fileSize, filename)
+		}
 	} else {
 		w.Header().Set(headerContentLength, strconv.FormatInt(fileSize, 10))
 		w.WriteHeader(http.StatusOK)
@@ -677,11 +676,7 @@ func (m *Module) getDownloadChunkSize() int {
 
 // writeChunkedData writes file content to the response writer in chunks.
 // It returns the number of bytes sent and any error that interrupted the transfer.
-// TODO: Unlike streamContent (which handles short writes by retrying in a loop),
-// writeChunkedData does a single w.Write call per chunk. If Write returns fewer
-// bytes than requested (short write), the remaining bytes are silently lost and
-// the 'remaining' counter is decremented by the short-written amount, causing data
-// corruption. Should use the same short-write handling loop as streamContent.
+// Handles short writes by retrying until the chunk is fully written or an error occurs.
 func (m *Module) writeChunkedData(w http.ResponseWriter, file *os.File, filename string, totalBytes int64, chunkSize int) (int64, error) {
 	// Reuse a buffer from the pool to reduce GC pressure under concurrent downloads.
 	bufInterface := m.bufferPool.Get()
@@ -712,15 +707,17 @@ func (m *Module) writeChunkedData(w http.ResponseWriter, file *os.File, filename
 			break
 		}
 
-		written, err := w.Write(buf[:n])
-		if err != nil {
-			// Client disconnected
-			m.log.Debug("Client disconnected during download (sent %d/%d bytes): %v", bytesSent, totalBytes, err)
-			return bytesSent, err
+		chunk := buf[:n]
+		for len(chunk) > 0 {
+			written, err := w.Write(chunk)
+			if err != nil {
+				m.log.Debug("Client disconnected during download (sent %d/%d bytes): %v", bytesSent, totalBytes, err)
+				return bytesSent, err
+			}
+			chunk = chunk[written:]
+			bytesSent += int64(written)
 		}
-
-		bytesSent += int64(written)
-		remaining -= int64(written)
+		remaining -= int64(n)
 
 		// Flush to client
 		if f, ok := w.(http.Flusher); ok {
