@@ -407,11 +407,6 @@ func (m *Module) storeResult(result *ValidationResult) {
 }
 
 // FixFile attempts to transcode a file to a supported format
-// TODO: FixFile reads 'result' from m.results under RLock but then modifies it later
-// under a write Lock (line 476-479). Between the RLock release and the write Lock
-// acquisition, another goroutine could modify or replace the result. The pointer
-// 'result' obtained under RLock may become stale. Should re-fetch under the write lock
-// or use a copy-on-write approach.
 func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	if m.ffmpegPath == "" {
 		return nil, fmt.Errorf("ffmpeg not available")
@@ -483,11 +478,13 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 		return nil, fmt.Errorf("transcoding failed: %w", err)
 	}
 
-	// Update result under write lock to avoid data race
+	// Re-fetch under write lock (result from earlier RLock may be stale)
 	m.mu.Lock()
-	result.Status = StatusFixed
-	result.FixedPath = outputPath
-	m.results[path] = result
+	if r := m.results[path]; r != nil {
+		r.Status = StatusFixed
+		r.FixedPath = outputPath
+		result = r
+	}
 	m.mu.Unlock()
 
 	m.log.Info("Fixed media file: %s -> %s", path, outputPath)
