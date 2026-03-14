@@ -3,6 +3,8 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -61,8 +63,15 @@ func (h *Handler) CreateRemoteSource(c *gin.Context) {
 		return
 	}
 
+	source.Name = strings.TrimSpace(source.Name)
+	source.URL = strings.TrimSpace(source.URL)
 	if source.Name == "" || source.URL == "" {
 		writeError(c, http.StatusBadRequest, "name and url are required")
+		return
+	}
+	u, err := url.Parse(source.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		writeError(c, http.StatusBadRequest, "url must be a valid http or https URL")
 		return
 	}
 	source.Enabled = true
@@ -203,6 +212,10 @@ func (h *Handler) CacheRemoteMedia(c *gin.Context) {
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+	if req.URL == "" {
+		writeError(c, http.StatusBadRequest, "url is required")
 		return
 	}
 
