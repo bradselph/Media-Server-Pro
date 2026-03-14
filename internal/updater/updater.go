@@ -522,12 +522,13 @@ func (m *Module) createBackup() (string, error) {
 	return backupPath, nil
 }
 
-// getAssetName returns the expected asset name for current platform
+// getAssetName returns the expected asset name for current platform (must match GitHub Release artifacts).
 func (m *Module) getAssetName() string {
-	goos := runtime.GOOS
-	arch := runtime.GOARCH
-
-	return fmt.Sprintf("media-server-%s-%s", goos, arch)
+	name := fmt.Sprintf("media-server-pro-%s-%s", runtime.GOOS, runtime.GOARCH)
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return name
 }
 
 // getAssetURL gets the download URL for a specific release asset
@@ -694,7 +695,7 @@ type releaseAsset struct {
 func findChecksumAssetURL(assets []releaseAsset) string {
 	for _, asset := range assets {
 		lName := strings.ToLower(asset.Name)
-		if lName == "sha256sums" || lName == "sha256sums.txt" || lName == "checksums.txt" {
+		if lName == "sha256sums" || lName == "sha256sums.txt" || lName == "checksums.txt" || lName == "checksums-sha256.txt" {
 			return asset.BrowserDownloadURL
 		}
 	}
@@ -704,8 +705,12 @@ func findChecksumAssetURL(assets []releaseAsset) string {
 func parseExpectedHashFromChecksum(checksumData []byte, assetName string) string {
 	for _, line := range strings.Split(string(checksumData), "\n") {
 		parts := strings.Fields(line)
-		if len(parts) == 2 && strings.EqualFold(parts[1], assetName) {
-			return strings.ToLower(parts[0])
+		if len(parts) >= 2 {
+			// Second field may be path (e.g. artifacts/binaries-linux-amd64/media-server-pro-linux-amd64) or basename
+			name := filepath.Base(parts[1])
+			if strings.EqualFold(name, assetName) {
+				return strings.ToLower(parts[0])
+			}
 		}
 	}
 	return ""
@@ -1100,16 +1105,27 @@ func (m *Module) IsUpdateRunning() bool {
 //  4. atomic rename          (replaces running binary on disk)
 //
 // The caller is responsible for restarting the service after this returns.
-// TODO: SourceUpdate has no guard against concurrent calls, unlike ApplyUpdate which
-// uses applyMu. Two simultaneous SourceUpdate calls could corrupt the build. Should
+// Only one SourceUpdate runs at a time; concurrent callers get "already in progress".
 func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
-	if m.IsBuildRunning() {
+	status := &UpdateStatus{
+		InProgress: true,
+		Stage:      "starting",
+		Progress:   0,
+		StartedAt:  time.Now(),
+	}
+	m.buildMu.Lock()
+	if m.activeBuild != nil && m.activeBuild.InProgress {
+		m.buildMu.Unlock()
 		return &UpdateStatus{Error: "a source build is already in progress", InProgress: false},
 			fmt.Errorf("a source build is already in progress")
 	}
+	m.activeBuild = status
+	m.buildMu.Unlock()
+
 	cfg := m.config.Get()
 	dir, err := m.appDir()
 	if err != nil {
+		m.publishBuildStatus(&UpdateStatus{Error: err.Error(), InProgress: false})
 		return &UpdateStatus{Error: err.Error(), InProgress: false}, err
 	}
 
@@ -1120,15 +1136,12 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		e := fmt.Errorf("not a git repository: %s", dir)
+		m.publishBuildStatus(&UpdateStatus{Error: e.Error(), InProgress: false})
 		return &UpdateStatus{Error: e.Error(), InProgress: false}, e
 	}
 
-	status := &UpdateStatus{
-		InProgress: true,
-		Stage:      "creating backup",
-		Progress:   5,
-		StartedAt:  time.Now(),
-	}
+	status.Stage = "creating backup"
+	status.Progress = 5
 	m.publishBuildStatus(status)
 
 	// Backup the current binary before making any changes

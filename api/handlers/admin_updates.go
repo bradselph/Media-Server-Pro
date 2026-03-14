@@ -76,11 +76,8 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 	writeSuccess(c, status)
 }
 
-// ApplySourceUpdate starts an async source build.
-// TODO: Race condition — between IsBuildRunning() returning false and SourceUpdate()
-// being called in the goroutine, another request could also pass the IsBuildRunning
-// check, starting duplicate builds. The updater module should handle this internally
-// with a mutex, but the handler should not assume it does.
+// ApplySourceUpdate starts an async source build. The updater claims the build
+// atomically inside SourceUpdate, so duplicate requests get "already in progress".
 func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 	if !h.requireUpdater(c) {
 		return
