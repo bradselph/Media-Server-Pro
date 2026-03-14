@@ -7,7 +7,7 @@
 
 ---
 
-## FIXED ITEMS (39/193 — verified 2026-03-14)
+## FIXED ITEMS (44/193 — verified 2026-03-14)
 
 | Finding | Status |
 |---------|--------|
@@ -47,20 +47,24 @@
 | **[FIXED]** P0-5 Extractor proxyStream header denylist | ✅ Allowlist |
 | **[FIXED]** P1-7 No rollback on startup failure | ✅ Stop started modules in reverse |
 | **[FIXED]** P2-5 HLS RecordAccess saveJob outside lock | ✅ Call saveJob under lock |
+| **[FIXED]** P3-6 Toast setTimeout not cleaned up | ✅ useRef + useEffect cleanup |
+| **[FIXED]** P3-2 IsStrictlyExpired duplicate | ✅ Delegate to IsExpired |
+| **[FIXED]** P2-7 handleStatus len(modules) outside lock | ✅ Read under RLock |
+| **[FIXED]** P1-10 Last admin TOCTOU race | ✅ lastAdminMu in UpdateUser |
 
 ---
 
-## REMAINING ISSUES — Reprioritized (154 findings)
+## REMAINING ISSUES — Reprioritized (149 findings)
 
 ### Priority counts:
 ```
 P0 — CRITICAL (security + broken):   7 remaining
-P1 — HIGH (user-facing bugs):        3 remaining
-P2 — MEDIUM (tech debt / fragile):   36 remaining
-P3 — LOW (cleanup / style):          12 remaining
+P1 — HIGH (user-facing bugs):        2 remaining
+P2 — MEDIUM (tech debt / fragile):   35 remaining
+P3 — LOW (cleanup / style):          11 remaining
 Additional findings by module:       ~100 remaining
 ────────────────────────────────────
-TOTAL REMAINING:                     154
+TOTAL REMAINING:                     149
 ```
 
 ---
@@ -145,10 +149,8 @@ TOTAL REMAINING:                     154
 - **Impact:** No defers, no DB close, no request drain
 - **Fix:** Use graceful shutdown (signal to self)
 
-### P1-10 [FRAGILE] "Last admin" TOCTOU race
-- **File:** `api/handlers/admin_users.go:121-141`
-- **Impact:** Concurrent requests could disable all admin accounts
-- **Fix:** Database-level constraint or mutex
+### P1-10 [FRAGILE] "Last admin" TOCTOU race — **[FIXED]**
+- **Fix applied:** lastAdminMu in UpdateUser; check under lock before demote/disable.
 
 ### P1-11 [LEAK] Analytics backgroundLoop WaitGroup — **[FIXED]**
 - **Fix applied:** bgWg.Add(1), defer Done() in backgroundLoop; bgWg.Wait() in Stop().
@@ -175,7 +177,7 @@ TOTAL REMAINING:                     154
 - **P2-4** ~~cleanup TOCTOU~~ — **[FIXED]** Re-check under write lock before removal
 - **P2-5** ~~RecordAccess saveJob outside lock~~ — **[FIXED]** Call saveJob under lock
 - **P2-6** ~~cleanupDone double-close~~ — **[FIXED]** cleanupDoneOnce sync.Once
-- **P2-7** `internal/server/server.go:502` — handleStatus reads len(s.modules) outside lock
+- **P2-7** ~~handleStatus len(modules) outside lock~~ — **[FIXED]** Read under RLock
 
 ### Security
 - **P2-8** `pkg/middleware/middleware.go:69` — Client-supplied X-Request-ID propagated without sanitization
@@ -223,11 +225,11 @@ TOTAL REMAINING:                     154
 ## P3 — LOW: Cleanup / style (13 remaining)
 
 - **P3-1** Multiple repositories — json.Marshal/Unmarshal errors silently ignored
-- **P3-2** `pkg/models/models.go:351-359` — IsStrictlyExpired identical to IsExpired
+- **P3-2** ~~IsStrictlyExpired duplicate~~ — **[FIXED]** Delegate to IsExpired
 - **P3-3** `cmd/server/main.go:397-438` — "metadata-cleanup" task duplicates "media-scan"
 - **P3-4** `internal/server/server.go:47+215` — HealthReporter populated but never queried
 - **P3-5** `api/handlers/handler.go:326-339` — logAdminAction: callers pass dead UserID/Username
-- **P3-6** `web/frontend/src/components/Toast.tsx:21` — setTimeout not cleaned up on unmount
+- **P3-6** ~~Toast setTimeout not cleaned up~~ — **[FIXED]** useRef + useEffect cleanup
 - **P3-7** `web/frontend/src/components/AudioPlayer.tsx:48` — useEqualizer return value discarded
 - **P3-8** `internal/admin/admin.go:172-227` — ExportAuditLog loads up to 100K rows into memory
 - **P3-9** `internal/upload/upload.go:546-553` — writeChunkAndTrack locks mutex on every 32KB chunk

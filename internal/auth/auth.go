@@ -32,8 +32,9 @@ var (
 	ErrAccountDisabled    = errors.New("account disabled")
 	ErrAccountLocked      = errors.New("account locked")
 	ErrSessionExpired     = errors.New("session expired")
-	ErrAdminWrongPassword = errors.New("admin username correct but password wrong")
-	ErrNotAdminUsername   = errors.New("username does not match admin")
+	ErrAdminWrongPassword   = errors.New("admin username correct but password wrong")
+	ErrNotAdminUsername     = errors.New("username does not match admin")
+	ErrCannotDemoteLastAdmin = errors.New("cannot demote or disable the last admin account")
 
 	// dummyHash is a pre-computed bcrypt hash used for constant-time comparison
 	// when a user/admin username doesn't exist, preventing timing-based username enumeration.
@@ -56,6 +57,7 @@ type Module struct {
 	usersMu       sync.RWMutex
 	sessionsMu    sync.RWMutex
 	attemptsMu    sync.RWMutex
+	lastAdminMu   sync.Mutex // serializes demote/disable admin to prevent TOCTOU
 	dataDir       string
 	healthy       bool
 	healthMsg     string

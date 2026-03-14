@@ -1,4 +1,4 @@
-import {useCallback, useState} from 'react'
+import {useCallback, useEffect, useRef, useState} from 'react'
 import {ToastContext, type ToastType} from '@/hooks/useToast'
 
 interface Toast {
@@ -9,17 +9,23 @@ interface Toast {
 
 let nextId = 0
 
-function removeToastById(setToasts: React.Dispatch<React.SetStateAction<Toast[]>>, id: number) {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-}
-
 export function ToastProvider({children}: { children: React.ReactNode }) {
     const [toasts, setToasts] = useState<Toast[]>([])
+    const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+
+    useEffect(() => () => {
+        timersRef.current.forEach((t) => clearTimeout(t))
+        timersRef.current.clear()
+    }, [])
 
     const showToast = useCallback((message: string, type: ToastType = 'info') => {
         const id = nextId++
         setToasts((prev) => [...prev, {id, message, type}])
-        setTimeout(() => removeToastById(setToasts, id), 4000)
+        const t = setTimeout(() => {
+            timersRef.current.delete(id)
+            setToasts((prev) => prev.filter((toast) => toast.id !== id))
+        }, 4000)
+        timersRef.current.set(id, t)
     }, [])
 
     return (

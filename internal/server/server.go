@@ -502,6 +502,7 @@ func (s *Server) handleStatus(c *gin.Context) {
 	s.mu.RLock()
 	running := s.running
 	startTime := s.startTime
+	moduleCount := len(s.modules)
 	s.mu.RUnlock()
 
 	c.JSON(http.StatusOK, map[string]interface{}{
@@ -510,7 +511,7 @@ func (s *Server) handleStatus(c *gin.Context) {
 		"start_time":   startTime,
 		"version":      s.version,
 		"go_version":   runtime.Version(),
-		"module_count": len(s.modules),
+		"module_count": moduleCount,
 	})
 }
 

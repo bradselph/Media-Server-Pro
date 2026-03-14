@@ -352,10 +352,9 @@ func (s *Session) IsExpired() bool {
 	return time.Now().After(s.ExpiresAt)
 }
 
-// IsStrictlyExpired returns true if the session has expired. Same as IsExpired;
-// kept for API compatibility and to signal strict checks at call sites.
+// IsStrictlyExpired returns true if the session has expired. Delegates to IsExpired.
 func (s *Session) IsStrictlyExpired() bool {
-	return time.Now().After(s.ExpiresAt)
+	return s.IsExpired()
 }
 
 // AdminSession represents an admin session.
