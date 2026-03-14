@@ -528,16 +528,6 @@ func (AuditLogEntry) TableName() string {
 	return "audit_log"
 }
 
-// BackupInfo represents backup metadata
-type BackupInfo struct {
-	ID          string    `json:"id"`
-	Filename    string    `json:"filename"`
-	Size        int64     `json:"size"`
-	CreatedAt   time.Time `json:"created_at"`
-	Type        string    `json:"type"`
-	Description string    `json:"description,omitempty"`
-}
-
 // ServerStats holds server statistics
 type ServerStats struct {
 	Uptime         time.Duration `json:"uptime"`
