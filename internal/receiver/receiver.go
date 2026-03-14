@@ -639,12 +639,13 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 		m.log.Warn("WS stream failed for %s, trying HTTP fallback: %v", mediaID, err)
 	}
 
-	// TODO: Bug - when WS proxy fails and falls back to HTTP, the slave
-	// variable was read under RLock above but the slave may have been removed
-	// from m.slaves by a concurrent UnregisterSlave call between the read and
-	// here. The slave pointer itself is still valid (Go doesn't free it) but
-	// its data may be stale. Consider re-reading under lock before fallback.
-	// Fallback: HTTP proxy through the slave's BaseURL.
+	// Re-read slave under lock before fallback — it may have been removed since the initial read.
+	m.mu.RLock()
+	slave, exists = m.slaves[item.SlaveID]
+	m.mu.RUnlock()
+	if !exists {
+		return fmt.Errorf("slave no longer registered for media %s", mediaID)
+	}
 	return m.proxyViaHTTP(w, r, slave, item)
 }
 

@@ -66,6 +66,7 @@ type PendingStream struct {
 	Range     string
 	Ready     chan *StreamDelivery // slave posts delivery here
 	CreatedAt time.Time
+	readyOnce sync.Once // guards close(Ready) to prevent double-close panic
 }
 
 // StreamDelivery is the data the slave sends back for a pending stream.
@@ -337,20 +338,13 @@ func (m *Module) DeliverStream(token string) (*PendingStream, bool) {
 }
 
 // cleanupStalePending removes pending streams older than 30 seconds.
-// TODO: Bug - closing ps.Ready may panic if proxyViaWS has already received on
-// the channel and the channel is buffered with capacity 1. Closing an already-
-// drained channel is safe, but if proxyViaWS times out and also closes the
-// Ready channel (it doesn't currently, but the pattern is fragile), a double-
-// close would panic. Consider using a sync.Once to guard the close, or simply
-// let stale pending streams be garbage collected after the timeout in proxyViaWS.
-// Also, the 30-second threshold is hardcoded and should match or exceed
-// the ProxyTimeout config value; currently they could diverge.
+// Uses readyOnce to prevent double-close panic if the channel is closed elsewhere.
 func (m *Module) cleanupStalePending() {
 	m.pendingMu.Lock()
 	defer m.pendingMu.Unlock()
 	for token, ps := range m.pendingStreams {
 		if time.Since(ps.CreatedAt) > 30*time.Second {
-			close(ps.Ready)
+			ps.readyOnce.Do(func() { close(ps.Ready) })
 			delete(m.pendingStreams, token)
 		}
 	}

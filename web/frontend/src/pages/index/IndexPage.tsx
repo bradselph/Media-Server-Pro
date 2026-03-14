@@ -190,11 +190,11 @@ function UploadModal({onClose, onDone, maxFileSize, categories = []}: {
     }
 
     return (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && handleClose()}>
-            <div className="modal-box">
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && handleClose()} role="presentation">
+            <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
                 <div className="modal-header">
-                    <h2><i className="bi bi-cloud-upload-fill"/> Upload Media Files</h2>
-                    <button className="modal-close" onClick={handleClose}>×</button>
+                    <h2 id="upload-modal-title"><i className="bi bi-cloud-upload-fill"/> Upload Media Files</h2>
+                    <button type="button" className="modal-close" onClick={handleClose} aria-label="Close">×</button>
                 </div>
                 <div className="modal-body">
                     {phase === 'select' && (
@@ -251,7 +251,7 @@ function UploadModal({onClose, onDone, maxFileSize, categories = []}: {
                                     <h3 style={{margin: '0 0 8px 0', fontSize: 15}}>Files to Upload
                                         ({files.length})</h3>
                                     {files.map((f, i) => (
-                                        <div key={i} className="upload-file-item">
+                                        <div key={`${f.name}-${f.size}-${i}`} className="upload-file-item">
                                             <span className="upload-file-name">{f.name}</span>
                                             <span className="upload-file-size">{formatFileSize({ bytes: f.size }, '0 B')}</span>
                                             <button className="upload-remove-btn" onClick={() => { removeFile(i); }}>×
@@ -607,8 +607,14 @@ function MediaCard({
                         <i className="bi bi-play-fill" /> Play
                     </button>
                     {canDownload && !restricted && (
-                        <a href={mediaApi.getDownloadUrl(item.id)} download style={{ flex: 1 }}>
-                            <button className="media-card-btn" style={{ width: '100%' }}><i className="bi bi-download" /></button>
+                        <a
+                            href={mediaApi.getDownloadUrl(item.id)}
+                            download
+                            className="media-card-btn"
+                            style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', color: 'inherit' }}
+                            title="Download"
+                        >
+                            <i className="bi bi-download" />
                         </a>
                     )}
                     {!restricted && (
@@ -637,6 +643,7 @@ function InlinePlayer({
     const [currentTime, setCurrentTime] = useState(0)
     const [duration, setDuration] = useState(0)
     const [volume, setVolume] = useState(1)
+    const [muted, setMuted] = useState(false)
     const [audioReady, setAudioReady] = useState(false)
     const [showEq, setShowEq] = useState(false)
 
@@ -653,24 +660,24 @@ function InlinePlayer({
 
     const handleEqToggle = useCallback(() => { setShowEq(v => !v); }, [])
 
-    // Load new media when nowPlaying changes
-    // TODO: Missing dependencies — `activeRef`, `volume`, and `mediaApi.getStreamUrl`
-    // are used inside the effect but excluded from the dependency array (suppressed by
-    // eslint-disable). `volume` is particularly concerning: if the user changes volume
-    // before a new track loads, the old volume value from the closure will be used.
-    // WHY: Stale `volume` closure means the volume slider change won't take effect until
-    // the next track change. `activeRef` changing between audio/video refs when `isVideo`
-    // changes also won't trigger a re-setup.
-    // FIX: Add `volume` to the dependency array (or read it from a ref), and consider
-    // splitting volume sync into its own effect.
+    // Load new media when nowPlaying changes (volume/muted applied so new track respects current settings)
     useEffect(() => {
         if (!nowPlaying) return
         const el = activeRef.current
         if (!el) return
         el.src = mediaApi.getStreamUrl(nowPlaying.id)
         el.volume = volume
+        el.muted = muted
         el.play().then(() => { setIsPlaying(true); }).catch(() => setIsPlaying(false))
-    }, [nowPlaying]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [nowPlaying]) // volume/muted read from state when track changes; synced by effect below when they change
+
+    useEffect(() => {
+        const el = activeRef.current
+        if (el) {
+            el.volume = volume
+            el.muted = muted
+        }
+    }, [volume, muted])
 
     function togglePlay() {
         const el = activeRef.current
@@ -813,10 +820,21 @@ function InlinePlayer({
 
                 <div className="player-right">
                     <div className="player-volume-row">
-                        <button className="player-btn" onClick={() => {
-                            const el = activeRef.current
-                            if (el) el.muted = !el.muted
-                        }} title="Mute"><i className="bi bi-volume-up-fill"/></button>
+                        <button
+                            type="button"
+                            className="player-btn"
+                            onClick={() => {
+                                const el = activeRef.current
+                                if (el) {
+                                    el.muted = !el.muted
+                                    setMuted(el.muted)
+                                }
+                            }}
+                            title={muted ? 'Unmute' : 'Mute'}
+                            aria-label={muted ? 'Unmute' : 'Mute'}
+                        >
+                            <i className={muted ? 'bi bi-volume-mute-fill' : 'bi bi-volume-up-fill'} />
+                        </button>
                         <input
                             type="range"
                             className="player-volume-slider"
@@ -1511,11 +1529,12 @@ export function IndexPage() {
                 </button>
 
                 <input
-                    type="text"
+                    type="search"
                     className="controls-search"
                     placeholder="Search your media library..."
                     value={searchInput}
                     onChange={e => { setSearchInput(e.target.value); }}
+                    aria-label="Search media library"
                 />
 
                 <button className="controls-btn" onClick={handleRefresh} title="Refresh"><i

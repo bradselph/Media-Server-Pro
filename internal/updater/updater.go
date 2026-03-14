@@ -1102,8 +1102,11 @@ func (m *Module) IsUpdateRunning() bool {
 // The caller is responsible for restarting the service after this returns.
 // TODO: SourceUpdate has no guard against concurrent calls, unlike ApplyUpdate which
 // uses applyMu. Two simultaneous SourceUpdate calls could corrupt the build. Should
-// add a similar concurrency guard (e.g., check IsBuildRunning at entry and set a flag).
 func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
+	if m.IsBuildRunning() {
+		return &UpdateStatus{Error: "a source build is already in progress", InProgress: false},
+			fmt.Errorf("a source build is already in progress")
+	}
 	cfg := m.config.Get()
 	dir, err := m.appDir()
 	if err != nil {
