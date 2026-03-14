@@ -648,13 +648,15 @@ func (m *Module) DeleteDiscovery(id string) error {
 func (m *Module) GetStats() Stats {
 	stats := Stats{}
 
-	m.crawlMu.Lock()
+	m.crawlMu.RLock()
 	stats.Crawling = m.crawling
-	m.crawlMu.Unlock()
+	m.crawlMu.RUnlock()
 
 	if m.targetRepo != nil {
 		targets, err := m.targetRepo.List(context.Background())
-		if err == nil {
+		if err != nil {
+			m.log.Warn("GetStats: failed to list targets: %v", err)
+		} else {
 			stats.TotalTargets = len(targets)
 			for _, t := range targets {
 				if t.Enabled {
@@ -668,7 +670,9 @@ func (m *Module) GetStats() Stats {
 		return stats
 	}
 	discoveries, err := m.discoveryRepo.List(context.Background())
-	if err == nil {
+	if err != nil {
+		m.log.Warn("GetStats: failed to list discoveries: %v", err)
+	} else {
 		stats.TotalDiscoveries = len(discoveries)
 		for _, d := range discoveries {
 			if d.Status == "pending" {
