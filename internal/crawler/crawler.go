@@ -630,6 +630,9 @@ func (m *Module) IgnoreDiscovery(id, reviewedBy string) error {
 	if disc == nil {
 		return fmt.Errorf("discovery not found: %s", id)
 	}
+	if disc.Status != "pending" {
+		return fmt.Errorf("discovery already reviewed: %s", disc.Status)
+	}
 
 	return m.discoveryRepo.UpdateStatus(context.Background(), id, "ignored", reviewedBy)
 }
