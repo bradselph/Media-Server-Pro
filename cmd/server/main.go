@@ -55,8 +55,10 @@ var (
 
 func main() {
 	// Load .env before anything else so environment variables are available
-	// during config loading. Missing file is silently ignored.
-	_ = godotenv.Load()
+	// during config loading. Missing file is ignored; other errors are logged.
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Warning: loading .env: %v\n", err)
+	}
 
 	// Parse flags
 	var (

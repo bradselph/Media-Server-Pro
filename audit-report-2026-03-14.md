@@ -7,7 +7,7 @@
 
 ---
 
-## FIXED ITEMS (30/193 — verified 2026-03-14)
+## FIXED ITEMS (34/193 — verified 2026-03-14)
 
 | Finding | Status |
 |---------|--------|
@@ -40,20 +40,23 @@
 | **[FIXED]** P2-6 HLS cleanupDone double-close | ✅ cleanupDoneOnce sync.Once |
 | **[FIXED]** P1-5 Slave extension list missing 7 formats | ✅ Added .3gp, .m2ts, .vob, .ogv, .aiff, .ape, .mka |
 | **[FIXED]** P2-4 HLS cleanup TOCTOU | ✅ Re-check under write lock before removal |
+| **[FIXED]** P3-13 godotenv.Load error discarded | ✅ Log non-NotFound errors |
+| **[FIXED]** P1-13 evictStaleProfiles TOCTOU | ✅ Re-check LastUpdated under lock |
+| **[FIXED]** P2-26 scheduleUnregisterUpload leak | ✅ done chan, select on shutdown |
 
 ---
 
-## REMAINING ISSUES — Reprioritized (163 findings)
+## REMAINING ISSUES — Reprioritized (159 findings)
 
 ### Priority counts:
 ```
 P0 — CRITICAL (security + broken):   8 remaining
-P1 — HIGH (user-facing bugs):        5 remaining
-P2 — MEDIUM (tech debt / fragile):   39 remaining
-P3 — LOW (cleanup / style):          13 remaining
+P1 — HIGH (user-facing bugs):        4 remaining
+P2 — MEDIUM (tech debt / fragile):   38 remaining
+P3 — LOW (cleanup / style):          12 remaining
 Additional findings by module:       ~100 remaining
 ────────────────────────────────────
-TOTAL REMAINING:                     163
+TOTAL REMAINING:                     159
 ```
 
 ---
@@ -153,10 +156,8 @@ TOTAL REMAINING:                     163
 ### P1-12 [LEAK] CacheMedia context.Background() — **[FIXED]**
 - **Fix applied:** Module ctx/cancel; CacheMedia uses m.ctx; cancel on Stop().
 
-### P1-13 [FRAGILE] evictStaleProfiles TOCTOU race
-- **File:** `internal/suggestions/suggestions.go:197-233`
-- **Impact:** Just-updated profile could be evicted, losing RecordView data
-- **Fix:** Re-check LastUpdated under write lock before deleting
+### P1-13 [FRAGILE] evictStaleProfiles TOCTOU — **[FIXED]**
+- **Fix applied:** Re-check LastUpdated under write lock before delete.
 
 ### P1-14 [DRIFT] Two different thumbnail timestamp spacing algorithms
 - **File:** `internal/thumbnails/preview.go:82-86`
@@ -199,7 +200,7 @@ TOTAL REMAINING:                     163
 
 ### Resource / Lifecycle
 - **P2-25** `pkg/middleware/agegate.go:212-214` — Unbounded verifiedIPs map growth
-- **P2-26** `internal/upload/upload.go:315-322` — scheduleUnregisterUpload goroutine leaks on shutdown
+- **P2-26** ~~scheduleUnregisterUpload leak~~ — **[FIXED]** done chan, select on shutdown
 - **P2-27** `pkg/models/models.go:233-240` — PlaybackPosition uses filesystem path as primary key
 - **P2-28** `internal/config/types.go` — time.Duration JSON round-trip produces nanoseconds
 - **P2-29** `internal/config/accessors.go:61-74` — SetValue doesn't call syncFeatureToggles
@@ -233,7 +234,7 @@ TOTAL REMAINING:                     163
 - **P3-10** `internal/receiver/receiver.go:439` — PushCatalog MediaCount wrong on incremental pushes
 - **P3-11** `internal/categorizer/categorizer.go:327-339` — detectAnime false positives
 - **P3-12** `internal/server/signals_{unix,windows}.go` — No second-signal forced exit
-- **P3-13** `cmd/server/main.go:59` — godotenv.Load() error silently discarded
+- **P3-13** ~~godotenv.Load error discarded~~ — **[FIXED]** Log non-NotFound errors
 
 ---
 
