@@ -237,6 +237,8 @@ func (m *Module) getFilesToBackup(backupType string) []string {
 		files = []string{
 			"config.json",
 		}
+	default:
+		return nil
 	}
 
 	// Convert to full paths
