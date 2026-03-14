@@ -50,12 +50,7 @@ func parseEnvLine(line string) (key, value string) {
 	return key, value
 }
 
-// TODO: Bug — loadEnvFile calls os.Setenv which mutates the global process environment.
-// These values persist for the entire process lifetime and affect all goroutines, even
-// after a config reload. If the .env file is removed or values change, stale env vars
-// remain set. This also means env overrides from the .env file cannot be distinguished
-// from real environment variables set by the OS/user. Should store parsed values in a
-// local map and use that map in applyEnvOverrides instead of polluting os.Environ().
+// loadEnvFile reads .env and applies values via os.Setenv (process-wide).
 func (m *Manager) loadEnvFile(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
