@@ -1023,6 +1023,7 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 		Category: filter.Category,
 		IsMature: filter.IsMature,
 		Search:   filter.Search,
+		Type:     string(filter.Type),
 		SortDesc: filter.SortDesc,
 		Limit:    limit,
 		Offset:   offset,

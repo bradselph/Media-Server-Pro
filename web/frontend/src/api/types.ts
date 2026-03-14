@@ -822,8 +822,12 @@ export interface EventStats {
 }
 
 // ── Feature 6: Admin Playlists ──
-// AdminListPlaylists returns []*models.Playlist — reuse Playlist type directly (see above).
-// AdminPlaylistEntry is intentionally removed; use Playlist[] for admin playlist lists.
+// AdminListPlaylists returns { items, total_items, total_pages } for pagination.
+export interface AdminPlaylistListResponse {
+    items: Playlist[]
+    total_items: number
+    total_pages: number
+}
 
 // Backend playlist.Stats shape
 export interface AdminPlaylistStats {

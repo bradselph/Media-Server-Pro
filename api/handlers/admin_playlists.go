@@ -39,7 +39,8 @@ func paginatePlaylists(playlists []*models.Playlist, page, limit int) []*models.
 	return playlists[start:end]
 }
 
-// AdminListPlaylists returns all playlists for admin with optional search and pagination.
+// AdminListPlaylists returns playlists for admin with optional search and pagination.
+// Returns { items, total_items, total_pages } for correct pagination UI.
 func (h *Handler) AdminListPlaylists(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
@@ -49,7 +50,20 @@ func (h *Handler) AdminListPlaylists(c *gin.Context) {
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 100, Min: 1, Max: 1000})
 	page := ParseQueryInt(c, "page", QueryIntOpts{Default: 1, Min: 1, Max: 10000})
 	filtered := filterPlaylistsBySearch(all, search)
-	writeSuccess(c, paginatePlaylists(filtered, page, limit))
+	totalItems := len(filtered)
+	totalPages := 1
+	if limit > 0 && totalItems > 0 {
+		totalPages = (totalItems + limit - 1) / limit
+		if totalPages < 1 {
+			totalPages = 1
+		}
+	}
+	items := paginatePlaylists(filtered, page, limit)
+	writeSuccess(c, map[string]interface{}{
+		"items":       items,
+		"total_items": totalItems,
+		"total_pages": totalPages,
+	})
 }
 
 // AdminPlaylistStats returns playlist statistics

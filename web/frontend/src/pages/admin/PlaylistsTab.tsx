@@ -1,7 +1,7 @@
-import {useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
-import type {AdminPlaylistStats, Playlist} from '@/api/types'
+import type {AdminPlaylistStats} from '@/api/types'
 import {errMsg} from './adminUtils'
 
 // ── Tab: Playlists (Feature 6) ────────────────────────────────────────────────
@@ -25,11 +25,25 @@ export function PlaylistsTab() {
     const [sortBy, setSortBy] = useState<PlaylistSortKey>('name')
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
     const [filterVisibility, setFilterVisibility] = useState<string>('')
+    const [debouncedSearch, setDebouncedSearch] = useState('')
+    const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const {data: playlists = []} = useQuery<Playlist[]>({
-        queryKey: ['admin-playlists'],
-        queryFn: () => adminApi.listAllPlaylists(),
+    useEffect(() => {
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+        searchTimerRef.current = setTimeout(() => { setDebouncedSearch(search); }, 300)
+        return () => {
+            if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+        }
+    }, [search])
+
+    const {data: playlistResponse} = useQuery({
+        queryKey: ['admin-playlists', debouncedSearch],
+        queryFn: () => adminApi.listAllPlaylists({
+            search: debouncedSearch || undefined,
+            limit: 500,
+        }),
     })
+    const playlists = playlistResponse?.items ?? []
 
     const {data: playlistStats} = useQuery<AdminPlaylistStats>({
         queryKey: ['admin-playlist-stats'],
@@ -164,7 +178,7 @@ export function PlaylistsTab() {
                         </button>
                     )}
                     <span style={{fontSize: 12, color: 'var(--text-muted)'}}>
-                        {filtered.length} of {playlists.length} playlist{playlists.length !== 1 ? 's' : ''}
+                        {filtered.length} of {playlistResponse?.total_items ?? playlists.length} playlist{(playlistResponse?.total_items ?? playlists.length) !== 1 ? 's' : ''}
                     </span>
                 </div>
                 {selected.size > 0 && (
