@@ -64,12 +64,8 @@ type Module struct {
 	bufferPool     *sync.Pool
 }
 
-// StreamStats holds streaming statistics
-// TODO: TotalStreams, TotalBytesSent, and PeakConcurrent are modified under statsMu
-// but could benefit from atomic operations for better performance. Additionally,
-// TotalStreams and TotalBytesSent will reset to zero on server restart since they
-// are not persisted. Consider documenting this as expected behavior or persisting
-// cumulative stats to the database.
+// StreamStats holds streaming statistics. TotalStreams and TotalBytesSent reset on
+// server restart (not persisted). Protected by statsMu.
 type StreamStats struct {
 	TotalStreams   int64 `json:"total_streams"`
 	ActiveStreams  int   `json:"active_streams"`
