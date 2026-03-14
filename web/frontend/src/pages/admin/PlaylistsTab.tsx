@@ -28,7 +28,10 @@ export function PlaylistsTab() {
 
     const {data: playlists = []} = useQuery<Playlist[]>({
         queryKey: ['admin-playlists'],
-        queryFn: () => adminApi.listAllPlaylists(),
+        queryFn: async () => {
+            const res = await adminApi.listAllPlaylists()
+            return res.items
+        },
     })
 
     const {data: playlistStats} = useQuery<AdminPlaylistStats>({
