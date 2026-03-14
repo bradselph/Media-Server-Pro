@@ -140,6 +140,9 @@ func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 	if backupType == "" {
 		backupType = "full"
 	}
+	if backupType != "config" && backupType != "data" && backupType != "full" {
+		return nil, fmt.Errorf("unsupported backup type %q: must be config, data, or full", backupType)
+	}
 
 	timestamp := time.Now().Format("20060102_150405.000000000")
 	backupID := fmt.Sprintf("backup_%s", timestamp)
