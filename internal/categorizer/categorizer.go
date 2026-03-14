@@ -394,13 +394,7 @@ func (m *Module) detectMusic(ctx PathContext, info *MediaInfo) (Category, float6
 }
 
 // detectMovie checks for movie patterns in the filename and directory path.
-// TODO: Bug — parseNumber(matches[0]) receives the full regex match (e.g., ".2020." or
-// "(2020)") not just the capture group. parseNumber handles this by extracting digits,
-// but the regex pattern `[.\s(]?(19|20)\d{2}[.\s)]?` has a capture group at index 1
-// that gives the century prefix (e.g., "20"), not the full year. matches[0] is the
-// correct source for the full year, but the intent seems wrong — if the filename is
-// "movie.2020.1080p", matches[0] = "2020" which works, but ".2020." or "(2020)" also
-// match and parseNumber extracts 2020 from those too, so it works by accident.
+// matches[0] is the full regex match (e.g. "2020", ".2020.", "(2020)"); parseNumber extracts the year.
 func (m *Module) detectMovie(ctx PathContext, info *MediaInfo) (Category, float64, bool) {
 	if matches := m.patterns.movieYearMatch.FindStringSubmatch(ctx.Filename); len(matches) > 0 {
 		info.Title = m.extractMovieTitle(ctx.Filename)
