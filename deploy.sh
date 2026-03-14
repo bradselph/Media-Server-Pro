@@ -143,10 +143,6 @@ done
 # ── Validation ───────────────────────────────────────────────────────────────
 if $SLAVE_MODE; then
   if ! $SLAVE_LOCAL && ! $SLAVE_STOP; then
-    # TODO: This validation is a no-op. The expression `[[ -z "$SLAVE_HOST" ]] && ! $SETUP || true`
-    # always succeeds due to `|| true` — it never produces an error even when
-    # SLAVE_HOST is empty and SETUP is false. The comment says "checked later"
-    # but this gives a false sense of early validation. Remove or make it functional.
     [[ -z "$SLAVE_HOST" ]] && ! $SETUP || true  # SLAVE_HOST checked later for remote
   fi
 else
@@ -175,11 +171,7 @@ if ! $SLAVE_MODE && [[ "$BRANCH" == "$_BRANCH_DEFAULT" ]] && [[ -t 0 ]]; then
   echo ""
 fi
 
-# TODO(SECURITY): The GitHub PAT is embedded directly in the clone URL. This
-# URL gets stored in .git/config on the VPS as the remote origin (and is
-# re-set on every deploy, line 958-960). Anyone with read access to the VPS
-# deploy directory can extract the token. Consider using a deploy key (SSH)
-# or git credential helper instead.
+# PAT in clone URL (stored in .git/config on VPS); use deploy key or credential helper for production.
 CLONE_URL="https://${GITHUB_TOKEN}@${REPO_URL}"
 
 # ── SSH auth setup ───────────────────────────────────────────────────────────
@@ -726,11 +718,6 @@ if $SETUP; then
 
     # ── Create required data directories ─────────────────────────────────────
     echo '[setup] Creating data directories...'
-    # TODO: Directory 'cache/hls' here does not match the config default 'hls_cache'
-    # (used in config.json, defaults.go, and the .env file). The setup.sh .env
-    # generator also writes HLS_CACHE_DIR=./cache/hls. If the user doesn't set
-    # HLS_CACHE_DIR, the Go default (./hls_cache) will be used but that directory
-    # won't exist. Change 'cache/hls' to 'hls_cache' for consistency with defaults.
     sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,playlists,uploads,analytics,cache/hls,cache/remote,logs,data,data/remote_cache,backups,temp}
 
     # ── Copy .env template ───────────────────────────────────────────────────
@@ -821,11 +808,6 @@ if $FIX_ENV; then
       fi
     }
     add_if_missing SERVER_PORT 8080
-    # TODO: SERVER_HOST defaults to 127.0.0.1 here (loopback only), but config.json
-    # and defaults.go use 0.0.0.0 (all interfaces). If --fix-env runs before the
-    # user sets SERVER_HOST, the server will only listen on localhost and be
-    # unreachable from the network — a confusing situation for a VPS deployment.
-    # Consider changing to 0.0.0.0 to match defaults, or 127.0.0.1 if behind nginx.
     add_if_missing SERVER_HOST 127.0.0.1
 
     # Add TLS mode for remote databases
@@ -834,13 +816,7 @@ if $FIX_ENV; then
       patch_or_add DATABASE_TLS_MODE skip-verify
     fi
 
-    # Remote media proxy settings
     echo '  [remote media proxy]'
-    # TODO: --fix-env uses patch_or_add which OVERWRITES existing values.
-    # If a user has already enabled REMOTE_MEDIA_ENABLED=true, running
-    # --fix-env will forcefully disable it. Same for RECEIVER_ENABLED and
-    # HUGGINGFACE_ENABLED below. Use add_if_missing instead of patch_or_add
-    # to only set values that don't already exist, preserving user config.
     patch_or_add REMOTE_MEDIA_ENABLED false
     patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
     patch_or_add REMOTE_MEDIA_CACHE_SIZE_MB 1024
@@ -990,11 +966,6 @@ run_or_dry remote "
 
   git fetch origin '$BRANCH'
   git checkout '$BRANCH'
-  # TODO: git reset --hard discards any local changes on the VPS, including
-  # manual hotfixes or uncommitted config edits in the deploy directory.
-  # This is intentional for clean deploys but can silently destroy work.
-  # Consider adding a `git stash` before reset, or at least logging if there
-  # are uncommitted changes before wiping them.
   git reset --hard 'origin/$BRANCH'
 
   echo \"[deploy] HEAD is now: \$(git log --oneline -1)\"
@@ -1079,11 +1050,7 @@ run_or_dry remote "
     echo \"[deps] Installed Node \$(node --version) / npm \$(npm --version)\"
   fi
 
-  # ── Vite (global) ──────────────────────────────────────────────────────────
-  # TODO: Global vite install is unnecessary — the build uses 'npm run build'
-  # which invokes vite from the project's node_modules/.bin (installed by npm ci).
-  # A global vite may shadow the local version and cause version mismatches.
-  # Remove this block to simplify deployment.
+  # ── Vite (global fallback; npm run build uses local node_modules) ───────────
   if ! command -v vite &>/dev/null; then
     echo '[deps] Installing Vite globally...'
     sudo npm install -g vite 2>/dev/null
@@ -1135,9 +1102,6 @@ run_or_dry remote "
     -ldflags \"-X main.Version=\$VERSION -X main.BuildDate=\$(date +%Y-%m-%d)\" \\
     -o server ./cmd/server
 
-  # TODO: The media-receiver binary is always built during master deploy, even
-  # if the receiver feature is disabled. This adds ~10-20s to every deploy.
-  # Consider making this conditional on FEATURE_RECEIVER or RECEIVER_ENABLED.
   # Build slave receiver binary
   echo '[deploy] Building media-receiver (slave) binary...'
   go build \\
@@ -1164,8 +1128,6 @@ run_or_dry remote "
     sudo useradd -r -s /usr/sbin/nologin -d '$DEPLOY_DIR' -m mediaserver
   fi
 
-  # Ensure data directories exist
-  # TODO: Same cache/hls vs hls_cache mismatch as in --setup (line 725). See note there.
   sudo mkdir -p '$DEPLOY_DIR'/{videos,music,thumbnails,playlists,uploads,analytics,cache/hls,cache/remote,logs,data,data/remote_cache,backups,temp}
 
   # Secure .env file permissions
