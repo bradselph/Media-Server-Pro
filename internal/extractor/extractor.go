@@ -530,7 +530,9 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		return fmt.Errorf("proxy copy failed: %w", err)
+	}
 	return nil
 }
 

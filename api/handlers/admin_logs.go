@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bufio"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,7 +33,12 @@ func (h *Handler) GetServerLogs(c *gin.Context) {
 
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
-		writeSuccess(c, []interface{}{})
+		if os.IsNotExist(err) {
+			writeSuccess(c, []interface{}{})
+			return
+		}
+		h.log.Warn("Failed to read logs directory %s: %v", logsDir, err)
+		writeError(c, http.StatusInternalServerError, "Failed to read logs directory")
 		return
 	}
 
@@ -99,8 +105,13 @@ func filterLogEntries(entries []map[string]interface{}, levelFilter, moduleFilte
 	return filtered
 }
 
-// readLastNLines reads the last N lines from a file (loads full file into memory).
+// readLastNLines reads the last N lines from a file using a ring buffer so
+// only O(n) memory is held regardless of file size.
 func readLastNLines(filePath string, n int) ([]string, error) {
+	if n <= 0 {
+		return nil, nil
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -109,16 +120,31 @@ func readLastNLines(filePath string, n int) ([]string, error) {
 		_ = file.Close()
 	}()
 
-	var lines []string
+	ring := make([]string, n)
+	idx := 0
+	total := 0
+
 	sc := bufio.NewScanner(file)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
-		lines = append(lines, sc.Text())
+		ring[idx%n] = sc.Text()
+		idx++
+		total++
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
 	}
 
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
+	count := total
+	if count > n {
+		count = n
 	}
-	return lines, sc.Err()
+	result := make([]string, 0, count)
+	start := idx - count
+	for i := start; i < idx; i++ {
+		result = append(result, ring[i%n])
+	}
+	return result, nil
 }
 
 // parseLogLine parses a server log line into a structured entry

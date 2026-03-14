@@ -137,7 +137,8 @@ func (m *Module) Health() models.HealthStatus {
 
 // StreamRequest holds parameters for a stream request
 type StreamRequest struct {
-	Path        string
+	Path        string // filesystem path for file I/O
+	MediaID     string // stable UUID for API responses (player links, admin streams); prefer over Path when exposing to clients
 	Quality     string
 	UserID      string
 	SessionID   string
@@ -444,9 +445,13 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 
 // startSession creates and tracks a new streaming session
 func (m *Module) startSession(req StreamRequest, position int64) *models.StreamSession {
+	mediaID := req.MediaID
+	if mediaID == "" {
+		mediaID = req.Path // fallback for callers that don't pass MediaID (internal path; avoid exposing in API)
+	}
 	session := &models.StreamSession{
 		ID:         generateSessionID(req.SessionID),
-		MediaID:    req.Path,
+		MediaID:    mediaID,
 		UserID:     req.UserID,
 		IPAddress:  req.IPAddress,
 		Quality:    req.Quality,

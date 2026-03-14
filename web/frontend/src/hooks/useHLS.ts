@@ -125,6 +125,46 @@ export function useHLS(
 
         let cancelled = false
 
+        function onManifestParsed(_event: unknown, data: { levels: Array<{ height: number; width: number; bitrate: number; videoCodec?: string }> }) {
+            if (cancelled) return
+            const q = mapLevelsToQualities(data.levels)
+            setQualities(q)
+            setIsLoading(false)
+            const savedHeight = getSavedQualityPref()
+            if (savedHeight > 0 && hlsRef.current) {
+                const match = q.find(level => level.height === savedHeight)
+                if (match) {
+                    hlsRef.current.currentLevel = match.index
+                    setCurrentQuality(match.index)
+                    return
+                }
+            }
+            setCurrentQuality(-1)
+        }
+
+        function onLevelSwitched(_event: unknown, data: { level: number }) {
+            if (cancelled || !hlsRef.current) return
+            if (hlsRef.current.currentLevel === -1) setAutoLevel(data.level)
+            else setCurrentQuality(data.level)
+        }
+
+        function onFragLoaded(_event: unknown, data: { frag: { stats: { loaded: number; loading: { start: number; end: number } } } }) {
+            if (cancelled || !hlsRef.current) return
+            const stats = data.frag.stats
+            if (!stats.loaded || !stats.loading?.end || !stats.loading?.start) return
+            const loadTime = stats.loading.end - stats.loading.start
+            if (loadTime <= 0) return
+            const bw = (stats.loaded * 8) / (loadTime / 1000)
+            setBandwidth(bw)
+            if (bw < 1_000_000) hlsRef.current.config.maxBufferLength = 30
+            else if (bw < 3_000_000) hlsRef.current.config.maxBufferLength = 45
+            else hlsRef.current.config.maxBufferLength = 60
+        }
+
+        function doStartLoad() {
+            if (!cancelled && hlsRef.current) hlsRef.current.startLoad()
+        }
+
         async function initHLS() {
             let Hls: typeof import('hls.js')['default']
             try {
@@ -144,7 +184,6 @@ export function useHLS(
                 return
             }
 
-            // Destroy previous instance
             if (hlsRef.current) {
                 hlsRef.current.destroy()
                 hlsRef.current = null
@@ -185,46 +224,6 @@ export function useHLS(
             })
 
             hlsRef.current = hls
-
-            function onManifestParsed(_event: unknown, data: { levels: Array<{ height: number; width: number; bitrate: number; videoCodec?: string }> }) {
-                if (cancelled) return
-                const q = mapLevelsToQualities(data.levels)
-                setQualities(q)
-                setIsLoading(false)
-                const savedHeight = getSavedQualityPref()
-                if (savedHeight > 0) {
-                    const match = q.find(level => level.height === savedHeight)
-                    if (match) {
-                        hls.currentLevel = match.index
-                        setCurrentQuality(match.index)
-                        return
-                    }
-                }
-                setCurrentQuality(-1)
-            }
-
-            function onLevelSwitched(_event: unknown, data: { level: number }) {
-                if (cancelled) return
-                if (hls.currentLevel === -1) setAutoLevel(data.level)
-                else setCurrentQuality(data.level)
-            }
-
-            function onFragLoaded(_event: unknown, data: { frag: { stats: { loaded: number; loading: { start: number; end: number } } } }) {
-                if (cancelled) return
-                const stats = data.frag.stats
-                if (!stats.loaded || !stats.loading?.end || !stats.loading?.start) return
-                const loadTime = stats.loading.end - stats.loading.start
-                if (loadTime <= 0) return
-                const bw = (stats.loaded * 8) / (loadTime / 1000)
-                setBandwidth(bw)
-                if (bw < 1_000_000) hls.config.maxBufferLength = 30
-                else if (bw < 3_000_000) hls.config.maxBufferLength = 45
-                else hls.config.maxBufferLength = 60
-            }
-
-            function doStartLoad() {
-                if (!cancelled && hlsRef.current) hlsRef.current.startLoad()
-            }
 
             function onError(_event: unknown, data: ErrorData) {
                 if (cancelled || !data.fatal) return
