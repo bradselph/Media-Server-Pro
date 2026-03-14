@@ -448,7 +448,9 @@ type removeResolutionParams struct {
 
 // applyRemoveResolution removes one item of a duplicate pair and updates status for the record and any cascade.
 func (m *Module) applyRemoveResolution(ctx context.Context, p removeResolutionParams) error {
-	m.removeItem(ctx, p.itemID, p.slaveID)
+	if err := m.removeItem(ctx, p.itemID, p.slaveID); err != nil {
+		return fmt.Errorf("failed to remove item %s: %w", p.itemID, err)
+	}
 	if err := m.dupRepo.UpdateStatus(ctx, p.id, p.action, p.resolvedBy); err != nil {
 		return err
 	}
@@ -461,29 +463,26 @@ func (m *Module) applyRemoveResolution(ctx context.Context, p removeResolutionPa
 // removeItem deletes the item from the appropriate backing store.
 // For receiver items it removes the row from receiver_media.
 // For local items it removes the metadata row and the file on disk.
-func (m *Module) removeItem(ctx context.Context, itemID, slaveID string) {
+func (m *Module) removeItem(ctx context.Context, itemID, slaveID string) error {
 	if slaveID == "" {
-		m.removeLocalItem(ctx, itemID)
-		return
+		return m.removeLocalItem(ctx, itemID)
 	}
-	m.removeReceiverItem(ctx, itemID)
+	return m.removeReceiverItem(ctx, itemID)
 }
 
 // removeLocalItem finds the local file by stable ID and deletes its metadata and file.
-func (m *Module) removeLocalItem(ctx context.Context, itemID string) {
+func (m *Module) removeLocalItem(ctx context.Context, itemID string) error {
 	if m.metaRepo == nil {
-		return
+		return fmt.Errorf("metadata repository not available")
 	}
 	path, err := m.findLocalPathByStableID(ctx, itemID)
 	if err != nil {
-		m.log.Warn("removeItem: %v", err)
-		return
+		return err
 	}
 	if path == "" {
-		m.log.Warn("removeItem: local item %s not found in metadata", itemID)
-		return
+		return fmt.Errorf("local item %s not found in metadata", itemID)
 	}
-	m.deleteLocalFileAndMetadata(ctx, path)
+	return m.deleteLocalFileAndMetadata(ctx, path)
 }
 
 // findLocalPathByStableID returns the file path for the given stable ID (scans full metadata list).
@@ -501,21 +500,20 @@ func (m *Module) findLocalPathByStableID(ctx context.Context, itemID string) (st
 }
 
 // deleteLocalFileAndMetadata removes the metadata row and the file on disk for the given path.
-func (m *Module) deleteLocalFileAndMetadata(ctx context.Context, path string) {
+func (m *Module) deleteLocalFileAndMetadata(ctx context.Context, path string) error {
 	if err := m.metaRepo.Delete(ctx, path); err != nil {
-		m.log.Warn("removeItem: failed to delete local metadata for %s: %v", path, err)
+		return fmt.Errorf("failed to delete local metadata for %s: %w", path, err)
 	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		m.log.Warn("removeItem: failed to delete local file %s: %v", path, err)
+		return fmt.Errorf("failed to delete local file %s: %w", path, err)
 	}
+	return nil
 }
 
 // removeReceiverItem deletes the item from receiver_media by ID.
-func (m *Module) removeReceiverItem(ctx context.Context, itemID string) {
+func (m *Module) removeReceiverItem(ctx context.Context, itemID string) error {
 	if m.receiverRepo == nil {
-		return
+		return fmt.Errorf("receiver repository not available")
 	}
-	if err := m.receiverRepo.DeleteByID(ctx, itemID); err != nil {
-		m.log.Warn("removeItem: failed to delete receiver media %s: %v", itemID, err)
-	}
+	return m.receiverRepo.DeleteByID(ctx, itemID)
 }

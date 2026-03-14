@@ -1,0 +1,115 @@
+---
+description: Repository audit and TODO repair — fixes incomplete implementations, silent failures, interface mismatches, and missing edge case handling one issue at a time.
+globs:
+alwaysApply: false
+---
+
+# Repository Audit + TODO Repair (Single Cycle)
+
+## Objective
+
+Audit the repository and repair incomplete implementations, TODO markers, interface mismatches, silent failures, and missing edge case handling. Fix issues one at a time and commit each fix individually.
+
+## Core Rules
+
+- Only fix ONE issue per commit.
+- Prefer modifying existing code instead of rewriting modules.
+- Preserve architecture, naming conventions, and coding style.
+- Do not introduce placeholders, TODOs, or partial implementations.
+- Remove silent failures.
+- All functions must validate inputs and handle errors.
+- Ensure deterministic return behavior.
+- Ensure features are traced from entry point to completion.
+
+## Step 1 — TODO / Incomplete Implementation
+
+Search the repository for indicators of unfinished logic:
+
+TODO, FIXME, HACK, XXX, TEMP, NOT IMPLEMENTED, STUB, pass statements, empty returns, commented out logic, unfinished conditional branches.
+
+Select ONE occurrence and fully implement it.
+
+Requirements:
+- Validate inputs
+- Handle error paths
+- Ensure return types match usage
+- Remove silent failures
+
+Commit: `fix(todo): implement <function_or_feature>`
+
+## Step 2 — Linter / Static Analysis
+
+Run project linters and static analyzers (eslint, pylint, ruff, flake8, tsc, mypy, golangci-lint, cargo clippy, etc).
+
+Select ONE reported issue and fix it.
+
+Commit: `fix(lint): resolve <rule_or_issue>`
+
+## Step 3 — Function Trace
+
+Select one function. Trace all call sites, forward execution path, and backward dependency path.
+
+Verify:
+- Arguments validated
+- Return values handled
+- Errors propagated
+- No race conditions
+- Feature execution completes
+
+Repair any gaps.
+
+Commit: `fix(feature): complete execution path for <function>`
+
+## Step 4 — Edge Case Hardening
+
+Add handling for edge cases: null/nil inputs, empty arrays, zero values, overflow/underflow, filesystem failures, network failures, timeouts, partial writes, permission errors, invalid configuration states, concurrent invocation conflicts.
+
+Commit: `fix(edge-cases): harden <function_or_feature>`
+
+## Step 5 — Interface Contract Validation
+
+Verify consistency between interacting modules: argument types, return types, error semantics, sync vs async expectations, API schemas, database assumptions.
+
+Repair mismatches.
+
+Commit: `fix(contract): reconcile interface mismatch`
+
+## Step 6 — Silent Failure Removal
+
+Locate and correct: ignored return values, empty catch blocks, bare except blocks, suppressed exceptions, discarded promise rejections.
+
+Replace with explicit error handling and propagation.
+
+Commit: `fix(errors): eliminate silent failure`
+
+## Step 7 — Validation Pass
+
+Ensure the repository builds, lint passes, static analysis passes, and no TODO markers were introduced. Repair issues if detected.
+
+Commit: `fix(validation): restore repository invariants`
+
+## Step 8 — Cycle Report
+
+After all steps are evaluated, output a summary table in this EXACT format:
+
+```
+| Step | Status  | File(s)          | Description                     | Commit                         |
+|------|---------|------------------|---------------------------------|--------------------------------|
+| 1    | fixed   | path/to/file.ext | what was fixed                  | fix(todo): message             |
+| 2    | skipped | —                | no lint issues found            | —                              |
+| ...  | ...     | ...              | ...                             | ...                            |
+```
+
+Rules for the table:
+- Status MUST be one of: `fixed`, `skipped`, `no-issue`.
+- File(s) column: exact path(s) modified, or `—` if skipped.
+- Commit column: the FULL conventional commit message used, or `—` if skipped.
+- Description: one-line explanation of what was found and fixed.
+
+After the table, output this exact line on its own:
+
+```
+AUDIT_CYCLE_DONE
+```
+
+This signal is required for the automation harness to detect cycle completion.
