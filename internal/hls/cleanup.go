@@ -191,6 +191,10 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 	delete(m.accessTracker.lastAccess, jobID)
 	m.accessTracker.mu.Unlock()
 
+	if m.repo != nil {
+		_ = m.repo.Delete(context.Background(), jobID)
+	}
+
 	m.log.Debug("Removed inactive HLS job: %s (last access: %v)", jobID, lastAccess)
 	return true
 }
