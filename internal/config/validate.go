@@ -25,6 +25,8 @@ func (m *Manager) Validate() []error {
 	errors = append(errors, m.validateUploads()...)
 	errors = append(errors, m.validateBackup()...)
 	errors = append(errors, m.validateHuggingFace()...)
+	errors = append(errors, m.validateExtractor()...)
+	errors = append(errors, m.validateCrawler()...)
 	m.warnCORS()
 	return errors
 }
@@ -206,6 +208,34 @@ func (m *Manager) validateHuggingFace() []error {
 		m.log.Warn("huggingface enabled but model is empty — set HUGGINGFACE_MODEL to an image-classification or image-to-text model (e.g. Falconsai/nsfw_image_detection)")
 	}
 	return nil
+}
+
+func (m *Manager) validateExtractor() []error {
+	if !m.config.Extractor.Enabled {
+		return nil
+	}
+	var errs []error
+	if m.config.Extractor.MaxItems < 0 {
+		errs = append(errs, fmt.Errorf("extractor max_items cannot be negative"))
+	}
+	if m.config.Extractor.ProxyTimeout < 0 {
+		errs = append(errs, fmt.Errorf("extractor proxy_timeout cannot be negative"))
+	}
+	return errs
+}
+
+func (m *Manager) validateCrawler() []error {
+	if !m.config.Crawler.Enabled {
+		return nil
+	}
+	var errs []error
+	if m.config.Crawler.MaxPages < 0 {
+		errs = append(errs, fmt.Errorf("crawler max_pages cannot be negative"))
+	}
+	if m.config.Crawler.CrawlTimeout < 0 {
+		errs = append(errs, fmt.Errorf("crawler crawl_timeout cannot be negative"))
+	}
+	return errs
 }
 
 func (m *Manager) warnCORS() {
