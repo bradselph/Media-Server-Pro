@@ -387,7 +387,7 @@ func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, upd
 		h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_update_media", Target: id})
 		return nil
 	default:
-		return nil
+		return fmt.Errorf("unsupported bulk action: %s", action)
 	}
 }
 
