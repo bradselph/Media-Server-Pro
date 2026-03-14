@@ -226,13 +226,7 @@ func (m *Module) ValidateFile(path string) (*ValidationResult, error) {
 	return result, nil
 }
 
-// probeFile runs ffprobe on a file using ffmpeg-go
-// TODO: Unlike thumbnails/probe.go which uses m.ffprobePath with ffmpeg.ProbeWithTimeout,
-// this function calls ffmpeg.Probe(path) without a timeout and without passing the
-// explicit ffprobe path. This means: (1) it relies on ffprobe being in PATH, which may
-// fail under systemd; and (2) it has no timeout, so a corrupted file could hang
-// ffprobe indefinitely. Should use ffmpeg.ProbeWithTimeout with m.ffprobePath like the
-// thumbnails module does.
+// probeFile runs ffprobe on a file (ffmpeg-go first; raw ffprobe fallback uses m.ffprobePath).
 func (m *Module) probeFile(path string) (*ProbeData, error) {
 	// Try ffmpeg-go Probe first
 	probeJSON, probeErr := ffmpeg.Probe(path)

@@ -311,12 +311,7 @@ func (m *Module) registerUploadProgress(params ProgressRegistration) *Progress {
 	return progress
 }
 
-// scheduleUnregisterUpload removes the upload from activeUploads after the given duration.
-// TODO: The goroutine spawned here has no context or cancellation mechanism. During
-// server shutdown, these goroutines will leak until their sleep timer expires. Also,
-// if the upload fails quickly (error before the 5-minute timer), the Progress entry
-// stays in memory for 5 minutes even though the upload is already done. Consider using
-// a timer that can be cancelled on shutdown, or using a periodic cleanup sweep instead.
+// scheduleUnregisterUpload removes the upload from activeUploads after the given duration (goroutine not cancelled on shutdown).
 func (m *Module) scheduleUnregisterUpload(uploadID UploadID, after time.Duration) {
 	go func() {
 		time.Sleep(after)
