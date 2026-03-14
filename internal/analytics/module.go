@@ -30,10 +30,11 @@ type Module struct {
 	sessions      map[string]*sessionData
 	dailyStats    map[string]*models.DailyStats
 	dailyUsers    map[string]map[string]struct{} // keyed by date → set of userIDs
-	mediaStats    map[string]*models.ViewStats
-	mediaViewers  map[string]map[string]struct{} // keyed by mediaID → set of userIDs
-	sessionsMu    sync.RWMutex
-	statsMu       sync.RWMutex
+	mediaStats           map[string]*models.ViewStats
+	mediaDurationSamples map[string]int // playback duration sample count per media (for AvgWatchDuration)
+	mediaViewers         map[string]map[string]struct{} // keyed by mediaID → set of userIDs
+	sessionsMu           sync.RWMutex
+	statsMu              sync.RWMutex
 	healthy       bool
 	healthMsg     string
 	healthMu      sync.RWMutex
@@ -57,8 +58,9 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		sessions:     make(map[string]*sessionData),
 		dailyStats:   make(map[string]*models.DailyStats),
 		dailyUsers:   make(map[string]map[string]struct{}),
-		mediaStats:   make(map[string]*models.ViewStats),
-		mediaViewers: make(map[string]map[string]struct{}),
+		mediaStats:           make(map[string]*models.ViewStats),
+		mediaDurationSamples: make(map[string]int),
+		mediaViewers:         make(map[string]map[string]struct{}),
 		done:         make(chan struct{}),
 		maxEvents:    2000, // enough for accurate stat reconstruction; 10000 caused 500ms+ startup queries
 	}, nil

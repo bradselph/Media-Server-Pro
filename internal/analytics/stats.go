@@ -124,23 +124,23 @@ func (m *Module) applyViewToMediaStatsLocked(event models.AnalyticsEvent, stats 
 
 func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats) {
 	if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
-		updateAvgWatchDuration(stats, dur)
+		m.updateAvgWatchDurationLocked(event.MediaID, stats, dur)
 	}
 	if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
 		updateCompletionRate(stats)
 	}
 }
 
-// TODO: Bug — running average calculation is incorrect. It divides by TotalViews which
-// counts view events, but AvgWatchDuration should be averaged over playback events.
-// A view event increments TotalViews but a playback event does not, so the denominator
-// does not match the numerator. This produces incorrect averages, especially when
-// view and playback events are tracked at different rates.
-func updateAvgWatchDuration(stats *models.ViewStats, dur float64) {
-	if stats.TotalViews > 0 {
-		stats.AvgWatchDuration = (stats.AvgWatchDuration*float64(stats.TotalViews-1) + dur) / float64(stats.TotalViews)
-	} else {
+// updateAvgWatchDurationLocked updates the running average using playback-event count as denominator.
+// Caller must hold m.statsMu.
+func (m *Module) updateAvgWatchDurationLocked(mediaID string, stats *models.ViewStats, dur float64) {
+	n := m.mediaDurationSamples[mediaID]
+	n++
+	m.mediaDurationSamples[mediaID] = n
+	if n == 1 {
 		stats.AvgWatchDuration = dur
+	} else {
+		stats.AvgWatchDuration = (stats.AvgWatchDuration*float64(n-1) + dur) / float64(n)
 	}
 }
 
