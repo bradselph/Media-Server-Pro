@@ -182,7 +182,6 @@ func (m *Module) writeBackupArchive(backupPath string, manifest *Manifest) error
 	if err != nil {
 		return fmt.Errorf("failed to create backup file: %w", err)
 	}
-	defer m.closeAndWarn(zipFile.Close, "Failed to close backup zip file: %v")
 
 	zipWriter := zip.NewWriter(zipFile)
 	filesToBackup := m.getFilesToBackup(manifest.Type)
@@ -194,8 +193,14 @@ func (m *Module) writeBackupArchive(backupPath string, manifest *Manifest) error
 	}
 
 	if err := zipWriter.Close(); err != nil {
+		zipFile.Close()
 		m.removeFileQuietly(removeFileOpts{Path: backupPath, Label: "corrupted backup"})
 		return fmt.Errorf("failed to finalize backup archive: %w", err)
+	}
+
+	if err := zipFile.Close(); err != nil {
+		m.removeFileQuietly(removeFileOpts{Path: backupPath, Label: "corrupted backup"})
+		return fmt.Errorf("failed to close backup file: %w", err)
 	}
 
 	return nil
