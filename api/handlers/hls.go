@@ -90,16 +90,7 @@ func (h *Handler) parseGenerateHLSRequest(c *gin.Context) (id string, qualities 
 	return req.ID, req.Qualities, true
 }
 
-// buildGenerateHLSResponse builds the JSON response map for a GenerateHLS job.
-// TODO: API Contract Inconsistency - This response always includes "fail_count" (even when 0),
-// but ListHLSJobs returns raw models.HLSJob which has json:"fail_count,omitempty" — meaning
-// "fail_count" is ABSENT when 0 in list responses. TypeScript HLSJob.fail_count? is typed
-// as optional, which is correct for list responses but misleading for GenerateHLS/GetHLSStatus
-// responses where it is always present. Consumers reading getStatus() results must guard
-// "(job.fail_count ?? 0)" unnecessarily for this handler's responses.
-// Affected callers: hlsApi.generate() (endpoints.ts:223) and hlsApi.getStatus() (endpoints.ts:226).
-// Related: CheckHLSAvailability and buildGenerateHLSResponse both unconditionally emit "fail_count".
-// Consider aligning by using omitempty-equivalent logic (skip key when value is 0) here too.
+// buildGenerateHLSResponse builds the JSON response map for a GenerateHLS job (fail_count always present).
 func buildGenerateHLSResponse(job *models.HLSJob) map[string]interface{} {
 	qualities := job.Qualities
 	if qualities == nil {
@@ -165,12 +156,6 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 	if statusQualities == nil {
 		statusQualities = []string{}
 	}
-	// TODO: API Contract Inconsistency - "fail_count" is always emitted here (even when 0),
-	// but ListHLSJobs returns raw models.HLSJob which omits it when 0 (json:"fail_count,omitempty").
-	// TypeScript HLSJob.fail_count? is optional (correct for list responses), but for this
-	// endpoint the field is always present. Consumers of hlsApi.getStatus() (endpoints.ts:226)
-	// may guard with "(job.fail_count ?? 0)" unnecessarily.
-	// See also buildGenerateHLSResponse (hls.go) for the same pattern in GenerateHLS.
 	response := map[string]interface{}{
 		"id":         job.ID,
 		"status":     job.Status,

@@ -428,11 +428,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		return
 	}
 
-	// TODO: When RequireAuth is false and the user is unauthenticated (session == nil),
-	// the CanDownload permission check is skipped entirely, allowing anonymous downloads
-	// with no permission enforcement. If downloads should always require auth, this block
-	// should use the user from context (getUser) rather than re-fetching; if anonymous
-	// downloads are intentional, this is fine but should be documented.
+	// When RequireAuth is false, anonymous downloads are allowed; when true, CanDownload is checked for session users.
 	if session != nil {
 		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
 		if err != nil || user == nil {
