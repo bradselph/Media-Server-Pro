@@ -405,13 +405,6 @@ else
   run_step "golangci-lint"          "$SKIP_LINT"  golangci-lint run ./...
 fi
 
-# TODO: -race requires cgo (CGO_ENABLED=1), but the build step above uses
-# CGO_ENABLED=0 for linux/amd64. If running on Windows/macOS, the test step
-# implicitly uses CGO_ENABLED=1 (the default), which is different from what
-# was built. This means tests run with race detection against a different build
-# config than the actual deployment binary. Consider either testing without
-# -race to match the CGO_ENABLED=0 build, or building with CGO_ENABLED=1
-# if the deployment target supports it.
 run_step "go test -race"          "$(skip_if "$OPT_SKIP_GO" "$OPT_SKIP_TESTS")" \
          go test -race -timeout 120s ./...
 
