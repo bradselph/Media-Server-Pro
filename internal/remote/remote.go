@@ -71,6 +71,8 @@ type Module struct {
 	syncDone      chan struct{}
 	syncDoneOnce  sync.Once // guards close(syncDone) to avoid double-close panic
 	cacheSem      chan struct{} // bounds concurrent background cache downloads
+	ctx           context.Context
+	cancel        context.CancelFunc // cancelled on Stop so CacheMedia aborts
 }
 
 // SourceState tracks the state of a remote source.
@@ -200,6 +202,9 @@ func (m *Module) Start(_ context.Context) error {
 // Stop gracefully stops the module
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping remote media module...")
+	if m.cancel != nil {
+		m.cancel()
+	}
 
 	if m.syncTicker != nil {
 		m.syncTicker.Stop()
@@ -605,8 +610,8 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 		source = state.Source
 	}
 
-	// Create request with context so it can be cancelled (e.g. on shutdown).
-	req, err := http.NewRequestWithContext(context.Background(), "GET", remoteURL, nil)
+	// Use module ctx so downloads abort when Stop() is called.
+	req, err := http.NewRequestWithContext(m.ctx, "GET", remoteURL, nil)
 	if err != nil {
 		return nil, err
 	}
