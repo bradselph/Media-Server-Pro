@@ -132,10 +132,6 @@ linters:
     staticcheck:
       checks:
         - all
-        # TODO: SA1019 (deprecated API usage) is globally suppressed. This hides
-        # legitimate deprecation warnings across the entire codebase. Consider
-        # using nolint:staticcheck comments on specific lines instead, or at least
-        # document which deprecated API is being used that motivated this exclusion.
         - "-SA1019"
 
   exclusions:
@@ -170,9 +166,6 @@ linters:
       - _old_code
       - vendor
       - web/static
-      # TODO: web/frontend is listed as an excluded path but it contains no Go
-      # files — only TypeScript/JS. This exclusion has no effect on golangci-lint
-      # and can be removed.
       - web/frontend
 
 output:

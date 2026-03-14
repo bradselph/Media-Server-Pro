@@ -9,11 +9,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
-	// TODO: u2takey/ffmpeg-go is unmaintained and pulls in heavy transitive deps
-	// (aws-sdk-go, mongo-driver) that are never used by this project. Consider
-	// replacing with direct os/exec calls to ffmpeg/ffprobe (the project already
-	// shells out in several places) or switching to a lighter wrapper to shrink
-	// the binary and reduce supply-chain surface.
 	github.com/u2takey/ffmpeg-go v0.5.0
 	golang.org/x/crypto v0.48.0
 	golang.org/x/text v0.34.0
@@ -29,9 +24,6 @@ require golang.org/x/time v0.15.0
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/aws/aws-sdk-go v1.55.8 // indirect
-	// TODO: go-blurhash is a direct dependency (used in internal/thumbnails) but is
-	// listed in the indirect require block without an "// indirect" comment. It should
-	// be moved to the primary require block above with the other direct dependencies.
 	github.com/buckket/go-blurhash v1.1.0
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect

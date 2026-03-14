@@ -10,11 +10,6 @@
       "DOM.Iterable"
     ],
     "module": "ESNext",
-    // TODO: The "types" array restricts type acquisition to only "vite/client".
-    // The test setup (vitest) uses @testing-library/jest-dom which provides
-    // custom matchers, but those types won't be available in test files because
-    // "vitest/globals" is not listed here. The test setup file may need its own
-    // tsconfig or this array should include "vitest/globals" for test type support.
     "types": [
       "vite/client"
     ],
