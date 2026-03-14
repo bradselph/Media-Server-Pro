@@ -298,8 +298,12 @@ func (m *Module) tryRecordLocalPair(ctx context.Context, pair localPairForRecord
 		m.log.Warn("ScanLocalMedia: failed to store duplicate: %v", err)
 		return false
 	}
+	fpPreview := fp
+	if len(fpPreview) > 8 {
+		fpPreview = fpPreview[:8]
+	}
 	m.log.Info("Local duplicate detected: %q ↔ %q [fp=%s…]",
-		filepath.Base(a.path), filepath.Base(b.path), fp[:8])
+		filepath.Base(a.path), filepath.Base(b.path), fpPreview)
 	return true
 }
 
