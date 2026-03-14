@@ -568,9 +568,13 @@ func (m *Module) recordToManifest(rec *repositories.BackupManifestRecord) *Manif
 	}
 }
 
-// CleanOldBackups removes backups older than retention period.
+// CleanOldBackups removes backups beyond the most recent keepCount.
 // Sorts by CreatedAt descending (newest first) so we keep the most recent keepCount.
 func (m *Module) CleanOldBackups(keepCount int) (int, error) {
+	if keepCount < 0 {
+		keepCount = 0
+	}
+
 	backups, err := m.ListBackups()
 	if err != nil {
 		return 0, err
@@ -601,7 +605,11 @@ func (m *Module) CleanOldBackups(keepCount int) (int, error) {
 
 // GetBackupStats returns backup statistics
 func (m *Module) GetBackupStats() Stats {
-	backups, _ := m.ListBackups()
+	backups, err := m.ListBackups()
+	if err != nil {
+		m.log.Warn("Failed to list backups for stats: %v", err)
+		return Stats{}
+	}
 
 	stats := Stats{
 		Count: len(backups),
@@ -609,11 +617,13 @@ func (m *Module) GetBackupStats() Stats {
 
 	for _, b := range backups {
 		stats.TotalSize += b.Size
-	}
-
-	if len(backups) > 0 {
-		stats.LatestBackup = &backups[0].CreatedAt
-		stats.OldestBackup = &backups[len(backups)-1].CreatedAt
+		t := b.CreatedAt
+		if stats.LatestBackup == nil || t.After(*stats.LatestBackup) {
+			stats.LatestBackup = &t
+		}
+		if stats.OldestBackup == nil || t.Before(*stats.OldestBackup) {
+			stats.OldestBackup = &t
+		}
 	}
 
 	return stats
