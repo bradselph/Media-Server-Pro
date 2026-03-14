@@ -14,7 +14,11 @@ func (m *Module) getPreviewConfig(mediaPath string) (previewCount int, duration 
 	if previewCount < 1 {
 		previewCount = 10
 	}
-	duration, _ = m.getMediaDuration(mediaPath)
+	duration, err := m.getMediaDuration(mediaPath)
+	if err != nil {
+		m.log.Warn("Could not probe media duration for %s: %v; using fallback", mediaPath, err)
+		duration = 0 // caller applies fallback (e.g. 600.0)
+	}
 	return previewCount, duration
 }
 
