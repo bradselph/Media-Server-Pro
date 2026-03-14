@@ -226,12 +226,8 @@ func (h *Handler) CleanRemoteCache(c *gin.Context) {
 }
 
 // StreamRemoteMedia proxies and optionally caches a remote media stream.
-// This endpoint is public (no admin auth) so the frontend player can use it directly.
-// TODO: SSRF risk — the "url" query parameter is a user-controlled URL that the server
-// will fetch and proxy. An authenticated user (requireAuth in routes.go) can make the
-// server fetch any URL, including internal services (localhost, private IPs, cloud metadata
-// endpoints like 169.254.169.254). Should validate the URL against a configured allowlist
-// of remote source base URLs, or restrict to URLs belonging to a known remote source.
+// The "url" query parameter is user-controlled; remote.ProxyRemoteWithCache calls
+// StreamRemote which validates the URL for SSRF (rejects private/loopback IPs) before fetching.
 func (h *Handler) StreamRemoteMedia(c *gin.Context) {
 	if !h.checkRemoteMediaEnabled(c) {
 		return

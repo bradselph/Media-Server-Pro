@@ -208,10 +208,13 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 		CreatedAt: now,
 	}
 
-	// TODO: Bug - no SSRF validation is performed on streamURL before fetching.
-	// Unlike the remote module which calls validateURL(), the extractor trusts
-	// user-supplied M3U8 URLs and will fetch from private/loopback addresses.
-	// Add URL validation similar to remote.validateURL() before calling fetchURL.
+	// SSRF: validate URL before fetching (SafeHTTPTransport also blocks private IPs at connect time)
+	if err := helpers.ValidateURLForSSRF(streamURL); err != nil {
+		item.Status = "error"
+		item.ErrorMessage = fmt.Sprintf("Invalid URL: %v", err)
+		m.log.Warn("M3U8 URL rejected: %s — %v", streamURL, err)
+		return item, nil
+	}
 	// Verify the M3U8 URL is reachable (outside the lock — can be slow)
 	if _, _, err := m.fetchURL(streamURL); err != nil {
 		item.Status = "error"
@@ -497,12 +500,7 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 
 	req.Header.Set("User-Agent", "MediaServerPro/4.0")
 
-	// TODO: Bug - a new http.Client is created per proxy request, which defeats
-	// connection pooling and leaks transports. Use m.httpClient (or a dedicated
-	// proxy client) instead. Also, the module-level httpClient has SSRF-safe
-	// transport (helpers.SafeHTTPTransport) while this ad-hoc client does not,
-	// allowing proxied requests to reach private/loopback addresses.
-	client := &http.Client{Timeout: cfg.Extractor.ProxyTimeout}
+	client := &http.Client{Transport: m.httpClient.Transport, Timeout: cfg.Extractor.ProxyTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("proxy request failed: %w", err)

@@ -93,29 +93,23 @@ type CachedMedia struct {
 
 // NewModule creates a new remote media module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
+	transport := helpers.SafeHTTPTransport()
 	return &Module{
 		config:   cfg,
 		log:      logger.New("remote"),
 		dbModule: dbModule,
-		// TODO: Bug - the SSRF redirect check only validates literal IP addresses.
-		// If a redirect target uses a hostname that resolves to a private IP
-		// (e.g. "internal.corp.example.com" -> 10.0.0.1), the check is bypassed
-		// because net.ParseIP returns nil for hostnames. The CheckRedirect should
-		// resolve the hostname to IPs (like validateURL does) before checking.
-		// Also consider using helpers.SafeHTTPTransport() for consistency with
-		// the extractor module.
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Transport: transport,
+			Timeout:  30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
 					return fmt.Errorf("too many redirects")
 				}
-				// Block redirects to private/loopback IPs to prevent SSRF
-				host := req.URL.Hostname()
-				if ip := net.ParseIP(host); ip != nil {
-					if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-						return fmt.Errorf("redirect to private IP blocked")
-					}
+				// SSRF: SafeHTTPTransport's DialContext blocks private IPs when connecting.
+				// Also validate redirect URL explicitly so hostnames that resolve to
+				// private IPs are rejected before the connection attempt.
+				if err := validateURL(req.URL.String()); err != nil {
+					return fmt.Errorf("redirect blocked: %w", err)
 				}
 				return nil
 			},
