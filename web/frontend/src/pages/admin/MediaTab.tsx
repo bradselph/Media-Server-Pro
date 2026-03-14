@@ -17,6 +17,7 @@ function formatDurationDisplay(secs: number): string {
 
 // Sortable column header definitions for the admin media table.
 const MEDIA_SORT_COLUMNS = [
+    {key: 'thumbnail', label: ''},
     {key: 'name', label: 'Name'},
     {key: 'type', label: 'Type'},
     {key: 'size', label: 'Size'},
@@ -80,7 +81,7 @@ function MediaLibraryTab() {
     })
 
     const emptyResponse: AdminMediaListResponse = {items: [], total_items: 0, total_pages: 1}
-    const {data: mediaResponse = emptyResponse} = useQuery<AdminMediaListResponse>({
+    const {data: mediaResponse = emptyResponse, isLoading: mediaLoading, isError: mediaError} = useQuery<AdminMediaListResponse>({
         queryKey: ['admin-media', debouncedMediaSearch, mediaPage, mediaLimit, sortBy, sortOrder, filterType, filterCategory, filterMature, filterTags],
         queryFn: async () => {
             const result = await adminApi.listMedia({
@@ -360,7 +361,13 @@ function MediaLibraryTab() {
                     )}
                 </div>
 
-                {totalItems > 0 && (
+                {mediaLoading && (
+                    <p style={{marginTop: 8, fontSize: 13, color: 'var(--text-muted)'}}><i className="bi bi-hourglass-split"/> Loading media...</p>
+                )}
+                {mediaError && (
+                    <div className="admin-alert admin-alert-danger" style={{marginTop: 8}}>Failed to load media. Check console or try refreshing.</div>
+                )}
+                {!mediaLoading && !mediaError && totalItems > 0 && (
                     <div style={{marginTop: 8, fontSize: 12, color: 'var(--text-muted)'}}>
                         {totalItems.toLocaleString()} item{totalItems !== 1 ? 's' : ''} found
                     </div>
@@ -512,6 +519,14 @@ function MediaLibraryTab() {
                                     <input type="checkbox" checked={selected.has(item.id)}
                                            onChange={() => { toggleSelect(item.id); }}/>
                                 </td>
+                                <td style={{width: 56, padding: 4}}>
+                                    {item.thumbnail_url ? (
+                                        <img src={item.thumbnail_url} alt="" style={{width: 48, height: 36, objectFit: 'cover', borderRadius: 4}}
+                                             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}/>
+                                    ) : (
+                                        <span style={{fontSize: 20, opacity: 0.4}} title="No thumbnail"><i className="bi bi-image"/></span>
+                                    )}
+                                </td>
                                 <td style={{
                                     maxWidth: 240,
                                     overflow: 'hidden',
@@ -659,7 +674,7 @@ function ThumbnailStatsCard() {
     const [generatingThumb, setGeneratingThumb] = useState(false)
     const [thumbMsg, setThumbMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-    const {data: thumbStats} = useQuery<ThumbnailStats>({
+    const {data: thumbStats, isLoading: thumbLoading, isError: thumbError} = useQuery<ThumbnailStats>({
         queryKey: ['admin-thumbnail-stats'],
         queryFn: () => adminApi.getThumbnailStats(),
     })
@@ -683,7 +698,9 @@ function ThumbnailStatsCard() {
     return (
         <div className="admin-card">
             <h2>Thumbnails</h2>
-            {thumbStats && (
+            {thumbLoading && <p style={{color: 'var(--text-muted)', fontSize: 13}}><i className="bi bi-hourglass-split"/> Loading thumbnail stats...</p>}
+            {thumbError && <div className="admin-alert admin-alert-danger">Failed to load thumbnail stats. The thumbnails module may be disabled.</div>}
+            {!thumbLoading && !thumbError && thumbStats && (
                 <div className="admin-stats-grid" style={{marginBottom: 16}}>
                     <div className="admin-stat-card">
                         <span className="admin-stat-value">{thumbStats.total_thumbnails.toLocaleString()}</span>
