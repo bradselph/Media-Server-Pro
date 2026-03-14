@@ -192,16 +192,8 @@ func (m *Module) periodicSave(ctx context.Context) {
 	}
 }
 
-// evictStaleProfiles removes in-memory profiles that have not been updated
-// within profileEvictAfter.  Before eviction, each profile is saved to MySQL
-// so that any in-memory changes are not lost.  The data is reloaded on the
-// next access if the user becomes active again.
-// TODO: The "reloaded on the next access" claim in the comment is not implemented.
-// RecordView, RecordCompletion, and RecordRating create new empty profiles when the
-// user is not found in memory, but they do not reload the profile from MySQL. This
-// means an evicted user's full history is lost from the in-memory view, and a new
-// empty profile replaces it on next activity. Consider adding a loadOneProfile()
-// fallback in RecordView when the profile is not found in memory.
+// evictStaleProfiles removes in-memory profiles not updated within profileEvictAfter; each is saved to MySQL before eviction.
+// Evicted users get a new empty profile on next activity (no reload from DB).
 func (m *Module) evictStaleProfiles(ctx context.Context) {
 	defer m.wg.Done()
 	ticker := time.NewTicker(6 * time.Hour)
@@ -980,13 +972,7 @@ func (m *Module) saveProfiles() error {
 	return lastErr
 }
 
-// saveOneProfile persists a single user profile and its view history to MySQL.
-// Caller must ensure the profile is safe to read (either hold m.mu or own the
-// reference exclusively).
-// TODO: This function saves every ViewHistory entry on every call, which is O(n) DB
-// writes per profile per save interval (10 minutes). For a user with 500 view history
-// entries, this means 500 DB writes every 10 minutes. Consider tracking dirty entries
-// and only saving those that changed since last persist.
+// saveOneProfile persists a single user profile and its view history to MySQL (O(n) writes per profile).
 func (m *Module) saveOneProfile(ctx context.Context, profile *UserProfile) error {
 	rec := &repositories.SuggestionProfileRecord{
 		UserID:          profile.UserID,

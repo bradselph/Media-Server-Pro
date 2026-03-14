@@ -82,10 +82,9 @@ export function PlaylistsTab() {
             case 'name': cmp = a.name.localeCompare(b.name); break
             case 'user_id': cmp = a.user_id.localeCompare(b.user_id); break
             case 'items': cmp = (a.items?.length ?? 0) - (b.items?.length ?? 0); break
-            case 'is_public': {
-                cmp = a.is_public === b.is_public ? 0 : a.is_public ? -1 : 1
+            case 'is_public':
+                if (a.is_public !== b.is_public) cmp = a.is_public ? -1 : 1
                 break
-            }
             case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break
         }
         return sortOrder === 'desc' ? -cmp : cmp

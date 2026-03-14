@@ -215,6 +215,11 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	return nil
 }
 
+// AddStorageUsed atomically increments storage_used for a user (avoids read-then-write race).
+func (m *Module) AddStorageUsed(ctx context.Context, userID string, delta int64) error {
+	return m.userRepo.IncrementStorageUsed(ctx, userID, delta)
+}
+
 // evictSessionUpdateParams holds arguments for evictSessionsAfterUpdate (reduces function arity).
 type evictSessionUpdateParams struct {
 	Username   string

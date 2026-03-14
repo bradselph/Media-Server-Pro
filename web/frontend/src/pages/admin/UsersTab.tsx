@@ -220,7 +220,9 @@ function UsersListTab() {
             case 'username': cmp = a.username.localeCompare(b.username); break
             case 'email': cmp = (a.email || '').localeCompare(b.email || ''); break
             case 'role': cmp = a.role.localeCompare(b.role); break
-            case 'enabled': cmp = (a.enabled === b.enabled ? 0 : a.enabled ? -1 : 1); break
+            case 'enabled':
+                if (a.enabled !== b.enabled) cmp = a.enabled ? -1 : 1
+                break
             case 'last_login': cmp = (a.last_login || '').localeCompare(b.last_login || ''); break
             case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break
         }
@@ -450,7 +452,7 @@ function UsersListTab() {
                     onClose={() => { setShowCreate(false); }}
                     onCreated={() => {
                         setShowCreate(false);
-                        void queryClient.invalidateQueries({queryKey: ['admin-users']});
+                        queryClient.invalidateQueries({queryKey: ['admin-users']}).catch(() => {});
                         setMsg({type: 'success', text: 'User created.'})
                     }}
                 />
@@ -461,7 +463,7 @@ function UsersListTab() {
                     onClose={() => { setEditUser(null); }}
                     onSaved={() => {
                         setEditUser(null);
-                        void queryClient.invalidateQueries({queryKey: ['admin-users']});
+                        queryClient.invalidateQueries({queryKey: ['admin-users']}).catch(() => {});
                         setMsg({type: 'success', text: 'User updated.'})
                     }}
                 />

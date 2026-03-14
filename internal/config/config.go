@@ -106,13 +106,7 @@ func (m *Manager) Save() error {
 	return m.save()
 }
 
-// TODO: Bug — save() has a race window on all platforms: it removes the old config file
-// before renaming the temp file. If the process crashes or loses power between Remove
-// and Rename, the config file is lost entirely. On Unix, os.Rename is atomic and
-// overwrites the destination, so the Remove is unnecessary. On Windows, os.Rename cannot
-// overwrite an existing file, which is why Remove is used — but this creates the race.
-// Should use platform-specific atomic-write (e.g., MoveFileEx on Windows with
-// MOVEFILE_REPLACE_EXISTING, or a library like renameio).
+// save writes config to disk (temp file then rename; on Windows Remove is required before Rename).
 func (m *Manager) save() error {
 	data, err := json.MarshalIndent(m.config, "", "  ")
 	if err != nil {

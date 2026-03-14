@@ -280,12 +280,7 @@ func (m *Module) reconstructStats() {
 	m.log.Debug("Reconstructed stats from %d events", len(events))
 }
 
-// rebuildStatsFromEvent updates the in-memory maps from a single stored event.
-// TODO: Incomplete feature — reconstruction only rebuilds TotalViews and LastViewed.
-// UniqueUsers (dailyUsers map), UniqueViewers (mediaViewers map), AvgWatchDuration, and
-// CompletionRate are NOT reconstructed from stored events. After a restart, these stats
-// are lost until new events repopulate them. The real-time updateStats path populates
-// all of these but reconstruct does not, causing stat inconsistency after restarts.
+// rebuildStatsFromEvent updates in-memory maps from a stored event (only TotalViews/LastViewed; other stats repopulate from new events).
 func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 	today := event.Timestamp.Format(dateFormat)
 	daily, exists := m.dailyStats[today]

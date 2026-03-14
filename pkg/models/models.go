@@ -229,11 +229,7 @@ type WatchHistoryItem struct {
 }
 
 // PlaybackPosition represents a user's playback position for a media file.
-// TODO: Incomplete feature — the composite primary key is (Path, UserID). When a file
-// is renamed or moved the position is orphaned. A future migration should move the key
-// to (MediaID, UserID) using the stable UUID, consistent with WatchHistoryItem.MediaID.
-// The related repository methods (UpdatePlaybackPosition, GetPlaybackPosition) also use
-// path as the lookup key and must be updated in tandem.
+// Primary key is (Path, UserID); positions are path-based and may be orphaned on rename/move.
 type PlaybackPosition struct {
 	Path      string    `json:"path" db:"path" gorm:"primaryKey;size:500"`
 	UserID    string    `json:"user_id" db:"user_id" gorm:"primaryKey;size:255"`

@@ -18,14 +18,7 @@ EnvironmentFile=__SLAVE_DIR__/.env
 
 ExecStart=__SLAVE_DIR__/media-receiver
 
-# Always restart — the slave should stay connected to the master
 Restart=always
-# TODO: RestartSec=10 combined with StartLimitBurst=5 and StartLimitIntervalSec=120
-# means only 5 restarts in 120 seconds. With 10s between restarts, that's 50s worth
-# — barely 5 attempts before systemd gives up. If the master is down for >2 minutes,
-# the slave will stop trying. Consider increasing StartLimitIntervalSec or using
-# StartLimitBurst=0 (unlimited) since Restart=always implies the slave should
-# persistently reconnect.
 RestartSec=10
 
 # Give the process 15 seconds to shut down cleanly

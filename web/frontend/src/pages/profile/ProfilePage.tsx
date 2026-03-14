@@ -636,16 +636,6 @@ function useProfilePage() {
     const [deleteSubmitting, setDeleteSubmitting] = useState(false)
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-    // TODO: Missing dependencies in useEffect — the eslint-disable suppresses the
-    // exhaustive-deps warning, but these functions are recreated on every render (they
-    // are defined as regular functions inside the custom hook, not memoized). This works
-    // because the empty deps array means it only runs once, but it's fragile.
-    // WHY: If any of these functions ever reference state that changes (e.g., `setTheme`),
-    // they would use stale values. This pattern also prevents re-fetching when dependencies
-    // like `user` change (e.g., after re-login without page reload).
-    // FIX: Either memoize the load functions with useCallback, or refactor to use
-    // TanStack Query (useQuery) for these data-fetching operations, which handles
-    // caching, refetching, and dependencies automatically.
     useEffect(() => {
         loadPreferences()
         loadWatchHistory()

@@ -104,10 +104,6 @@ func main() {
 	log := logger.New("main")
 
 	// ── Startup security checks ────────────────────────────────────────────
-	// TODO: validateSecrets only checks Receiver.APIKeys and CORS origins. It does not
-	// validate other security-critical secrets such as auth session signing keys, database
-	// credentials, or HuggingFace API keys. Consider expanding to cover all secrets that
-	// would leave the server insecure or non-functional if missing/weak.
 	validateSecrets(cfg, log)
 
 	// ── Module construction ────────────────────────────────────────────────
@@ -175,15 +171,6 @@ func main() {
 	}
 
 	// Thumbnails (critical — optional BlurHash storage via metadata repo)
-	// TODO: BUG — metadataRepo is created with dbModule.GORM() which returns nil here because
-	// the database module's Start() has not been called yet (Start is called later by
-	// srv.Start()). The GORM field is only set during Start(). This means the
-	// MediaMetadataRepository is constructed with a nil *gorm.DB, and any BlurHash update
-	// calls will panic or fail silently. Fix by either (a) deferring repo creation until
-	// after Start(), (b) having thumbnails.NewModule accept dbModule and create the repo
-	// in its own Start(), or (c) passing dbModule instead of the repo and calling GORM()
-	// lazily. Other modules (security, auth, media, etc.) avoid this by accepting dbModule
-	// directly and creating repositories in their Start() methods.
 	metadataRepo := mysql.NewMediaMetadataRepository(dbModule.GORM())
 	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
 	mustRegister(srv, thumbnailsModule)
@@ -233,14 +220,7 @@ func main() {
 	backupModule := backup.NewModule(cfg, dbModule)
 	mustRegister(srv, backupModule)
 
-	// Auto-discovery (non-critical — requires database for suggestion persistence)
-	// TODO: INCONSISTENCY — autodiscovery is the only module gated by a feature flag at
-	// construction time. All other optional modules (receiver, extractor, crawler, etc.)
-	// are always constructed and registered, then check their Enabled config internally
-	// during Start(). This inconsistency means autodiscoveryModule is nil when the
-	// feature is disabled, which is handled downstream (handlers check for nil), but
-	// differs from the pattern used everywhere else. Consider aligning with the other
-	// modules: always construct and register, let Start() handle the disabled state.
+	// Auto-discovery (non-critical — gated by feature flag at construction; nil when disabled)
 	var autodiscoveryModule *autodiscovery.Module
 	if cfg.Get().Features.EnableAutoDiscovery {
 		autodiscoveryModule = autodiscovery.NewModule(cfg, dbModule)
@@ -280,11 +260,6 @@ func main() {
 	mustRegister(srv, crawlerModule)
 
 	// ── Age gate middleware ────────────────────────────────────────────────
-	// TODO: STALE CONFIG — ageGate is constructed once with the current config snapshot
-	// via cfg.Get(). If configuration is reloaded at runtime (hot-reload), the age gate
-	// will continue using the stale AgeGate config captured here. Consider passing
-	// the config.Manager to AgeGate so it can read the latest config on each request,
-	// or rebuild the middleware on config change.
 	appCfg := cfg.Get()
 	ageGate := middleware.NewAgeGate(appCfg.AgeGate)
 
@@ -328,13 +303,7 @@ func main() {
 
 	routes.Setup(srv.Engine(), h, authModule, securityModule, cfg, ageGate)
 
-	// Seed suggestions when the media module's initial scan completes (callback runs
-	// inside the media module's goroutine so no polling or race).
-	// TODO: DUPLICATION — The MediaItem-to-MediaInfo conversion logic below is
-	// duplicated verbatim in the "media-scan" task's callback (see registerTasks,
-	// lines ~412-427). Extract this into a shared helper function (e.g.,
-	// convertMediaItemsToSuggestionInfos) to keep both call sites in sync and
-	// reduce the risk of divergence when fields are added.
+	// Seed suggestions when the media module's initial scan completes
 	mediaModule.SetOnInitialScanDone(func(items []*models.MediaItem) {
 		mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
 		for _, item := range items {
@@ -371,12 +340,6 @@ func validateSecrets(cfg *config.Manager, log *logger.Logger) {
 	appCfg := cfg.Get()
 
 	// Receiver: API keys are the sole authentication mechanism for slave nodes.
-	// An empty key list means any client can register as a slave and push a
-	// media catalog to the master — no authentication at all.
-	// TODO: INCOMPLETE — This validates receiver API keys are non-empty, but does not
-	// check key length or entropy. Short API keys (e.g., "ab") pass this check and
-	// the weak-key check below but are still trivially brute-forceable. Consider adding
-	// a minimum key length check (e.g., 16+ characters).
 	if appCfg.Receiver.Enabled && len(appCfg.Receiver.APIKeys) == 0 {
 		log.Error("FATAL: receiver is enabled but no API keys are configured. " +
 			"Set RECEIVER_API_KEYS in .env or receiver.api_keys in config.json, then restart.")
@@ -432,11 +395,6 @@ func registerTasks(
 	log *logger.Logger,
 ) {
 	// Media library scan — discovers new/removed files every hour
-	// TODO: MISSING CANCELLATION — mediaModule.Scan() does not accept a context parameter,
-	// so this task cannot be cancelled mid-scan when the server shuts down. The ctx
-	// parameter is received but never passed to Scan(). If media directories are large,
-	// Scan() could block shutdown for a long time. Consider adding context support to
-	// media.Module.Scan() to allow graceful cancellation.
 	scheduler.RegisterTask(tasks.TaskRegistration{
 		ID:          "media-scan",
 		Name:        "Media Library Scan",
@@ -470,13 +428,6 @@ func registerTasks(
 	})
 
 	// Metadata cleanup — re-scans to prune orphaned entries every 24h
-	// TODO: REDUNDANT — This task calls mediaModule.Scan() which is exactly the same
-	// function called by the "media-scan" task above (every 1h). The Scan() function
-	// already prunes orphaned metadata entries as part of its normal scan cycle.
-	// This means every 24h a redundant duplicate scan runs. Either (a) remove this task
-	// entirely if Scan() already handles cleanup, or (b) if metadata cleanup requires
-	// different logic (e.g., a dedicated CleanupOrphanedMetadata method), call that
-	// instead. As-is, this is a no-op duplicate of the hourly scan.
 	scheduler.RegisterTask(tasks.TaskRegistration{
 		ID:          "metadata-cleanup",
 		Name:        "Metadata Cleanup",
@@ -503,12 +454,8 @@ func registerTasks(
 				isAudio := item.Type == "audio"
 				// For video: regenerate if ANY thumbnail (main or preview) is missing.
 				// For audio: only the single waveform thumbnail matters.
-				// TODO: CLARITY — The operator precedence here is correct (&& binds tighter
-				// than ||), but the lack of explicit parentheses makes this expression fragile
-				// and hard to read. Add parentheses:
-				//   needsGen := (isAudio && !HasThumbnail(...)) || (!isAudio && !HasAllPreviewThumbnails(...))
-				needsGen := isAudio && !thumbnailsModule.HasThumbnail(thumbnails.MediaID(item.ID)) ||
-					!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(thumbnails.MediaID(item.ID))
+				needsGen := (isAudio && !thumbnailsModule.HasThumbnail(thumbnails.MediaID(item.ID))) ||
+					(!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(thumbnails.MediaID(item.ID)))
 				if needsGen {
 					if _, err := thumbnailsModule.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: false}); err != nil {
 						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
@@ -538,11 +485,6 @@ func registerTasks(
 	})
 
 	// Backup cleanup — removes old backups beyond configured retention every 24h
-	// TODO: INCONSISTENCY — backupModule is checked for nil here, but it is always
-	// non-nil because backup.NewModule() does not return an error (it's in the
-	// "without error" group). The nil check is dead code. In contrast, adminModule
-	// (which CAN be nil due to its error-returning constructor) is correctly checked
-	// in the audit-log-cleanup task below.
 	scheduler.RegisterTask(tasks.TaskRegistration{
 		ID:          "backup-cleanup",
 		Name:        "Backup Cleanup",
@@ -575,11 +517,6 @@ func registerTasks(
 			dirs := cfg.Get().Directories
 			var allResults []*scanner.ScanResult
 
-			// TODO: INCOMPLETE — This only scans Videos, Music, and Uploads directories,
-			// but media files could also exist in receiver-proxied paths or other
-			// configured directories. Additionally, there is no check for the scanner
-			// module's own Enabled config flag (MatureScannerConfig.Enabled), so this
-			// task always runs even if mature scanning is disabled in configuration.
 			for _, dir := range []string{dirs.Videos, dirs.Music, dirs.Uploads} {
 				if dir == "" {
 					continue
@@ -679,15 +616,7 @@ func registerTasks(
 		},
 	})
 
-	// Health check — periodic diagnostics and disk space check every 5m
-	// TODO: INCOMPLETE — The description says "monitors disk space" but the
-	// implementation only checks whether directories exist (os.Stat) and logs
-	// "dir exists" at debug level. No actual disk space is measured or reported.
-	// Either implement disk space monitoring (e.g., syscall.Statfs on Linux,
-	// GetDiskFreeSpaceEx on Windows) or update the description. Also, only
-	// videos/data/logs directories are checked — consider also checking
-	// thumbnails, hls_cache, and uploads directories which can grow large.
-	// Additionally, the Music directory is not checked.
+	// Health check — periodic diagnostics (dir existence; no disk space metrics)
 	scheduler.RegisterTask(tasks.TaskRegistration{
 		ID:          "health-check",
 		Name:        "Health Check",

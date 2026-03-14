@@ -227,13 +227,9 @@ func (m *Module) getFilesToBackup(backupType string) []string {
 		files = []string{
 			"config.json",
 		}
-	// Note: all application data (playlists, analytics, scan results, etc.) is stored in MySQL
-	// and is not included in file-based backups. Use a database-level backup tool for full data
-	// protection. The "data" type backs up config only; "full" is an alias for the same.
-	// TODO: Incomplete feature — "data" and "full" backup types are identical to "config",
-	// all three only back up config.json. The UI and API expose "full" and "data" as distinct
-	// options which misleads users into thinking they get different coverage. Either implement
-	// actual differentiation or consolidate into a single type with clear documentation.
+	// Application data (playlists, analytics, scan results, etc.) lives in MySQL and is not
+	// included in file-based backups. "data" and "full" currently back up config.json only;
+	// use a database backup (e.g. mysqldump) for full application data protection.
 	case "data", "full":
 		files = []string{
 			"config.json",

@@ -9,12 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RestartServer initiates a graceful server restart via self-exec.
-// TODO: The restart goroutine calls os.Exit which terminates the process immediately
-// without running deferred functions or giving in-flight requests time to complete.
-// This is not a "graceful" restart — active streams and uploads will be abruptly cut.
-// Consider using the server's Shutdown method (e.g., via context cancellation) to drain
-// connections before exiting.
+// RestartServer initiates a server restart via self-exec (os.Exit; in-flight requests are not drained).
 func (h *Handler) RestartServer(c *gin.Context) {
 	h.log.Warn("Server restart requested by admin")
 	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "restart_server", Target: "initiated"})
@@ -67,8 +62,7 @@ func (h *Handler) RestartServer(c *gin.Context) {
 	}()
 }
 
-// ShutdownServer initiates a graceful server shutdown
-// TODO: Same issue as RestartServer — os.Exit(0) does not drain in-flight connections.
+// ShutdownServer initiates server shutdown (os.Exit; in-flight connections are not drained).
 func (h *Handler) ShutdownServer(c *gin.Context) {
 	h.log.Warn("Server shutdown requested by admin")
 	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "shutdown_server", Target: "initiated"})

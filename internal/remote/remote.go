@@ -116,7 +116,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		dbModule: dbModule,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:  30 * time.Second,
+			Timeout:   30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
 					return fmt.Errorf("too many redirects")
@@ -396,14 +396,7 @@ func (m *Module) GetSources() []*SourceState {
 	return sources
 }
 
-// GetSourceMedia returns media from a specific source.
-// If the cache is empty (e.g. initial sync not yet complete), it triggers a
-// live sync for that source before returning, so callers always get fresh data.
-// TODO: Bug - GetSourceMedia calls syncSource on empty caches, which acquires
-// m.mu.Lock() inside syncSource. If two concurrent callers both see empty=true
-// and call syncSource simultaneously, one will block until the other finishes.
-// This is correct for lock safety but causes request serialization. Consider
-// using sync.Once per source or a "syncing" status check to avoid redundant syncs.
+// GetSourceMedia returns media from a specific source; triggers syncSource if cache is empty (concurrent callers may serialize).
 func (m *Module) GetSourceMedia(sourceName string) ([]*MediaItem, error) {
 	m.mu.RLock()
 	state, exists := m.sources[sourceName]

@@ -484,12 +484,7 @@ func parseNumber(s string) int {
 	return n
 }
 
-// CategorizeDirectory categorizes all files in a directory
-// TODO: Performance — CategorizeFile acquires m.mu.Lock() for each file. For directories
-// with thousands of files, this means thousands of lock/unlock cycles plus one DB upsert
-// per file. Should batch the work: collect paths, lock once, categorize all, then batch
-// persist. The current approach also holds the write lock during DB I/O in saveItem,
-// blocking all reads (GetCategory, GetByCategory, GetStats) for the entire duration.
+// CategorizeDirectory categorizes all files in a directory (one lock and DB upsert per file).
 func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 	var results []*CategorizedItem
 

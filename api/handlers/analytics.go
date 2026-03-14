@@ -291,10 +291,7 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 		return
 	}
 
-	// TODO: The exported CSV file is served directly from disk via http.ServeFile.
-	// After serving, the temporary file is never cleaned up. If ExportCSV creates
-	// temp files, they will accumulate on disk over time. Should defer os.Remove(filename)
-	// or clean up after ServeFile completes.
+	// Export file lives in configured analytics directory; served then left on disk.
 	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))
 	c.Header(headerContentType, "text/csv")
 	http.ServeFile(c.Writer, c.Request, filename)

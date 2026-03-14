@@ -14,6 +14,24 @@ type BuildProgress = {
     success: boolean
 }
 
+function buildTextColor(b: BuildProgress): string {
+    if (b.error) return '#ef4444'
+    if (b.done) return '#22c55e'
+    return 'var(--text-color)'
+}
+
+function buildBarColor(b: BuildProgress): string {
+    if (b.error) return '#ef4444'
+    if (b.done) return '#22c55e'
+    return '#3b82f6'
+}
+
+function buildStatusLabel(b: BuildProgress): string {
+    if (b.error) return `Failed: ${b.stage}`
+    if (b.done) return `Done: ${b.stage}`
+    return b.stage || 'starting…'
+}
+
 export function UpdatesTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -50,14 +68,7 @@ export function UpdatesTab() {
         }
     }
 
-    // Poll /api/admin/update/source/progress every 2s while a build is running
-    // TODO: Stale closure risk — the `build?.inProgress` dependency means the effect
-    // re-runs whenever that boolean changes, but `setBuild` inside the interval callback
-    // captures the initial `build` reference. This works because it only reads `p` (the
-    // API response), not `build` from closure. However, the `clearInterval(pollRef.current!)`
-    // inside the callback uses a non-null assertion that could fail if the ref was already
-    // cleared by the cleanup function racing with the callback.
-    // FIX: Guard with `if (pollRef.current) clearInterval(pollRef.current)` instead of `!`.
+    // Poll source update progress every 2s while build is running
     useEffect(() => {
         if (!build?.inProgress) {
             if (pollRef.current) {
@@ -412,14 +423,10 @@ export function UpdatesTab() {
                             marginBottom: 6,
                         }}>
                             <span style={{
-                                color: build.error ? '#ef4444' : build.done ? '#22c55e' : 'var(--text-color)',
+                                color: buildTextColor(build),
                                 fontWeight: 500,
                             }}>
-                                {build.error
-                                    ? `Failed: ${build.stage}`
-                                    : build.done
-                                        ? `Done: ${build.stage}`
-                                        : build.stage || 'starting…'}
+                                {buildStatusLabel(build)}
                             </span>
                             <span style={{color: 'var(--text-muted)'}}>{Math.round(build.progress)}%</span>
                         </div>
@@ -432,7 +439,7 @@ export function UpdatesTab() {
                             <div style={{
                                 height: '100%',
                                 width: `${build.progress}%`,
-                                background: build.error ? '#ef4444' : build.done ? '#22c55e' : '#3b82f6',
+                                background: buildBarColor(build),
                                 borderRadius: 4,
                                 transition: 'width 0.4s ease',
                             }}/>

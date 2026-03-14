@@ -129,6 +129,7 @@ jobs:
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs: bump-release
+    if: always() && needs.bump-release.result == 'success'
     runs-on: [self-hosted, Linux, X64, media-server]
     strategy:
       fail-fast: false
@@ -205,6 +206,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: [bump-release, build]
+    if: always() && needs.bump-release.result == 'success' && needs.build.result == 'success'
     runs-on: [self-hosted, Linux, X64, media-server]
 
     steps:
@@ -221,8 +223,8 @@ jobs:
           merge-multiple: true
 
       - name: Generate checksums
-        working-directory: artifacts
-        run: sha256sum * > checksums-sha256.txt
+        run: |
+          cd artifacts && find . -type f -exec sha256sum {} \; > checksums-sha256.txt
 
       - name: Extract changelog for this version
         id: changelog

@@ -4,6 +4,19 @@ import {adminApi} from '@/api/endpoints'
 import type {HLSValidationResult, ScheduledTask} from '@/api/types'
 import {errMsg, formatBytes} from './adminUtils'
 
+function hlsStatusBadgeClass(status: string): string {
+  if (status === 'completed') return 'enabled'
+  if (status === 'failed') return 'error'
+  if (status === 'running') return 'running'
+  return 'disabled'
+}
+
+function taskStatusOrder(t: ScheduledTask): number {
+  if (t.running) return 0
+  if (t.enabled) return 1
+  return 2
+}
+
 // ── Tab: Streaming ────────────────────────────────────────────────────────────
 
 type HLSSortKey = 'id' | 'status' | 'progress'
@@ -208,7 +221,7 @@ export function StreamingTab() {
                                     <td style={{maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}
                                         title={job.id}>{job.id}</td>
                                     <td>
-                                        <span className={`status-badge status-${job.status === 'completed' ? 'enabled' : job.status === 'failed' ? 'error' : job.status === 'running' ? 'running' : 'disabled'}`}>
+                                        <span className={`status-badge status-${hlsStatusBadgeClass(job.status)}`}>
                                           {job.status}
                                         </span>
                                     </td>
@@ -258,10 +271,9 @@ export function StreamingTab() {
                                     configured
                                 </td>
                             </tr>
-                        ) : [...tasks].sort((a, b) => {
-                            const statusOrder = (t: ScheduledTask) => t.running ? 0 : t.enabled ? 1 : 2
-                            return statusOrder(a) - statusOrder(b) || a.name.localeCompare(b.name)
-                        }).map(task => (
+                        ) : [...tasks].sort((a, b) =>
+                            taskStatusOrder(a) - taskStatusOrder(b) || a.name.localeCompare(b.name)
+                        ).map(task => (
                             <tr key={task.id}>
                                 <td>
                                     <div style={{fontWeight: 500}}>{task.name}</div>

@@ -337,10 +337,7 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	writeSuccess(c, storageInfo)
 }
 
-// ClearMediaCache clears the media cache and rescans
-// TODO: This runs h.media.Scan() synchronously (blocking the HTTP request). For large
-// libraries this can take a long time and exceed client/proxy timeouts. Compare with
-// ScanMedia which runs the scan in a goroutine. Consider making this async too.
+// ClearMediaCache clears the media cache and rescans (runs synchronously).
 func (h *Handler) ClearMediaCache(c *gin.Context) {
 	if err := h.media.Scan(); err != nil {
 		h.log.Error("Failed to clear cache and rescan media: %v", err)

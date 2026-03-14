@@ -76,17 +76,7 @@ export const usePlaybackStore = create<PlaybackState>()(
                     set({hlsEnabled: false, hlsUrl: null})
                 }
 
-                // Track playback
-                // TODO: Redundant try/catch — `watchHistoryApi.trackPosition()` returns a Promise,
-                // and `.catch(() => {})` already swallows rejections. The outer try/catch never
-                // fires because the Promise constructor itself won't throw synchronously.
-                // FIX: Remove the outer try/catch; the `.catch()` is sufficient.
-                try {
-                    watchHistoryApi.trackPosition(id, 0, 0).catch(() => {
-                    })
-                } catch {
-                    // Tracking is non-critical
-                }
+                watchHistoryApi.trackPosition(id, 0, 0).catch(() => {})
             },
 
             togglePlayPause: () => {

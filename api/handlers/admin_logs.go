@@ -99,11 +99,7 @@ func filterLogEntries(entries []map[string]interface{}, levelFilter, moduleFilte
 	return filtered
 }
 
-// readLastNLines reads the last N lines from a file
-// TODO: This reads the entire file into memory to get the last N lines. For large log files
-// (hundreds of MB), this will cause excessive memory usage. Consider reading the file in
-// reverse from the end (e.g., seeking to EOF and reading backwards) or using a ring buffer
-// approach to only keep the last N lines in memory.
+// readLastNLines reads the last N lines from a file (loads full file into memory).
 func readLastNLines(filePath string, n int) ([]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {

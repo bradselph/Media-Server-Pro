@@ -57,11 +57,7 @@ export default defineConfig({
         },
     },
     server: {
-        // Proxy API requests to Go backend during development
-        // TODO: The proxy target port (8080) must match SERVER_PORT in .env.
-        // config.json uses port 3000, so if running with config.json alone
-        // (no .env override), the dev proxy will fail to connect. Consider
-        // reading from an env var or documenting the required .env setting.
+        // Proxy to Go backend (default port 8080; set SERVER_PORT in .env to match)
         proxy: {
             '/api': 'http://localhost:8080',
             '/media': 'http://localhost:8080',

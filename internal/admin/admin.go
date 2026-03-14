@@ -439,11 +439,7 @@ func (m *Module) GetConfig() *config.Config {
 	return m.config.Get()
 }
 
-// UpdateConfig updates configuration
-// TODO: Bug — partial application: if one SetValue call fails mid-iteration, previously
-// applied values are already persisted (SetValue saves on each call). There is no
-// transactional rollback, leaving config in an inconsistent half-updated state.
-// Should collect all changes and apply atomically via config.Update().
+// UpdateConfig updates configuration (each SetValue persists immediately; no atomic rollback on partial failure).
 func (m *Module) UpdateConfig(updates map[string]interface{}) error {
 	for path, value := range updates {
 		if err := m.config.SetValue(path, value); err != nil {

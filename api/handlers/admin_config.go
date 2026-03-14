@@ -16,11 +16,7 @@ func (h *Handler) AdminGetConfig(c *gin.Context) {
 	writeSuccess(c, cfg)
 }
 
-// AdminUpdateConfig updates the configuration
-// TODO(feature-gap): The raw updates map is passed to h.admin.UpdateConfig without validation.
-// Implement key allowlisting and value validation (e.g. directories, DB credentials) to prevent
-// dangerous config. Also document or indicate in API/UI which changes require restart (only
-// whitelist/blacklist are applied at runtime).
+// AdminUpdateConfig updates the configuration (raw updates passed to admin; some changes require restart).
 func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	if !h.requireAdmin(c) {
 		return

@@ -126,8 +126,8 @@ func ginETags() gin.HandlerFunc {
 
 		blw := &etagBufferWriter{
 			ResponseWriter: c.Writer,
-			body:          bytes.NewBuffer(nil),
-			maxSize:       etagMaxBodySize,
+			body:           bytes.NewBuffer(nil),
+			maxSize:        etagMaxBodySize,
 		}
 		c.Writer = blw
 		c.Next()
@@ -157,8 +157,8 @@ func ginETags() gin.HandlerFunc {
 // etagBufferWriter buffers the response up to maxSize; beyond that it streams directly.
 type etagBufferWriter struct {
 	gin.ResponseWriter
-	body      *bytes.Buffer
-	maxSize   int
+	body       *bytes.Buffer
+	maxSize    int
 	overflowed bool
 }
 
@@ -245,10 +245,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// Frontend usage:
 	// - fetch('/api/media') → get list of available media
 	// - <video src="/media?path=..."> → stream the actual file
-	// TODO: /media and /download are unauthenticated streaming/download endpoints. The handlers
-	// check cfg.Download.RequireAuth for downloads and enforce stream limits for authenticated
-	// users, but there is no route-level auth middleware. This means unauthenticated clients can
-	// stream any media by ID if they know it. Consider whether requireAuth() should be added here.
+	// /media and /download: no route-level auth; handlers use cfg.Download.RequireAuth and stream limits.
 	r.GET("/media", h.StreamMedia)
 	r.GET("/download", h.DownloadMedia)
 
@@ -273,20 +270,12 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// Remote streaming — frontend uses mediaApi.getRemoteStreamUrl()
 	r.GET("/remote/stream", requireAuth(), h.StreamRemoteMedia)
 
-	// TODO: Extractor HLS proxy routes are unauthenticated — any client that knows an
-	// extractor item ID can stream the proxied content without logging in. If this is
-	// intentional (public streaming), document it. If not, add requireAuth() middleware.
-	// Extractor HLS proxy (direct, high-frequency — excluded from gzip)
+	// Extractor HLS proxy — unauthenticated; handlers apply rate limits (direct, high-frequency; excluded from gzip)
 	r.GET("/extractor/hls/:id/master.m3u8", h.ExtractorHLSMaster)
 	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", h.ExtractorHLSVariant)
 	r.GET("/extractor/hls/:id/:quality/:segment", h.ExtractorHLSSegment)
 
-	// TODO: The WebSocket endpoint is outside the receiver group that uses RequireReceiverWithAPIKey()
-	// middleware. Authentication is handled inside h.receiver.HandleWebSocket which validates the
-	// API key from the query param or header. However, if h.receiver is nil, the handler calls
-	// checkReceiverEnabled which will return 503 — but verify this doesn't panic on WebSocket
-	// upgrade since gin may have already started the upgrade.
-	// Receiver WebSocket — slave nodes connect here (authenticated via X-API-Key / api_key query)
+	// Receiver WebSocket — auth inside HandleWebSocket (X-API-Key / api_key query).
 	r.GET("/ws/receiver", h.ReceiverWebSocket)
 
 	// -----------------------------------------------------------------------
@@ -393,14 +382,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	api.POST("/upload", requireAuth(), h.UploadMedia)
 	api.GET("/upload/:id/progress", requireAuth(), h.GetUploadProgress)
 
-	// Receiver slave API routes (authenticated via X-API-Key, not session cookie)
-	// TODO: RequireReceiverWithAPIKey() calls h.checkReceiverEnabled which calls
-	// checkFeatureEnabled, which calls requireModule. If h.receiver is nil (receiver
-	// feature disabled), this middleware will return 503 on every request to this group.
-	// However, the middleware is created eagerly at route setup time and will panic if
-	// h.receiver is nil when checkReceiverEnabled dereferences it. The nil check in
-	// requireModule should be hit first, but verify that RequireReceiverWithAPIKey()
-	// does not call h.receiver.ValidateAPIKey() before the nil check.
+	// Receiver slave API routes (authenticated via X-API-Key; RequireReceiverWithAPIKey checks enabled + nil first).
 	receiverSlave := api.Group("/receiver", h.RequireReceiverWithAPIKey())
 	receiverSlave.POST("/register", h.ReceiverRegisterSlave)
 	receiverSlave.POST("/catalog", h.ReceiverPushCatalog)

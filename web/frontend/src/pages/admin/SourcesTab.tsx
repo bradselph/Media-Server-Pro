@@ -161,7 +161,10 @@ function RemoteTab() {
     }
 
     function statusBadge(status: string) {
-        const color = status === 'idle' ? '#22c55e' : status === 'syncing' ? '#f59e0b' : '#ef4444'
+        let color: string
+        if (status === 'idle') color = '#22c55e'
+        else if (status === 'syncing') color = '#f59e0b'
+        else color = '#ef4444'
         return <span style={{color, fontWeight: 600, fontSize: 12}}>{status}</span>
     }
 
@@ -257,21 +260,22 @@ function RemoteTab() {
             )}
 
             {/* Sources table */}
-            {isLoading ? (
-                <p style={{color: 'var(--text-muted)'}}>Loading sources...</p>
-            ) : isError ? (
+            {isLoading && <p style={{color: 'var(--text-muted)'}}>Loading sources...</p>}
+            {!isLoading && isError && (
                 <div className="admin-alert admin-alert-danger">
                     {String(error).includes('disabled') || String(error).includes('404')
                         ? 'Remote media is disabled. Enable it in Settings → Features → Remote Media.'
                         : `Failed to load remote sources: ${String(error)}`}
                 </div>
-            ) : !sources || sources.length === 0 ? (
+            )}
+            {!isLoading && !isError && (!sources || sources.length === 0) && (
                 <div style={{textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)'}}>
                     <i className="bi bi-cloud-slash" style={{fontSize: 32}}/>
                     <p style={{marginTop: 8}}>No remote sources configured.</p>
                     <p style={{fontSize: 13}}>Add a source above to stream media from remote servers.</p>
                 </div>
-            ) : (
+            )}
+            {!isLoading && !isError && sources && sources.length > 0 && (
                 <div className="admin-table-wrapper">
                     <table className="admin-table">
                         <thead>
@@ -475,8 +479,11 @@ function ReceiverTab() {
     }
 
     function statusBadge(status: string) {
-        const cls = status === 'online' ? 'badge-active' : status === 'stale' ? 'badge-mature' : 'badge-inactive'
-        const icon = status === 'online' ? 'bi-circle-fill' : status === 'stale' ? 'bi-exclamation-circle-fill' : 'bi-circle'
+        let cls: string
+        let icon: string
+        if (status === 'online') { cls = 'badge-active'; icon = 'bi-circle-fill' }
+        else if (status === 'stale') { cls = 'badge-mature'; icon = 'bi-exclamation-circle-fill' }
+        else { cls = 'badge-inactive'; icon = 'bi-circle' }
         return <span className={`media-card-type-badge ${cls}`}><i className={`bi ${icon}`}/> {status}</span>
     }
 
@@ -773,11 +780,11 @@ function ExtractorTab() {
             </form>
 
             {/* Items table */}
-            {isLoading ? (
-                <p style={{color: 'var(--text-muted)'}}>Loading...</p>
-            ) : !items || items.length === 0 ? (
+            {isLoading && <p style={{color: 'var(--text-muted)'}}>Loading...</p>}
+            {!isLoading && (!items || items.length === 0) && (
                 <p style={{color: 'var(--text-muted)'}}>No streams added yet. Paste an M3U8 URL above to get started.</p>
-            ) : (
+            )}
+            {!isLoading && items && items.length > 0 && (
                 <div className="admin-table-wrapper">
                     <table className="admin-table">
                         <thead>
@@ -931,7 +938,10 @@ function CrawlerTab() {
     }
 
     function statusBadge(status: string) {
-        const cls = status === 'pending' ? 'badge-inactive' : status === 'added' ? 'badge-active' : 'badge-mature'
+        let cls: string
+        if (status === 'pending') cls = 'badge-inactive'
+        else if (status === 'added') cls = 'badge-active'
+        else cls = 'badge-mature'
         return <span className={`media-card-type-badge ${cls}`}>{status}</span>
     }
 
@@ -979,11 +989,11 @@ function CrawlerTab() {
             </form>
 
             {/* Targets Table */}
-            {targetsLoading ? (
-                <p style={{color: 'var(--text-muted)'}}>Loading...</p>
-            ) : !targets || targets.length === 0 ? (
+            {targetsLoading && <p style={{color: 'var(--text-muted)'}}>Loading...</p>}
+            {!targetsLoading && (!targets || targets.length === 0) && (
                 <p style={{color: 'var(--text-muted)'}}>No crawl targets. Add a site URL above.</p>
-            ) : (
+            )}
+            {!targetsLoading && targets && targets.length > 0 && (
                 <div className="admin-table-wrapper" style={{marginBottom: 24}}>
                     <table className="admin-table">
                         <thead><tr><th>Name</th><th>Site</th><th>URL</th><th>Enabled</th><th>Last Crawled</th><th>Actions</th></tr></thead>
@@ -1033,13 +1043,13 @@ function CrawlerTab() {
                 </div>
             </div>
 
-            {discoveriesLoading ? (
-                <p style={{color: 'var(--text-muted)'}}>Loading...</p>
-            ) : !discoveries || discoveries.length === 0 ? (
+            {discoveriesLoading && <p style={{color: 'var(--text-muted)'}}>Loading...</p>}
+            {!discoveriesLoading && (!discoveries || discoveries.length === 0) && (
                 <p style={{color: 'var(--text-muted)'}}>
                     {reviewView === 'pending' ? 'No pending discoveries. Crawl a target to find streams.' : 'No discoveries yet.'}
                 </p>
-            ) : (
+            )}
+            {!discoveriesLoading && discoveries && discoveries.length > 0 && (
                 <div className="admin-table-wrapper">
                     <table className="admin-table">
                         <thead><tr><th>Title</th><th>Stream URL</th><th>Type</th><th>Quality</th><th>Status</th><th>Found</th><th>Actions</th></tr></thead>
@@ -1151,6 +1161,16 @@ function DuplicatesTab() {
         return <span className="media-card-type-badge">{status}</span>
     }
 
+    let statusText: string
+    if (isLoading) statusText = 'Loading…'
+    else if (isError) statusText = 'Feature may be disabled.'
+    else {
+        const n = dupes?.length ?? 0
+        const scope = showAll ? 'total' : 'pending'
+        const plural = n !== 1 ? 's' : ''
+        statusText = `${n} ${scope} duplicate pair${plural}`
+    }
+
     return (
         <div>
             <h2 style={{margin: '0 0 4px 0', fontSize: 20}}><i className="bi bi-copy"/> Duplicate Detection</h2>
@@ -1169,7 +1189,7 @@ function DuplicatesTab() {
 
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                 <div style={{fontSize: 13, color: 'var(--text-muted)'}}>
-                    {isLoading ? 'Loading…' : isError ? 'Feature may be disabled.' : `${dupes?.length ?? 0} ${showAll ? 'total' : 'pending'} duplicate pair${dupes?.length !== 1 ? 's' : ''}`}
+                    {statusText}
                 </div>
                 <div style={{display: 'flex', gap: 8}}>
                     <button className={`admin-btn ${showAll ? 'admin-btn-primary' : ''}`} style={{fontSize: 12, padding: '5px 10px'}}

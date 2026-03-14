@@ -522,12 +522,13 @@ func (m *Module) createBackup() (string, error) {
 	return backupPath, nil
 }
 
-// getAssetName returns the expected asset name for current platform
+// getAssetName returns the expected asset name for current platform (must match GitHub Release artifacts).
 func (m *Module) getAssetName() string {
-	goos := runtime.GOOS
-	arch := runtime.GOARCH
-
-	return fmt.Sprintf("media-server-%s-%s", goos, arch)
+	name := fmt.Sprintf("media-server-pro-%s-%s", runtime.GOOS, runtime.GOARCH)
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return name
 }
 
 // getAssetURL gets the download URL for a specific release asset
@@ -694,7 +695,7 @@ type releaseAsset struct {
 func findChecksumAssetURL(assets []releaseAsset) string {
 	for _, asset := range assets {
 		lName := strings.ToLower(asset.Name)
-		if lName == "sha256sums" || lName == "sha256sums.txt" || lName == "checksums.txt" {
+		if lName == "sha256sums" || lName == "sha256sums.txt" || lName == "checksums.txt" || lName == "checksums-sha256.txt" {
 			return asset.BrowserDownloadURL
 		}
 	}
@@ -704,8 +705,12 @@ func findChecksumAssetURL(assets []releaseAsset) string {
 func parseExpectedHashFromChecksum(checksumData []byte, assetName string) string {
 	for _, line := range strings.Split(string(checksumData), "\n") {
 		parts := strings.Fields(line)
-		if len(parts) == 2 && strings.EqualFold(parts[1], assetName) {
-			return strings.ToLower(parts[0])
+		if len(parts) >= 2 {
+			// Second field may be path (e.g. artifacts/binaries-linux-amd64/media-server-pro-linux-amd64) or basename
+			name := filepath.Base(parts[1])
+			if strings.EqualFold(name, assetName) {
+				return strings.ToLower(parts[0])
+			}
 		}
 	}
 	return ""
@@ -882,15 +887,12 @@ func (m *Module) installUpdate(updateFile string) error {
 	return nil
 }
 
-// restoreFromBackup restores from a backup
-// TODO: restoreFromBackup has two issues:
-//  1. The .tar.gz branch uses exec.Command("tar", ...) which may not exist on Windows.
-//     The createBackup method never creates .tar.gz backups (it uses copyFile), so the
-//     tar.gz branch is dead code.
-//  2. If backupPath is empty (backup creation failed earlier), this function will try
-//     to copy an empty-string path, causing a confusing error. The caller (ApplyUpdate)
-//     does pass backupPath even when backup failed, so this could try to restore from "".
+// restoreFromBackup restores from a backup. backupPath must be non-empty (caller should not pass "").
+// The .tar.gz branch is legacy; createBackup currently only produces single-file backups via copyFile.
 func (m *Module) restoreFromBackup(backupPath string) error {
+	if backupPath == "" {
+		return fmt.Errorf("no backup path to restore from")
+	}
 	if strings.HasSuffix(backupPath, ".tar.gz") {
 		execPath, err := os.Executable()
 		if err != nil {
@@ -1100,16 +1102,27 @@ func (m *Module) IsUpdateRunning() bool {
 //  4. atomic rename          (replaces running binary on disk)
 //
 // The caller is responsible for restarting the service after this returns.
-// TODO: SourceUpdate has no guard against concurrent calls, unlike ApplyUpdate which
-// uses applyMu. Two simultaneous SourceUpdate calls could corrupt the build. Should
+// Only one SourceUpdate runs at a time; concurrent callers get "already in progress".
 func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
-	if m.IsBuildRunning() {
+	status := &UpdateStatus{
+		InProgress: true,
+		Stage:      "starting",
+		Progress:   0,
+		StartedAt:  time.Now(),
+	}
+	m.buildMu.Lock()
+	if m.activeBuild != nil && m.activeBuild.InProgress {
+		m.buildMu.Unlock()
 		return &UpdateStatus{Error: "a source build is already in progress", InProgress: false},
 			fmt.Errorf("a source build is already in progress")
 	}
+	m.activeBuild = status
+	m.buildMu.Unlock()
+
 	cfg := m.config.Get()
 	dir, err := m.appDir()
 	if err != nil {
+		m.publishBuildStatus(&UpdateStatus{Error: err.Error(), InProgress: false})
 		return &UpdateStatus{Error: err.Error(), InProgress: false}, err
 	}
 
@@ -1120,15 +1133,12 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		e := fmt.Errorf("not a git repository: %s", dir)
+		m.publishBuildStatus(&UpdateStatus{Error: e.Error(), InProgress: false})
 		return &UpdateStatus{Error: e.Error(), InProgress: false}, e
 	}
 
-	status := &UpdateStatus{
-		InProgress: true,
-		Stage:      "creating backup",
-		Progress:   5,
-		StartedAt:  time.Now(),
-	}
+	status.Stage = "creating backup"
+	status.Progress = 5
 	m.publishBuildStatus(status)
 
 	// Backup the current binary before making any changes
@@ -1161,23 +1171,8 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	}
 	m.log.Info("git fetch: %s", strings.TrimSpace(string(fetchOut)))
 
-	// Switch to the target branch (create tracking branch if needed)
-	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, "origin/"+branch)
-	checkoutCmd.Env = gitEnv
-	if out, cerr := checkoutCmd.CombinedOutput(); cerr != nil {
-		status.Error = fmt.Sprintf("git checkout failed: %v\n%s", cerr, string(out))
-		status.InProgress = false
-		m.publishBuildStatus(status)
-		return status, fmt.Errorf("git checkout: %w", cerr)
-	}
-
-	// TODO: This "already up to date" check compares HEAD with origin/branch AFTER
-	// the checkout -B has already been performed (which resets the local branch to
-	// origin/branch). So HEAD and origin/branch will ALWAYS be equal at this point,
-	// making the check always true and short-circuiting the build. The check should
-	// be performed BEFORE the checkout, comparing the OLD local HEAD with origin/branch.
-	// Check whether there are actually any new commits
-	localOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
+	// Compare local branch tip with origin/branch; if equal, no new commits — skip build.
+	localOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output()
 	remoteOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
 	if strings.TrimSpace(string(localOut)) == strings.TrimSpace(string(remoteOut)) {
 		m.log.Info("Source update: already up to date")
@@ -1186,6 +1181,16 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		status.InProgress = false
 		m.publishBuildStatus(status)
 		return status, nil
+	}
+
+	// Switch to the target branch (create tracking branch if needed)
+	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, "origin/"+branch)
+	checkoutCmd.Env = gitEnv
+	if out, cerr := checkoutCmd.CombinedOutput(); cerr != nil {
+		status.Error = fmt.Sprintf("git checkout failed: %v\n%s", cerr, string(out))
+		status.InProgress = false
+		m.publishBuildStatus(status)
+		return status, fmt.Errorf("git checkout: %w", cerr)
 	}
 
 	// --- Step 2: npm build (frontend) ---

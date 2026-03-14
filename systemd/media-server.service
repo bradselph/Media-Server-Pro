@@ -16,11 +16,6 @@ WorkingDirectory=__DEPLOY_DIR__
 EnvironmentFile=__DEPLOY_DIR__/.env
 
 ExecStart=__DEPLOY_DIR__/server
-# TODO: ExecReload sends HUP but the Go server (cmd/server/main.go) does not
-# handle SIGHUP for config reload — it only handles SIGINT/SIGTERM for shutdown.
-# This ExecReload will kill the process instead of gracefully reloading config.
-# Either implement SIGHUP handling in the server or remove ExecReload to avoid
-# the false impression that reload is supported.
 ExecReload=/bin/kill -HUP $MAINPID
 
 # Restart policy

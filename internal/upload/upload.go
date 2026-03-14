@@ -311,12 +311,7 @@ func (m *Module) registerUploadProgress(params ProgressRegistration) *Progress {
 	return progress
 }
 
-// scheduleUnregisterUpload removes the upload from activeUploads after the given duration.
-// TODO: The goroutine spawned here has no context or cancellation mechanism. During
-// server shutdown, these goroutines will leak until their sleep timer expires. Also,
-// if the upload fails quickly (error before the 5-minute timer), the Progress entry
-// stays in memory for 5 minutes even though the upload is already done. Consider using
-// a timer that can be cancelled on shutdown, or using a periodic cleanup sweep instead.
+// scheduleUnregisterUpload removes the upload from activeUploads after the given duration (goroutine not cancelled on shutdown).
 func (m *Module) scheduleUnregisterUpload(uploadID UploadID, after time.Duration) {
 	go func() {
 		time.Sleep(after)
@@ -350,12 +345,7 @@ func (m *Module) copyAndRenameUpload(src multipart.File, destFile *os.File, path
 
 // HandleUpload processes a multipart file upload (legacy single-file path).
 // Prefer using ProcessFileHeader for multi-file support.
-// TODO: HandleUpload accepts http.ResponseWriter but only uses it for MaxBytesReader.
-// The ResponseWriter is passed to the handler signature but no response is written here —
-// the caller is responsible for writing the response. This means if MaxBytesReader
-// triggers, the error is returned but the ResponseWriter state may already be tainted
-// (MaxBytesReader sets a flag on the connection). Consider documenting this behavior
-// or restructuring so the ResponseWriter is not needed.
+// w is used only for MaxBytesReader; the caller must write the response.
 func (m *Module) HandleUpload(w http.ResponseWriter, r *http.Request, userID string) (*Result, error) {
 	cfg := m.config.Get()
 

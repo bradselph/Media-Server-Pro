@@ -186,14 +186,14 @@ func (m *Module) buildFFmpegTranscodeCmd(ctx context.Context, paths *transcodePa
 	stream := ffmpeg.Input(paths.MediaPath)
 	stream = stream.Output(paths.PlaylistPath,
 		ffmpeg.KwArgs{
-			"c:v":             "libx264",
-			"preset":          "fast",
-			"vf":              fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
-			"b:v":             fmt.Sprintf("%dk", profile.Bitrate/1000),
-			"maxrate":         fmt.Sprintf("%dk", profile.Bitrate/1000),
-			"bufsize":         fmt.Sprintf("%dk", profile.Bitrate*2/1000),
+			"c:v":              "libx264",
+			"preset":           "fast",
+			"vf":               fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
+			"b:v":              fmt.Sprintf("%dk", profile.Bitrate/1000),
+			"maxrate":          fmt.Sprintf("%dk", profile.Bitrate/1000),
+			"bufsize":          fmt.Sprintf("%dk", profile.Bitrate*2/1000),
 			"force_key_frames": fmt.Sprintf("expr:gte(t,n_forced*%d)", cfg.HLS.SegmentDuration),
-			"sc_threshold":    "0",
+			"sc_threshold":     "0",
 
 			"c:a": "aac",
 			"b:a": fmt.Sprintf("%dk", profile.AudioBitrate/1000),
