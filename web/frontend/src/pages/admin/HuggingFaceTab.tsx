@@ -4,7 +4,7 @@ import { adminApi } from '@/api/endpoints'
 import type { ClassifyStatus, ClassifyStats, ClassifiedItem } from '@/api/types'
 import { errMsg } from './adminUtils'
 
-const TEXT_MUTED = TEXT_MUTED
+const TEXT_MUTED = 'var(--text-muted)'
 
 interface HuggingFaceConfigBlock {
     enabled?: boolean
