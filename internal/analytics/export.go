@@ -26,14 +26,20 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 	if err != nil {
 		return "", fmt.Errorf("failed to create export file: %w", err)
 	}
+
+	succeeded := false
 	defer func() {
 		if err := file.Close(); err != nil {
 			m.log.Warn("Failed to close CSV export file: %v", err)
 		}
+		if !succeeded {
+			if removeErr := os.Remove(filename); removeErr != nil && !os.IsNotExist(removeErr) {
+				m.log.Warn("Failed to remove partial export file %s: %v", filename, removeErr)
+			}
+		}
 	}()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	rows := [][]string{{"Timestamp", "Type", "MediaID", "UserID", "SessionID", "IPAddress"}}
 	for _, event := range events {
@@ -50,6 +56,7 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 		return "", err
 	}
 
+	succeeded = true
 	m.log.Info("Exported analytics to %s", filename)
 	return filename, nil
 }
