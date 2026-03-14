@@ -272,9 +272,11 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	userType := "standard"
 	var storageQuotaGB int64
 	username := ""
+	userID := ""
 
 	if session != nil {
 		username = session.Username
+		userID = session.UserID
 		user, err := h.auth.GetUser(c.Request.Context(), username)
 		if err == nil && user != nil && user.Type != "" {
 			userType = user.Type
@@ -284,10 +286,10 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	storageQuotaGB = h.getUserStorageQuota(userType)
 
 	var totalSize int64
-	if username != "" && h.upload != nil {
-		used, err := h.upload.GetUserStorageUsed(username)
+	if userID != "" && h.upload != nil {
+		used, err := h.upload.GetUserStorageUsed(userID)
 		if err != nil {
-			h.log.Warn("Error getting user storage for %s: %v", username, err)
+			h.log.Warn("Error getting user storage for %s: %v", userID, err)
 		}
 		totalSize = used
 	} else {
