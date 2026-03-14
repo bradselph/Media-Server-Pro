@@ -92,7 +92,9 @@ func (m *Module) removeSegmentDirAndState(jobID string) bool {
 	delete(m.accessTracker.lastAccess, jobID)
 	m.accessTracker.mu.Unlock()
 	if m.repo != nil {
-		_ = m.repo.Delete(context.Background(), jobID)
+		if err := m.repo.Delete(context.Background(), jobID); err != nil {
+			m.log.Warn("Failed to delete HLS job %s from DB during cleanup: %v", jobID, err)
+		}
 	}
 	return true
 }
@@ -192,7 +194,9 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 	m.accessTracker.mu.Unlock()
 
 	if m.repo != nil {
-		_ = m.repo.Delete(context.Background(), jobID)
+		if err := m.repo.Delete(context.Background(), jobID); err != nil {
+			m.log.Warn("Failed to delete inactive HLS job %s from DB: %v", jobID, err)
+		}
 	}
 
 	m.log.Debug("Removed inactive HLS job: %s (last access: %v)", jobID, lastAccess)
