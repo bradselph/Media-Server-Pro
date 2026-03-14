@@ -4,6 +4,8 @@ import { adminApi } from '@/api/endpoints'
 import type { ClassifyStatus, ClassifyStats, ClassifiedItem } from '@/api/types'
 import { errMsg } from './adminUtils'
 
+const TEXT_MUTED = TEXT_MUTED
+
 interface HuggingFaceConfigBlock {
     enabled?: boolean
     api_key_set?: boolean
@@ -84,7 +86,7 @@ function ClassificationProgress({ stats }: { stats: ClassifyStats }) {
                         display: 'flex',
                         justifyContent: 'space-between',
                         fontSize: 12,
-                        color: 'var(--text-muted)',
+                        color: TEXT_MUTED,
                         marginBottom: 4,
                     }}>
                         <span>{stats.mature_classified} of {stats.mature_total} classified</span>
@@ -136,30 +138,35 @@ function BackgroundTaskControl({
     allPendingLoading: boolean
     pendingCount: number
 }) {
+    let runTaskLabel: string
+    if (taskLoading) runTaskLabel = 'Starting...'
+    else if (status.task_running) runTaskLabel = 'Task running...'
+    else runTaskLabel = 'Run scheduled task now'
+
     return (
         <div className="admin-card" style={{ marginBottom: 20 }}>
             <h3>Background task</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 13 }}>
+            <p style={{ color: TEXT_MUTED, marginBottom: 12, fontSize: 13 }}>
                 The <strong>hf-classification</strong> task runs every 12 hours and classifies
                 all mature items that have no tags yet.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 13, marginBottom: 16 }}>
-                <span style={{ color: 'var(--text-muted)' }}>Status:</span>
+                <span style={{ color: TEXT_MUTED }}>Status:</span>
                 <span>{status.task_running
                     ? <span style={{ color: 'var(--warning-color, #f59e0b)', fontWeight: 600 }}>Running</span>
                     : <span style={{ color: 'var(--text-color)' }}>Idle</span>}
                 </span>
-                <span style={{ color: 'var(--text-muted)' }}>Last run:</span>
+                <span style={{ color: TEXT_MUTED }}>Last run:</span>
                 <span>{formatTime(status.task_last_run)}</span>
-                <span style={{ color: 'var(--text-muted)' }}>Next run:</span>
+                <span style={{ color: TEXT_MUTED }}>Next run:</span>
                 <span>{formatTime(status.task_next_run)}</span>
                 {status.task_last_error && (
                     <>
-                        <span style={{ color: 'var(--text-muted)' }}>Last error:</span>
+                        <span style={{ color: TEXT_MUTED }}>Last error:</span>
                         <span style={{ color: 'var(--danger-color, #ef4444)' }}>{status.task_last_error}</span>
                     </>
                 )}
-                <span style={{ color: 'var(--text-muted)' }}>Enabled:</span>
+                <span style={{ color: TEXT_MUTED }}>Enabled:</span>
                 <span>{status.task_enabled ? 'Yes' : 'No'}</span>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -169,7 +176,7 @@ function BackgroundTaskControl({
                     onClick={onRunTask}
                     disabled={taskLoading || status.task_running === true}
                 >
-                    {taskLoading ? 'Starting...' : status.task_running ? 'Task running...' : 'Run scheduled task now'}
+                    {runTaskLabel}
                 </button>
                 <button
                     type="button"
@@ -200,7 +207,7 @@ function RecentlyClassifiedTable({
         return (
             <div className="admin-card" style={{ marginBottom: 20 }}>
                 <h3>Recently classified</h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                <p style={{ color: TEXT_MUTED, fontSize: 13 }}>
                     No classified items yet. Run classification on mature content to see results here.
                 </p>
             </div>
@@ -369,7 +376,7 @@ function HuggingFaceSettingsForm({
                     autoComplete="off"
                 />
                 {apiKeySet && !apiKeyInput && (
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}> Current key is set.</span>
+                    <span style={{ fontSize: 12, color: TEXT_MUTED }}> Current key is set.</span>
                 )}
             </div>
             <div className="admin-form-group">
@@ -516,7 +523,7 @@ function HuggingFaceRunClassification({
     return (
         <div className="admin-card" style={{ marginBottom: 20 }}>
             <h3>Manual classification</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>
+            <p style={{ color: TEXT_MUTED, marginBottom: 12 }}>
                 Classify a single file or all mature-flagged files in a directory. Path must be under your
                 configured media directories (Videos, Music, Uploads). Tags are merged with existing ones.
             </p>
@@ -541,12 +548,12 @@ function HuggingFaceRunClassification({
                 />
             </div>
             {configured === false && (
-                <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: 13 }}>
+                <p style={{ color: TEXT_MUTED, marginTop: 8, fontSize: 13 }}>
                     Set an API key below and save to enable classification.
                 </p>
             )}
             {configured && (
-                <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: 12 }}>
+                <p style={{ color: TEXT_MUTED, marginTop: 8, fontSize: 12 }}>
                     Supported: video (mp4, mkv, avi, etc.) and image (jpg, png, webp) files.
                 </p>
             )}
@@ -753,7 +760,7 @@ export function HuggingFaceTab() {
 
             <div className="admin-card" style={{ marginBottom: 20 }}>
                 <h2>Hugging Face Visual Classification</h2>
-                <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>
+                <p style={{ color: TEXT_MUTED, marginBottom: 16 }}>
                     Uses the Hugging Face Inference API to analyze video frames and images for content, then adds
                     suggested tags to mature-flagged media. Requires an API key and FFmpeg for video frame extraction.
                 </p>
