@@ -353,7 +353,10 @@ func (m *Module) RestoreBackup(backupID string) error {
 		return err
 	}
 
-	m.extractAllFiles(reader.File)
+	if err := m.extractAllFiles(reader.File); err != nil {
+		m.log.Warn("Partial restore from backup %s: %v", backupID, err)
+		return fmt.Errorf("partial restore: %w", err)
+	}
 
 	m.log.Info("Restored from backup: %s", backupID)
 	m.log.Warn("Restore complete — a server restart is required for all modules to reload their in-memory caches from the restored data files")
@@ -385,13 +388,20 @@ func (m *Module) validateBackupArchiveSize(files []*zip.File) error {
 	return nil
 }
 
-// extractAllFiles extracts all files from the zip archive.
-func (m *Module) extractAllFiles(files []*zip.File) {
+// extractAllFiles extracts all files from the zip archive. Returns an error if
+// any file failed to extract so that the caller can report a partial restore.
+func (m *Module) extractAllFiles(files []*zip.File) error {
+	var failed int
 	for _, file := range files {
 		if err := m.extractFile(file); err != nil {
 			m.log.Error("Failed to extract %s: %v", file.Name, err)
+			failed++
 		}
 	}
+	if failed > 0 {
+		return fmt.Errorf("%d file(s) failed to extract", failed)
+	}
+	return nil
 }
 
 // extractFile extracts a file from the zip
