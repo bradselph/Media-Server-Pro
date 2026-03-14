@@ -112,36 +112,30 @@ func requireAuth() gin.HandlerFunc {
 	}
 }
 
-// ginETags is a Gin middleware that adds content-based ETag support for GET/HEAD
-// requests on /api/* routes. It buffers the response, computes an FNV-1a hash,
-// and sets the ETag header. Clients that send a matching If-None-Match header
-// receive a 304 Not Modified without the response body. Only applied to
-// successful (2xx) responses.
-// TODO: This middleware buffers the ENTIRE response body in memory before sending it.
-// For large responses (e.g., AdminListMedia with thousands of items, analytics exports),
-// this doubles memory usage. Consider adding a size threshold — skip ETag computation
-// for responses larger than, say, 1 MB, and stream them directly.
-// Also, the FNV-1a hash is 32-bit which has a ~50% collision probability at ~77K
-// unique responses (birthday paradox). Consider using FNV-1a 64-bit or xxhash.
+const etagMaxBodySize = 1024 * 1024 // 1 MB; larger responses stream through without ETag
+
+// ginETags adds content-based ETag for GET/HEAD on /api/*. Responses larger than
+// etagMaxBodySize are streamed directly to avoid buffering large bodies in memory.
 func ginETags() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Only apply ETag logic to GET/HEAD requests on API routes
 		if (c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead) ||
 			!strings.HasPrefix(c.Request.URL.Path, "/api/") {
 			c.Next()
 			return
 		}
 
-		// Use a buffered writer that captures the body without flushing to the
-		// client, so we can compute the ETag and potentially respond with 304
-		// before any bytes are sent.
-		blw := &etagBufferWriter{body: bytes.NewBuffer(nil), ResponseWriter: c.Writer}
+		blw := &etagBufferWriter{
+			ResponseWriter: c.Writer,
+			body:          bytes.NewBuffer(nil),
+			maxSize:       etagMaxBodySize,
+		}
 		c.Writer = blw
 		c.Next()
 
-		// Only apply ETag to 2xx responses
+		if blw.overflowed {
+			return // already streamed
+		}
 		if blw.Status() < 200 || blw.Status() >= 300 {
-			// Non-2xx: flush buffered body as-is
 			if blw.body.Len() > 0 {
 				_, _ = blw.ResponseWriter.Write(blw.body.Bytes())
 			}
@@ -150,29 +144,36 @@ func ginETags() gin.HandlerFunc {
 
 		etag := `"` + hashFNV1a(blw.body.Bytes()) + `"`
 		c.Header("ETag", etag)
-
 		if match := c.GetHeader("If-None-Match"); match == etag {
-			// 304 Not Modified — do not send the body
 			c.Status(http.StatusNotModified)
 			return
 		}
-
-		// Flush buffered body to the client
 		if blw.body.Len() > 0 {
 			_, _ = blw.ResponseWriter.Write(blw.body.Bytes())
 		}
 	}
 }
 
-// etagBufferWriter wraps gin.ResponseWriter to buffer the response body.
-// Writes are captured in memory only — nothing is flushed to the client until
-// the ETag middleware explicitly writes the buffer (or discards it for 304).
+// etagBufferWriter buffers the response up to maxSize; beyond that it streams directly.
 type etagBufferWriter struct {
 	gin.ResponseWriter
-	body *bytes.Buffer
+	body      *bytes.Buffer
+	maxSize   int
+	overflowed bool
 }
 
 func (w *etagBufferWriter) Write(b []byte) (int, error) {
+	if w.overflowed {
+		return w.ResponseWriter.Write(b)
+	}
+	if w.body.Len()+len(b) > w.maxSize {
+		w.overflowed = true
+		if w.body.Len() > 0 {
+			_, _ = w.ResponseWriter.Write(w.body.Bytes())
+			w.body.Reset()
+		}
+		return w.ResponseWriter.Write(b)
+	}
 	return w.body.Write(b)
 }
 
