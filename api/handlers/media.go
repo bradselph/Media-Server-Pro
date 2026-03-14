@@ -469,7 +469,12 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 				return
 			}
 		}
-		writeError(c, http.StatusNotFound, errMediaNotFound)
+		if !h.media.IsReady() {
+			c.Header("Retry-After", "3")
+			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+		} else {
+			writeError(c, http.StatusNotFound, errMediaNotFound)
+		}
 		return
 	}
 	absPath := localItem.Path
