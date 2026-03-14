@@ -1,6 +1,6 @@
 import {describe, expect, it, vi, beforeEach} from 'vitest'
 import {useAuthStore} from './authStore'
-import {authApi, preferencesApi} from '@/api/endpoints'
+import {authApi} from '@/api/endpoints'
 import {ApiError} from '@/api/client'
 
 vi.mock('@/api/endpoints')
@@ -48,6 +48,9 @@ const mockUser = {
         sort_order: 'asc',
         filter_category: '',
         filter_media_type: '',
+        show_continue_watching: true,
+        show_recommended: true,
+        show_trending: true,
     },
     storage_used: 0,
     active_streams: 0,

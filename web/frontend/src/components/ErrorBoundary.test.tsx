@@ -1,18 +1,18 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ErrorBoundary, SectionErrorBoundary, PageLoader } from './ErrorBoundary'
 
-// Helper component that conditionally throws
-let throwCount = 0
-
 function ThrowingComponent({ shouldThrow }: { shouldThrow: boolean }) {
     if (shouldThrow) throw new Error('Test error')
     return <div>Content loaded</div>
 }
 
-// Component that throws only on the first render, then succeeds on retry
-function ThrowOnceComponent() {
-    throwCount++
-    if (throwCount === 1) throw new Error('First render error')
+// A component controlled by an external ref that determines whether to throw.
+// The flag is toggled externally after the error boundary catches the first throw,
+// so that after clicking Retry the component renders successfully.
+const throwFlag = { current: true }
+
+function ConditionalThrowComponent() {
+    if (throwFlag.current) throw new Error('First render error')
     return <div>Recovered content</div>
 }
 
@@ -21,7 +21,7 @@ let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    throwCount = 0
+    throwFlag.current = true
 })
 
 afterEach(() => {
@@ -83,14 +83,17 @@ describe('SectionErrorBoundary', () => {
     it('retry button resets error and re-renders children', () => {
         render(
             <SectionErrorBoundary>
-                <ThrowOnceComponent />
+                <ConditionalThrowComponent />
             </SectionErrorBoundary>,
         )
 
-        // First render throws, error UI should be shown
+        // Error boundary caught the throw, error UI should be shown
         expect(screen.getByText('First render error')).toBeInTheDocument()
 
-        // Click Retry — component re-mounts and succeeds on second render
+        // Flip the flag so the component succeeds on next mount
+        throwFlag.current = false
+
+        // Click Retry — boundary resets state, child re-mounts successfully
         fireEvent.click(screen.getByText(/Retry/))
 
         expect(screen.getByText('Recovered content')).toBeInTheDocument()
@@ -100,9 +103,12 @@ describe('SectionErrorBoundary', () => {
 describe('PageLoader', () => {
     it('renders spinner', () => {
         const { container } = render(<PageLoader />)
-        // The spinner is a div with animation style inside the outer container div
+        // The outer div is the full-page container; inside it is the spinner div
         const spinnerDiv = container.querySelector('div > div')
         expect(spinnerDiv).toBeInTheDocument()
-        expect(spinnerDiv).toHaveStyle({ borderRadius: '50%' })
+        // Verify the spin keyframe animation style tag is injected
+        const styleTag = container.querySelector('style')
+        expect(styleTag).toBeInTheDocument()
+        expect(styleTag!.textContent).toContain('@keyframes spin')
     })
 })
