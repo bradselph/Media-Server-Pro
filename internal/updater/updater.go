@@ -887,15 +887,12 @@ func (m *Module) installUpdate(updateFile string) error {
 	return nil
 }
 
-// restoreFromBackup restores from a backup
-// TODO: restoreFromBackup has two issues:
-//  1. The .tar.gz branch uses exec.Command("tar", ...) which may not exist on Windows.
-//     The createBackup method never creates .tar.gz backups (it uses copyFile), so the
-//     tar.gz branch is dead code.
-//  2. If backupPath is empty (backup creation failed earlier), this function will try
-//     to copy an empty-string path, causing a confusing error. The caller (ApplyUpdate)
-//     does pass backupPath even when backup failed, so this could try to restore from "".
+// restoreFromBackup restores from a backup. backupPath must be non-empty (caller should not pass "").
+// The .tar.gz branch is legacy; createBackup currently only produces single-file backups via copyFile.
 func (m *Module) restoreFromBackup(backupPath string) error {
+	if backupPath == "" {
+		return fmt.Errorf("no backup path to restore from")
+	}
 	if strings.HasSuffix(backupPath, ".tar.gz") {
 		execPath, err := os.Executable()
 		if err != nil {
@@ -1174,23 +1171,8 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	}
 	m.log.Info("git fetch: %s", strings.TrimSpace(string(fetchOut)))
 
-	// Switch to the target branch (create tracking branch if needed)
-	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, "origin/"+branch)
-	checkoutCmd.Env = gitEnv
-	if out, cerr := checkoutCmd.CombinedOutput(); cerr != nil {
-		status.Error = fmt.Sprintf("git checkout failed: %v\n%s", cerr, string(out))
-		status.InProgress = false
-		m.publishBuildStatus(status)
-		return status, fmt.Errorf("git checkout: %w", cerr)
-	}
-
-	// TODO: This "already up to date" check compares HEAD with origin/branch AFTER
-	// the checkout -B has already been performed (which resets the local branch to
-	// origin/branch). So HEAD and origin/branch will ALWAYS be equal at this point,
-	// making the check always true and short-circuiting the build. The check should
-	// be performed BEFORE the checkout, comparing the OLD local HEAD with origin/branch.
-	// Check whether there are actually any new commits
-	localOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
+	// Compare local branch tip with origin/branch; if equal, no new commits — skip build.
+	localOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output()
 	remoteOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
 	if strings.TrimSpace(string(localOut)) == strings.TrimSpace(string(remoteOut)) {
 		m.log.Info("Source update: already up to date")
@@ -1199,6 +1181,16 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		status.InProgress = false
 		m.publishBuildStatus(status)
 		return status, nil
+	}
+
+	// Switch to the target branch (create tracking branch if needed)
+	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, "origin/"+branch)
+	checkoutCmd.Env = gitEnv
+	if out, cerr := checkoutCmd.CombinedOutput(); cerr != nil {
+		status.Error = fmt.Sprintf("git checkout failed: %v\n%s", cerr, string(out))
+		status.InProgress = false
+		m.publishBuildStatus(status)
+		return status, fmt.Errorf("git checkout: %w", cerr)
 	}
 
 	// --- Step 2: npm build (frontend) ---
