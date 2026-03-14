@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -291,7 +292,8 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 		return
 	}
 
-	// Export file lives in configured analytics directory; served then left on disk.
+	defer os.Remove(filename)
+
 	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))
 	c.Header(headerContentType, "text/csv")
 	http.ServeFile(c.Writer, c.Request, filename)
