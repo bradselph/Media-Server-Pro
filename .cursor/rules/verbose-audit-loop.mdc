@@ -21,6 +21,39 @@ Audit the repository and repair incomplete implementations, TODO markers, interf
 - Ensure deterministic return behavior.
 - Ensure features are traced from entry point to completion.
 
+## Verbose Narration (Required)
+
+You MUST narrate your work to the terminal in real time. The operator is watching and needs to see progress as it happens. Do NOT work silently and dump a summary at the end.
+
+Use these exact prefixes so the harness can parse and colorize output:
+
+**Entering a step:**
+```
+[step N] <step name> — searching ...
+```
+
+**When you find an issue:**
+```
+[step N]  found: <file>:<line> — <brief description>
+```
+
+**When you apply a fix:**
+```
+[step N]  fix: <file>:<line> — <what changed and why>
+```
+
+**When you commit:**
+```
+[step N]  commit: <full conventional commit message>
+```
+
+**When a step finds nothing:**
+```
+[step N] <step name> — nothing found, skipping.
+```
+
+Print these lines BEFORE and AFTER each action, not batched at the end.
+
 ## Step 1 — TODO / Incomplete Implementation
 
 Search the repository for indicators of unfinished logic:
