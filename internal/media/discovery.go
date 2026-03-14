@@ -1334,8 +1334,12 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 	}
 }
 
-// ClearAllPlaybackPositions removes every saved resume position for a given user (in-memory only; DB rows not deleted).
+// ClearAllPlaybackPositions removes every saved resume position for a given user (in-memory and DB).
 func (m *Module) ClearAllPlaybackPositions(userID string) {
+	// Persist deletion to DB so positions do not reappear after restart.
+	if m.metadataRepo != nil {
+		_ = m.metadataRepo.DeleteAllPlaybackPositionsByUser(context.Background(), userID)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, meta := range m.metadata {
@@ -1343,9 +1347,6 @@ func (m *Module) ClearAllPlaybackPositions(userID string) {
 			delete(meta.PlaybackPos, userID)
 		}
 	}
-	// DB rows are left in place; they will return 0 on next read because the
-	// in-memory cache takes precedence once populated. A full DB cleanup would
-	// require iterating all rows by userID which is deferred.
 }
 
 // SetMatureFlag sets the mature content flag for a media item

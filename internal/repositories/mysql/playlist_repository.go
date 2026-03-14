@@ -27,6 +27,22 @@ func (r *PlaylistRepository) Create(ctx context.Context, playlist *models.Playli
 	return r.db.WithContext(ctx).Create(playlist).Error
 }
 
+// CreateWithItems creates a playlist and its items in a single transaction.
+// On failure, no partial data is left (no orphaned playlist or items).
+func (r *PlaylistRepository) CreateWithItems(ctx context.Context, playlist *models.Playlist, items []models.PlaylistItem) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(playlist).Error; err != nil {
+			return err
+		}
+		for i := range items {
+			if err := tx.Create(&items[i]).Error; err != nil {
+				return fmt.Errorf("add item %d: %w", i, err)
+			}
+		}
+		return nil
+	})
+}
+
 // Get retrieves a playlist by ID with its items
 func (r *PlaylistRepository) Get(ctx context.Context, id string) (*models.Playlist, error) {
 	var playlist models.Playlist

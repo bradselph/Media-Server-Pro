@@ -75,17 +75,21 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 		return fmt.Errorf(errHashPasswordFmt, err)
 	}
 
-	m.usersMu.Lock()
-	user.PasswordHash = string(hash)
-	user.Salt = salt
-	m.usersMu.Unlock()
+	// Work on a copy; only update cache after DB success to avoid cache/DB divergence.
+	userCopy := *user
+	userCopy.PasswordHash = string(hash)
+	userCopy.Salt = salt
 
 	m.log.Info("Password set for user: %s (admin action)", username)
 
-	if err := m.userRepo.Update(ctx, user); err != nil {
+	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after password set: %v", err)
-		return fmt.Errorf("password set in memory but failed to persist: %w", err)
+		return fmt.Errorf("password set failed to persist: %w", err)
 	}
+	m.usersMu.Lock()
+	user.PasswordHash = userCopy.PasswordHash
+	user.Salt = userCopy.Salt
+	m.usersMu.Unlock()
 	return nil
 }
 

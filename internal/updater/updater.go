@@ -888,20 +888,10 @@ func (m *Module) installUpdate(updateFile string) error {
 }
 
 // restoreFromBackup restores from a backup. backupPath must be non-empty (caller should not pass "").
-// The .tar.gz branch is legacy; createBackup currently only produces single-file backups via copyFile.
+// createBackup produces single-file backups via copyFile only; .tar.gz is not supported.
 func (m *Module) restoreFromBackup(backupPath string) error {
 	if backupPath == "" {
 		return fmt.Errorf("no backup path to restore from")
-	}
-	if strings.HasSuffix(backupPath, ".tar.gz") {
-		execPath, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		execDir := filepath.Dir(execPath)
-
-		cmd := exec.Command("tar", "-xzf", backupPath, "-C", execDir)
-		return cmd.Run()
 	}
 
 	// Simple file restore
