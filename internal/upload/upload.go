@@ -350,12 +350,7 @@ func (m *Module) copyAndRenameUpload(src multipart.File, destFile *os.File, path
 
 // HandleUpload processes a multipart file upload (legacy single-file path).
 // Prefer using ProcessFileHeader for multi-file support.
-// TODO: HandleUpload accepts http.ResponseWriter but only uses it for MaxBytesReader.
-// The ResponseWriter is passed to the handler signature but no response is written here —
-// the caller is responsible for writing the response. This means if MaxBytesReader
-// triggers, the error is returned but the ResponseWriter state may already be tainted
-// (MaxBytesReader sets a flag on the connection). Consider documenting this behavior
-// or restructuring so the ResponseWriter is not needed.
+// w is used only for MaxBytesReader; the caller must write the response.
 func (m *Module) HandleUpload(w http.ResponseWriter, r *http.Request, userID string) (*Result, error) {
 	cfg := m.config.Get()
 
