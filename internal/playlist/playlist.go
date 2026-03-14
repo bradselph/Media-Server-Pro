@@ -318,6 +318,7 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 
 	if err := m.playlistRepo.AddItem(ctx, &item); err != nil {
 		m.log.Error("Failed to add item to playlist in database: %v", err)
+		return fmt.Errorf("failed to add item to playlist: %w", err)
 	}
 
 	playlist.Items = append(playlist.Items, item)
@@ -363,6 +364,7 @@ func (m *Module) resolvePlaylistAndFilterItemByPath(ctx context.Context, playlis
 				found = true
 				if removeErr := m.playlistRepo.RemoveItem(ctx, item.ID); removeErr != nil {
 					m.log.Error("Failed to remove item from playlist in database: %v", removeErr)
+					return nil, nil, fmt.Errorf("failed to remove item from playlist: %w", removeErr)
 				}
 			}
 		}

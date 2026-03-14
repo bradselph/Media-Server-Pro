@@ -256,6 +256,9 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 
 	m.log.Info("On-demand lazy transcode of quality %s for job %s", quality, job.ID)
 
+	m.activeJobs.Add(1)
+	defer m.activeJobs.Done()
+
 	select {
 	case m.transSem <- struct{}{}:
 		defer func() { <-m.transSem }()

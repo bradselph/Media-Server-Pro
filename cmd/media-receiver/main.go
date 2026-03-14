@@ -430,13 +430,16 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	contentLength := stat.Size()
 	var extraHeaders map[string]string
 
-	// Handle Range requests
+	// Handle Range requests — on parse or seek failure, deliver full file as 200 (explicit fallback).
 	if req.Range != "" {
 		start, end, err := parseRange(req.Range, stat.Size())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid range header %q for %s: %v\n", req.Range, req.Token, err)
+			fmt.Fprintf(os.Stderr, "Invalid range header %q for %s: %v; delivering full file\n", req.Range, req.Token, err)
+			// body, statusCode, contentLength, extraHeaders remain full-file 200
 		} else if _, seekErr := file.Seek(start, io.SeekStart); seekErr != nil {
-			fmt.Fprintf(os.Stderr, "Seek failed for stream %s: %v\n", req.Token, seekErr)
+			fmt.Fprintf(os.Stderr, "Seek failed for stream %s: %v; delivering full file\n", req.Token, seekErr)
+			file.Seek(0, io.SeekStart) // reset to start for full-file delivery
+			// body, statusCode, contentLength, extraHeaders remain full-file 200
 		} else {
 			length := end - start + 1
 			body = io.LimitReader(file, length)

@@ -131,6 +131,7 @@ func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, t
 	err = sqlDB.PingContext(ctxTimeout)
 	cancel()
 	if err != nil {
+		sqlDB.Close()
 		return nil, nil, err
 	}
 	return db, sqlDB, nil

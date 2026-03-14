@@ -724,7 +724,7 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 	}
 
 	// Build the upstream request to the slave's media endpoint (path is query-encoded).
-	targetURL := strings.TrimRight(baseURL, "/") + "/media?id=" + url.QueryEscape(item.Path)
+	targetURL := strings.TrimRight(baseURL, "/") + "/media?path=" + url.QueryEscape(item.Path)
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to build proxy request: %w", err)

@@ -436,8 +436,10 @@ func (AnalyticsEvent) TableName() string {
 
 // ViewStats holds view statistics for a media item
 type ViewStats struct {
-	TotalViews       int       `json:"total_views"`
-	CompletionRate   float64   `json:"completion_rate"`
+	TotalViews        int       `json:"total_views"`
+	TotalPlaybacks    int       `json:"-"` // playback attempts (denominator for CompletionRate)
+	TotalCompletions  int       `json:"-"` // completions (progress >= 90%)
+	CompletionRate    float64   `json:"completion_rate"`
 	LastViewed       time.Time `json:"last_viewed"`
 	UniqueViewers    int       `json:"unique_viewers"`
 	AvgWatchDuration float64   `json:"avg_watch_duration"`

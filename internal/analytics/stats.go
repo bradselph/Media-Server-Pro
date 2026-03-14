@@ -124,10 +124,12 @@ func (m *Module) applyViewToMediaStatsLocked(event models.AnalyticsEvent, stats 
 
 func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats) {
 	if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
+		stats.TotalPlaybacks++
 		m.updateAvgWatchDurationLocked(event.MediaID, stats, dur)
 	}
 	if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
-		updateCompletionRate(stats)
+		stats.TotalCompletions++
+		stats.CompletionRate = completionRateFromCounts(stats.TotalCompletions, stats.TotalPlaybacks)
 	}
 }
 
@@ -144,12 +146,12 @@ func (m *Module) updateAvgWatchDurationLocked(mediaID string, stats *models.View
 	}
 }
 
-func updateCompletionRate(stats *models.ViewStats) {
-	if stats.TotalViews > 0 {
-		stats.CompletionRate = (stats.CompletionRate*float64(stats.TotalViews-1) + 1) / float64(stats.TotalViews)
-	} else {
-		stats.CompletionRate = 1.0
+// completionRateFromCounts returns completions/playbacks when playbacks > 0, else 0.
+func completionRateFromCounts(completions, playbacks int) float64 {
+	if playbacks <= 0 {
+		return 0
 	}
+	return float64(completions) / float64(playbacks)
 }
 
 // GetDailyStats returns copies of daily statistics so callers cannot mutate internal state.
@@ -300,11 +302,23 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 		stats = &models.ViewStats{}
 		m.mediaStats[event.MediaID] = stats
 	}
-	if event.Type != "view" {
+	if event.Type == "view" {
+		stats.TotalViews++
+		if event.Timestamp.After(stats.LastViewed) {
+			stats.LastViewed = event.Timestamp
+		}
 		return
 	}
-	stats.TotalViews++
-	if event.Timestamp.After(stats.LastViewed) {
-		stats.LastViewed = event.Timestamp
+	if event.Type == "playback" {
+		if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
+			stats.TotalPlaybacks++
+		}
+		if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
+			stats.TotalCompletions++
+		}
+		stats.CompletionRate = completionRateFromCounts(stats.TotalCompletions, stats.TotalPlaybacks)
+		if event.Timestamp.After(stats.LastViewed) {
+			stats.LastViewed = event.Timestamp
+		}
 	}
 }
