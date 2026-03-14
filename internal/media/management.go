@@ -163,6 +163,7 @@ func (m *Module) DeleteMedia(ctx context.Context, path string) error {
 	}
 	delete(m.media, path)
 	delete(m.metadata, path)
+	m.version++
 	m.mu.Unlock()
 
 	m.log.Info("Deleted media: %s", path)
