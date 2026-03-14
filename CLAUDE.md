@@ -52,7 +52,9 @@ forwarding is needed — the slave initiates all connections.
 cd web/frontend && npm run build    # builds to web/static/react/
 ```
 
-The built bundle is embedded into the Go binary via `//go:embed` in `web/server.go`. The binary is self-contained.
+The built bundle is embedded into the Go binary via `//go:embed` in `web/server.go`. An optional on-disk directory
+(`directories.custom_static` or `CUSTOM_STATIC_DIR`) can override embedded assets — files on disk take precedence.
+If the directory is missing or empty, embedded defaults are used. The binary remains self-contained by default.
 
 ## Architecture
 
@@ -161,7 +163,7 @@ Loaded in order (later overrides earlier): `config.json` → `.env` (generated b
 
 Both `FEATURE_*` and `FEATURES_*` env var prefixes are accepted.
 
-Key sections: `server`, `directories`, `database`, `streaming`, `features`, `security`, `auth`, `ui`, `admin`
+Key sections: `server`, `directories` (includes `custom_static` for on-disk frontend overrides), `database`, `streaming`, `features`, `security`, `auth`, `ui`, `admin`
 
 ### Database & Repository Pattern
 
