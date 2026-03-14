@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.95.0] - 2026-03-14 (minor)
+
+- Merge pull request #94 from bradselph/development
+- audit(frontend): SourcesTab nested ternaries -> if/else and split conditionals (lint)
+- audit(frontend): UpdatesTab nested ternaries -> helper functions (lint)
+- Merge branch 'main' into development
+- fix(frontend): resolve TS build errors (TEXT_MUTED, bandwidth, versionData)
+- audit(frontend): fix redundant assignment and StreamingTab nested ternaries (lint)
+- audit(frontend): PlaylistsTab nested ternary; update AUDIT-REMAINING with loop summary
+- audit(frontend): HuggingFaceTab duplicate string constant and nested ternary (lint)
+- audit(frontend): fix UsersTab void operator and nested ternary (lint)
+- audit(cleanup): remove stray admin_media.go.bak; update AUDIT-REMAINING
+- audit(config,docs): add CONFIG-NOTES.md and AUDIT-REMAINING.md; config.json _TODO cleanup local (file gitignored)
+- audit(docs): note script and config audit in TODO-COUNT.md
+- audit(frontend): fix eqeqeq lint (use !== instead of !=)
+- audit(go): go fmt
+- audit(deploy,go.mod): remove remaining TODO in deploy setup_ssh_auth and go.mod
+- audit(docs): update TODO-COUNT.md to reflect audit completion
+- audit(package): remove _TODO fields from package.json and root package-lock.json
+- audit(scripts,systemd): correct TODOs in pre-push-check and systemd units
+- audit(git): correct .gitignore/.gitattributes TODOs; fix codacy.mdc path to forward slash
+- audit(setup): correct TODOs to short comments or remove
+- audit(deploy): correct TODOs to short comments or remove
+- audit(go,golangci,tsconfig): remove TODO comments from go.mod, .golangci.yml, tsconfig
+- audit(frontend): correct TODOs in types, hooks, components, pages, client, index, vite.config
+- audit(cmd/media-receiver): correct TODOs to doc comments
+- audit(cmd/server): correct main.go TODOs to doc comments or remove
+- audit(server,crawler): correct handleHealth/GetHealth and browser probe TODOs to doc comments
+- audit(thumbnails,admin,scanner,repositories): correct TODOs to doc comments
+- audit(suggestions,analytics,validator,remote,upload): correct TODOs to doc comments
+- audit(categorizer,crawler,duplicates): correct TODOs to doc comments
+- audit(media): correct discovery TODOs to doc comments (Stop, dedup, saveMetadata, IncrementViews, ClearAllPlaybackPositions)
+- audit(routes): remove remaining WebSocket TODO comment
+- audit(handlers): shorten admin_config, system, lifecycle, analytics TODO comments
+- audit(handlers): shorten HLS and media TODO comments to doc-only
+- audit(handlers): shorten admin_logs and admin_backups TODO comments
+- audit(config): shorten save/loadEnvFile TODO comments to doc-only
+- audit(security,models,helpers): shorten TODO comments to doc-only notes
+- audit(updater): guard empty backup path; fix source up-to-date check before checkout
+- audit(routes): replace TODOs with concise route auth comments
+- audit(backup): document data/full backup types as config-only; remove TODO
+- audit(streaming): RFC 7233 range response, short-write loop, Stop() session log
+- fix(updater): align binary asset names with release workflow; fix source build race
+- audit(streaming): document StreamStats reset-on-restart behavior
+- audit(admin): use inputBaseStyle for SecurityTab whitelist/blacklist/ban inputs
+- audit(pkg/helpers): systemd build constraint !windows + Windows no-op stub
+- audit(cmd): add parentheses to thumbnail needsGen expression for clarity
+- audit(handlers): atomic storage_used increment via AddStorageUsed/IncrementStorageUsed
+- audit(upload): document HandleUpload w usage
+- audit(validator): FixFile re-fetch result under write lock before modifying
+
+
 ## [0.94.0] - 2026-03-14 (minor)
 
 - Merge pull request #93 from bradselph/development
