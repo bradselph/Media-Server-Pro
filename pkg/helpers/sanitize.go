@@ -5,15 +5,6 @@ import (
 	"strings"
 )
 
-// TODO: Bug — double-encoding issue: SanitizeString is called before storage, so data
-// is stored HTML-escaped (e.g. "&amp;"). When this data is later served as JSON in API
-// responses and rendered via React (which auto-escapes), it will display as "&amp;amp;"
-// in the UI. Sanitization should happen at the output boundary (rendering), not at
-// storage time. If it must stay at storage time, all consumers must be aware that the
-// data is pre-escaped and must NOT re-escape it (e.g. use dangerouslySetInnerHTML in
-// React, which introduces its own XSS risks). Consider storing raw data and sanitizing
-// only when rendering in HTML contexts.
-
 // SanitizeString sanitizes a string for safe storage and HTML rendering
 // by escaping HTML entities and removing potentially dangerous characters
 func SanitizeString(s string) string {

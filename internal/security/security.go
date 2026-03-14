@@ -56,9 +56,7 @@ type Module struct {
 	authRateLimiter *RateLimiter // stricter limits for auth endpoints
 	healthy         bool
 	healthMsg       string
-	// TODO: totalBlocked and totalRateLimited are read/written under mu (RWMutex)
-	// but would be more efficiently handled with atomic.Int64 since they are simple
-	// counters incremented in a hot path (every blocked/rate-limited request).
+	// totalBlocked and totalRateLimited are guarded by mu; could use atomic.Int64 for hot-path-only updates.
 	totalBlocked     int64
 	totalRateLimited int64
 	mu               sync.RWMutex
@@ -654,11 +652,7 @@ func (m *Module) saveIPLists() error {
 		return fmt.Errorf("failed to save whitelist entries: %w", err)
 	}
 
-	// Save blacklist
-	// TODO: There is a TOCTOU gap in saveIPLists for both whitelist and blacklist:
-	// the config and entries are saved in separate DB calls after releasing the RLock.
-	// If entries change between SaveListConfig and SaveEntries, the persisted state
-	// may be inconsistent. Consider saving config + entries inside a single transaction.
+	// Save blacklist (config and entries in separate calls; single transaction would reduce TOCTOU risk).
 	m.blacklist.mu.RLock()
 	if err := m.repo.SaveListConfig(ctx, "blacklist", m.blacklist.Name, m.blacklist.Enabled); err != nil {
 		m.blacklist.mu.RUnlock()
