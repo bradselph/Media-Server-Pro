@@ -207,8 +207,14 @@ func main() {
 }
 
 // runSlaveLoop connects to the master via WebSocket and handles all communication.
-// If the connection drops, it waits and reconnects automatically.
+// If the connection drops, it waits and reconnects with exponential backoff.
 func runSlaveLoop(ctx context.Context, cfg *slaveConfig) {
+	const (
+		baseDelay = 2 * time.Second
+		maxDelay  = 2 * time.Minute
+	)
+	delay := baseDelay
+
 	for {
 		if ctx.Err() != nil {
 			return
@@ -221,13 +227,18 @@ func runSlaveLoop(ctx context.Context, cfg *slaveConfig) {
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "WebSocket connection error: %v\n", err)
-		}
-
-		fmt.Println("Reconnecting in 5 seconds...")
-		select {
-		case <-time.After(5 * time.Second):
-		case <-ctx.Done():
-			return
+			fmt.Fprintf(os.Stderr, "Reconnecting in %v...\n", delay)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return
+			}
+			delay *= 2
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+		} else {
+			delay = baseDelay
 		}
 	}
 }
