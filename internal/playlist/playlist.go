@@ -337,7 +337,7 @@ func (m *Module) RemoveItem(ctx context.Context, playlistID PlaylistID, userID U
 
 // removeItemLocked performs the removal; caller must hold m.mu.
 func (m *Module) removeItemLocked(ctx context.Context, playlistID PlaylistID, userID UserID, mediaPath string) error {
-	playlist, newItems, err := m.getPlaylistAndFilterItemLocked(ctx, playlistID, userID, mediaPath)
+	playlist, newItems, err := m.resolvePlaylistAndFilterItemByPath(ctx, playlistID, userID, mediaPath)
 	if err != nil {
 		return err
 	}
@@ -348,22 +348,6 @@ func (m *Module) removeItemLocked(ctx context.Context, playlistID PlaylistID, us
 	playlist.ModifiedAt = time.Now()
 	m.log.Debug("Removed item from playlist %s: %s", string(playlistID), mediaPath)
 	return nil
-}
-
-// TODO: Redundant code - getPlaylistAndFilterItemLocked and doGetPlaylistAndFilterItemLocked
-// are trivial wrappers that each just delegate to the next function in a 3-layer chain:
-// getPlaylistAndFilterItemLocked -> doGetPlaylistAndFilterItemLocked -> resolvePlaylistAndFilterItemByPath.
-// All three methods have identical signatures and zero added logic. Collapse into a single
-// method (resolvePlaylistAndFilterItemByPath) and call it directly from removeItemLocked.
-
-// getPlaylistAndFilterItemLocked resolves playlist, removes the item by mediaPath from DB and returns new slice. Caller must hold m.mu.
-func (m *Module) getPlaylistAndFilterItemLocked(ctx context.Context, playlistID PlaylistID, userID UserID, mediaPath string) (*models.Playlist, []models.PlaylistItem, error) {
-	return m.doGetPlaylistAndFilterItemLocked(ctx, playlistID, userID, mediaPath)
-}
-
-// doGetPlaylistAndFilterItemLocked implements the resolve-and-filter logic; caller must hold m.mu.
-func (m *Module) doGetPlaylistAndFilterItemLocked(ctx context.Context, playlistID PlaylistID, userID UserID, mediaPath string) (*models.Playlist, []models.PlaylistItem, error) {
-	return m.resolvePlaylistAndFilterItemByPath(ctx, playlistID, userID, mediaPath)
 }
 
 // resolvePlaylistAndFilterItemByPath does playlist lookup and filter-by-mediaPath; caller must hold m.mu.
@@ -518,16 +502,12 @@ func (m *Module) CopyPlaylist(ctx context.Context, sourceID PlaylistID, userID U
 		return nil, fmt.Errorf("failed to create playlist: %w", err)
 	}
 
-	// TODO: Bug - if AddItem fails for some items in the middle, the playlist is
-	// left in a partially-copied state in the DB but the in-memory cache has all items.
-	// On restart, the DB state (partial) is loaded, losing items that failed to persist.
-	// Consider using a transaction for atomic copy, or at minimum return an error if
-	// any item fails to persist.
 	for _, item := range items {
 		item.PlaylistID = newPlaylist.ID
 		item.ID = uuid.New().String()
 		if err := m.playlistRepo.AddItem(ctx, &item); err != nil {
 			m.log.Error("Failed to add item to copied playlist in database: %v", err)
+			return nil, fmt.Errorf("failed to add item to copied playlist: %w", err)
 		}
 		newPlaylist.Items = append(newPlaylist.Items, item)
 	}
