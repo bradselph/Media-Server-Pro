@@ -422,8 +422,14 @@ func (m *Module) sanitizeFilename(filename string) (string, error) {
 	// Limit filename length
 	if len(filename) > 255 {
 		ext := filepath.Ext(filename)
-		base := filename[:255-len(ext)]
-		filename = base + ext
+		if len(ext) > 254 {
+			ext = ext[:254]
+		}
+		maxBase := 255 - len(ext)
+		if maxBase < 1 {
+			maxBase = 1
+		}
+		filename = filename[:maxBase] + ext
 	}
 
 	return filename, nil
