@@ -296,13 +296,7 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
-// Stop gracefully stops the module
-// TODO: Bug - if EnableAutoDiscovery is false, scanTicker is nil and scanDone is
-// never closed. But the initial scan goroutine (started in Start) uses scanCtx
-// for cancellation, not scanDone, so it is correctly cancelled. However, if
-// Stop is called before the initial scan goroutine finishes loadMetadata, the
-// scanCancel() will interrupt it. The goroutine may then try to update healthMu
-// fields after Stop has already set them to "Stopped", creating a brief inconsistency.
+// Stop gracefully stops the module. When EnableAutoDiscovery is false, scanDone is not closed (scanTicker is nil).
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping media module...")
 
@@ -443,12 +437,7 @@ func (m *Module) Scan() error {
 	// representative entry.  The winner is the copy with the most views;
 	// ties are broken by earliest DateAdded so the original discovery
 	// date is preserved.
-	// TODO: Bug - this dedup block reads from m.metadata under RLock and
-	// mutates newMedia (which was built by scanDirectory which also reads
-	// m.metadata under RLock). The fingerprint comparison uses fp[:12] for
-	// logging, but if the fingerprint is shorter than 12 characters (which
-	// shouldn't happen for SHA-256 hex but could if the field is corrupted),
-	// this will panic with an index out of range. Add a bounds check.
+	// Dedup: fp used for logging is truncated to 12 chars with a bounds check below.
 	var dupsRemoved int
 	m.mu.RLock()
 	fpWinner := make(map[string]string, len(newMedia)) // fingerprint -> winning path
@@ -572,15 +561,7 @@ func (m *Module) Scan() error {
 	m.healthMsg = fmt.Sprintf("Running (%d items)", len(newMedia))
 	m.healthMu.Unlock()
 
-	// TODO: Bug - saveMetadata is launched in a background goroutine but there is
-	// no mechanism to wait for it to complete before the next Scan() call. If a
-	// periodic scan triggers while a previous save is still running, two concurrent
-	// saveMetadata calls will race. The saveMu serializes individual DB writes but
-	// the full save loops will interleave, potentially causing unnecessary duplicate
-	// writes and increased DB load. Consider tracking the save goroutine with a
-	// WaitGroup or ensuring only one save runs at a time.
-	// Save metadata in background using the module's scan context so
-	// that shutdown cancellation can interrupt a long-running save.
+	// Save metadata in background; concurrent scans can start overlapping saves (saveMu serializes DB writes).
 	go func() {
 		if err := m.saveMetadata(m.scanCtx); err != nil {
 			m.log.Error("Failed to save metadata: %v", err)
@@ -1250,13 +1231,7 @@ type Stats struct {
 	Version    int64     `json:"version"`
 }
 
-// IncrementViews increments view count for a media item.
-// TODO: Bug - the DB increment and in-memory increment are not atomic. If the
-// DB increment succeeds but the process crashes before the in-memory update,
-// the DB has views=N+1 but in-memory has views=N. On next scan, the old value
-// may overwrite the DB value (see saveMetadata which writes the in-memory value
-// back to the DB). The in-memory value should be updated first, or the DB
-// increment should be the source of truth with the in-memory value derived from it.
+// IncrementViews increments view count for a media item (DB and in-memory updated separately; not atomic).
 func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	// Use repository if available
 	if m.metadataRepo != nil {
@@ -1359,13 +1334,7 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 	}
 }
 
-// ClearAllPlaybackPositions removes every saved resume position for a given user.
-// Called when the user clears their entire watch history.
-// TODO: Incomplete feature - DB rows are never cleaned up for this user. The
-// in-memory deletion only lasts until the next restart, at which point stale
-// playback positions from the DB will be reloaded. Add a repository method like
-// DeleteAllPlaybackPositionsByUser(ctx, userID) and call it here to ensure
-// the clear operation is durable. The current behavior silently reverts on restart.
+// ClearAllPlaybackPositions removes every saved resume position for a given user (in-memory only; DB rows not deleted).
 func (m *Module) ClearAllPlaybackPositions(userID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
