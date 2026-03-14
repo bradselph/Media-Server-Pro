@@ -221,8 +221,7 @@ function UsersListTab() {
             case 'email': cmp = (a.email || '').localeCompare(b.email || ''); break
             case 'role': cmp = a.role.localeCompare(b.role); break
             case 'enabled':
-                if (a.enabled === b.enabled) cmp = 0
-                else cmp = a.enabled ? -1 : 1
+                if (a.enabled !== b.enabled) cmp = a.enabled ? -1 : 1
                 break
             case 'last_login': cmp = (a.last_login || '').localeCompare(b.last_login || ''); break
             case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break
