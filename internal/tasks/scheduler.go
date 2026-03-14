@@ -52,9 +52,9 @@ type Task struct {
 }
 
 // defaultStartupDelay is how long all tasks wait before their first execution.
-// This prevents every task from hammering a remote database simultaneously
-// the moment the server starts, while other modules are still initialising.
-const defaultStartupDelay = 45 * time.Second
+// Kept short so tasks run "initially" soon after startup, then at their intervals.
+// Prevents all tasks from firing the instant the scheduler starts.
+const defaultStartupDelay = 10 * time.Second
 
 // Module implements task scheduling
 type Module struct {
@@ -237,7 +237,8 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 	ticker := time.NewTicker(task.Schedule)
 	defer ticker.Stop()
 
-	// First execution after startup delay
+	// Initial run: execute once when started, then at predetermined intervals
+	m.log.Debug("Task %s: initial run", task.Name)
 	m.executeTask(ctx, task)
 
 	for {
