@@ -72,16 +72,17 @@ type ServerConfig struct {
 
 // DirectoriesConfig holds directory paths
 type DirectoriesConfig struct {
-	Videos     string `json:"videos"`
-	Music      string `json:"music"`
-	Thumbnails string `json:"thumbnails"`
-	Playlists  string `json:"playlists"`
-	Uploads    string `json:"uploads"`
-	Analytics  string `json:"analytics"`
-	HLSCache   string `json:"hls_cache"`
-	Data       string `json:"data"`
-	Logs       string `json:"logs"`
-	Temp       string `json:"temp"`
+	Videos       string `json:"videos"`
+	Music        string `json:"music"`
+	Thumbnails   string `json:"thumbnails"`
+	Playlists    string `json:"playlists"`
+	Uploads      string `json:"uploads"`
+	Analytics    string `json:"analytics"`
+	HLSCache     string `json:"hls_cache"`
+	Data         string `json:"data"`
+	Logs         string `json:"logs"`
+	Temp         string `json:"temp"`
+	CustomStatic string `json:"custom_static"`
 }
 
 // StreamingConfig holds streaming settings

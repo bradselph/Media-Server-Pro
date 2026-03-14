@@ -235,6 +235,15 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 		like := "%" + escapeLike(filter.Search) + "%"
 		query = query.Where("path LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\'", like, like)
 	}
+	if filter.Type == "video" {
+		query = query.Where("LOWER(path) REGEXP ?", `\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts|m2ts|vob|ogv)$`)
+	} else if filter.Type == "audio" {
+		query = query.Where("LOWER(path) REGEXP ?", `\.(mp3|wav|flac|aac|ogg|m4a|wma|aiff|alac|opus|ape|mka)$`)
+	}
+	if len(filter.Tags) > 0 {
+		// Subquery: paths that have at least one of the given tags (OR)
+		query = query.Where("path IN (SELECT path FROM media_tags WHERE tag IN ?)", filter.Tags)
+	}
 
 	// Count total matches before pagination
 	var total int64

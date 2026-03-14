@@ -7,6 +7,7 @@ import {api} from './client'
 import type {
     AdminMediaListParams,
     AdminMediaListResponse,
+    AdminPlaylistListResponse,
     AdminPlaylistStats,
     AdminStats,
     AgeGateStatus,
@@ -784,10 +785,10 @@ export const adminApi = {
         return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user?${qs}`)
     },
 
-    // Feature 6: Admin playlists management — backend returns []*models.Playlist → use Playlist[]
-    listAllPlaylists: (params?: { page?: number; limit?: number; search?: string }) => {
+    // Feature 6: Admin playlists management — backend returns { items, total_items, total_pages }
+    listAllPlaylists: (params?: { page?: number; limit?: number; search?: string; visibility?: string }) => {
         const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString() : ''
-        return api.get<Playlist[]>(`/api/admin/playlists${qs}`)
+        return api.get<AdminPlaylistListResponse>(`/api/admin/playlists${qs}`)
     },
 
     getPlaylistStats: () =>

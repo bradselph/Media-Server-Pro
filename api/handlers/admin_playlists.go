@@ -12,14 +12,31 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-// filterPlaylistsBySearch returns playlists whose name contains the given search term (case-insensitive).
+// filterPlaylistsBySearch returns playlists whose name or user_id contains the search term (case-insensitive).
 func filterPlaylistsBySearch(playlists []*models.Playlist, search string) []*models.Playlist {
 	if search == "" {
 		return playlists
 	}
 	kept := make([]*models.Playlist, 0, len(playlists))
+	low := strings.ToLower(search)
 	for _, p := range playlists {
-		if strings.Contains(strings.ToLower(p.Name), search) {
+		if strings.Contains(strings.ToLower(p.Name), low) || strings.Contains(strings.ToLower(p.UserID), low) {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// filterPlaylistsByVisibility filters by is_public. visibility: "public" | "private" | ""
+func filterPlaylistsByVisibility(playlists []*models.Playlist, visibility string) []*models.Playlist {
+	if visibility == "" {
+		return playlists
+	}
+	kept := make([]*models.Playlist, 0, len(playlists))
+	for _, p := range playlists {
+		if visibility == "public" && p.IsPublic {
+			kept = append(kept, p)
+		} else if visibility == "private" && !p.IsPublic {
 			kept = append(kept, p)
 		}
 	}
@@ -39,17 +56,33 @@ func paginatePlaylists(playlists []*models.Playlist, page, limit int) []*models.
 	return playlists[start:end]
 }
 
-// AdminListPlaylists returns all playlists for admin with optional search and pagination.
+// AdminListPlaylists returns playlists for admin with optional search and pagination.
+// Returns { items, total_items, total_pages } for correct pagination UI.
 func (h *Handler) AdminListPlaylists(c *gin.Context) {
 	if !h.requirePlaylist(c) {
 		return
 	}
 	all := h.playlist.ListAllPlaylists()
 	search := strings.ToLower(strings.TrimSpace(c.Query("search")))
+	visibility := strings.TrimSpace(c.Query("visibility")) // "public" | "private" | ""
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 100, Min: 1, Max: 1000})
 	page := ParseQueryInt(c, "page", QueryIntOpts{Default: 1, Min: 1, Max: 10000})
 	filtered := filterPlaylistsBySearch(all, search)
-	writeSuccess(c, paginatePlaylists(filtered, page, limit))
+	filtered = filterPlaylistsByVisibility(filtered, visibility)
+	totalItems := len(filtered)
+	totalPages := 1
+	if limit > 0 && totalItems > 0 {
+		totalPages = (totalItems + limit - 1) / limit
+		if totalPages < 1 {
+			totalPages = 1
+		}
+	}
+	items := paginatePlaylists(filtered, page, limit)
+	writeSuccess(c, map[string]interface{}{
+		"items":       items,
+		"total_items": totalItems,
+		"total_pages": totalPages,
+	})
 }
 
 // AdminPlaylistStats returns playlist statistics

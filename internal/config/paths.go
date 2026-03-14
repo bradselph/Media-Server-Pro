@@ -33,6 +33,7 @@ func (m *Manager) resolveAbsolutePaths() {
 	m.config.Directories.Data = resolvePath(m.config.Directories.Data, "data directory")
 	m.config.Directories.Logs = resolvePath(m.config.Directories.Logs, "logs directory")
 	m.config.Directories.Temp = resolvePath(m.config.Directories.Temp, "temp directory")
+	m.config.Directories.CustomStatic = resolvePath(m.config.Directories.CustomStatic, "custom static directory")
 
 	if m.config.Server.CertFile != "" {
 		m.config.Server.CertFile = resolvePath(m.config.Server.CertFile, "cert file")
