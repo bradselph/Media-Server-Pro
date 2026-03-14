@@ -502,7 +502,11 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 
 	req.Header.Set("User-Agent", "MediaServerPro/4.0")
 
-	client := &http.Client{Transport: m.httpClient.Transport, Timeout: cfg.Extractor.ProxyTimeout}
+	proxyTimeout := cfg.Extractor.ProxyTimeout
+	if proxyTimeout <= 0 {
+		proxyTimeout = 30 * time.Second
+	}
+	client := &http.Client{Transport: m.httpClient.Transport, Timeout: proxyTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("proxy request failed: %w", err)
