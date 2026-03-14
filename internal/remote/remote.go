@@ -885,13 +885,17 @@ func (m *Module) CleanCache() int {
 	return removed
 }
 
-// validateURL checks that the given URL does not point to a private, loopback,
-// or link-local address. This prevents SSRF when the remote module fetches
-// user-configured source URLs.
+// validateURL checks that the given URL uses http/https and does not point to
+// a private, loopback, or link-local address. This prevents SSRF when the
+// remote module fetches user-configured source URLs.
 func validateURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported URL scheme: %s", u.Scheme)
 	}
 
 	host := u.Hostname()
