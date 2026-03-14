@@ -26,6 +26,7 @@ type UserRepository interface {
 	Update(ctx context.Context, user *models.User) error
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context) ([]*models.User, error)
+	IncrementStorageUsed(ctx context.Context, userID string, delta int64) error
 }
 
 // SessionRepository provides session data access methods
