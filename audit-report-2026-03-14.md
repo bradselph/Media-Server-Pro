@@ -7,7 +7,7 @@
 
 ---
 
-## FIXED ITEMS (28/193 — verified 2026-03-14)
+## FIXED ITEMS (30/193 — verified 2026-03-14)
 
 | Finding | Status |
 |---------|--------|
@@ -38,20 +38,22 @@
 | **[FIXED]** P1-1 HLS GetJobStatus/ListJobs data race | ✅ Return copies |
 | **[FIXED]** P1-12 CacheMedia context.Background() | ✅ Module ctx, cancel on Stop |
 | **[FIXED]** P2-6 HLS cleanupDone double-close | ✅ cleanupDoneOnce sync.Once |
+| **[FIXED]** P1-5 Slave extension list missing 7 formats | ✅ Added .3gp, .m2ts, .vob, .ogv, .aiff, .ape, .mka |
+| **[FIXED]** P2-4 HLS cleanup TOCTOU | ✅ Re-check under write lock before removal |
 
 ---
 
-## REMAINING ISSUES — Reprioritized (165 findings)
+## REMAINING ISSUES — Reprioritized (163 findings)
 
 ### Priority counts:
 ```
 P0 — CRITICAL (security + broken):   8 remaining
-P1 — HIGH (user-facing bugs):        6 remaining
-P2 — MEDIUM (tech debt / fragile):   40 remaining
+P1 — HIGH (user-facing bugs):        5 remaining
+P2 — MEDIUM (tech debt / fragile):   39 remaining
 P3 — LOW (cleanup / style):          13 remaining
 Additional findings by module:       ~100 remaining
 ────────────────────────────────────
-TOTAL REMAINING:                     165
+TOTAL REMAINING:                     163
 ```
 
 ---
@@ -121,10 +123,8 @@ TOTAL REMAINING:                     165
 ### P1-4 [FRAGILE] ClearAllPlaybackPositions doesn't clean DB — **[FIXED]**
 - **Fix applied:** DeleteAllPlaybackPositionsByUser; positions no longer reappear after restart.
 
-### P1-5 [DRIFT] Slave extension list missing 7 formats
-- **File:** `cmd/media-receiver/main.go:975-985`
-- **Impact:** .3gp, .m2ts, .vob, .ogv, .aiff, .ape, .mka silently excluded from catalog
-- **Fix:** Extract extension list into shared package
+### P1-5 [DRIFT] Slave extension list — **[FIXED]**
+- **Fix applied:** Added .3gp, .m2ts, .vob, .ogv, .aiff, .ape, .mka to classifyFile.
 
 ### P1-6 [FRAGILE] WriteTimeout kills long streams — **[FIXED]**
 - **Fix applied:** Default WriteTimeout set to 0 in config/defaults.go.
@@ -171,7 +171,7 @@ TOTAL REMAINING:                     165
 - **P2-1** `internal/auth/authenticate.go:91-96` — Authenticate mutates shared user pointer outside lock
 - **P2-2** `internal/auth/session.go:127-132` — ValidateSession fires background goroutine with shared pointer
 - **P2-3** `internal/auth/auth.go:194-205` — Cleanup goroutine exits permanently after panic (no restart loop)
-- **P2-4** `internal/hls/cleanup.go:47-49` — TOCTOU between RLock check and removal
+- **P2-4** ~~cleanup TOCTOU~~ — **[FIXED]** Re-check under write lock before removal
 - **P2-5** `internal/hls/access.go:29` — RecordAccess calls saveJob outside lock (shared pointer race)
 - **P2-6** ~~cleanupDone double-close~~ — **[FIXED]** cleanupDoneOnce sync.Once
 - **P2-7** `internal/server/server.go:502` — handleStatus reads len(s.modules) outside lock
