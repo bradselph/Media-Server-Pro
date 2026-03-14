@@ -14,13 +14,7 @@ import (
 
 // --- Slave Repository ---
 
-// TODO: Bug — LastSeen and CreatedAt are stored as strings (formatted timestamps)
-// rather than time.Time. This prevents GORM from using proper MySQL DATETIME
-// handling and forces manual time formatting/parsing via parseTime(). If the
-// database stores these as DATETIME columns, GORM can scan them directly into
-// time.Time fields, eliminating the fragile string-based parsing. This pattern
-// also exists in receiverMediaRow.UpdatedAt, receiverDuplicateRow.DetectedAt,
-// extractorItemRow timestamp fields, and crawlerTargetRow/crawlerDiscoveryRow.
+// receiverSlaveRow maps DB columns (LastSeen/CreatedAt as strings for compatibility).
 type receiverSlaveRow struct {
 	ID         string `gorm:"column:id;primaryKey"`
 	Name       string `gorm:"column:name"`

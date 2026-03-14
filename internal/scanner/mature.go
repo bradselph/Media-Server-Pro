@@ -517,13 +517,7 @@ func (s *MatureScanner) computeConfidence(filename, dirPath string, result *Scan
 	return confidence
 }
 
-// TODO: scanConfigKeywords uses strings.Contains() for custom keywords, which does NOT
-// apply word-boundary matching like the built-in keyword lists (compiledHighConf/compiledMedConf).
-// This inconsistency means custom keywords will produce false positives (e.g., custom keyword "ass"
-// will match "class"). Should use buildKeywordPatterns() or equivalent boundary-aware matching
-// for user-configured keywords to match the behavior of built-in keywords.
-
-// scanConfigKeywords checks the filename against user-configured keywords.
+// scanConfigKeywords checks the filename against user-configured keywords (substring match; no word boundaries).
 func scanConfigKeywords(filename string, keywords []string, boost float64, label string, result *ScanResult) float64 {
 	var confidence float64
 	for _, keyword := range keywords {

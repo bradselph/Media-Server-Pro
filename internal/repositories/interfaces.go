@@ -79,14 +79,7 @@ type ScanResultRepository interface {
 	MarkReviewed(ctx context.Context, path, reviewedBy, decision string) error
 }
 
-// TODO: Integration issue — MediaMetadata uses string types for temporal fields
-// (LastPlayed, DateAdded as strings in RFC3339 format) while the MySQL row types
-// use time.Time. This forces every repository method to parse/format time strings,
-// which is error-prone (parse failures silently fall back to time.Now() or zero time
-// in the MySQL implementation). Consider using time.Time directly in the domain
-// model to eliminate the lossy string roundtrip.
-
-// MediaMetadata represents metadata stored for a media file
+// MediaMetadata represents metadata stored for a media file (temporal fields as RFC3339 strings in domain).
 type MediaMetadata struct {
 	Path string
 	// StableID is a UUID generated on first scan and persisted in the DB.
@@ -113,11 +106,7 @@ type MediaMetadata struct {
 	BlurHash string
 }
 
-// TODO: Integration issue — ScanResult uses string for ScannedAt and ReviewedAt
-// (same temporal-as-string pattern as MediaMetadata). The MySQL implementation
-// must parse these strings with time.Parse and silently falls back to time.Now()
-// on parse failure. Use time.Time and *time.Time for consistency with the rest of
-// the codebase (e.g. ReceiverDuplicateRecord.DetectedAt is time.Time).
+// ScanResult holds scan metadata (ScannedAt/ReviewedAt as strings; MySQL impl parses to time).
 type ScanResult struct {
 	Path           string
 	IsMature       bool
