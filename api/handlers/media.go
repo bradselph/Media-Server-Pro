@@ -367,7 +367,9 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		sessionID = session.ID
 
 		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-		if err == nil {
+		if err != nil {
+			h.log.Warn("Failed to look up user %s for stream limit check: %v", session.Username, err)
+		} else {
 			maxStreams := h.getUserStreamLimit(user.Type)
 			if maxStreams > 0 && !h.streaming.CanStartStream(userID, maxStreams) {
 				writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
