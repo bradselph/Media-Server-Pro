@@ -275,12 +275,7 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", h.ExtractorHLSVariant)
 	r.GET("/extractor/hls/:id/:quality/:segment", h.ExtractorHLSSegment)
 
-	// TODO: The WebSocket endpoint is outside the receiver group that uses RequireReceiverWithAPIKey()
-	// middleware. Authentication is handled inside h.receiver.HandleWebSocket which validates the
-	// API key from the query param or header. However, if h.receiver is nil, the handler calls
-	// checkReceiverEnabled which will return 503 — but verify this doesn't panic on WebSocket
-	// upgrade since gin may have already started the upgrade.
-	// Receiver WebSocket — slave nodes connect here (authenticated via X-API-Key / api_key query)
+	// Receiver WebSocket — auth inside HandleWebSocket (X-API-Key / api_key query).
 	r.GET("/ws/receiver", h.ReceiverWebSocket)
 
 	// -----------------------------------------------------------------------
