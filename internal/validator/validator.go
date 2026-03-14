@@ -491,26 +491,6 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	return result, nil
 }
 
-// shouldValidateFile checks whether a file at the given path is a media file
-// that has not been recently validated. Used for on-demand validation via admin API;
-// can be used by a future scheduled task to validate library files in bulk.
-func (m *Module) shouldValidateFile(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	if !helpers.IsMediaExtension(ext) {
-		return false
-	}
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if existing, ok := m.results[path]; ok {
-		if time.Since(existing.ValidatedAt) < 7*24*time.Hour {
-			return false
-		}
-	}
-	return true
-}
-
 // GetResult returns the validation result for a file
 func (m *Module) GetResult(path string) (*ValidationResult, bool) {
 	m.mu.RLock()

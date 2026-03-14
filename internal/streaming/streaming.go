@@ -253,27 +253,33 @@ func (m *Module) getContentType(path string) string {
 	return "application/octet-stream"
 }
 
-// getChunkSize returns appropriate chunk size based on quality and device
+// getChunkSize returns appropriate chunk size based on quality and device.
+// Always returns at least 64 KB to prevent zero-length reads when config values
+// are missing or explicitly set to zero.
 func (m *Module) getChunkSize(quality, userAgent string) int64 {
+	const minChunkSize int64 = 64 * 1024
+
 	cfg := m.config.Get()
 
-	// Check for mobile device
+	var size int64
 	isMobile := m.isMobileDevice(userAgent)
 	if isMobile && cfg.Streaming.MobileOptimization {
-		return cfg.Streaming.MobileChunkSize
+		size = cfg.Streaming.MobileChunkSize
+	} else {
+		switch quality {
+		case "1080p", "high":
+			size = cfg.Streaming.MaxChunkSize
+		case "480p", "360p", "low":
+			size = cfg.Streaming.MobileChunkSize
+		default:
+			size = cfg.Streaming.DefaultChunkSize
+		}
 	}
 
-	// Quality-based chunk sizing
-	switch quality {
-	case "1080p", "high":
-		return cfg.Streaming.MaxChunkSize
-	case "720p", "medium":
-		return cfg.Streaming.DefaultChunkSize
-	case "480p", "360p", "low":
-		return cfg.Streaming.MobileChunkSize
-	default:
-		return cfg.Streaming.DefaultChunkSize
+	if size < minChunkSize {
+		size = minChunkSize
 	}
+	return size
 }
 
 // isMobileDevice checks if the user agent indicates a mobile device

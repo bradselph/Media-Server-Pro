@@ -68,11 +68,15 @@ func servePlaylist(w http.ResponseWriter, r *http.Request, opts servePlaylistOpt
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if opts.cdnBase == "" {
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			return fmt.Errorf("failed to write playlist: %w", err)
+		}
 	} else {
 		rewritten := rewritePlaylistLines(data, opts.cdnBase+"/hls/"+opts.urlPath+"/")
 		w.Header().Set("Cache-Control", "public, max-age=60")
-		w.Write(rewritten)
+		if _, err := w.Write(rewritten); err != nil {
+			return fmt.Errorf("failed to write rewritten playlist: %w", err)
+		}
 	}
 	return nil
 }

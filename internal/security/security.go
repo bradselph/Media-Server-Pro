@@ -597,6 +597,11 @@ func (m *Module) loadIPLists() error {
 		}
 	}
 
+	// Ensure "ban" ip_list_config row exists (AddEntry/GetEntries require it for FK).
+	if err := m.repo.SaveListConfig(ctx, "ban", "Banned IPs (rate limit)", true); err != nil {
+		m.log.Warn("Failed to ensure ban list config: %v", err)
+	}
+
 	// Restore persisted bans into the in-memory rate limiter.
 	now := time.Now()
 	if banEntries, err := m.repo.GetEntries(ctx, "ban"); err == nil {

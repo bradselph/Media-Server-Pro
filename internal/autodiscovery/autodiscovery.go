@@ -597,21 +597,28 @@ func (m *Module) GetSuggestions() []*models.AutoDiscoverySuggestion {
 	return suggestions
 }
 
-// ClearSuggestion removes a suggestion
+// ClearSuggestion removes a suggestion from memory and persists the deletion.
 func (m *Module) ClearSuggestion(path FilePath) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	delete(m.suggestions, SuggestionKey(path))
+	m.mu.Unlock()
+
+	ctx := context.Background()
+	if err := m.repo.Delete(ctx, string(path)); err != nil {
+		m.log.Warn("Failed to persist suggestion deletion for %q: %v", path, err)
+	}
 }
 
-// ClearAllSuggestions removes all suggestions
+// ClearAllSuggestions removes all suggestions from memory and persists the deletion.
 func (m *Module) ClearAllSuggestions() {
 	m.mu.Lock()
 	m.suggestions = make(map[SuggestionKey]*models.AutoDiscoverySuggestion)
 	m.mu.Unlock()
 
-	if saveErr := m.saveSuggestions(); saveErr != nil {
-		m.log.Warn("Failed to persist suggestions after clear: %v", saveErr)
+	ctx := context.Background()
+	if err := m.repo.DeleteAll(ctx); err != nil {
+		m.log.Warn("Failed to delete suggestions from database: %v", err)
+		return
 	}
 }
 

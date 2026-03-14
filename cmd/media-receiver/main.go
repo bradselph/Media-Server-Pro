@@ -207,8 +207,14 @@ func main() {
 }
 
 // runSlaveLoop connects to the master via WebSocket and handles all communication.
-// If the connection drops, it waits and reconnects automatically.
+// If the connection drops, it waits and reconnects with exponential backoff.
 func runSlaveLoop(ctx context.Context, cfg *slaveConfig) {
+	const (
+		baseDelay = 2 * time.Second
+		maxDelay  = 2 * time.Minute
+	)
+	delay := baseDelay
+
 	for {
 		if ctx.Err() != nil {
 			return
@@ -221,13 +227,18 @@ func runSlaveLoop(ctx context.Context, cfg *slaveConfig) {
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "WebSocket connection error: %v\n", err)
-		}
-
-		fmt.Println("Reconnecting in 5 seconds...")
-		select {
-		case <-time.After(5 * time.Second):
-		case <-ctx.Done():
-			return
+			fmt.Fprintf(os.Stderr, "Reconnecting in %v...\n", delay)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return
+			}
+			delay *= 2
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+		} else {
+			delay = baseDelay
 		}
 	}
 }
@@ -419,13 +430,16 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	contentLength := stat.Size()
 	var extraHeaders map[string]string
 
-	// Handle Range requests
+	// Handle Range requests — on parse or seek failure, deliver full file as 200 (explicit fallback).
 	if req.Range != "" {
 		start, end, err := parseRange(req.Range, stat.Size())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid range header %q for %s: %v\n", req.Range, req.Token, err)
+			fmt.Fprintf(os.Stderr, "Invalid range header %q for %s: %v; delivering full file\n", req.Range, req.Token, err)
+			// body, statusCode, contentLength, extraHeaders remain full-file 200
 		} else if _, seekErr := file.Seek(start, io.SeekStart); seekErr != nil {
-			fmt.Fprintf(os.Stderr, "Seek failed for stream %s: %v\n", req.Token, seekErr)
+			fmt.Fprintf(os.Stderr, "Seek failed for stream %s: %v; delivering full file\n", req.Token, seekErr)
+			file.Seek(0, io.SeekStart) // reset to start for full-file delivery
+			// body, statusCode, contentLength, extraHeaders remain full-file 200
 		} else {
 			length := end - start + 1
 			body = io.LimitReader(file, length)
@@ -688,6 +702,9 @@ func loadEnvFile(path string) map[string]string {
 			}
 		}
 		env[key] = val
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: error reading %s: %v\n", path, err)
 	}
 	return env
 }

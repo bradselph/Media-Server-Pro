@@ -204,9 +204,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				m.log.Warn("Invalid register data: %v", err)
 				continue
 			}
-			sw.slaveID = data.SlaveID
 
-			// Register the slave (BaseURL is no longer needed — streams come through WS)
 			node, err := m.RegisterSlave(&RegisterRequest{
 				SlaveID: data.SlaveID,
 				Name:    data.Name,
@@ -216,7 +214,10 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				m.log.Warn("WS register failed for %s: %v", data.SlaveID, err)
 				continue
 			}
-			m.setSlaveWS(data.SlaveID, sw)
+			// Use the authoritative ID assigned by RegisterSlave (which may
+			// generate a UUID when the client sends an empty SlaveID).
+			sw.slaveID = node.ID
+			m.setSlaveWS(node.ID, sw)
 			m.log.Info("Slave %s registered via WebSocket (name: %s)", node.ID, node.Name)
 
 			// Reset read deadline after successful registration

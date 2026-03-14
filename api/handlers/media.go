@@ -191,7 +191,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 // GetMedia returns a single media item
 func (h *Handler) GetMedia(c *gin.Context) {
-	id := c.Param("id")
+	id := strings.TrimSpace(c.Param("id"))
 
 	item, err := h.media.GetMediaByID(id)
 	if err != nil {
@@ -298,7 +298,7 @@ func (h *Handler) GetCategories(c *gin.Context) {
 
 // StreamMedia streams a media file
 func (h *Handler) StreamMedia(c *gin.Context) {
-	id := c.Query("id")
+	id := strings.TrimSpace(c.Query("id"))
 	if id == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
 		return
@@ -367,7 +367,9 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		sessionID = session.ID
 
 		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
-		if err == nil {
+		if err != nil {
+			h.log.Warn("Failed to look up user %s for stream limit check: %v", session.Username, err)
+		} else {
 			maxStreams := h.getUserStreamLimit(user.Type)
 			if maxStreams > 0 && !h.streaming.CanStartStream(userID, maxStreams) {
 				writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
@@ -445,7 +447,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		}
 	}
 
-	id := c.Query("id")
+	id := strings.TrimSpace(c.Query("id"))
 	if id == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)
 		return
@@ -469,7 +471,12 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 				return
 			}
 		}
-		writeError(c, http.StatusNotFound, errMediaNotFound)
+		if !h.media.IsReady() {
+			c.Header("Retry-After", "3")
+			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+		} else {
+			writeError(c, http.StatusNotFound, errMediaNotFound)
+		}
 		return
 	}
 	absPath := localItem.Path

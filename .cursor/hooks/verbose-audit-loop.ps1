@@ -136,7 +136,28 @@ for ($i = 1; $i -le $Loops; $i++) {
     $prompt = @"
 You are running audit cycle $i of $Loops.
 
-Follow the new-audit-loop rule in .cursor/rules/new-audit-loop.mdc exactly.
+Follow the verbose-audit-loop rule in .cursor/rules/verbose-audit-loop.mdc exactly.
+
+## IMPORTANT — Verbose Output
+
+You MUST narrate your work in real time. For EVERY step, print progress as you go using this exact format:
+
+### Entering a step:
+  [step N] <step name> — searching ...
+
+### When you find something:
+  [step N]  found: <file>:<line> — <brief description of what you found>
+
+### When you fix it:
+  [step N]  fix: <file>:<line> — <what you changed and why>
+
+### When you commit:
+  [step N]  commit: <full conventional commit message>
+
+### When a step finds nothing:
+  [step N] <step name> — nothing found, skipping.
+
+Do NOT work silently. The operator is watching the terminal and needs to see what you are doing as you do it.
 
 ## Steps
 
@@ -154,9 +175,11 @@ After EACH individual fix, commit:  git add -A && git commit -m "<type>(<scope>)
 If a step finds nothing to fix, skip it and move on.
 Do NOT introduce new TODOs or placeholders.
 
-## Reporting
+## Summary Table
 
 After all steps, output a summary table in this EXACT format:
+
+## Audit Cycle $i/$Loops — Complete
 
 | Step | Status  | File(s)          | Description                     | Commit                         |
 |------|---------|------------------|---------------------------------|--------------------------------|
@@ -168,7 +191,7 @@ Status must be one of: fixed, skipped, no-issue.
 Include the FULL commit message used (or — if skipped).
 Then output the final line:  AUDIT_CYCLE_DONE
 
-After the summary, commit: git add -A && git commit -m "chore(new-audit-loop): cycle $i/$Loops"
+After the summary, commit: git add -A && git commit -m "chore(verbose-audit-loop): cycle $i/$Loops"
 "@
 
     if ($DryRun) {
@@ -195,13 +218,19 @@ After the summary, commit: git add -A && git commit -m "chore(new-audit-loop): c
         $line = $_
         $agentOutput += "$line`n"
         if (-not $Quiet) {
-            # Colorize agent output
-            if     ($line -match "^##|^\*\*|AUDIT_CYCLE_DONE") { Write-Host $line -ForegroundColor Green  }
-            elseif ($line -match "^\| ")                       { Write-Host $line -ForegroundColor White  }
-            elseif ($line -match "^Step |^fix\(|^chore\(")     { Write-Host $line -ForegroundColor Yellow }
-            elseif ($line -match "ERROR|FAIL|error")           { Write-Host $line -ForegroundColor Red    }
-            elseif ($line -match "WARNING|WARN|warn")          { Write-Host $line -ForegroundColor Yellow }
-            else                                               { Write-Host $line -ForegroundColor Gray   }
+            # Colorize agent output based on narration prefixes
+            if     ($line -match "AUDIT_CYCLE_DONE")                       { Write-Host $line -ForegroundColor Green   }
+            elseif ($line -match "^##")                                    { Write-Host $line -ForegroundColor Green   }
+            elseif ($line -match "^\s*\[step \d+\].*found:")               { Write-Host $line -ForegroundColor Cyan    }
+            elseif ($line -match "^\s*\[step \d+\].*fix:")                 { Write-Host $line -ForegroundColor Yellow  }
+            elseif ($line -match "^\s*\[step \d+\].*commit:")              { Write-Host $line -ForegroundColor Magenta }
+            elseif ($line -match "^\s*\[step \d+\].*skipping")             { Write-Host $line -ForegroundColor DarkGray}
+            elseif ($line -match "^\s*\[step \d+\]")                       { Write-Host $line -ForegroundColor White   }
+            elseif ($line -match "^\| ")                                   { Write-Host $line -ForegroundColor White   }
+            elseif ($line -match "^Step |^fix\(|^chore\(")                 { Write-Host $line -ForegroundColor Yellow  }
+            elseif ($line -match "ERROR|FAIL|error")                       { Write-Host $line -ForegroundColor Red     }
+            elseif ($line -match "WARNING|WARN|warn")                      { Write-Host $line -ForegroundColor Yellow  }
+            else                                                           { Write-Host $line -ForegroundColor Gray    }
         }
     }
 
@@ -215,7 +244,7 @@ After the summary, commit: git add -A && git commit -m "chore(new-audit-loop): c
     $staged = git diff --cached --name-only 2>&1
     if (-not [string]::IsNullOrWhiteSpace($staged)) {
         Write-Step "cleanup" "committing remaining staged changes"
-        git commit -m "chore(new-audit-loop): cycle $i/$Loops" 2>$null
+        git commit -m "chore(verbose-audit-loop): cycle $i/$Loops" 2>$null
     }
 
     # ── Cycle stats ──

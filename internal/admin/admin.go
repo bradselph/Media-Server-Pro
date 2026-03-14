@@ -5,7 +5,6 @@ package admin
 import (
 	"context"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,10 +32,7 @@ type Module struct {
 	log       *logger.Logger
 	dbModule  *database.Module
 	auditRepo repositories.AuditLogRepository
-	backups   []models.BackupInfo
-	backupMu  sync.RWMutex
 	dataDir   string
-	backupDir string
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
@@ -51,12 +47,10 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 	}
 
 	return &Module{
-		config:    cfg,
-		log:       logger.New("admin"),
-		dbModule:  dbModule,
-		backups:   make([]models.BackupInfo, 0),
-		dataDir:   cfg.Get().Directories.Data,
-		backupDir: filepath.Join(cfg.Get().Directories.Data, "backups"),
+		config:   cfg,
+		log:      logger.New("admin"),
+		dbModule: dbModule,
+		dataDir:  cfg.Get().Directories.Data,
 	}, nil
 }
 
@@ -76,15 +70,6 @@ func (m *Module) Start(_ context.Context) error {
 	}
 	m.log.Info("Using MySQL repository for audit log")
 	m.auditRepo = mysql.NewAuditLogRepository(m.dbModule.GORM())
-
-	// Ensure directories exist
-	if err := os.MkdirAll(m.backupDir, 0755); err != nil {
-		m.log.Error("Failed to create backup directory: %v", err)
-		return fmt.Errorf("failed to create backup directory: %w", err)
-	}
-
-	// Load backup info
-	m.scanBackups()
 
 	m.healthMu.Lock()
 	m.healthy = true
@@ -251,195 +236,6 @@ func (m *Module) GetServerStats() models.ServerStats {
 	return models.ServerStats{
 		Uptime:      time.Since(m.startTime),
 		MemoryUsage: memStats.Alloc,
-	}
-}
-
-// CreateBackup creates a backup of server configuration data
-// Note: This backs up config only, not media metadata or playlists.
-func (m *Module) CreateBackup(description string) (*models.BackupInfo, error) {
-	backupID := fmt.Sprintf("backup_%s", time.Now().Format("20060102_150405.000000000"))
-	backupPath := filepath.Join(m.backupDir, backupID+".json")
-
-	// Gather data to back up
-	backupData := map[string]interface{}{
-		"timestamp":   time.Now(),
-		"description": description,
-		"config":      m.config.Get(),
-	}
-
-	data, err := json.MarshalIndent(backupData, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal backup: %w", err)
-	}
-
-	if err := os.WriteFile(backupPath, data, 0600); err != nil {
-		return nil, fmt.Errorf("failed to write backup: %w", err)
-	}
-
-	// Get file size for backup info
-	info, err := os.Stat(backupPath)
-	if err != nil {
-		// If stat fails, use data length as fallback
-		m.log.Warn("Failed to stat backup file, using data length: %v", err)
-	}
-
-	fileSize := int64(len(data))
-	if info != nil {
-		fileSize = info.Size()
-	}
-
-	backup := &models.BackupInfo{
-		ID:          backupID,
-		Filename:    backupID + ".json",
-		Size:        fileSize,
-		CreatedAt:   time.Now(),
-		Type:        "config",
-		Description: description,
-	}
-
-	m.backupMu.Lock()
-	m.backups = append(m.backups, *backup)
-	m.backupMu.Unlock()
-
-	m.log.Info("Created backup: %s", backupID)
-	return backup, nil
-}
-
-// ListBackups returns all available backups
-func (m *Module) ListBackups() []models.BackupInfo {
-	m.backupMu.RLock()
-	defer m.backupMu.RUnlock()
-
-	result := make([]models.BackupInfo, len(m.backups))
-	copy(result, m.backups)
-	return result
-}
-
-// DeleteBackup removes a backup
-func (m *Module) DeleteBackup(id string) error {
-	m.backupMu.Lock()
-	defer m.backupMu.Unlock()
-
-	found := false
-	var newBackups []models.BackupInfo
-	for _, backup := range m.backups {
-		if backup.ID == id {
-			found = true
-			path := filepath.Join(m.backupDir, backup.Filename)
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("failed to remove backup file %s: %w", path, err)
-			}
-		} else {
-			newBackups = append(newBackups, backup)
-		}
-	}
-
-	if !found {
-		return fmt.Errorf("backup not found: %s", id)
-	}
-
-	m.backups = newBackups
-	m.log.Info("Deleted backup: %s", id)
-	return nil
-}
-
-// findBackupFilename returns the backup filename for the given ID, or an error if not found.
-func (m *Module) findBackupFilename(id string) (string, error) {
-	m.backupMu.RLock()
-	defer m.backupMu.RUnlock()
-	for _, backup := range m.backups {
-		if backup.ID == id {
-			return backup.Filename, nil
-		}
-	}
-	return "", fmt.Errorf("backup not found: %s", id)
-}
-
-// loadBackupConfig reads a backup file and returns the parsed config, or an error.
-func (m *Module) loadBackupConfig(path string) (*config.Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read backup: %w", err)
-	}
-	var backupData map[string]interface{}
-	if err := json.Unmarshal(data, &backupData); err != nil {
-		return nil, fmt.Errorf("failed to parse backup: %w", err)
-	}
-	cfgData, ok := backupData["config"]
-	if !ok {
-		return nil, fmt.Errorf("backup does not contain configuration data")
-	}
-	cfgBytes, err := json.Marshal(cfgData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal config from backup: %w", err)
-	}
-	var cfg config.Config
-	if err := json.Unmarshal(cfgBytes, &cfg); err != nil {
-		return nil, fmt.Errorf("backup contains invalid configuration: %w", err)
-	}
-	return &cfg, nil
-}
-
-// RestoreBackup restores from a backup. It creates a pre-restore backup of the
-// current config before applying the restored config, and validates the backup
-// contains parseable configuration data.
-func (m *Module) RestoreBackup(id string) error {
-	filename, err := m.findBackupFilename(id)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(m.backupDir, filename)
-	cfg, err := m.loadBackupConfig(path)
-	if err != nil {
-		return err
-	}
-	if _, err := m.CreateBackup(fmt.Sprintf("pre-restore automatic backup (before restoring %s)", id)); err != nil {
-		return fmt.Errorf("failed to create pre-restore backup: %w", err)
-	}
-	if err := m.config.Update(func(c *config.Config) {
-		*c = *cfg
-	}); err != nil {
-		return fmt.Errorf("failed to update config during restore: %w", err)
-	}
-	m.log.Info("Restored from backup: %s", id)
-	return nil
-}
-
-// scanBackups scans the backup directory for existing backups.
-// Replaces m.backups with a fresh list so repeated calls do not duplicate entries.
-func (m *Module) scanBackups() {
-	entries, err := os.ReadDir(m.backupDir)
-	if err != nil {
-		m.log.Warn("Failed to read backup directory %s: %v", m.backupDir, err)
-		return
-	}
-
-	m.backupMu.Lock()
-	defer m.backupMu.Unlock()
-	m.backups = nil
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		if filepath.Ext(entry.Name()) != ".json" {
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			m.log.Warn("Failed to stat backup entry %s: %v", entry.Name(), err)
-			continue
-		}
-
-		backup := models.BackupInfo{
-			ID:        entry.Name()[:len(entry.Name())-5], // Remove .json
-			Filename:  entry.Name(),
-			Size:      info.Size(),
-			CreatedAt: info.ModTime(),
-			Type:      "config",
-		}
-		m.backups = append(m.backups, backup)
 	}
 }
 

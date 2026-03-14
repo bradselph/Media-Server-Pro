@@ -254,7 +254,9 @@ func (m *Module) DeleteJob(jobID string) error {
 		m.log.Warn("Failed to remove HLS directory: %v", err)
 	}
 	if m.repo != nil {
-		_ = m.repo.Delete(context.Background(), jobID)
+		if err := m.repo.Delete(context.Background(), jobID); err != nil {
+			m.log.Warn("Failed to delete HLS job %s from DB: %v", jobID, err)
+		}
 	}
 	m.log.Info("Deleted HLS job %s", jobID)
 	return nil

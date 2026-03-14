@@ -628,7 +628,7 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 	}
 
 	m.mu.RLock()
-	slave, exists := m.slaves[item.SlaveID]
+	_, exists := m.slaves[item.SlaveID]
 	m.mu.RUnlock()
 	if !exists {
 		return fmt.Errorf("slave not found for media %s", mediaID)
@@ -645,7 +645,7 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 
 	// Re-read slave under lock before fallback — it may have been removed since the initial read.
 	m.mu.RLock()
-	slave, exists = m.slaves[item.SlaveID]
+	slave, exists := m.slaves[item.SlaveID]
 	m.mu.RUnlock()
 	if !exists {
 		return fmt.Errorf("slave no longer registered for media %s", mediaID)
@@ -724,7 +724,7 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 	}
 
 	// Build the upstream request to the slave's media endpoint (path is query-encoded).
-	targetURL := strings.TrimRight(baseURL, "/") + "/media?id=" + url.QueryEscape(item.Path)
+	targetURL := strings.TrimRight(baseURL, "/") + "/media?path=" + url.QueryEscape(item.Path)
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to build proxy request: %w", err)

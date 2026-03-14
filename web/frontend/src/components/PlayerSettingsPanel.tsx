@@ -188,7 +188,7 @@ export function PlayerSettingsPanel({
                             </span>
                         </button>
                     ))}
-                    {bandwidth !== null && bandwidth > 0 && (
+                    {typeof bandwidth === 'number' && bandwidth > 0 && (
                         <>
                             <div className="settings-panel__divider"/>
                             <div className="settings-panel__bandwidth">

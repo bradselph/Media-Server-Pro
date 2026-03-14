@@ -83,8 +83,16 @@ func (r *SuggestionProfileRepository) GetProfile(ctx context.Context, userID str
 		TotalWatchTime: row.TotalWatchTime,
 		LastUpdated:    row.LastUpdated,
 	}
-	_ = json.Unmarshal([]byte(row.CategoryScores), &rec.CategoryScores)
-	_ = json.Unmarshal([]byte(row.TypePreferences), &rec.TypePreferences)
+	if row.CategoryScores != "" {
+		if err := json.Unmarshal([]byte(row.CategoryScores), &rec.CategoryScores); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal category_scores for user %s: %w", row.UserID, err)
+		}
+	}
+	if row.TypePreferences != "" {
+		if err := json.Unmarshal([]byte(row.TypePreferences), &rec.TypePreferences); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal type_preferences for user %s: %w", row.UserID, err)
+		}
+	}
 	if rec.CategoryScores == nil {
 		rec.CategoryScores = make(map[string]float64)
 	}
@@ -114,8 +122,16 @@ func (r *SuggestionProfileRepository) ListProfiles(ctx context.Context) ([]*repo
 			TotalWatchTime: rows[i].TotalWatchTime,
 			LastUpdated:    rows[i].LastUpdated,
 		}
-		_ = json.Unmarshal([]byte(rows[i].CategoryScores), &rec.CategoryScores)
-		_ = json.Unmarshal([]byte(rows[i].TypePreferences), &rec.TypePreferences)
+		if rows[i].CategoryScores != "" {
+			if err := json.Unmarshal([]byte(rows[i].CategoryScores), &rec.CategoryScores); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal category_scores for user %s: %w", rows[i].UserID, err)
+			}
+		}
+		if rows[i].TypePreferences != "" {
+			if err := json.Unmarshal([]byte(rows[i].TypePreferences), &rec.TypePreferences); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal type_preferences for user %s: %w", rows[i].UserID, err)
+			}
+		}
 		if rec.CategoryScores == nil {
 			rec.CategoryScores = make(map[string]float64)
 		}

@@ -436,8 +436,10 @@ func (AnalyticsEvent) TableName() string {
 
 // ViewStats holds view statistics for a media item
 type ViewStats struct {
-	TotalViews       int       `json:"total_views"`
-	CompletionRate   float64   `json:"completion_rate"`
+	TotalViews        int       `json:"total_views"`
+	TotalPlaybacks    int       `json:"-"` // playback attempts (denominator for CompletionRate)
+	TotalCompletions  int       `json:"-"` // completions (progress >= 90%)
+	CompletionRate    float64   `json:"completion_rate"`
 	LastViewed       time.Time `json:"last_viewed"`
 	UniqueViewers    int       `json:"unique_viewers"`
 	AvgWatchDuration float64   `json:"avg_watch_duration"`
@@ -526,16 +528,6 @@ type AuditLogEntry struct {
 // TableName specifies the table name for GORM
 func (AuditLogEntry) TableName() string {
 	return "audit_log"
-}
-
-// BackupInfo represents backup metadata
-type BackupInfo struct {
-	ID          string    `json:"id"`
-	Filename    string    `json:"filename"`
-	Size        int64     `json:"size"`
-	CreatedAt   time.Time `json:"created_at"`
-	Type        string    `json:"type"`
-	Description string    `json:"description,omitempty"`
 }
 
 // ServerStats holds server statistics

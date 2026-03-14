@@ -66,7 +66,11 @@ func (r *HLSJobRepository) Get(ctx context.Context, id string) (*models.HLSJob, 
 		}
 		return nil, fmt.Errorf("failed to get HLS job: %w", err)
 	}
-	return r.rowToJob(&row), nil
+	job, err := r.rowToJob(&row)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert HLS job row: %w", err)
+	}
+	return job, nil
 }
 
 func (r *HLSJobRepository) Delete(ctx context.Context, id string) error {
@@ -81,9 +85,13 @@ func (r *HLSJobRepository) List(ctx context.Context) ([]*models.HLSJob, error) {
 	if err := r.db.WithContext(ctx).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list HLS jobs: %w", err)
 	}
-	jobs := make([]*models.HLSJob, len(rows))
+	jobs := make([]*models.HLSJob, 0, len(rows))
 	for i := range rows {
-		jobs[i] = r.rowToJob(&rows[i])
+		job, err := r.rowToJob(&rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert HLS job row %s: %w", rows[i].ID, err)
+		}
+		jobs = append(jobs, job)
 	}
 	return jobs, nil
 }
@@ -119,7 +127,7 @@ func (r *HLSJobRepository) jobToRow(job *models.HLSJob) (hlsJobRow, error) {
 	return row, nil
 }
 
-func (r *HLSJobRepository) rowToJob(row *hlsJobRow) *models.HLSJob {
+func (r *HLSJobRepository) rowToJob(row *hlsJobRow) (*models.HLSJob, error) {
 	job := &models.HLSJob{
 		ID:             row.ID,
 		MediaPath:      row.MediaPath,
@@ -138,9 +146,13 @@ func (r *HLSJobRepository) rowToJob(row *hlsJobRow) *models.HLSJob {
 	if row.HLSUrl != nil {
 		job.HLSUrl = *row.HLSUrl
 	}
-	_ = json.Unmarshal([]byte(row.Qualities), &job.Qualities)
+	if row.Qualities != "" {
+		if err := json.Unmarshal([]byte(row.Qualities), &job.Qualities); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal qualities for job %s: %w", row.ID, err)
+		}
+	}
 	if job.Qualities == nil {
 		job.Qualities = []string{}
 	}
-	return job
+	return job, nil
 }

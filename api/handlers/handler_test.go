@@ -197,16 +197,23 @@ func TestIsClientDisconnect(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestIsPathWithinDirs(t *testing.T) {
+	base := t.TempDir()
+	mediaDir := filepath.Join(base, "media")
+	etcDir := filepath.Join(base, "etc")
+	os.MkdirAll(mediaDir, 0755)
+	os.MkdirAll(filepath.Join(mediaDir, "sub"), 0755)
+	os.MkdirAll(etcDir, 0755)
+
 	tests := []struct {
 		path string
 		dirs []string
 		want bool
 	}{
-		{"/home/media/video.mp4", []string{"/home/media"}, true},
-		{"/home/media/sub/video.mp4", []string{"/home/media"}, true},
-		{"/etc/passwd", []string{"/home/media"}, false},
-		{"/home/media", []string{"/home/media"}, true},
-		{"/home/media/../etc/passwd", []string{"/home/media"}, false},
+		{filepath.Join(mediaDir, "video.mp4"), []string{mediaDir}, true},
+		{filepath.Join(mediaDir, "sub", "video.mp4"), []string{mediaDir}, true},
+		{filepath.Join(etcDir, "passwd"), []string{mediaDir}, false},
+		{mediaDir, []string{mediaDir}, true},
+		{filepath.Join(mediaDir, "..", "etc", "passwd"), []string{mediaDir}, false},
 	}
 	for _, tc := range tests {
 		got := isPathWithinDirs(tc.path, tc.dirs)
@@ -217,15 +224,22 @@ func TestIsPathWithinDirs(t *testing.T) {
 }
 
 func TestIsPathUnderDirs(t *testing.T) {
+	base := t.TempDir()
+	mediaDir := filepath.Join(base, "media")
+	etcDir := filepath.Join(base, "etc")
+	os.MkdirAll(mediaDir, 0755)
+	os.MkdirAll(filepath.Join(mediaDir, "sub"), 0755)
+	os.MkdirAll(etcDir, 0755)
+
 	tests := []struct {
 		path string
 		dirs []string
 		want bool
 	}{
-		{"/home/media/video.mp4", []string{"/home/media"}, true},
-		{"/home/media/sub/video.mp4", []string{"/home/media"}, true},
-		{"/etc/passwd", []string{"/home/media"}, false},
-		{"/home/media/video.mp4", []string{""}, false},
+		{filepath.Join(mediaDir, "video.mp4"), []string{mediaDir}, true},
+		{filepath.Join(mediaDir, "sub", "video.mp4"), []string{mediaDir}, true},
+		{filepath.Join(etcDir, "passwd"), []string{mediaDir}, false},
+		{filepath.Join(mediaDir, "video.mp4"), []string{""}, false},
 	}
 	for _, tc := range tests {
 		got := isPathUnderDirs(tc.path, tc.dirs)

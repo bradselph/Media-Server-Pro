@@ -23,6 +23,7 @@ func (m *Module) AddToWatchHistory(ctx context.Context, username string, item mo
 			m.usersMu.Unlock()
 			if err := m.userRepo.Update(ctx, user); err != nil {
 				m.log.Error("Failed to save user after watch history update: %v", err)
+				return err
 			}
 			return nil
 		}

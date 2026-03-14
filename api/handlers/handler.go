@@ -152,9 +152,9 @@ type Handler struct {
 // Panics if critical modules (Media, Auth, Streaming) are nil.
 func NewHandler(deps HandlerDeps) *Handler {
 	c, o := deps.Core, deps.Optional
-	missingCritical := c.Media == nil || c.Auth == nil || c.Streaming == nil
+	missingCritical := c.Config == nil || c.Media == nil || c.Auth == nil || c.Streaming == nil || c.Database == nil
 	if missingCritical {
-		panic("NewHandler: critical module dependency is nil (Media, Auth, or Streaming)")
+		panic("NewHandler: critical core dependency is nil (Config, Database, Media, Auth, or Streaming)")
 	}
 
 	return &Handler{

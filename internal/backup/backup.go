@@ -140,6 +140,9 @@ func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 	if backupType == "" {
 		backupType = "full"
 	}
+	if backupType != "config" && backupType != "data" && backupType != "full" {
+		return nil, fmt.Errorf("unsupported backup type %q: must be config, data, or full", backupType)
+	}
 
 	timestamp := time.Now().Format("20060102_150405.000000000")
 	backupID := fmt.Sprintf("backup_%s", timestamp)
@@ -179,7 +182,6 @@ func (m *Module) writeBackupArchive(backupPath string, manifest *Manifest) error
 	if err != nil {
 		return fmt.Errorf("failed to create backup file: %w", err)
 	}
-	defer m.closeAndWarn(zipFile.Close, "Failed to close backup zip file: %v")
 
 	zipWriter := zip.NewWriter(zipFile)
 	filesToBackup := m.getFilesToBackup(manifest.Type)
@@ -191,8 +193,14 @@ func (m *Module) writeBackupArchive(backupPath string, manifest *Manifest) error
 	}
 
 	if err := zipWriter.Close(); err != nil {
+		zipFile.Close()
 		m.removeFileQuietly(removeFileOpts{Path: backupPath, Label: "corrupted backup"})
 		return fmt.Errorf("failed to finalize backup archive: %w", err)
+	}
+
+	if err := zipFile.Close(); err != nil {
+		m.removeFileQuietly(removeFileOpts{Path: backupPath, Label: "corrupted backup"})
+		return fmt.Errorf("failed to close backup file: %w", err)
 	}
 
 	return nil
@@ -234,6 +242,8 @@ func (m *Module) getFilesToBackup(backupType string) []string {
 		files = []string{
 			"config.json",
 		}
+	default:
+		return nil
 	}
 
 	// Convert to full paths
@@ -473,21 +483,19 @@ func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if cerr := destFile.Close(); cerr != nil {
-			m.log.Warn("Failed to close destination file %s: %v", destPath, cerr)
-		}
-	}()
 
 	srcFile, err := file.Open()
 	if err != nil {
+		destFile.Close()
 		return err
 	}
 	defer m.closeAndWarn(srcFile.Close, "Failed to close source file: %v")
 
 	limitedReader := io.LimitReader(srcFile, maxExtractSize+1)
 	n, err := io.Copy(destFile, limitedReader)
+	destFile.Close()
 	if err != nil {
+		m.removeFileQuietly(removeFileOpts{Path: destPath, Label: "failed extracted file"})
 		return err
 	}
 	if n > maxExtractSize {
@@ -568,9 +576,13 @@ func (m *Module) recordToManifest(rec *repositories.BackupManifestRecord) *Manif
 	}
 }
 
-// CleanOldBackups removes backups older than retention period.
+// CleanOldBackups removes backups beyond the most recent keepCount.
 // Sorts by CreatedAt descending (newest first) so we keep the most recent keepCount.
 func (m *Module) CleanOldBackups(keepCount int) (int, error) {
+	if keepCount < 0 {
+		keepCount = 0
+	}
+
 	backups, err := m.ListBackups()
 	if err != nil {
 		return 0, err
@@ -601,7 +613,11 @@ func (m *Module) CleanOldBackups(keepCount int) (int, error) {
 
 // GetBackupStats returns backup statistics
 func (m *Module) GetBackupStats() Stats {
-	backups, _ := m.ListBackups()
+	backups, err := m.ListBackups()
+	if err != nil {
+		m.log.Warn("Failed to list backups for stats: %v", err)
+		return Stats{}
+	}
 
 	stats := Stats{
 		Count: len(backups),
@@ -609,11 +625,13 @@ func (m *Module) GetBackupStats() Stats {
 
 	for _, b := range backups {
 		stats.TotalSize += b.Size
-	}
-
-	if len(backups) > 0 {
-		stats.LatestBackup = &backups[0].CreatedAt
-		stats.OldestBackup = &backups[len(backups)-1].CreatedAt
+		t := b.CreatedAt
+		if stats.LatestBackup == nil || t.After(*stats.LatestBackup) {
+			stats.LatestBackup = &t
+		}
+		if stats.OldestBackup == nil || t.Before(*stats.OldestBackup) {
+			stats.OldestBackup = &t
+		}
 	}
 
 	return stats
