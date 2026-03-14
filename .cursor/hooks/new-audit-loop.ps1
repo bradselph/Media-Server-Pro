@@ -136,7 +136,7 @@ for ($i = 1; $i -le $Loops; $i++) {
     $prompt = @"
 You are running audit cycle $i of $Loops.
 
-Follow the audit-loop rule in .cursor/rules/new-audit-loop.mdc exactly.
+Follow the new-audit-loop rule in .cursor/rules/new-audit-loop.mdc exactly.
 
 ## Steps
 
@@ -168,7 +168,7 @@ Status must be one of: fixed, skipped, no-issue.
 Include the FULL commit message used (or — if skipped).
 Then output the final line:  AUDIT_CYCLE_DONE
 
-After the summary, commit: git add -A && git commit -m "chore(audit-loop): cycle $i/$Loops"
+After the summary, commit: git add -A && git commit -m "chore(new-audit-loop): cycle $i/$Loops"
 "@
 
     if ($DryRun) {
@@ -215,7 +215,7 @@ After the summary, commit: git add -A && git commit -m "chore(audit-loop): cycle
     $staged = git diff --cached --name-only 2>&1
     if (-not [string]::IsNullOrWhiteSpace($staged)) {
         Write-Step "cleanup" "committing remaining staged changes"
-        git commit -m "chore(audit-loop): cycle $i/$Loops" 2>$null
+        git commit -m "chore(new-audit-loop): cycle $i/$Loops" 2>$null
     }
 
     # ── Cycle stats ──

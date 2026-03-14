@@ -741,7 +741,11 @@ func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) err
 		return nil // already logged
 	}
 	expectedHash, err := m.downloadAndParseChecksum(checksumURL2, assetName)
-	if err != nil || expectedHash == "" {
+	if err != nil {
+		return fmt.Errorf("checksum verification failed: %w", err)
+	}
+	if expectedHash == "" {
+		m.log.Warn("Asset %q not listed in SHA256SUMS — skipping integrity check", assetName)
 		return nil
 	}
 	actualHash, err := computeFileSHA256(binaryPath)
@@ -794,28 +798,24 @@ func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 func (m *Module) downloadAndParseChecksum(checksumURL2, assetName string) (string, error) {
 	cReq, err := http.NewRequest("GET", checksumURL2, nil)
 	if err != nil {
-		m.log.Warn("Could not build checksum download request: %v — skipping", err)
-		return "", nil
+		return "", fmt.Errorf("build checksum download request: %w", err)
 	}
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
 		cReq.Header.Set("Authorization", "Bearer "+token)
 	}
 	cResp, err := m.httpClient.Do(cReq)
 	if err != nil {
-		m.log.Warn("Could not download SHA256SUMS: %v — skipping integrity check", err)
-		return "", nil
+		return "", fmt.Errorf("download SHA256SUMS: %w", err)
 	}
 	defer func() { _ = cResp.Body.Close() }()
+	if cResp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("SHA256SUMS download returned HTTP %d", cResp.StatusCode)
+	}
 	checksumData, err := io.ReadAll(io.LimitReader(cResp.Body, 1*1024*1024))
 	if err != nil {
-		m.log.Warn("Failed to read SHA256SUMS: %v — skipping", err)
-		return "", nil
+		return "", fmt.Errorf("read SHA256SUMS body: %w", err)
 	}
-	expectedHash := parseExpectedHashFromChecksum(checksumData, assetName)
-	if expectedHash == "" {
-		m.log.Warn("Asset %q not found in SHA256SUMS — skipping integrity check", assetName)
-	}
-	return expectedHash, nil
+	return parseExpectedHashFromChecksum(checksumData, assetName), nil
 }
 
 // isValidBinary checks the magic bytes of a file to confirm it is a native executable.
