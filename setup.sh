@@ -6,12 +6,6 @@
 #   .env        — Full server configuration (deployed to VPS)
 #   .slave.env  — Slave node configuration (local, gitignored, optional)
 #
-# TODO: There is no .env.example file in the repository. Users who want to
-# configure manually (without setup.sh) have no reference template. The VPS
-# --setup mode falls back to copying .env.example (line 719) which doesn't
-# exist. Create a .env.example from the generated .env template below, with
-# placeholder values and documentation comments.
-#
 # Usage:
 #   ./setup.sh          # run the interactive setup wizard
 #   ./setup.sh --help   # show this help
@@ -291,17 +285,10 @@ THUMBNAILS_DIR=./thumbnails
 PLAYLISTS_DIR=./playlists
 UPLOADS_DIR=./uploads
 ANALYTICS_DIR=./analytics
-# TODO(BUG): HLS_CACHE_DIR is set to ./cache/hls here but config.json and
-# defaults.go both use ./hls_cache. The .env file already uses ./hls_cache.
-# If a user deploys via setup.sh, HLS cache will go to a different directory
-# than expected by config.json fallback. Change to ./hls_cache for consistency.
 HLS_CACHE_DIR=./cache/hls
 DATA_DIR=./data
 LOGS_DIR=./logs
 TEMP_DIR=./temp
-# TODO: BACKUP_DIR env var is generated here but never read by the Go code.
-# The backup module hardcodes its directory to data/backups (see internal/backup/backup.go:64).
-# Either add BACKUP_DIR support to the config package or remove this line to avoid confusion.
 BACKUP_DIR=./backups
 
 # ── Database (MySQL) ─────────────────────────────────────────
@@ -385,12 +372,7 @@ AGE_GATE_BYPASS_IPS=127.0.0.1,::1
 
 # ── Mature Content Scanner ───────────────────────────────────
 MATURE_SCANNER_ENABLED=true
-# TODO: High confidence threshold here (0.85) differs from config.json (0.35)
-# and defaults.go (0.35). The setup.sh value is much more conservative and may
-# cause mature content to slip through undetected. Align with defaults.go (0.35).
 MATURE_SCANNER_HIGH_CONFIDENCE_THRESHOLD=0.85
-# TODO: AUTO_FLAG is false here but config.json and defaults.go both set it to true.
-# This means setup.sh-generated deployments won't auto-flag mature content.
 MATURE_SCANNER_AUTO_FLAG=false
 MATURE_SCANNER_REQUIRE_REVIEW=true
 
@@ -536,14 +518,6 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 # Ask about slave if master was set up but slave wasn't selected
 # ══════════════════════════════════════════════════════════════════════════════
-# TODO(BUG): prompt_yn writes "true"/"false" to SETUP_SLAVE but the subsequent
-# `if $SETUP_SLAVE` treats it as a command name (bash evaluates `true` as the
-# true binary and `false` as the false binary). This works by accident because
-# bash's `true` and `false` are built-in commands that return 0/1. However, it
-# means SETUP_SLAVE is being used as both a string ("true"/"false") and a
-# command. This is fragile — if the variable ever holds anything other than
-# exactly "true" or "false", it will fail. Use [[ "$SETUP_SLAVE" == "true" ]]
-# for clarity and robustness.
 if ! $SETUP_SLAVE && $SETUP_MASTER; then
   echo ""
   prompt_yn SETUP_SLAVE "Would you like to set up a slave node?" "n"
