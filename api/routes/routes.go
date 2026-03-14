@@ -126,8 +126,8 @@ func ginETags() gin.HandlerFunc {
 
 		blw := &etagBufferWriter{
 			ResponseWriter: c.Writer,
-			body:          bytes.NewBuffer(nil),
-			maxSize:       etagMaxBodySize,
+			body:           bytes.NewBuffer(nil),
+			maxSize:        etagMaxBodySize,
 		}
 		c.Writer = blw
 		c.Next()
@@ -157,8 +157,8 @@ func ginETags() gin.HandlerFunc {
 // etagBufferWriter buffers the response up to maxSize; beyond that it streams directly.
 type etagBufferWriter struct {
 	gin.ResponseWriter
-	body      *bytes.Buffer
-	maxSize   int
+	body       *bytes.Buffer
+	maxSize    int
 	overflowed bool
 }
 

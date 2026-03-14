@@ -78,8 +78,8 @@ func RegisterStaticRoutes(r *gin.Engine) {
 }
 
 var (
-	indexHTMLOnce sync.Once
-	cachedIndex   []byte
+	indexHTMLOnce  sync.Once
+	cachedIndex    []byte
 	cachedIndexErr error
 )
 

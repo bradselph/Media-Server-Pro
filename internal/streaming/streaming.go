@@ -31,10 +31,10 @@ var (
 )
 
 const (
-	headerContentLength   = "Content-Length"
-	headerContentRange    = "Content-Range"
+	headerContentLength      = "Content-Length"
+	headerContentRange       = "Content-Range"
 	headerContentDisposition = "Content-Disposition"
-	errCloseFileFmt       = "failed to close file: %v"
+	errCloseFileFmt          = "failed to close file: %v"
 )
 
 // safeContentDispositionFilename removes runes that could break the Content-Disposition

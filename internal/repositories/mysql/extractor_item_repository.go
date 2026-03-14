@@ -105,9 +105,9 @@ func (r *ExtractorItemRepository) ListActive(ctx context.Context) ([]*repositori
 
 func (r *ExtractorItemRepository) UpdateStatus(ctx context.Context, id, status, errorMsg string) error {
 	updates := map[string]interface{}{
-		"status":      status,
+		"status":        status,
 		"error_message": errorMsg,
-		"updated_at": time.Now().Format("2006-01-02 15:04:05"),
+		"updated_at":    time.Now().Format("2006-01-02 15:04:05"),
 	}
 	if err := r.db.WithContext(ctx).Model(&extractorItemRow{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return fmt.Errorf("failed to update extractor item status: %w", err)
