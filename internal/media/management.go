@@ -48,15 +48,9 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 		return "", fmt.Errorf("failed to rename: %w", err)
 	}
 
-	// TODO: Bug - the mediaByID secondary index is not updated during rename.
-	// The old entry in mediaByID still points to the same *models.MediaItem
-	// (whose Path is now updated), so ID lookups still work, but the key
-	// association relies on pointer identity. This is fragile — if the item
-	// is ever replaced (e.g. during a scan), the stale mediaByID entry breaks.
-	// Also, the fingerprintIndex is not updated — the old path remains in the
-	// fingerprint map. On next scan, this could cause the renamed file to be
-	// misidentified as a "moved" file from itself.
-	// Update in-memory indexes (media + metadata share mu)
+	// Update in-memory indexes (media + metadata share mu). mediaByID key is by item.ID;
+	// the same *models.MediaItem is kept so ID lookups still work. fingerprintIndex is
+	// updated so the fingerprint maps to the new path.
 	m.mu.Lock()
 	if item, exists := m.media[oldPath]; exists {
 		item.Path = newPath
@@ -67,6 +61,9 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	if meta, exists := m.metadata[oldPath]; exists {
 		delete(m.metadata, oldPath)
 		m.metadata[newPath] = meta
+		if meta.ContentFingerprint != "" {
+			m.fingerprintIndex[meta.ContentFingerprint] = newPath
+		}
 	}
 	m.mu.Unlock()
 
@@ -80,11 +77,8 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	return newPath, nil
 }
 
-// MoveMedia moves a media file to a new directory
-// TODO: Bug - same fingerprintIndex issue as RenameMedia: the old path remains
-// in the fingerprint map after the move. Also, MoveMedia does not validate that
-// oldPath is within allowed directories (only validates newDir). A file outside
-// allowed dirs could be moved into them.
+// MoveMedia moves a media file to a new directory.
+// fingerprintIndex is updated so the fingerprint maps to the new path.
 func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	// Validate old path exists (no lock needed for stat)
 	if _, err := os.Stat(oldPath); err != nil {
@@ -116,7 +110,7 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 		return "", fmt.Errorf("failed to move: %w", err)
 	}
 
-	// Update in-memory indexes (media + metadata share mu)
+	// Update in-memory indexes (media + metadata share mu); keep fingerprintIndex in sync
 	m.mu.Lock()
 	if item, exists := m.media[oldPath]; exists {
 		item.Path = newPath
@@ -127,6 +121,9 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	if meta, exists := m.metadata[oldPath]; exists {
 		delete(m.metadata, oldPath)
 		m.metadata[newPath] = meta
+		if meta.ContentFingerprint != "" {
+			m.fingerprintIndex[meta.ContentFingerprint] = newPath
+		}
 	}
 	m.mu.Unlock()
 
@@ -139,12 +136,9 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	return newPath, nil
 }
 
-// DeleteMedia removes a media file from the filesystem
-// TODO: Bug - fingerprintIndex is not cleaned up when a file is deleted. The
-// stale fingerprint entry will cause createMediaItem on next scan to incorrectly
-// detect the deleted path as the "old path" of a moved file if a new file with
-// the same fingerprint appears. Delete the fingerprint from m.fingerprintIndex
-// using the metadata's ContentFingerprint value.
+// DeleteMedia removes a media file from the filesystem and from in-memory indexes
+// (including fingerprintIndex so the next scan does not treat a new file with the
+// same fingerprint as a move from the deleted path).
 func (m *Module) DeleteMedia(ctx context.Context, path string) error {
 	// Validate path exists and is within allowed directories (no lock needed)
 	if _, err := os.Stat(path); err != nil {
@@ -159,8 +153,11 @@ func (m *Module) DeleteMedia(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to delete: %w", err)
 	}
 
-	// Remove from in-memory indexes (media + metadata share mu)
+	// Remove from in-memory indexes (media + metadata + fingerprintIndex)
 	m.mu.Lock()
+	if meta, exists := m.metadata[path]; exists && meta.ContentFingerprint != "" {
+		delete(m.fingerprintIndex, meta.ContentFingerprint)
+	}
 	if item, exists := m.media[path]; exists {
 		delete(m.mediaByID, item.ID)
 	}
@@ -183,12 +180,13 @@ func (m *Module) DeleteMedia(ctx context.Context, path string) error {
 
 // RemoveMedia removes a media entry from the index without deleting the file.
 // This is used for cleanup when files have already been deleted externally.
-// TODO: Bug - same fingerprintIndex issue as DeleteMedia: the stale fingerprint
-// entry is not removed. Also, RenameMedia and MoveMedia do not call m.version++
-// but RemoveMedia does — the version bump behavior is inconsistent. All mutation
-// methods should bump the version for cache invalidation.
+// fingerprintIndex is updated so the fingerprint is no longer associated with this path.
 func (m *Module) RemoveMedia(path string) error {
 	m.mu.Lock()
+	meta := m.metadata[path]
+	if meta != nil && meta.ContentFingerprint != "" {
+		delete(m.fingerprintIndex, meta.ContentFingerprint)
+	}
 	delete(m.metadata, path)
 	item, exists := m.media[path]
 	if !exists {

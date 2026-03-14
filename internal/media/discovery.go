@@ -471,13 +471,17 @@ func (m *Module) Scan() error {
 		} else if meta.Views == existingMeta.Views && meta.DateAdded.Before(existingMeta.DateAdded) {
 			keepExisting = false
 		}
+		fpLog := fp
+		if len(fp) > 12 {
+			fpLog = fp[:12]
+		}
 		if keepExisting {
 			delete(newMedia, path)
-			m.log.Info("Dedup: skipping %s (duplicate of %s, fingerprint %s…)", path, existing, fp[:12])
+			m.log.Info("Dedup: skipping %s (duplicate of %s, fingerprint %s…)", path, existing, fpLog)
 		} else {
 			delete(newMedia, existing)
 			fpWinner[fp] = path
-			m.log.Info("Dedup: skipping %s (duplicate of %s, fingerprint %s…)", existing, path, fp[:12])
+			m.log.Info("Dedup: skipping %s (duplicate of %s, fingerprint %s…)", existing, path, fpLog)
 		}
 		dupsRemoved++
 	}
