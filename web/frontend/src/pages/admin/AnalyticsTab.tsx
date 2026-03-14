@@ -5,6 +5,7 @@ import type {AnalyticsEvent, EventStats, SuggestionStats} from '@/api/types'
 import {errMsg} from './adminUtils'
 
 const ADMIN_STAT_CARD = 'admin-stat-card'
+const TEXT_MUTED = 'var(--text-muted)'
 
 // ── Tab: Analytics ────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ export function AnalyticsTab() {
             <div className="admin-card">
                 <h2>Analytics Overview</h2>
                 {summary?.analytics_disabled && (
-                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>Analytics is disabled. Enable it in server
+                    <p style={{color: TEXT_MUTED, fontSize: 13}}>Analytics is disabled. Enable it in server
                         settings to collect data.</p>
                 )}
                 {summary && !summary.analytics_disabled && (
@@ -138,7 +139,7 @@ export function AnalyticsTab() {
                                     )
                                 })}
                             </div>
-                            <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2}}>
+                            <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 10, color: TEXT_MUTED, marginTop: 2}}>
                                 <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span>
                             </div>
                         </div>
@@ -292,7 +293,7 @@ export function AnalyticsTab() {
                                     ))}
                                     </tbody>
                                 </table>
-                                {eventsByType.length > 50 && <p style={{fontSize: 12, color: 'var(--text-muted)'}}>Showing first 50 of {eventsByType.length}</p>}
+                                {eventsByType.length > 50 && <p style={{fontSize: 12, color: TEXT_MUTED}}>Showing first 50 of {eventsByType.length}</p>}
                             </div>
                         )}
                     </div>
@@ -302,7 +303,7 @@ export function AnalyticsTab() {
             {/* Events by media */}
             <div className="admin-card">
                 <h2>Events by Media</h2>
-                <p style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 8}}>Enter a media ID (e.g. from Top Viewed Media) to list recent events.</p>
+                <p style={{fontSize: 13, color: TEXT_MUTED, marginBottom: 8}}>Enter a media ID (e.g. from Top Viewed Media) to list recent events.</p>
                 <div style={{display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
                     <input
                         type="text"
@@ -333,7 +334,7 @@ export function AnalyticsTab() {
                             ))}
                             </tbody>
                         </table>
-                        {eventsByMedia.length > 50 && <p style={{fontSize: 12, color: 'var(--text-muted)'}}>Showing first 50 of {eventsByMedia.length}</p>}
+                        {eventsByMedia.length > 50 && <p style={{fontSize: 12, color: TEXT_MUTED}}>Showing first 50 of {eventsByMedia.length}</p>}
                     </div>
                 )}
             </div>

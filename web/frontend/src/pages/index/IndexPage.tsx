@@ -660,7 +660,9 @@ function InlinePlayer({
 
     const handleEqToggle = useCallback(() => { setShowEq(v => !v); }, [])
 
-    // Load new media when nowPlaying changes (volume/muted applied so new track respects current settings)
+    // Load new media when nowPlaying changes (volume/muted applied so new track respects current settings).
+    // volume and muted are intentionally omitted — adding them would restart the track on every volume change.
+    // A separate effect below syncs volume/muted independently.
     useEffect(() => {
         if (!nowPlaying) return
         const el = activeRef.current
@@ -669,7 +671,8 @@ function InlinePlayer({
         el.volume = volume
         el.muted = muted
         el.play().then(() => { setIsPlaying(true); }).catch(() => setIsPlaying(false))
-    }, [nowPlaying]) // volume/muted read from state when track changes; synced by effect below when they change
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [nowPlaying, activeRef])
 
     useEffect(() => {
         const el = activeRef.current
@@ -677,7 +680,7 @@ function InlinePlayer({
             el.volume = volume
             el.muted = muted
         }
-    }, [volume, muted])
+    }, [volume, muted, activeRef])
 
     function togglePlay() {
         const el = activeRef.current

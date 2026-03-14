@@ -79,7 +79,7 @@ func (h *Handler) CrawlTarget(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	newCount, err := h.crawler.CrawlTarget(id)
+	newCount, err := h.crawler.CrawlTarget(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("Crawl failed: %v", err)
 		writeError(c, http.StatusBadRequest, err.Error())

@@ -267,7 +267,7 @@ var (
 )
 
 // CrawlTarget triggers a crawl for a specific target.
-func (m *Module) CrawlTarget(targetID string) (int, error) {
+func (m *Module) CrawlTarget(ctx context.Context, targetID string) (int, error) {
 	if m.targetRepo == nil {
 		return 0, errDisabled
 	}
@@ -285,7 +285,7 @@ func (m *Module) CrawlTarget(targetID string) (int, error) {
 		m.crawlMu.Unlock()
 	}()
 
-	target, err := m.targetRepo.Get(context.Background(), targetID)
+	target, err := m.targetRepo.Get(ctx, targetID)
 	if err != nil {
 		return 0, err
 	}
@@ -293,10 +293,10 @@ func (m *Module) CrawlTarget(targetID string) (int, error) {
 		return 0, fmt.Errorf("target not found: %s", targetID)
 	}
 
-	return m.doCrawl(target)
+	return m.doCrawl(ctx, target)
 }
 
-func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) {
+func (m *Module) doCrawl(ctx context.Context, target *repositories.CrawlerTargetRecord) (int, error) {
 	cfg := m.config.Get()
 	maxPages := cfg.Crawler.MaxPages
 	if maxPages <= 0 {
@@ -310,8 +310,7 @@ func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) 
 		return 0, fmt.Errorf("invalid target URL: %w", err)
 	}
 
-	// Step 1: Fetch the listing page and extract content links
-	pageBody, err := m.fetchPage(target.URL)
+	pageBody, err := m.fetchPage(ctx, target.URL)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch target page: %w", err)
 	}
@@ -323,13 +322,14 @@ func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) 
 		contentLinks = contentLinks[:maxPages]
 	}
 
-	// Step 2: Visit each content link and look for streams.
-	// Uses browser-based detection (click play, intercept network) with HTML fallback.
 	newCount := 0
 	for i, link := range contentLinks {
+		if err := ctx.Err(); err != nil {
+			return newCount, fmt.Errorf("crawl cancelled: %w", err)
+		}
 		m.log.Debug("Probing [%d/%d]: %s", i+1, len(contentLinks), link)
 
-		streams, title := m.probeForStreams(link)
+		streams, title := m.probeForStreams(ctx, link)
 		if len(streams) == 0 {
 			continue
 		}
@@ -339,15 +339,13 @@ func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) 
 		}
 
 		for _, stream := range streams {
-			// Only store M3U8 streams (HLS playlists)
 			if stream.Type != "m3u8" {
 				continue
 			}
 
 			streamURL := stream.URL
 
-			// Skip if we already have this stream
-			exists, err := m.discoveryRepo.ExistsByStreamURL(context.Background(), streamURL)
+			exists, err := m.discoveryRepo.ExistsByStreamURL(ctx, streamURL)
 			if err != nil {
 				m.log.Warn("Failed to check discovery existence: %v", err)
 				continue
@@ -370,19 +368,18 @@ func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) 
 				DiscoveredAt:    time.Now(),
 			}
 
-			if err := m.discoveryRepo.Create(context.Background(), rec); err != nil {
+			if err := m.discoveryRepo.Create(ctx, rec); err != nil {
 				m.log.Warn("Failed to store discovery: %v", err)
 				continue
 			}
 			newCount++
 			m.log.Info("Discovered M3U8 [%s]: %s -> %s", stream.DetectionMethod, title, streamURL)
-			break // Take best stream per page
+			break
 		}
 	}
 
-	// Update last crawled timestamp
 	now := time.Now()
-	if err := m.targetRepo.UpdateLastCrawled(context.Background(), target.ID, now); err != nil {
+	if err := m.targetRepo.UpdateLastCrawled(ctx, target.ID, now); err != nil {
 		m.log.Warn("Failed to update last crawled: %v", err)
 	}
 
@@ -390,9 +387,9 @@ func (m *Module) doCrawl(target *repositories.CrawlerTargetRecord) (int, error) 
 	return newCount, nil
 }
 
-// fetchPage fetches a page's HTML body (uses default client; no request context for cancellation).
-func (m *Module) fetchPage(rawURL string) (string, error) {
-	req, err := http.NewRequest("GET", rawURL, nil)
+// fetchPage fetches a page's HTML body.
+func (m *Module) fetchPage(ctx context.Context, rawURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -492,10 +489,9 @@ func (m *Module) extractContentLinks(html string, baseURL *url.URL) []string {
 // intercepting network requests), then falls back to simple HTML regex matching.
 // This is the core fix: modern video sites load streams via JavaScript after
 // user interaction, so plain HTML fetching misses them entirely.
-func (m *Module) probeForStreams(pageURL string) ([]detectedStream, string) {
-	// Try browser-based detection first (like the downloader's Puppeteer approach)
+func (m *Module) probeForStreams(ctx context.Context, pageURL string) ([]detectedStream, string) {
 	if m.browser != nil && m.browser.available() {
-		result, err := m.browser.probe(context.Background(), pageURL)
+		result, err := m.browser.probe(ctx, pageURL)
 		if err != nil {
 			m.log.Warn("Browser probe failed for %s: %v — falling back to HTML", pageURL, err)
 		} else if len(result.Streams) > 0 {
@@ -504,8 +500,7 @@ func (m *Module) probeForStreams(pageURL string) ([]detectedStream, string) {
 		m.log.Debug("Browser found no streams on %s, trying HTML fallback", pageURL)
 	}
 
-	// Fallback: fetch raw HTML and regex-match M3U8 URLs
-	m3u8s, title := m.probeForM3U8HTML(pageURL)
+	m3u8s, title := m.probeForM3U8HTML(ctx, pageURL)
 	if len(m3u8s) == 0 {
 		return nil, title
 	}
@@ -521,8 +516,8 @@ func (m *Module) probeForStreams(pageURL string) ([]detectedStream, string) {
 }
 
 // probeForM3U8HTML is the original HTML-only prober (kept as fallback).
-func (m *Module) probeForM3U8HTML(pageURL string) ([]string, string) {
-	body, err := m.fetchPage(pageURL)
+func (m *Module) probeForM3U8HTML(ctx context.Context, pageURL string) ([]string, string) {
+	body, err := m.fetchPage(ctx, pageURL)
 	if err != nil {
 		m.log.Debug("Failed to fetch %s: %v", pageURL, err)
 		return nil, ""
@@ -635,6 +630,9 @@ func (m *Module) IgnoreDiscovery(id, reviewedBy string) error {
 	if disc == nil {
 		return fmt.Errorf("discovery not found: %s", id)
 	}
+	if disc.Status != "pending" {
+		return fmt.Errorf("discovery already reviewed: %s", disc.Status)
+	}
 
 	return m.discoveryRepo.UpdateStatus(context.Background(), id, "ignored", reviewedBy)
 }
@@ -653,13 +651,15 @@ func (m *Module) DeleteDiscovery(id string) error {
 func (m *Module) GetStats() Stats {
 	stats := Stats{}
 
-	m.crawlMu.Lock()
+	m.crawlMu.RLock()
 	stats.Crawling = m.crawling
-	m.crawlMu.Unlock()
+	m.crawlMu.RUnlock()
 
 	if m.targetRepo != nil {
 		targets, err := m.targetRepo.List(context.Background())
-		if err == nil {
+		if err != nil {
+			m.log.Warn("GetStats: failed to list targets: %v", err)
+		} else {
 			stats.TotalTargets = len(targets)
 			for _, t := range targets {
 				if t.Enabled {
@@ -673,7 +673,9 @@ func (m *Module) GetStats() Stats {
 		return stats
 	}
 	discoveries, err := m.discoveryRepo.List(context.Background())
-	if err == nil {
+	if err != nil {
+		m.log.Warn("GetStats: failed to list discoveries: %v", err)
+	} else {
 		stats.TotalDiscoveries = len(discoveries)
 		for _, d := range discoveries {
 			if d.Status == "pending" {

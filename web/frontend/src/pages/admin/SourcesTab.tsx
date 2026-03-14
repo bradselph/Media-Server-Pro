@@ -19,6 +19,8 @@ import {StreamingTab} from './StreamingTab'
 import {errMsg, formatBytes} from './adminUtils'
 import {SubTabs} from './helpers'
 
+const TEXT_MUTED = 'var(--text-muted)'
+
 // ── Tab: Remote Sources ───────────────────────────────────────────────────────
 
 function RemoteTab() {
@@ -226,28 +228,28 @@ function RemoteTab() {
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10}}>
                         <div>
                             <label
-                                style={{display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>Name
+                                style={{display: 'block', fontSize: 12, color: TEXT_MUTED, marginBottom: 4}}>Name
                                 *</label>
                             <input className="admin-input" placeholder="my-source" value={addName}
                                    onChange={e => setAddName(e.target.value)} required/>
                         </div>
                         <div>
                             <label
-                                style={{display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>URL
+                                style={{display: 'block', fontSize: 12, color: TEXT_MUTED, marginBottom: 4}}>URL
                                 *</label>
                             <input className="admin-input" placeholder="https://example.com/media" value={addURL}
                                    onChange={e => { setAddURL(e.target.value); }} required/>
                         </div>
                         <div>
                             <label
-                                style={{display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>Username
+                                style={{display: 'block', fontSize: 12, color: TEXT_MUTED, marginBottom: 4}}>Username
                                 (optional)</label>
                             <input className="admin-input" placeholder="user" value={addUser}
                                    onChange={e => setAddUser(e.target.value)} autoComplete="off"/>
                         </div>
                         <div>
                             <label
-                                style={{display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>Password
+                                style={{display: 'block', fontSize: 12, color: TEXT_MUTED, marginBottom: 4}}>Password
                                 (optional)</label>
                             <input className="admin-input" type="password" placeholder="••••••" value={addPass}
                                    onChange={e => { setAddPass(e.target.value); }} autoComplete="new-password"/>
@@ -260,7 +262,7 @@ function RemoteTab() {
             )}
 
             {/* Sources table */}
-            {isLoading && <p style={{color: 'var(--text-muted)'}}>Loading sources...</p>}
+            {isLoading && <p style={{color: TEXT_MUTED}}>Loading sources...</p>}
             {!isLoading && isError && (
                 <div className="admin-alert admin-alert-danger">
                     {String(error).includes('disabled') || String(error).includes('404')
@@ -269,7 +271,7 @@ function RemoteTab() {
                 </div>
             )}
             {!isLoading && !isError && (!sources || sources.length === 0) && (
-                <div style={{textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)'}}>
+                <div style={{textAlign: 'center', padding: '40px 0', color: TEXT_MUTED}}>
                     <i className="bi bi-cloud-slash" style={{fontSize: 32}}/>
                     <p style={{marginTop: 8}}>No remote sources configured.</p>
                     <p style={{fontSize: 13}}>Add a source above to stream media from remote servers.</p>
@@ -307,7 +309,7 @@ function RemoteTab() {
                                     color: '#ef4444'
                                 }}>⚠</span>}</td>
                                 <td>{s.media_count}</td>
-                                <td style={{fontSize: 12, color: 'var(--text-muted)'}}>
+                                <td style={{fontSize: 12, color: TEXT_MUTED}}>
                                     {s.last_sync && !s.last_sync.startsWith('0001-')
                                         ? new Date(s.last_sync).toLocaleString()
                                         : '—'}
@@ -361,7 +363,7 @@ function RemoteTab() {
                             </button>
                         )}
                     </div>
-                    {browseLoading && <p style={{color: 'var(--text-muted)'}}>Loading...</p>}
+                    {browseLoading && <p style={{color: TEXT_MUTED}}>Loading...</p>}
                     {browseMedia && (
                         <div className="admin-table-wrapper">
                             <table className="admin-table">
@@ -377,7 +379,7 @@ function RemoteTab() {
                                 <tbody>
                                 {browseMedia.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} style={{textAlign: 'center', color: 'var(--text-muted)'}}>No
+                                        <td colSpan={5} style={{textAlign: 'center', color: TEXT_MUTED}}>No
                                             media found
                                         </td>
                                     </tr>
@@ -502,7 +504,7 @@ function ReceiverTab() {
     return (
         <div>
             <h2 style={{margin: '0 0 4px 0', fontSize: 20}}><i className="bi bi-diagram-3-fill"/> Receiver — Slave Nodes</h2>
-            <p style={{margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: 13}}>
+            <p style={{margin: '0 0 20px 0', color: TEXT_MUTED, fontSize: 13}}>
                 This server is the <strong>master</strong>. Slave nodes register here, push their media
                 catalogs, and their streams are proxied to users on demand. No media is stored locally —
                 streams pass through in real time.
@@ -553,7 +555,7 @@ function ReceiverTab() {
                     </button>
                 </div>
 
-                {isLoading && <p style={{color: 'var(--text-muted)', fontSize: 13}}><i className="bi bi-hourglass-split"/> Loading slaves…</p>}
+                {isLoading && <p style={{color: TEXT_MUTED, fontSize: 13}}><i className="bi bi-hourglass-split"/> Loading slaves…</p>}
 
                 {isError && (
                     <div className="admin-alert admin-alert-warning">
@@ -563,7 +565,7 @@ function ReceiverTab() {
                 )}
 
                 {!isLoading && !isError && (!slaves || slaves.length === 0) && (
-                    <div style={{textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)'}}>
+                    <div style={{textAlign: 'center', padding: '32px 16px', color: TEXT_MUTED}}>
                         <i className="bi bi-hdd-network" style={{fontSize: 32, display: 'block', marginBottom: 8}}/>
                         <p style={{margin: '0 0 4px 0'}}>No slave nodes registered yet.</p>
                         <p style={{margin: 0, fontSize: 12}}>Run <code>./deploy.sh --setup-receiver</code> on this master, then configure your slave servers.</p>
@@ -591,7 +593,7 @@ function ReceiverTab() {
                                             <td>
                                                 <strong>{slave.name}</strong>
                                                 <br/>
-                                                <span style={{fontSize: 11, color: 'var(--text-muted)'}}>{slave.id}</span>
+                                                <span style={{fontSize: 11, color: TEXT_MUTED}}>{slave.id}</span>
                                             </td>
                                             <td><a href={slave.base_url} target="_blank" rel="noreferrer">{slave.base_url}</a></td>
                                             <td>{statusBadge(slave.status)}</td>
@@ -624,12 +626,12 @@ function ReceiverTab() {
                                             <tr key={`${slave.id}-browse`}>
                                                 <td colSpan={7} style={{padding: '12px 16px', background: 'var(--input-bg)'}}>
                                                     {browseLoading && (
-                                                        <span style={{color: 'var(--text-muted)', fontSize: 13}}>
+                                                        <span style={{color: TEXT_MUTED, fontSize: 13}}>
                                                             <i className="bi bi-hourglass-split"/> Loading media…
                                                         </span>
                                                     )}
                                                     {!browseLoading && browseMedia && browseMedia.length === 0 && (
-                                                        <span style={{color: 'var(--text-muted)', fontSize: 13}}>No media items in catalog yet.</span>
+                                                        <span style={{color: TEXT_MUTED, fontSize: 13}}>No media items in catalog yet.</span>
                                                     )}
                                                     {!browseLoading && browseMedia && browseMedia.length > 0 && (
                                                         <div className="admin-table-wrapper" style={{maxHeight: 280, overflowY: 'auto'}}>
@@ -741,7 +743,7 @@ function ExtractorTab() {
     return (
         <div>
             <h3>HLS Stream Proxy</h3>
-            <p style={{color: 'var(--text-muted)', marginBottom: 12}}>
+            <p style={{color: TEXT_MUTED, marginBottom: 12}}>
                 Add M3U8 playlist URLs to proxy HLS streams through the server.
                 Streams appear in the media library — no files are downloaded to disk.
             </p>
@@ -780,9 +782,9 @@ function ExtractorTab() {
             </form>
 
             {/* Items table */}
-            {isLoading && <p style={{color: 'var(--text-muted)'}}>Loading...</p>}
+            {isLoading && <p style={{color: TEXT_MUTED}}>Loading...</p>}
             {!isLoading && (!items || items.length === 0) && (
-                <p style={{color: 'var(--text-muted)'}}>No streams added yet. Paste an M3U8 URL above to get started.</p>
+                <p style={{color: TEXT_MUTED}}>No streams added yet. Paste an M3U8 URL above to get started.</p>
             )}
             {!isLoading && items && items.length > 0 && (
                 <div className="admin-table-wrapper">
@@ -812,7 +814,7 @@ function ExtractorTab() {
                                             <span title={item.error_message} style={{marginLeft: 4, cursor: 'help', color: '#ef4444'}}>&#9888;</span>
                                         )}
                                     </td>
-                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{item.added_by || '—'}</td>
+                                    <td style={{fontSize: 12, color: TEXT_MUTED}}>{item.added_by || '—'}</td>
                                     <td>{new Date(item.created_at).toLocaleDateString()}</td>
                                     <td>
                                         <button
@@ -948,7 +950,7 @@ function CrawlerTab() {
     return (
         <div>
             <h3>Stream Crawler</h3>
-            <p style={{color: 'var(--text-muted)', marginBottom: 12}}>
+            <p style={{color: TEXT_MUTED, marginBottom: 12}}>
                 Crawl target site pages to discover M3U8 streams. Review discovered streams and approve them to add to the media library.
             </p>
 
@@ -989,9 +991,9 @@ function CrawlerTab() {
             </form>
 
             {/* Targets Table */}
-            {targetsLoading && <p style={{color: 'var(--text-muted)'}}>Loading...</p>}
+            {targetsLoading && <p style={{color: TEXT_MUTED}}>Loading...</p>}
             {!targetsLoading && (!targets || targets.length === 0) && (
-                <p style={{color: 'var(--text-muted)'}}>No crawl targets. Add a site URL above.</p>
+                <p style={{color: TEXT_MUTED}}>No crawl targets. Add a site URL above.</p>
             )}
             {!targetsLoading && targets && targets.length > 0 && (
                 <div className="admin-table-wrapper" style={{marginBottom: 24}}>
@@ -1001,7 +1003,7 @@ function CrawlerTab() {
                             {targets.map(t => (
                                 <tr key={t.id}>
                                     <td>{t.name}</td>
-                                    <td style={{fontSize: 12, color: 'var(--text-muted)'}}>{t.site || '—'}</td>
+                                    <td style={{fontSize: 12, color: TEXT_MUTED}}>{t.site || '—'}</td>
                                     <td style={{maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.85em'}}>{t.url}</td>
                                     <td>{t.enabled ? <span style={{color: '#22c55e'}}>Yes</span> : <span style={{color: '#ef4444'}}>No</span>}</td>
                                     <td>{t.last_crawled ? new Date(t.last_crawled).toLocaleString() : 'Never'}</td>
@@ -1043,9 +1045,9 @@ function CrawlerTab() {
                 </div>
             </div>
 
-            {discoveriesLoading && <p style={{color: 'var(--text-muted)'}}>Loading...</p>}
+            {discoveriesLoading && <p style={{color: TEXT_MUTED}}>Loading...</p>}
             {!discoveriesLoading && (!discoveries || discoveries.length === 0) && (
-                <p style={{color: 'var(--text-muted)'}}>
+                <p style={{color: TEXT_MUTED}}>
                     {reviewView === 'pending' ? 'No pending discoveries. Crawl a target to find streams.' : 'No discoveries yet.'}
                 </p>
             )}
@@ -1083,7 +1085,7 @@ function CrawlerTab() {
                                             </button>
                                         </>)}
                                         {d.status !== 'pending' && (
-                                            <span style={{color: 'var(--text-muted)', fontSize: 12}}>
+                                            <span style={{color: TEXT_MUTED, fontSize: 12}}>
                                                 {d.reviewed_by || '-'}
                                                 {d.reviewed_at && ` on ${new Date(d.reviewed_at).toLocaleDateString()}`}
                                             </span>
@@ -1132,7 +1134,7 @@ function DuplicatesTab() {
     function itemCard(item: DuplicateItem | null, label: string) {
         if (!item) {
             return (
-                <div style={{flex: 1, minWidth: 0, background: 'var(--input-bg)', borderRadius: 6, padding: '10px 14px', color: 'var(--text-muted)'}}>
+                <div style={{flex: 1, minWidth: 0, background: 'var(--input-bg)', borderRadius: 6, padding: '10px 14px', color: TEXT_MUTED}}>
                     <div style={{fontSize: 11, fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1}}>{label}</div>
                     <div style={{fontStyle: 'italic', fontSize: 13}}>(missing)</div>
                 </div>
@@ -1140,9 +1142,9 @@ function DuplicatesTab() {
         }
         return (
             <div style={{flex: 1, minWidth: 0, background: 'var(--input-bg)', borderRadius: 6, padding: '10px 14px'}}>
-                <div style={{fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1}}>{label}</div>
+                <div style={{fontSize: 11, fontWeight: 600, color: TEXT_MUTED, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1}}>{label}</div>
                 <div style={{fontWeight: 600, wordBreak: 'break-all', marginBottom: 4}}>{item.name}</div>
-                <div style={{fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '6px 16px'}}>
+                <div style={{fontSize: 12, color: TEXT_MUTED, display: 'flex', flexWrap: 'wrap', gap: '6px 16px'}}>
                     {item.source === 'receiver'
                         ? <span><i className="bi bi-hdd-network"/> Receiver {item.slave_id ? item.slave_id.slice(0, 12) + '…' : ''}</span>
                         : <span><i className="bi bi-hdd"/> Local</span>
@@ -1174,7 +1176,7 @@ function DuplicatesTab() {
     return (
         <div>
             <h2 style={{margin: '0 0 4px 0', fontSize: 20}}><i className="bi bi-copy"/> Duplicate Detection</h2>
-            <p style={{margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: 13}}>
+            <p style={{margin: '0 0 20px 0', color: TEXT_MUTED, fontSize: 13}}>
                 Local and receiver media items sharing the same content fingerprint (SHA-256 of sampled file content).
                 Choose how to handle each pair.
             </p>
@@ -1188,7 +1190,7 @@ function DuplicatesTab() {
             )}
 
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
-                <div style={{fontSize: 13, color: 'var(--text-muted)'}}>
+                <div style={{fontSize: 13, color: TEXT_MUTED}}>
                     {statusText}
                 </div>
                 <div style={{display: 'flex', gap: 8}}>
@@ -1203,7 +1205,7 @@ function DuplicatesTab() {
                 </div>
             </div>
 
-            {isLoading && <p style={{color: 'var(--text-muted)', fontSize: 13}}><i className="bi bi-hourglass-split"/> Checking for duplicates…</p>}
+            {isLoading && <p style={{color: TEXT_MUTED, fontSize: 13}}><i className="bi bi-hourglass-split"/> Checking for duplicates…</p>}
 
             {isError && (
                 <div className="admin-alert admin-alert-warning">
@@ -1212,7 +1214,7 @@ function DuplicatesTab() {
             )}
 
             {!isLoading && !isError && (!dupes || dupes.length === 0) && (
-                <div style={{textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)'}}>
+                <div style={{textAlign: 'center', padding: '40px 16px', color: TEXT_MUTED}}>
                     <i className="bi bi-check2-circle" style={{fontSize: 36, display: 'block', marginBottom: 8, color: '#10b981'}}/>
                     <p style={{margin: 0}}>{showAll ? 'No duplicate records found.' : 'No pending duplicates — all clear!'}</p>
                 </div>
@@ -1225,11 +1227,11 @@ function DuplicatesTab() {
                             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8}}>
                                 <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
                                     {statusBadge(dup.status)}
-                                    <span style={{fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace'}}>
+                                    <span style={{fontSize: 11, color: TEXT_MUTED, fontFamily: 'monospace'}}>
                                         fp: {dup.fingerprint.slice(0, 16)}…
                                     </span>
                                 </div>
-                                <span style={{fontSize: 11, color: 'var(--text-muted)'}}>
+                                <span style={{fontSize: 11, color: TEXT_MUTED}}>
                                     detected {new Date(dup.detected_at).toLocaleString()}
                                     {dup.resolved_by && ` · resolved by ${dup.resolved_by}`}
                                     {dup.resolved_at && ` on ${new Date(dup.resolved_at).toLocaleDateString()}`}
@@ -1238,7 +1240,7 @@ function DuplicatesTab() {
 
                             <div style={{display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap'}}>
                                 {itemCard(dup.item_a, 'Item A')}
-                                <div style={{display: 'flex', alignItems: 'center', flexShrink: 0, color: 'var(--text-muted)', fontSize: 20}}>
+                                <div style={{display: 'flex', alignItems: 'center', flexShrink: 0, color: TEXT_MUTED, fontSize: 20}}>
                                     <i className="bi bi-arrow-left-right"/>
                                 </div>
                                 {itemCard(dup.item_b, 'Item B')}
@@ -1267,7 +1269,7 @@ function DuplicatesTab() {
                                         <i className="bi bi-eye-slash"/> Ignore
                                     </button>
                                     {resolving === dup.id && (
-                                        <span style={{fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center'}}>
+                                        <span style={{fontSize: 12, color: TEXT_MUTED, alignSelf: 'center'}}>
                                             <i className="bi bi-hourglass-split"/> Working…
                                         </span>
                                     )}

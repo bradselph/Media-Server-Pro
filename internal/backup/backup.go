@@ -308,6 +308,16 @@ func (m *Module) saveManifest(manifest *Manifest) error {
 	return m.repo.Save(context.Background(), rec)
 }
 
+// resolveBackupPath validates that backupID does not escape backupDir via path
+// traversal and returns the resolved zip file path.
+func (m *Module) resolveBackupPath(backupID string) (string, error) {
+	backupPath := filepath.Join(m.backupDir, backupID+".zip")
+	if !pathWithinBase(pathScopeArgs{path: backupPath, base: m.backupDir}) {
+		return "", fmt.Errorf("invalid backup ID: %s", backupID)
+	}
+	return backupPath, nil
+}
+
 // RestoreBackup restores from a backup. All modules maintain in-memory caches
 // (auth users/sessions, media metadata, etc.) that are loaded at startup. After
 // the data files are overwritten by restore, those caches become stale. A server
@@ -316,7 +326,10 @@ func (m *Module) RestoreBackup(backupID string) error {
 	m.restoreMu.Lock()
 	defer m.restoreMu.Unlock()
 
-	backupPath := filepath.Join(m.backupDir, backupID+".zip")
+	backupPath, err := m.resolveBackupPath(backupID)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(backupPath); err != nil {
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
@@ -340,7 +353,10 @@ func (m *Module) RestoreBackup(backupID string) error {
 		return err
 	}
 
-	m.extractAllFiles(reader.File)
+	if err := m.extractAllFiles(reader.File); err != nil {
+		m.log.Warn("Partial restore from backup %s: %v", backupID, err)
+		return fmt.Errorf("partial restore: %w", err)
+	}
 
 	m.log.Info("Restored from backup: %s", backupID)
 	m.log.Warn("Restore complete — a server restart is required for all modules to reload their in-memory caches from the restored data files")
@@ -372,13 +388,20 @@ func (m *Module) validateBackupArchiveSize(files []*zip.File) error {
 	return nil
 }
 
-// extractAllFiles extracts all files from the zip archive.
-func (m *Module) extractAllFiles(files []*zip.File) {
+// extractAllFiles extracts all files from the zip archive. Returns an error if
+// any file failed to extract so that the caller can report a partial restore.
+func (m *Module) extractAllFiles(files []*zip.File) error {
+	var failed int
 	for _, file := range files {
 		if err := m.extractFile(file); err != nil {
 			m.log.Error("Failed to extract %s: %v", file.Name, err)
+			failed++
 		}
 	}
+	if failed > 0 {
+		return fmt.Errorf("%d file(s) failed to extract", failed)
+	}
+	return nil
 }
 
 // extractFile extracts a file from the zip
@@ -497,8 +520,10 @@ func (m *Module) DeleteBackup(backupID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Delete zip file
-	backupPath := filepath.Join(m.backupDir, backupID+".zip")
+	backupPath, err := m.resolveBackupPath(backupID)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}

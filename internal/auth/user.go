@@ -245,6 +245,11 @@ func (m *Module) applyUserUpdates(user *models.User, updates map[string]interfac
 		return err
 	}
 	m.applyPermissionsFromMap(user, updates["permissions"])
+	// Admin users must always retain full permissions regardless of explicit
+	// overrides in the request — re-enforce after all other mutations.
+	if user.Role == models.RoleAdmin {
+		user.Permissions = adminPermissions()
+	}
 	return nil
 }
 
