@@ -55,7 +55,7 @@ export function SignupPage() {
                 <h1>Create Account</h1>
                 <p className="auth-subtitle">Register for a new media server account</p>
 
-                {error && <div className="auth-error">{error}</div>}
+                {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
 
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">

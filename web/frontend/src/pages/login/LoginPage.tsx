@@ -67,7 +67,7 @@ function LoginForm({login, redirectTo, navigate}: LoginFormProps) {
 
     return (
         <>
-            {error ? <div className="auth-error">{error}</div> : null}
+            {error ? <div className="auth-error" role="alert" aria-live="assertive">{error}</div> : null}
             <form onSubmit={handleSubmit}>
                 <div className="form-group">
                     <label htmlFor="username">Username</label>
