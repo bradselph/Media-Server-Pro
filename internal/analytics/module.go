@@ -41,6 +41,7 @@ type Module struct {
 	cleanupTicker        *time.Ticker
 	done                 chan struct{}
 	stopOnce             sync.Once
+	bgWg                 sync.WaitGroup
 	maxEvents            int
 }
 
@@ -89,6 +90,7 @@ func (m *Module) Start(_ context.Context) error {
 	}
 	m.cleanupTicker = time.NewTicker(cfg.Analytics.CleanupInterval)
 
+	m.bgWg.Add(1)
 	go m.backgroundLoop()
 
 	m.healthMu.Lock()
@@ -108,6 +110,7 @@ func (m *Module) Stop(_ context.Context) error {
 			m.cleanupTicker.Stop()
 		}
 		close(m.done)
+		m.bgWg.Wait()
 	})
 
 	m.healthMu.Lock()
@@ -133,6 +136,7 @@ func (m *Module) Health() models.HealthStatus {
 
 // backgroundLoop handles periodic cleanup.
 func (m *Module) backgroundLoop() {
+	defer m.bgWg.Done()
 	for {
 		select {
 		case <-m.cleanupTicker.C:

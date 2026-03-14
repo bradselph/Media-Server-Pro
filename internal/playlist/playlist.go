@@ -499,20 +499,18 @@ func (m *Module) CopyPlaylist(ctx context.Context, sourceID PlaylistID, userID U
 		IsPublic:    false,
 	}
 
-	if err := m.playlistRepo.Create(ctx, newPlaylist); err != nil {
-		m.log.Error("Failed to create copied playlist in database: %v", err)
-		return nil, fmt.Errorf("failed to create playlist: %w", err)
-	}
-
+	// Prepare items with new IDs; create playlist + items in one transaction to avoid orphans.
+	newItems := make([]models.PlaylistItem, 0, len(items))
 	for _, item := range items {
 		item.PlaylistID = newPlaylist.ID
 		item.ID = uuid.New().String()
-		if err := m.playlistRepo.AddItem(ctx, &item); err != nil {
-			m.log.Error("Failed to add item to copied playlist in database: %v", err)
-			return nil, fmt.Errorf("failed to add item to copied playlist: %w", err)
-		}
-		newPlaylist.Items = append(newPlaylist.Items, item)
+		newItems = append(newItems, item)
 	}
+	if err := m.playlistRepo.CreateWithItems(ctx, newPlaylist, newItems); err != nil {
+		m.log.Error("Failed to create copied playlist in database: %v", err)
+		return nil, fmt.Errorf("failed to create playlist: %w", err)
+	}
+	newPlaylist.Items = newItems
 
 	m.playlists[PlaylistID(newPlaylist.ID)] = newPlaylist
 

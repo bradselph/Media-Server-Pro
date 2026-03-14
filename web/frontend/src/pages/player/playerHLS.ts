@@ -1,7 +1,7 @@
 /** HLS check, polling, and state. Extracted to reduce usePlayerPageState complexity. */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { RefObject } from 'react'
-import { hlsApi } from '@/api/endpoints'
+import { hlsApi, mediaApi } from '@/api/endpoints'
 import type { HLSJob } from '@/api/types'
 import { useHLS } from '@/hooks/useHLS'
 
@@ -10,6 +10,7 @@ export type HlsCheckSetters = {
     setHlsReadyUrl: (v: string | null) => void
     setHlsJob: (v: HLSJob | null) => void
     setHlsPolling: (v: boolean) => void
+    setActiveHlsUrl: (v: string | null) => void
 }
 
 function applyHlsCheckResult(
@@ -28,6 +29,7 @@ function applyHlsCheckResult(
     if (hls.available && hls.hls_url) {
         setters.setHlsAvailable(true)
         setters.setHlsReadyUrl(hls.hls_url)
+        setters.setActiveHlsUrl(hls.hls_url) // Auto-use HLS when already ready (no prompt)
         return
     }
     if (hls.job_id && hls.status === 'running') {
@@ -48,12 +50,21 @@ function useHlsCheckEffect(
     mediaId: string,
     media: { type: string } | undefined,
     hlsEnabled: boolean,
+    videoRef: RefObject<HTMLVideoElement | null>,
     setters: HlsCheckSetters,
 ) {
     useEffect(() => {
         if (!mediaId || media?.type !== 'video' || !hlsEnabled) return
-        hlsApi.check(mediaId).then((hls) => applyHlsCheckResult(hls, setters)).catch(() => {})
-    }, [mediaId, media, hlsEnabled, setters])
+        hlsApi.check(mediaId).then((hls) => {
+            applyHlsCheckResult(hls, setters)
+            // When HLS is not available (job running or error), set direct stream as fallback
+            if (!(hls.available && hls.hls_url) && videoRef.current) {
+                videoRef.current.src = mediaApi.getStreamUrl(mediaId)
+            }
+        }).catch(() => {
+            if (videoRef.current) videoRef.current.src = mediaApi.getStreamUrl(mediaId)
+        })
+    }, [mediaId, media, hlsEnabled, videoRef, setters])
 }
 
 function useHlsPollingEffect(
@@ -121,10 +132,11 @@ export function usePlayerHLS(
             setHlsReadyUrl,
             setHlsJob,
             setHlsPolling,
+            setActiveHlsUrl,
         }),
         [],
     )
-    useHlsCheckEffect(mediaId, media, hlsEnabled, hlsCheckSetters)
+    useHlsCheckEffect(mediaId, media, hlsEnabled, videoRef, hlsCheckSetters)
 
     const hlsPollingSetters = useMemo(
         () => ({

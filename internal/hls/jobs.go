@@ -12,6 +12,24 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+// copyHLSJob returns a deep copy of the job so callers cannot mutate shared state.
+func copyHLSJob(j *models.HLSJob) *models.HLSJob {
+	if j == nil {
+		return nil
+	}
+	c := *j
+	c.Qualities = append([]string(nil), j.Qualities...)
+	if j.CompletedAt != nil {
+		t := *j.CompletedAt
+		c.CompletedAt = &t
+	}
+	if j.LastAccessedAt != nil {
+		t := *j.LastAccessedAt
+		c.LastAccessedAt = &t
+	}
+	return &c
+}
+
 // createOrReuseHLSJobParams holds arguments for creating or reusing an HLS job.
 type createOrReuseHLSJobParams struct {
 	Ctx       context.Context
@@ -162,7 +180,7 @@ func (m *Module) updateJobStatus(params *updateJobStatusParams) {
 	}
 }
 
-// GetJobStatus returns the status of an HLS job
+// GetJobStatus returns a copy of the job status to avoid data races with the transcode goroutine.
 func (m *Module) GetJobStatus(jobID string) (*models.HLSJob, error) {
 	m.jobsMu.RLock()
 	defer m.jobsMu.RUnlock()
@@ -171,16 +189,16 @@ func (m *Module) GetJobStatus(jobID string) (*models.HLSJob, error) {
 	if !ok {
 		return nil, fmt.Errorf(errJobNotFoundFmt, jobID)
 	}
-	return job, nil
+	return copyHLSJob(job), nil
 }
 
-// GetJobByMediaPath returns job for a media file by its path.
+// GetJobByMediaPath returns a copy of the job for a media file by its path.
 func (m *Module) GetJobByMediaPath(mediaPath string) (*models.HLSJob, error) {
 	m.jobsMu.RLock()
 	defer m.jobsMu.RUnlock()
 	for _, job := range m.jobs {
 		if job.MediaPath == mediaPath {
-			return job, nil
+			return copyHLSJob(job), nil
 		}
 	}
 	return nil, fmt.Errorf("HLS job not found for path: %s", mediaPath)
@@ -200,14 +218,14 @@ func (m *Module) HasHLS(mediaPath string) bool {
 	return statErr == nil
 }
 
-// ListJobs returns all HLS jobs
+// ListJobs returns copies of all HLS jobs to avoid data races with transcode goroutines.
 func (m *Module) ListJobs() []*models.HLSJob {
 	m.jobsMu.RLock()
 	defer m.jobsMu.RUnlock()
 
 	jobs := make([]*models.HLSJob, 0, len(m.jobs))
 	for _, job := range m.jobs {
-		jobs = append(jobs, job)
+		jobs = append(jobs, copyHLSJob(job))
 	}
 	return jobs
 }

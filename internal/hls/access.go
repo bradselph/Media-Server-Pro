@@ -23,11 +23,9 @@ func (m *Module) RecordAccess(jobID string) {
 	job, exists := m.jobs[jobID]
 	if exists {
 		job.LastAccessedAt = &now
+		m.saveJob(job) // under lock to avoid data race with transcode goroutine
 	}
 	m.jobsMu.Unlock()
-	if exists {
-		m.saveJob(job)
-	}
 }
 
 // GetLastAccess returns the last access time for a job

@@ -56,7 +56,17 @@ export async function apiRequest<T>(
         return undefined as T
     }
 
-    const raw: ApiEnvelope<T> = await response.json()
+    const text = await response.text()
+    let raw: ApiEnvelope<T>
+    try {
+        raw = JSON.parse(text) as ApiEnvelope<T>
+    } catch {
+        const preview = text.slice(0, 100).replace(/\s+/g, ' ')
+        throw new ApiError(
+            `Invalid JSON (${response.status}): ${preview}${text.length > 100 ? '…' : ''}`,
+            response.status,
+        )
+    }
 
     // Unwrap Go backend envelope
     if (raw && typeof raw === 'object' && raw.success !== undefined) {

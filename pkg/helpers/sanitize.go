@@ -8,10 +8,10 @@ import (
 // SanitizeString sanitizes a string for safe storage and HTML rendering
 // by escaping HTML entities and removing potentially dangerous characters
 func SanitizeString(s string) string {
+	// Remove null bytes first (before escape) to avoid corruption with adjacent HTML-escape chars
+	s = strings.ReplaceAll(s, "\x00", "")
 	// Escape HTML entities to prevent XSS
 	s = html.EscapeString(s)
-	// Remove null bytes which can cause issues in storage
-	s = strings.ReplaceAll(s, "\x00", "")
 	return s
 }
 

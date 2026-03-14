@@ -80,12 +80,14 @@ function usePlayerSyncEffects(
     }, [mediaId, currentPlaylist, currentIndex, setCurrentIndex])
 }
 
-/** Runs media source setup (src, resume, analytics). Called from effect in main hook. */
+/** Runs media source setup (src, resume, analytics). Called from effect in main hook.
+ * For video with hlsEnabled, defers src to HLS check effect (HLS priority, direct as fallback). */
 function runMediaSourceSetup(
     mediaId: string,
     media: { id: string; type: string; is_mature?: boolean },
     videoRef: RefObject<HTMLVideoElement | null>,
     audioRef: RefObject<HTMLAudioElement | null>,
+    hlsEnabled: boolean,
     user: { preferences?: { resume_playback?: boolean } } | null,
     volume: number,
     isLooping: boolean,
@@ -120,7 +122,11 @@ function runMediaSourceSetup(
         setters.setUserRating(0)
     })
 
-    el.src = mediaApi.getStreamUrl(mediaId)
+    // Video with HLS: defer src to HLS check (HLS priority; check sets direct if not ready)
+    const useHlsForVideo = media.type === 'video' && hlsEnabled
+    if (!useHlsForVideo) {
+        el.src = mediaApi.getStreamUrl(mediaId)
+    }
     el.volume = volume
     el.loop = isLooping
     el.playbackRate = playbackRate
@@ -610,6 +616,7 @@ function usePlayerEffects(
     videoRef: RefObject<HTMLVideoElement | null>,
     audioRef: RefObject<HTMLAudioElement | null>,
     activeHlsUrl: string | null,
+    hlsEnabled: boolean,
     user: { preferences?: { resume_playback?: boolean; playback_speed?: number } } | null,
     volume: number,
     isLooping: boolean,
@@ -655,6 +662,7 @@ function usePlayerEffects(
             mediaWithId,
             videoRef,
             audioRef,
+            hlsEnabled,
             user,
             volume,
             isLooping,
@@ -673,15 +681,17 @@ function usePlayerEffects(
             },
             resumePositionRef,
         )
-    }, [mediaId, media, matureAccessGranted]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [mediaId, media, matureAccessGranted, hlsEnabled]) // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Fallback: set direct src when not using HLS. For video+hlsEnabled, HLS check effect handles src.
     useEffect(() => {
         if (activeHlsUrl !== null || !mediaId || !media || (media.is_mature && !matureAccessGranted))
             return
+        if (media.type === 'video' && hlsEnabled) return
         const el = media.type === 'video' ? videoRef.current : audioRef.current
         if (!el || (el.src && el.src !== '' && el.src !== window.location.href)) return
         el.src = mediaApi.getStreamUrl(mediaId)
-    }, [activeHlsUrl, mediaId, media, matureAccessGranted, videoRef, audioRef])
+    }, [activeHlsUrl, mediaId, media, matureAccessGranted, hlsEnabled, videoRef, audioRef])
 
     useEffect(
         () => () => {
@@ -1015,6 +1025,7 @@ function usePlayerMediaHlsAndEffects(opts: {
         state.videoRef,
         state.audioRef,
         activeHlsUrl,
+        hlsEnabled,
         user,
         state.volume,
         state.isLooping,

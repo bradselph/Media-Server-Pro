@@ -118,8 +118,9 @@ type Module struct {
 	healthMu     sync.RWMutex
 	healthy      bool
 	healthMsg    string
-	healthTicker *time.Ticker
-	healthDone   chan struct{}
+	healthTicker  *time.Ticker
+	healthDone    chan struct{}
+	healthDoneOnce sync.Once // guards close(healthDone) to avoid double-close panic
 	// WebSocket connections from slaves (keyed by slave ID).
 	wsMu           sync.RWMutex
 	wsConns        map[string]*slaveWS
@@ -197,8 +198,8 @@ func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping receiver module...")
 	if m.healthTicker != nil {
 		m.healthTicker.Stop()
-		close(m.healthDone)
 	}
+	m.healthDoneOnce.Do(func() { close(m.healthDone) })
 	// Close all WebSocket connections so slaves stop heartbeating and reconnect on next Start.
 	m.wsMu.Lock()
 	for _, sw := range m.wsConns {

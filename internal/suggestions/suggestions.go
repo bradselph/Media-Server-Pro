@@ -219,14 +219,20 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 				m.saveOneProfile(bgCtx, profile)
 			}
 
-			// Now remove from the in-memory map.
+			// Re-check LastUpdated under write lock before evicting (TOCTOU: profile may have been updated).
 			if len(toEvict) > 0 {
 				m.mu.Lock()
+				actuallyEvicted := 0
 				for _, profile := range toEvict {
-					delete(m.profiles, profile.UserID)
+					if p, ok := m.profiles[profile.UserID]; ok && p.LastUpdated.Before(cutoff) {
+						delete(m.profiles, profile.UserID)
+						actuallyEvicted++
+					}
 				}
 				m.mu.Unlock()
-				m.log.Info("Evicted %d stale user profiles (inactive > %v)", len(toEvict), profileEvictAfter)
+				if actuallyEvicted > 0 {
+					m.log.Info("Evicted %d stale user profiles (inactive > %v)", actuallyEvicted, profileEvictAfter)
+				}
 			}
 		}
 	}

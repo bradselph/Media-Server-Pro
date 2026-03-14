@@ -389,8 +389,10 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 
 		case <-ctx.Done():
 			streamCancel()
+			writeMu.Lock()
 			_ = conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "shutdown"))
+			writeMu.Unlock()
 			wg.Wait()
 			return nil
 		}
@@ -985,13 +987,13 @@ func scanMediaDirs(dirs []string) []catalogItem {
 	return items
 }
 
-// classifyFile returns "video" or "audio" by extension (keep in sync with master's discovery.go).
+// classifyFile returns "video" or "audio" by extension (must match internal/media/discovery.go).
 func classifyFile(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
-	case ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".flv", ".m4v", ".ts", ".mpg", ".mpeg":
+	case ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".flv", ".m4v", ".ts", ".mpg", ".mpeg", ".3gp", ".m2ts", ".vob", ".ogv":
 		return "video"
-	case ".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a", ".wma", ".opus", ".alac":
+	case ".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a", ".wma", ".opus", ".alac", ".aiff", ".ape", ".mka":
 		return "audio"
 	default:
 		return ""

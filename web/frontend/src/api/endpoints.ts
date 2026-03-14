@@ -644,8 +644,8 @@ export const adminApi = {
     listMedia: (params?: AdminMediaListParams) => {
         const sp = new URLSearchParams()
         if (params) {
-            if (params.page !== null) sp.set('page', String(params.page))
-            if (params.limit !== null) sp.set('limit', String(params.limit))
+            if (params.page != null) sp.set('page', String(params.page))
+            if (params.limit != null) sp.set('limit', String(params.limit))
             const str = (v: string | undefined) => (typeof v === 'string' ? v.trim() : '') || undefined
             const setStr = (key: string, v: string | undefined) => {
                 const val = str(v)

@@ -57,8 +57,9 @@ type Module struct {
 	healthMsg     string
 	healthMu      sync.RWMutex
 	cacheDir      string
-	cleanupTicker *time.Ticker
-	cleanupDone   chan struct{}
+	cleanupTicker   *time.Ticker
+	cleanupDone     chan struct{}
+	cleanupDoneOnce sync.Once
 	ffmpegPath    string
 	ffprobePath   string
 	accessTracker *AccessTracker
@@ -199,7 +200,7 @@ func (m *Module) Stop(ctx context.Context) error {
 
 	if m.cleanupTicker != nil {
 		m.cleanupTicker.Stop()
-		close(m.cleanupDone)
+		m.cleanupDoneOnce.Do(func() { close(m.cleanupDone) })
 	}
 
 	m.jobsMu.Lock()

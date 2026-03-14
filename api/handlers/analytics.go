@@ -292,11 +292,19 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 		return
 	}
 
-	defer os.Remove(filename)
+	f, openErr := os.Open(filename)
+	if openErr != nil {
+		os.Remove(filename)
+		h.log.Error("%v", openErr)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	defer func() { f.Close(); os.Remove(filename) }()
 
+	fi, _ := f.Stat()
 	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))
 	c.Header(headerContentType, "text/csv")
-	http.ServeFile(c.Writer, c.Request, filename)
+	http.ServeContent(c.Writer, c.Request, fi.Name(), fi.ModTime(), f)
 }
 
 // pathBase is a local helper to get the base name of a path (avoids import of path/filepath in this file).

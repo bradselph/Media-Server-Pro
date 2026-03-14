@@ -287,8 +287,10 @@ func (s *Server) Start() error {
 	ctx := context.Background()
 	cfg := s.config.Get()
 
-	// Start all modules with timeout; critical module failures are fatal
+	// Start all modules with timeout; critical module failures are fatal.
+	// On critical failure, stop already-started modules to avoid leaking connections/goroutines.
 	s.log.Info("Starting %d modules...", len(s.modules))
+	var started []Module
 	for _, module := range s.modules {
 		s.log.Info("Starting module: %s", module.Name())
 		startCtx, startCancel := context.WithTimeout(ctx, 30*time.Second)
@@ -300,10 +302,19 @@ func (s *Server) Start() error {
 			s.log.Error("Failed to start module %s: %v", module.Name(), err)
 
 			if CriticalModules[module.Name()] {
+				s.log.Info("Stopping %d already-started modules...", len(started))
+				for i := len(started) - 1; i >= 0; i-- {
+					stopCtx, stopCancel := context.WithTimeout(ctx, 15*time.Second)
+					if stopErr := started[i].Stop(stopCtx); stopErr != nil {
+						s.log.Warn("Failed to stop module %s during rollback: %v", started[i].Name(), stopErr)
+					}
+					stopCancel()
+				}
 				return fmt.Errorf("critical module %s failed to start: %w", module.Name(), err)
 			}
 			s.log.Warn("Module %s will be unavailable", module.Name())
 		} else {
+			started = append(started, module)
 			s.healthReport.Report(module.Name(), true, nil, "Started successfully")
 			s.log.Info("Module %s started successfully", module.Name())
 		}

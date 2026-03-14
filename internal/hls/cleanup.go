@@ -79,15 +79,21 @@ func (m *Module) shouldCleanupSegmentDir(entry os.DirEntry, job *models.HLSJob, 
 
 // removeSegmentDirAndState deletes the segment directory, its in-memory state,
 // and the persisted DB record. Returns true if removed successfully.
+// Re-checks under write lock to avoid TOCTOU: job could have started between RLock and removal.
 func (m *Module) removeSegmentDirAndState(jobID string) bool {
+	m.jobsMu.Lock()
+	job, exists := m.jobs[jobID]
+	if isJobRunningOrPending(job, exists) {
+		m.jobsMu.Unlock()
+		return false
+	}
 	path := filepath.Join(m.cacheDir, jobID)
+	delete(m.jobs, jobID)
+	m.jobsMu.Unlock()
 	if err := os.RemoveAll(path); err != nil {
 		m.log.Warn("Failed to remove HLS directory %s: %v", path, err)
 		return false
 	}
-	m.jobsMu.Lock()
-	delete(m.jobs, jobID)
-	m.jobsMu.Unlock()
 	m.accessTracker.mu.Lock()
 	delete(m.accessTracker.lastAccess, jobID)
 	m.accessTracker.mu.Unlock()

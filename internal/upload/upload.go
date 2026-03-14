@@ -71,6 +71,8 @@ type Module struct {
 	healthMsg     string
 	healthMu      sync.RWMutex
 	uploadDir     string
+	done          chan struct{}
+	doneOnce      sync.Once
 }
 
 // Progress tracks upload progress.
@@ -127,6 +129,7 @@ func NewModule(cfg *config.Manager) *Module {
 		log:           logger.New("upload"),
 		activeUploads: make(map[UploadID]*Progress),
 		uploadDir:     cfg.Get().Directories.Uploads,
+		done:          make(chan struct{}),
 	}
 }
 
@@ -160,6 +163,7 @@ func (m *Module) Start(_ context.Context) error {
 // Stop gracefully stops the module
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping upload module...")
+	m.doneOnce.Do(func() { close(m.done) })
 	m.healthMu.Lock()
 	m.healthy = false
 	m.healthMsg = "Stopped"
@@ -311,13 +315,18 @@ func (m *Module) registerUploadProgress(params ProgressRegistration) *Progress {
 	return progress
 }
 
-// scheduleUnregisterUpload removes the upload from activeUploads after the given duration (goroutine not cancelled on shutdown).
+// scheduleUnregisterUpload removes the upload from activeUploads after the given duration.
+// Exits on shutdown so goroutines don't leak.
 func (m *Module) scheduleUnregisterUpload(uploadID UploadID, after time.Duration) {
 	go func() {
-		time.Sleep(after)
-		m.mu.Lock()
-		delete(m.activeUploads, uploadID)
-		m.mu.Unlock()
+		select {
+		case <-time.After(after):
+			m.mu.Lock()
+			delete(m.activeUploads, uploadID)
+			m.mu.Unlock()
+		case <-m.done:
+			return
+		}
 	}()
 }
 
