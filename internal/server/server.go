@@ -486,16 +486,6 @@ func (s *Server) Wait() {
 	<-s.shutdownCh
 }
 
-// handleHealth returns overall server health (not registered; /health is in api/routes).
-func (s *Server) handleHealth(c *gin.Context) {
-	health := s.GetHealth()
-	status := http.StatusOK
-	if !health.Healthy {
-		status = http.StatusServiceUnavailable
-	}
-	c.JSON(status, health)
-}
-
 // handleStatus returns server status
 func (s *Server) handleStatus(c *gin.Context) {
 	s.mu.RLock()
@@ -545,25 +535,3 @@ func (s *Server) handleModuleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: health})
 }
 
-// GetHealth returns overall system health (used by handleHealth; actual /health is in handlers).
-func (s *Server) GetHealth() models.SystemHealth {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	statuses := make([]models.HealthStatus, 0, len(s.modules))
-	healthy := true
-
-	for _, m := range s.modules {
-		status := m.Health()
-		statuses = append(statuses, status)
-		if status.Status != models.StatusHealthy {
-			healthy = false
-		}
-	}
-
-	return models.SystemHealth{
-		Healthy:    healthy,
-		Components: statuses,
-		CheckedAt:  time.Now(),
-	}
-}
