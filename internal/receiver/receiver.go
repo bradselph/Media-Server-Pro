@@ -331,6 +331,13 @@ func (m *Module) RegisterSlave(req *RegisterRequest) (*SlaveNode, error) {
 		return nil, fmt.Errorf("name and base_url are required")
 	}
 
+	if req.BaseURL != "ws-connected" {
+		u, err := url.Parse(req.BaseURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, fmt.Errorf("base_url must be a valid http(s) URL")
+		}
+	}
+
 	slaveID := req.SlaveID
 	if slaveID == "" {
 		slaveID = uuid.New().String()
