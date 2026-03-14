@@ -212,14 +212,7 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 	return true
 }
 
-// RecordDuplicatesFromSlave compares newly-pushed slave items against the full
-// receiver catalog and persists any new fingerprint collisions.  It is safe to
-// call in a background goroutine.
-// TODO: Performance — loads the ENTIRE receiver_media table into memory on every call
-// via receiverRepo.ListAll(). For large catalogs (thousands of media items across many
-// slaves), this is expensive. Should use a targeted query that only fetches records
-// matching the fingerprints of the incoming items, or maintain an in-memory fingerprint
-// index that is incrementally updated.
+// RecordDuplicatesFromSlave compares newly-pushed slave items against the full receiver catalog (loads all receiver_media).
 func (m *Module) RecordDuplicatesFromSlave(slaveID string, items []ReceiverItemRef) {
 	if !m.enabled() || m.receiverRepo == nil {
 		return
@@ -325,12 +318,7 @@ func (m *Module) processFingerprintGroup(ctx context.Context, fp string, group [
 	}
 }
 
-// ScanLocalMedia queries media_metadata for fingerprint collisions among local
-// files and persists any new pairs.  Intended to be run as a background task.
-// TODO: Performance — same issue as RecordDuplicatesFromSlave: loads the entire
-// media_metadata table into memory. For large libraries this is wasteful. Should
-// use a SQL GROUP BY content_fingerprint HAVING COUNT(*) > 1 query to find only
-// the collisions, avoiding loading non-duplicate records.
+// ScanLocalMedia finds fingerprint collisions in media_metadata and persists pairs (loads full table).
 func (m *Module) ScanLocalMedia(ctx context.Context) error {
 	if !m.enabled() || m.metaRepo == nil {
 		return nil
@@ -487,11 +475,7 @@ func (m *Module) removeLocalItem(ctx context.Context, itemID string) {
 	m.deleteLocalFileAndMetadata(ctx, path)
 }
 
-// findLocalPathByStableID returns the file path for the given stable ID, or ("", nil) if not found.
-// TODO: Performance — loads the ENTIRE media_metadata table just to find one record by
-// stable_id. There is an index (idx_stable_id) on this column in the schema, so a simple
-// SQL query WHERE stable_id = ? would be O(1) instead of O(n). Should add a
-// GetByStableID method to the MediaMetadataRepository interface.
+// findLocalPathByStableID returns the file path for the given stable ID (scans full metadata list).
 func (m *Module) findLocalPathByStableID(ctx context.Context, itemID string) (string, error) {
 	all, err := m.metaRepo.List(ctx)
 	if err != nil {
