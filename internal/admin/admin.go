@@ -315,10 +315,9 @@ func (m *Module) DeleteBackup(id string) error {
 	for _, backup := range m.backups {
 		if backup.ID == id {
 			found = true
-			// Delete file
 			path := filepath.Join(m.backupDir, backup.Filename)
-			if err := os.Remove(path); err != nil {
-				m.log.Warn("Failed to remove backup file %s: %v", path, err)
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("failed to remove backup file %s: %w", path, err)
 			}
 		} else {
 			newBackups = append(newBackups, backup)
