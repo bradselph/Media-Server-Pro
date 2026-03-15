@@ -310,15 +310,17 @@ func TestAgeGateSecure(t *testing.T) {
 		t.Error("plain HTTP should not be secure")
 	}
 
-	// X-Forwarded-Proto
+	// X-Forwarded-Proto — must come from a trusted proxy IP
 	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("X-Forwarded-Proto", "https")
 	if !ageGateSecure(req) {
 		t.Error("X-Forwarded-Proto: https should be secure")
 	}
 
-	// Cloudflare
+	// Cloudflare — must come from a trusted proxy IP
 	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("Cf-Visitor", `{"scheme":"https"}`)
 	if !ageGateSecure(req) {
 		t.Error("Cf-Visitor with https should be secure")
