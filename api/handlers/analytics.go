@@ -192,6 +192,10 @@ func (h *Handler) GetEventStats(c *gin.Context) {
 // GetEventsByType returns events filtered by type
 func (h *Handler) GetEventsByType(c *gin.Context) {
 	eventType := c.Query("type")
+	if eventType == "" {
+		writeError(c, http.StatusBadRequest, "type parameter required")
+		return
+	}
 	limit := 100
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 1000 {
 		limit = l

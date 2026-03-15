@@ -123,7 +123,7 @@ func (h *Handler) ClassifyFile(c *gin.Context) {
 	tags, err := h.scanner.ClassifyMatureContent(c.Request.Context(), absPath)
 	if err != nil {
 		h.log.Warn("ClassifyFile failed for %s: %v", absPath, err)
-		writeError(c, http.StatusInternalServerError, err.Error())
+		writeError(c, http.StatusInternalServerError, "Classification failed")
 		return
 	}
 	if len(tags) > 0 {

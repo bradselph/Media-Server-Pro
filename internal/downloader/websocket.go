@@ -90,7 +90,12 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		"type":     "connected",
 		"clientId": clientID,
 	})
-	adminConn.WriteMessage(websocket.TextMessage, connectedMsg)
+	if err := adminConn.WriteMessage(websocket.TextMessage, connectedMsg); err != nil {
+		log.Warn("Failed to send connected message to admin: %v", err)
+		dlConn.Close()
+		adminConn.Close()
+		return
+	}
 
 	log.Info("WS proxy established (clientId: %s)", clientID)
 

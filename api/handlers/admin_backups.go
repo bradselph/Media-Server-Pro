@@ -3,11 +3,15 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/backup"
 )
+
+// validBackupID matches alphanumeric strings, hyphens, and underscores (UUID-safe).
+var validBackupID = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // ListBackupsV2 lists backups using the backup module
 func (h *Handler) ListBackupsV2(c *gin.Context) {
@@ -61,6 +65,10 @@ func (h *Handler) RestoreBackup(c *gin.Context) {
 		return
 	}
 	backupID := c.Param("id")
+	if !validBackupID.MatchString(backupID) {
+		writeError(c, http.StatusBadRequest, "Invalid backup ID format")
+		return
+	}
 
 	if err := h.backup.RestoreBackup(backupID); err != nil {
 		h.log.Error("%v", err)
@@ -77,6 +85,10 @@ func (h *Handler) DeleteBackup(c *gin.Context) {
 		return
 	}
 	backupID := c.Param("id")
+	if !validBackupID.MatchString(backupID) {
+		writeError(c, http.StatusBadRequest, "Invalid backup ID format")
+		return
+	}
 
 	if err := h.backup.DeleteBackup(backupID); err != nil {
 		h.log.Error("%v", err)

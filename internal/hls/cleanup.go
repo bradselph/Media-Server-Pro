@@ -185,15 +185,22 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 		return false
 	}
 
+	// Re-check under write lock to avoid TOCTOU: job could have started between RLock and removal.
+	// This matches the pattern used in removeSegmentDirAndState.
+	m.jobsMu.Lock()
+	job, exists = m.jobs[jobID]
+	if isJobRunningOrPending(job, exists) {
+		m.jobsMu.Unlock()
+		return false
+	}
+	delete(m.jobs, jobID)
+	m.jobsMu.Unlock()
+
 	path := filepath.Join(m.cacheDir, jobID)
 	if err := os.RemoveAll(path); err != nil {
 		m.log.Warn("Failed to remove inactive HLS job %s: %v", jobID, err)
 		return false
 	}
-
-	m.jobsMu.Lock()
-	delete(m.jobs, jobID)
-	m.jobsMu.Unlock()
 
 	m.accessTracker.mu.Lock()
 	delete(m.accessTracker.lastAccess, jobID)
