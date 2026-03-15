@@ -15,6 +15,7 @@ import (
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/security"
+	"media-server-pro/internal/server"
 	"media-server-pro/pkg/middleware"
 	"media-server-pro/pkg/models"
 	"media-server-pro/web"
@@ -189,7 +190,8 @@ func hashFNV1a(data []byte) string {
 
 // Setup configures all routes on the gin engine.
 // securityModule.GinMiddleware() is defined in internal/security/security.go.
-func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, securityModule *security.Module, cfg *config.Manager, ageGate *middleware.AgeGate) {
+func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *auth.Module, securityModule *security.Module, cfg *config.Manager, ageGate *middleware.AgeGate) {
+	// srv may be nil in tests; status/modules routes are skipped when nil
 	log := logger.New("routes")
 
 	// Request ID for tracing
@@ -282,6 +284,13 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	// API routes group (/api)
 	// -----------------------------------------------------------------------
 	api := r.Group("/api")
+
+	// Admin-only status/modules (prevent fingerprinting and info leakage)
+	if srv != nil {
+		api.GET("/status", adminAuth(authModule), srv.HandleStatus)
+		api.GET("/modules", adminAuth(authModule), srv.HandleModules)
+		api.GET("/modules/:name/health", adminAuth(authModule), srv.HandleModuleHealth)
+	}
 
 	// Version — public, no auth (index page footer)
 	api.GET("/version", h.GetVersion)

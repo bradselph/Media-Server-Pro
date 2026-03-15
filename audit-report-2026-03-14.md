@@ -95,25 +95,25 @@ TOTAL REMAINING:                               60
 - **Impact:** Unlimited concurrent connections from unauthenticated users (DoS vector)
 - **Fix applied:** Added `Streaming.RequireAuth` and `Streaming.UnauthStreamLimit`; IP-based tracking via `ip:` prefix; `TrackProxyStream` for receiver media
 
-### P0-4 [SECURITY] Chrome launched with --disable-web-security
+### P0-4 [SECURITY] Chrome launched with --disable-web-security — ✅ FIXED
 - **File:** `internal/crawler/browser.go:114-128`
 - **Impact:** Malicious JS on target page can access local network
-- **Fix:** Add `--proxy-server` or `--host-resolver-rules` to block private IPs
+- **Fix applied:** Added `--host-resolver-rules` to map RFC1918 ranges (10/8, 172.16/12, 192.168/16) to 0.0.0.0
 
 ### P0-6 [SECURITY] GitHub credentials visible in process environment
 - **File:** `internal/updater/updater.go:940-941`
 - **Impact:** Any local user can read GitHub token from `/proc/<pid>/environ`
 - **Fix:** Use `GIT_ASKPASS` or credential helper
 
-### P0-7 [SECURITY] Default admin password printed to stderr
+### P0-7 [SECURITY] Default admin password printed to stderr — ✅ FIXED
 - **File:** `internal/auth/bootstrap.go:35`
 - **Impact:** Password persists in systemd journal/container logs
-- **Fix:** Write to file with 0600 permissions or require interactive setup
+- **Fix applied:** Write to `{data_dir}/admin-initial-password.txt` with 0600; log path only
 
-### P0-9 [SECURITY] /api/status and /api/modules unauthenticated
+### P0-9 [SECURITY] /api/status and /api/modules unauthenticated — ✅ FIXED
 - **File:** `internal/server/server.go:236-238`
 - **Impact:** Attacker can fingerprint server; health messages may leak DB info
-- **Fix:** Put behind `adminAuth()` or sanitize responses
+- **Fix applied:** Routes moved to routes.Setup with `adminAuth()` middleware
 
 ---
 

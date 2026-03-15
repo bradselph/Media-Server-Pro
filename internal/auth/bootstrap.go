@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -32,8 +33,21 @@ func (m *Module) ensureDefaultAdmin() error {
 		}); err != nil {
 			return fmt.Errorf("failed to update admin password: %w", err)
 		}
-		_, _ = fmt.Fprintf(os.Stderr, "\n*** Default admin password (change immediately): %s ***\n\n", defaultPassword)
-		m.log.Warn("Created default admin with a generated password - check stderr output. PLEASE CHANGE THIS IMMEDIATELY")
+		// Write to file with 0600 to avoid password in systemd journal/container logs
+		dataDir := cfg.Directories.Data
+		if dataDir == "" {
+			dataDir = "data"
+		}
+		if err := os.MkdirAll(dataDir, 0700); err != nil {
+			m.log.Warn("Cannot create data dir for password file: %v", err)
+		} else {
+			path := filepath.Join(dataDir, "admin-initial-password.txt")
+			if err := os.WriteFile(path, []byte(defaultPassword+"\n"), 0600); err != nil {
+				m.log.Warn("Cannot write admin password file: %v", err)
+			} else {
+				m.log.Warn("Default admin password written to %s (chmod 0600) - PLEASE CHANGE IMMEDIATELY", path)
+			}
+		}
 	}
 	return m.ensureAdminUserRecord()
 }
