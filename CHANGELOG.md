@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.101.0] - 2026-03-15 (minor)
+
+- Merge pull request #100 from bradselph/development
+- feat: add downloader integration with configuration and API endpoints
+- Audit: P2-52 video src after HLS check; P2-50 export via fetchBlob/ApiError
+- audit: fix P2-53, P2-33, P2-51; update report
+- audit: fix P2-54, P2-47, P1-36 (user); update report
+- audit: fix P1-20, P2-44; update report
+- audit: fix P1-33, P1-36 (playlist), P2-43; update report
+- audit: fix P1-34, P1-35, P1-40, P1-47, P1-31, P2-34, P2-56; update report
+- fix: enhance validation and security measures across components
+- fix: enhance security and validation in various components
+- Update audit-report-2026-03-14.md
+
+
 ## [0.100.0] - 2026-03-15 (minor)
 
 - Merge pull request #99 from bradselph/development
