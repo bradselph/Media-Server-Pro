@@ -82,6 +82,13 @@ import type {
     CrawlTarget,
     CrawlerDiscovery,
     CrawlerStats,
+    DownloaderHealth,
+    DownloaderDetectResult,
+    DownloaderDownloadResult,
+    DownloaderDownloadFile,
+    DownloaderSettings,
+    ImportableFile,
+    ImportResult,
 } from './types'
 
 // ── Version (public, for index footer) ──
@@ -928,4 +935,43 @@ export const receiverApi = {
 
     getMedia: (id: string) =>
         api.get<ReceiverMediaItem>(`/api/receiver/media/${encodeURIComponent(id)}`),
+}
+
+// ── Downloader (admin only — proxies to external downloader service) ──────
+export const downloaderApi = {
+    getHealth: () =>
+        api.get<DownloaderHealth>('/api/admin/downloader/health'),
+
+    detect: (url: string) =>
+        api.post<DownloaderDetectResult>('/api/admin/downloader/detect', {url}),
+
+    download: (params: {
+        url: string
+        title?: string
+        clientId: string
+        isYouTube?: boolean
+        isYouTubeMusic?: boolean
+        relayId?: string
+    }) =>
+        api.post<DownloaderDownloadResult>('/api/admin/downloader/download', params),
+
+    cancel: (id: string) =>
+        api.post<{status: string}>(`/api/admin/downloader/cancel/${encodeURIComponent(id)}`),
+
+    listDownloads: () =>
+        api.get<DownloaderDownloadFile[]>('/api/admin/downloader/downloads'),
+
+    deleteDownload: (filename: string) =>
+        api.delete<{status: string}>(`/api/admin/downloader/downloads/${encodeURIComponent(filename)}`),
+
+    getSettings: () =>
+        api.get<DownloaderSettings>('/api/admin/downloader/settings'),
+
+    listImportable: () =>
+        api.get<ImportableFile[]>('/api/admin/downloader/importable'),
+
+    importFile: (filename: string, deleteSource: boolean, triggerScan: boolean) =>
+        api.post<ImportResult>('/api/admin/downloader/import', {
+            filename, delete_source: deleteSource, trigger_scan: triggerScan,
+        }),
 }

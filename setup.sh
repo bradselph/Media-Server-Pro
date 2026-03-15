@@ -226,6 +226,15 @@ EOF
   prompt_yn FEAT_RECEIVER    "Receiver (accept slave nodes)?"   "n"
   prompt_yn FEAT_REMOTE      "Remote media proxy?"              "n"
   prompt_yn FEAT_HUGGINGFACE "Hugging Face visual classification (mature content tagging)?" "n"
+  prompt_yn FEAT_DOWNLOADER "Downloader integration (download media from URLs)?" "n"
+
+  DOWNLOADER_URL=""
+  DOWNLOADER_DOWNLOADS_DIR=""
+  if [[ "$FEAT_DOWNLOADER" == "true" ]]; then
+    prompt DOWNLOADER_URL "Downloader service URL" "http://localhost:4000"
+    prompt DOWNLOADER_DOWNLOADS_DIR "Downloader downloads directory (absolute path on VPS)"
+    success "Downloader integration will be enabled"
+  fi
 
   HUGGINGFACE_API_KEY=""
   if [[ "$FEAT_HUGGINGFACE" == "true" ]]; then
@@ -408,6 +417,15 @@ FEATURE_AUTO_DISCOVERY=true
 FEATURE_DUPLICATE_DETECTION=true
 FEATURE_EXTRACTOR=false
 FEATURE_CRAWLER=false
+FEATURE_DOWNLOADER=$FEAT_DOWNLOADER
+
+# ── Downloader ────────────────────────────────────────────────
+DOWNLOADER_ENABLED=$FEAT_DOWNLOADER
+DOWNLOADER_URL=$DOWNLOADER_URL
+DOWNLOADER_DOWNLOADS_DIR=$DOWNLOADER_DOWNLOADS_DIR
+DOWNLOADER_IMPORT_DIR=
+DOWNLOADER_HEALTH_INTERVAL_SECONDS=30
+DOWNLOADER_REQUEST_TIMEOUT_SECONDS=30
 
 # ── Updater ───────────────────────────────────────────────────
 UPDATER_GITHUB_TOKEN=

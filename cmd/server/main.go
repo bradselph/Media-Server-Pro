@@ -21,6 +21,7 @@ import (
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/hls"
@@ -254,6 +255,11 @@ func main() {
 	receiverModule.SetDuplicatesModule(duplicatesModule)
 	mustRegister(srv, receiverModule)
 
+	// Downloader (non-critical — proxy to external downloader service, gated by feature flag)
+	downloaderModule := downloader.NewModule(cfg)
+	downloaderModule.SetMediaModule(mediaModule)
+	mustRegister(srv, downloaderModule)
+
 	// Extractor (non-critical — requires database for item persistence)
 	extractorModule := extractor.NewModule(cfg, dbModule)
 	mustRegister(srv, extractorModule)
@@ -300,6 +306,7 @@ func main() {
 			Duplicates:    duplicatesModule,
 			Analytics:     analyticsModule,
 			Playlist:      playlistModule,
+			Downloader:    downloaderModule,
 		},
 	})
 

@@ -245,6 +245,7 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enableSuggestions":        cfg.Features.EnableSuggestions,
 			"enableAutoDiscovery":      cfg.Features.EnableAutoDiscovery,
 			"enableDuplicateDetection": cfg.Features.EnableDuplicateDetection,
+			"enableDownloader":         cfg.Features.EnableDownloader,
 		},
 		"uploads": map[string]interface{}{
 			"enabled":     cfg.Uploads.Enabled,

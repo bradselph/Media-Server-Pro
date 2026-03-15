@@ -10,6 +10,7 @@ import {AnalyticsTab} from './AnalyticsTab'
 import {SourcesTab} from './SourcesTab'
 import {SystemTab} from './SystemTab'
 import {PlaylistsTab} from './PlaylistsTab'
+import {DownloaderTab} from './DownloaderTab'
 import '@/styles/admin.css'
 
 type Tab =
@@ -19,9 +20,10 @@ type Tab =
     | 'analytics'
     | 'sources'
     | 'playlists'
+    | 'downloader'
     | 'system'
 
-const VALID_TABS: Tab[] = ['dashboard', 'users', 'media', 'analytics', 'sources', 'playlists', 'system']
+const VALID_TABS: Tab[] = ['dashboard', 'users', 'media', 'analytics', 'sources', 'playlists', 'downloader', 'system']
 
 export function AdminPage() {
     const navigate = useNavigate()
@@ -42,8 +44,9 @@ export function AdminPage() {
         ...(features?.enableAnalytics !== false ? [{id: 'analytics' as Tab, label: 'Analytics', icon: 'bi-bar-chart-fill'}] : []),
         {id: 'sources' as Tab, label: 'Sources', icon: 'bi-cloud-arrow-down-fill'},
         ...(features?.enablePlaylists !== false ? [{id: 'playlists' as Tab, label: 'Playlists', icon: 'bi-collection-fill'}] : []),
+        ...(features?.enableDownloader ? [{id: 'downloader' as Tab, label: 'Downloader', icon: 'bi-cloud-arrow-down'}] : []),
         {id: 'system' as Tab, label: 'System', icon: 'bi-gear-fill'},
-    ], [features?.enableAnalytics, features?.enablePlaylists])
+    ], [features?.enableAnalytics, features?.enablePlaylists, features?.enableDownloader])
 
     useEffect(() => {
         if (!tabs.some(t => t.id === activeTab)) {
@@ -98,6 +101,7 @@ export function AdminPage() {
                     {activeTab === 'analytics' && <AnalyticsTab/>}
                     {activeTab === 'sources' && <SourcesTab/>}
                     {activeTab === 'playlists' && <PlaylistsTab/>}
+                    {activeTab === 'downloader' && <DownloaderTab/>}
                     {activeTab === 'system' && <SystemTab/>}
                 </SectionErrorBoundary>
             </div>

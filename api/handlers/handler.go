@@ -25,6 +25,7 @@ import (
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/hls"
@@ -108,6 +109,7 @@ type HandlerOptionalDeps struct {
 	Duplicates    *duplicates.Module
 	Analytics     *analytics.Module
 	Playlist      *playlist.Module
+	Downloader    *downloader.Module
 }
 
 // HandlerDeps holds all module dependencies needed to create a Handler.
@@ -146,6 +148,7 @@ type Handler struct {
 	extractor     *extractor.Module
 	crawler       *crawler.Module
 	duplicates    *duplicates.Module
+	downloader    *downloader.Module
 	config        *config.Manager
 }
 
@@ -186,6 +189,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		extractor:     o.Extractor,
 		crawler:       o.Crawler,
 		duplicates:    o.Duplicates,
+		downloader:    o.Downloader,
 	}
 }
 

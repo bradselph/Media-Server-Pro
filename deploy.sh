@@ -827,6 +827,28 @@ if $FIX_ENV; then
       echo \"  [IMPORTANT] New receiver API key written — give it to your slave nodes\"
     fi
 
+    # Downloader integration (proxy to standalone downloader service)
+    # Only adds defaults if not already configured — never overrides existing values.
+    echo '  [downloader integration]'
+    if ! grep -q '^FEATURE_DOWNLOADER=' \"\$ENV\" 2>/dev/null; then
+      echo 'FEATURE_DOWNLOADER=false' >> \"\$ENV\"
+      echo '  FEATURE_DOWNLOADER=false (set to true to enable downloader tab)'
+    fi
+    if ! grep -q '^DOWNLOADER_ENABLED=' \"\$ENV\" 2>/dev/null; then
+      echo 'DOWNLOADER_ENABLED=false' >> \"\$ENV\"
+    fi
+    if ! grep -q '^DOWNLOADER_URL=' \"\$ENV\" 2>/dev/null; then
+      echo 'DOWNLOADER_URL=http://localhost:4000' >> \"\$ENV\"
+      echo '  DOWNLOADER_URL=http://localhost:4000 (default — change if downloader runs on different port)'
+    fi
+    if ! grep -q '^DOWNLOADER_DOWNLOADS_DIR=' \"\$ENV\" 2>/dev/null; then
+      echo 'DOWNLOADER_DOWNLOADS_DIR=' >> \"\$ENV\"
+      echo '  DOWNLOADER_DOWNLOADS_DIR= (set to downloader downloads path to enable file import)'
+    fi
+    if ! grep -q '^DOWNLOADER_IMPORT_DIR=' \"\$ENV\" 2>/dev/null; then
+      echo 'DOWNLOADER_IMPORT_DIR=' >> \"\$ENV\"
+    fi
+
     # Hugging Face visual classification (mature content tagging)
     echo '  [Hugging Face classification]'
     patch_or_add HUGGINGFACE_ENABLED false

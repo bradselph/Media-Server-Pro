@@ -41,6 +41,7 @@ func DefaultConfig() *Config {
 		Updater:       UpdaterConfig{Branch: "main", UpdateMethod: "source"},
 		AgeGate:       defaultAgeGateConfig(),
 		UI:            UIConfig{ItemsPerPage: 48, MobileItemsPerPage: 24, MobileGridColumns: 2},
+		Downloader:    defaultDownloaderConfig(),
 	}
 }
 
@@ -282,6 +283,18 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableCrawler:            false,
 		EnableDuplicateDetection: true,
 		EnableHuggingFace:        false,
+		EnableDownloader:         false,
+	}
+}
+
+func defaultDownloaderConfig() DownloaderConfig {
+	return DownloaderConfig{
+		Enabled:        false,
+		URL:            "http://localhost:3000",
+		DownloadsDir:   "",
+		ImportDir:      "",
+		HealthInterval: 30 * time.Second,
+		RequestTimeout: 30 * time.Second,
 	}
 }
 

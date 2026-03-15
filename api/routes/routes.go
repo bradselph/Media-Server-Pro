@@ -280,6 +280,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Receiver WebSocket — middleware enforces valid X-API-Key or api_key before upgrade.
 	r.GET("/ws/receiver", h.RequireReceiverWithAPIKey(), h.ReceiverWebSocket)
 
+	// Downloader WebSocket proxy — admin only (session + admin auth applied before upgrade)
+	r.GET("/ws/admin/downloader", adminAuth(authModule), h.AdminDownloaderWebSocket)
+
+	// Downloader verify — the downloader calls this to verify admin identity before allowing server storage
+	r.GET("/api/admin/downloader/verify", adminAuth(authModule), h.AdminDownloaderVerify)
+
 	// -----------------------------------------------------------------------
 	// API routes group (/api)
 	// -----------------------------------------------------------------------
@@ -576,6 +582,17 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.DELETE("/receiver/slaves/:id", h.AdminReceiverRemoveSlave)
 	adminGrp.GET("/duplicates", h.AdminListDuplicates)
 	adminGrp.POST("/duplicates/:id/resolve", h.AdminResolveDuplicate)
+
+	// Downloader routes (admin)
+	adminGrp.GET("/downloader/health", h.AdminDownloaderHealth)
+	adminGrp.POST("/downloader/detect", h.AdminDownloaderDetect)
+	adminGrp.POST("/downloader/download", h.AdminDownloaderDownload)
+	adminGrp.POST("/downloader/cancel/:id", h.AdminDownloaderCancel)
+	adminGrp.GET("/downloader/downloads", h.AdminDownloaderListDownloads)
+	adminGrp.DELETE("/downloader/downloads/:filename", h.AdminDownloaderDeleteDownload)
+	adminGrp.GET("/downloader/settings", h.AdminDownloaderSettings)
+	adminGrp.GET("/downloader/importable", h.AdminDownloaderImportable)
+	adminGrp.POST("/downloader/import", h.AdminDownloaderImport)
 
 	// Admin media management routes
 	adminGrp.GET(pathMedia, h.AdminListMedia)

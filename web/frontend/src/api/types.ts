@@ -342,6 +342,7 @@ export interface ServerSettings {
         enableSuggestions: boolean
         enableAutoDiscovery: boolean
         enableDuplicateDetection: boolean
+        enableDownloader: boolean
     }
     uploads: {
         enabled: boolean
@@ -1023,4 +1024,83 @@ export interface CrawlerStats {
     total_discoveries: number
     pending_discoveries: number
     crawling: boolean
+}
+
+// ── Downloader ──
+
+export interface DownloaderHealth {
+    online: boolean
+    activeDownloads?: number
+    queuedDownloads?: number
+    uptime?: number
+    dependencies?: Record<string, string>
+    error?: string
+}
+
+export interface DownloaderStreamInfo {
+    url: string
+    quality: string
+    type: string
+    size?: number
+    format?: string
+    resolution?: string
+    bitrate?: number
+    label?: string
+}
+
+export interface DownloaderDetectResult {
+    url: string
+    title: string
+    isYouTube: boolean
+    isYouTubeMusic: boolean
+    streams: DownloaderStreamInfo[]
+    relayId?: string
+}
+
+export interface DownloaderDownloadResult {
+    downloadId: string
+    status: string
+    message?: string
+}
+
+export interface DownloaderDownloadFile {
+    filename: string
+    size: number
+    created: number
+    url?: string
+}
+
+export interface DownloaderSettings {
+    maxConcurrent: number
+    downloadsDir: string
+    allowServerStorage: boolean
+    audioFormat: string
+    audioQuality: string
+    videoFormat: string
+    proxy: { enabled: boolean }
+    supportedSites: string[]
+}
+
+export interface ImportableFile {
+    name: string
+    size: number
+    modified: number
+    isAudio: boolean
+}
+
+export interface ImportResult {
+    source: string
+    destination: string
+    scanTriggered: boolean
+}
+
+export interface DownloaderProgress {
+    downloadId: string
+    status: 'downloading' | 'converting' | 'complete' | 'error' | 'cancelled'
+    progress: number
+    speed?: string
+    eta?: string
+    filename?: string
+    error?: string
+    title?: string
 }
