@@ -388,16 +388,22 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                 </table>
             </div>
 
-            {health?.online && health.dependencies && (
+            {health?.online && health.dependencies && Object.keys(health.dependencies).length > 0 && (
                 <>
                     <h4 style={{marginBottom: '8px'}}>Dependencies</h4>
                     <div className="admin-card" style={{marginBottom: '16px'}}>
                         <table className="admin-kv-table">
                             <tbody>
-                            {Object.entries(health.dependencies).map(([name, version]) => (
+                            {Object.entries(health.dependencies).map(([name, val]) => (
                                 <tr key={name}>
                                     <td>{name}</td>
-                                    <td>{version}</td>
+                                    <td>
+                                        {typeof val === 'string'
+                                            ? val
+                                            : val && typeof val === 'object' && 'version' in val
+                                                ? String((val as { version?: string }).version ?? '—')
+                                                : '—'}
+                                    </td>
                                 </tr>
                             ))}
                             </tbody>
@@ -414,11 +420,11 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                             <tbody>
                             <tr>
                                 <td>Max Concurrent</td>
-                                <td>{settings.maxConcurrent}</td>
+                                <td>{settings.maxConcurrent ?? '—'}</td>
                             </tr>
                             <tr>
                                 <td>Audio Format</td>
-                                <td>{settings.audioFormat}</td>
+                                <td>{settings.audioFormat ?? '—'}</td>
                             </tr>
                             <tr>
                                 <td>Server Storage</td>
@@ -432,7 +438,7 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                         </table>
                     </div>
 
-                    {settings.supportedSites?.length > 0 && (
+                    {(settings.supportedSites?.length ?? 0) > 0 && (
                         <>
                             <h4 style={{marginBottom: '8px'}}>Supported Sites</h4>
                             <div className="admin-card">

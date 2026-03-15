@@ -35,7 +35,15 @@ func (h *Handler) AdminDownloaderHealth(c *gin.Context) {
 			result["activeDownloads"] = health.ActiveDownloads
 			result["queuedDownloads"] = health.QueuedDownloads
 			result["uptime"] = health.Uptime
-			result["dependencies"] = health.Dependencies
+			// Frontend expects dependencies as Record<string, string> (name -> version)
+			deps := make(map[string]string)
+			if health.Dependencies.YtDlp != nil && health.Dependencies.YtDlp.Available {
+				deps["yt-dlp"] = health.Dependencies.YtDlp.Version
+			}
+			if health.Dependencies.FFmpeg != nil && health.Dependencies.FFmpeg.Available {
+				deps["ffmpeg"] = health.Dependencies.FFmpeg.Version
+			}
+			result["dependencies"] = deps
 		}
 	}
 
@@ -74,7 +82,23 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 		return
 	}
 
-	writeSuccess(c, result)
+	// Map to frontend shape: url (page or stream), streams (allStreams or single stream)
+	streams := result.AllStreams
+	if len(streams) == 0 && result.Stream != nil {
+		streams = []downloader.StreamInfo{*result.Stream}
+	}
+	pageURL := result.PageURL
+	if pageURL == "" && result.Stream != nil {
+		pageURL = result.Stream.URL
+	}
+	writeSuccess(c, map[string]interface{}{
+		"url":          pageURL,
+		"title":        result.Title,
+		"isYouTube":    result.IsYouTube,
+		"isYouTubeMusic": result.IsYouTubeMusic,
+		"streams":      streams,
+		"relayId":      result.RelayID,
+	})
 }
 
 // AdminDownloaderDownload starts a download on the downloader service.
@@ -158,13 +182,23 @@ func (h *Handler) AdminDownloaderListDownloads(c *gin.Context) {
 		return
 	}
 
-	result, err := h.downloader.GetClient().ListDownloads()
+	resp, err := h.downloader.GetClient().ListDownloads()
 	if err != nil {
 		writeError(c, http.StatusBadGateway, "Failed to list downloads: "+err.Error())
 		return
 	}
 
-	writeSuccess(c, result)
+	// Map to frontend shape: filename, size, created (unix), url
+	files := make([]map[string]interface{}, 0, len(resp.Downloads))
+	for _, f := range resp.Downloads {
+		files = append(files, map[string]interface{}{
+			"filename": f.File,
+			"size":     f.Size,
+			"created":  f.Timestamp,
+			"url":      f.DownloadURL,
+		})
+	}
+	writeSuccess(c, files)
 }
 
 // AdminDownloaderDeleteDownload removes a file from the downloader's storage.
@@ -201,13 +235,22 @@ func (h *Handler) AdminDownloaderSettings(c *gin.Context) {
 		return
 	}
 
-	result, err := h.downloader.GetClient().GetSettings()
+	resp, err := h.downloader.GetClient().GetSettings()
 	if err != nil {
 		writeError(c, http.StatusBadGateway, "Failed to get settings: "+err.Error())
 		return
 	}
 
-	writeSuccess(c, result)
+	// Map to frontend shape; downloader service may not expose all fields
+	out := map[string]interface{}{
+		"allowServerStorage": resp.AllowServerStorage,
+		"audioFormat":        resp.AudioFormat,
+		"supportedSites":    resp.SupportedSites,
+	}
+	if resp.SupportedSites == nil {
+		out["supportedSites"] = []string{}
+	}
+	writeSuccess(c, out)
 }
 
 // AdminDownloaderImportable lists files ready to import from the downloader.
