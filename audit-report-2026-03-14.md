@@ -5,11 +5,11 @@
 **Commit:** ddfac05
 **Last verified:** 2026-03-14
 **Re-verified & reprioritized:** 2026-03-14 (48 fixes code-verified, 4 newly confirmed, remaining issues promoted)
-**Updated:** 2026-03-15 — Additional fixes: P1-34, P1-35, P1-40, P2-34
+**Updated:** 2026-03-15 — Additional fixes: P1-33, P1-36 (playlist), P2-43
 
 ---
 
-## FIXED ITEMS (68 total — 48 code-verified 2026-03-14, 20 fixed 2026-03-15)
+## FIXED ITEMS (71 total — 48 code-verified 2026-03-14, 23 fixed 2026-03-15)
 
 <details>
 <summary>Click to expand verified fixes</summary>
@@ -96,6 +96,9 @@
 | P1-35 | Session Update only persists LastActivity | ✅ Fixed 2026-03-15 — session_repository_gorm.go: Update persists all updatable fields |
 | P2-34 | HLS error "use admin panel to reset" but no API | ✅ Fixed 2026-03-15 — jobs.go: removed misleading reset wording from error message |
 | P1-40 | analytics mediaStats/mediaViewers grow without bound | ✅ Fixed 2026-03-15 — cleanup.go: evictExcessMediaStats cap 100K, evict by oldest LastViewed |
+| P1-33 | Playlist Save() cascades to Items | ✅ Fixed 2026-03-15 — playlist_repository.go: Update uses Updates() for metadata only |
+| P1-36 | Delete methods don't check RowsAffected | ✅ Fixed 2026-03-15 — playlist_repository.go: Delete returns ErrPlaylistNotFound when 0 rows |
+| P2-43 | saveCacheIndex errors logged but not returned | ✅ Fixed 2026-03-15 — remote.go: saveCacheIndex returns error; Stop logs it |
 
 </details>
 
@@ -110,11 +113,11 @@ the largest promotions.
 ### Priority counts:
 ```
 P0 — CRITICAL (security / crash / data loss):   1  (9 fixed 2026-03-15)
-P1 — HIGH (user-facing bugs / fragile):        15  (7 fixed 2026-03-15)
-P2 — MEDIUM (tech debt / time bombs):          15  (2 fixed 2026-03-15)
+P1 — HIGH (user-facing bugs / fragile):        14  (8 fixed 2026-03-15)
+P2 — MEDIUM (tech debt / time bombs):          14  (3 fixed 2026-03-15)
 P3 — LOW (cleanup / style):                     3
 ────────────────────────────────────────────────
-TOTAL REMAINING:                                32
+TOTAL REMAINING:                                29
 ```
 
 ---
@@ -128,7 +131,7 @@ TOTAL REMAINING:                                32
 
 ---
 
-## P1 — HIGH: Will cause user-facing bugs or crashes (15 remaining)
+## P1 — HIGH: Will cause user-facing bugs or crashes (14 remaining)
 
 ### P1-9 [FRAGILE] RestartServer skips graceful shutdown — ⚠️ PARTIAL FIX
 - **File:** `api/handlers/admin_lifecycle.go:29-60`
@@ -160,13 +163,8 @@ TOTAL REMAINING:                                32
 - **Impact:** Full table scan on every media list query. Performance degrades linearly with media count
 - **Fix:** Use indexed column filtering or pre-computed columns; move regex to application layer
 
-### P1-33 Playlist Save() cascades to Items *(was P2-20)*
-- **File:** `internal/repositories/mysql/playlist_repository.go:56-58`
-- **Impact:** GORM `Save()` on playlist cascades to all items — any concurrent item modification could be overwritten
-- **Fix:** Use targeted `Updates()` for playlist metadata only
-
 ### P1-36 Delete methods don't check RowsAffected *(was P2-24)*
-- **File:** Multiple repositories
+- **File:** Multiple repositories (playlist fixed)
 - **Impact:** Delete of non-existent item returns success — callers can't distinguish "deleted" from "was already gone"
 - **Fix:** Check `RowsAffected` and return appropriate error or sentinel
 
@@ -197,14 +195,13 @@ TOTAL REMAINING:                                32
 
 ---
 
-## P2 — MEDIUM: Tech debt / time bombs (15 remaining)
+## P2 — MEDIUM: Tech debt / time bombs (14 remaining)
 
 ### Code Quality
 - **P2-31** `internal/scanner/mature.go:521-552` — Custom keywords use substring matching (false positives on partial word matches)
 - **P2-33** `internal/hls/locks.go:60-61` — 30-minute stale lock threshold too short for large file transcodes
 
 ### Module-Level
-- **P2-43** `internal/remote/remote.go:799-818` — saveCacheIndex errors logged but not returned
 - **P2-44** `internal/suggestions/suggestions.go:938-957` — loadProfiles silently ignores view history load errors
 - **P2-46** `internal/crawler/browser.go:157-158` — Events channel drops on overflow (missed CDP events)
 - **P2-47** `internal/crawler/browser.go:231-233` — send() ignores errors from domain enable calls
@@ -251,4 +248,4 @@ TOTAL REMAINING:                                32
 *4 items confirmed fixed since last report (P1-23, P1-24, P2-25, P2-45)*
 *P0-4 downgraded to partial fix (loopback/link-local gaps)*
 *Remaining issues promoted: 8 P2→P0, 14 P2→P1, 2 P3→P2, 8 P3 closed*
-*2026-03-15: P0-4..18, P0-15; P1-31,34,35,39,40,43,44,46,47; P2-34,56 fixed; 1 P0 and 32 total remaining*
+*2026-03-15: P0-4..18, P0-15; P1-31,33,34,35,36(playlist),39,40,43,44,46,47; P2-34,43,56 fixed; 1 P0 and 29 total remaining*

@@ -211,8 +211,10 @@ func (m *Module) Stop(_ context.Context) error {
 	}
 	m.syncDoneOnce.Do(func() { close(m.syncDone) })
 
-	// Save cache index
-	m.saveCacheIndex()
+	// Save cache index (log but do not fail stop)
+	if err := m.saveCacheIndex(); err != nil {
+		m.log.Warn("Save cache index during stop: %v", err)
+	}
 
 	m.healthMu.Lock()
 	m.healthy = false
@@ -802,7 +804,9 @@ func (m *Module) loadCacheIndex() {
 	}
 }
 
-func (m *Module) saveCacheIndex() {
+// saveCacheIndex persists the in-memory cache index to the repository.
+// Returns the first error encountered so callers can handle persistence failures.
+func (m *Module) saveCacheIndex() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -819,8 +823,10 @@ func (m *Module) saveCacheIndex() {
 		}
 		if err := m.repo.Save(ctx, rec); err != nil {
 			m.log.Warn("Failed to save cache entry: %v", err)
+			return err
 		}
 	}
+	return nil
 }
 
 // cacheEntry pairs a URL key with its cached media for sorting.
