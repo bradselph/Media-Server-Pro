@@ -202,6 +202,15 @@
 .ctrl-progress-container:hover {
     height: 8px;
 }
+
+.ctrl-progress-container:focus {
+    outline: 2px solid rgba(102, 126, 234, 0.9);
+    outline-offset: 2px;
+}
+
+.ctrl-progress-container:focus:not(:focus-visible) {
+    outline: none;
+}
 .ctrl-buffer-bar {
     position: absolute;
     top: 0;

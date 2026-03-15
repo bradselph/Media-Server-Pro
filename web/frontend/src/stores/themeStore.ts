@@ -48,6 +48,20 @@ export const useThemeStore = create<ThemeState>()(
     ),
 )
 
-// Apply theme from persisted storage on initial load (before async rehydration)
-const initialTheme = useThemeStore.getState().theme
-applyTheme(initialTheme)
+// Apply theme from persisted storage on initial load so the first paint matches
+// the user's last choice. Zustand persist rehydrates async, so we read localStorage
+// synchronously to avoid a flash of default (dark) before rehydration applies stored theme.
+const PERSIST_KEY = 'media-server-theme'
+function getInitialTheme(): Theme {
+    try {
+        const raw = localStorage.getItem(PERSIST_KEY)
+        if (!raw) return 'dark'
+        const parsed = JSON.parse(raw) as { state?: { theme?: string } }
+        const t = parsed?.state?.theme
+        if (t === 'light' || t === 'dark' || t === 'auto') return t as Theme
+    } catch {
+        /* ignore */
+    }
+    return 'dark'
+}
+applyTheme(getInitialTheme())

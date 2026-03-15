@@ -850,7 +850,11 @@ export function ProfilePage() {
     const p = useProfilePage()
 
     if (!p.user) {
-        return <div className="loading-screen">Loading...</div>
+        return (
+            <div className="loading-screen" role="status" aria-live="polite" aria-busy="true">
+                Loading...
+            </div>
+        )
     }
 
     return (
@@ -860,7 +864,7 @@ export function ProfilePage() {
                     <h1>User Profile</h1>
                     <p className="profile-subtitle">Manage your account settings and preferences</p>
                 </div>
-                <Link to="/" className="back-link">Back to Library</Link>
+                <Link to="/" className="back-link"><i className="bi bi-arrow-left" aria-hidden /> Back to Library</Link>
             </div>
 
             {p.matureRedirect && (
