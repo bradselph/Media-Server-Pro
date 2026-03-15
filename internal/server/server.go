@@ -443,10 +443,10 @@ func (s *Server) Shutdown() {
 
 	s.log.Info("Server shutdown complete")
 
-	// Flush and close log files to ensure all shutdown logs are persisted
-	logger.Shutdown()
-
+	// Close shutdownCh before logger.Shutdown() so waiters can run (and log) before logger closes
 	close(s.shutdownCh)
+
+	logger.Shutdown()
 }
 
 func (s *Server) shutdownHTTPServer(ctx context.Context) {

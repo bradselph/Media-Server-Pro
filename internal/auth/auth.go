@@ -195,15 +195,7 @@ func (m *Module) ensureDefaultAdminWithHealth(_ context.Context) error {
 // startCleanupLoop starts the background session cleanup ticker and goroutine.
 func (m *Module) startCleanupLoop() {
 	m.cleanupTicker = time.NewTicker(5 * time.Minute)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				m.log.Error("Session cleanup loop panic recovered: %v", r)
-				m.setHealth(false, fmt.Sprintf("Cleanup loop panicked: %v", r))
-			}
-		}()
-		m.cleanupLoop()
-	}()
+	go m.cleanupLoop()
 }
 
 // Stop gracefully stops the module
@@ -237,12 +229,21 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// cleanupLoop periodically cleans up expired sessions
+// cleanupLoop periodically cleans up expired sessions.
+// Recover on panic so one failure does not stop cleanup forever.
 func (m *Module) cleanupLoop() {
 	for {
 		select {
 		case <-m.cleanupTicker.C:
-			m.cleanupExpiredSessions()
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						m.log.Error("Session cleanup panic recovered, continuing: %v", r)
+						m.setHealth(false, fmt.Sprintf("Cleanup panicked: %v", r))
+					}
+				}()
+				m.cleanupExpiredSessions()
+			}()
 		case <-m.cleanupDone:
 			return
 		}

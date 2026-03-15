@@ -125,10 +125,11 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 		return nil, nil, ErrAccountDisabled
 	}
 	session.LastActivity = time.Now()
-	// Persist LastActivity in background so request latency is not increased
-	go func(s *models.Session) {
-		_ = m.sessionRepo.Update(context.Background(), s)
-	}(session)
+	// Persist LastActivity in background; pass copy to avoid data race with callers
+	sessionCopy := *session
+	go func() {
+		_ = m.sessionRepo.Update(context.Background(), &sessionCopy)
+	}()
 	return session, user, nil
 }
 

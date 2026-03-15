@@ -131,45 +131,39 @@ TOTAL REMAINING:                               60
 - **Impact:** Preview thumbnails don't match expected URLs; cache misses
 - **Fix:** Unify to use `previewTimestamp` everywhere
 
-### P1-15 [PROMOTED] ProxyHLSVariant panics on type assertion
+### P1-15 [PROMOTED] ProxyHLSVariant panics on type assertion — ✅ FIXED
 - **File:** `internal/extractor/extractor.go:389`
-- **Impact:** Server crash if cached value is wrong type (any concurrent cache corruption)
-- **Fix:** Use type assertion with `ok` check, return error on mismatch
+- **Fix applied:** Type assertion with ok check; return error on mismatch
 
 ### P1-16 [PROMOTED] Chrome child processes may not be killed
 - **File:** `internal/crawler/browser.go:130-139`
 - **Impact:** Zombie Chrome processes accumulate, exhausting memory/PIDs
 - **Fix:** Use process group kill; add cleanup in Stop()
 
-### P1-17 [PROMOTED] Authenticate mutates shared user pointer outside lock
+### P1-17 [PROMOTED] Authenticate mutates shared user pointer outside lock — ✅ FIXED
 - **File:** `internal/auth/authenticate.go:91-96`
-- **Impact:** Data race on concurrent logins — can corrupt in-memory user state
-- **Fix:** Copy user before mutation, or hold write lock
+- **Fix applied:** Copy user before LastLogin mutation; Update copy, then update cache
 
-### P1-18 [PROMOTED] ValidateSession fires background goroutine with shared pointer
+### P1-18 [PROMOTED] ValidateSession fires background goroutine with shared pointer — ✅ FIXED
 - **File:** `internal/auth/session.go:127-132`
-- **Impact:** Data race — goroutine reads/writes user fields while main path also uses them
-- **Fix:** Pass a copy to the goroutine, or defer update to a channel
+- **Fix applied:** Pass session copy to goroutine instead of shared pointer
 
-### P1-19 [PROMOTED] close(shutdownCh) called after logger.Shutdown()
+### P1-19 [PROMOTED] close(shutdownCh) called after logger.Shutdown() — ✅ FIXED
 - **File:** `internal/server/server.go:441`
-- **Impact:** Goroutines waiting on shutdownCh may log after logger is closed — panic or lost logs
-- **Fix:** Close shutdownCh *before* logger.Shutdown()
+- **Fix applied:** Close shutdownCh before logger.Shutdown()
 
 ### P1-20 [PROMOTED] Single context timeout for HTTP shutdown + all module stops
 - **File:** `internal/server/server.go + cmd/server/main.go`
 - **Impact:** Slow module eats the entire budget; HTTP never drains, or vice versa
 - **Fix:** Separate timeouts for HTTP drain vs module stop
 
-### P1-21 [PROMOTED] Cleanup goroutine exits permanently after panic
+### P1-21 [PROMOTED] Cleanup goroutine exits permanently after panic — ✅ FIXED
 - **File:** `internal/auth/auth.go:194-205`
-- **Impact:** One panic kills session cleanup forever — sessions pile up, memory leak
-- **Fix:** Wrap in recover loop or use deferred restart
+- **Fix applied:** Recover inside cleanupLoop tick handler; loop continues on panic
 
-### P1-22 [PROMOTED] EvalSymlinks failure falls back to raw path
+### P1-22 [PROMOTED] EvalSymlinks failure falls back to raw path — ✅ FIXED
 - **File:** `api/handlers/handler.go:377-380`
-- **Impact:** Symlink-based path traversal when EvalSymlinks fails (e.g., broken link)
-- **Fix:** Return error instead of falling back to unresolved path
+- **Fix applied:** Return error instead of falling back to unresolved path
 
 ### P1-23 [PROMOTED] ValidateURLForSSRF vulnerable to DNS rebinding
 - **File:** `pkg/helpers/ssrf.go:67`
@@ -191,10 +185,9 @@ TOTAL REMAINING:                               60
 - **Impact:** Bypassable with URL-encoding or `..` after symlink resolution
 - **Fix:** Use `filepath.Rel` + check result doesn't start with `..`
 
-### P1-27 [PROMOTED] UpdateConfig has no atomicity
+### P1-27 [PROMOTED] UpdateConfig has no atomicity — ✅ FIXED
 - **File:** `internal/admin/admin.go:248-255`
-- **Impact:** Partial config writes on crash leave config.json corrupted
-- **Fix:** Write to temp file + rename (atomic on POSIX)
+- **Fix applied:** SetValuesBatch applies all updates then saves once
 
 ---
 

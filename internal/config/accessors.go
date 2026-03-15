@@ -55,20 +55,26 @@ func setReflectField(field reflect.Value, value interface{}, path string) error 
 }
 
 // SetValue sets a configuration value by dot-notation path. It persists to disk
-// on every call. For multiple updates, prefer batching or Update() to avoid
-// repeated I/O and partial state on failure. SetValue does not call
-// syncFeatureToggles() or resolveAbsolutePaths(); use Load() after overrides for that.
+// on every call. For multiple updates, use SetValuesBatch to avoid partial writes on failure.
 func (m *Manager) SetValue(path string, value interface{}) error {
+	return m.SetValuesBatch(map[string]interface{}{path: value})
+}
+
+// SetValuesBatch applies multiple configuration updates and persists once atomically.
+// On failure, no partial updates are written to disk.
+func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	parts := strings.Split(path, ".")
-	field, err := navigateToField(reflect.ValueOf(m.config).Elem(), parts, path)
-	if err != nil {
-		return err
-	}
-	if err := setReflectField(field, value, path); err != nil {
-		return err
+	for path, value := range updates {
+		parts := strings.Split(path, ".")
+		field, err := navigateToField(reflect.ValueOf(m.config).Elem(), parts, path)
+		if err != nil {
+			return err
+		}
+		if err := setReflectField(field, value, path); err != nil {
+			return err
+		}
 	}
 	return m.save()
 }

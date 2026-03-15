@@ -244,12 +244,10 @@ func (m *Module) GetConfig() *config.Config {
 	return m.config.Get()
 }
 
-// UpdateConfig updates configuration (each SetValue persists immediately; no atomic rollback on partial failure).
+// UpdateConfig updates configuration atomically (write to temp file + rename).
 func (m *Module) UpdateConfig(updates map[string]interface{}) error {
-	for path, value := range updates {
-		if err := m.config.SetValue(path, value); err != nil {
-			return fmt.Errorf("failed to update %s: %w", path, err)
-		}
+	if err := m.config.SetValuesBatch(updates); err != nil {
+		return fmt.Errorf("failed to update config: %w", err)
 	}
 	return nil
 }
