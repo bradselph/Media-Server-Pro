@@ -443,7 +443,7 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                             <h4 style={{marginBottom: '8px'}}>Supported Sites</h4>
                             <div className="admin-card">
                                 <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px'}}>
-                                    {settings.supportedSites.map(site => (
+                                    {(settings.supportedSites ?? []).map(site => (
                                         <span key={site} style={{
                                             padding: '2px 8px', borderRadius: '4px',
                                             background: 'var(--bg-secondary)', fontSize: '0.8rem',
