@@ -5,11 +5,11 @@
 **Commit:** ddfac05
 **Last verified:** 2026-03-14
 **Re-verified & reprioritized:** 2026-03-14 (48 fixes code-verified, 4 newly confirmed, remaining issues promoted)
-**Updated:** 2026-03-15 — Additional fixes: P2-53, P2-33, P2-51
+**Updated:** 2026-03-15 — Additional fixes: P2-52, P2-50
 
 ---
 
-## FIXED ITEMS (79 total — 48 code-verified 2026-03-14, 31 fixed 2026-03-15)
+## FIXED ITEMS (81 total — 48 code-verified 2026-03-14, 33 fixed 2026-03-15)
 
 <details>
 <summary>Click to expand verified fixes</summary>
@@ -107,6 +107,8 @@
 | P2-53 | handleLoadedMetadata always auto-plays | ✅ Fixed 2026-03-15 — usePlayerPageState.ts: auto-play only when user.preferences.auto_play === true |
 | P2-33 | 30-minute HLS stale lock threshold | ✅ Fixed 2026-03-15 — locks.go: stale threshold 2h for large transcodes |
 | P2-51 | Audit log export plain anchor (no auth/error) | ✅ Fixed 2026-03-15 — AnalyticsTab: button + fetch with credentials, error handling |
+| P2-52 | el.src set before HLS capability check | ✅ Fixed 2026-03-15 — usePlayerPageState: clear video src when HLS enabled until check sets it |
+| P2-50 | Playlist/analytics export bypass API client errors | ✅ Fixed 2026-03-15 — client fetchBlob + ApiError; endpoints use fetchBlob for exports |
 
 </details>
 
@@ -122,10 +124,10 @@ the largest promotions.
 ```
 P0 — CRITICAL (security / crash / data loss):   1  (9 fixed 2026-03-15)
 P1 — HIGH (user-facing bugs / fragile):        12  (10 fixed 2026-03-15)
-P2 — MEDIUM (tech debt / time bombs):           8  (9 fixed 2026-03-15)
+P2 — MEDIUM (tech debt / time bombs):           6  (11 fixed 2026-03-15)
 P3 — LOW (cleanup / style):                     3
 ────────────────────────────────────────────────
-TOTAL REMAINING:                                21
+TOTAL REMAINING:                                19
 ```
 
 ---
@@ -198,7 +200,7 @@ TOTAL REMAINING:                                21
 
 ---
 
-## P2 — MEDIUM: Tech debt / time bombs (8 remaining)
+## P2 — MEDIUM: Tech debt / time bombs (6 remaining)
 
 ### Code Quality
 - **P2-31** `internal/scanner/mature.go:521-552` — Custom keywords use substring matching (false positives on partial word matches)
@@ -208,9 +210,6 @@ TOTAL REMAINING:                                21
 - **P2-48** `cmd/media-receiver/main.go:988` — generateFileID uses absolute path (non-portable across machines)
 - **P2-49** `web/frontend/src/pages/admin/SystemTab.tsx:79-86` — Config editor silently overwritten by React Query refetch
 
-### Frontend
-- **P2-50** `endpoints.ts:277-286` — Playlist/analytics export functions bypass API client error handling
-- **P2-52** `usePlayerPageState.ts:123` — `el.src` set synchronously before HLS capability check
 ### Data Integrity
 - **P3-1** *(promoted)* Multiple repositories — json.Marshal/Unmarshal errors silently ignored → can corrupt stored JSON fields
 - **P3-8** *(promoted)* `internal/admin/admin.go:172-227` — ExportAuditLog loads up to 100K rows into memory
@@ -245,4 +244,4 @@ TOTAL REMAINING:                                21
 *4 items confirmed fixed since last report (P1-23, P1-24, P2-25, P2-45)*
 *P0-4 downgraded to partial fix (loopback/link-local gaps)*
 *Remaining issues promoted: 8 P2→P0, 14 P2→P1, 2 P3→P2, 8 P3 closed*
-*2026-03-15: P0-4..18, P0-15; P1-20,31,33,34,35,36(playlist,user),39,40,43,44,46,47; P2-33,34,43,44,47,51,53,54,56 fixed; 1 P0 and 21 total remaining*
+*2026-03-15: P0-4..18, P0-15; P1-20,31,33,34,35,36(playlist,user),39,40,43,44,46,47; P2-33,34,43,44,47,50,51,52,53,54,56 fixed; 1 P0 and 19 total remaining*

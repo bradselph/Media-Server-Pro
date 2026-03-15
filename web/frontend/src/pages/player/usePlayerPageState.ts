@@ -122,9 +122,12 @@ function runMediaSourceSetup(
         setters.setUserRating(0)
     })
 
-    // Video with HLS: defer src to HLS check (HLS priority; check sets direct if not ready)
+    // Video with HLS: defer src to HLS check (set only after capability known); clear stale src meanwhile
     const useHlsForVideo = media.type === 'video' && hlsEnabled
-    if (!useHlsForVideo) {
+    if (useHlsForVideo) {
+        el.removeAttribute('src')
+        el.load()
+    } else {
         el.src = mediaApi.getStreamUrl(mediaId)
     }
     el.volume = volume
@@ -161,7 +164,7 @@ function usePlayerPlaybackHandlers(
     videoRef: RefObject<HTMLVideoElement | null>,
     audioRef: RefObject<HTMLAudioElement | null>,
     mediaId: string,
-    user: { preferences?: { resume_playback?: boolean } } | null,
+    user: { preferences?: { resume_playback?: boolean; auto_play?: boolean } } | null,
     currentTimeRef: MutableRefObject<number>,
     durationRef: MutableRefObject<number>,
     resumePositionRef: MutableRefObject<number>,

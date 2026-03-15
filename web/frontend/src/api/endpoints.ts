@@ -3,7 +3,7 @@
  * Each function calls the typed API client and returns strongly-typed data.
  */
 
-import {api} from './client'
+import {api, fetchBlob} from './client'
 import type {
     AdminMediaListParams,
     AdminMediaListResponse,
@@ -272,18 +272,18 @@ export const playlistApi = {
     copy: (id: string, name: string) =>
         api.post<Playlist>(`/api/playlists/${encodeURIComponent(id)}/copy`, {name}),
 
-    // Feature 3: Playlist export — returns Blob for file download
+    // Feature 3: Playlist export — returns Blob for file download. Uses fetchBlob for ApiError on failure.
     // For m3u/m3u8: raw text. For json: backend wraps in {success:true, data:...} envelope.
-    export: (id: string, format: 'json' | 'm3u' | 'm3u8'): Promise<Blob> =>
-        fetch(`/api/playlists/${encodeURIComponent(id)}/export?format=${format}`, {credentials: 'include'}).then(async r => {
-            if (!r.ok) throw new Error(`Export failed: ${r.status} ${r.statusText}`)
-            if (format === 'json') {
-                const json = await r.json()
-                const data = json.data ?? json
-                return new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'})
-            }
-            return r.blob()
-        }),
+    export: async (id: string, format: 'json' | 'm3u' | 'm3u8'): Promise<Blob> => {
+        const blob = await fetchBlob(`/api/playlists/${encodeURIComponent(id)}/export?format=${format}`)
+        if (format === 'json') {
+            const text = await blob.text()
+            const json = JSON.parse(text) as { data?: unknown }
+            const data = json.data ?? json
+            return new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'})
+        }
+        return blob
+    },
 }
 
 // ── Analytics ──
@@ -753,12 +753,9 @@ export const adminApi = {
     getCrawlerStats: () =>
         api.get<CrawlerStats>('/api/admin/crawler/stats'),
 
-    // Feature 5: Analytics detail + export
+    // Feature 5: Analytics detail + export (uses fetchBlob for ApiError on failure)
     exportAnalytics: (): Promise<Blob> =>
-        fetch('/api/admin/analytics/export', {credentials: 'include'}).then(r => {
-            if (!r.ok) throw new Error(`Export failed: ${r.status} ${r.statusText}`)
-            return r.blob()
-        }),
+        fetchBlob('/api/admin/analytics/export'),
 
     // Route is /api/analytics/events/stats (not /api/admin/...) but requires admin auth.
     getEventStats: () =>
