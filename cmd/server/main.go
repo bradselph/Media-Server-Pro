@@ -303,7 +303,7 @@ func main() {
 		},
 	})
 
-	routes.Setup(srv.Engine(), h, authModule, securityModule, cfg, ageGate)
+	routes.Setup(srv.Engine(), srv, h, authModule, securityModule, cfg, ageGate)
 
 	// Seed suggestions when the media module's initial scan completes
 	mediaModule.SetOnInitialScanDone(func(items []*models.MediaItem) {

@@ -386,7 +386,10 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 		cached = cp
 	}
 
-	master := cached.(*cachedPlaylist)
+	master, ok := cached.(*cachedPlaylist)
+	if !ok {
+		return fmt.Errorf("playlist cache type mismatch for item %s", itemID)
+	}
 	if qualityIdx < 0 || qualityIdx >= len(master.variants) {
 		// It's possible this is a media playlist directly, not a master.
 		return m.proxyMediaPlaylist(r.Context(), w, r, itemID, qualityIdx)

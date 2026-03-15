@@ -80,9 +80,8 @@ func (m *Module) getPreviewDuration(mediaPath string) float64 {
 // previewURLForIndex returns the preview URL for the i-th frame (existing file or generated), or "" if unavailable.
 func (m *Module) previewURLForIndex(opts *buildPreviewURLListOpts, i int) string {
 	startOffset := opts.Duration * 0.05
-	endOffset := opts.Duration * 0.95
-	interval := (endOffset - startOffset) / float64(opts.Count)
-	timestamp := startOffset + (float64(i) * interval)
+	usableDuration := opts.Duration * 0.9
+	timestamp := previewTimestamp(opts.Count, i, startOffset, usableDuration)
 	previewFilename := fmt.Sprintf("%s_preview_%d.jpg", opts.MediaID, i)
 	previewPath := filepath.Join(m.thumbnailDir, previewFilename)
 	previewURL := "/thumbnails/" + previewFilename

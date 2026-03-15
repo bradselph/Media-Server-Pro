@@ -88,12 +88,16 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 	}
 	m.clearAttempts(req.IPAddress)
 	session := m.createSession(ctx, user, &sessionRequestContext{IPAddress: req.IPAddress, UserAgent: req.UserAgent})
-	m.usersMu.Lock()
+	// Copy user before mutation to avoid data race on shared pointer
+	userCopy := *user
 	now := time.Now()
-	user.LastLogin = &now
-	m.usersMu.Unlock()
-	if err := m.userRepo.Update(ctx, user); err != nil {
+	userCopy.LastLogin = &now
+	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Warn("Failed to persist LastLogin for %s: %v", req.Username, err)
+	} else {
+		m.usersMu.Lock()
+		m.users[req.Username] = &userCopy
+		m.usersMu.Unlock()
 	}
 	m.log.Info("User logged in: %s from %s", req.Username, req.IPAddress)
 	return session, nil

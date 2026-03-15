@@ -879,23 +879,27 @@ func autoDiscover(cfg *slaveConfig) autoDiscovered {
 	return disc
 }
 
-// resolveAndValidate ensures the path is within allowed directories (filepath.Rel containment check).
+// resolveAndValidate ensures the path is within allowed directories.
+// Uses filepath.Rel for containment (handles .., symlinks, URL-like tricks).
 func resolveAndValidate(path string, allowedDirs []string) (string, error) {
-	// Prevent path traversal
-	if strings.Contains(path, "..") {
+	path = filepath.Clean(path)
+	if path == "." || strings.HasPrefix(path, "..") {
 		return "", fmt.Errorf("path traversal detected")
 	}
 
-	// Try to find the file in allowed directories
 	for _, dir := range allowedDirs {
 		absDir, err := filepath.Abs(dir)
+		if err != nil {
+			continue
+		}
+		absDir, err = filepath.EvalSymlinks(absDir)
 		if err != nil {
 			continue
 		}
 
 		var fullPath string
 		if filepath.IsAbs(path) {
-			fullPath = path
+			fullPath = filepath.Clean(path)
 		} else {
 			fullPath = filepath.Join(absDir, path)
 		}
@@ -904,10 +908,14 @@ func resolveAndValidate(path string, allowedDirs []string) (string, error) {
 		if err != nil {
 			continue
 		}
+		absPath, err = filepath.EvalSymlinks(absPath)
+		if err != nil {
+			continue
+		}
 
-		// Check path is within allowed directory
+		// Containment: rel must not start with ..
 		rel, err := filepath.Rel(absDir, absPath)
-		if err != nil || strings.HasPrefix(rel, "..") {
+		if err != nil || strings.HasPrefix(rel, "..") || rel == ".." {
 			continue
 		}
 

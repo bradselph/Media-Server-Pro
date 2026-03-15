@@ -184,10 +184,30 @@ func (m *Module) getUserFromCacheByID(id string) *models.User {
 }
 
 // UpdateUser updates a user's information.
+// When demoting or disabling an admin, holds lastAdminMu to prevent TOCTOU (concurrent requests disabling all admins).
 func (m *Module) UpdateUser(ctx context.Context, username string, updates map[string]interface{}) error {
 	user, err := m.GetUser(ctx, username)
 	if err != nil {
 		return err
+	}
+
+	demoting := user.Role == models.RoleAdmin && updates["role"] == string(models.RoleViewer)
+	var disabling bool
+	if v, ok := updates["enabled"].(bool); ok && !v {
+		disabling = user.Role == models.RoleAdmin && user.Enabled
+	}
+	if demoting || disabling {
+		m.lastAdminMu.Lock()
+		defer m.lastAdminMu.Unlock()
+		count := 0
+		for _, u := range m.ListUsers(ctx) {
+			if u.Role == models.RoleAdmin && u.Enabled {
+				count++
+			}
+		}
+		if count <= 1 {
+			return ErrCannotDemoteLastAdmin
+		}
 	}
 
 	wasEnabled := user.Enabled

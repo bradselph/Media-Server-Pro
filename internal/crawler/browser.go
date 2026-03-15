@@ -111,6 +111,9 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	}
 
 	// --- 2. Launch Chrome ---
+	// Block private IP resolution to mitigate SSRF when --disable-web-security allows
+	// malicious page JS to access local network. Maps RFC1918 ranges to unreachable address.
+	hostRules := "MAP 10.0.0.0/8 0.0.0.0, MAP 172.16.0.0/12 0.0.0.0, MAP 192.168.0.0/16 0.0.0.0"
 	args := []string{
 		"--headless",
 		"--disable-gpu",
@@ -120,6 +123,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		"--disable-web-security",
 		"--disable-features=IsolateOrigins,site-per-process",
 		"--disable-blink-features=AutomationControlled",
+		"--host-resolver-rules=" + hostRules,
 		"--no-first-run",
 		"--disable-software-rasterizer",
 		"--window-size=1920,1080",
@@ -130,13 +134,11 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	cmd := exec.CommandContext(ctx, bd.chromeBin, args...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
+	setChromeProcessAttrs(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("launch chrome: %w", err)
 	}
-	defer func() {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	}()
+	defer killChromeProcessGroup(cmd)
 
 	// --- 3. Connect to CDP WebSocket ---
 	wsURL, err := waitForCDP(ctx, port)

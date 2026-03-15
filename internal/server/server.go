@@ -230,12 +230,9 @@ func (s *Server) setupRouter() {
 }
 
 // setupBaseRoutes registers core routes that are always available.
-// /health is intentionally excluded here — it is registered by api/routes/routes.go
-// so the full GetHealth handler (which checks only critical modules) is used.
+// /api/status and /api/modules are registered by routes.Setup with adminAuth.
 func (s *Server) setupBaseRoutes() {
-	s.engine.GET("/api/status", s.handleStatus)
-	s.engine.GET("/api/modules", s.handleModules)
-	s.engine.GET("/api/modules/:name/health", s.handleModuleHealth)
+	// Status/modules routes are protected in routes.Setup
 }
 
 // RegisterModule adds a module to the server
@@ -446,10 +443,10 @@ func (s *Server) Shutdown() {
 
 	s.log.Info("Server shutdown complete")
 
-	// Flush and close log files to ensure all shutdown logs are persisted
-	logger.Shutdown()
-
+	// Close shutdownCh before logger.Shutdown() so waiters can run (and log) before logger closes
 	close(s.shutdownCh)
+
+	logger.Shutdown()
 }
 
 func (s *Server) shutdownHTTPServer(ctx context.Context) {
@@ -497,11 +494,12 @@ func (s *Server) Wait() {
 	<-s.shutdownCh
 }
 
-// handleStatus returns server status
-func (s *Server) handleStatus(c *gin.Context) {
+// HandleStatus returns server status. Used by routes.Setup with adminAuth.
+func (s *Server) HandleStatus(c *gin.Context) {
 	s.mu.RLock()
 	running := s.running
 	startTime := s.startTime
+	moduleCount := len(s.modules)
 	s.mu.RUnlock()
 
 	c.JSON(http.StatusOK, map[string]interface{}{
@@ -510,12 +508,12 @@ func (s *Server) handleStatus(c *gin.Context) {
 		"start_time":   startTime,
 		"version":      s.version,
 		"go_version":   runtime.Version(),
-		"module_count": len(s.modules),
+		"module_count": moduleCount,
 	})
 }
 
-// handleModules returns the list of registered modules
-func (s *Server) handleModules(c *gin.Context) {
+// HandleModules returns the list of registered modules. Used by routes.Setup with adminAuth.
+func (s *Server) HandleModules(c *gin.Context) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -531,8 +529,8 @@ func (s *Server) handleModules(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: modules})
 }
 
-// handleModuleHealth returns the health of a specific module
-func (s *Server) handleModuleHealth(c *gin.Context) {
+// HandleModuleHealth returns the health of a specific module. Used by routes.Setup with adminAuth.
+func (s *Server) HandleModuleHealth(c *gin.Context) {
 	name := c.Param("name")
 	module, ok := s.GetModule(name)
 	if !ok {

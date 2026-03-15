@@ -376,8 +376,9 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 
 	realPath, err := filepath.EvalSymlinks(validPath)
 	if err != nil {
-		h.log.Debug("EvalSymlinks failed for %s (using raw path): %v", validPath, err)
-		realPath = validPath
+		h.log.Warn("EvalSymlinks failed for %s: %v", validPath, err)
+		writeError(c, http.StatusBadRequest, "Invalid path: cannot resolve symlinks")
+		return "", false
 	}
 	absPath, err := filepath.Abs(realPath)
 	if err != nil {

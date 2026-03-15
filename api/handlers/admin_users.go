@@ -118,28 +118,6 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
-	demotingToViewer := req.Role == string(models.RoleViewer)
-	disabling := req.Enabled != nil && !*req.Enabled
-	if demotingToViewer || disabling {
-		user, err := h.auth.GetUser(c.Request.Context(), username)
-		if err != nil {
-			writeError(c, http.StatusNotFound, errUserNotFound)
-			return
-		}
-		if user.Role == models.RoleAdmin {
-			users := h.auth.ListUsers(c.Request.Context())
-			adminCount := 0
-			for _, u := range users {
-				if u.Role == models.RoleAdmin && u.Enabled {
-					adminCount++
-				}
-			}
-			if adminCount <= 1 {
-				writeError(c, http.StatusBadRequest, "Cannot demote or disable the last admin account")
-				return
-			}
-		}
-	}
 	if req.Role != "" && req.Role != string(models.RoleAdmin) && req.Role != string(models.RoleViewer) {
 		req.Role = string(models.RoleViewer)
 	}
@@ -163,6 +141,10 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 	}
 
 	if err := h.auth.UpdateUser(c.Request.Context(), username, updates); err != nil {
+		if errors.Is(err, auth.ErrCannotDemoteLastAdmin) {
+			writeError(c, http.StatusBadRequest, "Cannot demote or disable the last admin account")
+			return
+		}
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
