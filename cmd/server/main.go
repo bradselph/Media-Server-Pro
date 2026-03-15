@@ -348,12 +348,16 @@ func validateSecrets(cfg *config.Manager, log *logger.Logger) {
 		os.Exit(1)
 	}
 
-	// Warn about known-weak receiver API key values.
+	// Enforce minimum length and warn on known-weak receiver API key values.
+	const minAPIKeyLen = 32
 	weakKeys := map[string]bool{
 		"changeme": true, "secret": true, "password": true,
 		"test": true, "default": true, "apikey": true, "api-key": true,
 	}
 	for _, key := range appCfg.Receiver.APIKeys {
+		if len(key) < minAPIKeyLen {
+			log.Warn("Receiver API key is shorter than %d characters — use at least 32 for production", minAPIKeyLen)
+		}
 		if weakKeys[key] {
 			log.Warn("Receiver API key %q is a known-weak value — replace it in production", key)
 		}

@@ -151,6 +151,11 @@ func (h *Handler) RecordRating(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Validate rating is in 0–5 range to avoid corrupting suggestion scoring
+	if req.Rating < 0 || req.Rating > 5 {
+		writeError(c, http.StatusBadRequest, "Rating must be between 0 and 5")
+		return
+	}
 
 	h.suggestions.RecordRating(session.UserID, mediaPath, req.Rating)
 	writeSuccess(c, nil)

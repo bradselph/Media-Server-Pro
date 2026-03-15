@@ -5,10 +5,11 @@
 **Commit:** ddfac05
 **Last verified:** 2026-03-14
 **Re-verified & reprioritized:** 2026-03-14 (48 fixes code-verified, 4 newly confirmed, remaining issues promoted)
+**Updated:** 2026-03-15 — 8 P0 + 5 further fixes (P0-4,11,12,13,14,16,17,18; P0-15; P1-39,43,44,46)
 
 ---
 
-## FIXED ITEMS (48 total — all code-verified 2026-03-14)
+## FIXED ITEMS (61 total — 48 code-verified 2026-03-14, 13 fixed 2026-03-15)
 
 <details>
 <summary>Click to expand verified fixes</summary>
@@ -34,7 +35,7 @@
 | P0-1 | AdminExecuteQuery read-only transaction | ✅ `system.go:449-460` — sql.TxOptions{ReadOnly: true} |
 | P0-2 | ReceiverWebSocket API key middleware | ✅ `routes.go:281` — RequireReceiverWithAPIKey() |
 | P0-3 | Unauthenticated streaming limits | ✅ `media.go:309-321` — RequireAuth + UnauthStreamLimit |
-| P0-4 | Chrome --host-resolver-rules RFC1918 | ⚠️ PARTIAL — see P0-4 below (loopback/link-local missing) |
+| P0-4 | Chrome --host-resolver-rules (loopback/link-local) | ✅ Fixed 2026-03-15 — browser.go: 127/8, 169.254/16, ::1/128 added |
 | P0-5 | Extractor proxyStream header allowlist | ✅ `extractor.go:519-531` — allowlist confirmed |
 | P0-7 | Default admin password to file | ✅ `bootstrap.go:36-50` — 0600 file, log path only |
 | P0-8 | AdminUpdateConfig redacts secrets | ✅ `admin_config.go:11-33,68` — redactSensitiveConfigKeys |
@@ -76,6 +77,18 @@
 | P3-2 | IsStrictlyExpired duplicate | ✅ `models.go:355-358` — delegates |
 | P3-6 | Toast setTimeout not cleaned up | ✅ `Toast.tsx:14-19` — useRef + useEffect |
 | P3-13 | godotenv.Load error discarded | ✅ `main.go:59-61` — log non-NotFound |
+| P0-11 | X-Request-ID log injection | ✅ Fixed 2026-03-15 — middleware.go: sanitizeRequestID, 64 chars, strip control chars |
+| P0-12 | AdminExecuteQuery semicolon bypass (Unicode) | ✅ Fixed 2026-03-15 — system.go: normalize U+037E, U+FF1B before check |
+| P0-13 | ageGateSecure X-Forwarded-Proto | ✅ Fixed 2026-03-15 — agegate.go: trust only from isTrustedProxy(remoteAddr) |
+| P0-14 | GetHLSCapabilities/GetHLSStatus unauthenticated | ✅ Fixed 2026-03-15 — routes.go: requireAuth() on both |
+| P0-16 | MoveMedia oldPath not validated | ✅ Fixed 2026-03-15 — management.go: validatePath(oldPath) before move |
+| P0-17 | Rate-limit bypass /media prefix | ✅ Fixed 2026-03-15 — security.go: path.Clean, exempt only /media or /media/... |
+| P0-18 | SQL executor regex (INSERT/CREATE/GRANT etc) | ✅ Fixed 2026-03-15 — SystemTab.tsx: extended confirmation regex |
+| P0-15 | validateSecrets weak API keys | ✅ Fixed 2026-03-15 — main.go: min 32 chars warning for receiver API keys |
+| P1-39 | SetValue doesn't call syncFeatureToggles | ✅ Fixed 2026-03-15 — accessors.go: syncFeatureToggles after save in SetValuesBatch |
+| P1-43 | httpClient no ResponseHeaderTimeout | ✅ Fixed 2026-03-15 — receiver.go: 30s ResponseHeaderTimeout on transport |
+| P1-44 | loadFromDB stops on first media load failure | ✅ Fixed 2026-03-15 — receiver.go: recover per row, log and continue |
+| P1-46 | RecordRating no validation on rating value | ✅ Fixed 2026-03-15 — suggestions.go: validate 0–5 range |
 
 </details>
 
@@ -89,72 +102,26 @@ the largest promotions.
 
 ### Priority counts:
 ```
-P0 — CRITICAL (security / crash / data loss):  10
-P1 — HIGH (user-facing bugs / fragile):        22
+P0 — CRITICAL (security / crash / data loss):   1  (9 fixed 2026-03-15)
+P1 — HIGH (user-facing bugs / fragile):        18  (4 fixed 2026-03-15)
 P2 — MEDIUM (tech debt / time bombs):          17
 P3 — LOW (cleanup / style):                     3
 ────────────────────────────────────────────────
-TOTAL REMAINING:                                52
+TOTAL REMAINING:                                39
 ```
 
 ---
 
-## P0 — CRITICAL: Must fix before deploy (10)
-
-### P0-4 [SECURITY] Chrome --host-resolver-rules incomplete — ⚠️ PARTIAL FIX
-- **File:** `internal/crawler/browser.go:116`
-- **Status:** RFC1918 ranges (10/8, 172.16/12, 192.168/16) are blocked, but **loopback (127.0.0.0/8)** and **link-local (169.254.0.0/16)** are NOT blocked
-- **Impact:** With `--disable-web-security`, crawled page JS can reach localhost services (including this server's own admin API) and cloud metadata endpoints (169.254.169.254 — AWS/GCP/Azure credential theft)
-- **Fix:** Extend hostRules to include `127.0.0.0/8`, `169.254.0.0/16`, `::1/128`
+## P0 — CRITICAL: Must fix before deploy (1 remaining)
 
 ### P0-6 [SECURITY] GitHub credentials visible in process environment
 - **File:** `internal/updater/updater.go:930-942`
 - **Impact:** Token appears in `GIT_CONFIG_VALUE_0` env var — any local user can read via `/proc/<pid>/environ`
 - **Fix:** Use `GIT_ASKPASS` helper script or credential helper
 
-### P0-11 [SECURITY] X-Request-ID log injection *(was P2-8)*
-- **File:** `pkg/middleware/middleware.go:69`
-- **Impact:** Client-supplied X-Request-ID accepted verbatim — no length limit, no control character filtering. Attacker can inject fake log entries (`\n`, `\r`) to poison logs, hide attacks, or trigger log-based alerting
-- **Fix:** Truncate to 64 chars, strip non-printable characters, validate format (UUID/alphanumeric)
-
-### P0-12 [SECURITY] AdminExecuteQuery semicolon bypass *(was P2-12)*
-- **File:** `api/handlers/system.go:411`
-- **Impact:** `strings.Contains(query, ";")` can be bypassed with Unicode lookalike semicolons (`U+037E`, `U+FF1B`) that MySQL may accept as statement terminators. Combined with P0-1's read-only tx, risk is reduced but multi-statement queries could still cause issues
-- **Fix:** Use parameterized query execution or normalize Unicode before checking; reject multi-statement at the MySQL connection level (`multiStatements=false`)
-
-### P0-13 [SECURITY] ageGateSecure trusts X-Forwarded-Proto *(was P2-9)*
-- **File:** `pkg/middleware/agegate.go:185`
-- **Impact:** Without trusted proxy validation, any client can set `X-Forwarded-Proto: https` to bypass secure cookie checks. Cookie could be sent over plain HTTP and intercepted
-- **Fix:** Only trust X-Forwarded-Proto when request comes from configured trusted proxy IPs
-
-### P0-14 [SECURITY] GetHLSCapabilities/GetHLSStatus unauthenticated *(was P2-13)*
-- **File:** `api/handlers/hls.go:300,303`
-- **Impact:** Unauthenticated endpoints expose server capabilities and HLS job status — fingerprinting and information disclosure
-- **Fix:** Add `requireAuth()` middleware
-
-### P0-15 [SECURITY] validateSecrets allows weak API keys *(was P2-14)*
-- **File:** `cmd/server/main.go:339-371`
-- **Impact:** Short or low-entropy API keys accepted without warning; brute-forceable
-- **Fix:** Enforce minimum length (32+ chars) and entropy requirements
-
-### P0-16 [SECURITY] MoveMedia does not validate oldPath *(was P2-30)*
-- **File:** `internal/media/management.go:82-83`
-- **Impact:** Unvalidated source path in move operation — potential path traversal to move arbitrary files
-- **Fix:** Validate oldPath is within allowed media directories before moving
-
-### P0-17 [SECURITY] Rate-limit bypass for "/media" prefix too broad *(was P2-32)*
-- **File:** `internal/security/security.go:893-911`
-- **Impact:** Any path starting with `/media` bypasses rate limiting. Attacker could craft `/media/../api/admin/...` or similar to bypass rate limits on sensitive endpoints
-- **Fix:** Use exact prefix matching on normalized paths; only exempt actual streaming paths
-
-### P0-18 [SECURITY] SQL executor regex misses INSERT/CREATE/GRANT (frontend) *(was P2-16)*
-- **File:** `web/frontend/src/pages/admin/SystemTab.tsx:205`
-- **Impact:** Frontend provides no confirmation prompt for data-creating SQL (INSERT, CREATE TABLE, GRANT, LOAD DATA). While server has read-only tx guard, the UX gap means admin users get no warning
-- **Fix:** Extend regex to cover all DDL/DCL: `INSERT|CREATE|GRANT|REVOKE|LOAD|CALL`
-
 ---
 
-## P1 — HIGH: Will cause user-facing bugs or crashes (22)
+## P1 — HIGH: Will cause user-facing bugs or crashes (18 remaining)
 
 ### P1-9 [FRAGILE] RestartServer skips graceful shutdown — ⚠️ PARTIAL FIX
 - **File:** `api/handlers/admin_lifecycle.go:29-60`
@@ -221,11 +188,6 @@ TOTAL REMAINING:                                52
 - **Impact:** `time.Duration` marshals as int64 nanoseconds — config.json becomes unreadable. Loading a saved config may misinterpret "30000000000" (30s in ns) vs human expectation
 - **Fix:** Custom JSON marshal/unmarshal using string format ("30s", "5m")
 
-### P1-39 SetValue doesn't call syncFeatureToggles *(was P2-29)*
-- **File:** `internal/config/accessors.go:61-74`
-- **Impact:** Changing a feature toggle via `SetValue` doesn't propagate to the feature flags system — feature state drifts from config until restart
-- **Fix:** Call `syncFeatureToggles` at end of `SetValue`/`SetValuesBatch`
-
 ### P1-40 analytics mediaStats/mediaViewers grow without bound *(was P2-36)*
 - **File:** `internal/analytics/stats.go`
 - **Impact:** `mediaStats`, `mediaViewers`, `mediaDurationSamples` maps grow without eviction. Every distinct MediaID creates a permanent entry. On high-turnover servers this is a slow OOM leak
@@ -241,25 +203,10 @@ TOTAL REMAINING:                                52
 - **Impact:** Same pattern as P1-41 — loads all metadata into memory for local duplicate scan
 - **Fix:** Paginate or use streaming cursor
 
-### P1-43 httpClient has no ResponseHeaderTimeout *(was P2-41)*
-- **File:** `internal/receiver/receiver.go:161-165`
-- **Impact:** Slow or malicious slave can hold HTTP connections open indefinitely during stream proxy
-- **Fix:** Set `ResponseHeaderTimeout` (e.g., 30s) on the transport
-
-### P1-44 loadFromDB stops on first media load failure *(was P2-42)*
-- **File:** `internal/receiver/receiver.go:251-253`
-- **Impact:** Single corrupt row prevents loading all subsequent receiver media on startup. Server starts with incomplete catalog
-- **Fix:** Log error and continue; collect all errors
-
 ### P1-45 Background goroutines use context.Background() *(was P2-58)*
 - **File:** `api/handlers/` (multiple files)
 - **Impact:** Background goroutines launched from handlers use `context.Background()` instead of module contexts — they run indefinitely even during shutdown, causing resource leaks and potential crashes during stop
 - **Fix:** Use module-scoped context or derive from server shutdown context
-
-### P1-46 RecordRating has no validation on rating value *(was P2-57)*
-- **File:** `api/handlers/suggestions.go:155`
-- **Impact:** Any integer value accepted as rating — no bounds check. Negative values or extreme values could corrupt suggestion scoring
-- **Fix:** Validate rating is within expected range (e.g., 1-5 or 1-10)
 
 ### P1-47 Inconsistent cookie-clearing strategies *(was P2-55)*
 - **File:** `api/handlers/auth.go:119-127`
@@ -325,3 +272,4 @@ TOTAL REMAINING:                                52
 *4 items confirmed fixed since last report (P1-23, P1-24, P2-25, P2-45)*
 *P0-4 downgraded to partial fix (loopback/link-local gaps)*
 *Remaining issues promoted: 8 P2→P0, 14 P2→P1, 2 P3→P2, 8 P3 closed*
+*2026-03-15: P0-4,11,12,13,14,16,17,18, P0-15; P1-39,43,44,46 fixed; 1 P0 and 39 total remaining*

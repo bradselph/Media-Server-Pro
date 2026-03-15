@@ -158,11 +158,13 @@ func (m *Module) Name() string { return "receiver" }
 // Start implements server.Module.
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting receiver module...")
-	// Shared client for HTTP fallback proxy (connection pooling); no timeout so long streams work.
+	// Shared client for HTTP fallback proxy (connection pooling).
+	// ResponseHeaderTimeout limits time to first response byte so slow/malicious slaves cannot hold connections open indefinitely.
 	m.httpClient = &http.Client{Transport: &http.Transport{
-		MaxIdleConns:        10,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
+		MaxIdleConns:           10,
+		IdleConnTimeout:        90 * time.Second,
+		TLSHandshakeTimeout:    10 * time.Second,
+		ResponseHeaderTimeout:  30 * time.Second,
 	}}
 
 	m.slaveRepo = mysqlrepo.NewReceiverSlaveRepository(m.dbModule.GORM())
@@ -254,23 +256,33 @@ func (m *Module) loadFromDB() {
 	}
 
 	for _, rec := range mediaRecords {
-		item := mediaRecordToItem(rec)
-		if node, ok := m.slaves[rec.SlaveID]; ok {
-			item.SlaveName = node.Name
-		}
-
-		// Migrate legacy "slaveID:itemID" composite keys to opaque IDs.
-		// The next full catalog push will rewrite the DB rows; for now we
-		// just fix the in-memory index so lookups work.
-		id := rec.ID
-		if strings.Contains(id, ":") {
-			parts := strings.SplitN(id, ":", 2)
-			if len(parts) == 2 {
-				id = opaqueMediaID(parts[0], parts[1])
-				item.ID = id
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.Warn("Skipping corrupt receiver media row (id=%q): %v", rec.ID, r)
+				}
+			}()
+			if rec == nil {
+				return
 			}
-		}
-		m.media[id] = item
+			item := mediaRecordToItem(rec)
+			if node, ok := m.slaves[rec.SlaveID]; ok {
+				item.SlaveName = node.Name
+			}
+
+			// Migrate legacy "slaveID:itemID" composite keys to opaque IDs.
+			// The next full catalog push will rewrite the DB rows; for now we
+			// just fix the in-memory index so lookups work.
+			id := rec.ID
+			if strings.Contains(id, ":") {
+				parts := strings.SplitN(id, ":", 2)
+				if len(parts) == 2 {
+					id = opaqueMediaID(parts[0], parts[1])
+					item.ID = id
+				}
+			}
+			m.media[id] = item
+		}()
 	}
 
 	m.log.Info("Loaded %d slaves, %d media items from DB", len(m.slaves), len(m.media))
