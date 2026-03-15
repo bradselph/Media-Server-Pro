@@ -275,8 +275,8 @@ func Setup(r *gin.Engine, h *handlers.Handler, authModule *auth.Module, security
 	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", h.ExtractorHLSVariant)
 	r.GET("/extractor/hls/:id/:quality/:segment", h.ExtractorHLSSegment)
 
-	// Receiver WebSocket — auth inside HandleWebSocket (X-API-Key / api_key query).
-	r.GET("/ws/receiver", h.ReceiverWebSocket)
+	// Receiver WebSocket — middleware enforces valid X-API-Key or api_key before upgrade.
+	r.GET("/ws/receiver", h.RequireReceiverWithAPIKey(), h.ReceiverWebSocket)
 
 	// -----------------------------------------------------------------------
 	// API routes group (/api)

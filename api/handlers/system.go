@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -445,7 +446,20 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.QueryContext(ctx, query)
+	// Use read-only transaction to block SELECT INTO OUTFILE, LOAD_FILE, and other write operations
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		h.log.Error("Failed to begin read-only transaction: %v", err)
+		writeError(c, http.StatusInternalServerError, "Query execution failed")
+		return
+	}
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			h.log.Warn("Failed to rollback read-only transaction: %v", rbErr)
+		}
+	}()
+
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		if h.admin != nil {
 			h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
