@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.102.0] - 2026-03-15 (minor)
+
+- Merge pull request #101 from bradselph/devin/1773599958-audit-improvements
+- audit: fix P0-6, P1-9, P1-36, P2-48, P3-5 security and correctness issues
+
+
 ## [0.101.0] - 2026-03-15 (minor)
 
 - Merge pull request #100 from bradselph/development
