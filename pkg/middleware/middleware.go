@@ -9,11 +9,30 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/logger"
 )
+
+const maxRequestIDLen = 64
+
+// sanitizeRequestID truncates to maxRequestIDLen and strips control/non-printable
+// characters to prevent log injection via X-Request-ID.
+func sanitizeRequestID(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if b.Len() >= maxRequestIDLen {
+			break
+		}
+		if r == '\n' || r == '\r' || r == '\t' || unicode.IsPrint(r) {
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
 
 // ContextKey is a type for context keys
 type ContextKey string
@@ -70,6 +89,13 @@ func GinRequestID() gin.HandlerFunc {
 		if requestID == "" {
 			id := atomic.AddUint64(&counter, 1)
 			requestID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
+			c.Header("X-Request-ID", requestID)
+		} else {
+			requestID = sanitizeRequestID(requestID)
+			if requestID == "" {
+				id := atomic.AddUint64(&counter, 1)
+				requestID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
+			}
 			c.Header("X-Request-ID", requestID)
 		}
 		c.Set(string(RequestIDKey), requestID)

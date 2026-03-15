@@ -305,11 +305,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
 	api.POST("/playback", requireAuth(), h.TrackPlayback)
 
-	// HLS API routes
-	api.GET("/hls/capabilities", h.GetHLSCapabilities)           // Check if HLS transcoding is available
-	api.GET("/hls/check", requireAuth(), h.CheckHLSAvailability) // Check availability by path with auto-generate
-	api.POST("/hls/generate", requireAuth(), h.GenerateHLS)      // Trigger HLS transcoding
-	api.GET("/hls/status/:id", h.GetHLSStatus)
+	// HLS API routes (capabilities and status require auth to prevent fingerprinting)
+	api.GET("/hls/capabilities", requireAuth(), h.GetHLSCapabilities)
+	api.GET("/hls/check", requireAuth(), h.CheckHLSAvailability)
+	api.POST("/hls/generate", requireAuth(), h.GenerateHLS)
+	api.GET("/hls/status/:id", requireAuth(), h.GetHLSStatus)
 
 	// Auth routes (public)
 	api.POST("/auth/login", h.Login)

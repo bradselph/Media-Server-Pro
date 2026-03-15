@@ -80,6 +80,9 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 // MoveMedia moves a media file to a new directory.
 // fingerprintIndex is updated so the fingerprint maps to the new path.
 func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
+	if err := m.validatePath(oldPath); err != nil {
+		return "", err
+	}
 	// Validate old path exists (no lock needed for stat)
 	if _, err := os.Stat(oldPath); err != nil {
 		return "", fmt.Errorf("source file not found: %w", err)

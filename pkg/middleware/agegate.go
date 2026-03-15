@@ -176,17 +176,24 @@ func (ag *AgeGate) evictExpired() {
 	}
 }
 
-// ageGateSecure detects HTTPS, including through TLS-terminating reverse proxies
-// (nginx, Cloudflare, etc.).
+// ageGateSecure detects HTTPS, including through TLS-terminating reverse proxies.
+// X-Forwarded-Proto and Cf-Visitor are only trusted when the request comes from
+// a configured trusted proxy IP to prevent clients from spoofing secure cookies.
 func ageGateSecure(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
 	}
-	if r.Header.Get("X-Forwarded-Proto") == "https" {
-		return true
+	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		remoteIP = r.RemoteAddr
 	}
-	if strings.Contains(r.Header.Get("Cf-Visitor"), `"scheme":"https"`) {
-		return true
+	if isTrustedProxy(remoteIP) {
+		if r.Header.Get("X-Forwarded-Proto") == "https" {
+			return true
+		}
+		if strings.Contains(r.Header.Get("Cf-Visitor"), `"scheme":"https"`) {
+			return true
+		}
 	}
 	return false
 }

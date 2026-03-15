@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	pathpkg "path"
 	"strings"
 	"sync"
 	"time"
@@ -900,17 +901,22 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Skip rate limiting for static assets and streaming endpoints
-		// These are high-frequency requests that should not count toward API rate limits
-		path := c.Request.URL.Path
-		if strings.HasPrefix(path, "/static/") ||
-			strings.HasPrefix(path, "/stream") ||
-			strings.HasPrefix(path, "/hls/") ||
-			strings.HasPrefix(path, "/download") ||
-			strings.HasPrefix(path, "/thumbnail") ||
-			strings.HasPrefix(path, "/media") ||
-			path == "/health" ||
-			path == "/metrics" {
+		// Skip rate limiting for static assets and streaming endpoints.
+		// Normalize path so /media/../api/admin resolves to /api/admin and cannot bypass.
+		reqPath := c.Request.URL.Path
+		cleaned := pathpkg.Clean("/" + strings.TrimPrefix(reqPath, "/"))
+		if cleaned != "/" && strings.HasSuffix(cleaned, "/") {
+			cleaned = strings.TrimSuffix(cleaned, "/")
+		}
+		mediaExempt := cleaned == "/media" || strings.HasPrefix(cleaned, "/media/")
+		if strings.HasPrefix(cleaned, "/static/") ||
+			strings.HasPrefix(cleaned, "/stream") ||
+			strings.HasPrefix(cleaned, "/hls/") ||
+			strings.HasPrefix(cleaned, "/download") ||
+			strings.HasPrefix(cleaned, "/thumbnail") ||
+			mediaExempt ||
+			cleaned == "/health" ||
+			cleaned == "/metrics" {
 			c.Next()
 			return
 		}
@@ -924,7 +930,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 
 		// Select rate limiter tier based on endpoint
 		limiter := m.rateLimiter
-		if isAuthPath(path) {
+		if isAuthPath(reqPath) {
 			limiter = m.authRateLimiter
 		}
 
@@ -937,7 +943,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 		c.Header("X-RateLimit-Reset", fmt.Sprintf("%d", resetAt.Unix()))
 
 		if !allowed {
-			m.log.Warn("Rate limit exceeded for %s on %s", ip, path)
+			m.log.Warn("Rate limit exceeded for %s on %s", ip, reqPath)
 			m.mu.Lock()
 			m.totalRateLimited++
 			m.mu.Unlock()
