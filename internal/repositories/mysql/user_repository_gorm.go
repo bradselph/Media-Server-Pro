@@ -112,26 +112,69 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 	return &user, nil
 }
 
-// Update updates an existing user and related data
+// Update updates an existing user and related data using selective Updates()
+// so password hash is only written when intentionally changed, reducing DB load and audit noise.
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Update user record
-		if err := tx.Save(user).Error; err != nil {
+		userUpdates := map[string]interface{}{
+			"username":       user.Username,
+			"email":          user.Email,
+			"role":           user.Role,
+			"type":           user.Type,
+			"enabled":        user.Enabled,
+			"last_login":     user.LastLogin,
+			"storage_used":   user.StorageUsed,
+			"active_streams": user.ActiveStreams,
+			"metadata":       user.Metadata,
+			"watch_history":  user.WatchHistory,
+		}
+		if user.PasswordHash != "" {
+			userUpdates["password_hash"] = user.PasswordHash
+			userUpdates["salt"] = user.Salt
+		}
+		if err := tx.Model(user).Where("id = ?", user.ID).Updates(userUpdates).Error; err != nil {
 			return err
 		}
 
-		// Update permissions inside the same transaction so all three writes
-		// succeed or fail together. Using tx instead of r.permsRepo.Upsert()
-		// ensures atomicity — the sub-repositories hold their own *gorm.DB
-		// reference and would execute outside this transaction boundary.
+		// Update permissions inside the same transaction
 		user.Permissions.UserID = user.ID
-		if err := tx.Save(&user.Permissions).Error; err != nil {
+		if err := tx.Model(&user.Permissions).Where("user_id = ?", user.ID).Updates(map[string]interface{}{
+			"can_stream":           user.Permissions.CanStream,
+			"can_download":         user.Permissions.CanDownload,
+			"can_upload":           user.Permissions.CanUpload,
+			"can_delete":           user.Permissions.CanDelete,
+			"can_manage":           user.Permissions.CanManage,
+			"can_view_mature":      user.Permissions.CanViewMature,
+			"can_create_playlists": user.Permissions.CanCreatePlaylists,
+		}).Error; err != nil {
 			return err
 		}
 
 		// Update preferences inside the same transaction
 		user.Preferences.UserID = user.ID
-		if err := tx.Save(&user.Preferences).Error; err != nil {
+		if err := tx.Model(&user.Preferences).Where("user_id = ?", user.ID).Updates(map[string]interface{}{
+			"theme":                  user.Preferences.Theme,
+			"view_mode":              user.Preferences.ViewMode,
+			"default_quality":        user.Preferences.DefaultQuality,
+			"auto_play":              user.Preferences.AutoPlay,
+			"playback_speed":         user.Preferences.PlaybackSpeed,
+			"volume":                 user.Preferences.Volume,
+			"show_mature":            user.Preferences.ShowMature,
+			"mature_preference_set":  user.Preferences.MaturePreferenceSet,
+			"language":               user.Preferences.Language,
+			"equalizer_preset":       user.Preferences.EqualizerPreset,
+			"resume_playback":        user.Preferences.ResumePlayback,
+			"show_analytics":         user.Preferences.ShowAnalytics,
+			"items_per_page":        user.Preferences.ItemsPerPage,
+			"sort_by":                user.Preferences.SortBy,
+			"sort_order":             user.Preferences.SortOrder,
+			"filter_category":       user.Preferences.FilterCategory,
+			"filter_media_type":     user.Preferences.FilterMediaType,
+			"custom_eq_presets":     user.Preferences.CustomEQPresets,
+			"show_continue_watching": user.Preferences.ShowContinueWatching,
+			"show_recommended":      user.Preferences.ShowRecommended,
+			"show_trending":         user.Preferences.ShowTrending,
+		}).Error; err != nil {
 			return err
 		}
 
@@ -143,7 +186,14 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 // are automatically removed via ON DELETE CASCADE foreign key constraints
 // defined in the database schema.
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id).Error
+	result := r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrUserNotFound
+	}
+	return nil
 }
 
 // List retrieves all users with permissions and preferences (batch-loaded to avoid N+1).

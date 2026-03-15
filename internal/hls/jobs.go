@@ -89,7 +89,7 @@ func (m *Module) existingJobOrRetryErrorLocked(p *createOrReuseHLSJobParams) (*m
 		return existing, true, nil
 	case models.HLSStatusFailed:
 		if existing.FailCount >= maxHLSFailures {
-			return existing, true, fmt.Errorf("HLS generation for %s has failed %d times and will not be retried automatically; use the admin panel to reset", p.MediaPath, existing.FailCount)
+			return existing, true, fmt.Errorf("HLS generation for %s has failed %d times and will not be retried automatically", p.MediaPath, existing.FailCount)
 		}
 	}
 	return nil, false, nil

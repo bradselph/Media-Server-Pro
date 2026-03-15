@@ -68,20 +68,35 @@ func (r *PlaylistRepository) Get(ctx context.Context, id string) (*models.Playli
 	return &playlist, nil
 }
 
-// Update updates an existing playlist
+// Update updates playlist metadata only (name, description, is_public, cover_image, modified_at).
+// Does not cascade to Items, avoiding overwriting concurrent item changes.
 func (r *PlaylistRepository) Update(ctx context.Context, playlist *models.Playlist) error {
-	return r.db.WithContext(ctx).Save(playlist).Error
+	return r.db.WithContext(ctx).Model(playlist).Where("id = ?", playlist.ID).Updates(map[string]interface{}{
+		"name":        playlist.Name,
+		"description": playlist.Description,
+		"user_id":     playlist.UserID,
+		"modified_at": playlist.ModifiedAt,
+		"is_public":   playlist.IsPublic,
+		"cover_image": playlist.CoverImage,
+	}).Error
 }
 
-// Delete removes a playlist and its items (cascade)
+// Delete removes a playlist and its items (cascade).
+// Returns repositories.ErrPlaylistNotFound if the playlist did not exist.
 func (r *PlaylistRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Delete playlist items first
 		if err := tx.Where("playlist_id = ?", id).Delete(&models.PlaylistItem{}).Error; err != nil {
 			return err
 		}
-		// Delete playlist
-		return tx.Delete(&models.Playlist{}, "id = ?", id).Error
+		result := tx.Delete(&models.Playlist{}, "id = ?", id)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return repositories.ErrPlaylistNotFound
+		}
+		return nil
 	})
 }
 

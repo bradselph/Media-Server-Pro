@@ -202,7 +202,7 @@ function DatabaseTab() {
     async function handleQuery(e: FormEvent) {
         e.preventDefault()
         if (!query.trim()) return
-        if (/^\s*(DROP|DELETE|TRUNCATE|ALTER|UPDATE)\b/i.test(query) && !window.confirm('This query modifies data. Proceed?')) return
+        if (/^\s*(DROP|DELETE|TRUNCATE|ALTER|UPDATE|INSERT|CREATE|GRANT|REVOKE|LOAD|CALL)\b/i.test(query) && !window.confirm('This query modifies data. Proceed?')) return
         setQuerying(true)
         setQueryMsg('')
         setResult(null)

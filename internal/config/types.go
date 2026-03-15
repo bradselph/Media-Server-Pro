@@ -28,6 +28,17 @@ type Config struct {
 	Updater       UpdaterConfig       `json:"updater"`
 	AgeGate       AgeGateConfig       `json:"age_gate"`
 	UI            UIConfig            `json:"ui"`
+	Downloader    DownloaderConfig    `json:"downloader"`
+}
+
+// DownloaderConfig holds settings for the external media downloader integration.
+type DownloaderConfig struct {
+	Enabled        bool          `json:"enabled"`
+	URL            string        `json:"url"`
+	DownloadsDir   string        `json:"downloads_dir"`
+	ImportDir      string        `json:"import_dir"`
+	HealthInterval time.Duration `json:"health_interval"`
+	RequestTimeout time.Duration `json:"request_timeout"`
 }
 
 // UIConfig holds frontend display defaults
@@ -320,6 +331,7 @@ type FeaturesConfig struct {
 	EnableCrawler            bool `json:"enable_crawler"`
 	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
 	EnableHuggingFace        bool `json:"enable_huggingface"`
+	EnableDownloader         bool `json:"enable_downloader"`
 }
 
 // DatabaseConfig holds database connection settings

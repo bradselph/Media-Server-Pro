@@ -3,7 +3,7 @@
  * Each function calls the typed API client and returns strongly-typed data.
  */
 
-import {api} from './client'
+import {api, fetchBlob} from './client'
 import type {
     AdminMediaListParams,
     AdminMediaListResponse,
@@ -82,6 +82,13 @@ import type {
     CrawlTarget,
     CrawlerDiscovery,
     CrawlerStats,
+    DownloaderHealth,
+    DownloaderDetectResult,
+    DownloaderDownloadResult,
+    DownloaderDownloadFile,
+    DownloaderSettings,
+    ImportableFile,
+    ImportResult,
 } from './types'
 
 // ── Version (public, for index footer) ──
@@ -272,18 +279,18 @@ export const playlistApi = {
     copy: (id: string, name: string) =>
         api.post<Playlist>(`/api/playlists/${encodeURIComponent(id)}/copy`, {name}),
 
-    // Feature 3: Playlist export — returns Blob for file download
+    // Feature 3: Playlist export — returns Blob for file download. Uses fetchBlob for ApiError on failure.
     // For m3u/m3u8: raw text. For json: backend wraps in {success:true, data:...} envelope.
-    export: (id: string, format: 'json' | 'm3u' | 'm3u8'): Promise<Blob> =>
-        fetch(`/api/playlists/${encodeURIComponent(id)}/export?format=${format}`, {credentials: 'include'}).then(async r => {
-            if (!r.ok) throw new Error(`Export failed: ${r.status} ${r.statusText}`)
-            if (format === 'json') {
-                const json = await r.json()
-                const data = json.data ?? json
-                return new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'})
-            }
-            return r.blob()
-        }),
+    export: async (id: string, format: 'json' | 'm3u' | 'm3u8'): Promise<Blob> => {
+        const blob = await fetchBlob(`/api/playlists/${encodeURIComponent(id)}/export?format=${format}`)
+        if (format === 'json') {
+            const text = await blob.text()
+            const json = JSON.parse(text) as { data?: unknown }
+            const data = json.data ?? json
+            return new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'})
+        }
+        return blob
+    },
 }
 
 // ── Analytics ──
@@ -753,12 +760,9 @@ export const adminApi = {
     getCrawlerStats: () =>
         api.get<CrawlerStats>('/api/admin/crawler/stats'),
 
-    // Feature 5: Analytics detail + export
+    // Feature 5: Analytics detail + export (uses fetchBlob for ApiError on failure)
     exportAnalytics: (): Promise<Blob> =>
-        fetch('/api/admin/analytics/export', {credentials: 'include'}).then(r => {
-            if (!r.ok) throw new Error(`Export failed: ${r.status} ${r.statusText}`)
-            return r.blob()
-        }),
+        fetchBlob('/api/admin/analytics/export'),
 
     // Route is /api/analytics/events/stats (not /api/admin/...) but requires admin auth.
     getEventStats: () =>
@@ -931,4 +935,43 @@ export const receiverApi = {
 
     getMedia: (id: string) =>
         api.get<ReceiverMediaItem>(`/api/receiver/media/${encodeURIComponent(id)}`),
+}
+
+// ── Downloader (admin only — proxies to external downloader service) ──────
+export const downloaderApi = {
+    getHealth: () =>
+        api.get<DownloaderHealth>('/api/admin/downloader/health'),
+
+    detect: (url: string) =>
+        api.post<DownloaderDetectResult>('/api/admin/downloader/detect', {url}),
+
+    download: (params: {
+        url: string
+        title?: string
+        clientId: string
+        isYouTube?: boolean
+        isYouTubeMusic?: boolean
+        relayId?: string
+    }) =>
+        api.post<DownloaderDownloadResult>('/api/admin/downloader/download', params),
+
+    cancel: (id: string) =>
+        api.post<{status: string}>(`/api/admin/downloader/cancel/${encodeURIComponent(id)}`),
+
+    listDownloads: () =>
+        api.get<DownloaderDownloadFile[]>('/api/admin/downloader/downloads'),
+
+    deleteDownload: (filename: string) =>
+        api.delete<{status: string}>(`/api/admin/downloader/downloads/${encodeURIComponent(filename)}`),
+
+    getSettings: () =>
+        api.get<DownloaderSettings>('/api/admin/downloader/settings'),
+
+    listImportable: () =>
+        api.get<ImportableFile[]>('/api/admin/downloader/importable'),
+
+    importFile: (filename: string, deleteSource: boolean, triggerScan: boolean) =>
+        api.post<ImportResult>('/api/admin/downloader/import', {
+            filename, delete_source: deleteSource, trigger_scan: triggerScan,
+        }),
 }

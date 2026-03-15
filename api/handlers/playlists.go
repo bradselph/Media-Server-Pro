@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -128,7 +129,16 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 		return
 	}
 	if err := h.playlist.UpdatePlaylist(c.Request.Context(), playlist.PlaylistID(id), playlist.UserID(session.UserID), updates); err != nil {
-		writeError(c, http.StatusForbidden, "Cannot update playlist")
+		if errors.Is(err, playlist.ErrPlaylistNotFound) {
+			writeError(c, http.StatusNotFound, "Playlist not found")
+			return
+		}
+		if errors.Is(err, playlist.ErrAccessDenied) {
+			writeError(c, http.StatusForbidden, "Cannot update playlist")
+			return
+		}
+		h.log.Warn("UpdatePlaylist failed: %v", err)
+		writeError(c, http.StatusInternalServerError, "Failed to update playlist")
 		return
 	}
 
@@ -148,7 +158,16 @@ func (h *Handler) DeletePlaylist(c *gin.Context) {
 		return
 	}
 	if err := h.playlist.DeletePlaylist(c.Request.Context(), playlist.PlaylistID(id), playlist.UserID(session.UserID)); err != nil {
-		writeError(c, http.StatusForbidden, "Cannot delete playlist")
+		if errors.Is(err, playlist.ErrPlaylistNotFound) {
+			writeError(c, http.StatusNotFound, "Playlist not found")
+			return
+		}
+		if errors.Is(err, playlist.ErrAccessDenied) {
+			writeError(c, http.StatusForbidden, "Cannot delete playlist")
+			return
+		}
+		h.log.Warn("DeletePlaylist failed: %v", err)
+		writeError(c, http.StatusInternalServerError, "Failed to delete playlist")
 		return
 	}
 

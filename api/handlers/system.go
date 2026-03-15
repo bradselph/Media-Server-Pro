@@ -245,6 +245,7 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enableSuggestions":        cfg.Features.EnableSuggestions,
 			"enableAutoDiscovery":      cfg.Features.EnableAutoDiscovery,
 			"enableDuplicateDetection": cfg.Features.EnableDuplicateDetection,
+			"enableDownloader":         cfg.Features.EnableDownloader,
 		},
 		"uploads": map[string]interface{}{
 			"enabled":     cfg.Uploads.Enabled,
@@ -408,7 +409,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Query cannot be empty")
 		return
 	}
-	if strings.Contains(query, ";") {
+	// Normalize Unicode lookalike statement terminators (U+037E Greek question mark, U+FF1B fullwidth semicolon)
+	queryNormalized := strings.ReplaceAll(query, "\u037E", ";")
+	queryNormalized = strings.ReplaceAll(queryNormalized, "\uFF1B", ";")
+	if strings.Contains(queryNormalized, ";") {
 		writeError(c, http.StatusBadRequest, "Multi-statement queries are not permitted")
 		return
 	}

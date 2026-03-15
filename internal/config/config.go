@@ -97,6 +97,7 @@ func (m *Manager) syncFeatureToggles() {
 	syncToggle(f.EnableUploads, &cfg.Uploads.Enabled)
 	syncToggle(f.EnableUserAuth, &cfg.Auth.Enabled)
 	syncToggle(f.EnableAdminPanel, &cfg.Admin.Enabled)
+	syncToggle(f.EnableDownloader, &cfg.Downloader.Enabled)
 }
 
 // Save saves the current configuration to file

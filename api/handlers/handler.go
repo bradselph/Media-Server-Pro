@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -24,6 +25,7 @@ import (
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
+	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/hls"
@@ -107,6 +109,7 @@ type HandlerOptionalDeps struct {
 	Duplicates    *duplicates.Module
 	Analytics     *analytics.Module
 	Playlist      *playlist.Module
+	Downloader    *downloader.Module
 }
 
 // HandlerDeps holds all module dependencies needed to create a Handler.
@@ -145,6 +148,7 @@ type Handler struct {
 	extractor     *extractor.Module
 	crawler       *crawler.Module
 	duplicates    *duplicates.Module
+	downloader    *downloader.Module
 	config        *config.Manager
 }
 
@@ -185,6 +189,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		extractor:     o.Extractor,
 		crawler:       o.Crawler,
 		duplicates:    o.Duplicates,
+		downloader:    o.Downloader,
 	}
 }
 
@@ -236,6 +241,21 @@ func isSecureRequest(r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+// clearSessionCookie clears the session_id cookie with consistent Path, HttpOnly, Secure, SameSite
+// so logout and account-deletion paths invalidate the cookie reliably across browsers.
+func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecureRequest(r),
+	})
 }
 
 // generateRandomString creates a random string of the given length

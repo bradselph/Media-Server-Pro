@@ -7,7 +7,6 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -116,16 +115,7 @@ func (h *Handler) Logout(c *gin.Context) {
 		}
 	}
 
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session_id",
-		Value:    "",
-		Path:     "/",
-		Expires:  time.Unix(0, 0),
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   isSecureRequest(c.Request),
-	})
-
+	clearSessionCookie(c.Writer, c.Request)
 	writeSuccess(c, nil)
 }
 
@@ -650,21 +640,13 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	session := getSession(c)
-	if session != nil {
-		if err := h.auth.Logout(c.Request.Context(), session.ID); err != nil {
-			h.log.Warn("Failed to invalidate session before account deletion for %s: %v", user.Username, err)
+		session := getSession(c)
+		if session != nil {
+			if err := h.auth.Logout(c.Request.Context(), session.ID); err != nil {
+				h.log.Warn("Failed to invalidate session before account deletion for %s: %v", user.Username, err)
+			}
+			clearSessionCookie(c.Writer, c.Request)
 		}
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "session_id",
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-			Secure:   isSecureRequest(c.Request),
-		})
-	}
 
 	if err := h.auth.DeleteUser(c.Request.Context(), user.Username); err != nil {
 		h.log.Error("Failed to delete account: %v", err)

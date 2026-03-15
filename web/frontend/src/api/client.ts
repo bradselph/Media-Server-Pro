@@ -130,3 +130,23 @@ export const api = {
             ...options,
         }),
 }
+
+/**
+ * Fetches a blob (e.g. export CSV/file). Uses credentials and throws ApiError on failure
+ * so callers get consistent error handling with the rest of the API client.
+ */
+export async function fetchBlob(url: string, options?: Pick<RequestInit, 'signal'>): Promise<Blob> {
+    const response = await fetch(url, { credentials: 'include', ...options })
+    if (!response.ok) {
+        const text = await response.text()
+        let message = text || `Export failed (${response.status})`
+        try {
+            const raw = JSON.parse(text) as { error?: string }
+            if (raw?.error) message = raw.error
+        } catch {
+            if (text.length > 0 && text.length < 200) message = text
+        }
+        throw new ApiError(message, response.status)
+    }
+    return response.blob()
+}

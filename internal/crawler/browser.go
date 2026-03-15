@@ -112,8 +112,9 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 
 	// --- 2. Launch Chrome ---
 	// Block private IP resolution to mitigate SSRF when --disable-web-security allows
-	// malicious page JS to access local network. Maps RFC1918 ranges to unreachable address.
-	hostRules := "MAP 10.0.0.0/8 0.0.0.0, MAP 172.16.0.0/12 0.0.0.0, MAP 192.168.0.0/16 0.0.0.0"
+	// malicious page JS to access local network. Block RFC1918, loopback, and link-local
+	// so crawled pages cannot reach localhost (admin API) or cloud metadata (169.254.169.254).
+	hostRules := "MAP 10.0.0.0/8 0.0.0.0, MAP 172.16.0.0/12 0.0.0.0, MAP 192.168.0.0/16 0.0.0.0, MAP 127.0.0.0/8 0.0.0.0, MAP 169.254.0.0/16 0.0.0.0, MAP ::1/128 0.0.0.0"
 	args := []string{
 		"--headless",
 		"--disable-gpu",
@@ -230,9 +231,11 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	}
 
 	// --- 4. Enable domains ---
-	send("Network.enable", map[string]interface{}{})
-	send("Page.enable", map[string]interface{}{})
-	send("Runtime.enable", map[string]interface{}{})
+	for _, method := range []string{"Network.enable", "Page.enable", "Runtime.enable"} {
+		if _, err := send(method, map[string]interface{}{}); err != nil {
+			return nil, fmt.Errorf("enable %s: %w", method, err)
+		}
+	}
 
 	// --- 5. Collect network responses ---
 	result := &browserProbeResult{}

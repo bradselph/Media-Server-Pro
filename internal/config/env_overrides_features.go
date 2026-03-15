@@ -34,6 +34,7 @@ func (m *Manager) applyFeatureFlagsPart2() {
 	setFeatureBool(&f.EnableCrawler, "FEATURE_CRAWLER", "FEATURES_CRAWLER")
 	setFeatureBool(&f.EnableDuplicateDetection, "FEATURE_DUPLICATE_DETECTION", "FEATURES_DUPLICATE_DETECTION")
 	setFeatureBool(&f.EnableHuggingFace, "FEATURE_HUGGINGFACE", "FEATURES_ENABLE_HUGGINGFACE", "FEATURES_HUGGINGFACE")
+	setFeatureBool(&f.EnableDownloader, "FEATURE_DOWNLOADER", "FEATURES_DOWNLOADER")
 }
 
 func (m *Manager) applyBackupEnvOverrides() {

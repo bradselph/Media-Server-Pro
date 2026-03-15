@@ -11,6 +11,7 @@ const TEXT_MUTED = 'var(--text-muted)'
 
 export function AnalyticsTab() {
     const [exportingAnalytics, setExportingAnalytics] = useState(false)
+    const [exportingAuditLog, setExportingAuditLog] = useState(false)
     const [exportError, setExportError] = useState<string | null>(null)
     const [eventsByTypeFilter, setEventsByTypeFilter] = useState<string>('')
     const [eventsByMediaId, setEventsByMediaId] = useState('')
@@ -71,6 +72,31 @@ export function AnalyticsTab() {
             setExportError(errMsg(err))
         } finally {
             setExportingAnalytics(false)
+        }
+    }
+
+    async function handleExportAuditLog() {
+        setExportingAuditLog(true)
+        setExportError(null)
+        try {
+            const res = await fetch(adminApi.exportAuditLogUrl(), { credentials: 'include' })
+            if (!res.ok) {
+                const text = await res.text().catch(() => '')
+                throw new Error(text || `Export failed (${res.status})`)
+            }
+            const blob = await res.blob()
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            window.URL.revokeObjectURL(url)
+        } catch (err) {
+            setExportError(errMsg(err))
+        } finally {
+            setExportingAuditLog(false)
         }
     }
 
@@ -171,9 +197,9 @@ export function AnalyticsTab() {
                     <p style={{color: 'var(--color-error)', fontSize: 13, marginTop: 8}}>{exportError}</p>
                 )}
                 <div className="admin-action-row" style={{marginTop: 8}}>
-                    <a href={adminApi.exportAuditLogUrl()} className="admin-btn">
-                        <i className="bi bi-download"/> Export Audit Log
-                    </a>
+                    <button type="button" className="admin-btn" onClick={handleExportAuditLog} disabled={exportingAuditLog}>
+                        <i className="bi bi-download"/> {exportingAuditLog ? 'Exporting...' : 'Export Audit Log'}
+                    </button>
                     <button className="admin-btn" onClick={handleExportAnalytics} disabled={exportingAnalytics}>
                         <i className="bi bi-file-earmark-spreadsheet"/> {exportingAnalytics ? 'Exporting...' : 'Export Analytics CSV'}
                     </button>

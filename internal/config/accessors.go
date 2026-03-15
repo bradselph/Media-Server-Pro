@@ -62,6 +62,7 @@ func (m *Manager) SetValue(path string, value interface{}) error {
 
 // SetValuesBatch applies multiple configuration updates and persists once atomically.
 // On failure, no partial updates are written to disk.
+// After saving, feature toggles are synced so runtime module enable/disable matches config.
 func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -76,5 +77,9 @@ func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 			return err
 		}
 	}
-	return m.save()
+	if err := m.save(); err != nil {
+		return err
+	}
+	m.syncFeatureToggles()
+	return nil
 }
