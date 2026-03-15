@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.100.0] - 2026-03-15 (minor)
+
+- Merge pull request #99 from bradselph/development
+- fix: resolve multiple issues in thumbnail generation, path validation, and process management
+- fix: resolve multiple issues related to session management, configuration updates, and symlink handling
+- fix(security): address multiple security vulnerabilities and enhance route protection
+- feat(security): enhance streaming security with unauthenticated access controls
+- feat(api): implement read-only transactions for query execution and enforce API key validation for WebSocket
+- Update audit-report-2026-03-14.md
+- feat(tests): enhance test user creation and update RequireAuth tests
+- feat(tests): update ErrorBoundary tests and refine authStore mock data
+- refactor(api): enhance apiRequest tests and add convenience methods
+- Merge branch 'main' into development
+- audit fixes batch 6: P3-6, P3-2, P2-7, P1-10
+
+
 ## [0.99.0] - 2026-03-14 (minor)
 
 - Merge pull request #98 from bradselph/development
