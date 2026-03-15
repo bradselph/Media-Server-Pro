@@ -928,9 +928,10 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Select rate limiter tier based on endpoint
+		// Select rate limiter tier based on endpoint — use cleaned path to prevent
+		// path traversal tricks from bypassing the stricter auth rate limit.
 		limiter := m.rateLimiter
-		if isAuthPath(reqPath) {
+		if isAuthPath(cleaned) {
 			limiter = m.authRateLimiter
 		}
 

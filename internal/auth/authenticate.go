@@ -116,6 +116,9 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 		req.Username == cfg.Admin.Username
 	if !adminLoginAllowed {
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
+		// Record the failed attempt so wrong-username attempts accrue lockout penalty,
+		// preventing username enumeration without incurring lockout.
+		m.recordFailedAttempt(req.IPAddress)
 		return nil, ErrNotAdminUsername
 	}
 

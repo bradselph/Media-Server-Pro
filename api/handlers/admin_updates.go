@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -174,6 +175,16 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 	if req.UpdateMethod != "" && req.UpdateMethod != "source" && req.UpdateMethod != "binary" {
 		writeError(c, http.StatusBadRequest, "update_method must be \"source\" or \"binary\"")
 		return
+	}
+
+	// Validate branch name against git ref naming rules to prevent command injection
+	if req.Branch != "" {
+		for _, bad := range []string{"..", " ", "~", "^", ":", "\\", "*", "?", "[", "@{"} {
+			if strings.Contains(req.Branch, bad) {
+				writeError(c, http.StatusBadRequest, "Invalid branch name")
+				return
+			}
+		}
 	}
 
 	if err := h.config.Update(func(cfg *config.Config) {

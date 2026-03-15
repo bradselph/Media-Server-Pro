@@ -344,6 +344,10 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 							writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
 							return
 						}
+						// Track the proxy stream for authenticated users so the counter
+						// is decremented when the stream ends, preventing limit bypass.
+						release := h.streaming.TrackProxyStream(session.UserID)
+						defer release()
 					}
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()

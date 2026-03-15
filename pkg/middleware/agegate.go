@@ -217,6 +217,14 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 		if ag.cfg.Enabled {
 			ip := extractClientIP(c.Request)
 			ag.mu.Lock()
+			// Cap map size to prevent unbounded memory growth under high traffic.
+			const maxVerifiedIPs = 100000
+			if len(ag.verifiedIPs) >= maxVerifiedIPs {
+				// Evict oldest entries when at capacity
+				ag.mu.Unlock()
+				ag.evictExpired()
+				ag.mu.Lock()
+			}
 			ag.verifiedIPs[ip] = time.Now()
 			ag.mu.Unlock()
 			ag.scheduleEvict()

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 
@@ -214,6 +215,12 @@ func (h *Handler) AdminDownloaderDeleteDownload(c *gin.Context) {
 	filename := c.Param("filename")
 	if filename == "" {
 		writeError(c, http.StatusBadRequest, "Filename is required")
+		return
+	}
+	// Sanitize to prevent path traversal — strip directory components
+	filename = filepath.Base(filename)
+	if filename == "." || filename == ".." {
+		writeError(c, http.StatusBadRequest, "Invalid filename")
 		return
 	}
 

@@ -105,7 +105,26 @@ func ListImportableFiles(downloadsDir string) ([]ImportableFile, error) {
 // Returns the destination path and whether the source was deleted (when deleteSource was true).
 // If a file with the same name exists, appends a timestamp to avoid collision.
 func ImportFile(srcDir, destDir, filename string, deleteSource bool) (destPath string, sourceDeleted bool, err error) {
+	// Sanitize filename to prevent path traversal — strip directory components
+	filename = filepath.Base(filename)
+	if filename == "." || filename == ".." || filename == string(filepath.Separator) {
+		return "", false, fmt.Errorf("invalid filename")
+	}
+
 	srcPath := filepath.Join(srcDir, filename)
+
+	// Defence-in-depth: verify resolved path is within srcDir
+	absSrc, err := filepath.Abs(srcPath)
+	if err != nil {
+		return "", false, fmt.Errorf("resolve source path: %w", err)
+	}
+	absSrcDir, err := filepath.Abs(srcDir)
+	if err != nil {
+		return "", false, fmt.Errorf("resolve source dir: %w", err)
+	}
+	if !strings.HasPrefix(absSrc, absSrcDir+string(filepath.Separator)) {
+		return "", false, fmt.Errorf("filename escapes source directory")
+	}
 
 	// Verify source exists
 	if _, err := os.Stat(srcPath); err != nil {
@@ -150,7 +169,7 @@ func ImportFile(srcDir, destDir, filename string, deleteSource bool) (destPath s
 	return destPath, false, nil
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src, dst string) (retErr error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -162,8 +181,8 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer func() {
-		if cerr := out.Close(); cerr != nil && err == nil {
-			err = cerr
+		if cerr := out.Close(); cerr != nil && retErr == nil {
+			retErr = cerr
 		}
 	}()
 

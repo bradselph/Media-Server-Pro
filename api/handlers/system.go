@@ -425,10 +425,19 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 
 	h.log.Info("Admin %s executing query: %s", username, query)
 
-	isSelect := strings.HasPrefix(strings.ToUpper(query), "SELECT") ||
-		strings.HasPrefix(strings.ToUpper(query), "SHOW") ||
-		strings.HasPrefix(strings.ToUpper(query), "DESCRIBE") ||
-		strings.HasPrefix(strings.ToUpper(query), "EXPLAIN")
+	// Block DoS-capable SQL functions even in SELECT subqueries.
+	queryUpper := strings.ToUpper(query)
+	for _, banned := range []string{"BENCHMARK", "SLEEP"} {
+		if strings.Contains(queryUpper, banned) {
+			writeError(c, http.StatusBadRequest, banned+" is not permitted in queries")
+			return
+		}
+	}
+
+	isSelect := strings.HasPrefix(queryUpper, "SELECT") ||
+		strings.HasPrefix(queryUpper, "SHOW") ||
+		strings.HasPrefix(queryUpper, "DESCRIBE") ||
+		strings.HasPrefix(queryUpper, "EXPLAIN")
 
 	queryTimeout := h.media.GetConfig().Admin.QueryTimeout
 	if queryTimeout <= 0 {

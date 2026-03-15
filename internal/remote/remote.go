@@ -150,6 +150,10 @@ func (m *Module) Name() string {
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting remote media module...")
 
+	// Initialize module context so CacheMedia (and other background ops) can be
+	// cancelled when Stop() is called.
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+
 	m.repo = mysqlrepo.NewRemoteCacheRepository(m.dbModule.GORM())
 
 	cfg := m.config.Get()
