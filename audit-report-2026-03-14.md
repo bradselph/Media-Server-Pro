@@ -5,11 +5,11 @@
 **Commit:** ddfac05
 **Last verified:** 2026-03-14
 **Re-verified & reprioritized:** 2026-03-14 (48 fixes code-verified, 4 newly confirmed, remaining issues promoted)
-**Updated:** 2026-03-15 — 8 P0 + 5 further fixes (P0-4,11,12,13,14,16,17,18; P0-15; P1-39,43,44,46)
+**Updated:** 2026-03-15 — Additional fixes: P1-34, P1-35, P1-40, P2-34
 
 ---
 
-## FIXED ITEMS (61 total — 48 code-verified 2026-03-14, 13 fixed 2026-03-15)
+## FIXED ITEMS (68 total — 48 code-verified 2026-03-14, 20 fixed 2026-03-15)
 
 <details>
 <summary>Click to expand verified fixes</summary>
@@ -89,6 +89,13 @@
 | P1-43 | httpClient no ResponseHeaderTimeout | ✅ Fixed 2026-03-15 — receiver.go: 30s ResponseHeaderTimeout on transport |
 | P1-44 | loadFromDB stops on first media load failure | ✅ Fixed 2026-03-15 — receiver.go: recover per row, log and continue |
 | P1-46 | RecordRating no validation on rating value | ✅ Fixed 2026-03-15 — suggestions.go: validate 0–5 range |
+| P1-47 | Inconsistent cookie-clearing strategies | ✅ Fixed 2026-03-15 — handler.go: clearSessionCookie; auth.go Logout + DeleteAccount |
+| P1-31 | UpsertBatch not in transaction | ✅ Fixed 2026-03-15 — receiver_transfer_repository.go: Transaction wraps batch upsert |
+| P2-56 | UpdatePlaylist/DeletePlaylist return 403 for all errors | ✅ Fixed 2026-03-15 — playlists.go: 404 for ErrPlaylistNotFound, 403 for ErrAccessDenied, 500 else |
+| P1-34 | User Update uses Save() (full update) | ✅ Fixed 2026-03-15 — user_repository_gorm.go: Updates() with specific fields; password only when set |
+| P1-35 | Session Update only persists LastActivity | ✅ Fixed 2026-03-15 — session_repository_gorm.go: Update persists all updatable fields |
+| P2-34 | HLS error "use admin panel to reset" but no API | ✅ Fixed 2026-03-15 — jobs.go: removed misleading reset wording from error message |
+| P1-40 | analytics mediaStats/mediaViewers grow without bound | ✅ Fixed 2026-03-15 — cleanup.go: evictExcessMediaStats cap 100K, evict by oldest LastViewed |
 
 </details>
 
@@ -103,11 +110,11 @@ the largest promotions.
 ### Priority counts:
 ```
 P0 — CRITICAL (security / crash / data loss):   1  (9 fixed 2026-03-15)
-P1 — HIGH (user-facing bugs / fragile):        18  (4 fixed 2026-03-15)
-P2 — MEDIUM (tech debt / time bombs):          17
+P1 — HIGH (user-facing bugs / fragile):        15  (7 fixed 2026-03-15)
+P2 — MEDIUM (tech debt / time bombs):          15  (2 fixed 2026-03-15)
 P3 — LOW (cleanup / style):                     3
 ────────────────────────────────────────────────
-TOTAL REMAINING:                                39
+TOTAL REMAINING:                                32
 ```
 
 ---
@@ -121,7 +128,7 @@ TOTAL REMAINING:                                39
 
 ---
 
-## P1 — HIGH: Will cause user-facing bugs or crashes (18 remaining)
+## P1 — HIGH: Will cause user-facing bugs or crashes (15 remaining)
 
 ### P1-9 [FRAGILE] RestartServer skips graceful shutdown — ⚠️ PARTIAL FIX
 - **File:** `api/handlers/admin_lifecycle.go:29-60`
@@ -148,11 +155,6 @@ TOTAL REMAINING:                                39
 - **Impact:** String timestamps instead of `time.Time` create timezone mismatch risk. MySQL stores in server TZ, Go formats in local TZ — silent drift on servers with non-UTC timezone
 - **Fix:** Use `time.Time` fields in GORM models; let the driver handle conversion
 
-### P1-31 UpsertBatch not in transaction *(was P2-18)*
-- **File:** `internal/repositories/mysql/receiver_transfer_repository.go:135-176`
-- **Impact:** Partial batch insert on failure — some items persisted, others lost. Catalog becomes inconsistent with slave state
-- **Fix:** Wrap in GORM transaction
-
 ### P1-32 REGEXP on every media query *(was P2-19)*
 - **File:** `internal/repositories/mysql/media_metadata_repository.go:236-239`
 - **Impact:** Full table scan on every media list query. Performance degrades linearly with media count
@@ -162,16 +164,6 @@ TOTAL REMAINING:                                39
 - **File:** `internal/repositories/mysql/playlist_repository.go:56-58`
 - **Impact:** GORM `Save()` on playlist cascades to all items — any concurrent item modification could be overwritten
 - **Fix:** Use targeted `Updates()` for playlist metadata only
-
-### P1-34 User Update uses Save() (full update) *(was P2-21)*
-- **File:** `internal/repositories/mysql/user_repository_gorm.go:116-140`
-- **Impact:** Every user update writes all columns, including password hash. Unnecessary DB load and audit noise
-- **Fix:** Use `Updates()` with specific fields
-
-### P1-35 Session Update only persists LastActivity *(was P2-22)*
-- **File:** `internal/repositories/mysql/session_repository_gorm.go:44-53`
-- **Impact:** If other session fields are modified (e.g., role change), they're lost on next Update call
-- **Fix:** Persist all modified fields, or document that Update is LastActivity-only
 
 ### P1-36 Delete methods don't check RowsAffected *(was P2-24)*
 - **File:** Multiple repositories
@@ -188,11 +180,6 @@ TOTAL REMAINING:                                39
 - **Impact:** `time.Duration` marshals as int64 nanoseconds — config.json becomes unreadable. Loading a saved config may misinterpret "30000000000" (30s in ns) vs human expectation
 - **Fix:** Custom JSON marshal/unmarshal using string format ("30s", "5m")
 
-### P1-40 analytics mediaStats/mediaViewers grow without bound *(was P2-36)*
-- **File:** `internal/analytics/stats.go`
-- **Impact:** `mediaStats`, `mediaViewers`, `mediaDurationSamples` maps grow without eviction. Every distinct MediaID creates a permanent entry. On high-turnover servers this is a slow OOM leak
-- **Fix:** Add TTL-based eviction or cap map size; purge entries for deleted media
-
 ### P1-41 RecordDuplicatesFromSlave loads entire table *(was P2-37)*
 - **File:** `internal/duplicates/duplicates.go:220-243`
 - **Impact:** `ListAll(ctx)` loads entire `receiver_media` table into memory per catalog push. Large slave networks cause memory spikes
@@ -208,19 +195,13 @@ TOTAL REMAINING:                                39
 - **Impact:** Background goroutines launched from handlers use `context.Background()` instead of module contexts — they run indefinitely even during shutdown, causing resource leaks and potential crashes during stop
 - **Fix:** Use module-scoped context or derive from server shutdown context
 
-### P1-47 Inconsistent cookie-clearing strategies *(was P2-55)*
-- **File:** `api/handlers/auth.go:119-127`
-- **Impact:** Different logout/session-clearing paths use inconsistent cookie attributes — some cookies may not be cleared properly, leaving stale sessions
-- **Fix:** Centralize cookie-clearing with consistent Path, Domain, Secure, HttpOnly attributes
-
 ---
 
-## P2 — MEDIUM: Tech debt / time bombs (17)
+## P2 — MEDIUM: Tech debt / time bombs (15 remaining)
 
 ### Code Quality
 - **P2-31** `internal/scanner/mature.go:521-552` — Custom keywords use substring matching (false positives on partial word matches)
 - **P2-33** `internal/hls/locks.go:60-61` — 30-minute stale lock threshold too short for large file transcodes
-- **P2-34** `internal/hls/jobs.go:74` — Error says "use admin panel to reset" but no ResetJob API exists
 
 ### Module-Level
 - **P2-43** `internal/remote/remote.go:799-818` — saveCacheIndex errors logged but not returned
@@ -236,8 +217,6 @@ TOTAL REMAINING:                                39
 - **P2-52** `usePlayerPageState.ts:123` — `el.src` set synchronously before HLS capability check
 - **P2-53** `usePlayerPageState.ts:225` — `handleLoadedMetadata` always auto-plays (no user preference check)
 - **P2-54** `useEqualizer.ts:141-144` — `createMediaElementSource` double-call risk (throws on second call)
-- **P2-56** `api/handlers/playlists.go:130-153` — UpdatePlaylist/DeletePlaylist return 403 for all errors (masks real cause)
-
 ### Data Integrity
 - **P3-1** *(promoted)* Multiple repositories — json.Marshal/Unmarshal errors silently ignored → can corrupt stored JSON fields
 - **P3-8** *(promoted)* `internal/admin/admin.go:172-227` — ExportAuditLog loads up to 100K rows into memory
@@ -272,4 +251,4 @@ TOTAL REMAINING:                                39
 *4 items confirmed fixed since last report (P1-23, P1-24, P2-25, P2-45)*
 *P0-4 downgraded to partial fix (loopback/link-local gaps)*
 *Remaining issues promoted: 8 P2→P0, 14 P2→P1, 2 P3→P2, 8 P3 closed*
-*2026-03-15: P0-4,11,12,13,14,16,17,18, P0-15; P1-39,43,44,46 fixed; 1 P0 and 39 total remaining*
+*2026-03-15: P0-4..18, P0-15; P1-31,34,35,39,40,43,44,46,47; P2-34,56 fixed; 1 P0 and 32 total remaining*

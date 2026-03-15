@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -236,6 +237,21 @@ func isSecureRequest(r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+// clearSessionCookie clears the session_id cookie with consistent Path, HttpOnly, Secure, SameSite
+// so logout and account-deletion paths invalidate the cookie reliably across browsers.
+func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecureRequest(r),
+	})
 }
 
 // generateRandomString creates a random string of the given length

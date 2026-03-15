@@ -155,25 +155,27 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 		}
 	}
 
-	// Batch upsert in chunks of 100
+	// Batch upsert in chunks of 100 inside a transaction so partial failure rolls back all batches.
 	const batchSize = 100
-	for start := 0; start < len(rows); start += batchSize {
-		end := start + batchSize
-		if end > len(rows) {
-			end = len(rows)
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for start := 0; start < len(rows); start += batchSize {
+			end := start + batchSize
+			if end > len(rows) {
+				end = len(rows)
+			}
+			batch := rows[start:end]
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"remote_path", "name", "media_type", "file_size", "duration",
+					"content_type", "content_fingerprint", "width", "height", "updated_at",
+				}),
+			}).Create(&batch).Error; err != nil {
+				return fmt.Errorf("failed to upsert media batch: %w", err)
+			}
 		}
-		batch := rows[start:end]
-		if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"remote_path", "name", "media_type", "file_size", "duration",
-				"content_type", "content_fingerprint", "width", "height", "updated_at",
-			}),
-		}).Create(&batch).Error; err != nil {
-			return fmt.Errorf("failed to upsert media batch: %w", err)
-		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (r *ReceiverMediaRepository) Get(ctx context.Context, id string) (*repositories.ReceiverMediaRecord, error) {

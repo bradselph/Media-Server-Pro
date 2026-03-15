@@ -40,9 +40,17 @@ func (r *SessionRepository) Get(ctx context.Context, id string) (*models.Session
 	return &session, nil
 }
 
-// Update persists changes to an existing session (e.g. LastActivity)
+// Update persists all updatable session fields (LastActivity, Username, Role, ExpiresAt, IPAddress, UserAgent)
+// so that role/username/expiry changes are reflected and callers do not lose updates.
 func (r *SessionRepository) Update(ctx context.Context, session *models.Session) error {
-	result := r.db.WithContext(ctx).Model(session).Where("id = ?", session.ID).Update("last_activity", session.LastActivity)
+	result := r.db.WithContext(ctx).Model(session).Where("id = ?", session.ID).Updates(map[string]interface{}{
+		"last_activity": session.LastActivity,
+		"username":      session.Username,
+		"role":          session.Role,
+		"expires_at":    session.ExpiresAt,
+		"ip_address":    session.IPAddress,
+		"user_agent":    session.UserAgent,
+	})
 	if result.Error != nil {
 		return result.Error
 	}
