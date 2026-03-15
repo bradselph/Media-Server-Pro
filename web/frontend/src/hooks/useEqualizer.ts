@@ -141,8 +141,14 @@ export function useEqualizer(
             audioCtxRef.current = new AudioContext()
         }
         if (!sourceRef.current) {
-            sourceRef.current = audioCtxRef.current.createMediaElementSource(audioElement)
-            connectedRef.current = false
+            try {
+                sourceRef.current = audioCtxRef.current.createMediaElementSource(audioElement)
+                connectedRef.current = false
+            } catch {
+                // createMediaElementSource throws if the element already has a source (e.g. double init)
+                sourceRef.current = null
+                return null
+            }
         }
         if (!analyserRef.current) {
             analyserRef.current = audioCtxRef.current.createAnalyser()

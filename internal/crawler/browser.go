@@ -231,9 +231,11 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	}
 
 	// --- 4. Enable domains ---
-	send("Network.enable", map[string]interface{}{})
-	send("Page.enable", map[string]interface{}{})
-	send("Runtime.enable", map[string]interface{}{})
+	for _, method := range []string{"Network.enable", "Page.enable", "Runtime.enable"} {
+		if _, err := send(method, map[string]interface{}{}); err != nil {
+			return nil, fmt.Errorf("enable %s: %w", method, err)
+		}
+	}
 
 	// --- 5. Collect network responses ---
 	result := &browserProbeResult{}

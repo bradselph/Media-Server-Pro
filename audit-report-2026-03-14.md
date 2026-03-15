@@ -5,11 +5,11 @@
 **Commit:** ddfac05
 **Last verified:** 2026-03-14
 **Re-verified & reprioritized:** 2026-03-14 (48 fixes code-verified, 4 newly confirmed, remaining issues promoted)
-**Updated:** 2026-03-15 — Additional fixes: P2-44, P1-20
+**Updated:** 2026-03-15 — Additional fixes: P2-54, P2-47, P1-36 (user repo)
 
 ---
 
-## FIXED ITEMS (73 total — 48 code-verified 2026-03-14, 25 fixed 2026-03-15)
+## FIXED ITEMS (76 total — 48 code-verified 2026-03-14, 28 fixed 2026-03-15)
 
 <details>
 <summary>Click to expand verified fixes</summary>
@@ -101,6 +101,9 @@
 | P2-43 | saveCacheIndex errors logged but not returned | ✅ Fixed 2026-03-15 — remote.go: saveCacheIndex returns error; Stop logs it |
 | P2-44 | loadProfiles silently ignores view history load errors | ✅ Fixed 2026-03-15 — suggestions.go: log Warn on GetViewHistory error, still add profile |
 | P1-20 | Single context timeout for HTTP shutdown + module stops | ✅ Fixed 2026-03-15 — server.go: separate 50% HTTP / 50% module phase contexts |
+| P2-54 | useEqualizer createMediaElementSource double-call risk | ✅ Fixed 2026-03-15 — useEqualizer.ts: try/catch around createMediaElementSource |
+| P2-47 | send() ignores errors from domain enable calls | ✅ Fixed 2026-03-15 — browser.go: check send() error for Network/Page/Runtime.enable |
+| P1-36 | Delete RowsAffected (user repo) | ✅ Fixed 2026-03-15 — user_repository_gorm.go: Delete returns ErrUserNotFound when 0 rows |
 
 </details>
 
@@ -115,11 +118,11 @@ the largest promotions.
 ### Priority counts:
 ```
 P0 — CRITICAL (security / crash / data loss):   1  (9 fixed 2026-03-15)
-P1 — HIGH (user-facing bugs / fragile):        13  (9 fixed 2026-03-15)
-P2 — MEDIUM (tech debt / time bombs):          13  (4 fixed 2026-03-15)
+P1 — HIGH (user-facing bugs / fragile):        12  (10 fixed 2026-03-15)
+P2 — MEDIUM (tech debt / time bombs):          11  (6 fixed 2026-03-15)
 P3 — LOW (cleanup / style):                     3
 ────────────────────────────────────────────────
-TOTAL REMAINING:                                27
+TOTAL REMAINING:                                24
 ```
 
 ---
@@ -133,7 +136,7 @@ TOTAL REMAINING:                                27
 
 ---
 
-## P1 — HIGH: Will cause user-facing bugs or crashes (13 remaining)
+## P1 — HIGH: Will cause user-facing bugs or crashes (12 remaining)
 
 ### P1-9 [FRAGILE] RestartServer skips graceful shutdown — ⚠️ PARTIAL FIX
 - **File:** `api/handlers/admin_lifecycle.go:29-60`
@@ -161,7 +164,7 @@ TOTAL REMAINING:                                27
 - **Fix:** Use indexed column filtering or pre-computed columns; move regex to application layer
 
 ### P1-36 Delete methods don't check RowsAffected *(was P2-24)*
-- **File:** Multiple repositories (playlist fixed)
+- **File:** Multiple repositories (playlist, user fixed)
 - **Impact:** Delete of non-existent item returns success — callers can't distinguish "deleted" from "was already gone"
 - **Fix:** Check `RowsAffected` and return appropriate error or sentinel
 
@@ -192,7 +195,7 @@ TOTAL REMAINING:                                27
 
 ---
 
-## P2 — MEDIUM: Tech debt / time bombs (13 remaining)
+## P2 — MEDIUM: Tech debt / time bombs (11 remaining)
 
 ### Code Quality
 - **P2-31** `internal/scanner/mature.go:521-552` — Custom keywords use substring matching (false positives on partial word matches)
@@ -200,7 +203,6 @@ TOTAL REMAINING:                                27
 
 ### Module-Level
 - **P2-46** `internal/crawler/browser.go:157-158` — Events channel drops on overflow (missed CDP events)
-- **P2-47** `internal/crawler/browser.go:231-233` — send() ignores errors from domain enable calls
 - **P2-48** `cmd/media-receiver/main.go:988` — generateFileID uses absolute path (non-portable across machines)
 - **P2-49** `web/frontend/src/pages/admin/SystemTab.tsx:79-86` — Config editor silently overwritten by React Query refetch
 
@@ -209,7 +211,6 @@ TOTAL REMAINING:                                27
 - **P2-51** `AnalyticsTab.tsx:174` — Audit log export uses plain anchor tag (no auth header, no error handling)
 - **P2-52** `usePlayerPageState.ts:123` — `el.src` set synchronously before HLS capability check
 - **P2-53** `usePlayerPageState.ts:225` — `handleLoadedMetadata` always auto-plays (no user preference check)
-- **P2-54** `useEqualizer.ts:141-144` — `createMediaElementSource` double-call risk (throws on second call)
 ### Data Integrity
 - **P3-1** *(promoted)* Multiple repositories — json.Marshal/Unmarshal errors silently ignored → can corrupt stored JSON fields
 - **P3-8** *(promoted)* `internal/admin/admin.go:172-227` — ExportAuditLog loads up to 100K rows into memory
@@ -244,4 +245,4 @@ TOTAL REMAINING:                                27
 *4 items confirmed fixed since last report (P1-23, P1-24, P2-25, P2-45)*
 *P0-4 downgraded to partial fix (loopback/link-local gaps)*
 *Remaining issues promoted: 8 P2→P0, 14 P2→P1, 2 P3→P2, 8 P3 closed*
-*2026-03-15: P0-4..18, P0-15; P1-20,31,33,34,35,36(playlist),39,40,43,44,46,47; P2-34,43,44,56 fixed; 1 P0 and 27 total remaining*
+*2026-03-15: P0-4..18, P0-15; P1-20,31,33,34,35,36(playlist,user),39,40,43,44,46,47; P2-34,43,44,47,54,56 fixed; 1 P0 and 24 total remaining*

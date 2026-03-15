@@ -186,7 +186,14 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 // are automatically removed via ON DELETE CASCADE foreign key constraints
 // defined in the database schema.
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id).Error
+	result := r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrUserNotFound
+	}
+	return nil
 }
 
 // List retrieves all users with permissions and preferences (batch-loaded to avoid N+1).
