@@ -1,6 +1,11 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import type {DownloaderProgress} from '@/api/types'
 
+export interface UseDownloaderWebSocketOptions {
+    /** Called when a download reaches complete/error/cancelled so the UI can refetch files/import lists */
+    onDownloadComplete?: () => void
+}
+
 interface UseDownloaderWebSocketResult {
     connected: boolean
     clientId: string | null
@@ -8,7 +13,9 @@ interface UseDownloaderWebSocketResult {
     clearDownload: (id: string) => void
 }
 
-export function useDownloaderWebSocket(): UseDownloaderWebSocketResult {
+export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions): UseDownloaderWebSocketResult {
+    const onCompleteRef = useRef(options?.onDownloadComplete)
+    onCompleteRef.current = options?.onDownloadComplete
     const [connected, setConnected] = useState(false)
     const [clientId, setClientId] = useState<string | null>(null)
     const [activeDownloads, setActiveDownloads] = useState(() => new Map<string, DownloaderProgress>())
@@ -50,6 +57,7 @@ export function useDownloaderWebSocket(): UseDownloaderWebSocketResult {
                         next.set(msg.downloadId, msg as DownloaderProgress)
                         // Remove completed/error/cancelled after a delay
                         if (msg.status === 'complete' || msg.status === 'error' || msg.status === 'cancelled') {
+                            onCompleteRef.current?.()
                             setTimeout(() => {
                                 setActiveDownloads(p => {
                                     const n = new Map(p)

@@ -1095,6 +1095,8 @@ export interface ImportResult {
     source: string
     destination: string
     scanTriggered: boolean
+    /** False if "delete source after import" was requested but the source file could not be removed */
+    sourceDeleted?: boolean
 }
 
 export interface DownloaderProgress {

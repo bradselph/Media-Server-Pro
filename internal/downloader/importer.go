@@ -102,23 +102,23 @@ func ListImportableFiles(downloadsDir string) ([]ImportableFile, error) {
 }
 
 // ImportFile moves (or copies) a file from srcDir to destDir.
-// Returns the destination path. If a file with the same name exists,
-// appends a timestamp to avoid collision.
-func ImportFile(srcDir, destDir, filename string, deleteSource bool) (string, error) {
+// Returns the destination path and whether the source was deleted (when deleteSource was true).
+// If a file with the same name exists, appends a timestamp to avoid collision.
+func ImportFile(srcDir, destDir, filename string, deleteSource bool) (destPath string, sourceDeleted bool, err error) {
 	srcPath := filepath.Join(srcDir, filename)
 
 	// Verify source exists
 	if _, err := os.Stat(srcPath); err != nil {
-		return "", fmt.Errorf("source file not found: %w", err)
+		return "", false, fmt.Errorf("source file not found: %w", err)
 	}
 
 	// Ensure destination directory exists
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return "", fmt.Errorf("create dest dir: %w", err)
+		return "", false, fmt.Errorf("create dest dir: %w", err)
 	}
 
 	// Handle filename collision
-	destPath := filepath.Join(destDir, filename)
+	destPath = filepath.Join(destDir, filename)
 	if _, err := os.Stat(destPath); err == nil {
 		ext := filepath.Ext(filename)
 		base := strings.TrimSuffix(filename, ext)
@@ -129,21 +129,25 @@ func ImportFile(srcDir, destDir, filename string, deleteSource bool) (string, er
 	if deleteSource {
 		// Try rename first (instant on same filesystem)
 		if err := os.Rename(srcPath, destPath); err == nil {
-			return destPath, nil
+			return destPath, true, nil
 		}
 		// Fallback: copy + delete
 		if err := copyFile(srcPath, destPath); err != nil {
-			return "", fmt.Errorf("copy file: %w", err)
+			return "", false, fmt.Errorf("copy file: %w", err)
 		}
-		_ = os.Remove(srcPath)
-		return destPath, nil
+		if removeErr := os.Remove(srcPath); removeErr != nil {
+			log := logger.New("downloader-import")
+			log.Warn("Import succeeded but could not remove source %s: %v", srcPath, removeErr)
+			return destPath, false, nil
+		}
+		return destPath, true, nil
 	}
 
 	// Copy only
 	if err := copyFile(srcPath, destPath); err != nil {
-		return "", fmt.Errorf("copy file: %w", err)
+		return "", false, fmt.Errorf("copy file: %w", err)
 	}
-	return destPath, nil
+	return destPath, false, nil
 }
 
 func copyFile(src, dst string) error {

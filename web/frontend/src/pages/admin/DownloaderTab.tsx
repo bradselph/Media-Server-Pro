@@ -19,7 +19,8 @@ export function DownloaderTab() {
     const {data: health} = useQuery<DownloaderHealth>({
         queryKey: ['downloader-health'],
         queryFn: () => downloaderApi.getHealth(),
-        refetchInterval: 15000,
+        refetchInterval: 10000,
+        refetchOnWindowFocus: true,
     })
 
     const online = health?.online ?? false
@@ -42,11 +43,17 @@ export function DownloaderTab() {
 // ── Download Section ──────────────────────────────────────────────────────────
 
 function DownloadSection({online}: { online: boolean }) {
+    const queryClient = useQueryClient()
     const [url, setUrl] = useState('')
     const [detecting, setDetecting] = useState(false)
     const [detected, setDetected] = useState<DownloaderDetectResult | null>(null)
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-    const {connected, clientId, activeDownloads} = useDownloaderWebSocket()
+    const {connected, clientId, activeDownloads} = useDownloaderWebSocket({
+        onDownloadComplete: () => {
+            queryClient.invalidateQueries({queryKey: ['downloader-files']})
+            queryClient.invalidateQueries({queryKey: ['downloader-importable']})
+        },
+    })
 
     async function handleDetect(e: FormEvent) {
         e.preventDefault()
@@ -96,6 +103,9 @@ function DownloadSection({online}: { online: boolean }) {
                 </span>
             </div>
 
+            <p style={{fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px'}}>
+                For downloads to save on the server (and appear in Server Files / Import), the downloader must have <strong>MSP_URL</strong> set to this server’s URL and allow server storage. Otherwise downloads are streamed to the browser only.
+            </p>
             <form onSubmit={handleDetect} style={{display: 'flex', gap: '8px', marginBottom: '16px'}}>
                 <input
                     type="url"
@@ -202,13 +212,14 @@ function FilesSection({online}: { online: boolean }) {
         queryKey: ['downloader-files'],
         queryFn: () => downloaderApi.listDownloads(),
         enabled: online,
-        refetchInterval: 10000,
+        refetchInterval: 5000,
+        refetchOnWindowFocus: true,
     })
 
     const deleteMutation = useMutation({
         mutationFn: (filename: string) => downloaderApi.deleteDownload(filename),
-        onSuccess: () => {
-            queryClient.invalidateQueries({queryKey: ['downloader-files']})
+        onSuccess: async () => {
+            await queryClient.refetchQueries({queryKey: ['downloader-files']})
             setMsg({type: 'success', text: 'File deleted'})
         },
         onError: (err) => { setMsg({type: 'error', text: errMsg(err)}); },
@@ -266,15 +277,19 @@ function ImportSection() {
     const {data: files, isLoading} = useQuery<ImportableFile[]>({
         queryKey: ['downloader-importable'],
         queryFn: () => downloaderApi.listImportable(),
-        refetchInterval: 10000,
+        refetchInterval: 5000,
+        refetchOnWindowFocus: true,
     })
 
     const importMutation = useMutation({
         mutationFn: (filename: string) => downloaderApi.importFile(filename, deleteSource, triggerScan),
-        onSuccess: (result) => {
-            queryClient.invalidateQueries({queryKey: ['downloader-importable']})
-            queryClient.invalidateQueries({queryKey: ['downloader-files']})
-            setMsg({type: 'success', text: `Imported to ${result.destination}`})
+        onSuccess: async (result) => {
+            await Promise.all([
+                queryClient.refetchQueries({queryKey: ['downloader-importable']}),
+                queryClient.refetchQueries({queryKey: ['downloader-files']}),
+            ])
+            const deleteNote = result.sourceDeleted === false ? ' (source file could not be removed)' : ''
+            setMsg({type: 'success', text: `Imported to ${result.destination}${deleteNote}`})
         },
         onError: (err) => { setMsg({type: 'error', text: errMsg(err)}); },
     })

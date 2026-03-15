@@ -284,7 +284,7 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 		return
 	}
 
-	destPath, err := h.downloader.Import(req.Filename, req.DeleteSource, req.TriggerScan)
+	destPath, sourceDeleted, err := h.downloader.Import(req.Filename, req.DeleteSource, req.TriggerScan)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "Import failed: "+err.Error())
 		return
@@ -294,6 +294,7 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 		"source":        req.Filename,
 		"destination":   destPath,
 		"scanTriggered": req.TriggerScan,
+		"sourceDeleted": sourceDeleted,
 	})
 }
 
