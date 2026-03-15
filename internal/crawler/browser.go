@@ -134,13 +134,11 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	cmd := exec.CommandContext(ctx, bd.chromeBin, args...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
+	setChromeProcessAttrs(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("launch chrome: %w", err)
 	}
-	defer func() {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	}()
+	defer killChromeProcessGroup(cmd)
 
 	// --- 3. Connect to CDP WebSocket ---
 	wsURL, err := waitForCDP(ctx, port)

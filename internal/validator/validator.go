@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -470,6 +471,13 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	if err != nil {
 		m.log.Error("FFmpeg fix failed: %s", string(output))
 		return nil, fmt.Errorf("transcoding failed: %w", err)
+	}
+
+	// Enforce max output size to prevent disk fill from ffmpeg producing arbitrarily large output
+	const maxFixOutputBytes = 10 * 1024 * 1024 * 1024 // 10 GB
+	if stat, err := os.Stat(outputPath); err == nil && stat.Size() > maxFixOutputBytes {
+		_ = os.Remove(outputPath)
+		return nil, fmt.Errorf("fix output exceeded %d GB limit", maxFixOutputBytes/(1024*1024*1024))
 	}
 
 	// Re-fetch under write lock (result from earlier RLock may be stale)

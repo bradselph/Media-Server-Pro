@@ -126,19 +126,17 @@ TOTAL REMAINING:                               60
 - **Impact:** No defers, no DB close, no request drain — corrupts in-flight writes
 - **Fix:** Use graceful shutdown (signal to self)
 
-### P1-14 [DRIFT] Two different thumbnail timestamp spacing algorithms
+### P1-14 [DRIFT] Two different thumbnail timestamp spacing algorithms — ✅ FIXED
 - **File:** `internal/thumbnails/preview.go:82-86`
-- **Impact:** Preview thumbnails don't match expected URLs; cache misses
-- **Fix:** Unify to use `previewTimestamp` everywhere
+- **Fix applied:** previewURLForIndex now uses previewTimestamp
 
 ### P1-15 [PROMOTED] ProxyHLSVariant panics on type assertion — ✅ FIXED
 - **File:** `internal/extractor/extractor.go:389`
 - **Fix applied:** Type assertion with ok check; return error on mismatch
 
-### P1-16 [PROMOTED] Chrome child processes may not be killed
+### P1-16 [PROMOTED] Chrome child processes may not be killed — ✅ FIXED
 - **File:** `internal/crawler/browser.go:130-139`
-- **Impact:** Zombie Chrome processes accumulate, exhausting memory/PIDs
-- **Fix:** Use process group kill; add cleanup in Stop()
+- **Fix applied:** browser_unix.go: Setpgid + killChromeProcessGroup; browser_windows.go stub
 
 ### P1-17 [PROMOTED] Authenticate mutates shared user pointer outside lock — ✅ FIXED
 - **File:** `internal/auth/authenticate.go:91-96`
@@ -175,15 +173,13 @@ TOTAL REMAINING:                               60
 - **Impact:** Memory grows without limit on receivers with many files
 - **Fix:** Add LRU eviction or size cap
 
-### P1-25 [PROMOTED] FixFile has no output size limit
+### P1-25 [PROMOTED] FixFile has no output size limit — ✅ FIXED
 - **File:** `internal/validator/validator.go:404-492`
-- **Impact:** ffmpeg can produce arbitrarily large output, filling disk
-- **Fix:** Add max output size check; abort if exceeded
+- **Fix applied:** 10 GB max output; remove file and return error if exceeded
 
-### P1-26 [PROMOTED] Path traversal check uses string matching (media-receiver)
+### P1-26 [PROMOTED] Path traversal check uses string matching (media-receiver) — ✅ FIXED
 - **File:** `cmd/media-receiver/main.go:869`
-- **Impact:** Bypassable with URL-encoding or `..` after symlink resolution
-- **Fix:** Use `filepath.Rel` + check result doesn't start with `..`
+- **Fix applied:** filepath.Clean, EvalSymlinks, filepath.Rel containment
 
 ### P1-27 [PROMOTED] UpdateConfig has no atomicity — ✅ FIXED
 - **File:** `internal/admin/admin.go:248-255`
