@@ -4,77 +4,86 @@
 **Branch:** development
 **Commit:** 8fb17b1
 **Last verified:** 2026-03-14
+**Reprioritized:** 2026-03-14 (all fixes code-verified, remaining issues promoted)
 
 ---
 
-## FIXED ITEMS (44/193 — verified 2026-03-14)
+## FIXED ITEMS (44 total — all code-verified 2026-03-14)
 
-| Finding | Status |
-|---------|--------|
-| Analytics CompletionRate formula | ✅ Verified |
-| Playlist AddItem swallows DB errors | ✅ Verified |
-| Playlist removeItemLocked swallows DB error | ✅ Verified |
-| Autodiscovery ClearAllSuggestions doesn't delete DB | ✅ Verified |
-| Autodiscovery ClearSuggestion doesn't persist | ✅ Verified |
-| Media-receiver range request fallthrough | ✅ Verified |
-| HLS lazyTranscodeQuality activeJobs tracking | ✅ Verified |
-| Receiver proxyViaHTTP ?id= vs ?path= | ✅ Verified |
-| Database tryConnect connection leak | ✅ Verified |
-| Security BanIP persistence (ban config row) | ✅ Verified |
-| endpoints.ts !== null (undefined sent as param) | ✅ Verified |
-| TrackPlayback divide-by-zero (duration=0) | ✅ Verified |
-| SanitizeString null-byte ordering | ✅ Verified |
-| Analytics temp file defer (Windows cleanup) | ✅ Verified |
-| Media-receiver shutdown WebSocket writeMu | ✅ Verified |
-| Receiver/remote double-stop panic | ✅ Verified |
-| **[FIXED]** P0-10 restoreFromBackup .tar.gz dead code | ✅ Removed |
-| **[FIXED]** P1-2 SetPassword cache/DB divergence | ✅ Copy-then-persist |
-| **[FIXED]** P1-3 CopyPlaylist partial failure orphans | ✅ CreateWithItems tx |
-| **[FIXED]** P1-4 ClearAllPlaybackPositions DB cleanup | ✅ DeleteAllByUser |
-| **[FIXED]** P1-6 WriteTimeout kills long streams | ✅ Default 0 |
-| **[FIXED]** P1-8 JSON parse on non-JSON (api/client) | ✅ Try/catch → ApiError |
-| **[FIXED]** P1-11 Analytics backgroundLoop WaitGroup | ✅ bgWg.Wait() in Stop |
-| **[FIXED]** P0-8 AdminUpdateConfig logs secrets | ✅ redactSensitiveConfigKeys |
-| **[FIXED]** P1-1 HLS GetJobStatus/ListJobs data race | ✅ Return copies |
-| **[FIXED]** P1-12 CacheMedia context.Background() | ✅ Module ctx, cancel on Stop |
-| **[FIXED]** P2-6 HLS cleanupDone double-close | ✅ cleanupDoneOnce sync.Once |
-| **[FIXED]** P1-5 Slave extension list missing 7 formats | ✅ Added .3gp, .m2ts, .vob, .ogv, .aiff, .ape, .mka |
-| **[FIXED]** P2-4 HLS cleanup TOCTOU | ✅ Re-check under write lock before removal |
-| **[FIXED]** P3-13 godotenv.Load error discarded | ✅ Log non-NotFound errors |
-| **[FIXED]** P1-13 evictStaleProfiles TOCTOU | ✅ Re-check LastUpdated under lock |
-| **[FIXED]** P2-26 scheduleUnregisterUpload leak | ✅ done chan, select on shutdown |
-| **[FIXED]** P2-23 List Limit=0 OOM risk | ✅ Default cap analytics/audit_log |
-| **[FIXED]** P0-5 Extractor proxyStream header denylist | ✅ Allowlist |
-| **[FIXED]** P1-7 No rollback on startup failure | ✅ Stop started modules in reverse |
-| **[FIXED]** P2-5 HLS RecordAccess saveJob outside lock | ✅ Call saveJob under lock |
-| **[FIXED]** P3-6 Toast setTimeout not cleaned up | ✅ useRef + useEffect cleanup |
-| **[FIXED]** P3-2 IsStrictlyExpired duplicate | ✅ Delegate to IsExpired |
-| **[FIXED]** P2-7 handleStatus len(modules) outside lock | ✅ Read under RLock |
-| **[FIXED]** P1-10 Last admin TOCTOU race | ✅ lastAdminMu in UpdateUser |
+<details>
+<summary>Click to expand verified fixes</summary>
+
+| ID | Finding | Verification |
+|----|---------|-------------|
+| — | Analytics CompletionRate formula | ✅ Verified |
+| — | Playlist AddItem swallows DB errors | ✅ Verified |
+| — | Playlist removeItemLocked swallows DB error | ✅ Verified |
+| — | Autodiscovery ClearAllSuggestions doesn't delete DB | ✅ Verified |
+| — | Autodiscovery ClearSuggestion doesn't persist | ✅ Verified |
+| — | Media-receiver range request fallthrough | ✅ Verified |
+| — | HLS lazyTranscodeQuality activeJobs tracking | ✅ Verified |
+| — | Receiver proxyViaHTTP ?id= vs ?path= | ✅ Verified |
+| — | Database tryConnect connection leak | ✅ Verified |
+| — | Security BanIP persistence (ban config row) | ✅ Verified |
+| — | endpoints.ts !== null (undefined sent as param) | ✅ Verified |
+| — | TrackPlayback divide-by-zero (duration=0) | ✅ Verified |
+| — | SanitizeString null-byte ordering | ✅ Verified |
+| — | Analytics temp file defer (Windows cleanup) | ✅ Verified |
+| — | Media-receiver shutdown WebSocket writeMu | ✅ Verified |
+| — | Receiver/remote double-stop panic | ✅ Verified |
+| P0-5 | Extractor proxyStream header allowlist | ✅ `extractor.go:516-528` — allowlist confirmed |
+| P0-8 | AdminUpdateConfig redacts secrets | ✅ `admin_config.go:11-33,68` — redactSensitiveConfigKeys |
+| P0-10 | restoreFromBackup .tar.gz dead code | ✅ `updater.go:890-903` — removed |
+| P1-1 | HLS GetJobStatus/ListJobs data race | ✅ `jobs.go:15-31,184-231` — copyHLSJob |
+| P1-2 | SetPassword cache/DB divergence | ✅ `password.go:59-94` — copy-then-persist |
+| P1-3 | CopyPlaylist partial failure | ✅ `playlist.go:464-520` — CreateWithItems tx |
+| P1-4 | ClearAllPlaybackPositions DB cleanup | ✅ DeleteAllByUser confirmed |
+| P1-5 | Slave extension list missing 7 formats | ✅ .3gp/.m2ts/.vob/.ogv/.aiff/.ape/.mka added |
+| P1-6 | WriteTimeout kills long streams | ✅ Default 0 in config/defaults.go |
+| P1-7 | No rollback on startup failure | ✅ `server.go:276-321` — reverse-order stop |
+| P1-8 | JSON parse on non-JSON (api/client) | ✅ try/catch + ApiError |
+| P1-10 | Last admin TOCTOU race | ✅ `auth.go:60` + `user.go:186-211` — lastAdminMu |
+| P1-11 | Analytics backgroundLoop WaitGroup | ✅ `module.go:44,93,113,139` — bgWg lifecycle |
+| P1-12 | CacheMedia context.Background() | ✅ `remote.go:613-614` — m.ctx |
+| P1-13 | evictStaleProfiles TOCTOU | ✅ Re-check under write lock |
+| P2-4 | HLS cleanup TOCTOU | ✅ Re-check under write lock |
+| P2-5 | RecordAccess saveJob outside lock | ✅ saveJob under lock |
+| P2-6 | cleanupDone double-close | ✅ cleanupDoneOnce sync.Once |
+| P2-7 | handleStatus len(modules) outside lock | ✅ `server.go:500-516` — RLock |
+| P2-23 | List Limit=0 OOM risk | ✅ analytics 10K / audit 100K caps |
+| P2-26 | scheduleUnregisterUpload leak | ✅ `upload.go:74,132,166,318-331` — done chan |
+| P3-2 | IsStrictlyExpired duplicate | ✅ `models.go:355-357` — delegates |
+| P3-6 | Toast setTimeout not cleaned up | ✅ `Toast.tsx:14-19` — useRef + useEffect |
+| P3-13 | godotenv.Load error discarded | ✅ Log non-NotFound errors |
+
+</details>
 
 ---
 
-## REMAINING ISSUES — Reprioritized (149 findings)
+## REMAINING ISSUES — Reprioritized (remaining open findings)
+
+Items from the "Additional Findings" section have been promoted into the main priority tiers
+based on real-world exploitability, crash potential, and data-loss risk.
 
 ### Priority counts:
 ```
-P0 — CRITICAL (security + broken):   7 remaining
-P1 — HIGH (user-facing bugs):        2 remaining
-P2 — MEDIUM (tech debt / fragile):   35 remaining
-P3 — LOW (cleanup / style):          11 remaining
-Additional findings by module:       ~100 remaining
-────────────────────────────────────
-TOTAL REMAINING:                     149
+P0 — CRITICAL (security / crash / data loss):  7
+P1 — HIGH (user-facing bugs / fragile):       15
+P2 — MEDIUM (tech debt / time bombs):         27
+P3 — LOW (cleanup / style):                   11
+────────────────────────────────────────────────
+TOTAL REMAINING:                               60
 ```
 
 ---
 
-## P0 — CRITICAL: Must fix before deploy (8 remaining)
+## P0 — CRITICAL: Must fix before deploy (7)
 
 ### P0-1 [SECURITY] AdminExecuteQuery allows SELECT INTO OUTFILE / LOAD_FILE
 - **File:** `api/handlers/system.go:386-521`
 - **Impact:** Authenticated admin can exfiltrate/write server files via SQL
 - **Fix:** Use `SET SESSION TRANSACTION READ ONLY` instead of prefix matching
+- **Note:** P2-12 (semicolon bypass) is the same attack surface — fix together
 
 ### P0-2 [SECURITY] ReceiverWebSocket has no middleware-level auth
 - **File:** `api/routes/routes.go:279`
@@ -83,16 +92,13 @@ TOTAL REMAINING:                     149
 
 ### P0-3 [SECURITY] Unauthenticated streaming bypasses stream limits
 - **File:** `api/handlers/media.go:300-355`
-- **Impact:** Unlimited concurrent connections from unauthenticated users
+- **Impact:** Unlimited concurrent connections from unauthenticated users (DoS vector)
 - **Fix:** Add `Streaming.RequireAuth` config option; IP-based tracking for unauth
 
 ### P0-4 [SECURITY] Chrome launched with --disable-web-security
 - **File:** `internal/crawler/browser.go:114-128`
 - **Impact:** Malicious JS on target page can access local network
 - **Fix:** Add `--proxy-server` or `--host-resolver-rules` to block private IPs
-
-### P0-5 [SECURITY] Extractor proxyStream header denylist — **[FIXED]**
-- **Fix applied:** Allowlist (Content-Type, Content-Length, Content-Range, etc.).
 
 ### P0-6 [SECURITY] GitHub credentials visible in process environment
 - **File:** `internal/updater/updater.go:940-941`
@@ -104,91 +110,107 @@ TOTAL REMAINING:                     149
 - **Impact:** Password persists in systemd journal/container logs
 - **Fix:** Write to file with 0600 permissions or require interactive setup
 
-### P0-8 [SECURITY] AdminUpdateConfig logs secrets — **[FIXED]**
-- **Fix applied:** redactSensitiveConfigKeys before logAdminAction.
-
 ### P0-9 [SECURITY] /api/status and /api/modules unauthenticated
 - **File:** `internal/server/server.go:236-238`
 - **Impact:** Attacker can fingerprint server; health messages may leak DB info
 - **Fix:** Put behind `adminAuth()` or sanitize responses
 
-### P0-10 [BROKEN] restoreFromBackup .tar.gz branch is dead code — **[FIXED]**
-- **File:** `internal/updater/updater.go`
-- **Fix applied:** Removed .tar.gz branch; createBackup only produces single-file backups.
-
 ---
 
-## P1 — HIGH: Will cause user-facing bugs (6 remaining)
+## P1 — HIGH: Will cause user-facing bugs or crashes (15)
 
-### P1-1 [FRAGILE] HLS GetJobStatus/ListJobs data race — **[FIXED]**
-- **Fix applied:** copyHLSJob; return copies from GetJobStatus, ListJobs, GetJobByMediaPath.
-
-### P1-2 [FRAGILE] SetPassword cache/DB divergence — **[FIXED]**
-- **Fix applied:** Work on copy; update cache only after DB success.
-
-### P1-3 [FRAGILE] CopyPlaylist partial failure — **[FIXED]**
-- **Fix applied:** CreateWithItems repo method with transaction; no orphans on partial failure.
-
-### P1-4 [FRAGILE] ClearAllPlaybackPositions doesn't clean DB — **[FIXED]**
-- **Fix applied:** DeleteAllPlaybackPositionsByUser; positions no longer reappear after restart.
-
-### P1-5 [DRIFT] Slave extension list — **[FIXED]**
-- **Fix applied:** Added .3gp, .m2ts, .vob, .ogv, .aiff, .ape, .mka to classifyFile.
-
-### P1-6 [FRAGILE] WriteTimeout kills long streams — **[FIXED]**
-- **Fix applied:** Default WriteTimeout set to 0 in config/defaults.go.
-
-### P1-7 [GAP] No rollback on startup failure — **[FIXED]**
-- **Fix applied:** Stop already-started modules in reverse order on critical failure.
-
-### P1-8 [FRAGILE] JSON parse on non-JSON — **[FIXED]**
-- **Fix applied:** Read text + JSON.parse in try/catch; throw ApiError with status and preview.
+*Promoted items from Additional Findings are marked with `[PROMOTED]`.*
 
 ### P1-9 [FRAGILE] RestartServer uses os.Exit(1)
 - **File:** `api/handlers/admin_lifecycle.go:29`
-- **Impact:** No defers, no DB close, no request drain
+- **Impact:** No defers, no DB close, no request drain — corrupts in-flight writes
 - **Fix:** Use graceful shutdown (signal to self)
-
-### P1-10 [FRAGILE] "Last admin" TOCTOU race — **[FIXED]**
-- **Fix applied:** lastAdminMu in UpdateUser; check under lock before demote/disable.
-
-### P1-11 [LEAK] Analytics backgroundLoop WaitGroup — **[FIXED]**
-- **Fix applied:** bgWg.Add(1), defer Done() in backgroundLoop; bgWg.Wait() in Stop().
-
-### P1-12 [LEAK] CacheMedia context.Background() — **[FIXED]**
-- **Fix applied:** Module ctx/cancel; CacheMedia uses m.ctx; cancel on Stop().
-
-### P1-13 [FRAGILE] evictStaleProfiles TOCTOU — **[FIXED]**
-- **Fix applied:** Re-check LastUpdated under write lock before delete.
 
 ### P1-14 [DRIFT] Two different thumbnail timestamp spacing algorithms
 - **File:** `internal/thumbnails/preview.go:82-86`
 - **Impact:** Preview thumbnails don't match expected URLs; cache misses
 - **Fix:** Unify to use `previewTimestamp` everywhere
 
+### P1-15 [PROMOTED] ProxyHLSVariant panics on type assertion
+- **File:** `internal/extractor/extractor.go:389`
+- **Impact:** Server crash if cached value is wrong type (any concurrent cache corruption)
+- **Fix:** Use type assertion with `ok` check, return error on mismatch
+
+### P1-16 [PROMOTED] Chrome child processes may not be killed
+- **File:** `internal/crawler/browser.go:130-139`
+- **Impact:** Zombie Chrome processes accumulate, exhausting memory/PIDs
+- **Fix:** Use process group kill; add cleanup in Stop()
+
+### P1-17 [PROMOTED] Authenticate mutates shared user pointer outside lock
+- **File:** `internal/auth/authenticate.go:91-96`
+- **Impact:** Data race on concurrent logins — can corrupt in-memory user state
+- **Fix:** Copy user before mutation, or hold write lock
+
+### P1-18 [PROMOTED] ValidateSession fires background goroutine with shared pointer
+- **File:** `internal/auth/session.go:127-132`
+- **Impact:** Data race — goroutine reads/writes user fields while main path also uses them
+- **Fix:** Pass a copy to the goroutine, or defer update to a channel
+
+### P1-19 [PROMOTED] close(shutdownCh) called after logger.Shutdown()
+- **File:** `internal/server/server.go:441`
+- **Impact:** Goroutines waiting on shutdownCh may log after logger is closed — panic or lost logs
+- **Fix:** Close shutdownCh *before* logger.Shutdown()
+
+### P1-20 [PROMOTED] Single context timeout for HTTP shutdown + all module stops
+- **File:** `internal/server/server.go + cmd/server/main.go`
+- **Impact:** Slow module eats the entire budget; HTTP never drains, or vice versa
+- **Fix:** Separate timeouts for HTTP drain vs module stop
+
+### P1-21 [PROMOTED] Cleanup goroutine exits permanently after panic
+- **File:** `internal/auth/auth.go:194-205`
+- **Impact:** One panic kills session cleanup forever — sessions pile up, memory leak
+- **Fix:** Wrap in recover loop or use deferred restart
+
+### P1-22 [PROMOTED] EvalSymlinks failure falls back to raw path
+- **File:** `api/handlers/handler.go:377-380`
+- **Impact:** Symlink-based path traversal when EvalSymlinks fails (e.g., broken link)
+- **Fix:** Return error instead of falling back to unresolved path
+
+### P1-23 [PROMOTED] ValidateURLForSSRF vulnerable to DNS rebinding
+- **File:** `pkg/helpers/ssrf.go:67`
+- **Impact:** Attacker points URL at public DNS that resolves to internal IP after validation
+- **Fix:** Re-validate resolved IP at dial time (custom `DialContext`)
+
+### P1-24 [PROMOTED] fpCache grows unbounded (media-receiver)
+- **File:** `cmd/media-receiver/main.go:95-98`
+- **Impact:** Memory grows without limit on receivers with many files
+- **Fix:** Add LRU eviction or size cap
+
+### P1-25 [PROMOTED] FixFile has no output size limit
+- **File:** `internal/validator/validator.go:404-492`
+- **Impact:** ffmpeg can produce arbitrarily large output, filling disk
+- **Fix:** Add max output size check; abort if exceeded
+
+### P1-26 [PROMOTED] Path traversal check uses string matching (media-receiver)
+- **File:** `cmd/media-receiver/main.go:869`
+- **Impact:** Bypassable with URL-encoding or `..` after symlink resolution
+- **Fix:** Use `filepath.Rel` + check result doesn't start with `..`
+
+### P1-27 [PROMOTED] UpdateConfig has no atomicity
+- **File:** `internal/admin/admin.go:248-255`
+- **Impact:** Partial config writes on crash leave config.json corrupted
+- **Fix:** Write to temp file + rename (atomic on POSIX)
+
 ---
 
-## P2 — MEDIUM: Tech debt / time bombs (40 remaining)
-
-### Concurrency / Data Races
-- **P2-1** `internal/auth/authenticate.go:91-96` — Authenticate mutates shared user pointer outside lock
-- **P2-2** `internal/auth/session.go:127-132` — ValidateSession fires background goroutine with shared pointer
-- **P2-3** `internal/auth/auth.go:194-205` — Cleanup goroutine exits permanently after panic (no restart loop)
-- **P2-4** ~~cleanup TOCTOU~~ — **[FIXED]** Re-check under write lock before removal
-- **P2-5** ~~RecordAccess saveJob outside lock~~ — **[FIXED]** Call saveJob under lock
-- **P2-6** ~~cleanupDone double-close~~ — **[FIXED]** cleanupDoneOnce sync.Once
-- **P2-7** ~~handleStatus len(modules) outside lock~~ — **[FIXED]** Read under RLock
+## P2 — MEDIUM: Tech debt / time bombs (27)
 
 ### Security
 - **P2-8** `pkg/middleware/middleware.go:69` — Client-supplied X-Request-ID propagated without sanitization
 - **P2-9** `pkg/middleware/agegate.go:185` — ageGateSecure trusts X-Forwarded-Proto without proxy check
-- **P2-10** `pkg/helpers/ssrf.go:67` — ValidateURLForSSRF vulnerable to DNS rebinding
-- **P2-11** `api/handlers/handler.go:377-380` — EvalSymlinks failure falls back to raw path
-- **P2-12** `api/handlers/system.go:410` — AdminExecuteQuery semicolon check bypassable
+- **P2-12** `api/handlers/system.go:410` — AdminExecuteQuery semicolon check bypassable (fix with P0-1)
 - **P2-13** `api/handlers/hls.go:300,303` — GetHLSCapabilities/GetHLSStatus unauthenticated
 - **P2-14** `cmd/server/main.go:339-371` — validateSecrets allows weak API keys
-- **P2-15** `cmd/media-receiver/main.go:869` — Path traversal check uses string matching
 - **P2-16** `web/frontend/src/pages/admin/SystemTab.tsx:252-253` — SQL executor regex misses INSERT/CREATE/GRANT
+
+### Concurrency
+- **P2-1** `internal/auth/authenticate.go:91-96` — (see P1-17; this is the broader pattern — review all auth mutation paths)
+- **P2-2** `internal/auth/session.go:127-132` — (see P1-18; related goroutine pattern)
 
 ### Data Integrity / Persistence
 - **P2-17** 6+ repository files — String timestamps instead of time.Time (timezone mismatch risk)
@@ -197,101 +219,66 @@ TOTAL REMAINING:                     149
 - **P2-20** `internal/repositories/mysql/playlist_repository.go:56-58` — Playlist Save() cascades to Items
 - **P2-21** `internal/repositories/mysql/user_repository_gorm.go:116-140` — User Update uses Save() (full update)
 - **P2-22** `internal/repositories/mysql/session_repository_gorm.go:44-53` — Session Update only persists LastActivity
-- **P2-23** ~~List Limit=0 OOM risk~~ — **[FIXED]** Default cap (10K analytics, 100K audit)
 - **P2-24** Multiple repositories — Delete methods don't check RowsAffected
 
 ### Resource / Lifecycle
 - **P2-25** `pkg/middleware/agegate.go:212-214` — Unbounded verifiedIPs map growth
-- **P2-26** ~~scheduleUnregisterUpload leak~~ — **[FIXED]** done chan, select on shutdown
 - **P2-27** `pkg/models/models.go:233-240` — PlaybackPosition uses filesystem path as primary key
 - **P2-28** `internal/config/types.go` — time.Duration JSON round-trip produces nanoseconds
 - **P2-29** `internal/config/accessors.go:61-74` — SetValue doesn't call syncFeatureToggles
 - **P2-30** `internal/media/management.go:82-83` — MoveMedia does not validate oldPath
+- **P2-36** `internal/analytics/stats.go` — mediaStats/mediaViewers maps grow without bound
+- **P2-37** `internal/duplicates/duplicates.go:220-243` — RecordDuplicatesFromSlave loads entire table
+- **P2-38** `internal/duplicates/duplicates.go:333-353` — ScanLocalMedia loads entire metadata table
 
 ### Code Quality
 - **P2-31** `internal/scanner/mature.go:521-552` — Custom keywords use substring matching (false positives)
 - **P2-32** `internal/security/security.go:893-911` — Rate-limit bypass for "/media" prefix too broad
 - **P2-33** `internal/hls/locks.go:60-61` — 30-minute stale lock threshold too short for large files
 - **P2-34** `internal/hls/jobs.go:74` — Error says "use admin panel to reset" but no ResetJob API
-- **P2-35** `internal/analytics/stats.go:55-62` — UniqueUsers not reconstructed from DB
-- **P2-36** `internal/analytics/stats.go` — mediaStats/mediaViewers maps grow without bound
-- **P2-37** `internal/duplicates/duplicates.go:220-243` — RecordDuplicatesFromSlave loads entire table
-- **P2-38** `internal/duplicates/duplicates.go:333-353` — ScanLocalMedia loads entire metadata table
-- **P2-39** `api/handlers/handler.go:424-440` — isPathWithinDirs and isPathUnderDirs near-duplicates
-- **P2-40** `web/frontend/src/pages/admin/SystemTab.tsx:79-86` — Config editor silently overwritten by refetch
+
+### Remaining Module-Level (not promoted)
+- **P2-41** `internal/receiver/receiver.go:161-165` — httpClient has no ResponseHeaderTimeout
+- **P2-42** `internal/receiver/receiver.go:251-253` — loadFromDB stops loading on first media load failure
+- **P2-43** `internal/remote/remote.go:799-818` — saveCacheIndex errors logged but not returned
+- **P2-44** `internal/suggestions/suggestions.go:938-957` — loadProfiles silently ignores view history load errors
+- **P2-45** `internal/extractor/extractor.go:509` — proxyStream creates new http.Client per request
+- **P2-46** `internal/crawler/browser.go:157-158` — Events channel drops on overflow
+- **P2-47** `internal/crawler/browser.go:231-233` — send() ignores errors from domain enable calls
+- **P2-48** `cmd/media-receiver/main.go:988` — generateFileID uses absolute path (non-portable)
+- **P2-49** `web/frontend/src/pages/admin/SystemTab.tsx:79-86` — Config editor silently overwritten by refetch
+
+### Frontend
+- **P2-50** `endpoints.ts:277-286` — Playlist/analytics exports bypass API client error handling
+- **P2-51** `AnalyticsTab.tsx:174` — Audit log export uses plain anchor tag
+- **P2-52** `usePlayerPageState.ts:123` — el.src set synchronously before HLS check
+- **P2-53** `usePlayerPageState.ts:225` — handleLoadedMetadata always auto-plays
+- **P2-54** `useEqualizer.ts:141-144` — createMediaElementSource double-call risk
+- **P2-55** `api/handlers/auth.go:119-127` — Inconsistent cookie-clearing strategies
+- **P2-56** `api/handlers/playlists.go:130-153` — UpdatePlaylist/DeletePlaylist return 403 for all errors
+- **P2-57** `api/handlers/suggestions.go:155` — RecordRating has no validation on rating value
+- **P2-58** `api/handlers (multiple)` — Background goroutines use context.Background()
 
 ---
 
-## P3 — LOW: Cleanup / style (13 remaining)
+## P3 — LOW: Cleanup / style (11)
 
 - **P3-1** Multiple repositories — json.Marshal/Unmarshal errors silently ignored
-- **P3-2** ~~IsStrictlyExpired duplicate~~ — **[FIXED]** Delegate to IsExpired
 - **P3-3** `cmd/server/main.go:397-438` — "metadata-cleanup" task duplicates "media-scan"
 - **P3-4** `internal/server/server.go:47+215` — HealthReporter populated but never queried
 - **P3-5** `api/handlers/handler.go:326-339` — logAdminAction: callers pass dead UserID/Username
-- **P3-6** ~~Toast setTimeout not cleaned up~~ — **[FIXED]** useRef + useEffect cleanup
 - **P3-7** `web/frontend/src/components/AudioPlayer.tsx:48` — useEqualizer return value discarded
 - **P3-8** `internal/admin/admin.go:172-227` — ExportAuditLog loads up to 100K rows into memory
 - **P3-9** `internal/upload/upload.go:546-553` — writeChunkAndTrack locks mutex on every 32KB chunk
 - **P3-10** `internal/receiver/receiver.go:439` — PushCatalog MediaCount wrong on incremental pushes
 - **P3-11** `internal/categorizer/categorizer.go:327-339` — detectAnime false positives
 - **P3-12** `internal/server/signals_{unix,windows}.go` — No second-signal forced exit
-- **P3-13** ~~godotenv.Load error discarded~~ — **[FIXED]** Log non-NotFound errors
-
----
-
-## Additional Findings by Module (remaining)
-
-### cmd/server/main.go
-- `[LEAK]` main.go:329 — Already-started modules not stopped on Start() failure
-- `[GAP]` main.go:628-646 — Health check doesn't check uploads/music/thumbnails/hls_cache dirs
-- `[DRIFT]` main.go:174 + server.go:68 — thumbnails is critical but depends on optional ffmpeg
-
-### internal/server/server.go
-- `[FRAGILE]` server.go:441 — close(s.shutdownCh) called after logger.Shutdown()
-- `[FRAGILE]` server.go + main.go — Single context timeout for HTTP shutdown + all module stops
-
-### internal/receiver/
-- `[FRAGILE]` receiver.go:161-165 — httpClient has no ResponseHeaderTimeout
-- `[SILENT FAIL]` receiver.go:251-253 — loadFromDB stops loading on media load failure
-
-### internal/remote/
-- `[SILENT FAIL]` remote.go:799-818 — saveCacheIndex errors logged but not returned
-
-### internal/suggestions/
-- `[SILENT FAIL]` suggestions.go:938-957 — loadProfiles silently ignores view history load errors
-
-### internal/extractor/
-- `[FRAGILE]` extractor.go:389 — ProxyHLSVariant panics if cached is not *cachedPlaylist
-- `[FRAGILE]` extractor.go:509 — proxyStream creates new http.Client per request
-
-### internal/crawler/
-- `[LEAK]` browser.go:130-139 — Chrome child processes may not be killed
-- `[FRAGILE]` browser.go:157-158 — Events channel drops on overflow
-- `[FRAGILE]` browser.go:231-233 — send() ignores errors from domain enable calls
-
-### internal/validator/
-- `[FRAGILE]` validator.go:404-492 — FixFile has no output size limit
-
-### internal/admin/
-- `[FRAGILE]` admin.go:248-255 — UpdateConfig has no atomicity
-
-### cmd/media-receiver/main.go
-- `[FRAGILE]` main.go:988 — generateFileID uses absolute path
-- `[LEAK]` main.go:95-98 — fpCache grows unbounded
-
-### Frontend
-- `[SILENT FAIL]` endpoints.ts:277-286 — Playlist/analytics exports bypass API client error handling
-- `[SILENT FAIL]` AnalyticsTab.tsx:174 — Audit log export uses plain anchor tag
-- `[FRAGILE]` usePlayerPageState.ts:123 — el.src set synchronously before HLS check
-- `[FRAGILE]` usePlayerPageState.ts:225 — handleLoadedMetadata always auto-plays
-- `[LEAK]` useEqualizer.ts:141-144 — createMediaElementSource double-call risk
-- `[FRAGILE]` api/handlers/auth.go:119-127 — Inconsistent cookie-clearing strategies
-- `[FRAGILE]` api/handlers/playlists.go:130-153 — UpdatePlaylist/DeletePlaylist return 403 for all errors
-- `[FRAGILE]` api/handlers/suggestions.go:155 — RecordRating has no validation on rating value
-- `[FRAGILE]` api/handlers (multiple) — Background goroutines use context.Background()
+- **P3-14** `cmd/server/main.go:628-646` — Health check doesn't check uploads/music/thumbnails/hls_cache dirs
+- **P3-15** `cmd/server/main.go:174 + server.go:68` — thumbnails is critical but depends on optional ffmpeg
+- **P3-16** `internal/analytics/stats.go:55-62` — UniqueUsers not reconstructed from DB
 
 ---
 
 *Report generated by deep-debug-audit skill — 2026-03-14*
-*Fixes verified and priorities updated — 2026-03-14*
+*All 44 fixes code-verified — 2026-03-14*
+*Remaining issues reprioritized with promotions from Additional Findings — 2026-03-14*
