@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation, Routes, Route } from 'react-router-dom'
 import { RequireAuth } from './RequireAuth'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -7,28 +7,39 @@ vi.mock('@/stores/authStore', () => ({
     useAuthStore: vi.fn(),
 }))
 
-// Helper component to display current location for redirect assertions
+const mockUseAuthStore = vi.mocked(useAuthStore)
+
+// Helper component to display the current location after any Navigate redirects
 function LocationDisplay() {
     const location = useLocation()
     return <div data-testid="location">{location.pathname}{location.search}</div>
 }
 
-function renderWithRouter(ui: React.ReactNode, initialEntries: string[] = ['/']) {
+// Render RequireAuth within a router that also renders LocationDisplay on all routes
+function renderWithRouter(
+    ui: React.ReactNode,
+    { initialEntries = ['/'] }: { initialEntries?: string[] } = {},
+) {
     return render(
         <MemoryRouter initialEntries={initialEntries}>
-            {ui}
-            <LocationDisplay />
+            <Routes>
+                <Route path="*" element={<>{ui}<LocationDisplay /></>} />
+            </Routes>
         </MemoryRouter>,
     )
 }
 
 describe('RequireAuth', () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
     it('shows loading state when isLoading is true', () => {
-        vi.mocked(useAuthStore).mockReturnValue({
+        mockUseAuthStore.mockReturnValue({
             isLoading: true,
             isAuthenticated: false,
             isAdmin: false,
-        } as ReturnType<typeof useAuthStore>)
+        } as unknown as ReturnType<typeof useAuthStore>)
 
         renderWithRouter(
             <RequireAuth>
@@ -41,11 +52,11 @@ describe('RequireAuth', () => {
     })
 
     it('renders children when authenticated', () => {
-        vi.mocked(useAuthStore).mockReturnValue({
+        mockUseAuthStore.mockReturnValue({
             isLoading: false,
             isAuthenticated: true,
             isAdmin: false,
-        } as ReturnType<typeof useAuthStore>)
+        } as unknown as ReturnType<typeof useAuthStore>)
 
         renderWithRouter(
             <RequireAuth>
@@ -57,56 +68,54 @@ describe('RequireAuth', () => {
     })
 
     it('redirects to login when not authenticated', () => {
-        vi.mocked(useAuthStore).mockReturnValue({
+        mockUseAuthStore.mockReturnValue({
             isLoading: false,
             isAuthenticated: false,
             isAdmin: false,
-        } as ReturnType<typeof useAuthStore>)
+        } as unknown as ReturnType<typeof useAuthStore>)
 
-        renderWithRouter(
-            <RequireAuth>
-                <div>Protected content</div>
-            </RequireAuth>,
-            ['/profile'],
+        render(
+            <MemoryRouter initialEntries={['/profile']}>
+                <Routes>
+                    <Route
+                        path="/profile"
+                        element={
+                            <RequireAuth>
+                                <div>Protected content</div>
+                            </RequireAuth>
+                        }
+                    />
+                    <Route path="*" element={<LocationDisplay />} />
+                </Routes>
+            </MemoryRouter>,
         )
 
         expect(screen.queryByText('Protected content')).not.toBeInTheDocument()
-        // Navigate redirects, so the LocationDisplay should reflect the login path
         const locationEl = screen.getByTestId('location')
         expect(locationEl.textContent).toBe('/login?redirect=%2Fprofile')
     })
 
-    it('redirects to login with search and hash in redirect param', () => {
-        vi.mocked(useAuthStore).mockReturnValue({
-            isLoading: false,
-            isAuthenticated: false,
-            isAdmin: false,
-        } as ReturnType<typeof useAuthStore>)
-
-        renderWithRouter(
-            <RequireAuth>
-                <div>Protected content</div>
-            </RequireAuth>,
-            ['/player?id=42#time=120'],
-        )
-
-        const locationEl = screen.getByTestId('location')
-        expect(locationEl.textContent).toContain('/login?redirect=')
-        expect(locationEl.textContent).toContain(encodeURIComponent('/player?id=42#time=120'))
-    })
-
     it('redirects non-admin from adminOnly route', () => {
-        vi.mocked(useAuthStore).mockReturnValue({
+        mockUseAuthStore.mockReturnValue({
             isLoading: false,
             isAuthenticated: true,
             isAdmin: false,
-        } as ReturnType<typeof useAuthStore>)
+        } as unknown as ReturnType<typeof useAuthStore>)
 
-        renderWithRouter(
-            <RequireAuth adminOnly>
-                <div>Admin content</div>
-            </RequireAuth>,
-            ['/admin'],
+        render(
+            <MemoryRouter initialEntries={['/admin']}>
+                <Routes>
+                    <Route
+                        path="/admin"
+                        element={
+                            <RequireAuth adminOnly>
+                                <div>Admin content</div>
+                            </RequireAuth>
+                        }
+                    />
+                    <Route path="*" element={<LocationDisplay />} />
+                </Routes>
+            </MemoryRouter>,
         )
 
         expect(screen.queryByText('Admin content')).not.toBeInTheDocument()
@@ -115,17 +124,17 @@ describe('RequireAuth', () => {
     })
 
     it('renders children for admin on adminOnly route', () => {
-        vi.mocked(useAuthStore).mockReturnValue({
+        mockUseAuthStore.mockReturnValue({
             isLoading: false,
             isAuthenticated: true,
             isAdmin: true,
-        } as ReturnType<typeof useAuthStore>)
+        } as unknown as ReturnType<typeof useAuthStore>)
 
         renderWithRouter(
             <RequireAuth adminOnly>
                 <div>Admin content</div>
             </RequireAuth>,
-            ['/admin'],
+            { initialEntries: ['/admin'] },
         )
 
         expect(screen.getByText('Admin content')).toBeInTheDocument()

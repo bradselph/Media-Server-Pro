@@ -234,6 +234,8 @@ func (te *TestEnv) CreateTestUser(t *testing.T, username, password string) *mode
 	user, err := te.Auth.CreateUser(context.Background(), auth.CreateUserParams{
 		Username: username,
 		Password: password,
+		Email:    username + "@test.local",
+		UserType: "standard",
 		Role:     models.RoleViewer,
 	})
 	if err != nil {
