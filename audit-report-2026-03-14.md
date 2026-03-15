@@ -5,11 +5,11 @@
 **Commit:** ddfac05
 **Last verified:** 2026-03-14
 **Re-verified & reprioritized:** 2026-03-14 (48 fixes code-verified, 4 newly confirmed, remaining issues promoted)
-**Updated:** 2026-03-15 — Additional fixes: P1-33, P1-36 (playlist), P2-43
+**Updated:** 2026-03-15 — Additional fixes: P2-44, P1-20
 
 ---
 
-## FIXED ITEMS (71 total — 48 code-verified 2026-03-14, 23 fixed 2026-03-15)
+## FIXED ITEMS (73 total — 48 code-verified 2026-03-14, 25 fixed 2026-03-15)
 
 <details>
 <summary>Click to expand verified fixes</summary>
@@ -99,6 +99,8 @@
 | P1-33 | Playlist Save() cascades to Items | ✅ Fixed 2026-03-15 — playlist_repository.go: Update uses Updates() for metadata only |
 | P1-36 | Delete methods don't check RowsAffected | ✅ Fixed 2026-03-15 — playlist_repository.go: Delete returns ErrPlaylistNotFound when 0 rows |
 | P2-43 | saveCacheIndex errors logged but not returned | ✅ Fixed 2026-03-15 — remote.go: saveCacheIndex returns error; Stop logs it |
+| P2-44 | loadProfiles silently ignores view history load errors | ✅ Fixed 2026-03-15 — suggestions.go: log Warn on GetViewHistory error, still add profile |
+| P1-20 | Single context timeout for HTTP shutdown + module stops | ✅ Fixed 2026-03-15 — server.go: separate 50% HTTP / 50% module phase contexts |
 
 </details>
 
@@ -113,11 +115,11 @@ the largest promotions.
 ### Priority counts:
 ```
 P0 — CRITICAL (security / crash / data loss):   1  (9 fixed 2026-03-15)
-P1 — HIGH (user-facing bugs / fragile):        14  (8 fixed 2026-03-15)
-P2 — MEDIUM (tech debt / time bombs):          14  (3 fixed 2026-03-15)
+P1 — HIGH (user-facing bugs / fragile):        13  (9 fixed 2026-03-15)
+P2 — MEDIUM (tech debt / time bombs):          13  (4 fixed 2026-03-15)
 P3 — LOW (cleanup / style):                     3
 ────────────────────────────────────────────────
-TOTAL REMAINING:                                29
+TOTAL REMAINING:                                27
 ```
 
 ---
@@ -131,17 +133,12 @@ TOTAL REMAINING:                                29
 
 ---
 
-## P1 — HIGH: Will cause user-facing bugs or crashes (14 remaining)
+## P1 — HIGH: Will cause user-facing bugs or crashes (13 remaining)
 
 ### P1-9 [FRAGILE] RestartServer skips graceful shutdown — ⚠️ PARTIAL FIX
 - **File:** `api/handlers/admin_lifecycle.go:29-60`
 - **Status:** Self-exec restart mechanism added, but `os.Exit(1)` under systemd and `os.Exit(0)` in fallback path still called without `server.Shutdown()`. In-flight requests, DB writes, and HLS jobs are not drained
 - **Fix:** Call `server.Shutdown()` before exit in all paths; under systemd, send SIGTERM to self
-
-### P1-20 Single context timeout for HTTP shutdown + all module stops
-- **File:** `internal/server/server.go:436-441`
-- **Impact:** `shutdownHTTPServer` and `shutdownModules` share the same deadline. If HTTP drain takes 25 of a 30s budget, all modules get only 5s
-- **Fix:** Separate per-phase contexts (e.g., 50% HTTP drain, 50% module stop, or per-module sub-deadlines)
 
 ### P1-28 Auth mutation pattern audit *(was P2-1)*
 - **File:** `internal/auth/` (multiple files)
@@ -195,14 +192,13 @@ TOTAL REMAINING:                                29
 
 ---
 
-## P2 — MEDIUM: Tech debt / time bombs (14 remaining)
+## P2 — MEDIUM: Tech debt / time bombs (13 remaining)
 
 ### Code Quality
 - **P2-31** `internal/scanner/mature.go:521-552` — Custom keywords use substring matching (false positives on partial word matches)
 - **P2-33** `internal/hls/locks.go:60-61` — 30-minute stale lock threshold too short for large file transcodes
 
 ### Module-Level
-- **P2-44** `internal/suggestions/suggestions.go:938-957` — loadProfiles silently ignores view history load errors
 - **P2-46** `internal/crawler/browser.go:157-158` — Events channel drops on overflow (missed CDP events)
 - **P2-47** `internal/crawler/browser.go:231-233` — send() ignores errors from domain enable calls
 - **P2-48** `cmd/media-receiver/main.go:988` — generateFileID uses absolute path (non-portable across machines)
@@ -248,4 +244,4 @@ TOTAL REMAINING:                                29
 *4 items confirmed fixed since last report (P1-23, P1-24, P2-25, P2-45)*
 *P0-4 downgraded to partial fix (loopback/link-local gaps)*
 *Remaining issues promoted: 8 P2→P0, 14 P2→P1, 2 P3→P2, 8 P3 closed*
-*2026-03-15: P0-4..18, P0-15; P1-31,33,34,35,36(playlist),39,40,43,44,46,47; P2-34,43,56 fixed; 1 P0 and 29 total remaining*
+*2026-03-15: P0-4..18, P0-15; P1-20,31,33,34,35,36(playlist),39,40,43,44,46,47; P2-34,43,44,56 fixed; 1 P0 and 27 total remaining*

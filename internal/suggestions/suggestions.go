@@ -942,7 +942,9 @@ func (m *Module) loadProfiles() error {
 		}
 		// Load view history for this user
 		history, err := m.repo.GetViewHistory(context.Background(), rec.UserID)
-		if err == nil {
+		if err != nil {
+			m.log.Warn("Failed to load view history for suggestion profile %s: %v", rec.UserID, err)
+		} else {
 			for _, h := range history {
 				vh := ViewHistory{
 					MediaPath:   h.MediaPath,

@@ -434,11 +434,19 @@ func (s *Server) Shutdown() {
 	s.log.Info(logSeparator)
 
 	cfg := s.config.Get()
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
+	totalTimeout := cfg.Server.ShutdownTimeout
+	if totalTimeout <= 0 {
+		totalTimeout = 30 * time.Second
+	}
+	// Separate per-phase contexts so HTTP drain and module stop each get a time budget (P1-20).
+	httpPhase := totalTimeout / 2
+	httpCtx, httpCancel := context.WithTimeout(context.Background(), httpPhase)
+	s.shutdownHTTPServer(httpCtx)
+	httpCancel()
 
-	s.shutdownHTTPServer(ctx)
-	s.shutdownModules(ctx)
+	moduleCtx, moduleCancel := context.WithTimeout(context.Background(), totalTimeout-httpPhase)
+	s.shutdownModules(moduleCtx)
+	moduleCancel()
 	s.saveConfigWithRetry()
 
 	s.log.Info("Server shutdown complete")
