@@ -297,7 +297,7 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "update_media", Target: path})
+	h.logAdminAction(c, &adminLogActionParams{Action: "update_media", Target: path})
 
 	updatedItem, getErr := h.media.GetMedia(path)
 	if getErr == nil && updatedItem != nil {
@@ -321,7 +321,7 @@ func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "delete_media", Target: path})
+	h.logAdminAction(c, &adminLogActionParams{Action: "delete_media", Target: path})
 	writeSuccess(c, map[string]string{"message": "Media deleted"})
 }
 
@@ -378,13 +378,13 @@ func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, upd
 		if err := h.media.DeleteMedia(c.Request.Context(), path); err != nil {
 			return err
 		}
-		h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_delete_media", Target: id})
+		h.logAdminAction(c, &adminLogActionParams{Action: "bulk_delete_media", Target: id})
 		return nil
 	case "update":
 		if err := h.media.UpdateMetadata(path, updates); err != nil {
 			return err
 		}
-		h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_update_media", Target: id})
+		h.logAdminAction(c, &adminLogActionParams{Action: "bulk_update_media", Target: id})
 		return nil
 	default:
 		return fmt.Errorf("unsupported bulk action: %s", action)

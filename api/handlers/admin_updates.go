@@ -71,7 +71,7 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 	}
 
 	h.logAdminActionResult(c, &adminLogResultParams{
-		UserID: "admin", Username: "admin", Action: "apply_update", Target: status.Stage, Details: nil, Success: status.Error == "",
+		Action: "apply_update", Target: status.Stage, Success: status.Error == "",
 	})
 	writeSuccess(c, status)
 }
@@ -189,7 +189,7 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "update_updater_config", Target: "updater_settings",
+	h.logAdminAction(c, &adminLogActionParams{Action: "update_updater_config", Target: "updater_settings",
 		Details: map[string]interface{}{"update_method": req.UpdateMethod, "branch": req.Branch}})
 
 	cfg := h.config.Get()

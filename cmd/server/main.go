@@ -308,6 +308,7 @@ func main() {
 			Playlist:      playlistModule,
 			Downloader:    downloaderModule,
 		},
+		ShutdownFunc: srv.Shutdown, // P1-9: drain connections and stop modules before exit
 	})
 
 	routes.Setup(srv.Engine(), srv, h, authModule, securityModule, cfg, ageGate)

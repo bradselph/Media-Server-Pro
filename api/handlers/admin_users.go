@@ -86,7 +86,7 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "create_user", Target: req.Username})
+	h.logAdminAction(c, &adminLogActionParams{Action: "create_user", Target: req.Username})
 
 	writeSuccess(c, user)
 }
@@ -150,7 +150,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "update_user", Target: username, Details: updates})
+	h.logAdminAction(c, &adminLogActionParams{Action: "update_user", Target: username, Details: updates})
 
 	user, err := h.auth.GetUser(c.Request.Context(), username)
 	if err != nil {
@@ -176,7 +176,7 @@ func (h *Handler) AdminDeleteUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "delete_user", Target: username})
+	h.logAdminAction(c, &adminLogActionParams{Action: "delete_user", Target: username})
 	writeSuccess(c, nil)
 }
 
@@ -208,7 +208,7 @@ func (h *Handler) AdminChangePassword(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "change_password", Target: username})
+	h.logAdminAction(c, &adminLogActionParams{Action: "change_password", Target: username})
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -238,7 +238,7 @@ func (h *Handler) AdminChangeOwnPassword(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "change_admin_password", Target: ""})
+	h.logAdminAction(c, &adminLogActionParams{Action: "change_admin_password"})
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -305,18 +305,18 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 			opErr = h.auth.DeleteUser(c.Request.Context(), username)
 			if opErr == nil {
 				delete(adminSet, username)
-				h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_delete_user", Target: username})
+				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_delete_user", Target: username})
 			}
 		case "enable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": true})
 			if opErr == nil {
-				h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_enable_user", Target: username})
+				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_enable_user", Target: username})
 			}
 		case "disable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": false})
 			if opErr == nil {
 				delete(adminSet, username)
-				h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "bulk_disable_user", Target: username})
+				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_disable_user", Target: username})
 			}
 		}
 		if opErr != nil {

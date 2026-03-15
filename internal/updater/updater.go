@@ -902,11 +902,45 @@ func (m *Module) restoreFromBackup(backupPath string) error {
 	return copyFile(backupPath, execPath)
 }
 
+// writeGitAskPass creates a temporary GIT_ASKPASS helper script that echoes the
+// token on stdout. The script is only readable by the current user (0700) and
+// the caller is responsible for removing it when the git command finishes.
+// This avoids embedding credentials in environment variables where they are
+// visible to any local user via /proc/<pid>/environ (P0-6).
+func writeGitAskPass(token string) (scriptPath string, err error) {
+	f, err := os.CreateTemp("", "git-askpass-*.sh")
+	if err != nil {
+		return "", fmt.Errorf("create askpass script: %w", err)
+	}
+	// Write a POSIX shell script that prints the token and exits.
+	_, err = fmt.Fprintf(f, "#!/bin/sh\necho '%s'\n", strings.ReplaceAll(token, "'", "'\\''"))
+	if err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", fmt.Errorf("write askpass script: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(f.Name())
+		return "", fmt.Errorf("close askpass script: %w", err)
+	}
+	if err := os.Chmod(f.Name(), 0700); err != nil {
+		os.Remove(f.Name())
+		return "", fmt.Errorf("chmod askpass script: %w", err)
+	}
+	return f.Name(), nil
+}
+
 // gitAuthVars returns only the additional environment variables needed for git authentication
 // (no base os.Environ). Used by both gitAuthEnv and goModEnv to avoid duplicating the environ.
-func (m *Module) gitAuthVars() []string {
+// cleanup must be called after the git command finishes to remove any temp askpass script.
+func (m *Module) gitAuthVars() (vars []string, cleanup func()) {
 	cfg := m.config.Get()
-	var vars []string
+	var cleanups []func()
+	cleanup = func() {
+		for _, fn := range cleanups {
+			fn()
+		}
+	}
 
 	// SSH deploy key — for git@github.com: remote URLs
 	if cfg.Updater.DeployKeyPath != "" {
@@ -919,55 +953,64 @@ func (m *Module) gitAuthVars() []string {
 		}
 	}
 
-	// HTTPS token — for https://github.com/ remote URLs.
-	// Injected via GIT_CONFIG_* env vars so no temp files or persistent config changes are made.
-	// When a username is provided, rewrite all https://github.com/ URLs to embed credentials —
-	// this is more compatible with older git versions and private Go modules than the header approach.
+	// HTTPS token — use GIT_ASKPASS helper script so credentials never appear in
+	// /proc/<pid>/environ (fixes P0-6). The askpass script is a temp file removed
+	// by the returned cleanup function.
 	if cfg.Updater.GitHubToken != "" {
-		if cfg.Updater.GitHubUsername != "" {
-			// URL rewrite: any https://github.com/ request uses embedded credentials.
-			// Works for git pull AND go mod download without extra configuration.
-			authURL := fmt.Sprintf("https://%s:%s@github.com/",
-				cfg.Updater.GitHubUsername, cfg.Updater.GitHubToken)
-			vars = append(vars,
-				"GIT_CONFIG_COUNT=1",
-				"GIT_CONFIG_KEY_0=url."+authURL+".insteadOf",
-				"GIT_CONFIG_VALUE_0=https://github.com/",
-			)
-		} else {
-			// Token-only: inject as HTTP Authorization header (requires git 2.x).
+		askPassPath, err := writeGitAskPass(cfg.Updater.GitHubToken)
+		if err != nil {
+			m.log.Warn("Failed to create GIT_ASKPASS script: %v — falling back to env vars", err)
+			// Fallback: use extraheader (less secure but functional).
 			vars = append(vars,
 				"GIT_CONFIG_COUNT=1",
 				"GIT_CONFIG_KEY_0=http.https://github.com/.extraheader",
 				"GIT_CONFIG_VALUE_0=Authorization: Bearer "+cfg.Updater.GitHubToken,
 			)
+		} else {
+			cleanups = append(cleanups, func() { os.Remove(askPassPath) })
+			username := cfg.Updater.GitHubUsername
+			if username == "" {
+				username = "x-access-token"
+			}
+			vars = append(vars,
+				"GIT_ASKPASS="+askPassPath,
+				"GIT_TERMINAL_PROMPT=0",
+				// Rewrite github.com URLs to include the username so git prompts askpass for the password.
+				"GIT_CONFIG_COUNT=1",
+				"GIT_CONFIG_KEY_0=url.https://"+username+"@github.com/.insteadOf",
+				"GIT_CONFIG_VALUE_0=https://github.com/",
+			)
 		}
 	}
 
-	return vars
+	return vars, cleanup
 }
 
 // gitAuthEnv returns os.Environ() augmented with git authentication variables.
 // Either or both SSH deploy key and HTTPS token can be configured independently.
-func (m *Module) gitAuthEnv() []string {
-	return append(os.Environ(), m.gitAuthVars()...)
+// The returned cleanup function removes any temporary askpass scripts.
+func (m *Module) gitAuthEnv() ([]string, func()) {
+	vars, cleanup := m.gitAuthVars()
+	return append(os.Environ(), vars...), cleanup
 }
 
 // goModEnv returns environment variable overrides for Go module operations.
 // When a GitHub token is configured, sets GOPRIVATE/GONOSUMDB to skip sum verification
 // and injects git auth vars so `go mod download` / `go build` can fetch private modules.
-func (m *Module) goModEnv() []string {
+// The returned cleanup function removes any temporary askpass scripts.
+func (m *Module) goModEnv() ([]string, func()) {
 	cfg := m.config.Get()
 	if cfg.Updater.GitHubToken == "" {
-		return nil
+		return nil, func() {}
 	}
 	vars := []string{
 		"GOPRIVATE=github.com/bradselph/*",
 		"GONOSUMDB=github.com/bradselph/*",
 	}
 	// Include git auth so go build/mod can fetch private GitHub modules.
-	vars = append(vars, m.gitAuthVars()...)
-	return vars
+	authVars, cleanup := m.gitAuthVars()
+	vars = append(vars, authVars...)
+	return vars, cleanup
 }
 
 // newGitHubRequest creates an HTTP request pre-configured with the GitHub API
@@ -1018,7 +1061,8 @@ func (m *Module) CheckForSourceUpdates(ctx context.Context) (bool, string, error
 		branch = "main"
 	}
 
-	gitEnv := m.gitAuthEnv()
+	gitEnv, gitCleanup := m.gitAuthEnv()
+	defer gitCleanup()
 
 	// Fetch only the configured branch
 	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "--quiet", "origin", branch)
@@ -1138,7 +1182,8 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		status.BackupPath = backupPath
 	}
 
-	gitEnv := m.gitAuthEnv()
+	gitEnv, gitCleanup := m.gitAuthEnv()
+	defer gitCleanup()
 
 	// --- Step 1: fetch + checkout + reset ---
 	// Using fetch → checkout → reset --hard instead of plain "git pull" so that:
@@ -1270,7 +1315,9 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		m.publishBuildStatus(status)
 		goDownload := exec.CommandContext(ctx, goBin, "mod", "download")
 		goDownload.Dir = dir
-		goDownload.Env = append(os.Environ(), m.goModEnv()...)
+		goModVars, goModCleanup := m.goModEnv()
+		goDownload.Env = append(os.Environ(), goModVars...)
+		defer goModCleanup()
 		if out, merr := goDownload.CombinedOutput(); merr != nil {
 			m.log.Warn("go mod download failed (continuing): %v\n%s", merr, string(out))
 		}
@@ -1292,7 +1339,9 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	m.log.Info("Source update: go build -o %s ./cmd/server", tmpBin)
 	buildCmd := exec.CommandContext(ctx, goBin, buildArgs...)
 	buildCmd.Dir = dir
-	buildCmd.Env = append(os.Environ(), m.goModEnv()...)
+	goBuildModVars, goBuildModCleanup := m.goModEnv()
+	buildCmd.Env = append(os.Environ(), goBuildModVars...)
+	defer goBuildModCleanup()
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		_ = os.Remove(tmpBin)
 		status.Error = fmt.Sprintf("go build failed: %v\n%s", err, string(out))

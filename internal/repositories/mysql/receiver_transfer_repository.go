@@ -68,8 +68,12 @@ func (r *ReceiverSlaveRepository) Get(ctx context.Context, slaveID string) (*rep
 }
 
 func (r *ReceiverSlaveRepository) Delete(ctx context.Context, slaveID string) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", slaveID).Delete(&receiverSlaveRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete slave record: %w", err)
+	result := r.db.WithContext(ctx).Where("id = ?", slaveID).Delete(&receiverSlaveRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete slave record: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("slave record not found: %s", slaveID)
 	}
 	return nil
 }
@@ -213,8 +217,12 @@ func (r *ReceiverMediaRepository) DeleteBySlave(ctx context.Context, slaveID str
 }
 
 func (r *ReceiverMediaRepository) DeleteByID(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&receiverMediaRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete receiver media record: %w", err)
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&receiverMediaRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete receiver media record: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("receiver media record not found: %s", id)
 	}
 	return nil
 }

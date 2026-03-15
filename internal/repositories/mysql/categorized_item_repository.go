@@ -67,8 +67,12 @@ func (r *CategorizedItemRepository) Get(ctx context.Context, path string) (*repo
 }
 
 func (r *CategorizedItemRepository) Delete(ctx context.Context, path string) error {
-	if err := r.db.WithContext(ctx).Where("path = ?", path).Delete(&categorizedItemRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete categorized item: %w", err)
+	result := r.db.WithContext(ctx).Where("path = ?", path).Delete(&categorizedItemRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete categorized item: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("categorized item not found: %s", path)
 	}
 	return nil
 }

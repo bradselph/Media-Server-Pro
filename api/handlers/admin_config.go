@@ -65,6 +65,6 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 		h.security.SetBlacklistEnabled(updatedCfg.Security.EnableIPBlacklist)
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "update_config", Target: "configuration", Details: redactSensitiveConfigKeys(updates)})
+	h.logAdminAction(c, &adminLogActionParams{Action: "update_config", Target: "configuration", Details: redactSensitiveConfigKeys(updates)})
 	writeSuccess(c, h.admin.GetConfigMap())
 }
