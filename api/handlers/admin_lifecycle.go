@@ -9,10 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RestartServer initiates a server restart via self-exec (os.Exit; in-flight requests are not drained).
+// RestartServer initiates a server restart via self-exec.
+// Calls the graceful shutdown callback first to drain in-flight requests and stop modules (P1-9).
 func (h *Handler) RestartServer(c *gin.Context) {
 	h.log.Warn("Server restart requested by admin")
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "restart_server", Target: "initiated"})
+	h.logAdminAction(c, &adminLogActionParams{Action: "restart_server", Target: "initiated"})
 
 	writeSuccess(c, map[string]interface{}{
 		"message": "Server restart initiated. The server will restart in a few seconds.",
@@ -22,9 +23,11 @@ func (h *Handler) RestartServer(c *gin.Context) {
 	go func() {
 		time.Sleep(1 * time.Second)
 
+		// Drain connections and stop modules before exiting.
+		h.log.Info("Running graceful shutdown before restart...")
+		h.shutdownFunc()
+
 		if os.Getenv("INVOCATION_ID") != "" {
-			// Under systemd: exit with code 1 so Restart=on-failure triggers a restart.
-			// os.Exit(0) is a clean exit that systemd does NOT restart.
 			h.log.Info("Running under systemd — exiting with code 1 for service manager restart")
 			os.Exit(1)
 			return
@@ -62,10 +65,11 @@ func (h *Handler) RestartServer(c *gin.Context) {
 	}()
 }
 
-// ShutdownServer initiates server shutdown (os.Exit; in-flight connections are not drained).
+// ShutdownServer initiates a graceful server shutdown.
+// Calls the shutdown callback to drain in-flight requests and stop modules before exiting (P1-9).
 func (h *Handler) ShutdownServer(c *gin.Context) {
 	h.log.Warn("Server shutdown requested by admin")
-	h.logAdminAction(c, &adminLogActionParams{UserID: "admin", Username: "admin", Action: "shutdown_server", Target: "initiated"})
+	h.logAdminAction(c, &adminLogActionParams{Action: "shutdown_server", Target: "initiated"})
 
 	writeSuccess(c, map[string]interface{}{
 		"message": "Server shutdown initiated. The server will shut down in a few seconds.",
@@ -74,7 +78,8 @@ func (h *Handler) ShutdownServer(c *gin.Context) {
 
 	go func() {
 		time.Sleep(1 * time.Second)
-		h.log.Info("Initiating server shutdown...")
+		h.log.Info("Running graceful shutdown...")
+		h.shutdownFunc()
 		os.Exit(0)
 	}()
 }

@@ -115,9 +115,10 @@ type HandlerOptionalDeps struct {
 // HandlerDeps holds all module dependencies needed to create a Handler.
 // Dependencies are grouped to avoid primitive obsession (many separate fields).
 type HandlerDeps struct {
-	BuildInfo BuildInfo
-	Core      HandlerCoreDeps
-	Optional  HandlerOptionalDeps
+	BuildInfo    BuildInfo
+	Core         HandlerCoreDeps
+	Optional     HandlerOptionalDeps
+	ShutdownFunc func() // called before os.Exit to drain connections and stop modules (P1-9)
 }
 
 // Handler holds dependencies for HTTP handlers
@@ -150,6 +151,7 @@ type Handler struct {
 	duplicates    *duplicates.Module
 	downloader    *downloader.Module
 	config        *config.Manager
+	shutdownFunc  func()
 }
 
 // NewHandler creates a new handler with dependencies.
@@ -159,6 +161,11 @@ func NewHandler(deps HandlerDeps) *Handler {
 	missingCritical := c.Config == nil || c.Media == nil || c.Auth == nil || c.Streaming == nil || c.Database == nil
 	if missingCritical {
 		panic("NewHandler: critical core dependency is nil (Config, Database, Media, Auth, or Streaming)")
+	}
+
+	shutdownFunc := deps.ShutdownFunc
+	if shutdownFunc == nil {
+		shutdownFunc = func() {} // no-op default for tests
 	}
 
 	return &Handler{
@@ -190,6 +197,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		crawler:       o.Crawler,
 		duplicates:    o.Duplicates,
 		downloader:    o.Downloader,
+		shutdownFunc:  shutdownFunc,
 	}
 }
 

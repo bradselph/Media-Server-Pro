@@ -74,8 +74,12 @@ func (r *HLSJobRepository) Get(ctx context.Context, id string) (*models.HLSJob, 
 }
 
 func (r *HLSJobRepository) Delete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&hlsJobRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete HLS job: %w", err)
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&hlsJobRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete HLS job: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("HLS job not found: %s", id)
 	}
 	return nil
 }

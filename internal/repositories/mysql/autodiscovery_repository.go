@@ -71,8 +71,12 @@ func (r *AutoDiscoverySuggestionRepository) Get(ctx context.Context, originalPat
 }
 
 func (r *AutoDiscoverySuggestionRepository) Delete(ctx context.Context, originalPath string) error {
-	if err := r.db.WithContext(ctx).Where("original_path = ?", originalPath).Delete(&autodiscoveryRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete autodiscovery suggestion: %w", err)
+	result := r.db.WithContext(ctx).Where("original_path = ?", originalPath).Delete(&autodiscoveryRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete autodiscovery suggestion: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("autodiscovery suggestion not found: %s", originalPath)
 	}
 	return nil
 }

@@ -73,8 +73,12 @@ func (r *ExtractorItemRepository) Get(ctx context.Context, id string) (*reposito
 }
 
 func (r *ExtractorItemRepository) Delete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&extractorItemRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete extractor item: %w", err)
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&extractorItemRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete extractor item: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("extractor item not found: %s", id)
 	}
 	return nil
 }

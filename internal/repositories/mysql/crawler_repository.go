@@ -58,8 +58,12 @@ func (r *CrawlerTargetRepository) Get(ctx context.Context, id string) (*reposito
 }
 
 func (r *CrawlerTargetRepository) Delete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&crawlerTargetRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete crawler target: %w", err)
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&crawlerTargetRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete crawler target: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("crawler target not found: %s", id)
 	}
 	return nil
 }
@@ -171,8 +175,12 @@ func (r *CrawlerDiscoveryRepository) Get(ctx context.Context, id string) (*repos
 }
 
 func (r *CrawlerDiscoveryRepository) Delete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&crawlerDiscoveryRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete crawler discovery: %w", err)
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&crawlerDiscoveryRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete crawler discovery: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("crawler discovery not found: %s", id)
 	}
 	return nil
 }
