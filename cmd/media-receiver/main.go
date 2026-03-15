@@ -960,15 +960,15 @@ func scanMediaDirs(dirs []string) []catalogItem {
 				return nil
 			}
 
-			id := generateFileID(path)
-			contentType := mime.TypeByExtension(filepath.Ext(info.Name()))
-			if contentType == "" {
-				contentType = "application/octet-stream"
-			}
-
 			relPath, err := filepath.Rel(absDir, path)
 			if err != nil {
 				relPath = info.Name()
+			}
+
+			id := generateFileID(relPath)
+			contentType := mime.TypeByExtension(filepath.Ext(info.Name()))
+			if contentType == "" {
+				contentType = "application/octet-stream"
 			}
 
 			fp := getCachedFingerprint(path, info)
@@ -1008,7 +1008,7 @@ func classifyFile(name string) string {
 	}
 }
 
-// generateFileID derives a deterministic ID from the file path (path changes produce new IDs).
+// generateFileID derives a deterministic ID from the relative file path (portable across machines).
 func generateFileID(path string) string {
 	h := sha256.Sum256([]byte(path))
 	return hex.EncodeToString(h[:16])

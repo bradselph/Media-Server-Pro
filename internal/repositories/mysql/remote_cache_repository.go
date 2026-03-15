@@ -96,8 +96,12 @@ func (r *RemoteCacheRepository) Get(ctx context.Context, remoteURL string) (*rep
 }
 
 func (r *RemoteCacheRepository) Delete(ctx context.Context, remoteURL string) error {
-	if err := r.db.WithContext(ctx).Where("remote_url = ?", remoteURL).Delete(&remoteCacheRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete remote cache entry: %w", err)
+	result := r.db.WithContext(ctx).Where("remote_url = ?", remoteURL).Delete(&remoteCacheRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete remote cache entry: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("remote cache entry not found: %s", remoteURL)
 	}
 	return nil
 }

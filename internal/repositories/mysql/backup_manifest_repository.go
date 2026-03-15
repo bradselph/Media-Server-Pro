@@ -76,8 +76,12 @@ func (r *BackupManifestRepository) Get(ctx context.Context, id string) (*reposit
 }
 
 func (r *BackupManifestRepository) Delete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&backupManifestRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete backup manifest: %w", err)
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&backupManifestRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete backup manifest: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("backup manifest not found: %s", id)
 	}
 	return nil
 }

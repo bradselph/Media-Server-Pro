@@ -108,8 +108,8 @@ func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
 		errs = []string{}
 	}
 	h.logAdminActionResult(c, &adminLogResultParams{
-		UserID: "admin", Username: "admin", Action: "bulk_delete_playlists",
-		Target: fmt.Sprintf("%d playlists", successCount), Details: nil, Success: failedCount == 0,
+		Action: "bulk_delete_playlists",
+		Target: fmt.Sprintf("%d playlists", successCount), Success: failedCount == 0,
 	})
 	writeSuccess(c, map[string]interface{}{
 		"success": successCount,

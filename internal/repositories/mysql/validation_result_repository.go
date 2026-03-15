@@ -67,8 +67,12 @@ func (r *ValidationResultRepository) Get(ctx context.Context, path string) (*rep
 }
 
 func (r *ValidationResultRepository) Delete(ctx context.Context, path string) error {
-	if err := r.db.WithContext(ctx).Where("path = ?", path).Delete(&validationResultRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete validation result: %w", err)
+	result := r.db.WithContext(ctx).Where("path = ?", path).Delete(&validationResultRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete validation result: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("validation result not found: %s", path)
 	}
 	return nil
 }
