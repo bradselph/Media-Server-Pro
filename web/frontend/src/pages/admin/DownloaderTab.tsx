@@ -417,7 +417,9 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                                             ? val
                                             : val && typeof val === 'object' && 'version' in val
                                                 ? String((val as { version?: string }).version ?? '—')
-                                                : '—'}
+                                                : typeof val === 'object' && val !== null
+                                                    ? '—'
+                                                    : String(val ?? '—')}
                                     </td>
                                 </tr>
                             ))}

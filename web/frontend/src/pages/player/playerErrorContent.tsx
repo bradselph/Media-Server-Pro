@@ -7,9 +7,9 @@ export function getMediaErrorContent(is403: boolean, errMsg: string, playerUrl: 
         return (
             <>
                 <p style={ERROR_STYLE_HEADING}>
-                    <i className="bi bi-shield-lock-fill"/> {ERROR_MSG_MATURE}
+                    <i className="bi bi-shield-lock-fill" aria-hidden/> {ERROR_MSG_MATURE}
                 </p>
-                <Link to={`/login?redirect=${encodeURIComponent(playerUrl)}`}>
+                <Link to={`/login?redirect=${encodeURIComponent(playerUrl)}`} aria-label="Sign in to view this content">
                     Sign in to view this content
                 </Link>
             </>
@@ -19,10 +19,10 @@ export function getMediaErrorContent(is403: boolean, errMsg: string, playerUrl: 
         return (
             <>
                 <p style={ERROR_STYLE_HEADING}>
-                    <i className="bi bi-shield-lock-fill"/> Your account does not have permission to view mature content.
+                    <i className="bi bi-shield-lock-fill" aria-hidden/> Your account does not have permission to view mature content.
                 </p>
                 <p style={{ color: CSS_TEXT_MUTED, fontSize: 14 }}>Contact an administrator to request access.</p>
-                <Link to="/" style={{ marginTop: 12, display: 'inline-block' }}><i className={ICON_ARROW_LEFT}/> {LABEL_BACK_TO_LIBRARY}</Link>
+                <Link to="/" style={{ marginTop: 12, display: 'inline-block' }} aria-label="Back to library"><i className={ICON_ARROW_LEFT} aria-hidden/> {LABEL_BACK_TO_LIBRARY}</Link>
             </>
         )
     }
@@ -31,9 +31,9 @@ export function getMediaErrorContent(is403: boolean, errMsg: string, playerUrl: 
         return (
             <>
                 <p style={ERROR_STYLE_HEADING}>
-                    <i className="bi bi-shield-lock-fill"/> {ERROR_MSG_MATURE}
+                    <i className="bi bi-shield-lock-fill" aria-hidden/> {ERROR_MSG_MATURE}
                 </p>
-                <Link to={`/profile?mature_redirect=${encodeURIComponent(playerUrl)}`}>
+                <Link to={`/profile?mature_redirect=${encodeURIComponent(playerUrl)}`} aria-label="Enable mature content in profile settings">
                     Enable mature content in profile settings
                 </Link>
             </>
@@ -42,7 +42,7 @@ export function getMediaErrorContent(is403: boolean, errMsg: string, playerUrl: 
     return (
         <>
             <p style={ERROR_STYLE_HEADING}>Media not found or unavailable.</p>
-            <Link to="/"><i className={ICON_ARROW_LEFT}/> {LABEL_BACK_TO_LIBRARY}</Link>
+            <Link to="/" aria-label="Back to library"><i className={ICON_ARROW_LEFT} aria-hidden/> {LABEL_BACK_TO_LIBRARY}</Link>
         </>
     )
 }

@@ -112,9 +112,9 @@ export function DashboardTab() {
                         gap: 12,
                         marginBottom: 16
                     }}>
-                        <div><strong>Version:</strong> {system.version}</div>
+                        <div><strong>Version:</strong> {typeof system.version === 'string' ? system.version : '—'}</div>
                         <div><strong>OS:</strong> {system.os}/{system.arch}</div>
-                        <div><strong>Go:</strong> {system.go_version}</div>
+                        <div><strong>Go:</strong> {typeof system.go_version === 'string' ? system.go_version : '—'}</div>
                         <div><strong>Uptime:</strong> {formatUptime(system.uptime)}</div>
                         <div><strong>CPUs:</strong> {system.cpu_count}</div>
                         <div>

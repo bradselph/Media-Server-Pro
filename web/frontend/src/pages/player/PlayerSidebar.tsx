@@ -140,16 +140,24 @@ export function PlayerSidebar(props: PlayerSidebarProps) {
                 ) : null}
 
                 <div className="player-sidebar-card player-shortcuts-card">
-                    <h3><i className="bi bi-keyboard" /> Shortcuts</h3>
+                    <h3><i className="bi bi-keyboard" aria-hidden /> Shortcuts</h3>
                     <div className="player-shortcuts-grid">
+                        <kbd>Space</kbd> <span>Play/Pause</span>
                         <kbd>K</kbd> <span>Play/Pause</span>
                         <kbd>J</kbd> <span>Back 10s</span>
                         <kbd>L</kbd> <span>Forward 10s</span>
+                        <kbd>←</kbd> <span>Back 5s</span>
+                        <kbd>→</kbd> <span>Forward 5s</span>
+                        <kbd>Home</kbd> <span>Start</span>
+                        <kbd>End</kbd> <span>End</span>
+                        <kbd>↑</kbd> <span>Volume up</span>
+                        <kbd>↓</kbd> <span>Volume down</span>
                         <kbd>F</kbd> <span>Fullscreen</span>
                         <kbd>T</kbd> <span>Theater</span>
                         <kbd>M</kbd> <span>Mute</span>
-                        <kbd>0-9</kbd> <span>Seek %</span>
+                        <kbd>0-9</kbd> <span>Seek to %</span>
                         <kbd>&lt; &gt;</kbd> <span>Speed</span>
+                        <kbd>Esc</kbd> <span>Close settings</span>
                     </div>
                 </div>
             </div>

@@ -114,6 +114,14 @@ interface PlayerCustomControlsProps {
     seekForward: () => void
 }
 
+/** Set webkit-playsinline on video for older iOS Safari (not a valid React DOM prop). */
+function useVideoPlaysInline(ref: React.RefObject<HTMLVideoElement | null>) {
+    useEffect(() => {
+        const el = ref.current
+        if (el) el.setAttribute('webkit-playsinline', '')
+    })
+}
+
 function PlayerMediaElements(props: {
     isAudio: boolean
     isVideo: boolean
@@ -146,6 +154,7 @@ function PlayerMediaElements(props: {
         handleWaiting,
         handleCanPlay,
     } = props
+    useVideoPlaysInline(videoRef)
     return (
         <>
             {isAudio && (
@@ -185,7 +194,6 @@ function PlayerMediaElements(props: {
                     onCanPlay={handleCanPlay}
                     preload="auto"
                     playsInline
-                    webkit-playsinline=""
                 />
             )}
         </>
@@ -298,6 +306,9 @@ function PlayerVolumeControls(props: {
                 onChange={handleVolumeChange}
                 onClick={(e) => e.stopPropagation()}
                 aria-label="Volume"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
             />
         </div>
     )
@@ -714,6 +725,9 @@ function AudioControlsRow(props: {
                 onChange={handleVolumeChange}
                 style={{ width: 70, cursor: 'pointer', accentColor: '#667eea' }}
                 aria-label="Volume"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
             />
         </div>
     )

@@ -52,6 +52,7 @@ export function SignupPage() {
     return (
         <div className="auth-page">
             <div className="auth-card">
+                <Link to="/" className="auth-back-link" aria-label="Back to library"><i className="bi bi-arrow-left" aria-hidden /> Back to Library</Link>
                 <h1>Create Account</h1>
                 <p className="auth-subtitle">Register for a new media server account</p>
 
