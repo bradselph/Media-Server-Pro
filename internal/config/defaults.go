@@ -66,6 +66,8 @@ func defaultStreamingConfig() StreamingConfig {
 		KeepAliveTimeout:   60 * time.Second,
 		MobileOptimization: true,
 		MobileChunkSize:    512 * 1024,
+		RequireAuth:        false, // allow anonymous streaming by default
+		UnauthStreamLimit:  3,     // max concurrent streams per IP for unauthenticated users (DoS mitigation)
 	}
 }
 

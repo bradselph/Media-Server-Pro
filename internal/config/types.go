@@ -86,14 +86,16 @@ type DirectoriesConfig struct {
 
 // StreamingConfig holds streaming settings
 type StreamingConfig struct {
-	DefaultChunkSize   int64         `json:"default_chunk_size"`
-	MaxChunkSize       int64         `json:"max_chunk_size"`
-	BufferSize         int           `json:"buffer_size"`
-	KeepAliveEnabled   bool          `json:"keep_alive_enabled"`
-	KeepAliveTimeout   time.Duration `json:"keep_alive_timeout"`
-	Adaptive           bool          `json:"adaptive"`
-	MobileOptimization bool          `json:"mobile_optimization"`
-	MobileChunkSize    int64         `json:"mobile_chunk_size"`
+	DefaultChunkSize     int64         `json:"default_chunk_size"`
+	MaxChunkSize         int64         `json:"max_chunk_size"`
+	BufferSize           int           `json:"buffer_size"`
+	KeepAliveEnabled     bool          `json:"keep_alive_enabled"`
+	KeepAliveTimeout     time.Duration `json:"keep_alive_timeout"`
+	Adaptive             bool          `json:"adaptive"`
+	MobileOptimization   bool          `json:"mobile_optimization"`
+	MobileChunkSize      int64         `json:"mobile_chunk_size"`
+	RequireAuth       bool `json:"require_auth"`        // if true, reject unauthenticated streaming (DoS mitigation)
+	UnauthStreamLimit int  `json:"unauth_stream_limit"` // max concurrent streams per IP when unauth; 0 = no limit
 }
 
 // DownloadConfig holds file download settings

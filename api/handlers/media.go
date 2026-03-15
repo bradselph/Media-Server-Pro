@@ -304,6 +304,23 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		return
 	}
 
+	session := getSession(c)
+	streamCfg := h.media.GetConfig().Streaming
+	if session == nil {
+		if streamCfg.RequireAuth {
+			writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
+			return
+		}
+		// IP-based stream limit for unauthenticated users (DoS mitigation)
+		if limit := streamCfg.UnauthStreamLimit; limit > 0 {
+			ipKey := "ip:" + c.ClientIP()
+			if !h.streaming.CanStartStream(ipKey, limit) {
+				writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached for this connection")
+				return
+			}
+		}
+	}
+
 	// Try local media first
 	localItem, localErr := h.media.GetMediaByID(id)
 	if localErr != nil {
@@ -319,8 +336,8 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
 					return
 				}
-				// Enforce per-user stream limits for receiver-sourced media, same as local media.
-				if session := getSession(c); session != nil {
+				// Enforce per-user or per-IP stream limits for receiver-sourced media.
+				if session != nil {
 					if user, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
 						maxStreams := h.getUserStreamLimit(user.Type)
 						if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
@@ -328,6 +345,14 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 							return
 						}
 					}
+				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
+					ipKey := "ip:" + c.ClientIP()
+					if !h.streaming.CanStartStream(ipKey, limit) {
+						writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached for this connection")
+						return
+					}
+					release := h.streaming.TrackProxyStream(ipKey)
+					defer release()
 				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
 					if !c.Writer.Written() && !isClientDisconnect(err) {
@@ -360,7 +385,6 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		return
 	}
 
-	session := getSession(c)
 	var userID, sessionID string
 	if session != nil {
 		userID = session.UserID
@@ -376,6 +400,9 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 				return
 			}
 		}
+	} else {
+		// Use IP as stream key for unauthenticated (limit already checked at top)
+		userID = "ip:" + c.ClientIP()
 	}
 
 	req := streaming.StreamRequest{

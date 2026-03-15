@@ -79,21 +79,21 @@ TOTAL REMAINING:                               60
 
 ## P0 — CRITICAL: Must fix before deploy (7)
 
-### P0-1 [SECURITY] AdminExecuteQuery allows SELECT INTO OUTFILE / LOAD_FILE
+### P0-1 [SECURITY] AdminExecuteQuery allows SELECT INTO OUTFILE / LOAD_FILE — ✅ FIXED
 - **File:** `api/handlers/system.go:386-521`
 - **Impact:** Authenticated admin can exfiltrate/write server files via SQL
-- **Fix:** Use `SET SESSION TRANSACTION READ ONLY` instead of prefix matching
+- **Fix applied:** Use read-only transaction (`sql.TxOptions{ReadOnly: true}`) so MySQL rejects write ops
 - **Note:** P2-12 (semicolon bypass) is the same attack surface — fix together
 
-### P0-2 [SECURITY] ReceiverWebSocket has no middleware-level auth
+### P0-2 [SECURITY] ReceiverWebSocket has no middleware-level auth — ✅ FIXED
 - **File:** `api/routes/routes.go:279`
 - **Impact:** If internal auth check is bypassed, any client can push arbitrary catalogs
-- **Fix:** Add `RequireReceiverWithAPIKey()` middleware to `/ws/receiver` route
+- **Fix applied:** Added `RequireReceiverWithAPIKey()` middleware before `ReceiverWebSocket` handler
 
-### P0-3 [SECURITY] Unauthenticated streaming bypasses stream limits
+### P0-3 [SECURITY] Unauthenticated streaming bypasses stream limits — ✅ FIXED
 - **File:** `api/handlers/media.go:300-355`
 - **Impact:** Unlimited concurrent connections from unauthenticated users (DoS vector)
-- **Fix:** Add `Streaming.RequireAuth` config option; IP-based tracking for unauth
+- **Fix applied:** Added `Streaming.RequireAuth` and `Streaming.UnauthStreamLimit`; IP-based tracking via `ip:` prefix; `TrackProxyStream` for receiver media
 
 ### P0-4 [SECURITY] Chrome launched with --disable-web-security
 - **File:** `internal/crawler/browser.go:114-128`

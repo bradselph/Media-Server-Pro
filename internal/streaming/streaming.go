@@ -562,6 +562,23 @@ func (m *Module) CanStartStream(userID string, maxStreams int) bool {
 	return m.GetActiveStreamCount(userID) < maxStreams
 }
 
+// TrackProxyStream registers a proxy stream (e.g. receiver-sourced) so it counts toward
+// the per-user/per-IP limit. Caller must invoke the returned release func when the stream ends.
+func (m *Module) TrackProxyStream(userID string) (release func()) {
+	session := &models.StreamSession{
+		ID:         generateSessionID("proxy"),
+		UserID:     userID,
+		StartedAt:  time.Now(),
+		LastUpdate: time.Now(),
+	}
+	m.sessionMu.Lock()
+	m.activeSessions[session.ID] = session
+	m.sessionMu.Unlock()
+	return func() {
+		m.endSession(session.ID)
+	}
+}
+
 // Download handles a file download request with range support and chunked streaming
 func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) error {
 	m.log.Debug("Download request for %s", path)
