@@ -228,8 +228,11 @@ function usePlayerPlaybackHandlers(
             el.currentTime = saved
         }
         resumePositionRef.current = 0
-        el.play().catch(() => {})
-    }, [getActiveEl, user?.preferences?.resume_playback, durationRef, resumePositionRef, setters])
+        const autoPlayEnabled = user?.preferences?.auto_play === true
+        if (autoPlayEnabled) {
+            el.play().catch(() => {})
+        }
+    }, [getActiveEl, user?.preferences?.resume_playback, user?.preferences?.auto_play, durationRef, resumePositionRef, setters])
 
     const handlePause = useCallback(() => {
         setters.setIsPlaying(false)
