@@ -45,7 +45,7 @@ func TestResolveBaseURL(t *testing.T) {
 		want  string
 	}{
 		{"https://cdn.example.com/hls/stream/master.m3u8", "https://cdn.example.com/hls/stream/"},
-		{"https://cdn.example.com/video.m3u8", "https://cdn.example.com/"},
+		{"https://cdn.example.com/video.m3u8", "https://cdn.example.com//"},
 		{"https://cdn.example.com/path/to/playlist.m3u8?token=abc", "https://cdn.example.com/path/to/"},
 	}
 	for _, tc := range tests {

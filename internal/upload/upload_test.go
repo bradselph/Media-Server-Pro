@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -285,14 +286,10 @@ func TestModuleStartStop(t *testing.T) {
 		c.Directories.Uploads = filepath.Join(dir, "uploads")
 	})
 
-	m := &Module{
-		config:        cfg,
-		activeUploads: make(map[UploadID]*Progress),
-		uploadDir:     filepath.Join(dir, "uploads"),
-		done:          make(chan struct{}),
-	}
+	m := NewModule(cfg)
+	m.uploadDir = filepath.Join(dir, "uploads")
 
-	if err := m.Start(nil); err != nil {
+	if err := m.Start(context.TODO()); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 
@@ -301,7 +298,7 @@ func TestModuleStartStop(t *testing.T) {
 		t.Errorf("after Start, status = %q, want healthy", h.Status)
 	}
 
-	if err := m.Stop(nil); err != nil {
+	if err := m.Stop(context.TODO()); err != nil {
 		t.Fatalf("Stop failed: %v", err)
 	}
 

@@ -1,7 +1,7 @@
 package security
 
 import (
-	"net/http"
+	"net"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -54,10 +54,9 @@ func TestGetClientIP_NoPort(t *testing.T) {
 
 func TestGetClientIP_XForwardedFor(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "10.0.0.1:1234" // private IP proxy
+	req.RemoteAddr = "10.0.0.1:1234"
 	req.Header.Set("X-Forwarded-For", "203.0.113.50, 10.0.0.1")
 	ip := getClientIP(req)
-	// Should trust X-Forwarded-For from private proxy
 	if ip != "203.0.113.50" {
 		t.Logf("getClientIP with X-Forwarded-For = %q (implementation dependent)", ip)
 	}
@@ -70,8 +69,8 @@ func TestGetClientIP_XForwardedFor(t *testing.T) {
 func TestNewRateLimiter(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{
 		RequestsPerMinute: 60,
-		BurstSize:         10,
-		BanThreshold:      5,
+		BurstLimit:        10,
+		ViolationsForBan:  5,
 		BanDuration:       10 * time.Minute,
 	})
 	if rl == nil {
@@ -86,7 +85,7 @@ func TestNewRateLimiter(t *testing.T) {
 func TestRateLimiter_CheckRequest_Allowed(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{
 		RequestsPerMinute: 60,
-		BurstSize:         10,
+		BurstLimit:        10,
 	})
 	allowed, remaining, _ := rl.CheckRequest("192.168.1.1")
 	if !allowed {
@@ -100,7 +99,7 @@ func TestRateLimiter_CheckRequest_Allowed(t *testing.T) {
 func TestRateLimiter_CheckRequest_MultipleIPs(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{
 		RequestsPerMinute: 60,
-		BurstSize:         10,
+		BurstLimit:        10,
 	})
 	allowed1, _, _ := rl.CheckRequest("10.0.0.1")
 	allowed2, _, _ := rl.CheckRequest("10.0.0.2")
@@ -114,7 +113,7 @@ func TestRateLimiter_CheckRequest_MultipleIPs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRateLimiter_BanAndUnban(t *testing.T) {
-	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstSize: 10})
+	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
 	rl.BanIP("10.0.0.1", 1*time.Hour, "test ban")
 	if !rl.IsBanned("10.0.0.1") {
 		t.Error("IP should be banned")
@@ -127,14 +126,14 @@ func TestRateLimiter_BanAndUnban(t *testing.T) {
 }
 
 func TestRateLimiter_IsBanned_NotBanned(t *testing.T) {
-	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstSize: 10})
+	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
 	if rl.IsBanned("10.0.0.1") {
 		t.Error("should not be banned by default")
 	}
 }
 
 func TestRateLimiter_GetBannedIPs(t *testing.T) {
-	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstSize: 10})
+	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
 	rl.BanIP("10.0.0.1", 1*time.Hour, "reason1")
 	rl.BanIP("10.0.0.2", 1*time.Hour, "reason2")
 
@@ -149,20 +148,29 @@ func TestRateLimiter_GetBannedIPs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestIPList_AddAndContains(t *testing.T) {
-	list := &IPList{}
-	list.entries = make(map[string]*IPEntry)
+	list := &IPList{Entries: make([]IPEntry, 0)}
 	if err := list.Add("192.168.1.0/24", "test", "admin", nil); err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
-	ip := parseIPForTest(t, "192.168.1.50")
+	ip := net.ParseIP("192.168.1.50")
 	if !list.Contains(ip) {
 		t.Error("192.168.1.50 should be in 192.168.1.0/24")
 	}
 }
 
+func TestIPList_Contains_SingleIP(t *testing.T) {
+	list := &IPList{Entries: make([]IPEntry, 0)}
+	list.Add("10.0.0.1", "test", "admin", nil)
+	if !list.Contains(net.ParseIP("10.0.0.1")) {
+		t.Error("exact IP should be found")
+	}
+	if list.Contains(net.ParseIP("10.0.0.2")) {
+		t.Error("different IP should not be found")
+	}
+}
+
 func TestIPList_Remove(t *testing.T) {
-	list := &IPList{}
-	list.entries = make(map[string]*IPEntry)
+	list := &IPList{Entries: make([]IPEntry, 0)}
 	list.Add("10.0.0.1", "test", "admin", nil)
 	removed := list.Remove("10.0.0.1")
 	if !removed {
@@ -175,8 +183,7 @@ func TestIPList_Remove(t *testing.T) {
 }
 
 func TestIPList_Clear(t *testing.T) {
-	list := &IPList{}
-	list.entries = make(map[string]*IPEntry)
+	list := &IPList{Entries: make([]IPEntry, 0)}
 	list.Add("10.0.0.1", "test", "admin", nil)
 	list.Add("10.0.0.2", "test", "admin", nil)
 	list.Clear()
@@ -187,11 +194,10 @@ func TestIPList_Clear(t *testing.T) {
 }
 
 func TestIPList_CleanExpired(t *testing.T) {
-	list := &IPList{}
-	list.entries = make(map[string]*IPEntry)
+	list := &IPList{Entries: make([]IPEntry, 0)}
 	past := time.Now().Add(-1 * time.Hour)
 	list.Add("10.0.0.1", "expired", "admin", &past)
-	list.Add("10.0.0.2", "valid", "admin", nil) // no expiry
+	list.Add("10.0.0.2", "valid", "admin", nil)
 
 	cleaned := list.CleanExpired()
 	if cleaned != 1 {
@@ -200,8 +206,7 @@ func TestIPList_CleanExpired(t *testing.T) {
 }
 
 func TestIPList_Snapshot(t *testing.T) {
-	list := &IPList{}
-	list.entries = make(map[string]*IPEntry)
+	list := &IPList{Entries: make([]IPEntry, 0)}
 	list.Add("10.0.0.1", "test1", "admin", nil)
 	list.Add("10.0.0.2", "test2", "admin", nil)
 	snap := list.Snapshot()
@@ -210,13 +215,21 @@ func TestIPList_Snapshot(t *testing.T) {
 	}
 }
 
-// helper to parse IP for Contains() tests
-func parseIPForTest(t *testing.T, ipStr string) (ip interface{ String() string }) {
-	t.Helper()
-	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = ipStr + ":1234"
-	// Use net.ParseIP via http request
-	return nil
+func TestIPList_Add_Duplicate(t *testing.T) {
+	list := &IPList{Entries: make([]IPEntry, 0)}
+	list.Add("10.0.0.1", "first", "admin", nil)
+	err := list.Add("10.0.0.1", "duplicate", "admin", nil)
+	if err == nil {
+		t.Error("duplicate add should return error")
+	}
+}
+
+func TestIPList_Add_InvalidIP(t *testing.T) {
+	list := &IPList{Entries: make([]IPEntry, 0)}
+	err := list.Add("not-an-ip", "test", "admin", nil)
+	if err == nil {
+		t.Error("invalid IP should return error")
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +258,7 @@ func TestModuleHealth_Default(t *testing.T) {
 func TestRateLimiter_CheckRequest_BannedIP(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{
 		RequestsPerMinute: 60,
-		BurstSize:         10,
+		BurstLimit:        10,
 	})
 	rl.BanIP("10.0.0.1", 1*time.Hour, "test")
 	allowed, _, _ := rl.CheckRequest("10.0.0.1")
@@ -255,35 +268,35 @@ func TestRateLimiter_CheckRequest_BannedIP(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// BanRecord fields
+// BanRecord / RateLimitConfig fields
 // ---------------------------------------------------------------------------
 
 func TestBanRecord_Fields(t *testing.T) {
 	now := time.Now()
 	br := BanRecord{
-		IP:       "10.0.0.1",
 		Reason:   "too many requests",
 		BannedAt: now,
-	}
-	if br.IP != "10.0.0.1" {
-		t.Errorf("IP = %q", br.IP)
 	}
 	if br.Reason != "too many requests" {
 		t.Errorf("Reason = %q", br.Reason)
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Stats type
-// ---------------------------------------------------------------------------
-
-func TestStats_Fields(t *testing.T) {
-	s := Stats{}
-	// Zero value should be valid
-	if s.BannedIPs != 0 || s.TotalRequests != 0 {
-		t.Error("zero Stats should have zero fields")
+	if !br.BannedAt.Equal(now) {
+		t.Errorf("BannedAt mismatch")
 	}
 }
 
-// suppress unused import warnings
-var _ = http.StatusOK
+func TestRateLimitConfig_Fields(t *testing.T) {
+	cfg := RateLimitConfig{
+		RequestsPerMinute: 100,
+		BurstLimit:        20,
+		BurstWindow:       5 * time.Second,
+		BanDuration:       15 * time.Minute,
+		ViolationsForBan:  3,
+	}
+	if cfg.RequestsPerMinute != 100 {
+		t.Errorf("RequestsPerMinute = %d", cfg.RequestsPerMinute)
+	}
+	if cfg.BurstLimit != 20 {
+		t.Errorf("BurstLimit = %d", cfg.BurstLimit)
+	}
+}
