@@ -951,8 +951,7 @@ func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature
 		result.Reasons = append(result.Reasons, "Manual: "+reason)
 	}
 	result.ReviewDecision = "manual"
-	reviewedAt := time.Now()
-	result.ReviewedAt = &reviewedAt
+	result.ReviewedAt = new(time.Now())
 
 	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
 	repoResult := s.convertScannerToRepo(result)

@@ -6,7 +6,7 @@
 
 /* ── Header ── */
 .admin-header-bar {
-    background: linear-gradient(135deg, #1e3a5f 0%, #2d1b69 100%);
+    background: linear-gradient(135deg, var(--admin-gradient-start) 0%, var(--admin-gradient-end) 100%);
     color: white;
     padding: 16px 20px;
     display: flex;
@@ -79,8 +79,8 @@
 }
 
 .admin-tab-btn.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
     font-weight: 600;
 }
 
@@ -105,8 +105,8 @@
     color: var(--text-color);
 }
 .admin-subtab-btn.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
     font-weight: 600;
 }
 
@@ -136,7 +136,7 @@
 .admin-stat-value {
     font-size: 28px;
     font-weight: 700;
-    color: #667eea;
+    color: var(--primary-color);
     display: block;
     margin-bottom: 4px;
 }
@@ -192,45 +192,48 @@
 }
 
 .admin-btn-primary {
-    background: #667eea;
-    border-color: #667eea;
+    background: var(--primary-color);
+    border-color: var(--primary-color);
     color: white;
 }
 
 .admin-btn-primary:hover {
-    background: #5a6fd6;
-    border-color: #5a6fd6;
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
 }
 
 .admin-btn-danger {
-    background: #ef4444;
-    border-color: #ef4444;
+    background: var(--danger-color);
+    border-color: var(--danger-color);
     color: white;
 }
 
 .admin-btn-danger:hover {
-    background: #dc2626;
-    border-color: #dc2626;
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    filter: brightness(0.9);
 }
 
 .admin-btn-success {
-    background: #10b981;
-    border-color: #10b981;
+    background: var(--success-color);
+    border-color: var(--success-color);
     color: white;
 }
 
 .admin-btn-success:hover {
-    background: #059669;
+    background: var(--success-color);
+    filter: brightness(0.9);
 }
 
 .admin-btn-warning {
-    background: #f59e0b;
-    border-color: #f59e0b;
+    background: var(--warning-color);
+    border-color: var(--warning-color);
     color: white;
 }
 
 .admin-btn-warning:hover {
-    background: #d97706;
+    background: var(--warning-color);
+    filter: brightness(0.9);
 }
 
 .admin-btn:disabled {
@@ -323,7 +326,7 @@
 }
 
 .status-admin {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
     color: white;
 }
 
@@ -379,7 +382,7 @@
 .admin-form-group select:focus,
 .admin-form-group textarea:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: var(--primary-color);
 }
 
 /* ── Action row ── */
@@ -400,7 +403,7 @@
 
 .admin-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #667eea, #764ba2);
+    background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
     border-radius: 4px;
     transition: width 0.5s;
 }
@@ -501,16 +504,16 @@
 .disk-usage-fill {
     height: 100%;
     border-radius: 4px;
-    background: #10b981;
+    background: var(--success-color);
     transition: width 0.5s;
 }
 
 .disk-usage-fill.warning {
-    background: #f59e0b;
+    background: var(--warning-color);
 }
 
 .disk-usage-fill.danger {
-    background: #ef4444;
+    background: var(--danger-color);
 }
 
 /* ── Config editor ── */
@@ -529,7 +532,7 @@
 
 .config-editor:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: var(--primary-color);
 }
 
 /* ── Alert ── */
@@ -587,7 +590,7 @@
 }
 
 .admin-modal-header {
-    background: linear-gradient(135deg, #1e3a5f 0%, #2d1b69 100%);
+    background: linear-gradient(135deg, var(--admin-gradient-start) 0%, var(--admin-gradient-end) 100%);
     color: white;
     padding: 16px 20px;
     display: flex;

@@ -39,9 +39,9 @@
 }
 
 .player-back-btn:hover {
-    background: #667eea;
+    background: var(--primary-color);
     color: white;
-    border-color: #667eea;
+    border-color: var(--primary-color);
     text-decoration: none;
 }
 .player-theater-btn {
@@ -66,9 +66,9 @@
 }
 
 .player-theater-btn--active {
-    background: rgba(102, 126, 234, 0.15);
-    border-color: rgba(102, 126, 234, 0.4);
-    color: #667eea;
+    background: rgba(var(--primary-rgb),0.15);
+    border-color: rgba(var(--primary-rgb),0.4);
+    color: var(--primary-color);
 }
 /* ── Layout ── */
 .player-layout {
@@ -119,7 +119,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
     flex-direction: column;
     gap: 12px;
     color: white;
@@ -151,7 +151,7 @@
     width: 48px;
     height: 48px;
     border: 3px solid rgba(255, 255, 255, 0.2);
-    border-top-color: #667eea;
+    border-top-color: var(--primary-color);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -204,7 +204,7 @@
 }
 
 .ctrl-progress-container:focus {
-    outline: 2px solid rgba(102, 126, 234, 0.9);
+    outline: 2px solid rgba(var(--primary-rgb),0.9);
     outline-offset: 2px;
 }
 
@@ -223,7 +223,7 @@
 
 .ctrl-progress-fill {
     height: 100%;
-    background: #667eea;
+    background: var(--primary-color);
     border-radius: 3px;
     position: relative;
 }
@@ -236,10 +236,10 @@
     transform: translateY(-50%) scale(0);
     width: 12px;
     height: 12px;
-    background: #667eea;
+    background: var(--primary-color);
     border-radius: 50%;
     transition: transform 0.15s;
-    box-shadow: 0 0 4px rgba(102, 126, 234, 0.5);
+    box-shadow: 0 0 4px rgba(var(--primary-rgb),0.5);
 }
 
 .ctrl-progress-container:hover .ctrl-progress-fill::after {
@@ -299,7 +299,7 @@
 }
 
 .ctrl-btn.active {
-    color: #667eea;
+    color: var(--primary-color);
 }
 
 .ctrl-btn-label {
@@ -316,8 +316,8 @@
     display: inline-flex;
     align-items: center;
     padding: 2px 6px;
-    background: rgba(102, 126, 234, 0.3);
-    border: 1px solid rgba(102, 126, 234, 0.5);
+    background: rgba(var(--primary-rgb),0.3);
+    border: 1px solid rgba(var(--primary-rgb),0.5);
     border-radius: 3px;
     font-size: 11px;
     font-weight: 600;
@@ -455,7 +455,7 @@
     background: rgba(255, 255, 255, 0.08);
 }
 .settings-panel__item--active {
-    background: rgba(102, 126, 234, 0.15);
+    background: rgba(var(--primary-rgb),0.15);
 }
 
 .settings-panel__item-left {
@@ -497,7 +497,7 @@
     transition: background 0.2s;
 }
 .settings-panel__toggle--on {
-    background: #667eea;
+    background: var(--primary-color);
 }
 .settings-panel__toggle-knob {
     position: absolute;
@@ -549,7 +549,7 @@
 .settings-panel__auto-badge {
     display: inline-flex;
     padding: 1px 6px;
-    background: rgba(102, 126, 234, 0.25);
+    background: rgba(var(--primary-rgb),0.25);
     border-radius: 3px;
     font-size: 11px;
     color: #a5b4fc;
@@ -560,8 +560,8 @@
 .settings-panel__hd-badge {
     display: inline-flex;
     padding: 1px 5px;
-    background: rgba(102, 126, 234, 0.3);
-    border: 1px solid rgba(102, 126, 234, 0.5);
+    background: rgba(var(--primary-rgb),0.3);
+    border: 1px solid rgba(var(--primary-rgb),0.5);
     border-radius: 3px;
     font-size: 9px;
     font-weight: 700;
@@ -620,7 +620,7 @@
 }
 
 .ctrl-settings-item.active {
-    background: rgba(102, 126, 234, 0.3);
+    background: rgba(var(--primary-rgb),0.3);
     color: #a5b4fc;
 }
 
@@ -682,13 +682,13 @@
 }
 
 .media-action-btn-primary {
-    background: #667eea;
-    border-color: #667eea;
+    background: var(--primary-color);
+    border-color: var(--primary-color);
     color: white;
 }
 
 .media-action-btn-primary:hover {
-    background: #5a6fd6;
+    background: var(--primary-hover);
 }
 
 .media-category {
@@ -780,7 +780,7 @@
     width: 100px;
     height: 58px;
     border-radius: 6px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -818,8 +818,8 @@
     justify-content: space-between;
     gap: 12px;
     padding: 10px 14px;
-    background: rgba(102, 126, 234, 0.12);
-    border: 1px solid rgba(102, 126, 234, 0.35);
+    background: rgba(var(--primary-rgb),0.12);
+    border: 1px solid rgba(var(--primary-rgb),0.35);
     border-radius: 8px;
     font-size: 13px;
     color: var(--text-color);
@@ -837,7 +837,7 @@
     align-items: center;
     gap: 5px;
     padding: 5px 12px;
-    background: #667eea;
+    background: var(--primary-color);
     color: white;
     border: none;
     border-radius: 5px;
@@ -847,7 +847,7 @@
 }
 
 .hls-switch-btn:hover {
-    background: #5a6fd6;
+    background: var(--primary-hover);
 }
 
 .hls-dismiss-btn {
@@ -871,7 +871,7 @@
 /* ── HLS Progress ── */
 .hls-progress-wrapper {
     padding: 12px;
-    background: rgba(102, 126, 234, 0.1);
+    background: rgba(var(--primary-rgb),0.1);
     border-radius: 6px;
     margin-top: 8px;
     font-size: 13px;
@@ -887,7 +887,7 @@
 
 .hls-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #667eea, #764ba2);
+    background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
     border-radius: 2px;
     transition: width 0.5s;
 }

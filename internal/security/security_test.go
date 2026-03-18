@@ -195,8 +195,7 @@ func TestIPList_Clear(t *testing.T) {
 
 func TestIPList_CleanExpired(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	past := time.Now().Add(-1 * time.Hour)
-	list.Add("10.0.0.1", "expired", "admin", &past)
+	list.Add("10.0.0.1", "expired", "admin", new(time.Now().Add(-1*time.Hour)))
 	list.Add("10.0.0.2", "valid", "admin", nil)
 
 	cleaned := list.CleanExpired()

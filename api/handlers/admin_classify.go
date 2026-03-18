@@ -220,8 +220,7 @@ func (h *Handler) ClassifyAllPending(c *gin.Context) {
 		return
 	}
 
-	isMature := true
-	items := h.media.ListMedia(media.Filter{IsMature: &isMature})
+	items := h.media.ListMedia(media.Filter{IsMature: new(true)})
 	var pending []string
 	for _, item := range items {
 		if len(item.Tags) == 0 {

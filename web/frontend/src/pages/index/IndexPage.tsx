@@ -4,6 +4,7 @@ import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {decode} from 'blurhash'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
+import {resolveThemeId} from '@/themes/themeEngine'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {usePlaylistStore} from '@/stores/playlistStore'
 import {ApiError} from '@/api/client'
@@ -1519,7 +1520,7 @@ export function IndexPage() {
     }
 
     return (
-        <div className="index-page" data-theme={theme}>
+        <div className="index-page">
             <a href="#index-main-content" className="index-skip-link">Skip to main content</a>
             {/* Header */}
             <div className="index-header">
@@ -1585,8 +1586,8 @@ export function IndexPage() {
                         className="bi bi-gear-fill"/> Settings</button>
                 )}
 
-                <button className="controls-btn" onClick={toggleTheme} title="Toggle theme">
-                    {theme === 'dark' ? <i className="bi bi-sun-fill"/> : <i className="bi bi-moon-fill"/>}
+                <button className="controls-btn" onClick={toggleTheme} title={`Theme: ${resolveThemeId(theme).label}`}>
+                    {resolveThemeId(theme).base === 'dark' ? <i className="bi bi-moon-fill"/> : <i className="bi bi-sun-fill"/>}
                 </button>
 
                 {playlistsEnabled && permissions.can_create_playlists && (

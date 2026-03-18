@@ -38,7 +38,7 @@ export interface UserPermissions {
 }
 
 export interface UserPreferences {
-    theme: 'light' | 'dark' | 'auto'
+    theme: string
     default_quality: string
     show_mature: boolean
     // All fields below have no omitempty in the backend — always present in responses

@@ -90,8 +90,7 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 	session := m.createSession(ctx, user, &sessionRequestContext{IPAddress: req.IPAddress, UserAgent: req.UserAgent})
 	// Copy user before mutation to avoid data race on shared pointer
 	userCopy := *user
-	now := time.Now()
-	userCopy.LastLogin = &now
+	userCopy.LastLogin = new(time.Now())
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Warn("Failed to persist LastLogin for %s: %v", req.Username, err)
 	} else {
@@ -232,8 +231,7 @@ func (m *Module) recordFailedAttempt(ip string) {
 
 	attempt.Count++
 	if attempt.Count >= cfg.Auth.MaxLoginAttempts {
-		lockedAt := time.Now()
-		attempt.LockedAt = &lockedAt
+		attempt.LockedAt = new(time.Now())
 		m.log.Warn("Locked out IP due to too many failed attempts: %s", ip)
 	}
 }

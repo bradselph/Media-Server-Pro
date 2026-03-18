@@ -147,8 +147,7 @@ func (h *Handler) GetBannedIPs(c *gin.Context) {
 			Reason:   rec.Reason,
 		}
 		if !rec.ExpiresAt.IsZero() {
-			exp := rec.ExpiresAt
-			entry.ExpiresAt = &exp
+			entry.ExpiresAt = new(rec.ExpiresAt)
 		}
 		result = append(result, entry)
 	}

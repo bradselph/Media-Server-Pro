@@ -41,7 +41,6 @@ func NewValidationResultRepository(db *gorm.DB) repositories.ValidationResultRep
 }
 
 func (r *ValidationResultRepository) Upsert(ctx context.Context, result *repositories.ValidationResultRecord) error {
-	row := r.recordToRow(result)
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "path"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -49,7 +48,7 @@ func (r *ValidationResultRepository) Upsert(ctx context.Context, result *reposit
 			"width", "height", "bitrate", "container", "issues",
 			"error_message", "video_supported", "audio_supported",
 		}),
-	}).Create(&row).Error; err != nil {
+	}).Create(new(r.recordToRow(result))).Error; err != nil {
 		return fmt.Errorf("failed to upsert validation result: %w", err)
 	}
 	return nil

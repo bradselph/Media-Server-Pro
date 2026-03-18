@@ -47,8 +47,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	var isMature *bool
 	if im := c.Query("is_mature"); im != "" {
-		v := im == "true" || im == "1"
-		isMature = &v
+		isMature = new(im == "true" || im == "1")
 	}
 
 	filterNoPagination := media.Filter{

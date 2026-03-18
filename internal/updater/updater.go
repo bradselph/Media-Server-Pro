@@ -309,8 +309,7 @@ func (m *Module) CheckForUpdates() (*UpdateCheckResult, error) {
 	result.ReleaseURL = release.HTMLURL
 	result.ReleaseNotes = release.Body
 	if !release.PublishedAt.IsZero() {
-		t := release.PublishedAt
-		result.PublishedAt = &t
+		result.PublishedAt = new(release.PublishedAt)
 	}
 
 	// Compare versions
@@ -1111,8 +1110,7 @@ func (m *Module) GetActiveBuildStatus() *UpdateStatus {
 	if m.activeBuild == nil {
 		return nil
 	}
-	snap := *m.activeBuild
-	return &snap
+	return new(*m.activeBuild)
 }
 
 // IsBuildRunning reports whether a source build is currently in progress.

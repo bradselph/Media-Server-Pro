@@ -40,7 +40,6 @@ func NewCategorizedItemRepository(db *gorm.DB) repositories.CategorizedItemRepos
 }
 
 func (r *CategorizedItemRepository) Upsert(ctx context.Context, item *repositories.CategorizedItemRecord) error {
-	row := r.recordToRow(item)
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "path"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -49,7 +48,7 @@ func (r *CategorizedItemRepository) Upsert(ctx context.Context, item *repositori
 			"detected_show", "detected_artist", "detected_album",
 			"categorized_at", "manual_override",
 		}),
-	}).Create(&row).Error; err != nil {
+	}).Create(new(r.recordToRow(item))).Error; err != nil {
 		return fmt.Errorf("failed to upsert categorized item: %w", err)
 	}
 	return nil

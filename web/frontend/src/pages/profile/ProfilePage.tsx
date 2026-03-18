@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
+import {builtInThemes} from '@/themes/themes'
 import {useQueryClient} from '@tanstack/react-query'
 import {authApi, permissionsApi as permApi, preferencesApi, storageApi, watchHistoryApi} from '@/api/endpoints'
 import {ApiError} from '@/api/client'
@@ -257,8 +258,9 @@ function PreferencesPlaybackFields({
                     onChange={e => { updatePref('theme', e.target.value as UserPreferences['theme']); }}
                 >
                     <option value="auto">Auto (System)</option>
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
+                    {builtInThemes.map(t => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                    ))}
                 </select>
             </div>
             <div className="form-group">

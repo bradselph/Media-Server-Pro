@@ -1,27 +1,49 @@
-/* CSS custom properties for theming — matches existing style.css variables */
+/*
+ * Global CSS custom properties for theming.
+ *
+ * Values are set dynamically by the theme engine (themeEngine.ts).
+ * The defaults below are the "dark" theme — they act as a fallback
+ * before the JS theme engine runs.
+ */
 :root {
+    /* Brand / accent */
     --primary-color: #667eea;
     --primary-hover: #5a6fd6;
-    --background: #f5f5f5;
-    --card-bg: #ffffff;
-    --text-color: #333333;
-    --text-muted: #666666;
-    --border-color: #e0e0e0;
-    --input-bg: #f9fafb;
+    --primary-rgb: 102,126,234;
+
+    /* Gradient (header, auth, modals) */
+    --gradient-start: #667eea;
+    --gradient-end: #764ba2;
+
+    /* Surfaces */
+    --background: #1a1a2e;
+    --card-bg: #16213e;
+    --input-bg: #1a1a3e;
+
+    /* Text */
+    --text-color: #e0e0e0;
+    --text-muted: #a0a0a0;
+
+    /* Borders & hover */
+    --border-color: #2a2a4a;
+    --hover-bg: rgba(255, 255, 255, 0.08);
+
+    /* Semantic status */
     --success-color: #10b981;
     --danger-color: #ef4444;
     --warning-color: #f59e0b;
-    --hover-bg: rgba(0, 0, 0, 0.06);
-}
+    --info-color: #3b82f6;
 
-[data-theme="dark"] {
-    --background: #1a1a2e;
-    --card-bg: #16213e;
-    --text-color: #e0e0e0;
-    --text-muted: #a0a0a0;
-    --border-color: #2a2a4a;
-    --input-bg: #1a1a3e;
-    --hover-bg: rgba(255, 255, 255, 0.08);
+    /* Media type badges */
+    --badge-video: #3b82f6;
+    --badge-audio: #8b5cf6;
+
+    /* Admin header gradient */
+    --admin-gradient-start: #1e3a5f;
+    --admin-gradient-end: #2d1b69;
+
+    /* Shadows */
+    --shadow-color: 0,0,0;
 }
 
 *, *::before, *::after {
@@ -71,7 +93,7 @@ a:hover {
     border-radius: 8px;
     color: white;
     font-size: 0.875rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(var(--shadow-color), 0.15);
     animation: toast-slide-in 0.3s ease-out;
 }
 

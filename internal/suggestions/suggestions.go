@@ -318,8 +318,7 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 
 	for i, vh := range profile.ViewHistory {
 		if vh.MediaPath == mediaPath {
-			completedAt := time.Now()
-			profile.ViewHistory[i].CompletedAt = &completedAt
+			profile.ViewHistory[i].CompletedAt = new(time.Now())
 			break
 		}
 	}
