@@ -131,6 +131,7 @@ export function LoginPage() {
     return (
         <div className="auth-page">
             <div className="auth-card">
+                <Link to="/" className="auth-back-link" aria-label="Back to library"><i className="bi bi-arrow-left" aria-hidden /> Back to Library</Link>
                 <h1>Sign In</h1>
                 <p className="auth-subtitle">Sign in to your media server account</p>
                 <LoginForm login={login} redirectTo={redirectTo} navigate={navigate} />

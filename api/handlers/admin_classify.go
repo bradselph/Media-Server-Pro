@@ -123,7 +123,7 @@ func (h *Handler) ClassifyFile(c *gin.Context) {
 	tags, err := h.scanner.ClassifyMatureContent(c.Request.Context(), absPath)
 	if err != nil {
 		h.log.Warn("ClassifyFile failed for %s: %v", absPath, err)
-		writeError(c, http.StatusInternalServerError, err.Error())
+		writeError(c, http.StatusInternalServerError, "Classification failed")
 		return
 	}
 	if len(tags) > 0 {
@@ -220,8 +220,7 @@ func (h *Handler) ClassifyAllPending(c *gin.Context) {
 		return
 	}
 
-	isMature := true
-	items := h.media.ListMedia(media.Filter{IsMature: &isMature})
+	items := h.media.ListMedia(media.Filter{IsMature: new(true)})
 	var pending []string
 	for _, item := range items {
 		if len(item.Tags) == 0 {

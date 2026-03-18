@@ -278,13 +278,12 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 	m.rateLimiter.BanIP(ip, duration, reason)
 	// Persist to DB
 	ctx := context.Background()
-	expiresAt := time.Now().Add(duration)
 	rec := &repositories.IPEntryRecord{
 		Value:     ip,
 		Comment:   reason,
 		AddedAt:   time.Now(),
 		AddedBy:   "system",
-		ExpiresAt: &expiresAt,
+		ExpiresAt: new(time.Now().Add(duration)),
 	}
 	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 		m.log.Warn("Failed to persist ban for %s: %v", ip, err)
@@ -928,9 +927,10 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Select rate limiter tier based on endpoint
+		// Select rate limiter tier based on endpoint — use cleaned path to prevent
+		// path traversal tricks from bypassing the stricter auth rate limit.
 		limiter := m.rateLimiter
-		if isAuthPath(reqPath) {
+		if isAuthPath(cleaned) {
 			limiter = m.authRateLimiter
 		}
 

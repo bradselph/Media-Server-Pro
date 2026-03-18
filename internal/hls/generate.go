@@ -208,6 +208,9 @@ func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) error {
 		return err
 	}
 	defer func() {
+		if err := file.Sync(); err != nil {
+			m.log.Warn("Failed to sync master playlist file: %v", err)
+		}
 		if err := file.Close(); err != nil {
 			m.log.Warn("Failed to close master playlist file: %v", err)
 		}

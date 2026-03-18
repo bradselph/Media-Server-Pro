@@ -4,6 +4,8 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 
 import {useAuthStore} from '@/stores/authStore'
 import {useSettingsStore} from '@/stores/settingsStore'
+// Ensure theme is applied on first paint for all routes (player, admin, etc. don't import themeStore)
+import '@/stores/themeStore'
 import {AgeGateProvider} from '@/components/AgeGate'
 import {RequireAuth} from '@/components/RequireAuth'
 import {ToastProvider} from '@/components/Toast'

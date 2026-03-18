@@ -1,4 +1,5 @@
 import {useState} from 'react'
+import {Link} from 'react-router-dom'
 import {useQuery} from '@tanstack/react-query'
 import {adminApi, analyticsApi} from '@/api/endpoints'
 import type {AnalyticsEvent, EventStats, SuggestionStats} from '@/api/types'
@@ -224,10 +225,10 @@ export function AnalyticsTab() {
                                 <tr key={item.media_id}>
                                     <td>{i + 1}</td>
                                     <td>
-                                        <a href={`/player?id=${encodeURIComponent(item.media_id)}`}
+                                        <Link to={`/player?id=${encodeURIComponent(item.media_id)}`}
                                            style={{color: 'var(--text-color)'}}>
                                             {item.filename}
-                                        </a>
+                                        </Link>
                                     </td>
                                     <td>{item.views.toLocaleString()}</td>
                                 </tr>

@@ -334,16 +334,21 @@ func (m *Module) executeTask(ctx context.Context, task *Task) {
 func (m *Module) RunNow(taskID string) error {
 	m.mu.RLock()
 	task, exists := m.tasks[taskID]
+	ctx := m.ctx
 	m.mu.RUnlock()
 
 	if !exists {
 		return fmt.Errorf(errTaskNotFoundFmt, taskID)
 	}
 
+	if ctx == nil {
+		return fmt.Errorf("task scheduler not started")
+	}
+
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		m.executeTask(m.ctx, task)
+		m.executeTask(ctx, task)
 	}()
 	return nil
 }

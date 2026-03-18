@@ -64,7 +64,10 @@ function useHlsCheckEffect(
         }).catch(() => {
             if (videoRef.current) videoRef.current.src = mediaApi.getStreamUrl(mediaId)
         })
-    }, [mediaId, media, hlsEnabled, videoRef, setters])
+    // Depend on media?.type instead of the full media object to avoid re-running
+    // on every React Query refetch (which creates a new object reference).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mediaId, media?.type, hlsEnabled, videoRef, setters])
 }
 
 function useHlsPollingEffect(
@@ -95,7 +98,10 @@ function useHlsPollingEffect(
             }
         }, 3000)
         return () => clearInterval(interval)
-    }, [hlsPolling, hlsJob, setters])
+    // Depend on hlsJob?.id instead of the full object to prevent the interval from
+    // being recreated every 3 seconds when setHlsJob replaces the object reference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hlsPolling, hlsJob?.id, setters])
 }
 
 export function usePlayerHLS(

@@ -124,10 +124,11 @@ func (m *Module) ListImportable() ([]ImportableFile, error) {
 
 // Import moves a file from the downloader's downloads directory to MSP's
 // import directory and optionally triggers a media library rescan.
-func (m *Module) Import(filename string, deleteSource bool, triggerScan bool) (string, error) {
+// Returns destination path and whether the source file was deleted.
+func (m *Module) Import(filename string, deleteSource bool, triggerScan bool) (destPath string, sourceDeleted bool, err error) {
 	cfg := m.config.Get()
 	if cfg.Downloader.DownloadsDir == "" {
-		return "", fmt.Errorf("downloads_dir not configured")
+		return "", false, fmt.Errorf("downloads_dir not configured")
 	}
 
 	destDir := cfg.Downloader.ImportDir
@@ -135,12 +136,12 @@ func (m *Module) Import(filename string, deleteSource bool, triggerScan bool) (s
 		destDir = cfg.Directories.Uploads
 	}
 	if destDir == "" {
-		return "", fmt.Errorf("no import destination configured (set downloader.import_dir or directories.uploads)")
+		return "", false, fmt.Errorf("no import destination configured (set downloader.import_dir or directories.uploads)")
 	}
 
-	destPath, err := ImportFile(cfg.Downloader.DownloadsDir, destDir, filename, deleteSource)
+	destPath, sourceDeleted, err = ImportFile(cfg.Downloader.DownloadsDir, destDir, filename, deleteSource)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	m.log.Info("Imported %s → %s", filename, destPath)
@@ -155,7 +156,7 @@ func (m *Module) Import(filename string, deleteSource bool, triggerScan bool) (s
 		}()
 	}
 
-	return destPath, nil
+	return destPath, sourceDeleted, nil
 }
 
 func (m *Module) setHealth(healthy bool, msg string) {

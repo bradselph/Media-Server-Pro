@@ -14,9 +14,14 @@ export function PlayerEmptyView(props: PlayerEmptyViewProps) {
                     <Link to="/" className="player-back-btn"><i className={ICON_ARROW_LEFT}/> {LABEL_BACK_TO_LIBRARY}</Link>
                 </div>
                 {props.variant === 'no-id' && (
-                    <p style={{ color: CSS_TEXT_MUTED, textAlign: 'center', padding: '40px 0' }}>
-                        No media ID specified. <Link to="/">Go to library</Link>.
-                    </p>
+                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                        <p style={{ color: CSS_TEXT_MUTED, marginBottom: 16 }}>
+                            No media selected. Choose something from the library to play.
+                        </p>
+                        <Link to="/" className="player-back-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <i className={ICON_ARROW_LEFT} /> {LABEL_BACK_TO_LIBRARY}
+                        </Link>
+                    </div>
                 )}
                 {props.variant === 'loading' && (
                     <div style={{ textAlign: 'center', padding: '60px 0', color: CSS_TEXT_MUTED }}>

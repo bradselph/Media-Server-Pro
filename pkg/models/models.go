@@ -418,7 +418,7 @@ func (PlaylistItem) TableName() string {
 // AnalyticsEvent represents a tracked event
 type AnalyticsEvent struct {
 	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`
-	Type      string                 `json:"type" db:"type" gorm:"size:50;not null;index"`
+	Type      string                 `json:"type" db:"type" gorm:"size:100;not null;index"`
 	MediaID   string                 `json:"media_id,omitempty" db:"media_id" gorm:"size:255;index"`
 	UserID    string                 `json:"user_id,omitempty" db:"user_id" gorm:"size:255;index"`
 	SessionID string                 `json:"session_id,omitempty" db:"session_id" gorm:"size:255"`
@@ -517,8 +517,8 @@ type AuditLogEntry struct {
 	Timestamp time.Time              `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
 	UserID    string                 `json:"user_id" db:"user_id" gorm:"size:255;index"`
 	Username  string                 `json:"username" db:"username" gorm:"size:255"`
-	Action    string                 `json:"action" db:"action" gorm:"size:100;not null;index"`
-	Resource  string                 `json:"resource" db:"resource" gorm:"size:255;index"`
+	Action    string                 `json:"action" db:"action" gorm:"size:255;not null;index"`
+	Resource  string                 `json:"resource" db:"resource" gorm:"size:1024;index"`
 	Details   map[string]interface{} `json:"details,omitempty" db:"details" gorm:"type:json;serializer:json"`
 	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
 	Success   bool                   `json:"success" db:"success" gorm:"index"`

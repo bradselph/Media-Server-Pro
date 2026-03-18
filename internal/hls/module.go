@@ -177,7 +177,7 @@ func (m *Module) applyStartupHealthCacheDir() bool {
 	return false
 }
 
-// runPostLoadStartupTasks loads job state, discovers existing jobs on disk, and cleans stale lock files.
+// runPostLoadStartupTasks loads job state, discovers existing jobs on disk, cleans stale lock files, and resumes interrupted jobs.
 func (m *Module) runPostLoadStartupTasks() {
 	if err := m.loadJobs(); err != nil {
 		m.log.Warn("Failed to load job state: %v", err)
@@ -189,6 +189,73 @@ func (m *Module) runPostLoadStartupTasks() {
 	cleaned := m.cleanLocksOnStartup()
 	if cleaned > 0 {
 		m.log.Info("Cleaned %d stale HLS lock files from previous run", cleaned)
+	}
+	resumed := m.resumeInterruptedJobs()
+	if resumed > 0 {
+		m.log.Info("Resumed %d interrupted HLS jobs from previous run", resumed)
+	}
+}
+
+// resumeInterruptedJobs re-enqueues pending or retryable-failed jobs that were
+// interrupted by a previous shutdown. Called once during startup after loadJobs
+// and cleanLocksOnStartup have run. Resumes at most ConcurrentLimit jobs to
+// avoid overloading the system on startup; remaining jobs will be picked up
+// by the hls-pregenerate background task in subsequent cycles.
+func (m *Module) resumeInterruptedJobs() int {
+	cfg := m.config.Get()
+	limit := cfg.HLS.ConcurrentLimit
+	if limit <= 0 {
+		limit = 2
+	}
+
+	m.jobsMu.Lock()
+	defer m.jobsMu.Unlock()
+
+	resumed := 0
+	for _, job := range m.jobs {
+		if resumed >= limit {
+			break
+		}
+		if !m.shouldResumeJob(job) {
+			continue
+		}
+		if _, err := os.Stat(job.MediaPath); err != nil {
+			m.log.Warn("Skipping resume of HLS job %s: media file no longer exists at %s", job.ID, job.MediaPath)
+			job.Status = models.HLSStatusFailed
+			job.Error = "Media file not found on startup resume"
+			continue
+		}
+		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)
+		jobCtx, jobCancel := context.WithCancel(context.Background())
+		m.jobCancels[job.ID] = jobCancel
+		job.Status = models.HLSStatusPending
+		job.Error = ""
+		capturedJob := job
+		m.activeJobs.Add(1)
+		go func() {
+			defer m.activeJobs.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.Error("Panic in resumed HLS transcode for job %s: %v", capturedJob.ID, r)
+					m.updateJobStatus(&updateJobStatusParams{JobID: capturedJob.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Internal error: %v", r), Progress: 0})
+				}
+			}()
+			m.transcode(jobCtx, capturedJob)
+		}()
+		resumed++
+	}
+	return resumed
+}
+
+// shouldResumeJob returns true if a job should be re-enqueued on startup.
+func (m *Module) shouldResumeJob(job *models.HLSJob) bool {
+	switch job.Status {
+	case models.HLSStatusPending, models.HLSStatusRunning:
+		return true
+	case models.HLSStatusFailed:
+		return job.FailCount < maxHLSFailures
+	default:
+		return false
 	}
 }
 

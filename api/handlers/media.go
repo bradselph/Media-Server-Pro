@@ -47,8 +47,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	var isMature *bool
 	if im := c.Query("is_mature"); im != "" {
-		v := im == "true" || im == "1"
-		isMature = &v
+		isMature = new(im == "true" || im == "1")
 	}
 
 	filterNoPagination := media.Filter{
@@ -344,6 +343,10 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 							writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
 							return
 						}
+						// Track the proxy stream for authenticated users so the counter
+						// is decremented when the stream ends, preventing limit bypass.
+						release := h.streaming.TrackProxyStream(session.UserID)
+						defer release()
 					}
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()

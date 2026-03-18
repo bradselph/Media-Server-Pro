@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -61,11 +62,17 @@ func (m *Manager) SetValue(path string, value interface{}) error {
 }
 
 // SetValuesBatch applies multiple configuration updates and persists once atomically.
-// On failure, no partial updates are written to disk.
+// On save failure, in-memory changes are rolled back so the config stays consistent with disk.
 // After saving, feature toggles are synced so runtime module enable/disable matches config.
 func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Snapshot for rollback on save failure
+	originalJSON, snapErr := json.Marshal(m.config)
+	if snapErr != nil {
+		return fmt.Errorf("failed to snapshot config: %w", snapErr)
+	}
 
 	for path, value := range updates {
 		parts := strings.Split(path, ".")
@@ -78,6 +85,7 @@ func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 		}
 	}
 	if err := m.save(); err != nil {
+		m.rollbackFromJSON(originalJSON, err)
 		return err
 	}
 	m.syncFeatureToggles()

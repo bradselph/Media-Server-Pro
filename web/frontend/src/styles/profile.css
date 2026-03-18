@@ -91,10 +91,6 @@
     font-size: 0.875rem;
 }
 
-[data-theme="dark"] .form-error {
-    background: rgba(220, 38, 38, 0.15);
-    color: #fca5a5;
-}
 
 .form-group {
     margin-bottom: 1rem;
@@ -123,7 +119,7 @@
 .form-group select:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.15);
 }
 
 .form-hint {

@@ -4,6 +4,7 @@ import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {decode} from 'blurhash'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
+import {resolveThemeId} from '@/themes/themeEngine'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {usePlaylistStore} from '@/stores/playlistStore'
 import {ApiError} from '@/api/client'
@@ -1444,9 +1445,14 @@ export function IndexPage() {
                 <div className="empty-state empty-state-error">
                     <h3>We couldn&apos;t load your library</h3>
                     <p>{getMediaErrorMessage(mediaError)}</p>
-                    <button className="controls-btn controls-btn-primary" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
-                        <i className="bi bi-arrow-clockwise"/> Try again
-                    </button>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                        <button className="controls-btn controls-btn-primary" onClick={() => queryClient.invalidateQueries({queryKey: ['media']})}>
+                            <i className="bi bi-arrow-clockwise"/> Try again
+                        </button>
+                        <button className="controls-btn" onClick={() => updateParams({ q: null, page: null, category: null, type: null })}>
+                            <i className="bi bi-house-fill"/> Back to home
+                        </button>
+                    </div>
                 </div>
             )
         }
@@ -1469,11 +1475,18 @@ export function IndexPage() {
                 <div className="empty-state">
                     <h3>No media found</h3>
                     <p>{getEmptyMediaMessage()}</p>
-                    {permissions.can_upload && (
-                        <button className="controls-btn controls-btn-primary" onClick={() => setShowUpload(true)}>
-                            <i className="bi bi-cloud-upload-fill"/> Upload media
-                        </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                        {permissions.can_upload && (
+                            <button className="controls-btn controls-btn-primary" onClick={() => setShowUpload(true)}>
+                                <i className="bi bi-cloud-upload-fill"/> Upload media
+                            </button>
+                        )}
+                        {!isAuthenticated && (
+                            <Link to="/login" className="controls-btn controls-btn-primary" style={{ textDecoration: 'none' }}>
+                                <i className="bi bi-box-arrow-in-right"/> Sign in to upload
+                            </Link>
+                        )}
+                    </div>
                 </div>
             )
         }
@@ -1507,7 +1520,8 @@ export function IndexPage() {
     }
 
     return (
-        <div className="index-page" data-theme={theme}>
+        <div className="index-page">
+            <a href="#index-main-content" className="index-skip-link">Skip to main content</a>
             {/* Header */}
             <div className="index-header">
                 <h1>Media Streamer Pro</h1>
@@ -1525,6 +1539,7 @@ export function IndexPage() {
                 )}
             </div>
 
+            <main id="index-main-content">
             {/* Controls Bar */}
             <div className="controls-bar">
                 <button className="controls-btn" onClick={() => { setShowFilters(f => !f); }}>
@@ -1571,8 +1586,8 @@ export function IndexPage() {
                         className="bi bi-gear-fill"/> Settings</button>
                 )}
 
-                <button className="controls-btn" onClick={toggleTheme} title="Toggle theme">
-                    {theme === 'dark' ? <i className="bi bi-sun-fill"/> : <i className="bi bi-moon-fill"/>}
+                <button className="controls-btn" onClick={toggleTheme} title={`Theme: ${resolveThemeId(theme).label}`}>
+                    {resolveThemeId(theme).base === 'dark' ? <i className="bi bi-moon-fill"/> : <i className="bi bi-sun-fill"/>}
                 </button>
 
                 {playlistsEnabled && permissions.can_create_playlists && (
@@ -1916,9 +1931,11 @@ export function IndexPage() {
                 </>
             )}
 
+            </main>
+
             {/* Version footer — matches deployed version from deploy script (VERSION file → ldflags) */}
-            <footer className="index-version-footer" aria-label="Application version">
-                {versionData && versionData.version !== null ? (
+            <footer className="index-version-footer" role="contentinfo" aria-label="Application version">
+                {versionData && typeof versionData.version === 'string' ? (
                     <span>v{versionData.version}</span>
                 ) : null}
             </footer>

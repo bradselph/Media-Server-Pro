@@ -9,6 +9,8 @@ const PlayerKeys = {
     SEEK_FWD_CHARS: ['l', 'L'] as const,
     ARROW_LEFT: 'ArrowLeft',
     ARROW_RIGHT: 'ArrowRight',
+    HOME: 'Home',
+    END: 'End',
     VOLUME_UP: 'ArrowUp',
     VOLUME_DOWN: 'ArrowDown',
     MUTE_CHARS: ['m', 'M'] as const,
@@ -28,6 +30,8 @@ type PlayerShortcutKey =
     | (typeof PlayerKeys.SEEK_FWD_CHARS)[number]
     | typeof PlayerKeys.ARROW_LEFT
     | typeof PlayerKeys.ARROW_RIGHT
+    | typeof PlayerKeys.HOME
+    | typeof PlayerKeys.END
     | typeof PlayerKeys.VOLUME_UP
     | typeof PlayerKeys.VOLUME_DOWN
     | (typeof PlayerKeys.MUTE_CHARS)[number]
@@ -68,7 +72,9 @@ function isSeekKey(key: string): boolean {
         (PlayerKeys.SEEK_BACK_CHARS as readonly string[]).includes(key) ||
         (PlayerKeys.SEEK_FWD_CHARS as readonly string[]).includes(key) ||
         key === PlayerKeys.ARROW_LEFT ||
-        key === PlayerKeys.ARROW_RIGHT
+        key === PlayerKeys.ARROW_RIGHT ||
+        key === PlayerKeys.HOME ||
+        key === PlayerKeys.END
     )
 }
 
@@ -88,7 +94,9 @@ function applyPlayPauseKey(el: HTMLMediaElement | null, _handlers: PlayerKeyHand
 
 function applySeekKey(key: PlayerShortcutKey, el: HTMLMediaElement | null): void {
     if (!el) return
-    if ((PlayerKeys.SEEK_BACK_CHARS as readonly string[]).includes(key)) el.currentTime = Math.max(0, el.currentTime - 10)
+    if (key === PlayerKeys.HOME) el.currentTime = 0
+    else if (key === PlayerKeys.END) el.currentTime = el.duration
+    else if ((PlayerKeys.SEEK_BACK_CHARS as readonly string[]).includes(key)) el.currentTime = Math.max(0, el.currentTime - 10)
     else if ((PlayerKeys.SEEK_FWD_CHARS as readonly string[]).includes(key)) el.currentTime = Math.min(el.duration, el.currentTime + 10)
     else if (key === PlayerKeys.ARROW_LEFT) el.currentTime = Math.max(0, el.currentTime - 5)
     else if (key === PlayerKeys.ARROW_RIGHT) el.currentTime = Math.min(el.duration, el.currentTime + 5)

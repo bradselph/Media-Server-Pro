@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react'
 import {Link, useNavigate, useSearchParams} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import {useThemeStore} from '@/stores/themeStore'
+import {builtInThemes} from '@/themes/themes'
 import {useQueryClient} from '@tanstack/react-query'
 import {authApi, permissionsApi as permApi, preferencesApi, storageApi, watchHistoryApi} from '@/api/endpoints'
 import {ApiError} from '@/api/client'
@@ -257,8 +258,9 @@ function PreferencesPlaybackFields({
                     onChange={e => { updatePref('theme', e.target.value as UserPreferences['theme']); }}
                 >
                     <option value="auto">Auto (System)</option>
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
+                    {builtInThemes.map(t => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                    ))}
                 </select>
             </div>
             <div className="form-group">
@@ -850,7 +852,11 @@ export function ProfilePage() {
     const p = useProfilePage()
 
     if (!p.user) {
-        return <div className="loading-screen">Loading...</div>
+        return (
+            <div className="loading-screen" role="status" aria-live="polite" aria-busy="true">
+                Loading...
+            </div>
+        )
     }
 
     return (
@@ -860,7 +866,7 @@ export function ProfilePage() {
                     <h1>User Profile</h1>
                     <p className="profile-subtitle">Manage your account settings and preferences</p>
                 </div>
-                <Link to="/" className="back-link">Back to Library</Link>
+                <Link to="/" className="back-link"><i className="bi bi-arrow-left" aria-hidden /> Back to Library</Link>
             </div>
 
             {p.matureRedirect && (

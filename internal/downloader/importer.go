@@ -102,23 +102,42 @@ func ListImportableFiles(downloadsDir string) ([]ImportableFile, error) {
 }
 
 // ImportFile moves (or copies) a file from srcDir to destDir.
-// Returns the destination path. If a file with the same name exists,
-// appends a timestamp to avoid collision.
-func ImportFile(srcDir, destDir, filename string, deleteSource bool) (string, error) {
+// Returns the destination path and whether the source was deleted (when deleteSource was true).
+// If a file with the same name exists, appends a timestamp to avoid collision.
+func ImportFile(srcDir, destDir, filename string, deleteSource bool) (destPath string, sourceDeleted bool, err error) {
+	// Sanitize filename to prevent path traversal — strip directory components
+	filename = filepath.Base(filename)
+	if filename == "." || filename == ".." || filename == string(filepath.Separator) {
+		return "", false, fmt.Errorf("invalid filename")
+	}
+
 	srcPath := filepath.Join(srcDir, filename)
+
+	// Defence-in-depth: verify resolved path is within srcDir
+	absSrc, err := filepath.Abs(srcPath)
+	if err != nil {
+		return "", false, fmt.Errorf("resolve source path: %w", err)
+	}
+	absSrcDir, err := filepath.Abs(srcDir)
+	if err != nil {
+		return "", false, fmt.Errorf("resolve source dir: %w", err)
+	}
+	if !strings.HasPrefix(absSrc, absSrcDir+string(filepath.Separator)) {
+		return "", false, fmt.Errorf("filename escapes source directory")
+	}
 
 	// Verify source exists
 	if _, err := os.Stat(srcPath); err != nil {
-		return "", fmt.Errorf("source file not found: %w", err)
+		return "", false, fmt.Errorf("source file not found: %w", err)
 	}
 
 	// Ensure destination directory exists
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return "", fmt.Errorf("create dest dir: %w", err)
+		return "", false, fmt.Errorf("create dest dir: %w", err)
 	}
 
 	// Handle filename collision
-	destPath := filepath.Join(destDir, filename)
+	destPath = filepath.Join(destDir, filename)
 	if _, err := os.Stat(destPath); err == nil {
 		ext := filepath.Ext(filename)
 		base := strings.TrimSuffix(filename, ext)
@@ -129,24 +148,28 @@ func ImportFile(srcDir, destDir, filename string, deleteSource bool) (string, er
 	if deleteSource {
 		// Try rename first (instant on same filesystem)
 		if err := os.Rename(srcPath, destPath); err == nil {
-			return destPath, nil
+			return destPath, true, nil
 		}
 		// Fallback: copy + delete
 		if err := copyFile(srcPath, destPath); err != nil {
-			return "", fmt.Errorf("copy file: %w", err)
+			return "", false, fmt.Errorf("copy file: %w", err)
 		}
-		_ = os.Remove(srcPath)
-		return destPath, nil
+		if removeErr := os.Remove(srcPath); removeErr != nil {
+			log := logger.New("downloader-import")
+			log.Warn("Import succeeded but could not remove source %s: %v", srcPath, removeErr)
+			return destPath, false, nil
+		}
+		return destPath, true, nil
 	}
 
 	// Copy only
 	if err := copyFile(srcPath, destPath); err != nil {
-		return "", fmt.Errorf("copy file: %w", err)
+		return "", false, fmt.Errorf("copy file: %w", err)
 	}
-	return destPath, nil
+	return destPath, false, nil
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src, dst string) (retErr error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -158,8 +181,8 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer func() {
-		if cerr := out.Close(); cerr != nil && err == nil {
-			err = cerr
+		if cerr := out.Close(); cerr != nil && retErr == nil {
+			retErr = cerr
 		}
 	}()
 

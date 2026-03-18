@@ -107,25 +107,41 @@ func (m *Manager) Save() error {
 	return m.save()
 }
 
-// save writes config to disk (temp file then rename; on Windows Remove is required before Rename).
+// save writes config to disk using a crash-safe rename strategy.
+// On Windows, atomic rename-over-existing is not supported, so we:
+//  1. Write to .tmp
+//  2. Rename existing config to .bak (preserving a fallback)
+//  3. Rename .tmp to config
+//  4. Remove .bak
+//
+// A crash between steps 2-3 leaves a .bak file that can be recovered manually.
 func (m *Manager) save() error {
 	data, err := json.MarshalIndent(m.config, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 	tempPath := m.configPath + ".tmp"
+	bakPath := m.configPath + ".bak"
 	if err := os.WriteFile(tempPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write temp config: %w", err)
 	}
+	// Rename existing config to .bak (safe — original preserved as backup)
 	if _, err := os.Stat(m.configPath); err == nil {
-		if err := os.Remove(m.configPath); err != nil {
-			return fmt.Errorf("failed to remove old config: %w", err)
+		_ = os.Remove(bakPath) // remove stale backup if any
+		if err := os.Rename(m.configPath, bakPath); err != nil {
+			_ = os.Remove(tempPath)
+			return fmt.Errorf("failed to backup old config: %w", err)
 		}
 	}
+	// Rename .tmp to config
 	if err := os.Rename(tempPath, m.configPath); err != nil {
+		// Attempt to restore backup
+		_ = os.Rename(bakPath, m.configPath)
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("failed to rename config: %w", err)
 	}
+	// Clean up backup
+	_ = os.Remove(bakPath)
 	m.log.Info("Configuration saved to %s", m.configPath)
 	return nil
 }

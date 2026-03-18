@@ -167,14 +167,13 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 			if end > len(rows) {
 				end = len(rows)
 			}
-			batch := rows[start:end]
 			if err := tx.Clauses(clause.OnConflict{
 				Columns: []clause.Column{{Name: "id"}},
 				DoUpdates: clause.AssignmentColumns([]string{
 					"remote_path", "name", "media_type", "file_size", "duration",
 					"content_type", "content_fingerprint", "width", "height", "updated_at",
 				}),
-			}).Create(&batch).Error; err != nil {
+			}).Create(new(rows[start:end])).Error; err != nil {
 				return fmt.Errorf("failed to upsert media batch: %w", err)
 			}
 		}

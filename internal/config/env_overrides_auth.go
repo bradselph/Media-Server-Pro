@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -56,5 +57,8 @@ func (m *Manager) applyAdminPasswordOverride() {
 			m.config.Admin.PasswordHash = string(hash)
 			m.log.Info("Admin password set from ADMIN_PASSWORD environment variable")
 		}
+		// Clear plaintext password from process environment to prevent leakage
+		// via /proc/PID/environ or process inspection tools.
+		os.Unsetenv("ADMIN_PASSWORD")
 	}
 }

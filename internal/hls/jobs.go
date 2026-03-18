@@ -20,12 +20,10 @@ func copyHLSJob(j *models.HLSJob) *models.HLSJob {
 	c := *j
 	c.Qualities = append([]string(nil), j.Qualities...)
 	if j.CompletedAt != nil {
-		t := *j.CompletedAt
-		c.CompletedAt = &t
+		c.CompletedAt = new(*j.CompletedAt)
 	}
 	if j.LastAccessedAt != nil {
-		t := *j.LastAccessedAt
-		c.LastAccessedAt = &t
+		c.LastAccessedAt = new(*j.LastAccessedAt)
 	}
 	return &c
 }
@@ -321,8 +319,8 @@ func (m *Module) saveJob(job *models.HLSJob) {
 	}
 }
 
-// SaveJobs persists all in-memory HLS jobs to the database. Exposed for external
-// callers (e.g. pregenerate tool). Jobs are saved via m.repo.Save, not to a file.
+// SaveJobs persists all in-memory HLS jobs to the database. Exposed for the
+// hls-pregenerate background task and admin tooling.
 func (m *Module) SaveJobs() error {
 	return m.saveJobs()
 }

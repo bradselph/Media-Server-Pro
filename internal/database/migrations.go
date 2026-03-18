@@ -432,6 +432,9 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 	if err := m.ensureSchemaColumns(ctx); err != nil {
 		return err
 	}
+	if err := m.migratePlaylistItemsPK(ctx); err != nil {
+		return err
+	}
 	if err := m.ensureSchemaIndexes(ctx); err != nil {
 		return err
 	}
@@ -480,6 +483,9 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"media_metadata", "blur_hash", "VARCHAR(100) NULL"},
 		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
 		{"hls_jobs", "last_accessed_at", "TIMESTAMP NULL"},
+		// PlaylistItem schema alignment: GORM model expects id and media_id columns
+		{"playlist_items", "id", "VARCHAR(255) NOT NULL DEFAULT '' FIRST"},
+		{"playlist_items", "media_id", "VARCHAR(255) NOT NULL DEFAULT '' AFTER playlist_id"},
 	}
 	for _, col := range columns {
 		if err := m.ensureColumn(ctx, col.table, col.column, col.def); err != nil {
@@ -622,4 +628,43 @@ func (m *Module) dropConstraintIfExists(ctx context.Context, spec dropConstraint
 	_, err = m.sqlDB.ExecContext(ctx,
 		fmt.Sprintf("ALTER TABLE `%s` DROP FOREIGN KEY `%s`", spec.table, spec.constraint))
 	return err
+}
+
+// migratePlaylistItemsPK migrates playlist_items from composite PK (playlist_id, media_path)
+// to single-column PK (id). This aligns the DB schema with the GORM model which expects
+// an id column as primary key and uses id for RemoveItem/UpdateItem queries.
+func (m *Module) migratePlaylistItemsPK(ctx context.Context) error {
+	// Check if the id column is already the primary key
+	var pkColumn string
+	err := m.sqlDB.QueryRowContext(ctx, `
+		SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'playlist_items'
+		  AND CONSTRAINT_NAME = 'PRIMARY'
+		ORDER BY ORDINAL_POSITION LIMIT 1
+	`).Scan(&pkColumn)
+	if err != nil {
+		// Table might not exist yet (fresh install) — skip
+		return nil
+	}
+	if pkColumn == "id" {
+		return nil // Already migrated
+	}
+
+	m.log.Info("Migrating playlist_items PK from composite to id column")
+
+	// Populate any empty id values with UUIDs
+	_, err = m.sqlDB.ExecContext(ctx, `UPDATE playlist_items SET id = UUID() WHERE id = '' OR id IS NULL`)
+	if err != nil {
+		return fmt.Errorf("populate playlist_items IDs: %w", err)
+	}
+
+	// Drop old composite PK and add new single-column PK
+	_, err = m.sqlDB.ExecContext(ctx, `ALTER TABLE playlist_items DROP PRIMARY KEY, ADD PRIMARY KEY (id)`)
+	if err != nil {
+		return fmt.Errorf("migrate playlist_items PK: %w", err)
+	}
+
+	m.log.Info("playlist_items PK migration complete")
+	return nil
 }

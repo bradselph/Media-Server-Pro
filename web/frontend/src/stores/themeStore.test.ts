@@ -25,6 +25,8 @@ beforeEach(() => {
     mockMatchMedia(true)
     // Clear data-theme attribute
     document.documentElement.removeAttribute('data-theme')
+    document.documentElement.removeAttribute('data-theme-id')
+    document.documentElement.style.cssText = ''
 })
 
 describe('themeStore', () => {
@@ -37,20 +39,27 @@ describe('themeStore', () => {
 
         expect(useThemeStore.getState().theme).toBe('light')
         expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+        expect(document.documentElement.getAttribute('data-theme-id')).toBe('light')
     })
 
-    it('toggleTheme cycles dark -> light -> auto', () => {
+    it('toggleTheme cycles through all built-in themes and auto', () => {
         // Start at dark
         expect(useThemeStore.getState().theme).toBe('dark')
 
-        useThemeStore.getState().toggleTheme()
-        expect(useThemeStore.getState().theme).toBe('light')
-
-        useThemeStore.getState().toggleTheme()
-        expect(useThemeStore.getState().theme).toBe('auto')
-
-        useThemeStore.getState().toggleTheme()
+        // Toggle through all themes — the exact cycle is defined in themeStore
+        // based on builtInThemes. Just verify it cycles back to start.
+        const seen: string[] = ['dark']
+        for (let i = 0; i < 20; i++) {
+            useThemeStore.getState().toggleTheme()
+            const t = useThemeStore.getState().theme
+            if (t === 'dark') break // cycled back to start
+            seen.push(t)
+        }
+        // Should have cycled back
         expect(useThemeStore.getState().theme).toBe('dark')
+        // Should include auto and at least light
+        expect(seen).toContain('light')
+        expect(seen).toContain('auto')
     })
 
     it('auto theme resolves based on matchMedia preferring dark', () => {
@@ -67,5 +76,29 @@ describe('themeStore', () => {
 
         expect(useThemeStore.getState().theme).toBe('auto')
         expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    })
+
+    it('setTheme applies CSS custom properties to documentElement', () => {
+        useThemeStore.getState().setTheme('dark')
+
+        // Theme engine should have set CSS variables
+        expect(document.documentElement.style.getPropertyValue('--primary-color')).toBe('#667eea')
+        expect(document.documentElement.style.getPropertyValue('--background')).toBe('#1a1a2e')
+    })
+
+    it('named themes apply correct tokens', () => {
+        useThemeStore.getState().setTheme('nord')
+
+        expect(useThemeStore.getState().theme).toBe('nord')
+        expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+        expect(document.documentElement.getAttribute('data-theme-id')).toBe('nord')
+        expect(document.documentElement.style.getPropertyValue('--primary-color')).toBe('#88c0d0')
+    })
+
+    it('unknown theme falls back to dark', () => {
+        useThemeStore.getState().setTheme('nonexistent')
+
+        expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+        expect(document.documentElement.style.getPropertyValue('--primary-color')).toBe('#667eea')
     })
 })

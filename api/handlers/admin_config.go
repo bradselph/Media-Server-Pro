@@ -41,6 +41,26 @@ func (h *Handler) AdminGetConfig(c *gin.Context) {
 	writeSuccess(c, cfg)
 }
 
+// configDenyList contains top-level config keys that must not be mutated at runtime
+// via the admin API. Database credentials, auth secrets, and admin password hashes
+// should only be changed via env vars or direct config file edits.
+var configDenyList = map[string]bool{
+	"database": true,
+}
+
+// filterDeniedConfigKeys removes denied top-level keys from the update map
+// and returns the list of rejected keys.
+func filterDeniedConfigKeys(updates map[string]interface{}) []string {
+	var rejected []string
+	for k := range updates {
+		if configDenyList[strings.ToLower(k)] {
+			rejected = append(rejected, k)
+			delete(updates, k)
+		}
+	}
+	return rejected
+}
+
 // AdminUpdateConfig updates the configuration (raw updates passed to admin; some changes require restart).
 func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	if !h.requireAdmin(c) {
@@ -49,6 +69,16 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	var updates map[string]interface{}
 	if json.NewDecoder(c.Request.Body).Decode(&updates) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
+		return
+	}
+
+	// Reject mutations to sensitive config sections (database creds, etc.)
+	if rejected := filterDeniedConfigKeys(updates); len(rejected) > 0 {
+		h.log.Warn("Admin config update rejected keys: %v", rejected)
+	}
+
+	if len(updates) == 0 {
+		writeError(c, http.StatusBadRequest, "No allowed configuration keys to update")
 		return
 	}
 

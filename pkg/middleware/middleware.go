@@ -27,7 +27,7 @@ func sanitizeRequestID(s string) string {
 		if b.Len() >= maxRequestIDLen {
 			break
 		}
-		if r == '\n' || r == '\r' || r == '\t' || unicode.IsPrint(r) {
+		if unicode.IsPrint(r) {
 			b.WriteRune(r)
 		}
 	}
@@ -170,11 +170,11 @@ func parseCORSConfig(origins, methods, headers []string) corsConfig {
 }
 
 // allowOrigin returns the value for Access-Control-Allow-Origin and whether CORS is allowed.
+// When allowAll is true, always returns literal "*" to prevent browsers from sending credentials
+// cross-origin — reflecting the specific origin with Allow-Credentials: true would allow any
+// site to make credentialed requests and steal session cookies.
 func (cfg *corsConfig) allowOrigin(origin string) (value string, allowed bool) {
 	if cfg.allowAll {
-		if origin != "" {
-			return origin, true
-		}
 		return "*", true
 	}
 	if cfg.allowedOrigins[origin] {

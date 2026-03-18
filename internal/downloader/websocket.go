@@ -1,7 +1,9 @@
 package downloader
 
 import (
+	"crypto/rand"
 	"encoding/json"
+	"math/big"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,7 +17,21 @@ import (
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // Non-browser clients (curl, etc.) don't send Origin
+		}
+		// Validate Origin matches the Host header to prevent cross-site WebSocket hijacking
+		host := r.Host
+		if host == "" {
+			host = r.Header.Get("Host")
+		}
+		// Strip scheme from origin to compare with host
+		origin = strings.TrimPrefix(origin, "https://")
+		origin = strings.TrimPrefix(origin, "http://")
+		return origin == host
+	},
 }
 
 // HandleWebSocket upgrades an admin HTTP connection to WebSocket and proxies
@@ -74,7 +90,12 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		"type":     "connected",
 		"clientId": clientID,
 	})
-	adminConn.WriteMessage(websocket.TextMessage, connectedMsg)
+	if err := adminConn.WriteMessage(websocket.TextMessage, connectedMsg); err != nil {
+		log.Warn("Failed to send connected message to admin: %v", err)
+		dlConn.Close()
+		adminConn.Close()
+		return
+	}
 
 	log.Info("WS proxy established (clientId: %s)", clientID)
 
@@ -120,11 +141,14 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 func randomSuffix() string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, 8)
-	// Use time-based seed for uniqueness (not crypto)
-	seed := time.Now().UnixNano()
 	for i := range b {
-		b[i] = chars[seed%int64(len(chars))]
-		seed = seed / int64(len(chars))
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			// Fallback to time-based if crypto/rand fails (should never happen)
+			b[i] = chars[time.Now().UnixNano()%int64(len(chars))]
+			continue
+		}
+		b[i] = chars[n.Int64()]
 	}
 	return string(b)
 }

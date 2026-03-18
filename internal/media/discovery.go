@@ -1254,8 +1254,7 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	}
 
 	meta.Views++
-	now := time.Now()
-	meta.LastPlayed = &now
+	meta.LastPlayed = new(time.Now())
 
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views
@@ -1555,13 +1554,11 @@ func (m *Module) convertInternalToRepo(path string, meta *Metadata) *repositorie
 		BlurHash:           meta.BlurHash,
 	}
 	if !meta.ProbeModTime.IsZero() {
-		t := meta.ProbeModTime
-		repoMeta.ProbeModTime = &t
+		repoMeta.ProbeModTime = new(meta.ProbeModTime)
 	}
 
 	if meta.LastPlayed != nil {
-		formatted := meta.LastPlayed.Format(time.RFC3339)
-		repoMeta.LastPlayed = &formatted
+		repoMeta.LastPlayed = new(meta.LastPlayed.Format(time.RFC3339))
 	}
 
 	return repoMeta

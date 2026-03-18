@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PlayerSettingsPanel } from '@/components/PlayerSettingsPanel'
 import { mediaApi } from '@/api/endpoints'
@@ -113,6 +114,14 @@ interface PlayerCustomControlsProps {
     seekForward: () => void
 }
 
+/** Set webkit-playsinline on video for older iOS Safari (not a valid React DOM prop). */
+function useVideoPlaysInline(ref: React.RefObject<HTMLVideoElement | null>) {
+    useEffect(() => {
+        const el = ref.current
+        if (el) el.setAttribute('webkit-playsinline', '')
+    })
+}
+
 function PlayerMediaElements(props: {
     isAudio: boolean
     isVideo: boolean
@@ -145,6 +154,7 @@ function PlayerMediaElements(props: {
         handleWaiting,
         handleCanPlay,
     } = props
+    useVideoPlaysInline(videoRef)
     return (
         <>
             {isAudio && (
@@ -184,7 +194,6 @@ function PlayerMediaElements(props: {
                     onCanPlay={handleCanPlay}
                     preload="auto"
                     playsInline
-                    webkit-playsinline=""
                 />
             )}
         </>
@@ -215,6 +224,12 @@ function PlayerProgressBar(props: {
     return (
         <div
             className="ctrl-progress-container"
+            role="progressbar"
+            aria-valuenow={Math.round(progress)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Seek"
+            tabIndex={0}
             onClick={handleProgressClick}
             onMouseMove={handleProgressHover}
             onMouseLeave={handleProgressLeave}
@@ -224,7 +239,7 @@ function PlayerProgressBar(props: {
             <div className="ctrl-buffer-bar" style={{ width: `${buffered}%` }} />
             <div className="ctrl-progress-fill" style={{ width: `${progress}%` }} />
             {hoverTime !== null && (
-                <div className="ctrl-progress-tooltip" style={{ left: `${hoverPos}px` }}>
+                <div className="ctrl-progress-tooltip" style={{ left: `${hoverPos}px` }} role="status" aria-live="polite">
                     {formatDuration({ seconds: hoverTime })}
                 </div>
             )}
@@ -245,25 +260,25 @@ function PlayerTransportButtons(props: {
     return (
         <>
             {hasPlaylist && (
-                <button className="ctrl-btn" onClick={handlePrevTrack} title="Previous track">
-                    <i className="bi bi-skip-start-fill" />
+                <button type="button" className="ctrl-btn" onClick={handlePrevTrack} title="Previous track" aria-label="Previous track">
+                    <i className="bi bi-skip-start-fill" aria-hidden />
                 </button>
             )}
-            <button className="ctrl-btn" onClick={togglePlay} title="Play/Pause (K)">
-                {isPlaying ? <i className="bi bi-pause-fill" /> : <i className="bi bi-play-fill" />}
+            <button type="button" className="ctrl-btn" onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (K)'} aria-label={isPlaying ? 'Pause' : 'Play'}>
+                {isPlaying ? <i className="bi bi-pause-fill" aria-hidden /> : <i className="bi bi-play-fill" aria-hidden />}
             </button>
             {hasPlaylist && (
-                <button className="ctrl-btn" onClick={handleNextTrack} title="Next track">
-                    <i className="bi bi-skip-end-fill" />
+                <button type="button" className="ctrl-btn" onClick={handleNextTrack} title="Next track" aria-label="Next track">
+                    <i className="bi bi-skip-end-fill" aria-hidden />
                 </button>
             )}
-            <button className="ctrl-btn" onClick={seekBack} title="Back 10s (J)">
-                <i className="bi bi-skip-backward-fill" />
-                <span className="ctrl-btn-label">10</span>
+            <button type="button" className="ctrl-btn" onClick={seekBack} title="Back 10 seconds (J)" aria-label="Back 10 seconds">
+                <i className="bi bi-skip-backward-fill" aria-hidden />
+                <span className="ctrl-btn-label" aria-hidden>10</span>
             </button>
-            <button className="ctrl-btn" onClick={seekForward} title="Forward 10s (L)">
-                <span className="ctrl-btn-label">10</span>
-                <i className="bi bi-skip-forward-fill" />
+            <button type="button" className="ctrl-btn" onClick={seekForward} title="Forward 10 seconds (L)" aria-label="Forward 10 seconds">
+                <span className="ctrl-btn-label" aria-hidden>10</span>
+                <i className="bi bi-skip-forward-fill" aria-hidden />
             </button>
         </>
     )
@@ -278,18 +293,22 @@ function PlayerVolumeControls(props: {
     const { isMuted, volume, toggleMute, handleVolumeChange } = props
     return (
         <div className="ctrl-volume-wrapper">
-            <button className="ctrl-btn" onClick={toggleMute} title="Mute (M)">
-                <i className={getVolumeIconClass(isMuted, volume)} />
+            <button type="button" className="ctrl-btn" onClick={toggleMute} title={isMuted ? 'Unmute (M)' : 'Mute (M)'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
+                <i className={getVolumeIconClass(isMuted, volume)} aria-hidden />
             </button>
             <input
                 type="range"
                 className="ctrl-volume-slider"
-                min="0"
-                max="1"
-                step="0.05"
+                min={0}
+                max={1}
+                step={0.05}
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
                 onClick={(e) => e.stopPropagation()}
+                aria-label="Volume"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
             />
         </div>
     )
@@ -348,15 +367,24 @@ function PlayerSettingsAndFullscreen(props: {
         handlePiP,
         handleFullscreen,
     } = props
+    const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement)
+    useEffect(() => {
+        const onFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement)
+        document.addEventListener('fullscreenchange', onFullscreenChange)
+        return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+    }, [])
     return (
         <>
             <div className="ctrl-settings-wrapper">
                 <button
+                    type="button"
                     className={`ctrl-btn ${showSettings ? 'active' : ''}`}
                     onClick={() => setShowSettings((s: boolean) => !s)}
                     title="Settings"
+                    aria-label="Settings"
+                    aria-expanded={showSettings}
                 >
-                    <i className={`bi bi-gear-fill ${showSettings ? 'ctrl-gear-spin' : ''}`} />
+                    <i className={`bi bi-gear-fill ${showSettings ? 'ctrl-gear-spin' : ''}`} aria-hidden />
                 </button>
                 {showSettings && (
                     <PlayerSettingsPanel
@@ -376,8 +404,14 @@ function PlayerSettingsAndFullscreen(props: {
                 )}
             </div>
             {isVideo && (
-                <button className="ctrl-btn" onClick={handleFullscreen} title="Fullscreen (F)">
-                    <i className="bi bi-fullscreen" />
+                <button
+                    type="button"
+                    className="ctrl-btn"
+                    onClick={handleFullscreen}
+                    title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+                    aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                >
+                    <i className={isFullscreen ? 'bi bi-fullscreen-exit' : 'bi bi-fullscreen'} aria-hidden />
                 </button>
             )}
         </>
@@ -427,6 +461,8 @@ function PlayerCustomControls(props: PlayerCustomControlsProps) {
     return (
         <div
             className={`custom-controls ${showControls || !isPlaying ? 'show' : ''}`}
+            role="group"
+            aria-label="Player controls"
             onClick={(e) => e.stopPropagation()}
         >
             <PlayerProgressBar
@@ -455,7 +491,7 @@ function PlayerCustomControls(props: PlayerCustomControlsProps) {
                     toggleMute={toggleMute}
                     handleVolumeChange={handleVolumeChange}
                 />
-                <span className="ctrl-time">
+                <span className="ctrl-time" aria-live="off" aria-label={`Current time ${formatDuration({ seconds: currentTime })} of ${formatDuration({ seconds: duration })}`}>
                     {formatDuration({ seconds: currentTime })} / {formatDuration({ seconds: duration })}
                 </span>
                 <div className="ctrl-spacer" />
@@ -626,39 +662,43 @@ function AudioControlsRow(props: {
         cycleSpeed,
     } = props
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }} role="group" aria-label="Playback controls">
             {hasPlaylist && (
-                <button className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={handlePrevTrack} title="Previous track">
-                    <i className="bi bi-skip-start-fill" />
+                <button type="button" className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={handlePrevTrack} title="Previous track" aria-label="Previous track">
+                    <i className="bi bi-skip-start-fill" aria-hidden />
                 </button>
             )}
-            <button className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={seekBack} title="Back 10s">
-                <i className="bi bi-skip-backward-fill" />
+            <button type="button" className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={seekBack} title="Back 10 seconds" aria-label="Back 10 seconds">
+                <i className="bi bi-skip-backward-fill" aria-hidden />
             </button>
-            <button className="ctrl-btn audio-play-btn" style={{ color: CSS_TEXT_COLOR }} onClick={togglePlay} title="Play/Pause (Space)">
-                {isPlaying ? <i className="bi bi-pause-fill" /> : <i className="bi bi-play-fill" />}
+            <button type="button" className="ctrl-btn audio-play-btn" style={{ color: CSS_TEXT_COLOR }} onClick={togglePlay} title={isPlaying ? 'Pause (Space)' : 'Play (Space)'} aria-label={isPlaying ? 'Pause' : 'Play'}>
+                {isPlaying ? <i className="bi bi-pause-fill" aria-hidden /> : <i className="bi bi-play-fill" aria-hidden />}
             </button>
-            <button className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={seekForward} title="Forward 10s">
-                <i className="bi bi-skip-forward-fill" />
+            <button type="button" className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={seekForward} title="Forward 10 seconds" aria-label="Forward 10 seconds">
+                <i className="bi bi-skip-forward-fill" aria-hidden />
             </button>
             {hasPlaylist && (
-                <button className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={handleNextTrack} title="Next track">
-                    <i className="bi bi-skip-end-fill" />
+                <button type="button" className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={handleNextTrack} title="Next track" aria-label="Next track">
+                    <i className="bi bi-skip-end-fill" aria-hidden />
                 </button>
             )}
-            <span style={{ fontSize: 12, color: CSS_TEXT_MUTED, fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 4 }}>
+            <span style={{ fontSize: 12, color: CSS_TEXT_MUTED, fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 4 }} aria-live="off">
                 {formatDuration({ seconds: currentTime })} / {formatDuration({ seconds: duration })}
             </span>
             <div style={{ flex: 1 }} />
             <button
+                type="button"
                 className={`ctrl-btn ${isLooping ? 'active' : ''}`}
                 style={{ color: isLooping ? '#667eea' : CSS_TEXT_COLOR, fontSize: 15 }}
                 onClick={toggleLoop}
                 title="Loop"
+                aria-label={isLooping ? 'Loop on' : 'Loop off'}
+                aria-pressed={isLooping}
             >
-                <i className="bi bi-repeat" />
+                <i className="bi bi-repeat" aria-hidden />
             </button>
             <button
+                type="button"
                 className="ctrl-btn"
                 style={{
                     color: playbackRate !== 1 ? '#667eea' : CSS_TEXT_COLOR,
@@ -669,20 +709,25 @@ function AudioControlsRow(props: {
                 }}
                 onClick={cycleSpeed}
                 title="Playback speed"
+                aria-label={`Playback speed ${playbackRate}x`}
             >
                 {playbackRate}x
             </button>
-            <button className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={toggleMute} title="Mute (M)">
-                <i className={getVolumeIconClass(isMuted, volume)} />
+            <button type="button" className="ctrl-btn" style={{ color: CSS_TEXT_COLOR }} onClick={toggleMute} title={isMuted ? 'Unmute (M)' : 'Mute (M)'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
+                <i className={getVolumeIconClass(isMuted, volume)} aria-hidden />
             </button>
             <input
                 type="range"
-                min="0"
-                max="1"
-                step="0.05"
+                min={0}
+                max={1}
+                step={0.05}
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
                 style={{ width: 70, cursor: 'pointer', accentColor: '#667eea' }}
+                aria-label="Volume"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
             />
         </div>
     )
@@ -870,11 +915,14 @@ function PlayerPageHeader(props: {
             </Link>
             {isVideo && (
                 <button
+                    type="button"
                     className={`player-theater-btn ${theaterMode ? 'player-theater-btn--active' : ''}`}
                     onClick={() => setTheaterMode((t) => !t)}
                     title="Theater mode (T)"
+                    aria-label={theaterMode ? 'Exit theater mode' : 'Theater mode'}
+                    aria-pressed={theaterMode}
                 >
-                    <i className={theaterMode ? 'bi bi-arrows-angle-contract' : 'bi bi-arrows-angle-expand'} />
+                    <i className={theaterMode ? 'bi bi-arrows-angle-contract' : 'bi bi-arrows-angle-expand'} aria-hidden />
                 </button>
             )}
         </div>

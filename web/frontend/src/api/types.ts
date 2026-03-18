@@ -38,7 +38,7 @@ export interface UserPermissions {
 }
 
 export interface UserPreferences {
-    theme: 'light' | 'dark' | 'auto'
+    theme: string
     default_quality: string
     show_mature: boolean
     // All fields below have no omitempty in the backend — always present in responses
@@ -1028,12 +1028,15 @@ export interface CrawlerStats {
 
 // ── Downloader ──
 
+/** Dependency value: backend may send string (version) or legacy { available, version } */
+export type DownloaderDependencyValue = string | { available?: boolean; version?: string }
+
 export interface DownloaderHealth {
     online: boolean
     activeDownloads?: number
     queuedDownloads?: number
     uptime?: number
-    dependencies?: Record<string, string>
+    dependencies?: Record<string, DownloaderDependencyValue>
     error?: string
 }
 
@@ -1071,14 +1074,14 @@ export interface DownloaderDownloadFile {
 }
 
 export interface DownloaderSettings {
-    maxConcurrent: number
-    downloadsDir: string
+    maxConcurrent?: number
+    downloadsDir?: string
     allowServerStorage: boolean
-    audioFormat: string
-    audioQuality: string
-    videoFormat: string
-    proxy: { enabled: boolean }
-    supportedSites: string[]
+    audioFormat?: string
+    audioQuality?: string
+    videoFormat?: string
+    proxy?: { enabled: boolean }
+    supportedSites?: string[]
 }
 
 export interface ImportableFile {
@@ -1092,6 +1095,8 @@ export interface ImportResult {
     source: string
     destination: string
     scanTriggered: boolean
+    /** False if "delete source after import" was requested but the source file could not be removed */
+    sourceDeleted?: boolean
 }
 
 export interface DownloaderProgress {

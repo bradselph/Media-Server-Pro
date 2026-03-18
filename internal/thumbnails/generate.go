@@ -122,6 +122,8 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 
 	output, err := cmdWithContext.CombinedOutput()
 	if err != nil {
+		// Clean up any partial output file left behind on failure (e.g. timeout)
+		os.Remove(job.OutputPath)
 		m.log.Error("FFmpeg failed: %v", err)
 		m.log.Error("FFmpeg output: %s", string(output))
 		return fmt.Errorf("ffmpeg failed: %w", err)

@@ -165,8 +165,7 @@ func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 	for i := 0; i < days; i++ {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		if daily, ok := m.dailyStats[date]; ok {
-			cp := *daily
-			stats = append(stats, &cp)
+			stats = append(stats, new(*daily))
 		}
 	}
 
@@ -179,8 +178,7 @@ func (m *Module) GetMediaStats(mediaID string) *models.ViewStats {
 	defer m.statsMu.RUnlock()
 
 	if stats, ok := m.mediaStats[mediaID]; ok {
-		cp := *stats
-		return &cp
+		return new(*stats)
 	}
 	return &models.ViewStats{}
 }

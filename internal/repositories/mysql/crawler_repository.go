@@ -36,11 +36,10 @@ func NewCrawlerTargetRepository(db *gorm.DB) repositories.CrawlerTargetRepositor
 }
 
 func (r *CrawlerTargetRepository) Upsert(ctx context.Context, target *repositories.CrawlerTargetRecord) error {
-	row := r.recordToRow(target)
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"name", "url", "site", "enabled", "updated_at"}),
-	}).Create(&row).Error; err != nil {
+	}).Create(new(r.recordToRow(target))).Error; err != nil {
 		return fmt.Errorf("failed to upsert crawler target: %w", err)
 	}
 	return nil
@@ -100,8 +99,7 @@ func (r *CrawlerTargetRepository) recordToRow(rec *repositories.CrawlerTargetRec
 		UpdatedAt: rec.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 	if rec.LastCrawled != nil {
-		s := rec.LastCrawled.Format("2006-01-02 15:04:05")
-		row.LastCrawled = &s
+		row.LastCrawled = new(rec.LastCrawled.Format("2006-01-02 15:04:05"))
 	}
 	return row
 }
@@ -156,8 +154,7 @@ func NewCrawlerDiscoveryRepository(db *gorm.DB) repositories.CrawlerDiscoveryRep
 }
 
 func (r *CrawlerDiscoveryRepository) Create(ctx context.Context, disc *repositories.CrawlerDiscoveryRecord) error {
-	row := r.recordToRow(disc)
-	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Create(new(r.recordToRow(disc))).Error; err != nil {
 		return fmt.Errorf("failed to create crawler discovery: %w", err)
 	}
 	return nil
@@ -260,8 +257,7 @@ func (r *CrawlerDiscoveryRepository) recordToRow(rec *repositories.CrawlerDiscov
 		DiscoveredAt:    rec.DiscoveredAt.Format("2006-01-02 15:04:05"),
 	}
 	if rec.ReviewedAt != nil {
-		s := rec.ReviewedAt.Format("2006-01-02 15:04:05")
-		row.ReviewedAt = &s
+		row.ReviewedAt = new(rec.ReviewedAt.Format("2006-01-02 15:04:05"))
 	}
 	return row
 }

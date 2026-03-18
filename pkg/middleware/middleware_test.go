@@ -153,8 +153,13 @@ func TestGinCORS_AllowAll(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	got := w.Header().Get("Access-Control-Allow-Origin")
-	if got != "https://example.com" {
-		t.Errorf("ACAO = %q, want https://example.com", got)
+	// When allowAll is true, we return literal "*" to prevent credential leakage
+	if got != "*" {
+		t.Errorf("ACAO = %q, want *", got)
+	}
+	// Credentials should NOT be set when using wildcard "*"
+	if cred := w.Header().Get("Access-Control-Allow-Credentials"); cred == "true" {
+		t.Error("Credentials should not be set with wildcard origin")
 	}
 }
 
@@ -254,10 +259,10 @@ func TestParseCORSConfig_Wildcard(t *testing.T) {
 }
 
 func TestAllowOrigin(t *testing.T) {
-	// Wildcard
+	// Wildcard — always returns literal "*" regardless of origin
 	cfg := parseCORSConfig([]string{"*"}, nil, nil)
 	val, ok := cfg.allowOrigin("https://any.com")
-	if !ok || val != "https://any.com" {
+	if !ok || val != "*" {
 		t.Errorf("wildcard: value=%q, ok=%v", val, ok)
 	}
 

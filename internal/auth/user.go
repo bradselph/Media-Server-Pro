@@ -213,8 +213,7 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	wasEnabled := user.Enabled
 	oldRole := user.Role
 
-	userCopy := *user
-	user = &userCopy
+	user = new(*user)
 
 	if err := m.applyUserUpdates(user, updates); err != nil {
 		return err
