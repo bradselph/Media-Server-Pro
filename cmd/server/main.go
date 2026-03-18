@@ -273,7 +273,7 @@ func main() {
 
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(tasksModule, mediaModule, scannerModule, thumbnailsModule,
-		authModule, backupModule, suggestionsModule, duplicatesModule, adminModule, cfg, log)
+		authModule, backupModule, suggestionsModule, duplicatesModule, adminModule, hlsModule, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
 	h := handlers.NewHandler(handlers.HandlerDeps{
@@ -405,6 +405,7 @@ func registerTasks(
 	suggestionsModule *suggestions.Module,
 	duplicatesModule *duplicates.Module,
 	adminModule *admin.Module,
+	hlsModule *hls.Module,
 	cfg *config.Manager,
 	log *logger.Logger,
 ) {
@@ -655,6 +656,66 @@ func registerTasks(
 				}
 			}
 			log.Debug("Periodic health check complete")
+			return nil
+		},
+	})
+
+	// HLS pre-generation — generates HLS content for video media that doesn't have it yet.
+	// Runs every hour. Each cycle queues at most ConcurrentLimit jobs and skips entirely
+	// when existing jobs are already in flight, so the system is never overloaded.
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "hls-pregenerate",
+		Name:        "HLS Pre-generation",
+		Description: "Pre-generates HLS streaming content for video files that don't have it yet",
+		Schedule:    1 * time.Hour,
+		Func: func(ctx context.Context) error {
+			if !hlsModule.IsAvailable() {
+				return nil
+			}
+			if !cfg.Get().HLS.AutoGenerate {
+				return nil
+			}
+
+			// Skip this cycle entirely if jobs are already running/pending
+			active := hlsModule.ActiveJobCount()
+			if active > 0 {
+				log.Debug("HLS pre-generation: %d jobs already active, skipping this cycle", active)
+				return nil
+			}
+
+			// Queue at most ConcurrentLimit jobs per cycle so we never flood the system
+			batchLimit := cfg.Get().HLS.ConcurrentLimit
+			if batchLimit <= 0 {
+				batchLimit = 2
+			}
+
+			items := mediaModule.ListMedia(media.Filter{})
+			queued := 0
+			for _, item := range items {
+				if ctx.Err() != nil {
+					break
+				}
+				if queued >= batchLimit {
+					break
+				}
+				if item.Type != "video" {
+					continue
+				}
+				if hlsModule.HasHLS(item.Path) {
+					continue
+				}
+				if _, err := hlsModule.GenerateHLS(ctx, &hls.GenerateHLSParams{
+					MediaPath: item.Path,
+					MediaID:   item.ID,
+				}); err != nil {
+					log.Debug("HLS pre-generation skipped for %s: %v", item.Name, err)
+					continue
+				}
+				queued++
+			}
+			if queued > 0 {
+				log.Info("Queued %d HLS pre-generation jobs (batch limit: %d)", queued, batchLimit)
+			}
 			return nil
 		},
 	})

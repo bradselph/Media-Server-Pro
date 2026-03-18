@@ -3,6 +3,8 @@ package hls
 import (
 	"sync"
 	"time"
+
+	"media-server-pro/pkg/models"
 )
 
 // AccessTracker tracks last access time for HLS jobs
@@ -12,20 +14,26 @@ type AccessTracker struct {
 }
 
 // RecordAccess records an access to an HLS job and persists the timestamp
-// so that access times survive restarts.
+// so that access times survive restarts. The DB write happens outside jobsMu
+// to avoid serializing concurrent segment requests on database round-trips.
 func (m *Module) RecordAccess(jobID string) {
 	now := time.Now()
 	m.accessTracker.mu.Lock()
 	m.accessTracker.lastAccess[jobID] = now
 	m.accessTracker.mu.Unlock()
 
+	var jobCopy *models.HLSJob
 	m.jobsMu.Lock()
 	job, exists := m.jobs[jobID]
 	if exists {
 		job.LastAccessedAt = &now
-		m.saveJob(job) // under lock to avoid data race with transcode goroutine
+		jobCopy = copyHLSJob(job)
 	}
 	m.jobsMu.Unlock()
+
+	if jobCopy != nil {
+		m.saveJob(jobCopy)
+	}
 }
 
 // GetLastAccess returns the last access time for a job

@@ -44,6 +44,19 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
+// ActiveJobCount returns the number of running + pending HLS jobs.
+func (m *Module) ActiveJobCount() int {
+	m.jobsMu.RLock()
+	defer m.jobsMu.RUnlock()
+	count := 0
+	for _, job := range m.jobs {
+		if job.Status == models.HLSStatusRunning || job.Status == models.HLSStatusPending {
+			count++
+		}
+	}
+	return count
+}
+
 // calculateCacheSize walks the cache directory to sum file sizes. Called without holding jobsMu.
 func (m *Module) calculateCacheSize() int64 {
 	var size int64
