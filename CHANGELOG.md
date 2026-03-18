@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.103.0] - 2026-03-18 (minor)
+
+- Merge pull request #102 from bradselph/development
+- Delete audit-report-2026-03-18.md
+- chore: update dependencies, add theme engine, and apply Go new() refactor
+- feat: add background HLS pre-generation and fix startup job resume
+- test: add comprehensive unit tests for 22 previously untested packages
+- Delete audit-report-2026-03-14.md
+- Delete audit-report-2026-03-15.md
+- chore: update dependencies and improve build process
+- chore: synchronize with main branch
+- Merge branch 'main' into development
+- Merge branch 'main' into development
+- feat: add backup ID validation and improve error handling
+- test: enhance age gate and CORS tests for security and configuration clarity
+- feat: enhance security and configuration management
+- fix: improve handling of optional values and enhance accessibility in various components
+- feat: enhance accessibility and UI in various components
+- refactor: enhance downloader import functionality and API responses
+- fix: handle optional supported sites in DownloaderTab component
+- refactor: update downloader API responses and frontend types
+
+
 ## [0.102.0] - 2026-03-15 (minor)
 
 - Merge pull request #101 from bradselph/devin/1773599958-audit-improvements
