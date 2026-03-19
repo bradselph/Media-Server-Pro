@@ -25,13 +25,6 @@ func TestSession_IsExpired_Past(t *testing.T) {
 	}
 }
 
-func TestSession_IsStrictlyExpired_Consistent(t *testing.T) {
-	s := &Session{ExpiresAt: time.Now().Add(-1 * time.Minute)}
-	if s.IsExpired() != s.IsStrictlyExpired() {
-		t.Error("IsExpired and IsStrictlyExpired should return the same value")
-	}
-}
-
 // ---------------------------------------------------------------------------
 // AdminSession
 // ---------------------------------------------------------------------------

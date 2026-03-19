@@ -98,6 +98,7 @@ type RateLimiter struct {
 	cleanupTick *time.Ticker
 	stopCleanup chan struct{}
 	stopOnce    sync.Once
+	onBan       func(ip string, duration time.Duration, reason string) // Optional callback when auto-ban is triggered
 }
 
 // RateLimitConfig holds rate limiter configuration
@@ -182,6 +183,23 @@ func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting security module...")
 
 	m.repo = mysqlrepo.NewIPListRepository(m.dbModule.GORM())
+
+	// Wire up auto-ban persistence callback so rate-limit bans survive restarts
+	persistBan := func(ip string, duration time.Duration, reason string) {
+		ctx := context.Background()
+		rec := &repositories.IPEntryRecord{
+			Value:     ip,
+			Comment:   reason,
+			AddedAt:   time.Now(),
+			AddedBy:   "rate-limiter",
+			ExpiresAt: new(time.Now().Add(duration)),
+		}
+		if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
+			m.log.Warn("Failed to persist auto-ban for %s: %v", ip, err)
+		}
+	}
+	m.rateLimiter.onBan = persistBan
+	m.authRateLimiter.onBan = persistBan
 
 	// Load IP lists
 	if err := m.loadIPLists(); err != nil {
@@ -788,12 +806,19 @@ func (r *RateLimiter) recordViolation(client *ClientState, ip string, now time.T
 
 	// Ban if too many violations
 	if client.Violations >= r.config.ViolationsForBan {
+		duration := r.config.BanDuration
+		reason := "Rate limit violation"
 		r.bannedIPs[ip] = BanRecord{
-			ExpiresAt: now.Add(r.config.BanDuration),
+			ExpiresAt: now.Add(duration),
 			BannedAt:  now,
-			Reason:    "Rate limit violation",
+			Reason:    reason,
 		}
 		client.Violations = 0 // Reset for after ban expires
+
+		// Persist the auto-ban asynchronously so it survives restarts
+		if r.onBan != nil {
+			go r.onBan(ip, duration, reason)
+		}
 	}
 }
 
@@ -878,7 +903,8 @@ func (r *RateLimiter) cleanupWithIPLists(whitelist, blacklist *IPList) {
 // isAuthPath returns true for authentication endpoints that should use
 // the stricter auth rate limiter (login, register).
 func isAuthPath(path string) bool {
-	return path == "/api/auth/login" || path == "/api/auth/register"
+	return path == "/api/auth/login" || path == "/api/auth/register" ||
+		path == "/api/auth/admin-login" || path == "/api/admin/login"
 }
 
 // GinMiddleware returns a gin.HandlerFunc that applies security checks

@@ -317,7 +317,11 @@ func (p *UserPreferences) Validate() {
 	p.Volume = clampVolume(p.Volume)
 	p.ItemsPerPage = clampItemsPerPage(p.ItemsPerPage)
 
-	p.Theme = stringInSetOrDefault(p.Theme, map[string]bool{"light": true, "dark": true, "auto": true}, "auto")
+	p.Theme = stringInSetOrDefault(p.Theme, map[string]bool{
+		"light": true, "dark": true, "auto": true,
+		"midnight": true, "nord": true, "dracula": true,
+		"solarized-light": true, "forest": true, "sunset": true,
+	}, "auto")
 	p.ViewMode = stringInSetOrDefault(p.ViewMode, map[string]bool{"grid": true, "list": true, "compact": true}, "grid")
 	p.SortOrder = stringInSetOrDefault(p.SortOrder, map[string]bool{"asc": true, "desc": true, "": true}, "asc")
 
@@ -350,11 +354,6 @@ func (*Session) TableName() string {
 // IsExpired returns true if the session has expired (now >= ExpiresAt).
 func (s *Session) IsExpired() bool {
 	return time.Now().After(s.ExpiresAt)
-}
-
-// IsStrictlyExpired returns true if the session has expired. Delegates to IsExpired.
-func (s *Session) IsStrictlyExpired() bool {
-	return s.IsExpired()
 }
 
 // AdminSession represents an admin session.

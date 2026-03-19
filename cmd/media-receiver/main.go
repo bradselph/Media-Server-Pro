@@ -246,14 +246,18 @@ func runSlaveLoop(ctx context.Context, cfg *slaveConfig) {
 // connectAndRun establishes one WebSocket connection, sends registration + catalog,
 // and runs the heartbeat/scan/stream-request loop until the connection drops.
 func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
-	wsURL := buildWSURL(cfg.MasterURL, cfg.APIKey)
-	fmt.Printf("Connecting to %s...\n", maskKey(wsURL))
+	wsURL := buildWSURL(cfg.MasterURL)
+	fmt.Printf("Connecting to %s...\n", wsURL)
 
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 15 * time.Second,
 	}
 
-	conn, resp, err := dialer.DialContext(ctx, wsURL, nil)
+	// Pass API key via header instead of URL query string to avoid leaking it in access logs.
+	headers := http.Header{}
+	headers.Set("X-API-Key", cfg.APIKey)
+
+	conn, resp, err := dialer.DialContext(ctx, wsURL, headers)
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
@@ -551,14 +555,14 @@ func sendWSJSON(conn *websocket.Conn, msgType string, data interface{}) error {
 	return conn.WriteJSON(msg)
 }
 
-// buildWSURL converts a master HTTP URL to a WebSocket URL (api_key in query; master also supports X-API-Key header).
-func buildWSURL(masterURL, apiKey string) string {
+// buildWSURL converts a master HTTP URL to a WebSocket URL (no credentials in URL).
+func buildWSURL(masterURL string) string {
 	u, err := url.Parse(masterURL)
 	if err != nil {
 		// Fallback: just string-replace
 		ws := strings.Replace(masterURL, "https://", "wss://", 1)
 		ws = strings.Replace(ws, "http://", "ws://", 1)
-		return strings.TrimRight(ws, "/") + "/ws/receiver?api_key=" + url.QueryEscape(apiKey)
+		return strings.TrimRight(ws, "/") + "/ws/receiver"
 	}
 
 	switch u.Scheme {
@@ -568,19 +572,10 @@ func buildWSURL(masterURL, apiKey string) string {
 		u.Scheme = "ws"
 	}
 	u.Path = "/ws/receiver"
-	q := u.Query()
-	q.Set("api_key", apiKey)
-	u.RawQuery = q.Encode()
+	u.RawQuery = ""
 	return u.String()
 }
 
-// maskKey hides the API key in log output.
-func maskKey(wsURL string) string {
-	if i := strings.Index(wsURL, "api_key="); i >= 0 {
-		return wsURL[:i+8] + "***"
-	}
-	return wsURL
-}
 
 func parseFlags() (*slaveConfig, autoDiscovered) {
 	master := flag.String("master", "", "Master server URL (e.g. https://yourdomain.com)")

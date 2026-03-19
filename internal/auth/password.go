@@ -39,7 +39,11 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 
 	m.usersMu.Lock()
 	user, exists = m.users[username]
-	if !exists || user.PasswordHash != currentHash {
+	if !exists || user == nil {
+		m.usersMu.Unlock()
+		return ErrUserNotFound
+	}
+	if user.PasswordHash != currentHash {
 		m.usersMu.Unlock()
 		return ErrUserNotFound
 	}

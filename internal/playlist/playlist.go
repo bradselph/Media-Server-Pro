@@ -569,6 +569,7 @@ func (m *Module) AdminDeletePlaylist(ctx context.Context, id PlaylistID) error {
 
 	if err := m.playlistRepo.Delete(ctx, string(id)); err != nil {
 		m.log.Error("Failed to delete playlist from database: %v", err)
+		return fmt.Errorf("failed to delete playlist from database: %w", err)
 	}
 
 	delete(m.playlists, id)

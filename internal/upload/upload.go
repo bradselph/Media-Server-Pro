@@ -201,6 +201,20 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 		}
 	}()
 
+	// Validate content type via magic bytes to prevent uploading disguised files (e.g. HTML as .mp4).
+	sniffBuf := make([]byte, 512)
+	n, _ := file.Read(sniffBuf)
+	if n > 0 {
+		detectedType := http.DetectContentType(sniffBuf[:n])
+		if !m.isContentTypeAllowed(detectedType, prepared.MediaType) {
+			return nil, fmt.Errorf("file content does not match extension (detected %s)", detectedType)
+		}
+	}
+	// Seek back to the start so the full file is written to disk.
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to reset file reader: %w", err)
+	}
+
 	uploadID := m.generateUploadID()
 	progress := m.registerUploadProgress(ProgressRegistration{
 		UploadID: uploadID,
@@ -469,6 +483,26 @@ func (m *Module) isAllowedExtension(ext string) bool {
 
 	// Fall back to built-in lists
 	return videoExtensions[ext] || audioExtensions[ext]
+}
+
+// isContentTypeAllowed checks that the detected MIME type is compatible with the expected media type.
+// This prevents uploading disguised files (e.g. an HTML file renamed to .mp4).
+func (m *Module) isContentTypeAllowed(detected string, expected MediaType) bool {
+	// application/octet-stream is the fallback for unknown binary — always allow since
+	// many media formats aren't recognized by http.DetectContentType.
+	if detected == "application/octet-stream" {
+		return true
+	}
+	switch expected {
+	case MediaTypeVideo:
+		return strings.HasPrefix(detected, "video/") || strings.HasPrefix(detected, "audio/") || detected == "application/octet-stream"
+	case MediaTypeAudio:
+		return strings.HasPrefix(detected, "audio/") || detected == "application/ogg" || detected == "application/octet-stream"
+	default:
+		// Unknown media type — reject HTML/JS/XML which are the dangerous ones.
+		return !strings.HasPrefix(detected, "text/html") && !strings.HasPrefix(detected, "text/xml") &&
+			!strings.HasPrefix(detected, "application/javascript")
+	}
 }
 
 // createUniqueUploadFile atomically finds a unique filename and creates a temporary file for upload.

@@ -295,15 +295,16 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 
 	if len(paths) > 0 {
 		var tags []mediaTagRow
-		if err := r.db.WithContext(ctx).Where("path IN ?", paths).Find(&tags).Error; err == nil {
-			tagMap := make(map[string][]string)
-			for _, t := range tags {
-				tagMap[t.Path] = append(tagMap[t.Path], t.Tag)
-			}
-			for _, m := range results {
-				if t, ok := tagMap[m.Path]; ok {
-					m.Tags = t
-				}
+		if err := r.db.WithContext(ctx).Where("path IN ?", paths).Find(&tags).Error; err != nil {
+			return nil, 0, fmt.Errorf("failed to load tags: %w", err)
+		}
+		tagMap := make(map[string][]string)
+		for _, t := range tags {
+			tagMap[t.Path] = append(tagMap[t.Path], t.Tag)
+		}
+		for _, m := range results {
+			if t, ok := tagMap[m.Path]; ok {
+				m.Tags = t
 			}
 		}
 	}

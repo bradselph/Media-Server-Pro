@@ -20,8 +20,11 @@ func (m *Module) AddToWatchHistory(ctx context.Context, username string, item mo
 	for i, existing := range user.WatchHistory {
 		if existing.MediaPath == item.MediaPath {
 			user.WatchHistory[i] = item
+			userCopy := *user
+			userCopy.WatchHistory = make([]models.WatchHistoryItem, len(user.WatchHistory))
+			copy(userCopy.WatchHistory, user.WatchHistory)
 			m.usersMu.Unlock()
-			if err := m.userRepo.Update(ctx, user); err != nil {
+			if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 				m.log.Error("Failed to save user after watch history update: %v", err)
 				return err
 			}
@@ -36,9 +39,12 @@ func (m *Module) AddToWatchHistory(ctx context.Context, username string, item mo
 		user.WatchHistory = user.WatchHistory[:maxHistory]
 	}
 
+	userCopy := *user
+	userCopy.WatchHistory = make([]models.WatchHistoryItem, len(user.WatchHistory))
+	copy(userCopy.WatchHistory, user.WatchHistory)
 	m.usersMu.Unlock()
 
-	if err := m.userRepo.Update(ctx, user); err != nil {
+	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after watch history update: %v", err)
 		return err
 	}

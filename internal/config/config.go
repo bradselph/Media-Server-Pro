@@ -79,6 +79,15 @@ func (m *Manager) Load() error {
 
 // syncFeatureToggles makes feature toggles the master: when true, module is enabled;
 // when false, module is disabled. This overrides module-level Enabled in config.json.
+//
+// NOTE: The following feature flags do NOT have corresponding module-level Enabled
+// fields (there is no PlaylistConfig, SuggestionsConfig, AutoDiscoveryConfig, or
+// DuplicateDetectionConfig with an Enabled bool). They only take effect at startup
+// when checked in cmd/server/main.go to decide whether to register the module:
+//   - EnablePlaylists
+//   - EnableSuggestions
+//   - EnableAutoDiscovery
+//   - EnableDuplicateDetection
 func (m *Manager) syncFeatureToggles() {
 	syncToggle := func(enabled bool, target *bool) {
 		*target = enabled

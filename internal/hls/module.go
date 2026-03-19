@@ -320,6 +320,18 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
+// cleanQualityLocks removes all qualityLocks entries for a given job ID.
+// Keys are formatted as "jobID/quality". Uses sync.Map.Range to find and delete matching entries.
+func (m *Module) cleanQualityLocks(jobID string) {
+	prefix := jobID + "/"
+	m.qualityLocks.Range(func(key, _ any) bool {
+		if k, ok := key.(string); ok && len(k) > len(prefix) && k[:len(prefix)] == prefix {
+			m.qualityLocks.Delete(key)
+		}
+		return true
+	})
+}
+
 // IsAvailable returns true if HLS transcoding is available (ffmpeg found and module enabled)
 func (m *Module) IsAvailable() bool {
 	cfg := m.config.Get()

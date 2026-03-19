@@ -124,9 +124,12 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	if !user.Enabled {
 		return nil, nil, ErrAccountDisabled
 	}
+	// Update LastActivity under write lock to avoid data race with concurrent ValidateSession calls
+	m.sessionsMu.Lock()
 	session.LastActivity = time.Now()
-	// Persist LastActivity in background; pass copy to avoid data race with callers
 	sessionCopy := *session
+	m.sessionsMu.Unlock()
+	// Persist LastActivity in background using the safe copy
 	go func() {
 		_ = m.sessionRepo.Update(context.Background(), &sessionCopy)
 	}()

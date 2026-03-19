@@ -674,12 +674,21 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 		}
 	}()
 
-	_, err = io.Copy(tmpFile, resp.Body)
+	// Limit download to 500MB to prevent disk exhaustion from a compromised release.
+	const maxUpdateSize = 500 << 20 // 500 MB
+	limited := io.LimitReader(resp.Body, maxUpdateSize+1)
+	written, err := io.Copy(tmpFile, limited)
 	if err != nil {
 		if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
 			m.log.Warn("Failed to remove temporary file %s: %v", tmpFile.Name(), removeErr)
 		}
 		return "", err
+	}
+	if written > maxUpdateSize {
+		if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
+			m.log.Warn("Failed to remove temporary file %s: %v", tmpFile.Name(), removeErr)
+		}
+		return "", fmt.Errorf("update download exceeds maximum size of %d bytes", maxUpdateSize)
 	}
 
 	m.log.Info("Downloaded update to %s", tmpFile.Name())
