@@ -3,5 +3,6 @@
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
+    <UToasts />
   </UApp>
 </template>

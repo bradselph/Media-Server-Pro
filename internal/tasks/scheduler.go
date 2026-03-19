@@ -356,6 +356,10 @@ func (m *Module) RunNow(taskID string) error {
 		return fmt.Errorf("task scheduler not started")
 	}
 
+	if ctx.Err() != nil {
+		return fmt.Errorf("task scheduler is stopping")
+	}
+
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()

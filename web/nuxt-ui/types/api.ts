@@ -85,42 +85,149 @@ export interface LoginResponse {
 
 // ── Watch History ──
 
+/** Backend models.WatchHistoryItem JSON fields */
 export interface WatchHistoryEntry {
   media_id: string
-  title: string
+  /** Backend json:"media_name,omitempty" — human-readable filename */
+  media_name?: string
   position: number
   duration: number
-  last_watched: string
+  /** Backend uses "progress" (float ratio 0-1) not "completion" */
+  progress: number
+  /** Backend uses "watched_at" not "last_watched" */
+  watched_at: string
   completed: boolean
+}
+
+// ── HLS ──
+
+export interface HLSAvailability {
+  available: boolean
+  hls_url: string
+  id: string
+  job_id: string
+  status: string
+  progress: number
+  qualities: string[]
+  started_at: string
+  error: string
+}
+
+export interface HLSJob {
+  id: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  qualities: string[]
+  started_at: string
+  completed_at?: string
+  hls_url?: string
+  available: boolean
+  error?: string
+}
+
+// ── Suggestions ──
+
+export interface Suggestion {
+  media_id: string
+  title: string
+  category: string
+  media_type: string
+  score: number
+  reasons: string[] | null
+  thumbnail_url?: string
+}
+
+// ── Storage & Permissions ──
+
+export interface StorageUsage {
+  used_bytes: number
+  used_gb: number
+  quota_gb: number
+  percentage: number
+  user_type: string
+  is_authenticated: boolean
+}
+
+export interface PermissionsInfo {
+  authenticated: boolean
+  username?: string
+  role?: string
+  user_type?: string
+  show_mature: boolean
+  mature_preference_set: boolean
+  capabilities: {
+    canUpload: boolean
+    canDownload: boolean
+    canCreatePlaylists: boolean
+    canViewMature: boolean
+    canStream: boolean
+    canDelete?: boolean
+    canManage?: boolean
+  }
+  limits?: {
+    storage_quota: number
+    concurrent_streams: number
+  }
 }
 
 // ── Media ──
 
+/** Backend models.MediaCategory JSON fields */
+export interface MediaCategory {
+  name: string
+  display_name: string
+  count: number
+  tags?: string[]
+}
+
+/**
+ * Backend models.MediaItem JSON fields.
+ * Note: backend uses "name" not "title", "date_added"/"date_modified" not "created_at".
+ */
 export interface MediaItem {
   id: string
-  title: string
-  path: string
-  type: 'video' | 'audio'
+  /** Backend uses "name" not "title" */
+  name: string
+  type: 'video' | 'audio' | 'unknown'
   size: number
-  duration?: number
-  thumbnail?: string
+  duration: number
+  width?: number
+  height?: number
+  bitrate?: number
+  codec?: string
+  container?: string
   category?: string
-  is_mature?: boolean
-  created_at: string
-  updated_at?: string
+  tags?: string[]
+  thumbnail_url?: string
+  blur_hash?: string
+  date_added: string
+  date_modified: string
+  views: number
+  last_played?: string
+  is_mature: boolean
+  mature_score?: number
+  metadata?: Record<string, string>
 }
 
 export interface MediaListParams {
-  search?: string
+  page?: number
+  limit?: number
+  sort?: string
+  /** Backend query param is "sort_order" not "order" */
+  sort_order?: string
   type?: string
   category?: string
-  sort_by?: string
-  sort_order?: string
-  limit?: number
-  offset?: number
+  search?: string
+  tags?: string
+  is_mature?: string
 }
 
 export interface MediaListResponse {
   items: MediaItem[]
-  total: number
+  total_items: number
+  total_pages: number
+  /** true while the server's initial media scan is still running */
+  scanning: boolean
+  /** present (and true) only while the first-ever scan is still running */
+  initializing?: boolean
 }

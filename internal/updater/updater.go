@@ -1114,8 +1114,8 @@ func (m *Module) publishBuildStatus(s *UpdateStatus) {
 // GetActiveBuildStatus returns the live status of a running (or recently
 // completed) source build, or nil if no build has been started yet.
 func (m *Module) GetActiveBuildStatus() *UpdateStatus {
-	m.buildMu.Lock()
-	defer m.buildMu.Unlock()
+	m.buildMu.RLock()
+	defer m.buildMu.RUnlock()
 	if m.activeBuild == nil {
 		return nil
 	}

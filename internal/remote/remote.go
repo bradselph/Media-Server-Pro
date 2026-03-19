@@ -310,8 +310,8 @@ func (m *Module) discoverMedia(source config.RemoteSource) ([]*MediaItem, error)
 		return nil, fmt.Errorf("SSRF check failed for source %s: %w", source.Name, err)
 	}
 
-	// Create request
-	req, err := http.NewRequest("GET", source.URL, nil)
+	// Create request with module context so shutdown cancels in-flight HTTP requests
+	req, err := http.NewRequestWithContext(m.ctx, "GET", source.URL, nil)
 	if err != nil {
 		return nil, err
 	}

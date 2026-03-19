@@ -47,8 +47,14 @@ func NewSuggestionProfileRepository(db *gorm.DB) repositories.SuggestionProfileR
 }
 
 func (r *SuggestionProfileRepository) SaveProfile(ctx context.Context, profile *repositories.SuggestionProfileRecord) error {
-	catJSON, _ := json.Marshal(profile.CategoryScores)
-	typeJSON, _ := json.Marshal(profile.TypePreferences)
+	catJSON, err := json.Marshal(profile.CategoryScores)
+	if err != nil {
+		return fmt.Errorf("failed to marshal category_scores: %w", err)
+	}
+	typeJSON, err := json.Marshal(profile.TypePreferences)
+	if err != nil {
+		return fmt.Errorf("failed to marshal type_preferences: %w", err)
+	}
 	row := suggestionProfileRow{
 		UserID:          profile.UserID,
 		CategoryScores:  string(catJSON),

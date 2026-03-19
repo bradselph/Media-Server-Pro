@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"media-server-pro/pkg/models"
@@ -189,11 +190,12 @@ func (m *Module) CreateSessionForUser(ctx context.Context, params *CreateSession
 		return nil, ErrAccountDisabled
 	}
 
-	return m.createSession(ctx, user, &sessionRequestContext{IPAddress: params.IPAddress, UserAgent: params.UserAgent}), nil
+	return m.createSession(ctx, user, &sessionRequestContext{IPAddress: params.IPAddress, UserAgent: params.UserAgent})
 }
 
-// createSession creates a new session for a user
-func (m *Module) createSession(ctx context.Context, user *models.User, req *sessionRequestContext) *models.Session {
+// createSession creates a new session for a user.
+// Returns an error if the session cannot be persisted to the database.
+func (m *Module) createSession(ctx context.Context, user *models.User, req *sessionRequestContext) (*models.Session, error) {
 	cfg := m.config.Get()
 
 	session := &models.Session{
@@ -209,12 +211,12 @@ func (m *Module) createSession(ctx context.Context, user *models.User, req *sess
 	}
 
 	if err := m.sessionRepo.Create(ctx, session); err != nil {
-		m.log.Warn("Failed to save session to repository: %v", err)
+		return nil, fmt.Errorf("failed to persist session: %w", err)
 	}
 
 	m.sessionsMu.Lock()
 	m.sessions[session.ID] = session
 	m.sessionsMu.Unlock()
 
-	return session
+	return session, nil
 }

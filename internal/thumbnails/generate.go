@@ -200,6 +200,8 @@ func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
 
 	output, err := cmdWithContext.CombinedOutput()
 	if err != nil {
+		// Clean up any partial output file left behind on failure
+		os.Remove(opts.outputPath)
 		m.log.Debug("FFmpeg WebP failed: %v, output: %s", err, string(output))
 		return fmt.Errorf("ffmpeg webp: %w", err)
 	}

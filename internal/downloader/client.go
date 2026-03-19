@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"media-server-pro/internal/logger"
@@ -159,7 +160,7 @@ func (c *Client) ListDownloads() (*DownloadsListResponse, error) {
 
 // DeleteDownload removes a downloaded file.
 func (c *Client) DeleteDownload(filename string) error {
-	return c.del("/api/download/" + filename)
+	return c.del("/api/download/" + url.PathEscape(filename))
 }
 
 // GetSettings returns the downloader's settings.
