@@ -45,7 +45,7 @@ var log = logger.New("web")
 // should not be served by the React SPA (should return 404 instead).
 func pathExcludedFromSPA(path string) bool {
 	excludedPrefixes := []string{
-		"/api/", "/web/static/", "/media", "/download", "/thumbnail", "/thumbnails/", "/hls/", "/remote/",
+		"/api/", "/web/static/", "/_nuxt/", "/media", "/download", "/thumbnail", "/thumbnails/", "/hls/", "/remote/",
 		"/extractor/", "/ws/", "/health", "/metrics",
 	}
 	for _, prefix := range excludedPrefixes {
@@ -75,6 +75,34 @@ func registerEmbeddedStatic(r *gin.Engine) bool {
 	return true
 }
 
+// registerNuxtAssetsAtRoot serves Nuxt/Vite client chunks at /_nuxt/ when app.baseURL is /.
+// Embeds live under web/static/react/_nuxt/ (same tree as /web/static/react/_nuxt/).
+func registerNuxtAssetsAtRoot(r *gin.Engine) bool {
+	staticFS, err := fs.Sub(content, "static")
+	if err != nil {
+		return false
+	}
+	reactFS, err := fs.Sub(staticFS, "react")
+	if err != nil {
+		return false
+	}
+	nuxtFS, err := fs.Sub(reactFS, "_nuxt")
+	if err != nil {
+		// No _nuxt dir (e.g. React-only build) — skip quietly
+		return true
+	}
+	h := http.StripPrefix("/_nuxt/", http.FileServer(http.FS(nuxtFS)))
+	for _, method := range []string{"GET", "HEAD"} {
+		m := method
+		r.Handle(m, "/_nuxt/*filepath", func(c *gin.Context) {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			h.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+	log.Info("Nuxt client assets enabled at /_nuxt/")
+	return true
+}
+
 // spaRoutes are pre-registered so Gin matches them directly; other SPA paths are still
 // served via NoRoute. Keep in sync with web/nuxt-ui/pages/ and web/frontend/src/App.tsx.
 var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "/player", "/admin"}
@@ -83,6 +111,7 @@ var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "
 // This function is safe to call even if embedded files are missing.
 func RegisterStaticRoutes(r *gin.Engine) {
 	registerEmbeddedStatic(r)
+	registerNuxtAssetsAtRoot(r)
 
 	spaHandler := ginServeReactApp()
 	for _, path := range spaRoutes {

@@ -19,11 +19,11 @@ export default defineNuxtConfig({
 
   devtools: { enabled: true },
 
-  // Base URL must match the Go backend's static file serving path.
-  // The Go server embeds files from web/static/react/ and serves them
-  // at /web/static/react/ — our built assets must use this prefix.
+  // Router + browser URL must match: Go serves index.html at /, /login, /player, …
+  // (web.RegisterStaticRoutes). Build chunks are exposed at /_nuxt/* (see web/server.go).
+  // Do NOT use /web/static/react/ here — that breaks the client when the URL is /.
   app: {
-    baseURL: '/web/static/react/',
+    baseURL: '/',
     head: {
       title: 'Media Server Pro',
       meta: [

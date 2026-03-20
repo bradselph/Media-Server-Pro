@@ -51,7 +51,7 @@ forwarding is needed — the slave initiates all connections.
 
 ```bash
 # Default: Nuxt UI static export (same path the Go server embeds)
-cd web/nuxt-ui && npm ci && npm run build    # → web/static/react/
+cd web/nuxt-ui && npm ci && npm run build    # → web/static/react/ ; app baseURL is / and chunks at /_nuxt/
 
 # Legacy React bundle (same output dir; use WEB_UI=react on deploy)
 cd web/frontend && npm run build             # → web/static/react/
