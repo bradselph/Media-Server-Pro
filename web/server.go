@@ -2,9 +2,12 @@ package web
 
 import (
 	"embed"
+	"io"
 	"io/fs"
 	"mime"
 	"net/http"
+	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -32,6 +35,82 @@ func init() {
 		".woff2": "font/woff2",
 	} {
 		_ = mime.AddExtensionType(ext, typ)
+	}
+}
+
+// contentTypeForPath returns a strict Content-Type for SPA assets (nosniff-safe).
+func contentTypeForPath(rel string) string {
+	ext := strings.ToLower(path.Ext(rel))
+	if ext != "" {
+		if t := mime.TypeByExtension(ext); t != "" {
+			return t
+		}
+	}
+	switch ext {
+	case ".js", ".mjs":
+		return "text/javascript; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".json", ".map":
+		return "application/json; charset=utf-8"
+	case ".svg":
+		return "image/svg+xml"
+	case ".woff":
+		return "font/woff"
+	case ".woff2":
+		return "font/woff2"
+	case ".ttf":
+		return "font/ttf"
+	case ".webp":
+		return "image/webp"
+	case ".ico":
+		return "image/x-icon"
+	case ".html":
+		return "text/html; charset=utf-8"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+// serveEmbedFSImmutable serves one file from root with explicit Content-Type (no sniffing).
+func serveEmbedFSImmutable(c *gin.Context, root fs.FS, urlPrefix string) {
+	p := c.Request.URL.Path
+	if !strings.HasPrefix(p, urlPrefix) {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	rel := strings.TrimPrefix(strings.TrimPrefix(p, urlPrefix), "/")
+	if rel == "" || strings.Contains(rel, "..") {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	f, err := root.Open(rel)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil || stat.IsDir() {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	rs, ok := f.(io.ReadSeeker)
+	if !ok {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	ct := contentTypeForPath(rel)
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	c.Header("Content-Type", ct)
+	c.Header("Content-Length", strconv.FormatInt(stat.Size(), 10))
+	if c.Request.Method == http.MethodHead {
+		c.Status(http.StatusOK)
+		return
+	}
+	c.Status(http.StatusOK)
+	if _, err := io.Copy(c.Writer, rs); err != nil {
+		// Client disconnected — ignore
 	}
 }
 
@@ -63,12 +142,10 @@ func registerEmbeddedStatic(r *gin.Engine) bool {
 		log.Warn("Static files not available: %v", err)
 		return false
 	}
-	staticHandler := http.StripPrefix("/web/static/", http.FileServer(http.FS(staticFS)))
 	for _, method := range []string{"GET", "HEAD"} {
 		m := method
 		r.Handle(m, "/web/static/*filepath", func(c *gin.Context) {
-			c.Header("Cache-Control", "public, max-age=31536000, immutable")
-			staticHandler.ServeHTTP(c.Writer, c.Request)
+			serveEmbedFSImmutable(c, staticFS, "/web/static/")
 		})
 	}
 	log.Info("Static file serving enabled at /web/static/")
@@ -91,12 +168,10 @@ func registerNuxtAssetsAtRoot(r *gin.Engine) bool {
 		// No _nuxt dir (e.g. React-only build) — skip quietly
 		return true
 	}
-	h := http.StripPrefix("/_nuxt/", http.FileServer(http.FS(nuxtFS)))
 	for _, method := range []string{"GET", "HEAD"} {
 		m := method
 		r.Handle(m, "/_nuxt/*filepath", func(c *gin.Context) {
-			c.Header("Cache-Control", "public, max-age=31536000, immutable")
-			h.ServeHTTP(c.Writer, c.Request)
+			serveEmbedFSImmutable(c, nuxtFS, "/_nuxt/")
 		})
 	}
 	log.Info("Nuxt client assets enabled at /_nuxt/")
