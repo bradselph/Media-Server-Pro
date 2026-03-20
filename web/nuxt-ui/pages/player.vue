@@ -150,7 +150,6 @@ async function setupMediaSource(id: string) {
     el.src = mediaApi.getStreamUrl(id)
   }
   el.volume = volume.value
-  el.loop = isLooping.value
   el.playbackRate = playbackRate.value
 
   // Restore playback position
@@ -205,7 +204,10 @@ function handlePause() {
 
 function handleEnded() {
   isPlaying.value = false
-  saveCurrentPosition()
+  // With native loop=true, `ended` is often skipped; if it fires, avoid persisting end position as resume point.
+  if (!isLooping.value) {
+    saveCurrentPosition()
+  }
 }
 
 // ── Controls ──
@@ -258,8 +260,6 @@ function cycleSpeed() {
 
 function toggleLoop() {
   isLooping.value = !isLooping.value
-  const el = activeElement.value
-  if (el) el.loop = isLooping.value
 }
 
 function handleFullscreen() {
@@ -378,6 +378,10 @@ function handleKeydown(e: KeyboardEvent) {
       e.preventDefault()
       toggleMute()
       break
+    case 'r':
+      e.preventDefault()
+      toggleLoop()
+      break
     case 'home':
       e.preventDefault()
       seekTo(0)
@@ -464,6 +468,7 @@ onUnmounted(() => {
               class="w-full h-full object-contain"
               preload="auto"
               playsinline
+              :loop="isLooping"
               @timeupdate="handleTimeUpdate"
               @loadedmetadata="handleLoadedMetadata"
               @durationchange="handleDurationChange"
@@ -536,15 +541,10 @@ onUnmounted(() => {
                   {{ qualityBadge }}
                 </span>
 
-                <!-- Speed badge -->
-                <span v-if="playbackRate !== 1" class="text-xs bg-white/20 px-1.5 py-0.5 rounded font-mono">
-                  {{ playbackRate }}x
-                </span>
-
                 <!-- Loop toggle -->
                 <button
                   :class="['p-1.5 rounded transition-colors', isLooping ? 'bg-primary/50 text-white' : 'hover:bg-white/20']"
-                  title="Loop"
+                  title="Loop (R)"
                   @click="toggleLoop"
                 >
                   <UIcon name="i-lucide-repeat" class="text-lg" />
@@ -568,6 +568,7 @@ onUnmounted(() => {
             <audio
               ref="audioRef"
               preload="auto"
+              :loop="isLooping"
               @timeupdate="handleTimeUpdate"
               @loadedmetadata="handleLoadedMetadata"
               @durationchange="handleDurationChange"
@@ -619,7 +620,7 @@ onUnmounted(() => {
 
                   <button
                     :class="['p-2 rounded-full transition-colors', isLooping ? 'text-primary bg-primary/10' : 'hover:bg-(--ui-bg-elevated)']"
-                    title="Loop"
+                    title="Loop (R)"
                     @click="toggleLoop"
                   >
                     <UIcon name="i-lucide-repeat" class="text-lg" />
