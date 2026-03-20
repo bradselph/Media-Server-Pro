@@ -985,9 +985,9 @@ run_or_dry remote "
     git remote set-url origin '$CLONE_URL'
   fi
 
+  # Force local branch to match remote (discards VPS edits to tracked files e.g. package-lock from npm install).
   git fetch origin '$BRANCH'
-  git checkout '$BRANCH'
-  git reset --hard 'origin/$BRANCH'
+  git checkout -f -B '$BRANCH' 'origin/$BRANCH'
 
   echo \"[deploy] HEAD is now: \$(git log --oneline -1)\"
 "
