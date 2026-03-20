@@ -757,7 +757,7 @@ if $SETUP; then
     if command -v ufw &>/dev/null; then
       echo '[setup] Configuring UFW firewall...'
       sudo ufw allow ssh 2>/dev/null || true
-      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 3000)
+      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 8080)
       sudo ufw allow \"\${APP_PORT}/tcp\" 2>/dev/null || true
       sudo ufw --force enable 2>/dev/null || true
       echo \"[setup] UFW: opened port \${APP_PORT}/tcp\"
@@ -986,8 +986,9 @@ run_or_dry remote "
   fi
 
   # Force local branch to match remote (discards VPS edits to tracked files e.g. package-lock from npm install).
-  git fetch origin '$BRANCH'
-  git checkout -f -B '$BRANCH' 'origin/$BRANCH'
+  export GIT_TERMINAL_PROMPT=0
+  git fetch -q origin '$BRANCH'
+  git checkout -q -f -B '$BRANCH' 'origin/$BRANCH'
 
   echo \"[deploy] HEAD is now: \$(git log --oneline -1)\"
 "
@@ -1109,13 +1110,14 @@ run_or_dry remote "
 
   if [ -f package-lock.json ]; then
     echo '[deploy] package-lock.json found — npm ci'
-    if ! npm ci; then
+    # --no-audit/--no-fund: keep deploy logs readable; CI runs npm audit separately
+    if ! npm ci --no-audit --no-fund; then
       echo '[deploy] npm ci failed — falling back to npm install' >&2
-      npm install
+      npm install --no-audit --no-fund
     fi
   else
     echo '[deploy] No package-lock.json — npm install'
-    npm install
+    npm install --no-audit --no-fund
   fi
 
   npm run build
@@ -1192,7 +1194,7 @@ run_or_dry remote "
   fi
 
   # Poll health endpoint until fully ready (200) or timeout after 90s
-  PORT=\$(grep -o 'SERVER_PORT=[0-9]*' '$DEPLOY_DIR/.env' 2>/dev/null | cut -d= -f2 || echo 8080)
+  PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 8080)
   HEALTH_URL=\"http://127.0.0.1:\${PORT}/health\"
   echo \"[deploy] Polling \$HEALTH_URL (waiting for media scan to complete)...\"
   OK=false

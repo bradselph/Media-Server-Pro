@@ -48,6 +48,10 @@ export default defineNuxtConfig({
   },
 
   vite: {
+    build: {
+      // Vendor chunks (Vue + Nuxt UI) exceed default 500 kB warning; expected for admin-heavy UI.
+      chunkSizeWarningLimit: 900,
+    },
     server: {
       proxy: {
         '/api': 'http://localhost:8080',
