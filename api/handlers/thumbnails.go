@@ -138,7 +138,8 @@ func (h *Handler) tryServeReceiverThumbnail(c *gin.Context, id string) bool {
 	}
 	ph, pErr := h.thumbnails.GetPlaceholderPath(placeholderType)
 	if pErr != nil {
-		return false
+		writeError(c, http.StatusInternalServerError, "Failed to get placeholder")
+		return true
 	}
 	c.Header("Cache-Control", "public, max-age=86400")
 	c.Header("Content-Type", "image/jpeg")
