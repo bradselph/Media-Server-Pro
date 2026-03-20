@@ -1103,14 +1103,18 @@ run_or_dry remote "
     exit 1
   fi
 
+  # Fresh tree avoids npm ci ENOTEMPTY on deep paths (e.g. @capsizecss under @nuxt/fonts).
+  echo '[deploy] Removing node_modules and .nuxt for a clean install...'
+  rm -rf node_modules .nuxt
+
   if [ -f package-lock.json ]; then
-    echo '[deploy] package-lock.json found — trying npm ci'
-    if ! npm ci 2>&1; then
-      echo '[deploy] npm ci failed (lock file out of sync) — falling back to npm install'
+    echo '[deploy] package-lock.json found — npm ci'
+    if ! npm ci; then
+      echo '[deploy] npm ci failed — falling back to npm install' >&2
       npm install
     fi
   else
-    echo '[deploy] No package-lock.json — using npm install'
+    echo '[deploy] No package-lock.json — npm install'
     npm install
   fi
 
