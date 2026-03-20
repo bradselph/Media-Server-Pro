@@ -37,6 +37,8 @@
 #   SERVICE        systemd service   (default: media-server)
 #   GITHUB_TOKEN   GitHub PAT        (required for private repos)
 #   REPO_URL       Repository URL    (default: github.com/bradselph/Media-Server-Pro.git)
+#   WEB_UI         Frontend to build (default: nuxt). Outputs to web/static/react/ for Go embed.
+#                  Set WEB_UI=react in .deploy.env to build web/frontend (Vite) instead.
 #
 # Slave variables:
 #   MASTER_URL         Master server URL       (required)
@@ -81,6 +83,8 @@ MASTER_URL="${MASTER_URL:-}"
 
 GO_VERSION="1.26.1"
 NODE_MAJOR="22"
+# Embedded SPA: nuxt (web/nuxt-ui) or react (web/frontend) → web/static/react/
+WEB_UI="${WEB_UI:-nuxt}"
 
 # ── Slave defaults ───────────────────────────────────────────────────────────
 SLAVE_HOST="${SLAVE_HOST:-}"
@@ -1087,9 +1091,17 @@ run_or_dry remote "
 
   cd '$DEPLOY_DIR'
 
-  # ── React frontend (always built before Go binary) ─────────────────────────
-  echo '[deploy] Building React frontend...'
-  cd web/frontend
+  # ── Web UI → web/static/react/ (embedded by Go; see WEB_UI in .deploy.env) ──
+  if [ '${WEB_UI}' = nuxt ]; then
+    echo '[deploy] Building Nuxt UI (web/nuxt-ui → web/static/react)...'
+    cd web/nuxt-ui
+  elif [ '${WEB_UI}' = react ]; then
+    echo '[deploy] Building React frontend (web/frontend → web/static/react)...'
+    cd web/frontend
+  else
+    echo '[deploy] ERROR: WEB_UI must be nuxt or react (got: ${WEB_UI})' >&2
+    exit 1
+  fi
 
   if [ -f package-lock.json ]; then
     echo '[deploy] package-lock.json found — trying npm ci'
@@ -1104,7 +1116,7 @@ run_or_dry remote "
 
   npm run build
   cd ../..
-  echo '[deploy] React build complete'
+  echo '[deploy] Web UI build complete (WEB_UI=${WEB_UI})'
 
   # Stop service before replacing binary
   sudo systemctl stop '$SERVICE' 2>/dev/null || true

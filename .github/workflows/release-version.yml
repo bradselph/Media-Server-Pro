@@ -163,8 +163,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build frontend
-        working-directory: web/frontend
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/nuxt-ui/package-lock.json
+
+      - name: Build embedded web UI (Nuxt → web/static/react)
+        working-directory: web/nuxt-ui
         run: |
           npm ci
           npm run build

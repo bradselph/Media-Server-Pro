@@ -53,7 +53,7 @@ func registerEmbeddedStatic(r *gin.Engine) bool {
 }
 
 // spaRoutes are pre-registered so Gin matches them directly; other SPA paths are still
-// served via NoRoute. Keep in sync with web/frontend/src/App.tsx when adding top-level routes.
+// served via NoRoute. Keep in sync with web/nuxt-ui/pages/ and web/frontend/src/App.tsx.
 var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "/player", "/admin"}
 
 // RegisterStaticRoutes sets up static file serving and template routes.
@@ -83,15 +83,21 @@ var (
 	cachedIndexErr error
 )
 
-// ginServeReactApp returns a gin handler that serves the React SPA's index.html.
+// ginServeReactApp returns a gin handler that serves the embedded SPA index.html
+// (Nuxt or React build output under web/static/react/).
 // Index HTML is read once on first request and cached to avoid per-request embed reads.
 func ginServeReactApp() gin.HandlerFunc {
 	const fallbackHTML = `<!DOCTYPE html>
 <html>
 <head><title>Page Not Found</title></head>
 <body>
-<h1>React App Not Built</h1>
-<p>The React frontend has not been built yet. Run: cd web/frontend && npm run build</p>
+<h1>Web UI Not Built</h1>
+<p>The SPA has not been built into the binary yet. From the repo root run one of:</p>
+<ul>
+<li><code>cd web/nuxt-ui &amp;&amp; npm ci &amp;&amp; npm run build</code> (default deploy)</li>
+<li><code>cd web/frontend &amp;&amp; npm ci &amp;&amp; npm run build</code> (set <code>WEB_UI=react</code> for deploy)</li>
+</ul>
+<p>Then rebuild the Go server so <code>web/static/react/</code> is embedded.</p>
 <p><a href="/">Return to Home</a></p>
 </body>
 </html>`
@@ -100,7 +106,7 @@ func ginServeReactApp() gin.HandlerFunc {
 			cachedIndex, cachedIndexErr = content.ReadFile("static/react/index.html")
 		})
 		if cachedIndexErr != nil {
-			log.Warn("React SPA not available, falling back: %v", cachedIndexErr)
+			log.Warn("Embedded SPA (web/static/react) not available, falling back: %v", cachedIndexErr)
 			c.Header("Content-Type", "text/html; charset=utf-8")
 			c.Status(http.StatusNotFound)
 			_, _ = c.Writer.WriteString(fallbackHTML)
