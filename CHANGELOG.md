@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.104.0] - 2026-03-20 (minor)
+
+- Merge pull request #103 from bradselph/development
+- chore(deploy): quieter git/npm, robust SERVER_PORT, align UFW default
+- fix(deploy): force VPS branch to match origin (clean package-lock drift)
+- fix(deploy): clean node_modules before npm ci to avoid ENOTEMPTY
+- refactor: update frontend structure and deployment process
+- fix(todo): implement error response for receiver thumbnail placeholders
+- fix: resolve medium severity audit issues + build Nuxt UI pages, bump to v0.105.0
+- feat: scaffold Nuxt UI v3 frontend project
+- fix: resolve 20 critical and high severity audit findings, bump to v0.104.0
+
+
 ## [0.103.0] - 2026-03-18 (minor)
 
 - Merge pull request #102 from bradselph/development
