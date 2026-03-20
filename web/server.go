@@ -3,6 +3,7 @@ package web
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"strings"
 	"sync"
@@ -11,6 +12,28 @@ import (
 
 	"media-server-pro/internal/logger"
 )
+
+func init() {
+	// Minimal and VPS hosts often lack full /etc/mime.types. Without a known type,
+	// http.FileServer falls back to sniffing and can label minified JS as text/plain;
+	// X-Content-Type-Options: nosniff then blocks module scripts (strict MIME check).
+	for ext, typ := range map[string]string{
+		".css":   "text/css; charset=utf-8",
+		".html":  "text/html; charset=utf-8",
+		".ico":   "image/x-icon",
+		".js":    "text/javascript; charset=utf-8",
+		".json":  "application/json; charset=utf-8",
+		".map":   "application/json; charset=utf-8",
+		".mjs":   "text/javascript; charset=utf-8",
+		".svg":   "image/svg+xml",
+		".ttf":   "font/ttf",
+		".webp":  "image/webp",
+		".woff":  "font/woff",
+		".woff2": "font/woff2",
+	} {
+		_ = mime.AddExtensionType(ext, typ)
+	}
+}
 
 //go:embed static/*
 var content embed.FS
