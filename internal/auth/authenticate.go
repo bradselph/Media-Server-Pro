@@ -87,7 +87,10 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		return nil, ErrInvalidCredentials
 	}
 	m.clearAttempts(req.IPAddress)
-	session := m.createSession(ctx, user, &sessionRequestContext{IPAddress: req.IPAddress, UserAgent: req.UserAgent})
+	session, err := m.createSession(ctx, user, &sessionRequestContext{IPAddress: req.IPAddress, UserAgent: req.UserAgent})
+	if err != nil {
+		return nil, fmt.Errorf("session creation failed: %w", err)
+	}
 	// Copy user before mutation to avoid data race on shared pointer
 	userCopy := *user
 	userCopy.LastLogin = new(time.Now())

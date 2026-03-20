@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Media Server Pro is a modular, fault-tolerant media streaming server written in Go with a Gin HTTP framework. It
 provides video/audio streaming with HLS adaptive streaming, thumbnail generation, analytics, user authentication,
-mature content scanning, master-slave media distribution via WebSocket tunnels, and an admin panel. The frontend is a
-React 19 + TypeScript + Vite SPA served from `web/static/react/`.
+mature content scanning, master-slave media distribution via WebSocket tunnels, and an admin panel. The primary
+embedded UI is **Nuxt 3 + Nuxt UI** (`web/nuxt-ui/`), built to `web/static/react/` for `//go:embed`. The legacy
+**React 19 + Vite** app (`web/frontend/`) can still be built to the same directory (set `WEB_UI=react` in deploy).
 
 ## Build and Run Commands
 
@@ -46,15 +47,20 @@ go build -o media-receiver ./cmd/media-receiver       # Linux/Mac
 The slave scans local media directories and pushes the catalog to the master via WebSocket. No public IP or port
 forwarding is needed — the slave initiates all connections.
 
-### Frontend
+### Frontend (embedded SPA)
 
 ```bash
-cd web/frontend && npm run build    # builds to web/static/react/
+# Default: Nuxt UI static export (same path the Go server embeds)
+cd web/nuxt-ui && npm ci && npm run build    # → web/static/react/
+
+# Legacy React bundle (same output dir; use WEB_UI=react on deploy)
+cd web/frontend && npm run build             # → web/static/react/
 ```
 
-The built bundle is embedded into the Go binary via `//go:embed` in `web/server.go`. An optional on-disk directory
-(`directories.custom_static` or `CUSTOM_STATIC_DIR`) can override embedded assets — files on disk take precedence.
-If the directory is missing or empty, embedded defaults are used. The binary remains self-contained by default.
+`deploy.sh` builds **Nuxt** by default (`WEB_UI=nuxt`). Override with `WEB_UI=react` in `.deploy.env` for the Vite app.
+
+The built files are embedded into the Go binary via `//go:embed static/*` in `web/server.go`. The binary remains
+self-contained by default.
 
 ## Architecture
 

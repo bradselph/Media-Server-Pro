@@ -653,16 +653,32 @@ func (m *Module) migratePlaylistItemsPK(ctx context.Context) error {
 
 	m.log.Info("Migrating playlist_items PK from composite to id column")
 
+	// Wrap both UUID population and PK change in a transaction so if
+	// ALTER TABLE fails, the UUID updates are rolled back.
+	tx, err := m.sqlDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin playlist_items PK migration tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
 	// Populate any empty id values with UUIDs
-	_, err = m.sqlDB.ExecContext(ctx, `UPDATE playlist_items SET id = UUID() WHERE id = '' OR id IS NULL`)
+	_, err = tx.ExecContext(ctx, `UPDATE playlist_items SET id = UUID() WHERE id = '' OR id IS NULL`)
 	if err != nil {
 		return fmt.Errorf("populate playlist_items IDs: %w", err)
 	}
 
 	// Drop old composite PK and add new single-column PK
-	_, err = m.sqlDB.ExecContext(ctx, `ALTER TABLE playlist_items DROP PRIMARY KEY, ADD PRIMARY KEY (id)`)
+	_, err = tx.ExecContext(ctx, `ALTER TABLE playlist_items DROP PRIMARY KEY, ADD PRIMARY KEY (id)`)
 	if err != nil {
 		return fmt.Errorf("migrate playlist_items PK: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit playlist_items PK migration: %w", err)
 	}
 
 	m.log.Info("playlist_items PK migration complete")

@@ -37,6 +37,8 @@
 #   SERVICE        systemd service   (default: media-server)
 #   GITHUB_TOKEN   GitHub PAT        (required for private repos)
 #   REPO_URL       Repository URL    (default: github.com/bradselph/Media-Server-Pro.git)
+#   WEB_UI         Frontend to build (default: nuxt). Outputs to web/static/react/ for Go embed.
+#                  Set WEB_UI=react in .deploy.env to build web/frontend (Vite) instead.
 #
 # Slave variables:
 #   MASTER_URL         Master server URL       (required)
@@ -81,6 +83,8 @@ MASTER_URL="${MASTER_URL:-}"
 
 GO_VERSION="1.26.1"
 NODE_MAJOR="22"
+# Embedded SPA: nuxt (web/nuxt-ui) or react (web/frontend) → web/static/react/
+WEB_UI="${WEB_UI:-nuxt}"
 
 # ── Slave defaults ───────────────────────────────────────────────────────────
 SLAVE_HOST="${SLAVE_HOST:-}"
@@ -753,7 +757,7 @@ if $SETUP; then
     if command -v ufw &>/dev/null; then
       echo '[setup] Configuring UFW firewall...'
       sudo ufw allow ssh 2>/dev/null || true
-      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 3000)
+      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 8080)
       sudo ufw allow \"\${APP_PORT}/tcp\" 2>/dev/null || true
       sudo ufw --force enable 2>/dev/null || true
       echo \"[setup] UFW: opened port \${APP_PORT}/tcp\"
@@ -981,9 +985,10 @@ run_or_dry remote "
     git remote set-url origin '$CLONE_URL'
   fi
 
-  git fetch origin '$BRANCH'
-  git checkout '$BRANCH'
-  git reset --hard 'origin/$BRANCH'
+  # Force local branch to match remote (discards VPS edits to tracked files e.g. package-lock from npm install).
+  export GIT_TERMINAL_PROMPT=0
+  git fetch -q origin '$BRANCH'
+  git checkout -q -f -B '$BRANCH' 'origin/$BRANCH'
 
   echo \"[deploy] HEAD is now: \$(git log --oneline -1)\"
 "
@@ -1087,24 +1092,37 @@ run_or_dry remote "
 
   cd '$DEPLOY_DIR'
 
-  # ── React frontend (always built before Go binary) ─────────────────────────
-  echo '[deploy] Building React frontend...'
-  cd web/frontend
+  # ── Web UI → web/static/react/ (embedded by Go; see WEB_UI in .deploy.env) ──
+  if [ '${WEB_UI}' = nuxt ]; then
+    echo '[deploy] Building Nuxt UI (web/nuxt-ui → web/static/react)...'
+    cd web/nuxt-ui
+  elif [ '${WEB_UI}' = react ]; then
+    echo '[deploy] Building React frontend (web/frontend → web/static/react)...'
+    cd web/frontend
+  else
+    echo '[deploy] ERROR: WEB_UI must be nuxt or react (got: ${WEB_UI})' >&2
+    exit 1
+  fi
+
+  # Fresh tree avoids npm ci ENOTEMPTY on deep paths (e.g. @capsizecss under @nuxt/fonts).
+  echo '[deploy] Removing node_modules and .nuxt for a clean install...'
+  rm -rf node_modules .nuxt
 
   if [ -f package-lock.json ]; then
-    echo '[deploy] package-lock.json found — trying npm ci'
-    if ! npm ci 2>&1; then
-      echo '[deploy] npm ci failed (lock file out of sync) — falling back to npm install'
-      npm install
+    echo '[deploy] package-lock.json found — npm ci'
+    # --no-audit/--no-fund: keep deploy logs readable; CI runs npm audit separately
+    if ! npm ci --no-audit --no-fund; then
+      echo '[deploy] npm ci failed — falling back to npm install' >&2
+      npm install --no-audit --no-fund
     fi
   else
-    echo '[deploy] No package-lock.json — using npm install'
-    npm install
+    echo '[deploy] No package-lock.json — npm install'
+    npm install --no-audit --no-fund
   fi
 
   npm run build
   cd ../..
-  echo '[deploy] React build complete'
+  echo '[deploy] Web UI build complete (WEB_UI=${WEB_UI})'
 
   # Stop service before replacing binary
   sudo systemctl stop '$SERVICE' 2>/dev/null || true
@@ -1176,7 +1194,7 @@ run_or_dry remote "
   fi
 
   # Poll health endpoint until fully ready (200) or timeout after 90s
-  PORT=\$(grep -o 'SERVER_PORT=[0-9]*' '$DEPLOY_DIR/.env' 2>/dev/null | cut -d= -f2 || echo 8080)
+  PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 8080)
   HEALTH_URL=\"http://127.0.0.1:\${PORT}/health\"
   echo \"[deploy] Polling \$HEALTH_URL (waiting for media scan to complete)...\"
   OK=false

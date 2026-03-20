@@ -102,6 +102,7 @@ func (m *Module) removeSegmentDirAndState(jobID string) bool {
 			m.log.Warn("Failed to delete HLS job %s from DB during cleanup: %v", jobID, err)
 		}
 	}
+	m.cleanQualityLocks(jobID)
 	return true
 }
 
@@ -212,6 +213,7 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 		}
 	}
 
+	m.cleanQualityLocks(jobID)
 	m.log.Debug("Removed inactive HLS job: %s (last access: %v)", jobID, lastAccess)
 	return true
 }

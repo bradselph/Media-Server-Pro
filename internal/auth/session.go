@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"media-server-pro/pkg/models"
@@ -124,9 +125,12 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	if !user.Enabled {
 		return nil, nil, ErrAccountDisabled
 	}
+	// Update LastActivity under write lock to avoid data race with concurrent ValidateSession calls
+	m.sessionsMu.Lock()
 	session.LastActivity = time.Now()
-	// Persist LastActivity in background; pass copy to avoid data race with callers
 	sessionCopy := *session
+	m.sessionsMu.Unlock()
+	// Persist LastActivity in background using the safe copy
 	go func() {
 		_ = m.sessionRepo.Update(context.Background(), &sessionCopy)
 	}()
@@ -186,11 +190,12 @@ func (m *Module) CreateSessionForUser(ctx context.Context, params *CreateSession
 		return nil, ErrAccountDisabled
 	}
 
-	return m.createSession(ctx, user, &sessionRequestContext{IPAddress: params.IPAddress, UserAgent: params.UserAgent}), nil
+	return m.createSession(ctx, user, &sessionRequestContext{IPAddress: params.IPAddress, UserAgent: params.UserAgent})
 }
 
-// createSession creates a new session for a user
-func (m *Module) createSession(ctx context.Context, user *models.User, req *sessionRequestContext) *models.Session {
+// createSession creates a new session for a user.
+// Returns an error if the session cannot be persisted to the database.
+func (m *Module) createSession(ctx context.Context, user *models.User, req *sessionRequestContext) (*models.Session, error) {
 	cfg := m.config.Get()
 
 	session := &models.Session{
@@ -206,12 +211,12 @@ func (m *Module) createSession(ctx context.Context, user *models.User, req *sess
 	}
 
 	if err := m.sessionRepo.Create(ctx, session); err != nil {
-		m.log.Warn("Failed to save session to repository: %v", err)
+		return nil, fmt.Errorf("failed to persist session: %w", err)
 	}
 
 	m.sessionsMu.Lock()
 	m.sessions[session.ID] = session
 	m.sessionsMu.Unlock()
 
-	return session
+	return session, nil
 }

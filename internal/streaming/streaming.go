@@ -389,6 +389,8 @@ func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize,
 
 // streamContent streams file content to the response writer using buffer pool.
 // Handles short writes by retrying remaining bytes until all data is sent.
+// Stats are accumulated locally and flushed once after the loop completes
+// to avoid acquiring mutexes on every chunk.
 func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end, chunkSize int64, session *models.StreamSession) error {
 	// Seek to start position
 	if _, err := file.Seek(start, io.SeekStart); err != nil {
@@ -407,6 +409,7 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 	}
 
 	remaining := end - start + 1
+	var accumulatedBytes int64
 
 	for remaining > 0 {
 		toRead := effectiveChunkSize
@@ -416,6 +419,10 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 
 		n, err := file.Read(buf[:toRead])
 		if err != nil && err != io.EOF {
+			// Flush accumulated stats before returning on error
+			if accumulatedBytes > 0 {
+				m.updateSessionStats(session.ID, accumulatedBytes)
+			}
 			return fmt.Errorf("read error: %w", err)
 		}
 		if n == 0 {
@@ -428,7 +435,10 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 		for totalWritten < n {
 			written, err := w.Write(chunk[totalWritten:])
 			if err != nil {
-				// Client disconnected
+				// Client disconnected — flush accumulated stats before returning
+				if accumulatedBytes > 0 {
+					m.updateSessionStats(session.ID, accumulatedBytes)
+				}
 				m.log.Debug("Client disconnected during stream: %v", err)
 				return nil
 			}
@@ -436,14 +446,17 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 		}
 
 		remaining -= int64(totalWritten)
-
-		// Update session stats
-		m.updateSessionStats(session.ID, int64(totalWritten))
+		accumulatedBytes += int64(totalWritten)
 
 		// Flush if supported
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
+	}
+
+	// Flush all accumulated stats in a single call
+	if accumulatedBytes > 0 {
+		m.updateSessionStats(session.ID, accumulatedBytes)
 	}
 
 	return nil

@@ -104,11 +104,10 @@ func (ts *TestServer) AuthRequest(method, path string, body io.Reader, sessionID
 }
 
 // ParseJSON reads and decodes the response body as a JSON object.
-// It closes the response body after reading. The response envelope
-// from the server is: {"success": bool, "data": ..., "error": "..."}.
+// It does not close the body; the caller should defer resp.Body.Close()
+// immediately after Request / AuthRequest (same function) so linters and
+// connection reuse stay correct. Envelope: {"success", "data", "error"}.
 func (ts *TestServer) ParseJSON(resp *http.Response) map[string]any {
-	defer resp.Body.Close()
-
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		panic("testutil.ParseJSON: read body: " + err.Error())

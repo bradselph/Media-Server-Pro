@@ -244,5 +244,5 @@ func (r *UserRepository) List(ctx context.Context) ([]*models.User, error) {
 func (r *UserRepository) IncrementStorageUsed(ctx context.Context, userID string, delta int64) error {
 	return r.db.WithContext(ctx).Model(&models.User{}).
 		Where("id = ?", userID).
-		Update("storage_used", gorm.Expr("COALESCE(storage_used, 0) + ?", delta)).Error
+		Update("storage_used", gorm.Expr("GREATEST(COALESCE(storage_used, 0) + ?, 0)", delta)).Error
 }

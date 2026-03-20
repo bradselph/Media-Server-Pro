@@ -290,7 +290,7 @@ func (m *Module) recordTaskResult(task *Task, err error, start time.Time) {
 	m.log.Debug("Task %s completed in %v", task.Name, time.Since(start))
 }
 
-// executeTask runs a single task execution
+// executeTask runs a single task execution with panic recovery.
 func (m *Module) executeTask(ctx context.Context, task *Task) {
 	m.mu.Lock()
 	if task.Running {
@@ -325,7 +325,18 @@ func (m *Module) executeTask(ctx context.Context, task *Task) {
 		task.stopMu.Unlock()
 	}()
 
-	err := task.Func(ctx)
+	// Recover from panics so a single misbehaving task doesn't permanently
+	// mark itself as Running=true and block future executions.
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("task panicked: %v", r)
+				m.log.Error("Task %s panicked: %v", task.Name, r)
+			}
+		}()
+		err = task.Func(ctx)
+	}()
 	m.recordTaskResult(task, err, start)
 }
 
@@ -343,6 +354,10 @@ func (m *Module) RunNow(taskID string) error {
 
 	if ctx == nil {
 		return fmt.Errorf("task scheduler not started")
+	}
+
+	if ctx.Err() != nil {
+		return fmt.Errorf("task scheduler is stopping")
 	}
 
 	m.wg.Add(1)

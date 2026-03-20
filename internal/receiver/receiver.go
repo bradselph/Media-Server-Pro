@@ -289,6 +289,11 @@ func (m *Module) loadFromDB() {
 }
 
 func (m *Module) healthCheckLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			m.log.Error("healthCheckLoop panicked: %v", r)
+		}
+	}()
 	for {
 		select {
 		case <-m.healthTicker.C:

@@ -274,6 +274,7 @@ func (m *Module) DeleteJob(jobID string) error {
 			m.log.Warn("Failed to delete HLS job %s from DB: %v", jobID, err)
 		}
 	}
+	m.cleanQualityLocks(jobID)
 	m.log.Info("Deleted HLS job %s", jobID)
 	return nil
 }
@@ -297,7 +298,7 @@ func (m *Module) saveJobs() error {
 	m.jobsMu.RLock()
 	jobs := make([]*models.HLSJob, 0, len(m.jobs))
 	for _, j := range m.jobs {
-		jobs = append(jobs, j)
+		jobs = append(jobs, copyHLSJob(j))
 	}
 	m.jobsMu.RUnlock()
 
