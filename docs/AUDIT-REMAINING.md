@@ -13,7 +13,7 @@ Five fix loops completed: config/docs (CONFIG-NOTES, AUDIT-REMAINING), cleanup (
 | 5 | `DownloaderTab.tsx`: nested ternary for download progress bar color | **Resolved** |
 | 6 | `DownloaderTab.tsx`: nested ternaries for dependency cell value | **Resolved** |
 | 7 | `DownloaderTab.tsx`: Settings KV table missing header row | **Resolved** |
-| 8 | `endpoints.ts`: `listMedia` `!=` for optional numbers | Pending |
+| 8 | `endpoints.ts`: `listMedia` `!=` for optional numbers | **Resolved** |
 | 9 | `DownloaderTab.tsx` StatusSection: `!= null` health fields | Pending |
 | 10 | `ContentReviewTab.tsx` duplicate muted color; `playerHLS.ts` unused eslint-disable | Pending |
 
