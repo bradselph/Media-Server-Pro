@@ -13,6 +13,12 @@ import {useDownloaderWebSocket} from '@/hooks/useDownloaderWebSocket'
 import {errMsg, formatBytes, formatUptime} from './adminUtils'
 import {SubTabs} from './helpers'
 
+function downloadProgressBarColor(status: string): string {
+    if (status === 'error') return '#ef4444'
+    if (status === 'complete') return '#22c55e'
+    return '#3b82f6'
+}
+
 export function DownloaderTab() {
     const [sub, setSub] = useState('download')
 
@@ -184,8 +190,7 @@ function DownloadSection({online}: { online: boolean }) {
                                 <div style={{
                                     height: '100%', borderRadius: '3px',
                                     width: `${Math.min(dl.progress ?? 0, 100)}%`,
-                                    background: dl.status === 'error' ? '#ef4444'
-                                        : dl.status === 'complete' ? '#22c55e' : '#3b82f6',
+                                    background: downloadProgressBarColor(dl.status),
                                     transition: 'width 0.3s',
                                 }}/>
                             </div>

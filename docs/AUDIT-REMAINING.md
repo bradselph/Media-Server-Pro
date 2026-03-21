@@ -10,7 +10,7 @@ Five fix loops completed: config/docs (CONFIG-NOTES, AUDIT-REMAINING), cleanup (
 | 2 | `themeStore.ts`: redundant `ThemeId` alias (`string`) tripped sonarjs | **Resolved** |
 | 3 | `useDownloaderWebSocket.ts`: `connect` before declare + deep nesting; timer cleanup snapshot | **Resolved** |
 | 4 | `Toast.tsx`: nested functions depth (dismiss toast) | **Resolved** |
-| 5 | `DownloaderTab.tsx`: nested ternary for download progress bar color | Pending |
+| 5 | `DownloaderTab.tsx`: nested ternary for download progress bar color | **Resolved** |
 | 6 | `DownloaderTab.tsx`: nested ternaries for dependency cell value | Pending |
 | 7 | `DownloaderTab.tsx`: Settings KV table missing header row | Pending |
 | 8 | `endpoints.ts`: `listMedia` `!=` for optional numbers | Pending |
