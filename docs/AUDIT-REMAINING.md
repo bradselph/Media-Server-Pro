@@ -14,7 +14,7 @@ Five fix loops completed: config/docs (CONFIG-NOTES, AUDIT-REMAINING), cleanup (
 | 6 | `DownloaderTab.tsx`: nested ternaries for dependency cell value | **Resolved** |
 | 7 | `DownloaderTab.tsx`: Settings KV table missing header row | **Resolved** |
 | 8 | `endpoints.ts`: `listMedia` `!=` for optional numbers | **Resolved** |
-| 9 | `DownloaderTab.tsx` StatusSection: `!= null` health fields | Pending |
+| 9 | `DownloaderTab.tsx` StatusSection: `!= null` health fields | **Resolved** |
 | 10 | `ContentReviewTab.tsx` duplicate muted color; `playerHLS.ts` unused eslint-disable | Pending |
 
 ### TODO (discovered, out of scope for loop above)
