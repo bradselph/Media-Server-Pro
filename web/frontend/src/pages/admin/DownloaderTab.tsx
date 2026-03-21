@@ -19,6 +19,15 @@ function downloadProgressBarColor(status: string): string {
     return '#3b82f6'
 }
 
+function formatDependencyCellValue(val: unknown): string {
+    if (typeof val === 'string') return val
+    if (val && typeof val === 'object' && 'version' in val) {
+        return String((val as { version?: string }).version ?? '—')
+    }
+    if (typeof val === 'object' && val !== null) return '—'
+    return String(val ?? '—')
+}
+
 export function DownloaderTab() {
     const [sub, setSub] = useState('download')
 
@@ -417,15 +426,7 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                             {Object.entries(health.dependencies).map(([name, val]) => (
                                 <tr key={name}>
                                     <td>{name}</td>
-                                    <td>
-                                        {typeof val === 'string'
-                                            ? val
-                                            : val && typeof val === 'object' && 'version' in val
-                                                ? String((val as { version?: string }).version ?? '—')
-                                                : typeof val === 'object' && val !== null
-                                                    ? '—'
-                                                    : String(val ?? '—')}
-                                    </td>
+                                    <td>{formatDependencyCellValue(val)}</td>
                                 </tr>
                             ))}
                             </tbody>
@@ -439,6 +440,12 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                     <h4 style={{marginBottom: '8px'}}>Settings</h4>
                     <div className="admin-card" style={{marginBottom: '16px'}}>
                         <table className="admin-kv-table">
+                            <thead>
+                            <tr>
+                                <th scope="col">Setting</th>
+                                <th scope="col">Value</th>
+                            </tr>
+                            </thead>
                             <tbody>
                             <tr>
                                 <td>Max Concurrent</td>
