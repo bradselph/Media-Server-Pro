@@ -66,7 +66,6 @@ function useHlsCheckEffect(
         })
     // Depend on media?.type instead of the full media object to avoid re-running
     // on every React Query refetch (which creates a new object reference).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mediaId, media?.type, hlsEnabled, videoRef, setters])
 }
 
