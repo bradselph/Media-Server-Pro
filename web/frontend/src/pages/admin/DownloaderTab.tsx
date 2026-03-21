@@ -389,19 +389,19 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                             </span>
                         </td>
                     </tr>
-                    {health?.online && health.activeDownloads != null && (
+                    {health?.online && typeof health.activeDownloads === 'number' && (
                         <tr>
                             <td>Active Downloads</td>
                             <td>{health.activeDownloads}</td>
                         </tr>
                     )}
-                    {health?.online && health.queuedDownloads != null && (
+                    {health?.online && typeof health.queuedDownloads === 'number' && (
                         <tr>
                             <td>Queued Downloads</td>
                             <td>{health.queuedDownloads}</td>
                         </tr>
                     )}
-                    {health?.online && health.uptime != null && (
+                    {health?.online && typeof health.uptime === 'number' && (
                         <tr>
                             <td>Uptime</td>
                             <td>{formatUptime(health.uptime)}</td>
