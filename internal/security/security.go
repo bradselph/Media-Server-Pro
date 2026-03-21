@@ -908,7 +908,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 			cleaned = strings.TrimSuffix(cleaned, "/")
 		}
 		mediaExempt := cleaned == "/media" || strings.HasPrefix(cleaned, "/media/")
-		if strings.HasPrefix(cleaned, "/static/") ||
+		if strings.HasPrefix(cleaned, "/web/static/") ||
 			strings.HasPrefix(cleaned, "/stream") ||
 			strings.HasPrefix(cleaned, "/hls/") ||
 			strings.HasPrefix(cleaned, "/download") ||
