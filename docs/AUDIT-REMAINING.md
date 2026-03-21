@@ -7,7 +7,7 @@ Five fix loops completed: config/docs (CONFIG-NOTES, AUDIT-REMAINING), cleanup (
 | # | Issue | Status |
 |---|--------|--------|
 | 1 | Security middleware exempted `/static/` but SPA assets are served at `/web/static/` — static chunks were incorrectly rate-limited | **Resolved** |
-| 2 | `themeStore.ts`: redundant `ThemeId` alias (`string`) tripped sonarjs | Pending |
+| 2 | `themeStore.ts`: redundant `ThemeId` alias (`string`) tripped sonarjs | **Resolved** |
 | 3 | `useDownloaderWebSocket.ts`: `connect` before declare + deep nesting; timer cleanup snapshot | Pending |
 | 4 | `Toast.tsx`: nested functions depth (dismiss toast) | Pending |
 | 5 | `DownloaderTab.tsx`: nested ternary for download progress bar color | Pending |
