@@ -15,6 +15,9 @@ dev-tools/
 /web/frontend/node_modules/
 /web/frontend/dist/
 
+# Local Nuxt experiment — deps and generated output only (not part of shipped SPA)
+/web/nuxt-ui/
+
 /web/static/js/hls.js
 /web/static/css/bootstrap-icons.css
 
