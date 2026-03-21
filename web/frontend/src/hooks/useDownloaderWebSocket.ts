@@ -34,7 +34,9 @@ function scheduleTerminalDownloadCleanup(
 
 export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions): UseDownloaderWebSocketResult {
     const onCompleteRef = useRef(options?.onDownloadComplete)
-    onCompleteRef.current = options?.onDownloadComplete
+    useEffect(() => {
+        onCompleteRef.current = options?.onDownloadComplete
+    }, [options?.onDownloadComplete])
     const [connected, setConnected] = useState(false)
     const [clientId, setClientId] = useState<string | null>(null)
     const [activeDownloads, setActiveDownloads] = useState(() => new Map<string, DownloaderProgress>())
@@ -108,17 +110,18 @@ export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions):
         }
     }, [])
 
-    connectRef.current = connect
+    useEffect(() => {
+        connectRef.current = connect
+    }, [connect])
 
     useEffect(() => {
         connect()
         return () => {
             clearTimeout(reconnectTimer.current)
-            const pending = completionTimers.current
-            for (const t of pending) {
+            for (const t of completionTimers.current) {
                 clearTimeout(t)
             }
-            pending.clear()
+            completionTimers.current.clear()
             wsRef.current?.close()
         }
     }, [connect])

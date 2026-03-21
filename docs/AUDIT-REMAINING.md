@@ -8,7 +8,7 @@ Five fix loops completed: config/docs (CONFIG-NOTES, AUDIT-REMAINING), cleanup (
 |---|--------|--------|
 | 1 | Security middleware exempted `/static/` but SPA assets are served at `/web/static/` — static chunks were incorrectly rate-limited | **Resolved** |
 | 2 | `themeStore.ts`: redundant `ThemeId` alias (`string`) tripped sonarjs | **Resolved** |
-| 3 | `useDownloaderWebSocket.ts`: `connect` before declare + deep nesting; timer cleanup snapshot | **Resolved** |
+| 3 | `useDownloaderWebSocket.ts`: `connect` before declare + deep nesting; ref sync in effects (not during render) | **Resolved** |
 | 4 | `Toast.tsx`: nested functions depth (dismiss toast) | **Resolved** |
 | 5 | `DownloaderTab.tsx`: nested ternary for download progress bar color | **Resolved** |
 | 6 | `DownloaderTab.tsx`: nested ternaries for dependency cell value | **Resolved** |
@@ -31,8 +31,8 @@ Five fix loops completed: config/docs (CONFIG-NOTES, AUDIT-REMAINING), cleanup (
 - **config.json**: Contains `_TODO_*` metadata keys (server port, timeouts, admin auth, features, database password, updater). Port was 3000 vs defaults 8080 — align to 8080 and move notes to docs/CONFIG-NOTES.md.
 
 ## Frontend lint (eslint)
-- **Errors**: Nested ternaries, nested functions (Toast, useDownloaderWebSocket), table-header, redundant type alias — address via repair loop table.
-- **Warnings**: Duplicate string literals (sonarjs/no-duplicate-string), eqeqeq (remaining), react-hooks/exhaustive-deps. Fix incrementally.
+- **Errors**: None after 2026-03-21 repair loop (run `npm run lint` to confirm).
+- **Warnings**: ~31 — duplicate string literals in admin tabs / vite proxy, one `react-hooks/exhaustive-deps` on `useDownloaderWebSocket` completion timer cleanup (intentional: clear whatever timers exist at unmount).
 
 ## Other
 - **HuggingFace client**: Comments reference deprecated api-inference URL (410); code already uses router. No change needed.
