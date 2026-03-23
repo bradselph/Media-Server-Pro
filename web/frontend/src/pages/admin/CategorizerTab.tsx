@@ -22,6 +22,9 @@ function useCategorizer() {
     const [catPath, setCatPath] = useState('')
     const [categorizing, setCategorizing] = useState(false)
     const [catResult, setCatResult] = useState<CategorizedItem | null>(null)
+    const [catDirPath, setCatDirPath] = useState('')
+    const [categorizingDir, setCategorizingDir] = useState(false)
+    const [dirResults, setDirResults] = useState<CategorizedItem[] | null>(null)
     const [browseCat, setBrowseCat] = useState('')
     const [browseResults, setBrowseResults] = useState<CategorizedItem[] | null>(null)
     const [setPath, setSetPath] = useState('')
@@ -48,6 +51,24 @@ function useCategorizer() {
             setMsg({ type: 'error', text: errMsg(err) })
         } finally {
             setCategorizing(false)
+        }
+    }
+
+    async function handleCategorizeDirectory(e: React.FormEvent) {
+        e.preventDefault()
+        if (!catDirPath.trim()) return
+        setCategorizingDir(true)
+        setDirResults(null)
+        setMsg(null)
+        try {
+            const results = await adminApi.categorizeDirectory(catDirPath.trim())
+            setDirResults(results)
+            setMsg({ type: 'success', text: `Categorized ${results.length} item(s) in directory.` })
+            await queryClient.invalidateQueries({ queryKey: ['admin-category-stats'] })
+        } catch (err) {
+            setMsg({ type: 'error', text: errMsg(err) })
+        } finally {
+            setCategorizingDir(false)
         }
     }
 
@@ -109,9 +130,14 @@ function useCategorizer() {
         setSetCategoryValue,
         cleaning,
         handleCategorize,
+        handleCategorizeDirectory,
         handleBrowseCategory,
         handleSetCategory,
         handleClean,
+        catDirPath,
+        setCatDirPath,
+        categorizingDir,
+        dirResults,
     }
 }
 
@@ -177,6 +203,80 @@ function CategoryStatsCard({
                                     <tr key={cat}>
                                         <td>{cat}</td>
                                         <td>{count.toLocaleString()}</td>
+                                    </tr>
+                                ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    )
+}
+
+function CategorizeDirectoryCard({
+    catDirPath,
+    setCatDirPath,
+    categorizingDir,
+    dirResults,
+    onSubmit,
+}: {
+    catDirPath: string
+    setCatDirPath: (v: string) => void
+    categorizingDir: boolean
+    dirResults: CategorizedItem[] | null
+    onSubmit: (e: React.FormEvent) => void
+}) {
+    return (
+        <div className="admin-card">
+            <h3>Categorize Directory</h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+                Directory must be under allowed media roots (same validation as other admin path tools).
+            </p>
+            <form onSubmit={onSubmit} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input
+                    type="text"
+                    value={catDirPath}
+                    onChange={(e) => { setCatDirPath(e.target.value); }}
+                    placeholder="Directory path..."
+                    style={inputStyle}
+                />
+                <button
+                    type="submit"
+                    className="admin-btn admin-btn-primary"
+                    disabled={categorizingDir || !catDirPath.trim()}
+                >
+                    <i className="bi bi-folder2-open" /> {categorizingDir ? 'Running…' : 'Run'}
+                </button>
+            </form>
+            {dirResults && dirResults.length > 0 && (
+                <div className="admin-table-wrapper" style={{ maxHeight: 280, overflow: 'auto' }}>
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Category</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {[...dirResults]
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map((item) => (
+                                    <tr key={item.id}>
+                                        <td
+                                            style={{
+                                                maxWidth: 220,
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                                fontSize: 12,
+                                            }}
+                                            title={item.id}
+                                        >
+                                            {item.name}
+                                        </td>
+                                        <td>{item.category}</td>
+                                        <td>{(item.confidence * 100).toFixed(0)}%</td>
                                     </tr>
                                 ))}
                         </tbody>
@@ -386,9 +486,14 @@ export function CategorizerTab() {
         setSetCategoryValue,
         cleaning,
         handleCategorize,
+        handleCategorizeDirectory,
         handleBrowseCategory,
         handleSetCategory,
         handleClean,
+        catDirPath,
+        setCatDirPath,
+        categorizingDir,
+        dirResults,
     } = useCategorizer()
 
     return (
@@ -403,6 +508,13 @@ export function CategorizerTab() {
                 categorizing={categorizing}
                 catResult={catResult}
                 onSubmit={handleCategorize}
+            />
+            <CategorizeDirectoryCard
+                catDirPath={catDirPath}
+                setCatDirPath={setCatDirPath}
+                categorizingDir={categorizingDir}
+                dirResults={dirResults}
+                onSubmit={handleCategorizeDirectory}
             />
             <SetCategoryCard
                 setPath={setPath}

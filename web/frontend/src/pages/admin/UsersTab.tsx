@@ -1,4 +1,4 @@
-import {type FormEvent, useState} from 'react'
+import {type FormEvent, useEffect, useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {User} from '@/api/types'
@@ -72,13 +72,38 @@ function CreateUserModal({onClose, onCreated}: { onClose: () => void; onCreated:
 }
 
 function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => void; onSaved: () => void }) {
-    const [role, setRole] = useState<'admin' | 'viewer'>(user.role)
-    const [enabled, setEnabled] = useState(user.enabled)
-    const [email, setEmail] = useState(user.email ?? '')
-    const [newPassword, setNewPassword] = useState('')
-    const [permissions, setPermissions] = useState({...user.permissions})
+    const queryClient = useQueryClient()
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
+
+    const {data: detail, isPending: profilePending, isError: profileError} = useQuery({
+        queryKey: ['admin-user', user.username],
+        queryFn: () => adminApi.getUser(user.username),
+    })
+    const profile = detail ?? user
+
+    const [role, setRole] = useState<'admin' | 'viewer'>(profile.role)
+    const [enabled, setEnabled] = useState(profile.enabled)
+    const [email, setEmail] = useState(profile.email ?? '')
+    const [newPassword, setNewPassword] = useState('')
+    const [permissions, setPermissions] = useState({...profile.permissions})
+
+    useEffect(() => {
+        if (!detail) return
+        setRole(detail.role)
+        setEnabled(detail.enabled)
+        setEmail(detail.email ?? '')
+        setPermissions({...detail.permissions})
+    }, [detail])
+
+    const {
+        data: sessions = [],
+        isLoading: sessionsLoading,
+        isError: sessionsError,
+    } = useQuery({
+        queryKey: ['admin-user-sessions', user.username],
+        queryFn: () => adminApi.getUserSessions(user.username),
+    })
 
     async function handleSubmit(e: FormEvent) {
         e.preventDefault()
@@ -87,6 +112,8 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
         try {
             await adminApi.updateUser(user.username, {role, enabled, permissions, email: email || undefined})
             if (newPassword) await adminApi.changeUserPassword(user.username, newPassword)
+            await queryClient.invalidateQueries({queryKey: ['admin-user-sessions', user.username]})
+            await queryClient.invalidateQueries({queryKey: ['admin-user', user.username]})
             onSaved()
         } catch (err) {
             setError(errMsg(err))
@@ -106,6 +133,14 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
                 </div>
                 <div className="admin-modal-body">
                     {error && <div className="admin-alert admin-alert-danger">{error}</div>}
+                    {profilePending && !detail && (
+                        <p style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 10}}>Loading latest profile…</p>
+                    )}
+                    {profileError && (
+                        <div className="admin-alert admin-alert-warning" style={{marginBottom: 10}}>
+                            Could not refresh profile from server; showing list data.
+                        </div>
+                    )}
                     <form onSubmit={handleSubmit}>
                         <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
                             <div className="admin-form-group" style={{flex: 1}}>
@@ -169,6 +204,51 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
                             </button>
                         </div>
                     </form>
+
+                    <div style={{marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-color)'}}>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10}}>
+                            <h4 style={{margin: 0, fontSize: 14}}>Login sessions</h4>
+                            <button
+                                type="button"
+                                className="admin-btn"
+                                style={{fontSize: 12, padding: '4px 10px'}}
+                                onClick={() => queryClient.invalidateQueries({queryKey: ['admin-user-sessions', user.username]})}
+                            >
+                                <i className="bi bi-arrow-counterclockwise"/> Refresh
+                            </button>
+                        </div>
+                        {sessionsLoading && <p style={{fontSize: 12, color: 'var(--text-muted)'}}>Loading sessions…</p>}
+                        {sessionsError && <p style={{fontSize: 12, color: '#ef4444'}}>Could not load sessions.</p>}
+                        {!sessionsLoading && !sessionsError && sessions.length === 0 && (
+                            <p style={{fontSize: 12, color: 'var(--text-muted)'}}>No active sessions recorded.</p>
+                        )}
+                        {!sessionsLoading && !sessionsError && sessions.length > 0 && (
+                            <div className="admin-table-wrapper" style={{maxHeight: 220, overflow: 'auto'}}>
+                                <table className="admin-table">
+                                    <thead>
+                                    <tr>
+                                        <th>IP</th>
+                                        <th>Last activity</th>
+                                        <th>Expires</th>
+                                        <th>Client</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {sessions.map(s => (
+                                        <tr key={s.id}>
+                                            <td style={{fontSize: 12}}>{s.ip_address || '—'}</td>
+                                            <td style={{fontSize: 11}}>{new Date(s.last_activity).toLocaleString()}</td>
+                                            <td style={{fontSize: 11}}>{new Date(s.expires_at).toLocaleString()}</td>
+                                            <td style={{fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis'}} title={s.user_agent}>
+                                                {s.user_agent || '—'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
@@ -459,6 +539,7 @@ function UsersListTab() {
             )}
             {editUser && (
                 <EditUserModal
+                    key={editUser.username}
                     user={editUser}
                     onClose={() => { setEditUser(null); }}
                     onSaved={() => {

@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import {useQuery} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
+import type {StreamSession, UploadProgress} from '@/api/types'
 import {errMsg, formatBytes, formatUptime} from './adminUtils'
 
 export function DashboardTab() {
@@ -16,6 +17,20 @@ export function DashboardTab() {
         queryKey: ['admin-system'],
         queryFn: () => adminApi.getSystemInfo(),
         refetchInterval: 60000,
+    })
+
+    const {data: activeStreams = [], isError: streamsError} = useQuery<StreamSession[]>({
+        queryKey: ['admin-active-streams'],
+        queryFn: () => adminApi.getActiveStreams(),
+        refetchInterval: 10000,
+        retry: 1,
+    })
+
+    const {data: activeUploads = [], isError: uploadsError} = useQuery<UploadProgress[]>({
+        queryKey: ['admin-active-uploads'],
+        queryFn: () => adminApi.getActiveUploads(),
+        refetchInterval: 10000,
+        retry: 1,
     })
 
     async function handleAction(fn: () => Promise<unknown>, successMsg: string) {
@@ -61,7 +76,7 @@ export function DashboardTab() {
                         </div>
                         <div className="admin-stat-card">
                             <span className="admin-stat-value">{(stats.active_sessions ?? 0).toLocaleString()}</span>
-                            <span className="admin-stat-label">Active Sessions</span>
+                            <span className="admin-stat-label">Active Streams</span>
                         </div>
                         <div className="admin-stat-card">
                             <span className="admin-stat-value">{(stats.total_views ?? 0).toLocaleString()}</span>
@@ -99,6 +114,79 @@ export function DashboardTab() {
                                 {diskPct}% used · {formatBytes(stats.disk_free ?? 0)} free
                             </div>
                         </div>
+                    </div>
+
+                    <div className="admin-card">
+                        <h2>Live streams</h2>
+                        <p style={{fontSize: 12, color: 'var(--text-muted)', margin: '0 0 10px'}}>
+                            Concurrent playback sessions (refreshes every 10s). Matches the “Active Streams” total above when all are counted server-side.
+                        </p>
+                        {streamsError ? (
+                            <p style={{color: 'var(--text-muted)', fontSize: 13}}>Could not load active streams.</p>
+                        ) : activeStreams.length === 0 ? (
+                            <p style={{color: 'var(--text-muted)', fontSize: 13}}>No active streams.</p>
+                        ) : (
+                            <div className="admin-table-wrapper">
+                                <table className="admin-table">
+                                    <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Media ID</th>
+                                        <th>Quality</th>
+                                        <th>Sent</th>
+                                        <th>Client IP</th>
+                                        <th>Since</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {activeStreams.map(s => (
+                                        <tr key={s.id}>
+                                            <td style={{fontSize: 12}}>{s.user_id || '—'}</td>
+                                            <td style={{fontSize: 11, fontFamily: 'monospace'}} title={s.media_id}>
+                                                {s.media_id && s.media_id.length > 8 ? `${s.media_id.slice(0, 8)}…` : (s.media_id || '—')}
+                                            </td>
+                                            <td>{s.quality || '—'}</td>
+                                            <td>{formatBytes(s.bytes_sent ?? 0)}</td>
+                                            <td style={{fontSize: 12}}>{s.ip_address || '—'}</td>
+                                            <td style={{fontSize: 12}}>{new Date(s.started_at).toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="admin-card">
+                        <h2>Active uploads</h2>
+                        {uploadsError ? (
+                            <p style={{color: 'var(--text-muted)', fontSize: 13}}>Could not load active uploads.</p>
+                        ) : activeUploads.length === 0 ? (
+                            <p style={{color: 'var(--text-muted)', fontSize: 13}}>No uploads in progress.</p>
+                        ) : (
+                            <div className="admin-table-wrapper">
+                                <table className="admin-table">
+                                    <thead>
+                                    <tr>
+                                        <th>File</th>
+                                        <th>User</th>
+                                        <th>Progress</th>
+                                        <th>Status</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {activeUploads.map(u => (
+                                        <tr key={u.id}>
+                                            <td style={{fontSize: 12}}>{u.filename}</td>
+                                            <td style={{fontSize: 12}}>{u.user_id || '—'}</td>
+                                            <td>{typeof u.progress === 'number' ? `${Math.round(u.progress)}%` : '—'}</td>
+                                            <td>{u.status}</td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </>
             )}

@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.105.0] - 2026-03-23 (minor)
+
+- Merge branch '102'
+- fix(nuxt-ui): include dynamic icons (chevron-down etc.) in client bundle
+- fix(nuxt-ui): bundle icons client-side to avoid CSP connect-src violation
+- fix(nuxt-ui): replace empty-string select values with sentinel, update CSP
+- fix(web): use all:static embed to include _nuxt/ and _fonts/ directories
+- fix(web): remove StripPrefix mismatch breaking /_nuxt/ and /_fonts/ asset serving
+- fix(deploy): use static preset + nuxt generate for Go embed
+- fix(nuxt-ui): render admin tab content inside UTabs #content slot
+- fix(nuxt-ui): align @pinia/nuxt to ^0.10.0, add package-lock.json
+- fix(nuxt-ui): SPA mode, route guards, canonical CSS classes
+- feat(deploy): switch frontend build from React to Nuxt UI
+- feat(nuxt-ui): full Nuxt UI v3 frontend + audit fixes, bump to v0.103.0
+- fix(player): mobile chrome auto-hide and no stuck hover overlay
+- feat(admin): load full user profile in edit modal via getUser
+- feat(admin): categorize directory in Categorizer tab
+- feat(admin): audit log viewer under System + user_id query param
+- feat(admin): list login sessions in edit-user modal
+- feat(admin): show active streams and uploads on dashboard
+- refactor(admin): clarify media delete and thumbnail field names
+- fix(admin): align playlists tab with server pagination and filters
+- fix(frontend): sync downloader WS refs in effects (react-hooks/refs)
+- fix(frontend): ContentReview TEXT_MUTED; drop stale playerHLS eslint-disable (audit 10/10)
+- fix(frontend): DownloaderTab health metrics use typeof number (audit loop 9/10)
+- fix(frontend): listMedia strict number checks for query params (audit loop 8/10)
+- fix(a11y): DownloaderTab settings table header row (audit loop 7/10)
+- fix(frontend): DownloaderTab dependency cell formatter (audit loop 6/10)
+- fix(frontend): DownloaderTab progress color helper; audit rows 4–5 (loop 5/10)
+- fix(frontend): Toast dismiss without extra nested callback (audit loop 4/10)
+- fix(frontend): useDownloaderWebSocket reconnect ref + flatter handlers (audit loop 3/10)
+- fix(frontend): drop redundant ThemeId type alias (audit loop 2/10)
+- fix(security): exempt /web/static/ from rate limit (audit loop 1/10)
+- chore(gitignore): ignore web/nuxt-ui local Nuxt sandbox
+- chore: baseline commit before audit-fix loop
+
+
+## [0.104.0] - 2026-03-20 (minor)
+
+- Merge pull request #103 from bradselph/development
+- chore(deploy): quieter git/npm, robust SERVER_PORT, align UFW default
+- fix(deploy): force VPS branch to match origin (clean package-lock drift)
+- fix(deploy): clean node_modules before npm ci to avoid ENOTEMPTY
+- refactor: update frontend structure and deployment process
+- fix(todo): implement error response for receiver thumbnail placeholders
+- fix: resolve medium severity audit issues + build Nuxt UI pages, bump to v0.105.0
+- feat: scaffold Nuxt UI v3 frontend project
+- fix: resolve 20 critical and high severity audit findings, bump to v0.104.0
+
+
 ## [0.103.0] - 2026-03-18 (minor)
 
 - Merge pull request #102 from bradselph/development

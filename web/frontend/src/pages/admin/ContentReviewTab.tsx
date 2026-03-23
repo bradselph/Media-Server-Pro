@@ -7,6 +7,7 @@ import { errMsg } from './adminUtils'
 type ReviewSortKey = 'name' | 'detected_at' | 'confidence'
 
 const EMPTY_LABEL = '—'
+const TEXT_MUTED = 'var(--text-muted)'
 const REVIEW_QUEUE_KEY = ['review-queue'] as const
 
 function confidenceColor(confidence: number): string {
@@ -104,7 +105,7 @@ function ReviewQueueRow({
             <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.name}
             </td>
-            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            <td style={{ fontSize: 11, color: TEXT_MUTED }}>
                 {item.detected_at ? new Date(item.detected_at).toLocaleDateString() : EMPTY_LABEL}
             </td>
             <td>
@@ -119,7 +120,7 @@ function ReviewQueueRow({
                     />
                 </div>
             </td>
-            <td style={{ maxWidth: 160, fontSize: 11, color: 'var(--text-muted)' }}>
+            <td style={{ maxWidth: 160, fontSize: 11, color: TEXT_MUTED }}>
                 {(item.reasons ?? []).join(', ') || EMPTY_LABEL}
             </td>
             <td>
@@ -389,11 +390,11 @@ function ReviewMainContent({
     setSearch: (s: string) => void
 }) {
     if (isLoading) {
-        return <p style={{ color: 'var(--text-muted)' }}>Loading queue...</p>
+        return <p style={{ color: TEXT_MUTED }}>Loading queue...</p>
     }
     if (queueLength === 0) {
         return (
-            <div className="admin-card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+            <div className="admin-card" style={{ textAlign: 'center', padding: 40, color: TEXT_MUTED }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>
                     <i className="bi bi-check-circle" />
                 </div>

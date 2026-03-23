@@ -165,10 +165,10 @@ function MediaLibraryTab() {
         }
     }
 
-    async function handleDeleteMedia(path: string, name: string) {
+    async function handleDeleteMedia(mediaId: string, name: string) {
         if (!window.confirm(`Delete "${name}" from the server? This cannot be undone.`)) return
         try {
-            await adminApi.deleteMedia(path)
+            await adminApi.deleteMedia(mediaId)
             setMsg({type: 'success', text: `Deleted "${name}".`})
             await queryClient.invalidateQueries({queryKey: ['admin-media']})
         } catch (err) {
@@ -670,7 +670,7 @@ function SortableBackupsTable({backups, onRestore, onDelete}: {
 // ── Thumbnail Stats Card (Feature 7) ─────────────────────────────────────────
 
 function ThumbnailStatsCard() {
-    const [thumbPath, setThumbPath] = useState('')
+    const [thumbMediaId, setThumbMediaId] = useState('')
     const [generatingThumb, setGeneratingThumb] = useState(false)
     const [thumbMsg, setThumbMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -681,13 +681,13 @@ function ThumbnailStatsCard() {
 
     async function handleGenerateThumb(e: React.FormEvent) {
         e.preventDefault()
-        if (!thumbPath.trim()) return
+        if (!thumbMediaId.trim()) return
         setGeneratingThumb(true)
         setThumbMsg(null)
         try {
-            await adminApi.generateThumbnail(thumbPath.trim())
+            await adminApi.generateThumbnail(thumbMediaId.trim())
             setThumbMsg({type: 'success', text: 'Thumbnail generation triggered.'})
-            setThumbPath('')
+            setThumbMediaId('')
         } catch (err) {
             setThumbMsg({type: 'error', text: errMsg(err)})
         } finally {
@@ -732,8 +732,8 @@ function ThumbnailStatsCard() {
             <form onSubmit={handleGenerateThumb} style={{display: 'flex', gap: 8}}>
                 <input
                     type="text"
-                    value={thumbPath}
-                    onChange={e => { setThumbPath(e.target.value); }}
+                    value={thumbMediaId}
+                    onChange={e => { setThumbMediaId(e.target.value); }}
                     placeholder="Media ID to generate thumbnail..."
                     style={{
                         flex: 1,
@@ -746,7 +746,7 @@ function ThumbnailStatsCard() {
                     }}
                 />
                 <button type="submit" className="admin-btn admin-btn-primary"
-                        disabled={generatingThumb || !thumbPath.trim()}>
+                        disabled={generatingThumb || !thumbMediaId.trim()}>
                     <i className="bi bi-image"/> {generatingThumb ? 'Generating...' : 'Generate'}
                 </button>
             </form>

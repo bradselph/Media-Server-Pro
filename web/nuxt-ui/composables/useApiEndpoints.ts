@@ -1,239 +1,330 @@
-/**
- * API endpoint functions organized by domain.
- * Mirrors the React endpoints.ts — each function calls the typed API client
- * and returns strongly-typed data.
- *
- * This file starts with auth endpoints; additional domains will be added
- * as the migration progresses.
- */
-
 import type {
-  User,
-  UserPermissions,
-  UserPreferences,
-  LoginResponse,
-  SessionCheckResponse,
-  MediaItem,
-  MediaListParams,
-  MediaListResponse,
-  MediaCategory,
-  HLSAvailability,
-  HLSJob,
-  WatchHistoryEntry,
-  Suggestion,
-  StorageUsage,
-  PermissionsInfo,
+  User, UserPermissions, UserPreferences,
+  LoginResponse, SessionCheckResponse,
+  MediaItem, MediaListParams, MediaListResponse, MediaCategory,
+  AdminMediaListResponse, AdminMediaListParams,
+  HLSAvailability, HLSJob, HLSStats,
+  Playlist, PlaylistItem,
+  AnalyticsSummary, DailyStats, TopMediaItem,
+  AdminStats, SystemInfo, StreamSession, UploadProgress,
+  AuditLogEntry, LogEntry, ScheduledTask, BackupEntry,
+  ThumbnailStats, ScannerStats, FileScanResult,
+  UpdateInfo, UpdateStatus,
+  IPListEntry, SecurityStats,
+  DatabaseStatus, ReceiverSlave, ReceiverMedia,
+  CrawlerTarget, CrawlerDiscovery, ExtractorItem, DownloaderJob,
+  WatchHistoryItem, Suggestion, StorageUsage, PermissionsInfo,
+  ServerSettings,
 } from '~/types/api'
 
-/**
- * Composable providing typed API endpoint functions.
- * Usage: const { login, logout, register, getSession } = useApiEndpoints()
- */
-export function useApiEndpoints() {
-  // ── Auth ──
+const api = useApi()
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export function useApiEndpoints() {
   function login(username: string, password: string) {
     return api.post<LoginResponse>('/api/auth/login', { username, password })
   }
-
-  function logout() {
-    return api.post<void>('/api/auth/logout')
-  }
-
+  function logout() { return api.post<void>('/api/auth/logout') }
   function register(username: string, password: string, email?: string) {
     return api.post<User>('/api/auth/register', { username, password, email })
   }
-
-  function getSession() {
-    return api.get<SessionCheckResponse>('/api/auth/session')
-  }
-
+  function getSession() { return api.get<SessionCheckResponse>('/api/auth/session') }
   function changePassword(currentPassword: string, newPassword: string) {
-    return api.post<void>('/api/auth/change-password', {
-      current_password: currentPassword,
-      new_password: newPassword,
-    })
+    return api.post<void>('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword })
   }
-
   function deleteAccount(password: string) {
     return api.post<void>('/api/auth/delete-account', { password })
   }
-
-  // ── Preferences ──
-
-  function getPreferences() {
-    return api.get<UserPreferences>('/api/preferences')
-  }
-
+  function getPreferences() { return api.get<UserPreferences>('/api/preferences') }
   function updatePreferences(prefs: Partial<UserPreferences>) {
     return api.put<UserPreferences>('/api/preferences', prefs)
   }
-
-  // ── Permissions ──
-
-  function getPermissions() {
-    return api.get<UserPermissions>('/api/permissions')
-  }
+  function getPermissions() { return api.get<UserPermissions>('/api/permissions') }
 
   return {
-    // Auth
-    login,
-    logout,
-    register,
-    getSession,
-    changePassword,
-    deleteAccount,
-    // Preferences
-    getPreferences,
-    updatePreferences,
-    // Permissions
-    getPermissions,
+    login, logout, register, getSession, changePassword, deleteAccount,
+    getPreferences, updatePreferences, getPermissions,
   }
 }
 
-/**
- * Media API endpoints.
- * Usage: const mediaApi = useMediaApi()
- */
+// ── Media ─────────────────────────────────────────────────────────────────────
+
 export function useMediaApi() {
   return {
-    /**
-     * List media with pagination, search, sort, and filter.
-     * Converts 1-based page to 0-based offset for the backend.
-     */
-    list: (params?: MediaListParams): Promise<MediaListResponse> => {
-      const searchParams = new URLSearchParams()
+    list(params?: MediaListParams): Promise<MediaListResponse> {
+      const qs = new URLSearchParams()
       if (params) {
         const { page, limit, sort_order, ...rest } = params
-        Object.entries(rest).forEach(([key, value]) => {
-          if (value !== undefined && value !== '') {
-            searchParams.set(key, String(value))
-          }
+        Object.entries(rest).forEach(([k, v]) => {
+          if (v !== undefined && v !== '') qs.set(k, String(v))
         })
-        if (limit !== undefined) {
-          searchParams.set('limit', String(limit))
-        }
-        // Convert 1-based page to 0-based offset for the backend
+        if (limit !== undefined) qs.set('limit', String(limit))
         if (page !== undefined && limit !== undefined && page > 1) {
-          searchParams.set('offset', String((page - 1) * limit))
+          qs.set('offset', String((page - 1) * limit))
         }
-        // Backend reads "sort_order", not "order"
-        if (sort_order !== undefined && sort_order !== '') {
-          searchParams.set('sort_order', sort_order)
-        }
+        if (sort_order) qs.set('sort_order', sort_order)
       }
-      const qs = searchParams.toString()
-      return api.get<MediaListResponse>(`/api/media${qs ? `?${qs}` : ''}`)
+      const q = qs.toString()
+      return api.get<MediaListResponse>(`/api/media${q ? `?${q}` : ''}`)
     },
-
-    /** Get a single media item by ID. */
-    getById: (id: string): Promise<MediaItem> =>
-      api.get<MediaItem>(`/api/media/${encodeURIComponent(id)}`),
-
-    /** Get available media categories. */
-    getCategories: (): Promise<MediaCategory[]> =>
-      api.get<MediaCategory[]>('/api/media/categories'),
-
-    /** Build thumbnail URL for a media item (served directly by the Go backend). */
-    getThumbnailUrl: (id: string): string =>
-      `/thumbnail?id=${encodeURIComponent(id)}`,
-
-    /** Build stream URL for a media item. */
-    getStreamUrl: (id: string): string =>
-      `/media?id=${encodeURIComponent(id)}`,
-
-    /** Build download URL for a media item. */
-    getDownloadUrl: (id: string): string =>
-      `/download?id=${encodeURIComponent(id)}`,
+    getById: (id: string) => api.get<MediaItem>(`/api/media/${encodeURIComponent(id)}`),
+    getCategories: () => api.get<MediaCategory[]>('/api/media/categories'),
+    getThumbnailUrl: (id: string) => `/thumbnail?id=${encodeURIComponent(id)}`,
+    getStreamUrl: (id: string) => `/media?id=${encodeURIComponent(id)}`,
+    getDownloadUrl: (id: string) => `/download?id=${encodeURIComponent(id)}`,
   }
 }
 
-/**
- * HLS API endpoints.
- * Usage: const hlsApi = useHlsApi()
- */
+// ── HLS ───────────────────────────────────────────────────────────────────────
+
 export function useHlsApi() {
   return {
-    /** Check if HLS is available for a media item. */
-    check: (id: string): Promise<HLSAvailability> =>
-      api.get<HLSAvailability>(`/api/hls/check?id=${encodeURIComponent(id)}`),
-
-    /** Get HLS job status. */
-    getStatus: (id: string): Promise<HLSJob> =>
-      api.get<HLSJob>(`/api/hls/status/${encodeURIComponent(id)}`),
-
-    /** Trigger HLS generation for a media item. */
-    generate: (id: string, quality?: string): Promise<HLSJob> =>
-      api.post<HLSJob>('/api/hls/generate', { id, quality }),
-
-    /** Build the master playlist URL for a media item. */
-    getMasterPlaylistUrl: (id: string): string =>
-      `/hls/${encodeURIComponent(id)}/master.m3u8`,
+    check: (id: string) => api.get<HLSAvailability>(`/api/hls/check?id=${encodeURIComponent(id)}`),
+    getStatus: (id: string) => api.get<HLSJob>(`/api/hls/status/${encodeURIComponent(id)}`),
+    generate: (id: string, quality?: string) => api.post<HLSJob>('/api/hls/generate', { id, quality }),
+    getMasterPlaylistUrl: (id: string) => `/hls/${encodeURIComponent(id)}/master.m3u8`,
   }
 }
 
-/**
- * Playback position & watch history API endpoints.
- * Usage: const playbackApi = usePlaybackApi()
- */
+// ── Playback ──────────────────────────────────────────────────────────────────
+
 export function usePlaybackApi() {
   return {
-    /** Get saved playback position for a media item. */
-    getPosition: (id: string): Promise<{ position: number }> =>
-      api.get<{ position: number }>(`/api/playback?id=${encodeURIComponent(id)}`),
-
-    /** Save playback position for a media item. */
-    savePosition: (id: string, position: number, duration: number): Promise<void> =>
+    getPosition: (id: string) => api.get<{ position: number }>(`/api/playback?id=${encodeURIComponent(id)}`),
+    savePosition: (id: string, position: number, duration: number) =>
       api.post<void>('/api/playback', { id, position, duration }),
   }
 }
 
-/**
- * Watch history API endpoints.
- * Usage: const watchHistoryApi = useWatchHistoryApi()
- */
+// ── Watch History ─────────────────────────────────────────────────────────────
+
 export function useWatchHistoryApi() {
   return {
-    /** List all watch history entries. */
-    list: (): Promise<WatchHistoryEntry[]> =>
-      api.get<WatchHistoryEntry[]>('/api/watch-history'),
-
-    /** Delete a specific watch history entry. */
-    remove: (id: string): Promise<void> => {
-      if (!id) throw new Error('watchHistoryApi.remove: id must not be empty')
-      return api.delete<void>(`/api/watch-history?id=${encodeURIComponent(id)}`)
-    },
-
-    /** Clear all watch history. */
-    clear: (): Promise<void> =>
-      api.delete<void>('/api/watch-history'),
+    list: () => api.get<WatchHistoryItem[]>('/api/watch-history'),
+    remove: (id: string) => api.delete<void>(`/api/watch-history?id=${encodeURIComponent(id)}`),
+    clear: () => api.delete<void>('/api/watch-history'),
   }
 }
 
-/**
- * Suggestions API endpoints.
- * Usage: const suggestionsApi = useSuggestionsApi()
- */
+// ── Suggestions ───────────────────────────────────────────────────────────────
+
 export function useSuggestionsApi() {
   return {
-    /** Get similar media suggestions for a given media ID. */
-    getSimilar: (id: string): Promise<Suggestion[]> =>
-      api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
+    getSimilar: (id: string) => api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
   }
 }
 
-/**
- * Storage & permissions API endpoints.
- * Usage: const storageApi = useStorageApi()
- */
+// ── Storage & Permissions ─────────────────────────────────────────────────────
+
 export function useStorageApi() {
   return {
-    /** Get current user's storage usage. */
-    getUsage: (): Promise<StorageUsage> =>
-      api.get<StorageUsage>('/api/storage-usage'),
+    getUsage: () => api.get<StorageUsage>('/api/storage-usage'),
+    getPermissions: () => api.get<PermissionsInfo>('/api/permissions'),
+  }
+}
 
-    /** Get current user's permissions info. */
-    getPermissions: (): Promise<PermissionsInfo> =>
-      api.get<PermissionsInfo>('/api/permissions'),
+// ── Playlists ─────────────────────────────────────────────────────────────────
+
+export function usePlaylistApi() {
+  return {
+    list: () => api.get<Playlist[]>('/api/playlists'),
+    get: (id: string) => api.get<Playlist>(`/api/playlists/${encodeURIComponent(id)}`),
+    create: (data: { name: string; description?: string; is_public?: boolean }) =>
+      api.post<Playlist>('/api/playlists', data),
+    update: (id: string, data: Partial<Playlist>) =>
+      api.put<Playlist>(`/api/playlists/${encodeURIComponent(id)}`, data),
+    delete: (id: string) => api.delete<void>(`/api/playlists/${encodeURIComponent(id)}`),
+    addItem: (id: string, mediaId: string) =>
+      api.post<PlaylistItem>(`/api/playlists/${encodeURIComponent(id)}/items`, { media_id: mediaId }),
+    removeItem: (playlistId: string, itemId: string) =>
+      api.delete<void>(`/api/playlists/${encodeURIComponent(playlistId)}/items/${encodeURIComponent(itemId)}`),
+    reorder: (id: string, itemIds: string[]) =>
+      api.put<void>(`/api/playlists/${encodeURIComponent(id)}/reorder`, { item_ids: itemIds }),
+  }
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+export function useSettingsApi() {
+  return {
+    get: () => api.get<ServerSettings>('/api/settings'),
+  }
+}
+
+// ── Admin: Dashboard ─────────────────────────────────────────────────────────
+
+export function useAdminApi() {
+  const base = '/api/admin'
+  return {
+    // Dashboard
+    getStats: () => api.get<AdminStats>(`${base}/stats`),
+    getSystemInfo: () => api.get<SystemInfo>(`${base}/system`),
+    getActiveStreams: () => api.get<StreamSession[]>(`${base}/streams`),
+    getActiveUploads: () => api.get<UploadProgress[]>(`${base}/uploads/active`),
+
+    // Controls
+    clearCache: () => api.post<void>(`${base}/cache/clear`),
+    restartServer: () => api.post<void>(`${base}/server/restart`),
+    shutdownServer: () => api.post<void>(`${base}/server/shutdown`),
+
+    // Users
+    listUsers: () => api.get<User[]>(`${base}/users`),
+    getUser: (username: string) => api.get<User>(`${base}/users/${encodeURIComponent(username)}`),
+    createUser: (data: { username: string; password: string; email?: string; role: string }) =>
+      api.post<User>(`${base}/users`, data),
+    updateUser: (username: string, data: Partial<User>) =>
+      api.put<User>(`${base}/users/${encodeURIComponent(username)}`, data),
+    deleteUser: (username: string) => api.delete<void>(`${base}/users/${encodeURIComponent(username)}`),
+    changeUserPassword: (username: string, password: string) =>
+      api.post<void>(`${base}/users/${encodeURIComponent(username)}/password`, { password }),
+    getUserSessions: (username: string) =>
+      api.get<unknown[]>(`${base}/users/${encodeURIComponent(username)}/sessions`),
+    changeOwnPassword: (currentPassword: string, newPassword: string) =>
+      api.post<void>(`${base}/change-password`, { current_password: currentPassword, new_password: newPassword }),
+
+    // Media
+    listMedia: (params?: AdminMediaListParams) => {
+      const qs = new URLSearchParams()
+      if (params) {
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== undefined && v !== '') qs.set(k, String(v))
+        })
+      }
+      const q = qs.toString()
+      return api.get<AdminMediaListResponse>(`${base}/media${q ? `?${q}` : ''}`)
+    },
+    scanMedia: () => api.post<void>(`${base}/media/scan`),
+    updateMedia: (id: string, data: Partial<MediaItem>) =>
+      api.put<MediaItem>(`/api/media/${encodeURIComponent(id)}`, data),
+    deleteMedia: (id: string) => api.delete<void>(`/api/media/${encodeURIComponent(id)}`),
+    generateThumbnail: (id: string) =>
+      api.post<void>(`${base}/thumbnails/generate`, { id }),
+    getThumbnailStats: () => api.get<ThumbnailStats>(`${base}/thumbnails/stats`),
+
+    // HLS
+    getHLSStats: () => api.get<HLSStats>(`${base}/hls/stats`),
+    listHLSJobs: () => api.get<HLSJob[]>(`${base}/hls/jobs`),
+    deleteHLSJob: (id: string) => api.delete<void>(`${base}/hls/jobs/${encodeURIComponent(id)}`),
+    cleanHLSInactive: () => api.post<void>(`${base}/hls/clean/inactive`),
+
+    // Tasks
+    listTasks: () => api.get<ScheduledTask[]>(`${base}/tasks`),
+    runTask: (id: string) => api.post<void>(`${base}/tasks/${encodeURIComponent(id)}/run`),
+    enableTask: (id: string) => api.post<void>(`${base}/tasks/${encodeURIComponent(id)}/enable`),
+    disableTask: (id: string) => api.post<void>(`${base}/tasks/${encodeURIComponent(id)}/disable`),
+
+    // Audit log
+    getAuditLog: (params?: { page?: number; limit?: number; user_id?: string }) => {
+      const qs = new URLSearchParams()
+      if (params) Object.entries(params).forEach(([k, v]) => { if (v !== undefined) qs.set(k, String(v)) })
+      return api.get<AuditLogEntry[]>(`${base}/audit-log?${qs}`)
+    },
+
+    // Logs
+    getLogs: (level?: string, module?: string, limit = 200) => {
+      const qs = new URLSearchParams()
+      if (level) qs.set('level', level)
+      if (module) qs.set('module', module)
+      qs.set('limit', String(limit))
+      return api.get<LogEntry[]>(`${base}/logs?${qs}`)
+    },
+
+    // Config
+    getConfig: () => api.get<Record<string, unknown>>(`${base}/config`),
+    updateConfig: (data: Record<string, unknown>) => api.put<void>(`${base}/config`, data),
+
+    // Backups
+    listBackups: () => api.get<BackupEntry[]>(`${base}/backups/v2`),
+    createBackup: () => api.post<BackupEntry>(`${base}/backups/v2`),
+    restoreBackup: (id: string) => api.post<void>(`${base}/backups/v2/${encodeURIComponent(id)}/restore`),
+    deleteBackup: (id: string) => api.delete<void>(`${base}/backups/v2/${encodeURIComponent(id)}`),
+
+    // Scanner / Content review
+    getScannerStats: () => api.get<ScannerStats>(`${base}/scanner/stats`),
+    getReviewQueue: () => api.get<FileScanResult[]>(`${base}/scanner/queue`),
+    approveContent: (id: string) => api.post<void>(`${base}/scanner/approve/${encodeURIComponent(id)}`),
+    rejectContent: (id: string) => api.post<void>(`${base}/scanner/reject/${encodeURIComponent(id)}`),
+    runScan: (path?: string) => api.post<void>(`${base}/scanner/scan`, path ? { path } : undefined),
+
+    // Security
+    getSecurityStats: () => api.get<SecurityStats>(`${base}/security/stats`),
+    getWhitelist: () => api.get<IPListEntry[]>(`${base}/security/whitelist`),
+    addToWhitelist: (ip: string, comment?: string) =>
+      api.post<void>(`${base}/security/whitelist`, { ip, comment }),
+    removeFromWhitelist: (ip: string) =>
+      api.delete<void>(`${base}/security/whitelist?ip=${encodeURIComponent(ip)}`),
+    getBlacklist: () => api.get<IPListEntry[]>(`${base}/security/blacklist`),
+    addToBlacklist: (ip: string, comment?: string) =>
+      api.post<void>(`${base}/security/blacklist`, { ip, comment }),
+    removeFromBlacklist: (ip: string) =>
+      api.delete<void>(`${base}/security/blacklist?ip=${encodeURIComponent(ip)}`),
+    getBannedIPs: () => api.get<IPListEntry[]>(`${base}/security/banned`),
+    banIP: (ip: string) => api.post<void>(`${base}/security/ban`, { ip }),
+    unbanIP: (ip: string) => api.post<void>(`${base}/security/unban`, { ip }),
+
+    // Database
+    getDatabaseStatus: () => api.get<DatabaseStatus>(`${base}/database/status`),
+
+    // Receiver / Slaves
+    listSlaves: () => api.get<ReceiverSlave[]>(`/api/receiver/slaves`),
+    getSlaveMedia: () => api.get<ReceiverMedia[]>(`/api/receiver/media`),
+
+    // Crawler
+    listCrawlerTargets: () => api.get<CrawlerTarget[]>(`/api/crawler/targets`),
+    addCrawlerTarget: (url: string, name?: string) =>
+      api.post<CrawlerTarget>(`/api/crawler/targets`, { url, name }),
+    deleteCrawlerTarget: (id: string) =>
+      api.delete<void>(`/api/crawler/targets/${encodeURIComponent(id)}`),
+    getCrawlerDiscoveries: (targetId?: string) => {
+      const qs = targetId ? `?target_id=${encodeURIComponent(targetId)}` : ''
+      return api.get<CrawlerDiscovery[]>(`/api/crawler/discoveries${qs}`)
+    },
+    startCrawl: (targetId: string) =>
+      api.post<void>(`/api/crawler/targets/${encodeURIComponent(targetId)}/crawl`),
+
+    // Extractor
+    listExtractorItems: () => api.get<ExtractorItem[]>(`/api/extractor/items`),
+    addExtractorUrl: (url: string) => api.post<ExtractorItem>(`/api/extractor/items`, { url }),
+    deleteExtractorItem: (id: string) =>
+      api.delete<void>(`/api/extractor/items/${encodeURIComponent(id)}`),
+
+    // Playlists (admin)
+    listAllPlaylists: () => api.get<{ items: Playlist[] } | Playlist[]>(`${base}/playlists`),
+    deletePlaylist: (id: string) => api.delete<void>(`${base}/playlists/${encodeURIComponent(id)}`),
+
+    // Updates
+    checkForUpdates: () => api.get<UpdateInfo>(`${base}/update/check`),
+    getUpdateStatus: () => api.get<UpdateStatus>(`${base}/update/status`),
+    applyUpdate: () => api.post<void>(`${base}/update/apply`),
+
+    // Downloader
+    listDownloaderJobs: () => api.get<DownloaderJob[]>(`${base}/downloader/jobs`),
+    createDownloaderJob: (url: string, filename?: string) =>
+      api.post<DownloaderJob>(`${base}/downloader/jobs`, { url, filename }),
+    cancelDownloaderJob: (id: string) =>
+      api.post<void>(`${base}/downloader/jobs/${encodeURIComponent(id)}/cancel`),
+    deleteDownloaderJob: (id: string) =>
+      api.delete<void>(`${base}/downloader/jobs/${encodeURIComponent(id)}`),
+  }
+}
+
+// ── Analytics (admin) ─────────────────────────────────────────────────────────
+
+export function useAnalyticsApi() {
+  return {
+    getSummary: (period?: string) => {
+      const qs = period ? `?period=${encodeURIComponent(period)}` : ''
+      return api.get<AnalyticsSummary>(`/api/analytics${qs}`)
+    },
+    getDaily: (days?: number) => {
+      const qs = days ? `?days=${days}` : ''
+      return api.get<DailyStats[]>(`/api/analytics/daily${qs}`)
+    },
+    getTopMedia: (limit?: number) => {
+      const qs = limit ? `?limit=${limit}` : ''
+      return api.get<TopMediaItem[]>(`/api/analytics/top${qs}`)
+    },
+    exportCsv: () => `/api/admin/analytics/export`,
   }
 }

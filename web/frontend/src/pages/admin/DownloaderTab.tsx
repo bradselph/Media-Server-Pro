@@ -13,6 +13,21 @@ import {useDownloaderWebSocket} from '@/hooks/useDownloaderWebSocket'
 import {errMsg, formatBytes, formatUptime} from './adminUtils'
 import {SubTabs} from './helpers'
 
+function downloadProgressBarColor(status: string): string {
+    if (status === 'error') return '#ef4444'
+    if (status === 'complete') return '#22c55e'
+    return '#3b82f6'
+}
+
+function formatDependencyCellValue(val: unknown): string {
+    if (typeof val === 'string') return val
+    if (val && typeof val === 'object' && 'version' in val) {
+        return String((val as { version?: string }).version ?? '—')
+    }
+    if (typeof val === 'object' && val !== null) return '—'
+    return String(val ?? '—')
+}
+
 export function DownloaderTab() {
     const [sub, setSub] = useState('download')
 
@@ -184,8 +199,7 @@ function DownloadSection({online}: { online: boolean }) {
                                 <div style={{
                                     height: '100%', borderRadius: '3px',
                                     width: `${Math.min(dl.progress ?? 0, 100)}%`,
-                                    background: dl.status === 'error' ? '#ef4444'
-                                        : dl.status === 'complete' ? '#22c55e' : '#3b82f6',
+                                    background: downloadProgressBarColor(dl.status),
                                     transition: 'width 0.3s',
                                 }}/>
                             </div>
@@ -375,19 +389,19 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                             </span>
                         </td>
                     </tr>
-                    {health?.online && health.activeDownloads != null && (
+                    {health?.online && typeof health.activeDownloads === 'number' && (
                         <tr>
                             <td>Active Downloads</td>
                             <td>{health.activeDownloads}</td>
                         </tr>
                     )}
-                    {health?.online && health.queuedDownloads != null && (
+                    {health?.online && typeof health.queuedDownloads === 'number' && (
                         <tr>
                             <td>Queued Downloads</td>
                             <td>{health.queuedDownloads}</td>
                         </tr>
                     )}
-                    {health?.online && health.uptime != null && (
+                    {health?.online && typeof health.uptime === 'number' && (
                         <tr>
                             <td>Uptime</td>
                             <td>{formatUptime(health.uptime)}</td>
@@ -412,15 +426,7 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                             {Object.entries(health.dependencies).map(([name, val]) => (
                                 <tr key={name}>
                                     <td>{name}</td>
-                                    <td>
-                                        {typeof val === 'string'
-                                            ? val
-                                            : val && typeof val === 'object' && 'version' in val
-                                                ? String((val as { version?: string }).version ?? '—')
-                                                : typeof val === 'object' && val !== null
-                                                    ? '—'
-                                                    : String(val ?? '—')}
-                                    </td>
+                                    <td>{formatDependencyCellValue(val)}</td>
                                 </tr>
                             ))}
                             </tbody>
@@ -434,6 +440,12 @@ function StatusSection({health}: { health?: DownloaderHealth }) {
                     <h4 style={{marginBottom: '8px'}}>Settings</h4>
                     <div className="admin-card" style={{marginBottom: '16px'}}>
                         <table className="admin-kv-table">
+                            <thead>
+                            <tr>
+                                <th scope="col">Setting</th>
+                                <th scope="col">Value</th>
+                            </tr>
+                            </thead>
                             <tbody>
                             <tr>
                                 <td>Max Concurrent</td>
