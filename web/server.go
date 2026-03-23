@@ -87,25 +87,28 @@ func registerNuxtAssets(r *gin.Engine) {
 		return
 	}
 
+	// Serve embedded assets directly — the request path is rewritten to match the
+	// embedded FS layout (static/react/_nuxt/..., static/react/_fonts/...).
+	// No StripPrefix needed because we set the full path manually.
+	fileServer := http.FileServer(http.FS(staticFS))
+
 	// /_nuxt/ — hashed JS/CSS chunks
-	nuxtHandler := http.StripPrefix("/_nuxt/", http.FileServer(http.FS(staticFS)))
 	for _, method := range []string{"GET", "HEAD"} {
 		m := method
 		r.Handle(m, "/_nuxt/*filepath", func(c *gin.Context) {
 			c.Header("Cache-Control", "public, max-age=31536000, immutable")
 			c.Request.URL.Path = "/react/_nuxt/" + strings.TrimPrefix(c.Param("filepath"), "/")
-			nuxtHandler.ServeHTTP(c.Writer, c.Request)
+			fileServer.ServeHTTP(c.Writer, c.Request)
 		})
 	}
 
 	// /_fonts/ — locally cached web fonts
-	fontsHandler := http.StripPrefix("/_fonts/", http.FileServer(http.FS(staticFS)))
 	for _, method := range []string{"GET", "HEAD"} {
 		m := method
 		r.Handle(m, "/_fonts/*filepath", func(c *gin.Context) {
 			c.Header("Cache-Control", "public, max-age=31536000, immutable")
 			c.Request.URL.Path = "/react/_fonts/" + strings.TrimPrefix(c.Param("filepath"), "/")
-			fontsHandler.ServeHTTP(c.Writer, c.Request)
+			fileServer.ServeHTTP(c.Writer, c.Request)
 		})
 	}
 }
