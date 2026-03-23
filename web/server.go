@@ -24,7 +24,8 @@ func pathExcludedFromSPA(path string) bool {
 	excludedPrefixes := []string{
 		"/api/", "/web/static/", "/media", "/download", "/thumbnail", "/thumbnails/", "/hls/", "/remote/",
 		"/extractor/", "/ws/", "/health", "/metrics",
-		"/_nuxt/", // Nuxt UI build assets
+		"/_nuxt/",  // Nuxt UI build assets
+		"/_fonts/", // Nuxt UI cached fonts
 	}
 	for _, prefix := range excludedPrefixes {
 		if strings.HasPrefix(path, prefix) {
@@ -79,21 +80,32 @@ func RegisterStaticRoutes(r *gin.Engine) {
 	log.Info("Web routes registered")
 }
 
-// registerNuxtAssets serves Nuxt UI's /_nuxt/ asset bundle from the embedded FS.
+// registerNuxtAssets serves Nuxt UI's /_nuxt/ and /_fonts/ asset bundles from the embedded FS.
 func registerNuxtAssets(r *gin.Engine) {
 	staticFS, err := fs.Sub(content, "static")
 	if err != nil {
 		return
 	}
+
+	// /_nuxt/ — hashed JS/CSS chunks
 	nuxtHandler := http.StripPrefix("/_nuxt/", http.FileServer(http.FS(staticFS)))
 	for _, method := range []string{"GET", "HEAD"} {
 		m := method
 		r.Handle(m, "/_nuxt/*filepath", func(c *gin.Context) {
-			// Nuxt hashes asset filenames, so they can be cached indefinitely.
 			c.Header("Cache-Control", "public, max-age=31536000, immutable")
-			// Rewrite /_nuxt/foo to react/_nuxt/foo in the embedded FS
 			c.Request.URL.Path = "/react/_nuxt/" + strings.TrimPrefix(c.Param("filepath"), "/")
 			nuxtHandler.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+
+	// /_fonts/ — locally cached web fonts
+	fontsHandler := http.StripPrefix("/_fonts/", http.FileServer(http.FS(staticFS)))
+	for _, method := range []string{"GET", "HEAD"} {
+		m := method
+		r.Handle(m, "/_fonts/*filepath", func(c *gin.Context) {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			c.Request.URL.Path = "/react/_fonts/" + strings.TrimPrefix(c.Param("filepath"), "/")
+			fontsHandler.ServeHTTP(c.Writer, c.Request)
 		})
 	}
 }

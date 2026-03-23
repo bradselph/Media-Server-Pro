@@ -17,9 +17,11 @@ export default defineNuxtConfig({
     fallback: 'dark',
   },
 
-  // Build output goes to web/static/react/ so Go serves it from the embedded FS.
-  // With ssr:false, `nuxt build` writes index.html + /_nuxt/ assets here directly.
+  // Build output goes to web/static/react/ so Go embeds it via //go:embed static/*.
+  // preset: 'static' + ssr:false → `nuxt generate` writes index.html + _nuxt/ assets
+  // directly into the publicDir, with no Node server required.
   nitro: {
+    preset: 'static',
     output: {
       publicDir: '../static/react',
     },
