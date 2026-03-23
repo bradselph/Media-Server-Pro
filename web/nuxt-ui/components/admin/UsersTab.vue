@@ -127,7 +127,7 @@ onMounted(load)
           <span class="font-medium">{{ row.original.username }}</span>
         </template>
         <template #email-cell="{ row }">
-          <span class="text-(--ui-text-muted) text-sm">{{ row.original.email || '—' }}</span>
+          <span class="text-muted text-sm">{{ row.original.email || '—' }}</span>
         </template>
         <template #role-cell="{ row }">
           <UBadge
@@ -146,7 +146,7 @@ onMounted(load)
           />
         </template>
         <template #created_at-cell="{ row }">
-          <span class="text-sm text-(--ui-text-muted)">
+          <span class="text-sm text-muted">
             {{ row.original.created_at ? new Date(row.original.created_at).toLocaleDateString() : '—' }}
           </span>
         </template>
@@ -157,7 +157,7 @@ onMounted(load)
           </div>
         </template>
       </UTable>
-      <p v-if="!loading && filtered.length === 0" class="text-center py-6 text-(--ui-text-muted) text-sm">
+      <p v-if="!loading && filtered.length === 0" class="text-center py-6 text-muted text-sm">
         No users found.
       </p>
     </UCard>
@@ -199,7 +199,7 @@ onMounted(load)
           <UAlert :title="editError" color="error" variant="soft" icon="i-lucide-x-circle" />
         </div>
         <div class="space-y-4">
-          <p class="text-(--ui-text-muted) text-sm">Editing: <strong class="text-(--ui-text)">{{ editUser.username }}</strong></p>
+          <p class="text-muted text-sm">Editing: <strong class="text-default">{{ editUser.username }}</strong></p>
           <UFormField label="Email">
             <UInput v-model="editForm.email" type="email" />
           </UFormField>

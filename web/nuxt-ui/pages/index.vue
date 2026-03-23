@@ -99,7 +99,7 @@ function formatDuration(secs?: number): string {
         @click="params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'"
       />
       <div class="ml-auto flex items-center gap-1">
-        <p class="text-sm text-(--ui-text-muted) mr-2">{{ total.toLocaleString() }} items</p>
+        <p class="text-sm text-muted mr-2">{{ total.toLocaleString() }} items</p>
         <UButtonGroup>
           <UButton
             icon="i-lucide-grid-2x2"
@@ -124,7 +124,7 @@ function formatDuration(secs?: number): string {
       <div
         v-for="n in 12"
         :key="n"
-        class="aspect-video rounded-lg bg-(--ui-bg-muted) animate-pulse"
+        class="aspect-video rounded-lg bg-muted animate-pulse"
       />
     </div>
 
@@ -139,7 +139,7 @@ function formatDuration(secs?: number): string {
         :to="`/player?id=${encodeURIComponent(item.id)}`"
         class="group block"
       >
-        <div class="relative aspect-video rounded-lg overflow-hidden bg-(--ui-bg-muted) mb-2">
+        <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2">
           <img
             v-if="item.thumbnail_url || item.id"
             :src="mediaApi.getThumbnailUrl(item.id)"
@@ -150,7 +150,7 @@ function formatDuration(secs?: number): string {
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon
               :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'"
-              class="size-8 text-(--ui-text-muted)"
+              class="size-8 text-muted"
             />
           </div>
           <!-- Duration badge -->
@@ -176,12 +176,12 @@ function formatDuration(secs?: number): string {
             <UBadge label="18+" color="error" variant="solid" size="xs" />
           </div>
         </div>
-        <p class="text-sm font-medium text-(--ui-text) truncate group-hover:text-primary transition-colors" :title="item.name">
+        <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="item.name">
           {{ item.name }}
         </p>
-        <p v-if="item.category" class="text-xs text-(--ui-text-muted) truncate">{{ item.category }}</p>
+        <p v-if="item.category" class="text-xs text-muted truncate">{{ item.category }}</p>
       </NuxtLink>
-      <p v-if="items.length === 0" class="col-span-full text-center py-12 text-(--ui-text-muted)">
+      <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
         No media found.
       </p>
     </div>
@@ -201,7 +201,7 @@ function formatDuration(secs?: number): string {
       >
         <template #name-cell="{ row }">
           <NuxtLink :to="`/player?id=${encodeURIComponent(row.original.id)}`" class="flex items-center gap-3 hover:text-primary">
-            <div class="w-16 h-9 rounded overflow-hidden bg-(--ui-bg-muted) shrink-0">
+            <div class="w-16 h-9 rounded overflow-hidden bg-muted shrink-0">
               <img
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
                 :alt="row.original.name"
@@ -220,10 +220,10 @@ function formatDuration(secs?: number): string {
         </template>
         <template #views-cell="{ row }">{{ (row.original.views ?? 0).toLocaleString() }}</template>
         <template #date_added-cell="{ row }">
-          <span class="text-sm text-(--ui-text-muted)">{{ new Date(row.original.date_added).toLocaleDateString() }}</span>
+          <span class="text-sm text-muted">{{ new Date(row.original.date_added).toLocaleDateString() }}</span>
         </template>
       </UTable>
-      <p v-if="items.length === 0" class="text-center py-8 text-(--ui-text-muted)">No media found.</p>
+      <p v-if="items.length === 0" class="text-center py-8 text-muted">No media found.</p>
     </UCard>
 
     <!-- Pagination -->

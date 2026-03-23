@@ -132,7 +132,7 @@ watch(subTab, (v) => {
             <span class="font-mono text-xs">{{ row.original.resource }}</span>
           </template>
         </UTable>
-        <p v-if="!auditLoading && auditEntries.length === 0" class="text-center py-4 text-(--ui-text-muted) text-sm">
+        <p v-if="!auditLoading && auditEntries.length === 0" class="text-center py-4 text-muted text-sm">
           No audit log entries.
         </p>
       </UCard>
@@ -163,7 +163,7 @@ watch(subTab, (v) => {
             :columns="[{ key: 'ip', label: 'IP' }, { key: 'comment', label: 'Comment' }, { key: 'added_at', label: 'Added' }, { key: 'actions', label: '' }]"
           >
             <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
-            <template #comment-cell="{ row }"><span class="text-sm text-(--ui-text-muted)">{{ row.original.comment || '—' }}</span></template>
+            <template #comment-cell="{ row }"><span class="text-sm text-muted">{{ row.original.comment || '—' }}</span></template>
             <template #added_at-cell="{ row }"><span class="text-sm">{{ new Date(row.original.added_at).toLocaleDateString() }}</span></template>
             <template #actions-cell="{ row }">
               <UButton
@@ -175,7 +175,7 @@ watch(subTab, (v) => {
               />
             </template>
           </UTable>
-          <p v-if="(subTab === 'whitelist' ? whitelist : blacklist).length === 0" class="text-center py-4 text-(--ui-text-muted) text-sm">
+          <p v-if="(subTab === 'whitelist' ? whitelist : blacklist).length === 0" class="text-center py-4 text-muted text-sm">
             No entries.
           </p>
         </UCard>
@@ -195,7 +195,7 @@ watch(subTab, (v) => {
             <UButton icon="i-lucide-shield-off" size="xs" variant="ghost" color="warning" label="Unban" @click="unban(row.original.ip)" />
           </template>
         </UTable>
-        <p v-if="banned.length === 0" class="text-center py-4 text-(--ui-text-muted) text-sm">No banned IPs.</p>
+        <p v-if="banned.length === 0" class="text-center py-4 text-muted text-sm">No banned IPs.</p>
       </UCard>
     </div>
 
@@ -210,10 +210,10 @@ watch(subTab, (v) => {
           { label: 'Blacklist', value: stats.blacklist_count, icon: 'i-lucide-shield-ban' },
         ]" :key="item.label" :ui="{ body: 'p-4' }">
           <div class="flex items-center gap-2">
-            <UIcon :name="item.icon" class="size-4 text-(--ui-text-muted)" />
+            <UIcon :name="item.icon" class="size-4 text-muted" />
             <div>
-              <p class="text-lg font-bold text-(--ui-text-highlighted)">{{ (item.value ?? 0).toLocaleString() }}</p>
-              <p class="text-xs text-(--ui-text-muted)">{{ item.label }}</p>
+              <p class="text-lg font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
+              <p class="text-xs text-muted">{{ item.label }}</p>
             </div>
           </div>
         </UCard>

@@ -35,8 +35,8 @@ async function handleLogin() {
     <div class="w-full max-w-sm space-y-6">
       <div class="text-center space-y-2">
         <UIcon name="i-lucide-film" class="size-10 text-primary mx-auto" />
-        <h1 class="text-2xl font-bold text-(--ui-text-highlighted)">Media Server Pro</h1>
-        <p class="text-(--ui-text-muted) text-sm">Sign in to your account</p>
+        <h1 class="text-2xl font-bold text-highlighted">Media Server Pro</h1>
+        <p class="text-muted text-sm">Sign in to your account</p>
       </div>
 
       <UCard>
@@ -74,7 +74,7 @@ async function handleLogin() {
         </form>
       </UCard>
 
-      <p class="text-center text-sm text-(--ui-text-muted)">
+      <p class="text-center text-sm text-muted">
         Don't have an account?
         <NuxtLink to="/signup" class="text-primary hover:underline">Sign up</NuxtLink>
       </p>

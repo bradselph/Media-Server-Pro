@@ -27,11 +27,11 @@ const navLinks = computed(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-(--ui-bg) text-(--ui-text)">
+  <div class="min-h-screen bg-default text-default">
     <!-- Nav -->
-    <header class="border-b border-(--ui-border) bg-(--ui-bg-elevated) sticky top-0 z-40">
+    <header class="border-b border-default bg-elevated sticky top-0 z-40">
       <UContainer class="flex items-center justify-between h-14 gap-4">
-        <NuxtLink to="/" class="font-bold text-lg text-(--ui-text-highlighted) flex items-center gap-2">
+        <NuxtLink to="/" class="font-bold text-lg text-highlighted flex items-center gap-2">
           <UIcon name="i-lucide-film" class="size-5 text-primary" />
           Media Server Pro
         </NuxtLink>
@@ -41,8 +41,8 @@ const navLinks = computed(() => {
             v-for="link in navLinks"
             :key="link.to"
             :to="link.to"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
-            active-class="text-(--ui-text) bg-(--ui-bg-muted)"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+            active-class="text-default bg-muted"
           >
             <UIcon :name="link.icon" class="size-4" />
             {{ link.label }}

@@ -98,10 +98,10 @@ onUnmounted(() => clearInterval(interval))
           :ui="{ body: 'p-4' }"
         >
           <div class="flex items-start gap-2">
-            <UIcon :name="item.icon" class="size-4 text-(--ui-text-muted) mt-0.5" />
+            <UIcon :name="item.icon" class="size-4 text-muted mt-0.5" />
             <div>
-              <p class="text-xl font-bold text-(--ui-text-highlighted)">{{ item.value.toLocaleString() }}</p>
-              <p class="text-xs text-(--ui-text-muted)">{{ item.label }}</p>
+              <p class="text-xl font-bold text-highlighted">{{ item.value.toLocaleString() }}</p>
+              <p class="text-xs text-muted">{{ item.label }}</p>
             </div>
           </div>
         </UCard>
@@ -117,11 +117,11 @@ onUnmounted(() => clearInterval(interval))
         </template>
         <div class="space-y-2">
           <div class="flex justify-between text-sm">
-            <span class="text-(--ui-text-muted)">Disk Usage</span>
+            <span class="text-muted">Disk Usage</span>
             <span>{{ formatBytes(stats.disk_usage ?? 0) }} / {{ formatBytes(stats.disk_total ?? 0) }}</span>
           </div>
           <UProgress :value="diskPct" :color="diskColor" size="sm" />
-          <p class="text-xs text-(--ui-text-muted)">{{ diskPct }}% used · {{ formatBytes(stats.disk_free ?? 0) }} free</p>
+          <p class="text-xs text-muted">{{ diskPct }}% used · {{ formatBytes(stats.disk_free ?? 0) }} free</p>
         </div>
       </UCard>
 
@@ -134,7 +134,7 @@ onUnmounted(() => clearInterval(interval))
             <UBadge :label="String(streams.length)" color="neutral" variant="subtle" size="xs" />
           </div>
         </template>
-        <p v-if="streams.length === 0" class="text-(--ui-text-muted) text-sm">No active streams.</p>
+        <p v-if="streams.length === 0" class="text-muted text-sm">No active streams.</p>
         <UTable
           v-else
           :data="streams"
@@ -196,26 +196,26 @@ onUnmounted(() => clearInterval(interval))
         </div>
       </template>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm mb-4">
-        <div><span class="text-(--ui-text-muted)">Version:</span> <span class="font-mono">{{ system.version }}</span></div>
-        <div><span class="text-(--ui-text-muted)">OS/Arch:</span> {{ system.os }}/{{ system.arch }}</div>
-        <div><span class="text-(--ui-text-muted)">Go:</span> {{ system.go_version }}</div>
-        <div><span class="text-(--ui-text-muted)">Uptime:</span> {{ formatUptime(system.uptime) }}</div>
-        <div><span class="text-(--ui-text-muted)">CPUs:</span> {{ system.cpu_count }}</div>
+        <div><span class="text-muted">Version:</span> <span class="font-mono">{{ system.version }}</span></div>
+        <div><span class="text-muted">OS/Arch:</span> {{ system.os }}/{{ system.arch }}</div>
+        <div><span class="text-muted">Go:</span> {{ system.go_version }}</div>
+        <div><span class="text-muted">Uptime:</span> {{ formatUptime(system.uptime) }}</div>
+        <div><span class="text-muted">CPUs:</span> {{ system.cpu_count }}</div>
         <div>
-          <span class="text-(--ui-text-muted)">Memory:</span>
+          <span class="text-muted">Memory:</span>
           {{ formatBytes(system.memory_used) }} / {{ formatBytes(system.memory_total) }}
           <UProgress :value="memPct" size="xs" class="mt-1" />
         </div>
       </div>
       <div v-if="system.modules?.length" class="space-y-1">
-        <p class="text-sm font-medium text-(--ui-text-highlighted) mb-2">Module Health</p>
+        <p class="text-sm font-medium text-highlighted mb-2">Module Health</p>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           <div
             v-for="m in system.modules"
             :key="m.name"
-            class="flex items-center justify-between text-xs bg-(--ui-bg-muted) rounded px-2 py-1"
+            class="flex items-center justify-between text-xs bg-muted rounded px-2 py-1"
           >
-            <span class="text-(--ui-text-muted) truncate">{{ m.name }}</span>
+            <span class="text-muted truncate">{{ m.name }}</span>
             <UBadge :label="m.status" :color="moduleStatusColor(m.status)" size="xs" variant="subtle" />
           </div>
         </div>

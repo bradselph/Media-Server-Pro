@@ -63,11 +63,11 @@ onMounted(checkForUpdates)
       </template>
       <div class="space-y-2 text-sm">
         <div class="flex items-center gap-2">
-          <span class="text-(--ui-text-muted)">Current:</span>
+          <span class="text-muted">Current:</span>
           <span class="font-mono font-medium">{{ info?.current_version || '—' }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="text-(--ui-text-muted)">Latest:</span>
+          <span class="text-muted">Latest:</span>
           <span class="font-mono">{{ info?.latest_version || '—' }}</span>
           <UBadge
             v-if="info?.update_available"
@@ -85,7 +85,7 @@ onMounted(checkForUpdates)
           />
         </div>
         <div v-if="info?.published_at" class="flex items-center gap-2">
-          <span class="text-(--ui-text-muted)">Released:</span>
+          <span class="text-muted">Released:</span>
           <span>{{ new Date(info.published_at).toLocaleDateString() }}</span>
         </div>
       </div>
@@ -96,7 +96,7 @@ onMounted(checkForUpdates)
       <template #header>
         <div class="font-semibold">Release Notes</div>
       </template>
-      <pre class="text-sm whitespace-pre-wrap text-(--ui-text-muted)">{{ info.release_notes }}</pre>
+      <pre class="text-sm whitespace-pre-wrap text-muted">{{ info.release_notes }}</pre>
     </UCard>
 
     <!-- Status while updating -->
@@ -116,7 +116,7 @@ onMounted(checkForUpdates)
           <span class="text-sm capitalize">{{ status.state }}</span>
         </div>
         <UProgress v-if="status.progress != null" :value="status.progress" size="sm" />
-        <p v-if="status.message" class="text-sm text-(--ui-text-muted)">{{ status.message }}</p>
+        <p v-if="status.message" class="text-sm text-muted">{{ status.message }}</p>
         <p v-if="status.error" class="text-sm text-error">{{ status.error }}</p>
       </div>
     </UCard>

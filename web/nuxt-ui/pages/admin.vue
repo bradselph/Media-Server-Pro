@@ -1,14 +1,14 @@
 <script setup lang="ts">
-definePageMeta({ title: 'Admin Panel' })
+definePageMeta({ title: 'Admin Panel', middleware: 'admin' })
 
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-// Redirect non-admins
+// Redirect non-admins to the admin login page
 watchEffect(() => {
   if (!authStore.isLoading && !authStore.isAdmin) {
-    router.replace('/login')
+    router.replace('/admin-login')
   }
 })
 
@@ -45,7 +45,7 @@ watch(activeTab, tab => {
     <div v-else-if="authStore.isAdmin" class="space-y-6">
       <!-- Header -->
       <div class="flex items-center justify-between flex-wrap gap-3">
-        <h1 class="text-2xl font-bold text-(--ui-text-highlighted) flex items-center gap-2">
+        <h1 class="text-2xl font-bold text-highlighted flex items-center gap-2">
           <UIcon name="i-lucide-shield" class="size-6 text-primary" />
           Admin Panel
         </h1>

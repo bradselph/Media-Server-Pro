@@ -37,8 +37,8 @@ async function handleLogin() {
     <div class="w-full max-w-sm space-y-6">
       <div class="text-center space-y-2">
         <UIcon name="i-lucide-shield" class="size-10 text-primary mx-auto" />
-        <h1 class="text-2xl font-bold text-(--ui-text-highlighted)">Admin Login</h1>
-        <p class="text-(--ui-text-muted) text-sm">Sign in with your admin credentials</p>
+        <h1 class="text-2xl font-bold text-highlighted">Admin Login</h1>
+        <p class="text-muted text-sm">Sign in with your admin credentials</p>
       </div>
       <UCard>
         <form class="space-y-4" @submit.prevent="handleLogin">

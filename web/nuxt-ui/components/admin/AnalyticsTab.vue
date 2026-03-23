@@ -50,7 +50,7 @@ onMounted(load)
   <div class="space-y-6">
     <!-- Period selector -->
     <div class="flex items-center justify-between">
-      <h3 class="font-semibold text-(--ui-text-highlighted)">Analytics Overview</h3>
+      <h3 class="font-semibold text-highlighted">Analytics Overview</h3>
       <div class="flex items-center gap-2">
         <UButtonGroup>
           <UButton
@@ -92,10 +92,10 @@ onMounted(load)
         :ui="{ body: 'p-4' }"
       >
         <div class="flex items-center gap-2">
-          <UIcon :name="item.icon" class="size-4 text-(--ui-text-muted)" />
+          <UIcon :name="item.icon" class="size-4 text-muted" />
           <div>
-            <p class="text-lg font-bold text-(--ui-text-highlighted)">{{ item.value }}</p>
-            <p class="text-xs text-(--ui-text-muted)">{{ item.label }}</p>
+            <p class="text-lg font-bold text-highlighted">{{ item.value }}</p>
+            <p class="text-xs text-muted">{{ item.label }}</p>
           </div>
         </div>
       </UCard>

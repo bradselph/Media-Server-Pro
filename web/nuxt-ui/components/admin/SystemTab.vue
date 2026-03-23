@@ -188,7 +188,7 @@ watch(subTab, (v) => {
         <div v-if="tasksLoading" class="flex justify-center py-6">
           <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
         </div>
-        <div v-else class="divide-y divide-(--ui-border)">
+        <div v-else class="divide-y divide-default">
           <div
             v-for="task in tasks"
             :key="task.id"
@@ -211,8 +211,8 @@ watch(subTab, (v) => {
                   size="xs"
                 />
               </div>
-              <p class="text-xs text-(--ui-text-muted) mt-0.5">{{ task.description }}</p>
-              <p class="text-xs text-(--ui-text-muted)">
+              <p class="text-xs text-muted mt-0.5">{{ task.description }}</p>
+              <p class="text-xs text-muted">
                 Schedule: {{ task.schedule }} · Next: {{ task.next_run ? new Date(task.next_run).toLocaleString() : '—' }}
               </p>
               <p v-if="task.last_error" class="text-xs text-error mt-0.5">{{ task.last_error }}</p>
@@ -237,7 +237,7 @@ watch(subTab, (v) => {
               />
             </div>
           </div>
-          <p v-if="tasks.length === 0" class="text-center py-4 text-(--ui-text-muted) text-sm">No tasks registered.</p>
+          <p v-if="tasks.length === 0" class="text-center py-4 text-muted text-sm">No tasks registered.</p>
         </div>
       </UCard>
     </div>
@@ -257,7 +257,7 @@ watch(subTab, (v) => {
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
       </div>
       <div v-else ref="logsContainer" class="log-viewer">
-        <div v-if="logs.length === 0" class="text-(--ui-text-muted)">No log entries.</div>
+        <div v-if="logs.length === 0" class="text-muted">No log entries.</div>
         <div
           v-for="(entry, i) in logs"
           :key="i"
@@ -316,7 +316,7 @@ watch(subTab, (v) => {
             </div>
           </template>
         </UTable>
-        <p v-if="!backupsLoading && backups.length === 0" class="text-center py-4 text-(--ui-text-muted) text-sm">
+        <p v-if="!backupsLoading && backups.length === 0" class="text-center py-4 text-muted text-sm">
           No backups found.
         </p>
       </UCard>
@@ -338,10 +338,10 @@ watch(subTab, (v) => {
             <span class="font-medium">{{ dbStatus.connected ? 'Connected' : 'Disconnected' }}</span>
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <div><span class="text-(--ui-text-muted)">Host:</span> {{ dbStatus.host || '—' }}</div>
-            <div><span class="text-(--ui-text-muted)">Database:</span> {{ dbStatus.database || '—' }}</div>
-            <div><span class="text-(--ui-text-muted)">Tables:</span> {{ dbStatus.tables || '—' }}</div>
-            <div><span class="text-(--ui-text-muted)">Total Rows:</span> {{ (dbStatus.total_rows || 0).toLocaleString() }}</div>
+            <div><span class="text-muted">Host:</span> {{ dbStatus.host || '—' }}</div>
+            <div><span class="text-muted">Database:</span> {{ dbStatus.database || '—' }}</div>
+            <div><span class="text-muted">Tables:</span> {{ dbStatus.tables || '—' }}</div>
+            <div><span class="text-muted">Total Rows:</span> {{ (dbStatus.total_rows || 0).toLocaleString() }}</div>
           </div>
         </div>
       </UCard>

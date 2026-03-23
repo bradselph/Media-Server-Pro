@@ -2,7 +2,7 @@
 import type { UserPreferences, WatchHistoryItem } from '~/types/api'
 import { THEMES } from '~/stores/theme'
 
-definePageMeta({ layout: 'default', title: 'Profile' })
+definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
@@ -148,7 +148,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
             <p class="font-semibold text-lg">{{ authStore.username }}</p>
             <div class="flex items-center gap-2 mt-1">
               <UBadge :label="authStore.user.role" :color="authStore.isAdmin ? 'warning' : 'neutral'" variant="subtle" size="xs" />
-              <span class="text-sm text-(--ui-text-muted)">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
+              <span class="text-sm text-muted">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
             </div>
           </div>
         </div>
@@ -250,10 +250,10 @@ onMounted(() => { loadPrefs(); loadHistory() })
         <div v-if="historyLoading" class="flex justify-center py-4">
           <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
         </div>
-        <div v-else-if="filteredHistory.length === 0" class="text-center py-6 text-(--ui-text-muted) text-sm">
+        <div v-else-if="filteredHistory.length === 0" class="text-center py-6 text-muted text-sm">
           No watch history.
         </div>
-        <div v-else class="divide-y divide-(--ui-border)">
+        <div v-else class="divide-y divide-default">
           <div
             v-for="item in filteredHistory"
             :key="item.media_id || item.media_path"
@@ -261,7 +261,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
           >
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ item.media_name || item.title || item.media_path }}</p>
-              <p class="text-xs text-(--ui-text-muted)">{{ item.watched_at ? new Date(item.watched_at).toLocaleString() : '' }}</p>
+              <p class="text-xs text-muted">{{ item.watched_at ? new Date(item.watched_at).toLocaleString() : '' }}</p>
             </div>
             <UButton
               icon="i-lucide-x"
@@ -304,7 +304,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
             Danger Zone
           </div>
         </template>
-        <p class="text-sm text-(--ui-text-muted) mb-3">Permanently delete your account and all associated data.</p>
+        <p class="text-sm text-muted mb-3">Permanently delete your account and all associated data.</p>
         <UButton icon="i-lucide-trash-2" label="Delete Account" color="error" variant="outline" @click="deleteOpen = true" />
 
         <UModal v-model:open="deleteOpen" title="Delete Account" description="This action cannot be undone. All your data will be permanently removed.">

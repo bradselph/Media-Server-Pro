@@ -65,10 +65,10 @@ onMounted(load)
         { label: 'Disk Used', value: formatBytes(stats.disk_used), icon: 'i-lucide-hard-drive' },
       ]" :key="item.label" :ui="{ body: 'p-4' }">
         <div class="flex items-center gap-2">
-          <UIcon :name="item.icon" class="size-4 text-(--ui-text-muted)" :class="item.color" />
+          <UIcon :name="item.icon" class="size-4 text-muted" :class="item.color" />
           <div>
-            <p class="text-lg font-bold text-(--ui-text-highlighted)">{{ item.value }}</p>
-            <p class="text-xs text-(--ui-text-muted)">{{ item.label }}</p>
+            <p class="text-lg font-bold text-highlighted">{{ item.value }}</p>
+            <p class="text-xs text-muted">{{ item.label }}</p>
           </div>
         </div>
       </UCard>
@@ -108,7 +108,7 @@ onMounted(load)
             <UProgress :value="row.original.progress" size="xs" class="flex-1" />
             <span class="text-xs">{{ row.original.progress }}%</span>
           </div>
-          <span v-else class="text-sm text-(--ui-text-muted)">—</span>
+          <span v-else class="text-sm text-muted">—</span>
         </template>
         <template #qualities-cell="{ row }">
           <div class="flex flex-wrap gap-1">
@@ -123,7 +123,7 @@ onMounted(load)
           </div>
         </template>
         <template #started_at-cell="{ row }">
-          <span class="text-sm text-(--ui-text-muted)">
+          <span class="text-sm text-muted">
             {{ row.original.started_at ? new Date(row.original.started_at).toLocaleString() : '—' }}
           </span>
         </template>
@@ -138,7 +138,7 @@ onMounted(load)
           />
         </template>
       </UTable>
-      <p v-if="!loading && jobs.length === 0" class="text-center py-6 text-(--ui-text-muted) text-sm">
+      <p v-if="!loading && jobs.length === 0" class="text-center py-6 text-muted text-sm">
         No HLS jobs found.
       </p>
     </UCard>

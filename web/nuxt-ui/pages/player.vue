@@ -172,8 +172,8 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
   <UContainer class="py-6">
     <!-- No media selected -->
     <div v-if="!mediaId" class="flex flex-col items-center justify-center py-24 gap-4">
-      <UIcon name="i-lucide-film" class="size-16 text-(--ui-text-muted)" />
-      <p class="text-(--ui-text-muted)">No media selected. Browse the <NuxtLink to="/" class="text-primary underline">library</NuxtLink> to find something to watch.</p>
+      <UIcon name="i-lucide-film" class="size-16 text-muted" />
+      <p class="text-muted">No media selected. Browse the <NuxtLink to="/" class="text-primary underline">library</NuxtLink> to find something to watch.</p>
     </div>
 
     <!-- Loading -->
@@ -270,7 +270,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
         <!-- Audio player -->
         <UCard v-else class="text-center py-8 space-y-4">
           <UIcon name="i-lucide-music" class="size-16 text-primary mx-auto" />
-          <p class="font-semibold text-lg text-(--ui-text-highlighted)">{{ media.name }}</p>
+          <p class="font-semibold text-lg text-highlighted">{{ media.name }}</p>
           <audio
             ref="videoRef"
             :src="mediaApi.getStreamUrl(media.id)"
@@ -299,15 +299,15 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
         <!-- Media info -->
         <UCard>
           <template #header>
-            <h2 class="font-bold text-lg text-(--ui-text-highlighted)">{{ media.name }}</h2>
+            <h2 class="font-bold text-lg text-highlighted">{{ media.name }}</h2>
           </template>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-            <div v-if="media.type"><span class="text-(--ui-text-muted)">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
-            <div v-if="media.duration"><span class="text-(--ui-text-muted)">Duration:</span> {{ formatTime(media.duration) }}</div>
-            <div v-if="media.size"><span class="text-(--ui-text-muted)">Size:</span> {{ (media.size / 1048576).toFixed(1) }} MB</div>
-            <div v-if="media.views != null"><span class="text-(--ui-text-muted)">Views:</span> {{ media.views.toLocaleString() }}</div>
-            <div v-if="media.resolution"><span class="text-(--ui-text-muted)">Resolution:</span> {{ media.resolution }}</div>
-            <div v-if="media.category"><span class="text-(--ui-text-muted)">Category:</span> {{ media.category }}</div>
+            <div v-if="media.type"><span class="text-muted">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
+            <div v-if="media.duration"><span class="text-muted">Duration:</span> {{ formatTime(media.duration) }}</div>
+            <div v-if="media.size"><span class="text-muted">Size:</span> {{ (media.size / 1048576).toFixed(1) }} MB</div>
+            <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
+            <div v-if="media.resolution"><span class="text-muted">Resolution:</span> {{ media.resolution }}</div>
+            <div v-if="media.category"><span class="text-muted">Category:</span> {{ media.category }}</div>
           </div>
           <div class="flex gap-2 mt-4">
             <UButton
@@ -325,19 +325,19 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
 
       <!-- Sidebar: similar -->
       <div v-if="(similar as MediaItem[]).length > 0" class="space-y-3">
-        <h3 class="font-semibold text-(--ui-text-highlighted)">Similar Media</h3>
+        <h3 class="font-semibold text-highlighted">Similar Media</h3>
         <NuxtLink
           v-for="item in (similar as MediaItem[])"
           :key="item.id"
           :to="`/player?id=${encodeURIComponent(item.id)}`"
-          class="flex gap-3 items-center hover:bg-(--ui-bg-muted) rounded-lg p-2 transition-colors"
+          class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
         >
-          <div class="w-20 h-12 rounded overflow-hidden bg-(--ui-bg-muted) shrink-0">
+          <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
             <img :src="mediaApi.getThumbnailUrl(item.id)" :alt="item.name" class="w-full h-full object-cover" loading="lazy" />
           </div>
           <div class="min-w-0">
             <p class="text-sm font-medium truncate">{{ item.name }}</p>
-            <p v-if="(item as Suggestion).duration" class="text-xs text-(--ui-text-muted)">{{ formatTime((item as Suggestion).duration ?? 0) }}</p>
+            <p v-if="(item as Suggestion).duration" class="text-xs text-muted">{{ formatTime((item as Suggestion).duration ?? 0) }}</p>
           </div>
         </NuxtLink>
       </div>

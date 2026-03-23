@@ -37,7 +37,7 @@ async function handleSignup() {
     <div class="w-full max-w-sm space-y-6">
       <div class="text-center space-y-2">
         <UIcon name="i-lucide-user-plus" class="size-10 text-primary mx-auto" />
-        <h1 class="text-2xl font-bold text-(--ui-text-highlighted)">Create Account</h1>
+        <h1 class="text-2xl font-bold text-highlighted">Create Account</h1>
       </div>
 
       <UCard>
@@ -59,7 +59,7 @@ async function handleSignup() {
         </form>
       </UCard>
 
-      <p class="text-center text-sm text-(--ui-text-muted)">
+      <p class="text-center text-sm text-muted">
         Already have an account?
         <NuxtLink to="/login" class="text-primary hover:underline">Sign in</NuxtLink>
       </p>

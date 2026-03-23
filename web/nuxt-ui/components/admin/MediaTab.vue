@@ -124,7 +124,7 @@ onMounted(load)
       </div>
     </div>
 
-    <p class="text-sm text-(--ui-text-muted)">
+    <p class="text-sm text-muted">
       {{ totalItems.toLocaleString() }} items
     </p>
 
@@ -162,7 +162,7 @@ onMounted(load)
           <span class="text-sm font-mono">{{ formatDuration(row.original.duration) }}</span>
         </template>
         <template #category-cell="{ row }">
-          <span class="text-sm text-(--ui-text-muted)">{{ row.original.category || '—' }}</span>
+          <span class="text-sm text-muted">{{ row.original.category || '—' }}</span>
         </template>
         <template #views-cell="{ row }">
           <span class="text-sm">{{ (row.original.views ?? 0).toLocaleString() }}</span>
@@ -175,7 +175,7 @@ onMounted(load)
             variant="subtle"
             size="xs"
           />
-          <span v-else class="text-(--ui-text-muted) text-sm">—</span>
+          <span v-else class="text-muted text-sm">—</span>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1 justify-end">
@@ -198,7 +198,7 @@ onMounted(load)
           </div>
         </template>
       </UTable>
-      <p v-if="!loading && items.length === 0" class="text-center py-6 text-(--ui-text-muted) text-sm">
+      <p v-if="!loading && items.length === 0" class="text-center py-6 text-muted text-sm">
         No media found.
       </p>
     </UCard>

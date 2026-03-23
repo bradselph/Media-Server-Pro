@@ -41,7 +41,7 @@ onMounted(load)
       <div class="flex items-center gap-4 text-sm">
         <UIcon name="i-lucide-list-music" class="size-4 text-primary" />
         <span><strong>{{ playlists.length }}</strong> playlists total</span>
-        <span class="text-(--ui-text-muted)">·</span>
+        <span class="text-muted">·</span>
         <span><strong>{{ playlists.reduce((sum, p) => sum + (p.items?.length ?? 0), 0) }}</strong> items total</span>
       </div>
     </UCard>
@@ -69,7 +69,7 @@ onMounted(load)
         <template #name-cell="{ row }">
           <div>
             <p class="font-medium text-sm">{{ row.original.name }}</p>
-            <p v-if="row.original.description" class="text-xs text-(--ui-text-muted) truncate max-w-xs">
+            <p v-if="row.original.description" class="text-xs text-muted truncate max-w-xs">
               {{ row.original.description }}
             </p>
           </div>
@@ -89,7 +89,7 @@ onMounted(load)
           />
         </template>
         <template #created_at-cell="{ row }">
-          <span class="text-sm text-(--ui-text-muted)">
+          <span class="text-sm text-muted">
             {{ new Date(row.original.created_at).toLocaleDateString() }}
           </span>
         </template>
@@ -103,7 +103,7 @@ onMounted(load)
           />
         </template>
       </UTable>
-      <p v-if="!loading && playlists.length === 0" class="text-center py-6 text-(--ui-text-muted) text-sm">
+      <p v-if="!loading && playlists.length === 0" class="text-center py-6 text-muted text-sm">
         No playlists found.
       </p>
     </UCard>

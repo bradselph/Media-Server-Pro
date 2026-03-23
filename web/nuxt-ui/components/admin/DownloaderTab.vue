@@ -112,7 +112,7 @@ onUnmounted(() => clearInterval(interval))
         <template #filename-cell="{ row }">
           <div class="max-w-xs">
             <p class="text-sm font-medium truncate">{{ row.original.filename || '—' }}</p>
-            <p class="text-xs text-(--ui-text-muted) truncate" :title="row.original.url">{{ row.original.url }}</p>
+            <p class="text-xs text-muted truncate" :title="row.original.url">{{ row.original.url }}</p>
           </div>
         </template>
         <template #status-cell="{ row }">
@@ -123,7 +123,7 @@ onUnmounted(() => clearInterval(interval))
             <UProgress :value="row.original.progress ?? 0" size="xs" class="flex-1" />
             <span class="text-xs">{{ Math.round(row.original.progress ?? 0) }}%</span>
           </div>
-          <span v-else class="text-sm text-(--ui-text-muted)">—</span>
+          <span v-else class="text-sm text-muted">—</span>
         </template>
         <template #size-cell="{ row }">
           <span class="text-sm">
@@ -131,7 +131,7 @@ onUnmounted(() => clearInterval(interval))
           </span>
         </template>
         <template #created_at-cell="{ row }">
-          <span class="text-sm text-(--ui-text-muted)">{{ new Date(row.original.created_at).toLocaleString() }}</span>
+          <span class="text-sm text-muted">{{ new Date(row.original.created_at).toLocaleString() }}</span>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex gap-1 justify-end">
@@ -155,7 +155,7 @@ onUnmounted(() => clearInterval(interval))
           </div>
         </template>
       </UTable>
-      <p v-if="!loading && jobs.length === 0" class="text-center py-6 text-(--ui-text-muted) text-sm">
+      <p v-if="!loading && jobs.length === 0" class="text-center py-6 text-muted text-sm">
         No downloads.
       </p>
     </UCard>
