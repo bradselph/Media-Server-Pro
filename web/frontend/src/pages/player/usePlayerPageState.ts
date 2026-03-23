@@ -851,6 +851,7 @@ type PlayerPageReturnOpts = {
     handlers: ReturnType<typeof usePlayerPageHandlers>
     handleRate: (rating: number) => void
     resetControlsTimer: () => void
+    hideVideoControls: () => void
     progress: number
     qualityBadge: string | null
     isAudio: boolean
@@ -916,9 +917,10 @@ function getPlayerReturnStateAndMedia(opts: PlayerPageReturnOpts) {
 }
 
 function getPlayerReturnHandlers(opts: PlayerPageReturnOpts) {
-    const { handlers, handleRate, resetControlsTimer } = opts
+    const { handlers, handleRate, resetControlsTimer, hideVideoControls } = opts
     return {
         resetControlsTimer,
+        hideVideoControls,
         getActiveEl: handlers.getActiveEl,
         togglePlay: handlers.togglePlay,
         handlePrevTrack: handlers.handlePrevTrack,
@@ -1115,7 +1117,16 @@ function usePlayerPageCallbacks(opts: {
             if (isPlayingRef.current) state.setShowControls(false)
         }, 3000)
     }, [state, controlsTimerRef, isPlayingRef])
-    return { handleRate, resetControlsTimer }
+
+    const hideVideoControls = useCallback(() => {
+        if (controlsTimerRef.current) {
+            clearTimeout(controlsTimerRef.current)
+            controlsTimerRef.current = null
+        }
+        state.setShowControls(false)
+    }, [state, controlsTimerRef])
+
+    return { handleRate, resetControlsTimer, hideVideoControls }
 }
 
 /** Assembles stores, refs, callbacks, mediaHls, and handlers. Reduces usePlayerPageState LoC. */
@@ -1133,7 +1144,7 @@ function usePlayerPageCore(mediaId: string) {
     const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const isPlayingRef = useRef(false)
 
-    const { handleRate, resetControlsTimer } = usePlayerPageCallbacks({
+    const { handleRate, resetControlsTimer, hideVideoControls } = usePlayerPageCallbacks({
         mediaId,
         state,
         controlsTimerRef,
@@ -1175,6 +1186,7 @@ function usePlayerPageCore(mediaId: string) {
         handlers,
         handleRate,
         resetControlsTimer,
+        hideVideoControls,
     }
 }
 
@@ -1222,6 +1234,7 @@ export function usePlayerPageState(mediaId: string) {
         handlers: core.handlers,
         handleRate: core.handleRate,
         resetControlsTimer: core.resetControlsTimer,
+        hideVideoControls: core.hideVideoControls,
         progress,
         qualityBadge,
         isAudio,
