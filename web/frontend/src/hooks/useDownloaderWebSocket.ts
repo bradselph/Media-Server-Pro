@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
+import type {Dispatch, MutableRefObject, SetStateAction} from 'react'
 import type {DownloaderProgress} from '@/api/types'
 
 export interface UseDownloaderWebSocketOptions {
@@ -13,9 +14,29 @@ interface UseDownloaderWebSocketResult {
     clearDownload: (id: string) => void
 }
 
+function scheduleTerminalDownloadCleanup(
+    downloadId: string,
+    completionTimers: MutableRefObject<Set<ReturnType<typeof setTimeout>>>,
+    onComplete: (() => void) | undefined,
+    setActiveDownloads: Dispatch<SetStateAction<Map<string, DownloaderProgress>>>,
+): void {
+    onComplete?.()
+    const timer = setTimeout(() => {
+        completionTimers.current.delete(timer)
+        setActiveDownloads((p) => {
+            const n = new Map(p)
+            n.delete(downloadId)
+            return n
+        })
+    }, 10000)
+    completionTimers.current.add(timer)
+}
+
 export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions): UseDownloaderWebSocketResult {
     const onCompleteRef = useRef(options?.onDownloadComplete)
-    onCompleteRef.current = options?.onDownloadComplete
+    useEffect(() => {
+        onCompleteRef.current = options?.onDownloadComplete
+    }, [options?.onDownloadComplete])
     const [connected, setConnected] = useState(false)
     const [clientId, setClientId] = useState<string | null>(null)
     const [activeDownloads, setActiveDownloads] = useState(() => new Map<string, DownloaderProgress>())
@@ -23,6 +44,7 @@ export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions):
     const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
     const completionTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
     const backoffRef = useRef(1000)
+    const connectRef = useRef<() => void>(() => {})
 
     const connect = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
@@ -53,21 +75,16 @@ export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions):
 
                 // Progress update
                 if (msg.downloadId) {
-                    setActiveDownloads(prev => {
+                    setActiveDownloads((prev) => {
                         const next = new Map(prev)
                         next.set(msg.downloadId, msg as DownloaderProgress)
-                        // Remove completed/error/cancelled after a delay
                         if (msg.status === 'complete' || msg.status === 'error' || msg.status === 'cancelled') {
-                            onCompleteRef.current?.()
-                            const timer = setTimeout(() => {
-                                completionTimers.current.delete(timer)
-                                setActiveDownloads(p => {
-                                    const n = new Map(p)
-                                    n.delete(msg.downloadId)
-                                    return n
-                                })
-                            }, 10000)
-                            completionTimers.current.add(timer)
+                            scheduleTerminalDownloadCleanup(
+                                msg.downloadId,
+                                completionTimers,
+                                onCompleteRef.current,
+                                setActiveDownloads,
+                            )
                         }
                         return next
                     })
@@ -84,7 +101,7 @@ export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions):
             // Reconnect with exponential backoff
             reconnectTimer.current = setTimeout(() => {
                 backoffRef.current = Math.min(backoffRef.current * 2, 30000)
-                connect()
+                connectRef.current()
             }, backoffRef.current)
         }
 
@@ -94,10 +111,13 @@ export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions):
     }, [])
 
     useEffect(() => {
+        connectRef.current = connect
+    }, [connect])
+
+    useEffect(() => {
         connect()
         return () => {
             clearTimeout(reconnectTimer.current)
-            // Clear all pending completion timers to prevent stale setState calls
             for (const t of completionTimers.current) {
                 clearTimeout(t)
             }
@@ -107,7 +127,7 @@ export function useDownloaderWebSocket(options?: UseDownloaderWebSocketOptions):
     }, [connect])
 
     const clearDownload = useCallback((id: string) => {
-        setActiveDownloads(prev => {
+        setActiveDownloads((prev) => {
             const next = new Map(prev)
             next.delete(id)
             return next

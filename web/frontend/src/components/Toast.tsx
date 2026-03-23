@@ -7,6 +7,10 @@ interface Toast {
     type: ToastType
 }
 
+function excludeToastById(toasts: Toast[], id: number): Toast[] {
+    return toasts.filter((t) => t.id !== id)
+}
+
 let nextId = 0
 
 export function ToastProvider({children}: { children: React.ReactNode }) {
@@ -23,7 +27,7 @@ export function ToastProvider({children}: { children: React.ReactNode }) {
         setToasts((prev) => [...prev, {id, message, type}])
         const t = setTimeout(() => {
             timersRef.current.delete(id)
-            setToasts((prev) => prev.filter((toast) => toast.id !== id))
+            setToasts((prev) => excludeToastById(prev, id))
         }, 4000)
         timersRef.current.set(id, t)
     }, [])

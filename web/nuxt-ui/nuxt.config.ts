@@ -1,29 +1,33 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
-import { resolve } from 'path'
-
 export default defineNuxtConfig({
-  compatibilityDate: '2025-07-15',
-
   modules: [
     '@nuxt/ui',
-    '@pinia/nuxt',
     '@nuxt/icon',
-    '@nuxt/fonts',
+    '@pinia/nuxt',
   ],
+
+  // SPA mode: no SSR server — output is pure static HTML/JS/CSS
+  // that Go embeds via //go:embed static/*
+  ssr: false,
 
   css: ['~/assets/css/main.css'],
 
-  // SPA mode — no SSR, matching the current React SPA behavior.
-  // The Go backend serves index.html for all SPA routes.
-  ssr: false,
+  colorMode: {
+    classSuffix: '',
+    preference: 'dark',
+    fallback: 'dark',
+  },
 
-  devtools: { enabled: true },
+  // Build output goes to web/static/react/ so Go embeds it via //go:embed static/*.
+  // preset: 'static' + ssr:false → `nuxt generate` writes index.html + _nuxt/ assets
+  // directly into the publicDir, with no Node server required.
+  nitro: {
+    preset: 'static',
+    output: {
+      publicDir: '../static/react',
+    },
+  },
 
-  // Base URL must match the Go backend's static file serving path.
-  // The Go server embeds files from web/static/react/ and serves them
-  // at /web/static/react/ — our built assets must use this prefix.
   app: {
-    baseURL: '/web/static/react/',
     head: {
       title: 'Media Server Pro',
       meta: [
@@ -33,39 +37,32 @@ export default defineNuxtConfig({
     },
   },
 
-  // Build output goes to ../static/react/ so the Go backend can embed it
-  // via //go:embed static/*. Use `npm run build` (nuxt generate) to produce
-  // a fully static SPA with index.html + _nuxt/ assets.
-  nitro: {
-    output: {
-      publicDir: resolve(__dirname, '../static/react'),
+  // Proxy API + media calls to the Go backend in dev mode (nuxt dev).
+  // These rules are ignored in the static SPA build — Go handles them directly.
+  routeRules: {
+    '/api/**': { proxy: 'http://localhost:8080/api/**' },
+    '/media/**': { proxy: 'http://localhost:8080/media/**' },
+    '/media': { proxy: 'http://localhost:8080/media' },
+    '/thumbnail': { proxy: 'http://localhost:8080/thumbnail' },
+    '/thumbnails/**': { proxy: 'http://localhost:8080/thumbnails/**' },
+    '/download': { proxy: 'http://localhost:8080/download' },
+    '/hls/**': { proxy: 'http://localhost:8080/hls/**' },
+    '/upload/**': { proxy: 'http://localhost:8080/upload/**' },
+    '/ws/**': { proxy: 'http://localhost:8080/ws/**' },
+    '/health': { proxy: 'http://localhost:8080/health' },
+  },
+
+  // Bundle all icons into the client JS so no runtime fetch to api.iconify.design is needed.
+  // This avoids CSP connect-src issues when the Go server sets a strict policy.
+  icon: {
+    clientBundle: {
+      scan: true,
+      includeCustomCollections: true,
+      // USelect/UDropdown use chevron-down dynamically; include it explicitly
+      icons: ['lucide:chevron-down', 'lucide:check', 'lucide:chevron-right', 'lucide:chevron-left', 'lucide:chevron-up', 'lucide:x', 'lucide:circle-alert', 'lucide:circle-check', 'lucide:info', 'lucide:triangle-alert'],
     },
   },
 
-  // Dev server proxy — forward API and media requests to Go backend
-  devServer: {
-    port: 3000,
-  },
-
-  vite: {
-    build: {
-      // Vendor chunks (Vue + Nuxt UI) exceed default 500 kB warning; expected for admin-heavy UI.
-      chunkSizeWarningLimit: 900,
-    },
-    server: {
-      proxy: {
-        '/api': 'http://localhost:8080',
-        '/media': 'http://localhost:8080',
-        '/hls': 'http://localhost:8080',
-        '/thumbnail': 'http://localhost:8080',
-        '/thumbnails': 'http://localhost:8080',
-        '/download': 'http://localhost:8080',
-        '/metrics': 'http://localhost:8080',
-        '/remote': 'http://localhost:8080',
-        '/health': 'http://localhost:8080',
-        '/ws': { target: 'http://localhost:8080', ws: true },
-        '/extractor': 'http://localhost:8080',
-      },
-    },
-  },
+  devtools: { enabled: false },
+  compatibilityDate: '2024-11-01',
 })

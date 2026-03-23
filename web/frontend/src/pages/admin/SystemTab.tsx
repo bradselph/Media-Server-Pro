@@ -1,7 +1,7 @@
 import {type FormEvent, useState} from 'react'
 import {useQuery} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
-import type {QueryResult} from '@/api/types'
+import type {AuditLogEntry, QueryResult} from '@/api/types'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {UpdatesTab} from './UpdatesTab'
 import {errMsg} from './adminUtils'
@@ -279,6 +279,119 @@ function DatabaseTab() {
     )
 }
 
+// ── Tab: Audit log ────────────────────────────────────────────────────────────
+
+const AUDIT_PAGE_SIZE = 50
+
+function AuditLogTab() {
+    const [page, setPage] = useState(1)
+    const [userIdFilter, setUserIdFilter] = useState('')
+    const [appliedUserId, setAppliedUserId] = useState('')
+    const offset = (page - 1) * AUDIT_PAGE_SIZE
+
+    const {data: entries = [], isLoading, isError, refetch} = useQuery({
+        queryKey: ['admin-audit-log', offset, appliedUserId],
+        queryFn: () =>
+            adminApi.getAuditLog(AUDIT_PAGE_SIZE, offset, appliedUserId.trim() || undefined),
+    })
+
+    const hasNext = entries.length === AUDIT_PAGE_SIZE
+    const hasPrev = page > 1
+
+    function applyUserFilter() {
+        setAppliedUserId(userIdFilter.trim())
+        setPage(1)
+    }
+
+    async function handleExportCsv() {
+        const res = await fetch(adminApi.exportAuditLogUrl(), {credentials: 'include'})
+        if (!res.ok) return
+        const blob = await res.blob()
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`
+        a.click()
+        URL.revokeObjectURL(a.href)
+    }
+
+    return (
+        <div>
+            <div className="admin-card">
+                <h2>Audit log</h2>
+                <p style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 12}}>
+                    Recent admin actions (newest first within each page). Use CSV export for a full archive.
+                </p>
+                <div style={{display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center'}}>
+                    <input
+                        type="text"
+                        placeholder="Filter by user_id (optional)"
+                        value={userIdFilter}
+                        onChange={e => { setUserIdFilter(e.target.value); }}
+                        style={{
+                            flex: 1,
+                            minWidth: 200,
+                            padding: '6px 10px',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: 6,
+                            background: 'var(--input-bg)',
+                            color: 'var(--text-color)',
+                            fontSize: 13,
+                        }}
+                    />
+                    <button type="button" className="admin-btn" onClick={applyUserFilter}>Apply filter</button>
+                    <button type="button" className="admin-btn" onClick={() => { setUserIdFilter(''); setAppliedUserId(''); setPage(1); }}>
+                        Clear
+                    </button>
+                    <button type="button" className="admin-btn" onClick={() => refetch()}><i className="bi bi-arrow-counterclockwise"/> Refresh</button>
+                    <button type="button" className="admin-btn" onClick={() => handleExportCsv()}><i className="bi bi-download"/> Export CSV</button>
+                </div>
+                {isLoading && <p style={{color: 'var(--text-muted)', fontSize: 13}}>Loading…</p>}
+                {isError && <div className="admin-alert admin-alert-danger">Failed to load audit log.</div>}
+                {!isLoading && !isError && entries.length === 0 && (
+                    <p style={{color: 'var(--text-muted)', fontSize: 13}}>No entries for this page.</p>
+                )}
+                {!isLoading && !isError && entries.length > 0 && (
+                    <>
+                        <div className="admin-table-wrapper" style={{maxHeight: 480, overflow: 'auto'}}>
+                            <table className="admin-table">
+                                <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>User</th>
+                                    <th>Action</th>
+                                    <th>Resource</th>
+                                    <th>OK</th>
+                                    <th>IP</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {entries.map((e: AuditLogEntry) => (
+                                    <tr key={e.id}>
+                                        <td style={{fontSize: 11, whiteSpace: 'nowrap'}}>{new Date(e.timestamp).toLocaleString()}</td>
+                                        <td style={{fontSize: 12}}>{e.username}</td>
+                                        <td style={{fontSize: 12}}>{e.action}</td>
+                                        <td style={{fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis'}} title={e.resource}>
+                                            {e.resource}
+                                        </td>
+                                        <td>{e.success ? '✓' : '✗'}</td>
+                                        <td style={{fontSize: 11}}>{e.ip_address || '—'}</td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style={{display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12, alignItems: 'center'}}>
+                            <button type="button" className="admin-btn" disabled={!hasPrev} onClick={() => { setPage(p => p - 1); }}>← Newer</button>
+                            <span style={{fontSize: 13, color: 'var(--text-muted)'}}>Page {page}</span>
+                            <button type="button" className="admin-btn" disabled={!hasNext} onClick={() => { setPage(p => p + 1); }}>Older →</button>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    )
+}
+
 // ── Tab: System (composite) ──────────────────────────────────────────────────
 
 export function SystemTab() {
@@ -288,11 +401,13 @@ export function SystemTab() {
             {id: 'settings', label: 'Settings'},
             {id: 'logs', label: 'Logs'},
             {id: 'database', label: 'Database'},
+            {id: 'audit', label: 'Audit log'},
             {id: 'updates', label: 'Updates'},
         ]} active={sub} onChange={setSub}/>
         {sub === 'settings' && <SettingsTab/>}
         {sub === 'logs' && <LogsTab/>}
         {sub === 'database' && <DatabaseTab/>}
+        {sub === 'audit' && <AuditLogTab/>}
         {sub === 'updates' && <UpdatesTab/>}
     </>)
 }

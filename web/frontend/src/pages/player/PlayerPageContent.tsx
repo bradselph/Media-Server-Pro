@@ -934,6 +934,8 @@ interface PlayerMainColumnProps {
     isVideo: boolean
     isAudio: boolean
     resetControlsTimer: () => void
+    hideVideoControls: () => void
+    showControls: boolean
     isPlaying: boolean
     setShowControls: (fn: (s: boolean) => boolean) => void
     handleVideoClick: () => void
@@ -956,6 +958,8 @@ function PlayerMainColumn(props: PlayerMainColumnProps) {
         isVideo,
         isAudio,
         resetControlsTimer,
+        hideVideoControls,
+        showControls,
         isPlaying,
         setShowControls,
         handleVideoClick,
@@ -980,11 +984,17 @@ function PlayerMainColumn(props: PlayerMainColumnProps) {
                 onMouseLeave={isVideo && isPlaying ? () => setShowControls(() => false) : undefined}
                 onClick={isVideo ? handleVideoClick : undefined}
                 onTouchEnd={isVideo ? (e) => {
-                    // On mobile, tap should toggle controls visibility, not bubble to onClick
-                    // which would toggle play/pause. Only handle taps on the video area itself.
-                    if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'VIDEO') {
+                    const el = e.target as HTMLElement
+                    if (el.closest('.custom-controls')) return
+                    if (!e.currentTarget.contains(el)) return
+                    const coarse =
+                        typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+                    if (!coarse) return
+                    // Do not call resetControlsTimer on every tap — that kept chrome visible on phones.
+                    // While playing with chrome showing, tap on the video (not the control bar) dismisses UI.
+                    if (isPlaying && showControls && (el.tagName === 'VIDEO' || el === e.currentTarget)) {
                         e.preventDefault()
-                        resetControlsTimer()
+                        hideVideoControls()
                     }
                 } : undefined}
             >
@@ -1131,6 +1141,8 @@ export function PlayerPageContent(state: PlayerPageState) {
         isAudio,
         isPlaying,
         resetControlsTimer,
+        hideVideoControls,
+        showControls,
         setShowControls,
         handleVideoClick,
         hlsAvailable,
@@ -1180,6 +1192,8 @@ export function PlayerPageContent(state: PlayerPageState) {
                         isVideo={isVideo}
                         isAudio={isAudio}
                         resetControlsTimer={resetControlsTimer}
+                        hideVideoControls={hideVideoControls}
+                        showControls={showControls}
                         isPlaying={isPlaying}
                         setShowControls={setShowControls}
                         handleVideoClick={handleVideoClick}

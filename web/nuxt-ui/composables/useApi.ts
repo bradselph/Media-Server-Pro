@@ -1,143 +1,67 @@
 /**
- * Typed API client for the Go backend.
- *
- * Mirrors the React API client pattern. All Go API responses use the envelope
- * `{ success: boolean, data?: T, error?: string }`. This composable unwraps
- * the envelope and throws on errors so callers get clean typed data or an exception.
+ * Typed API client that unwraps the Go JSON envelope { success, data, message }.
  */
 
-/** Custom error class for API errors with HTTP status */
-export class ApiError extends Error {
-  status: number
-  code?: string
-
-  constructor(message: string, status: number, code?: string) {
-    super(message)
-    this.name = 'ApiError'
-    this.status = status
-    this.code = code
-  }
-}
-
-/** Go backend JSON envelope shape */
-interface ApiEnvelope<T> {
+interface GoEnvelope<T> {
   success: boolean
   data?: T
+  message?: string
   error?: string
 }
 
-/**
- * Core fetch wrapper that unwraps the Go API envelope.
- * Returns the unwrapped `data` field on success, throws `ApiError` on failure.
- */
-async function apiRequest<T>(
-  url: string,
-  options?: RequestInit,
-): Promise<T> {
-  const isFormData = options?.body instanceof FormData
-  const response = await fetch(url, {
-    ...options,
-    credentials: 'include', // Always send session cookies
-    headers: isFormData
-      ? (options?.headers ?? {})
-      : {
-          'Content-Type': 'application/json',
-          ...options?.headers,
-        },
-  })
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public body?: unknown,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
 
-  // 204 No Content
-  if (response.status === 204) {
+async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const opts: RequestInit = {
+    method,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  }
+  if (body !== undefined) {
+    opts.body = JSON.stringify(body)
+  }
+
+  const res = await fetch(url, opts)
+
+  // Handle non-JSON responses
+  const contentType = res.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    if (!res.ok) {
+      throw new ApiError(`HTTP ${res.status}`, res.status)
+    }
     return undefined as T
   }
 
-  const text = await response.text()
-  let raw: ApiEnvelope<T>
-  try {
-    raw = JSON.parse(text) as ApiEnvelope<T>
-  } catch {
-    const preview = text.slice(0, 100).replace(/\s+/g, ' ')
+  const envelope = await res.json() as GoEnvelope<T>
+
+  if (!res.ok || envelope.success === false) {
     throw new ApiError(
-      `Invalid JSON (${response.status}): ${preview}${text.length > 100 ? '...' : ''}`,
-      response.status,
+      envelope.message ?? envelope.error ?? `HTTP ${res.status}`,
+      res.status,
+      envelope,
     )
   }
 
-  // Unwrap Go backend envelope
-  if (raw && typeof raw === 'object' && raw.success !== undefined) {
-    if (!raw.success) {
-      throw new ApiError(
-        raw.error || 'Unknown error',
-        response.status,
-      )
-    }
-    return raw.data as T
-  }
-
-  // Non-envelope response (shouldn't happen with Go backend)
-  return raw as unknown as T
+  return (envelope.data ?? envelope) as T
 }
 
-/** Convenience API methods matching the React client */
-export const api = {
-  get: <T>(url: string, options?: Pick<RequestInit, 'signal'>) =>
-    apiRequest<T>(url, options),
-
-  post: <T>(url: string, body?: unknown, options?: Pick<RequestInit, 'signal'>) =>
-    apiRequest<T>(url, {
-      method: 'POST',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      ...options,
-    }),
-
-  put: <T>(url: string, body?: unknown, options?: Pick<RequestInit, 'signal'>) =>
-    apiRequest<T>(url, {
-      method: 'PUT',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      ...options,
-    }),
-
-  delete: <T>(url: string, body?: unknown, options?: Pick<RequestInit, 'signal'>) =>
-    apiRequest<T>(url, {
-      method: 'DELETE',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      ...options,
-    }),
-
-  /** POST with FormData (for file uploads). Omits Content-Type to let browser set boundary. */
-  upload: <T>(url: string, formData: FormData, options?: Pick<RequestInit, 'signal'>) =>
-    apiRequest<T>(url, {
-      method: 'POST',
-      body: formData,
-      headers: {},
-      ...options,
-    }),
-}
-
-/**
- * Fetches a blob (e.g. export CSV/file). Uses credentials and throws ApiError
- * on failure for consistent error handling.
- */
-export async function fetchBlob(url: string, options?: Pick<RequestInit, 'signal'>): Promise<Blob> {
-  const response = await fetch(url, { credentials: 'include', ...options })
-  if (!response.ok) {
-    const text = await response.text()
-    let message = text || `Export failed (${response.status})`
-    try {
-      const raw = JSON.parse(text) as { error?: string }
-      if (raw?.error) message = raw.error
-    } catch {
-      if (text.length > 0 && text.length < 200) message = text
-    }
-    throw new ApiError(message, response.status)
-  }
-  return response.blob()
-}
-
-/**
- * Composable wrapper to expose the API client within Vue components.
- * Usage: const { api, fetchBlob, ApiError } = useApi()
- */
 export function useApi() {
-  return { api, fetchBlob, ApiError }
+  return {
+    get: <T>(url: string) => request<T>('GET', url),
+    post: <T>(url: string, body?: unknown) => request<T>('POST', url, body),
+    put: <T>(url: string, body?: unknown) => request<T>('PUT', url, body),
+    patch: <T>(url: string, body?: unknown) => request<T>('PATCH', url, body),
+    delete: <T>(url: string, body?: unknown) => request<T>('DELETE', url, body),
+  }
 }
+
+export { ApiError }

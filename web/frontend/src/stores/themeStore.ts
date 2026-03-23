@@ -3,16 +3,10 @@ import {persist} from 'zustand/middleware'
 import {builtInThemes} from '@/themes/themes'
 import {applyThemeById} from '@/themes/themeEngine'
 
-/**
- * Theme ID — can be any built-in theme id, "auto", or a custom theme id.
- * "auto" follows the OS/browser prefers-color-scheme setting (resolves to
- * "light" or "dark").
- */
-export type ThemeId = string
-
 interface ThemeState {
-    theme: ThemeId
-    setTheme: (theme: ThemeId) => void
+    /** Built-in id, "auto", or custom id. "auto" follows prefers-color-scheme. */
+    theme: string
+    setTheme: (theme: string) => void
     /** Cycle through built-in themes (including "auto" at the end). */
     toggleTheme: () => void
 }
@@ -23,9 +17,9 @@ const cycle: string[] = [...builtInThemes.map(t => t.id), 'auto']
 export const useThemeStore = create<ThemeState>()(
     persist(
         (set, get) => ({
-            theme: 'dark' as ThemeId,
+            theme: 'dark',
 
-            setTheme: (theme: ThemeId) => {
+            setTheme: (theme: string) => {
                 applyThemeById(theme)
                 set({theme})
             },
@@ -50,7 +44,7 @@ export const useThemeStore = create<ThemeState>()(
 // the user's last choice. Zustand persist rehydrates async, so we read localStorage
 // synchronously to avoid a flash of default (dark) before rehydration applies stored theme.
 const PERSIST_KEY = 'media-server-theme'
-function getInitialTheme(): ThemeId {
+function getInitialTheme(): string {
     try {
         const raw = localStorage.getItem(PERSIST_KEY)
         if (!raw) return 'dark'

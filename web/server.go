@@ -12,18 +12,20 @@ import (
 	"media-server-pro/internal/logger"
 )
 
-//go:embed static/*
+//go:embed all:static
 var content embed.FS
 
 // log is the web package logger
 var log = logger.New("web")
 
 // pathExcludedFromSPA reports whether path is an API, static, or media route that
-// should not be served by the React SPA (should return 404 instead).
+// should not be served by the SPA (should return 404 instead).
 func pathExcludedFromSPA(path string) bool {
 	excludedPrefixes := []string{
 		"/api/", "/web/static/", "/media", "/download", "/thumbnail", "/thumbnails/", "/hls/", "/remote/",
 		"/extractor/", "/ws/", "/health", "/metrics",
+		"/_nuxt/",  // Nuxt UI build assets
+		"/_fonts/", // Nuxt UI cached fonts
 	}
 	for _, prefix := range excludedPrefixes {
 		if strings.HasPrefix(path, prefix) {
@@ -53,15 +55,16 @@ func registerEmbeddedStatic(r *gin.Engine) bool {
 }
 
 // spaRoutes are pre-registered so Gin matches them directly; other SPA paths are still
-// served via NoRoute. Keep in sync with web/nuxt-ui/pages/ and web/frontend/src/App.tsx.
+// served via NoRoute. Keep in sync with web/nuxt-ui/pages/ when adding top-level routes.
 var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "/player", "/admin"}
 
 // RegisterStaticRoutes sets up static file serving and template routes.
 // This function is safe to call even if embedded files are missing.
 func RegisterStaticRoutes(r *gin.Engine) {
 	registerEmbeddedStatic(r)
+	registerNuxtAssets(r)
 
-	spaHandler := ginServeReactApp()
+	spaHandler := ginServeSPA()
 	for _, path := range spaRoutes {
 		r.GET(path, spaHandler)
 	}
@@ -77,27 +80,54 @@ func RegisterStaticRoutes(r *gin.Engine) {
 	log.Info("Web routes registered")
 }
 
+// registerNuxtAssets serves Nuxt UI's /_nuxt/ and /_fonts/ asset bundles from the embedded FS.
+func registerNuxtAssets(r *gin.Engine) {
+	staticFS, err := fs.Sub(content, "static")
+	if err != nil {
+		return
+	}
+
+	// Serve embedded assets directly — the request path is rewritten to match the
+	// embedded FS layout (static/react/_nuxt/..., static/react/_fonts/...).
+	// No StripPrefix needed because we set the full path manually.
+	fileServer := http.FileServer(http.FS(staticFS))
+
+	// /_nuxt/ — hashed JS/CSS chunks
+	for _, method := range []string{"GET", "HEAD"} {
+		m := method
+		r.Handle(m, "/_nuxt/*filepath", func(c *gin.Context) {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			c.Request.URL.Path = "/react/_nuxt/" + strings.TrimPrefix(c.Param("filepath"), "/")
+			fileServer.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+
+	// /_fonts/ — locally cached web fonts
+	for _, method := range []string{"GET", "HEAD"} {
+		m := method
+		r.Handle(m, "/_fonts/*filepath", func(c *gin.Context) {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			c.Request.URL.Path = "/react/_fonts/" + strings.TrimPrefix(c.Param("filepath"), "/")
+			fileServer.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+}
+
 var (
 	indexHTMLOnce  sync.Once
 	cachedIndex    []byte
 	cachedIndexErr error
 )
 
-// ginServeReactApp returns a gin handler that serves the embedded SPA index.html
-// (Nuxt or React build output under web/static/react/).
+// ginServeSPA returns a gin handler that serves the SPA's index.html.
 // Index HTML is read once on first request and cached to avoid per-request embed reads.
-func ginServeReactApp() gin.HandlerFunc {
+func ginServeSPA() gin.HandlerFunc {
 	const fallbackHTML = `<!DOCTYPE html>
 <html>
-<head><title>Page Not Found</title></head>
+<head><title>Frontend Not Built</title></head>
 <body>
-<h1>Web UI Not Built</h1>
-<p>The SPA has not been built into the binary yet. From the repo root run one of:</p>
-<ul>
-<li><code>cd web/nuxt-ui &amp;&amp; npm ci &amp;&amp; npm run build</code> (default deploy)</li>
-<li><code>cd web/frontend &amp;&amp; npm ci &amp;&amp; npm run build</code> (set <code>WEB_UI=react</code> for deploy)</li>
-</ul>
-<p>Then rebuild the Go server so <code>web/static/react/</code> is embedded.</p>
+<h1>Frontend Not Built</h1>
+<p>Run: <code>cd web/nuxt-ui &amp;&amp; npm run build</code></p>
 <p><a href="/">Return to Home</a></p>
 </body>
 </html>`
@@ -106,7 +136,7 @@ func ginServeReactApp() gin.HandlerFunc {
 			cachedIndex, cachedIndexErr = content.ReadFile("static/react/index.html")
 		})
 		if cachedIndexErr != nil {
-			log.Warn("Embedded SPA (web/static/react) not available, falling back: %v", cachedIndexErr)
+			log.Warn("React SPA not available, falling back: %v", cachedIndexErr)
 			c.Header("Content-Type", "text/html; charset=utf-8")
 			c.Status(http.StatusNotFound)
 			_, _ = c.Writer.WriteString(fallbackHTML)

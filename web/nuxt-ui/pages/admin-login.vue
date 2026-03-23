@@ -1,31 +1,31 @@
 <script setup lang="ts">
-definePageMeta({
-  title: 'Admin Login',
-})
+definePageMeta({ layout: 'default', title: 'Admin Login' })
 
+// Reuse the regular login page but redirect to /admin
 const authStore = useAuthStore()
 const router = useRouter()
 
-const form = reactive({
-  username: '',
-  password: '',
-})
-const error = ref('')
+const form = reactive({ username: '', password: '' })
 const loading = ref(false)
+const error = ref('')
+
+onMounted(async () => {
+  if (!authStore.isLoading && authStore.isAdmin) router.replace('/admin')
+})
 
 async function handleLogin() {
   error.value = ''
   loading.value = true
   try {
-    const result = await authStore.login(form.username, form.password)
-    if (!result.isAdmin) {
-      error.value = 'This account does not have admin privileges'
+    await authStore.login(form.username, form.password)
+    if (authStore.isAdmin) {
+      router.replace('/admin')
+    } else {
+      error.value = 'Admin access required'
       await authStore.logout()
-      return
     }
-    await router.push('/admin')
-  } catch (err: any) {
-    error.value = err?.message || 'Login failed'
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Invalid credentials'
   } finally {
     loading.value = false
   }
@@ -33,57 +33,25 @@ async function handleLogin() {
 </script>
 
 <template>
-  <UContainer class="py-16 flex justify-center">
-    <UCard class="w-full max-w-md">
-      <template #header>
-        <h1 class="text-xl font-bold text-(--ui-text-highlighted) text-center">
-          Admin Login
-        </h1>
-      </template>
-
-      <form class="space-y-4" @submit.prevent="handleLogin">
-        <UFormField label="Username">
-          <UInput
-            v-model="form.username"
-            placeholder="Admin username"
-            icon="i-lucide-shield"
-            autofocus
-            required
-          />
-        </UFormField>
-
-        <UFormField label="Password">
-          <UInput
-            v-model="form.password"
-            type="password"
-            placeholder="Admin password"
-            icon="i-lucide-lock"
-            required
-          />
-        </UFormField>
-
-        <UAlert
-          v-if="error"
-          color="error"
-          icon="i-lucide-alert-circle"
-          :title="error"
-        />
-
-        <UButton
-          type="submit"
-          block
-          :loading="loading"
-          label="Sign In as Admin"
-        />
-      </form>
-
-      <template #footer>
-        <p class="text-center text-sm text-(--ui-text-muted)">
-          <NuxtLink to="/login" class="text-(--ui-text-highlighted) hover:underline">
-            Regular login
-          </NuxtLink>
-        </p>
-      </template>
-    </UCard>
-  </UContainer>
+  <div class="min-h-[80vh] flex items-center justify-center px-4">
+    <div class="w-full max-w-sm space-y-6">
+      <div class="text-center space-y-2">
+        <UIcon name="i-lucide-shield" class="size-10 text-primary mx-auto" />
+        <h1 class="text-2xl font-bold text-highlighted">Admin Login</h1>
+        <p class="text-muted text-sm">Sign in with your admin credentials</p>
+      </div>
+      <UCard>
+        <form class="space-y-4" @submit.prevent="handleLogin">
+          <UAlert v-if="error" :title="error" color="error" variant="soft" icon="i-lucide-x-circle" />
+          <UFormField label="Username">
+            <UInput v-model="form.username" placeholder="admin" autocomplete="username" required />
+          </UFormField>
+          <UFormField label="Password">
+            <UInput v-model="form.password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+          </UFormField>
+          <UButton type="submit" class="w-full justify-center" :loading="loading" label="Sign In" />
+        </form>
+      </UCard>
+    </div>
+  </div>
 </template>

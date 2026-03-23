@@ -516,10 +516,11 @@ export const adminApi = {
         api.get<UploadProgress[]>('/api/admin/uploads/active'),
 
     // Audit log
-    getAuditLog: (limit?: number, offset?: number) => {
+    getAuditLog: (limit?: number, offset?: number, userId?: string) => {
         const params = new URLSearchParams()
         if (limit !== undefined) params.set('limit', String(limit))
         if (offset !== undefined) params.set('offset', String(offset))
+        if (userId) params.set('user_id', userId)
         const qs = params.toString()
         return api.get<AuditLogEntry[]>(`/api/admin/audit-log${qs ? `?${qs}` : ''}`)
     },
@@ -651,8 +652,8 @@ export const adminApi = {
     listMedia: (params?: AdminMediaListParams) => {
         const sp = new URLSearchParams()
         if (params) {
-            if (params.page != null) sp.set('page', String(params.page))
-            if (params.limit != null) sp.set('limit', String(params.limit))
+            if (typeof params.page === 'number') sp.set('page', String(params.page))
+            if (typeof params.limit === 'number') sp.set('limit', String(params.limit))
             const str = (v: string | undefined) => (typeof v === 'string' ? v.trim() : '') || undefined
             const setStr = (key: string, v: string | undefined) => {
                 const val = str(v)
