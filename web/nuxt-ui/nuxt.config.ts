@@ -52,6 +52,14 @@ export default defineNuxtConfig({
     '/health': { proxy: 'http://localhost:8080/health' },
   },
 
+  // Bundle all icons into the client JS so no runtime fetch to api.iconify.design is needed.
+  // This avoids CSP connect-src issues when the Go server sets a strict policy.
+  icon: {
+    clientBundle: {
+      scan: true,
+    },
+  },
+
   devtools: { enabled: false },
   compatibilityDate: '2024-11-01',
 })
