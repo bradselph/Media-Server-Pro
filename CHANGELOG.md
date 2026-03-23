@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0] - 2026-03-23 (major)
+
+- Merge pull request #105 from bradselph/102
+- fix(nuxt-ui): align API response types and fix admin tab overflow
+
+
 ## [0.105.0] - 2026-03-23 (minor)
 
 - Merge branch '102'
