@@ -19,11 +19,12 @@ var content embed.FS
 var log = logger.New("web")
 
 // pathExcludedFromSPA reports whether path is an API, static, or media route that
-// should not be served by the React SPA (should return 404 instead).
+// should not be served by the SPA (should return 404 instead).
 func pathExcludedFromSPA(path string) bool {
 	excludedPrefixes := []string{
 		"/api/", "/web/static/", "/media", "/download", "/thumbnail", "/thumbnails/", "/hls/", "/remote/",
 		"/extractor/", "/ws/", "/health", "/metrics",
+		"/_nuxt/", // Nuxt UI build assets
 	}
 	for _, prefix := range excludedPrefixes {
 		if strings.HasPrefix(path, prefix) {
@@ -53,15 +54,16 @@ func registerEmbeddedStatic(r *gin.Engine) bool {
 }
 
 // spaRoutes are pre-registered so Gin matches them directly; other SPA paths are still
-// served via NoRoute. Keep in sync with web/frontend/src/App.tsx when adding top-level routes.
+// served via NoRoute. Keep in sync with web/nuxt-ui/pages/ when adding top-level routes.
 var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "/player", "/admin"}
 
 // RegisterStaticRoutes sets up static file serving and template routes.
 // This function is safe to call even if embedded files are missing.
 func RegisterStaticRoutes(r *gin.Engine) {
 	registerEmbeddedStatic(r)
+	registerNuxtAssets(r)
 
-	spaHandler := ginServeReactApp()
+	spaHandler := ginServeSPA()
 	for _, path := range spaRoutes {
 		r.GET(path, spaHandler)
 	}
@@ -77,21 +79,40 @@ func RegisterStaticRoutes(r *gin.Engine) {
 	log.Info("Web routes registered")
 }
 
+// registerNuxtAssets serves Nuxt UI's /_nuxt/ asset bundle from the embedded FS.
+func registerNuxtAssets(r *gin.Engine) {
+	staticFS, err := fs.Sub(content, "static")
+	if err != nil {
+		return
+	}
+	nuxtHandler := http.StripPrefix("/_nuxt/", http.FileServer(http.FS(staticFS)))
+	for _, method := range []string{"GET", "HEAD"} {
+		m := method
+		r.Handle(m, "/_nuxt/*filepath", func(c *gin.Context) {
+			// Nuxt hashes asset filenames, so they can be cached indefinitely.
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			// Rewrite /_nuxt/foo to react/_nuxt/foo in the embedded FS
+			c.Request.URL.Path = "/react/_nuxt/" + strings.TrimPrefix(c.Param("filepath"), "/")
+			nuxtHandler.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+}
+
 var (
 	indexHTMLOnce  sync.Once
 	cachedIndex    []byte
 	cachedIndexErr error
 )
 
-// ginServeReactApp returns a gin handler that serves the React SPA's index.html.
+// ginServeSPA returns a gin handler that serves the SPA's index.html.
 // Index HTML is read once on first request and cached to avoid per-request embed reads.
-func ginServeReactApp() gin.HandlerFunc {
+func ginServeSPA() gin.HandlerFunc {
 	const fallbackHTML = `<!DOCTYPE html>
 <html>
-<head><title>Page Not Found</title></head>
+<head><title>Frontend Not Built</title></head>
 <body>
-<h1>React App Not Built</h1>
-<p>The React frontend has not been built yet. Run: cd web/frontend && npm run build</p>
+<h1>Frontend Not Built</h1>
+<p>Run: <code>cd web/nuxt-ui &amp;&amp; npm run build</code></p>
 <p><a href="/">Return to Home</a></p>
 </body>
 </html>`
