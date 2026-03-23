@@ -1,7 +1,7 @@
-import {useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
-import type {AdminPlaylistStats, Playlist} from '@/api/types'
+import type {AdminPlaylistListResponse, AdminPlaylistStats} from '@/api/types'
 import {errMsg} from './adminUtils'
 
 // ── Tab: Playlists (Feature 6) ────────────────────────────────────────────────
@@ -16,23 +16,56 @@ const PLAYLIST_SORT_COLUMNS: ReadonlyArray<{key: PlaylistSortKey; label: string}
     {key: 'created_at', label: 'Created'},
 ]
 
+const emptyPlaylistResponse: AdminPlaylistListResponse = {items: [], total_items: 0, total_pages: 1}
+
 export function PlaylistsTab() {
     const queryClient = useQueryClient()
     const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [search, setSearch] = useState('')
+    const [debouncedSearch, setDebouncedSearch] = useState('')
+    const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [bulkWorking, setBulkWorking] = useState(false)
     const [sortBy, setSortBy] = useState<PlaylistSortKey>('name')
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
     const [filterVisibility, setFilterVisibility] = useState<string>('')
+    const [page, setPage] = useState(1)
+    const [limit, setLimit] = useState(50)
 
-    const {data: playlists = []} = useQuery<Playlist[]>({
-        queryKey: ['admin-playlists'],
+    useEffect(() => {
+        if (searchTimer.current) clearTimeout(searchTimer.current)
+        searchTimer.current = setTimeout(() => { setDebouncedSearch(search); }, 300)
+        return () => {
+            if (searchTimer.current) clearTimeout(searchTimer.current)
+        }
+    }, [search])
+
+    useEffect(() => {
+        setPage(1)
+    }, [debouncedSearch, filterVisibility, limit])
+
+    useEffect(() => {
+        setSelected(new Set())
+    }, [page, debouncedSearch, filterVisibility, limit])
+
+    const {data: listResponse = emptyPlaylistResponse, isLoading} = useQuery<AdminPlaylistListResponse>({
+        queryKey: ['admin-playlists', page, limit, debouncedSearch, filterVisibility],
         queryFn: async () => {
-            const res = await adminApi.listAllPlaylists()
-            return res.items
+            const res = await adminApi.listAllPlaylists({
+                page,
+                limit,
+                ...(debouncedSearch.trim() ? {search: debouncedSearch.trim()} : {}),
+                ...(filterVisibility === 'public' || filterVisibility === 'private'
+                    ? {visibility: filterVisibility}
+                    : {}),
+            })
+            return res ?? emptyPlaylistResponse
         },
     })
+
+    const playlists = listResponse.items ?? []
+    const totalItems = listResponse.total_items ?? 0
+    const totalPages = Math.max(1, listResponse.total_pages ?? 1)
 
     const {data: playlistStats} = useQuery<AdminPlaylistStats>({
         queryKey: ['admin-playlist-stats'],
@@ -63,7 +96,7 @@ export function PlaylistsTab() {
             await queryClient.invalidateQueries({queryKey: ['admin-playlist-stats']})
             setMsg({
                 type: result.failed > 0 ? 'error' : 'success',
-                text: `Deleted ${result.success} playlist(s)${result.failed > 0 ? `, ${result.failed} failed` : ''}.`
+                text: `Deleted ${result.success} playlist(s)${result.failed > 0 ? `, ${result.failed} failed` : ''}.`,
             })
         } catch (err) {
             setMsg({type: 'error', text: errMsg(err)})
@@ -72,11 +105,8 @@ export function PlaylistsTab() {
         }
     }
 
-    const filtered = playlists.filter(p => {
-        if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.user_id.toLowerCase().includes(search.toLowerCase())) return false
-        if (filterVisibility === 'public' && !p.is_public) return false
-        return !(filterVisibility === 'private' && p.is_public)
-    }).sort((a, b) => {
+    // Server returns one page; sort applies within this page only (backend has no sort params).
+    const filtered = [...playlists].sort((a, b) => {
         let cmp = 0
         switch (sortBy) {
             case 'name': cmp = a.name.localeCompare(b.name); break
@@ -149,7 +179,7 @@ export function PlaylistsTab() {
                 <div style={{display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center'}}>
                     <input
                         type="search"
-                        placeholder="Search playlists..."
+                        placeholder="Search playlists (name or owner)..."
                         value={search}
                         onChange={e => { setSearch(e.target.value); }}
                         style={{...selectStyle, flex: 1, minWidth: 160}}
@@ -159,6 +189,11 @@ export function PlaylistsTab() {
                         <option value="public">Public Only</option>
                         <option value="private">Private Only</option>
                     </select>
+                    <select value={limit} onChange={e => { setLimit(Number(e.target.value)); }} style={selectStyle}>
+                        <option value={25}>25 / page</option>
+                        <option value={50}>50 / page</option>
+                        <option value={100}>100 / page</option>
+                    </select>
                     {(search || filterVisibility) && (
                         <button className="admin-btn" style={{fontSize: 12, padding: '4px 10px'}}
                                 onClick={() => { setSearch(''); setFilterVisibility('') }}>
@@ -166,9 +201,12 @@ export function PlaylistsTab() {
                         </button>
                     )}
                     <span style={{fontSize: 12, color: 'var(--text-muted)'}}>
-                        {filtered.length} of {playlists.length} playlist{playlists.length !== 1 ? 's' : ''}
+                        {isLoading ? 'Loading…' : `${totalItems.toLocaleString()} total · page ${page} of ${totalPages}`}
                     </span>
                 </div>
+                <p style={{fontSize: 11, color: 'var(--text-muted)', margin: '0 0 10px'}}>
+                    Column sort applies to the current page only; search and visibility are applied on the server.
+                </p>
                 {selected.size > 0 && (
                     <div style={{
                         marginBottom: 10, padding: '8px 12px', background: 'var(--hover-bg)',
@@ -241,6 +279,15 @@ export function PlaylistsTab() {
                         ))}
                         </tbody>
                     </table>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12, alignItems: 'center'}}>
+                    <button className="admin-btn" disabled={page <= 1} onClick={() => { setPage(p => p - 1); }}>← Prev</button>
+                    <span style={{fontSize: 13, color: 'var(--text-muted)'}}>
+                        Page {page} of {totalPages}
+                    </span>
+                    <button className="admin-btn" disabled={page >= totalPages}
+                            onClick={() => { setPage(p => p + 1); }}>Next →
+                    </button>
                 </div>
             </div>
         </div>
