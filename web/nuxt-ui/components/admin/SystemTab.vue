@@ -84,14 +84,14 @@ async function runTask(id: string) {
 // Logs
 const logs = ref<LogEntry[]>([])
 const logsLoading = ref(false)
-const logLevel = ref('')
+const logLevel = ref('all')
 const logModule = ref('')
 const logsContainer = ref<HTMLElement | null>(null)
 
 async function loadLogs() {
   logsLoading.value = true
   try {
-    logs.value = (await adminApi.getLogs(logLevel.value || undefined, logModule.value || undefined, 500)) ?? []
+    logs.value = (await adminApi.getLogs(logLevel.value === 'all' ? undefined : logLevel.value || undefined, logModule.value || undefined, 500)) ?? []
     await nextTick()
     if (logsContainer.value) logsContainer.value.scrollTop = logsContainer.value.scrollHeight
   } catch {}
@@ -247,7 +247,7 @@ watch(subTab, (v) => {
       <div class="flex flex-wrap gap-2 items-center">
         <USelect
           v-model="logLevel"
-          :items="[{ label: 'All levels', value: '' }, { label: 'Debug', value: 'debug' }, { label: 'Info', value: 'info' }, { label: 'Warn', value: 'warn' }, { label: 'Error', value: 'error' }]"
+          :items="[{ label: 'All levels', value: 'all' }, { label: 'Debug', value: 'debug' }, { label: 'Info', value: 'info' }, { label: 'Warn', value: 'warn' }, { label: 'Error', value: 'error' }]"
           class="w-36"
         />
         <UInput v-model="logModule" placeholder="Filter module…" class="w-48" @keyup.enter="loadLogs" />

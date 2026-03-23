@@ -11,7 +11,7 @@ const totalItems = ref(0)
 const totalPages = ref(1)
 
 const params = reactive<AdminMediaListParams>({
-  page: 1, limit: 20, search: '', sort: 'name', sort_order: 'asc', type: '', is_mature: '',
+  page: 1, limit: 20, search: '', sort: 'name', sort_order: 'asc', type: 'all', is_mature: 'all',
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -24,7 +24,12 @@ function onSearchInput() {
 async function load() {
   loading.value = true
   try {
-    const res = await adminApi.listMedia(params)
+    const apiParams = {
+      ...params,
+      type: params.type === 'all' ? '' : params.type,
+      is_mature: params.is_mature === 'all' ? '' : params.is_mature,
+    }
+    const res = await adminApi.listMedia(apiParams)
     items.value = res.items ?? []
     totalItems.value = res.total_items ?? 0
     totalPages.value = res.total_pages ?? 1
@@ -94,7 +99,7 @@ onMounted(load)
         <USelect
           v-model="params.type"
           :items="[
-            { label: 'All Types', value: '' },
+            { label: 'All Types', value: 'all' },
             { label: 'Video', value: 'video' },
             { label: 'Audio', value: 'audio' },
             { label: 'Image', value: 'image' },
@@ -104,7 +109,7 @@ onMounted(load)
         <USelect
           v-model="params.is_mature"
           :items="[
-            { label: 'All Content', value: '' },
+            { label: 'All Content', value: 'all' },
             { label: 'SFW Only', value: 'false' },
             { label: 'Mature Only', value: 'true' },
           ]"

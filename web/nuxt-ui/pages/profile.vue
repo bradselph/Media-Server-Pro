@@ -22,7 +22,11 @@ const prefsLoading = ref(true)
 const prefsSaving = ref(false)
 
 async function loadPrefs() {
-  try { prefs.value = (await getPreferences()) ?? {} }
+  try {
+    const p = (await getPreferences()) ?? {}
+    if (!p.default_quality) p.default_quality = 'auto'
+    prefs.value = p
+  }
   catch {}
   finally { prefsLoading.value = false }
 }
@@ -30,7 +34,9 @@ async function loadPrefs() {
 async function savePrefs() {
   prefsSaving.value = true
   try {
-    await updatePreferences(prefs.value)
+    const toSave = { ...prefs.value }
+    if (toSave.default_quality === 'auto') toSave.default_quality = ''
+    await updatePreferences(toSave)
     if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ReturnType<typeof themeStore.themes[number]['value']>)
     toast.add({ title: 'Preferences saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
@@ -175,7 +181,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
           <UFormField label="Default Quality">
             <USelect
               v-model="prefs.default_quality"
-              :items="[{ label: 'Auto', value: '' }, { label: '1080p', value: '1080p' }, { label: '720p', value: '720p' }, { label: '480p', value: '480p' }, { label: '360p', value: '360p' }]"
+              :items="[{ label: 'Auto', value: 'auto' }, { label: '1080p', value: '1080p' }, { label: '720p', value: '720p' }, { label: '480p', value: '480p' }, { label: '360p', value: '360p' }]"
             />
           </UFormField>
           <UFormField label="Playback Speed">

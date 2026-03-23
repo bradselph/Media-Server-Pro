@@ -17,8 +17,8 @@ const params = reactive({
   page: 1,
   limit: 24,
   search: '',
-  type: '',
-  category: '',
+  type: 'all',
+  category: 'all',
   sort_by: 'name',
   sort_order: 'asc' as 'asc' | 'desc',
 })
@@ -33,7 +33,12 @@ function onSearchInput() {
 async function load() {
   loading.value = true
   try {
-    const res = await mediaApi.list(params)
+    const apiParams = {
+      ...params,
+      type: params.type === 'all' ? '' : params.type,
+      category: params.category === 'all' ? '' : params.category,
+    }
+    const res = await mediaApi.list(apiParams)
     items.value = res.items ?? []
     total.value = res.total ?? 0
   } catch {}
@@ -77,13 +82,13 @@ function formatDuration(secs?: number): string {
       />
       <USelect
         v-model="params.type"
-        :items="[{ label: 'All Types', value: '' }, { label: 'Video', value: 'video' }, { label: 'Audio', value: 'audio' }, { label: 'Image', value: 'image' }]"
+        :items="[{ label: 'All Types', value: 'all' }, { label: 'Video', value: 'video' }, { label: 'Audio', value: 'audio' }, { label: 'Image', value: 'image' }]"
         class="w-36"
       />
       <USelect
         v-if="categories.length > 0"
         v-model="params.category"
-        :items="[{ label: 'All Categories', value: '' }, ...categories.map(c => ({ label: `${c.name} (${c.count})`, value: c.name }))]"
+        :items="[{ label: 'All Categories', value: 'all' }, ...categories.map(c => ({ label: `${c.name} (${c.count})`, value: c.name }))]"
         class="w-48"
       />
       <USelect
