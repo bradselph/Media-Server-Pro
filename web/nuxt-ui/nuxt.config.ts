@@ -57,6 +57,9 @@ export default defineNuxtConfig({
   icon: {
     clientBundle: {
       scan: true,
+      includeCustomCollections: true,
+      // USelect/UDropdown use chevron-down dynamically; include it explicitly
+      icons: ['lucide:chevron-down', 'lucide:check', 'lucide:chevron-right', 'lucide:chevron-left', 'lucide:chevron-up', 'lucide:x', 'lucide:circle-alert', 'lucide:circle-check', 'lucide:info', 'lucide:triangle-alert'],
     },
   },
 
