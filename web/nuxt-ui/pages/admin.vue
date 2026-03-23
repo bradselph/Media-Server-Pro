@@ -60,6 +60,7 @@ watch(activeTab, tab => {
         :items="TABS"
         orientation="horizontal"
         class="w-full"
+        :ui="{ list: 'overflow-x-auto flex-nowrap' }"
       >
         <template #content="{ item }">
           <div class="min-h-64 pt-2">

@@ -218,7 +218,7 @@ export function useAdminApi() {
     getAuditLog: (params?: { page?: number; limit?: number; user_id?: string }) => {
       const qs = new URLSearchParams()
       if (params) Object.entries(params).forEach(([k, v]) => { if (v !== undefined) qs.set(k, String(v)) })
-      return api.get<{ entries: AuditLogEntry[]; total: number }>(`${base}/audit-log?${qs}`)
+      return api.get<AuditLogEntry[]>(`${base}/audit-log?${qs}`)
     },
 
     // Logs
@@ -290,7 +290,7 @@ export function useAdminApi() {
       api.delete<void>(`/api/extractor/items/${encodeURIComponent(id)}`),
 
     // Playlists (admin)
-    listAllPlaylists: () => api.get<Playlist[]>(`${base}/playlists`),
+    listAllPlaylists: () => api.get<{ items: Playlist[] } | Playlist[]>(`${base}/playlists`),
     deletePlaylist: (id: string) => api.delete<void>(`${base}/playlists/${encodeURIComponent(id)}`),
 
     // Updates

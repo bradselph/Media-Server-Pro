@@ -11,7 +11,11 @@ const deleting = ref(false)
 
 async function load() {
   loading.value = true
-  try { playlists.value = (await adminApi.listAllPlaylists()) ?? [] }
+  try {
+    const res = await adminApi.listAllPlaylists()
+    // API may return { items: [...] } or a plain array
+    playlists.value = Array.isArray(res) ? res : (res?.items ?? [])
+  }
   catch {}
   finally { loading.value = false }
 }

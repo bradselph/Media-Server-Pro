@@ -24,8 +24,10 @@ async function loadAudit() {
   auditLoading.value = true
   try {
     const res = await adminApi.getAuditLog({ page: auditPage.value, limit: auditLimit })
-    auditEntries.value = res?.entries ?? []
-    auditTotal.value = res?.total ?? 0
+    // API returns a plain array, not a paginated object
+    const entries = Array.isArray(res) ? res : (res?.entries ?? [])
+    auditEntries.value = entries
+    auditTotal.value = entries.length
   } catch {}
   finally { auditLoading.value = false }
 }
