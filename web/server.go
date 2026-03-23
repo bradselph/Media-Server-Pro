@@ -12,7 +12,7 @@ import (
 	"media-server-pro/internal/logger"
 )
 
-//go:embed static/*
+//go:embed all:static
 var content embed.FS
 
 // log is the web package logger
