@@ -54,27 +54,28 @@ watch(activeTab, tab => {
         </div>
       </div>
 
-      <!-- Tab nav -->
+      <!-- Tabs with inline content -->
       <UTabs
         v-model="activeTab"
         :items="TABS"
         orientation="horizontal"
         class="w-full"
-      />
-
-      <!-- Tab content -->
-      <div class="min-h-64">
-        <AdminDashboardTab v-if="activeTab === 'dashboard'" />
-        <AdminUsersTab v-else-if="activeTab === 'users'" />
-        <AdminMediaTab v-else-if="activeTab === 'media'" />
-        <AdminStreamingTab v-else-if="activeTab === 'streaming'" />
-        <AdminAnalyticsTab v-else-if="activeTab === 'analytics'" />
-        <AdminPlaylistsTab v-else-if="activeTab === 'playlists'" />
-        <AdminSecurityTab v-else-if="activeTab === 'security'" />
-        <AdminDownloaderTab v-else-if="activeTab === 'downloader'" />
-        <AdminSystemTab v-else-if="activeTab === 'system'" />
-        <AdminUpdatesTab v-else-if="activeTab === 'updates'" />
-      </div>
+      >
+        <template #content="{ item }">
+          <div class="min-h-64 pt-2">
+            <AdminDashboardTab v-if="item.value === 'dashboard'" />
+            <AdminUsersTab v-else-if="item.value === 'users'" />
+            <AdminMediaTab v-else-if="item.value === 'media'" />
+            <AdminStreamingTab v-else-if="item.value === 'streaming'" />
+            <AdminAnalyticsTab v-else-if="item.value === 'analytics'" />
+            <AdminPlaylistsTab v-else-if="item.value === 'playlists'" />
+            <AdminSecurityTab v-else-if="item.value === 'security'" />
+            <AdminDownloaderTab v-else-if="item.value === 'downloader'" />
+            <AdminSystemTab v-else-if="item.value === 'system'" />
+            <AdminUpdatesTab v-else-if="item.value === 'updates'" />
+          </div>
+        </template>
+      </UTabs>
     </div>
   </UContainer>
 </template>
