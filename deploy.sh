@@ -1067,13 +1067,14 @@ run_or_dry remote "
     echo \"[deps] Installed Node \$(node --version) / npm \$(npm --version)\"
   fi
 
-  # ── Vite (global fallback; npm run build uses local node_modules) ───────────
-  if ! command -v vite &>/dev/null; then
-    echo '[deps] Installing Vite globally...'
-    sudo npm install -g vite 2>/dev/null
-    echo \"[deps] Vite \$(vite --version 2>/dev/null || echo installed)\"
+  # ── nuxi (Nuxt CLI; used by npm run build inside web/nuxt-ui) ───────────────
+  # nuxi is shipped as a local devDependency; a global install is just a fallback.
+  if ! command -v nuxi &>/dev/null; then
+    echo '[deps] Installing nuxi globally (fallback)...'
+    sudo npm install -g nuxi 2>/dev/null || true
+    echo \"[deps] nuxi \$(nuxi --version 2>/dev/null || echo installed)\"
   else
-    echo \"[deps] Vite already installed: \$(vite --version 2>/dev/null || echo ok)\"
+    echo \"[deps] nuxi already installed: \$(nuxi --version 2>/dev/null || echo ok)\"
   fi
 "
 
@@ -1087,9 +1088,9 @@ run_or_dry remote "
 
   cd '$DEPLOY_DIR'
 
-  # ── React frontend (always built before Go binary) ─────────────────────────
-  echo '[deploy] Building React frontend...'
-  cd web/frontend
+  # ── Nuxt UI frontend (always built before Go binary) ──────────────────────
+  echo '[deploy] Building Nuxt UI frontend...'
+  cd web/nuxt-ui
 
   if [ -f package-lock.json ]; then
     echo '[deploy] package-lock.json found — trying npm ci'
@@ -1102,9 +1103,10 @@ run_or_dry remote "
     npm install
   fi
 
+  # Nuxt generates to ../static/react/ (configured in nuxt.config.ts nitro.output.publicDir)
   npm run build
   cd ../..
-  echo '[deploy] React build complete'
+  echo '[deploy] Nuxt UI build complete'
 
   # Stop service before replacing binary
   sudo systemctl stop '$SERVICE' 2>/dev/null || true
