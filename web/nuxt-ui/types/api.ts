@@ -94,9 +94,12 @@ export interface MediaListParams {
 
 export interface MediaListResponse {
   items: MediaItem[]
-  total: number
-  page: number
-  limit: number
+  total_items: number
+  total_pages: number
+  total?: number
+  page?: number
+  limit?: number
+  scanning?: boolean
 }
 
 export interface MediaCategory {
