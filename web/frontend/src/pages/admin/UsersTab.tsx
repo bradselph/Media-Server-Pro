@@ -1,4 +1,4 @@
-import {type FormEvent, useState} from 'react'
+import {type FormEvent, useEffect, useState} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {adminApi} from '@/api/endpoints'
 import type {User} from '@/api/types'
@@ -73,13 +73,28 @@ function CreateUserModal({onClose, onCreated}: { onClose: () => void; onCreated:
 
 function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => void; onSaved: () => void }) {
     const queryClient = useQueryClient()
-    const [role, setRole] = useState<'admin' | 'viewer'>(user.role)
-    const [enabled, setEnabled] = useState(user.enabled)
-    const [email, setEmail] = useState(user.email ?? '')
-    const [newPassword, setNewPassword] = useState('')
-    const [permissions, setPermissions] = useState({...user.permissions})
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
+
+    const {data: detail, isPending: profilePending, isError: profileError} = useQuery({
+        queryKey: ['admin-user', user.username],
+        queryFn: () => adminApi.getUser(user.username),
+    })
+    const profile = detail ?? user
+
+    const [role, setRole] = useState<'admin' | 'viewer'>(profile.role)
+    const [enabled, setEnabled] = useState(profile.enabled)
+    const [email, setEmail] = useState(profile.email ?? '')
+    const [newPassword, setNewPassword] = useState('')
+    const [permissions, setPermissions] = useState({...profile.permissions})
+
+    useEffect(() => {
+        if (!detail) return
+        setRole(detail.role)
+        setEnabled(detail.enabled)
+        setEmail(detail.email ?? '')
+        setPermissions({...detail.permissions})
+    }, [detail])
 
     const {
         data: sessions = [],
@@ -98,6 +113,7 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
             await adminApi.updateUser(user.username, {role, enabled, permissions, email: email || undefined})
             if (newPassword) await adminApi.changeUserPassword(user.username, newPassword)
             await queryClient.invalidateQueries({queryKey: ['admin-user-sessions', user.username]})
+            await queryClient.invalidateQueries({queryKey: ['admin-user', user.username]})
             onSaved()
         } catch (err) {
             setError(errMsg(err))
@@ -117,6 +133,14 @@ function EditUserModal({user, onClose, onSaved}: { user: User; onClose: () => vo
                 </div>
                 <div className="admin-modal-body">
                     {error && <div className="admin-alert admin-alert-danger">{error}</div>}
+                    {profilePending && !detail && (
+                        <p style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 10}}>Loading latest profile…</p>
+                    )}
+                    {profileError && (
+                        <div className="admin-alert admin-alert-warning" style={{marginBottom: 10}}>
+                            Could not refresh profile from server; showing list data.
+                        </div>
+                    )}
                     <form onSubmit={handleSubmit}>
                         <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
                             <div className="admin-form-group" style={{flex: 1}}>
@@ -515,6 +539,7 @@ function UsersListTab() {
             )}
             {editUser && (
                 <EditUserModal
+                    key={editUser.username}
                     user={editUser}
                     onClose={() => { setEditUser(null); }}
                     onSaved={() => {
