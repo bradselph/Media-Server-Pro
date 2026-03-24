@@ -38,7 +38,8 @@ export function useApiEndpoints() {
   }
   function getPreferences() { return api.get<UserPreferences>('/api/preferences') }
   function updatePreferences(prefs: Partial<UserPreferences>) {
-    return api.put<UserPreferences>('/api/preferences', prefs)
+    // Backend only registers POST /api/preferences (partial merge), not PUT.
+    return api.post<UserPreferences>('/api/preferences', prefs)
   }
   function getPermissions() { return api.get<UserPermissions>('/api/permissions') }
 
@@ -55,10 +56,13 @@ export function useMediaApi() {
     list(params?: MediaListParams): Promise<MediaListResponse> {
       const qs = new URLSearchParams()
       if (params) {
-        const { page, limit, sort_order, ...rest } = params
+        // Backend reads query param "sort" (see handlers.ListMedia), not sort_by.
+        const { page, limit, sort_order, sort_by, sort, ...rest } = params
         Object.entries(rest).forEach(([k, v]) => {
           if (v !== undefined && v !== '') qs.set(k, String(v))
         })
+        const sortKey = sort ?? sort_by
+        if (sortKey !== undefined && sortKey !== '') qs.set('sort', String(sortKey))
         if (limit !== undefined) qs.set('limit', String(limit))
         if (page !== undefined && limit !== undefined && page > 1) {
           qs.set('offset', String((page - 1) * limit))
@@ -137,10 +141,13 @@ export function usePlaylistApi() {
     delete: (id: string) => api.delete<void>(`/api/playlists/${encodeURIComponent(id)}`),
     addItem: (id: string, mediaId: string) =>
       api.post<PlaylistItem>(`/api/playlists/${encodeURIComponent(id)}/items`, { media_id: mediaId }),
-    removeItem: (playlistId: string, itemId: string) =>
-      api.delete<void>(`/api/playlists/${encodeURIComponent(playlistId)}/items/${encodeURIComponent(itemId)}`),
-    reorder: (id: string, itemIds: string[]) =>
-      api.put<void>(`/api/playlists/${encodeURIComponent(id)}/reorder`, { item_ids: itemIds }),
+    // DELETE is /playlists/:id/items?media_id= or ?item_id= (no path segment).
+    removeItem: (playlistId: string, mediaId: string) =>
+      api.delete<void>(`/api/playlists/${encodeURIComponent(playlistId)}/items?media_id=${encodeURIComponent(mediaId)}`),
+    removePlaylistItemById: (playlistId: string, itemId: string) =>
+      api.delete<void>(`/api/playlists/${encodeURIComponent(playlistId)}/items?item_id=${encodeURIComponent(itemId)}`),
+    reorder: (id: string, positions: number[]) =>
+      api.put<void>(`/api/playlists/${encodeURIComponent(id)}/reorder`, { positions }),
   }
 }
 
