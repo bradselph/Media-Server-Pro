@@ -84,9 +84,9 @@ onMounted(load)
       <UCard
         v-for="item in [
           { label: 'Total Views', value: (summary.total_views ?? 0).toLocaleString(), icon: 'i-lucide-eye' },
-          { label: 'Unique Viewers', value: (summary.unique_viewers ?? 0).toLocaleString(), icon: 'i-lucide-users' },
-          { label: 'Total Watch Time', value: formatTime(summary.total_watch_time), icon: 'i-lucide-clock' },
-          { label: 'Avg Watch Time', value: formatTime(summary.avg_watch_time), icon: 'i-lucide-timer' },
+          { label: 'Today Views', value: (summary.today_views ?? 0).toLocaleString(), icon: 'i-lucide-calendar' },
+          { label: 'Unique Clients', value: (summary.unique_clients ?? 0).toLocaleString(), icon: 'i-lucide-users' },
+          { label: 'Active Sessions', value: (summary.active_sessions ?? 0).toLocaleString(), icon: 'i-lucide-activity' },
         ]"
         :key="item.label"
         :ui="{ body: 'p-4' }"
@@ -112,28 +112,17 @@ onMounted(load)
       <UTable
         :data="topMedia"
         :columns="[
-          { key: 'title', label: 'Title' },
+          { key: 'filename', label: 'Title' },
           { key: 'views', label: 'Views' },
-          { key: 'unique_viewers', label: 'Unique Viewers' },
-          { key: 'avg_completion', label: 'Avg Completion' },
         ]"
       >
-        <template #title-cell="{ row }">
-          <span class="text-sm font-medium truncate max-w-xs block" :title="row.original.title">
-            {{ row.original.title || row.original.media_id }}
+        <template #filename-cell="{ row }">
+          <span class="text-sm font-medium truncate max-w-xs block" :title="row.original.filename">
+            {{ row.original.filename || row.original.media_id }}
           </span>
         </template>
         <template #views-cell="{ row }">
           <span class="text-sm">{{ (row.original.views ?? 0).toLocaleString() }}</span>
-        </template>
-        <template #unique_viewers-cell="{ row }">
-          <span class="text-sm">{{ (row.original.unique_viewers ?? 0).toLocaleString() }}</span>
-        </template>
-        <template #avg_completion-cell="{ row }">
-          <div class="flex items-center gap-2 min-w-24">
-            <UProgress :value="Math.round((row.original.avg_completion ?? 0) * 100)" size="xs" class="flex-1" />
-            <span class="text-xs">{{ Math.round((row.original.avg_completion ?? 0) * 100) }}%</span>
-          </div>
         </template>
       </UTable>
     </UCard>
@@ -150,17 +139,17 @@ onMounted(load)
         :data="daily"
         :columns="[
           { key: 'date', label: 'Date' },
-          { key: 'views', label: 'Views' },
-          { key: 'unique_viewers', label: 'Unique Viewers' },
-          { key: 'bandwidth', label: 'Bandwidth' },
+          { key: 'total_views', label: 'Views' },
+          { key: 'unique_users', label: 'Unique Users' },
+          { key: 'total_watch_time', label: 'Watch Time' },
         ]"
       >
         <template #date-cell="{ row }">
           <span class="text-sm font-mono">{{ row.original.date }}</span>
         </template>
-        <template #views-cell="{ row }">{{ (row.original.views ?? 0).toLocaleString() }}</template>
-        <template #unique_viewers-cell="{ row }">{{ (row.original.unique_viewers ?? 0).toLocaleString() }}</template>
-        <template #bandwidth-cell="{ row }">{{ formatBytes(row.original.bandwidth) }}</template>
+        <template #total_views-cell="{ row }">{{ (row.original.total_views ?? 0).toLocaleString() }}</template>
+        <template #unique_users-cell="{ row }">{{ (row.original.unique_users ?? 0).toLocaleString() }}</template>
+        <template #total_watch_time-cell="{ row }">{{ formatTime(row.original.total_watch_time) }}</template>
       </UTable>
     </UCard>
   </div>
