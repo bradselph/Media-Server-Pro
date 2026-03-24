@@ -226,6 +226,8 @@ export interface AnalyticsSummary {
 export interface TopMediaItem {
   media_id: string
   filename: string
+  title?: string
+  name?: string
   views: number
 }
 
@@ -481,6 +483,9 @@ export interface WatchHistoryItem {
 export interface Suggestion {
   media_id: string
   title: string
+  name?: string
+  filename?: string
+  media_path?: string
   category: string
   media_type: string
   score: number

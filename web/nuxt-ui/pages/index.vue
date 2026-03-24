@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MediaItem, MediaCategory } from '~/types/api'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ title: 'Media Library' })
 
@@ -163,7 +164,7 @@ function formatDuration(secs?: number): string {
           <img
             v-if="item.thumbnail_url || item.id"
             :src="mediaApi.getThumbnailUrl(item.id)"
-            :alt="item.name"
+            :alt="getDisplayTitle(item)"
             class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
             loading="lazy"
           />
@@ -196,8 +197,8 @@ function formatDuration(secs?: number): string {
             <UBadge label="18+" color="error" variant="solid" size="xs" />
           </div>
         </div>
-        <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="item.name">
-          {{ item.name }}
+        <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
+          {{ getDisplayTitle(item) }}
         </p>
         <p v-if="item.category" class="text-xs text-muted truncate">{{ item.category }}</p>
       </NuxtLink>
@@ -224,12 +225,12 @@ function formatDuration(secs?: number): string {
             <div class="w-16 h-9 rounded overflow-hidden bg-muted shrink-0">
               <img
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
-                :alt="row.original.name"
+                :alt="getDisplayTitle(row.original)"
                 class="w-full h-full object-cover"
                 loading="lazy"
               />
             </div>
-            <span class="font-medium truncate max-w-xs">{{ row.original.name }}</span>
+            <span class="font-medium truncate max-w-xs">{{ getDisplayTitle(row.original) }}</span>
           </NuxtLink>
         </template>
         <template #type-cell="{ row }">

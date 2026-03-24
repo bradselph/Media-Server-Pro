@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MediaItem, HLSAvailability, Suggestion } from '~/types/api'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
@@ -291,7 +292,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
         <!-- Audio player -->
         <UCard v-else class="text-center py-8 space-y-4">
           <UIcon name="i-lucide-music" class="size-16 text-primary mx-auto" />
-          <p class="font-semibold text-lg text-highlighted">{{ media.name }}</p>
+          <p class="font-semibold text-lg text-highlighted">{{ getDisplayTitle(media) }}</p>
           <audio
             ref="videoRef"
             :src="mediaApi.getStreamUrl(media.id)"
@@ -320,7 +321,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
         <!-- Media info -->
         <UCard>
           <template #header>
-            <h2 class="font-bold text-lg text-highlighted">{{ media.name }}</h2>
+            <h2 class="font-bold text-lg text-highlighted">{{ getDisplayTitle(media) }}</h2>
           </template>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
             <div v-if="media.type"><span class="text-muted">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
@@ -355,10 +356,10 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
         >
           <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-            <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="item.title" class="w-full h-full object-cover" loading="lazy" />
+            <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
           </div>
           <div class="min-w-0">
-            <p class="text-sm font-medium truncate">{{ item.title }}</p>
+            <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
             <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
           </div>
         </NuxtLink>

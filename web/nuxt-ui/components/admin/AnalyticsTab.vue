@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AnalyticsSummary, DailyStats, TopMediaItem } from '~/types/api'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const analyticsApi = useAnalyticsApi()
 const adminApi = useAdminApi()
@@ -119,8 +120,8 @@ onMounted(load)
         ]"
       >
         <template #filename-cell="{ row }">
-          <span class="text-sm font-medium truncate max-w-xs block" :title="row.original.filename">
-            {{ row.original.filename || row.original.media_id }}
+          <span class="text-sm font-medium truncate max-w-xs block" :title="getDisplayTitle(row.original)">
+            {{ getDisplayTitle(row.original) }}
           </span>
         </template>
         <template #views-cell="{ row }">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { UserPreferences, WatchHistoryItem } from '~/types/api'
 import { THEMES } from '~/stores/theme'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
@@ -268,7 +269,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
             class="flex items-center justify-between py-2 gap-3"
           >
             <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ item.media_name || item.title || item.media_id || item.media_path }}</p>
+              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
               <p class="text-xs text-muted">{{ item.watched_at ? new Date(item.watched_at).toLocaleString() : '' }}</p>
             </div>
             <UButton

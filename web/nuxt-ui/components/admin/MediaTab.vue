@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MediaItem, AdminMediaListParams } from '~/types/api'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -153,8 +154,8 @@ onMounted(load)
         ]"
       >
         <template #name-cell="{ row }">
-          <div class="max-w-xs truncate text-sm font-medium" :title="row.original.name">
-            {{ row.original.name }}
+          <div class="max-w-xs truncate text-sm font-medium" :title="getDisplayTitle(row.original)">
+            {{ getDisplayTitle(row.original) }}
           </div>
         </template>
         <template #type-cell="{ row }">
