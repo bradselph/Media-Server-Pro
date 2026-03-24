@@ -21,6 +21,8 @@ export interface HLSQuality {
 export interface UseHLSReturn {
   /** Whether HLS is available for this media. */
   hlsAvailable: Ref<boolean>
+  /** Whether HLS has been activated (hls.js is attached to the video element). */
+  hlsActivated: Ref<boolean>
   /** The master playlist URL when available. */
   hlsUrl: Ref<string | null>
   /** Whether HLS is currently loading/initializing. */
@@ -81,6 +83,7 @@ export function useHLS(
   const hlsApi = useHlsApi()
 
   const hlsAvailable = ref(false)
+  const hlsActivated = ref(false)
   const hlsUrl = ref<string | null>(null)
   const hlsLoading = ref(false)
   const hlsError = ref<string | null>(null)
@@ -109,6 +112,7 @@ export function useHLS(
     bandwidth.value = 0
     hlsLoading.value = false
     hlsError.value = null
+    hlsActivated.value = false
     jobProgress.value = 0
     jobRunning.value = false
   }
@@ -259,8 +263,10 @@ export function useHLS(
 
   function activateHLS() {
     if (hlsUrl.value) {
-      hlsAvailable.value = false
-      attachHLS(hlsUrl.value)
+      hlsActivated.value = true
+      attachHLS(hlsUrl.value).catch(() => {
+        hlsActivated.value = false
+      })
     }
   }
 
@@ -318,6 +324,7 @@ export function useHLS(
 
   return {
     hlsAvailable,
+    hlsActivated,
     hlsUrl,
     hlsLoading,
     hlsError,

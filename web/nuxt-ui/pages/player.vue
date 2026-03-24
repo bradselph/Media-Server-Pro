@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import type { MediaItem, HLSAvailability, Suggestion } from '~/types/api'
+import type { MediaItem, Suggestion } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
 const route = useRoute()
 const mediaApi = useMediaApi()
-const hlsApi = useHlsApi()
 const playbackApi = usePlaybackApi()
 const suggestionsApi = useSuggestionsApi()
 const playbackStore = usePlaybackStore()
@@ -27,10 +26,20 @@ const showControls = ref(true)
 const isFullscreen = ref(false)
 const playbackSpeed = ref(1)
 
-// HLS
-const hlsAvail = ref<HLSAvailability | null>(null)
-const hlsEnabled = ref(false)
-let hlsInstance: unknown = null
+// HLS — delegate to composable
+const mediaIdRef = computed(() => mediaId.value ?? '')
+const {
+  hlsAvailable,
+  hlsActivated,
+  hlsLoading,
+  hlsError,
+  qualities,
+  currentQuality,
+  selectQuality,
+  activateHLS,
+  jobProgress,
+  jobRunning,
+} = useHLS(videoRef, mediaIdRef)
 
 // Similar
 const similar = ref<Suggestion[]>([])
@@ -46,34 +55,15 @@ function resetControlsTimer() {
 async function loadMedia(id: string) {
   loading.value = true
   error.value = ''
-  hlsEnabled.value = false
-  hlsAvail.value = null
-  if (hlsInstance) {
-    ;(hlsInstance as { destroy: () => void }).destroy()
-    hlsInstance = null
-  }
   try {
     media.value = await mediaApi.getById(id)
     playbackStore.setMedia(id)
-    // Load similar suggestions
     suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch(() => {})
-    // Check HLS
-    if (media.value?.type === 'video') {
-      hlsApi.check(id).then(r => { hlsAvail.value = r }).catch(() => {})
-    }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load media'
   } finally {
     loading.value = false
   }
-}
-
-function getResolvedHlsUrl(): string | null {
-  if (!hlsAvail.value) return null
-  if (hlsAvail.value.hls_url) return hlsAvail.value.hls_url
-  if (hlsAvail.value.job_id) return hlsApi.getMasterPlaylistUrl(hlsAvail.value.job_id)
-  if (mediaId.value) return hlsApi.getMasterPlaylistUrl(mediaId.value)
-  return null
 }
 
 async function restorePosition() {
@@ -156,34 +146,26 @@ function formatTime(s: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${m}:${String(sec).padStart(2,'0')}`
 }
 
-async function enableHLS() {
-  if (!videoRef.value || !mediaId.value) return
-  const hlsUrl = getResolvedHlsUrl()
-  if (!hlsUrl) {
-    toast.add({ title: 'HLS playlist URL not available', color: 'error', icon: 'i-lucide-alert-circle' })
-    return
-  }
-  try {
-    const { default: Hls } = await import('hls.js')
-    if (!Hls.isSupported()) {
-      videoRef.value.src = hlsUrl
-      return
-    }
-    hlsInstance = new Hls()
-    ;(hlsInstance as InstanceType<typeof Hls>).loadSource(hlsUrl)
-    ;(hlsInstance as InstanceType<typeof Hls>).attachMedia(videoRef.value)
-    hlsEnabled.value = true
-    toast.add({ title: 'HLS streaming enabled', color: 'success', icon: 'i-lucide-check', duration: 2000 })
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to start HLS', color: 'error', icon: 'i-lucide-alert-circle' })
-  }
+function formatBandwidth(bps: number): string {
+  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`
+  if (bps >= 1_000) return `${(bps / 1_000).toFixed(0)} Kbps`
+  return `${bps} bps`
 }
+
+const qualityMenuItems = computed(() => [[
+  { label: 'Auto', click: () => selectQuality(-1) },
+  ...qualities.value.map(q => ({ label: q.name, click: () => selectQuality(q.index) })),
+]])
+
+const currentQualityLabel = computed(() => {
+  if (currentQuality.value === -1) return 'Auto'
+  return qualities.value[currentQuality.value]?.name ?? 'Auto'
+})
 
 // Save position on pause and unmount
 onUnmounted(() => {
   savePosition()
   playbackStore.stopAutoSave()
-  if (hlsInstance) (hlsInstance as { destroy: () => void }).destroy()
   if (controlsTimer) clearTimeout(controlsTimer)
 })
 
@@ -224,13 +206,18 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           <video
             ref="videoRef"
             class="w-full aspect-video"
-            :src="hlsEnabled ? undefined : mediaApi.getStreamUrl(media.id)"
+            :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
             @loadedmetadata="onVideoLoaded"
             @timeupdate="onTimeUpdate"
             @play="onPlayPause"
             @pause="onPlayPause"
             @ended="savePosition"
           />
+
+          <!-- HLS loading overlay -->
+          <div v-if="hlsLoading" class="absolute inset-0 flex items-center justify-center bg-black/60">
+            <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+          </div>
 
           <!-- Controls overlay -->
           <div
@@ -264,6 +251,19 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
 
               <div class="ml-auto flex items-center gap-2">
                 <UButton :label="`${playbackSpeed}x`" variant="ghost" color="neutral" size="xs" class="text-white text-xs" @click="cycleSpeed" />
+
+                <!-- Quality selector (HLS only) -->
+                <UDropdownMenu v-if="qualities.length > 0" :items="qualityMenuItems">
+                  <UButton
+                    :label="currentQualityLabel"
+                    icon="i-lucide-layers"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    class="text-white text-xs"
+                    @click.stop
+                  />
+                </UDropdownMenu>
 
                 <input
                   type="range"
@@ -304,9 +304,19 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           />
         </UCard>
 
-        <!-- HLS banner -->
+        <!-- HLS job generating progress -->
         <UAlert
-          v-if="hlsAvail?.available && !hlsEnabled"
+          v-if="jobRunning"
+          title="Generating HLS stream…"
+          :description="`Progress: ${jobProgress}%`"
+          color="info"
+          variant="soft"
+          icon="i-lucide-loader-2"
+        />
+
+        <!-- HLS available banner -->
+        <UAlert
+          v-else-if="hlsAvailable && !hlsActivated"
           title="Adaptive HLS streaming available"
           description="Switch to HLS for adaptive quality and smoother playback."
           color="info"
@@ -314,9 +324,18 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           icon="i-lucide-zap"
         >
           <template #actions>
-            <UButton label="Enable HLS" size="xs" @click="enableHLS" />
+            <UButton label="Enable HLS" size="xs" :loading="hlsLoading" @click="activateHLS" />
           </template>
         </UAlert>
+
+        <!-- HLS error -->
+        <UAlert
+          v-else-if="hlsError"
+          :title="hlsError"
+          color="error"
+          variant="soft"
+          icon="i-lucide-alert-circle"
+        />
 
         <!-- Media info -->
         <UCard>
@@ -331,6 +350,9 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
             <div v-if="media.codec"><span class="text-muted">Codec:</span> {{ media.codec }}</div>
             <div v-if="media.category"><span class="text-muted">Category:</span> {{ media.category }}</div>
+            <div v-if="hlsActivated && qualities.length > 0">
+              <span class="text-muted">Quality:</span> {{ currentQualityLabel }}
+            </div>
           </div>
           <div class="flex gap-2 mt-4">
             <UButton
