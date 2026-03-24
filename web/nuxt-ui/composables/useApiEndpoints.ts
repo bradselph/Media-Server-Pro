@@ -317,7 +317,7 @@ export function useAdminApi() {
     // Downloader
     listDownloaderJobs: () => api.get<DownloaderJob[]>(`${base}/downloader/downloads`),
     createDownloaderJob: (url: string, clientId: string) =>
-      api.post<{ id: string }>(`${base}/downloader/download`, { url, clientId, saveLocation: 'server' }),
+      api.post<{ id: string }>(`${base}/downloader/download`, { url, clientId }),
     cancelDownloaderJob: (id: string) =>
       api.post<void>(`${base}/downloader/cancel/${encodeURIComponent(id)}`),
     deleteDownloaderJob: (filename: string) =>
