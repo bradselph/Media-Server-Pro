@@ -303,16 +303,16 @@ export function useAdminApi() {
     // Updates
     checkForUpdates: () => api.get<UpdateInfo>(`${base}/update/check`),
     getUpdateStatus: () => api.get<UpdateStatus>(`${base}/update/status`),
-    applyUpdate: () => api.post<void>(`${base}/update/apply`),
+    applyUpdate: () => api.post<UpdateStatus>(`${base}/update/apply`),
 
     // Downloader
-    listDownloaderJobs: () => api.get<DownloaderJob[]>(`${base}/downloader/jobs`),
-    createDownloaderJob: (url: string, filename?: string) =>
-      api.post<DownloaderJob>(`${base}/downloader/jobs`, { url, filename }),
+    listDownloaderJobs: () => api.get<DownloaderJob[]>(`${base}/downloader/downloads`),
+    createDownloaderJob: (url: string, clientId: string) =>
+      api.post<{ id: string }>(`${base}/downloader/download`, { url, clientId, saveLocation: 'server' }),
     cancelDownloaderJob: (id: string) =>
-      api.post<void>(`${base}/downloader/jobs/${encodeURIComponent(id)}/cancel`),
-    deleteDownloaderJob: (id: string) =>
-      api.delete<void>(`${base}/downloader/jobs/${encodeURIComponent(id)}`),
+      api.post<void>(`${base}/downloader/cancel/${encodeURIComponent(id)}`),
+    deleteDownloaderJob: (filename: string) =>
+      api.delete<void>(`${base}/downloader/downloads/${encodeURIComponent(filename)}`),
   }
 }
 

@@ -66,21 +66,25 @@ export interface SessionCheckResponse {
 export interface MediaItem {
   id: string
   name: string
-  path: string
   type: 'video' | 'audio' | 'image' | string
   size: number
   duration?: number
-  thumbnail_url?: string
-  date_added: string
-  date_modified?: string
+  width?: number
+  height?: number
+  bitrate?: number
+  codec?: string
+  container?: string
   category?: string
   tags?: string[]
-  is_mature?: boolean
-  views?: number
-  resolution?: string
-  container?: string
-  bitrate?: number
-  source?: 'local' | 'remote' | 'slave'
+  thumbnail_url?: string
+  blur_hash?: string
+  date_added: string
+  date_modified?: string
+  views: number
+  last_played?: string
+  is_mature: boolean
+  mature_score?: number
+  metadata?: Record<string, string>
 }
 
 export interface MediaListParams {
@@ -109,7 +113,9 @@ export interface MediaListResponse {
 
 export interface MediaCategory {
   name: string
+  display_name: string
   count: number
+  tags?: string[]
 }
 
 export interface AdminMediaListResponse {
@@ -359,16 +365,20 @@ export interface UpdateInfo {
   current_version: string
   latest_version: string
   update_available: boolean
+  release_url?: string
   release_notes?: string
-  download_url?: string
   published_at?: string
+  checked_at?: string
+  error?: string
 }
 
 export interface UpdateStatus {
-  state: 'idle' | 'downloading' | 'applying' | 'error' | 'success'
-  progress?: number
-  message?: string
+  in_progress: boolean
+  stage: string
+  progress: number
+  started_at?: string
   error?: string
+  backup_path?: string
 }
 
 export interface IPListEntry {
@@ -378,19 +388,21 @@ export interface IPListEntry {
 }
 
 export interface SecurityStats {
-  blocked_requests: number
-  rate_limited_requests: number
   banned_ips: number
-  whitelist_count: number
-  blacklist_count: number
+  whitelisted_ips: number
+  blacklisted_ips: number
+  active_rate_limits: number
+  total_blocks_today: number
 }
 
 export interface DatabaseStatus {
   connected: boolean
   host: string
   database: string
-  tables: number
-  total_rows: number
+  app_version?: string
+  repository_type?: string
+  message?: string
+  checked_at?: string
 }
 
 export interface ReceiverSlave {
@@ -444,17 +456,10 @@ export interface ExtractorItem {
 }
 
 export interface DownloaderJob {
-  id: string
+  filename: string
+  size: number
+  created: number
   url: string
-  filename?: string
-  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
-  progress?: number
-  speed?: number
-  size?: number
-  downloaded?: number
-  error?: string
-  created_at: string
-  completed_at?: string
 }
 
 // ── Watch history ─────────────────────────────────────────────────────────────
@@ -473,13 +478,13 @@ export interface WatchHistoryItem {
 // ── Suggestions ───────────────────────────────────────────────────────────────
 
 export interface Suggestion {
-  id: string
-  name: string
-  type: string
+  media_id: string
+  title: string
+  category: string
+  media_type: string
+  score: number
+  reasons: string[]
   thumbnail_url?: string
-  duration?: number
-  category?: string
-  score?: number
 }
 
 // ── Storage / Permissions ─────────────────────────────────────────────────────
