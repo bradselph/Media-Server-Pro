@@ -191,7 +191,7 @@ onMounted(load)
               variant="ghost"
               color="neutral"
               title="Generate thumbnail"
-              @click="adminApi.generateThumbnail(row.original.id).then(() => toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' }))"
+              @click="adminApi.generateThumbnail(row.original.id).then(() => toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' }))"
             />
             <UButton
               icon="i-lucide-trash-2"
@@ -199,7 +199,7 @@ onMounted(load)
               variant="ghost"
               color="error"
               title="Delete"
-              @click="adminApi.deleteMedia(row.original.id).then(load)"
+              @click="adminApi.deleteMedia(row.original.id).then(load).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' }))"
             />
           </div>
         </template>
