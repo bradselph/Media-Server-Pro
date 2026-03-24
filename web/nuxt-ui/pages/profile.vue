@@ -214,8 +214,8 @@ onMounted(() => { loadPrefs(); loadHistory() })
             <div v-for="toggle in [
               { key: 'auto_play', label: 'Auto-play' },
               { key: 'resume_playback', label: 'Resume Playback' },
-              { key: 'show_mature_content', label: 'Show Mature Content' },
-              { key: 'collect_analytics', label: 'Analytics' },
+              { key: 'show_mature', label: 'Show Mature Content' },
+              { key: 'show_analytics', label: 'Analytics' },
             ]" :key="toggle.key" class="flex items-center gap-2">
               <USwitch v-model="(prefs as Record<string, unknown>)[toggle.key]" />
               <span class="text-sm">{{ toggle.label }}</span>

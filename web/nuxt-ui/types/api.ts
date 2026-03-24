@@ -27,8 +27,8 @@ export interface UserPreferences {
   sort_order: string
   filter_category: string
   filter_media_type: string
-  show_mature_content: boolean
-  collect_analytics: boolean
+  show_mature: boolean
+  show_analytics: boolean
   show_home_recently_added: boolean
   show_home_continue_watching: boolean
   show_home_suggestions: boolean
@@ -49,9 +49,11 @@ export interface User {
 }
 
 export interface LoginResponse {
-  token?: string
-  session_id?: string
-  user: User
+  session_id: string
+  username: string
+  role: UserRole
+  is_admin: boolean
+  expires_at: string
 }
 
 export interface SessionCheckResponse {
@@ -205,26 +207,29 @@ export interface AnalyticsEvent {
 }
 
 export interface AnalyticsSummary {
+  total_events: number
+  active_sessions: number
+  today_views: number
   total_views: number
-  unique_viewers: number
-  total_watch_time: number
-  avg_watch_time: number
-  top_media: TopMediaItem[]
+  total_media: number
+  unique_clients: number
+  top_viewed: TopMediaItem[]
+  recent_activity: { type: string; media_id: string; filename: string; timestamp: number }[]
 }
 
 export interface TopMediaItem {
   media_id: string
-  title: string
+  filename: string
   views: number
-  unique_viewers: number
-  avg_completion: number
 }
 
 export interface DailyStats {
   date: string
-  views: number
-  unique_viewers: number
-  bandwidth: number
+  total_views: number
+  unique_users: number
+  total_watch_time: number
+  new_users: number
+  top_media: string[]
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
