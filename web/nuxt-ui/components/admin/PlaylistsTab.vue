@@ -15,9 +15,9 @@ async function load() {
     const res = await adminApi.listAllPlaylists()
     // API may return { items: [...] } or a plain array
     playlists.value = Array.isArray(res) ? res : (res?.items ?? [])
-  }
-  catch {}
-  finally { loading.value = false }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { loading.value = false }
 }
 
 async function handleDelete() {

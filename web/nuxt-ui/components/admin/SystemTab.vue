@@ -27,8 +27,9 @@ async function loadConfig() {
   try {
     const cfg = await adminApi.getConfig()
     configText.value = JSON.stringify(cfg, null, 2)
-  } catch {}
-  finally { configLoading.value = false }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { configLoading.value = false }
 }
 
 async function saveConfig() {
@@ -68,8 +69,9 @@ const tasksLoading = ref(false)
 async function loadTasks() {
   tasksLoading.value = true
   try { tasks.value = (await adminApi.listTasks()) ?? [] }
-  catch {}
-  finally { tasksLoading.value = false }
+  catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load tasks', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { tasksLoading.value = false }
 }
 
 async function runTask(id: string) {
@@ -94,8 +96,9 @@ async function loadLogs() {
     logs.value = (await adminApi.getLogs(logLevel.value === 'all' ? undefined : logLevel.value || undefined, logModule.value || undefined, 500)) ?? []
     await nextTick()
     if (logsContainer.value) logsContainer.value.scrollTop = logsContainer.value.scrollHeight
-  } catch {}
-  finally { logsLoading.value = false }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load logs', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { logsLoading.value = false }
 }
 
 // Backups
@@ -106,8 +109,9 @@ const creatingBackup = ref(false)
 async function loadBackups() {
   backupsLoading.value = true
   try { backups.value = (await adminApi.listBackups()) ?? [] }
-  catch {}
-  finally { backupsLoading.value = false }
+  catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load backups', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { backupsLoading.value = false }
 }
 
 async function createBackup() {
@@ -128,7 +132,7 @@ const dbStatus = ref<DatabaseStatus | null>(null)
 
 async function loadDbStatus() {
   try { dbStatus.value = await adminApi.getDatabaseStatus() }
-  catch {}
+  catch { /* non-critical; DB status card shows empty state */ }
 }
 
 function formatBytes(bytes?: number): string {

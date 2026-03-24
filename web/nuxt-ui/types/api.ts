@@ -494,14 +494,20 @@ export interface StorageUsage {
   percent: number
 }
 
+// Shape returned by GET /api/permissions — capabilities use camelCase keys
 export interface PermissionsInfo {
-  can_stream: boolean
-  can_download: boolean
-  can_upload: boolean
-  can_delete: boolean
-  can_manage: boolean
-  can_view_mature: boolean
-  can_create_playlists: boolean
+  authenticated: boolean
+  username?: string
+  role?: string
+  show_mature?: boolean
+  mature_preference_set?: boolean
+  capabilities: {
+    canStream: boolean
+    canUpload: boolean
+    canDownload: boolean
+    canCreatePlaylists: boolean
+    canViewMature: boolean
+  }
 }
 
 // ── Server Config ─────────────────────────────────────────────────────────────

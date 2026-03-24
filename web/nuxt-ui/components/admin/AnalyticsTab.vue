@@ -69,7 +69,9 @@ onMounted(load)
           variant="outline"
           color="neutral"
           size="xs"
-          :to="analyticsApi.exportCsv()"
+          tag="a"
+          :href="analyticsApi.exportCsv()"
+          download
         />
       </div>
     </div>

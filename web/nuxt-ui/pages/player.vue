@@ -154,7 +154,9 @@ async function enableHLS() {
     ;(hlsInstance as InstanceType<typeof Hls>).attachMedia(videoRef.value)
     hlsEnabled.value = true
     toast.add({ title: 'HLS streaming enabled', color: 'success', icon: 'i-lucide-check', duration: 2000 })
-  } catch {}
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to start HLS', color: 'error', icon: 'i-lucide-alert-circle' })
+  }
 }
 
 // Save position on pause and unmount

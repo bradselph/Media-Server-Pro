@@ -142,8 +142,7 @@ func (h *Handler) RecordRating(c *gin.Context) {
 		ID     string  `json:"id"`
 		Rating float64 `json:"rating"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 

@@ -67,8 +67,7 @@ func (h *Handler) addToIPList(c *gin.Context, addFn func(ip, comment, addedBy st
 		return
 	}
 	var req addIPListReq
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	session := getSession(c)
@@ -101,8 +100,7 @@ func (h *Handler) removeFromIPList(c *gin.Context, removeFn func(string) bool, n
 	var req struct {
 		IP string `json:"ip"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if !removeFn(req.IP) {
@@ -164,8 +162,7 @@ func (h *Handler) BanIP(c *gin.Context) {
 		Duration int    `json:"duration_minutes"`
 		Reason   string `json:"reason"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -204,8 +201,7 @@ func (h *Handler) UnbanIP(c *gin.Context) {
 	var req struct {
 		IP string `json:"ip"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 

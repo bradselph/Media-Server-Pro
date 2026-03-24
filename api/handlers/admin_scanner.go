@@ -59,8 +59,7 @@ func (h *Handler) ScanContent(c *gin.Context) {
 		Path      string `json:"path"`
 		AutoApply bool   `json:"auto_apply"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if req.Path != "" {
@@ -156,8 +155,7 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 		Action string   `json:"action"`
 		IDs    []string `json:"ids"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if req.Action != "approve" && req.Action != "reject" {

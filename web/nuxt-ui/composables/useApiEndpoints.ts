@@ -41,7 +41,7 @@ export function useApiEndpoints() {
     // Backend only registers POST /api/preferences (partial merge), not PUT.
     return api.post<UserPreferences>('/api/preferences', prefs)
   }
-  function getPermissions() { return api.get<UserPermissions>('/api/permissions') }
+  function getPermissions() { return api.get<PermissionsInfo>('/api/permissions') }
 
   return {
     login, logout, register, getSession, changePassword, deleteAccount,
@@ -155,7 +155,7 @@ export function usePlaylistApi() {
 
 export function useSettingsApi() {
   return {
-    get: () => api.get<ServerSettings>('/api/settings'),
+    get: () => api.get<ServerSettings>('/api/server-settings'),
   }
 }
 
@@ -184,7 +184,7 @@ export function useAdminApi() {
       api.put<User>(`${base}/users/${encodeURIComponent(username)}`, data),
     deleteUser: (username: string) => api.delete<void>(`${base}/users/${encodeURIComponent(username)}`),
     changeUserPassword: (username: string, password: string) =>
-      api.post<void>(`${base}/users/${encodeURIComponent(username)}/password`, { password }),
+      api.post<void>(`${base}/users/${encodeURIComponent(username)}/password`, { new_password: password }),
     getUserSessions: (username: string) =>
       api.get<unknown[]>(`${base}/users/${encodeURIComponent(username)}/sessions`),
     changeOwnPassword: (currentPassword: string, newPassword: string) =>
@@ -203,8 +203,8 @@ export function useAdminApi() {
     },
     scanMedia: () => api.post<void>(`${base}/media/scan`),
     updateMedia: (id: string, data: Partial<MediaItem>) =>
-      api.put<MediaItem>(`/api/media/${encodeURIComponent(id)}`, data),
-    deleteMedia: (id: string) => api.delete<void>(`/api/media/${encodeURIComponent(id)}`),
+      api.put<MediaItem>(`${base}/media/${encodeURIComponent(id)}`, data),
+    deleteMedia: (id: string) => api.delete<void>(`${base}/media/${encodeURIComponent(id)}`),
     generateThumbnail: (id: string) =>
       api.post<void>(`${base}/thumbnails/generate`, { id }),
     getThumbnailStats: () => api.get<ThumbnailStats>(`${base}/thumbnails/stats`),
@@ -221,8 +221,8 @@ export function useAdminApi() {
     enableTask: (id: string) => api.post<void>(`${base}/tasks/${encodeURIComponent(id)}/enable`),
     disableTask: (id: string) => api.post<void>(`${base}/tasks/${encodeURIComponent(id)}/disable`),
 
-    // Audit log
-    getAuditLog: (params?: { page?: number; limit?: number; user_id?: string }) => {
+    // Audit log — backend reads `limit` and `offset` (not `page`)
+    getAuditLog: (params?: { offset?: number; limit?: number; user_id?: string }) => {
       const qs = new URLSearchParams()
       if (params) Object.entries(params).forEach(([k, v]) => { if (v !== undefined) qs.set(k, String(v)) })
       return api.get<AuditLogEntry[]>(`${base}/audit-log?${qs}`)
@@ -273,28 +273,28 @@ export function useAdminApi() {
     // Database
     getDatabaseStatus: () => api.get<DatabaseStatus>(`${base}/database/status`),
 
-    // Receiver / Slaves
-    listSlaves: () => api.get<ReceiverSlave[]>(`/api/receiver/slaves`),
+    // Receiver / Slaves — slaves list is under /api/admin/; media browse is at /api/receiver/media
+    listSlaves: () => api.get<ReceiverSlave[]>(`${base}/receiver/slaves`),
     getSlaveMedia: () => api.get<ReceiverMedia[]>(`/api/receiver/media`),
 
-    // Crawler
-    listCrawlerTargets: () => api.get<CrawlerTarget[]>(`/api/crawler/targets`),
+    // Crawler — all under /api/admin/crawler/
+    listCrawlerTargets: () => api.get<CrawlerTarget[]>(`${base}/crawler/targets`),
     addCrawlerTarget: (url: string, name?: string) =>
-      api.post<CrawlerTarget>(`/api/crawler/targets`, { url, name }),
+      api.post<CrawlerTarget>(`${base}/crawler/targets`, { url, name }),
     deleteCrawlerTarget: (id: string) =>
-      api.delete<void>(`/api/crawler/targets/${encodeURIComponent(id)}`),
+      api.delete<void>(`${base}/crawler/targets/${encodeURIComponent(id)}`),
     getCrawlerDiscoveries: (targetId?: string) => {
       const qs = targetId ? `?target_id=${encodeURIComponent(targetId)}` : ''
-      return api.get<CrawlerDiscovery[]>(`/api/crawler/discoveries${qs}`)
+      return api.get<CrawlerDiscovery[]>(`${base}/crawler/discoveries${qs}`)
     },
     startCrawl: (targetId: string) =>
-      api.post<void>(`/api/crawler/targets/${encodeURIComponent(targetId)}/crawl`),
+      api.post<void>(`${base}/crawler/targets/${encodeURIComponent(targetId)}/crawl`),
 
-    // Extractor
-    listExtractorItems: () => api.get<ExtractorItem[]>(`/api/extractor/items`),
-    addExtractorUrl: (url: string) => api.post<ExtractorItem>(`/api/extractor/items`, { url }),
+    // Extractor — all under /api/admin/extractor/
+    listExtractorItems: () => api.get<ExtractorItem[]>(`${base}/extractor/items`),
+    addExtractorUrl: (url: string) => api.post<ExtractorItem>(`${base}/extractor/items`, { url }),
     deleteExtractorItem: (id: string) =>
-      api.delete<void>(`/api/extractor/items/${encodeURIComponent(id)}`),
+      api.delete<void>(`${base}/extractor/items/${encodeURIComponent(id)}`),
 
     // Playlists (admin)
     listAllPlaylists: () => api.get<{ items: Playlist[] } | Playlist[]>(`${base}/playlists`),

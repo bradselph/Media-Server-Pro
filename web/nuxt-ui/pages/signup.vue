@@ -21,8 +21,10 @@ async function handleSignup() {
   }
   loading.value = true
   try {
-    const user = await register(form.username, form.password, form.email || undefined)
-    authStore.setUser(user)
+    await register(form.username, form.password, form.email || undefined)
+    // Fetch the full session instead of using the raw register response,
+    // which may have null permissions/preferences on a freshly-created account.
+    await authStore.fetchSession()
     router.replace('/')
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Registration failed'

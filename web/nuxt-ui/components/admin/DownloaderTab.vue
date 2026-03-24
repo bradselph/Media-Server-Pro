@@ -12,8 +12,9 @@ const adding = ref(false)
 async function load() {
   loading.value = true
   try { downloads.value = (await adminApi.listDownloaderJobs()) ?? [] }
-  catch {}
-  finally { loading.value = false }
+  catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load downloads', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { loading.value = false }
 }
 
 async function addDownload() {

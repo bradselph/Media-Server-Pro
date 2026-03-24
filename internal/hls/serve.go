@@ -51,21 +51,58 @@ func rewritePlaylistLines(data []byte, baseURL string) []byte {
 
 // servePlaylistOpts holds parameters for serving a playlist (direct or CDN-rewritten).
 type servePlaylistOpts struct {
-	path    string
-	cdnBase string
-	urlPath string
+	path        string
+	cdnBase     string
+	urlPath     string
+	corsOrigin  string // value for Access-Control-Allow-Origin header
+}
+
+// hlsCORSOrigin computes the correct Access-Control-Allow-Origin header value for
+// HLS responses based on the server CORS configuration and the incoming Origin header.
+//
+// HLS content must be accessible to all media players (browser, mobile, CDN) so it
+// always sets some ACAO header. When the operator has configured specific allowed
+// origins we reflect a matching origin (or omit the header for non-matching requests).
+// When no specific origins are configured, we fall back to "*".
+func (m *Module) hlsCORSOrigin(r *http.Request) string {
+	cfg := m.config.Get()
+	if !cfg.Security.CORSEnabled || len(cfg.Security.CORSOrigins) == 0 {
+		return "*"
+	}
+	for _, o := range cfg.Security.CORSOrigins {
+		if o == "*" {
+			return "*"
+		}
+	}
+	// Operator has configured specific origins — reflect a matching one.
+	requestOrigin := r.Header.Get("Origin")
+	if requestOrigin == "" {
+		return "*" // direct player request without Origin header; allow it
+	}
+	for _, allowed := range cfg.Security.CORSOrigins {
+		if strings.EqualFold(allowed, requestOrigin) {
+			return requestOrigin
+		}
+	}
+	// Origin not in allow-list; return "*" so the stream still loads in non-CORS
+	// contexts (e.g., native players). Browsers will enforce the mismatch themselves.
+	return "*"
 }
 
 // servePlaylist writes the playlist to w, rewriting URLs for CDN if cdnBase is set.
 // When cdnBase is empty, the file is read and written with explicit headers so
 // Content-Type and Cache-Control are not overwritten by http.ServeFile.
-func servePlaylist(w http.ResponseWriter, r *http.Request, opts servePlaylistOpts) error {
+func servePlaylist(w http.ResponseWriter, _ *http.Request, opts servePlaylistOpts) error {
 	data, err := os.ReadFile(opts.path)
 	if err != nil {
 		return fmt.Errorf("failed to read playlist: %w", err)
 	}
+	corsOrigin := opts.corsOrigin
+	if corsOrigin == "" {
+		corsOrigin = "*"
+	}
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", corsOrigin)
 	if opts.cdnBase == "" {
 		w.Header().Set("Cache-Control", "no-cache")
 		if _, err := w.Write(data); err != nil {
@@ -95,7 +132,12 @@ func (m *Module) ServeMasterPlaylist(w http.ResponseWriter, r *http.Request, job
 
 	masterPath := filepath.Join(job.OutputDir, masterPlaylistName)
 	cfg := m.config.Get()
-	return servePlaylist(w, r, servePlaylistOpts{path: masterPath, cdnBase: cfg.HLS.CDNBaseURL, urlPath: jobID})
+	return servePlaylist(w, r, servePlaylistOpts{
+		path:       masterPath,
+		cdnBase:    cfg.HLS.CDNBaseURL,
+		urlPath:    jobID,
+		corsOrigin: m.hlsCORSOrigin(r),
+	})
 }
 
 // VariantPlaylistParams holds job ID and quality for variant playlist requests.
@@ -118,7 +160,12 @@ func (m *Module) ServeVariantPlaylist(w http.ResponseWriter, r *http.Request, p 
 	}
 
 	cfg := m.config.Get()
-	opts := servePlaylistOpts{path: playlistPath, cdnBase: cfg.HLS.CDNBaseURL, urlPath: p.JobID + "/" + p.Quality}
+	opts := servePlaylistOpts{
+		path:       playlistPath,
+		cdnBase:    cfg.HLS.CDNBaseURL,
+		urlPath:    p.JobID + "/" + p.Quality,
+		corsOrigin: m.hlsCORSOrigin(r),
+	}
 	return servePlaylist(w, r, opts)
 }
 
@@ -150,7 +197,7 @@ func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentP
 
 	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set("Cache-Control", "public, max-age=31536000")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", m.hlsCORSOrigin(r))
 	http.ServeFile(w, r, segmentPath)
 	return nil
 }

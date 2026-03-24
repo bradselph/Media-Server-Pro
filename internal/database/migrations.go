@@ -249,7 +249,8 @@ var tableDefs = []struct {
 			type_preferences JSON,
 			total_views      INT     DEFAULT 0,
 			total_watch_time FLOAT   DEFAULT 0.0,
-			last_updated     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+			last_updated     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"suggestion_view_history", `
 		CREATE TABLE IF NOT EXISTS suggestion_view_history (
@@ -262,7 +263,8 @@ var tableDefs = []struct {
 			last_viewed  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			completed_at TIMESTAMP NULL,
 			rating       FLOAT     DEFAULT 0.0,
-			PRIMARY KEY (user_id, media_path(255))
+			PRIMARY KEY (user_id, media_path(255)),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"autodiscovery_suggestions", `
 		CREATE TABLE IF NOT EXISTS autodiscovery_suggestions (
@@ -438,6 +440,9 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 	if err := m.ensureSchemaIndexes(ctx); err != nil {
 		return err
 	}
+	if err := m.ensureSchemaForeignKeys(ctx); err != nil {
+		return err
+	}
 	m.log.Info("Database schema is up to date")
 	return nil
 }
@@ -595,6 +600,69 @@ func (m *Module) ensureIndex(ctx context.Context, table, index, alterSQL string)
 		},
 		fmt.Sprintf("Adding missing index %s on %s", index, table),
 	)
+}
+
+// ensureSchemaForeignKeys adds missing FK constraints for existing databases.
+// Orphaned rows are cleaned first so that the FK addition cannot fail due to
+// referential violations on data that pre-dates the constraint.
+func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
+	type fkSpec struct {
+		table, constraint, cleanupSQL, alterSQL string
+	}
+	fks := []fkSpec{
+		{
+			table:      "suggestion_profiles",
+			constraint: "fk_suggestion_profiles_user",
+			cleanupSQL: "DELETE FROM suggestion_profiles WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE suggestion_profiles ADD CONSTRAINT fk_suggestion_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+		{
+			table:      "suggestion_view_history",
+			constraint: "fk_suggestion_view_history_user",
+			cleanupSQL: "DELETE FROM suggestion_view_history WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE suggestion_view_history ADD CONSTRAINT fk_suggestion_view_history_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+	}
+	for _, fk := range fks {
+		if err := m.ensureForeignKey(ctx, fk.table, fk.constraint, fk.cleanupSQL, fk.alterSQL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureForeignKey checks whether a named FK constraint exists. If not, it first
+// removes any orphaned rows (to avoid constraint-violation failures) then adds the FK.
+func (m *Module) ensureForeignKey(ctx context.Context, table, constraint, cleanupSQL, alterSQL string) error {
+	if !validIdent.MatchString(table) || !validIdent.MatchString(constraint) {
+		return fmt.Errorf("invalid table or constraint name: %q.%q", table, constraint)
+	}
+	var exists bool
+	if err := m.sqlDB.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM information_schema.TABLE_CONSTRAINTS
+		WHERE TABLE_SCHEMA    = DATABASE()
+		  AND TABLE_NAME      = ?
+		  AND CONSTRAINT_NAME = ?
+		  AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+	`, table, constraint).Scan(&exists); err != nil {
+		return fmt.Errorf("check FK %s.%s: %w", table, constraint, err)
+	}
+	if exists {
+		return nil
+	}
+	// Purge orphaned rows so the FK addition cannot fail with a constraint violation.
+	if cleanupSQL != "" {
+		if result, err := m.sqlDB.ExecContext(ctx, cleanupSQL); err != nil {
+			m.log.Warn("FK pre-cleanup failed for %s.%s: %v", table, constraint, err)
+		} else if n, _ := result.RowsAffected(); n > 0 {
+			m.log.Info("Removed %d orphaned rows from %s before adding FK %s", n, table, constraint)
+		}
+	}
+	m.log.Info("Adding missing FK %s on %s", constraint, table)
+	if _, err := m.sqlDB.ExecContext(ctx, alterSQL); err != nil {
+		return fmt.Errorf("add FK %s.%s: %w", table, constraint, err)
+	}
+	return nil
 }
 
 // dropConstraintSpec holds parameters for dropConstraintIfExists.

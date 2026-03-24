@@ -51,7 +51,8 @@ func (h *Handler) GetServerLogs(c *gin.Context) {
 	const maxLogFiles = 50
 	filesProcessed := 0
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".log") {
+		// Skip directories, symlinks (prevent symlink-based file disclosure), and non-.log files.
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !strings.HasSuffix(entry.Name(), ".log") {
 			continue
 		}
 

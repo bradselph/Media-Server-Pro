@@ -23,11 +23,16 @@ const auditLoading = ref(false)
 async function loadAudit() {
   auditLoading.value = true
   try {
-    const res = await adminApi.getAuditLog({ page: auditPage.value, limit: auditLimit })
+    // Backend reads `offset` (not `page`); offset = (page - 1) * limit
+    const offset = (auditPage.value - 1) * auditLimit
+    const res = await adminApi.getAuditLog({ offset, limit: auditLimit })
     // API returns a plain array, not a paginated object
     const entries = Array.isArray(res) ? res : (res?.entries ?? [])
     auditEntries.value = entries
-    auditTotal.value = entries.length
+    // Backend returns no total; if we get a full page there are likely more records
+    auditTotal.value = entries.length === auditLimit
+      ? auditPage.value * auditLimit + 1   // sentinel: makes next page appear
+      : (auditPage.value - 1) * auditLimit + entries.length
   } catch {}
   finally { auditLoading.value = false }
 }
@@ -89,7 +94,7 @@ watch(subTab, (v) => {
   else if (v === 'whitelist') loadWhitelist()
   else if (v === 'blacklist') loadBlacklist()
   else if (v === 'banned') loadBanned()
-  else if (v === 'stats') adminApi.getSecurityStats().then(s => { stats.value = s })
+  else if (v === 'stats') adminApi.getSecurityStats().then(s => { stats.value = s }).catch(() => {})
 }, { immediate: true })
 </script>
 

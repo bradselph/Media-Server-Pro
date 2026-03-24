@@ -62,7 +62,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(uname: string, password: string) {
     const { login: apiLogin } = useApiEndpoints()
     const res = await apiLogin(uname, password)
-    // Login returns flat fields, not a nested user object
+    // Set a minimal user immediately so isLoggedIn becomes true right away,
+    // then fetch the full session (id, real permissions, real preferences).
     user.value = {
       id: '',
       username: res.username,
@@ -72,6 +73,9 @@ export const useAuthStore = defineStore('auth', () => {
       permissions: defaultPermissions(),
       preferences: defaultPreferences(),
     }
+    // Overwrite with real server data (permissions, preferences, id).
+    // Errors are intentionally swallowed — the minimal user above is sufficient fallback.
+    await fetchSession().catch(() => {})
     return res
   }
 

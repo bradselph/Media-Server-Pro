@@ -41,8 +41,7 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 		Type     string          `json:"type"`
 		Role     models.UserRole `json:"role"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -172,7 +171,12 @@ func (h *Handler) AdminDeleteUser(c *gin.Context) {
 	}
 
 	if err := h.auth.DeleteUser(c.Request.Context(), username); err != nil {
-		writeError(c, http.StatusNotFound, "User not found")
+		if errors.Is(err, auth.ErrUserNotFound) {
+			writeError(c, http.StatusNotFound, "User not found")
+		} else {
+			h.log.Error("Failed to delete user %s: %v", username, err)
+			writeError(c, http.StatusInternalServerError, "Internal server error")
+		}
 		return
 	}
 
@@ -187,8 +191,7 @@ func (h *Handler) AdminChangePassword(c *gin.Context) {
 	var req struct {
 		NewPassword string `json:"new_password"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -218,8 +221,7 @@ func (h *Handler) AdminChangeOwnPassword(c *gin.Context) {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -248,8 +250,7 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		Usernames []string `json:"usernames"`
 		Action    string   `json:"action"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if len(req.Usernames) == 0 {

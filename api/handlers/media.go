@@ -557,8 +557,7 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 		Position float64 `json:"position"`
 		Duration float64 `json:"duration"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 

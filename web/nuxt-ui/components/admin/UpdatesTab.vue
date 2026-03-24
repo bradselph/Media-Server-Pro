@@ -10,6 +10,18 @@ const checking = ref(false)
 const applying = ref(false)
 const confirmOpen = ref(false)
 
+// Component-scoped poll ref so onUnmounted can always clear it.
+const pollInterval = ref<ReturnType<typeof setInterval> | null>(null)
+
+function stopPolling() {
+  if (pollInterval.value !== null) {
+    clearInterval(pollInterval.value)
+    pollInterval.value = null
+  }
+}
+
+onUnmounted(stopPolling)
+
 async function checkForUpdates() {
   checking.value = true
   try {
@@ -31,16 +43,17 @@ async function applyUpdate() {
     // Poll status — ApplyUpdate is synchronous in Go, so the response IS the final status.
     // But if it's still in progress, poll for updates.
     if (status.value?.in_progress) {
-      const poll = setInterval(async () => {
+      stopPolling()
+      pollInterval.value = setInterval(async () => {
         try {
           const s = await adminApi.getUpdateStatus()
           status.value = s
           if (!s.in_progress) {
-            clearInterval(poll)
+            stopPolling()
             applying.value = false
           }
         } catch {
-          clearInterval(poll)
+          stopPolling()
           applying.value = false
         }
       }, 3000)

@@ -210,8 +210,7 @@ func (h *Handler) CacheRemoteMedia(c *gin.Context) {
 		URL        string `json:"url"`
 		SourceName string `json:"source_name"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if req.URL == "" {

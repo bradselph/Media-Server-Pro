@@ -42,10 +42,12 @@ func (h *Handler) AdminGetConfig(c *gin.Context) {
 }
 
 // configDenyList contains top-level config keys that must not be mutated at runtime
-// via the admin API. Database credentials, auth secrets, and admin password hashes
-// should only be changed via env vars or direct config file edits.
+// via the admin API. Database credentials, auth secrets, admin password hashes, and
+// receiver API keys should only be changed via env vars or direct config file edits.
 var configDenyList = map[string]bool{
 	"database": true,
+	"auth":     true, // admin password hash, session secrets, lockout policy
+	"receiver": true, // slave API keys
 }
 
 // filterDeniedConfigKeys removes denied top-level keys from the update map

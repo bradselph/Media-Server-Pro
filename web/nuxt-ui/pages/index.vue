@@ -6,12 +6,14 @@ definePageMeta({ title: 'Media Library' })
 const mediaApi = useMediaApi()
 const authStore = useAuthStore()
 const router = useRouter()
+const toast = useToast()
 
 // State
 const items = ref<MediaItem[]>([])
 const categories = ref<MediaCategory[]>([])
 const total = ref(0)
 const loading = ref(true)
+const loadError = ref('')
 
 const params = reactive({
   page: 1,
@@ -32,6 +34,7 @@ function onSearchInput() {
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const apiParams = {
       ...params,
@@ -41,13 +44,15 @@ async function load() {
     const res = await mediaApi.list(apiParams)
     items.value = res.items ?? []
     total.value = res.total_items ?? res.total ?? 0
-  } catch {}
-  finally { loading.value = false }
+  } catch (e: unknown) {
+    loadError.value = e instanceof Error ? e.message : 'Failed to load media'
+    toast.add({ title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { loading.value = false }
 }
 
 async function loadCategories() {
   try { categories.value = (await mediaApi.getCategories()) ?? [] }
-  catch {}
+  catch { /* categories are non-critical; silently skip */ }
 }
 
 watch([() => params.type, () => params.category, () => params.sort_by, () => params.sort_order], () => {
@@ -123,6 +128,16 @@ function formatDuration(secs?: number): string {
         </UButtonGroup>
       </div>
     </div>
+
+    <!-- Error -->
+    <UAlert
+      v-if="loadError && !loading"
+      :title="loadError"
+      color="error"
+      variant="soft"
+      icon="i-lucide-alert-circle"
+      class="mb-2"
+    />
 
     <!-- Loading -->
     <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4">

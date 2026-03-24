@@ -268,21 +268,32 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 }
 
 // GetStorageUsage returns storage usage information for the current user.
+// Unauthenticated callers receive a zero-usage response immediately; the
+// full filesystem walk is only performed for authenticated sessions.
 func (h *Handler) GetStorageUsage(c *gin.Context) {
 	session := getSession(c)
 
+	// Anonymous callers: return empty usage — avoids a potentially expensive
+	// filepath.Walk on the uploads directory for unauthenticated requests.
+	if session == nil {
+		writeSuccess(c, map[string]interface{}{
+			"used_gb":   0,
+			"quota_gb":  float64(h.getUserStorageQuota("standard")),
+			"percent":   0,
+			"username":  "",
+			"user_type": "standard",
+		})
+		return
+	}
+
 	userType := "standard"
 	var storageQuotaGB int64
-	username := ""
-	userID := ""
+	username := session.Username
+	userID := session.UserID
 
-	if session != nil {
-		username = session.Username
-		userID = session.UserID
-		user, err := h.auth.GetUser(c.Request.Context(), username)
-		if err == nil && user != nil && user.Type != "" {
-			userType = user.Type
-		}
+	user, err := h.auth.GetUser(c.Request.Context(), username)
+	if err == nil && user != nil && user.Type != "" {
+		userType = user.Type
 	}
 
 	storageQuotaGB = h.getUserStorageQuota(userType)
@@ -399,8 +410,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	var req struct {
 		Query string `json:"query"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, "Invalid request")
+	if !BindJSON(c, &req, "Invalid request") {
 		return
 	}
 

@@ -26,9 +26,9 @@ async function loadPrefs() {
     const p = (await getPreferences()) ?? {}
     if (!p.default_quality) p.default_quality = 'auto'
     prefs.value = p
-  }
-  catch {}
-  finally { prefsLoading.value = false }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load preferences', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { prefsLoading.value = false }
 }
 
 async function savePrefs() {
@@ -54,8 +54,9 @@ const historySearch = ref('')
 async function loadHistory() {
   historyLoading.value = true
   try { history.value = (await listHistory()) ?? [] }
-  catch {}
-  finally { historyLoading.value = false }
+  catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load watch history', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { historyLoading.value = false }
 }
 
 async function removeItem(id: string) {
