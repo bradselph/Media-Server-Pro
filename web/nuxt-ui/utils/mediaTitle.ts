@@ -16,7 +16,7 @@ function cleanupFilenameLikeTitle(input: string): string {
   const base = slash >= 0 ? raw.slice(slash + 1) : raw
   const noExt = base.replace(/\.[A-Za-z0-9]{2,5}$/, '')
   const normalized = noExt
-    .replace(/[_\.]+/g, ' ')
+    .replace(/[_\.-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -39,7 +39,13 @@ export function getDisplayTitle(item: unknown): string {
     asString(rec.title) ||
     asString(rec.name) ||
     asString(rec.media_name)
-  if (direct) return direct
+  if (direct) {
+    // If this looks like a filename, normalize for UI readability.
+    if (/\.[A-Za-z0-9]{2,5}$/.test(direct) || /[_]/.test(direct)) {
+      return cleanupFilenameLikeTitle(direct)
+    }
+    return direct
+  }
 
   const metadata = asRecord(rec.metadata)
   const metaTitle = metadata ? asString(metadata.title) : ''
