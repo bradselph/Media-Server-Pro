@@ -340,8 +340,8 @@ watch(subTab, (v) => {
           <div class="grid grid-cols-2 gap-3">
             <div><span class="text-muted">Host:</span> {{ dbStatus.host || '—' }}</div>
             <div><span class="text-muted">Database:</span> {{ dbStatus.database || '—' }}</div>
-            <div><span class="text-muted">Tables:</span> {{ dbStatus.tables || '—' }}</div>
-            <div><span class="text-muted">Total Rows:</span> {{ (dbStatus.total_rows || 0).toLocaleString() }}</div>
+            <div><span class="text-muted">Type:</span> {{ dbStatus.repository_type || '—' }}</div>
+            <div><span class="text-muted">Message:</span> {{ dbStatus.message || '—' }}</div>
           </div>
         </div>
       </UCard>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, HLSAvailability } from '~/types/api'
+import type { MediaItem, HLSAvailability, Suggestion } from '~/types/api'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
@@ -32,7 +32,7 @@ const hlsEnabled = ref(false)
 let hlsInstance: unknown = null
 
 // Similar
-const similar = ref<unknown[]>([])
+const similar = ref<Suggestion[]>([])
 
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -306,7 +306,8 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             <div v-if="media.duration"><span class="text-muted">Duration:</span> {{ formatTime(media.duration) }}</div>
             <div v-if="media.size"><span class="text-muted">Size:</span> {{ (media.size / 1048576).toFixed(1) }} MB</div>
             <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
-            <div v-if="media.resolution"><span class="text-muted">Resolution:</span> {{ media.resolution }}</div>
+            <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
+            <div v-if="media.codec"><span class="text-muted">Codec:</span> {{ media.codec }}</div>
             <div v-if="media.category"><span class="text-muted">Category:</span> {{ media.category }}</div>
           </div>
           <div class="flex gap-2 mt-4">
@@ -324,20 +325,20 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
       </div>
 
       <!-- Sidebar: similar -->
-      <div v-if="(similar as MediaItem[]).length > 0" class="space-y-3">
+      <div v-if="similar.length > 0" class="space-y-3">
         <h3 class="font-semibold text-highlighted">Similar Media</h3>
         <NuxtLink
-          v-for="item in (similar as MediaItem[])"
-          :key="item.id"
-          :to="`/player?id=${encodeURIComponent(item.id)}`"
+          v-for="item in similar"
+          :key="item.media_id"
+          :to="`/player?id=${encodeURIComponent(item.media_id)}`"
           class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
         >
           <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-            <img :src="mediaApi.getThumbnailUrl(item.id)" :alt="item.name" class="w-full h-full object-cover" loading="lazy" />
+            <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="item.title" class="w-full h-full object-cover" loading="lazy" />
           </div>
           <div class="min-w-0">
-            <p class="text-sm font-medium truncate">{{ item.name }}</p>
-            <p v-if="(item as Suggestion).duration" class="text-xs text-muted">{{ formatTime((item as Suggestion).duration ?? 0) }}</p>
+            <p class="text-sm font-medium truncate">{{ item.title }}</p>
+            <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
           </div>
         </NuxtLink>
       </div>

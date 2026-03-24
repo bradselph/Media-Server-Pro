@@ -3,37 +3,38 @@ import type { User, UserPermissions, UserPreferences } from '~/types/api'
 
 function defaultPermissions(): UserPermissions {
   return {
-    can_upload: false,
+    can_stream: true,
     can_download: false,
+    can_upload: false,
     can_delete: false,
-    can_manage_playlists: false,
+    can_manage: false,
     can_view_mature: false,
-    bypass_age_gate: false,
-    max_storage_mb: 0,
+    can_create_playlists: true,
   }
 }
 
 function defaultPreferences(): UserPreferences {
   return {
-    theme: '',
+    theme: 'dark',
+    view_mode: 'grid',
+    default_quality: 'auto',
+    auto_play: false,
     playback_speed: 1,
     volume: 1,
-    auto_play: false,
-    resume_playback: false,
-    items_per_page: 24,
-    view_mode: 'grid',
-    default_quality: '',
-    language: '',
+    show_mature: false,
+    mature_preference_set: false,
+    language: 'en',
     equalizer_preset: '',
-    sort_by: '',
-    sort_order: '',
+    resume_playback: true,
+    show_analytics: true,
+    items_per_page: 20,
+    sort_by: 'date_added',
+    sort_order: 'desc',
     filter_category: '',
     filter_media_type: '',
-    show_mature: false,
-    show_analytics: true,
-    show_home_recently_added: true,
-    show_home_continue_watching: true,
-    show_home_suggestions: true,
+    show_continue_watching: true,
+    show_recommended: true,
+    show_trending: true,
   }
 }
 

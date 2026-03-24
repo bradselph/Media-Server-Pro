@@ -25,23 +25,28 @@ async function applyUpdate() {
   confirmOpen.value = false
   applying.value = true
   try {
-    await adminApi.applyUpdate()
+    const res = await adminApi.applyUpdate()
     toast.add({ title: 'Update applying — server will restart shortly', color: 'info', icon: 'i-lucide-info' })
-    status.value = { state: 'applying' }
-    // Poll status
-    const poll = setInterval(async () => {
-      try {
-        const s = await adminApi.getUpdateStatus()
-        status.value = s
-        if (s.state === 'success' || s.state === 'error' || s.state === 'idle') {
+    status.value = res ?? { in_progress: true, stage: 'applying', progress: 0 }
+    // Poll status — ApplyUpdate is synchronous in Go, so the response IS the final status.
+    // But if it's still in progress, poll for updates.
+    if (status.value?.in_progress) {
+      const poll = setInterval(async () => {
+        try {
+          const s = await adminApi.getUpdateStatus()
+          status.value = s
+          if (!s.in_progress) {
+            clearInterval(poll)
+            applying.value = false
+          }
+        } catch {
           clearInterval(poll)
           applying.value = false
         }
-      } catch {
-        clearInterval(poll)
-        applying.value = false
-      }
-    }, 3000)
+      }, 3000)
+    } else {
+      applying.value = false
+    }
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Update failed', color: 'error', icon: 'i-lucide-x' })
     applying.value = false
@@ -100,23 +105,22 @@ onMounted(checkForUpdates)
     </UCard>
 
     <!-- Status while updating -->
-    <UCard v-if="status && status.state !== 'idle'">
+    <UCard v-if="status && (status.in_progress || status.error || status.stage)">
       <template #header>
         <div class="font-semibold">Update Status</div>
       </template>
       <div class="space-y-2">
         <div class="flex items-center gap-2">
           <UIcon
-            :name="status.state === 'success' ? 'i-lucide-check-circle' : status.state === 'error' ? 'i-lucide-x-circle' : 'i-lucide-loader-2'"
+            :name="status.error ? 'i-lucide-x-circle' : !status.in_progress ? 'i-lucide-check-circle' : 'i-lucide-loader-2'"
             :class="[
-              status.state === 'success' ? 'text-success' : status.state === 'error' ? 'text-error' : 'text-info animate-spin',
+              status.error ? 'text-error' : !status.in_progress ? 'text-success' : 'text-info animate-spin',
               'size-4',
             ]"
           />
-          <span class="text-sm capitalize">{{ status.state }}</span>
+          <span class="text-sm capitalize">{{ status.stage || (status.in_progress ? 'In Progress' : 'Done') }}</span>
         </div>
         <UProgress v-if="status.progress != null" :value="status.progress" size="sm" />
-        <p v-if="status.message" class="text-sm text-muted">{{ status.message }}</p>
         <p v-if="status.error" class="text-sm text-error">{{ status.error }}</p>
       </div>
     </UCard>

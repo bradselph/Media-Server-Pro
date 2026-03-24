@@ -3,35 +3,37 @@
 export type UserRole = 'admin' | 'viewer'
 
 export interface UserPermissions {
-  can_upload: boolean
+  can_stream: boolean
   can_download: boolean
+  can_upload: boolean
   can_delete: boolean
-  can_manage_playlists: boolean
+  can_manage: boolean
   can_view_mature: boolean
-  bypass_age_gate: boolean
-  max_storage_mb: number
+  can_create_playlists: boolean
 }
 
 export interface UserPreferences {
   theme: string
-  playback_speed: number
-  volume: number
-  auto_play: boolean
-  resume_playback: boolean
-  items_per_page: number
   view_mode: 'grid' | 'list' | 'compact'
   default_quality: string
+  auto_play: boolean
+  playback_speed: number
+  volume: number
+  show_mature: boolean
+  mature_preference_set: boolean
   language: string
   equalizer_preset: string
+  resume_playback: boolean
+  show_analytics: boolean
+  items_per_page: number
   sort_by: string
   sort_order: string
   filter_category: string
   filter_media_type: string
-  show_mature: boolean
-  show_analytics: boolean
-  show_home_recently_added: boolean
-  show_home_continue_watching: boolean
-  show_home_suggestions: boolean
+  custom_eq_presets?: Record<string, unknown>
+  show_continue_watching: boolean
+  show_recommended: boolean
+  show_trending: boolean
 }
 
 export interface User {
@@ -66,21 +68,25 @@ export interface SessionCheckResponse {
 export interface MediaItem {
   id: string
   name: string
-  path: string
   type: 'video' | 'audio' | 'image' | string
   size: number
   duration?: number
-  thumbnail_url?: string
-  date_added: string
-  date_modified?: string
+  width?: number
+  height?: number
+  bitrate?: number
+  codec?: string
+  container?: string
   category?: string
   tags?: string[]
-  is_mature?: boolean
-  views?: number
-  resolution?: string
-  container?: string
-  bitrate?: number
-  source?: 'local' | 'remote' | 'slave'
+  thumbnail_url?: string
+  blur_hash?: string
+  date_added: string
+  date_modified?: string
+  views: number
+  last_played?: string
+  is_mature: boolean
+  mature_score?: number
+  metadata?: Record<string, string>
 }
 
 export interface MediaListParams {
@@ -109,7 +115,9 @@ export interface MediaListResponse {
 
 export interface MediaCategory {
   name: string
+  display_name: string
   count: number
+  tags?: string[]
 }
 
 export interface AdminMediaListResponse {
@@ -146,18 +154,16 @@ export interface HLSAvailability {
 
 export interface HLSJob {
   id: string
-  media_id?: string
-  media_name?: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   progress: number
   qualities: string[]
   started_at: string
   completed_at?: string
-  hls_url?: string
-  available: boolean
+  last_accessed_at?: string
   error?: string
   fail_count?: number
-  last_accessed_at?: string
+  hls_url?: string
+  available: boolean
 }
 
 export interface HLSStats {
@@ -359,16 +365,20 @@ export interface UpdateInfo {
   current_version: string
   latest_version: string
   update_available: boolean
+  release_url?: string
   release_notes?: string
-  download_url?: string
   published_at?: string
+  checked_at?: string
+  error?: string
 }
 
 export interface UpdateStatus {
-  state: 'idle' | 'downloading' | 'applying' | 'error' | 'success'
-  progress?: number
-  message?: string
+  in_progress: boolean
+  stage: string
+  progress: number
+  started_at?: string
   error?: string
+  backup_path?: string
 }
 
 export interface IPListEntry {
@@ -378,19 +388,21 @@ export interface IPListEntry {
 }
 
 export interface SecurityStats {
-  blocked_requests: number
-  rate_limited_requests: number
   banned_ips: number
-  whitelist_count: number
-  blacklist_count: number
+  whitelisted_ips: number
+  blacklisted_ips: number
+  active_rate_limits: number
+  total_blocks_today: number
 }
 
 export interface DatabaseStatus {
   connected: boolean
   host: string
   database: string
-  tables: number
-  total_rows: number
+  app_version?: string
+  repository_type?: string
+  message?: string
+  checked_at?: string
 }
 
 export interface ReceiverSlave {
@@ -444,42 +456,34 @@ export interface ExtractorItem {
 }
 
 export interface DownloaderJob {
-  id: string
+  filename: string
+  size: number
+  created: number
   url: string
-  filename?: string
-  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
-  progress?: number
-  speed?: number
-  size?: number
-  downloaded?: number
-  error?: string
-  created_at: string
-  completed_at?: string
 }
 
 // ── Watch history ─────────────────────────────────────────────────────────────
 
 export interface WatchHistoryItem {
-  media_path?: string
-  media_id?: string
+  media_id: string
   media_name?: string
-  title?: string
   watched_at: string
   position?: number
   duration?: number
   progress?: number
+  completed: boolean
 }
 
 // ── Suggestions ───────────────────────────────────────────────────────────────
 
 export interface Suggestion {
-  id: string
-  name: string
-  type: string
+  media_id: string
+  title: string
+  category: string
+  media_type: string
+  score: number
+  reasons: string[]
   thumbnail_url?: string
-  duration?: number
-  category?: string
-  score?: number
 }
 
 // ── Storage / Permissions ─────────────────────────────────────────────────────
@@ -491,13 +495,13 @@ export interface StorageUsage {
 }
 
 export interface PermissionsInfo {
-  can_upload: boolean
+  can_stream: boolean
   can_download: boolean
+  can_upload: boolean
   can_delete: boolean
-  can_manage_playlists: boolean
+  can_manage: boolean
   can_view_mature: boolean
-  bypass_age_gate: boolean
-  max_storage_mb: number
+  can_create_playlists: boolean
 }
 
 // ── Server Config ─────────────────────────────────────────────────────────────
