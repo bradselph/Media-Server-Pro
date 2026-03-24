@@ -4,13 +4,20 @@ definePageMeta({ layout: 'default', title: 'Admin Login' })
 // Reuse the regular login page but redirect to /admin
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
 
+const adminDest = () => {
+  const r = route.query.redirect
+  if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//')) return r
+  return '/admin'
+}
+
 onMounted(async () => {
-  if (!authStore.isLoading && authStore.isAdmin) router.replace('/admin')
+  if (!authStore.isLoading && authStore.isAdmin) router.replace(adminDest())
 })
 
 async function handleLogin() {
@@ -19,7 +26,7 @@ async function handleLogin() {
   try {
     await authStore.login(form.username, form.password)
     if (authStore.isAdmin) {
-      router.replace('/admin')
+      router.replace(adminDest())
     } else {
       error.value = 'Admin access required'
       await authStore.logout()

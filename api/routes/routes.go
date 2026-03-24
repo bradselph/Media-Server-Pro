@@ -221,6 +221,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 		"/remote/stream",
 		"/receiver/stream",
 		"/extractor/hls/",
+		// Embedded SPA assets: correct Content-Type + nosniff; avoid gzip wrapper edge cases
+		"/web/static/",
+		"/_nuxt/",
 	})))
 
 	// Apply ETag caching for GET/HEAD /api/* JSON responses

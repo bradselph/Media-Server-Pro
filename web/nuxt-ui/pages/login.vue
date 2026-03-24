@@ -10,9 +10,15 @@ const loading = ref(false)
 const error = ref('')
 
 // Redirect if already logged in
+function loginRedirectDest() {
+  const r = route.query.redirect
+  if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//')) return r
+  return '/'
+}
+
 onMounted(async () => {
   if (!authStore.isLoading && authStore.isLoggedIn) {
-    router.replace((route.query.redirect as string) || '/')
+    router.replace(loginRedirectDest())
   }
 })
 
@@ -21,7 +27,7 @@ async function handleLogin() {
   loading.value = true
   try {
     await authStore.login(form.username, form.password)
-    router.replace((route.query.redirect as string) || '/')
+    router.replace(loginRedirectDest())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Invalid credentials'
   } finally {

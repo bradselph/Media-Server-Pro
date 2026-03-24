@@ -37,14 +37,15 @@ export const usePlaylistStore = defineStore('playlist', () => {
   }
 
   async function addMediaToPlaylist(playlistId: string, mediaId: string) {
-    const item = await usePlaylistApi().addItem(playlistId, mediaId)
-    const pl = playlists.value.find(p => p.id === playlistId)
-    if (pl) (pl.items = pl.items ?? []).push(item)
-    return item
+    await usePlaylistApi().addItem(playlistId, mediaId)
+    const updated = await usePlaylistApi().get(playlistId)
+    const idx = playlists.value.findIndex(p => p.id === playlistId)
+    if (idx !== -1) playlists.value[idx] = updated
+    return updated
   }
 
   async function removeMediaFromPlaylist(playlistId: string, itemId: string) {
-    await usePlaylistApi().removeItem(playlistId, itemId)
+    await usePlaylistApi().removePlaylistItemById(playlistId, itemId)
     const pl = playlists.value.find(p => p.id === playlistId)
     if (pl && pl.items) pl.items = pl.items.filter(i => i.id !== itemId)
   }
