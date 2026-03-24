@@ -87,6 +87,9 @@ export interface MediaListParams {
   search?: string
   type?: string
   category?: string
+  /** Sent to the API as query param `sort` (backend contract). */
+  sort?: string
+  /** Alias for `sort`; mapped to `sort` on the wire. */
   sort_by?: string
   sort_order?: string
   mature?: boolean
