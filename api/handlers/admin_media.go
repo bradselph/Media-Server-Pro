@@ -46,7 +46,8 @@ func parseAdminListIsMature(c *gin.Context) *bool {
 	if im == "" {
 		return nil
 	}
-	return new(im == "true" || im == "1")
+	b := im == "true" || im == "1"
+	return &b
 }
 
 func parseAdminListLimit(c *gin.Context) int {
