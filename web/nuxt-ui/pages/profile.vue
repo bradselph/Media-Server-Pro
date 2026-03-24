@@ -38,7 +38,7 @@ async function savePrefs() {
     const toSave = { ...prefs.value }
     if (toSave.default_quality === 'auto') toSave.default_quality = ''
     await updatePreferences(toSave)
-    if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ReturnType<typeof themeStore.themes[number]['value']>)
+    if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as string)
     toast.add({ title: 'Preferences saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
@@ -64,7 +64,7 @@ async function removeItem(id: string) {
   if (!id) return
   try {
     await removeHistory(id)
-    history.value = history.value.filter(h => (h.media_id || h.media_path) !== id)
+    history.value = history.value.filter(h => h.media_id !== id && h.media_path !== id)
     toast.add({ title: 'Removed from history', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
