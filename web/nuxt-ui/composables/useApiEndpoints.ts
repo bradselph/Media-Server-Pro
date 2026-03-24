@@ -16,30 +16,39 @@ import type {
   WatchHistoryItem, Suggestion, StorageUsage, PermissionsInfo,
   ServerSettings,
 } from '~/types/api'
+import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
 
 const api = useApi()
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export function useApiEndpoints() {
-  function login(username: string, password: string) {
-    return api.post<LoginResponse>('/api/auth/login', { username, password })
+  async function login(username: string, password: string): Promise<LoginResponse> {
+    const raw = await api.post<unknown>('/api/auth/login', { username, password })
+    return normalizeLogin(raw)
   }
   function logout() { return api.post<void>('/api/auth/logout') }
   function register(username: string, password: string, email?: string) {
     return api.post<User>('/api/auth/register', { username, password, email })
   }
-  function getSession() { return api.get<SessionCheckResponse>('/api/auth/session') }
+  async function getSession(): Promise<SessionCheckResponse> {
+    const raw = await api.get<unknown>('/api/auth/session')
+    return normalizeSession(raw)
+  }
   function changePassword(currentPassword: string, newPassword: string) {
     return api.post<void>('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword })
   }
   function deleteAccount(password: string) {
     return api.post<void>('/api/auth/delete-account', { password })
   }
-  function getPreferences() { return api.get<UserPreferences>('/api/preferences') }
-  function updatePreferences(prefs: Partial<UserPreferences>) {
+  async function getPreferences(): Promise<UserPreferences> {
+    const raw = await api.get<unknown>('/api/preferences')
+    return normalizePreferences(raw)
+  }
+  async function updatePreferences(prefs: Partial<UserPreferences>): Promise<UserPreferences> {
     // Backend only registers POST /api/preferences (partial merge), not PUT.
-    return api.post<UserPreferences>('/api/preferences', prefs)
+    const raw = await api.post<unknown>('/api/preferences', toPreferencesPatch(prefs))
+    return normalizePreferences(raw)
   }
   function getPermissions() { return api.get<PermissionsInfo>('/api/permissions') }
 

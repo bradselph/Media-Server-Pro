@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { User, UserPermissions, UserPreferences } from '~/types/api'
+import { normalizeUser } from '~/utils/apiCompat'
 
 function defaultPermissions(): UserPermissions {
   return {
@@ -51,7 +52,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const { getSession } = useApiEndpoints()
       const res = await getSession()
-      user.value = res.authenticated ? (res.user ?? null) : null
+      user.value = res.authenticated ? (normalizeUser(res.user) ?? null) : null
     } catch {
       user.value = null
     } finally {
