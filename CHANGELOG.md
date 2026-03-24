@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.106.0] - 2026-03-24 (minor)
+
+- Merge pull request #107 from bradselph/development
+- fix(nuxt-ui): align UserPermissions, UserPreferences, WatchHistory types with Go
+- fix(nuxt-ui): align API types for player, suggestions, admin tabs
+- Merge branch '102'
+- Merge pull request #106 from bradselph/development
+- Merge branch 'main' into development
+- Squashed commit of the following:
+- fix(nuxt-ui): sync auth, preferences, and analytics types with API
+- fix(nuxt-ui): align API client with Go routes and auth redirects
+- fix(nuxt-ui): sync auth, preferences, and analytics types with API
+- fix(nuxt-ui): align API client with Go routes and auth redirects
+- Merge branch 'main' into development
+- Delete package-lock.json
+- fix(web): serve Nuxt assets under /web/static/react with legacy /_nuxt redirect
+- fix(web): force Content-Type for embedded /_nuxt and /web/static assets
+- fix(web+nuxt): align SPA baseURL with Go routes (index loads at /)
+- fix(nuxt-ui/player): loop binding, no duplicate speed label, shortcut R
+- fix(web): correct MIME types for embedded SPA assets (nosniff-safe)
+
+
 ## [1.0.0] - 2026-03-23 (major)
 
 - Merge pull request #105 from bradselph/102
