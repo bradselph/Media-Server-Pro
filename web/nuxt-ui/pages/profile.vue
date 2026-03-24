@@ -51,10 +51,12 @@ async function savePrefs() {
 const history = ref<WatchHistoryItem[]>([])
 const historyLoading = ref(true)
 const historySearch = ref('')
+const historyPage = ref(1)
+const historyPerPage = 20
 
 async function loadHistory() {
   historyLoading.value = true
-  try { history.value = (await listHistory()) ?? [] }
+  try { history.value = (await listHistory(200)) ?? [] }
   catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load watch history', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { historyLoading.value = false }
@@ -86,6 +88,14 @@ const filteredHistory = computed(() => {
   const q = historySearch.value.toLowerCase()
   return history.value.filter(h => (h.media_name || h.title || h.media_path || '').toLowerCase().includes(q))
 })
+
+const historyTotalPages = computed(() => Math.max(1, Math.ceil(filteredHistory.value.length / historyPerPage)))
+const pagedHistory = computed(() => {
+  const start = (historyPage.value - 1) * historyPerPage
+  return filteredHistory.value.slice(start, start + historyPerPage)
+})
+
+watch(historySearch, () => { historyPage.value = 1 })
 
 // Password
 const pw = reactive({ current: '', new: '', confirm: '' })
@@ -264,7 +274,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
         </div>
         <div v-else class="divide-y divide-default">
           <div
-            v-for="item in filteredHistory"
+            v-for="item in pagedHistory"
             :key="item.media_id || item.media_path"
             class="flex items-center justify-between py-2 gap-3"
           >
@@ -280,6 +290,9 @@ onMounted(() => { loadPrefs(); loadHistory() })
               @click="removeItem(item.media_id || item.media_path || '')"
             />
           </div>
+        </div>
+        <div v-if="historyTotalPages > 1" class="flex justify-center pt-3">
+          <UPagination v-model:page="historyPage" :total="filteredHistory.length" :items-per-page="historyPerPage" />
         </div>
       </UCard>
 

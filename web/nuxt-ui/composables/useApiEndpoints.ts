@@ -114,7 +114,7 @@ export function usePlaybackApi() {
 
 export function useWatchHistoryApi() {
   return {
-    list: () => api.get<WatchHistoryItem[]>('/api/watch-history'),
+    list: (limit?: number) => api.get<WatchHistoryItem[]>(`/api/watch-history${limit ? `?limit=${limit}` : ''}`),
     remove: (id: string) => api.delete<void>(`/api/watch-history?id=${encodeURIComponent(id)}`),
     clear: () => api.delete<void>('/api/watch-history'),
   }
