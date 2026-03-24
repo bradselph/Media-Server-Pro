@@ -404,10 +404,18 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 
 	ctx := context.Background()
 
-	// Build DB records
-	records := make([]*repositories.ReceiverMediaRecord, len(req.Items))
+	// Build DB records — validate slave-supplied paths to prevent path-traversal
+	// or SSRF when the master uses the path in downstream HTTP/proxy requests.
+	records := make([]*repositories.ReceiverMediaRecord, 0, len(req.Items))
 	for i, item := range req.Items {
-		records[i] = &repositories.ReceiverMediaRecord{
+		// Reject paths containing ".." segments or absolute paths that could be
+		// used to escape the slave's media directory in proxy requests.
+		if strings.Contains(item.Path, "..") || strings.HasPrefix(item.Path, "/") || strings.HasPrefix(item.Path, "\\") {
+			m.log.Warn("Slave %s: rejected catalog item %d with suspicious path %q", req.SlaveID, i, item.Path)
+			continue
+		}
+		_ = i // index used only for logging above
+		records = append(records, &repositories.ReceiverMediaRecord{
 			ID:                 opaqueMediaID(req.SlaveID, item.ID),
 			SlaveID:            req.SlaveID,
 			RemotePath:         item.Path,
@@ -419,7 +427,7 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 			ContentFingerprint: item.ContentFingerprint,
 			Width:              item.Width,
 			Height:             item.Height,
-		}
+		})
 	}
 
 	if req.Full {

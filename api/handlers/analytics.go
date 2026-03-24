@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -125,8 +126,7 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 		Duration  float64                `json:"duration"`
 		Data      map[string]interface{} `json:"data"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if req.Type == "" {
@@ -305,9 +305,21 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	}
 	defer func() { f.Close(); os.Remove(filename) }()
 
-	fi, _ := f.Stat()
+	fi, statErr := f.Stat()
 	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))
 	c.Header(headerContentType, "text/csv")
+	if statErr != nil || fi == nil {
+		// Fallback: write raw bytes if stat unavailable (no range support but content is served)
+		data, readErr := io.ReadAll(f)
+		if readErr != nil {
+			h.log.Error("Failed to read CSV file: %v", readErr)
+			writeError(c, http.StatusInternalServerError, "Internal server error")
+			return
+		}
+		c.Writer.WriteHeader(http.StatusOK)
+		_, _ = c.Writer.Write(data)
+		return
+	}
 	http.ServeContent(c.Writer, c.Request, fi.Name(), fi.ModTime(), f)
 }
 

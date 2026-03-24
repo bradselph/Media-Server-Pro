@@ -67,17 +67,27 @@ async function handleSave() {
       enabled: editForm.enabled,
       email: editForm.email || undefined,
     })
-    if (editForm.newPassword) {
-      await adminApi.changeUserPassword(editUser.value.username, editForm.newPassword)
-    }
-    toast.add({ title: 'User updated', color: 'success', icon: 'i-lucide-check' })
-    editUser.value = null
-    await load()
   } catch (e: unknown) {
-    editError.value = e instanceof Error ? e.message : 'Failed to update user'
-  } finally {
+    editError.value = e instanceof Error ? e.message : 'Failed to update user profile'
     editLoading.value = false
+    return
   }
+  // Profile saved — attempt password change separately so a failure here doesn't
+  // give a misleading "Failed to update user" message when the profile was saved.
+  if (editForm.newPassword) {
+    try {
+      await adminApi.changeUserPassword(editUser.value.username, editForm.newPassword)
+    } catch (e: unknown) {
+      editError.value = (e instanceof Error ? e.message : 'Password change failed') +
+        ' (profile changes were saved)'
+      editLoading.value = false
+      return
+    }
+  }
+  toast.add({ title: 'User updated', color: 'success', icon: 'i-lucide-check' })
+  editUser.value = null
+  editLoading.value = false
+  await load()
 }
 
 async function handleDelete() {

@@ -44,6 +44,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   const envelope = await res.json() as GoEnvelope<T>
 
   if (!res.ok || envelope.success === false) {
+    // On 401, redirect to login so stale sessions are cleared automatically.
+    if (res.status === 401 && import.meta.client) {
+      navigateTo('/login')
+    }
     throw new ApiError(
       envelope.message ?? envelope.error ?? `HTTP ${res.status}`,
       res.status,

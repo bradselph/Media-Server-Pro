@@ -14,8 +14,7 @@ func (h *Handler) ValidateMedia(c *gin.Context) {
 	var req struct {
 		ID string `json:"id"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -41,8 +40,7 @@ func (h *Handler) FixMedia(c *gin.Context) {
 	var req struct {
 		ID string `json:"id"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 

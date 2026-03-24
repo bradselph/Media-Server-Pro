@@ -1003,11 +1003,14 @@ func getClientIP(r *http.Request) string {
 	}
 
 	if trusted {
-		// Trust X-Forwarded-For header from proxy, but validate the IP
+		// Trust X-Forwarded-For header from proxy. Use the rightmost entry (parts[len-1]),
+		// which is appended by the trusted proxy and reflects the actual client IP.
+		// The leftmost entry (parts[0]) is client-supplied and must not be trusted for
+		// security-sensitive operations such as rate limiting and IP banning.
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
 			if len(parts) > 0 {
-				clientIP := strings.TrimSpace(parts[0])
+				clientIP := strings.TrimSpace(parts[len(parts)-1])
 				// Validate that the extracted IP is well-formed
 				if parsedIP := net.ParseIP(clientIP); parsedIP != nil {
 					return clientIP

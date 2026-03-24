@@ -283,18 +283,28 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 		return
 	}
 
-	if err := h.media.UpdateMetadata(path, parsed.updates); err != nil {
-		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
-		return
-	}
-
-	path, err := h.applyAdminRenameIfNeeded(path, parsed.name)
+	// Rename first: if the rename fails we must not commit metadata changes that
+	// reference a filename/path that doesn't exist on disk yet.
+	newPath, err := h.applyAdminRenameIfNeeded(path, parsed.name)
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
+
+	// If the file was renamed, update the stored path in the metadata so the key
+	// used by UpdateMetadata matches the new on-disk location.
+	if newPath != path && len(parsed.updates) > 0 {
+		parsed.updates["path"] = newPath
+	}
+
+	if err := h.media.UpdateMetadata(newPath, parsed.updates); err != nil {
+		h.log.Error("%v", err)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	path = newPath
 
 	h.logAdminAction(c, &adminLogActionParams{Action: "update_media", Target: path})
 
@@ -397,8 +407,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		Action string                 `json:"action"`
 		Data   map[string]interface{} `json:"data"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if len(req.IDs) == 0 {

@@ -17,8 +17,7 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 	var req struct {
 		Path string `json:"path"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -47,8 +46,7 @@ func (h *Handler) CategorizeDirectory(c *gin.Context) {
 	var req struct {
 		Directory string `json:"directory"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -96,8 +94,7 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 		Path     string               `json:"path"`
 		Category categorizer.Category `json:"category"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 

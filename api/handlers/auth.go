@@ -20,8 +20,7 @@ func (h *Handler) Login(c *gin.Context) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -152,8 +151,7 @@ func (h *Handler) Register(c *gin.Context) {
 		Password string `json:"password"`
 		Email    string `json:"email"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -571,8 +569,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -625,8 +622,7 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 	var req struct {
 		Password string `json:"password"`
 	}
-	if c.ShouldBindJSON(&req) != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -640,18 +636,20 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-		session := getSession(c)
-		if session != nil {
-			if err := h.auth.Logout(c.Request.Context(), session.ID); err != nil {
-				h.log.Warn("Failed to invalidate session before account deletion for %s: %v", user.Username, err)
-			}
-			clearSessionCookie(c.Writer, c.Request)
-		}
-
+	// Delete the account first — if this fails, the user remains logged in and can retry.
 	if err := h.auth.DeleteUser(c.Request.Context(), user.Username); err != nil {
 		h.log.Error("Failed to delete account: %v", err)
 		writeError(c, http.StatusInternalServerError, "Failed to delete account")
 		return
+	}
+
+	// Invalidate the session only after successful deletion.
+	session := getSession(c)
+	if session != nil {
+		if err := h.auth.Logout(c.Request.Context(), session.ID); err != nil {
+			h.log.Warn("Failed to invalidate session after account deletion for %s: %v", user.Username, err)
+		}
+		clearSessionCookie(c.Writer, c.Request)
 	}
 
 	h.log.Info("User %s deleted their account", user.Username)
