@@ -60,9 +60,10 @@ async function loadHistory() {
 }
 
 async function removeItem(id: string) {
+  if (!id) return
   try {
     await removeHistory(id)
-    history.value = history.value.filter(h => h.media_id !== id)
+    history.value = history.value.filter(h => (h.media_id || h.media_path) !== id)
     toast.add({ title: 'Removed from history', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
@@ -82,7 +83,7 @@ async function doClearHistory() {
 const filteredHistory = computed(() => {
   if (!historySearch.value) return history.value
   const q = historySearch.value.toLowerCase()
-  return history.value.filter(h => (h.media_name || '').toLowerCase().includes(q))
+  return history.value.filter(h => (h.media_name || h.title || h.media_path || '').toLowerCase().includes(q))
 })
 
 // Password
@@ -263,11 +264,11 @@ onMounted(() => { loadPrefs(); loadHistory() })
         <div v-else class="divide-y divide-default">
           <div
             v-for="item in filteredHistory"
-            :key="item.media_id"
+            :key="item.media_id || item.media_path"
             class="flex items-center justify-between py-2 gap-3"
           >
             <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ item.media_name || item.media_id }}</p>
+              <p class="text-sm font-medium truncate">{{ item.media_name || item.title || item.media_id || item.media_path }}</p>
               <p class="text-xs text-muted">{{ item.watched_at ? new Date(item.watched_at).toLocaleString() : '' }}</p>
             </div>
             <UButton
@@ -275,7 +276,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
               size="xs"
               variant="ghost"
               color="neutral"
-              @click="removeItem(item.media_id)"
+              @click="removeItem(item.media_id || item.media_path || '')"
             />
           </div>
         </div>

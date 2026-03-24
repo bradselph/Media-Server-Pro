@@ -45,6 +45,12 @@ function resetControlsTimer() {
 async function loadMedia(id: string) {
   loading.value = true
   error.value = ''
+  hlsEnabled.value = false
+  hlsAvail.value = null
+  if (hlsInstance) {
+    ;(hlsInstance as { destroy: () => void }).destroy()
+    hlsInstance = null
+  }
   try {
     media.value = await mediaApi.getById(id)
     playbackStore.setMedia(id)
@@ -59,6 +65,14 @@ async function loadMedia(id: string) {
   } finally {
     loading.value = false
   }
+}
+
+function getResolvedHlsUrl(): string | null {
+  if (!hlsAvail.value) return null
+  if (hlsAvail.value.hls_url) return hlsAvail.value.hls_url
+  if (hlsAvail.value.job_id) return hlsApi.getMasterPlaylistUrl(hlsAvail.value.job_id)
+  if (mediaId.value) return hlsApi.getMasterPlaylistUrl(mediaId.value)
+  return null
 }
 
 async function restorePosition() {
@@ -143,14 +157,19 @@ function formatTime(s: number): string {
 
 async function enableHLS() {
   if (!videoRef.value || !mediaId.value) return
+  const hlsUrl = getResolvedHlsUrl()
+  if (!hlsUrl) {
+    toast.add({ title: 'HLS playlist URL not available', color: 'error', icon: 'i-lucide-alert-circle' })
+    return
+  }
   try {
     const { default: Hls } = await import('hls.js')
     if (!Hls.isSupported()) {
-      videoRef.value.src = hlsApi.getMasterPlaylistUrl(mediaId.value)
+      videoRef.value.src = hlsUrl
       return
     }
     hlsInstance = new Hls()
-    ;(hlsInstance as InstanceType<typeof Hls>).loadSource(hlsApi.getMasterPlaylistUrl(mediaId.value))
+    ;(hlsInstance as InstanceType<typeof Hls>).loadSource(hlsUrl)
     ;(hlsInstance as InstanceType<typeof Hls>).attachMedia(videoRef.value)
     hlsEnabled.value = true
     toast.add({ title: 'HLS streaming enabled', color: 'success', icon: 'i-lucide-check', duration: 2000 })

@@ -465,7 +465,9 @@ export interface DownloaderJob {
 // ── Watch history ─────────────────────────────────────────────────────────────
 
 export interface WatchHistoryItem {
-  media_id: string
+  media_id?: string
+  media_path?: string
+  title?: string
   media_name?: string
   watched_at: string
   position?: number
