@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.107.0] - 2026-03-24 (minor)
+
+- Merge pull request #108 from bradselph/development
+- Merge branch 'main' into development
+- chore(migration): finalize remaining Nuxt + handler integration fixes
+
+
 ## [0.106.0] - 2026-03-24 (minor)
 
 - Merge pull request #107 from bradselph/development
