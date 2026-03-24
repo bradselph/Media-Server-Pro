@@ -3,35 +3,37 @@
 export type UserRole = 'admin' | 'viewer'
 
 export interface UserPermissions {
-  can_upload: boolean
+  can_stream: boolean
   can_download: boolean
+  can_upload: boolean
   can_delete: boolean
-  can_manage_playlists: boolean
+  can_manage: boolean
   can_view_mature: boolean
-  bypass_age_gate: boolean
-  max_storage_mb: number
+  can_create_playlists: boolean
 }
 
 export interface UserPreferences {
   theme: string
-  playback_speed: number
-  volume: number
-  auto_play: boolean
-  resume_playback: boolean
-  items_per_page: number
   view_mode: 'grid' | 'list' | 'compact'
   default_quality: string
+  auto_play: boolean
+  playback_speed: number
+  volume: number
+  show_mature: boolean
+  mature_preference_set: boolean
   language: string
   equalizer_preset: string
+  resume_playback: boolean
+  show_analytics: boolean
+  items_per_page: number
   sort_by: string
   sort_order: string
   filter_category: string
   filter_media_type: string
-  show_mature: boolean
-  show_analytics: boolean
-  show_home_recently_added: boolean
-  show_home_continue_watching: boolean
-  show_home_suggestions: boolean
+  custom_eq_presets?: Record<string, unknown>
+  show_continue_watching: boolean
+  show_recommended: boolean
+  show_trending: boolean
 }
 
 export interface User {
@@ -152,18 +154,16 @@ export interface HLSAvailability {
 
 export interface HLSJob {
   id: string
-  media_id?: string
-  media_name?: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   progress: number
   qualities: string[]
   started_at: string
   completed_at?: string
-  hls_url?: string
-  available: boolean
+  last_accessed_at?: string
   error?: string
   fail_count?: number
-  last_accessed_at?: string
+  hls_url?: string
+  available: boolean
 }
 
 export interface HLSStats {
@@ -465,14 +465,13 @@ export interface DownloaderJob {
 // ── Watch history ─────────────────────────────────────────────────────────────
 
 export interface WatchHistoryItem {
-  media_path?: string
-  media_id?: string
+  media_id: string
   media_name?: string
-  title?: string
   watched_at: string
   position?: number
   duration?: number
   progress?: number
+  completed: boolean
 }
 
 // ── Suggestions ───────────────────────────────────────────────────────────────
@@ -496,13 +495,13 @@ export interface StorageUsage {
 }
 
 export interface PermissionsInfo {
-  can_upload: boolean
+  can_stream: boolean
   can_download: boolean
+  can_upload: boolean
   can_delete: boolean
-  can_manage_playlists: boolean
+  can_manage: boolean
   can_view_mature: boolean
-  bypass_age_gate: boolean
-  max_storage_mb: number
+  can_create_playlists: boolean
 }
 
 // ── Server Config ─────────────────────────────────────────────────────────────
