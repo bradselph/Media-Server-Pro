@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.108.0] - 2026-03-25 (minor)
+
+- Merge pull request #109 from bradselph/synthesis
+- Merge branch 'main' into synthesis
+- Refactor HLS configuration mapping and enhance JSON field setting for complex types
+- Implement view cooldown mechanism to prevent inflated media view counts
+- Add error handling component, enhance default layout, and update API types
+- up
+- update
+- initial
+- Create partition-frontend.mdc
+- Create MIGRATION_FROM_PRIOR_AGENTS.md
+- Create integration_smoke.py
+- Create ADOPTION.md
+- Create SCENARIOS.md
+- Create check_completeness.py
+- Create synthesis-ci.yml
+- Create INSTALL_IN_YOUR_REPO.md
+- Create TOOLING.md
+- Create WORKFLOWS.md
+- Create _discover_prior_agents.py
+- Create partition-backend.mdc
+- Update CLAUDE.md
+- Create mutation-contract-extension.mdc
+- Create agent-playbook.mdc
+- fix(nuxt-ui): add watch history pagination to profile page
+- fix(nuxt-ui): remove dead saveLocation field from downloader API call
+- fix(nuxt-ui): correct profile page TypeScript cast and watch history filter
+- fix(nuxt-ui): integrate useHLS composable into player with quality selector
+- fix(nuxt-ui): add error handling to admin MediaTab action buttons
+- fix(handlers): repair admin is_mature filter — new(expr) always returned *bool(false)
+- fix: normalize API response shapes and fix bool pointer syntax
+- fix(nuxt-ui): normalize filename-like title strings
+- fix(nuxt-ui): centralize display-title resolution across pages
+- fix(nuxt-ui): repair HLS URL resolution and profile history actions
+- fix(nuxt-ui): bundle pagination chevrons for strict CSP
+
+
 ## [0.107.0] - 2026-03-24 (minor)
 
 - Merge pull request #108 from bradselph/development
