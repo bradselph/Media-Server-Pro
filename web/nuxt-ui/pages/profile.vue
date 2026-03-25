@@ -207,7 +207,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
           <UFormField label="Items per Page">
             <USelect
               v-model="prefs.items_per_page"
-              :items="[{ label: '12', value: 12 }, { label: '24', value: 24 }, { label: '48', value: 48 }, { label: '96', value: 96 }]"
+              :items="[{ label: '12', value: 12 }, { label: '20', value: 20 }, { label: '24', value: 24 }, { label: '48', value: 48 }, { label: '96', value: 96 }]"
             />
           </UFormField>
           <UFormField label="View Mode">
