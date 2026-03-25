@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -121,6 +122,11 @@ type HandlerDeps struct {
 	ShutdownFunc func() // called before os.Exit to drain connections and stop modules (P1-9)
 }
 
+// viewCooldownDuration is the minimum interval between counting repeated views
+// of the same media by the same user/IP. Prevents inflated view counts from
+// browser Range re-requests, seeks, and HLS quality switches.
+const viewCooldownDuration = 5 * time.Minute
+
 // Handler holds dependencies for HTTP handlers
 type Handler struct {
 	log           *logger.Logger
@@ -152,6 +158,23 @@ type Handler struct {
 	downloader    *downloader.Module
 	config        *config.Manager
 	shutdownFunc  func()
+	viewCooldown  sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
+}
+
+// tryRecordView returns true if the view should be counted (not within the
+// cooldown window for this user+media pair). When true, it also updates the
+// cooldown timestamp. This prevents inflated view counts from repeated Range
+// requests, seeks back to 0, and HLS quality switches.
+func (h *Handler) tryRecordView(userID, mediaID string) bool {
+	key := userID + "|" + mediaID
+	now := time.Now()
+	if prev, ok := h.viewCooldown.Load(key); ok {
+		if now.Sub(prev.(time.Time)) < viewCooldownDuration {
+			return false
+		}
+	}
+	h.viewCooldown.Store(key, now)
+	return true
 }
 
 // NewHandler creates a new handler with dependencies.
