@@ -51,7 +51,7 @@ onMounted(load)
     </UCard>
 
     <div class="flex justify-end">
-      <UButton icon="i-lucide-refresh-cw" variant="ghost" color="neutral" @click="load" />
+      <UButton icon="i-lucide-refresh-cw" aria-label="Refresh playlists" variant="ghost" color="neutral" @click="load" />
     </div>
 
     <UCard>

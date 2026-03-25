@@ -104,7 +104,7 @@ watch(subTab, (v) => {
     <!-- Audit log -->
     <div v-if="subTab === 'audit'" class="space-y-3">
       <div class="flex gap-2 justify-end">
-        <UButton icon="i-lucide-refresh-cw" variant="ghost" color="neutral" size="sm" @click="loadAudit" />
+        <UButton icon="i-lucide-refresh-cw" aria-label="Refresh audit log" variant="ghost" color="neutral" size="sm" @click="loadAudit" />
       </div>
       <UCard>
         <div v-if="auditLoading" class="flex justify-center py-6">
@@ -174,6 +174,7 @@ watch(subTab, (v) => {
             <template #actions-cell="{ row }">
               <UButton
                 icon="i-lucide-trash-2"
+                aria-label="Remove IP from list"
                 size="xs"
                 variant="ghost"
                 color="error"

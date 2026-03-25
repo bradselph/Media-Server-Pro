@@ -279,7 +279,7 @@ watch(subTab, (v) => {
     <div v-if="subTab === 'backups'" class="space-y-3">
       <div class="flex gap-2">
         <UButton icon="i-lucide-archive" :loading="creatingBackup" label="Create Backup" @click="createBackup" />
-        <UButton icon="i-lucide-refresh-cw" variant="ghost" color="neutral" @click="loadBackups" />
+        <UButton icon="i-lucide-refresh-cw" aria-label="Refresh backups" variant="ghost" color="neutral" @click="loadBackups" />
       </div>
       <UCard>
         <div v-if="backupsLoading" class="flex justify-center py-4">

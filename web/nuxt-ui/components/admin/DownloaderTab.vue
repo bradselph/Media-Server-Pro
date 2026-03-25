@@ -69,7 +69,7 @@ onMounted(load)
     </UCard>
 
     <div class="flex gap-2 justify-end">
-      <UButton icon="i-lucide-refresh-cw" variant="ghost" color="neutral" @click="load" />
+      <UButton icon="i-lucide-refresh-cw" aria-label="Refresh downloads" variant="ghost" color="neutral" @click="load" />
     </div>
 
     <!-- Downloads table -->

@@ -285,6 +285,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
             </div>
             <UButton
               icon="i-lucide-x"
+              aria-label="Remove from history"
               size="xs"
               variant="ghost"
               color="neutral"
