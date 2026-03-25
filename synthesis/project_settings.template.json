@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "initialized": false,
+  "paths": {
+    "contract_dir": "api_spec",
+    "openapi_spec": "api_spec/openapi.yaml",
+    "backend_dir": "server",
+    "frontend_dir": "client",
+    "has_frontend": true
+  },
+  "integration": {
+    "app_module": "app.main:app",
+    "port": 8765
+  },
+  "git": {
+    "partition_check_base": "origin/main"
+  },
+  "ci": {
+    "client_install_cmd": "npm ci",
+    "client_check_cmd": "npm run check",
+    "backend_install_cmd": "pip install -e \".[dev]\"",
+    "backend_test_cmd": "python3 -m pytest -q",
+    "skip_client_job": false,
+    "skip_integration_smoke": false,
+    "skip_backend_tests": false
+  },
+  "project": {
+    "name": "",
+    "goals": "",
+    "constraints": "",
+    "tech_notes": ""
+  },
+  "steering": {
+    "sessions": []
+  },
+  "models": {
+    "questions_before_start": [
+      "Which loop are we running (backend / frontend / integration / contract extension)?",
+      "What is the acceptance criterion for this change?",
+      "Are we allowed to change the OpenAPI spec in this session?"
+    ]
+  },
+  "layout": {
+    "use_bundled_demo_paths": true,
+    "reference_example_prefixes": []
+  },
+  "prior_agents": {
+    "discovered_at": "",
+    "known_files": [],
+    "import_summary": "",
+    "framework_path_allowlist": [
+      ".claude/",
+      ".roo/"
+    ]
+  }
+}

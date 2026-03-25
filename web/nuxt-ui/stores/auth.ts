@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { User, UserPermissions, UserPreferences } from '~/types/api'
+import { normalizeUser } from '~/utils/apiCompat'
 
 function defaultPermissions(): UserPermissions {
   return {
@@ -40,6 +41,7 @@ function defaultPreferences(): UserPreferences {
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
+  const allowGuests = ref(false)
   const isLoading = ref(true)
 
   const isLoggedIn = computed(() => !!user.value)
@@ -51,7 +53,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const { getSession } = useApiEndpoints()
       const res = await getSession()
-      user.value = res.authenticated ? (res.user ?? null) : null
+      allowGuests.value = res.allow_guests
+      user.value = res.authenticated ? (normalizeUser(res.user) ?? null) : null
     } catch {
       user.value = null
     } finally {
@@ -68,8 +71,11 @@ export const useAuthStore = defineStore('auth', () => {
       id: '',
       username: res.username,
       role: res.role,
+      type: 'standard',
       enabled: true,
       created_at: '',
+      storage_used: 0,
+      active_streams: 0,
       permissions: defaultPermissions(),
       preferences: defaultPreferences(),
     }
@@ -93,5 +99,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = u
   }
 
-  return { user, isLoading, isLoggedIn, isAdmin, username, fetchSession, login, logout, clear, setUser }
+  return { user, allowGuests, isLoading, isLoggedIn, isAdmin, username, fetchSession, login, logout, clear, setUser }
 })

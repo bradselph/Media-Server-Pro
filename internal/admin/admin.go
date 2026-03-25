@@ -321,13 +321,26 @@ func buildConfigSecurityMap(cfg *config.Config, _ []string) map[string]interface
 	}
 }
 
-func buildConfigHLSMap(cfg *config.Config, qualityNames []string) map[string]interface{} {
+func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]interface{} {
+	profiles := make([]map[string]interface{}, 0, len(cfg.HLS.QualityProfiles))
+	for _, qp := range cfg.HLS.QualityProfiles {
+		profiles = append(profiles, map[string]interface{}{
+			"name":          qp.Name,
+			"width":         qp.Width,
+			"height":        qp.Height,
+			"bitrate":       qp.Bitrate,
+			"audio_bitrate": qp.AudioBitrate,
+		})
+	}
 	return map[string]interface{}{
-		"enabled":          cfg.HLS.Enabled,
-		"auto_generate":    cfg.HLS.AutoGenerate,
-		"concurrent_limit": cfg.HLS.ConcurrentLimit,
-		"segment_duration": cfg.HLS.SegmentDuration,
-		"quality_profiles": qualityNames,
+		"enabled":            cfg.HLS.Enabled,
+		"auto_generate":      cfg.HLS.AutoGenerate,
+		"concurrent_limit":   cfg.HLS.ConcurrentLimit,
+		"segment_duration":   cfg.HLS.SegmentDuration,
+		"cleanup_enabled":    cfg.HLS.CleanupEnabled,
+		"retention_minutes":  cfg.HLS.RetentionMinutes,
+		"lazy_transcode":     cfg.HLS.LazyTranscode,
+		"quality_profiles":   profiles,
 	}
 }
 
@@ -393,10 +406,6 @@ func buildConfigDatabaseMap(cfg *config.Config, _ []string) map[string]interface
 // GetConfigMap returns config as a map for JSON serialization
 func (m *Module) GetConfigMap() map[string]interface{} {
 	cfg := m.config.Get()
-	qualityNames := make([]string, 0, len(cfg.HLS.QualityProfiles))
-	for _, qp := range cfg.HLS.QualityProfiles {
-		qualityNames = append(qualityNames, qp.Name)
-	}
 	sections := []struct {
 		key string
 		fn  configMapSection
@@ -414,7 +423,7 @@ func (m *Module) GetConfigMap() map[string]interface{} {
 	out := make(map[string]interface{}, len(sections)+1)
 	out["directories"] = map[string]interface{}{"configured": true}
 	for _, s := range sections {
-		out[s.key] = s.fn(cfg, qualityNames)
+		out[s.key] = s.fn(cfg, nil)
 	}
 	return out
 }

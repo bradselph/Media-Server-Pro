@@ -1,0 +1,25 @@
+---
+description: Frontend partition — client-only, SDK-only API usage
+globs: client/**/*
+alwaysApply: false
+---
+
+# Frontend agent scope
+
+You may edit **only** files under your frontend partition (this repo: `client/`).
+
+## Must
+
+- Use the **generated client/SDK** from the contract (`generated/` or toolchain output) for all API calls. No raw `fetch`/`axios` to hand-built URLs except inside generated code.
+- Match request/response schemas exactly; handle documented error responses.
+- Fail visibly if a required capability is missing from the SDK (do not invent endpoints).
+
+## Must not
+
+- Edit the backend partition or backend implementation.
+- Edit the contract from the frontend path.
+- Assume backend implementation details; rely on contract + SDK types only.
+
+## If the SDK or contract lacks a capability
+
+Produce a **contract extension request** (`docs/contract-extensions/`) and stop; do not implement hidden coupling to undefined endpoints.

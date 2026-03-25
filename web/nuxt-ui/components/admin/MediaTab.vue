@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MediaItem, AdminMediaListParams } from '~/types/api'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -142,19 +143,19 @@ onMounted(load)
         v-else
         :data="items"
         :columns="[
-          { key: 'name', label: 'Name' },
-          { key: 'type', label: 'Type' },
-          { key: 'size', label: 'Size' },
-          { key: 'duration', label: 'Duration' },
-          { key: 'category', label: 'Category' },
-          { key: 'views', label: 'Views' },
-          { key: 'is_mature', label: 'Mature' },
-          { key: 'actions', label: '' },
+          { accessorKey: 'name', header: 'Name' },
+          { accessorKey: 'type', header: 'Type' },
+          { accessorKey: 'size', header: 'Size' },
+          { accessorKey: 'duration', header: 'Duration' },
+          { accessorKey: 'category', header: 'Category' },
+          { accessorKey: 'views', header: 'Views' },
+          { accessorKey: 'is_mature', header: 'Mature' },
+          { accessorKey: 'actions', header: '' },
         ]"
       >
         <template #name-cell="{ row }">
-          <div class="max-w-xs truncate text-sm font-medium" :title="row.original.name">
-            {{ row.original.name }}
+          <div class="max-w-xs truncate text-sm font-medium" :title="getDisplayTitle(row.original)">
+            {{ getDisplayTitle(row.original) }}
           </div>
         </template>
         <template #type-cell="{ row }">
@@ -190,7 +191,7 @@ onMounted(load)
               variant="ghost"
               color="neutral"
               title="Generate thumbnail"
-              @click="adminApi.generateThumbnail(row.original.id).then(() => toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' }))"
+              @click="adminApi.generateThumbnail(row.original.id).then(() => toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' }))"
             />
             <UButton
               icon="i-lucide-trash-2"
@@ -198,7 +199,7 @@ onMounted(load)
               variant="ghost"
               color="error"
               title="Delete"
-              @click="adminApi.deleteMedia(row.original.id).then(load)"
+              @click="adminApi.deleteMedia(row.original.id).then(load).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' }))"
             />
           </div>
         </template>

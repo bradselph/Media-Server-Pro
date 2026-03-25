@@ -22,7 +22,7 @@ async function addDownload() {
   adding.value = true
   try {
     const clientId = `admin-${Date.now()}`
-    await adminApi.createDownloaderJob(newUrl.value, clientId)
+    await adminApi.createDownloaderJob({ url: newUrl.value, clientId })
     toast.add({ title: 'Download started', color: 'success', icon: 'i-lucide-check' })
     newUrl.value = ''
     await load()
@@ -81,10 +81,10 @@ onMounted(load)
         v-else
         :data="downloads"
         :columns="[
-          { key: 'filename', label: 'Filename' },
-          { key: 'size', label: 'Size' },
-          { key: 'created', label: 'Created' },
-          { key: 'actions', label: '' },
+          { accessorKey: 'filename', header: 'Filename' },
+          { accessorKey: 'size', header: 'Size' },
+          { accessorKey: 'created', header: 'Created' },
+          { accessorKey: 'actions', header: '' },
         ]"
       >
         <template #filename-cell="{ row }">

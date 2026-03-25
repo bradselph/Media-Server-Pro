@@ -48,10 +48,35 @@ func setReflectField(field reflect.Value, value interface{}, path string) error 
 		return fmt.Errorf("cannot set config value: %s", path)
 	}
 	newVal := reflect.ValueOf(value)
-	if !newVal.Type().ConvertibleTo(field.Type()) {
-		return fmt.Errorf("type mismatch for config value: %s", path)
+	if newVal.Type().ConvertibleTo(field.Type()) {
+		field.Set(newVal.Convert(field.Type()))
+		return nil
 	}
-	field.Set(newVal.Convert(field.Type()))
+	// For complex types (slices of structs, nested structs, etc.) that arrive
+	// from JSON as []interface{} or map[string]interface{}, round-trip through
+	// JSON so the standard decoder handles nested field mapping and coercion.
+	return setReflectFieldViaJSON(field, value, path)
+}
+
+// setReflectFieldViaJSON merges the incoming value into the existing field
+// value. For structs this preserves fields absent from the update; for slices
+// and primitives it replaces outright (which is the correct behavior).
+func setReflectFieldViaJSON(field reflect.Value, value interface{}, path string) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("type mismatch for config value: %s (marshal: %w)", path, err)
+	}
+	// Start from the current field value so that struct fields not present in
+	// the incoming JSON retain their existing values instead of being zeroed.
+	target := reflect.New(field.Type())
+	existing, marshalErr := json.Marshal(field.Interface())
+	if marshalErr == nil {
+		_ = json.Unmarshal(existing, target.Interface())
+	}
+	if err := json.Unmarshal(data, target.Interface()); err != nil {
+		return fmt.Errorf("type mismatch for config value: %s (unmarshal: %w)", path, err)
+	}
+	field.Set(target.Elem())
 	return nil
 }
 

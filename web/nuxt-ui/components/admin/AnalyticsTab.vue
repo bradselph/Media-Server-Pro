@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AnalyticsSummary, DailyStats, TopMediaItem } from '~/types/api'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const analyticsApi = useAnalyticsApi()
 const adminApi = useAdminApi()
@@ -114,13 +115,13 @@ onMounted(load)
       <UTable
         :data="topMedia"
         :columns="[
-          { key: 'filename', label: 'Title' },
-          { key: 'views', label: 'Views' },
+          { accessorKey: 'filename', header: 'Title' },
+          { accessorKey: 'views', header: 'Views' },
         ]"
       >
         <template #filename-cell="{ row }">
-          <span class="text-sm font-medium truncate max-w-xs block" :title="row.original.filename">
-            {{ row.original.filename || row.original.media_id }}
+          <span class="text-sm font-medium truncate max-w-xs block" :title="getDisplayTitle(row.original)">
+            {{ getDisplayTitle(row.original) }}
           </span>
         </template>
         <template #views-cell="{ row }">
@@ -140,10 +141,10 @@ onMounted(load)
       <UTable
         :data="daily"
         :columns="[
-          { key: 'date', label: 'Date' },
-          { key: 'total_views', label: 'Views' },
-          { key: 'unique_users', label: 'Unique Users' },
-          { key: 'total_watch_time', label: 'Watch Time' },
+          { accessorKey: 'date', header: 'Date' },
+          { accessorKey: 'total_views', header: 'Views' },
+          { accessorKey: 'unique_users', header: 'Unique Users' },
+          { accessorKey: 'total_watch_time', header: 'Watch Time' },
         ]"
       >
         <template #date-cell="{ row }">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { UserPreferences, WatchHistoryItem } from '~/types/api'
-import { THEMES } from '~/stores/theme'
+import { THEMES, type ThemeValue } from '~/stores/theme'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
@@ -37,7 +38,7 @@ async function savePrefs() {
     const toSave = { ...prefs.value }
     if (toSave.default_quality === 'auto') toSave.default_quality = ''
     await updatePreferences(toSave)
-    if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ReturnType<typeof themeStore.themes[number]['value']>)
+    if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ThemeValue)
     toast.add({ title: 'Preferences saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
@@ -50,16 +51,19 @@ async function savePrefs() {
 const history = ref<WatchHistoryItem[]>([])
 const historyLoading = ref(true)
 const historySearch = ref('')
+const historyPage = ref(1)
+const historyPerPage = 20
 
 async function loadHistory() {
   historyLoading.value = true
-  try { history.value = (await listHistory()) ?? [] }
+  try { history.value = (await listHistory(200)) ?? [] }
   catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load watch history', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { historyLoading.value = false }
 }
 
 async function removeItem(id: string) {
+  if (!id) return
   try {
     await removeHistory(id)
     history.value = history.value.filter(h => h.media_id !== id)
@@ -82,8 +86,16 @@ async function doClearHistory() {
 const filteredHistory = computed(() => {
   if (!historySearch.value) return history.value
   const q = historySearch.value.toLowerCase()
-  return history.value.filter(h => (h.media_name || '').toLowerCase().includes(q))
+  return history.value.filter(h => (h.media_name || h.media_id || '').toLowerCase().includes(q))
 })
+
+const historyTotalPages = computed(() => Math.max(1, Math.ceil(filteredHistory.value.length / historyPerPage)))
+const pagedHistory = computed(() => {
+  const start = (historyPage.value - 1) * historyPerPage
+  return filteredHistory.value.slice(start, start + historyPerPage)
+})
+
+watch(historySearch, () => { historyPage.value = 1 })
 
 // Password
 const pw = reactive({ current: '', new: '', confirm: '' })
@@ -175,8 +187,9 @@ onMounted(() => { loadPrefs(); loadHistory() })
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <UFormField label="Theme">
             <USelect
-              v-model="prefs.theme"
+              :model-value="prefs.theme as ThemeValue"
               :items="THEMES.map(t => ({ label: t.name, value: t.value }))"
+              @update:model-value="prefs.theme = $event as string"
             />
           </UFormField>
           <UFormField label="Default Quality">
@@ -218,7 +231,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
               { key: 'show_mature', label: 'Show Mature Content' },
               { key: 'show_analytics', label: 'Analytics' },
             ]" :key="toggle.key" class="flex items-center gap-2">
-              <USwitch v-model="(prefs as Record<string, unknown>)[toggle.key]" />
+              <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]" @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event" />
               <span class="text-sm">{{ toggle.label }}</span>
             </div>
           </div>
@@ -262,12 +275,12 @@ onMounted(() => { loadPrefs(); loadHistory() })
         </div>
         <div v-else class="divide-y divide-default">
           <div
-            v-for="item in filteredHistory"
+            v-for="item in pagedHistory"
             :key="item.media_id"
             class="flex items-center justify-between py-2 gap-3"
           >
             <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ item.media_name || item.media_id }}</p>
+              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
               <p class="text-xs text-muted">{{ item.watched_at ? new Date(item.watched_at).toLocaleString() : '' }}</p>
             </div>
             <UButton
@@ -278,6 +291,9 @@ onMounted(() => { loadPrefs(); loadHistory() })
               @click="removeItem(item.media_id)"
             />
           </div>
+        </div>
+        <div v-if="historyTotalPages > 1" class="flex justify-center pt-3">
+          <UPagination v-model:page="historyPage" :total="filteredHistory.length" :items-per-page="historyPerPage" />
         </div>
       </UCard>
 
@@ -304,7 +320,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
       </UCard>
 
       <!-- Danger zone -->
-      <UCard v-if="!authStore.isAdmin" :ui="{ ring: 'ring-1 ring-error/30' }">
+      <UCard v-if="!authStore.isAdmin" :ui="{ root: 'ring-1 ring-error/30' }">
         <template #header>
           <div class="flex items-center gap-2 font-semibold text-error">
             <UIcon name="i-lucide-triangle-alert" class="size-4" />
