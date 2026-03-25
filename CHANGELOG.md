@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.111.0] - 2026-03-25 (minor)
+
+- fix(frontend): add aria-label to all icon-only buttons in admin tabs and profile page
+
+
 ## [0.110.0] - 2026-03-25 (minor)
 
 - fix(frontend): add 20 as selectable items-per-page option
