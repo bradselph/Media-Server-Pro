@@ -173,7 +173,14 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
 </script>
 
 <template>
-  <UContainer class="py-6">
+  <div
+    class="mx-auto w-full max-w-7xl"
+    :class="
+      media && mediaId && !loading && !error
+        ? 'max-md:px-0 max-md:py-0 md:px-6 md:py-6'
+        : 'px-4 sm:px-6 py-6'
+    "
+  >
     <!-- No media selected -->
     <div v-if="!mediaId" class="flex flex-col items-center justify-center py-24 gap-4">
       <UIcon name="i-lucide-film" class="size-16 text-muted" />
@@ -193,19 +200,19 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
     </div>
 
     <!-- Player -->
-    <div v-else-if="media" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-      <div class="xl:col-span-2 space-y-4">
+    <div v-else-if="media" class="grid grid-cols-1 xl:grid-cols-3 md:gap-6">
+      <div class="xl:col-span-2 flex flex-col gap-0 md:gap-4">
         <!-- Video player -->
         <div
           v-if="media.type !== 'audio'"
-          class="player-wrapper relative bg-black rounded-xl overflow-hidden group"
+          class="player-wrapper relative bg-black overflow-hidden group touch-manipulation max-md:rounded-none md:rounded-xl max-md:h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom,0px))] max-md:w-full md:aspect-video"
           @mousemove="resetControlsTimer"
           @touchstart="resetControlsTimer"
           @click="togglePlay"
         >
           <video
             ref="videoRef"
-            class="w-full aspect-video"
+            class="max-md:absolute max-md:inset-0 max-md:h-full max-md:w-full max-md:object-contain md:relative md:inset-auto md:h-auto md:w-full md:aspect-video"
             :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
             @loadedmetadata="onVideoLoaded"
             @timeupdate="onTimeUpdate"
@@ -288,23 +295,25 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             </div>
           </div>
         </div>
+        <div v-else class="max-md:px-4">
+          <!-- Audio player -->
+          <UCard class="text-center py-8 space-y-4">
+            <UIcon name="i-lucide-music" class="size-16 text-primary mx-auto" />
+            <p class="font-semibold text-lg text-highlighted">{{ getDisplayTitle(media) }}</p>
+            <audio
+              ref="videoRef"
+              :src="mediaApi.getStreamUrl(media.id)"
+              controls
+              class="w-full mt-2"
+              @loadedmetadata="onVideoLoaded"
+              @timeupdate="onTimeUpdate"
+              @ended="savePosition"
+            />
+          </UCard>
+        </div>
 
-        <!-- Audio player -->
-        <UCard v-else class="text-center py-8 space-y-4">
-          <UIcon name="i-lucide-music" class="size-16 text-primary mx-auto" />
-          <p class="font-semibold text-lg text-highlighted">{{ getDisplayTitle(media) }}</p>
-          <audio
-            ref="videoRef"
-            :src="mediaApi.getStreamUrl(media.id)"
-            controls
-            class="w-full mt-2"
-            @loadedmetadata="onVideoLoaded"
-            @timeupdate="onTimeUpdate"
-            @ended="savePosition"
-          />
-        </UCard>
-
-        <!-- HLS job generating progress -->
+        <div class="flex flex-col gap-4 max-md:px-4 max-md:pt-4">
+        <!-- HLS + media meta -->
         <UAlert
           v-if="jobRunning"
           title="Generating HLS stream…"
@@ -366,10 +375,11 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             />
           </div>
         </UCard>
+        </div>
       </div>
 
       <!-- Sidebar: similar -->
-      <div v-if="similar.length > 0" class="space-y-3">
+      <div v-if="similar.length > 0" class="space-y-3 max-md:px-4 max-md:pb-6 md:pb-0">
         <h3 class="font-semibold text-highlighted">Similar Media</h3>
         <NuxtLink
           v-for="item in similar"
@@ -387,5 +397,5 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
         </NuxtLink>
       </div>
     </div>
-  </UContainer>
+  </div>
 </template>
