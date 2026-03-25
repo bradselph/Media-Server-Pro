@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.112.0] - 2026-03-25 (minor)
+
+- fix(frontend): improve accessibility by adding aria-labels to additional buttons and enhancing touch targets
+
+
+## [0.111.0] - 2026-03-25 (minor)
+
+- fix(frontend): add aria-label to all icon-only buttons in admin tabs and profile page
+
+
+## [0.110.0] - 2026-03-25 (minor)
+
+- fix(frontend): add 20 as selectable items-per-page option
+- fix(auth): serialize JSON fields in user Update() to fix preferences 500
+- fix(frontend): accessibility — aria-labels, touch targets, thumbnail condition
+- fix(frontend): add lang attribute and meta description to HTML head
+- Merge branch 'main' into development
+- chore(frontend): OpenAPI codegen in npm run check (synthesis loop 2)
+- fix(frontend): mobile player uses viewport height below header
+- chore(frontend): add npm run check for synthesis CI
+- ci(synthesis): align workflow and smoke with Go, MySQL, and Nuxt
+- Merge branch 'main' into development
+
+
 ## [0.109.0] - 2026-03-25 (minor)
 
 - chore(contract): canonical OpenAPI spec under api_spec/

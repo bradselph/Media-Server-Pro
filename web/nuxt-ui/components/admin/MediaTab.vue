@@ -126,7 +126,7 @@ onMounted(load)
           color="neutral"
           @click="handleScan"
         />
-        <UButton icon="i-lucide-refresh-cw" variant="ghost" color="neutral" @click="load" />
+        <UButton icon="i-lucide-refresh-cw" aria-label="Refresh media list" variant="ghost" color="neutral" @click="load" />
       </div>
     </div>
 

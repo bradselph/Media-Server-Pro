@@ -162,8 +162,8 @@ onMounted(load)
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1 justify-end">
-            <UButton icon="i-lucide-pencil" size="xs" variant="ghost" color="neutral" @click="openEdit(row.original)" />
-            <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" @click="deleteUser = row.original" />
+            <UButton icon="i-lucide-pencil" aria-label="Edit user" size="xs" variant="ghost" color="neutral" @click="openEdit(row.original)" />
+            <UButton icon="i-lucide-trash-2" aria-label="Delete user" size="xs" variant="ghost" color="error" @click="deleteUser = row.original" />
           </div>
         </template>
       </UTable>
