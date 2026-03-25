@@ -22,6 +22,9 @@ const navLinks = computed(() => {
   ]
   if (authStore.isLoggedIn) {
     links.push({ label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' })
+    if (authStore.user?.permissions?.can_upload) {
+      links.push({ label: 'Upload', to: '/upload', icon: 'i-lucide-upload' })
+    }
     links.push({ label: 'Profile', to: '/profile', icon: 'i-lucide-user' })
     if (authStore.isAdmin) {
       links.push({ label: 'Admin', to: '/admin', icon: 'i-lucide-shield' })

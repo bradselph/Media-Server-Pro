@@ -1,0 +1,231 @@
+<script setup lang="ts">
+import type { UploadResult } from '~/types/api'
+
+definePageMeta({ layout: 'default', title: 'Upload Media', middleware: 'auth' })
+
+const authStore = useAuthStore()
+const router = useRouter()
+const toast = useToast()
+const uploadApi = useUploadApi()
+
+// Redirect if user cannot upload
+watchEffect(() => {
+  if (!authStore.isLoading && authStore.isLoggedIn && !authStore.user?.permissions?.can_upload) {
+    router.replace('/')
+  }
+})
+
+const dragOver = ref(false)
+const uploading = ref(false)
+const category = ref('')
+const selectedFiles = ref<File[]>([])
+const result = ref<UploadResult | null>(null)
+
+const dropZoneRef = ref<HTMLElement | null>(null)
+
+function onDragOver(e: DragEvent) {
+  e.preventDefault()
+  dragOver.value = true
+}
+
+function onDragLeave() {
+  dragOver.value = false
+}
+
+function onDrop(e: DragEvent) {
+  e.preventDefault()
+  dragOver.value = false
+  const files = Array.from(e.dataTransfer?.files ?? [])
+  addFiles(files)
+}
+
+function onFileInput(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  addFiles(files)
+  input.value = ''
+}
+
+function addFiles(files: File[]) {
+  const allowed = files.filter(f => f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/'))
+  const rejected = files.length - allowed.length
+  if (rejected > 0) {
+    toast.add({ title: `${rejected} file(s) skipped — only video, audio, and image files are accepted`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+  }
+  selectedFiles.value = [...selectedFiles.value, ...allowed]
+}
+
+function removeFile(index: number) {
+  selectedFiles.value = selectedFiles.value.filter((_, i) => i !== index)
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
+}
+
+async function handleUpload() {
+  if (selectedFiles.value.length === 0) return
+  uploading.value = true
+  result.value = null
+  try {
+    const res = await uploadApi.upload(selectedFiles.value, category.value || undefined)
+    result.value = res
+    const successCount = res.uploaded?.length ?? 0
+    const errorCount = res.errors?.length ?? 0
+    if (successCount > 0) {
+      toast.add({
+        title: `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully`,
+        color: 'success',
+        icon: 'i-lucide-check',
+      })
+    }
+    if (errorCount > 0) {
+      toast.add({
+        title: `${errorCount} file${errorCount !== 1 ? 's' : ''} failed to upload`,
+        color: 'error',
+        icon: 'i-lucide-x',
+      })
+    }
+    if (successCount > 0) {
+      selectedFiles.value = []
+      category.value = ''
+    }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Upload failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    uploading.value = false
+  }
+}
+</script>
+
+<template>
+  <UContainer class="py-8 max-w-2xl space-y-6">
+    <div>
+      <h1 class="text-2xl font-bold text-highlighted">Upload Media</h1>
+      <p class="text-sm text-muted mt-1">Upload video, audio, or image files to the media library.</p>
+    </div>
+
+    <!-- Access check -->
+    <template v-if="!authStore.isLoggedIn || !authStore.user?.permissions?.can_upload">
+      <UAlert
+        icon="i-lucide-lock"
+        color="error"
+        title="Upload not permitted"
+        description="Your account does not have upload permissions. Contact an administrator."
+      />
+    </template>
+
+    <template v-else>
+      <!-- Drop zone -->
+      <div
+        ref="dropZoneRef"
+        class="border-2 border-dashed rounded-lg p-10 text-center transition-colors cursor-pointer"
+        :class="dragOver ? 'border-primary bg-primary/5' : 'border-default hover:border-primary/50'"
+        @dragover="onDragOver"
+        @dragleave="onDragLeave"
+        @drop="onDrop"
+        @click="($el as HTMLElement).querySelector('input')?.click()"
+      >
+        <UIcon name="i-lucide-upload-cloud" class="size-12 mx-auto text-muted mb-3" />
+        <p class="text-sm font-medium">Drag and drop files here, or <span class="text-primary underline">browse</span></p>
+        <p class="text-xs text-muted mt-1">Video, audio, and image files accepted</p>
+        <input type="file" multiple accept="video/*,audio/*,image/*" class="hidden" @change="onFileInput" />
+      </div>
+
+      <!-- Category -->
+      <UFormField label="Category (optional)">
+        <UInput v-model="category" placeholder="e.g. Entertainment, Music, Sports…" class="w-full" />
+      </UFormField>
+
+      <!-- Selected files -->
+      <div v-if="selectedFiles.length > 0" class="space-y-2">
+        <p class="text-sm font-medium">{{ selectedFiles.length }} file{{ selectedFiles.length !== 1 ? 's' : '' }} selected</p>
+        <UCard>
+          <ul class="divide-y divide-default">
+            <li
+              v-for="(file, i) in selectedFiles"
+              :key="i"
+              class="flex items-center justify-between py-2 px-1 gap-3"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <UIcon
+                  :name="file.type.startsWith('video/') ? 'i-lucide-film' : file.type.startsWith('audio/') ? 'i-lucide-music' : 'i-lucide-image'"
+                  class="size-4 text-muted shrink-0"
+                />
+                <span class="text-sm truncate">{{ file.name }}</span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="text-xs text-muted">{{ formatBytes(file.size) }}</span>
+                <UButton
+                  icon="i-lucide-x"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  aria-label="Remove"
+                  @click.stop="removeFile(i)"
+                />
+              </div>
+            </li>
+          </ul>
+        </UCard>
+      </div>
+
+      <!-- Upload button -->
+      <div class="flex justify-end">
+        <UButton
+          label="Upload"
+          icon="i-lucide-upload"
+          color="primary"
+          :loading="uploading"
+          :disabled="selectedFiles.length === 0"
+          @click="handleUpload"
+        />
+      </div>
+
+      <!-- Results -->
+      <div v-if="result" class="space-y-3">
+        <div v-if="result.uploaded?.length > 0">
+          <p class="text-sm font-medium text-success mb-2">Uploaded successfully</p>
+          <UCard>
+            <ul class="divide-y divide-default">
+              <li
+                v-for="u in result.uploaded"
+                :key="u.upload_id"
+                class="flex items-center justify-between py-2 px-1 gap-3"
+              >
+                <div class="flex items-center gap-2 min-w-0">
+                  <UIcon name="i-lucide-check-circle" class="size-4 text-success shrink-0" />
+                  <span class="text-sm truncate">{{ u.filename }}</span>
+                </div>
+                <span class="text-xs text-muted shrink-0">{{ formatBytes(u.size) }}</span>
+              </li>
+            </ul>
+          </UCard>
+        </div>
+
+        <div v-if="result.errors?.length > 0">
+          <p class="text-sm font-medium text-error mb-2">Failed uploads</p>
+          <UCard>
+            <ul class="divide-y divide-default">
+              <li
+                v-for="(e, i) in result.errors"
+                :key="i"
+                class="flex items-center justify-between py-2 px-1 gap-3"
+              >
+                <div class="flex items-center gap-2 min-w-0">
+                  <UIcon name="i-lucide-x-circle" class="size-4 text-error shrink-0" />
+                  <span class="text-sm truncate">{{ e.filename }}</span>
+                </div>
+                <span class="text-xs text-error shrink-0">{{ e.error }}</span>
+              </li>
+            </ul>
+          </UCard>
+        </div>
+      </div>
+    </template>
+  </UContainer>
+</template>
