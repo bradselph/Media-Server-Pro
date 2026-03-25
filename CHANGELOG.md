@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.113.0] - 2026-03-25 (minor)
+
+- feat(frontend): add Content admin tab with scanner review queue, HLS job management, and validator
+- feat(frontend): user-facing playlists page with create/view/delete and Add to Playlist from player
+- fix(frontend): add aria-label to downloader delete button
+- fix(frontend): downloader created date — remove erroneous *1000 (field is already ms)
+- chore: sync development with main
+
+
 ## [0.112.0] - 2026-03-25 (minor)
 
 - fix(frontend): improve accessibility by adding aria-labels to additional buttons and enhancing touch targets
