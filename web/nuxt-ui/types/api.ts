@@ -3,6 +3,7 @@
 export type UserRole = 'admin' | 'viewer'
 
 export interface UserPermissions {
+  user_id?: string
   can_stream: boolean
   can_download: boolean
   can_upload: boolean
@@ -13,6 +14,7 @@ export interface UserPermissions {
 }
 
 export interface UserPreferences {
+  user_id?: string
   theme: string
   view_mode: 'grid' | 'list' | 'compact'
   default_quality: string
@@ -50,6 +52,7 @@ export interface User {
   watch_history?: WatchHistoryItem[]
   permissions: UserPermissions
   preferences: UserPreferences
+  metadata?: Record<string, unknown>
 }
 
 export interface LoginResponse {
@@ -71,9 +74,9 @@ export interface SessionCheckResponse {
 export interface MediaItem {
   id: string
   name: string
-  type: 'video' | 'audio' | 'image' | string
+  type: 'video' | 'audio' | 'unknown' | string
   size: number
-  duration?: number
+  duration: number
   width?: number
   height?: number
   bitrate?: number
@@ -84,7 +87,7 @@ export interface MediaItem {
   thumbnail_url?: string
   blur_hash?: string
   date_added: string
-  date_modified?: string
+  date_modified: string
   views: number
   last_played?: string
   is_mature: boolean
@@ -281,20 +284,27 @@ export interface SystemInfo {
 
 export interface StreamSession {
   id: string
-  user_id?: string
+  user_id: string
   media_id: string
-  quality?: string
-  bytes_sent?: number
-  ip_address?: string
+  quality: string
+  bytes_sent: number
+  ip_address: string
   started_at: string
+  position: number
+  last_update: string
 }
 
 export interface UploadProgress {
   id: string
   filename: string
-  user_id?: string
-  progress?: number
+  user_id: string
+  progress: number
   status: string
+  size: number
+  uploaded: number
+  started_at: string
+  completed_at?: string
+  error?: string
 }
 
 export interface AuditLogEntry {

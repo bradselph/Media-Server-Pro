@@ -1,7 +1,15 @@
 <script setup lang="ts">
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const colorMode = useColorMode()
+
+useHead({
+  title: computed(() => {
+    const pageTitle = route.meta.title as string | undefined
+    return pageTitle ? `${pageTitle} — Media Server Pro` : 'Media Server Pro'
+  }),
+})
 
 async function handleLogout() {
   await authStore.logout()

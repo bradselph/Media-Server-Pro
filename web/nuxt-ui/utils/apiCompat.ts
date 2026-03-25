@@ -65,25 +65,7 @@ export function normalizePreferences(input: unknown): UserPreferences {
 }
 
 export function toPreferencesPatch(input: Partial<UserPreferences>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...input }
-
-  if (Object.prototype.hasOwnProperty.call(input, 'show_mature')) {
-    out.show_mature_content = input.show_mature
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'show_analytics')) {
-    out.collect_analytics = input.show_analytics
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'show_continue_watching')) {
-    out.show_home_continue_watching = input.show_continue_watching
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'show_recommended')) {
-    out.show_home_suggestions = input.show_recommended
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'show_trending')) {
-    out.show_home_recently_added = input.show_trending
-  }
-
-  return out
+  return { ...input }
 }
 
 export function normalizeUser(input: unknown): User | null {
@@ -107,6 +89,7 @@ export function normalizeUser(input: unknown): User | null {
     watch_history: Array.isArray(src.watch_history) ? (src.watch_history as User['watch_history']) : undefined,
     permissions: normalizePermissions(src.permissions),
     preferences: normalizePreferences(src.preferences),
+    metadata: (asRecord(src.metadata) ?? undefined) as User['metadata'],
   }
 }
 
