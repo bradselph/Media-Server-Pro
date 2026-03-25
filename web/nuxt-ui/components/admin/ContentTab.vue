@@ -1,0 +1,347 @@
+<script setup lang="ts">
+import type { FileScanResult, HLSJob, ScannerStats, HLSStats, ValidatorStats } from '~/types/api'
+
+const adminApi = useAdminApi()
+const toast = useToast()
+
+const subTab = ref('scanner')
+const subTabs = [
+  { label: 'Scanner', value: 'scanner', icon: 'i-lucide-scan' },
+  { label: 'HLS Jobs', value: 'hls', icon: 'i-lucide-video' },
+  { label: 'Validator', value: 'validator', icon: 'i-lucide-shield-check' },
+]
+
+// ── Scanner ────────────────────────────────────────────────────────────────────
+const scannerStats = ref<ScannerStats | null>(null)
+const reviewQueue = ref<FileScanResult[]>([])
+const scannerLoading = ref(false)
+const scanPath = ref('')
+const scanning = ref(false)
+const selected = ref<string[]>([])
+
+async function loadScanner() {
+  scannerLoading.value = true
+  try {
+    const [stats, queue] = await Promise.all([
+      adminApi.getScannerStats(),
+      adminApi.getReviewQueue(),
+    ])
+    scannerStats.value = stats
+    reviewQueue.value = queue ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load scanner', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { scannerLoading.value = false }
+}
+
+async function startScan() {
+  scanning.value = true
+  try {
+    await adminApi.runScan(scanPath.value || undefined)
+    toast.add({ title: 'Scan started', color: 'success', icon: 'i-lucide-check' })
+    setTimeout(loadScanner, 2000)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Scan failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { scanning.value = false }
+}
+
+async function batchAction(action: 'approve' | 'reject') {
+  if (selected.value.length === 0) return
+  try {
+    const res = await adminApi.batchReview(action, selected.value)
+    toast.add({ title: `${action === 'approve' ? 'Approved' : 'Rejected'} ${res.updated} item(s)`, color: 'success', icon: 'i-lucide-check' })
+    selected.value = []
+    loadScanner()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+async function clearQueue() {
+  try {
+    await adminApi.clearReviewQueue()
+    reviewQueue.value = []
+    toast.add({ title: 'Review queue cleared', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+function toggleSelect(path: string) {
+  const i = selected.value.indexOf(path)
+  if (i === -1) selected.value.push(path)
+  else selected.value.splice(i, 1)
+}
+
+function toggleAll() {
+  if (selected.value.length === reviewQueue.value.length) selected.value = []
+  else selected.value = reviewQueue.value.map(r => r.path)
+}
+
+// ── HLS ────────────────────────────────────────────────────────────────────────
+const hlsStats = ref<HLSStats | null>(null)
+const hlsJobs = ref<HLSJob[]>([])
+const hlsLoading = ref(false)
+
+async function loadHLS() {
+  hlsLoading.value = true
+  try {
+    const [stats, jobs] = await Promise.all([
+      adminApi.getHLSStats(),
+      adminApi.listHLSJobs(),
+    ])
+    hlsStats.value = stats
+    hlsJobs.value = jobs ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load HLS', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { hlsLoading.value = false }
+}
+
+async function deleteHLSJob(id: string) {
+  try {
+    await adminApi.deleteHLSJob(id)
+    hlsJobs.value = hlsJobs.value.filter(j => j.id !== id)
+    toast.add({ title: 'HLS job deleted', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+async function cleanInactiveLocks() {
+  try {
+    await adminApi.cleanHLSStaleLocks()
+    toast.add({ title: 'Stale locks cleaned', color: 'success', icon: 'i-lucide-check' })
+    loadHLS()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+async function cleanInactiveJobs() {
+  try {
+    await adminApi.cleanHLSInactive()
+    toast.add({ title: 'Inactive HLS jobs cleaned', color: 'success', icon: 'i-lucide-check' })
+    loadHLS()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+function formatBytes(b: number) {
+  if (!b) return '0 B'
+  const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(b) / Math.log(k))
+  return `${(b / k ** i).toFixed(1)} ${sizes[i]}`
+}
+
+// ── Validator ──────────────────────────────────────────────────────────────────
+const validatorStats = ref<ValidatorStats | null>(null)
+const validatorLoading = ref(false)
+const validateId = ref('')
+const validating = ref(false)
+const validateResult = ref<unknown>(null)
+
+async function loadValidator() {
+  validatorLoading.value = true
+  try { validatorStats.value = await adminApi.getValidatorStats() }
+  catch {}
+  finally { validatorLoading.value = false }
+}
+
+async function runValidate() {
+  if (!validateId.value.trim()) return
+  validating.value = true
+  try {
+    validateResult.value = await adminApi.validateMedia(validateId.value.trim())
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Validation failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { validating.value = false }
+}
+
+async function runFix() {
+  if (!validateId.value.trim()) return
+  validating.value = true
+  try {
+    validateResult.value = await adminApi.fixMedia(validateId.value.trim())
+    toast.add({ title: 'Media fixed', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Fix failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { validating.value = false }
+}
+
+watch(subTab, (v) => {
+  if (v === 'scanner') loadScanner()
+  else if (v === 'hls') loadHLS()
+  else if (v === 'validator') loadValidator()
+}, { immediate: true })
+</script>
+
+<template>
+  <div class="space-y-4">
+    <UTabs v-model="subTab" :items="subTabs" size="sm" />
+
+    <!-- Scanner -->
+    <div v-if="subTab === 'scanner'" class="space-y-4">
+      <!-- Stats -->
+      <div v-if="scannerStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <UCard v-for="item in [
+          { label: 'Total Scanned', value: scannerStats.total_scanned },
+          { label: 'Mature', value: scannerStats.mature_count },
+          { label: 'Auto-Flagged', value: scannerStats.auto_flagged },
+          { label: 'Pending Review', value: scannerStats.pending_review },
+        ]" :key="item.label" :ui="{ body: 'p-3' }">
+          <p class="text-xl font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
+          <p class="text-xs text-muted">{{ item.label }}</p>
+        </UCard>
+      </div>
+
+      <!-- Scan controls -->
+      <UCard>
+        <template #header><div class="font-semibold">Run Scan</div></template>
+        <div class="flex flex-wrap gap-2">
+          <UInput v-model="scanPath" placeholder="Path (optional, leave blank for full scan)" class="flex-1 min-w-48" />
+          <UButton :loading="scanning" icon="i-lucide-scan" label="Scan" @click="startScan" />
+        </div>
+      </UCard>
+
+      <!-- Review queue -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="font-semibold">Review Queue ({{ reviewQueue.length }})</div>
+            <div class="flex gap-2">
+              <UButton v-if="selected.length > 0" icon="i-lucide-check" label="Approve Selected" size="xs" color="success" variant="outline" @click="batchAction('approve')" />
+              <UButton v-if="selected.length > 0" icon="i-lucide-x" label="Reject Selected" size="xs" color="error" variant="outline" @click="batchAction('reject')" />
+              <UButton v-if="reviewQueue.length > 0" icon="i-lucide-trash-2" aria-label="Clear review queue" size="xs" variant="ghost" color="error" @click="clearQueue" />
+              <UButton icon="i-lucide-refresh-cw" aria-label="Refresh scanner" size="xs" variant="ghost" color="neutral" @click="loadScanner" />
+            </div>
+          </div>
+        </template>
+        <div v-if="scannerLoading" class="flex justify-center py-6">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="reviewQueue.length === 0" class="text-center py-6 text-muted text-sm">No items pending review.</div>
+        <div v-else class="divide-y divide-default text-sm">
+          <div class="flex items-center gap-2 py-2 font-medium text-muted text-xs">
+            <UCheckbox :model-value="selected.length === reviewQueue.length && reviewQueue.length > 0" @update:model-value="toggleAll" />
+            <span class="flex-1">Path</span>
+            <span class="w-20 text-right">Confidence</span>
+            <span class="w-24 text-right">Actions</span>
+          </div>
+          <div v-for="item in reviewQueue" :key="item.path" class="flex items-center gap-2 py-2">
+            <UCheckbox :model-value="selected.includes(item.path)" @update:model-value="toggleSelect(item.path)" />
+            <div class="flex-1 min-w-0">
+              <p class="truncate font-mono text-xs" :title="item.path">{{ item.path }}</p>
+              <div class="flex gap-1 mt-0.5 flex-wrap">
+                <UBadge v-if="item.is_mature" label="Mature" color="error" variant="subtle" size="xs" />
+                <UBadge v-if="item.auto_flagged" label="Auto-flagged" color="warning" variant="subtle" size="xs" />
+                <UBadge v-for="r in (item.reasons ?? [])" :key="r" :label="r" color="neutral" variant="subtle" size="xs" />
+              </div>
+            </div>
+            <span class="w-20 text-right text-muted">{{ item.confidence != null ? `${(item.confidence * 100).toFixed(0)}%` : '—' }}</span>
+            <div class="w-24 flex justify-end gap-1">
+              <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" @click="adminApi.approveContent(item.path).then(loadScanner)" />
+              <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" @click="adminApi.rejectContent(item.path).then(loadScanner)" />
+            </div>
+          </div>
+        </div>
+      </UCard>
+    </div>
+
+    <!-- HLS Jobs -->
+    <div v-if="subTab === 'hls'" class="space-y-4">
+      <!-- Stats -->
+      <div v-if="hlsStats" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <UCard v-for="item in [
+          { label: 'Total Jobs', value: hlsStats.total_jobs },
+          { label: 'Running', value: hlsStats.running_jobs },
+          { label: 'Completed', value: hlsStats.completed_jobs },
+          { label: 'Failed', value: hlsStats.failed_jobs },
+          { label: 'Pending', value: hlsStats.pending_jobs },
+          { label: 'Cache Size', value: formatBytes(hlsStats.cache_size_bytes) },
+        ]" :key="item.label" :ui="{ body: 'p-3' }">
+          <p class="text-xl font-bold text-highlighted">{{ item.value }}</p>
+          <p class="text-xs text-muted">{{ item.label }}</p>
+        </UCard>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex gap-2 flex-wrap">
+        <UButton icon="i-lucide-refresh-cw" label="Refresh" variant="outline" color="neutral" size="sm" @click="loadHLS" />
+        <UButton icon="i-lucide-lock-open" label="Clean Stale Locks" variant="outline" color="warning" size="sm" @click="cleanInactiveLocks" />
+        <UButton icon="i-lucide-trash-2" label="Clean Inactive" variant="outline" color="error" size="sm" @click="cleanInactiveJobs" />
+      </div>
+
+      <!-- Jobs table -->
+      <UCard>
+        <div v-if="hlsLoading" class="flex justify-center py-6">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="hlsJobs.length === 0" class="text-center py-6 text-muted text-sm">No HLS jobs.</div>
+        <UTable
+          v-else
+          :data="hlsJobs"
+          :columns="[
+            { accessorKey: 'id', header: 'Media ID' },
+            { accessorKey: 'status', header: 'Status' },
+            { accessorKey: 'progress', header: 'Progress' },
+            { accessorKey: 'started_at', header: 'Started' },
+            { accessorKey: 'actions', header: '' },
+          ]"
+        >
+          <template #id-cell="{ row }">
+            <span class="font-mono text-xs">{{ row.original.id.slice(0, 8) }}…</span>
+          </template>
+          <template #status-cell="{ row }">
+            <UBadge
+              :label="row.original.status"
+              :color="{ completed: 'success', running: 'info', failed: 'error', pending: 'neutral', cancelled: 'neutral' }[row.original.status] ?? 'neutral'"
+              variant="subtle"
+              size="xs"
+            />
+          </template>
+          <template #progress-cell="{ row }">
+            <div class="flex items-center gap-2 w-24">
+              <UProgress :value="row.original.progress" size="xs" class="flex-1" />
+              <span class="text-xs text-muted w-8">{{ row.original.progress }}%</span>
+            </div>
+          </template>
+          <template #started_at-cell="{ row }">
+            <span class="text-xs text-muted">{{ row.original.started_at ? new Date(row.original.started_at).toLocaleString() : '—' }}</span>
+          </template>
+          <template #actions-cell="{ row }">
+            <UButton icon="i-lucide-trash-2" aria-label="Delete HLS job" size="xs" variant="ghost" color="error" @click="deleteHLSJob(row.original.id)" />
+          </template>
+        </UTable>
+      </UCard>
+    </div>
+
+    <!-- Validator -->
+    <div v-if="subTab === 'validator'" class="space-y-4">
+      <!-- Stats -->
+      <div v-if="validatorStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <UCard v-for="item in [
+          { label: 'Total Validated', value: validatorStats.total_validated },
+          { label: 'Valid', value: validatorStats.valid_count },
+          { label: 'Invalid', value: validatorStats.invalid_count },
+          { label: 'Fixed', value: validatorStats.fixed_count },
+        ]" :key="item.label" :ui="{ body: 'p-3' }">
+          <p class="text-xl font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
+          <p class="text-xs text-muted">{{ item.label }}</p>
+        </UCard>
+      </div>
+
+      <!-- Validate / fix -->
+      <UCard>
+        <template #header><div class="font-semibold">Validate or Fix Media</div></template>
+        <div class="flex flex-wrap gap-2 mb-4">
+          <UInput v-model="validateId" placeholder="Media ID" class="flex-1 min-w-48" />
+          <UButton :loading="validating" icon="i-lucide-shield-check" label="Validate" variant="outline" color="neutral" @click="runValidate" />
+          <UButton :loading="validating" icon="i-lucide-wrench" label="Fix" variant="outline" color="warning" @click="runFix" />
+        </div>
+        <div v-if="validateResult">
+          <pre class="text-xs bg-muted rounded p-3 overflow-auto max-h-64">{{ JSON.stringify(validateResult, null, 2) }}</pre>
+        </div>
+      </UCard>
+    </div>
+  </div>
+</template>
