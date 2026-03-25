@@ -1,0 +1,19 @@
+---
+description: Operator guide — loops, blind frontend, prompts, merge checklist
+alwaysApply: false
+---
+
+# When to use this rule
+
+Apply when planning or running **multi-step agentic work**. Full detail: `docs/AGENT_PLAYBOOK.md` and `docs/PROMPTS.md`.
+
+## Quick reference
+
+1. **Pick a loop** before editing: Backend (1), Frontend (2), Integration (3), or Mutation (contract extension only).
+2. **Loop 2 is blind:** do not read the backend partition to infer API behavior—only contract + generated types.
+3. **One commit** must not mix backend and frontend partition roots (see `scripts/check_partition_boundaries.py`).
+4. **Type A/B/C routing:** invalid client → frontend; invalid server vs contract → backend; missing capability → `docs/contract-extensions/` then ordered commits.
+5. **Never** relax server validation to accept invalid input for client convenience.
+6. Before merge, run checks listed in `docs/AGENT_PLAYBOOK.md` (partition script, validate OpenAPI, completeness, tests, smoke, client check).
+
+Canonical theory: `docs/CONSOLIDATED_MODEL.md`.
