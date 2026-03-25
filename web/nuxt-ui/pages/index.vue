@@ -95,6 +95,20 @@ onMounted(() => { loadCategories(); load() })
 // View mode
 const viewMode = ref<'grid' | 'list'>('grid')
 
+// Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
+const canViewMature = computed(() =>
+  authStore.isLoggedIn &&
+  (authStore.user?.preferences?.show_mature ?? false) &&
+  (authStore.user?.permissions?.can_view_mature ?? false),
+)
+
+function matureGateHref(item: MediaItem): string {
+  if (item.is_mature && !canViewMature.value) {
+    return authStore.isLoggedIn ? '/profile' : '/login'
+  }
+  return `/player?id=${encodeURIComponent(item.id)}`
+}
+
 const totalPages = computed(() => Math.ceil(total.value / params.limit))
 
 function formatDuration(secs?: number): string {
@@ -244,7 +258,7 @@ function formatDuration(secs?: number): string {
       <NuxtLink
         v-for="item in items"
         :key="item.id"
-        :to="`/player?id=${encodeURIComponent(item.id)}`"
+        :to="matureGateHref(item)"
         class="group block"
       >
         <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2">
@@ -252,15 +266,25 @@ function formatDuration(secs?: number): string {
             v-if="item.type !== 'audio'"
             :src="mediaApi.getThumbnailUrl(item.id)"
             :alt="getDisplayTitle(item)"
-            class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+            :class="['w-full h-full object-cover transition-transform duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-lg scale-110' : '']"
             loading="lazy"
           />
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon name="i-lucide-music" class="size-8 text-muted" />
           </div>
-          <!-- Duration badge -->
+          <!-- Mature gate overlay (guests + users with show_mature disabled) -->
           <div
-            v-if="item.duration"
+            v-if="item.is_mature && !canViewMature"
+            class="absolute inset-0 flex flex-col items-center justify-center bg-black/60 gap-1.5 px-2 text-center"
+          >
+            <UIcon name="i-lucide-lock" class="size-5 text-white" />
+            <p class="text-white text-xs font-semibold leading-tight">
+              {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign in to view' }}
+            </p>
+          </div>
+          <!-- Duration badge (hidden when gated) -->
+          <div
+            v-if="item.duration && !(item.is_mature && !canViewMature)"
             class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono"
           >
             {{ formatDuration(item.duration) }}
@@ -276,15 +300,15 @@ function formatDuration(secs?: number): string {
               class="bg-black/70"
             />
           </div>
-          <!-- Mature badge -->
-          <div v-if="item.is_mature" class="absolute top-1 right-1">
+          <!-- Mature badge (only when user can view it) -->
+          <div v-if="item.is_mature && canViewMature" class="absolute top-1 right-1">
             <UBadge label="18+" color="error" variant="solid" size="xs" />
           </div>
         </div>
         <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
-        <p v-if="item.category" class="text-xs text-muted truncate">{{ item.category }}</p>
+        <p v-if="item.category && !(item.is_mature && !canViewMature)" class="text-xs text-muted truncate">{{ item.category }}</p>
       </NuxtLink>
       <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
         No media found.
@@ -305,14 +329,17 @@ function formatDuration(secs?: number): string {
         ]"
       >
         <template #name-cell="{ row }">
-          <NuxtLink :to="`/player?id=${encodeURIComponent(row.original.id)}`" class="flex items-center gap-3 hover:text-primary">
-            <div class="w-16 h-9 rounded overflow-hidden bg-muted shrink-0">
+          <NuxtLink :to="matureGateHref(row.original)" class="flex items-center gap-3 hover:text-primary">
+            <div class="relative w-16 h-9 rounded overflow-hidden bg-muted shrink-0">
               <img
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
                 :alt="getDisplayTitle(row.original)"
-                class="w-full h-full object-cover"
+                :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-md' : '']"
                 loading="lazy"
               />
+              <div v-if="row.original.is_mature && !canViewMature" class="absolute inset-0 flex items-center justify-center bg-black/50">
+                <UIcon name="i-lucide-lock" class="size-3 text-white" />
+              </div>
             </div>
             <span class="font-medium truncate max-w-xs">{{ getDisplayTitle(row.original) }}</span>
           </NuxtLink>
