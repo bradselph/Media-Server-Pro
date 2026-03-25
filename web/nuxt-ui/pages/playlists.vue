@@ -49,6 +49,10 @@ async function createPlaylist() {
 
 // Delete
 const deleteTarget = ref<Playlist | null>(null)
+const deleteOpen = computed({
+  get: () => !!deleteTarget.value,
+  set: (v: boolean) => { if (!v) deleteTarget.value = null },
+})
 const deleting = ref(false)
 
 async function confirmDelete() {
@@ -242,7 +246,7 @@ onMounted(load)
       </UModal>
 
       <!-- Delete confirm modal -->
-      <UModal v-model:open="!!deleteTarget" title="Delete Playlist" description="This will permanently delete the playlist and all its items.">
+      <UModal v-model:open="deleteOpen" title="Delete Playlist" description="This will permanently delete the playlist and all its items.">
         <template #footer>
           <UButton variant="ghost" color="neutral" label="Cancel" @click="deleteTarget = null" />
           <UButton :loading="deleting" color="error" label="Delete" @click="confirmDelete" />
