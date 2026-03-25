@@ -1,13 +1,34 @@
 <script setup lang="ts">
-import type { MediaItem, MediaCategory } from '~/types/api'
+import type { MediaItem, MediaCategory, Suggestion } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ title: 'Media Library' })
 
 const mediaApi = useMediaApi()
+const suggestionsApi = useSuggestionsApi()
 const authStore = useAuthStore()
 const router = useRouter()
 const toast = useToast()
+
+// Recommendations (only for logged-in users)
+const continueWatching = ref<Suggestion[]>([])
+const trending = ref<Suggestion[]>([])
+
+async function loadRecommendations() {
+  if (!authStore.isLoggedIn) return
+  try {
+    const [cw, tr] = await Promise.allSettled([
+      suggestionsApi.getContinueWatching(),
+      suggestionsApi.getTrending(),
+    ])
+    if (cw.status === 'fulfilled') continueWatching.value = cw.value ?? []
+    if (tr.status === 'fulfilled') trending.value = tr.value ?? []
+  } catch { /* non-critical */ }
+}
+
+watch(() => authStore.isLoggedIn, (loggedIn) => {
+  if (loggedIn) loadRecommendations()
+}, { immediate: true })
 
 // State
 const items = ref<MediaItem[]>([])
@@ -77,6 +98,61 @@ function formatDuration(secs?: number): string {
 
 <template>
   <UContainer class="py-6 space-y-6">
+    <!-- Recommendations (logged-in only) -->
+    <template v-if="authStore.isLoggedIn">
+      <!-- Continue Watching -->
+      <div v-if="continueWatching.length > 0" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-play-circle" class="size-4 text-primary" />
+          Continue Watching
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="s in continueWatching"
+            :key="s.media_id"
+            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                :src="mediaApi.getThumbnailUrl(s.media_id)"
+                :alt="s.title"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+          </NuxtLink>
+        </div>
+      </div>
+
+      <!-- Trending -->
+      <div v-if="trending.length > 0" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-trending-up" class="size-4 text-primary" />
+          Trending
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="s in trending"
+            :key="s.media_id"
+            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                :src="mediaApi.getThumbnailUrl(s.media_id)"
+                :alt="s.title"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+          </NuxtLink>
+        </div>
+      </div>
+    </template>
+
     <!-- Filters -->
     <div class="flex flex-wrap gap-3 items-center">
       <UInput

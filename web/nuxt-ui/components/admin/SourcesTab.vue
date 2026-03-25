@@ -3,7 +3,7 @@ import type {
   RemoteSourceState, RemoteStats, RemoteMediaItem,
   CrawlerTarget, CrawlerDiscovery, CrawlerStats,
   ExtractorItem, ExtractorStats,
-  SlaveNode, ReceiverStats,
+  SlaveNode, ReceiverStats, ReceiverDuplicate,
 } from '~/types/api'
 
 const adminApi = useAdminApi()
@@ -214,17 +214,20 @@ async function deleteExtractorItem(id: string) {
 // ── Receiver / Slaves ──────────────────────────────────────────────────────────
 const receiverStats = ref<ReceiverStats | null>(null)
 const slaves = ref<SlaveNode[]>([])
+const duplicates = ref<ReceiverDuplicate[]>([])
 const receiverLoading = ref(false)
 
 async function loadReceiver() {
   receiverLoading.value = true
   try {
-    const [stats, slaveList] = await Promise.all([
+    const [stats, slaveList, dups] = await Promise.all([
       adminApi.getReceiverStats(),
       adminApi.listSlaves(),
+      adminApi.listDuplicates('pending'),
     ])
     receiverStats.value = stats
     slaves.value = slaveList ?? []
+    duplicates.value = dups ?? []
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load receiver', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { receiverLoading.value = false }
@@ -235,6 +238,16 @@ async function removeSlave(id: string) {
     await adminApi.removeReceiverSlave(id)
     toast.add({ title: 'Slave removed', color: 'success', icon: 'i-lucide-check' })
     await loadReceiver()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+async function resolveDuplicate(id: string, action: string) {
+  try {
+    await adminApi.resolveDuplicate(id, action)
+    duplicates.value = duplicates.value.filter(d => d.id !== id)
+    toast.add({ title: `Duplicate ${action}d`, color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
@@ -562,6 +575,24 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
                     </div>
                   </div>
                   <UButton icon="i-lucide-trash-2" aria-label="Remove slave" size="xs" variant="ghost" color="error" @click="removeSlave(slave.id)" />
+                </div>
+              </div>
+            </UCard>
+
+            <!-- Duplicates -->
+            <UCard v-if="duplicates.length > 0">
+              <template #header><span class="font-semibold">Pending Duplicates ({{ duplicates.length }})</span></template>
+              <div class="divide-y divide-default">
+                <div v-for="d in duplicates" :key="d.id" class="flex items-center gap-3 py-2 flex-wrap">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium">{{ d.item_a_name }}</p>
+                    <p class="text-xs text-muted">vs. {{ d.item_b_name }}</p>
+                  </div>
+                  <div class="flex gap-1">
+                    <UButton label="Keep A" size="xs" variant="outline" color="success" @click="resolveDuplicate(d.id, 'keep_a')" />
+                    <UButton label="Keep B" size="xs" variant="outline" color="neutral" @click="resolveDuplicate(d.id, 'keep_b')" />
+                    <UButton label="Keep Both" size="xs" variant="ghost" color="neutral" @click="resolveDuplicate(d.id, 'keep_both')" />
+                  </div>
                 </div>
               </div>
             </UCard>
