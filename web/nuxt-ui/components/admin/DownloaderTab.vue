@@ -102,6 +102,7 @@ onMounted(load)
         <template #actions-cell="{ row }">
           <UButton
             icon="i-lucide-trash-2"
+            aria-label="Delete download"
             size="xs"
             variant="ghost"
             color="error"
