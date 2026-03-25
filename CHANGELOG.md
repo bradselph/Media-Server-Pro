@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.109.0] - 2026-03-25 (minor)
+
+- chore(contract): canonical OpenAPI spec under api_spec/
+
+
 ## [0.108.0] - 2026-03-25 (minor)
 
 - Merge pull request #109 from bradselph/synthesis
