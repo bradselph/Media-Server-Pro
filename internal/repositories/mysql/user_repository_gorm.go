@@ -148,13 +148,13 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			userUpdates["password_hash"] = user.PasswordHash
 			userUpdates["salt"] = user.Salt
 		}
-		if err := tx.Model(user).Where("id = ?", user.ID).Updates(userUpdates).Error; err != nil {
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(userUpdates).Error; err != nil {
 			return err
 		}
 
 		// Update permissions inside the same transaction
 		user.Permissions.UserID = user.ID
-		if err := tx.Model(&user.Permissions).Where("user_id = ?", user.ID).Updates(map[string]interface{}{
+		if err := tx.Model(&models.UserPermissions{}).Where("user_id = ?", user.ID).Updates(map[string]interface{}{
 			"can_stream":           user.Permissions.CanStream,
 			"can_download":         user.Permissions.CanDownload,
 			"can_upload":           user.Permissions.CanUpload,
@@ -168,7 +168,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 
 		// Update preferences inside the same transaction
 		user.Preferences.UserID = user.ID
-		if err := tx.Model(&user.Preferences).Where("user_id = ?", user.ID).Updates(map[string]interface{}{
+		if err := tx.Model(&models.UserPreferences{}).Where("user_id = ?", user.ID).Updates(map[string]interface{}{
 			"theme":                  user.Preferences.Theme,
 			"view_mode":              user.Preferences.ViewMode,
 			"default_quality":        user.Preferences.DefaultQuality,
