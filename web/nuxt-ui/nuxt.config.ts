@@ -29,12 +29,17 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      htmlAttrs: { lang: 'en' },
       title: 'Media Server Pro',
       meta: [
         { charset: 'utf-8' },
         {
           name: 'viewport',
           content: 'width=device-width, initial-scale=1, viewport-fit=cover',
+        },
+        {
+          name: 'description',
+          content: 'Media Server Pro — personal media library for streaming, organizing, and managing your media collection.',
         },
       ],
     },
