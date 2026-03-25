@@ -8,6 +8,7 @@ const route = useRoute()
 const mediaApi = useMediaApi()
 const playbackApi = usePlaybackApi()
 const suggestionsApi = useSuggestionsApi()
+const ratingsApi = useRatingsApi()
 const playlistApi = usePlaylistApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
@@ -67,8 +68,17 @@ const {
   jobRunning,
 } = useHLS(videoRef, mediaIdRef)
 
-// Similar
+// Similar & personalized recommendations
 const similar = ref<Suggestion[]>([])
+const personalized = ref<Suggestion[]>([])
+
+// Star rating (1-5). Optimistic update — fire and forget.
+const userRating = ref(0)
+function submitRating(star: number) {
+  if (!mediaId.value || !authStore.isLoggedIn) return
+  userRating.value = star
+  ratingsApi.record(mediaId.value, star).catch(() => {})
+}
 
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -83,8 +93,12 @@ async function loadMedia(id: string) {
   error.value = ''
   try {
     media.value = await mediaApi.getById(id)
+    userRating.value = 0
     playbackStore.setMedia(id)
     suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch(() => {})
+    if (authStore.isLoggedIn) {
+      suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch(() => {})
+    }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load media'
   } finally {
@@ -414,6 +428,19 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             />
           </div>
 
+          <!-- Star rating (logged-in users only) -->
+          <div v-if="authStore.isLoggedIn" class="flex items-center gap-1.5 mt-3">
+            <span class="text-sm text-muted">Rate:</span>
+            <button
+              v-for="star in 5"
+              :key="star"
+              class="text-2xl leading-none transition-colors focus:outline-none"
+              :class="star <= userRating ? 'text-yellow-400' : 'text-muted hover:text-yellow-300'"
+              :aria-label="`Rate ${star} star${star > 1 ? 's' : ''}`"
+              @click="submitRating(star)"
+            >★</button>
+          </div>
+
           <!-- Add to playlist modal -->
           <UModal v-model:open="playlistOpen" title="Add to Playlist">
             <template #body>
@@ -443,23 +470,45 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
         </div>
       </div>
 
-      <!-- Sidebar: similar -->
-      <div v-if="similar.length > 0" class="space-y-3 max-md:px-4 max-md:pb-6 md:pb-0">
-        <h3 class="font-semibold text-highlighted">Similar Media</h3>
-        <NuxtLink
-          v-for="item in similar"
-          :key="item.media_id"
-          :to="`/player?id=${encodeURIComponent(item.media_id)}`"
-          class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
-        >
-          <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-            <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
-          </div>
-          <div class="min-w-0">
-            <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
-            <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
-          </div>
-        </NuxtLink>
+      <!-- Sidebar: similar + personalized -->
+      <div class="space-y-6 max-md:px-4 max-md:pb-6 md:pb-0">
+        <!-- Similar media -->
+        <div v-if="similar.length > 0" class="space-y-3">
+          <h3 class="font-semibold text-highlighted">Similar Media</h3>
+          <NuxtLink
+            v-for="item in similar"
+            :key="item.media_id"
+            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
+          >
+            <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+              <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+              <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
+            </div>
+          </NuxtLink>
+        </div>
+
+        <!-- Personalized recommendations (logged-in users) -->
+        <div v-if="authStore.isLoggedIn && personalized.length > 0" class="space-y-3">
+          <h3 class="font-semibold text-highlighted">Recommended For You</h3>
+          <NuxtLink
+            v-for="item in personalized"
+            :key="item.media_id"
+            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
+          >
+            <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+              <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+              <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
+            </div>
+          </NuxtLink>
+        </div>
       </div>
     </div>
   </div>
