@@ -22,7 +22,7 @@ async function addDownload() {
   adding.value = true
   try {
     const clientId = `admin-${Date.now()}`
-    await adminApi.createDownloaderJob(newUrl.value, clientId)
+    await adminApi.createDownloaderJob({ url: newUrl.value, clientId })
     toast.add({ title: 'Download started', color: 'success', icon: 'i-lucide-check' })
     newUrl.value = ''
     await load()

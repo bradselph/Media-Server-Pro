@@ -98,10 +98,12 @@ export function normalizeUser(input: unknown): User | null {
     username,
     email: asString(src.email) || undefined,
     role: (asString(src.role, 'viewer') as User['role']),
+    type: asString(src.type, 'standard'),
     enabled: asBoolean(src.enabled, true),
     created_at: asString(src.created_at),
     last_login: asString(src.last_login) || undefined,
-    storage_used: typeof src.storage_used === 'number' ? src.storage_used : undefined,
+    storage_used: asNumber(src.storage_used, 0),
+    active_streams: asNumber(src.active_streams, 0),
     watch_history: Array.isArray(src.watch_history) ? (src.watch_history as User['watch_history']) : undefined,
     permissions: normalizePermissions(src.permissions),
     preferences: normalizePreferences(src.preferences),
@@ -112,6 +114,7 @@ export function normalizeSession(input: unknown): SessionCheckResponse {
   const src = asRecord(input) ?? {}
   return {
     authenticated: asBoolean(src.authenticated, false),
+    allow_guests: asBoolean(src.allow_guests, false),
     user: normalizeUser(src.user) ?? undefined,
   }
 }

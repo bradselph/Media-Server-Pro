@@ -41,10 +41,12 @@ export interface User {
   username: string
   email?: string
   role: UserRole
+  type: string
   enabled: boolean
   created_at: string
   last_login?: string
-  storage_used?: number
+  storage_used: number
+  active_streams: number
   watch_history?: WatchHistoryItem[]
   permissions: UserPermissions
   preferences: UserPreferences
@@ -60,6 +62,7 @@ export interface LoginResponse {
 
 export interface SessionCheckResponse {
   authenticated: boolean
+  allow_guests: boolean
   user?: User
 }
 
@@ -168,11 +171,11 @@ export interface HLSJob {
 
 export interface HLSStats {
   total_jobs: number
-  running: number
-  completed: number
-  failed: number
-  pending: number
-  disk_used: number
+  running_jobs: number
+  completed_jobs: number
+  failed_jobs: number
+  pending_jobs: number
+  cache_size_bytes: number
 }
 
 // ── Playlists ─────────────────────────────────────────────────────────────────
@@ -336,11 +339,10 @@ export interface BackupEntry {
 }
 
 export interface ThumbnailStats {
-  total: number
-  with_thumbnail: number
-  without_thumbnail: number
-  webp_count: number
-  generating: number
+  total_thumbnails: number
+  total_size_mb: number
+  pending_generation: number
+  generation_errors: number
 }
 
 export interface ScannerStats {
@@ -385,8 +387,10 @@ export interface UpdateStatus {
 
 export interface IPListEntry {
   ip: string
-  comment?: string
+  comment: string
+  added_by: string
   added_at: string
+  expires_at?: string
 }
 
 export interface SecurityStats {
@@ -401,10 +405,10 @@ export interface DatabaseStatus {
   connected: boolean
   host: string
   database: string
-  app_version?: string
-  repository_type?: string
-  message?: string
-  checked_at?: string
+  app_version: string
+  repository_type: string
+  message: string
+  checked_at: string
 }
 
 export interface ReceiverSlave {
@@ -467,14 +471,12 @@ export interface DownloaderJob {
 // ── Watch history ─────────────────────────────────────────────────────────────
 
 export interface WatchHistoryItem {
-  media_id?: string
-  media_path?: string
-  title?: string
+  media_id: string
   media_name?: string
+  position: number
+  duration: number
+  progress: number
   watched_at: string
-  position?: number
-  duration?: number
-  progress?: number
   completed: boolean
 }
 
@@ -483,22 +485,22 @@ export interface WatchHistoryItem {
 export interface Suggestion {
   media_id: string
   title: string
-  name?: string
-  filename?: string
-  media_path?: string
   category: string
   media_type: string
   score: number
-  reasons: string[]
+  reasons: string[] | null
   thumbnail_url?: string
 }
 
 // ── Storage / Permissions ─────────────────────────────────────────────────────
 
 export interface StorageUsage {
-  used: number
-  limit: number
-  percent: number
+  used_bytes: number
+  used_gb: number
+  quota_gb: number
+  percentage: number
+  user_type: string
+  is_authenticated: boolean
 }
 
 // Shape returned by GET /api/permissions — capabilities use camelCase keys
@@ -519,21 +521,391 @@ export interface PermissionsInfo {
 
 // ── Server Config ─────────────────────────────────────────────────────────────
 
-export interface ServerFeatures {
-  enable_hls: boolean
-  enable_analytics: boolean
-  enable_playlists: boolean
-  enable_upload: boolean
-  enable_download: boolean
-  enable_mature_filter: boolean
-  enable_age_gate: boolean
-  enable_downloader: boolean
-  enable_remote: boolean
-  enable_suggestions: boolean
-  enable_autodiscovery: boolean
+export interface ServerSettings {
+  thumbnails: {
+    enabled: boolean
+    autoGenerate: boolean
+    width: number
+    height: number
+    video_preview_count: number
+  }
+  streaming: {
+    mobileOptimization: boolean
+  }
+  analytics: {
+    enabled: boolean
+  }
+  features: {
+    enableThumbnails: boolean
+    enableHLS: boolean
+    enableAnalytics: boolean
+    enablePlaylists: boolean
+    enableUserAuth: boolean
+    enableAdminPanel: boolean
+    enableSuggestions: boolean
+    enableAutoDiscovery: boolean
+    enableDuplicateDetection: boolean
+    enableDownloader: boolean
+  }
+  uploads: {
+    enabled: boolean
+    maxFileSize: number
+  }
+  admin: {
+    enabled: boolean
+  }
+  ui: {
+    items_per_page: number
+    mobile_items_per_page: number
+    mobile_grid_columns: number
+  }
+  age_gate: {
+    enabled: boolean
+  }
 }
 
-export interface ServerSettings {
-  version?: string
-  features: ServerFeatures
+// ── Age Gate ──────────────────────────────────────────────────────────────────
+
+export interface AgeGateStatus {
+  enabled: boolean
+  verified: boolean
+}
+
+// ── Media Stats ───────────────────────────────────────────────────────────────
+
+export interface MediaStats {
+  total_count: number
+  video_count: number
+  audio_count: number
+  total_size: number
+  last_scan: string
+}
+
+// ── HLS Capabilities ─────────────────────────────────────────────────────────
+
+export interface HLSCapabilities {
+  enabled: boolean
+  available: boolean
+  ffmpeg_found: boolean
+  ffprobe_found: boolean
+  healthy: boolean
+  message: string
+  qualities: string[]
+  auto_generate: boolean
+  max_concurrent: number
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+
+export interface UploadResult {
+  uploaded: Array<{ upload_id: string; filename: string; size: number }>
+  errors: Array<{ filename: string; error: string }>
+}
+
+// ── Thumbnail Previews ────────────────────────────────────────────────────────
+
+export interface ThumbnailPreviews {
+  previews: string[]
+}
+
+// ── Validator ─────────────────────────────────────────────────────────────────
+
+export interface ValidationResult {
+  status: string
+  validated_at: string
+  duration: number
+  video_codec?: string
+  audio_codec?: string
+  width?: number
+  height?: number
+  bitrate?: number
+  container?: string
+  issues?: string[]
+  error?: string
+  video_supported: boolean
+  audio_supported: boolean
+}
+
+export interface ValidatorStats {
+  total: number
+  validated: number
+  needs_fix: number
+  fixed: number
+  failed: number
+  unsupported: number
+}
+
+// ── Categorizer ───────────────────────────────────────────────────────────────
+
+export interface CategorizedItem {
+  id: string
+  name: string
+  category: string
+  confidence: number
+  detected_info?: Record<string, unknown>
+  categorized_at: string
+  manual_override: boolean
+}
+
+export interface CategoryStats {
+  total_items: number
+  by_category: Record<string, number>
+  manual_overrides: number
+}
+
+// ── Classify (HuggingFace) ────────────────────────────────────────────────────
+
+export interface ClassifyStatus {
+  configured: boolean
+  enabled: boolean
+  model: string
+  rate_limit: number
+  max_frames: number
+  max_concurrent: number
+  task_running?: boolean
+  task_last_run?: string
+  task_next_run?: string
+  task_last_error?: string
+  task_enabled?: boolean
+}
+
+export interface ClassifyStats {
+  total_media: number
+  mature_total: number
+  mature_classified: number
+  mature_pending: number
+  recent_items: Array<{ id: string; name: string; tags: string[]; mature_score: number; date_modified: string }>
+}
+
+// ── Remote Sources ────────────────────────────────────────────────────────────
+
+export interface RemoteSourceResponse {
+  name: string
+  url: string
+  username?: string
+  enabled: boolean
+}
+
+export interface RemoteSourceState {
+  source: RemoteSourceResponse
+  status: string
+  last_sync: string
+  media_count: number
+  error?: string
+}
+
+export interface RemoteStats {
+  source_count: number
+  cached_item_count: number
+  total_media_count: number
+  cache_size: number
+  sources: Array<{ name: string; status: string; media_count: number; last_sync: string; error?: string }>
+}
+
+export interface RemoteMediaItem {
+  id: string
+  name: string
+  url: string
+  source_name: string
+  size: number
+  content_type: string
+  duration?: number
+  metadata?: Record<string, string>
+  cached_at?: string
+}
+
+// ── Auto-Discovery ────────────────────────────────────────────────────────────
+
+export interface DiscoverySuggestion {
+  original_path: string
+  suggested_name: string
+  type: string
+  confidence: number
+  metadata?: Record<string, string>
+}
+
+// ── Receiver (master/slave) ───────────────────────────────────────────────────
+
+export interface SlaveNode {
+  id: string
+  name: string
+  base_url: string
+  status: string
+  media_count: number
+  last_seen: string
+  registered_at: string
+}
+
+export interface ReceiverStats {
+  slave_count: number
+  online_slaves: number
+  media_count: number
+  duplicate_count: number
+}
+
+export interface ReceiverDuplicate {
+  id: string
+  fingerprint: string
+  item_a: { id: string; slave_id?: string; name: string; source: string } | null
+  item_b: { id: string; slave_id?: string; name: string; source: string } | null
+  item_a_name: string
+  item_b_name: string
+  status: string
+  resolved_by?: string
+  resolved_at?: string
+  detected_at: string
+}
+
+// ── Extractor ─────────────────────────────────────────────────────────────────
+
+export interface ExtractorStats {
+  total_items: number
+  active_items: number
+  error_items: number
+}
+
+// ── Crawler ───────────────────────────────────────────────────────────────────
+
+export interface CrawlerStats {
+  total_targets: number
+  enabled_targets: number
+  total_discoveries: number
+  pending_discoveries: number
+  crawling: boolean
+}
+
+// ── Downloader ────────────────────────────────────────────────────────────────
+
+export interface DownloaderHealth {
+  online: boolean
+  activeDownloads?: number
+  queuedDownloads?: number
+  uptime?: number
+  dependencies?: Record<string, unknown>
+  error?: string
+}
+
+export interface DownloaderDetectResult {
+  url: string
+  title: string
+  isYouTube: boolean
+  isYouTubeMusic: boolean
+  streams: Array<{ url: string; quality: string; type: string; size?: number; format?: string }>
+  relayId?: string
+}
+
+export interface DownloaderSettings {
+  maxConcurrent?: number
+  downloadsDir?: string
+  allowServerStorage: boolean
+  audioFormat?: string
+  audioQuality?: string
+  videoFormat?: string
+  proxy?: { enabled: boolean }
+  supportedSites?: string[]
+}
+
+export interface ImportableFile {
+  name: string
+  size: number
+  modified: number
+  isAudio: boolean
+}
+
+export interface ImportResult {
+  source: string
+  destination: string
+  scanTriggered: boolean
+  sourceDeleted?: boolean
+}
+
+// ── Suggestion Stats ──────────────────────────────────────────────────────────
+
+export interface SuggestionStats {
+  total_profiles: number
+  total_media: number
+  total_views: number
+  total_watch_time: number
+}
+
+// ── Admin Playlists ───────────────────────────────────────────────────────────
+
+export interface AdminPlaylistListResponse {
+  items: Playlist[]
+  total_items: number
+  total_pages: number
+}
+
+export interface AdminPlaylistStats {
+  total_playlists: number
+  public_playlists: number
+  total_items: number
+}
+
+// ── HLS Validation ────────────────────────────────────────────────────────────
+
+export interface HLSValidationResult {
+  job_id: string
+  valid: boolean
+  variant_count: number
+  segment_count: number
+  errors?: string[]
+}
+
+// ── Banned IPs ────────────────────────────────────────────────────────────────
+
+export interface BannedIP {
+  ip: string
+  banned_at: string
+  expires_at?: string
+  reason: string
+}
+
+// ── Analytics Detail ──────────────────────────────────────────────────────────
+
+export interface AnalyticsEvent {
+  id: string
+  type: string
+  media_id?: string
+  user_id?: string
+  session_id?: string
+  ip_address: string
+  user_agent: string
+  timestamp: string
+  data?: Record<string, unknown>
+}
+
+export interface EventStats {
+  total_events: number
+  event_counts: Record<string, number>
+  hourly_events: number[]
+}
+
+export interface EventTypeCounts {
+  [eventType: string]: number
+}
+
+// ── Query Result ──────────────────────────────────────────────────────────────
+
+export interface QueryResult {
+  columns?: string[]
+  rows?: unknown[][]
+  rows_affected?: number
+  message?: string
+  error?: string
+  truncated?: boolean
+}
+
+// ── User Sessions ─────────────────────────────────────────────────────────────
+
+export interface UserSession {
+  id: string
+  user_id: string
+  username: string
+  role: string
+  created_at: string
+  expires_at: string
+  last_activity: string
+  ip_address: string
+  user_agent: string
 }

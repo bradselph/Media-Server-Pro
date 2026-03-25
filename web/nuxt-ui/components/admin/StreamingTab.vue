@@ -60,9 +60,9 @@ onMounted(load)
     <div v-if="stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <UCard v-for="item in [
         { label: 'Total', value: stats.total_jobs, icon: 'i-lucide-list' },
-        { label: 'Running', value: stats.running, icon: 'i-lucide-play-circle', color: 'text-info' },
-        { label: 'Completed', value: stats.completed, icon: 'i-lucide-check-circle', color: 'text-success' },
-        { label: 'Disk Used', value: formatBytes(stats.disk_used), icon: 'i-lucide-hard-drive' },
+        { label: 'Running', value: stats.running_jobs, icon: 'i-lucide-play-circle', color: 'text-info' },
+        { label: 'Completed', value: stats.completed_jobs, icon: 'i-lucide-check-circle', color: 'text-success' },
+        { label: 'Disk Used', value: formatBytes(stats.cache_size_bytes), icon: 'i-lucide-hard-drive' },
       ]" :key="item.label" :ui="{ body: 'p-4' }">
         <div class="flex items-center gap-2">
           <UIcon :name="item.icon" class="size-4 text-muted" :class="item.color" />

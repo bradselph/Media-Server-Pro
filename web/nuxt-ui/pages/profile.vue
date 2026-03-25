@@ -66,7 +66,7 @@ async function removeItem(id: string) {
   if (!id) return
   try {
     await removeHistory(id)
-    history.value = history.value.filter(h => h.media_id !== id && h.media_path !== id)
+    history.value = history.value.filter(h => h.media_id !== id)
     toast.add({ title: 'Removed from history', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
@@ -86,7 +86,7 @@ async function doClearHistory() {
 const filteredHistory = computed(() => {
   if (!historySearch.value) return history.value
   const q = historySearch.value.toLowerCase()
-  return history.value.filter(h => (h.media_name || h.title || h.media_path || '').toLowerCase().includes(q))
+  return history.value.filter(h => (h.media_name || h.media_id || '').toLowerCase().includes(q))
 })
 
 const historyTotalPages = computed(() => Math.max(1, Math.ceil(filteredHistory.value.length / historyPerPage)))
@@ -275,7 +275,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
         <div v-else class="divide-y divide-default">
           <div
             v-for="item in pagedHistory"
-            :key="item.media_id || item.media_path"
+            :key="item.media_id"
             class="flex items-center justify-between py-2 gap-3"
           >
             <div class="min-w-0">
@@ -287,7 +287,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
               size="xs"
               variant="ghost"
               color="neutral"
-              @click="removeItem(item.media_id || item.media_path || '')"
+              @click="removeItem(item.media_id)"
             />
           </div>
         </div>

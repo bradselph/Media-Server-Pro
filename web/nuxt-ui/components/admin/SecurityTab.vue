@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AuditLogEntry, IPListEntry, SecurityStats } from '~/types/api'
+import type { AuditLogEntry, IPListEntry, BannedIP, SecurityStats } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -27,12 +27,11 @@ async function loadAudit() {
     const offset = (auditPage.value - 1) * auditLimit
     const res = await adminApi.getAuditLog({ offset, limit: auditLimit })
     // API returns a plain array, not a paginated object
-    const entries = Array.isArray(res) ? res : (res?.entries ?? [])
-    auditEntries.value = entries
-    // Backend returns no total; if we get a full page there are likely more records
-    auditTotal.value = entries.length === auditLimit
-      ? auditPage.value * auditLimit + 1   // sentinel: makes next page appear
-      : (auditPage.value - 1) * auditLimit + entries.length
+    auditEntries.value = Array.isArray(res) ? res : []
+    const count = auditEntries.value.length
+    auditTotal.value = count === auditLimit
+      ? auditPage.value * auditLimit + 1
+      : (auditPage.value - 1) * auditLimit + count
   } catch {}
   finally { auditLoading.value = false }
 }
@@ -40,7 +39,7 @@ async function loadAudit() {
 // IP lists
 const whitelist = ref<IPListEntry[]>([])
 const blacklist = ref<IPListEntry[]>([])
-const banned = ref<IPListEntry[]>([])
+const banned = ref<BannedIP[]>([])
 const newIP = ref('')
 const newComment = ref('')
 const ipLoading = ref(false)
@@ -194,10 +193,11 @@ watch(subTab, (v) => {
       <UCard>
         <UTable
           :data="banned"
-          :columns="[{ key: 'ip', label: 'IP' }, { key: 'added_at', label: 'Banned At' }, { key: 'actions', label: '' }]"
+          :columns="[{ key: 'ip', label: 'IP' }, { key: 'banned_at', label: 'Banned At' }, { key: 'reason', label: 'Reason' }, { key: 'actions', label: '' }]"
         >
           <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
-          <template #added_at-cell="{ row }"><span class="text-sm">{{ new Date(row.original.added_at).toLocaleString() }}</span></template>
+          <template #banned_at-cell="{ row }"><span class="text-sm">{{ new Date(row.original.banned_at).toLocaleString() }}</span></template>
+          <template #reason-cell="{ row }"><span class="text-sm text-muted">{{ row.original.reason || '—' }}</span></template>
           <template #actions-cell="{ row }">
             <UButton icon="i-lucide-shield-off" size="xs" variant="ghost" color="warning" label="Unban" @click="unban(row.original.ip)" />
           </template>
