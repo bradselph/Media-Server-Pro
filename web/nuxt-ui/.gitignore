@@ -8,6 +8,9 @@ dist
 # Logs
 *.log
 
+# Generated from api_spec/openapi.yaml (run npm run codegen:openapi)
+types/openapi.generated.ts
+
 # Misc
 .DS_Store
 .fleet
