@@ -3,6 +3,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"media-server-pro/internal/repositories"
@@ -112,10 +113,25 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 	return &user, nil
 }
 
+// marshalJSONParam marshals a value to a JSON string for use in GORM Updates maps.
+// database/sql cannot bind complex Go types (maps, slices) directly; they must be
+// pre-serialized to JSON strings. Returns nil (SQL NULL) if v is nil.
+func marshalJSONParam(v interface{}) interface{} {
+	if v == nil {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil || string(b) == "null" {
+		return nil
+	}
+	return string(b)
+}
+
 // Update updates an existing user and related data using selective Updates()
 // so password hash is only written when intentionally changed, reducing DB load and audit noise.
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// JSON fields must be pre-serialized: database/sql cannot bind map/slice types directly.
 		userUpdates := map[string]interface{}{
 			"username":       user.Username,
 			"email":          user.Email,
@@ -125,8 +141,8 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			"last_login":     user.LastLogin,
 			"storage_used":   user.StorageUsed,
 			"active_streams": user.ActiveStreams,
-			"metadata":       user.Metadata,
-			"watch_history":  user.WatchHistory,
+			"metadata":       marshalJSONParam(user.Metadata),
+			"watch_history":  marshalJSONParam(user.WatchHistory),
 		}
 		if user.PasswordHash != "" {
 			userUpdates["password_hash"] = user.PasswordHash
@@ -170,7 +186,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			"sort_order":             user.Preferences.SortOrder,
 			"filter_category":       user.Preferences.FilterCategory,
 			"filter_media_type":     user.Preferences.FilterMediaType,
-			"custom_eq_presets":     user.Preferences.CustomEQPresets,
+			"custom_eq_presets":     marshalJSONParam(user.Preferences.CustomEQPresets),
 			"show_continue_watching": user.Preferences.ShowContinueWatching,
 			"show_recommended":      user.Preferences.ShowRecommended,
 			"show_trending":         user.Preferences.ShowTrending,
