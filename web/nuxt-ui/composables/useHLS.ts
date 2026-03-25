@@ -96,8 +96,13 @@ export function useHLS(
 
   let hlsInstance: import('hls.js').default | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
+  let checkDebounce: ReturnType<typeof setTimeout> | null = null
 
   function cleanup() {
+    if (checkDebounce) {
+      clearTimeout(checkDebounce)
+      checkDebounce = null
+    }
     if (pollTimer) {
       clearInterval(pollTimer)
       pollTimer = null
@@ -270,51 +275,58 @@ export function useHLS(
     }
   }
 
-  // Check HLS availability when media ID changes
-  watch(mediaId, async (id) => {
+  // Check HLS availability when media ID changes (debounced to prevent burst requests)
+  watch(mediaId, (id) => {
+    if (checkDebounce) {
+      clearTimeout(checkDebounce)
+      checkDebounce = null
+    }
     cleanup()
     hlsAvailable.value = false
     hlsUrl.value = null
 
     if (!id) return
 
-    try {
-      const status = await hlsApi.check(id)
-      if (status.available && status.hls_url) {
-        hlsAvailable.value = true
-        hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
-      } else if (status.status === 'running') {
-        jobRunning.value = true
-        jobProgress.value = status.progress
+    checkDebounce = setTimeout(async () => {
+      checkDebounce = null
+      try {
+        const status = await hlsApi.check(id)
+        if (status.available && status.hls_url) {
+          hlsAvailable.value = true
+          hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
+        } else if (status.status === 'running') {
+          jobRunning.value = true
+          jobProgress.value = status.progress
 
-        // Poll for completion
-        pollTimer = setInterval(async () => {
-          try {
-            const updated = await hlsApi.check(id)
-            jobProgress.value = updated.progress
-            if (updated.available && updated.hls_url) {
-              jobRunning.value = false
-              hlsAvailable.value = true
-              hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
-              if (pollTimer) {
-                clearInterval(pollTimer)
-                pollTimer = null
+          // Poll for completion
+          pollTimer = setInterval(async () => {
+            try {
+              const updated = await hlsApi.check(id)
+              jobProgress.value = updated.progress
+              if (updated.available && updated.hls_url) {
+                jobRunning.value = false
+                hlsAvailable.value = true
+                hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
+                if (pollTimer) {
+                  clearInterval(pollTimer)
+                  pollTimer = null
+                }
+              } else if (updated.status !== 'running' && updated.status !== 'pending') {
+                jobRunning.value = false
+                if (pollTimer) {
+                  clearInterval(pollTimer)
+                  pollTimer = null
+                }
               }
-            } else if (updated.status !== 'running' && updated.status !== 'pending') {
-              jobRunning.value = false
-              if (pollTimer) {
-                clearInterval(pollTimer)
-                pollTimer = null
-              }
+            } catch {
+              // Ignore poll errors
             }
-          } catch {
-            // Ignore poll errors
-          }
-        }, 3000)
+          }, 3000)
+        }
+      } catch {
+        // HLS not available or check failed — that's fine, use direct streaming
       }
-    } catch {
-      // HLS not available or check failed — that's fine, use direct streaming
-    }
+    }, 50)
   }, { immediate: true })
 
   // Cleanup on unmount
