@@ -11,6 +11,41 @@ const scanning = ref(false)
 const totalItems = ref(0)
 const totalPages = ref(1)
 
+// Edit modal
+const editTarget = ref<MediaItem | null>(null)
+const editOpen = computed({
+  get: () => !!editTarget.value,
+  set: (v: boolean) => { if (!v) editTarget.value = null },
+})
+const editForm = reactive({ name: '', category: '', is_mature: false })
+const editSaving = ref(false)
+
+function openEdit(item: MediaItem) {
+  editTarget.value = item
+  editForm.name = item.name
+  editForm.category = item.category ?? ''
+  editForm.is_mature = item.is_mature ?? false
+}
+
+async function saveEdit() {
+  if (!editTarget.value) return
+  editSaving.value = true
+  try {
+    await adminApi.updateMedia(editTarget.value.id, {
+      name: editForm.name,
+      category: editForm.category,
+      is_mature: editForm.is_mature,
+    })
+    toast.add({ title: 'Media updated', color: 'success', icon: 'i-lucide-check' })
+    editTarget.value = null
+    load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Update failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    editSaving.value = false
+  }
+}
+
 const params = reactive<AdminMediaListParams>({
   page: 1, limit: 20, search: '', sort: 'name', sort_order: 'asc', type: 'all', is_mature: 'all',
 })
@@ -186,6 +221,14 @@ onMounted(load)
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1 justify-end">
             <UButton
+              icon="i-lucide-pencil"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              title="Edit"
+              @click="openEdit(row.original)"
+            />
+            <UButton
               icon="i-lucide-image"
               size="xs"
               variant="ghost"
@@ -218,5 +261,26 @@ onMounted(load)
         @update:page="load"
       />
     </div>
+
+    <!-- Edit media modal -->
+    <UModal v-model:open="editOpen" title="Edit Media">
+      <template #body>
+        <div class="space-y-4">
+          <UFormField label="Name">
+            <UInput v-model="editForm.name" class="w-full" />
+          </UFormField>
+          <UFormField label="Category">
+            <UInput v-model="editForm.category" placeholder="e.g. Entertainment" class="w-full" />
+          </UFormField>
+          <UFormField label="Mature content">
+            <UCheckbox v-model="editForm.is_mature" label="Mark as 18+ content" />
+          </UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <UButton label="Save" :loading="editSaving" color="primary" @click="saveEdit" />
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="editOpen = false" />
+      </template>
+    </UModal>
   </div>
 </template>
