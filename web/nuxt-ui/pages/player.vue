@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, Suggestion } from '~/types/api'
+import type { MediaItem, Suggestion, Playlist } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Player' })
@@ -8,8 +8,34 @@ const route = useRoute()
 const mediaApi = useMediaApi()
 const playbackApi = usePlaybackApi()
 const suggestionsApi = useSuggestionsApi()
+const playlistApi = usePlaylistApi()
 const playbackStore = usePlaybackStore()
+const authStore = useAuthStore()
 const toast = useToast()
+
+// Playlist add
+const playlists = ref<Playlist[]>([])
+const playlistOpen = ref(false)
+const addingToPlaylist = ref(false)
+
+async function openAddToPlaylist() {
+  playlistOpen.value = true
+  if (playlists.value.length === 0) {
+    try { playlists.value = (await playlistApi.list()) ?? [] } catch { /* ignore */ }
+  }
+}
+
+async function addToPlaylist(playlistId: string) {
+  if (!mediaId.value) return
+  addingToPlaylist.value = true
+  try {
+    await playlistApi.addItem(playlistId, mediaId.value)
+    toast.add({ title: 'Added to playlist', color: 'success', icon: 'i-lucide-check' })
+    playlistOpen.value = false
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { addingToPlaylist.value = false }
+}
 
 const mediaId = computed(() => route.query.id as string | undefined)
 const media = ref<MediaItem | null>(null)
@@ -367,7 +393,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               <span class="text-muted">Quality:</span> {{ currentQualityLabel }}
             </div>
           </div>
-          <div class="flex gap-2 mt-4">
+          <div class="flex gap-2 mt-4 flex-wrap">
             <UButton
               icon="i-lucide-download"
               label="Download"
@@ -377,7 +403,42 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               :to="mediaApi.getDownloadUrl(media.id)"
               target="_blank"
             />
+            <UButton
+              v-if="authStore.isLoggedIn"
+              icon="i-lucide-list-plus"
+              label="Add to Playlist"
+              variant="outline"
+              color="neutral"
+              size="sm"
+              @click="openAddToPlaylist"
+            />
           </div>
+
+          <!-- Add to playlist modal -->
+          <UModal v-model:open="playlistOpen" title="Add to Playlist">
+            <template #body>
+              <div v-if="playlists.length === 0" class="text-center py-4 text-muted text-sm">
+                No playlists yet.
+                <NuxtLink to="/playlists" class="text-primary hover:underline ml-1">Create one</NuxtLink>
+              </div>
+              <div v-else class="space-y-1">
+                <UButton
+                  v-for="pl in playlists"
+                  :key="pl.id"
+                  :label="pl.name"
+                  variant="ghost"
+                  color="neutral"
+                  class="w-full justify-start"
+                  :loading="addingToPlaylist"
+                  @click="addToPlaylist(pl.id)"
+                />
+              </div>
+            </template>
+            <template #footer>
+              <UButton to="/playlists" icon="i-lucide-plus" label="New Playlist" variant="outline" color="neutral" size="sm" />
+              <UButton variant="ghost" color="neutral" label="Cancel" @click="playlistOpen = false" />
+            </template>
+          </UModal>
         </UCard>
         </div>
       </div>

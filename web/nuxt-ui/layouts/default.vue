@@ -21,6 +21,7 @@ const navLinks = computed(() => {
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
   ]
   if (authStore.isLoggedIn) {
+    links.push({ label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' })
     links.push({ label: 'Profile', to: '/profile', icon: 'i-lucide-user' })
     if (authStore.isAdmin) {
       links.push({ label: 'Admin', to: '/admin', icon: 'i-lucide-shield' })
