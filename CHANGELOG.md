@@ -2,6 +2,21 @@
 
 ## [0.113.0] - 2026-03-25 (minor)
 
+- fix(frontend): initialize media browser limit from user items_per_page preference
+- fix(player): debounce HLS availability check to prevent burst requests
+- fix(db): use empty model struct in GORM Updates to prevent struct field merging
+- chore: merge development — Sources/Discovery tabs, duplicate UI, home recommendations
+- feat(frontend): add continue watching and trending recommendation rows to home page
+- feat(frontend): add duplicate detection and resolution UI to receiver tab
+- chore: merge development into main, resolve VERSION conflict
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
+- Merge branch 'development'
+- fix(frontend): use computed ref for delete modal open state in playlists page
+
+
+## [0.113.0] - 2026-03-25 (minor)
+
 - chore: merge development — Sources/Discovery tabs, duplicate UI, home recommendations
 - feat(frontend): add continue watching and trending recommendation rows to home page
 - feat(frontend): add duplicate detection and resolution UI to receiver tab
