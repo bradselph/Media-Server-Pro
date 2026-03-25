@@ -294,7 +294,7 @@ watch(subTab, (v) => {
           <template #status-cell="{ row }">
             <UBadge
               :label="row.original.status"
-              :color="{ completed: 'success', running: 'info', failed: 'error', pending: 'neutral', cancelled: 'neutral' }[row.original.status] ?? 'neutral'"
+              :color="(({ completed: 'success', running: 'info', failed: 'error', pending: 'neutral', cancelled: 'neutral' } as Record<string, 'success'|'info'|'error'|'neutral'>)[row.original.status] ?? 'neutral')"
               variant="subtle"
               size="xs"
             />
@@ -320,10 +320,10 @@ watch(subTab, (v) => {
       <!-- Stats -->
       <div v-if="validatorStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <UCard v-for="item in [
-          { label: 'Total Validated', value: validatorStats.total_validated },
-          { label: 'Valid', value: validatorStats.valid_count },
-          { label: 'Invalid', value: validatorStats.invalid_count },
-          { label: 'Fixed', value: validatorStats.fixed_count },
+          { label: 'Total', value: validatorStats.total },
+          { label: 'Validated', value: validatorStats.validated },
+          { label: 'Needs Fix', value: validatorStats.needs_fix },
+          { label: 'Fixed', value: validatorStats.fixed },
         ]" :key="item.label" :ui="{ body: 'p-3' }">
           <p class="text-xl font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
           <p class="text-xs text-muted">{{ item.label }}</p>
