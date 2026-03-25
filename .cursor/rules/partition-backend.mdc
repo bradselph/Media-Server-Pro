@@ -1,0 +1,25 @@
+---
+description: Backend partition — server-only edits, contract implementation
+globs: server/**/*
+alwaysApply: false
+---
+
+# Backend agent scope
+
+You may edit **only** files under your backend partition (this repo: `server/`; see `synthesis/partitions.json`).
+
+## Must
+
+- Implement behavior that **matches** the versioned spec (this repo: `api_spec/`; OpenAPI or future Protobuf).
+- Keep request/response shapes aligned with the contract; reject invalid input per contract rules.
+- Add or update tests that prove contract compliance for changed endpoints.
+
+## Must not
+
+- Edit the frontend partition or frontend code.
+- Change the contract unless the active task is explicitly a **contract extension** handled by the contract workflow (prefer separate change-sets).
+- Add endpoints or fields not present in the contract.
+
+## If the API is insufficient
+
+Stop and add a **contract extension proposal** under `docs/contract-extensions/` using `docs/contract-extensions/TEMPLATE.md`. Do not implement the feature in the backend until the contract is updated and versioned.

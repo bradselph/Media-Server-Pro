@@ -289,11 +289,11 @@ watch(subTab, (v) => {
           v-else
           :data="backups"
           :columns="[
-            { key: 'filename', label: 'File' },
-            { key: 'type', label: 'Type' },
-            { key: 'size', label: 'Size' },
-            { key: 'created_at', label: 'Created' },
-            { key: 'actions', label: '' },
+            { accessorKey: 'filename', header: 'File' },
+            { accessorKey: 'type', header: 'Type' },
+            { accessorKey: 'size', header: 'Size' },
+            { accessorKey: 'created_at', header: 'Created' },
+            { accessorKey: 'actions', header: '' },
           ]"
         >
           <template #size-cell="{ row }">{{ formatBytes(row.original.size) }}</template>

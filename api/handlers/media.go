@@ -421,25 +421,26 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 
 	isInitialRequest := req.RangeHeader == "" || strings.HasPrefix(req.RangeHeader, "bytes=0-")
-	if isInitialRequest && h.analytics != nil {
-		// Use the stable UUID (id) so analytics keys match client-submitted events.
-		h.analytics.TrackView(c.Request.Context(), analytics.ViewParams{
-			MediaID:   id,
-			UserID:    userID,
-			SessionID: sessionID,
-			IPAddress: req.IPAddress,
-			UserAgent: req.UserAgent,
-		})
-	}
-
-	if h.suggestions != nil && userID != "" {
-		if item, err := h.media.GetMedia(absPath); err == nil && item != nil {
-			h.suggestions.RecordView(userID, absPath, item.Category, string(item.Type), 0)
+	if isInitialRequest && h.tryRecordView(userID, id) {
+		if h.analytics != nil {
+			h.analytics.TrackView(c.Request.Context(), analytics.ViewParams{
+				MediaID:   id,
+				UserID:    userID,
+				SessionID: sessionID,
+				IPAddress: req.IPAddress,
+				UserAgent: req.UserAgent,
+			})
 		}
-	}
 
-	if err := h.media.IncrementViews(c.Request.Context(), absPath); err != nil {
-		h.log.Warn("Failed to increment view count for %s: %v", absPath, err)
+		if h.suggestions != nil && userID != "" {
+			if item, err := h.media.GetMedia(absPath); err == nil && item != nil {
+				h.suggestions.RecordView(userID, absPath, item.Category, string(item.Type), 0)
+			}
+		}
+
+		if err := h.media.IncrementViews(c.Request.Context(), absPath); err != nil {
+			h.log.Warn("Failed to increment view count for %s: %v", absPath, err)
+		}
 	}
 
 	if err := h.streaming.Stream(c.Writer, c.Request, req); err != nil {

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/synthesis/project_settings.schema.json",
+  "title": "Synthesis project settings",
+  "type": "object",
+  "required": ["version", "paths", "integration", "git", "ci", "project", "steering", "models"],
+  "properties": {
+    "version": { "type": "integer" },
+    "initialized": { "type": "boolean" },
+    "paths": {
+      "type": "object",
+      "required": ["contract_dir", "openapi_spec", "backend_dir", "frontend_dir", "has_frontend"],
+      "properties": {
+        "contract_dir": { "type": "string" },
+        "openapi_spec": { "type": "string" },
+        "backend_dir": { "type": "string" },
+        "frontend_dir": { "type": "string" },
+        "has_frontend": { "type": "boolean" }
+      }
+    },
+    "integration": {
+      "type": "object",
+      "properties": {
+        "app_module": { "type": "string" },
+        "port": { "type": "integer" }
+      }
+    },
+    "git": {
+      "type": "object",
+      "properties": {
+        "partition_check_base": { "type": "string" }
+      }
+    },
+    "ci": {
+      "type": "object",
+      "properties": {
+        "client_install_cmd": { "type": "string" },
+        "client_check_cmd": { "type": "string" },
+        "backend_install_cmd": { "type": "string" },
+        "backend_test_cmd": { "type": "string" },
+        "skip_client_job": { "type": "boolean" },
+        "skip_integration_smoke": { "type": "boolean" },
+        "skip_backend_tests": { "type": "boolean" }
+      }
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "goals": { "type": "string" },
+        "constraints": { "type": "string" },
+        "tech_notes": { "type": "string" }
+      }
+    },
+    "steering": {
+      "type": "object",
+      "properties": {
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": { "type": "string" },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "models": {
+      "type": "object",
+      "properties": {
+        "questions_before_start": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "properties": {
+        "reference_example_prefixes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "use_bundled_demo_paths": { "type": "boolean" }
+      }
+    },
+    "prior_agents": {
+      "type": "object",
+      "properties": {
+        "discovered_at": { "type": "string" },
+        "known_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "import_summary": { "type": "string" },
+        "framework_path_allowlist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Extra paths merged into partitions.json framework_paths for partition checker"
+        }
+      }
+    }
+  }
+}

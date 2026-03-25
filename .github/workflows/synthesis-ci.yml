@@ -1,0 +1,71 @@
+name: Synthesis CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  synthesis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve CI paths from project settings
+        run: python3 scripts/resolve_ci_paths.py
+
+      - name: Partition boundary check
+        run: |
+          git fetch origin main:refs/remotes/origin/main 2>/dev/null || true
+          python3 scripts/check_partition_boundaries.py --base "${SYNTHESIS_PARTITION_BASE}" --head HEAD
+
+      - name: Install CI script dependencies
+        run: pip install -r scripts/requirements-ci.txt
+
+      - name: Validate OpenAPI spec
+        run: python3 scripts/validate_openapi.py
+
+      - name: Completeness scan
+        run: python3 scripts/check_completeness.py
+
+      - name: Install backend (dev)
+        if: env.SYNTHESIS_SKIP_BACKEND_TESTS != 'true'
+        working-directory: ${{ env.SYNTHESIS_BACKEND_DIR }}
+        run: pip install -e ".[dev]"
+
+      - name: Backend tests
+        if: env.SYNTHESIS_SKIP_BACKEND_TESTS != 'true'
+        working-directory: ${{ env.SYNTHESIS_BACKEND_DIR }}
+        run: python3 -m pytest -q
+
+      - name: Integration smoke (GET /health)
+        if: env.SYNTHESIS_SKIP_INTEGRATION_SMOKE != 'true'
+        run: python3 scripts/integration_smoke.py
+
+      - uses: actions/setup-node@v4
+        if: env.SYNTHESIS_SKIP_CLIENT_JOB != 'true'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ env.SYNTHESIS_CLIENT_LOCK }}
+
+      - name: Install client dependencies
+        if: env.SYNTHESIS_SKIP_CLIENT_JOB != 'true'
+        working-directory: ${{ env.SYNTHESIS_FRONTEND_DIR }}
+        run: npm ci
+
+      - name: Generate types from OpenAPI
+        if: env.SYNTHESIS_SKIP_CLIENT_JOB != 'true'
+        working-directory: ${{ env.SYNTHESIS_FRONTEND_DIR }}
+        run: npm run codegen
+
+      - name: Typecheck client
+        if: env.SYNTHESIS_SKIP_CLIENT_JOB != 'true'
+        working-directory: ${{ env.SYNTHESIS_FRONTEND_DIR }}
+        run: npm run typecheck

@@ -65,25 +65,7 @@ export function normalizePreferences(input: unknown): UserPreferences {
 }
 
 export function toPreferencesPatch(input: Partial<UserPreferences>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...input }
-
-  if (Object.prototype.hasOwnProperty.call(input, 'show_mature')) {
-    out.show_mature_content = input.show_mature
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'show_analytics')) {
-    out.collect_analytics = input.show_analytics
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'show_continue_watching')) {
-    out.show_home_continue_watching = input.show_continue_watching
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'show_recommended')) {
-    out.show_home_suggestions = input.show_recommended
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'show_trending')) {
-    out.show_home_recently_added = input.show_trending
-  }
-
-  return out
+  return { ...input }
 }
 
 export function normalizeUser(input: unknown): User | null {
@@ -98,13 +80,16 @@ export function normalizeUser(input: unknown): User | null {
     username,
     email: asString(src.email) || undefined,
     role: (asString(src.role, 'viewer') as User['role']),
+    type: asString(src.type, 'standard'),
     enabled: asBoolean(src.enabled, true),
     created_at: asString(src.created_at),
     last_login: asString(src.last_login) || undefined,
-    storage_used: typeof src.storage_used === 'number' ? src.storage_used : undefined,
+    storage_used: asNumber(src.storage_used, 0),
+    active_streams: asNumber(src.active_streams, 0),
     watch_history: Array.isArray(src.watch_history) ? (src.watch_history as User['watch_history']) : undefined,
     permissions: normalizePermissions(src.permissions),
     preferences: normalizePreferences(src.preferences),
+    metadata: (asRecord(src.metadata) ?? undefined) as User['metadata'],
   }
 }
 
@@ -112,6 +97,7 @@ export function normalizeSession(input: unknown): SessionCheckResponse {
   const src = asRecord(input) ?? {}
   return {
     authenticated: asBoolean(src.authenticated, false),
+    allow_guests: asBoolean(src.allow_guests, false),
     user: normalizeUser(src.user) ?? undefined,
   }
 }
