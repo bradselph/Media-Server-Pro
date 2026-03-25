@@ -24,6 +24,7 @@ const TABS = [
   { label: 'System', value: 'system', icon: 'i-lucide-settings' },
   { label: 'Updates', value: 'updates', icon: 'i-lucide-download' },
   { label: 'Content', value: 'content', icon: 'i-lucide-scan' },
+  { label: 'Sources', value: 'sources', icon: 'i-lucide-server' },
 ]
 
 const VALID = TABS.map(t => t.value)
@@ -76,6 +77,7 @@ watch(activeTab, tab => {
             <AdminSystemTab v-else-if="item.value === 'system'" />
             <AdminUpdatesTab v-else-if="item.value === 'updates'" />
             <AdminContentTab v-else-if="item.value === 'content'" />
+            <AdminSourcesTab v-else-if="item.value === 'sources'" />
           </div>
         </template>
       </UTabs>
