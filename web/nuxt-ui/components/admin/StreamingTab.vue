@@ -47,8 +47,9 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
 }
 
-function statusColor(status: HLSJob['status']) {
-  return { pending: 'neutral', running: 'info', completed: 'success', failed: 'error', cancelled: 'warning' }[status] ?? 'neutral'
+function statusColor(status: HLSJob['status']): 'neutral' | 'info' | 'success' | 'error' | 'warning' {
+  const map = { pending: 'neutral', running: 'info', completed: 'success', failed: 'error', cancelled: 'warning' } as const
+  return map[status] ?? 'neutral'
 }
 
 onMounted(load)
@@ -89,12 +90,12 @@ onMounted(load)
         v-else
         :data="jobs"
         :columns="[
-          { key: 'id', label: 'ID' },
-          { key: 'status', label: 'Status' },
-          { key: 'progress', label: 'Progress' },
-          { key: 'qualities', label: 'Qualities' },
-          { key: 'started_at', label: 'Started' },
-          { key: 'actions', label: '' },
+          { accessorKey: 'id', header: 'ID' },
+          { accessorKey: 'status', header: 'Status' },
+          { accessorKey: 'progress', header: 'Progress' },
+          { accessorKey: 'qualities', header: 'Qualities' },
+          { accessorKey: 'started_at', header: 'Started' },
+          { accessorKey: 'actions', header: '' },
         ]"
       >
         <template #id-cell="{ row }">

@@ -114,12 +114,12 @@ watch(subTab, (v) => {
           v-else
           :data="auditEntries"
           :columns="[
-            { key: 'timestamp', label: 'Time' },
-            { key: 'username', label: 'User' },
-            { key: 'action', label: 'Action' },
-            { key: 'resource', label: 'Resource' },
-            { key: 'ip_address', label: 'IP' },
-            { key: 'success', label: 'Result' },
+            { accessorKey: 'timestamp', header: 'Time' },
+            { accessorKey: 'username', header: 'User' },
+            { accessorKey: 'action', header: 'Action' },
+            { accessorKey: 'resource', header: 'Resource' },
+            { accessorKey: 'ip_address', header: 'IP' },
+            { accessorKey: 'success', header: 'Result' },
           ]"
           class="text-sm"
         >
@@ -166,7 +166,7 @@ watch(subTab, (v) => {
         <UCard>
           <UTable
             :data="subTab === 'whitelist' ? whitelist : blacklist"
-            :columns="[{ key: 'ip', label: 'IP' }, { key: 'comment', label: 'Comment' }, { key: 'added_at', label: 'Added' }, { key: 'actions', label: '' }]"
+            :columns="[{ accessorKey: 'ip', header: 'IP' }, { accessorKey: 'comment', header: 'Comment' }, { accessorKey: 'added_at', header: 'Added' }, { accessorKey: 'actions', header: '' }]"
           >
             <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
             <template #comment-cell="{ row }"><span class="text-sm text-muted">{{ row.original.comment || '—' }}</span></template>
@@ -193,7 +193,7 @@ watch(subTab, (v) => {
       <UCard>
         <UTable
           :data="banned"
-          :columns="[{ key: 'ip', label: 'IP' }, { key: 'banned_at', label: 'Banned At' }, { key: 'reason', label: 'Reason' }, { key: 'actions', label: '' }]"
+          :columns="[{ accessorKey: 'ip', header: 'IP' }, { accessorKey: 'banned_at', header: 'Banned At' }, { accessorKey: 'reason', header: 'Reason' }, { accessorKey: 'actions', header: '' }]"
         >
           <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
           <template #banned_at-cell="{ row }"><span class="text-sm">{{ new Date(row.original.banned_at).toLocaleString() }}</span></template>

@@ -139,12 +139,12 @@ onUnmounted(() => clearInterval(interval))
           v-else
           :data="streams"
           :columns="[
-            { key: 'user_id', label: 'User' },
-            { key: 'media_id', label: 'Media ID' },
-            { key: 'quality', label: 'Quality' },
-            { key: 'bytes_sent', label: 'Sent' },
-            { key: 'ip_address', label: 'Client IP' },
-            { key: 'started_at', label: 'Since' },
+            { accessorKey: 'user_id', header: 'User' },
+            { accessorKey: 'media_id', header: 'Media ID' },
+            { accessorKey: 'quality', header: 'Quality' },
+            { accessorKey: 'bytes_sent', header: 'Sent' },
+            { accessorKey: 'ip_address', header: 'Client IP' },
+            { accessorKey: 'started_at', header: 'Since' },
           ]"
           class="text-sm"
         >
@@ -173,10 +173,10 @@ onUnmounted(() => clearInterval(interval))
         <UTable
           :data="uploads"
           :columns="[
-            { key: 'filename', label: 'File' },
-            { key: 'user_id', label: 'User' },
-            { key: 'progress', label: 'Progress' },
-            { key: 'status', label: 'Status' },
+            { accessorKey: 'filename', header: 'File' },
+            { accessorKey: 'user_id', header: 'User' },
+            { accessorKey: 'progress', header: 'Progress' },
+            { accessorKey: 'status', header: 'Status' },
           ]"
           class="text-sm"
         >

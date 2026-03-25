@@ -212,12 +212,12 @@ function formatDuration(secs?: number): string {
       <UTable
         :data="items"
         :columns="[
-          { key: 'name', label: 'Name' },
-          { key: 'type', label: 'Type' },
-          { key: 'duration', label: 'Duration' },
-          { key: 'category', label: 'Category' },
-          { key: 'views', label: 'Views' },
-          { key: 'date_added', label: 'Added' },
+          { accessorKey: 'name', header: 'Name' },
+          { accessorKey: 'type', header: 'Type' },
+          { accessorKey: 'duration', header: 'Duration' },
+          { accessorKey: 'category', header: 'Category' },
+          { accessorKey: 'views', header: 'Views' },
+          { accessorKey: 'date_added', header: 'Added' },
         ]"
       >
         <template #name-cell="{ row }">

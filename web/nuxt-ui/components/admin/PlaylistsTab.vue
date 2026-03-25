@@ -62,12 +62,12 @@ onMounted(load)
         v-else
         :data="playlists"
         :columns="[
-          { key: 'name', label: 'Name' },
-          { key: 'user_id', label: 'Owner' },
-          { key: 'items', label: 'Items' },
-          { key: 'is_public', label: 'Visibility' },
-          { key: 'created_at', label: 'Created' },
-          { key: 'actions', label: '' },
+          { accessorKey: 'name', header: 'Name' },
+          { accessorKey: 'user_id', header: 'Owner' },
+          { accessorKey: 'items', header: 'Items' },
+          { accessorKey: 'is_public', header: 'Visibility' },
+          { accessorKey: 'created_at', header: 'Created' },
+          { accessorKey: 'actions', header: '' },
         ]"
       >
         <template #name-cell="{ row }">

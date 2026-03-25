@@ -143,14 +143,14 @@ onMounted(load)
         v-else
         :data="items"
         :columns="[
-          { key: 'name', label: 'Name' },
-          { key: 'type', label: 'Type' },
-          { key: 'size', label: 'Size' },
-          { key: 'duration', label: 'Duration' },
-          { key: 'category', label: 'Category' },
-          { key: 'views', label: 'Views' },
-          { key: 'is_mature', label: 'Mature' },
-          { key: 'actions', label: '' },
+          { accessorKey: 'name', header: 'Name' },
+          { accessorKey: 'type', header: 'Type' },
+          { accessorKey: 'size', header: 'Size' },
+          { accessorKey: 'duration', header: 'Duration' },
+          { accessorKey: 'category', header: 'Category' },
+          { accessorKey: 'views', header: 'Views' },
+          { accessorKey: 'is_mature', header: 'Mature' },
+          { accessorKey: 'actions', header: '' },
         ]"
       >
         <template #name-cell="{ row }">

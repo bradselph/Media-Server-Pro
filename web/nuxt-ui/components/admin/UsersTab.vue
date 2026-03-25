@@ -125,12 +125,12 @@ onMounted(load)
         v-else
         :data="filtered"
         :columns="[
-          { key: 'username', label: 'Username' },
-          { key: 'email', label: 'Email' },
-          { key: 'role', label: 'Role' },
-          { key: 'enabled', label: 'Status' },
-          { key: 'created_at', label: 'Created' },
-          { key: 'actions', label: '' },
+          { accessorKey: 'username', header: 'Username' },
+          { accessorKey: 'email', header: 'Email' },
+          { accessorKey: 'role', header: 'Role' },
+          { accessorKey: 'enabled', header: 'Status' },
+          { accessorKey: 'created_at', header: 'Created' },
+          { accessorKey: 'actions', header: '' },
         ]"
       >
         <template #username-cell="{ row }">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { UserPreferences, WatchHistoryItem } from '~/types/api'
-import { THEMES } from '~/stores/theme'
+import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
@@ -38,7 +38,7 @@ async function savePrefs() {
     const toSave = { ...prefs.value }
     if (toSave.default_quality === 'auto') toSave.default_quality = ''
     await updatePreferences(toSave)
-    if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as string)
+    if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ThemeValue)
     toast.add({ title: 'Preferences saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
@@ -187,8 +187,9 @@ onMounted(() => { loadPrefs(); loadHistory() })
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <UFormField label="Theme">
             <USelect
-              v-model="prefs.theme"
+              :model-value="prefs.theme as ThemeValue"
               :items="THEMES.map(t => ({ label: t.name, value: t.value }))"
+              @update:model-value="prefs.theme = $event as string"
             />
           </UFormField>
           <UFormField label="Default Quality">
@@ -230,7 +231,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
               { key: 'show_mature', label: 'Show Mature Content' },
               { key: 'show_analytics', label: 'Analytics' },
             ]" :key="toggle.key" class="flex items-center gap-2">
-              <USwitch v-model="(prefs as Record<string, unknown>)[toggle.key]" />
+              <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]" @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event" />
               <span class="text-sm">{{ toggle.label }}</span>
             </div>
           </div>
@@ -319,7 +320,7 @@ onMounted(() => { loadPrefs(); loadHistory() })
       </UCard>
 
       <!-- Danger zone -->
-      <UCard v-if="!authStore.isAdmin" :ui="{ ring: 'ring-1 ring-error/30' }">
+      <UCard v-if="!authStore.isAdmin" :ui="{ root: 'ring-1 ring-error/30' }">
         <template #header>
           <div class="flex items-center gap-2 font-semibold text-error">
             <UIcon name="i-lucide-triangle-alert" class="size-4" />
