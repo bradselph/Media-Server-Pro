@@ -243,30 +243,32 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             <div class="flex items-center gap-3">
               <UButton
                 :icon="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
+                :aria-label="isPlaying ? 'Pause' : 'Play'"
                 variant="ghost"
                 color="neutral"
-                size="xs"
+                size="sm"
                 class="text-white hover:text-white"
                 @click="togglePlay"
               />
-              <UButton icon="i-lucide-rewind" variant="ghost" color="neutral" size="xs" class="text-white" @click="seek(-10)" />
-              <UButton icon="i-lucide-fast-forward" variant="ghost" color="neutral" size="xs" class="text-white" @click="seek(10)" />
+              <UButton icon="i-lucide-rewind" aria-label="Rewind 10 seconds" variant="ghost" color="neutral" size="sm" class="text-white" @click="seek(-10)" />
+              <UButton icon="i-lucide-fast-forward" aria-label="Forward 10 seconds" variant="ghost" color="neutral" size="sm" class="text-white" @click="seek(10)" />
 
               <span class="text-white text-xs font-mono ml-1">
                 {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
               </span>
 
               <div class="ml-auto flex items-center gap-2">
-                <UButton :label="`${playbackSpeed}x`" variant="ghost" color="neutral" size="xs" class="text-white text-xs" @click="cycleSpeed" />
+                <UButton :label="`${playbackSpeed}x`" aria-label="Playback speed" variant="ghost" color="neutral" size="sm" class="text-white text-xs" @click="cycleSpeed" />
 
                 <!-- Quality selector (HLS only) -->
                 <UDropdownMenu v-if="qualities.length > 0" :items="qualityMenuItems">
                   <UButton
                     :label="currentQualityLabel"
                     icon="i-lucide-layers"
+                    aria-label="Video quality"
                     variant="ghost"
                     color="neutral"
-                    size="xs"
+                    size="sm"
                     class="text-white text-xs"
                     @click.stop
                   />
@@ -278,6 +280,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
                   max="1"
                   step="0.05"
                   :value="volume"
+                  aria-label="Volume"
                   class="w-16 h-1 accent-primary"
                   @input="setVolume(+($event.target as HTMLInputElement).value)"
                   @click.stop
@@ -285,9 +288,10 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
 
                 <UButton
                   :icon="isFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
+                  :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
                   variant="ghost"
                   color="neutral"
-                  size="xs"
+                  size="sm"
                   class="text-white"
                   @click="toggleFullscreen"
                 />

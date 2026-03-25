@@ -104,6 +104,7 @@ function formatDuration(secs?: number): string {
       />
       <UButton
         :icon="params.sort_order === 'asc' ? 'i-lucide-arrow-up-az' : 'i-lucide-arrow-down-az'"
+        :aria-label="params.sort_order === 'asc' ? 'Sort descending' : 'Sort ascending'"
         variant="ghost"
         color="neutral"
         size="sm"
@@ -114,16 +115,18 @@ function formatDuration(secs?: number): string {
         <UButtonGroup>
           <UButton
             icon="i-lucide-grid-2x2"
+            aria-label="Grid view"
             :variant="viewMode === 'grid' ? 'solid' : 'ghost'"
             :color="viewMode === 'grid' ? 'primary' : 'neutral'"
-            size="xs"
+            size="sm"
             @click="viewMode = 'grid'"
           />
           <UButton
             icon="i-lucide-list"
+            aria-label="List view"
             :variant="viewMode === 'list' ? 'solid' : 'ghost'"
             :color="viewMode === 'list' ? 'primary' : 'neutral'"
-            size="xs"
+            size="sm"
             @click="viewMode = 'list'"
           />
         </UButtonGroup>
@@ -162,17 +165,14 @@ function formatDuration(secs?: number): string {
       >
         <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2">
           <img
-            v-if="item.thumbnail_url || item.id"
+            v-if="item.type !== 'audio'"
             :src="mediaApi.getThumbnailUrl(item.id)"
             :alt="getDisplayTitle(item)"
             class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
             loading="lazy"
           />
           <div v-else class="w-full h-full flex items-center justify-center">
-            <UIcon
-              :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'"
-              class="size-8 text-muted"
-            />
+            <UIcon name="i-lucide-music" class="size-8 text-muted" />
           </div>
           <!-- Duration badge -->
           <div

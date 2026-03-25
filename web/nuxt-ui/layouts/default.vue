@@ -56,6 +56,7 @@ const navLinks = computed(() => {
         <div class="flex items-center gap-2">
           <UButton
             :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
+            :aria-label="colorMode.value === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
             variant="ghost"
             color="neutral"
             size="sm"
@@ -68,6 +69,7 @@ const navLinks = computed(() => {
               color="neutral"
               size="sm"
               icon="i-lucide-log-out"
+              aria-label="Log out"
               @click="handleLogout"
             />
           </template>
