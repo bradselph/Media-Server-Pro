@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.112.0] - 2026-03-25 (minor)
+
+- fix(frontend): improve accessibility by adding aria-labels to additional buttons and enhancing touch targets
+
+
 ## [0.111.0] - 2026-03-25 (minor)
 
 - fix(frontend): add aria-label to all icon-only buttons in admin tabs and profile page
