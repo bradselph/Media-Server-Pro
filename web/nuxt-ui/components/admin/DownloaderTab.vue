@@ -97,7 +97,7 @@ onMounted(load)
           <span class="text-sm">{{ formatBytes(row.original.size) }}</span>
         </template>
         <template #created-cell="{ row }">
-          <span class="text-sm text-muted">{{ row.original.created ? new Date(row.original.created * 1000).toLocaleString() : '—' }}</span>
+          <span class="text-sm text-muted">{{ row.original.created ? new Date(row.original.created).toLocaleString() : '—' }}</span>
         </template>
         <template #actions-cell="{ row }">
           <UButton
