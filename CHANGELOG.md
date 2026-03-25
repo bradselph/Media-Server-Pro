@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.113.0] - 2026-03-25 (minor)
+
+- chore: merge development — Sources/Discovery tabs, duplicate UI, home recommendations
+- feat(frontend): add continue watching and trending recommendation rows to home page
+- feat(frontend): add duplicate detection and resolution UI to receiver tab
+- chore: merge development into main, resolve VERSION conflict
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
+- Merge branch 'development'
+- fix(frontend): use computed ref for delete modal open state in playlists page
+
+
+## [0.113.0] - 2026-03-25 (minor)
+
+- feat(frontend): add Content admin tab with scanner review queue, HLS job management, and validator
+- feat(frontend): user-facing playlists page with create/view/delete and Add to Playlist from player
+- fix(frontend): add aria-label to downloader delete button
+- fix(frontend): downloader created date — remove erroneous *1000 (field is already ms)
+- chore: sync development with main
+
+
 ## [0.112.0] - 2026-03-25 (minor)
 
 - fix(frontend): improve accessibility by adding aria-labels to additional buttons and enhancing touch targets
