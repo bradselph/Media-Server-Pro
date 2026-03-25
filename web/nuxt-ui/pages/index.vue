@@ -27,7 +27,15 @@ async function loadRecommendations() {
 }
 
 watch(() => authStore.isLoggedIn, (loggedIn) => {
-  if (loggedIn) loadRecommendations()
+  if (loggedIn) {
+    loadRecommendations()
+    const pref = authStore.user?.preferences?.items_per_page
+    if (pref && pref !== params.limit) {
+      params.limit = pref
+      params.page = 1
+      load()
+    }
+  }
 }, { immediate: true })
 
 // State
@@ -39,7 +47,7 @@ const loadError = ref('')
 
 const params = reactive({
   page: 1,
-  limit: 24,
+  limit: authStore.user?.preferences?.items_per_page ?? 24,
   search: '',
   type: 'all',
   category: 'all',
