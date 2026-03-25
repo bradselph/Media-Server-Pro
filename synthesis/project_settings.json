@@ -27,7 +27,7 @@
   "project": {
     "name": "media-server-pro",
     "goals": "Stream media (video, audio, images) to authenticated users with admin management, HLS transcoding, content moderation, remote source federation, and a Nuxt UI frontend",
-    "constraints": "Backend is Go 1.26 + Gin; frontend is Nuxt 3 + @nuxt/ui v3; old Vite frontend in web/frontend/ is legacy (read-only reference). No OpenAPI spec exists yet — contract is implicit in Go route definitions.",
+    "constraints": "Backend is Go 1.26 + Gin; frontend is Nuxt 3 + @nuxt/ui v3; old Vite frontend in web/frontend/ is legacy (read-only reference). API contract: api_spec/openapi.yaml (validated in CI).",
     "tech_notes": "Go module: media-server-pro. Backend entry: cmd/server/main.go. Routes: api/routes/routes.go. Models: pkg/models/models.go. Handlers: api/handlers/. Business logic: internal/. Frontend (primary): web/nuxt-ui/ (Nuxt 3 + @nuxt/ui v3). Frontend (legacy): web/frontend/ (Vite + TS, comprehensive but being replaced). Embedded SPA served by web/server.go."
   },
   "steering": {

@@ -57,7 +57,7 @@
       "paths": [
         "api_spec/"
       ],
-      "description": "OpenAPI spec (to be created). Source of truth for the API surface shared between backend and frontend."
+      "description": "OpenAPI 3 spec (api_spec/openapi.yaml). Source of truth for the API surface shared between backend and frontend."
     }
   },
   "shared_readonly_paths": [

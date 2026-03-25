@@ -8,6 +8,27 @@ on:
 jobs:
   synthesis:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: mediaserver
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=8s
+          --health-timeout=5s
+          --health-retries=8
+
+    env:
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: "3306"
+      DATABASE_NAME: mediaserver
+      DATABASE_USERNAME: root
+      DATABASE_PASSWORD: root
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,15 +55,19 @@ jobs:
       - name: Completeness scan
         run: python3 scripts/check_completeness.py
 
-      - name: Install backend (dev)
+      - uses: actions/setup-go@v5
         if: env.SYNTHESIS_SKIP_BACKEND_TESTS != 'true'
-        working-directory: ${{ env.SYNTHESIS_BACKEND_DIR }}
-        run: pip install -e ".[dev]"
+        with:
+          go-version-file: go.mod
+          cache: true
 
-      - name: Backend tests
+      - name: Backend tests (Go)
         if: env.SYNTHESIS_SKIP_BACKEND_TESTS != 'true'
-        working-directory: ${{ env.SYNTHESIS_BACKEND_DIR }}
-        run: python3 -m pytest -q
+        run: go test ./...
+
+      - name: Install FFmpeg (thumbnails module)
+        if: env.SYNTHESIS_SKIP_INTEGRATION_SMOKE != 'true'
+        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Integration smoke (GET /health)
         if: env.SYNTHESIS_SKIP_INTEGRATION_SMOKE != 'true'
@@ -55,17 +80,12 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ env.SYNTHESIS_CLIENT_LOCK }}
 
-      - name: Install client dependencies
+      - name: Install Nuxt UI dependencies
         if: env.SYNTHESIS_SKIP_CLIENT_JOB != 'true'
         working-directory: ${{ env.SYNTHESIS_FRONTEND_DIR }}
         run: npm ci
 
-      - name: Generate types from OpenAPI
+      - name: Check Nuxt UI (typecheck + build)
         if: env.SYNTHESIS_SKIP_CLIENT_JOB != 'true'
         working-directory: ${{ env.SYNTHESIS_FRONTEND_DIR }}
-        run: npm run codegen
-
-      - name: Typecheck client
-        if: env.SYNTHESIS_SKIP_CLIENT_JOB != 'true'
-        working-directory: ${{ env.SYNTHESIS_FRONTEND_DIR }}
-        run: npm run typecheck
+        run: npm run check

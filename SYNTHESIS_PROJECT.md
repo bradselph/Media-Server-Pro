@@ -67,15 +67,15 @@ _(none)_
 
 ### Goals
 
-Stream media (video, audio, images) to authenticated users with admin management, HLS transcoding, content moderation, remote source federation, and a Nuxt UI frontend.
+Stream media (video, audio, images) to authenticated users with admin management, HLS transcoding, content moderation, remote source federation, and a Nuxt UI frontend
 
 ### Constraints / non-goals
 
-Backend is Go 1.26 + Gin; frontend is Nuxt 3 + @nuxt/ui v3; old Vite frontend in web/frontend/ is legacy (read-only reference). No OpenAPI spec exists yet — contract is implicit in Go route definitions.
+Backend is Go 1.26 + Gin; frontend is Nuxt 3 + @nuxt/ui v3; old Vite frontend in web/frontend/ is legacy (read-only reference). API contract: api_spec/openapi.yaml (validated in CI).
 
 ### Tech / stack notes
 
-Go module: `media-server-pro`. Backend entry: `cmd/server/main.go`. Routes: `api/routes/routes.go`. Models: `pkg/models/models.go`. Handlers: `api/handlers/`. Business logic: `internal/`. Frontend (primary): `web/nuxt-ui/` (Nuxt 3 + @nuxt/ui v3). Frontend (legacy): `web/frontend/` (Vite + TS, comprehensive but being replaced). Embedded SPA served by `web/server.go`.
+Go module: media-server-pro. Backend entry: cmd/server/main.go. Routes: api/routes/routes.go. Models: pkg/models/models.go. Handlers: api/handlers/. Business logic: internal/. Frontend (primary): web/nuxt-ui/ (Nuxt 3 + @nuxt/ui v3). Frontend (legacy): web/frontend/ (Vite + TS, comprehensive but being replaced). Embedded SPA served by web/server.go.
 
 ---
 
@@ -84,10 +84,9 @@ Go module: `media-server-pro`. Backend entry: `cmd/server/main.go`. Routes: `api
 | Role | Path |
 |------|------|
 | Contract directory | `api_spec` |
-| OpenAPI file | `api_spec/openapi.yaml` (to be created) |
-| Backend | `.` (Go — `api/`, `cmd/`, `internal/`, `pkg/`) |
-| Frontend (primary) | `web/nuxt-ui` |
-| Frontend (legacy) | `web/frontend` |
+| OpenAPI file | `api_spec/openapi.yaml` |
+| Backend | `.` |
+| Frontend | `web/nuxt-ui` |
 
 ### Integration smoke
 
@@ -96,8 +95,8 @@ Go module: `media-server-pro`. Backend entry: `cmd/server/main.go`. Routes: `api
 
 ### CI commands (local or workflow)
 
-| Step | Command |
-|------|---------|
+| Step | Command / skip |
+|------|----------------|
 | Backend install | `go mod download` |
 | Backend tests | `go test ./...` | skip: `False` |
 | Client install | `npm ci` | skip job: `False` |
@@ -108,8 +107,9 @@ Go module: `media-server-pro`. Backend entry: `cmd/server/main.go`. Routes: `api
 
 ## Steering log (recent)
 
-- **2026-03-24**: Initial alignment audit. Found SYNTHESIS_PROJECT.md misconfigured (assumed Python/ASGI, actual is Go/Gin). No OpenAPI spec exists. Two frontends: `web/nuxt-ui/` (primary, ~55% route coverage) and `web/frontend/` (legacy, ~100% route coverage). Major Nuxt UI type mismatches identified in ServerSettings, StorageUsage, HLSStats, ThumbnailStats, WatchHistoryItem, Suggestion, SessionCheckResponse. ~56 backend endpoints missing from Nuxt UI.
+- **2026-03-24**: Initial alignment audit. Found SYNTHESIS_PROJECT.md misconfigured (assumed Python/ASGI, actual is Go/Gin). Two frontends: `web/nuxt-ui/` (primary, ~55% route coverage) and `web/frontend/` (legacy, ~100% route coverage). Major Nuxt UI type mismatches identified in ServerSettings, StorageUsage, HLSStats, ThumbnailStats, WatchHistoryItem, Suggestion, SessionCheckResponse. ~56 backend endpoints missing from Nuxt UI.
+- **2026-03-25**: Canonical OpenAPI at `api_spec/openapi.yaml`. Synthesis CI aligned with Go + MySQL service + FFmpeg + Nuxt `npm run check`; integration smoke uses `go run ./cmd/server`.
 
 ---
 
-_Regenerated: 2026-03-25 01:30 UTC_
+_Regenerated: 2026-03-25 04:15 UTC_
