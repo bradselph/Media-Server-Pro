@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "nuxt generate",
+    "check": "nuxi typecheck && nuxt generate",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxi typecheck"
   },
   "dependencies": {
     "@nuxt/icon": "^1.12.0",
