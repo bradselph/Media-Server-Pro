@@ -10,7 +10,7 @@
   },
   "integration": {
     "app_module": "cmd/server/main.go",
-    "port": 8765
+    "port": 8080
   },
   "git": {
     "partition_check_base": "origin/main"

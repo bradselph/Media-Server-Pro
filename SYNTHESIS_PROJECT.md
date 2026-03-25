@@ -92,7 +92,7 @@ Go module: `media-server-pro`. Backend entry: `cmd/server/main.go`. Routes: `api
 ### Integration smoke
 
 - **Go entry**: `cmd/server/main.go`
-- **Port**: `8765`
+- **Port**: `8080`
 
 ### CI commands (local or workflow)
 

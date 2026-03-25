@@ -4,11 +4,7 @@ const router = useRouter()
 const colorMode = useColorMode()
 
 async function handleLogout() {
-  const { logout } = useApiEndpoints()
-  try {
-    await logout()
-  } catch {}
-  authStore.clear()
+  await authStore.logout()
   router.push('/login')
 }
 
