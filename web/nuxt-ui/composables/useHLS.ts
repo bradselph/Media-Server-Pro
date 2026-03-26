@@ -40,7 +40,7 @@ export interface UseHLSReturn {
   /** Select a quality level by index (-1 for auto). */
   selectQuality: (index: number) => void
   /** Activate HLS playback (switch from direct to HLS). */
-  activateHLS: () => void
+  activateHLS: () => Promise<void>
   /** HLS job progress (0-100) while generating. */
   jobProgress: Ref<number>
   /** Whether HLS job is currently generating. */
@@ -155,6 +155,9 @@ export function useHLS(
       return
     }
 
+    // Re-validate after async import — component may have unmounted
+    if (!videoRef.value || !videoRef.value.isConnected) return
+
     if (!Hls.isSupported()) {
       hlsError.value = 'HLS not supported in this browser'
       hlsLoading.value = false
@@ -266,9 +269,13 @@ export function useHLS(
     hls.attachMedia(el)
   }
 
-  function activateHLS() {
+  async function activateHLS() {
     if (hlsUrl.value) {
       hlsActivated.value = true
+      // Wait for Vue to patch the DOM (removes :src binding) before hls.js
+      // takes control of the video element — prevents a race where Vue's
+      // nextTick DOM update overwrites hls.js's MediaSource blob URL.
+      await nextTick()
       attachHLS(hlsUrl.value).catch(() => {
         hlsActivated.value = false
       })
