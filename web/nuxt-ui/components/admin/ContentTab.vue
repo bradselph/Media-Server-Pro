@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { FileScanResult, HLSJob, ScannerStats, HLSStats, ValidatorStats } from '~/types/api'
+import type { FileScanResult, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -104,6 +104,21 @@ async function deleteHLSJob(id: string) {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
+}
+
+const hlsValidating = ref<string | null>(null)
+const hlsValidationResult = ref<HLSValidationResult | null>(null)
+
+async function validateHLSJob(id: string) {
+  hlsValidating.value = id
+  hlsValidationResult.value = null
+  try {
+    hlsValidationResult.value = await adminApi.validateHLS(id)
+    const ok = hlsValidationResult.value.valid
+    toast.add({ title: ok ? 'HLS output is valid' : 'HLS validation failed', color: ok ? 'success' : 'warning', icon: ok ? 'i-lucide-check' : 'i-lucide-alert-triangle' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Validation failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { hlsValidating.value = null }
 }
 
 async function cleanInactiveLocks() {
@@ -309,9 +324,37 @@ watch(subTab, (v) => {
             <span class="text-xs text-muted">{{ row.original.started_at ? new Date(row.original.started_at).toLocaleString() : '—' }}</span>
           </template>
           <template #actions-cell="{ row }">
-            <UButton icon="i-lucide-trash-2" aria-label="Delete HLS job" size="xs" variant="ghost" color="error" @click="deleteHLSJob(row.original.id)" />
+            <div class="flex gap-1">
+              <UButton
+                v-if="row.original.status === 'completed'"
+                icon="i-lucide-shield-check"
+                aria-label="Validate HLS output"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="hlsValidating === row.original.id"
+                @click="validateHLSJob(row.original.id)"
+              />
+              <UButton icon="i-lucide-trash-2" aria-label="Delete HLS job" size="xs" variant="ghost" color="error" @click="deleteHLSJob(row.original.id)" />
+            </div>
           </template>
         </UTable>
+      </UCard>
+      <!-- Validation result -->
+      <UCard v-if="hlsValidationResult">
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon
+              :name="hlsValidationResult.valid ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
+              :class="hlsValidationResult.valid ? 'text-success' : 'text-warning'"
+              class="size-4"
+            />
+            HLS Validation — {{ hlsValidationResult.valid ? 'Valid' : 'Invalid' }}
+            <span class="text-muted font-normal text-xs ml-2">{{ hlsValidationResult.variant_count }} variant(s)</span>
+            <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" class="ml-auto" @click="hlsValidationResult = null" />
+          </div>
+        </template>
+        <p class="font-mono text-xs text-muted">{{ hlsValidationResult.job_id }}</p>
       </UCard>
     </div>
 
