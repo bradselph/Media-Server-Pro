@@ -106,7 +106,7 @@ func (m *Module) finalizeJobCompleted(job *models.HLSJob) {
 	m.jobsMu.Lock()
 	job.Status = models.HLSStatusCompleted
 	job.Progress = 100
-	job.CompletedAt = new(time.Now())
+	completedAt := time.Now(); job.CompletedAt = &completedAt
 	delete(m.jobCancels, job.ID)
 	m.jobsMu.Unlock()
 	if err := m.saveJobs(); err != nil {
