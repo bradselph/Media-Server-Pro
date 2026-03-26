@@ -86,6 +86,28 @@ async function requestHlsGeneration() {
   } finally { requestingHls.value = false }
 }
 
+// Seek bar thumbnail previews
+const thumbnailPreviews = ref<string[]>([])
+const seekBarHoverTime = ref(0)
+const seekBarHoverX = ref(0)
+const seekBarHovering = ref(false)
+
+function onSeekBarMouseMove(e: MouseEvent) {
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+  seekBarHoverTime.value = fraction * duration.value
+  seekBarHoverX.value = e.clientX - rect.left
+}
+
+const seekBarPreviewUrl = computed(() => {
+  if (!thumbnailPreviews.value.length || !duration.value) return null
+  const idx = Math.min(
+    Math.floor((seekBarHoverTime.value / duration.value) * thumbnailPreviews.value.length),
+    thumbnailPreviews.value.length - 1,
+  )
+  return thumbnailPreviews.value[idx] ?? null
+})
+
 // Similar & personalized recommendations
 const similar = ref<Suggestion[]>([])
 const personalized = ref<Suggestion[]>([])
@@ -119,6 +141,7 @@ async function loadMedia(id: string) {
   error.value = ''
   similar.value = []
   personalized.value = []
+  thumbnailPreviews.value = []
   try {
     media.value = await mediaApi.getById(id)
     userRating.value = 0
@@ -127,6 +150,7 @@ async function loadMedia(id: string) {
     if (authStore.isLoggedIn) {
       suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch(() => {})
     }
+    mediaApi.getThumbnailPreviews(id).then(r => { thumbnailPreviews.value = r?.previews ?? [] }).catch(() => {})
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load media'
   } finally {
@@ -333,7 +357,23 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             @click.stop
           >
             <!-- Progress bar -->
-            <div class="w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer" @click="seekTo">
+            <div
+              class="relative w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer"
+              @click="seekTo"
+              @mousemove="onSeekBarMouseMove"
+              @mouseenter="seekBarHovering = true"
+              @mouseleave="seekBarHovering = false"
+            >
+              <Transition name="fade">
+                <div
+                  v-if="seekBarHovering && seekBarPreviewUrl"
+                  class="absolute bottom-4 -translate-x-1/2 pointer-events-none z-10"
+                  :style="{ left: `${seekBarHoverX}px` }"
+                >
+                  <img :src="seekBarPreviewUrl" class="w-28 h-16 object-cover rounded border border-white/20 shadow-lg" />
+                  <p class="text-center text-white text-xs mt-0.5 drop-shadow">{{ formatTime(seekBarHoverTime) }}</p>
+                </div>
+              </Transition>
               <div
                 class="h-full bg-primary rounded-full pointer-events-none"
                 :style="{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }"
