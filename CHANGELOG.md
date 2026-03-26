@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.114.0] - 2026-03-26 (minor)
+
+- docs: update audit report — all critical/high/medium bugs resolved
+- fix: correct new(time.Now()) and new(*T) pointer semantics across codebase
+- fix(hls): correct new(time.Now()) — CompletedAt was always epoch
+- fix(frontend): remove /upload/** proxy rule that collided with SPA /upload route during prerender
+- fix(auth): log session LastActivity persist errors instead of silently discarding
+- fix(hls): log stack trace on panic instead of swallowing it
+- fix(api): preserve redirect URL on 401 session expiry
+- fix(frontend): surface scanning and initializing states in media library
+- fix(player): add mature content gate and clear stale suggestions on navigation
+- fix(admin): return rejected_keys in config update response
+- fix(auth): correct new() pointer semantics — LastLogin, LockedAt, user copy, HLS job copy
+- feat(admin): add bulk selection and bulk actions to MediaTab
+- feat(admin): add user sessions viewer to UsersTab
+- fix(admin): correct ValidatorStats field names and HLS job status badge color type
+- feat(frontend): add media upload page with drag-and-drop and file browser
+- chore: merge development — mature content gate, ratings, media edit, HLS debounce
+- feat(admin): add edit media modal to MediaTab
+- feat(player): add star ratings and personalized recommendations
+- fix(frontend): implement mature content gate on media library page
+- Merge branch 'main' into development
+- fix(frontend): initialize media browser limit from user items_per_page preference
+- fix(player): debounce HLS availability check to prevent burst requests
+- fix(frontend): initialize media browser limit from user items_per_page preference
+- fix(player): debounce HLS availability check to prevent burst requests
+- fix(db): use empty model struct in GORM Updates to prevent struct field merging
+- fix(db): use empty model struct in GORM Updates to prevent struct field merging
+- chore: merge development — Sources/Discovery tabs, duplicate UI, home recommendations
+- feat(frontend): add continue watching and trending recommendation rows to home page
+- feat(frontend): add duplicate detection and resolution UI to receiver tab
+- chore: merge development into main, resolve VERSION conflict
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
+- Merge branch 'development'
+- fix(frontend): use computed ref for delete modal open state in playlists page
+
+
 ## [0.113.0] - 2026-03-25 (minor)
 
 - chore: merge development — mature content gate, ratings, media edit, HLS debounce
