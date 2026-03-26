@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.117.0] - 2026-03-26 (minor)
+
+- fix: LOAD_FILE block, Cf-Visitor cookie clearing, eliminate double load()
+- fix: batch watch history name lookup and cap playback position
+- fix: add change-password and delete-account to strict auth rate limiter
+- fix: data race and cache/DB divergence in watch history mutations
+
+
 ## [0.116.0] - 2026-03-26 (minor)
 
 - feat: add missing preference toggles to profile page
