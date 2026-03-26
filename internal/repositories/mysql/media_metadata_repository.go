@@ -230,8 +230,12 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 		query = query.Where("is_mature = ?", *filter.IsMature)
 	}
 	if filter.Search != "" {
-		like := "%" + escapeLike(filter.Search) + "%"
-		query = query.Where("path LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\'", like, like)
+		// Split into words so "blonde sassy" matches items containing both words
+		// anywhere in path or category (AND logic: every word must appear).
+		for _, word := range strings.Fields(filter.Search) {
+			like := "%" + escapeLike(word) + "%"
+			query = query.Where("(path LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\')", like, like)
+		}
 	}
 	if filter.Type == "video" {
 		query = query.Where("LOWER(path) REGEXP ?", `\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts|m2ts|vob|ogv)$`)
@@ -369,10 +373,10 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 	}
 
 	if row.LastPlayed != nil {
-		metadata.LastPlayed = new(row.LastPlayed.Format(time.RFC3339))
+		s := row.LastPlayed.Format(time.RFC3339); metadata.LastPlayed = &s
 	}
 	if row.ProbeModTime != nil {
-		metadata.ProbeModTime = new(*row.ProbeModTime)
+		t := *row.ProbeModTime; metadata.ProbeModTime = &t
 	}
 	metadata.BlurHash = row.BlurHash
 

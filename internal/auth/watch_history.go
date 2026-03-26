@@ -51,7 +51,11 @@ func (m *Module) AddToWatchHistory(ctx context.Context, username string, item mo
 	return nil
 }
 
-// ClearWatchHistory clears a user's watch history
+// ClearWatchHistory clears a user's watch history.
+// Uses a copy-before-unlock pattern to prevent data races: the DB write happens
+// after the lock is released, so we pass a snapshot copy rather than the live
+// pointer. We also keep the old slice around so we can roll the cache back if
+// the DB write fails, avoiding cache/DB divergence.
 func (m *Module) ClearWatchHistory(ctx context.Context, username string) error {
 	m.usersMu.Lock()
 
@@ -61,18 +65,33 @@ func (m *Module) ClearWatchHistory(ctx context.Context, username string) error {
 		return ErrUserNotFound
 	}
 
+	// Snapshot old history so we can roll back on DB failure.
+	oldHistory := user.WatchHistory
+
+	// Update cache optimistically.
 	user.WatchHistory = make([]models.WatchHistoryItem, 0)
+
+	// Build a copy to pass to the DB write (lock released before IO).
+	userCopy := *user
+	userCopy.WatchHistory = nil
 
 	m.usersMu.Unlock()
 
-	if err := m.userRepo.Update(ctx, user); err != nil {
+	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after clearing watch history: %v", err)
+		// Roll the cache back to avoid cache/DB divergence.
+		m.usersMu.Lock()
+		if u, ok := m.users[username]; ok {
+			u.WatchHistory = oldHistory
+		}
+		m.usersMu.Unlock()
 		return err
 	}
 	return nil
 }
 
-// RemoveWatchHistoryItem removes a single item from a user's watch history by media path
+// RemoveWatchHistoryItem removes a single item from a user's watch history by media path.
+// Uses a copy-before-unlock pattern (same rationale as ClearWatchHistory).
 func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath string) error {
 	m.usersMu.Lock()
 
@@ -82,18 +101,34 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 		return ErrUserNotFound
 	}
 
+	// Snapshot old history for rollback.
+	oldHistory := user.WatchHistory
+
 	updated := make([]models.WatchHistoryItem, 0, len(user.WatchHistory))
 	for _, item := range user.WatchHistory {
 		if item.MediaPath != mediaPath {
 			updated = append(updated, item)
 		}
 	}
+
+	// Update cache optimistically.
 	user.WatchHistory = updated
+
+	// Build a safe copy for the DB write.
+	userCopy := *user
+	userCopy.WatchHistory = make([]models.WatchHistoryItem, len(updated))
+	copy(userCopy.WatchHistory, updated)
 
 	m.usersMu.Unlock()
 
-	if err := m.userRepo.Update(ctx, user); err != nil {
+	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after removing watch history item: %v", err)
+		// Roll back cache to avoid divergence.
+		m.usersMu.Lock()
+		if u, ok := m.users[username]; ok {
+			u.WatchHistory = oldHistory
+		}
+		m.usersMu.Unlock()
 		return err
 	}
 	return nil

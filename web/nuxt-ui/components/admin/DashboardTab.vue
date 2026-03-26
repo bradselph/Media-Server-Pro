@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ModuleHealth } from '~/types/api'
+import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ModuleHealth, ServerSettings } from '~/types/api'
 
 const adminApi = useAdminApi()
+const settingsApi = useSettingsApi()
 const toast = useToast()
+
+const settings = ref<ServerSettings | null>(null)
 
 const stats = ref<AdminStats | null>(null)
 const system = ref<SystemInfo | null>(null)
@@ -44,16 +47,18 @@ function moduleStatusColor(status: ModuleHealth['status']) {
 async function loadAll() {
   statsLoading.value = true
   try {
-    const [s, sys, str, upl] = await Promise.allSettled([
+    const [s, sys, str, upl, sett] = await Promise.allSettled([
       adminApi.getStats(),
       adminApi.getSystemInfo(),
       adminApi.getActiveStreams(),
       adminApi.getActiveUploads(),
+      settingsApi.get(),
     ])
     if (s.status === 'fulfilled') stats.value = s.value
     if (sys.status === 'fulfilled') system.value = sys.value
     if (str.status === 'fulfilled') streams.value = str.value ?? []
     if (upl.status === 'fulfilled') uploads.value = upl.value ?? []
+    if (sett.status === 'fulfilled') settings.value = sett.value
   } finally {
     statsLoading.value = false
   }
@@ -218,6 +223,27 @@ onUnmounted(() => clearInterval(interval))
             <span class="text-muted truncate">{{ m.name }}</span>
             <UBadge :label="m.status" :color="moduleStatusColor(m.status)" size="xs" variant="subtle" />
           </div>
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Features panel -->
+    <UCard v-if="settings">
+      <template #header>
+        <div class="flex items-center gap-2 font-semibold">
+          <UIcon name="i-lucide-toggle-right" class="size-4" />
+          Feature Flags
+        </div>
+      </template>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+        <div
+          v-for="[name, enabled] in Object.entries(settings.features)"
+          :key="name"
+          class="flex items-center justify-between text-xs rounded px-2 py-1.5"
+          :class="enabled ? 'bg-success/10' : 'bg-muted'"
+        >
+          <span class="text-muted truncate">{{ name.replace(/^enable/, '').replace(/([A-Z])/g, ' $1').trim() }}</span>
+          <UIcon :name="enabled ? 'i-lucide-check' : 'i-lucide-minus'" :class="enabled ? 'text-success' : 'text-muted'" class="size-3 shrink-0 ml-1" />
         </div>
       </div>
     </UCard>

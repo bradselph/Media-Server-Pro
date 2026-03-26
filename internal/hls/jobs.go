@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -20,10 +21,12 @@ func copyHLSJob(j *models.HLSJob) *models.HLSJob {
 	c := *j
 	c.Qualities = append([]string(nil), j.Qualities...)
 	if j.CompletedAt != nil {
-		c.CompletedAt = new(*j.CompletedAt)
+		t := *j.CompletedAt
+		c.CompletedAt = &t
 	}
 	if j.LastAccessedAt != nil {
-		c.LastAccessedAt = new(*j.LastAccessedAt)
+		t := *j.LastAccessedAt
+		c.LastAccessedAt = &t
 	}
 	return &c
 }
@@ -145,7 +148,7 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 		defer m.activeJobs.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				m.log.Error("Panic in HLS transcode for job %s: %v", p.JobID, r)
+				m.log.Error("Panic in HLS transcode for job %s: %v\n%s", p.JobID, r, debug.Stack())
 				m.updateJobStatus(&updateJobStatusParams{JobID: p.JobID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Internal error: %v", r), Progress: 0})
 			}
 		}()

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AnalyticsSummary, DailyStats, TopMediaItem } from '~/types/api'
+import type { AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts, AnalyticsEvent } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const analyticsApi = useAnalyticsApi()
@@ -9,15 +9,47 @@ const toast = useToast()
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
 const topMedia = ref<TopMediaItem[]>([])
+const eventStats = ref<EventStats | null>(null)
+const eventTypeCounts = ref<EventTypeCounts | null>(null)
 const loading = ref(true)
 const period = ref('7d')
 
-function formatBytes(bytes: number): string {
-  if (!bytes) return '—'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
+// Event drill-down
+const drillMode = ref<'type' | 'media' | 'user'>('type')
+const drillType = ref('')
+const drillMediaId = ref('')
+const drillUserId = ref('')
+const drillEvents = ref<AnalyticsEvent[]>([])
+const drillLoading = ref(false)
+
+async function drillByType() {
+  if (!drillType.value.trim()) return
+  drillLoading.value = true
+  try {
+    drillEvents.value = (await analyticsApi.getEventsByType(drillType.value.trim(), 50)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { drillLoading.value = false }
+}
+
+async function drillByMedia() {
+  if (!drillMediaId.value.trim()) return
+  drillLoading.value = true
+  try {
+    drillEvents.value = (await analyticsApi.getEventsByMedia(drillMediaId.value.trim(), 50)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { drillLoading.value = false }
+}
+
+async function drillByUser() {
+  if (!drillUserId.value.trim()) return
+  drillLoading.value = true
+  try {
+    drillEvents.value = (await analyticsApi.getEventsByUser(drillUserId.value.trim(), 50)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { drillLoading.value = false }
 }
 
 function formatTime(secs?: number): string {
@@ -30,14 +62,18 @@ function formatTime(secs?: number): string {
 async function load() {
   loading.value = true
   try {
-    const [s, d, t] = await Promise.allSettled([
+    const [s, d, t, es, etc] = await Promise.allSettled([
       analyticsApi.getSummary(period.value),
       analyticsApi.getDaily(period.value === '7d' ? 7 : period.value === '30d' ? 30 : undefined),
       analyticsApi.getTopMedia(20),
+      analyticsApi.getEventStats(),
+      analyticsApi.getEventTypeCounts(),
     ])
     if (s.status === 'fulfilled') summary.value = s.value
     if (d.status === 'fulfilled') daily.value = d.value ?? []
     if (t.status === 'fulfilled') topMedia.value = t.value ?? []
+    if (es.status === 'fulfilled') eventStats.value = es.value
+    if (etc.status === 'fulfilled') eventTypeCounts.value = etc.value
   } finally {
     loading.value = false
   }
@@ -103,6 +139,92 @@ onMounted(load)
         </div>
       </UCard>
     </div>
+
+    <!-- Event stats -->
+    <div v-if="eventStats || eventTypeCounts" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <UCard v-if="eventStats">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-activity" class="size-4" />
+            Event Stats
+          </div>
+        </template>
+        <div class="space-y-1 text-sm">
+          <div class="flex justify-between">
+            <span class="text-muted">Total Events</span>
+            <span class="font-medium">{{ (eventStats.total_events ?? 0).toLocaleString() }}</span>
+          </div>
+          <div v-for="(count, type) in eventStats.event_counts" :key="String(type)" class="flex justify-between">
+            <span class="text-muted capitalize">{{ String(type).replace(/_/g, ' ') }}</span>
+            <span>{{ (count as number).toLocaleString() }}</span>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard v-if="eventTypeCounts && Object.keys(eventTypeCounts).length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-bar-chart" class="size-4" />
+            Event Types
+          </div>
+        </template>
+        <div class="space-y-1.5">
+          <div v-for="(count, type) in eventTypeCounts" :key="String(type)" class="flex items-center gap-2">
+            <span class="text-sm text-muted capitalize flex-1">{{ String(type).replace(/_/g, ' ') }}</span>
+            <span class="text-sm font-medium">{{ (count as number).toLocaleString() }}</span>
+          </div>
+        </div>
+      </UCard>
+    </div>
+
+    <!-- Event drill-down -->
+    <UCard>
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-search" class="size-4" />
+            Event Drill-Down
+          </div>
+          <UButtonGroup>
+            <UButton v-for="m in [{ label: 'By Type', value: 'type' }, { label: 'By Media', value: 'media' }, { label: 'By User', value: 'user' }]"
+              :key="m.value" :label="m.label" size="xs"
+              :variant="drillMode === m.value ? 'solid' : 'outline'"
+              :color="drillMode === m.value ? 'primary' : 'neutral'"
+              @click="drillMode = m.value as 'type' | 'media' | 'user'; drillEvents = []"
+            />
+          </UButtonGroup>
+        </div>
+      </template>
+      <div v-if="drillMode === 'type'" class="flex gap-2">
+        <UInput v-model="drillType" placeholder="Event type (e.g. view, play, download)" class="flex-1" @keyup.enter="drillByType" />
+        <UButton :loading="drillLoading" icon="i-lucide-search" label="Search" :disabled="!drillType.trim()" @click="drillByType" />
+      </div>
+      <div v-else-if="drillMode === 'media'" class="flex gap-2">
+        <UInput v-model="drillMediaId" placeholder="Media ID" class="flex-1" @keyup.enter="drillByMedia" />
+        <UButton :loading="drillLoading" icon="i-lucide-search" label="Search" :disabled="!drillMediaId.trim()" @click="drillByMedia" />
+      </div>
+      <div v-else class="flex gap-2">
+        <UInput v-model="drillUserId" placeholder="User ID" class="flex-1" @keyup.enter="drillByUser" />
+        <UButton :loading="drillLoading" icon="i-lucide-search" label="Search" :disabled="!drillUserId.trim()" @click="drillByUser" />
+      </div>
+      <div v-if="drillLoading" class="flex justify-center py-4 mt-2">
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+      </div>
+      <div v-else-if="drillEvents.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
+        <div v-for="ev in drillEvents" :key="ev.id" class="py-2 text-sm flex items-start gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <UBadge :label="ev.type" color="neutral" variant="subtle" size="xs" />
+              <span v-if="ev.media_id" class="font-mono text-xs text-muted">{{ ev.media_id.slice(0, 8) }}…</span>
+              <span v-if="ev.user_id" class="text-xs text-muted">{{ ev.user_id }}</span>
+              <span v-if="ev.ip_address" class="text-xs text-muted">{{ ev.ip_address }}</span>
+            </div>
+            <p class="text-xs text-muted mt-0.5">{{ ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '' }}</p>
+          </div>
+        </div>
+      </div>
+      <p v-else-if="!drillLoading && (drillType || drillMediaId || drillUserId) && drillEvents.length === 0" class="text-center py-4 text-muted text-sm mt-2">No events found.</p>
+    </UCard>
 
     <!-- Top media -->
     <UCard v-if="topMedia.length > 0">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
@@ -10,7 +10,18 @@ const themeStore = useThemeStore()
 const router = useRouter()
 const { changePassword, deleteAccount, getPreferences, updatePreferences } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
+const { getUsage, getPermissions } = useStorageApi()
 const toast = useToast()
+
+const storageUsage = ref<StorageUsage | null>(null)
+const permissionsInfo = ref<PermissionsInfo | null>(null)
+async function loadStorageUsage() {
+  try {
+    const [u, p] = await Promise.allSettled([getUsage(), getPermissions()])
+    if (u.status === 'fulfilled') storageUsage.value = u.value
+    if (p.status === 'fulfilled') permissionsInfo.value = p.value
+  } catch { /* optional */ }
+}
 
 // Redirect if not logged in
 watchEffect(() => {
@@ -140,7 +151,7 @@ async function handleDeleteAccount() {
   }
 }
 
-onMounted(() => { loadPrefs(); loadHistory() })
+onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
 </script>
 
 <template>
@@ -163,11 +174,28 @@ onMounted(() => { loadPrefs(); loadHistory() })
           <div class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xl font-bold">
             {{ authStore.username[0]?.toUpperCase() }}
           </div>
-          <div>
+          <div class="flex-1 min-w-0">
             <p class="font-semibold text-lg">{{ authStore.username }}</p>
-            <div class="flex items-center gap-2 mt-1">
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
               <UBadge :label="authStore.user.role" :color="authStore.isAdmin ? 'warning' : 'neutral'" variant="subtle" size="xs" />
               <span class="text-sm text-muted">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
+            </div>
+            <div v-if="storageUsage" class="mt-2 max-w-xs space-y-1">
+              <div class="flex justify-between text-xs text-muted">
+                <span>Storage</span>
+                <span>{{ storageUsage.used_gb.toFixed(2) }} GB / {{ storageUsage.quota_gb > 0 ? storageUsage.quota_gb + ' GB' : 'Unlimited' }}</span>
+              </div>
+              <UProgress :value="storageUsage.quota_gb > 0 ? storageUsage.percentage : 0" size="xs" :color="storageUsage.percentage > 90 ? 'error' : storageUsage.percentage > 70 ? 'warning' : 'success'" />
+            </div>
+            <div v-if="permissionsInfo?.capabilities" class="mt-2 flex flex-wrap gap-1.5">
+              <UBadge
+                v-for="[cap, allowed] in Object.entries(permissionsInfo.capabilities)"
+                :key="cap"
+                :label="cap.replace(/^can/, '').replace(/([A-Z])/g, ' $1').trim()"
+                :color="allowed ? 'success' : 'neutral'"
+                :variant="allowed ? 'subtle' : 'outline'"
+                size="xs"
+              />
             </div>
           </div>
         </div>
@@ -230,6 +258,9 @@ onMounted(() => { loadPrefs(); loadHistory() })
               { key: 'resume_playback', label: 'Resume Playback' },
               { key: 'show_mature', label: 'Show Mature Content' },
               { key: 'show_analytics', label: 'Analytics' },
+              { key: 'show_continue_watching', label: 'Continue Watching' },
+              { key: 'show_recommended', label: 'Recommended' },
+              { key: 'show_trending', label: 'Trending' },
             ]" :key="toggle.key" class="flex items-center gap-2">
               <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]" @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event" />
               <span class="text-sm">{{ toggle.label }}</span>

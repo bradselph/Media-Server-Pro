@@ -1,15 +1,59 @@
 <script setup lang="ts">
-import type { MediaItem, AdminMediaListParams } from '~/types/api'
+import type { MediaItem, AdminMediaListParams, ThumbnailStats } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const adminApi = useAdminApi()
+const hlsApi = useHlsApi()
 const toast = useToast()
+
+const thumbStats = ref<ThumbnailStats | null>(null)
+async function loadThumbStats() {
+  try { thumbStats.value = await adminApi.getThumbnailStats() }
+  catch { /* optional — suppress if endpoint unavailable */ }
+}
 
 const items = ref<MediaItem[]>([])
 const loading = ref(true)
 const scanning = ref(false)
 const totalItems = ref(0)
 const totalPages = ref(1)
+
+// Bulk selection
+const selectedIds = ref(new Set<string>())
+const allPageSelected = computed(() =>
+  items.value.length > 0 && items.value.every(item => selectedIds.value.has(item.id)),
+)
+function toggleSelectAll() {
+  if (allPageSelected.value) {
+    items.value.forEach(item => selectedIds.value.delete(item.id))
+  } else {
+    items.value.forEach(item => selectedIds.value.add(item.id))
+  }
+  selectedIds.value = new Set(selectedIds.value)
+}
+function toggleSelect(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+const bulkRunning = ref(false)
+async function runBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  bulkRunning.value = true
+  try {
+    const res = await adminApi.bulkMedia(ids, action, data)
+    const msg = action === 'delete' ? `Deleted ${res?.success ?? ids.length} items` : `Updated ${res?.success ?? ids.length} items`
+    toast.add({ title: msg, color: 'success', icon: 'i-lucide-check' })
+    selectedIds.value = new Set()
+    load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Bulk action failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    bulkRunning.value = false
+  }
+}
 
 // Edit modal
 const editTarget = ref<MediaItem | null>(null)
@@ -117,11 +161,31 @@ function sortBy(col: string) {
 
 watch([() => params.type, () => params.is_mature], () => { params.page = 1; load() })
 
-onMounted(load)
+onMounted(() => { load(); loadThumbStats() })
 </script>
 
 <template>
   <div class="space-y-4">
+    <!-- Thumbnail stats -->
+    <div v-if="thumbStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ thumbStats.total_thumbnails.toLocaleString() }}</p>
+        <p class="text-xs text-muted">Thumbnails</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ thumbStats.total_size_mb.toFixed(1) }} MB</p>
+        <p class="text-xs text-muted">Thumbnail Size</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold" :class="thumbStats.pending_generation > 0 ? 'text-warning' : 'text-highlighted'">{{ thumbStats.pending_generation.toLocaleString() }}</p>
+        <p class="text-xs text-muted">Pending Generation</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold" :class="thumbStats.generation_errors > 0 ? 'text-error' : 'text-highlighted'">{{ thumbStats.generation_errors.toLocaleString() }}</p>
+        <p class="text-xs text-muted">Generation Errors</p>
+      </UCard>
+    </div>
+
     <!-- Toolbar -->
     <div class="flex flex-wrap gap-2 items-center justify-between">
       <div class="flex flex-wrap gap-2">
@@ -165,9 +229,54 @@ onMounted(load)
       </div>
     </div>
 
-    <p class="text-sm text-muted">
-      {{ totalItems.toLocaleString() }} items
-    </p>
+    <div class="flex items-center justify-between">
+      <p class="text-sm text-muted">
+        {{ totalItems.toLocaleString() }} items
+      </p>
+      <span v-if="selectedIds.size > 0" class="text-sm text-primary font-medium">
+        {{ selectedIds.size }} selected
+      </span>
+    </div>
+
+    <!-- Bulk action bar -->
+    <div v-if="selectedIds.size > 0" class="flex flex-wrap items-center gap-2 p-3 bg-elevated rounded-lg border border-default">
+      <span class="text-sm font-medium">{{ selectedIds.size }} item{{ selectedIds.size !== 1 ? 's' : '' }} selected</span>
+      <UButton
+        icon="i-lucide-shield"
+        label="Mark Mature"
+        size="xs"
+        variant="outline"
+        color="warning"
+        :loading="bulkRunning"
+        @click="runBulk('update', { is_mature: true })"
+      />
+      <UButton
+        icon="i-lucide-shield-off"
+        label="Unmark Mature"
+        size="xs"
+        variant="outline"
+        color="neutral"
+        :loading="bulkRunning"
+        @click="runBulk('update', { is_mature: false })"
+      />
+      <UButton
+        icon="i-lucide-trash-2"
+        label="Delete Selected"
+        size="xs"
+        variant="outline"
+        color="error"
+        :loading="bulkRunning"
+        @click="runBulk('delete')"
+      />
+      <UButton
+        icon="i-lucide-x"
+        label="Clear"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        @click="selectedIds = new Set()"
+      />
+    </div>
 
     <!-- Table -->
     <UCard>
@@ -178,6 +287,7 @@ onMounted(load)
         v-else
         :data="items"
         :columns="[
+          { accessorKey: '_select', header: '' },
           { accessorKey: 'name', header: 'Name' },
           { accessorKey: 'type', header: 'Type' },
           { accessorKey: 'size', header: 'Size' },
@@ -188,6 +298,21 @@ onMounted(load)
           { accessorKey: 'actions', header: '' },
         ]"
       >
+        <template #_select-header>
+          <UCheckbox
+            :model-value="allPageSelected"
+            aria-label="Select all"
+            @update:model-value="toggleSelectAll"
+          />
+        </template>
+        <template #_select-cell="{ row }">
+          <UCheckbox
+            :model-value="selectedIds.has(row.original.id)"
+            aria-label="Select row"
+            @update:model-value="toggleSelect(row.original.id)"
+          />
+        </template>
+
         <template #name-cell="{ row }">
           <div class="max-w-xs truncate text-sm font-medium" :title="getDisplayTitle(row.original)">
             {{ getDisplayTitle(row.original) }}
@@ -235,6 +360,15 @@ onMounted(load)
               color="neutral"
               title="Generate thumbnail"
               @click="adminApi.generateThumbnail(row.original.id).then(() => toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' }))"
+            />
+            <UButton
+              v-if="row.original.type !== 'audio'"
+              icon="i-lucide-video"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              title="Generate HLS"
+              @click="hlsApi.generate(row.original.id).then(() => toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'HLS generation failed', color: 'error', icon: 'i-lucide-x' }))"
             />
             <UButton
               icon="i-lucide-trash-2"

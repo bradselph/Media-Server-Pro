@@ -435,11 +435,13 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 
 	h.log.Info("Admin %s executing query: %s", username, query)
 
-	// Block DoS-capable SQL functions even in SELECT subqueries.
+	// Block dangerous SQL functions even in SELECT subqueries.
+	// BENCHMARK and SLEEP are DoS vectors; LOAD_FILE reads arbitrary server-side
+	// files — it is a scalar function and is NOT blocked by a READ ONLY transaction.
 	queryUpper := strings.ToUpper(query)
-	for _, banned := range []string{"BENCHMARK", "SLEEP"} {
+	for _, banned := range []string{"BENCHMARK", "SLEEP", "LOAD_FILE"} {
 		if strings.Contains(queryUpper, banned) {
-			writeError(c, http.StatusBadRequest, banned+" is not permitted in queries")
+			writeError(c, http.StatusBadRequest, banned+"() is not permitted in queries")
 			return
 		}
 	}
@@ -469,7 +471,8 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		return
 	}
 
-	// Use read-only transaction to block SELECT INTO OUTFILE, LOAD_FILE, and other write operations
+	// Use read-only transaction to prevent DML (INSERT/UPDATE/DELETE) and SELECT INTO OUTFILE.
+	// Note: LOAD_FILE() is blocked above (it is a scalar function, not a write op).
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		h.log.Error("Failed to begin read-only transaction: %v", err)

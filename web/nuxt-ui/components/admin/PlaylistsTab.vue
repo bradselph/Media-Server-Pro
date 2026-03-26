@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Playlist } from '~/types/api'
+import type { Playlist, AdminPlaylistStats } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -8,13 +8,52 @@ const playlists = ref<Playlist[]>([])
 const loading = ref(true)
 const deleteTarget = ref<Playlist | null>(null)
 const deleting = ref(false)
+const stats = ref<AdminPlaylistStats | null>(null)
+
+// Bulk selection
+const selected = ref<Set<string>>(new Set())
+const bulkDeleting = ref(false)
+const allSelected = computed(() => playlists.value.length > 0 && playlists.value.every(p => selected.value.has(p.id)))
+
+function toggleSelect(id: string) {
+  const s = new Set(selected.value)
+  s.has(id) ? s.delete(id) : s.add(id)
+  selected.value = s
+}
+
+function toggleAll() {
+  if (allSelected.value) {
+    selected.value = new Set()
+  } else {
+    selected.value = new Set(playlists.value.map(p => p.id))
+  }
+}
+
+async function bulkDelete() {
+  if (!selected.value.size) return
+  bulkDeleting.value = true
+  try {
+    const ids = Array.from(selected.value)
+    const res = await adminApi.bulkDeletePlaylists(ids)
+    toast.add({ title: `Deleted ${res.success} playlist${res.success !== 1 ? 's' : ''}${res.failed ? `, ${res.failed} failed` : ''}`, color: res.failed ? 'warning' : 'success', icon: 'i-lucide-check' })
+    selected.value = new Set()
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Bulk delete failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { bulkDeleting.value = false }
+}
 
 async function load() {
   loading.value = true
   try {
-    const res = await adminApi.listAllPlaylists()
-    // API may return { items: [...] } or a plain array
-    playlists.value = Array.isArray(res) ? res : (res?.items ?? [])
+    const [res, s] = await Promise.allSettled([
+      adminApi.listAllPlaylists(),
+      adminApi.getPlaylistStats(),
+    ])
+    if (res.status === 'fulfilled') {
+      playlists.value = Array.isArray(res.value) ? res.value : (res.value?.items ?? [])
+    }
+    if (s.status === 'fulfilled') stats.value = s.value
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { loading.value = false }
@@ -41,16 +80,33 @@ onMounted(load)
 <template>
   <div class="space-y-4">
     <!-- Stats banner -->
-    <UCard :ui="{ body: 'py-3 px-4' }">
-      <div class="flex items-center gap-4 text-sm">
-        <UIcon name="i-lucide-list-music" class="size-4 text-primary" />
-        <span><strong>{{ playlists.length }}</strong> playlists total</span>
-        <span class="text-muted">·</span>
-        <span><strong>{{ playlists.reduce((sum, p) => sum + (p.items?.length ?? 0), 0) }}</strong> items total</span>
-      </div>
-    </UCard>
+    <div class="grid grid-cols-3 gap-3">
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ stats?.total_playlists ?? playlists.length }}</p>
+        <p class="text-xs text-muted mt-1">Total Playlists</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ stats?.public_playlists ?? playlists.filter(p => p.is_public).length }}</p>
+        <p class="text-xs text-muted mt-1">Public</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ stats?.total_items ?? playlists.reduce((s, p) => s + (p.items?.length ?? 0), 0) }}</p>
+        <p class="text-xs text-muted mt-1">Total Items</p>
+      </UCard>
+    </div>
 
-    <div class="flex justify-end">
+    <div class="flex items-center justify-between gap-3">
+      <UButton
+        v-if="selected.size > 0"
+        :loading="bulkDeleting"
+        icon="i-lucide-trash-2"
+        :label="`Delete Selected (${selected.size})`"
+        color="error"
+        variant="outline"
+        size="sm"
+        @click="bulkDelete"
+      />
+      <span v-else />
       <UButton icon="i-lucide-refresh-cw" aria-label="Refresh playlists" variant="ghost" color="neutral" @click="load" />
     </div>
 
@@ -62,6 +118,7 @@ onMounted(load)
         v-else
         :data="playlists"
         :columns="[
+          { accessorKey: 'select', header: '' },
           { accessorKey: 'name', header: 'Name' },
           { accessorKey: 'user_id', header: 'Owner' },
           { accessorKey: 'items', header: 'Items' },
@@ -70,6 +127,12 @@ onMounted(load)
           { accessorKey: 'actions', header: '' },
         ]"
       >
+        <template #select-header>
+          <UCheckbox :model-value="allSelected" @update:model-value="toggleAll" />
+        </template>
+        <template #select-cell="{ row }">
+          <UCheckbox :model-value="selected.has(row.original.id)" @update:model-value="toggleSelect(row.original.id)" />
+        </template>
         <template #name-cell="{ row }">
           <div>
             <p class="font-medium text-sm">{{ row.original.name }}</p>

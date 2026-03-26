@@ -13,19 +13,49 @@ const toast = useToast()
 // Recommendations (only for logged-in users)
 const continueWatching = ref<Suggestion[]>([])
 const trending = ref<Suggestion[]>([])
+const recommended = ref<Suggestion[]>([])
+
+// State — declared BEFORE any watch({immediate:true}) that references params
+// to avoid a Temporal Dead Zone (TDZ) crash when the user is already logged in
+// at page-load time (e.g. page refresh). An immediate watcher fires synchronously
+// during setup; if `params` isn't yet declared, `params.limit` throws TDZ.
+const items = ref<MediaItem[]>([])
+const categories = ref<MediaCategory[]>([])
+const total = ref(0)
+const loading = ref(true)
+const loadError = ref('')
+const scanning = ref(false)
+const initializing = ref(false)
+
+const params = reactive({
+  page: 1,
+  limit: authStore.user?.preferences?.items_per_page ?? 24,
+  search: '',
+  type: authStore.user?.preferences?.filter_media_type || 'all',
+  category: authStore.user?.preferences?.filter_category || 'all',
+  sort_by: authStore.user?.preferences?.sort_by || 'name',
+  sort_order: (authStore.user?.preferences?.sort_order ?? 'asc') as 'asc' | 'desc',
+})
 
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
-    const [cw, tr] = await Promise.allSettled([
+    const [cw, tr, rec] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(),
       suggestionsApi.getTrending(),
+      suggestionsApi.getPersonalized(12),
     ])
     if (cw.status === 'fulfilled') continueWatching.value = cw.value ?? []
     if (tr.status === 'fulfilled') trending.value = tr.value ?? []
+    if (rec.status === 'fulfilled') recommended.value = rec.value ?? []
   } catch { /* non-critical */ }
 }
 
+// When the user logs in mid-session (logged-out → logged-in), reload
+// recommendations and refresh the grid with their preference-based limit.
+// This watcher is NOT immediate — loadRecommendations() is called from onMounted
+// when the user is already logged in at page load, and we avoid a double
+// load() by only reloading when the limit preference actually changed.
 watch(() => authStore.isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     loadRecommendations()
@@ -36,24 +66,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
       load()
     }
   }
-}, { immediate: true })
-
-// State
-const items = ref<MediaItem[]>([])
-const categories = ref<MediaCategory[]>([])
-const total = ref(0)
-const loading = ref(true)
-const loadError = ref('')
-
-const params = reactive({
-  page: 1,
-  limit: authStore.user?.preferences?.items_per_page ?? 24,
-  search: '',
-  type: 'all',
-  category: 'all',
-  sort_by: 'name',
-  sort_order: 'asc' as 'asc' | 'desc',
-})
+}, { immediate: false })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -74,6 +87,8 @@ async function load() {
     const res = await mediaApi.list(apiParams)
     items.value = res.items ?? []
     total.value = res.total_items ?? res.total ?? 0
+    scanning.value = res.scanning ?? false
+    initializing.value = res.initializing ?? false
   } catch (e: unknown) {
     loadError.value = e instanceof Error ? e.message : 'Failed to load media'
     toast.add({ title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' })
@@ -90,10 +105,22 @@ watch([() => params.type, () => params.category, () => params.sort_by, () => par
   load()
 })
 
-onMounted(() => { loadCategories(); load() })
+onMounted(() => {
+  // Apply user preferences before the first load so we don't need a second request.
+  const prefs = authStore.user?.preferences
+  if (prefs) {
+    if (prefs.items_per_page && prefs.items_per_page !== params.limit) params.limit = prefs.items_per_page
+    if (prefs.view_mode && (prefs.view_mode === 'grid' || prefs.view_mode === 'list')) viewMode.value = prefs.view_mode
+  }
+  loadCategories()
+  load()
+  // Fetch recommendations for already-logged-in users (page refresh).
+  // When the user logs in mid-session, the watch above handles this instead.
+  if (authStore.isLoggedIn) loadRecommendations()
+})
 
-// View mode
-const viewMode = ref<'grid' | 'list'>('grid')
+// View mode — initialized from user preference; defaults to grid
+const viewMode = ref<'grid' | 'list'>((authStore.user?.preferences?.view_mode as 'grid' | 'list') || 'grid')
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
 const canViewMature = computed(() =>
@@ -123,7 +150,7 @@ function formatDuration(secs?: number): string {
     <!-- Recommendations (logged-in only) -->
     <template v-if="authStore.isLoggedIn">
       <!-- Continue Watching -->
-      <div v-if="continueWatching.length > 0" class="space-y-2">
+      <div v-if="continueWatching.length > 0 && authStore.user?.preferences?.show_continue_watching !== false" class="space-y-2">
         <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
           <UIcon name="i-lucide-play-circle" class="size-4 text-primary" />
           Continue Watching
@@ -149,7 +176,7 @@ function formatDuration(secs?: number): string {
       </div>
 
       <!-- Trending -->
-      <div v-if="trending.length > 0" class="space-y-2">
+      <div v-if="trending.length > 0 && authStore.user?.preferences?.show_trending !== false" class="space-y-2">
         <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
           <UIcon name="i-lucide-trending-up" class="size-4 text-primary" />
           Trending
@@ -157,6 +184,32 @@ function formatDuration(secs?: number): string {
         <div class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="s in trending"
+            :key="s.media_id"
+            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                :src="mediaApi.getThumbnailUrl(s.media_id)"
+                :alt="s.title"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+          </NuxtLink>
+        </div>
+      </div>
+
+      <!-- Recommended For You -->
+      <div v-if="recommended.length > 0 && authStore.user?.preferences?.show_recommended !== false" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
+          Recommended For You
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="s in recommended"
             :key="s.media_id"
             :to="`/player?id=${encodeURIComponent(s.media_id)}`"
             class="group shrink-0 w-40"
@@ -230,6 +283,26 @@ function formatDuration(secs?: number): string {
         </UButtonGroup>
       </div>
     </div>
+
+    <!-- Server initializing / scanning banner -->
+    <UAlert
+      v-if="initializing && !loading"
+      title="Server is initializing"
+      description="The media library is starting up. Some items may not appear yet."
+      color="info"
+      variant="soft"
+      icon="i-lucide-loader-2"
+      class="mb-2"
+    />
+    <UAlert
+      v-else-if="scanning && !loading"
+      title="Media scan in progress"
+      description="New files may appear shortly as the library scan completes."
+      color="info"
+      variant="soft"
+      icon="i-lucide-scan"
+      class="mb-2"
+    />
 
     <!-- Error -->
     <UAlert

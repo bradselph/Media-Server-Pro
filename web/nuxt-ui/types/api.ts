@@ -117,6 +117,7 @@ export interface MediaListResponse {
   page?: number
   limit?: number
   scanning?: boolean
+  initializing?: boolean
 }
 
 export interface MediaCategory {

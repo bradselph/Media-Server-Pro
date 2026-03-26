@@ -55,7 +55,6 @@ export default defineNuxtConfig({
     '/thumbnails/**': { proxy: 'http://localhost:8080/thumbnails/**' },
     '/download': { proxy: 'http://localhost:8080/download' },
     '/hls/**': { proxy: 'http://localhost:8080/hls/**' },
-    '/upload/**': { proxy: 'http://localhost:8080/upload/**' },
     '/ws/**': { proxy: 'http://localhost:8080/ws/**' },
     '/health': { proxy: 'http://localhost:8080/health' },
   },

@@ -10,9 +10,12 @@ const playbackApi = usePlaybackApi()
 const suggestionsApi = useSuggestionsApi()
 const ratingsApi = useRatingsApi()
 const playlistApi = usePlaylistApi()
+const analyticsApi = useAnalyticsApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
 const toast = useToast()
+
+const userPrefs = computed(() => authStore.user?.preferences)
 
 // Playlist add
 const playlists = ref<Playlist[]>([])
@@ -51,7 +54,7 @@ const currentTime = ref(0)
 const duration = ref(0)
 const showControls = ref(true)
 const isFullscreen = ref(false)
-const playbackSpeed = ref(1)
+const playbackSpeed = ref(userPrefs.value?.playback_speed ?? 1)
 
 // HLS — delegate to composable
 const mediaIdRef = computed(() => mediaId.value ?? '')
@@ -68,9 +71,54 @@ const {
   jobRunning,
 } = useHLS(videoRef, mediaIdRef)
 
+// Request on-demand HLS generation
+const hlsApi = useHlsApi()
+const requestingHls = ref(false)
+
+async function requestHlsGeneration() {
+  if (!mediaId.value) return
+  requestingHls.value = true
+  try {
+    await hlsApi.generate(mediaId.value)
+    toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to start HLS generation', color: 'error', icon: 'i-lucide-x' })
+  } finally { requestingHls.value = false }
+}
+
+// Seek bar thumbnail previews
+const thumbnailPreviews = ref<string[]>([])
+const seekBarHoverTime = ref(0)
+const seekBarHoverX = ref(0)
+const seekBarHovering = ref(false)
+
+function onSeekBarMouseMove(e: MouseEvent) {
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+  seekBarHoverTime.value = fraction * duration.value
+  seekBarHoverX.value = e.clientX - rect.left
+}
+
+const seekBarPreviewUrl = computed(() => {
+  if (!thumbnailPreviews.value.length || !duration.value) return null
+  const idx = Math.min(
+    Math.floor((seekBarHoverTime.value / duration.value) * thumbnailPreviews.value.length),
+    thumbnailPreviews.value.length - 1,
+  )
+  return thumbnailPreviews.value[idx] ?? null
+})
+
 // Similar & personalized recommendations
 const similar = ref<Suggestion[]>([])
 const personalized = ref<Suggestion[]>([])
+
+// Mature content gate
+const canViewMature = computed(() =>
+  authStore.isLoggedIn &&
+  (authStore.user?.preferences?.show_mature ?? false) &&
+  (authStore.user?.permissions?.can_view_mature ?? false),
+)
+const matureGated = computed(() => !!(media.value?.is_mature && !canViewMature.value))
 
 // Star rating (1-5). Optimistic update — fire and forget.
 const userRating = ref(0)
@@ -91,6 +139,9 @@ function resetControlsTimer() {
 async function loadMedia(id: string) {
   loading.value = true
   error.value = ''
+  similar.value = []
+  personalized.value = []
+  thumbnailPreviews.value = []
   try {
     media.value = await mediaApi.getById(id)
     userRating.value = 0
@@ -99,6 +150,7 @@ async function loadMedia(id: string) {
     if (authStore.isLoggedIn) {
       suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch(() => {})
     }
+    mediaApi.getThumbnailPreviews(id).then(r => { thumbnailPreviews.value = r?.previews ?? [] }).catch(() => {})
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load media'
   } finally {
@@ -108,6 +160,8 @@ async function loadMedia(id: string) {
 
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
+  // Respect the user's resume_playback preference (defaults to true when unset)
+  if (userPrefs.value?.resume_playback === false) return
   try {
     const { position } = await playbackApi.getPosition(mediaId.value)
     if (position > 5 && videoRef.value) {
@@ -127,6 +181,7 @@ async function savePosition() {
 
 function onVideoLoaded() {
   duration.value = videoRef.value?.duration ?? 0
+  if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
   restorePosition()
   playbackStore.startAutoSave()
 }
@@ -202,6 +257,20 @@ const currentQualityLabel = computed(() => {
   return qualities.value[currentQuality.value]?.name ?? 'Auto'
 })
 
+// Analytics event helpers (fire-and-forget, never block playback)
+let playEventSent = false
+function trackPlay() {
+  if (playEventSent || !mediaId.value) return
+  playEventSent = true
+  analyticsApi.submitEvent({ type: 'play', media_id: mediaId.value }).catch(() => {})
+}
+function trackComplete() {
+  if (!mediaId.value) return
+  const dur = videoRef.value?.duration
+  analyticsApi.submitEvent({ type: 'complete', media_id: mediaId.value, duration: dur ? Math.round(dur) : undefined }).catch(() => {})
+}
+watch(mediaId, () => { playEventSent = false })
+
 // Save position on pause and unmount
 onUnmounted(() => {
   savePosition()
@@ -239,6 +308,21 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
       <UButton to="/" variant="outline" label="Back to Library" />
     </div>
 
+    <!-- Mature gate -->
+    <div v-else-if="media && matureGated" class="flex flex-col items-center justify-center py-24 gap-4 text-center px-4">
+      <UIcon name="i-lucide-lock" class="size-16 text-muted" />
+      <h2 class="text-xl font-semibold">Age-Restricted Content</h2>
+      <p class="text-muted max-w-sm">
+        <template v-if="!authStore.isLoggedIn">Sign in to access mature content.</template>
+        <template v-else>Enable mature content in your profile settings to watch this.</template>
+      </p>
+      <div class="flex gap-3">
+        <UButton v-if="!authStore.isLoggedIn" to="/login" label="Sign In" color="primary" />
+        <UButton v-else to="/profile" label="Profile Settings" color="primary" />
+        <UButton to="/" variant="outline" color="neutral" label="Back to Library" />
+      </div>
+    </div>
+
     <!-- Player -->
     <div v-else-if="media" class="grid grid-cols-1 xl:grid-cols-3 md:gap-6">
       <div class="xl:col-span-2 flex flex-col gap-0 md:gap-4">
@@ -256,9 +340,9 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
             @loadedmetadata="onVideoLoaded"
             @timeupdate="onTimeUpdate"
-            @play="onPlayPause"
+            @play="onPlayPause(); trackPlay()"
             @pause="onPlayPause"
-            @ended="savePosition"
+            @ended="savePosition(); trackComplete()"
           />
 
           <!-- HLS loading overlay -->
@@ -273,7 +357,23 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             @click.stop
           >
             <!-- Progress bar -->
-            <div class="w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer" @click="seekTo">
+            <div
+              class="relative w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer"
+              @click="seekTo"
+              @mousemove="onSeekBarMouseMove"
+              @mouseenter="seekBarHovering = true"
+              @mouseleave="seekBarHovering = false"
+            >
+              <Transition name="fade">
+                <div
+                  v-if="seekBarHovering && seekBarPreviewUrl"
+                  class="absolute bottom-4 -translate-x-1/2 pointer-events-none z-10"
+                  :style="{ left: `${seekBarHoverX}px` }"
+                >
+                  <img :src="seekBarPreviewUrl" class="w-28 h-16 object-cover rounded border border-white/20 shadow-lg" />
+                  <p class="text-center text-white text-xs mt-0.5 drop-shadow">{{ formatTime(seekBarHoverTime) }}</p>
+                </div>
+              </Transition>
               <div
                 class="h-full bg-primary rounded-full pointer-events-none"
                 :style="{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }"
@@ -351,7 +451,8 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               class="w-full mt-2"
               @loadedmetadata="onVideoLoaded"
               @timeupdate="onTimeUpdate"
-              @ended="savePosition"
+              @play="trackPlay()"
+              @ended="savePosition(); trackComplete()"
             />
           </UCard>
         </div>
@@ -389,6 +490,20 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           variant="soft"
           icon="i-lucide-alert-circle"
         />
+
+        <!-- Request HLS generation (video only, when HLS not available or running) -->
+        <UAlert
+          v-else-if="media && media.type !== 'audio' && !hlsAvailable && !jobRunning"
+          title="Adaptive streaming not available"
+          description="Generate HLS for adaptive quality and better playback performance."
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-video"
+        >
+          <template #actions>
+            <UButton label="Generate HLS" size="xs" :loading="requestingHls" variant="outline" color="neutral" @click="requestHlsGeneration" />
+          </template>
+        </UAlert>
 
         <!-- Media info -->
         <UCard>

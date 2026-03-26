@@ -18,6 +18,10 @@ func TestIsAuthPath(t *testing.T) {
 	}{
 		{"/api/auth/login", true},
 		{"/api/auth/register", true},
+		{"/api/auth/admin-login", true},
+		{"/api/admin/login", true},
+		{"/api/auth/change-password", true},
+		{"/api/auth/delete-account", true},
 		{"/api/media", false},
 		{"/api/auth/logout", false},
 		{"/", false},
@@ -195,7 +199,7 @@ func TestIPList_Clear(t *testing.T) {
 
 func TestIPList_CleanExpired(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add("10.0.0.1", "expired", "admin", new(time.Now().Add(-1*time.Hour)))
+	expiredAt := time.Now().Add(-1 * time.Hour); list.Add("10.0.0.1", "expired", "admin", &expiredAt)
 	list.Add("10.0.0.2", "valid", "admin", nil)
 
 	cleaned := list.CleanExpired()

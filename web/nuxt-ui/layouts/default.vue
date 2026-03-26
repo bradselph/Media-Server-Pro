@@ -3,6 +3,33 @@ const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const colorMode = useColorMode()
+const ageGateApi = useAgeGateApi()
+const versionApi = useVersionApi()
+const serverVersion = ref('')
+
+const ageGateOpen = ref(false)
+const ageGateVerifying = ref(false)
+
+async function checkAgeGate() {
+  try {
+    const status = await ageGateApi.getStatus()
+    if (status.enabled && !status.verified) {
+      ageGateOpen.value = true
+    }
+  } catch { /* non-critical */ }
+}
+
+async function verifyAge() {
+  ageGateVerifying.value = true
+  try {
+    await ageGateApi.verify()
+    ageGateOpen.value = false
+  } catch { /* if verify fails, keep modal open */ }
+  finally { ageGateVerifying.value = false }
+}
+
+onMounted(checkAgeGate)
+onMounted(() => { versionApi.get().then(r => { serverVersion.value = r.version }).catch(() => {}) })
 
 useHead({
   title: computed(() => {
@@ -22,6 +49,9 @@ const navLinks = computed(() => {
   ]
   if (authStore.isLoggedIn) {
     links.push({ label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' })
+    if (authStore.user?.permissions?.can_upload) {
+      links.push({ label: 'Upload', to: '/upload', icon: 'i-lucide-upload' })
+    }
     links.push({ label: 'Profile', to: '/profile', icon: 'i-lucide-user' })
     if (authStore.isAdmin) {
       links.push({ label: 'Admin', to: '/admin', icon: 'i-lucide-shield' })
@@ -85,5 +115,30 @@ const navLinks = computed(() => {
     <main>
       <slot />
     </main>
+
+    <!-- Footer -->
+    <footer v-if="serverVersion" class="border-t border-default py-3">
+      <UContainer>
+        <p class="text-xs text-muted text-center">Media Server Pro v{{ serverVersion }}</p>
+      </UContainer>
+    </footer>
+
+    <!-- Age gate modal -->
+    <UModal
+      :open="ageGateOpen"
+      :dismissible="false"
+      title="Age Verification Required"
+      description="This site contains mature content. You must be 18 or older to continue."
+    >
+      <template #footer>
+        <UButton
+          :loading="ageGateVerifying"
+          icon="i-lucide-check"
+          label="I confirm I am 18 or older"
+          color="primary"
+          @click="verifyAge"
+        />
+      </template>
+    </UModal>
   </div>
 </template>

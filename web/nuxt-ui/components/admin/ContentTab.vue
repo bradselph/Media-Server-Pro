@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { FileScanResult, HLSJob, ScannerStats, HLSStats, ValidatorStats } from '~/types/api'
+import type { FileScanResult, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities } from '~/types/api'
 
 const adminApi = useAdminApi()
+const hlsApi = useHlsApi()
 const toast = useToast()
 
 const subTab = ref('scanner')
@@ -80,17 +81,20 @@ function toggleAll() {
 // ── HLS ────────────────────────────────────────────────────────────────────────
 const hlsStats = ref<HLSStats | null>(null)
 const hlsJobs = ref<HLSJob[]>([])
+const hlsCaps = ref<HLSCapabilities | null>(null)
 const hlsLoading = ref(false)
 
 async function loadHLS() {
   hlsLoading.value = true
   try {
-    const [stats, jobs] = await Promise.all([
+    const [stats, jobs, caps] = await Promise.allSettled([
       adminApi.getHLSStats(),
       adminApi.listHLSJobs(),
+      hlsApi.getCapabilities(),
     ])
-    hlsStats.value = stats
-    hlsJobs.value = jobs ?? []
+    if (stats.status === 'fulfilled') hlsStats.value = stats.value
+    if (jobs.status === 'fulfilled') hlsJobs.value = jobs.value ?? []
+    if (caps.status === 'fulfilled') hlsCaps.value = caps.value
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load HLS', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { hlsLoading.value = false }
@@ -104,6 +108,21 @@ async function deleteHLSJob(id: string) {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
+}
+
+const hlsValidating = ref<string | null>(null)
+const hlsValidationResult = ref<HLSValidationResult | null>(null)
+
+async function validateHLSJob(id: string) {
+  hlsValidating.value = id
+  hlsValidationResult.value = null
+  try {
+    hlsValidationResult.value = await adminApi.validateHLS(id)
+    const ok = hlsValidationResult.value.valid
+    toast.add({ title: ok ? 'HLS output is valid' : 'HLS validation failed', color: ok ? 'success' : 'warning', icon: ok ? 'i-lucide-check' : 'i-lucide-alert-triangle' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Validation failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { hlsValidating.value = null }
 }
 
 async function cleanInactiveLocks() {
@@ -249,6 +268,30 @@ watch(subTab, (v) => {
 
     <!-- HLS Jobs -->
     <div v-if="subTab === 'hls'" class="space-y-4">
+      <!-- Capabilities -->
+      <UCard v-if="hlsCaps">
+        <div class="flex flex-wrap items-center gap-4 text-sm">
+          <div class="flex items-center gap-1.5">
+            <UIcon
+              :name="hlsCaps.healthy ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
+              :class="hlsCaps.healthy ? 'text-success' : 'text-warning'"
+              class="size-4"
+            />
+            <span class="font-medium">{{ hlsCaps.healthy ? 'HLS Ready' : 'HLS Unavailable' }}</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <UBadge :label="hlsCaps.ffmpeg_found ? 'ffmpeg ✓' : 'ffmpeg ✗'" :color="hlsCaps.ffmpeg_found ? 'success' : 'error'" variant="subtle" size="xs" />
+            <UBadge :label="hlsCaps.ffprobe_found ? 'ffprobe ✓' : 'ffprobe ✗'" :color="hlsCaps.ffprobe_found ? 'success' : 'error'" variant="subtle" size="xs" />
+          </div>
+          <div v-if="hlsCaps.qualities.length" class="flex items-center gap-1 flex-wrap">
+            <span class="text-muted">Qualities:</span>
+            <UBadge v-for="q in hlsCaps.qualities" :key="q" :label="q" color="neutral" variant="subtle" size="xs" />
+          </div>
+          <span class="text-muted text-xs">Max concurrent: {{ hlsCaps.max_concurrent }}</span>
+          <span v-if="hlsCaps.message" class="text-muted text-xs ml-auto">{{ hlsCaps.message }}</span>
+        </div>
+      </UCard>
+
       <!-- Stats -->
       <div v-if="hlsStats" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <UCard v-for="item in [
@@ -294,7 +337,7 @@ watch(subTab, (v) => {
           <template #status-cell="{ row }">
             <UBadge
               :label="row.original.status"
-              :color="{ completed: 'success', running: 'info', failed: 'error', pending: 'neutral', cancelled: 'neutral' }[row.original.status] ?? 'neutral'"
+              :color="(({ completed: 'success', running: 'info', failed: 'error', pending: 'neutral', cancelled: 'neutral' } as Record<string, 'success'|'info'|'error'|'neutral'>)[row.original.status] ?? 'neutral')"
               variant="subtle"
               size="xs"
             />
@@ -309,9 +352,37 @@ watch(subTab, (v) => {
             <span class="text-xs text-muted">{{ row.original.started_at ? new Date(row.original.started_at).toLocaleString() : '—' }}</span>
           </template>
           <template #actions-cell="{ row }">
-            <UButton icon="i-lucide-trash-2" aria-label="Delete HLS job" size="xs" variant="ghost" color="error" @click="deleteHLSJob(row.original.id)" />
+            <div class="flex gap-1">
+              <UButton
+                v-if="row.original.status === 'completed'"
+                icon="i-lucide-shield-check"
+                aria-label="Validate HLS output"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="hlsValidating === row.original.id"
+                @click="validateHLSJob(row.original.id)"
+              />
+              <UButton icon="i-lucide-trash-2" aria-label="Delete HLS job" size="xs" variant="ghost" color="error" @click="deleteHLSJob(row.original.id)" />
+            </div>
           </template>
         </UTable>
+      </UCard>
+      <!-- Validation result -->
+      <UCard v-if="hlsValidationResult">
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon
+              :name="hlsValidationResult.valid ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
+              :class="hlsValidationResult.valid ? 'text-success' : 'text-warning'"
+              class="size-4"
+            />
+            HLS Validation — {{ hlsValidationResult.valid ? 'Valid' : 'Invalid' }}
+            <span class="text-muted font-normal text-xs ml-2">{{ hlsValidationResult.variant_count }} variant(s)</span>
+            <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" class="ml-auto" @click="hlsValidationResult = null" />
+          </div>
+        </template>
+        <p class="font-mono text-xs text-muted">{{ hlsValidationResult.job_id }}</p>
       </UCard>
     </div>
 
@@ -320,10 +391,10 @@ watch(subTab, (v) => {
       <!-- Stats -->
       <div v-if="validatorStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <UCard v-for="item in [
-          { label: 'Total Validated', value: validatorStats.total_validated },
-          { label: 'Valid', value: validatorStats.valid_count },
-          { label: 'Invalid', value: validatorStats.invalid_count },
-          { label: 'Fixed', value: validatorStats.fixed_count },
+          { label: 'Total', value: validatorStats.total },
+          { label: 'Validated', value: validatorStats.validated },
+          { label: 'Needs Fix', value: validatorStats.needs_fix },
+          { label: 'Fixed', value: validatorStats.fixed },
         ]" :key="item.label" :ui="{ body: 'p-3' }">
           <p class="text-xl font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
           <p class="text-xs text-muted">{{ item.label }}</p>

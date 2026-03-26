@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { User } from '~/types/api'
+import type { User, UserSession } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -11,6 +11,24 @@ const createOpen = ref(false)
 const editUser = ref<User | null>(null)
 const deleteUser = ref<User | null>(null)
 const deleting = ref(false)
+
+// Sessions viewer
+const sessionsUser = ref<User | null>(null)
+const sessions = ref<UserSession[]>([])
+const sessionsLoading = ref(false)
+
+async function openSessions(user: User) {
+  sessionsUser.value = user
+  sessions.value = []
+  sessionsLoading.value = true
+  try {
+    sessions.value = (await adminApi.getUserSessions(user.username)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load sessions', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    sessionsLoading.value = false
+  }
+}
 
 // Create form
 const createForm = reactive({ username: '', password: '', email: '', role: 'viewer' as 'admin' | 'viewer' })
@@ -27,6 +45,39 @@ const filtered = computed(() =>
     ? users.value.filter(u => u.username.toLowerCase().includes(search.value.toLowerCase()) || u.email?.toLowerCase().includes(search.value.toLowerCase()))
     : users.value,
 )
+
+// Bulk actions
+const selectedUsernames = ref<string[]>([])
+const bulkLoading = ref(false)
+
+function toggleSelectAll() {
+  if (selectedUsernames.value.length === filtered.value.length) {
+    selectedUsernames.value = []
+  } else {
+    selectedUsernames.value = filtered.value.map(u => u.username)
+  }
+}
+
+function toggleSelectUser(username: string) {
+  const idx = selectedUsernames.value.indexOf(username)
+  if (idx === -1) selectedUsernames.value.push(username)
+  else selectedUsernames.value.splice(idx, 1)
+}
+
+async function bulkAction(action: 'delete' | 'enable' | 'disable') {
+  if (selectedUsernames.value.length === 0) return
+  bulkLoading.value = true
+  try {
+    const res = await adminApi.bulkUsers(selectedUsernames.value, action)
+    toast.add({ title: `${action}: ${res.success} succeeded, ${res.failed} failed`, color: res.failed > 0 ? 'warning' : 'success', icon: 'i-lucide-check' })
+    selectedUsernames.value = []
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Bulk action failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    bulkLoading.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -112,7 +163,15 @@ onMounted(load)
   <div class="space-y-4">
     <!-- Header -->
     <div class="flex items-center justify-between gap-3 flex-wrap">
-      <UInput v-model="search" icon="i-lucide-search" placeholder="Search users…" class="w-64" />
+      <div class="flex items-center gap-2 flex-wrap">
+        <UInput v-model="search" icon="i-lucide-search" placeholder="Search users…" class="w-64" />
+        <template v-if="selectedUsernames.length > 0">
+          <span class="text-sm text-muted">{{ selectedUsernames.length }} selected</span>
+          <UButton :loading="bulkLoading" icon="i-lucide-toggle-right" label="Enable" size="sm" variant="outline" color="success" @click="bulkAction('enable')" />
+          <UButton :loading="bulkLoading" icon="i-lucide-toggle-left" label="Disable" size="sm" variant="outline" color="neutral" @click="bulkAction('disable')" />
+          <UButton :loading="bulkLoading" icon="i-lucide-trash-2" label="Delete" size="sm" variant="outline" color="error" @click="bulkAction('delete')" />
+        </template>
+      </div>
       <UButton icon="i-lucide-user-plus" label="Create User" @click="createOpen = true" />
     </div>
 
@@ -125,6 +184,7 @@ onMounted(load)
         v-else
         :data="filtered"
         :columns="[
+          { accessorKey: 'select', header: '' },
           { accessorKey: 'username', header: 'Username' },
           { accessorKey: 'email', header: 'Email' },
           { accessorKey: 'role', header: 'Role' },
@@ -133,6 +193,19 @@ onMounted(load)
           { accessorKey: 'actions', header: '' },
         ]"
       >
+        <template #select-header>
+          <UCheckbox
+            :model-value="filtered.length > 0 && selectedUsernames.length === filtered.length"
+            :indeterminate="selectedUsernames.length > 0 && selectedUsernames.length < filtered.length"
+            @update:model-value="toggleSelectAll"
+          />
+        </template>
+        <template #select-cell="{ row }">
+          <UCheckbox
+            :model-value="selectedUsernames.includes(row.original.username)"
+            @update:model-value="toggleSelectUser(row.original.username)"
+          />
+        </template>
         <template #username-cell="{ row }">
           <span class="font-medium">{{ row.original.username }}</span>
         </template>
@@ -162,6 +235,7 @@ onMounted(load)
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1 justify-end">
+            <UButton icon="i-lucide-monitor" aria-label="View sessions" size="xs" variant="ghost" color="neutral" @click="openSessions(row.original)" />
             <UButton icon="i-lucide-pencil" aria-label="Edit user" size="xs" variant="ghost" color="neutral" @click="openEdit(row.original)" />
             <UButton icon="i-lucide-trash-2" aria-label="Delete user" size="xs" variant="ghost" color="error" @click="deleteUser = row.original" />
           </div>
@@ -233,6 +307,38 @@ onMounted(load)
       <template #footer>
         <UButton variant="ghost" color="neutral" label="Cancel" @click="editUser = null" />
         <UButton :loading="editLoading" label="Save Changes" @click="handleSave" />
+      </template>
+    </UModal>
+
+    <!-- Sessions viewer -->
+    <UModal v-if="sessionsUser" :open="!!sessionsUser" title="Active Sessions" @update:open="val => { if (!val) sessionsUser = null }">
+      <template #description>
+        Sessions for <strong>{{ sessionsUser?.username }}</strong>
+      </template>
+      <template #body>
+        <div v-if="sessionsLoading" class="flex justify-center py-6">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="sessions.length === 0" class="text-center py-4 text-muted text-sm">
+          No active sessions.
+        </div>
+        <ul v-else class="divide-y divide-default">
+          <li v-for="s in sessions" :key="s.id" class="py-3 space-y-0.5 text-sm">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-mono text-xs text-muted">{{ s.id.slice(0, 12) }}…</span>
+              <span class="text-muted text-xs">{{ s.ip_address }}</span>
+            </div>
+            <div class="text-xs text-muted">{{ s.user_agent }}</div>
+            <div class="text-xs text-muted flex gap-4 flex-wrap">
+              <span>Created: {{ new Date(s.created_at).toLocaleString() }}</span>
+              <span>Expires: {{ new Date(s.expires_at).toLocaleString() }}</span>
+              <span v-if="s.last_activity">Last active: {{ new Date(s.last_activity).toLocaleString() }}</span>
+            </div>
+          </li>
+        </ul>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Close" @click="sessionsUser = null" />
       </template>
     </UModal>
 

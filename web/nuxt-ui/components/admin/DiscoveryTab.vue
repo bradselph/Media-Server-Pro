@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type {
-  CategoryStats, DiscoverySuggestion,
+  CategoryStats, CategorizedItem, DiscoverySuggestion,
   SuggestionStats, ClassifyStatus, ClassifyStats,
 } from '~/types/api'
 
@@ -44,6 +44,19 @@ async function categorizeFile() {
   } finally { categorizing.value = false }
 }
 
+async function categorizeDirectory() {
+  if (!categorizePath.value.trim()) return
+  categorizing.value = true
+  try {
+    const results = await adminApi.categorizeDirectory(categorizePath.value.trim())
+    categorizeResult.value = results
+    toast.add({ title: `Categorized ${Array.isArray(results) ? results.length : 0} files`, color: 'success', icon: 'i-lucide-check' })
+    await loadCategorizer()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { categorizing.value = false }
+}
+
 async function setCategory() {
   if (!categorizePath.value.trim() || !categorizeCategory.value.trim()) return
   categorizing.value = true
@@ -54,6 +67,20 @@ async function setCategory() {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally { categorizing.value = false }
+}
+
+const browseCategory = ref('')
+const categoryItems = ref<CategorizedItem[]>([])
+const categoryItemsLoading = ref(false)
+
+async function browseByCategory() {
+  if (!browseCategory.value.trim()) return
+  categoryItemsLoading.value = true
+  try {
+    categoryItems.value = (await adminApi.getByCategory(browseCategory.value.trim())) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { categoryItemsLoading.value = false }
 }
 
 async function cleanStaleCategories() {
@@ -140,6 +167,8 @@ const classifyLoading = ref(false)
 const classifyPath = ref('')
 const classifying = ref(false)
 const classifyResult = ref<unknown>(null)
+const clearTagsId = ref('')
+const clearingTags = ref(false)
 
 async function loadClassify() {
   classifyLoading.value = true
@@ -167,6 +196,18 @@ async function classifyFile() {
   } finally { classifying.value = false }
 }
 
+async function classifyDirectory() {
+  if (!classifyPath.value.trim()) return
+  classifying.value = true
+  classifyResult.value = null
+  try {
+    classifyResult.value = await adminApi.classifyDirectory(classifyPath.value.trim())
+    toast.add({ title: 'Directory classification queued', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { classifying.value = false }
+}
+
 async function classifyAllPending() {
   classifying.value = true
   try {
@@ -184,6 +225,19 @@ async function runClassifyTask() {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
+}
+
+async function clearClassificationTags() {
+  if (!clearTagsId.value.trim()) return
+  clearingTags.value = true
+  try {
+    await adminApi.classifyClearTags(clearTagsId.value.trim())
+    toast.add({ title: 'Tags cleared', color: 'success', icon: 'i-lucide-check' })
+    clearTagsId.value = ''
+    await loadClassify()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { clearingTags.value = false }
 }
 
 // Tab-switching lazy load
@@ -243,13 +297,35 @@ watch(subTab, (tab) => {
                   <UInput v-model="categorizeCategory" placeholder="Category (for manual set)" class="flex-1" />
                 </div>
                 <div class="flex gap-2 flex-wrap">
-                  <UButton :loading="categorizing" icon="i-lucide-tag" label="Auto-Categorize" :disabled="!categorizePath.trim()" @click="categorizeFile" />
+                  <UButton :loading="categorizing" icon="i-lucide-tag" label="Auto-Categorize File" :disabled="!categorizePath.trim()" @click="categorizeFile" />
+                  <UButton :loading="categorizing" icon="i-lucide-folder-sync" label="Categorize Directory" :disabled="!categorizePath.trim()" color="neutral" variant="outline" @click="categorizeDirectory" />
                   <UButton :loading="categorizing" icon="i-lucide-pen" label="Set Category" :disabled="!categorizePath.trim() || !categorizeCategory.trim()" color="neutral" @click="setCategory" />
                   <UButton icon="i-lucide-trash-2" label="Clean Stale" color="warning" variant="outline" @click="cleanStaleCategories" />
                   <UButton icon="i-lucide-refresh-cw" aria-label="Refresh stats" variant="ghost" color="neutral" @click="loadCategorizer" />
                 </div>
               </div>
               <pre v-if="categorizeResult" class="mt-3 p-2 rounded bg-muted text-xs overflow-x-auto">{{ JSON.stringify(categorizeResult, null, 2) }}</pre>
+            </UCard>
+
+            <!-- Browse by category -->
+            <UCard>
+              <template #header><span class="font-semibold">Browse by Category</span></template>
+              <div class="flex gap-2">
+                <UInput v-model="browseCategory" placeholder="Category name" class="flex-1"
+                  @keyup.enter="browseByCategory"
+                />
+                <UButton :loading="categoryItemsLoading" icon="i-lucide-search" label="Browse" :disabled="!browseCategory.trim()" @click="browseByCategory" />
+              </div>
+              <div v-if="categoryItemsLoading" class="flex justify-center py-4 mt-2">
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+              </div>
+              <div v-else-if="categoryItems.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
+                <div v-for="item in categoryItems" :key="item.id" class="py-2 text-sm">
+                  <p class="font-medium truncate">{{ item.name }}</p>
+                  <p class="text-xs text-muted truncate">{{ item.path }}</p>
+                </div>
+              </div>
+              <p v-else-if="!categoryItemsLoading && browseCategory && categoryItems.length === 0" class="text-center py-4 text-muted text-sm mt-2">No items in this category.</p>
             </UCard>
           </template>
 
@@ -401,11 +477,20 @@ watch(subTab, (tab) => {
                     <UButton :loading="classifying" icon="i-lucide-brain" label="Classify File" :disabled="!classifyPath.trim()" @click="classifyFile" />
                   </div>
                   <div class="flex gap-2 flex-wrap">
+                    <UButton :loading="classifying" icon="i-lucide-folder-open" label="Classify Directory" :disabled="!classifyPath.trim()" color="neutral" variant="outline" @click="classifyDirectory" />
                     <UButton :loading="classifying" icon="i-lucide-list-checks" label="Classify All Pending" color="warning" variant="outline" @click="classifyAllPending" />
                     <UButton icon="i-lucide-play" label="Run Task Now" color="neutral" variant="outline" @click="runClassifyTask" />
                     <UButton icon="i-lucide-refresh-cw" aria-label="Refresh classification" variant="ghost" color="neutral" @click="loadClassify" />
                   </div>
                   <pre v-if="classifyResult" class="p-2 rounded bg-muted text-xs overflow-x-auto">{{ JSON.stringify(classifyResult, null, 2) }}</pre>
+                  <!-- Clear tags -->
+                  <div class="border-t border-default pt-3">
+                    <p class="text-xs text-muted mb-2">Clear classification tags for a media item by ID:</p>
+                    <div class="flex gap-2">
+                      <UInput v-model="clearTagsId" placeholder="Media ID" class="flex-1" />
+                      <UButton :loading="clearingTags" icon="i-lucide-eraser" label="Clear Tags" color="error" variant="outline" :disabled="!clearTagsId.trim()" @click="clearClassificationTags" />
+                    </div>
+                  </div>
                 </div>
               </UCard>
 

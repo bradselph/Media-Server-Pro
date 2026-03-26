@@ -187,12 +187,13 @@ func (m *Module) Start(_ context.Context) error {
 	// Wire up auto-ban persistence callback so rate-limit bans survive restarts
 	persistBan := func(ip string, duration time.Duration, reason string) {
 		ctx := context.Background()
+		autoExpiresAt := time.Now().Add(duration)
 		rec := &repositories.IPEntryRecord{
 			Value:     ip,
 			Comment:   reason,
 			AddedAt:   time.Now(),
 			AddedBy:   "rate-limiter",
-			ExpiresAt: new(time.Now().Add(duration)),
+			ExpiresAt: &autoExpiresAt,
 		}
 		if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 			m.log.Warn("Failed to persist auto-ban for %s: %v", ip, err)
@@ -296,12 +297,13 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 	m.rateLimiter.BanIP(ip, duration, reason)
 	// Persist to DB
 	ctx := context.Background()
+	banExpiresAt := time.Now().Add(duration)
 	rec := &repositories.IPEntryRecord{
 		Value:     ip,
 		Comment:   reason,
 		AddedAt:   time.Now(),
 		AddedBy:   "system",
-		ExpiresAt: new(time.Now().Add(duration)),
+		ExpiresAt: &banExpiresAt,
 	}
 	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 		m.log.Warn("Failed to persist ban for %s: %v", ip, err)
@@ -901,10 +903,14 @@ func (r *RateLimiter) cleanupWithIPLists(whitelist, blacklist *IPList) {
 }
 
 // isAuthPath returns true for authentication endpoints that should use
-// the stricter auth rate limiter (login, register).
+// the stricter auth rate limiter (login, register, and any endpoint that
+// verifies a password — change-password and delete-account accept a
+// current_password field and are vulnerable to brute-force if left under
+// the general rate limit).
 func isAuthPath(path string) bool {
 	return path == "/api/auth/login" || path == "/api/auth/register" ||
-		path == "/api/auth/admin-login" || path == "/api/admin/login"
+		path == "/api/auth/admin-login" || path == "/api/admin/login" ||
+		path == "/api/auth/change-password" || path == "/api/auth/delete-account"
 }
 
 // GinMiddleware returns a gin.HandlerFunc that applies security checks

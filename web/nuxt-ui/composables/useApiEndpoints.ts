@@ -24,6 +24,13 @@ import type {
   DiscoverySuggestion,
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
+// Explicit import — bypasses Nuxt's #imports virtual module so this file does
+// NOT participate in the #imports circular dependency graph.
+// useApiEndpoints.ts is in composables/ and is re-exported by #imports.  Any
+// auto-import resolved through #imports creates a cycle that Rollup cannot
+// untangle at module-evaluation time (→ TDZ in the minified production bundle).
+// Importing useApi directly from its source file breaks that cycle entirely.
+import { useApi } from '~/composables/useApi'
 
 const api = useApi()
 

@@ -409,12 +409,22 @@ func (h *Handler) GetWatchHistory(c *gin.Context) {
 		history = []models.WatchHistoryItem{}
 	}
 
-	// Enrich entries with human-readable media names so the frontend
-	// doesn't need to resolve opaque UUIDs for display.
+	// Enrich entries that have a missing media name with a single batch lookup
+	// instead of one lock acquisition per item. TrackPlayback populates MediaName
+	// at write time, so this fallback path is only hit for old history entries.
+	var missingIDs []string
 	for i := range history {
 		if history[i].MediaName == "" {
-			if item, err := h.media.GetMediaByID(history[i].MediaID); err == nil {
-				history[i].MediaName = item.Name
+			missingIDs = append(missingIDs, history[i].MediaID)
+		}
+	}
+	if len(missingIDs) > 0 {
+		names := h.media.GetMediaNamesByIDs(missingIDs)
+		for i := range history {
+			if history[i].MediaName == "" {
+				if name, ok := names[history[i].MediaID]; ok {
+					history[i].MediaName = name
+				}
 			}
 		}
 	}

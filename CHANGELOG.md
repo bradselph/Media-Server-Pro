@@ -1,5 +1,159 @@
 # Changelog
 
+## [0.121.0] - 2026-03-26 (minor)
+
+- feat: show user capabilities in profile using getPermissions
+- feat: add bulk delete with checkbox selection to admin playlists tab
+- feat: show server version in footer using useVersionApi
+- feat: show thumbnail preview on seek bar hover using getThumbnailPreviews
+- feat: poll upload processing progress after upload using getProgress
+- feat: add stream button for remote media using getRemoteStreamUrl
+- feat: add playlist item reorder (up/down) and removePlaylistItemById
+- feat: add age gate modal to default layout using useAgeGateApi
+- feat(player): submit play/complete analytics events via submitEvent API
+- feat(admin): expand analytics drill-down to support by-media and by-user event queries
+- fix(admin): correct AnalyticsEvent field names in drill-down (timestamp, not created_at)
+- feat(admin): add event drill-down by type to Analytics tab
+- feat(admin): add browse-by-category feature to Discovery/Categorizer tab
+- feat(profile): show storage usage quota in account section
+- feat(admin): add delete button for crawler discoveries in Sources tab
+- feat(admin): add event stats and event type counts to Analytics tab
+- feat(admin): add downloader settings display to Downloader tab
+- feat(admin): add server feature flags panel to Dashboard tab
+- feat(admin): add thumbnail stats cards to Media tab
+- feat(admin): add HLS capabilities status card to Content/HLS tab
+- feat(admin): add remote media browser to Sources/Remote tab
+
+
+## [0.120.0] - 2026-03-26 (minor)
+
+- feat(admin): add Generate HLS button per media item in Media tab
+- feat(player): add Generate HLS button when adaptive streaming is not yet available
+- feat(admin): add slave media browser to Sources/Receiver tab
+- feat(admin): add clear-classification-tags action to Discovery/Classify tab
+- feat(admin): add HLS job validation button to Content tab
+- feat(admin): add categorize-directory and classify-directory actions to Discovery tab
+- feat(admin): add playlist stats card using getPlaylistStats API to Playlists tab
+- feat(admin): add bulk enable/disable/delete actions to Users tab
+- feat(admin): add downloader health status banner to Downloader tab
+- feat(admin): add source update workflow and update config UI to Updates tab
+- feat(admin): add manual ban IP form and audit log export to Security tab
+
+
+## [0.119.0] - 2026-03-26 (minor)
+
+- feat(admin): add cancel active downloads and import-to-library to DownloaderTab
+- feat(admin): add task Stop button and DB query executor to System tab
+
+
+## [0.118.0] - 2026-03-26 (minor)
+
+- feat(frontend): add edit, duplicate, and clear-items actions to playlists page
+- fix(frontend): initialize viewMode, sort, and filter params from user preferences
+- feat(frontend): add Recommended For You section to index, gated on show_recommended pref
+- fix(frontend): apply playback_speed pref on load; respect resume_playback pref
+
+
+## [0.117.0] - 2026-03-26 (minor)
+
+- fix: LOAD_FILE block, Cf-Visitor cookie clearing, eliminate double load()
+- fix: batch watch history name lookup and cap playback position
+- fix: add change-password and delete-account to strict auth rate limiter
+- fix: data race and cache/DB divergence in watch history mutations
+
+
+## [0.116.0] - 2026-03-26 (minor)
+
+- feat: add missing preference toggles to profile page
+- fix: multi-word search splits terms for AND filtering
+- fix: resolve 500 crash for logged-in users on page refresh (TDZ)
+
+
+## [0.115.0] - 2026-03-26 (minor)
+
+- fix(frontend): explicit import useApi to break #imports circular TDZ
+- fix(frontend): remove spurious body param from api.get delegation wrapper
+- fix(frontend): defer useApi() call in useApiEndpoints to fix remaining TDZ
+- fix(frontend): safelist blur-lg/blur-md/scale-110 in Tailwind v4 for mature content gate
+- fix(frontend): replace navigateTo with window.location.replace in useApi to fix TDZ bundle error
+
+
+## [0.114.0] - 2026-03-26 (minor)
+
+- docs: update audit report — all critical/high/medium bugs resolved
+- fix: correct new(time.Now()) and new(*T) pointer semantics across codebase
+- fix(hls): correct new(time.Now()) — CompletedAt was always epoch
+- fix(frontend): remove /upload/** proxy rule that collided with SPA /upload route during prerender
+- fix(auth): log session LastActivity persist errors instead of silently discarding
+- fix(hls): log stack trace on panic instead of swallowing it
+- fix(api): preserve redirect URL on 401 session expiry
+- fix(frontend): surface scanning and initializing states in media library
+- fix(player): add mature content gate and clear stale suggestions on navigation
+- fix(admin): return rejected_keys in config update response
+- fix(auth): correct new() pointer semantics — LastLogin, LockedAt, user copy, HLS job copy
+- feat(admin): add bulk selection and bulk actions to MediaTab
+- feat(admin): add user sessions viewer to UsersTab
+- fix(admin): correct ValidatorStats field names and HLS job status badge color type
+- feat(frontend): add media upload page with drag-and-drop and file browser
+- chore: merge development — mature content gate, ratings, media edit, HLS debounce
+- feat(admin): add edit media modal to MediaTab
+- feat(player): add star ratings and personalized recommendations
+- fix(frontend): implement mature content gate on media library page
+- Merge branch 'main' into development
+- fix(frontend): initialize media browser limit from user items_per_page preference
+- fix(player): debounce HLS availability check to prevent burst requests
+- fix(frontend): initialize media browser limit from user items_per_page preference
+- fix(player): debounce HLS availability check to prevent burst requests
+- fix(db): use empty model struct in GORM Updates to prevent struct field merging
+- fix(db): use empty model struct in GORM Updates to prevent struct field merging
+- chore: merge development — Sources/Discovery tabs, duplicate UI, home recommendations
+- feat(frontend): add continue watching and trending recommendation rows to home page
+- feat(frontend): add duplicate detection and resolution UI to receiver tab
+- chore: merge development into main, resolve VERSION conflict
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
+- Merge branch 'development'
+- fix(frontend): use computed ref for delete modal open state in playlists page
+
+
+## [0.113.0] - 2026-03-25 (minor)
+
+- chore: merge development — mature content gate, ratings, media edit, HLS debounce
+- feat(admin): add edit media modal to MediaTab
+- feat(player): add star ratings and personalized recommendations
+- fix(frontend): implement mature content gate on media library page
+- Merge branch 'main' into development
+- fix(frontend): initialize media browser limit from user items_per_page preference
+- fix(player): debounce HLS availability check to prevent burst requests
+- fix(frontend): initialize media browser limit from user items_per_page preference
+- fix(player): debounce HLS availability check to prevent burst requests
+- fix(db): use empty model struct in GORM Updates to prevent struct field merging
+- fix(db): use empty model struct in GORM Updates to prevent struct field merging
+- chore: merge development — Sources/Discovery tabs, duplicate UI, home recommendations
+- feat(frontend): add continue watching and trending recommendation rows to home page
+- feat(frontend): add duplicate detection and resolution UI to receiver tab
+- chore: merge development into main, resolve VERSION conflict
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
+- Merge branch 'development'
+- fix(frontend): use computed ref for delete modal open state in playlists page
+
+
+## [0.113.0] - 2026-03-25 (minor)
+
+- fix(frontend): initialize media browser limit from user items_per_page preference
+- fix(player): debounce HLS availability check to prevent burst requests
+- fix(db): use empty model struct in GORM Updates to prevent struct field merging
+- chore: merge development — Sources/Discovery tabs, duplicate UI, home recommendations
+- feat(frontend): add continue watching and trending recommendation rows to home page
+- feat(frontend): add duplicate detection and resolution UI to receiver tab
+- chore: merge development into main, resolve VERSION conflict
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
+- Merge branch 'development'
+- fix(frontend): use computed ref for delete modal open state in playlists page
+
+
 ## [0.113.0] - 2026-03-25 (minor)
 
 - chore: merge development — Sources/Discovery tabs, duplicate UI, home recommendations

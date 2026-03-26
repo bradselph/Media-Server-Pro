@@ -611,7 +611,7 @@ func (m *Module) ApproveDiscovery(id, reviewedBy string) (*Discovery, error) {
 
 	disc.Status = "added"
 	disc.ReviewedBy = reviewedBy
-	disc.ReviewedAt = new(time.Now())
+	reviewedAt := time.Now(); disc.ReviewedAt = &reviewedAt
 
 	m.log.Info("Approved discovery: %s -> %s", disc.Title, disc.StreamURL)
 	return recordToDiscovery(disc), nil
