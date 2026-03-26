@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Playlist } from '~/types/api'
+import type { Playlist, AdminPlaylistStats } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -8,13 +8,19 @@ const playlists = ref<Playlist[]>([])
 const loading = ref(true)
 const deleteTarget = ref<Playlist | null>(null)
 const deleting = ref(false)
+const stats = ref<AdminPlaylistStats | null>(null)
 
 async function load() {
   loading.value = true
   try {
-    const res = await adminApi.listAllPlaylists()
-    // API may return { items: [...] } or a plain array
-    playlists.value = Array.isArray(res) ? res : (res?.items ?? [])
+    const [res, s] = await Promise.allSettled([
+      adminApi.listAllPlaylists(),
+      adminApi.getPlaylistStats(),
+    ])
+    if (res.status === 'fulfilled') {
+      playlists.value = Array.isArray(res.value) ? res.value : (res.value?.items ?? [])
+    }
+    if (s.status === 'fulfilled') stats.value = s.value
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { loading.value = false }
@@ -41,14 +47,20 @@ onMounted(load)
 <template>
   <div class="space-y-4">
     <!-- Stats banner -->
-    <UCard :ui="{ body: 'py-3 px-4' }">
-      <div class="flex items-center gap-4 text-sm">
-        <UIcon name="i-lucide-list-music" class="size-4 text-primary" />
-        <span><strong>{{ playlists.length }}</strong> playlists total</span>
-        <span class="text-muted">·</span>
-        <span><strong>{{ playlists.reduce((sum, p) => sum + (p.items?.length ?? 0), 0) }}</strong> items total</span>
-      </div>
-    </UCard>
+    <div class="grid grid-cols-3 gap-3">
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ stats?.total_playlists ?? playlists.length }}</p>
+        <p class="text-xs text-muted mt-1">Total Playlists</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ stats?.public_playlists ?? playlists.filter(p => p.is_public).length }}</p>
+        <p class="text-xs text-muted mt-1">Public</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ stats?.total_items ?? playlists.reduce((s, p) => s + (p.items?.length ?? 0), 0) }}</p>
+        <p class="text-xs text-muted mt-1">Total Items</p>
+      </UCard>
+    </div>
 
     <div class="flex justify-end">
       <UButton icon="i-lucide-refresh-cw" aria-label="Refresh playlists" variant="ghost" color="neutral" @click="load" />
