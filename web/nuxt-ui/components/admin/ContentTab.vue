@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { FileScanResult, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats } from '~/types/api'
+import type { FileScanResult, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities } from '~/types/api'
 
 const adminApi = useAdminApi()
+const hlsApi = useHlsApi()
 const toast = useToast()
 
 const subTab = ref('scanner')
@@ -80,17 +81,20 @@ function toggleAll() {
 // ── HLS ────────────────────────────────────────────────────────────────────────
 const hlsStats = ref<HLSStats | null>(null)
 const hlsJobs = ref<HLSJob[]>([])
+const hlsCaps = ref<HLSCapabilities | null>(null)
 const hlsLoading = ref(false)
 
 async function loadHLS() {
   hlsLoading.value = true
   try {
-    const [stats, jobs] = await Promise.all([
+    const [stats, jobs, caps] = await Promise.allSettled([
       adminApi.getHLSStats(),
       adminApi.listHLSJobs(),
+      hlsApi.getCapabilities(),
     ])
-    hlsStats.value = stats
-    hlsJobs.value = jobs ?? []
+    if (stats.status === 'fulfilled') hlsStats.value = stats.value
+    if (jobs.status === 'fulfilled') hlsJobs.value = jobs.value ?? []
+    if (caps.status === 'fulfilled') hlsCaps.value = caps.value
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load HLS', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { hlsLoading.value = false }
@@ -264,6 +268,30 @@ watch(subTab, (v) => {
 
     <!-- HLS Jobs -->
     <div v-if="subTab === 'hls'" class="space-y-4">
+      <!-- Capabilities -->
+      <UCard v-if="hlsCaps">
+        <div class="flex flex-wrap items-center gap-4 text-sm">
+          <div class="flex items-center gap-1.5">
+            <UIcon
+              :name="hlsCaps.healthy ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
+              :class="hlsCaps.healthy ? 'text-success' : 'text-warning'"
+              class="size-4"
+            />
+            <span class="font-medium">{{ hlsCaps.healthy ? 'HLS Ready' : 'HLS Unavailable' }}</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <UBadge :label="hlsCaps.ffmpeg_found ? 'ffmpeg ✓' : 'ffmpeg ✗'" :color="hlsCaps.ffmpeg_found ? 'success' : 'error'" variant="subtle" size="xs" />
+            <UBadge :label="hlsCaps.ffprobe_found ? 'ffprobe ✓' : 'ffprobe ✗'" :color="hlsCaps.ffprobe_found ? 'success' : 'error'" variant="subtle" size="xs" />
+          </div>
+          <div v-if="hlsCaps.qualities.length" class="flex items-center gap-1 flex-wrap">
+            <span class="text-muted">Qualities:</span>
+            <UBadge v-for="q in hlsCaps.qualities" :key="q" :label="q" color="neutral" variant="subtle" size="xs" />
+          </div>
+          <span class="text-muted text-xs">Max concurrent: {{ hlsCaps.max_concurrent }}</span>
+          <span v-if="hlsCaps.message" class="text-muted text-xs ml-auto">{{ hlsCaps.message }}</span>
+        </div>
+      </UCard>
+
       <!-- Stats -->
       <div v-if="hlsStats" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <UCard v-for="item in [
