@@ -14,6 +14,28 @@ const toast = useToast()
 const continueWatching = ref<Suggestion[]>([])
 const trending = ref<Suggestion[]>([])
 
+// State — declared BEFORE any watch({immediate:true}) that references params
+// to avoid a Temporal Dead Zone (TDZ) crash when the user is already logged in
+// at page-load time (e.g. page refresh). An immediate watcher fires synchronously
+// during setup; if `params` isn't yet declared, `params.limit` throws TDZ.
+const items = ref<MediaItem[]>([])
+const categories = ref<MediaCategory[]>([])
+const total = ref(0)
+const loading = ref(true)
+const loadError = ref('')
+const scanning = ref(false)
+const initializing = ref(false)
+
+const params = reactive({
+  page: 1,
+  limit: authStore.user?.preferences?.items_per_page ?? 24,
+  search: '',
+  type: 'all',
+  category: 'all',
+  sort_by: 'name',
+  sort_order: 'asc' as 'asc' | 'desc',
+})
+
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
@@ -37,25 +59,6 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
     }
   }
 }, { immediate: true })
-
-// State
-const items = ref<MediaItem[]>([])
-const categories = ref<MediaCategory[]>([])
-const total = ref(0)
-const loading = ref(true)
-const loadError = ref('')
-const scanning = ref(false)
-const initializing = ref(false)
-
-const params = reactive({
-  page: 1,
-  limit: authStore.user?.preferences?.items_per_page ?? 24,
-  search: '',
-  type: 'all',
-  category: 'all',
-  sort_by: 'name',
-  sort_order: 'asc' as 'asc' | 'desc',
-})
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -127,7 +130,7 @@ function formatDuration(secs?: number): string {
     <!-- Recommendations (logged-in only) -->
     <template v-if="authStore.isLoggedIn">
       <!-- Continue Watching -->
-      <div v-if="continueWatching.length > 0" class="space-y-2">
+      <div v-if="continueWatching.length > 0 && authStore.user?.preferences?.show_continue_watching !== false" class="space-y-2">
         <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
           <UIcon name="i-lucide-play-circle" class="size-4 text-primary" />
           Continue Watching
@@ -153,7 +156,7 @@ function formatDuration(secs?: number): string {
       </div>
 
       <!-- Trending -->
-      <div v-if="trending.length > 0" class="space-y-2">
+      <div v-if="trending.length > 0 && authStore.user?.preferences?.show_trending !== false" class="space-y-2">
         <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
           <UIcon name="i-lucide-trending-up" class="size-4 text-primary" />
           Trending
