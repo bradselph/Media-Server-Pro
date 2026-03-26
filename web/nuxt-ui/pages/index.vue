@@ -89,6 +89,18 @@ async function load() {
     total.value = res.total_items ?? res.total ?? 0
     scanning.value = res.scanning ?? false
     initializing.value = res.initializing ?? false
+    // Pre-warm the browser image cache for visible thumbnails in this page.
+    // The batch endpoint returns the same /thumbnail?id=X URLs so the browser
+    // deduplicates and serves them instantly when the grid renders.
+    const batchIds = items.value.slice(0, 50).map(i => i.id)
+    if (batchIds.length > 0) {
+      mediaApi.getThumbnailBatch(batchIds, 320).then(r => {
+        for (const url of Object.values(r?.thumbnails ?? {})) {
+          const img = new Image()
+          img.src = url
+        }
+      }).catch(() => {})
+    }
   } catch (e: unknown) {
     loadError.value = e instanceof Error ? e.message : 'Failed to load media'
     toast.add({ title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' })
