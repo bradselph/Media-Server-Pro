@@ -170,16 +170,16 @@ onMounted(load)
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
       </div>
       <div v-else-if="drillEvents.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
-        <div v-for="ev in drillEvents" :key="ev.id ?? String(ev.created_at)" class="py-2 text-sm flex items-start gap-3">
+        <div v-for="ev in drillEvents" :key="ev.id" class="py-2 text-sm flex items-start gap-3">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               <UBadge :label="ev.type" color="neutral" variant="subtle" size="xs" />
-              <span class="font-mono text-xs text-muted">{{ ev.media_id?.slice(0, 8) }}…</span>
+              <span v-if="ev.media_id" class="font-mono text-xs text-muted">{{ ev.media_id.slice(0, 8) }}…</span>
               <span v-if="ev.user_id" class="text-xs text-muted">{{ ev.user_id }}</span>
+              <span v-if="ev.ip_address" class="text-xs text-muted">{{ ev.ip_address }}</span>
             </div>
-            <p class="text-xs text-muted mt-0.5">{{ ev.created_at ? new Date(ev.created_at).toLocaleString() : '' }}</p>
+            <p class="text-xs text-muted mt-0.5">{{ ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '' }}</p>
           </div>
-          <span v-if="ev.duration" class="text-xs text-muted shrink-0">{{ ev.duration }}s</span>
         </div>
       </div>
       <p v-else-if="!drillLoading && drillType && drillEvents.length === 0" class="text-center py-4 text-muted text-sm mt-2">No events of this type found.</p>
