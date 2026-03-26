@@ -1254,7 +1254,7 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	}
 
 	meta.Views++
-	meta.LastPlayed = new(time.Now())
+	lastPlayed := time.Now(); meta.LastPlayed = &lastPlayed
 
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views

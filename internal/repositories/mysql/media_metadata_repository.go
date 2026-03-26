@@ -369,10 +369,10 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 	}
 
 	if row.LastPlayed != nil {
-		metadata.LastPlayed = new(row.LastPlayed.Format(time.RFC3339))
+		s := row.LastPlayed.Format(time.RFC3339); metadata.LastPlayed = &s
 	}
 	if row.ProbeModTime != nil {
-		metadata.ProbeModTime = new(*row.ProbeModTime)
+		t := *row.ProbeModTime; metadata.ProbeModTime = &t
 	}
 	metadata.BlurHash = row.BlurHash
 
