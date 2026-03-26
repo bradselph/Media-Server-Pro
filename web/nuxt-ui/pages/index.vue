@@ -31,10 +31,10 @@ const params = reactive({
   page: 1,
   limit: authStore.user?.preferences?.items_per_page ?? 24,
   search: '',
-  type: 'all',
-  category: 'all',
-  sort_by: 'name',
-  sort_order: 'asc' as 'asc' | 'desc',
+  type: authStore.user?.preferences?.filter_media_type || 'all',
+  category: authStore.user?.preferences?.filter_category || 'all',
+  sort_by: authStore.user?.preferences?.sort_by || 'name',
+  sort_order: (authStore.user?.preferences?.sort_order ?? 'asc') as 'asc' | 'desc',
 })
 
 async function loadRecommendations() {
@@ -106,10 +106,12 @@ watch([() => params.type, () => params.category, () => params.sort_by, () => par
 })
 
 onMounted(() => {
-  // Apply the user's items_per_page preference before the first load so we
-  // don't need a second request if it differs from the reactive default.
-  const pref = authStore.user?.preferences?.items_per_page
-  if (pref && pref !== params.limit) params.limit = pref
+  // Apply user preferences before the first load so we don't need a second request.
+  const prefs = authStore.user?.preferences
+  if (prefs) {
+    if (prefs.items_per_page && prefs.items_per_page !== params.limit) params.limit = prefs.items_per_page
+    if (prefs.view_mode && (prefs.view_mode === 'grid' || prefs.view_mode === 'list')) viewMode.value = prefs.view_mode
+  }
   loadCategories()
   load()
   // Fetch recommendations for already-logged-in users (page refresh).
@@ -117,8 +119,8 @@ onMounted(() => {
   if (authStore.isLoggedIn) loadRecommendations()
 })
 
-// View mode
-const viewMode = ref<'grid' | 'list'>('grid')
+// View mode — initialized from user preference; defaults to grid
+const viewMode = ref<'grid' | 'list'>((authStore.user?.preferences?.view_mode as 'grid' | 'list') || 'grid')
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
 const canViewMature = computed(() =>
