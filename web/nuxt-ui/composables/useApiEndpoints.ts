@@ -25,7 +25,22 @@ import type {
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
 
-const api = useApi()
+// Thin delegation wrapper — do NOT call useApi() at module scope.
+// useApiEndpoints.ts lives in composables/ so Nuxt re-exports it via the
+// #imports virtual module.  Any module that imports from #imports to resolve
+// useApiEndpoints' own exports creates a cycle:
+//   useApiEndpoints.ts → #imports → useApiEndpoints.ts
+// Calling useApi() inside that cycle (at module-evaluation time) hits a
+// Temporal Dead Zone in the minified production bundle.
+// Delegating via closures defers useApi() until an actual API call is made
+// (always inside an async handler, never at module load time).
+const api = {
+  get:    <T>(url: string, body?: unknown)               => useApi().get<T>(url),
+  post:   <T>(url: string, body?: unknown)               => useApi().post<T>(url, body),
+  put:    <T>(url: string, body?: unknown)               => useApi().put<T>(url, body),
+  patch:  <T>(url: string, body?: unknown)               => useApi().patch<T>(url, body),
+  delete: <T>(url: string, body?: unknown)               => useApi().delete<T>(url, body),
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
