@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ScheduledTask, LogEntry, BackupEntry, DatabaseStatus } from '~/types/api'
+import type { ScheduledTask, LogEntry, BackupEntry, DatabaseStatus, QueryResult } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -83,6 +83,26 @@ async function runTask(id: string) {
   }
 }
 
+async function toggleTask(task: ScheduledTask) {
+  try {
+    if (task.enabled) await adminApi.disableTask(task.id)
+    else await adminApi.enableTask(task.id)
+    await loadTasks()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+async function stopTask(id: string) {
+  try {
+    await adminApi.stopTask(id)
+    toast.add({ title: 'Task stop requested', color: 'info', icon: 'i-lucide-info' })
+    setTimeout(loadTasks, 1000)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
 // Logs
 const logs = ref<LogEntry[]>([])
 const logsLoading = ref(false)
@@ -129,10 +149,28 @@ async function createBackup() {
 
 // Database
 const dbStatus = ref<DatabaseStatus | null>(null)
+const dbQuery = ref('')
+const dbQueryResult = ref<QueryResult | null>(null)
+const dbQueryRunning = ref(false)
+const dbQueryError = ref('')
 
 async function loadDbStatus() {
   try { dbStatus.value = await adminApi.getDatabaseStatus() }
   catch { /* non-critical; DB status card shows empty state */ }
+}
+
+async function runDbQuery() {
+  if (!dbQuery.value.trim()) return
+  dbQueryRunning.value = true
+  dbQueryError.value = ''
+  dbQueryResult.value = null
+  try {
+    dbQueryResult.value = await adminApi.executeQuery(dbQuery.value.trim())
+  } catch (e: unknown) {
+    dbQueryError.value = e instanceof Error ? e.message : 'Query failed'
+  } finally {
+    dbQueryRunning.value = false
+  }
 }
 
 function formatBytes(bytes?: number): string {
@@ -232,12 +270,21 @@ watch(subTab, (v) => {
                 @click="runTask(task.id)"
               />
               <UButton
+                v-if="task.running"
+                icon="i-lucide-square"
+                size="xs"
+                variant="ghost"
+                color="warning"
+                title="Stop"
+                @click="stopTask(task.id)"
+              />
+              <UButton
                 :icon="task.enabled ? 'i-lucide-pause' : 'i-lucide-play-circle'"
                 size="xs"
                 variant="ghost"
                 color="neutral"
                 :title="task.enabled ? 'Disable' : 'Enable'"
-                @click="task.enabled ? adminApi.disableTask(task.id).then(loadTasks) : adminApi.enableTask(task.id).then(loadTasks)"
+                @click="toggleTask(task)"
               />
             </div>
           </div>
@@ -327,7 +374,8 @@ watch(subTab, (v) => {
     </div>
 
     <!-- Database -->
-    <div v-if="subTab === 'database'">
+    <div v-if="subTab === 'database'" class="space-y-4">
+      <!-- Connection status -->
       <UCard>
         <div v-if="!dbStatus" class="flex justify-center py-4">
           <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
@@ -346,6 +394,52 @@ watch(subTab, (v) => {
             <div><span class="text-muted">Database:</span> {{ dbStatus.database || '—' }}</div>
             <div><span class="text-muted">Type:</span> {{ dbStatus.repository_type || '—' }}</div>
             <div><span class="text-muted">Message:</span> {{ dbStatus.message || '—' }}</div>
+          </div>
+        </div>
+      </UCard>
+
+      <!-- Query executor (read-only) -->
+      <UCard>
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-terminal" class="size-4" />
+            Query Executor
+            <UBadge label="Read-only" color="neutral" variant="subtle" size="xs" />
+          </div>
+        </template>
+        <div class="space-y-3">
+          <UTextarea
+            v-model="dbQuery"
+            :rows="4"
+            placeholder="SELECT * FROM users LIMIT 10"
+            class="font-mono text-sm"
+            @keydown.ctrl.enter="runDbQuery"
+            @keydown.meta.enter="runDbQuery"
+          />
+          <div class="flex items-center gap-2">
+            <UButton :loading="dbQueryRunning" icon="i-lucide-play" label="Run Query" size="sm" @click="runDbQuery" />
+            <span class="text-xs text-muted">Ctrl+Enter to run · SELECT/SHOW only</span>
+          </div>
+          <UAlert v-if="dbQueryError" :title="dbQueryError" color="error" variant="soft" icon="i-lucide-x-circle" />
+          <div v-if="dbQueryResult" class="space-y-1 text-sm">
+            <p class="text-muted text-xs">{{ dbQueryResult.rows?.length ?? 0 }} row(s) returned</p>
+            <div class="overflow-x-auto rounded border border-default">
+              <table v-if="dbQueryResult.columns?.length" class="min-w-full text-xs font-mono">
+                <thead class="bg-elevated">
+                  <tr>
+                    <th v-for="col in dbQueryResult.columns" :key="col" class="px-3 py-1.5 text-left font-medium text-muted whitespace-nowrap">{{ col }}</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-default">
+                  <tr v-for="(row, ri) in dbQueryResult.rows" :key="ri" class="hover:bg-muted/30">
+                    <td v-for="col in dbQueryResult.columns" :key="col" class="px-3 py-1 whitespace-nowrap max-w-xs truncate" :title="String(row[col] ?? '')">
+                      {{ row[col] ?? '' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-else class="px-3 py-2 text-muted">No rows returned.</p>
+            </div>
           </div>
         </div>
       </UCard>
