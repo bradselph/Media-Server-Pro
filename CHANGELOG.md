@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.122.0] - 2026-03-26 (minor)
+
+- fix: thumbnail hover cycling and broken image fallback on media grid
+- feat: restore detect flow, relay-based server storage, and real-time WS progress in DownloaderTab
+- feat: add slave media item detail view to receiver section in SourcesTab
+- feat: expose /api/status, /api/modules and /api/receiver/media/:id in frontend
+
+
 ## [0.121.0] - 2026-03-26 (minor)
 
 - feat: show user capabilities in profile using getPermissions
