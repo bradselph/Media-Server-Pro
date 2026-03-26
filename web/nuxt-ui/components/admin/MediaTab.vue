@@ -3,6 +3,7 @@ import type { MediaItem, AdminMediaListParams } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const adminApi = useAdminApi()
+const hlsApi = useHlsApi()
 const toast = useToast()
 
 const items = ref<MediaItem[]>([])
@@ -333,6 +334,15 @@ onMounted(load)
               color="neutral"
               title="Generate thumbnail"
               @click="adminApi.generateThumbnail(row.original.id).then(() => toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' }))"
+            />
+            <UButton
+              v-if="row.original.type !== 'audio'"
+              icon="i-lucide-video"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              title="Generate HLS"
+              @click="hlsApi.generate(row.original.id).then(() => toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'HLS generation failed', color: 'error', icon: 'i-lucide-x' }))"
             />
             <UButton
               icon="i-lucide-trash-2"
