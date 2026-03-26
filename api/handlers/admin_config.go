@@ -75,7 +75,8 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	}
 
 	// Reject mutations to sensitive config sections (database creds, etc.)
-	if rejected := filterDeniedConfigKeys(updates); len(rejected) > 0 {
+	rejected := filterDeniedConfigKeys(updates)
+	if len(rejected) > 0 {
 		h.log.Warn("Admin config update rejected keys: %v", rejected)
 	}
 
@@ -98,5 +99,9 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	}
 
 	h.logAdminAction(c, &adminLogActionParams{Action: "update_config", Target: "configuration", Details: redactSensitiveConfigKeys(updates)})
-	writeSuccess(c, h.admin.GetConfigMap())
+	result := map[string]interface{}{"config": h.admin.GetConfigMap()}
+	if len(rejected) > 0 {
+		result["rejected_keys"] = rejected
+	}
+	writeSuccess(c, result)
 }
