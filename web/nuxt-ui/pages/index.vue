@@ -14,6 +14,8 @@ const toast = useToast()
 const continueWatching = ref<Suggestion[]>([])
 const trending = ref<Suggestion[]>([])
 const recommended = ref<Suggestion[]>([])
+// General suggestions (shown to logged-out users — public endpoint)
+const general = ref<Suggestion[]>([])
 
 // State — declared BEFORE any watch({immediate:true}) that references params
 // to avoid a Temporal Dead Zone (TDZ) crash when the user is already logged in
@@ -37,6 +39,10 @@ const params = reactive({
   sort_order: (authStore.user?.preferences?.sort_order ?? 'asc') as 'asc' | 'desc',
 })
 
+async function loadGeneralSuggestions() {
+  try { general.value = (await suggestionsApi.get()) ?? [] } catch { /* non-critical */ }
+}
+
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
@@ -58,6 +64,7 @@ async function loadRecommendations() {
 // load() by only reloading when the limit preference actually changed.
 watch(() => authStore.isLoggedIn, (loggedIn) => {
   if (loggedIn) {
+    general.value = []
     loadRecommendations()
     const pref = authStore.user?.preferences?.items_per_page
     if (pref && pref !== params.limit) {
@@ -65,6 +72,11 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
       params.page = 1
       load()
     }
+  } else {
+    continueWatching.value = []
+    trending.value = []
+    recommended.value = []
+    loadGeneralSuggestions()
   }
 }, { immediate: false })
 
@@ -129,6 +141,7 @@ onMounted(() => {
   // Fetch recommendations for already-logged-in users (page refresh).
   // When the user logs in mid-session, the watch above handles this instead.
   if (authStore.isLoggedIn) loadRecommendations()
+  else loadGeneralSuggestions()
 })
 
 // View mode — initialized from user preference; defaults to grid
@@ -274,6 +287,34 @@ onUnmounted(() => {
         <div class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="s in recommended"
+            :key="s.media_id"
+            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                :src="mediaApi.getThumbnailUrl(s.media_id)"
+                :alt="s.title"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+          </NuxtLink>
+        </div>
+      </div>
+    </template>
+
+    <!-- Popular suggestions (logged-out users only) -->
+    <template v-else>
+      <div v-if="general.length > 0" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-star" class="size-4 text-primary" />
+          Popular
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="s in general"
             :key="s.media_id"
             :to="`/player?id=${encodeURIComponent(s.media_id)}`"
             class="group shrink-0 w-40"
