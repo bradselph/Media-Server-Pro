@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
@@ -10,13 +10,17 @@ const themeStore = useThemeStore()
 const router = useRouter()
 const { changePassword, deleteAccount, getPreferences, updatePreferences } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
-const { getUsage } = useStorageApi()
+const { getUsage, getPermissions } = useStorageApi()
 const toast = useToast()
 
 const storageUsage = ref<StorageUsage | null>(null)
+const permissionsInfo = ref<PermissionsInfo | null>(null)
 async function loadStorageUsage() {
-  try { storageUsage.value = await getUsage() }
-  catch { /* optional */ }
+  try {
+    const [u, p] = await Promise.allSettled([getUsage(), getPermissions()])
+    if (u.status === 'fulfilled') storageUsage.value = u.value
+    if (p.status === 'fulfilled') permissionsInfo.value = p.value
+  } catch { /* optional */ }
 }
 
 // Redirect if not logged in
@@ -182,6 +186,16 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
                 <span>{{ storageUsage.used_gb.toFixed(2) }} GB / {{ storageUsage.quota_gb > 0 ? storageUsage.quota_gb + ' GB' : 'Unlimited' }}</span>
               </div>
               <UProgress :value="storageUsage.quota_gb > 0 ? storageUsage.percentage : 0" size="xs" :color="storageUsage.percentage > 90 ? 'error' : storageUsage.percentage > 70 ? 'warning' : 'success'" />
+            </div>
+            <div v-if="permissionsInfo?.capabilities" class="mt-2 flex flex-wrap gap-1.5">
+              <UBadge
+                v-for="[cap, allowed] in Object.entries(permissionsInfo.capabilities)"
+                :key="cap"
+                :label="cap.replace(/^can/, '').replace(/([A-Z])/g, ' $1').trim()"
+                :color="allowed ? 'success' : 'neutral'"
+                :variant="allowed ? 'subtle' : 'outline'"
+                size="xs"
+              />
             </div>
           </div>
         </div>
