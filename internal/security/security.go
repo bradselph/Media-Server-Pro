@@ -903,10 +903,14 @@ func (r *RateLimiter) cleanupWithIPLists(whitelist, blacklist *IPList) {
 }
 
 // isAuthPath returns true for authentication endpoints that should use
-// the stricter auth rate limiter (login, register).
+// the stricter auth rate limiter (login, register, and any endpoint that
+// verifies a password — change-password and delete-account accept a
+// current_password field and are vulnerable to brute-force if left under
+// the general rate limit).
 func isAuthPath(path string) bool {
 	return path == "/api/auth/login" || path == "/api/auth/register" ||
-		path == "/api/auth/admin-login" || path == "/api/admin/login"
+		path == "/api/auth/admin-login" || path == "/api/admin/login" ||
+		path == "/api/auth/change-password" || path == "/api/auth/delete-account"
 }
 
 // GinMiddleware returns a gin.HandlerFunc that applies security checks

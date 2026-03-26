@@ -18,6 +18,10 @@ func TestIsAuthPath(t *testing.T) {
 	}{
 		{"/api/auth/login", true},
 		{"/api/auth/register", true},
+		{"/api/auth/admin-login", true},
+		{"/api/admin/login", true},
+		{"/api/auth/change-password", true},
+		{"/api/auth/delete-account", true},
 		{"/api/media", false},
 		{"/api/auth/logout", false},
 		{"/", false},
