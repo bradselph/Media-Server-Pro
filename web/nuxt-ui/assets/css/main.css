@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* Tailwind v4 safelist: ensure these classes are always emitted for the
+   mature-content blur gate (dynamically applied via ternary, scanner may miss them) */
+@source inline("{blur-lg,blur-md,scale-110}");
+
 :root {
   --font-sans: 'Inter', system-ui, sans-serif;
 }
