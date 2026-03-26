@@ -3,6 +3,7 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -257,24 +258,69 @@ func (m *Module) GetUptimeSecs() int64 {
 	return int64(time.Since(m.startTime).Seconds())
 }
 
+// readProcMeminfo reads /proc/meminfo and returns (totalBytes, usedBytes).
+// Used bytes = MemTotal - MemAvailable (matches how `free` computes "used").
+// Returns (0, 0) on any read/parse error so the caller can fall back gracefully.
+func readProcMeminfo() (total, used uint64) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, 0
+	}
+	var memTotal, memAvailable uint64
+	var foundTotal, foundAvail bool
+	for _, line := range bytes.Split(data, []byte{'\n'}) {
+		if bytes.HasPrefix(line, []byte("MemTotal:")) {
+			var kb uint64
+			if _, err := fmt.Sscanf(string(line), "MemTotal: %d kB", &kb); err == nil {
+				memTotal = kb * 1024
+				foundTotal = true
+			}
+		} else if bytes.HasPrefix(line, []byte("MemAvailable:")) {
+			var kb uint64
+			if _, err := fmt.Sscanf(string(line), "MemAvailable: %d kB", &kb); err == nil {
+				memAvailable = kb * 1024
+				foundAvail = true
+			}
+		}
+		if foundTotal && foundAvail {
+			break
+		}
+	}
+	if !foundTotal {
+		return 0, 0
+	}
+	var memUsed uint64
+	if memAvailable <= memTotal {
+		memUsed = memTotal - memAvailable
+	}
+	return memTotal, memUsed
+}
+
 // GetSystemInfo returns system information
 func (m *Module) GetSystemInfo() SystemInfo {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
+	// Use actual physical RAM from /proc/meminfo when available (Linux).
+	// Falls back to Go runtime Sys/Alloc if /proc/meminfo is unavailable.
+	osMemTotal, osMemUsed := readProcMeminfo()
+	memTotal := osMemTotal
+	memAlloc := osMemUsed
+	if memTotal == 0 {
+		memTotal = memStats.Sys
+		memAlloc = memStats.Alloc
+	}
+
 	return SystemInfo{
 		GoVersion:    runtime.Version(),
 		NumCPU:       runtime.NumCPU(),
 		NumGoroutine: runtime.NumGoroutine(),
-		MemAlloc:     memStats.Alloc,
-		// MemTotal uses Sys (total memory obtained from OS) — approximates RSS and is stable.
-		// TotalAlloc was previously used but it is cumulative-only and would make the memory
-		// usage bar show nonsensical low percentages after even brief operation.
-		MemTotal:  memStats.Sys,
-		MemSys:    memStats.Sys,
-		GCCycles:  memStats.NumGC,
-		Uptime:    time.Since(m.startTime).String(),
-		StartTime: m.startTime,
+		MemAlloc:     memAlloc,
+		MemTotal:     memTotal,
+		MemSys:       memStats.Sys,
+		GCCycles:     memStats.NumGC,
+		Uptime:       time.Since(m.startTime).String(),
+		StartTime:    m.startTime,
 	}
 }
 
