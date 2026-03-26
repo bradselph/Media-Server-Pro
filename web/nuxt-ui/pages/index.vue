@@ -143,6 +143,58 @@ function formatDuration(secs?: number): string {
   const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60)
   return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`
 }
+
+// ── Thumbnail cycling on hover ─────────────────────────────────────────────────
+const previewCache = new Map<string, string[]>()
+const failedThumbnails = new Set<string>()
+const hoverItemId = ref<string | null>(null)
+const hoverFrameIdx = ref(0)
+let hoverCycleTimer: ReturnType<typeof setInterval> | null = null
+
+async function onMediaHoverEnter(id: string, isAudio: boolean) {
+  if (isAudio) return
+  hoverItemId.value = id
+  hoverFrameIdx.value = 0
+
+  if (!previewCache.has(id)) {
+    try {
+      const result = await mediaApi.getThumbnailPreviews(id)
+      if (result?.previews?.length > 1) previewCache.set(id, result.previews)
+    } catch { /* no previews — stay on default */ }
+  }
+
+  const frames = previewCache.get(id)
+  if (frames && frames.length > 1) {
+    if (hoverCycleTimer) clearInterval(hoverCycleTimer)
+    hoverCycleTimer = setInterval(() => {
+      hoverFrameIdx.value = (hoverFrameIdx.value + 1) % frames.length
+    }, 600)
+  }
+}
+
+function onMediaHoverLeave() {
+  hoverItemId.value = null
+  hoverFrameIdx.value = 0
+  if (hoverCycleTimer) { clearInterval(hoverCycleTimer); hoverCycleTimer = null }
+}
+
+function getThumbSrc(id: string): string {
+  if (hoverItemId.value === id) {
+    const frames = previewCache.get(id)
+    if (frames?.length) return frames[hoverFrameIdx.value % frames.length]
+  }
+  return mediaApi.getThumbnailUrl(id)
+}
+
+function onThumbnailError(id: string, event: Event) {
+  failedThumbnails.add(id)
+  const img = event.target as HTMLImageElement
+  img.style.display = 'none'
+}
+
+onUnmounted(() => {
+  if (hoverCycleTimer) clearInterval(hoverCycleTimer)
+})
 </script>
 
 <template>
@@ -333,17 +385,20 @@ function formatDuration(secs?: number): string {
         :key="item.id"
         :to="matureGateHref(item)"
         class="group block"
+        @mouseenter="onMediaHoverEnter(item.id, item.type === 'audio')"
+        @mouseleave="onMediaHoverLeave"
       >
         <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2">
           <img
-            v-if="item.type !== 'audio'"
-            :src="mediaApi.getThumbnailUrl(item.id)"
+            v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
+            :src="getThumbSrc(item.id)"
             :alt="getDisplayTitle(item)"
-            :class="['w-full h-full object-cover transition-transform duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-lg scale-110' : '']"
+            :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-lg scale-110' : '']"
             loading="lazy"
+            @error="onThumbnailError(item.id, $event)"
           />
           <div v-else class="w-full h-full flex items-center justify-center">
-            <UIcon name="i-lucide-music" class="size-8 text-muted" />
+            <UIcon :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
           </div>
           <!-- Mature gate overlay (guests + users with show_mature disabled) -->
           <div
