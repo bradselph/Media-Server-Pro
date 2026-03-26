@@ -13,6 +13,7 @@ const toast = useToast()
 // Recommendations (only for logged-in users)
 const continueWatching = ref<Suggestion[]>([])
 const trending = ref<Suggestion[]>([])
+const recommended = ref<Suggestion[]>([])
 
 // State — declared BEFORE any watch({immediate:true}) that references params
 // to avoid a Temporal Dead Zone (TDZ) crash when the user is already logged in
@@ -39,12 +40,14 @@ const params = reactive({
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
-    const [cw, tr] = await Promise.allSettled([
+    const [cw, tr, rec] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(),
       suggestionsApi.getTrending(),
+      suggestionsApi.getPersonalized(12),
     ])
     if (cw.status === 'fulfilled') continueWatching.value = cw.value ?? []
     if (tr.status === 'fulfilled') trending.value = tr.value ?? []
+    if (rec.status === 'fulfilled') recommended.value = rec.value ?? []
   } catch { /* non-critical */ }
 }
 
@@ -179,6 +182,32 @@ function formatDuration(secs?: number): string {
         <div class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="s in trending"
+            :key="s.media_id"
+            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                :src="mediaApi.getThumbnailUrl(s.media_id)"
+                :alt="s.title"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+          </NuxtLink>
+        </div>
+      </div>
+
+      <!-- Recommended For You -->
+      <div v-if="recommended.length > 0 && authStore.user?.preferences?.show_recommended !== false" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
+          Recommended For You
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="s in recommended"
             :key="s.media_id"
             :to="`/player?id=${encodeURIComponent(s.media_id)}`"
             class="group shrink-0 w-40"
