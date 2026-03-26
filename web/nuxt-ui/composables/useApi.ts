@@ -45,8 +45,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
   if (!res.ok || envelope.success === false) {
     // On 401, redirect to login so stale sessions are cleared automatically.
+    // Preserve current URL as redirect param so user returns after re-auth.
     if (res.status === 401 && import.meta.client) {
-      navigateTo('/login')
+      const redirect = window.location.pathname + window.location.search
+      navigateTo(redirect && redirect !== '/login' ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login')
     }
     throw new ApiError(
       envelope.message ?? envelope.error ?? `HTTP ${res.status}`,
