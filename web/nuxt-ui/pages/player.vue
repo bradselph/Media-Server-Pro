@@ -14,6 +14,8 @@ const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
 const toast = useToast()
 
+const userPrefs = computed(() => authStore.user?.preferences)
+
 // Playlist add
 const playlists = ref<Playlist[]>([])
 const playlistOpen = ref(false)
@@ -51,7 +53,7 @@ const currentTime = ref(0)
 const duration = ref(0)
 const showControls = ref(true)
 const isFullscreen = ref(false)
-const playbackSpeed = ref(1)
+const playbackSpeed = ref(userPrefs.value?.playback_speed ?? 1)
 
 // HLS — delegate to composable
 const mediaIdRef = computed(() => mediaId.value ?? '')
@@ -118,6 +120,8 @@ async function loadMedia(id: string) {
 
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
+  // Respect the user's resume_playback preference (defaults to true when unset)
+  if (userPrefs.value?.resume_playback === false) return
   try {
     const { position } = await playbackApi.getPosition(mediaId.value)
     if (position > 5 && videoRef.value) {
@@ -137,6 +141,7 @@ async function savePosition() {
 
 function onVideoLoaded() {
   duration.value = videoRef.value?.duration ?? 0
+  if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
   restorePosition()
   playbackStore.startAutoSave()
 }
