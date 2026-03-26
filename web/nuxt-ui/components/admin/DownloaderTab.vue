@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import type { DownloaderJob, ImportableFile, DownloaderHealth } from '~/types/api'
+import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
 
 // ── Health ────────────────────────────────────────────────────────────────────
 const health = ref<DownloaderHealth | null>(null)
+const settings = ref<DownloaderSettings | null>(null)
+const showSettings = ref(false)
 
 async function loadHealth() {
   try { health.value = await adminApi.getDownloaderHealth() }
   catch { health.value = null }
+}
+
+async function loadSettings() {
+  try { settings.value = await adminApi.getDownloaderSettings() }
+  catch { settings.value = null }
 }
 
 // ── Downloads list ────────────────────────────────────────────────────────────
@@ -105,6 +112,7 @@ function formatBytes(bytes?: number): string {
 
 onMounted(() => {
   loadHealth()
+  loadSettings()
   load()
   loadImportable()
 })
@@ -129,6 +137,54 @@ onMounted(() => {
         <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" class="ml-auto" @click="loadHealth" />
       </div>
     </UCard>
+
+    <!-- Settings -->
+    <UCard v-if="settings && showSettings">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <span class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-settings" class="size-4" />
+            Downloader Settings
+          </span>
+          <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" @click="showSettings = false" />
+        </div>
+      </template>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+        <div v-if="settings.maxConcurrent != null">
+          <p class="text-xs text-muted">Max Concurrent</p>
+          <p class="font-medium">{{ settings.maxConcurrent }}</p>
+        </div>
+        <div v-if="settings.downloadsDir">
+          <p class="text-xs text-muted">Downloads Dir</p>
+          <p class="font-mono text-xs truncate" :title="settings.downloadsDir">{{ settings.downloadsDir }}</p>
+        </div>
+        <div>
+          <p class="text-xs text-muted">Server Storage</p>
+          <UBadge :label="settings.allowServerStorage ? 'Allowed' : 'Disabled'" :color="settings.allowServerStorage ? 'success' : 'neutral'" variant="subtle" size="xs" />
+        </div>
+        <div v-if="settings.videoFormat">
+          <p class="text-xs text-muted">Video Format</p>
+          <p class="font-medium">{{ settings.videoFormat }}</p>
+        </div>
+        <div v-if="settings.audioFormat">
+          <p class="text-xs text-muted">Audio Format</p>
+          <p class="font-medium">{{ settings.audioFormat }} {{ settings.audioQuality ? `(${settings.audioQuality})` : '' }}</p>
+        </div>
+        <div v-if="settings.proxy">
+          <p class="text-xs text-muted">Proxy</p>
+          <UBadge :label="settings.proxy.enabled ? 'Enabled' : 'Disabled'" :color="settings.proxy.enabled ? 'info' : 'neutral'" variant="subtle" size="xs" />
+        </div>
+      </div>
+      <div v-if="settings.supportedSites?.length" class="mt-3">
+        <p class="text-xs text-muted mb-1">Supported Sites ({{ settings.supportedSites.length }})</p>
+        <div class="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+          <UBadge v-for="site in settings.supportedSites" :key="site" :label="site" color="neutral" variant="subtle" size="xs" />
+        </div>
+      </div>
+    </UCard>
+    <div v-else-if="settings" class="flex justify-end">
+      <UButton icon="i-lucide-settings" label="Show Settings" size="sm" variant="ghost" color="neutral" @click="showSettings = true" />
+    </div>
 
     <!-- Add new download -->
     <UCard>
