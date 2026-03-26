@@ -566,6 +566,16 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 	if req.Position < 0 {
 		req.Position = 0
 	}
+	// Cap position against the reported duration to prevent users from instantly
+	// marking items as 100% complete via a forged position value.  Also apply a
+	// hard maximum (one week in seconds) as a sanity guard independent of duration.
+	const maxPositionSecs = 7 * 24 * 3600 // 7 days — no legitimate media is longer
+	if req.Duration > 0 && req.Position > req.Duration {
+		req.Position = req.Duration
+	}
+	if req.Position > maxPositionSecs {
+		req.Position = 0
+	}
 
 	mediaPath, mediaName, ok := h.resolveMediaPathOrReceiver(c, req.ID)
 	if !ok {
