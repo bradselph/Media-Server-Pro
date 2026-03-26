@@ -85,6 +85,27 @@ async function unban(ip: string) {
   }
 }
 
+const newBanIP = ref('')
+const newBanDuration = ref('')
+const banning = ref(false)
+
+async function banIPAddress() {
+  if (!newBanIP.value) return
+  banning.value = true
+  try {
+    const dur = parseInt(newBanDuration.value)
+    await adminApi.banIP(newBanIP.value, !isNaN(dur) && dur > 0 ? dur : undefined)
+    toast.add({ title: 'IP banned', color: 'success', icon: 'i-lucide-check' })
+    newBanIP.value = ''
+    newBanDuration.value = ''
+    loadBanned()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    banning.value = false
+  }
+}
+
 // Stats
 const stats = ref<SecurityStats | null>(null)
 
@@ -104,6 +125,7 @@ watch(subTab, (v) => {
     <!-- Audit log -->
     <div v-if="subTab === 'audit'" class="space-y-3">
       <div class="flex gap-2 justify-end">
+        <UButton icon="i-lucide-download" label="Export CSV" size="sm" variant="outline" color="neutral" :to="adminApi.exportAuditLogUrl()" />
         <UButton icon="i-lucide-refresh-cw" aria-label="Refresh audit log" variant="ghost" color="neutral" size="sm" @click="loadAudit" />
       </div>
       <UCard>
@@ -190,7 +212,15 @@ watch(subTab, (v) => {
     </template>
 
     <!-- Banned IPs -->
-    <div v-if="subTab === 'banned'">
+    <div v-if="subTab === 'banned'" class="space-y-4">
+      <UCard>
+        <template #header><div class="font-semibold">Ban IP Address</div></template>
+        <div class="flex flex-wrap gap-2">
+          <UInput v-model="newBanIP" placeholder="IP address or CIDR" class="w-48" />
+          <UInput v-model="newBanDuration" type="number" placeholder="Duration in minutes (blank = permanent)" class="flex-1 min-w-56" />
+          <UButton :loading="banning" icon="i-lucide-shield-x" label="Ban" color="error" :disabled="!newBanIP" @click="banIPAddress" />
+        </div>
+      </UCard>
       <UCard>
         <UTable
           :data="banned"
