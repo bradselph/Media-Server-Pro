@@ -156,18 +156,40 @@ async function openPlaylist(pl: Playlist) {
   finally { activeLoading.value = false }
 }
 
-async function removeItem(playlistId: string, mediaId: string) {
+async function removeItem(playlistId: string, mediaId: string, itemId?: string) {
   try {
-    await playlistApi.removeItem(playlistId, mediaId)
+    if (itemId) {
+      await playlistApi.removePlaylistItemById(playlistId, itemId)
+    } else {
+      await playlistApi.removeItem(playlistId, mediaId)
+    }
     if (activePlaylist.value) {
       activePlaylist.value = {
         ...activePlaylist.value,
-        items: (activePlaylist.value.items ?? []).filter(i => i.media_id !== mediaId),
+        items: (activePlaylist.value.items ?? []).filter(i => itemId ? i.id !== itemId : i.media_id !== mediaId),
       }
     }
     toast.add({ title: 'Removed from playlist', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+async function moveItem(idx: number, direction: -1 | 1) {
+  if (!activePlaylist.value) return
+  const items = activePlaylist.value.items ?? []
+  const target = idx + direction
+  if (target < 0 || target >= items.length) return
+  const positions = items.map((_, j) => j)
+  positions[idx] = target
+  positions[target] = idx
+  try {
+    await playlistApi.reorder(activePlaylist.value.id, positions)
+    const newItems = [...items]
+    ;[newItems[idx], newItems[target]] = [newItems[target], newItems[idx]]
+    activePlaylist.value = { ...activePlaylist.value, items: newItems }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to reorder', color: 'error', icon: 'i-lucide-x' })
   }
 }
 
@@ -249,14 +271,34 @@ onMounted(load)
               >
                 {{ item.title || item.media_id }}
               </NuxtLink>
-              <UButton
-                icon="i-lucide-x"
-                aria-label="Remove from playlist"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                @click="removeItem(activePlaylist!.id, item.media_id)"
-              />
+              <div class="flex items-center gap-1 shrink-0">
+                <UButton
+                  icon="i-lucide-chevron-up"
+                  aria-label="Move up"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  :disabled="idx === 0"
+                  @click="moveItem(idx, -1)"
+                />
+                <UButton
+                  icon="i-lucide-chevron-down"
+                  aria-label="Move down"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  :disabled="idx === (activePlaylist!.items?.length ?? 0) - 1"
+                  @click="moveItem(idx, 1)"
+                />
+                <UButton
+                  icon="i-lucide-x"
+                  aria-label="Remove from playlist"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  @click="removeItem(activePlaylist!.id, item.media_id, item.id)"
+                />
+              </div>
             </div>
           </div>
         </UCard>
