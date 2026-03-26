@@ -11,6 +11,43 @@ const scanning = ref(false)
 const totalItems = ref(0)
 const totalPages = ref(1)
 
+// Bulk selection
+const selectedIds = ref(new Set<string>())
+const allPageSelected = computed(() =>
+  items.value.length > 0 && items.value.every(item => selectedIds.value.has(item.id)),
+)
+function toggleSelectAll() {
+  if (allPageSelected.value) {
+    items.value.forEach(item => selectedIds.value.delete(item.id))
+  } else {
+    items.value.forEach(item => selectedIds.value.add(item.id))
+  }
+  selectedIds.value = new Set(selectedIds.value)
+}
+function toggleSelect(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+const bulkRunning = ref(false)
+async function runBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  bulkRunning.value = true
+  try {
+    const res = await adminApi.bulkMedia(ids, action, data)
+    const msg = action === 'delete' ? `Deleted ${res?.success ?? ids.length} items` : `Updated ${res?.success ?? ids.length} items`
+    toast.add({ title: msg, color: 'success', icon: 'i-lucide-check' })
+    selectedIds.value = new Set()
+    load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Bulk action failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    bulkRunning.value = false
+  }
+}
+
 // Edit modal
 const editTarget = ref<MediaItem | null>(null)
 const editOpen = computed({
@@ -165,9 +202,54 @@ onMounted(load)
       </div>
     </div>
 
-    <p class="text-sm text-muted">
-      {{ totalItems.toLocaleString() }} items
-    </p>
+    <div class="flex items-center justify-between">
+      <p class="text-sm text-muted">
+        {{ totalItems.toLocaleString() }} items
+      </p>
+      <span v-if="selectedIds.size > 0" class="text-sm text-primary font-medium">
+        {{ selectedIds.size }} selected
+      </span>
+    </div>
+
+    <!-- Bulk action bar -->
+    <div v-if="selectedIds.size > 0" class="flex flex-wrap items-center gap-2 p-3 bg-elevated rounded-lg border border-default">
+      <span class="text-sm font-medium">{{ selectedIds.size }} item{{ selectedIds.size !== 1 ? 's' : '' }} selected</span>
+      <UButton
+        icon="i-lucide-shield"
+        label="Mark Mature"
+        size="xs"
+        variant="outline"
+        color="warning"
+        :loading="bulkRunning"
+        @click="runBulk('update', { is_mature: true })"
+      />
+      <UButton
+        icon="i-lucide-shield-off"
+        label="Unmark Mature"
+        size="xs"
+        variant="outline"
+        color="neutral"
+        :loading="bulkRunning"
+        @click="runBulk('update', { is_mature: false })"
+      />
+      <UButton
+        icon="i-lucide-trash-2"
+        label="Delete Selected"
+        size="xs"
+        variant="outline"
+        color="error"
+        :loading="bulkRunning"
+        @click="runBulk('delete')"
+      />
+      <UButton
+        icon="i-lucide-x"
+        label="Clear"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        @click="selectedIds = new Set()"
+      />
+    </div>
 
     <!-- Table -->
     <UCard>
@@ -178,6 +260,7 @@ onMounted(load)
         v-else
         :data="items"
         :columns="[
+          { accessorKey: '_select', header: '' },
           { accessorKey: 'name', header: 'Name' },
           { accessorKey: 'type', header: 'Type' },
           { accessorKey: 'size', header: 'Size' },
@@ -188,6 +271,21 @@ onMounted(load)
           { accessorKey: 'actions', header: '' },
         ]"
       >
+        <template #_select-header>
+          <UCheckbox
+            :model-value="allPageSelected"
+            aria-label="Select all"
+            @update:model-value="toggleSelectAll"
+          />
+        </template>
+        <template #_select-cell="{ row }">
+          <UCheckbox
+            :model-value="selectedIds.has(row.original.id)"
+            aria-label="Select row"
+            @update:model-value="toggleSelect(row.original.id)"
+          />
+        </template>
+
         <template #name-cell="{ row }">
           <div class="max-w-xs truncate text-sm font-medium" :title="getDisplayTitle(row.original)">
             {{ getDisplayTitle(row.original) }}
