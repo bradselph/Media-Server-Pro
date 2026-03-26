@@ -35,7 +35,7 @@ import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPa
 // Delegating via closures defers useApi() until an actual API call is made
 // (always inside an async handler, never at module load time).
 const api = {
-  get:    <T>(url: string, body?: unknown)               => useApi().get<T>(url),
+  get:    <T>(url: string)                               => useApi().get<T>(url),
   post:   <T>(url: string, body?: unknown)               => useApi().post<T>(url, body),
   put:    <T>(url: string, body?: unknown)               => useApi().put<T>(url, body),
   patch:  <T>(url: string, body?: unknown)               => useApi().patch<T>(url, body),
