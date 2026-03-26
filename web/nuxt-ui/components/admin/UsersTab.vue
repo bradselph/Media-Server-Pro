@@ -102,9 +102,12 @@ async function handleCreate() {
   }
 }
 
-function openEdit(user: User) {
-  editUser.value = user
-  Object.assign(editForm, { role: user.role, enabled: user.enabled, email: user.email ?? '', newPassword: '' })
+async function openEdit(user: User) {
+  // Fetch fresh user data before populating the form so edits are based on
+  // current server state, not a potentially stale list entry.
+  const fresh = await adminApi.getUser(user.username).catch(() => user)
+  editUser.value = fresh
+  Object.assign(editForm, { role: fresh.role, enabled: fresh.enabled, email: fresh.email ?? '', newPassword: '' })
   editError.value = ''
 }
 
