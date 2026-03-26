@@ -204,6 +204,15 @@ async function ignoreDiscovery(id: string) {
   }
 }
 
+async function deleteDiscovery(id: string) {
+  try {
+    await adminApi.deleteCrawlerDiscovery(id)
+    crawlerDiscoveries.value = crawlerDiscoveries.value.filter(d => d.id !== id)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
 // ── Extractor ──────────────────────────────────────────────────────────────────
 const extractorStats = ref<ExtractorStats | null>(null)
 const extractorItems = ref<ExtractorItem[]>([])
@@ -547,7 +556,8 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
                   </div>
                   <div class="flex gap-1">
                     <UButton icon="i-lucide-check" aria-label="Approve discovery" size="xs" variant="ghost" color="success" @click="approveDiscovery(d.id)" />
-                    <UButton icon="i-lucide-x" aria-label="Ignore discovery" size="xs" variant="ghost" color="error" @click="ignoreDiscovery(d.id)" />
+                    <UButton icon="i-lucide-ban" aria-label="Ignore discovery" size="xs" variant="ghost" color="warning" title="Ignore" @click="ignoreDiscovery(d.id)" />
+                    <UButton icon="i-lucide-trash-2" aria-label="Delete discovery" size="xs" variant="ghost" color="error" title="Delete" @click="deleteDiscovery(d.id)" />
                   </div>
                 </div>
               </div>
