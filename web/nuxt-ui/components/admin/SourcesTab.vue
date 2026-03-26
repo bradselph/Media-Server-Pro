@@ -7,6 +7,7 @@ import type {
 } from '~/types/api'
 
 const adminApi = useAdminApi()
+const mediaApi = useMediaApi()
 const toast = useToast()
 
 const subTab = ref('remote')
@@ -461,6 +462,17 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
                     <p class="text-sm font-medium truncate" :title="m.name">{{ m.name }}</p>
                     <p class="text-xs text-muted">{{ m.source_name }} · {{ m.content_type }} · {{ formatBytes(m.size) }}</p>
                   </div>
+                  <UButton
+                    tag="a"
+                    :href="mediaApi.getRemoteStreamUrl(m.url, m.source_name)"
+                    icon="i-lucide-play"
+                    aria-label="Stream"
+                    size="xs"
+                    variant="ghost"
+                    color="primary"
+                    title="Stream"
+                    target="_blank"
+                  />
                   <UButton
                     icon="i-lucide-hard-drive"
                     aria-label="Cache locally"
