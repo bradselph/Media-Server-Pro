@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.120.0] - 2026-03-26 (minor)
+
+- feat(admin): add Generate HLS button per media item in Media tab
+- feat(player): add Generate HLS button when adaptive streaming is not yet available
+- feat(admin): add slave media browser to Sources/Receiver tab
+- feat(admin): add clear-classification-tags action to Discovery/Classify tab
+- feat(admin): add HLS job validation button to Content tab
+- feat(admin): add categorize-directory and classify-directory actions to Discovery tab
+- feat(admin): add playlist stats card using getPlaylistStats API to Playlists tab
+- feat(admin): add bulk enable/disable/delete actions to Users tab
+- feat(admin): add downloader health status banner to Downloader tab
+- feat(admin): add source update workflow and update config UI to Updates tab
+- feat(admin): add manual ban IP form and audit log export to Security tab
+
+
 ## [0.119.0] - 2026-03-26 (minor)
 
 - feat(admin): add cancel active downloads and import-to-library to DownloaderTab
