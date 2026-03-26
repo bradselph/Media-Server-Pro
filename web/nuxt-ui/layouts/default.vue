@@ -3,6 +3,30 @@ const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const colorMode = useColorMode()
+const ageGateApi = useAgeGateApi()
+
+const ageGateOpen = ref(false)
+const ageGateVerifying = ref(false)
+
+async function checkAgeGate() {
+  try {
+    const status = await ageGateApi.getStatus()
+    if (status.enabled && !status.verified) {
+      ageGateOpen.value = true
+    }
+  } catch { /* non-critical */ }
+}
+
+async function verifyAge() {
+  ageGateVerifying.value = true
+  try {
+    await ageGateApi.verify()
+    ageGateOpen.value = false
+  } catch { /* if verify fails, keep modal open */ }
+  finally { ageGateVerifying.value = false }
+}
+
+onMounted(checkAgeGate)
 
 useHead({
   title: computed(() => {
@@ -88,5 +112,23 @@ const navLinks = computed(() => {
     <main>
       <slot />
     </main>
+
+    <!-- Age gate modal -->
+    <UModal
+      :open="ageGateOpen"
+      :dismissible="false"
+      title="Age Verification Required"
+      description="This site contains mature content. You must be 18 or older to continue."
+    >
+      <template #footer>
+        <UButton
+          :loading="ageGateVerifying"
+          icon="i-lucide-check"
+          label="I confirm I am 18 or older"
+          color="primary"
+          @click="verifyAge"
+        />
+      </template>
+    </UModal>
   </div>
 </template>
