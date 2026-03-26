@@ -322,7 +322,7 @@ watch(subTab, (tab) => {
               <div v-else-if="categoryItems.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
                 <div v-for="item in categoryItems" :key="item.id" class="py-2 text-sm">
                   <p class="font-medium truncate">{{ item.name }}</p>
-                  <p class="text-xs text-muted truncate">{{ item.path }}</p>
+                  <p class="text-xs text-muted truncate">{{ item.category }}</p>
                 </div>
               </div>
               <p v-else-if="!categoryItemsLoading && browseCategory && categoryItems.length === 0" class="text-center py-4 text-muted text-sm mt-2">No items in this category.</p>

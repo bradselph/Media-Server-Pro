@@ -436,7 +436,6 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
                 </div>
               </div>
             </UCard>
-          </template>
 
             <!-- Remote media browser -->
             <div class="flex justify-end gap-2">
@@ -753,40 +752,6 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
               </div>
             </UCard>
 
-            <!-- Slave media detail modal -->
-            <UModal
-              v-if="selectedSlaveMedia || slaveMediaDetailLoading"
-              :open="!!(selectedSlaveMedia || slaveMediaDetailLoading)"
-              :title="selectedSlaveMedia ? selectedSlaveMedia.name : 'Loading…'"
-              @update:open="val => { if (!val) selectedSlaveMedia = null }"
-            >
-              <template #body>
-                <div v-if="slaveMediaDetailLoading" class="flex justify-center py-4">
-                  <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
-                </div>
-                <div v-else-if="selectedSlaveMedia" class="space-y-2 text-sm">
-                  <div class="grid grid-cols-2 gap-2">
-                    <div><span class="text-muted">Type:</span> {{ selectedSlaveMedia.type }}</div>
-                    <div><span class="text-muted">Size:</span> {{ formatBytes(selectedSlaveMedia.size) }}</div>
-                    <div v-if="selectedSlaveMedia.duration"><span class="text-muted">Duration:</span> {{ selectedSlaveMedia.duration }}s</div>
-                    <div><span class="text-muted">Slave ID:</span> <span class="font-mono text-xs">{{ selectedSlaveMedia.slave_id }}</span></div>
-                    <div><span class="text-muted">Added:</span> {{ new Date(selectedSlaveMedia.created_at).toLocaleString() }}</div>
-                  </div>
-                  <div>
-                    <span class="text-muted">Path:</span>
-                    <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.path }}</p>
-                  </div>
-                  <div v-if="selectedSlaveMedia.fingerprint">
-                    <span class="text-muted">Fingerprint:</span>
-                    <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.fingerprint }}</p>
-                  </div>
-                </div>
-              </template>
-              <template #footer>
-                <UButton variant="ghost" color="neutral" label="Close" @click="selectedSlaveMedia = null" />
-              </template>
-            </UModal>
-
             <!-- Duplicates -->
             <UCard v-if="duplicates.length > 0">
               <template #header><span class="font-semibold">Pending Duplicates ({{ duplicates.length }})</span></template>
@@ -809,5 +774,39 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
         </div>
       </template>
     </UTabs>
+
+    <!-- Slave media detail modal — kept outside UTabs to avoid deep template nesting parser issues -->
+    <UModal
+      v-if="selectedSlaveMedia || slaveMediaDetailLoading"
+      :open="!!(selectedSlaveMedia || slaveMediaDetailLoading)"
+      :title="selectedSlaveMedia ? selectedSlaveMedia.name : 'Loading…'"
+      @update:open="val => { if (!val) selectedSlaveMedia = null }"
+    >
+      <template #body>
+        <div v-if="slaveMediaDetailLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="selectedSlaveMedia" class="space-y-2 text-sm">
+          <div class="grid grid-cols-2 gap-2">
+            <div><span class="text-muted">Type:</span> {{ selectedSlaveMedia.type }}</div>
+            <div><span class="text-muted">Size:</span> {{ formatBytes(selectedSlaveMedia.size) }}</div>
+            <div v-if="selectedSlaveMedia.duration"><span class="text-muted">Duration:</span> {{ selectedSlaveMedia.duration }}s</div>
+            <div><span class="text-muted">Slave ID:</span> <span class="font-mono text-xs">{{ selectedSlaveMedia.slave_id }}</span></div>
+            <div><span class="text-muted">Added:</span> {{ new Date(selectedSlaveMedia.created_at).toLocaleString() }}</div>
+          </div>
+          <div>
+            <span class="text-muted">Path:</span>
+            <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.path }}</p>
+          </div>
+          <div v-if="selectedSlaveMedia.fingerprint">
+            <span class="text-muted">Fingerprint:</span>
+            <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.fingerprint }}</p>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Close" @click="selectedSlaveMedia = null" />
+      </template>
+    </UModal>
   </div>
 </template>

@@ -557,8 +557,8 @@ watch(subTab, (v) => {
                 </thead>
                 <tbody class="divide-y divide-default">
                   <tr v-for="(row, ri) in dbQueryResult.rows" :key="ri" class="hover:bg-muted/30">
-                    <td v-for="col in dbQueryResult.columns" :key="col" class="px-3 py-1 whitespace-nowrap max-w-xs truncate" :title="String(row[col] ?? '')">
-                      {{ row[col] ?? '' }}
+                    <td v-for="(col, colIdx) in dbQueryResult.columns" :key="col" class="px-3 py-1 whitespace-nowrap max-w-xs truncate" :title="String((row as unknown[])[colIdx] ?? '')">
+                      {{ (row as unknown[])[colIdx] ?? '' }}
                     </td>
                   </tr>
                 </tbody>
