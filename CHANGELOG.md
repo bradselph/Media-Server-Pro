@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.115.0] - 2026-03-26 (minor)
+
+- fix(frontend): explicit import useApi to break #imports circular TDZ
+- fix(frontend): remove spurious body param from api.get delegation wrapper
+- fix(frontend): defer useApi() call in useApiEndpoints to fix remaining TDZ
+- fix(frontend): safelist blur-lg/blur-md/scale-110 in Tailwind v4 for mature content gate
+- fix(frontend): replace navigateTo with window.location.replace in useApi to fix TDZ bundle error
+
+
 ## [0.114.0] - 2026-03-26 (minor)
 
 - docs: update audit report — all critical/high/medium bugs resolved
