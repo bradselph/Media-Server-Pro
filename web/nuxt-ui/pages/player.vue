@@ -10,6 +10,7 @@ const playbackApi = usePlaybackApi()
 const suggestionsApi = useSuggestionsApi()
 const ratingsApi = useRatingsApi()
 const playlistApi = usePlaylistApi()
+const analyticsApi = useAnalyticsApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
 const toast = useToast()
@@ -232,6 +233,20 @@ const currentQualityLabel = computed(() => {
   return qualities.value[currentQuality.value]?.name ?? 'Auto'
 })
 
+// Analytics event helpers (fire-and-forget, never block playback)
+let playEventSent = false
+function trackPlay() {
+  if (playEventSent || !mediaId.value) return
+  playEventSent = true
+  analyticsApi.submitEvent({ type: 'play', media_id: mediaId.value }).catch(() => {})
+}
+function trackComplete() {
+  if (!mediaId.value) return
+  const dur = videoRef.value?.duration
+  analyticsApi.submitEvent({ type: 'complete', media_id: mediaId.value, duration: dur ? Math.round(dur) : undefined }).catch(() => {})
+}
+watch(mediaId, () => { playEventSent = false })
+
 // Save position on pause and unmount
 onUnmounted(() => {
   savePosition()
@@ -301,9 +316,9 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
             @loadedmetadata="onVideoLoaded"
             @timeupdate="onTimeUpdate"
-            @play="onPlayPause"
+            @play="onPlayPause(); trackPlay()"
             @pause="onPlayPause"
-            @ended="savePosition"
+            @ended="savePosition(); trackComplete()"
           />
 
           <!-- HLS loading overlay -->
@@ -396,7 +411,8 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               class="w-full mt-2"
               @loadedmetadata="onVideoLoaded"
               @timeupdate="onTimeUpdate"
-              @ended="savePosition"
+              @play="trackPlay()"
+              @ended="savePosition(); trackComplete()"
             />
           </UCard>
         </div>
