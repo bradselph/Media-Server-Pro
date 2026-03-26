@@ -46,6 +46,39 @@ const filtered = computed(() =>
     : users.value,
 )
 
+// Bulk actions
+const selectedUsernames = ref<string[]>([])
+const bulkLoading = ref(false)
+
+function toggleSelectAll() {
+  if (selectedUsernames.value.length === filtered.value.length) {
+    selectedUsernames.value = []
+  } else {
+    selectedUsernames.value = filtered.value.map(u => u.username)
+  }
+}
+
+function toggleSelectUser(username: string) {
+  const idx = selectedUsernames.value.indexOf(username)
+  if (idx === -1) selectedUsernames.value.push(username)
+  else selectedUsernames.value.splice(idx, 1)
+}
+
+async function bulkAction(action: 'delete' | 'enable' | 'disable') {
+  if (selectedUsernames.value.length === 0) return
+  bulkLoading.value = true
+  try {
+    const res = await adminApi.bulkUsers(selectedUsernames.value, action)
+    toast.add({ title: `${action}: ${res.success} succeeded, ${res.failed} failed`, color: res.failed > 0 ? 'warning' : 'success', icon: 'i-lucide-check' })
+    selectedUsernames.value = []
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Bulk action failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    bulkLoading.value = false
+  }
+}
+
 async function load() {
   loading.value = true
   try { users.value = (await adminApi.listUsers()) ?? [] }
@@ -130,7 +163,15 @@ onMounted(load)
   <div class="space-y-4">
     <!-- Header -->
     <div class="flex items-center justify-between gap-3 flex-wrap">
-      <UInput v-model="search" icon="i-lucide-search" placeholder="Search users…" class="w-64" />
+      <div class="flex items-center gap-2 flex-wrap">
+        <UInput v-model="search" icon="i-lucide-search" placeholder="Search users…" class="w-64" />
+        <template v-if="selectedUsernames.length > 0">
+          <span class="text-sm text-muted">{{ selectedUsernames.length }} selected</span>
+          <UButton :loading="bulkLoading" icon="i-lucide-toggle-right" label="Enable" size="sm" variant="outline" color="success" @click="bulkAction('enable')" />
+          <UButton :loading="bulkLoading" icon="i-lucide-toggle-left" label="Disable" size="sm" variant="outline" color="neutral" @click="bulkAction('disable')" />
+          <UButton :loading="bulkLoading" icon="i-lucide-trash-2" label="Delete" size="sm" variant="outline" color="error" @click="bulkAction('delete')" />
+        </template>
+      </div>
       <UButton icon="i-lucide-user-plus" label="Create User" @click="createOpen = true" />
     </div>
 
@@ -143,6 +184,7 @@ onMounted(load)
         v-else
         :data="filtered"
         :columns="[
+          { accessorKey: 'select', header: '' },
           { accessorKey: 'username', header: 'Username' },
           { accessorKey: 'email', header: 'Email' },
           { accessorKey: 'role', header: 'Role' },
@@ -151,6 +193,19 @@ onMounted(load)
           { accessorKey: 'actions', header: '' },
         ]"
       >
+        <template #select-header>
+          <UCheckbox
+            :model-value="filtered.length > 0 && selectedUsernames.length === filtered.length"
+            :indeterminate="selectedUsernames.length > 0 && selectedUsernames.length < filtered.length"
+            @update:model-value="toggleSelectAll"
+          />
+        </template>
+        <template #select-cell="{ row }">
+          <UCheckbox
+            :model-value="selectedUsernames.includes(row.original.username)"
+            @update:model-value="toggleSelectUser(row.original.username)"
+          />
+        </template>
         <template #username-cell="{ row }">
           <span class="font-medium">{{ row.original.username }}</span>
         </template>
