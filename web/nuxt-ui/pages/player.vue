@@ -70,6 +70,21 @@ const {
   jobRunning,
 } = useHLS(videoRef, mediaIdRef)
 
+// Request on-demand HLS generation
+const hlsApi = useHlsApi()
+const requestingHls = ref(false)
+
+async function requestHlsGeneration() {
+  if (!mediaId.value) return
+  requestingHls.value = true
+  try {
+    await hlsApi.generate(mediaId.value)
+    toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to start HLS generation', color: 'error', icon: 'i-lucide-x' })
+  } finally { requestingHls.value = false }
+}
+
 // Similar & personalized recommendations
 const similar = ref<Suggestion[]>([])
 const personalized = ref<Suggestion[]>([])
@@ -419,6 +434,20 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           variant="soft"
           icon="i-lucide-alert-circle"
         />
+
+        <!-- Request HLS generation (video only, when HLS not available or running) -->
+        <UAlert
+          v-else-if="media && media.type !== 'audio' && !hlsAvailable && !jobRunning"
+          title="Adaptive streaming not available"
+          description="Generate HLS for adaptive quality and better playback performance."
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-video"
+        >
+          <template #actions>
+            <UButton label="Generate HLS" size="xs" :loading="requestingHls" variant="outline" color="neutral" @click="requestHlsGeneration" />
+          </template>
+        </UAlert>
 
         <!-- Media info -->
         <UCard>
