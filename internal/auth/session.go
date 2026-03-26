@@ -132,7 +132,9 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	m.sessionsMu.Unlock()
 	// Persist LastActivity in background using the safe copy
 	go func() {
-		_ = m.sessionRepo.Update(context.Background(), &sessionCopy)
+		if err := m.sessionRepo.Update(context.Background(), &sessionCopy); err != nil {
+			m.log.Warn("Failed to persist session LastActivity for %s: %v", sessionCopy.Username, err)
+		}
 	}()
 	return session, user, nil
 }
