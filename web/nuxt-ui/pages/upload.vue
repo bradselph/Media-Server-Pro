@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UploadResult } from '~/types/api'
+import type { UploadResult, UploadProgress } from '~/types/api'
 
 definePageMeta({ layout: 'default', title: 'Upload Media', middleware: 'auth' })
 
@@ -20,6 +20,19 @@ const uploading = ref(false)
 const category = ref('')
 const selectedFiles = ref<File[]>([])
 const result = ref<UploadResult | null>(null)
+const progressMap = ref<Record<string, UploadProgress>>({})
+
+async function pollProgress(uploadId: string) {
+  const maxAttempts = 20
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 1500))
+    try {
+      const p = await uploadApi.getProgress(uploadId)
+      progressMap.value = { ...progressMap.value, [uploadId]: p }
+      if (p.status === 'completed' || p.status === 'error') return
+    } catch { return }
+  }
+}
 
 const dropZoneRef = ref<HTMLElement | null>(null)
 
@@ -74,6 +87,8 @@ async function handleUpload() {
   try {
     const res = await uploadApi.upload(selectedFiles.value, category.value || undefined)
     result.value = res
+    progressMap.value = {}
+    res.uploaded?.forEach(u => pollProgress(u.upload_id))
     const successCount = res.uploaded?.length ?? 0
     const errorCount = res.errors?.length ?? 0
     if (successCount > 0) {
@@ -201,7 +216,16 @@ async function handleUpload() {
                   <UIcon name="i-lucide-check-circle" class="size-4 text-success shrink-0" />
                   <span class="text-sm truncate">{{ u.filename }}</span>
                 </div>
-                <span class="text-xs text-muted shrink-0">{{ formatBytes(u.size) }}</span>
+                <div class="flex items-center gap-2 shrink-0">
+                  <UBadge
+                    v-if="progressMap[u.upload_id]"
+                    :label="progressMap[u.upload_id].status"
+                    :color="progressMap[u.upload_id].status === 'completed' ? 'success' : progressMap[u.upload_id].status === 'error' ? 'error' : 'warning'"
+                    variant="subtle"
+                    size="xs"
+                  />
+                  <span class="text-xs text-muted">{{ formatBytes(u.size) }}</span>
+                </div>
               </li>
             </ul>
           </UCard>
