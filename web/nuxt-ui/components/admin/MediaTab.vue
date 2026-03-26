@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import type { MediaItem, AdminMediaListParams } from '~/types/api'
+import type { MediaItem, AdminMediaListParams, ThumbnailStats } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
 const toast = useToast()
+
+const thumbStats = ref<ThumbnailStats | null>(null)
+async function loadThumbStats() {
+  try { thumbStats.value = await adminApi.getThumbnailStats() }
+  catch { /* optional — suppress if endpoint unavailable */ }
+}
 
 const items = ref<MediaItem[]>([])
 const loading = ref(true)
@@ -155,11 +161,31 @@ function sortBy(col: string) {
 
 watch([() => params.type, () => params.is_mature], () => { params.page = 1; load() })
 
-onMounted(load)
+onMounted(() => { load(); loadThumbStats() })
 </script>
 
 <template>
   <div class="space-y-4">
+    <!-- Thumbnail stats -->
+    <div v-if="thumbStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ thumbStats.total_thumbnails.toLocaleString() }}</p>
+        <p class="text-xs text-muted">Thumbnails</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold text-highlighted">{{ thumbStats.total_size_mb.toFixed(1) }} MB</p>
+        <p class="text-xs text-muted">Thumbnail Size</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold" :class="thumbStats.pending_generation > 0 ? 'text-warning' : 'text-highlighted'">{{ thumbStats.pending_generation.toLocaleString() }}</p>
+        <p class="text-xs text-muted">Pending Generation</p>
+      </UCard>
+      <UCard :ui="{ body: 'p-3' }">
+        <p class="text-xl font-bold" :class="thumbStats.generation_errors > 0 ? 'text-error' : 'text-highlighted'">{{ thumbStats.generation_errors.toLocaleString() }}</p>
+        <p class="text-xs text-muted">Generation Errors</p>
+      </UCard>
+    </div>
+
     <!-- Toolbar -->
     <div class="flex flex-wrap gap-2 items-center justify-between">
       <div class="flex flex-wrap gap-2">
