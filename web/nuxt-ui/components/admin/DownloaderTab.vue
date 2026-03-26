@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import type { DownloaderJob, ImportableFile } from '~/types/api'
+import type { DownloaderJob, ImportableFile, DownloaderHealth } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
+
+// ── Health ────────────────────────────────────────────────────────────────────
+const health = ref<DownloaderHealth | null>(null)
+
+async function loadHealth() {
+  try { health.value = await adminApi.getDownloaderHealth() }
+  catch { health.value = null }
+}
 
 // ── Downloads list ────────────────────────────────────────────────────────────
 
@@ -96,6 +104,7 @@ function formatBytes(bytes?: number): string {
 }
 
 onMounted(() => {
+  loadHealth()
   load()
   loadImportable()
 })
@@ -103,6 +112,24 @@ onMounted(() => {
 
 <template>
   <div class="space-y-4">
+    <!-- Downloader health -->
+    <UCard v-if="health !== null" :ui="{ body: 'py-2 px-4' }">
+      <div class="flex items-center gap-3 text-sm flex-wrap">
+        <div class="flex items-center gap-1.5">
+          <UIcon
+            :name="health.online ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
+            :class="health.online ? 'text-success' : 'text-error'"
+            class="size-4"
+          />
+          <span class="font-medium">{{ health.online ? 'Online' : 'Offline' }}</span>
+        </div>
+        <span v-if="health.activeDownloads != null" class="text-muted">{{ health.activeDownloads }} active</span>
+        <span v-if="health.queuedDownloads != null" class="text-muted">· {{ health.queuedDownloads }} queued</span>
+        <span v-if="health.error" class="text-error text-xs">{{ health.error }}</span>
+        <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" class="ml-auto" @click="loadHealth" />
+      </div>
+    </UCard>
+
     <!-- Add new download -->
     <UCard>
       <template #header>
