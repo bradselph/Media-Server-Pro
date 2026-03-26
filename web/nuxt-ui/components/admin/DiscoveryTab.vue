@@ -44,6 +44,19 @@ async function categorizeFile() {
   } finally { categorizing.value = false }
 }
 
+async function categorizeDirectory() {
+  if (!categorizePath.value.trim()) return
+  categorizing.value = true
+  try {
+    const results = await adminApi.categorizeDirectory(categorizePath.value.trim())
+    categorizeResult.value = results
+    toast.add({ title: `Categorized ${Array.isArray(results) ? results.length : 0} files`, color: 'success', icon: 'i-lucide-check' })
+    await loadCategorizer()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { categorizing.value = false }
+}
+
 async function setCategory() {
   if (!categorizePath.value.trim() || !categorizeCategory.value.trim()) return
   categorizing.value = true
@@ -167,6 +180,18 @@ async function classifyFile() {
   } finally { classifying.value = false }
 }
 
+async function classifyDirectory() {
+  if (!classifyPath.value.trim()) return
+  classifying.value = true
+  classifyResult.value = null
+  try {
+    classifyResult.value = await adminApi.classifyDirectory(classifyPath.value.trim())
+    toast.add({ title: 'Directory classification queued', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { classifying.value = false }
+}
+
 async function classifyAllPending() {
   classifying.value = true
   try {
@@ -243,7 +268,8 @@ watch(subTab, (tab) => {
                   <UInput v-model="categorizeCategory" placeholder="Category (for manual set)" class="flex-1" />
                 </div>
                 <div class="flex gap-2 flex-wrap">
-                  <UButton :loading="categorizing" icon="i-lucide-tag" label="Auto-Categorize" :disabled="!categorizePath.trim()" @click="categorizeFile" />
+                  <UButton :loading="categorizing" icon="i-lucide-tag" label="Auto-Categorize File" :disabled="!categorizePath.trim()" @click="categorizeFile" />
+                  <UButton :loading="categorizing" icon="i-lucide-folder-sync" label="Categorize Directory" :disabled="!categorizePath.trim()" color="neutral" variant="outline" @click="categorizeDirectory" />
                   <UButton :loading="categorizing" icon="i-lucide-pen" label="Set Category" :disabled="!categorizePath.trim() || !categorizeCategory.trim()" color="neutral" @click="setCategory" />
                   <UButton icon="i-lucide-trash-2" label="Clean Stale" color="warning" variant="outline" @click="cleanStaleCategories" />
                   <UButton icon="i-lucide-refresh-cw" aria-label="Refresh stats" variant="ghost" color="neutral" @click="loadCategorizer" />
@@ -401,6 +427,7 @@ watch(subTab, (tab) => {
                     <UButton :loading="classifying" icon="i-lucide-brain" label="Classify File" :disabled="!classifyPath.trim()" @click="classifyFile" />
                   </div>
                   <div class="flex gap-2 flex-wrap">
+                    <UButton :loading="classifying" icon="i-lucide-folder-open" label="Classify Directory" :disabled="!classifyPath.trim()" color="neutral" variant="outline" @click="classifyDirectory" />
                     <UButton :loading="classifying" icon="i-lucide-list-checks" label="Classify All Pending" color="warning" variant="outline" @click="classifyAllPending" />
                     <UButton icon="i-lucide-play" label="Run Task Now" color="neutral" variant="outline" @click="runClassifyTask" />
                     <UButton icon="i-lucide-refresh-cw" aria-label="Refresh classification" variant="ghost" color="neutral" @click="loadClassify" />
