@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AnalyticsSummary, DailyStats, TopMediaItem } from '~/types/api'
+import type { AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 const analyticsApi = useAnalyticsApi()
@@ -9,16 +9,10 @@ const toast = useToast()
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
 const topMedia = ref<TopMediaItem[]>([])
+const eventStats = ref<EventStats | null>(null)
+const eventTypeCounts = ref<EventTypeCounts | null>(null)
 const loading = ref(true)
 const period = ref('7d')
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '—'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
-}
 
 function formatTime(secs?: number): string {
   if (!secs) return '—'
@@ -30,14 +24,18 @@ function formatTime(secs?: number): string {
 async function load() {
   loading.value = true
   try {
-    const [s, d, t] = await Promise.allSettled([
+    const [s, d, t, es, etc] = await Promise.allSettled([
       analyticsApi.getSummary(period.value),
       analyticsApi.getDaily(period.value === '7d' ? 7 : period.value === '30d' ? 30 : undefined),
       analyticsApi.getTopMedia(20),
+      analyticsApi.getEventStats(),
+      analyticsApi.getEventTypeCounts(),
     ])
     if (s.status === 'fulfilled') summary.value = s.value
     if (d.status === 'fulfilled') daily.value = d.value ?? []
     if (t.status === 'fulfilled') topMedia.value = t.value ?? []
+    if (es.status === 'fulfilled') eventStats.value = es.value
+    if (etc.status === 'fulfilled') eventTypeCounts.value = etc.value
   } finally {
     loading.value = false
   }
@@ -99,6 +97,43 @@ onMounted(load)
           <div>
             <p class="text-lg font-bold text-highlighted">{{ item.value }}</p>
             <p class="text-xs text-muted">{{ item.label }}</p>
+          </div>
+        </div>
+      </UCard>
+    </div>
+
+    <!-- Event stats -->
+    <div v-if="eventStats || eventTypeCounts" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <UCard v-if="eventStats">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-activity" class="size-4" />
+            Event Stats
+          </div>
+        </template>
+        <div class="space-y-1 text-sm">
+          <div class="flex justify-between">
+            <span class="text-muted">Total Events</span>
+            <span class="font-medium">{{ (eventStats.total_events ?? 0).toLocaleString() }}</span>
+          </div>
+          <div v-for="(count, type) in eventStats.event_counts" :key="String(type)" class="flex justify-between">
+            <span class="text-muted capitalize">{{ String(type).replace(/_/g, ' ') }}</span>
+            <span>{{ (count as number).toLocaleString() }}</span>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard v-if="eventTypeCounts && Object.keys(eventTypeCounts).length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-bar-chart" class="size-4" />
+            Event Types
+          </div>
+        </template>
+        <div class="space-y-1.5">
+          <div v-for="(count, type) in eventTypeCounts" :key="String(type)" class="flex items-center gap-2">
+            <span class="text-sm text-muted capitalize flex-1">{{ String(type).replace(/_/g, ' ') }}</span>
+            <span class="text-sm font-medium">{{ (count as number).toLocaleString() }}</span>
           </div>
         </div>
       </UCard>
