@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.116.0] - 2026-03-26 (minor)
+
+- feat: add missing preference toggles to profile page
+- fix: multi-word search splits terms for AND filtering
+- fix: resolve 500 crash for logged-in users on page refresh (TDZ)
+
+
 ## [0.115.0] - 2026-03-26 (minor)
 
 - fix(frontend): explicit import useApi to break #imports circular TDZ
