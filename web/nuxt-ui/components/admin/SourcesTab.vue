@@ -3,7 +3,7 @@ import type {
   RemoteSourceState, RemoteStats, RemoteMediaItem,
   CrawlerTarget, CrawlerDiscovery, CrawlerStats,
   ExtractorItem, ExtractorStats,
-  SlaveNode, ReceiverStats, ReceiverDuplicate,
+  SlaveNode, ReceiverStats, ReceiverDuplicate, ReceiverMedia,
 } from '~/types/api'
 
 const adminApi = useAdminApi()
@@ -215,7 +215,10 @@ async function deleteExtractorItem(id: string) {
 const receiverStats = ref<ReceiverStats | null>(null)
 const slaves = ref<SlaveNode[]>([])
 const duplicates = ref<ReceiverDuplicate[]>([])
+const slaveMedia = ref<ReceiverMedia[]>([])
 const receiverLoading = ref(false)
+const slaveMediaLoading = ref(false)
+const showSlaveMedia = ref(false)
 
 async function loadReceiver() {
   receiverLoading.value = true
@@ -231,6 +234,16 @@ async function loadReceiver() {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load receiver', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { receiverLoading.value = false }
+}
+
+async function loadSlaveMedia() {
+  slaveMediaLoading.value = true
+  try {
+    slaveMedia.value = (await adminApi.getSlaveMedia()) ?? []
+    showSlaveMedia.value = true
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load slave media', color: 'error', icon: 'i-lucide-x' })
+  } finally { slaveMediaLoading.value = false }
 }
 
 async function removeSlave(id: string) {
@@ -575,6 +588,40 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
                     </div>
                   </div>
                   <UButton icon="i-lucide-trash-2" aria-label="Remove slave" size="xs" variant="ghost" color="error" @click="removeSlave(slave.id)" />
+                </div>
+              </div>
+            </UCard>
+
+            <!-- Slave media browser -->
+            <div class="flex justify-end">
+              <UButton
+                icon="i-lucide-database"
+                :label="showSlaveMedia ? 'Hide Media' : 'Browse Slave Media'"
+                size="sm"
+                variant="outline"
+                color="neutral"
+                :loading="slaveMediaLoading"
+                @click="showSlaveMedia ? showSlaveMedia = false : loadSlaveMedia()"
+              />
+            </div>
+            <UCard v-if="showSlaveMedia">
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <span class="font-semibold">Slave Media ({{ slaveMedia.length }})</span>
+                  <UButton icon="i-lucide-refresh-cw" aria-label="Refresh slave media" variant="ghost" color="neutral" size="xs" @click="loadSlaveMedia" />
+                </div>
+              </template>
+              <div v-if="slaveMediaLoading" class="flex justify-center py-4">
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+              </div>
+              <div v-else-if="slaveMedia.length === 0" class="text-center py-4 text-muted text-sm">No media from slave nodes.</div>
+              <div v-else class="divide-y divide-default max-h-64 overflow-y-auto">
+                <div v-for="m in slaveMedia" :key="m.id" class="flex items-center gap-3 py-2">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate">{{ m.name }}</p>
+                    <p class="text-xs text-muted">{{ m.type }} · {{ formatBytes(m.size) }}</p>
+                  </div>
+                  <span class="text-xs text-muted font-mono shrink-0">{{ m.slave_id.slice(0, 8) }}…</span>
                 </div>
               </div>
             </UCard>
