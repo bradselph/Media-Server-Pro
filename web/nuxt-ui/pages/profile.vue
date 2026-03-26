@@ -230,6 +230,9 @@ onMounted(() => { loadPrefs(); loadHistory() })
               { key: 'resume_playback', label: 'Resume Playback' },
               { key: 'show_mature', label: 'Show Mature Content' },
               { key: 'show_analytics', label: 'Analytics' },
+              { key: 'show_continue_watching', label: 'Continue Watching' },
+              { key: 'show_recommended', label: 'Recommended' },
+              { key: 'show_trending', label: 'Trending' },
             ]" :key="toggle.key" class="flex items-center gap-2">
               <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]" @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event" />
               <span class="text-sm">{{ toggle.label }}</span>
