@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
@@ -10,7 +10,14 @@ const themeStore = useThemeStore()
 const router = useRouter()
 const { changePassword, deleteAccount, getPreferences, updatePreferences } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
+const { getUsage } = useStorageApi()
 const toast = useToast()
+
+const storageUsage = ref<StorageUsage | null>(null)
+async function loadStorageUsage() {
+  try { storageUsage.value = await getUsage() }
+  catch { /* optional */ }
+}
 
 // Redirect if not logged in
 watchEffect(() => {
@@ -140,7 +147,7 @@ async function handleDeleteAccount() {
   }
 }
 
-onMounted(() => { loadPrefs(); loadHistory() })
+onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
 </script>
 
 <template>
@@ -163,11 +170,18 @@ onMounted(() => { loadPrefs(); loadHistory() })
           <div class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xl font-bold">
             {{ authStore.username[0]?.toUpperCase() }}
           </div>
-          <div>
+          <div class="flex-1 min-w-0">
             <p class="font-semibold text-lg">{{ authStore.username }}</p>
-            <div class="flex items-center gap-2 mt-1">
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
               <UBadge :label="authStore.user.role" :color="authStore.isAdmin ? 'warning' : 'neutral'" variant="subtle" size="xs" />
               <span class="text-sm text-muted">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
+            </div>
+            <div v-if="storageUsage" class="mt-2 max-w-xs space-y-1">
+              <div class="flex justify-between text-xs text-muted">
+                <span>Storage</span>
+                <span>{{ storageUsage.used_gb.toFixed(2) }} GB / {{ storageUsage.quota_gb > 0 ? storageUsage.quota_gb + ' GB' : 'Unlimited' }}</span>
+              </div>
+              <UProgress :value="storageUsage.quota_gb > 0 ? storageUsage.percentage : 0" size="xs" :color="storageUsage.percentage > 90 ? 'error' : storageUsage.percentage > 70 ? 'warning' : 'success'" />
             </div>
           </div>
         </div>
