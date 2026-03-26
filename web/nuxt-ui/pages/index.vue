@@ -44,6 +44,8 @@ const categories = ref<MediaCategory[]>([])
 const total = ref(0)
 const loading = ref(true)
 const loadError = ref('')
+const scanning = ref(false)
+const initializing = ref(false)
 
 const params = reactive({
   page: 1,
@@ -74,6 +76,8 @@ async function load() {
     const res = await mediaApi.list(apiParams)
     items.value = res.items ?? []
     total.value = res.total_items ?? res.total ?? 0
+    scanning.value = res.scanning ?? false
+    initializing.value = res.initializing ?? false
   } catch (e: unknown) {
     loadError.value = e instanceof Error ? e.message : 'Failed to load media'
     toast.add({ title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' })
@@ -230,6 +234,26 @@ function formatDuration(secs?: number): string {
         </UButtonGroup>
       </div>
     </div>
+
+    <!-- Server initializing / scanning banner -->
+    <UAlert
+      v-if="initializing && !loading"
+      title="Server is initializing"
+      description="The media library is starting up. Some items may not appear yet."
+      color="info"
+      variant="soft"
+      icon="i-lucide-loader-2"
+      class="mb-2"
+    />
+    <UAlert
+      v-else-if="scanning && !loading"
+      title="Media scan in progress"
+      description="New files may appear shortly as the library scan completes."
+      color="info"
+      variant="soft"
+      icon="i-lucide-scan"
+      class="mb-2"
+    />
 
     <!-- Error -->
     <UAlert
