@@ -68,6 +68,81 @@ async function confirmDelete() {
   } finally { deleting.value = false }
 }
 
+// Edit playlist
+const editTarget = ref<Playlist | null>(null)
+const editOpen = computed({
+  get: () => !!editTarget.value,
+  set: (v: boolean) => { if (!v) editTarget.value = null },
+})
+const editName = ref('')
+const editDesc = ref('')
+const editPublic = ref(false)
+const editSaving = ref(false)
+
+function openEdit(pl: Playlist) {
+  editTarget.value = pl
+  editName.value = pl.name
+  editDesc.value = pl.description ?? ''
+  editPublic.value = pl.is_public ?? false
+}
+
+async function saveEdit() {
+  if (!editTarget.value || !editName.value.trim()) return
+  editSaving.value = true
+  try {
+    const updated = await playlistApi.update(editTarget.value.id, {
+      name: editName.value.trim(),
+      description: editDesc.value,
+      is_public: editPublic.value,
+    })
+    playlists.value = playlists.value.map(p => p.id === updated.id ? updated : p)
+    if (activePlaylist.value?.id === updated.id) activePlaylist.value = updated
+    editTarget.value = null
+    toast.add({ title: 'Playlist updated', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    editSaving.value = false
+  }
+}
+
+// Copy playlist
+const copyingId = ref<string | null>(null)
+
+async function copyPlaylist(pl: Playlist) {
+  copyingId.value = pl.id
+  try {
+    const copy = await playlistApi.copy(pl.id, `${pl.name} (copy)`)
+    playlists.value.unshift(copy)
+    toast.add({ title: 'Playlist duplicated', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    copyingId.value = null
+  }
+}
+
+// Clear all items from a playlist
+const clearingId = ref<string | null>(null)
+
+async function clearPlaylist(pl: Playlist) {
+  clearingId.value = pl.id
+  try {
+    await playlistApi.clear(pl.id)
+    if (activePlaylist.value?.id === pl.id) {
+      activePlaylist.value = { ...activePlaylist.value, items: [] }
+    }
+    playlists.value = playlists.value.map(p =>
+      p.id === pl.id ? { ...p, items: [] } : p,
+    )
+    toast.add({ title: 'Playlist cleared', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    clearingId.value = null
+  }
+}
+
 // View / edit single playlist
 const activePlaylist = ref<Playlist | null>(null)
 const activeLoading = ref(false)
@@ -138,8 +213,11 @@ onMounted(load)
                 <h2 class="font-semibold text-lg">{{ activePlaylist.name }}</h2>
                 <p v-if="activePlaylist.description" class="text-sm text-muted mt-0.5">{{ activePlaylist.description }}</p>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <UBadge :label="activePlaylist.is_public ? 'Public' : 'Private'" :color="activePlaylist.is_public ? 'success' : 'neutral'" variant="subtle" size="xs" />
+                <UButton icon="i-lucide-pencil" label="Edit" size="xs" variant="outline" color="neutral" @click="openEdit(activePlaylist)" />
+                <UButton icon="i-lucide-copy" label="Duplicate" size="xs" variant="outline" color="neutral" :loading="copyingId === activePlaylist.id" @click="copyPlaylist(activePlaylist)" />
+                <UButton icon="i-lucide-trash-2" label="Clear Items" size="xs" variant="outline" color="warning" :loading="clearingId === activePlaylist.id" @click="clearPlaylist(activePlaylist)" />
                 <UButton icon="i-lucide-download" label="Export M3U" size="xs" variant="outline" color="neutral" :to="playlistApi.exportPlaylist(activePlaylist.id, 'm3u8')" />
               </div>
             </div>
@@ -210,14 +288,11 @@ onMounted(load)
                   <span class="text-xs text-muted">· {{ new Date(pl.modified_at).toLocaleDateString() }}</span>
                 </div>
               </div>
-              <UButton
-                icon="i-lucide-trash-2"
-                aria-label="Delete playlist"
-                size="xs"
-                variant="ghost"
-                color="error"
-                @click.stop="deleteTarget = pl"
-              />
+              <div class="flex items-center gap-1">
+                <UButton icon="i-lucide-pencil" aria-label="Edit playlist" size="xs" variant="ghost" color="neutral" @click.stop="openEdit(pl)" />
+                <UButton icon="i-lucide-copy" aria-label="Duplicate playlist" size="xs" variant="ghost" color="neutral" :loading="copyingId === pl.id" @click.stop="copyPlaylist(pl)" />
+                <UButton icon="i-lucide-trash-2" aria-label="Delete playlist" size="xs" variant="ghost" color="error" @click.stop="deleteTarget = pl" />
+              </div>
             </div>
           </UCard>
         </div>
@@ -242,6 +317,28 @@ onMounted(load)
         <template #footer>
           <UButton variant="ghost" color="neutral" label="Cancel" @click="createOpen = false" />
           <UButton :loading="creating" label="Create" :disabled="!newName.trim()" @click="createPlaylist" />
+        </template>
+      </UModal>
+
+      <!-- Edit playlist modal -->
+      <UModal v-model:open="editOpen" title="Edit Playlist">
+        <template #body>
+          <div class="space-y-3">
+            <UFormField label="Name" required>
+              <UInput v-model="editName" placeholder="Playlist name" autofocus />
+            </UFormField>
+            <UFormField label="Description">
+              <UInput v-model="editDesc" placeholder="Optional description" />
+            </UFormField>
+            <div class="flex items-center gap-2">
+              <USwitch v-model="editPublic" />
+              <span class="text-sm">Make public</span>
+            </div>
+          </div>
+        </template>
+        <template #footer>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="editOpen = false" />
+          <UButton :loading="editSaving" label="Save" :disabled="!editName.trim()" @click="saveEdit" />
         </template>
       </UModal>
 
