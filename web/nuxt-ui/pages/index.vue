@@ -48,6 +48,11 @@ async function loadRecommendations() {
   } catch { /* non-critical */ }
 }
 
+// When the user logs in mid-session (logged-out → logged-in), reload
+// recommendations and refresh the grid with their preference-based limit.
+// This watcher is NOT immediate — loadRecommendations() is called from onMounted
+// when the user is already logged in at page load, and we avoid a double
+// load() by only reloading when the limit preference actually changed.
 watch(() => authStore.isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     loadRecommendations()
@@ -58,7 +63,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
       load()
     }
   }
-}, { immediate: true })
+}, { immediate: false })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -97,7 +102,17 @@ watch([() => params.type, () => params.category, () => params.sort_by, () => par
   load()
 })
 
-onMounted(() => { loadCategories(); load() })
+onMounted(() => {
+  // Apply the user's items_per_page preference before the first load so we
+  // don't need a second request if it differs from the reactive default.
+  const pref = authStore.user?.preferences?.items_per_page
+  if (pref && pref !== params.limit) params.limit = pref
+  loadCategories()
+  load()
+  // Fetch recommendations for already-logged-in users (page refresh).
+  // When the user logs in mid-session, the watch above handles this instead.
+  if (authStore.isLoggedIn) loadRecommendations()
+})
 
 // View mode
 const viewMode = ref<'grid' | 'list'>('grid')

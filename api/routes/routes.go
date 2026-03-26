@@ -43,8 +43,12 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 				c.Set("session", session)
 				c.Set("user", user)
 			} else {
-				// Clear stale/expired cookie so the browser stops resending it
-				secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+				// Clear stale/expired cookie so the browser stops resending it.
+				// Mirror the same HTTPS detection used in handlers.isSecureRequest:
+				// check TLS, X-Forwarded-Proto, and the Cloudflare visitor header.
+				secure := c.Request.TLS != nil ||
+					c.GetHeader("X-Forwarded-Proto") == "https" ||
+					strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
 				http.SetCookie(c.Writer, &http.Cookie{
 					Name:     "session_id",
 					Value:    "",
