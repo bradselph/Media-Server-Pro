@@ -153,6 +153,8 @@ const classifyLoading = ref(false)
 const classifyPath = ref('')
 const classifying = ref(false)
 const classifyResult = ref<unknown>(null)
+const clearTagsId = ref('')
+const clearingTags = ref(false)
 
 async function loadClassify() {
   classifyLoading.value = true
@@ -209,6 +211,19 @@ async function runClassifyTask() {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
+}
+
+async function clearClassificationTags() {
+  if (!clearTagsId.value.trim()) return
+  clearingTags.value = true
+  try {
+    await adminApi.classifyClearTags(clearTagsId.value.trim())
+    toast.add({ title: 'Tags cleared', color: 'success', icon: 'i-lucide-check' })
+    clearTagsId.value = ''
+    await loadClassify()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { clearingTags.value = false }
 }
 
 // Tab-switching lazy load
@@ -433,6 +448,14 @@ watch(subTab, (tab) => {
                     <UButton icon="i-lucide-refresh-cw" aria-label="Refresh classification" variant="ghost" color="neutral" @click="loadClassify" />
                   </div>
                   <pre v-if="classifyResult" class="p-2 rounded bg-muted text-xs overflow-x-auto">{{ JSON.stringify(classifyResult, null, 2) }}</pre>
+                  <!-- Clear tags -->
+                  <div class="border-t border-default pt-3">
+                    <p class="text-xs text-muted mb-2">Clear classification tags for a media item by ID:</p>
+                    <div class="flex gap-2">
+                      <UInput v-model="clearTagsId" placeholder="Media ID" class="flex-1" />
+                      <UButton :loading="clearingTags" icon="i-lucide-eraser" label="Clear Tags" color="error" variant="outline" :disabled="!clearTagsId.trim()" @click="clearClassificationTags" />
+                    </div>
+                  </div>
                 </div>
               </UCard>
 
