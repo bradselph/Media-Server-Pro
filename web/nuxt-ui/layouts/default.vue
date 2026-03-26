@@ -4,6 +4,8 @@ const router = useRouter()
 const route = useRoute()
 const colorMode = useColorMode()
 const ageGateApi = useAgeGateApi()
+const versionApi = useVersionApi()
+const serverVersion = ref('')
 
 const ageGateOpen = ref(false)
 const ageGateVerifying = ref(false)
@@ -27,6 +29,7 @@ async function verifyAge() {
 }
 
 onMounted(checkAgeGate)
+onMounted(() => { versionApi.get().then(r => { serverVersion.value = r.version }).catch(() => {}) })
 
 useHead({
   title: computed(() => {
@@ -112,6 +115,13 @@ const navLinks = computed(() => {
     <main>
       <slot />
     </main>
+
+    <!-- Footer -->
+    <footer v-if="serverVersion" class="border-t border-default py-3">
+      <UContainer>
+        <p class="text-xs text-muted text-center">Media Server Pro v{{ serverVersion }}</p>
+      </UContainer>
+    </footer>
 
     <!-- Age gate modal -->
     <UModal
