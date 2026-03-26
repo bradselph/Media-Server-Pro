@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.118.0] - 2026-03-26 (minor)
+
+- feat(frontend): add edit, duplicate, and clear-items actions to playlists page
+- fix(frontend): initialize viewMode, sort, and filter params from user preferences
+- feat(frontend): add Recommended For You section to index, gated on show_recommended pref
+- fix(frontend): apply playback_speed pref on load; respect resume_playback pref
+
+
 ## [0.117.0] - 2026-03-26 (minor)
 
 - fix: LOAD_FILE block, Cf-Visitor cookie clearing, eliminate double load()
