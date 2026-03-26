@@ -20,10 +20,12 @@ func copyHLSJob(j *models.HLSJob) *models.HLSJob {
 	c := *j
 	c.Qualities = append([]string(nil), j.Qualities...)
 	if j.CompletedAt != nil {
-		c.CompletedAt = new(*j.CompletedAt)
+		t := *j.CompletedAt
+		c.CompletedAt = &t
 	}
 	if j.LastAccessedAt != nil {
-		c.LastAccessedAt = new(*j.LastAccessedAt)
+		t := *j.LastAccessedAt
+		c.LastAccessedAt = &t
 	}
 	return &c
 }
