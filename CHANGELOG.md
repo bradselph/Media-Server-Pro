@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.121.0] - 2026-03-26 (minor)
+
+- feat: show user capabilities in profile using getPermissions
+- feat: add bulk delete with checkbox selection to admin playlists tab
+- feat: show server version in footer using useVersionApi
+- feat: show thumbnail preview on seek bar hover using getThumbnailPreviews
+- feat: poll upload processing progress after upload using getProgress
+- feat: add stream button for remote media using getRemoteStreamUrl
+- feat: add playlist item reorder (up/down) and removePlaylistItemById
+- feat: add age gate modal to default layout using useAgeGateApi
+- feat(player): submit play/complete analytics events via submitEvent API
+- feat(admin): expand analytics drill-down to support by-media and by-user event queries
+- fix(admin): correct AnalyticsEvent field names in drill-down (timestamp, not created_at)
+- feat(admin): add event drill-down by type to Analytics tab
+- feat(admin): add browse-by-category feature to Discovery/Categorizer tab
+- feat(profile): show storage usage quota in account section
+- feat(admin): add delete button for crawler discoveries in Sources tab
+- feat(admin): add event stats and event type counts to Analytics tab
+- feat(admin): add downloader settings display to Downloader tab
+- feat(admin): add server feature flags panel to Dashboard tab
+- feat(admin): add thumbnail stats cards to Media tab
+- feat(admin): add HLS capabilities status card to Content/HLS tab
+- feat(admin): add remote media browser to Sources/Remote tab
+
+
 ## [0.120.0] - 2026-03-26 (minor)
 
 - feat(admin): add Generate HLS button per media item in Media tab
