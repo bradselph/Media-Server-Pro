@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -236,7 +237,7 @@ func (m *Module) resumeInterruptedJobs() int {
 			defer m.activeJobs.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					m.log.Error("Panic in resumed HLS transcode for job %s: %v", capturedJob.ID, r)
+					m.log.Error("Panic in resumed HLS transcode for job %s: %v\n%s", capturedJob.ID, r, debug.Stack())
 					m.updateJobStatus(&updateJobStatusParams{JobID: capturedJob.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Internal error: %v", r), Progress: 0})
 				}
 			}()
