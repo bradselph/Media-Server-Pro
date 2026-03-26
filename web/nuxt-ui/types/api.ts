@@ -270,6 +270,15 @@ export interface ModuleHealth {
   last_check: string
 }
 
+export interface ServerStatus {
+  running: boolean
+  uptime: string
+  start_time: string
+  version: string
+  go_version: string
+  module_count: number
+}
+
 export interface SystemInfo {
   version: string
   build_date: string

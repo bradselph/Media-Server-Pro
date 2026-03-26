@@ -22,6 +22,7 @@ import type {
   CategorizedItem, CategoryStats,
   RemoteSourceState, RemoteSourceResponse, RemoteStats, RemoteMediaItem,
   DiscoverySuggestion,
+  ModuleHealth, ServerStatus,
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
@@ -511,6 +512,14 @@ export function useAdminApi() {
     listImportable: () => api.get<ImportableFile[]>(`${base}/downloader/importable`),
     importFile: (filename: string, deleteSource: boolean, triggerScan: boolean) =>
       api.post<ImportResult>(`${base}/downloader/import`, { filename, delete_source: deleteSource, trigger_scan: triggerScan }),
+
+    // Server diagnostic routes (admin-only)
+    getServerStatus: () => api.get<ServerStatus>('/api/status'),
+    listModuleStatuses: () => api.get<ModuleHealth[]>('/api/modules'),
+    getModuleHealth: (name: string) => api.get<ModuleHealth>(`/api/modules/${encodeURIComponent(name)}/health`),
+
+    // Receiver media — individual item
+    getSlaveMediaItem: (id: string) => api.get<ReceiverMedia>(`/api/receiver/media/${encodeURIComponent(id)}`),
   }
 }
 
