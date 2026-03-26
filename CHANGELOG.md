@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.119.0] - 2026-03-26 (minor)
+
+- feat(admin): add cancel active downloads and import-to-library to DownloaderTab
+- feat(admin): add task Stop button and DB query executor to System tab
+
+
 ## [0.118.0] - 2026-03-26 (minor)
 
 - feat(frontend): add edit, duplicate, and clear-items actions to playlists page
