@@ -814,6 +814,17 @@ export interface DownloaderDetectResult {
   relayId?: string
 }
 
+export interface DownloaderProgress {
+  downloadId: string
+  status: 'queued' | 'downloading' | 'processing' | 'complete' | 'error' | 'cancelled'
+  progress?: number
+  speed?: string
+  eta?: string
+  title?: string
+  filename?: string
+  error?: string
+}
+
 export interface DownloaderSettings {
   maxConcurrent?: number
   downloadsDir?: string
