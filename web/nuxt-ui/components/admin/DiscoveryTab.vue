@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type {
-  CategoryStats, DiscoverySuggestion,
+  CategoryStats, CategorizedItem, DiscoverySuggestion,
   SuggestionStats, ClassifyStatus, ClassifyStats,
 } from '~/types/api'
 
@@ -67,6 +67,20 @@ async function setCategory() {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally { categorizing.value = false }
+}
+
+const browseCategory = ref('')
+const categoryItems = ref<CategorizedItem[]>([])
+const categoryItemsLoading = ref(false)
+
+async function browseByCategory() {
+  if (!browseCategory.value.trim()) return
+  categoryItemsLoading.value = true
+  try {
+    categoryItems.value = (await adminApi.getByCategory(browseCategory.value.trim())) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { categoryItemsLoading.value = false }
 }
 
 async function cleanStaleCategories() {
@@ -291,6 +305,27 @@ watch(subTab, (tab) => {
                 </div>
               </div>
               <pre v-if="categorizeResult" class="mt-3 p-2 rounded bg-muted text-xs overflow-x-auto">{{ JSON.stringify(categorizeResult, null, 2) }}</pre>
+            </UCard>
+
+            <!-- Browse by category -->
+            <UCard>
+              <template #header><span class="font-semibold">Browse by Category</span></template>
+              <div class="flex gap-2">
+                <UInput v-model="browseCategory" placeholder="Category name" class="flex-1"
+                  @keyup.enter="browseByCategory"
+                />
+                <UButton :loading="categoryItemsLoading" icon="i-lucide-search" label="Browse" :disabled="!browseCategory.trim()" @click="browseByCategory" />
+              </div>
+              <div v-if="categoryItemsLoading" class="flex justify-center py-4 mt-2">
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+              </div>
+              <div v-else-if="categoryItems.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
+                <div v-for="item in categoryItems" :key="item.id" class="py-2 text-sm">
+                  <p class="font-medium truncate">{{ item.name }}</p>
+                  <p class="text-xs text-muted truncate">{{ item.path }}</p>
+                </div>
+              </div>
+              <p v-else-if="!categoryItemsLoading && browseCategory && categoryItems.length === 0" class="text-center py-4 text-muted text-sm mt-2">No items in this category.</p>
             </UCard>
           </template>
 
