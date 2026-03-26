@@ -15,7 +15,10 @@ const loading = ref(true)
 const period = ref('7d')
 
 // Event drill-down
+const drillMode = ref<'type' | 'media' | 'user'>('type')
 const drillType = ref('')
+const drillMediaId = ref('')
+const drillUserId = ref('')
 const drillEvents = ref<AnalyticsEvent[]>([])
 const drillLoading = ref(false)
 
@@ -24,6 +27,26 @@ async function drillByType() {
   drillLoading.value = true
   try {
     drillEvents.value = (await analyticsApi.getEventsByType(drillType.value.trim(), 50)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { drillLoading.value = false }
+}
+
+async function drillByMedia() {
+  if (!drillMediaId.value.trim()) return
+  drillLoading.value = true
+  try {
+    drillEvents.value = (await analyticsApi.getEventsByMedia(drillMediaId.value.trim(), 50)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { drillLoading.value = false }
+}
+
+async function drillByUser() {
+  if (!drillUserId.value.trim()) return
+  drillLoading.value = true
+  try {
+    drillEvents.value = (await analyticsApi.getEventsByUser(drillUserId.value.trim(), 50)) ?? []
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally { drillLoading.value = false }
@@ -157,14 +180,32 @@ onMounted(load)
     <!-- Event drill-down -->
     <UCard>
       <template #header>
-        <div class="font-semibold flex items-center gap-2">
-          <UIcon name="i-lucide-search" class="size-4" />
-          Event Drill-Down
+        <div class="flex items-center justify-between">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-search" class="size-4" />
+            Event Drill-Down
+          </div>
+          <UButtonGroup>
+            <UButton v-for="m in [{ label: 'By Type', value: 'type' }, { label: 'By Media', value: 'media' }, { label: 'By User', value: 'user' }]"
+              :key="m.value" :label="m.label" size="xs"
+              :variant="drillMode === m.value ? 'solid' : 'outline'"
+              :color="drillMode === m.value ? 'primary' : 'neutral'"
+              @click="drillMode = m.value as 'type' | 'media' | 'user'; drillEvents = []"
+            />
+          </UButtonGroup>
         </div>
       </template>
-      <div class="flex gap-2">
+      <div v-if="drillMode === 'type'" class="flex gap-2">
         <UInput v-model="drillType" placeholder="Event type (e.g. view, play, download)" class="flex-1" @keyup.enter="drillByType" />
         <UButton :loading="drillLoading" icon="i-lucide-search" label="Search" :disabled="!drillType.trim()" @click="drillByType" />
+      </div>
+      <div v-else-if="drillMode === 'media'" class="flex gap-2">
+        <UInput v-model="drillMediaId" placeholder="Media ID" class="flex-1" @keyup.enter="drillByMedia" />
+        <UButton :loading="drillLoading" icon="i-lucide-search" label="Search" :disabled="!drillMediaId.trim()" @click="drillByMedia" />
+      </div>
+      <div v-else class="flex gap-2">
+        <UInput v-model="drillUserId" placeholder="User ID" class="flex-1" @keyup.enter="drillByUser" />
+        <UButton :loading="drillLoading" icon="i-lucide-search" label="Search" :disabled="!drillUserId.trim()" @click="drillByUser" />
       </div>
       <div v-if="drillLoading" class="flex justify-center py-4 mt-2">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
@@ -182,7 +223,7 @@ onMounted(load)
           </div>
         </div>
       </div>
-      <p v-else-if="!drillLoading && drillType && drillEvents.length === 0" class="text-center py-4 text-muted text-sm mt-2">No events of this type found.</p>
+      <p v-else-if="!drillLoading && (drillType || drillMediaId || drillUserId) && drillEvents.length === 0" class="text-center py-4 text-muted text-sm mt-2">No events found.</p>
     </UCard>
 
     <!-- Top media -->
