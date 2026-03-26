@@ -10,6 +10,39 @@ const deleteTarget = ref<Playlist | null>(null)
 const deleting = ref(false)
 const stats = ref<AdminPlaylistStats | null>(null)
 
+// Bulk selection
+const selected = ref<Set<string>>(new Set())
+const bulkDeleting = ref(false)
+const allSelected = computed(() => playlists.value.length > 0 && playlists.value.every(p => selected.value.has(p.id)))
+
+function toggleSelect(id: string) {
+  const s = new Set(selected.value)
+  s.has(id) ? s.delete(id) : s.add(id)
+  selected.value = s
+}
+
+function toggleAll() {
+  if (allSelected.value) {
+    selected.value = new Set()
+  } else {
+    selected.value = new Set(playlists.value.map(p => p.id))
+  }
+}
+
+async function bulkDelete() {
+  if (!selected.value.size) return
+  bulkDeleting.value = true
+  try {
+    const ids = Array.from(selected.value)
+    const res = await adminApi.bulkDeletePlaylists(ids)
+    toast.add({ title: `Deleted ${res.success} playlist${res.success !== 1 ? 's' : ''}${res.failed ? `, ${res.failed} failed` : ''}`, color: res.failed ? 'warning' : 'success', icon: 'i-lucide-check' })
+    selected.value = new Set()
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Bulk delete failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { bulkDeleting.value = false }
+}
+
 async function load() {
   loading.value = true
   try {
@@ -62,7 +95,18 @@ onMounted(load)
       </UCard>
     </div>
 
-    <div class="flex justify-end">
+    <div class="flex items-center justify-between gap-3">
+      <UButton
+        v-if="selected.size > 0"
+        :loading="bulkDeleting"
+        icon="i-lucide-trash-2"
+        :label="`Delete Selected (${selected.size})`"
+        color="error"
+        variant="outline"
+        size="sm"
+        @click="bulkDelete"
+      />
+      <span v-else />
       <UButton icon="i-lucide-refresh-cw" aria-label="Refresh playlists" variant="ghost" color="neutral" @click="load" />
     </div>
 
@@ -74,6 +118,7 @@ onMounted(load)
         v-else
         :data="playlists"
         :columns="[
+          { accessorKey: 'select', header: '' },
           { accessorKey: 'name', header: 'Name' },
           { accessorKey: 'user_id', header: 'Owner' },
           { accessorKey: 'items', header: 'Items' },
@@ -82,6 +127,12 @@ onMounted(load)
           { accessorKey: 'actions', header: '' },
         ]"
       >
+        <template #select-header>
+          <UCheckbox :model-value="allSelected" @update:model-value="toggleAll" />
+        </template>
+        <template #select-cell="{ row }">
+          <UCheckbox :model-value="selected.has(row.original.id)" @update:model-value="toggleSelect(row.original.id)" />
+        </template>
         <template #name-cell="{ row }">
           <div>
             <p class="font-medium text-sm">{{ row.original.name }}</p>
