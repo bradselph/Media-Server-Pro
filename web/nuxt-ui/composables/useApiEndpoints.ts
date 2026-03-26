@@ -24,23 +24,15 @@ import type {
   DiscoverySuggestion,
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
+// Explicit import — bypasses Nuxt's #imports virtual module so this file does
+// NOT participate in the #imports circular dependency graph.
+// useApiEndpoints.ts is in composables/ and is re-exported by #imports.  Any
+// auto-import resolved through #imports creates a cycle that Rollup cannot
+// untangle at module-evaluation time (→ TDZ in the minified production bundle).
+// Importing useApi directly from its source file breaks that cycle entirely.
+import { useApi } from '~/composables/useApi'
 
-// Thin delegation wrapper — do NOT call useApi() at module scope.
-// useApiEndpoints.ts lives in composables/ so Nuxt re-exports it via the
-// #imports virtual module.  Any module that imports from #imports to resolve
-// useApiEndpoints' own exports creates a cycle:
-//   useApiEndpoints.ts → #imports → useApiEndpoints.ts
-// Calling useApi() inside that cycle (at module-evaluation time) hits a
-// Temporal Dead Zone in the minified production bundle.
-// Delegating via closures defers useApi() until an actual API call is made
-// (always inside an async handler, never at module load time).
-const api = {
-  get:    <T>(url: string)                               => useApi().get<T>(url),
-  post:   <T>(url: string, body?: unknown)               => useApi().post<T>(url, body),
-  put:    <T>(url: string, body?: unknown)               => useApi().put<T>(url, body),
-  patch:  <T>(url: string, body?: unknown)               => useApi().patch<T>(url, body),
-  delete: <T>(url: string, body?: unknown)               => useApi().delete<T>(url, body),
-}
+const api = useApi()
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
