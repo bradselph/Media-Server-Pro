@@ -72,6 +72,14 @@ const {
 const similar = ref<Suggestion[]>([])
 const personalized = ref<Suggestion[]>([])
 
+// Mature content gate
+const canViewMature = computed(() =>
+  authStore.isLoggedIn &&
+  (authStore.user?.preferences?.show_mature ?? false) &&
+  (authStore.user?.permissions?.can_view_mature ?? false),
+)
+const matureGated = computed(() => !!(media.value?.is_mature && !canViewMature.value))
+
 // Star rating (1-5). Optimistic update — fire and forget.
 const userRating = ref(0)
 function submitRating(star: number) {
@@ -91,6 +99,8 @@ function resetControlsTimer() {
 async function loadMedia(id: string) {
   loading.value = true
   error.value = ''
+  similar.value = []
+  personalized.value = []
   try {
     media.value = await mediaApi.getById(id)
     userRating.value = 0
@@ -237,6 +247,21 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
       <UIcon name="i-lucide-x-circle" class="size-12 text-error" />
       <p class="text-error">{{ error }}</p>
       <UButton to="/" variant="outline" label="Back to Library" />
+    </div>
+
+    <!-- Mature gate -->
+    <div v-else-if="media && matureGated" class="flex flex-col items-center justify-center py-24 gap-4 text-center px-4">
+      <UIcon name="i-lucide-lock" class="size-16 text-muted" />
+      <h2 class="text-xl font-semibold">Age-Restricted Content</h2>
+      <p class="text-muted max-w-sm">
+        <template v-if="!authStore.isLoggedIn">Sign in to access mature content.</template>
+        <template v-else>Enable mature content in your profile settings to watch this.</template>
+      </p>
+      <div class="flex gap-3">
+        <UButton v-if="!authStore.isLoggedIn" to="/login" label="Sign In" color="primary" />
+        <UButton v-else to="/profile" label="Profile Settings" color="primary" />
+        <UButton to="/" variant="outline" color="neutral" label="Back to Library" />
+      </div>
     </div>
 
     <!-- Player -->
