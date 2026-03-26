@@ -89,6 +89,43 @@ async function cleanRemoteCache() {
   }
 }
 
+// ── Remote Media Browser ───────────────────────────────────────────────────────
+const remoteMedia = ref<RemoteMediaItem[]>([])
+const remoteMediaLoading = ref(false)
+const remoteMediaSource = ref<string | null>(null)
+const showRemoteMedia = ref(false)
+
+async function loadAllRemoteMedia() {
+  remoteMediaLoading.value = true
+  showRemoteMedia.value = true
+  remoteMediaSource.value = null
+  try {
+    remoteMedia.value = (await adminApi.getRemoteMedia()) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load remote media', color: 'error', icon: 'i-lucide-x' })
+  } finally { remoteMediaLoading.value = false }
+}
+
+async function loadSourceMedia(name: string) {
+  remoteMediaLoading.value = true
+  showRemoteMedia.value = true
+  remoteMediaSource.value = name
+  try {
+    remoteMedia.value = (await adminApi.getRemoteSourceMedia(name)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load source media', color: 'error', icon: 'i-lucide-x' })
+  } finally { remoteMediaLoading.value = false }
+}
+
+async function cacheRemoteItem(url: string, sourceName: string) {
+  try {
+    await adminApi.cacheRemoteMedia(url, sourceName)
+    toast.add({ title: 'Item cached locally', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Cache failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
 // ── Crawler ────────────────────────────────────────────────────────────────────
 const crawlerStats = ref<CrawlerStats | null>(null)
 const crawlerTargets = ref<CrawlerTarget[]>([])
@@ -370,9 +407,60 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
                     </div>
                   </div>
                   <div class="flex gap-1">
+                    <UButton icon="i-lucide-list" aria-label="Browse media" size="xs" variant="ghost" color="neutral" title="Browse media" @click="loadSourceMedia(s.source.name)" />
                     <UButton icon="i-lucide-refresh-cw" aria-label="Sync source" size="xs" variant="ghost" color="neutral" @click="syncRemote(s.source.name)" />
                     <UButton icon="i-lucide-trash-2" aria-label="Delete source" size="xs" variant="ghost" color="error" @click="deleteRemote(s.source.name)" />
                   </div>
+                </div>
+              </div>
+            </UCard>
+          </template>
+
+            <!-- Remote media browser -->
+            <div class="flex justify-end gap-2">
+              <UButton
+                icon="i-lucide-film"
+                :label="showRemoteMedia ? 'Hide Remote Media' : 'Browse All Remote Media'"
+                size="sm"
+                variant="outline"
+                color="neutral"
+                :loading="remoteMediaLoading && remoteMediaSource === null"
+                @click="showRemoteMedia && remoteMediaSource === null ? showRemoteMedia = false : loadAllRemoteMedia()"
+              />
+            </div>
+            <UCard v-if="showRemoteMedia">
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <span class="font-semibold">
+                    Remote Media
+                    <span v-if="remoteMediaSource" class="text-muted font-normal text-sm"> — {{ remoteMediaSource }}</span>
+                    <span class="text-muted font-normal text-sm ml-2">({{ remoteMedia.length }})</span>
+                  </span>
+                  <div class="flex gap-2">
+                    <UButton icon="i-lucide-refresh-cw" aria-label="Refresh" size="xs" variant="ghost" color="neutral" :loading="remoteMediaLoading" @click="remoteMediaSource ? loadSourceMedia(remoteMediaSource) : loadAllRemoteMedia()" />
+                    <UButton icon="i-lucide-x" aria-label="Close" size="xs" variant="ghost" color="neutral" @click="showRemoteMedia = false" />
+                  </div>
+                </div>
+              </template>
+              <div v-if="remoteMediaLoading" class="flex justify-center py-6">
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+              </div>
+              <div v-else-if="remoteMedia.length === 0" class="text-center py-4 text-muted text-sm">No remote media found.</div>
+              <div v-else class="divide-y divide-default max-h-80 overflow-y-auto">
+                <div v-for="m in remoteMedia" :key="m.id" class="flex items-center gap-3 py-2">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate" :title="m.name">{{ m.name }}</p>
+                    <p class="text-xs text-muted">{{ m.source_name }} · {{ m.content_type }} · {{ formatBytes(m.size) }}</p>
+                  </div>
+                  <UButton
+                    icon="i-lucide-hard-drive"
+                    aria-label="Cache locally"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    title="Cache locally"
+                    @click="cacheRemoteItem(m.url, m.source_name)"
+                  />
                 </div>
               </div>
             </UCard>
