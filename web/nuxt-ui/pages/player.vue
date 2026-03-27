@@ -574,10 +574,16 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
             <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
             <div v-if="media.codec"><span class="text-muted">Codec:</span> {{ media.codec }}</div>
+            <div v-if="media.container"><span class="text-muted">Format:</span> {{ media.container.toUpperCase() }}</div>
+            <div v-if="media.bitrate"><span class="text-muted">Bitrate:</span> {{ formatBandwidth(media.bitrate) }}</div>
             <div v-if="media.category"><span class="text-muted">Category:</span> {{ media.category }}</div>
+            <div v-if="media.date_added"><span class="text-muted">Added:</span> {{ new Date(media.date_added).toLocaleDateString() }}</div>
             <div v-if="hlsActivated && qualities.length > 0">
               <span class="text-muted">Quality:</span> {{ currentQualityLabel }}
             </div>
+          </div>
+          <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1.5 mt-3">
+            <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
           </div>
           <div class="flex gap-2 mt-4 flex-wrap">
             <UButton
