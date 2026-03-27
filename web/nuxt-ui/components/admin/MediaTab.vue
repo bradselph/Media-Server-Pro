@@ -61,7 +61,7 @@ const editOpen = computed({
   get: () => !!editTarget.value,
   set: (v: boolean) => { if (!v) editTarget.value = null },
 })
-const editForm = reactive({ name: '', category: '', is_mature: false })
+const editForm = reactive({ name: '', category: '', is_mature: false, tags: '' })
 const editSaving = ref(false)
 
 function openEdit(item: MediaItem) {
@@ -69,6 +69,7 @@ function openEdit(item: MediaItem) {
   editForm.name = item.name
   editForm.category = item.category ?? ''
   editForm.is_mature = item.is_mature ?? false
+  editForm.tags = (item.tags ?? []).join(', ')
 }
 
 async function saveEdit() {
@@ -79,6 +80,7 @@ async function saveEdit() {
       name: editForm.name,
       category: editForm.category,
       is_mature: editForm.is_mature,
+      tags: editForm.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
     })
     toast.add({ title: 'Media updated', color: 'success', icon: 'i-lucide-check' })
     editTarget.value = null
@@ -405,6 +407,9 @@ onMounted(() => { load(); loadThumbStats() })
           </UFormField>
           <UFormField label="Category">
             <UInput v-model="editForm.category" placeholder="e.g. Entertainment" class="w-full" />
+          </UFormField>
+          <UFormField label="Tags" hint="Comma-separated (e.g. action, sci-fi)">
+            <UInput v-model="editForm.tags" placeholder="e.g. action, comedy" class="w-full" />
           </UFormField>
           <UFormField label="Mature content">
             <UCheckbox v-model="editForm.is_mature" label="Mark as 18+ content" />
