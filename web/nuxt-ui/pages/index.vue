@@ -446,7 +446,7 @@ onUnmounted(() => {
             v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
             :src="getThumbSrc(item.id)"
             :alt="getDisplayTitle(item)"
-            :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-lg scale-110' : '']"
+            :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
             loading="lazy"
             @error="onThumbnailError(item.id, $event)"
           />
@@ -456,7 +456,7 @@ onUnmounted(() => {
           <!-- Mature gate overlay (guests + users with show_mature disabled) -->
           <div
             v-if="item.is_mature && !canViewMature"
-            class="absolute inset-0 flex flex-col items-center justify-center bg-black/60 gap-1.5 px-2 text-center"
+            class="absolute inset-0 flex flex-col items-center justify-center bg-black/85 gap-1.5 px-2 text-center"
           >
             <UIcon name="i-lucide-lock" class="size-5 text-white" />
             <p class="text-white text-xs font-semibold leading-tight">
@@ -515,10 +515,10 @@ onUnmounted(() => {
               <img
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
                 :alt="getDisplayTitle(row.original)"
-                :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-md' : '']"
+                :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-xl saturate-0' : '']"
                 loading="lazy"
               />
-              <div v-if="row.original.is_mature && !canViewMature" class="absolute inset-0 flex items-center justify-center bg-black/50">
+              <div v-if="row.original.is_mature && !canViewMature" class="absolute inset-0 flex items-center justify-center bg-black/80">
                 <UIcon name="i-lucide-lock" class="size-3 text-white" />
               </div>
             </div>

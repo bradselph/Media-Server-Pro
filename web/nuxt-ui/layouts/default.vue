@@ -8,6 +8,7 @@ const versionApi = useVersionApi()
 const serverVersion = ref('')
 
 const ageGateOpen = ref(false)
+const ageGateChecked = ref(false)
 const ageGateVerifying = ref(false)
 
 async function checkAgeGate() {
@@ -17,6 +18,7 @@ async function checkAgeGate() {
       ageGateOpen.value = true
     }
   } catch { /* non-critical */ }
+  finally { ageGateChecked.value = true }
 }
 
 async function verifyAge() {
@@ -63,8 +65,13 @@ const navLinks = computed(() => {
 
 <template>
   <div class="min-h-screen bg-default text-default">
+    <!-- Full-page gate: nothing is rendered until the age-gate check resolves.
+         Once resolved, if the gate is open the modal covers everything.
+         Content only appears after the gate is cleared. -->
+    <div v-if="!ageGateChecked || ageGateOpen" class="fixed inset-0 z-40 bg-default" />
+
     <!-- Nav -->
-    <header class="border-b border-default bg-elevated sticky top-0 z-40">
+    <header v-if="ageGateChecked && !ageGateOpen" class="border-b border-default bg-elevated sticky top-0 z-40">
       <UContainer class="flex items-center justify-between h-14 gap-4">
         <NuxtLink to="/" class="font-bold text-lg text-highlighted flex items-center gap-2">
           <UIcon name="i-lucide-film" class="size-5 text-primary" />
@@ -112,12 +119,12 @@ const navLinks = computed(() => {
     </header>
 
     <!-- Page content -->
-    <main>
+    <main v-if="ageGateChecked && !ageGateOpen">
       <slot />
     </main>
 
     <!-- Footer -->
-    <footer v-if="serverVersion" class="border-t border-default py-3">
+    <footer v-if="serverVersion && ageGateChecked && !ageGateOpen" class="border-t border-default py-3">
       <UContainer>
         <p class="text-xs text-muted text-center">Media Server Pro v{{ serverVersion }}</p>
       </UContainer>
