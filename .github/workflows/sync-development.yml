@@ -7,8 +7,10 @@ on:
     branches: [main]
 
 concurrency:
+  # Never cancel a sync mid-flight — a half-completed merge leaves development
+  # in a broken state. Queue instead; rapid successive releases are rare.
   group: sync-development
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write

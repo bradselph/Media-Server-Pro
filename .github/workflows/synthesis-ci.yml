@@ -17,26 +17,11 @@ on:
       - 'VERSION'
       - 'CHANGELOG.md'
       - 'cmd/server/main.go'
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
-      - '**.png'
-      - '**.jpg'
-      - '**.gif'
-      - '**.svg'
-      - '**.ico'
-      - 'assets/**'
-      - '*.editorconfig'
-      - 'VERSION'
-      - 'CHANGELOG.md'
-      - 'cmd/server/main.go'
 
-# One synthesis run per branch at a time; mirrors the same exclusion contract
-# as ci.yml so auto-version commits never enter this group.
+# Synthesis is a PR-only gate: partition boundaries, OpenAPI validity, and
+# completeness are checked before code lands on main. ci.yml is the primary
+# gate for push events so there is no duplicate run on the same self-hosted
+# runner when a push and a release version bump race each other.
 concurrency:
   group: synthesis-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
