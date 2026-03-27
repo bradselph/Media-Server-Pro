@@ -13,6 +13,7 @@ const playlistApi = usePlaylistApi()
 const analyticsApi = useAnalyticsApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
+const { updatePreferences } = useApiEndpoints()
 const toast = useToast()
 
 const userPrefs = computed(() => authStore.user?.preferences)
@@ -49,7 +50,7 @@ const error = ref('')
 // Player refs
 const videoRef = ref<HTMLVideoElement | null>(null)
 const isPlaying = ref(false)
-const volume = ref(1)
+const volume = ref(userPrefs.value?.volume ?? 1)
 const currentTime = ref(0)
 const duration = ref(0)
 const showControls = ref(true)
@@ -181,7 +182,10 @@ async function savePosition() {
 
 function onVideoLoaded() {
   duration.value = videoRef.value?.duration ?? 0
-  if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
+  if (videoRef.value) {
+    videoRef.value.playbackRate = playbackSpeed.value
+    videoRef.value.volume = volume.value
+  }
   restorePosition()
   playbackStore.startAutoSave()
 }
@@ -204,17 +208,32 @@ function togglePlay() {
 function seek(delta: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = Math.max(0, Math.min(duration.value, currentTime.value + delta))
+  trackSeek()
 }
 
 function seekTo(e: MouseEvent) {
   if (!videoRef.value) return
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
   videoRef.value.currentTime = ((e.clientX - rect.left) / rect.width) * duration.value
+  trackSeek()
+}
+
+function handleQualitySelect(index: number) {
+  selectQuality(index)
+  trackQualityChange(index)
 }
 
 function setVolume(v: number) {
   volume.value = v
   if (videoRef.value) videoRef.value.volume = v
+  // Persist volume preference (debounced 1 s, fire-and-forget, logged-in users only)
+  if (authStore.isLoggedIn) {
+    if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
+    volumeSaveTimer = setTimeout(() => {
+      updatePreferences({ volume: v }).catch(() => {})
+      volumeSaveTimer = null
+    }, 1000)
+  }
 }
 
 function toggleFullscreen() {
@@ -248,8 +267,8 @@ function formatBandwidth(bps: number): string {
 }
 
 const qualityMenuItems = computed(() => [[
-  { label: 'Auto', click: () => selectQuality(-1) },
-  ...qualities.value.map(q => ({ label: q.name, click: () => selectQuality(q.index) })),
+  { label: 'Auto', click: () => handleQualitySelect(-1) },
+  ...qualities.value.map(q => ({ label: q.name, click: () => handleQualitySelect(q.index) })),
 ]])
 
 const currentQualityLabel = computed(() => {
@@ -259,10 +278,45 @@ const currentQualityLabel = computed(() => {
 
 // Analytics event helpers (fire-and-forget, never block playback)
 let playEventSent = false
+let seekTimer: ReturnType<typeof setTimeout> | null = null
+let volumeSaveTimer: ReturnType<typeof setTimeout> | null = null
+
 function trackPlay() {
-  if (playEventSent || !mediaId.value) return
-  playEventSent = true
-  analyticsApi.submitEvent({ type: 'play', media_id: mediaId.value }).catch(() => {})
+  if (!mediaId.value) return
+  if (!playEventSent) {
+    playEventSent = true
+    analyticsApi.submitEvent({ type: 'play', media_id: mediaId.value }).catch(() => {})
+  } else {
+    // Subsequent play after pause = resume
+    analyticsApi.submitEvent({ type: 'resume', media_id: mediaId.value }).catch(() => {})
+  }
+}
+function trackPause() {
+  // Skip the synthetic pause that fires when the video reaches end (complete handles that)
+  if (!mediaId.value || videoRef.value?.ended) return
+  analyticsApi.submitEvent({ type: 'pause', media_id: mediaId.value }).catch(() => {})
+}
+function trackSeek() {
+  if (!mediaId.value) return
+  if (seekTimer) clearTimeout(seekTimer)
+  seekTimer = setTimeout(() => {
+    const pos = videoRef.value?.currentTime
+    analyticsApi.submitEvent({
+      type: 'seek',
+      media_id: mediaId.value!,
+      data: { position: pos !== undefined ? Math.round(pos) : 0 },
+    }).catch(() => {})
+    seekTimer = null
+  }, 500)
+}
+function trackQualityChange(index: number) {
+  if (!mediaId.value) return
+  const qLabel = index === -1 ? 'auto' : (qualities.value[index]?.name ?? String(index))
+  analyticsApi.submitEvent({ type: 'quality_change', media_id: mediaId.value, data: { quality: qLabel } }).catch(() => {})
+}
+function onVideoError() {
+  if (!mediaId.value) return
+  analyticsApi.submitEvent({ type: 'error', media_id: mediaId.value }).catch(() => {})
 }
 function trackComplete() {
   if (!mediaId.value) return
@@ -276,6 +330,8 @@ onUnmounted(() => {
   savePosition()
   playbackStore.stopAutoSave()
   if (controlsTimer) clearTimeout(controlsTimer)
+  if (seekTimer) clearTimeout(seekTimer)
+  if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
 })
 
 watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
@@ -341,8 +397,9 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             @loadedmetadata="onVideoLoaded"
             @timeupdate="onTimeUpdate"
             @play="onPlayPause(); trackPlay()"
-            @pause="onPlayPause"
+            @pause="onPlayPause(); trackPause()"
             @ended="savePosition(); trackComplete()"
+            @error="onVideoError"
           />
 
           <!-- HLS loading overlay -->
@@ -451,8 +508,10 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               class="w-full mt-2"
               @loadedmetadata="onVideoLoaded"
               @timeupdate="onTimeUpdate"
-              @play="trackPlay()"
+              @play="onPlayPause(); trackPlay()"
+              @pause="onPlayPause(); trackPause()"
               @ended="savePosition(); trackComplete()"
+              @error="onVideoError"
             />
           </UCard>
         </div>
@@ -517,10 +576,16 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
             <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
             <div v-if="media.codec"><span class="text-muted">Codec:</span> {{ media.codec }}</div>
+            <div v-if="media.container"><span class="text-muted">Format:</span> {{ media.container.toUpperCase() }}</div>
+            <div v-if="media.bitrate"><span class="text-muted">Bitrate:</span> {{ formatBandwidth(media.bitrate) }}</div>
             <div v-if="media.category"><span class="text-muted">Category:</span> {{ media.category }}</div>
+            <div v-if="media.date_added"><span class="text-muted">Added:</span> {{ new Date(media.date_added).toLocaleDateString() }}</div>
             <div v-if="hlsActivated && qualities.length > 0">
               <span class="text-muted">Quality:</span> {{ currentQualityLabel }}
             </div>
+          </div>
+          <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1.5 mt-3">
+            <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
           </div>
           <div class="flex gap-2 mt-4 flex-wrap">
             <UButton

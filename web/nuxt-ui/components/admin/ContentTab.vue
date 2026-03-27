@@ -112,6 +112,18 @@ async function deleteHLSJob(id: string) {
 
 const hlsValidating = ref<string | null>(null)
 const hlsValidationResult = ref<HLSValidationResult | null>(null)
+const hlsRefreshing = ref<string | null>(null)
+
+async function refreshJobStatus(id: string) {
+  hlsRefreshing.value = id
+  try {
+    const updated = await hlsApi.getStatus(id)
+    const idx = hlsJobs.value.findIndex(j => j.id === id)
+    if (idx !== -1) hlsJobs.value[idx] = updated
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to refresh status', color: 'error', icon: 'i-lucide-x' })
+  } finally { hlsRefreshing.value = null }
+}
 
 async function validateHLSJob(id: string) {
   hlsValidating.value = id
@@ -353,6 +365,16 @@ watch(subTab, (v) => {
           </template>
           <template #actions-cell="{ row }">
             <div class="flex gap-1">
+              <UButton
+                v-if="row.original.status === 'running' || row.original.status === 'pending'"
+                icon="i-lucide-refresh-cw"
+                aria-label="Refresh job status"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="hlsRefreshing === row.original.id"
+                @click="refreshJobStatus(row.original.id)"
+              />
               <UButton
                 v-if="row.original.status === 'completed'"
                 icon="i-lucide-shield-check"

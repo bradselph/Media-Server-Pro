@@ -17,11 +17,15 @@ func (h *Handler) GetSecurityStats(c *gin.Context) {
 	}
 	stats := h.security.GetStats()
 	writeSuccess(c, map[string]interface{}{
-		"banned_ips":         stats.BannedIPs,
-		"whitelisted_ips":    stats.WhitelistCount,
-		"blacklisted_ips":    stats.BlacklistCount,
-		"active_rate_limits": stats.ActiveClients,
-		"total_blocks_today": stats.TotalBlocked,
+		"banned_ips":          stats.BannedIPs,
+		"whitelisted_ips":     stats.WhitelistCount,
+		"blacklisted_ips":     stats.BlacklistCount,
+		"active_rate_limits":  stats.ActiveClients,
+		"total_blocks_today":  stats.TotalBlocked,
+		"total_rate_limited":  stats.TotalRateLimited,
+		"whitelist_enabled":   stats.WhitelistEnabled,
+		"blacklist_enabled":   stats.BlacklistEnabled,
+		"rate_limit_enabled":  stats.RateLimitEnabled,
 	})
 }
 

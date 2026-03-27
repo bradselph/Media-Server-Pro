@@ -266,6 +266,18 @@ const slaveMedia = ref<ReceiverMedia[]>([])
 const receiverLoading = ref(false)
 const slaveMediaLoading = ref(false)
 const showSlaveMedia = ref(false)
+const selectedSlaveMedia = ref<ReceiverMedia | null>(null)
+const slaveMediaDetailLoading = ref(false)
+
+async function openSlaveMediaDetail(id: string) {
+  slaveMediaDetailLoading.value = true
+  selectedSlaveMedia.value = null
+  try {
+    selectedSlaveMedia.value = await adminApi.getSlaveMediaItem(id)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load media detail', color: 'error', icon: 'i-lucide-x' })
+  } finally { slaveMediaDetailLoading.value = false }
+}
 
 async function loadReceiver() {
   receiverLoading.value = true
@@ -424,7 +436,6 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
                 </div>
               </div>
             </UCard>
-          </template>
 
             <!-- Remote media browser -->
             <div class="flex justify-end gap-2">
@@ -726,13 +737,18 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
               </div>
               <div v-else-if="slaveMedia.length === 0" class="text-center py-4 text-muted text-sm">No media from slave nodes.</div>
               <div v-else class="divide-y divide-default max-h-64 overflow-y-auto">
-                <div v-for="m in slaveMedia" :key="m.id" class="flex items-center gap-3 py-2">
+                <button
+                  v-for="m in slaveMedia"
+                  :key="m.id"
+                  class="flex items-center gap-3 py-2 w-full text-left hover:bg-muted/40 transition-colors px-1 rounded"
+                  @click="openSlaveMediaDetail(m.id)"
+                >
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium truncate">{{ m.name }}</p>
                     <p class="text-xs text-muted">{{ m.type }} · {{ formatBytes(m.size) }}</p>
                   </div>
                   <span class="text-xs text-muted font-mono shrink-0">{{ m.slave_id.slice(0, 8) }}…</span>
-                </div>
+                </button>
               </div>
             </UCard>
 
@@ -758,5 +774,39 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
         </div>
       </template>
     </UTabs>
+
+    <!-- Slave media detail modal — kept outside UTabs to avoid deep template nesting parser issues -->
+    <UModal
+      v-if="selectedSlaveMedia || slaveMediaDetailLoading"
+      :open="!!(selectedSlaveMedia || slaveMediaDetailLoading)"
+      :title="selectedSlaveMedia ? selectedSlaveMedia.name : 'Loading…'"
+      @update:open="val => { if (!val) selectedSlaveMedia = null }"
+    >
+      <template #body>
+        <div v-if="slaveMediaDetailLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="selectedSlaveMedia" class="space-y-2 text-sm">
+          <div class="grid grid-cols-2 gap-2">
+            <div><span class="text-muted">Type:</span> {{ selectedSlaveMedia.type }}</div>
+            <div><span class="text-muted">Size:</span> {{ formatBytes(selectedSlaveMedia.size) }}</div>
+            <div v-if="selectedSlaveMedia.duration"><span class="text-muted">Duration:</span> {{ selectedSlaveMedia.duration }}s</div>
+            <div><span class="text-muted">Slave ID:</span> <span class="font-mono text-xs">{{ selectedSlaveMedia.slave_id }}</span></div>
+            <div><span class="text-muted">Added:</span> {{ new Date(selectedSlaveMedia.created_at).toLocaleString() }}</div>
+          </div>
+          <div>
+            <span class="text-muted">Path:</span>
+            <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.path }}</p>
+          </div>
+          <div v-if="selectedSlaveMedia.fingerprint">
+            <span class="text-muted">Fingerprint:</span>
+            <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.fingerprint }}</p>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Close" @click="selectedSlaveMedia = null" />
+      </template>
+    </UModal>
   </div>
 </template>

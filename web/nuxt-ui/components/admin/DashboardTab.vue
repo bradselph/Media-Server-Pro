@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ModuleHealth, ServerSettings } from '~/types/api'
+import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ModuleHealth, ServerSettings, MediaStats } from '~/types/api'
 
 const adminApi = useAdminApi()
+const mediaApi = useMediaApi()
 const settingsApi = useSettingsApi()
 const toast = useToast()
 
@@ -9,6 +10,7 @@ const settings = ref<ServerSettings | null>(null)
 
 const stats = ref<AdminStats | null>(null)
 const system = ref<SystemInfo | null>(null)
+const mediaStats = ref<MediaStats | null>(null)
 const streams = ref<StreamSession[]>([])
 const uploads = ref<UploadProgress[]>([])
 const statsLoading = ref(true)
@@ -47,18 +49,20 @@ function moduleStatusColor(status: ModuleHealth['status']) {
 async function loadAll() {
   statsLoading.value = true
   try {
-    const [s, sys, str, upl, sett] = await Promise.allSettled([
+    const [s, sys, str, upl, sett, ms] = await Promise.allSettled([
       adminApi.getStats(),
       adminApi.getSystemInfo(),
       adminApi.getActiveStreams(),
       adminApi.getActiveUploads(),
       settingsApi.get(),
+      mediaApi.getStats(),
     ])
     if (s.status === 'fulfilled') stats.value = s.value
     if (sys.status === 'fulfilled') system.value = sys.value
     if (str.status === 'fulfilled') streams.value = str.value ?? []
     if (upl.status === 'fulfilled') uploads.value = upl.value ?? []
     if (sett.status === 'fulfilled') settings.value = sett.value
+    if (ms.status === 'fulfilled') mediaStats.value = ms.value
   } finally {
     statsLoading.value = false
   }
@@ -112,7 +116,7 @@ onUnmounted(() => clearInterval(interval))
         </UCard>
       </div>
 
-      <!-- Disk -->
+      <!-- Disk + Library -->
       <UCard>
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
@@ -127,6 +131,15 @@ onUnmounted(() => clearInterval(interval))
           </div>
           <UProgress :value="diskPct" :color="diskColor" size="sm" />
           <p class="text-xs text-muted">{{ diskPct }}% used · {{ formatBytes(stats.disk_free ?? 0) }} free</p>
+          <template v-if="mediaStats">
+            <div class="border-t border-default pt-2 mt-2 grid grid-cols-2 gap-2 text-sm">
+              <div><span class="text-muted">Library Size:</span> {{ formatBytes(mediaStats.total_size) }}</div>
+              <div v-if="mediaStats.last_scan">
+                <span class="text-muted">Last Scan:</span>
+                {{ new Date(mediaStats.last_scan).toLocaleString() }}
+              </div>
+            </div>
+          </template>
         </div>
       </UCard>
 
@@ -202,6 +215,7 @@ onUnmounted(() => clearInterval(interval))
       </template>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm mb-4">
         <div><span class="text-muted">Version:</span> <span class="font-mono">{{ system.version }}</span></div>
+        <div v-if="system.build_date"><span class="text-muted">Built:</span> {{ new Date(system.build_date).toLocaleDateString() }}</div>
         <div><span class="text-muted">OS/Arch:</span> {{ system.os }}/{{ system.arch }}</div>
         <div><span class="text-muted">Go:</span> {{ system.go_version }}</div>
         <div><span class="text-muted">Uptime:</span> {{ formatUptime(system.uptime) }}</div>

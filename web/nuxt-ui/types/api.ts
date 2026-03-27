@@ -270,6 +270,15 @@ export interface ModuleHealth {
   last_check: string
 }
 
+export interface ServerStatus {
+  running: boolean
+  uptime: string
+  start_time: string
+  version: string
+  go_version: string
+  module_count: number
+}
+
 export interface SystemInfo {
   version: string
   build_date: string
@@ -410,6 +419,10 @@ export interface SecurityStats {
   blacklisted_ips: number
   active_rate_limits: number
   total_blocks_today: number
+  total_rate_limited: number
+  whitelist_enabled: boolean
+  blacklist_enabled: boolean
+  rate_limit_enabled: boolean
 }
 
 export interface DatabaseStatus {
@@ -803,6 +816,17 @@ export interface DownloaderDetectResult {
   isYouTubeMusic: boolean
   streams: Array<{ url: string; quality: string; type: string; size?: number; format?: string }>
   relayId?: string
+}
+
+export interface DownloaderProgress {
+  downloadId: string
+  status: 'queued' | 'downloading' | 'processing' | 'complete' | 'error' | 'cancelled'
+  progress?: number
+  speed?: string
+  eta?: string
+  title?: string
+  filename?: string
+  error?: string
 }
 
 export interface DownloaderSettings {

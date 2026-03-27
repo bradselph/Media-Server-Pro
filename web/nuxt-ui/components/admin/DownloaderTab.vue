@@ -1,8 +1,74 @@
 <script setup lang="ts">
-import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings } from '~/types/api'
+import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+
+const wsConnected = ref(false)
+const wsClientId = ref<string | null>(null)
+const activeProgress = ref(new Map<string, DownloaderProgress>())
+let wsRef: WebSocket | null = null
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
+let wsBackoff = 1000
+
+function connectWS() {
+  if (wsRef?.readyState === WebSocket.OPEN || wsRef?.readyState === WebSocket.CONNECTING) return
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const ws = new WebSocket(`${proto}//${location.host}/ws/admin/downloader`)
+  wsRef = ws
+
+  ws.onopen = () => { wsConnected.value = true; wsBackoff = 1000 }
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data)
+      if (msg.type === 'connected' && msg.clientId) {
+        wsClientId.value = msg.clientId
+        return
+      }
+      if (msg.downloadId) {
+        const next = new Map(activeProgress.value)
+        next.set(msg.downloadId, msg as DownloaderProgress)
+        activeProgress.value = next
+        if (msg.status === 'complete' || msg.status === 'error' || msg.status === 'cancelled') {
+          setTimeout(() => {
+            const m = new Map(activeProgress.value)
+            m.delete(msg.downloadId)
+            activeProgress.value = m
+            load()
+            loadImportable()
+          }, 8000)
+        }
+      }
+    } catch { /* ignore non-JSON */ }
+  }
+
+  ws.onclose = () => {
+    wsConnected.value = false
+    wsClientId.value = null
+    wsRef = null
+    wsReconnectTimer = setTimeout(() => {
+      wsBackoff = Math.min(wsBackoff * 2, 30000)
+      connectWS()
+    }, wsBackoff)
+  }
+  ws.onerror = () => { ws.close() }
+}
+
+onMounted(() => {
+  connectWS()
+  loadHealth()
+  loadSettings()
+  load()
+  loadImportable()
+})
+
+onUnmounted(() => {
+  if (wsReconnectTimer) clearTimeout(wsReconnectTimer)
+  wsRef?.close()
+})
 
 // ── Health ────────────────────────────────────────────────────────────────────
 const health = ref<DownloaderHealth | null>(null)
@@ -23,10 +89,6 @@ async function loadSettings() {
 
 const downloads = ref<DownloaderJob[]>([])
 const loading = ref(true)
-const newUrl = ref('')
-const adding = ref(false)
-// Track active download IDs so the user can cancel them
-const activeDownloads = ref<{ id: string; url: string }[]>([])
 
 async function load() {
   loading.value = true
@@ -36,29 +98,9 @@ async function load() {
   } finally { loading.value = false }
 }
 
-async function addDownload() {
-  if (!newUrl.value) return
-  adding.value = true
-  try {
-    const clientId = `admin-${Date.now()}`
-    const result = await adminApi.createDownloaderJob({ url: newUrl.value, clientId })
-    toast.add({ title: 'Download started', color: 'success', icon: 'i-lucide-check' })
-    if (result?.downloadId) {
-      activeDownloads.value = [...activeDownloads.value, { id: result.downloadId, url: newUrl.value }]
-    }
-    newUrl.value = ''
-    await load()
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
-  } finally {
-    adding.value = false
-  }
-}
-
 async function cancelDownload(id: string) {
   try {
     await adminApi.cancelDownloaderJob(id)
-    activeDownloads.value = activeDownloads.value.filter(d => d.id !== id)
     toast.add({ title: 'Download cancelled', color: 'info', icon: 'i-lucide-info' })
     await load()
   } catch (e: unknown) {
@@ -73,6 +115,51 @@ async function deleteDownload(filename: string) {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
+}
+
+// ── URL Detection + Download ──────────────────────────────────────────────────
+
+const newUrl = ref('')
+const detecting = ref(false)
+const detected = ref<DownloaderDetectResult | null>(null)
+const downloading = ref(false)
+
+async function detect() {
+  if (!newUrl.value.trim()) return
+  detecting.value = true
+  detected.value = null
+  try {
+    detected.value = await adminApi.detectDownload(newUrl.value.trim())
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Detection failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { detecting.value = false }
+}
+
+async function startDownload(streamUrl?: string) {
+  if (!detected.value) return
+  downloading.value = true
+  const clientId = wsClientId.value ?? `admin-${Date.now()}`
+  try {
+    const result = await adminApi.createDownloaderJob({
+      url: streamUrl ?? detected.value.url,
+      title: detected.value.title,
+      clientId,
+      isYouTube: detected.value.isYouTube,
+      isYouTubeMusic: detected.value.isYouTubeMusic,
+      relayId: detected.value.relayId,
+    })
+    toast.add({ title: 'Download started', color: 'success', icon: 'i-lucide-check' })
+    if (result?.downloadId) {
+      const next = new Map(activeProgress.value)
+      next.set(result.downloadId, { downloadId: result.downloadId, status: 'queued', title: detected.value.title })
+      activeProgress.value = next
+    }
+    detected.value = null
+    newUrl.value = ''
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Download failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { downloading.value = false }
 }
 
 // ── Importable files ──────────────────────────────────────────────────────────
@@ -110,12 +197,11 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
 }
 
-onMounted(() => {
-  loadHealth()
-  loadSettings()
-  load()
-  loadImportable()
-})
+function progressBarColor(status: DownloaderProgress['status']) {
+  if (status === 'error') return 'error'
+  if (status === 'complete') return 'success'
+  return 'primary'
+}
 </script>
 
 <template>
@@ -133,8 +219,11 @@ onMounted(() => {
         </div>
         <span v-if="health.activeDownloads != null" class="text-muted">{{ health.activeDownloads }} active</span>
         <span v-if="health.queuedDownloads != null" class="text-muted">· {{ health.queuedDownloads }} queued</span>
-        <span v-if="health.error" class="text-error text-xs">{{ health.error }}</span>
-        <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" class="ml-auto" @click="loadHealth" />
+        <div class="flex items-center gap-1.5 ml-auto">
+          <UIcon :name="wsConnected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'" class="size-3.5" :class="wsConnected ? 'text-success' : 'text-muted'" />
+          <span class="text-xs text-muted">{{ wsConnected ? 'WS connected' : 'WS disconnected' }}</span>
+        </div>
+        <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" @click="loadHealth" />
       </div>
     </UCard>
 
@@ -186,7 +275,7 @@ onMounted(() => {
       <UButton icon="i-lucide-settings" label="Show Settings" size="sm" variant="ghost" color="neutral" @click="showSettings = true" />
     </div>
 
-    <!-- Add new download -->
+    <!-- New Download — detect first, then choose stream -->
     <UCard>
       <template #header>
         <div class="font-semibold flex items-center gap-2">
@@ -194,36 +283,95 @@ onMounted(() => {
           New Download
         </div>
       </template>
-      <div class="flex flex-wrap gap-2">
-        <UInput v-model="newUrl" placeholder="URL to download…" class="flex-1 min-w-64" @keyup.enter="addDownload" />
-        <UButton :loading="adding" icon="i-lucide-plus" label="Add" @click="addDownload" />
+      <div class="space-y-3">
+        <p class="text-xs text-muted">
+          Detect the URL first to see available streams. With server storage enabled, completed downloads are saved to the configured import directory.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <UInput v-model="newUrl" placeholder="URL to download…" class="flex-1 min-w-64" @keyup.enter="detect" />
+          <UButton :loading="detecting" icon="i-lucide-search" label="Detect" variant="outline" color="neutral" :disabled="!newUrl.trim()" @click="detect" />
+        </div>
+
+        <!-- Stream options from detect -->
+        <template v-if="detected">
+          <UCard :ui="{ body: 'p-3' }">
+            <p class="text-sm font-medium mb-2">{{ detected.title || 'Detected Streams' }}</p>
+
+            <!-- Multiple streams to choose from -->
+            <div v-if="detected.streams.length > 0" class="space-y-1.5">
+              <div
+                v-for="(s, i) in detected.streams"
+                :key="i"
+                class="flex items-center gap-2 rounded bg-muted px-2 py-1.5"
+              >
+                <span class="flex-1 text-xs">
+                  {{ s.quality || s.type || s.format }}{{ s.size ? ` · ${formatBytes(s.size)}` : '' }}
+                </span>
+                <UButton
+                  :loading="downloading"
+                  icon="i-lucide-download"
+                  label="Download"
+                  size="xs"
+                  variant="outline"
+                  color="primary"
+                  @click="startDownload(s.url)"
+                />
+              </div>
+            </div>
+
+            <!-- YouTube best quality / single stream -->
+            <UButton
+              v-if="detected.isYouTube || detected.streams.length === 0"
+              :loading="downloading"
+              icon="i-lucide-download"
+              :label="detected.isYouTube ? 'Download (best quality)' : 'Download'"
+              color="primary"
+              :class="detected.streams.length > 0 ? 'mt-2' : ''"
+              @click="startDownload()"
+            />
+          </UCard>
+        </template>
       </div>
     </UCard>
 
-    <!-- Active downloads (cancellable) -->
-    <UCard v-if="activeDownloads.length > 0">
+    <!-- Active downloads with real-time progress -->
+    <UCard v-if="activeProgress.size > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-primary" />
           Active Downloads
-          <UBadge :label="String(activeDownloads.length)" color="info" variant="subtle" size="xs" />
+          <UBadge :label="String(activeProgress.size)" color="info" variant="subtle" size="xs" />
         </div>
       </template>
-      <div class="divide-y divide-default">
-        <div v-for="dl in activeDownloads" :key="dl.id" class="flex items-center justify-between py-2 gap-3">
-          <p class="text-sm truncate text-muted min-w-0 flex-1" :title="dl.url">{{ dl.url }}</p>
-          <UButton icon="i-lucide-x" label="Cancel" size="xs" variant="ghost" color="error" @click="cancelDownload(dl.id)" />
+      <div class="space-y-3">
+        <div v-for="[id, dl] in activeProgress" :key="id" class="space-y-1">
+          <div class="flex items-center justify-between gap-2 text-sm">
+            <span class="truncate font-medium flex-1">{{ dl.title || dl.filename || id }}</span>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs text-muted">{{ dl.status }}{{ dl.speed ? ` · ${dl.speed}` : '' }}{{ dl.eta ? ` · ETA ${dl.eta}` : '' }}</span>
+              <UButton
+                v-if="dl.status === 'downloading' || dl.status === 'queued'"
+                icon="i-lucide-x"
+                size="xs"
+                variant="ghost"
+                color="error"
+                @click="cancelDownload(id)"
+              />
+            </div>
+          </div>
+          <UProgress :value="dl.progress ?? 0" :color="progressBarColor(dl.status)" size="xs" />
+          <p v-if="dl.error" class="text-xs text-error">{{ dl.error }}</p>
         </div>
       </div>
     </UCard>
 
-    <!-- Importable files -->
+    <!-- Importable files — move to media library -->
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
           <div class="font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-package-check" class="size-4" />
-            Ready to Import
+            Import to Library
             <UBadge :label="String(importable.length)" color="neutral" variant="subtle" size="xs" />
           </div>
           <div class="flex items-center gap-3 text-sm">
@@ -239,11 +387,14 @@ onMounted(() => {
           </div>
         </div>
       </template>
+      <p class="text-xs text-muted mb-3">
+        Files below have been downloaded to the server's configured downloads directory and are ready to be moved to the media library.
+      </p>
       <div v-if="importableLoading" class="flex justify-center py-4">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
       </div>
       <div v-else-if="importable.length === 0" class="text-center py-4 text-muted text-sm">
-        No files ready to import.
+        No files ready to import. Complete a download with server storage enabled to populate this list.
       </div>
       <div v-else class="divide-y divide-default">
         <div v-for="f in importable" :key="f.name" class="flex items-center justify-between py-2 gap-3">
@@ -268,13 +419,13 @@ onMounted(() => {
       </div>
     </UCard>
 
-    <!-- Downloaded files list -->
+    <!-- Downloaded files list (server files) -->
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
           <div class="font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-folder-open" class="size-4" />
-            Downloaded Files
+            Server Files
           </div>
           <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" @click="load" />
         </div>

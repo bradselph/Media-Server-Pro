@@ -14,6 +14,8 @@ const toast = useToast()
 const continueWatching = ref<Suggestion[]>([])
 const trending = ref<Suggestion[]>([])
 const recommended = ref<Suggestion[]>([])
+// General suggestions (shown to logged-out users — public endpoint)
+const general = ref<Suggestion[]>([])
 
 // State — declared BEFORE any watch({immediate:true}) that references params
 // to avoid a Temporal Dead Zone (TDZ) crash when the user is already logged in
@@ -37,6 +39,10 @@ const params = reactive({
   sort_order: (authStore.user?.preferences?.sort_order ?? 'asc') as 'asc' | 'desc',
 })
 
+async function loadGeneralSuggestions() {
+  try { general.value = (await suggestionsApi.get()) ?? [] } catch { /* non-critical */ }
+}
+
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
@@ -58,6 +64,7 @@ async function loadRecommendations() {
 // load() by only reloading when the limit preference actually changed.
 watch(() => authStore.isLoggedIn, (loggedIn) => {
   if (loggedIn) {
+    general.value = []
     loadRecommendations()
     const pref = authStore.user?.preferences?.items_per_page
     if (pref && pref !== params.limit) {
@@ -65,6 +72,11 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
       params.page = 1
       load()
     }
+  } else {
+    continueWatching.value = []
+    trending.value = []
+    recommended.value = []
+    loadGeneralSuggestions()
   }
 }, { immediate: false })
 
@@ -89,6 +101,18 @@ async function load() {
     total.value = res.total_items ?? res.total ?? 0
     scanning.value = res.scanning ?? false
     initializing.value = res.initializing ?? false
+    // Pre-warm the browser image cache for visible thumbnails in this page.
+    // The batch endpoint returns the same /thumbnail?id=X URLs so the browser
+    // deduplicates and serves them instantly when the grid renders.
+    const batchIds = items.value.slice(0, 50).map(i => i.id)
+    if (batchIds.length > 0) {
+      mediaApi.getThumbnailBatch(batchIds, 320).then(r => {
+        for (const url of Object.values(r?.thumbnails ?? {})) {
+          const img = new Image()
+          img.src = url
+        }
+      }).catch(() => {})
+    }
   } catch (e: unknown) {
     loadError.value = e instanceof Error ? e.message : 'Failed to load media'
     toast.add({ title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' })
@@ -117,6 +141,7 @@ onMounted(() => {
   // Fetch recommendations for already-logged-in users (page refresh).
   // When the user logs in mid-session, the watch above handles this instead.
   if (authStore.isLoggedIn) loadRecommendations()
+  else loadGeneralSuggestions()
 })
 
 // View mode — initialized from user preference; defaults to grid
@@ -143,6 +168,58 @@ function formatDuration(secs?: number): string {
   const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60)
   return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`
 }
+
+// ── Thumbnail cycling on hover ─────────────────────────────────────────────────
+const previewCache = new Map<string, string[]>()
+const failedThumbnails = new Set<string>()
+const hoverItemId = ref<string | null>(null)
+const hoverFrameIdx = ref(0)
+let hoverCycleTimer: ReturnType<typeof setInterval> | null = null
+
+async function onMediaHoverEnter(id: string, isAudio: boolean) {
+  if (isAudio) return
+  hoverItemId.value = id
+  hoverFrameIdx.value = 0
+
+  if (!previewCache.has(id)) {
+    try {
+      const result = await mediaApi.getThumbnailPreviews(id)
+      if (result?.previews?.length > 1) previewCache.set(id, result.previews)
+    } catch { /* no previews — stay on default */ }
+  }
+
+  const frames = previewCache.get(id)
+  if (frames && frames.length > 1) {
+    if (hoverCycleTimer) clearInterval(hoverCycleTimer)
+    hoverCycleTimer = setInterval(() => {
+      hoverFrameIdx.value = (hoverFrameIdx.value + 1) % frames.length
+    }, 600)
+  }
+}
+
+function onMediaHoverLeave() {
+  hoverItemId.value = null
+  hoverFrameIdx.value = 0
+  if (hoverCycleTimer) { clearInterval(hoverCycleTimer); hoverCycleTimer = null }
+}
+
+function getThumbSrc(id: string): string {
+  if (hoverItemId.value === id) {
+    const frames = previewCache.get(id)
+    if (frames?.length) return frames[hoverFrameIdx.value % frames.length]
+  }
+  return mediaApi.getThumbnailUrl(id)
+}
+
+function onThumbnailError(id: string, event: Event) {
+  failedThumbnails.add(id)
+  const img = event.target as HTMLImageElement
+  img.style.display = 'none'
+}
+
+onUnmounted(() => {
+  if (hoverCycleTimer) clearInterval(hoverCycleTimer)
+})
 </script>
 
 <template>
@@ -210,6 +287,34 @@ function formatDuration(secs?: number): string {
         <div class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="s in recommended"
+            :key="s.media_id"
+            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                :src="mediaApi.getThumbnailUrl(s.media_id)"
+                :alt="s.title"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+          </NuxtLink>
+        </div>
+      </div>
+    </template>
+
+    <!-- Popular suggestions (logged-out users only) -->
+    <template v-else>
+      <div v-if="general.length > 0" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-star" class="size-4 text-primary" />
+          Popular
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="s in general"
             :key="s.media_id"
             :to="`/player?id=${encodeURIComponent(s.media_id)}`"
             class="group shrink-0 w-40"
@@ -333,17 +438,20 @@ function formatDuration(secs?: number): string {
         :key="item.id"
         :to="matureGateHref(item)"
         class="group block"
+        @mouseenter="onMediaHoverEnter(item.id, item.type === 'audio')"
+        @mouseleave="onMediaHoverLeave"
       >
         <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2">
           <img
-            v-if="item.type !== 'audio'"
-            :src="mediaApi.getThumbnailUrl(item.id)"
+            v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
+            :src="getThumbSrc(item.id)"
             :alt="getDisplayTitle(item)"
-            :class="['w-full h-full object-cover transition-transform duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-lg scale-110' : '']"
+            :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-lg scale-110' : '']"
             loading="lazy"
+            @error="onThumbnailError(item.id, $event)"
           />
           <div v-else class="w-full h-full flex items-center justify-center">
-            <UIcon name="i-lucide-music" class="size-8 text-muted" />
+            <UIcon :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
           </div>
           <!-- Mature gate overlay (guests + users with show_mature disabled) -->
           <div

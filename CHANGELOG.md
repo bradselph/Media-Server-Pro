@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.123.0] - 2026-03-26 (minor)
+
+- perf: batch-prefetch thumbnail URLs on media grid load
+- fix: report actual physical RAM in system info using /proc/meminfo
+- fix: await nextTick before attaching hls.js to prevent Vue src-binding race
+- fix: repair orphaned template tag in SourcesTab, fix CategorizedItem.path and DB row indexing TS errors
+
+
+## [0.122.0] - 2026-03-26 (minor)
+
+- fix: thumbnail hover cycling and broken image fallback on media grid
+- feat: restore detect flow, relay-based server storage, and real-time WS progress in DownloaderTab
+- feat: add slave media item detail view to receiver section in SourcesTab
+- feat: expose /api/status, /api/modules and /api/receiver/media/:id in frontend
+
+
 ## [0.121.0] - 2026-03-26 (minor)
 
 - feat: show user capabilities in profile using getPermissions
