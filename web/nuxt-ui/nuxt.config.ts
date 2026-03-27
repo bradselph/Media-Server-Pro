@@ -67,7 +67,7 @@ export default defineNuxtConfig({
       includeCustomCollections: true,
       // Some Nuxt UI controls (pagination/select/dropdown) resolve these at runtime.
       // Keep them bundled so strict CSP never falls back to api.iconify.design.
-      icons: ['lucide:chevron-down', 'lucide:check', 'lucide:chevron-right', 'lucide:chevron-left', 'lucide:chevron-up', 'lucide:chevrons-left', 'lucide:chevrons-right', 'lucide:x', 'lucide:circle-alert', 'lucide:circle-check', 'lucide:info', 'lucide:triangle-alert'],
+      icons: ['lucide:chevron-down', 'lucide:check', 'lucide:chevron-right', 'lucide:chevron-left', 'lucide:chevron-up', 'lucide:chevrons-left', 'lucide:chevrons-right', 'lucide:x', 'lucide:circle-alert', 'lucide:circle-check', 'lucide:info', 'lucide:triangle-alert', 'lucide:loader-circle', 'lucide:menu', 'lucide:log-in'],
     },
   },
 

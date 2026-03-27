@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.124.0] - 2026-03-27 (minor)
+
+- feat(admin): show build_date, library size and last scan in dashboard
+- feat: add tags field to admin media edit modal
+- fix: align audio element event handlers with video element
+- feat: show container, bitrate, date_added, and tags in player media info
+- feat: expand playlist export to all three backend-supported formats
+- feat: expose total_rate_limited and feature-flag fields in security stats
+- fix: load and persist volume preference in player
+- feat: track pause/resume/seek/quality_change/error analytics events in player
+- feat: add per-job status refresh button for running/pending HLS jobs
+- fix: fetch fresh user data via getUser() before opening admin edit modal
+- feat: show popular suggestions to logged-out users on index page
+
+
 ## [0.123.0] - 2026-03-26 (minor)
 
 - perf: batch-prefetch thumbnail URLs on media grid load

@@ -169,6 +169,14 @@ function formatDuration(secs?: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`
 }
 
+// ── Suggestion thumbnail error tracking ───────────────────────────────────────
+const failedSuggestions = new Set<string>()
+function onSuggestionThumbnailError(id: string, event: Event) {
+  failedSuggestions.add(id)
+  const img = event.target as HTMLImageElement
+  img.style.display = 'none'
+}
+
 // ── Thumbnail cycling on hover ─────────────────────────────────────────────────
 const previewCache = new Map<string, string[]>()
 const failedThumbnails = new Set<string>()
@@ -241,11 +249,16 @@ onUnmounted(() => {
           >
             <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
               <img
+                v-if="!failedSuggestions.has(s.media_id)"
                 :src="mediaApi.getThumbnailUrl(s.media_id)"
                 :alt="s.title"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
+                @error="onSuggestionThumbnailError(s.media_id, $event)"
               />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
           </NuxtLink>
@@ -267,11 +280,16 @@ onUnmounted(() => {
           >
             <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
               <img
+                v-if="!failedSuggestions.has(s.media_id)"
                 :src="mediaApi.getThumbnailUrl(s.media_id)"
                 :alt="s.title"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
+                @error="onSuggestionThumbnailError(s.media_id, $event)"
               />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
           </NuxtLink>
@@ -293,11 +311,16 @@ onUnmounted(() => {
           >
             <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
               <img
+                v-if="!failedSuggestions.has(s.media_id)"
                 :src="mediaApi.getThumbnailUrl(s.media_id)"
                 :alt="s.title"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
+                @error="onSuggestionThumbnailError(s.media_id, $event)"
               />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
           </NuxtLink>
@@ -321,11 +344,16 @@ onUnmounted(() => {
           >
             <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
               <img
+                v-if="!failedSuggestions.has(s.media_id)"
                 :src="mediaApi.getThumbnailUrl(s.media_id)"
                 :alt="s.title"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
+                @error="onSuggestionThumbnailError(s.media_id, $event)"
               />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
           </NuxtLink>
@@ -446,7 +474,7 @@ onUnmounted(() => {
             v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
             :src="getThumbSrc(item.id)"
             :alt="getDisplayTitle(item)"
-            :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-lg scale-110' : '']"
+            :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
             loading="lazy"
             @error="onThumbnailError(item.id, $event)"
           />
@@ -456,7 +484,7 @@ onUnmounted(() => {
           <!-- Mature gate overlay (guests + users with show_mature disabled) -->
           <div
             v-if="item.is_mature && !canViewMature"
-            class="absolute inset-0 flex flex-col items-center justify-center bg-black/60 gap-1.5 px-2 text-center"
+            class="absolute inset-0 flex flex-col items-center justify-center bg-black/85 gap-1.5 px-2 text-center"
           >
             <UIcon name="i-lucide-lock" class="size-5 text-white" />
             <p class="text-white text-xs font-semibold leading-tight">
@@ -513,12 +541,17 @@ onUnmounted(() => {
           <NuxtLink :to="matureGateHref(row.original)" class="flex items-center gap-3 hover:text-primary">
             <div class="relative w-16 h-9 rounded overflow-hidden bg-muted shrink-0">
               <img
+                v-if="!failedThumbnails.has(row.original.id)"
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
                 :alt="getDisplayTitle(row.original)"
-                :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-md' : '']"
+                :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-xl saturate-0' : '']"
                 loading="lazy"
+                @error="onThumbnailError(row.original.id, $event)"
               />
-              <div v-if="row.original.is_mature && !canViewMature" class="absolute inset-0 flex items-center justify-center bg-black/50">
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon :name="row.original.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-4 text-muted" />
+              </div>
+              <div v-if="row.original.is_mature && !canViewMature" class="absolute inset-0 flex items-center justify-center bg-black/80">
                 <UIcon name="i-lucide-lock" class="size-3 text-white" />
               </div>
             </div>

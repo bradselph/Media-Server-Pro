@@ -1,12 +1,13 @@
 name: Release Version
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - 'VERSION'
-      - 'CHANGELOG.md'
-      - 'cmd/server/main.go'
+  # Sequence the release AFTER CI passes so the two workflows never race on
+  # the same self-hosted runner (both previously ran npm ci + go build in
+  # parallel which corrupted shared module caches).
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
 
   workflow_dispatch:
     inputs:
@@ -22,9 +23,7 @@ on:
 
 concurrency:
   # Never cancel an in-progress release — a partial run leaves dangling tags
-  # and incomplete GitHub Releases. Queue instead; the bump-release job's own
-  # [auto-version] guard and paths-ignore prevent the workflow from triggering
-  # on its own commits, so queueing here only happens on rapid successive pushes.
+  # and incomplete GitHub Releases. Queue instead.
   group: release-version-${{ github.ref }}
   cancel-in-progress: false
 
@@ -35,8 +34,11 @@ jobs:
   bump-release:
     runs-on: [self-hosted, Linux, X64, media-server]
     if: |
-      github.event_name == 'workflow_dispatch' ||
-      !contains(github.event.head_commit.message, '[auto-version]')
+      github.event_name == 'workflow_dispatch' || (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        !contains(github.event.workflow_run.head_commit.message, '[auto-version]')
+      )
     outputs:
       new_version: ${{ steps.bump.outputs.new }}
       tag: ${{ steps.bump.outputs.tag }}

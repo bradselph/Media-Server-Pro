@@ -8,6 +8,7 @@ const versionApi = useVersionApi()
 const serverVersion = ref('')
 
 const ageGateOpen = ref(false)
+const ageGateChecked = ref(false)
 const ageGateVerifying = ref(false)
 
 async function checkAgeGate() {
@@ -17,6 +18,7 @@ async function checkAgeGate() {
       ageGateOpen.value = true
     }
   } catch { /* non-critical */ }
+  finally { ageGateChecked.value = true }
 }
 
 async function verifyAge() {
@@ -43,6 +45,8 @@ async function handleLogout() {
   router.push('/login')
 }
 
+const mobileMenuOpen = ref(false)
+
 const navLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
@@ -59,12 +63,20 @@ const navLinks = computed(() => {
   }
   return links
 })
+
+// Close the mobile menu when the route changes (user tapped a link)
+watch(() => route.path, () => { mobileMenuOpen.value = false })
 </script>
 
 <template>
   <div class="min-h-screen bg-default text-default">
+    <!-- Full-page gate: nothing is rendered until the age-gate check resolves.
+         Once resolved, if the gate is open the modal covers everything.
+         Content only appears after the gate is cleared. -->
+    <div v-if="!ageGateChecked || ageGateOpen" class="fixed inset-0 z-40 bg-default" />
+
     <!-- Nav -->
-    <header class="border-b border-default bg-elevated sticky top-0 z-40">
+    <header v-if="ageGateChecked && !ageGateOpen" class="border-b border-default bg-elevated sticky top-0 z-40">
       <UContainer class="flex items-center justify-between h-14 gap-4">
         <NuxtLink to="/" class="font-bold text-lg text-highlighted flex items-center gap-2">
           <UIcon name="i-lucide-film" class="size-5 text-primary" />
@@ -101,23 +113,71 @@ const navLinks = computed(() => {
               size="sm"
               icon="i-lucide-log-out"
               aria-label="Log out"
+              class="hidden md:flex"
               @click="handleLogout"
             />
           </template>
           <template v-else>
-            <UButton to="/login" variant="ghost" color="neutral" size="sm" label="Login" />
+            <UButton to="/login" variant="ghost" color="neutral" size="sm" label="Login" class="hidden md:flex" />
           </template>
+
+          <!-- Hamburger — mobile only -->
+          <UButton
+            :icon="mobileMenuOpen ? 'i-lucide-x' : 'i-lucide-menu'"
+            :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            class="md:hidden"
+            @click="mobileMenuOpen = !mobileMenuOpen"
+          />
         </div>
       </UContainer>
+
+      <!-- Mobile nav dropdown -->
+      <div v-if="mobileMenuOpen" class="md:hidden border-t border-default bg-elevated">
+        <UContainer class="py-2 flex flex-col gap-1">
+          <NuxtLink
+            v-for="link in navLinks"
+            :key="link.to"
+            :to="link.to"
+            class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+            active-class="text-default bg-muted"
+          >
+            <UIcon :name="link.icon" class="size-4 shrink-0" />
+            {{ link.label }}
+          </NuxtLink>
+          <div class="border-t border-default mt-1 pt-1">
+            <template v-if="authStore.isLoggedIn">
+              <button
+                class="flex w-full items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+                @click="handleLogout"
+              >
+                <UIcon name="i-lucide-log-out" class="size-4 shrink-0" />
+                Log out
+              </button>
+            </template>
+            <template v-else>
+              <NuxtLink
+                to="/login"
+                class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+              >
+                <UIcon name="i-lucide-log-in" class="size-4 shrink-0" />
+                Login
+              </NuxtLink>
+            </template>
+          </div>
+        </UContainer>
+      </div>
     </header>
 
     <!-- Page content -->
-    <main>
+    <main v-if="ageGateChecked && !ageGateOpen">
       <slot />
     </main>
 
     <!-- Footer -->
-    <footer v-if="serverVersion" class="border-t border-default py-3">
+    <footer v-if="serverVersion && ageGateChecked && !ageGateOpen" class="border-t border-default py-3">
       <UContainer>
         <p class="text-xs text-muted text-center">Media Server Pro v{{ serverVersion }}</p>
       </UContainer>
