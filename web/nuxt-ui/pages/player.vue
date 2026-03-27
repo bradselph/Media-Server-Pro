@@ -508,8 +508,10 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               class="w-full mt-2"
               @loadedmetadata="onVideoLoaded"
               @timeupdate="onTimeUpdate"
-              @play="trackPlay()"
+              @play="onPlayPause(); trackPlay()"
+              @pause="onPlayPause(); trackPause()"
               @ended="savePosition(); trackComplete()"
+              @error="onVideoError"
             />
           </UCard>
         </div>
