@@ -240,7 +240,13 @@ onMounted(load)
                 <UButton icon="i-lucide-pencil" label="Edit" size="xs" variant="outline" color="neutral" @click="openEdit(activePlaylist)" />
                 <UButton icon="i-lucide-copy" label="Duplicate" size="xs" variant="outline" color="neutral" :loading="copyingId === activePlaylist.id" @click="copyPlaylist(activePlaylist)" />
                 <UButton icon="i-lucide-trash-2" label="Clear Items" size="xs" variant="outline" color="warning" :loading="clearingId === activePlaylist.id" @click="clearPlaylist(activePlaylist)" />
-                <UButton icon="i-lucide-download" label="Export M3U" size="xs" variant="outline" color="neutral" :to="playlistApi.exportPlaylist(activePlaylist.id, 'm3u8')" />
+                <UDropdownMenu :items="[[
+                  { label: 'Export M3U8', icon: 'i-lucide-file-music', to: playlistApi.exportPlaylist(activePlaylist.id, 'm3u8'), target: '_blank' },
+                  { label: 'Export M3U', icon: 'i-lucide-file-music', to: playlistApi.exportPlaylist(activePlaylist.id, 'm3u'), target: '_blank' },
+                  { label: 'Export JSON', icon: 'i-lucide-file-json', to: playlistApi.exportPlaylist(activePlaylist.id, 'json'), target: '_blank' },
+                ]]">
+                  <UButton icon="i-lucide-download" label="Export" size="xs" variant="outline" color="neutral" trailing-icon="i-lucide-chevron-down" />
+                </UDropdownMenu>
               </div>
             </div>
           </template>
