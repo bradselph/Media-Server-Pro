@@ -21,8 +21,12 @@ on:
           - patch
 
 concurrency:
+  # Never cancel an in-progress release — a partial run leaves dangling tags
+  # and incomplete GitHub Releases. Queue instead; the bump-release job's own
+  # [auto-version] guard and paths-ignore prevent the workflow from triggering
+  # on its own commits, so queueing here only happens on rapid successive pushes.
   group: release-version-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
