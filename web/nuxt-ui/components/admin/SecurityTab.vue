@@ -238,11 +238,12 @@ watch(subTab, (v) => {
     </div>
 
     <!-- Stats -->
-    <div v-if="subTab === 'stats' && stats">
+    <div v-if="subTab === 'stats' && stats" class="space-y-4">
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <UCard v-for="item in [
-          { label: 'Blocked Today', value: stats.total_blocks_today, icon: 'i-lucide-shield-x' },
-          { label: 'Active Rate Limits', value: stats.active_rate_limits, icon: 'i-lucide-gauge' },
+          { label: 'Blocked Total', value: stats.total_blocks_today, icon: 'i-lucide-shield-x' },
+          { label: 'Rate Limited Total', value: stats.total_rate_limited, icon: 'i-lucide-gauge' },
+          { label: 'Active Rate Limits', value: stats.active_rate_limits, icon: 'i-lucide-activity' },
           { label: 'Banned IPs', value: stats.banned_ips, icon: 'i-lucide-ban' },
           { label: 'Whitelisted', value: stats.whitelisted_ips, icon: 'i-lucide-shield-check' },
           { label: 'Blacklisted', value: stats.blacklisted_ips, icon: 'i-lucide-shield-ban' },
@@ -255,6 +256,24 @@ watch(subTab, (v) => {
             </div>
           </div>
         </UCard>
+      </div>
+      <!-- Feature flags -->
+      <div class="flex flex-wrap gap-3">
+        <div class="flex items-center gap-1.5 text-sm">
+          <UIcon name="i-lucide-shield-check" class="size-4 text-muted" />
+          <span class="text-muted">Whitelist</span>
+          <UBadge :label="stats.whitelist_enabled ? 'On' : 'Off'" :color="stats.whitelist_enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
+        </div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <UIcon name="i-lucide-shield-ban" class="size-4 text-muted" />
+          <span class="text-muted">Blacklist</span>
+          <UBadge :label="stats.blacklist_enabled ? 'On' : 'Off'" :color="stats.blacklist_enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
+        </div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <UIcon name="i-lucide-gauge" class="size-4 text-muted" />
+          <span class="text-muted">Rate Limiting</span>
+          <UBadge :label="stats.rate_limit_enabled ? 'On' : 'Off'" :color="stats.rate_limit_enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
+        </div>
       </div>
     </div>
   </div>

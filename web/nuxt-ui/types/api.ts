@@ -419,6 +419,10 @@ export interface SecurityStats {
   blacklisted_ips: number
   active_rate_limits: number
   total_blocks_today: number
+  total_rate_limited: number
+  whitelist_enabled: boolean
+  blacklist_enabled: boolean
+  rate_limit_enabled: boolean
 }
 
 export interface DatabaseStatus {
