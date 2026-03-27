@@ -45,6 +45,8 @@ async function handleLogout() {
   router.push('/login')
 }
 
+const mobileMenuOpen = ref(false)
+
 const navLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
@@ -61,6 +63,9 @@ const navLinks = computed(() => {
   }
   return links
 })
+
+// Close the mobile menu when the route changes (user tapped a link)
+watch(() => route.path, () => { mobileMenuOpen.value = false })
 </script>
 
 <template>
@@ -108,14 +113,62 @@ const navLinks = computed(() => {
               size="sm"
               icon="i-lucide-log-out"
               aria-label="Log out"
+              class="hidden md:flex"
               @click="handleLogout"
             />
           </template>
           <template v-else>
-            <UButton to="/login" variant="ghost" color="neutral" size="sm" label="Login" />
+            <UButton to="/login" variant="ghost" color="neutral" size="sm" label="Login" class="hidden md:flex" />
           </template>
+
+          <!-- Hamburger — mobile only -->
+          <UButton
+            :icon="mobileMenuOpen ? 'i-lucide-x' : 'i-lucide-menu'"
+            :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            class="md:hidden"
+            @click="mobileMenuOpen = !mobileMenuOpen"
+          />
         </div>
       </UContainer>
+
+      <!-- Mobile nav dropdown -->
+      <div v-if="mobileMenuOpen" class="md:hidden border-t border-default bg-elevated">
+        <UContainer class="py-2 flex flex-col gap-1">
+          <NuxtLink
+            v-for="link in navLinks"
+            :key="link.to"
+            :to="link.to"
+            class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+            active-class="text-default bg-muted"
+          >
+            <UIcon :name="link.icon" class="size-4 shrink-0" />
+            {{ link.label }}
+          </NuxtLink>
+          <div class="border-t border-default mt-1 pt-1">
+            <template v-if="authStore.isLoggedIn">
+              <button
+                class="flex w-full items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+                @click="handleLogout"
+              >
+                <UIcon name="i-lucide-log-out" class="size-4 shrink-0" />
+                Log out
+              </button>
+            </template>
+            <template v-else>
+              <NuxtLink
+                to="/login"
+                class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+              >
+                <UIcon name="i-lucide-log-in" class="size-4 shrink-0" />
+                Login
+              </NuxtLink>
+            </template>
+          </div>
+        </UContainer>
+      </div>
     </header>
 
     <!-- Page content -->
