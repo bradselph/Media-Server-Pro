@@ -13,6 +13,7 @@ const playlistApi = usePlaylistApi()
 const analyticsApi = useAnalyticsApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
+const { updatePreferences } = useApiEndpoints()
 const toast = useToast()
 
 const userPrefs = computed(() => authStore.user?.preferences)
@@ -49,7 +50,7 @@ const error = ref('')
 // Player refs
 const videoRef = ref<HTMLVideoElement | null>(null)
 const isPlaying = ref(false)
-const volume = ref(1)
+const volume = ref(userPrefs.value?.volume ?? 1)
 const currentTime = ref(0)
 const duration = ref(0)
 const showControls = ref(true)
@@ -181,7 +182,10 @@ async function savePosition() {
 
 function onVideoLoaded() {
   duration.value = videoRef.value?.duration ?? 0
-  if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
+  if (videoRef.value) {
+    videoRef.value.playbackRate = playbackSpeed.value
+    videoRef.value.volume = volume.value
+  }
   restorePosition()
   playbackStore.startAutoSave()
 }
@@ -222,6 +226,14 @@ function handleQualitySelect(index: number) {
 function setVolume(v: number) {
   volume.value = v
   if (videoRef.value) videoRef.value.volume = v
+  // Persist volume preference (debounced 1 s, fire-and-forget, logged-in users only)
+  if (authStore.isLoggedIn) {
+    if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
+    volumeSaveTimer = setTimeout(() => {
+      updatePreferences({ volume: v }).catch(() => {})
+      volumeSaveTimer = null
+    }, 1000)
+  }
 }
 
 function toggleFullscreen() {
@@ -267,6 +279,7 @@ const currentQualityLabel = computed(() => {
 // Analytics event helpers (fire-and-forget, never block playback)
 let playEventSent = false
 let seekTimer: ReturnType<typeof setTimeout> | null = null
+let volumeSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 function trackPlay() {
   if (!mediaId.value) return
@@ -318,6 +331,7 @@ onUnmounted(() => {
   playbackStore.stopAutoSave()
   if (controlsTimer) clearTimeout(controlsTimer)
   if (seekTimer) clearTimeout(seekTimer)
+  if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
 })
 
 watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
