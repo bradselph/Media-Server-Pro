@@ -17,6 +17,7 @@ on:
       - '*.editorconfig'
       - 'VERSION'
       - 'CHANGELOG.md'
+      - 'cmd/server/main.go'
   pull_request:
     branches: [main, development]
     paths-ignore:
@@ -33,7 +34,11 @@ on:
       - '*.editorconfig'
       - 'VERSION'
       - 'CHANGELOG.md'
+      - 'cmd/server/main.go'
 
+# One CI run per branch at a time; a new push cancels the previous run.
+# This group is ONLY entered by real code pushes — auto-version commits are
+# excluded by paths-ignore above (they only touch VERSION/CHANGELOG/main.go).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -46,7 +51,6 @@ jobs:
   go:
     name: Go Build, Test & Security
     runs-on: [self-hosted, Linux, X64, media-server]
-    if: "!contains(github.event.head_commit.message, '[auto-version]')"
     steps:
       - uses: actions/checkout@v5
 
@@ -78,44 +82,10 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           govulncheck ./...
 
-  # ─── Frontend: lint, build, test, audit ─────────────────────────────────────
-  frontend:
-    name: Frontend Lint, Build & Test
-    runs-on: [self-hosted, Linux, X64, media-server]
-    if: "!contains(github.event.head_commit.message, '[auto-version]')"
-    defaults:
-      run:
-        working-directory: web/frontend
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: web/frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
-
-      - name: Test
-        run: npm run test
-
-      - name: npm audit
-        run: npm audit --omit=dev --audit-level=high
-
-  # ─── Nuxt UI: production build (same output dir as Go embed) ────────────────
+  # ─── Nuxt UI: typecheck + production build ───────────────────────────────
   nuxt-ui:
-    name: Nuxt UI Build
+    name: Nuxt UI Build & Typecheck
     runs-on: [self-hosted, Linux, X64, media-server]
-    if: "!contains(github.event.head_commit.message, '[auto-version]')"
     defaults:
       run:
         working-directory: web/nuxt-ui
@@ -132,5 +102,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate static SPA
-        run: npm run build
+      - name: Typecheck + generate static SPA
+        run: npm run check

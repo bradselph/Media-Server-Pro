@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   sync-development:
@@ -26,6 +27,7 @@ jobs:
           fetch-depth: 0
 
       - name: Merge main into development
+        id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -39,10 +41,41 @@ jobs:
           # Merge the release bump commit from main into development.
           if git merge origin/main --no-ff -m "chore: sync development with main after release [auto-version]"; then
             git push origin development
+            echo "synced=true" >> "$GITHUB_OUTPUT"
             echo "Development synced successfully."
           else
+            echo "synced=false" >> "$GITHUB_OUTPUT"
+            git merge --abort
             echo "::error::Merge conflict while syncing development with main."
             echo "::error::Resolve manually: git checkout development && git merge origin/main"
-            git merge --abort
-            exit 1
           fi
+
+      - name: Create issue on merge conflict
+        if: steps.merge.outputs.synced == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_RUN="${{ github.event.workflow_run.html_url }}"
+          gh issue create \
+            --title "⚠️ Sync conflict: development diverged from main after release" \
+            --body "$(cat <<'EOF'
+          The **Sync Development After Release** workflow failed to merge \`main\` into \`development\` due to a merge conflict.
+
+          **Release run:** ${RELEASE_RUN}
+
+          **Manual resolution steps:**
+          \`\`\`bash
+          git checkout development
+          git fetch origin
+          git merge origin/main
+          # resolve conflicts
+          git add .
+          git commit
+          git push origin development
+          \`\`\`
+
+          This issue was opened automatically by the sync workflow and should be closed once the conflict is resolved.
+          EOF
+          )" \
+            --label "bug"
+          exit 1

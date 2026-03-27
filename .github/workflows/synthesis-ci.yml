@@ -2,12 +2,51 @@ name: Synthesis CI
 
 on:
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '**.png'
+      - '**.jpg'
+      - '**.gif'
+      - '**.svg'
+      - '**.ico'
+      - 'assets/**'
+      - '*.editorconfig'
+      - 'VERSION'
+      - 'CHANGELOG.md'
+      - 'cmd/server/main.go'
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '**.png'
+      - '**.jpg'
+      - '**.gif'
+      - '**.svg'
+      - '**.ico'
+      - 'assets/**'
+      - '*.editorconfig'
+      - 'VERSION'
+      - 'CHANGELOG.md'
+      - 'cmd/server/main.go'
+
+# One synthesis run per branch at a time; mirrors the same exclusion contract
+# as ci.yml so auto-version commits never enter this group.
+concurrency:
+  group: synthesis-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   synthesis:
     runs-on: ubuntu-latest
+    # Extra guard: skip workflow_run re-triggers caused by auto-version pushes
+    # that slip through paths-ignore (e.g. when other files also changed).
+    if: "!contains(github.event.head_commit.message, '[auto-version]')"
     services:
       mysql:
         image: mysql:8.0
@@ -30,7 +69,7 @@ jobs:
       DATABASE_PASSWORD: root
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -73,7 +112,7 @@ jobs:
         if: env.SYNTHESIS_SKIP_INTEGRATION_SMOKE != 'true'
         run: python3 scripts/integration_smoke.py
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: env.SYNTHESIS_SKIP_CLIENT_JOB != 'true'
         with:
           node-version: "20"
