@@ -604,3 +604,14 @@ The following non-admin routes exist in `routes.go` but are not called by any co
 - Watch Later / Favorites (Tier 2 #9) — no `favorites` table yet
 - Timestamp deep-links (Tier 2 #10) — `?t=N` seek not yet handled
 - User API tokens (Tier 2 #11) — no token table yet
+
+### 2026-03-28 (Automated Cycle 3)
+
+**Newly completed:**
+- ~~**Progress bars on media cards** (Tier 1 #3)~~ ✅ **DONE** — Backend: `GET /api/playback/batch?ids=...` returns batch positions; `BatchGetPlaybackPositions` added to repository + media module. Frontend: index.vue batch-fetches positions after media load and overlays thin progress bar on grid cards (logged-in users only).
+- ~~**Personal stats endpoint** (Tier 2 #8)~~ ✅ **DONE** — Backend: `GET /api/suggestions/profile` returns `UserProfile` (total_views, total_watch_time, category_scores, type_preferences). Frontend: profile.vue loads and renders Watch Stats card with top-3 category affinity bars.
+- ~~**Timestamp deep-links** (Tier 2 #10)~~ ✅ **DONE** — Frontend: player.vue reads `?t=N` query param on video load and seeks to that second (takes priority over resume position). Adds "Copy link at current time" button in player controls.
+
+**Still outstanding (highest priority):**
+- Watch Later / Favorites (Tier 2 #9) — no `favorites` table yet
+- User API tokens (Tier 2 #11) — no token table yet

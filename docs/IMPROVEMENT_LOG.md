@@ -40,3 +40,17 @@ Automated continuous improvement cycle history.
 - Live site checks: 6 passed, 0 failed, 1 warning (mobile resize blocked by fullscreen)
 - Issues fixed: 0, deferred: 0
 - Build: `go build ./...` ✅ | `npx nuxi typecheck` ✅
+
+---
+
+## Cycle 2026-03-28 18:00 (Automated)
+
+- Items implemented:
+  - `feat(backend)`: `GET /api/suggestions/profile` — user watch stats (total_views, total_watch_time, category_scores, type_preferences)
+  - `feat(backend)`: `GET /api/playback/batch?ids=...` — batch-fetch playback positions for up to 100 IDs; added `BatchGetPlaybackPositions` to repository interface and media module
+  - `feat(frontend)`: Progress bar overlay on browse grid cards — batch positions fetched after media load (logged-in users only)
+  - `feat(frontend)`: Profile page Watch Stats card — total views, watch time, top-3 category affinity bars
+  - `feat(frontend)`: Timestamp deep-links — `?t=N` seek on player load; "Copy link at current time" button in player controls
+- Live site checks: 6 passed, 0 failed, 1 warning (mobile resize tool limitation)
+- Issues fixed: 0, deferred: 0
+- Build: `go build ./...` ✅ | `npx nuxi typecheck` ✅
