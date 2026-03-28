@@ -28,3 +28,15 @@ Automated continuous improvement cycle history.
 ### Build
 - `go build ./...` ✅
 - `npx nuxi typecheck` ✅
+
+---
+
+## Cycle 2026-03-28 17:00 (Automated)
+
+- Items implemented:
+  - `feat(backend)`: OpenAPI spec embedded and served at `GET /api/docs` (auth-gated)
+  - `feat(frontend)`: Filter preferences (`filter_category`, `filter_media_type`) auto-saved to backend on change (1 s debounce, logged-in only)
+  - `feat(backend)`: Atom feed at `GET /api/feed` — latest media as Atom 1.0 XML; supports `?category`, `?type`, `?limit`
+- Live site checks: 6 passed, 0 failed, 1 warning (mobile resize blocked by fullscreen)
+- Issues fixed: 0, deferred: 0
+- Build: `go build ./...` ✅ | `npx nuxi typecheck` ✅

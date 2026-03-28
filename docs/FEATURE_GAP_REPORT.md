@@ -529,17 +529,17 @@ Features controlled by config flags that have no corresponding admin UI toggle, 
 
 ### Tier 1 — High impact, backend already ready (LOW effort)
 
-1. **Add `subtitle_lang`, `filter_category`, `filter_media_type` to TypeScript `UserPreferences` type** and wire up a "Save current filters" button on the browse page. The DB already stores them; only types and UI are missing. (`LOW`)
+1. ~~**Add `subtitle_lang`, `filter_category`, `filter_media_type` to TypeScript `UserPreferences` type** and wire up a "Save current filters" button on the browse page.~~ ✅ **DONE** — types added (cycle 2026-03-28 morning); auto-save on filter change (cycle 2026-03-28 evening)
 
-2. **Display suggestion `reasons` in the player sidebar** — the data is already in the API response. Add a small label or tooltip below each suggestion card. (`LOW`)
+2. ~~**Display suggestion `reasons` in the player sidebar**~~ ✅ **DONE** — 2026-03-28
 
 3. **Show watch progress bar on media cards** — add `position` and `duration` to the media list response (or batch-fetch positions) and render a thin progress bar at the card bottom. (`LOW-MEDIUM`)
 
-4. **Picture-in-picture button** — wire the browser `requestPictureInPicture()` API to a new button in the player controls. (`LOW`)
+4. ~~**Picture-in-picture button**~~ ✅ **DONE** — 2026-03-28
 
-5. **Add a "Surprise Me" button** on the home page that navigates to a random item from `/api/suggestions` or a new `/api/suggestions/random` endpoint. (`LOW-MEDIUM`)
+5. ~~**Add a "Surprise Me" button**~~ ✅ **DONE** — 2026-03-28
 
-6. **Show "Registration is currently closed" message** when `AllowRegistration: false` — read this from `/api/server-settings` and hide/replace the Register link. (`LOW`)
+6. ~~**Show "Registration is currently closed" message** when `AllowRegistration: false`~~ ✅ **DONE** — 2026-03-28
 
 ### Tier 2 — Medium effort, high user value
 
@@ -553,9 +553,9 @@ Features controlled by config flags that have no corresponding admin UI toggle, 
 
 11. **User API tokens** — Add a `user_api_tokens` table and `GET/POST/DELETE /api/auth/tokens` endpoints. Display them in the Profile page so developers can script against the API. (`MEDIUM`)
 
-12. **RSS feed per category** — Add `GET /api/feed?category=Movies` returning Atom/RSS XML. Tiny backend addition, big value for integration users. (`MEDIUM`)
+12. ~~**RSS feed per category**~~ ✅ **DONE** — `GET /api/feed` with `?category`, `?type`, `?limit` params returns Atom 1.0 XML (2026-03-28)
 
-13. **Serve the OpenAPI spec at `/api/docs`** — Register a static file route that serves `api_spec/openapi.yaml` (no Swagger UI needed, just the raw YAML). (`LOW`)
+13. ~~**Serve the OpenAPI spec at `/api/docs`**~~ ✅ **DONE** — embedded and served at `GET /api/docs` (auth-gated, 2026-03-28)
 
 14. **Fix `AllowRegistration: false` UX** — Read server settings on the login page and conditionally hide the Register link. (`LOW`)
 
@@ -586,3 +586,21 @@ The following non-admin routes exist in `routes.go` but are not called by any co
 | Receiver WebSocket `/ws/receiver` | `ReceiverWebSocket` | Slave-node protocol — not user-facing |
 | Downloader WebSocket `/ws/admin/downloader` | `AdminDownloaderWebSocket` | Admin-only |
 | Extractor HLS routes | `ExtractorHLSMaster` etc. | Served directly — no JS caller needed |
+
+---
+
+## Update Notes
+
+### 2026-03-28 (Automated Cycle 2)
+
+**Newly completed (Tier 1):**
+- `GET /api/docs` — OpenAPI spec now embedded in binary and served at this route (auth-gated)
+- `GET /api/feed` — Atom 1.0 feed with `?category`, `?type`, `?limit` params
+- Filter preferences auto-save — `filter_category` + `filter_media_type` written to backend on change
+
+**Still outstanding (highest priority):**
+- Progress bars on media cards (Tier 1 #3) — position data exists, not yet returned on list cards
+- Personal stats endpoint (Tier 2 #8) — `GET /api/suggestions/profile` not yet built
+- Watch Later / Favorites (Tier 2 #9) — no `favorites` table yet
+- Timestamp deep-links (Tier 2 #10) — `?t=N` seek not yet handled
+- User API tokens (Tier 2 #11) — no token table yet
