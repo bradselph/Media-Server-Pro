@@ -185,6 +185,31 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		})
 	}
 
+	// Hide completed items when hide_watched=true (authenticated users only).
+	// An item is "watched" when the user's ViewHistory entry has CompletedAt set
+	// (i.e. they watched past 90% of the runtime).
+	if (c.Query("hide_watched") == "true" || c.Query("hide_watched") == "1") && h.suggestions != nil {
+		if session := getSession(c); session != nil {
+			if profile := h.suggestions.GetUserProfile(session.UserID); profile != nil {
+				completedPaths := make(map[string]bool, len(profile.ViewHistory))
+				for _, vh := range profile.ViewHistory {
+					if vh.CompletedAt != nil && vh.MediaPath != "" {
+						completedPaths[vh.MediaPath] = true
+					}
+				}
+				if len(completedPaths) > 0 {
+					kept := make([]*models.MediaItem, 0, len(allItems))
+					for _, item := range allItems {
+						if !completedPaths[item.Path] {
+							kept = append(kept, item)
+						}
+					}
+					allItems = kept
+				}
+			}
+		}
+	}
+
 	// Mature content: always include mature items in the listing so the
 	// frontend can render them blurred with a gate overlay (sign-in prompt
 	// for guests, enable-in-settings prompt for authenticated users).
