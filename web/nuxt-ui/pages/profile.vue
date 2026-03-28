@@ -429,15 +429,26 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
               <UIcon name="i-lucide-history" class="size-4" />
               Watch History
             </div>
-            <UButton
-              v-if="history.length > 0"
-              icon="i-lucide-trash-2"
-              label="Clear All"
-              variant="ghost"
-              color="error"
-              size="xs"
-              @click="doClearHistory"
-            />
+            <div v-if="history.length > 0" class="flex items-center gap-1">
+              <UButton
+                icon="i-lucide-download"
+                label="Export CSV"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                :to="`/api/watch-history/export`"
+                target="_blank"
+                external
+              />
+              <UButton
+                icon="i-lucide-trash-2"
+                label="Clear All"
+                variant="ghost"
+                color="error"
+                size="xs"
+                @click="doClearHistory"
+              />
+            </div>
           </div>
         </template>
         <UInput

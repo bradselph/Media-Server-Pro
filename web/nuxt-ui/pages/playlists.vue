@@ -272,7 +272,7 @@ onMounted(load)
                 />
               </div>
               <NuxtLink
-                :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+                :to="`/player?id=${encodeURIComponent(item.media_id)}&playlist_id=${encodeURIComponent(activePlaylist!.id)}&playlist_idx=${idx}`"
                 class="flex-1 min-w-0 text-sm font-medium truncate hover:text-primary transition-colors"
               >
                 {{ item.title || item.media_id }}

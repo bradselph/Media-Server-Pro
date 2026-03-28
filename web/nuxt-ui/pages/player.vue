@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, Suggestion, Playlist } from '~/types/api'
+import type { MediaItem, Suggestion, Playlist, PlaylistItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Player' })
@@ -257,6 +257,64 @@ function toggleFullscreen() {
 const isPiP = ref(false)
 const pipSupported = import.meta.client && 'pictureInPictureEnabled' in document
 
+// Playlist context (passed from playlists page via URL query params)
+const playlistIdParam = computed(() => route.query.playlist_id as string | undefined)
+const playlistIdxParam = computed(() => {
+  const v = parseInt(route.query.playlist_idx as string ?? '')
+  return isNaN(v) ? -1 : v
+})
+const playlistItems = ref<PlaylistItem[]>([])
+const nextPlaylistItem = computed(() =>
+  playlistIdxParam.value >= 0 ? (playlistItems.value[playlistIdxParam.value + 1] ?? null) : null,
+)
+
+let upNextTimer: ReturnType<typeof setInterval> | null = null
+const showUpNext = ref(false)
+const upNextCountdown = ref(5)
+
+function startUpNextCountdown() {
+  if (!nextPlaylistItem.value) return
+  showUpNext.value = true
+  upNextCountdown.value = 5
+  upNextTimer = setInterval(() => {
+    upNextCountdown.value -= 1
+    if (upNextCountdown.value <= 0) navigateToNextItem()
+  }, 1000)
+}
+
+function cancelUpNext() {
+  if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
+  showUpNext.value = false
+}
+
+function navigateToNextItem() {
+  cancelUpNext()
+  const next = nextPlaylistItem.value
+  if (!next) return
+  const newIdx = playlistIdxParam.value + 1
+  navigateTo(`/player?id=${encodeURIComponent(next.media_id)}&playlist_id=${encodeURIComponent(playlistIdParam.value!)}&playlist_idx=${newIdx}`)
+}
+
+watch(playlistIdParam, async id => {
+  if (!id) { playlistItems.value = []; return }
+  try {
+    const pl = await playlistApi.get(id)
+    playlistItems.value = pl?.items ?? []
+  } catch { playlistItems.value = [] }
+}, { immediate: true })
+
+// Loop mode: 'off' | 'one'
+const loopMode = ref<'off' | 'one'>('off')
+
+function cycleLoop() {
+  loopMode.value = loopMode.value === 'off' ? 'one' : 'off'
+  if (videoRef.value) videoRef.value.loop = loopMode.value === 'one'
+}
+
+watch(loopMode, mode => {
+  if (videoRef.value) videoRef.value.loop = mode === 'one'
+})
+
 async function togglePiP() {
   if (!videoRef.value) return
   try {
@@ -376,6 +434,7 @@ onUnmounted(() => {
   if (controlsTimer) clearTimeout(controlsTimer)
   if (seekTimer) clearTimeout(seekTimer)
   if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
+  if (upNextTimer) clearInterval(upNextTimer)
 })
 
 watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
@@ -442,11 +501,27 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             @timeupdate="onTimeUpdate"
             @play="onPlayPause(); trackPlay()"
             @pause="onPlayPause(); trackPause()"
-            @ended="savePosition(); trackComplete()"
+            @ended="savePosition(); trackComplete(); if (loopMode === 'off') startUpNextCountdown()"
             @error="onVideoError"
             @leavepictureinpicture="onPiPChange"
             @enterpictureinpicture="onPiPChange"
           />
+
+          <!-- Up Next overlay (playlist auto-advance) -->
+          <Transition name="fade">
+            <div
+              v-if="showUpNext && nextPlaylistItem"
+              class="absolute inset-0 flex flex-col items-center justify-center bg-black/75 z-20 gap-4"
+              @click.stop
+            >
+              <p class="text-white/70 text-sm uppercase tracking-widest">Up Next in {{ upNextCountdown }}s</p>
+              <p class="text-white font-semibold text-lg text-center px-8">{{ nextPlaylistItem.title || nextPlaylistItem.media_id }}</p>
+              <div class="flex gap-3 mt-2">
+                <UButton label="Play Now" color="primary" size="sm" @click="navigateToNextItem" />
+                <UButton label="Cancel" variant="outline" color="neutral" size="sm" class="text-white border-white/30" @click="cancelUpNext" />
+              </div>
+            </div>
+          </Transition>
 
           <!-- HLS loading overlay -->
           <div v-if="hlsLoading" class="absolute inset-0 flex items-center justify-center bg-black/60">
@@ -549,6 +624,15 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
                   @click="togglePiP"
                 />
                 <UButton
+                  :icon="loopMode === 'one' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'"
+                  :aria-label="loopMode === 'off' ? 'Loop off' : 'Loop one'"
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  :class="loopMode !== 'off' ? 'text-primary' : 'text-white'"
+                  @click="cycleLoop"
+                />
+                <UButton
                   :icon="isFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
                   :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
                   variant="ghost"
@@ -575,7 +659,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               @timeupdate="onTimeUpdate"
               @play="onPlayPause(); trackPlay()"
               @pause="onPlayPause(); trackPause()"
-              @ended="savePosition(); trackComplete()"
+              @ended="savePosition(); trackComplete(); if (loopMode === 'off') startUpNextCountdown()"
               @error="onVideoError"
             />
           </UCard>
