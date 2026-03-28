@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FileScanResult, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities } from '~/types/api'
 import { formatBytes } from '~/utils/format'
+import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
@@ -194,8 +195,47 @@ async function runFix() {
   } finally { validating.value = false }
 }
 
+// ── Scanner confidence thresholds ──────────────────────────────────────────────
+const scannerFullConfig = ref<Record<string, unknown>>({})
+const highConfidenceThreshold = ref(0.85)
+const mediumConfidenceThreshold = ref(0.65)
+const scannerConfigSaving = ref(false)
+
+async function loadScannerConfig() {
+  try {
+    const cfg = await adminApi.getConfig()
+    if (cfg) {
+      scannerFullConfig.value = cfg
+      const ms = asRecord(cfg.mature_scanner)
+      highConfidenceThreshold.value = typeof ms?.high_confidence_threshold === 'number' ? ms.high_confidence_threshold : 0.85
+      mediumConfidenceThreshold.value = typeof ms?.medium_confidence_threshold === 'number' ? ms.medium_confidence_threshold : 0.65
+    }
+  } catch { /* non-critical */ }
+}
+
+async function saveScannerThresholds() {
+  scannerConfigSaving.value = true
+  try {
+    const updated = {
+      ...scannerFullConfig.value,
+      mature_scanner: {
+        ...asRecord(scannerFullConfig.value.mature_scanner),
+        high_confidence_threshold: highConfidenceThreshold.value,
+        medium_confidence_threshold: mediumConfidenceThreshold.value,
+      },
+    }
+    await adminApi.updateConfig(updated)
+    scannerFullConfig.value = updated
+    toast.add({ title: 'Scanner thresholds saved', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    scannerConfigSaving.value = false
+  }
+}
+
 watch(subTab, (v) => {
-  if (v === 'scanner') loadScanner()
+  if (v === 'scanner') { loadScanner(); loadScannerConfig() }
   else if (v === 'hls') loadHLS()
   else if (v === 'validator') loadValidator()
 }, { immediate: true })
@@ -207,6 +247,40 @@ watch(subTab, (v) => {
 
     <!-- Scanner -->
     <div v-if="subTab === 'scanner'" class="space-y-4">
+      <!-- Confidence thresholds config -->
+      <UCard :ui="{ body: 'p-4' }">
+        <p class="text-xs font-semibold text-muted mb-3 uppercase tracking-wide">Content Scanner Thresholds</p>
+        <div class="flex flex-wrap items-end gap-4">
+          <UFormField label="High confidence" description="Score ≥ this value → auto-flag as mature">
+            <UInput
+              v-model.number="highConfidenceThreshold"
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              class="w-24"
+            />
+          </UFormField>
+          <UFormField label="Medium confidence" description="Score ≥ this value → add to review queue">
+            <UInput
+              v-model.number="mediumConfidenceThreshold"
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              class="w-24"
+            />
+          </UFormField>
+          <UButton
+            :loading="scannerConfigSaving"
+            icon="i-lucide-save"
+            label="Save"
+            size="sm"
+            @click="saveScannerThresholds"
+          />
+        </div>
+      </UCard>
+
       <!-- Stats -->
       <div v-if="scannerStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <UCard v-for="item in [

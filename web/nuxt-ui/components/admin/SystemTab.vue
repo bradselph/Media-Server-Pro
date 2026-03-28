@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ScheduledTask, LogEntry, BackupEntry, DatabaseStatus, QueryResult, ServerStatus, ModuleHealth } from '~/types/api'
 import { formatBytes } from '~/utils/format'
+import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -163,6 +164,39 @@ const backups = ref<BackupEntry[]>([])
 const backupsLoading = ref(false)
 const creatingBackup = ref(false)
 
+// Backup schedule config
+const backupFullConfig = ref<Record<string, unknown>>({})
+const backupRetentionCount = ref(5)
+const backupConfigSaving = ref(false)
+
+async function loadBackupConfig() {
+  try {
+    const cfg = await adminApi.getConfig()
+    if (cfg) {
+      backupFullConfig.value = cfg
+      const bk = asRecord(cfg.backup)
+      backupRetentionCount.value = typeof bk?.retention_count === 'number' ? bk.retention_count : 5
+    }
+  } catch { /* non-critical */ }
+}
+
+async function saveBackupRetention() {
+  backupConfigSaving.value = true
+  try {
+    const updated = {
+      ...backupFullConfig.value,
+      backup: { ...asRecord(backupFullConfig.value.backup), retention_count: backupRetentionCount.value },
+    }
+    await adminApi.updateConfig(updated)
+    backupFullConfig.value = updated
+    toast.add({ title: 'Backup settings saved', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    backupConfigSaving.value = false
+  }
+}
+
 async function loadBackups() {
   backupsLoading.value = true
   try { backups.value = (await adminApi.listBackups()) ?? [] }
@@ -217,7 +251,7 @@ watch(subTab, (v) => {
   else if (v === 'settings' && !configText.value) loadConfig()
   else if (v === 'tasks') loadTasks()
   else if (v === 'logs') loadLogs()
-  else if (v === 'backups') loadBackups()
+  else if (v === 'backups') { loadBackups(); loadBackupConfig() }
   else if (v === 'database') loadDbStatus()
 }, { immediate: true })
 </script>
@@ -470,6 +504,27 @@ watch(subTab, (v) => {
 
     <!-- Backups -->
     <div v-if="subTab === 'backups'" class="space-y-3">
+      <!-- Retention config -->
+      <UCard :ui="{ body: 'p-4' }">
+        <div class="flex flex-wrap items-end gap-4">
+          <UFormField label="Retention count" description="Number of backup files to keep (older ones are deleted automatically)">
+            <UInput
+              v-model.number="backupRetentionCount"
+              type="number"
+              min="1"
+              max="100"
+              class="w-24"
+            />
+          </UFormField>
+          <UButton
+            :loading="backupConfigSaving"
+            icon="i-lucide-save"
+            label="Save"
+            size="sm"
+            @click="saveBackupRetention"
+          />
+        </div>
+      </UCard>
       <div class="flex gap-2">
         <UButton icon="i-lucide-archive" :loading="creatingBackup" label="Create Backup" @click="createBackup" />
         <UButton icon="i-lucide-refresh-cw" aria-label="Refresh backups" variant="ghost" color="neutral" @click="loadBackups" />
