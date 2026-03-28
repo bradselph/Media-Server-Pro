@@ -2,14 +2,15 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"fmt"
 	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/media"
@@ -25,6 +26,17 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	sortBy := c.Query("sort")
 	if sortBy == "date" {
 		sortBy = "date_modified"
+	}
+	sortByRating := sortBy == "my_rating"
+	if sortByRating {
+		sortBy = ""
+	}
+
+	var minRating float64
+	if mr := c.Query("min_rating"); mr != "" {
+		if v, err := strconv.ParseFloat(mr, 64); err == nil && v > 0 {
+			minRating = v
+		}
 	}
 
 	var limit, offset int
@@ -135,6 +147,44 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		filterNoPagination.SortItems(allItems)
 	}
 
+	// Build user ratings map (path → rating) for authenticated users.
+	// Used for sort=my_rating, min_rating filter, and the user_ratings response field.
+	var userRatingsByPath map[string]float64
+	if session := getSession(c); session != nil && h.suggestions != nil {
+		if profile := h.suggestions.GetUserProfile(session.UserID); profile != nil {
+			userRatingsByPath = make(map[string]float64, len(profile.ViewHistory))
+			for _, vh := range profile.ViewHistory {
+				if vh.Rating > 0 && vh.MediaPath != "" {
+					userRatingsByPath[vh.MediaPath] = vh.Rating
+				}
+			}
+		}
+	}
+
+	// Filter to only items the user has rated at or above min_rating.
+	if minRating > 0 && userRatingsByPath != nil {
+		filtered := make([]*models.MediaItem, 0, len(allItems))
+		for _, item := range allItems {
+			if userRatingsByPath[item.Path] >= minRating {
+				filtered = append(filtered, item)
+			}
+		}
+		allItems = filtered
+	}
+
+	// Sort by the user's personal rating (desc by default, asc if sort_order=asc).
+	if sortByRating && userRatingsByPath != nil {
+		sortDesc := c.Query("sort_order") != "asc"
+		sort.SliceStable(allItems, func(i, j int) bool {
+			ri := userRatingsByPath[allItems[i].Path]
+			rj := userRatingsByPath[allItems[j].Path]
+			if sortDesc {
+				return ri > rj
+			}
+			return ri < rj
+		})
+	}
+
 	// Mature content: always include mature items in the listing so the
 	// frontend can render them blurred with a gate overlay (sign-in prompt
 	// for guests, enable-in-settings prompt for authenticated users).
@@ -178,11 +228,30 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		}
 	}
 
+	// Build user_ratings map keyed by media ID for the current page items.
+	// Only included when the user is authenticated and has rated at least one item.
+	var userRatingsByID map[string]float64
+	if userRatingsByPath != nil {
+		for _, item := range items {
+			if item.Path != "" {
+				if r, ok := userRatingsByPath[item.Path]; ok {
+					if userRatingsByID == nil {
+						userRatingsByID = make(map[string]float64)
+					}
+					userRatingsByID[item.ID] = r
+				}
+			}
+		}
+	}
+
 	resp := map[string]interface{}{
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
 		"scanning":    h.media.IsScanning(),
+	}
+	if userRatingsByID != nil {
+		resp["user_ratings"] = userRatingsByID
 	}
 	if !h.media.IsReady() {
 		resp["initializing"] = true

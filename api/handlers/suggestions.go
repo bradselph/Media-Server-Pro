@@ -300,3 +300,51 @@ type mediaRecentItem struct {
 	DateAdded    time.Time `json:"date_added"`
 	ThumbnailURL string    `json:"thumbnail_url,omitempty"`
 }
+
+// GetNewSinceLastVisit returns media added since the user's previous login.
+// Requires auth. Falls back to a 7-day window if previous_last_login is not set.
+func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	limit := parseSuggestionsLimit(c, 20, 100)
+
+	// Determine the cutoff: the user's previous last login, or 7 days ago as fallback.
+	cutoff := time.Now().AddDate(0, 0, -7)
+	user, err := h.auth.GetUserByID(c.Request.Context(), session.UserID)
+	if err == nil && user != nil && user.PreviousLastLogin != nil {
+		cutoff = *user.PreviousLastLogin
+	}
+
+	all := h.media.ListMedia(media.Filter{SortBy: "date_added", SortDesc: true})
+
+	results := make([]*mediaRecentItem, 0, limit)
+	for _, item := range all {
+		if item.DateAdded.Before(cutoff) {
+			break // sorted newest-first; stop once past cutoff
+		}
+		ri := &mediaRecentItem{
+			ID:        item.ID,
+			Name:      item.Name,
+			Type:      string(item.Type),
+			Category:  item.Category,
+			DateAdded: item.DateAdded,
+		}
+		if h.thumbnails != nil && item.ID != "" {
+			ri.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+		}
+		results = append(results, ri)
+		if len(results) >= limit {
+			break
+		}
+	}
+
+	writeSuccess(c, map[string]interface{}{
+		"items":  results,
+		"since":  cutoff,
+		"total":  len(results),
+	})
+}

@@ -498,6 +498,7 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 	}{
 		{"users", "watch_history", "JSON"},
 		{"users", "metadata", "JSON"},
+		{"users", "previous_last_login", "TIMESTAMP NULL DEFAULT NULL"},
 		{"user_preferences", "custom_eq_presets", "JSON"},
 		{"user_preferences", "show_continue_watching", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"user_preferences", "show_recommended", "BOOLEAN NOT NULL DEFAULT TRUE"},
