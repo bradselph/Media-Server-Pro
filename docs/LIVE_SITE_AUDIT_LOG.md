@@ -126,3 +126,21 @@ Audit skipped — MCP unavailable (browser profile lock conflict: "The browser i
 **Critical: 0 | Warnings: 0**
 
 Note: New features (watch history export, loop mode, playlist auto-advance) are committed to `development` branch. Awaiting deploy to appear on live site.
+
+## Audit 2026-03-28 22:00 (Cycle 7)
+
+**Site:** https://xmodsxtreme.com
+**Method:** curl (Chrome MCP unavailable)
+
+| Check                     | Result   | Notes |
+|---------------------------|----------|-------|
+| Home page (/)             | ✅ PASS  | HTTP 200 |
+| API media listing         | ✅ PASS  | GET /api/media → 200 |
+| API suggestions/trending  | ✅ PASS  | GET /api/suggestions/trending → 200 |
+| API feed                  | ℹ️ INFO  | GET /api/feed → 404 (not yet deployed; feature in dev) |
+| API docs                  | ℹ️ INFO  | GET /api/docs → 404 (not yet deployed; feature in dev) |
+
+**Critical: 0 | Warnings: 0**
+
+Note: New features (user rating badges, sort by rating, new-since-last-visit row,
+previous_last_login tracking) committed to `development` branch. Awaiting deploy.

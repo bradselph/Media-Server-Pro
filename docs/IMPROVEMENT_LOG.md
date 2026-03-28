@@ -86,3 +86,18 @@ Automated continuous improvement cycle history.
 - Build: `go build ./...` PASS | `npx nuxi typecheck` PASS
 - Deploy: SUCCESS — `/health` returns 200 post-deploy
 - Live site: OK
+
+## Cycle 2026-03-28 22:00 (Automated)
+
+- Items implemented:
+  - `feat(backend)`: User ratings exposed on `GET /api/media` — returns `user_ratings: {media_id: rating}` for authenticated users; supports `sort=my_rating` (desc by default) and `min_rating=N` filter param
+  - `feat(backend)`: `GET /api/suggestions/new` (auth-gated) — returns media added since user's `previous_last_login` (fallback: 7 days); includes `since` timestamp and `total` in response
+  - `feat(backend)`: `previous_last_login` tracking — on each login, existing `last_login` is copied to `previous_last_login` before updating; DB migration adds column via `ensureColumn`
+  - `feat(frontend)`: Star rating badge on browse cards — shows user's rating (1–5) in top-right corner for rated items; sourced from `user_ratings` in list response
+  - `feat(frontend)`: "My Rating" sort option in browse sort dropdown (logged-in users only); clears on logout
+  - `feat(frontend)`: "New Since Your Last Visit" horizontal scroll row on home page — populated from `GET /api/suggestions/new`; only shown when `total > 0`
+- Live site checks: 3 passed (HTTP 200 on `/`, `/api/media`, `/api/suggestions/trending`), 0 failed, 0 warnings
+- Issues fixed: 0, deferred: 0
+- Build: `go build ./...` PASS | `go test ./...` PASS | `npx nuxi typecheck` PASS
+- Deploy: SUCCESS — `/health` returns 200 post-deploy
+- Live site: OK

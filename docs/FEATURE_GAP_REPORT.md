@@ -653,7 +653,15 @@ The following non-admin routes exist in `routes.go` but are not called by any co
 - PWA / offline — HIGH effort
 - TMDB/IMDB metadata scraping — HIGH effort
 
-**Still outstanding (medium priority, not yet scheduled):**
-- Sort/filter by personal rating — requires user-scoped rating JOIN in media list query
-- Personal ratings visible on browse cards — same JOIN requirement
-- "New since last visit" section — needs `previous_last_login` tracking
+### 2026-03-28 (Automated Cycle 7)
+
+**Newly completed:**
+- ~~**Personal ratings on browse cards**~~ ✅ **DONE** — Backend: `GET /api/media` returns `user_ratings` map `{media_id: rating}` for authenticated users. Frontend: star badge on top-right of browse cards (skipped when mature badge occupies the same corner).
+- ~~**Sort/filter by personal rating**~~ ✅ **DONE** — Backend: `sort=my_rating` (desc by default, asc if `sort_order=asc`) + `min_rating=N` filter. Frontend: "My Rating" option added to sort dropdown (logged-in users only).
+- ~~**"New since last visit" section**~~ ✅ **DONE** — Backend: `previous_last_login` tracked in users table (copied from `last_login` on each login); `GET /api/suggestions/new` returns media added since that timestamp (fallback: 7 days). Frontend: "New Since Your Last Visit" horizontal scroll row on home page, shown only when `total > 0`.
+
+**Still outstanding (Tier 3 — architecture required):**
+- Subtitle track selection — HIGH effort
+- Smart playlists (rule-based) — HIGH effort
+- PWA / offline — HIGH effort
+- TMDB/IMDB metadata scraping — HIGH effort
