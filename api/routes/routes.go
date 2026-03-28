@@ -344,6 +344,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// OpenAPI specification — requires auth to prevent unauthenticated schema discovery.
 	api.GET("/docs", requireAuth(), h.GetOpenAPISpec)
 
+	// RSS/Atom feed — returns latest media as Atom XML; optional ?category=X&type=video&limit=N
+	api.GET("/feed", requireAuth(), h.GetRSSFeed)
+
 	// Age gate — public, no auth required (must be accessible before user logs in)
 	api.GET("/age-gate/status", ageGate.GinStatusHandler())
 	api.POST("/age-verify", ageGate.GinVerifyHandler())
