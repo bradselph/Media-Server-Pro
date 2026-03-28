@@ -169,6 +169,7 @@ export function useSuggestionsApi() {
     getPersonalized: (limit?: number) =>
       api.get<Suggestion[]>(`/api/suggestions/personalized${limit ? `?limit=${limit}` : ''}`),
     getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),
+    resetMyProfile: () => api.delete<void>('/api/suggestions/profile'),
     getRecent: (days?: number, limit?: number) => {
       const params: string[] = []
       if (days) params.push(`days=${days}`)

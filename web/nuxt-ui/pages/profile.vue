@@ -38,7 +38,7 @@ const router = useRouter()
 const { changePassword, deleteAccount, getPreferences, updatePreferences } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
 const { getUsage, getPermissions } = useStorageApi()
-const { getMyProfile } = useSuggestionsApi()
+const { getMyProfile, resetMyProfile } = useSuggestionsApi()
 const tokensApi = useAPITokensApi()
 const ratingsApi = useRatingsApi()
 const toast = useToast()
@@ -54,9 +54,22 @@ async function loadStorageUsage() {
 }
 
 const userProfile = ref<UserProfile | null>(null)
+const profileResetting = ref(false)
 async function loadUserProfile() {
   try { userProfile.value = await getMyProfile() }
   catch { /* non-critical */ }
+}
+async function resetProfile() {
+  profileResetting.value = true
+  try {
+    await resetMyProfile()
+    userProfile.value = null
+    toast.add({ title: 'Recommendation profile reset', description: 'Your preference data has been cleared.', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to reset profile', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    profileResetting.value = false
+  }
 }
 
 // formatWatchTime imported from ~/utils/format
@@ -292,9 +305,21 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
       <!-- Watch Stats -->
       <UCard v-if="userProfile && (userProfile.total_views > 0 || userProfile.total_watch_time > 0)">
         <template #header>
-          <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-bar-chart-2" class="size-4" />
-            Watch Stats
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 font-semibold">
+              <UIcon name="i-lucide-bar-chart-2" class="size-4" />
+              Watch Stats
+            </div>
+            <UButton
+              icon="i-lucide-refresh-ccw"
+              label="Reset Profile"
+              variant="ghost"
+              color="warning"
+              size="xs"
+              :loading="profileResetting"
+              aria-label="Reset recommendation profile"
+              @click="resetProfile"
+            />
           </div>
         </template>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
