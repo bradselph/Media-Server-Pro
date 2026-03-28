@@ -615,3 +615,13 @@ The following non-admin routes exist in `routes.go` but are not called by any co
 **Still outstanding (highest priority):**
 - Watch Later / Favorites (Tier 2 #9) — no `favorites` table yet
 - User API tokens (Tier 2 #11) — no token table yet
+
+### 2026-03-28 (Automated Cycle 4)
+
+**Newly completed:**
+- ~~**Watch Later / Favorites** (Tier 2 #9)~~ ✅ **DONE** — Backend: `user_favorites` table, `POST/DELETE/GET /api/favorites`, Bearer-token sessionAuth enhancement. Frontend: heart toggle on browse cards (optimistic), /favorites page, Favorites nav link.
+- ~~**User API tokens** (Tier 2 #11)~~ ✅ **DONE** — Backend: `user_api_tokens` table, `GET/POST/DELETE /api/auth/tokens`, Bearer auth in sessionAuth (hash-based, one-time reveal). Frontend: profile page token management section with create/revoke and one-time reveal banner.
+
+**Still outstanding (Tier 2/3):**
+- TV Show / Music browse UI (Tier 2 #7) — `GET /api/categorized` not yet wired to a user-facing page
+- Fix `AllowRegistration: false` UX (Tier 2 #14) — Register link still shown on login page when registration closed

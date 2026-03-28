@@ -100,3 +100,9 @@
 **Critical: 0 | Warnings: 1**
 
 Note: New features (progress bars, profile stats, timestamp deep-links, copy-link button) are committed to `development` branch but require a deploy to appear on the live site.
+
+---
+
+## Audit 2026-03-28 19:00 (Cycle 4)
+
+Audit skipped — MCP unavailable (browser profile lock conflict).
