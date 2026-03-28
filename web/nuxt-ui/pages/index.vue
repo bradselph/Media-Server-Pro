@@ -3,6 +3,7 @@ import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
 import { formatDuration } from '~/utils/format'
+import { blurHashToDataUrl } from '~/utils/blurhash'
 
 const TYPE_OPTIONS = [
   { label: 'All Types', value: 'all' },
@@ -805,7 +806,10 @@ onUnmounted(() => {
         @mouseenter="onMediaHoverEnter(item.id, item.type === 'audio')"
         @mouseleave="onMediaHoverLeave"
       >
-        <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2">
+        <div
+          class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2"
+          :style="item.blur_hash && item.type !== 'audio' ? { backgroundImage: `url(${blurHashToDataUrl(item.blur_hash)})`, backgroundSize: 'cover' } : {}"
+        >
           <img
             v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
             :src="getThumbSrc(item.id)"
@@ -918,7 +922,10 @@ onUnmounted(() => {
       >
         <template #name-cell="{ row }">
           <NuxtLink :to="matureGateHref(row.original)" class="flex items-center gap-3 hover:text-primary">
-            <div class="relative w-16 h-9 rounded overflow-hidden bg-muted shrink-0">
+            <div
+              class="relative w-16 h-9 rounded overflow-hidden bg-muted shrink-0"
+              :style="row.original.blur_hash ? { backgroundImage: `url(${blurHashToDataUrl(row.original.blur_hash)})`, backgroundSize: 'cover' } : {}"
+            >
               <img
                 v-if="!failedThumbnails.has(row.original.id)"
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
