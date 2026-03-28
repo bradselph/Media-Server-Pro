@@ -7,12 +7,7 @@ definePageMeta({ layout: 'default', title: 'Playlists', middleware: 'auth' })
 const playlistApi = usePlaylistApi()
 const mediaApi = useMediaApi()
 const authStore = useAuthStore()
-const router = useRouter()
 const toast = useToast()
-
-watchEffect(() => {
-  if (!authStore.isLoading && !authStore.isLoggedIn) router.replace('/login')
-})
 
 // List
 const playlists = ref<Playlist[]>([])

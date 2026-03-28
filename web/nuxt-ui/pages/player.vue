@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MediaItem, Suggestion, Playlist, PlaylistItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { formatDuration } from '~/utils/format'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
@@ -408,16 +409,13 @@ function copyLinkAtTime() {
   const url = new URL(window.location.href)
   url.searchParams.set('t', String(t))
   navigator.clipboard.writeText(url.toString()).then(() => {
-    toast.add({ title: `Link copied at ${formatTime(t)}`, color: 'success', icon: 'i-lucide-link' })
+    toast.add({ title: `Link copied at ${formatDuration(t)}`, color: 'success', icon: 'i-lucide-link' })
   }).catch(() => {
     toast.add({ title: 'Failed to copy link', color: 'error', icon: 'i-lucide-x' })
   })
 }
 
-function formatTime(s: number): string {
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60)
-  return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${m}:${String(sec).padStart(2,'0')}`
-}
+// formatDuration imported from ~/utils/format (used as formatTime below)
 
 function formatBandwidth(bps: number): string {
   if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`
@@ -606,7 +604,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
                   :style="{ left: `${seekBarHoverX}px` }"
                 >
                   <img :src="seekBarPreviewUrl" class="w-28 h-16 object-cover rounded border border-white/20 shadow-lg" />
-                  <p class="text-center text-white text-xs mt-0.5 drop-shadow">{{ formatTime(seekBarHoverTime) }}</p>
+                  <p class="text-center text-white text-xs mt-0.5 drop-shadow">{{ formatDuration(seekBarHoverTime) }}</p>
                 </div>
               </Transition>
               <div
@@ -629,7 +627,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               <UButton icon="i-lucide-fast-forward" aria-label="Forward 10 seconds" variant="ghost" color="neutral" size="sm" class="text-white" @click="seek(10)" />
 
               <span class="text-white text-xs font-mono ml-1">
-                {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
+                {{ formatDuration(currentTime) }} / {{ formatDuration(duration) }}
               </span>
 
               <div class="ml-auto flex items-center gap-2">
@@ -810,7 +808,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           </template>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
             <div v-if="media.type"><span class="text-muted">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
-            <div v-if="media.duration"><span class="text-muted">Duration:</span> {{ formatTime(media.duration) }}</div>
+            <div v-if="media.duration"><span class="text-muted">Duration:</span> {{ formatDuration(media.duration) }}</div>
             <div v-if="media.size"><span class="text-muted">Size:</span> {{ (media.size / 1048576).toFixed(1) }} MB</div>
             <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
             <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>

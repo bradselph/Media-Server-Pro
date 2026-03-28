@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress } from '~/types/api'
+import { formatBytes } from '~/utils/format'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -190,12 +191,6 @@ async function importFile(filename: string) {
   }
 }
 
-function formatBytes(bytes?: number): string {
-  if (!bytes) return '—'
-  const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
-}
 
 function progressBarColor(status: DownloaderProgress['status']) {
   if (status === 'error') return 'error'

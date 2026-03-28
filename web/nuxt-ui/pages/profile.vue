@@ -3,6 +3,32 @@ import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, 
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useAPITokensApi, useRatingsApi } from '~/composables/useApiEndpoints'
+import { formatWatchTime } from '~/utils/format'
+
+const QUALITY_OPTIONS = [
+  { label: 'Auto', value: 'auto' },
+  { label: '1080p', value: '1080p' },
+  { label: '720p', value: '720p' },
+  { label: '480p', value: '480p' },
+  { label: '360p', value: '360p' },
+]
+
+const SPEED_OPTIONS = [
+  { label: '0.5x', value: 0.5 },
+  { label: '0.75x', value: 0.75 },
+  { label: '1x (Normal)', value: 1 },
+  { label: '1.25x', value: 1.25 },
+  { label: '1.5x', value: 1.5 },
+  { label: '2x', value: 2 },
+]
+
+const ITEMS_PER_PAGE_OPTIONS = [
+  { label: '12', value: 12 },
+  { label: '20', value: 20 },
+  { label: '24', value: 24 },
+  { label: '48', value: 48 },
+  { label: '96', value: 96 },
+]
 
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
@@ -33,18 +59,7 @@ async function loadUserProfile() {
   catch { /* non-critical */ }
 }
 
-function formatWatchTime(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
-}
-
-// Redirect if not logged in
-watchEffect(() => {
-  if (!authStore.isLoading && !authStore.isLoggedIn) router.replace('/login')
-})
+// formatWatchTime imported from ~/utils/format
 
 // Preferences
 const prefs = ref<Partial<UserPreferences>>({})
@@ -376,19 +391,19 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
           <UFormField label="Default Quality">
             <USelect
               v-model="prefs.default_quality"
-              :items="[{ label: 'Auto', value: 'auto' }, { label: '1080p', value: '1080p' }, { label: '720p', value: '720p' }, { label: '480p', value: '480p' }, { label: '360p', value: '360p' }]"
+              :items="QUALITY_OPTIONS"
             />
           </UFormField>
           <UFormField label="Playback Speed">
             <USelect
               v-model="prefs.playback_speed"
-              :items="[{ label: '0.5x', value: 0.5 }, { label: '0.75x', value: 0.75 }, { label: '1x (Normal)', value: 1 }, { label: '1.25x', value: 1.25 }, { label: '1.5x', value: 1.5 }, { label: '2x', value: 2 }]"
+              :items="SPEED_OPTIONS"
             />
           </UFormField>
           <UFormField label="Items per Page">
             <USelect
               v-model="prefs.items_per_page"
-              :items="[{ label: '12', value: 12 }, { label: '20', value: 20 }, { label: '24', value: 24 }, { label: '48', value: 48 }, { label: '96', value: 96 }]"
+              :items="ITEMS_PER_PAGE_OPTIONS"
             />
           </UFormField>
           <UFormField label="View Mode">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { UploadResult, UploadProgress } from '~/types/api'
+import { formatBytes } from '~/utils/format'
 
 definePageMeta({ layout: 'default', title: 'Upload Media', middleware: 'auth' })
 
@@ -35,6 +36,11 @@ async function pollProgress(uploadId: string) {
 }
 
 const dropZoneRef = ref<HTMLElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+function openFilePicker() {
+  fileInputRef.value?.click()
+}
 
 function onDragOver(e: DragEvent) {
   e.preventDefault()
@@ -72,13 +78,7 @@ function removeFile(index: number) {
   selectedFiles.value = selectedFiles.value.filter((_, i) => i !== index)
 }
 
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
-}
+// formatBytes imported from ~/utils/format
 
 async function handleUpload() {
   if (selectedFiles.value.length === 0) return
@@ -143,12 +143,12 @@ async function handleUpload() {
         @dragover="onDragOver"
         @dragleave="onDragLeave"
         @drop="onDrop"
-        @click="($el as HTMLElement).querySelector('input')?.click()"
+        @click="openFilePicker()"
       >
         <UIcon name="i-lucide-upload-cloud" class="size-12 mx-auto text-muted mb-3" />
         <p class="text-sm font-medium">Drag and drop files here, or <span class="text-primary underline">browse</span></p>
         <p class="text-xs text-muted mt-1">Video, audio, and image files accepted</p>
-        <input type="file" multiple accept="video/*,audio/*,image/*" class="hidden" @change="onFileInput" />
+        <input ref="fileInputRef" type="file" multiple accept="video/*,audio/*,image/*" class="hidden" @change="onFileInput" />
       </div>
 
       <!-- Category -->

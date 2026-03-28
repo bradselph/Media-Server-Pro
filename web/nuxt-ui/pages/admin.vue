@@ -5,13 +5,6 @@ const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-// Redirect non-admins to the admin login page
-watchEffect(() => {
-  if (!authStore.isLoading && !authStore.isAdmin) {
-    router.replace('/admin-login')
-  }
-})
-
 const TABS = [
   { label: 'Dashboard', value: 'dashboard', icon: 'i-lucide-layout-dashboard' },
   { label: 'Users', value: 'users', icon: 'i-lucide-users' },

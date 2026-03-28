@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts, AnalyticsEvent } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { formatWatchTime } from '~/utils/format'
 
 const analyticsApi = useAnalyticsApi()
 const adminApi = useAdminApi()
@@ -52,12 +53,7 @@ async function drillByUser() {
   } finally { drillLoading.value = false }
 }
 
-function formatTime(secs?: number): string {
-  if (!secs) return '—'
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
+// formatWatchTime imported from ~/utils/format
 
 async function load() {
   loading.value = true
@@ -274,7 +270,7 @@ onMounted(load)
         </template>
         <template #total_views-cell="{ row }">{{ (row.original.total_views ?? 0).toLocaleString() }}</template>
         <template #unique_users-cell="{ row }">{{ (row.original.unique_users ?? 0).toLocaleString() }}</template>
-        <template #total_watch_time-cell="{ row }">{{ formatTime(row.original.total_watch_time) }}</template>
+        <template #total_watch_time-cell="{ row }">{{ formatWatchTime(row.original.total_watch_time) }}</template>
       </UTable>
     </UCard>
   </div>

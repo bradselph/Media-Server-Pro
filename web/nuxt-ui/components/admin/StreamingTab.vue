@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { HLSJob, HLSStats } from '~/types/api'
+import { formatBytes } from '~/utils/format'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -39,13 +40,6 @@ async function cleanInactive() {
   }
 }
 
-function formatBytes(bytes?: number): string {
-  if (!bytes) return '—'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
-}
 
 function statusColor(status: HLSJob['status']): 'neutral' | 'info' | 'success' | 'error' | 'warning' {
   const map = { pending: 'neutral', running: 'info', completed: 'success', failed: 'error', cancelled: 'warning' } as const

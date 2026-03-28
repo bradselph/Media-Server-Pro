@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FileScanResult, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities } from '~/types/api'
+import { formatBytes } from '~/utils/format'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
@@ -157,12 +158,6 @@ async function cleanInactiveJobs() {
   }
 }
 
-function formatBytes(b: number) {
-  if (!b) return '0 B'
-  const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(b) / Math.log(k))
-  return `${(b / k ** i).toFixed(1)} ${sizes[i]}`
-}
 
 // ── Validator ──────────────────────────────────────────────────────────────────
 const validatorStats = ref<ValidatorStats | null>(null)

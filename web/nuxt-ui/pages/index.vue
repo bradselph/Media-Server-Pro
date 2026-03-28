@@ -2,6 +2,32 @@
 import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
+import { formatDuration } from '~/utils/format'
+
+const TYPE_OPTIONS = [
+  { label: 'All Types', value: 'all' },
+  { label: 'Video', value: 'video' },
+  { label: 'Audio', value: 'audio' },
+  { label: 'Image', value: 'image' },
+]
+
+const MIN_RATING_OPTIONS = [
+  { label: 'Any Rating', value: 0 },
+  { label: '★ 1+', value: 1 },
+  { label: '★★ 2+', value: 2 },
+  { label: '★★★ 3+', value: 3 },
+  { label: '★★★★ 4+', value: 4 },
+  { label: '★★★★★ 5', value: 5 },
+]
+
+const SORT_OPTIONS_BASE = [
+  { label: 'Name', value: 'name' },
+  { label: 'Date Added', value: 'date_added' },
+  { label: 'Size', value: 'size' },
+  { label: 'Duration', value: 'duration' },
+  { label: 'Views', value: 'views' },
+]
+const SORT_OPTION_MY_RATING = { label: 'My Rating', value: 'my_rating' }
 
 definePageMeta({ title: 'Media Library' })
 
@@ -12,6 +38,10 @@ const favoritesApi = useFavoritesApi()
 const authStore = useAuthStore()
 const router = useRouter()
 const toast = useToast()
+
+const sortOptions = computed(() =>
+  authStore.isLoggedIn ? [...SORT_OPTIONS_BASE, SORT_OPTION_MY_RATING] : SORT_OPTIONS_BASE
+)
 const { updatePreferences } = useApiEndpoints()
 
 // Favorite media IDs for the current user
@@ -291,11 +321,7 @@ function matureGateHref(item: MediaItem): string {
 
 const totalPages = computed(() => Math.ceil(total.value / params.limit))
 
-function formatDuration(secs?: number): string {
-  if (!secs) return ''
-  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60)
-  return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`
-}
+// formatDuration imported from ~/utils/format
 
 // ── Suggestion thumbnail error tracking ───────────────────────────────────────
 // reactive() is used so that Vue's dependency tracking picks up .add() calls
@@ -630,7 +656,7 @@ onUnmounted(() => {
       />
       <USelect
         v-model="params.type"
-        :items="[{ label: 'All Types', value: 'all' }, { label: 'Video', value: 'video' }, { label: 'Audio', value: 'audio' }, { label: 'Image', value: 'image' }]"
+        :items="TYPE_OPTIONS"
         class="w-36"
       />
       <USelect
@@ -641,7 +667,7 @@ onUnmounted(() => {
       />
       <USelect
         v-model="params.sort_by"
-        :items="[{ label: 'Name', value: 'name' }, { label: 'Date Added', value: 'date_added' }, { label: 'Size', value: 'size' }, { label: 'Duration', value: 'duration' }, { label: 'Views', value: 'views' }, ...(authStore.isLoggedIn ? [{ label: 'My Rating', value: 'my_rating' }] : [])]"
+        :items="sortOptions"
         class="w-36"
       />
       <UButton
@@ -688,7 +714,7 @@ onUnmounted(() => {
       <USelect
         v-if="authStore.isLoggedIn"
         v-model="params.min_rating"
-        :items="[{ label: 'Any Rating', value: 0 }, { label: '★ 1+', value: 1 }, { label: '★★ 2+', value: 2 }, { label: '★★★ 3+', value: 3 }, { label: '★★★★ 4+', value: 4 }, { label: '★★★★★ 5', value: 5 }]"
+        :items="MIN_RATING_OPTIONS"
         class="w-32"
         aria-label="Minimum rating filter"
       />

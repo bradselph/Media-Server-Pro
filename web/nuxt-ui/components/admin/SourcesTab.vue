@@ -5,6 +5,7 @@ import type {
   ExtractorItem, ExtractorStats,
   SlaveNode, ReceiverStats, ReceiverDuplicate, ReceiverMedia,
 } from '~/types/api'
+import { formatBytes } from '~/utils/format'
 
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
@@ -333,12 +334,6 @@ watch(subTab, (tab) => {
   else if (tab === 'receiver' && !receiverStats.value) loadReceiver()
 }, { immediate: true })
 
-function formatBytes(bytes?: number): string {
-  if (!bytes) return '—'
-  const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
-}
 
 function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral' {
   if (status === 'online' || status === 'active' || status === 'completed') return 'success'

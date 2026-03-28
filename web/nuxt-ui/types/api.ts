@@ -84,7 +84,7 @@ export interface SessionCheckResponse {
 export interface MediaItem {
   id: string
   name: string
-  type: 'video' | 'audio' | 'unknown' | string
+  type: 'video' | 'audio' | 'unknown'
   size: number
   duration: number
   width?: number
@@ -978,20 +978,6 @@ export interface BannedIP {
   banned_at: string
   expires_at?: string
   reason: string
-}
-
-// ── Analytics Detail ──────────────────────────────────────────────────────────
-
-export interface AnalyticsEvent {
-  id: string
-  type: string
-  media_id?: string
-  user_id?: string
-  session_id?: string
-  ip_address: string
-  user_agent: string
-  timestamp: string
-  data?: Record<string, unknown>
 }
 
 export interface EventStats {
