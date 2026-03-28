@@ -425,7 +425,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/suggestions/continue", requireAuth(), h.GetContinueWatching)
 	api.GET("/suggestions/personalized", requireAuth(), h.GetPersonalizedSuggestions)
 	api.GET("/suggestions/profile", requireAuth(), h.GetMyProfile)
+	api.GET("/suggestions/recent", h.GetRecentContent)
 	api.POST("/ratings", requireAuth(), h.RecordRating)
+	api.GET("/ratings", requireAuth(), h.GetMyRatings)
+
+	// User-facing category browse (requires auth, returns categorized items)
+	api.GET("/browse/categories", requireAuth(), h.GetCategoryBrowse)
 
 	// Upload routes (protected)
 	api.POST("/upload", requireAuth(), h.UploadMedia)

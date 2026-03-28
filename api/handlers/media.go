@@ -11,6 +11,7 @@ import (
 
 	"fmt"
 	"media-server-pro/internal/analytics"
+	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/thumbnails"
@@ -294,6 +295,62 @@ func (h *Handler) ScanMedia(c *gin.Context) {
 func (h *Handler) GetCategories(c *gin.Context) {
 	categories := h.media.GetCategories()
 	writeSuccess(c, categories)
+}
+
+// GetCategoryBrowse returns user-facing categorized items for a given category.
+// When no category is specified, returns category counts (stats).
+// Accepts ?category=TV+Shows&limit=N (default 200, max 500).
+func (h *Handler) GetCategoryBrowse(c *gin.Context) {
+	if !h.requireCategorizer(c) {
+		return
+	}
+	category := c.Query("category")
+	limit := 200
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 500 {
+		limit = l
+	}
+
+	if category == "" {
+		stats := h.categorizer.GetStats()
+		writeSuccess(c, stats)
+		return
+	}
+
+	items := h.categorizer.GetByCategory(categorizer.Category(category))
+
+	// Enrich with thumbnail URLs from the media module
+	type browseItem struct {
+		ID           string      `json:"id"`
+		Name         string      `json:"name"`
+		Category     string      `json:"category"`
+		Confidence   float64     `json:"confidence"`
+		DetectedInfo interface{} `json:"detected_info,omitempty"`
+		ThumbnailURL string      `json:"thumbnail_url,omitempty"`
+	}
+	results := make([]browseItem, 0, len(items))
+	for _, item := range items {
+		bi := browseItem{
+			ID:           item.ID,
+			Name:         item.Name,
+			Category:     string(item.Category),
+			Confidence:   item.Confidence,
+			DetectedInfo: item.DetectedInfo,
+		}
+		if h.thumbnails != nil && item.ID != "" {
+			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+		}
+		results = append(results, bi)
+	}
+
+	if limit < len(results) {
+		results = results[:limit]
+	}
+
+	writeSuccess(c, map[string]interface{}{
+		"category": category,
+		"items":    results,
+		"total":    len(results),
+	})
 }
 
 // StreamMedia streams a media file

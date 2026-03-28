@@ -3,8 +3,12 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/media"
+	"media-server-pro/internal/thumbnails"
 )
 
 // parseSuggestionsLimit parses the limit query param; returns defaultVal if missing/invalid.
@@ -192,4 +196,107 @@ func (h *Handler) GetSuggestionStats(c *gin.Context) {
 	}
 	stats := h.suggestions.GetStats()
 	writeSuccess(c, stats)
+}
+
+// GetMyRatings returns all media items the current user has rated (rating > 0).
+func (h *Handler) GetMyRatings(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	profile := h.suggestions.GetUserProfile(session.UserID)
+	if profile == nil {
+		writeSuccess(c, []interface{}{})
+		return
+	}
+
+	type ratedItem struct {
+		MediaID      string  `json:"media_id"`
+		Name         string  `json:"name"`
+		Category     string  `json:"category"`
+		MediaType    string  `json:"media_type"`
+		Rating       float64 `json:"rating"`
+		ThumbnailURL string  `json:"thumbnail_url,omitempty"`
+	}
+
+	results := make([]ratedItem, 0)
+	for _, vh := range profile.ViewHistory {
+		if vh.Rating <= 0 {
+			continue
+		}
+		ri := ratedItem{
+			Category:  vh.Category,
+			MediaType: vh.MediaType,
+			Rating:    vh.Rating,
+		}
+		if h.media != nil && vh.MediaPath != "" {
+			if item, err := h.media.GetMedia(vh.MediaPath); err == nil && item != nil {
+				ri.MediaID = item.ID
+				ri.Name = item.Name
+				if h.thumbnails != nil {
+					ri.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+				}
+			}
+		}
+		if ri.MediaID == "" {
+			continue // skip if media was deleted
+		}
+		results = append(results, ri)
+	}
+
+	writeSuccess(c, results)
+}
+
+// GetRecentContent returns media items added within the last N days (default 14).
+// Intended for the "Recently Added" home-page row.
+func (h *Handler) GetRecentContent(c *gin.Context) {
+	days := 14
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	limit := 20
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -days)
+	all := h.media.ListMedia(media.Filter{SortBy: "date_added", SortDesc: true})
+
+	results := make([]*mediaRecentItem, 0, limit)
+	for _, item := range all {
+		if item.DateAdded.Before(cutoff) {
+			break // items are sorted newest-first; once past cutoff we can stop
+		}
+		ri := &mediaRecentItem{
+			ID:        item.ID,
+			Name:      item.Name,
+			Type:      string(item.Type),
+			Category:  item.Category,
+			DateAdded: item.DateAdded,
+		}
+		if h.thumbnails != nil && item.ID != "" {
+			ri.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+		}
+		results = append(results, ri)
+		if len(results) >= limit {
+			break
+		}
+	}
+
+	writeSuccess(c, results)
+}
+
+// mediaRecentItem is the response shape for GetRecentContent.
+type mediaRecentItem struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Type         string    `json:"type"`
+	Category     string    `json:"category"`
+	DateAdded    time.Time `json:"date_added"`
+	ThumbnailURL string    `json:"thumbnail_url,omitempty"`
 }
