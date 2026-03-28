@@ -26,6 +26,8 @@ const SORT_OPTIONS_BASE = [
   { label: 'Date Added', value: 'date_added' },
   { label: 'Size', value: 'size' },
   { label: 'Duration', value: 'duration' },
+  { label: 'Bitrate', value: 'bitrate' },
+  { label: 'Codec', value: 'codec' },
   { label: 'Views', value: 'views' },
 ]
 const SORT_OPTION_MY_RATING = { label: 'My Rating', value: 'my_rating' }
