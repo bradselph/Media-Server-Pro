@@ -147,7 +147,12 @@ export function usePlaybackApi() {
 
 export function useWatchHistoryApi() {
   return {
-    list: (limit?: number) => api.get<WatchHistoryItem[]>(`/api/watch-history${limit ? `?limit=${limit}` : ''}`),
+    list: (limit?: number, completed?: boolean) => {
+      const parts: string[] = []
+      if (limit) parts.push(`limit=${limit}`)
+      if (completed !== undefined) parts.push(`completed=${completed}`)
+      return api.get<WatchHistoryItem[]>(`/api/watch-history${parts.length ? `?${parts.join('&')}` : ''}`)
+    },
     remove: (id: string) => api.delete<void>(`/api/watch-history?id=${encodeURIComponent(id)}`),
     clear: () => api.delete<void>('/api/watch-history'),
   }

@@ -80,6 +80,7 @@ async function savePrefs() {
 const history = ref<WatchHistoryItem[]>([])
 const historyLoading = ref(true)
 const historySearch = ref('')
+const historyFilter = ref<'all' | 'in-progress' | 'completed'>('all')
 const historyPage = ref(1)
 const historyPerPage = 20
 
@@ -113,9 +114,12 @@ async function doClearHistory() {
 }
 
 const filteredHistory = computed(() => {
-  if (!historySearch.value) return history.value
+  let result = history.value
+  if (historyFilter.value === 'completed') result = result.filter(h => h.completed)
+  else if (historyFilter.value === 'in-progress') result = result.filter(h => !h.completed)
+  if (!historySearch.value) return result
   const q = historySearch.value.toLowerCase()
-  return history.value.filter(h => (h.media_name || h.media_id || '').toLowerCase().includes(q))
+  return result.filter(h => (h.media_name || h.media_id || '').toLowerCase().includes(q))
 })
 
 const historyTotalPages = computed(() => Math.max(1, Math.ceil(filteredHistory.value.length / historyPerPage)))
@@ -124,7 +128,7 @@ const pagedHistory = computed(() => {
   return filteredHistory.value.slice(start, start + historyPerPage)
 })
 
-watch(historySearch, () => { historyPage.value = 1 })
+watch([historySearch, historyFilter], () => { historyPage.value = 1 })
 
 // Password
 const pw = reactive({ current: '', new: '', confirm: '' })
@@ -451,13 +455,25 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
             </div>
           </div>
         </template>
-        <UInput
-          v-if="history.length > 5"
-          v-model="historySearch"
-          icon="i-lucide-search"
-          placeholder="Search history…"
-          class="mb-3 w-64"
-        />
+        <div v-if="history.length > 5" class="flex flex-wrap items-center gap-2 mb-3">
+          <UInput
+            v-model="historySearch"
+            icon="i-lucide-search"
+            placeholder="Search history…"
+            class="w-56"
+          />
+          <div class="flex gap-1">
+            <UButton
+              v-for="opt in (['all', 'in-progress', 'completed'] as const)"
+              :key="opt"
+              size="xs"
+              :variant="historyFilter === opt ? 'solid' : 'outline'"
+              :color="historyFilter === opt ? 'primary' : 'neutral'"
+              :label="opt === 'all' ? 'All' : opt === 'in-progress' ? 'In Progress' : 'Completed'"
+              @click="historyFilter = opt"
+            />
+          </div>
+        </div>
         <div v-if="historyLoading" class="flex justify-center py-4">
           <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
         </div>
