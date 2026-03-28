@@ -190,16 +190,45 @@ function formatDuration(secs?: number): string {
 }
 
 // ── Suggestion thumbnail error tracking ───────────────────────────────────────
-const failedSuggestions = new Set<string>()
-function onSuggestionThumbnailError(id: string, event: Event) {
+// reactive() is used so that Vue's dependency tracking picks up .add() calls
+// and re-evaluates the v-if guards that hide broken images.
+const failedSuggestions = reactive(new Set<string>())
+function onSuggestionThumbnailError(id: string) {
   failedSuggestions.add(id)
-  const img = event.target as HTMLImageElement
-  img.style.display = 'none'
+  scheduleThumbnailRetry(id, failedSuggestions)
 }
 
 // ── Thumbnail cycling on hover ─────────────────────────────────────────────────
 const previewCache = new Map<string, string[]>()
-const failedThumbnails = new Set<string>()
+// reactive() so that v-if="!failedThumbnails.has(item.id)" re-evaluates on error
+const failedThumbnails = reactive(new Set<string>())
+
+// ── Thumbnail self-healing retry ───────────────────────────────────────────────
+// When a thumbnail fails to load (thumbnail not yet generated), schedule up to
+// 3 probes with exponential backoff. On success, remove from the failed set so
+// Vue re-renders the <img> instead of the fallback icon.
+const retryCounters = new Map<string, number>()
+const RETRY_DELAYS_MS = [5_000, 15_000, 45_000] // 5s, 15s, 45s
+
+function scheduleThumbnailRetry(id: string, failedSet: Set<string>) {
+  const attempt = retryCounters.get(id) ?? 0
+  if (attempt >= RETRY_DELAYS_MS.length) return // give up after max attempts
+  retryCounters.set(id, attempt + 1)
+  setTimeout(() => {
+    const probe = new Image()
+    probe.onload = () => {
+      // Thumbnail is now available — remove from the failed set so Vue shows the image
+      failedSet.delete(id)
+      retryCounters.delete(id)
+    }
+    probe.onerror = () => {
+      // Still failing — schedule the next retry
+      scheduleThumbnailRetry(id, failedSet)
+    }
+    // Cache-bust so the browser doesn't return the cached error response
+    probe.src = `/thumbnail?id=${encodeURIComponent(id)}&_r=${Date.now()}`
+  }, RETRY_DELAYS_MS[attempt])
+}
 const hoverItemId = ref<string | null>(null)
 const hoverFrameIdx = ref(0)
 let hoverCycleTimer: ReturnType<typeof setInterval> | null = null
@@ -239,10 +268,9 @@ function getThumbSrc(id: string): string {
   return mediaApi.getThumbnailUrl(id)
 }
 
-function onThumbnailError(id: string, event: Event) {
+function onThumbnailError(id: string) {
   failedThumbnails.add(id)
-  const img = event.target as HTMLImageElement
-  img.style.display = 'none'
+  scheduleThumbnailRetry(id, failedThumbnails)
 }
 
 onUnmounted(() => {
@@ -274,7 +302,7 @@ onUnmounted(() => {
                 :alt="s.title"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
-                @error="onSuggestionThumbnailError(s.media_id, $event)"
+                @error="onSuggestionThumbnailError(s.media_id)"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
@@ -305,7 +333,7 @@ onUnmounted(() => {
                 :alt="s.title"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
-                @error="onSuggestionThumbnailError(s.media_id, $event)"
+                @error="onSuggestionThumbnailError(s.media_id)"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
@@ -336,7 +364,7 @@ onUnmounted(() => {
                 :alt="s.title"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
-                @error="onSuggestionThumbnailError(s.media_id, $event)"
+                @error="onSuggestionThumbnailError(s.media_id)"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
@@ -369,7 +397,7 @@ onUnmounted(() => {
                 :alt="s.title"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
-                @error="onSuggestionThumbnailError(s.media_id, $event)"
+                @error="onSuggestionThumbnailError(s.media_id)"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
@@ -505,7 +533,7 @@ onUnmounted(() => {
             :alt="getDisplayTitle(item)"
             :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
             loading="lazy"
-            @error="onThumbnailError(item.id, $event)"
+            @error="onThumbnailError(item.id)"
           />
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
@@ -575,7 +603,7 @@ onUnmounted(() => {
                 :alt="getDisplayTitle(row.original)"
                 :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-xl saturate-0' : '']"
                 loading="lazy"
-                @error="onThumbnailError(row.original.id, $event)"
+                @error="onThumbnailError(row.original.id)"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon :name="row.original.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-4 text-muted" />
