@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MediaItem, MediaCategory, Suggestion } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { useApiEndpoints } from '~/composables/useApiEndpoints'
 
 definePageMeta({ title: 'Media Library' })
 
@@ -9,6 +10,7 @@ const suggestionsApi = useSuggestionsApi()
 const authStore = useAuthStore()
 const router = useRouter()
 const toast = useToast()
+const { updatePreferences } = useApiEndpoints()
 
 // Recommendations (only for logged-in users)
 const continueWatching = ref<Suggestion[]>([])
@@ -147,6 +149,20 @@ async function loadCategories() {
 watch([() => params.type, () => params.category, () => params.sort_by, () => params.sort_order], () => {
   params.page = 1
   load()
+})
+
+// Persist filter preferences when logged-in users change the type or category filter.
+// Saves silently in the background — failures are non-critical.
+let filterSaveTimer: ReturnType<typeof setTimeout> | null = null
+watch([() => params.type, () => params.category], ([newType, newCategory]) => {
+  if (!authStore.isLoggedIn) return
+  if (filterSaveTimer) clearTimeout(filterSaveTimer)
+  filterSaveTimer = setTimeout(() => {
+    updatePreferences({
+      filter_media_type: newType,
+      filter_category: newCategory,
+    }).catch(() => { /* non-critical */ })
+  }, 1000)
 })
 
 onMounted(() => {
