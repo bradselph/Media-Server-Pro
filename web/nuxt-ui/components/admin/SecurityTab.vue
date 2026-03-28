@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AuditLogEntry, IPListEntry, BannedIP, SecurityStats } from '~/types/api'
+import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -11,7 +12,60 @@ const subTabs = [
   { label: 'IP Blacklist', value: 'blacklist', icon: 'i-lucide-shield-ban' },
   { label: 'Banned IPs', value: 'banned', icon: 'i-lucide-shield-x' },
   { label: 'Stats', value: 'stats', icon: 'i-lucide-bar-chart' },
+  { label: 'Settings', value: 'settings', icon: 'i-lucide-settings' },
 ]
+
+// Security config toggles
+const fullConfig = ref<Record<string, unknown>>({})
+const corsEnabled = ref(false)
+const hstsEnabled = ref(false)
+const httpsEnabled = ref(false)
+const configSaving = ref(false)
+const configLoading = ref(false)
+
+async function loadSecurityConfig() {
+  configLoading.value = true
+  try {
+    const cfg = await adminApi.getConfig()
+    if (cfg) {
+      fullConfig.value = cfg
+      const sec = asRecord(cfg.security)
+      const srv = asRecord(cfg.server)
+      corsEnabled.value = sec?.cors_enabled === true
+      hstsEnabled.value = sec?.hsts_enabled === true
+      httpsEnabled.value = srv?.enable_https === true
+    }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally {
+    configLoading.value = false
+  }
+}
+
+async function saveSecurityToggle(
+  section: 'security' | 'server',
+  key: string,
+  value: boolean,
+) {
+  configSaving.value = true
+  try {
+    const updated: Record<string, unknown> = { ...fullConfig.value }
+    if (section === 'security') {
+      updated.security = { ...asRecord(fullConfig.value.security), [key]: value }
+    } else {
+      updated.server = { ...asRecord(fullConfig.value.server), [key]: value }
+    }
+    await adminApi.updateConfig(updated)
+    fullConfig.value = updated
+    toast.add({ title: 'Security settings saved', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    // reload to revert UI state
+    await loadSecurityConfig()
+  } finally {
+    configSaving.value = false
+  }
+}
 
 // Audit log
 const auditEntries = ref<AuditLogEntry[]>([])
@@ -115,6 +169,7 @@ watch(subTab, (v) => {
   else if (v === 'blacklist') loadBlacklist()
   else if (v === 'banned') loadBanned()
   else if (v === 'stats') adminApi.getSecurityStats().then(s => { stats.value = s }).catch(() => {})
+  else if (v === 'settings') loadSecurityConfig()
 }, { immediate: true })
 </script>
 
@@ -275,6 +330,52 @@ watch(subTab, (v) => {
           <UBadge :label="stats.rate_limit_enabled ? 'On' : 'Off'" :color="stats.rate_limit_enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
         </div>
       </div>
+    </div>
+    <!-- Security Settings -->
+    <div v-if="subTab === 'settings'" class="space-y-4">
+      <div v-if="configLoading" class="flex justify-center py-8">
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
+      </div>
+      <UCard v-else :ui="{ body: 'p-4' }">
+        <div class="divide-y divide-default">
+          <div class="flex items-center justify-between gap-4 py-3 first:pt-0">
+            <div>
+              <p class="font-medium text-sm text-highlighted">Enable HTTPS</p>
+              <p class="text-xs text-muted mt-0.5">Serve the application over TLS (requires cert_file and key_file to be configured)</p>
+            </div>
+            <USwitch
+              :model-value="httpsEnabled"
+              :disabled="configSaving"
+              aria-label="Enable HTTPS"
+              @update:model-value="v => { httpsEnabled = v; saveSecurityToggle('server', 'enable_https', v) }"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-4 py-3">
+            <div>
+              <p class="font-medium text-sm text-highlighted">Enable HSTS</p>
+              <p class="text-xs text-muted mt-0.5">Send Strict-Transport-Security header to force HTTPS on all future requests</p>
+            </div>
+            <USwitch
+              :model-value="hstsEnabled"
+              :disabled="configSaving"
+              aria-label="Enable HSTS"
+              @update:model-value="v => { hstsEnabled = v; saveSecurityToggle('security', 'hsts_enabled', v) }"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-4 py-3 last:pb-0">
+            <div>
+              <p class="font-medium text-sm text-highlighted">Enable CORS</p>
+              <p class="text-xs text-muted mt-0.5">Allow cross-origin requests (configure allowed origins in cors_origins)</p>
+            </div>
+            <USwitch
+              :model-value="corsEnabled"
+              :disabled="configSaving"
+              aria-label="Enable CORS"
+              @update:model-value="v => { corsEnabled = v; saveSecurityToggle('security', 'cors_enabled', v) }"
+            />
+          </div>
+        </div>
+      </UCard>
     </div>
   </div>
 </template>
