@@ -106,3 +106,8 @@ Note: New features (progress bars, profile stats, timestamp deep-links, copy-lin
 ## Audit 2026-03-28 19:00 (Cycle 4)
 
 Audit skipped — MCP unavailable (browser profile lock conflict).
+
+## Audit 2026-03-28 20:00 (Cycle 5)
+
+Audit skipped — MCP unavailable (browser profile lock conflict: "The browser is already running for chrome-profile").
+

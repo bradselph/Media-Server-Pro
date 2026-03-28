@@ -625,3 +625,17 @@ The following non-admin routes exist in `routes.go` but are not called by any co
 **Still outstanding (Tier 2/3):**
 - TV Show / Music browse UI (Tier 2 #7) — `GET /api/categorized` not yet wired to a user-facing page
 - Fix `AllowRegistration: false` UX (Tier 2 #14) — Register link still shown on login page when registration closed
+
+### 2026-03-28 (Automated Cycle 5)
+
+**Newly completed:**
+- ~~**TV Show / Music browse UI** (Tier 2 #7)~~ ✅ **DONE** — Backend: `GET /api/browse/categories` user-facing endpoint (stats or items-by-category with thumbnails). Frontend: `/categories` page with category tiles, grouped TV/Music (show→episodes, artist→tracks), flat grid for Movies/Docs; "Categories" nav link added.
+- ~~**User ratings list** (Gap 1.4)~~ ✅ **DONE** — Backend: `GET /api/ratings` returns rated items from user's suggestion ViewHistory. Frontend: "My Ratings" horizontal scroll card in profile page with star badges.
+- ~~**Fix `AllowRegistration: false` UX** (Tier 2 #14)~~ ✅ **Already done** — login.vue was already hiding the Register link and showing "Registration is currently closed" message (confirmed in code review).
+- **Recently Added row** — Backend: `GET /api/suggestions/recent?days=14&limit=20` returns media sorted by date_added desc within a configurable window. Frontend: "Recently Added" horizontal scroll row on home page (logged-in users only).
+
+**Still outstanding (Tier 3 — architecture required):**
+- Subtitle track selection — HIGH effort, requires ffprobe track enumeration endpoint + HLS multi-track pipeline
+- Smart playlists (rule-based) — HIGH effort
+- PWA / offline — HIGH effort
+- TMDB/IMDB metadata scraping — HIGH effort

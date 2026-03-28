@@ -60,3 +60,16 @@ Automated continuous improvement cycle history.
 - Live site checks: 0 passed, 0 failed, 0 warnings (MCP unavailable — audit skipped)
 - Issues fixed: 0, deferred: 0
 - Build: green ✓
+
+## Cycle 2026-03-28 20:00
+- Items implemented:
+  - `feat(backend)`: `GET /api/browse/categories` — user-facing category browse; optional `?category=X` returns items with thumbnails; no param returns stats
+  - `feat(backend)`: `GET /api/ratings` — returns user's rated items (media_id, name, category, rating, thumbnail) from suggestion ViewHistory
+  - `feat(backend)`: `GET /api/suggestions/recent` — returns media added in last N days (default 14), sorted newest-first, with thumbnails
+  - `feat(frontend)`: `/categories` page — category tiles with counts, grouped TV/Music view (show → episodes, artist → tracks), flat grid for Movies/Docs
+  - `feat(frontend)`: "Categories" nav link added to default layout (auth-only)
+  - `feat(frontend)`: "Recently Added" horizontal scroll row on home page (logged-in users, last 14 days)
+  - `feat(frontend)`: "My Ratings" card in profile page — horizontal scroll of rated items with star badge
+- Live site checks: 0 passed, 0 failed, 0 warnings (MCP unavailable — browser profile lock conflict)
+- Issues fixed: 0, deferred: 0
+- Build: `go build ./...` ✅ | `npx nuxi typecheck` ✅
