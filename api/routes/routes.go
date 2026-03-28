@@ -384,6 +384,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Watch history routes (protected)
 	api.GET(pathWatchHistory, requireAuth(), h.GetWatchHistory)
 	api.DELETE(pathWatchHistory, requireAuth(), h.ClearWatchHistory)
+	api.GET(pathWatchHistory+"/export", requireAuth(), h.ExportWatchHistory)
 
 	// Playlist routes (protected)
 	api.GET(pathPlaylists, requireAuth(), h.ListPlaylists)

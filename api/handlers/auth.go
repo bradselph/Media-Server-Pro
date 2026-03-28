@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -664,4 +666,46 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 
 	h.log.Info("User %s deleted their account", user.Username)
 	writeSuccess(c, map[string]string{"status": "account_deleted", "message": "Your account has been permanently deleted"})
+}
+
+// ExportWatchHistory streams the user's watch history as a CSV file.
+func (h *Handler) ExportWatchHistory(c *gin.Context) {
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	user, err := h.auth.GetUserByID(c.Request.Context(), session.UserID)
+	if err != nil {
+		writeError(c, http.StatusNotFound, errUserNotFound)
+		return
+	}
+
+	history := user.WatchHistory
+	if history == nil {
+		history = []models.WatchHistoryItem{}
+	}
+
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="watch_history_%s.csv"`, user.Username))
+
+	w := csv.NewWriter(c.Writer)
+	_ = w.Write([]string{"media_name", "media_id", "watched_at", "position_seconds", "duration_seconds", "progress_percent", "completed"})
+	for _, item := range history {
+		completed := "no"
+		if item.Completed {
+			completed = "yes"
+		}
+		_ = w.Write([]string{
+			item.MediaName,
+			item.MediaID,
+			item.WatchedAt.Format("2006-01-02T15:04:05Z"),
+			fmt.Sprintf("%.1f", item.Position),
+			fmt.Sprintf("%.1f", item.Duration),
+			fmt.Sprintf("%.1f", item.Progress*100),
+			completed,
+		})
+	}
+	w.Flush()
 }
