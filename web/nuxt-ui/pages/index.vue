@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, MediaCategory, Suggestion, RecentItem } from '~/types/api'
+import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
 
@@ -48,11 +48,15 @@ async function toggleFavorite(e: Event, item: MediaItem) {
 // Playback progress (ratio 0-1) per media ID — for progress bar overlays
 const playbackProgress = ref<Record<string, number>>({})
 
+// User ratings per media ID (from list response — authenticated users only)
+const userRatings = ref<Record<string, number>>({})
+
 // Recommendations (only for logged-in users)
 const continueWatching = ref<Suggestion[]>([])
 const trending = ref<Suggestion[]>([])
 const recommended = ref<Suggestion[]>([])
 const recentlyAdded = ref<RecentItem[]>([])
+const newSinceLastVisit = ref<NewSinceResponse | null>(null)
 // General suggestions (shown to logged-out users — public endpoint)
 const general = ref<Suggestion[]>([])
 
@@ -85,16 +89,18 @@ async function loadGeneralSuggestions() {
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
-    const [cw, tr, rec, recent] = await Promise.allSettled([
+    const [cw, tr, rec, recent, newSince] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(),
       suggestionsApi.getTrending(),
       suggestionsApi.getPersonalized(12),
       suggestionsApi.getRecent(14, 20),
+      suggestionsApi.getNewSinceLastVisit(20),
     ])
     if (cw.status === 'fulfilled') continueWatching.value = cw.value ?? []
     if (tr.status === 'fulfilled') trending.value = tr.value ?? []
     if (rec.status === 'fulfilled') recommended.value = rec.value ?? []
     if (recent.status === 'fulfilled') recentlyAdded.value = recent.value ?? []
+    if (newSince.status === 'fulfilled' && newSince.value?.total > 0) newSinceLastVisit.value = newSince.value
   } catch { /* non-critical */ }
 }
 
@@ -118,6 +124,8 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
     trending.value = []
     recommended.value = []
     recentlyAdded.value = []
+    newSinceLastVisit.value = null
+    userRatings.value = {}
     loadGeneralSuggestions()
   }
 }, { immediate: false })
@@ -163,6 +171,7 @@ async function load() {
     total.value = res.total_items ?? res.total ?? 0
     scanning.value = res.scanning ?? false
     initializing.value = res.initializing ?? false
+    userRatings.value = res.user_ratings ?? {}
     // Pre-warm the browser image cache for visible thumbnails in this page.
     // The batch endpoint returns the same /thumbnail?id=X URLs so the browser
     // deduplicates and serves them instantly when the grid renders.
@@ -444,6 +453,36 @@ onUnmounted(() => {
           </NuxtLink>
         </div>
       </div>
+      <!-- New Since Last Visit -->
+      <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-bell" class="size-4 text-primary" />
+          New Since Your Last Visit
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="r in newSinceLastVisit.items"
+            :key="r.id"
+            :to="`/player?id=${encodeURIComponent(r.id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                v-if="r.thumbnail_url"
+                :src="r.thumbnail_url"
+                :alt="r.name"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="r.name">{{ r.name }}</p>
+            <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
+          </NuxtLink>
+        </div>
+      </div>
       <!-- Recently Added -->
       <div v-if="recentlyAdded.length > 0" class="space-y-2">
         <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
@@ -531,7 +570,7 @@ onUnmounted(() => {
       />
       <USelect
         v-model="params.sort_by"
-        :items="[{ label: 'Name', value: 'name' }, { label: 'Date Added', value: 'date_added' }, { label: 'Size', value: 'size' }, { label: 'Duration', value: 'duration' }, { label: 'Views', value: 'views' }]"
+        :items="[{ label: 'Name', value: 'name' }, { label: 'Date Added', value: 'date_added' }, { label: 'Size', value: 'size' }, { label: 'Duration', value: 'duration' }, { label: 'Views', value: 'views' }, ...(authStore.isLoggedIn ? [{ label: 'My Rating', value: 'my_rating' }] : [])]"
         class="w-36"
       />
       <UButton
@@ -679,6 +718,14 @@ onUnmounted(() => {
           <!-- Mature badge (only when user can view it) -->
           <div v-if="item.is_mature && canViewMature" class="absolute top-1 right-1">
             <UBadge label="18+" color="error" variant="solid" size="xs" />
+          </div>
+          <!-- User star rating badge (hidden when mature badge occupies the same corner) -->
+          <div
+            v-if="userRatings[item.id] && !(item.is_mature && canViewMature)"
+            class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-yellow-400 text-xs px-1 rounded"
+          >
+            <UIcon name="i-lucide-star" class="size-3 fill-current" />
+            <span>{{ userRatings[item.id] }}</span>
           </div>
           <!-- Favorite button -->
           <button

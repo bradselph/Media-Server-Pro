@@ -117,6 +117,8 @@ export interface MediaListParams {
   sort_by?: string
   sort_order?: string
   mature?: boolean
+  /** Filter to items the user has rated at or above this value (1–5). */
+  min_rating?: number
 }
 
 export interface MediaListResponse {
@@ -128,6 +130,8 @@ export interface MediaListResponse {
   limit?: number
   scanning?: boolean
   initializing?: boolean
+  /** Map of media_id → user's rating (1–5). Only present for authenticated users who have rated items. */
+  user_ratings?: Record<string, number>
 }
 
 export interface MediaCategory {
@@ -730,6 +734,12 @@ export interface RecentItem {
   category: string
   date_added: string
   thumbnail_url?: string
+}
+
+export interface NewSinceResponse {
+  items: RecentItem[]
+  since: string
+  total: number
 }
 
 // ── Classify (HuggingFace) ────────────────────────────────────────────────────
