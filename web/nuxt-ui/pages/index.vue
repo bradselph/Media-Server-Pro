@@ -428,35 +428,14 @@ onUnmounted(() => {
     <!-- Recommendations (logged-in only) -->
     <template v-if="authStore.isLoggedIn">
       <!-- Continue Watching -->
-      <div v-if="continueWatching.length > 0 && authStore.user?.preferences?.show_continue_watching !== false" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-play-circle" class="size-4 text-primary" />
-          Continue Watching
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
-          <NuxtLink
-            v-for="s in continueWatching"
-            :key="s.media_id"
-            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
-            class="group shrink-0 w-40"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
-              <img
-                v-if="!failedSuggestions.has(s.media_id)"
-                :src="mediaApi.getThumbnailUrl(s.media_id)"
-                :alt="s.title"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
-                @error="onSuggestionThumbnailError(s.media_id)"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-6 text-muted" />
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
-          </NuxtLink>
-        </div>
-      </div>
+      <RecommendationRow
+        v-if="authStore.user?.preferences?.show_continue_watching !== false"
+        title="Continue Watching"
+        icon="i-lucide-play-circle"
+        :items="continueWatching"
+        :failed-ids="failedSuggestions"
+        @thumbnail-error="onSuggestionThumbnailError"
+      />
 
       <!-- On Deck (next episode per TV show / Anime series) -->
       <div v-if="onDeck.length > 0" class="space-y-2">
@@ -493,66 +472,24 @@ onUnmounted(() => {
       </div>
 
       <!-- Trending -->
-      <div v-if="trending.length > 0 && authStore.user?.preferences?.show_trending !== false" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-trending-up" class="size-4 text-primary" />
-          Trending
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
-          <NuxtLink
-            v-for="s in trending"
-            :key="s.media_id"
-            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
-            class="group shrink-0 w-40"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
-              <img
-                v-if="!failedSuggestions.has(s.media_id)"
-                :src="mediaApi.getThumbnailUrl(s.media_id)"
-                :alt="s.title"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
-                @error="onSuggestionThumbnailError(s.media_id)"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-6 text-muted" />
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
-          </NuxtLink>
-        </div>
-      </div>
+      <RecommendationRow
+        v-if="authStore.user?.preferences?.show_trending !== false"
+        title="Trending"
+        icon="i-lucide-trending-up"
+        :items="trending"
+        :failed-ids="failedSuggestions"
+        @thumbnail-error="onSuggestionThumbnailError"
+      />
 
       <!-- Recommended For You -->
-      <div v-if="recommended.length > 0 && authStore.user?.preferences?.show_recommended !== false" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
-          Recommended For You
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
-          <NuxtLink
-            v-for="s in recommended"
-            :key="s.media_id"
-            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
-            class="group shrink-0 w-40"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
-              <img
-                v-if="!failedSuggestions.has(s.media_id)"
-                :src="mediaApi.getThumbnailUrl(s.media_id)"
-                :alt="s.title"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
-                @error="onSuggestionThumbnailError(s.media_id)"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-6 text-muted" />
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
-          </NuxtLink>
-        </div>
-      </div>
+      <RecommendationRow
+        v-if="authStore.user?.preferences?.show_recommended !== false"
+        title="Recommended For You"
+        icon="i-lucide-sparkles"
+        :items="recommended"
+        :failed-ids="failedSuggestions"
+        @thumbnail-error="onSuggestionThumbnailError"
+      />
       <!-- New Since Last Visit -->
       <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-2">
         <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
@@ -617,35 +554,13 @@ onUnmounted(() => {
 
     <!-- Popular suggestions (logged-out users only) -->
     <template v-else>
-      <div v-if="general.length > 0" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-star" class="size-4 text-primary" />
-          Popular
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
-          <NuxtLink
-            v-for="s in general"
-            :key="s.media_id"
-            :to="`/player?id=${encodeURIComponent(s.media_id)}`"
-            class="group shrink-0 w-40"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
-              <img
-                v-if="!failedSuggestions.has(s.media_id)"
-                :src="mediaApi.getThumbnailUrl(s.media_id)"
-                :alt="s.title"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
-                @error="onSuggestionThumbnailError(s.media_id)"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-6 text-muted" />
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
-          </NuxtLink>
-        </div>
-      </div>
+      <RecommendationRow
+        title="Popular"
+        icon="i-lucide-star"
+        :items="general"
+        :failed-ids="failedSuggestions"
+        @thumbnail-error="onSuggestionThumbnailError"
+      />
     </template>
 
     <!-- Filters -->

@@ -1,0 +1,48 @@
+<script setup lang="ts">
+import type { Suggestion } from '~/types/api'
+
+defineProps<{
+  title: string
+  icon: string
+  items: Suggestion[]
+  failedIds?: Set<string>
+}>()
+
+const emit = defineEmits<{
+  'thumbnail-error': [id: string]
+}>()
+
+const mediaApi = useMediaApi()
+</script>
+
+<template>
+  <div v-if="items.length > 0" class="space-y-2">
+    <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+      <UIcon :name="icon" class="size-4 text-primary" />
+      {{ title }}
+    </h2>
+    <div class="flex gap-3 overflow-x-auto pb-2">
+      <NuxtLink
+        v-for="s in items"
+        :key="s.media_id"
+        :to="`/player?id=${encodeURIComponent(s.media_id)}`"
+        class="group shrink-0 w-40"
+      >
+        <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+          <img
+            v-if="!failedIds?.has(s.media_id)"
+            :src="mediaApi.getThumbnailUrl(s.media_id)"
+            :alt="s.title"
+            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+            loading="lazy"
+            @error="emit('thumbnail-error', s.media_id)"
+          />
+          <div v-else class="w-full h-full flex items-center justify-center">
+            <UIcon name="i-lucide-film" class="size-6 text-muted" />
+          </div>
+        </div>
+        <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+      </NuxtLink>
+    </div>
+  </div>
+</template>
