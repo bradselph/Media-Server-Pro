@@ -386,6 +386,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.DELETE(pathWatchHistory, requireAuth(), h.ClearWatchHistory)
 	api.GET(pathWatchHistory+"/export", requireAuth(), h.ExportWatchHistory)
 
+	// Public playlist browsing — no auth required
+	api.GET("/playlists/public", h.ListPublicPlaylists)
+
 	// Playlist routes (protected)
 	api.GET(pathPlaylists, requireAuth(), h.ListPlaylists)
 	api.POST(pathPlaylists, requireAuth(), h.CreatePlaylist)

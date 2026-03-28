@@ -65,6 +65,18 @@ func (h *Handler) ListPlaylists(c *gin.Context) {
 	writeSuccess(c, playlists)
 }
 
+// ListPublicPlaylists returns all playlists marked as public, accessible without auth.
+func (h *Handler) ListPublicPlaylists(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
+	playlists := h.playlist.ListPublicPlaylists()
+	if playlists == nil {
+		playlists = []*models.Playlist{}
+	}
+	writeSuccess(c, playlists)
+}
+
 // CreatePlaylist creates a new playlist
 func (h *Handler) CreatePlaylist(c *gin.Context) {
 	session, ok := h.requireSessionWithPlaylistCreate(c)
