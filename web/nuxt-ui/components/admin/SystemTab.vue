@@ -347,6 +347,32 @@ watch(subTab, (v) => {
           <UButton :loading="pwLoading" label="Change Password" @click="changeAdminPassword" />
         </div>
       </UCard>
+
+      <UCard>
+        <template #header><div class="font-semibold">Developer Links</div></template>
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            icon="i-lucide-file-code"
+            label="OpenAPI Spec (/api/docs)"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            to="/api/docs"
+            target="_blank"
+            external
+          />
+          <UButton
+            icon="i-lucide-bar-chart-2"
+            label="Prometheus Metrics (/metrics)"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            to="/metrics"
+            target="_blank"
+            external
+          />
+        </div>
+      </UCard>
     </div>
 
     <!-- Tasks -->

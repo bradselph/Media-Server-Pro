@@ -81,6 +81,7 @@ const params = reactive({
   category: authStore.user?.preferences?.filter_category || 'all',
   sort_by: authStore.user?.preferences?.sort_by || 'name',
   sort_order: (authStore.user?.preferences?.sort_order ?? 'asc') as 'asc' | 'desc',
+  min_rating: 0,
 })
 
 async function loadGeneralSuggestions() {
@@ -180,6 +181,7 @@ function clearTagFilter() {
 }
 
 watch(hideWatched, () => { params.page = 1; load() })
+watch(() => params.min_rating, () => { params.page = 1; load() })
 
 async function load() {
   loading.value = true
@@ -191,6 +193,7 @@ async function load() {
       category: params.category === 'all' ? '' : params.category,
       ...(filterTag.value ? { tags: [filterTag.value] } : {}),
       ...(hideWatched.value && authStore.isLoggedIn ? { hide_watched: true } : {}),
+      ...(params.min_rating > 0 && authStore.isLoggedIn ? { min_rating: params.min_rating } : {}),
     }
     const res = await mediaApi.list(apiParams)
     items.value = res.items ?? []
@@ -680,6 +683,26 @@ onUnmounted(() => {
         size="sm"
         :aria-label="hideWatched ? 'Show all items' : 'Hide completed items'"
         @click="hideWatched = !hideWatched"
+      />
+      <!-- Min rating filter (logged-in users only) -->
+      <USelect
+        v-if="authStore.isLoggedIn"
+        v-model="params.min_rating"
+        :items="[{ label: 'Any Rating', value: 0 }, { label: '★ 1+', value: 1 }, { label: '★★ 2+', value: 2 }, { label: '★★★ 3+', value: 3 }, { label: '★★★★ 4+', value: 4 }, { label: '★★★★★ 5', value: 5 }]"
+        class="w-32"
+        aria-label="Minimum rating filter"
+      />
+      <!-- RSS subscribe link -->
+      <UButton
+        v-if="authStore.isLoggedIn"
+        icon="i-lucide-rss"
+        aria-label="Subscribe via RSS"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        to="/api/feed"
+        target="_blank"
+        external
       />
       <div class="ml-auto flex items-center gap-1">
         <p class="text-sm text-muted mr-2">{{ total.toLocaleString() }} items</p>
