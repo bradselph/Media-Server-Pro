@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	apispec "media-server-pro/api_spec"
 	"media-server-pro/internal/admin"
 	"media-server-pro/pkg/models"
 )
@@ -562,4 +563,16 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		"rows_affected": len(results),
 		"truncated":     len(results) >= maxRows,
 	})
+}
+
+// GetOpenAPISpec serves the embedded OpenAPI YAML specification.
+// Accessible to all authenticated users so API clients and Swagger tooling
+// can discover the contract without requiring admin privileges.
+func (h *Handler) GetOpenAPISpec(c *gin.Context) {
+	if len(apispec.Spec) == 0 {
+		writeError(c, http.StatusNotFound, "OpenAPI spec not available")
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Data(http.StatusOK, "application/yaml; charset=utf-8", apispec.Spec)
 }

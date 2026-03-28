@@ -341,6 +341,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// The frontend fetches this on initial load before any login occurs.
 	api.GET("/server-settings", h.GetServerSettings)
 
+	// OpenAPI specification — requires auth to prevent unauthenticated schema discovery.
+	api.GET("/docs", requireAuth(), h.GetOpenAPISpec)
+
 	// Age gate — public, no auth required (must be accessible before user logs in)
 	api.GET("/age-gate/status", ageGate.GinStatusHandler())
 	api.POST("/age-verify", ageGate.GinVerifyHandler())
