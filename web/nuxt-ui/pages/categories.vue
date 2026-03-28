@@ -168,14 +168,20 @@ onMounted(async () => {
                 </div>
                 <!-- Episode badge for TV shows -->
                 <div
-                  v-if="item.detected_info?.season && item.detected_info?.episode"
-                  class="absolute top-1 left-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded"
+                  v-if="item.detected_info?.season != null && item.detected_info?.episode != null"
+                  class="absolute top-1 left-1"
                 >
-                  S{{ item.detected_info.season }}E{{ item.detected_info.episode }}
+                  <UBadge
+                    :label="`S${String(item.detected_info.season).padStart(2,'0')}E${String(item.detected_info.episode).padStart(2,'0')}`"
+                    color="neutral"
+                    variant="solid"
+                    size="xs"
+                    class="bg-black/70 text-white border-0"
+                  />
                 </div>
               </div>
-              <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.name">
-                {{ item.name }}
+              <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.detected_info?.title ?? item.name">
+                {{ item.detected_info?.title ?? item.name }}
               </p>
             </NuxtLink>
           </div>
@@ -201,9 +207,22 @@ onMounted(async () => {
             <div v-else class="w-full h-full flex items-center justify-center">
               <UIcon :name="iconFor(selectedCategory)" class="size-6 text-muted" />
             </div>
-            <!-- Year badge if detected -->
+            <!-- Season/episode badge if detected -->
             <div
-              v-if="item.detected_info?.year"
+              v-if="item.detected_info?.season != null && item.detected_info?.episode != null"
+              class="absolute top-1 left-1"
+            >
+              <UBadge
+                :label="`S${String(item.detected_info.season).padStart(2,'0')}E${String(item.detected_info.episode).padStart(2,'0')}`"
+                color="neutral"
+                variant="solid"
+                size="xs"
+                class="bg-black/70 text-white border-0"
+              />
+            </div>
+            <!-- Year badge if detected (and no episode info) -->
+            <div
+              v-else-if="item.detected_info?.year"
               class="absolute top-1 left-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded"
             >
               {{ item.detected_info.year }}

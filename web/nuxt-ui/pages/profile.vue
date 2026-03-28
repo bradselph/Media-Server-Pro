@@ -501,9 +501,17 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
             :key="item.media_id"
             class="flex items-center justify-between py-2 gap-3"
           >
-            <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
-              <p class="text-xs text-muted">{{ item.watched_at ? new Date(item.watched_at).toLocaleString() : '' }}</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <UBadge v-if="item.completed" label="Completed" color="success" variant="subtle" size="xs" class="shrink-0" />
+              </div>
+              <div class="flex items-center gap-2 mt-0.5">
+                <p class="text-xs text-muted">
+                  {{ item.completed ? 'Completed' : `${Math.round(item.progress)}% watched` }}
+                  <span v-if="item.watched_at"> · {{ new Date(item.watched_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
+                </p>
+              </div>
             </div>
             <UButton
               icon="i-lucide-x"
