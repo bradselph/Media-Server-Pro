@@ -112,3 +112,16 @@ Automated continuous improvement cycle history.
 - Build: `go build ./...` PASS | `go test ./...` PASS | `npx nuxi typecheck` PASS
 - Deploy: SUCCESS — `/health` returns 200 post-deploy
 - Live site: OK
+
+## Cycle 2026-03-28 (Cycle 9)
+- Items implemented:
+  - [frontend] Persist playback speed preference — `cycleSpeed()` now saves `playback_speed` to user preferences (same pattern as volume). Speed no longer resets between videos.
+  - [backend] `GET /api/suggestions/on-deck` — returns next unwatched episode per TV show / Anime series, ordered by most-recently-watched show. Skips shows with no history. Mature-content gated.
+  - [frontend] "On Deck" horizontal scroll row on home page — shown when results > 0, displays show name + S##E## badge + episode name.
+  - [backend] `GET /api/watch-history?completed=true|false` — new filter param on GetWatchHistory. Existing `?id` and `?limit` params preserved.
+  - [frontend] Watch history completion filter — "All / In Progress / Completed" segmented button group in profile watch history tab.
+- Live site checks: 2 passed (home, health), 0 failed, 0 warnings
+- Issues fixed: 0, deferred: 0
+- Build: PASS (go build + go test + nuxi typecheck)
+- Deploy: SUCCESS
+- Live site: OK

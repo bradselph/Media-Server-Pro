@@ -678,3 +678,16 @@ The following non-admin routes exist in `routes.go` but are not called by any co
 - Smart playlists (rule-based) — HIGH effort
 - PWA / offline — HIGH effort
 - TMDB/IMDB metadata scraping — HIGH effort
+
+### 2026-03-28 (Automated Cycle 9)
+
+**Newly completed:**
+- ~~**Persist playback speed**~~ ✅ **DONE** — Frontend: `cycleSpeed()` now calls `updatePreferences({ playback_speed })` after each toggle, persisting the chosen speed exactly like volume.
+- ~~**"On Deck" next episode**~~ ✅ **DONE** — Backend: `GET /api/suggestions/on-deck` cross-references categorizer TV/Anime items with user ViewHistory to find the next unwatched episode per show (sorted by most-recently-watched show). Frontend: "On Deck" horizontal scroll row on home page with S##E## badge overlay and show/episode name labels.
+- ~~**Watch history completion filter**~~ ✅ **DONE** — Backend: `?completed=true|false` param on `GET /api/watch-history`. Frontend: "All / In Progress / Completed" filter buttons in profile page watch history tab.
+
+**Still outstanding (Tier 3 — architecture required):**
+- Subtitle track selection — HIGH effort
+- Smart playlists (rule-based) — HIGH effort
+- PWA / offline — HIGH effort
+- TMDB/IMDB metadata scraping — HIGH effort

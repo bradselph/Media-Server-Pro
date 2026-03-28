@@ -159,3 +159,19 @@ Note: New features (watch history export, loop mode, playlist auto-advance) are 
 
 Note: New features (user rating badges, sort by rating, new-since-last-visit row,
 previous_last_login tracking) committed to `development` branch. Awaiting deploy.
+
+## Audit 2026-03-28 (Cycle 9)
+
+**Site:** https://xmodsxtreme.com
+**Method:** curl (Chrome MCP unavailable)
+
+| Check                    | Result   | Notes |
+|--------------------------|----------|-------|
+| Home page (/)            | ✅ PASS  | HTTP 200 |
+| Health endpoint (/health)| ✅ PASS  | HTTP 200 |
+| API status               | ℹ️ INFO  | GET /api/status → 401 (auth-gated — expected) |
+
+**Critical: 0 | Warnings: 0**
+
+Note: New features (persist playback speed, On Deck next-episode row, watch history
+completion filter) committed to `development` branch. Awaiting deploy.
