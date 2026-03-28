@@ -90,8 +90,17 @@ func (m *Module) previewURLForIndex(opts *buildPreviewURLListOpts, i int) string
 		return previewURL
 	}
 	if opts.Cfg.Thumbnails.GenerateOnAccess {
+		// Trigger generation as a side effect; do NOT return the URL yet.
+		// tryGeneratePreview queues the job (or runs synchronously if queue is full).
+		// We re-stat afterward to catch the synchronous case where the file was
+		// written inline. For queued jobs the file won't exist yet, so we return ""
+		// and the caller will get the URL on the next request once generation completes.
 		previewOpts := &tryGeneratePreviewOpts{MediaPath: opts.MediaPath, PreviewPath: previewPath, PreviewURL: previewURL, Timestamp: timestamp}
-		return m.tryGeneratePreview(previewOpts)
+		m.tryGeneratePreview(previewOpts)
+		if _, err := os.Stat(previewPath); err == nil {
+			return previewURL
+		}
+		return ""
 	}
 	return ""
 }
