@@ -746,6 +746,21 @@ export interface NewSinceResponse {
   total: number
 }
 
+export interface OnDeckItem {
+  media_id: string
+  name: string
+  show_name: string
+  season: number
+  episode: number
+  category: string
+  thumbnail_url?: string
+}
+
+export interface OnDeckResponse {
+  items: OnDeckItem[]
+  total: number
+}
+
 // ── Classify (HuggingFace) ────────────────────────────────────────────────────
 
 export interface ClassifyStatus {

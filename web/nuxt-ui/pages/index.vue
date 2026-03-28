@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse } from '~/types/api'
+import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
 
@@ -57,6 +57,7 @@ const trending = ref<Suggestion[]>([])
 const recommended = ref<Suggestion[]>([])
 const recentlyAdded = ref<RecentItem[]>([])
 const newSinceLastVisit = ref<NewSinceResponse | null>(null)
+const onDeck = ref<OnDeckItem[]>([])
 // General suggestions (shown to logged-out users — public endpoint)
 const general = ref<Suggestion[]>([])
 
@@ -89,18 +90,20 @@ async function loadGeneralSuggestions() {
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
-    const [cw, tr, rec, recent, newSince] = await Promise.allSettled([
+    const [cw, tr, rec, recent, newSince, deck] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(),
       suggestionsApi.getTrending(),
       suggestionsApi.getPersonalized(12),
       suggestionsApi.getRecent(14, 20),
       suggestionsApi.getNewSinceLastVisit(20),
+      suggestionsApi.getOnDeck(10),
     ])
     if (cw.status === 'fulfilled') continueWatching.value = cw.value ?? []
     if (tr.status === 'fulfilled') trending.value = tr.value ?? []
     if (rec.status === 'fulfilled') recommended.value = rec.value ?? []
     if (recent.status === 'fulfilled') recentlyAdded.value = recent.value ?? []
     if (newSince.status === 'fulfilled' && newSince.value?.total > 0) newSinceLastVisit.value = newSince.value
+    if (deck.status === 'fulfilled') onDeck.value = deck.value?.items ?? []
   } catch { /* non-critical */ }
 }
 
@@ -125,6 +128,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
     recommended.value = []
     recentlyAdded.value = []
     newSinceLastVisit.value = null
+    onDeck.value = []
     userRatings.value = {}
     loadGeneralSuggestions()
   }
@@ -418,6 +422,40 @@ onUnmounted(() => {
               </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+          </NuxtLink>
+        </div>
+      </div>
+
+      <!-- On Deck (next episode per TV show / Anime series) -->
+      <div v-if="onDeck.length > 0" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-tv-2" class="size-4 text-primary" />
+          On Deck
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="ep in onDeck"
+            :key="ep.media_id"
+            :to="`/player?id=${encodeURIComponent(ep.media_id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                v-if="ep.thumbnail_url"
+                :src="ep.thumbnail_url"
+                :alt="ep.name"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-tv-2" class="size-6 text-muted" />
+              </div>
+              <div v-if="ep.season > 0 || ep.episode > 0" class="absolute bottom-1 left-1 text-[10px] font-bold text-white bg-black/60 rounded px-1">
+                {{ ep.season > 0 ? `S${String(ep.season).padStart(2,'0')}` : '' }}{{ ep.episode > 0 ? `E${String(ep.episode).padStart(2,'0')}` : '' }}
+              </div>
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors leading-tight" :title="ep.show_name">{{ ep.show_name }}</p>
+            <p class="text-[10px] text-muted truncate" :title="ep.name">{{ ep.name }}</p>
           </NuxtLink>
         </div>
       </div>

@@ -24,7 +24,7 @@ import type {
   DiscoverySuggestion,
   ModuleHealth, ServerStatus,
   FavoriteItem, APIToken, APITokenCreated,
-  RatedItem, RecentItem, NewSinceResponse, CategoryBrowseResponse,
+  RatedItem, RecentItem, NewSinceResponse, CategoryBrowseResponse, OnDeckResponse,
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
@@ -173,6 +173,10 @@ export function useSuggestionsApi() {
     getNewSinceLastVisit: (limit?: number) => {
       const qs = limit ? `?limit=${limit}` : ''
       return api.get<NewSinceResponse>(`/api/suggestions/new${qs}`)
+    },
+    getOnDeck: (limit?: number) => {
+      const qs = limit ? `?limit=${limit}` : ''
+      return api.get<OnDeckResponse>(`/api/suggestions/on-deck${qs}`)
     },
   }
 }
