@@ -73,3 +73,16 @@ Automated continuous improvement cycle history.
 - Live site checks: 0 passed, 0 failed, 0 warnings (MCP unavailable — browser profile lock conflict)
 - Issues fixed: 0, deferred: 0
 - Build: `go build ./...` ✅ | `npx nuxi typecheck` ✅
+
+## Cycle 2026-03-28 21:00 (Automated)
+
+- Items implemented:
+  - `feat(backend)`: `GET /api/watch-history/export` — streams user's watch history as CSV (media_name, media_id, watched_at, position_seconds, duration_seconds, progress_percent, completed)
+  - `feat(frontend)`: "Export CSV" button in profile watch history card header — downloads history as `watch_history_<username>.csv`
+  - `feat(frontend)`: Loop mode toggle in video player — cycles off → one (repeat-1); loop button highlighted when active; uses native `HTMLVideoElement.loop`; cleans up on unmount
+  - `feat(frontend)`: Playlist auto-advance — playlists.vue passes `?playlist_id=<id>&playlist_idx=<n>` to player URL; player fetches playlist on load, shows "Up Next" countdown overlay (5s, cancellable) on video end; navigates to next item
+- Live site checks: 2 passed (HTTP 200 on `/` and `/health`), 0 failed, 0 warnings
+- Issues fixed: 0, deferred: 0
+- Build: `go build ./...` PASS | `npx nuxi typecheck` PASS
+- Deploy: SUCCESS — `/health` returns 200 post-deploy
+- Live site: OK

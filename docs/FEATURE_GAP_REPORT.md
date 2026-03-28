@@ -639,3 +639,21 @@ The following non-admin routes exist in `routes.go` but are not called by any co
 - Smart playlists (rule-based) — HIGH effort
 - PWA / offline — HIGH effort
 - TMDB/IMDB metadata scraping — HIGH effort
+
+### 2026-03-28 (Automated Cycle 6)
+
+**Newly completed:**
+- ~~**Export watch history as CSV** (Lens 2E)~~ ✅ **DONE** — Backend: `GET /api/watch-history/export` returns CSV (media_name, media_id, viewed_at, position, duration). Frontend: "Export CSV" button in profile watch history tab.
+- ~~**Loop mode in player** (Lens 3 vs YouTube)~~ ✅ **DONE** — Frontend: loop toggle button in player controls; cycles through off → one → all. When "one" is active, video restarts on end; when "all" is active in playlist context, loops playlist.
+- ~~**Playlist auto-play (next item)** (Lens 3 vs Plex/YouTube)~~ ✅ **DONE** — Frontend: playlists.vue passes `?playlist_id=<id>&playlist_idx=<n>` to player URL; player fetches playlist on load, shows "Up Next" countdown overlay (5s, cancellable) on video end, auto-advances to next item.
+
+**Still outstanding (Tier 3 — architecture required):**
+- Subtitle track selection — HIGH effort
+- Smart playlists (rule-based) — HIGH effort
+- PWA / offline — HIGH effort
+- TMDB/IMDB metadata scraping — HIGH effort
+
+**Still outstanding (medium priority, not yet scheduled):**
+- Sort/filter by personal rating — requires user-scoped rating JOIN in media list query
+- Personal ratings visible on browse cards — same JOIN requirement
+- "New since last visit" section — needs `previous_last_login` tracking

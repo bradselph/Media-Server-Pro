@@ -111,3 +111,18 @@ Audit skipped — MCP unavailable (browser profile lock conflict).
 
 Audit skipped — MCP unavailable (browser profile lock conflict: "The browser is already running for chrome-profile").
 
+
+## Audit 2026-03-28 21:00 (Cycle 6)
+
+**Site:** https://xmodsxtreme.com
+**Method:** curl (Chrome MCP unavailable)
+
+| Check                | Result | Notes |
+|----------------------|--------|-------|
+| Home page (/)        | ✅ PASS | HTTP 200 returned |
+| Health endpoint      | ✅ PASS | GET /health → 200 |
+| API status           | ⚠️ INFO | GET /api/status → 401 (auth-gated — expected) |
+
+**Critical: 0 | Warnings: 0**
+
+Note: New features (watch history export, loop mode, playlist auto-advance) are committed to `development` branch. Awaiting deploy to appear on live site.
