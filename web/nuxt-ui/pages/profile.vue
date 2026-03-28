@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, UserProfile, APIToken, APITokenCreated } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, UserProfile, APIToken, APITokenCreated, RatedItem } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { useAPITokensApi } from '~/composables/useApiEndpoints'
+import { useAPITokensApi, useRatingsApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
@@ -14,6 +14,7 @@ const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWat
 const { getUsage, getPermissions } = useStorageApi()
 const { getMyProfile } = useSuggestionsApi()
 const tokensApi = useAPITokensApi()
+const ratingsApi = useRatingsApi()
 const toast = useToast()
 
 const storageUsage = ref<StorageUsage | null>(null)
@@ -168,6 +169,17 @@ async function handleDeleteAccount() {
   }
 }
 
+// My Ratings
+const myRatings = ref<RatedItem[]>([])
+const ratingsLoading = ref(false)
+
+async function loadMyRatings() {
+  ratingsLoading.value = true
+  try { myRatings.value = (await ratingsApi.getMyRatings()) ?? [] }
+  catch { /* non-critical */ }
+  finally { ratingsLoading.value = false }
+}
+
 // API Tokens
 const tokens = ref<APIToken[]>([])
 const tokensLoading = ref(false)
@@ -208,7 +220,7 @@ async function revokeToken(id: string) {
   }
 }
 
-onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens() })
+onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens(); loadMyRatings() })
 </script>
 
 <template>
@@ -293,6 +305,48 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
               </div>
             </div>
           </div>
+        </div>
+      </UCard>
+
+      <!-- My Ratings -->
+      <UCard v-if="myRatings.length > 0 || ratingsLoading">
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-star" class="size-4" />
+            My Ratings
+            <UBadge v-if="myRatings.length > 0" :label="String(myRatings.length)" color="neutral" variant="subtle" size="xs" />
+          </div>
+        </template>
+        <div v-if="ratingsLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="item in myRatings"
+            :key="item.media_id"
+            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+            class="group shrink-0 w-36"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                v-if="item.thumbnail_url"
+                :src="item.thumbnail_url"
+                :alt="item.name"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
+              <!-- Rating badge -->
+              <div class="absolute bottom-1 right-1 bg-black/70 text-yellow-400 text-xs px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                <UIcon name="i-lucide-star" class="size-3" />
+                {{ item.rating.toFixed(1) }}
+              </div>
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.name">{{ item.name }}</p>
+            <p class="text-xs text-muted truncate">{{ item.category || item.media_type }}</p>
+          </NuxtLink>
         </div>
       </UCard>
 

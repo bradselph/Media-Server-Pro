@@ -24,6 +24,7 @@ import type {
   DiscoverySuggestion,
   ModuleHealth, ServerStatus,
   FavoriteItem, APIToken, APITokenCreated,
+  RatedItem, RecentItem, CategoryBrowseResponse,
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
@@ -159,6 +160,12 @@ export function useSuggestionsApi() {
     getPersonalized: (limit?: number) =>
       api.get<Suggestion[]>(`/api/suggestions/personalized${limit ? `?limit=${limit}` : ''}`),
     getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),
+    getRecent: (days?: number, limit?: number) => {
+      const params: string[] = []
+      if (days) params.push(`days=${days}`)
+      if (limit) params.push(`limit=${limit}`)
+      return api.get<RecentItem[]>(`/api/suggestions/recent${params.length ? `?${params.join('&')}` : ''}`)
+    },
   }
 }
 
@@ -229,6 +236,15 @@ export function useAgeGateApi() {
 export function useRatingsApi() {
   return {
     record: (id: string, rating: number) => api.post<void>('/api/ratings', { id, rating }),
+    getMyRatings: () => api.get<RatedItem[]>('/api/ratings'),
+  }
+}
+
+export function useCategoryBrowseApi() {
+  return {
+    getStats: () => api.get<CategoryStats>('/api/browse/categories'),
+    getByCategory: (category: string, limit?: number) =>
+      api.get<CategoryBrowseResponse>(`/api/browse/categories?category=${encodeURIComponent(category)}${limit ? `&limit=${limit}` : ''}`),
   }
 }
 

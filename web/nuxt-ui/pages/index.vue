@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, MediaCategory, Suggestion } from '~/types/api'
+import type { MediaItem, MediaCategory, Suggestion, RecentItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
 
@@ -52,6 +52,7 @@ const playbackProgress = ref<Record<string, number>>({})
 const continueWatching = ref<Suggestion[]>([])
 const trending = ref<Suggestion[]>([])
 const recommended = ref<Suggestion[]>([])
+const recentlyAdded = ref<RecentItem[]>([])
 // General suggestions (shown to logged-out users — public endpoint)
 const general = ref<Suggestion[]>([])
 
@@ -84,14 +85,16 @@ async function loadGeneralSuggestions() {
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
-    const [cw, tr, rec] = await Promise.allSettled([
+    const [cw, tr, rec, recent] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(),
       suggestionsApi.getTrending(),
       suggestionsApi.getPersonalized(12),
+      suggestionsApi.getRecent(14, 20),
     ])
     if (cw.status === 'fulfilled') continueWatching.value = cw.value ?? []
     if (tr.status === 'fulfilled') trending.value = tr.value ?? []
     if (rec.status === 'fulfilled') recommended.value = rec.value ?? []
+    if (recent.status === 'fulfilled') recentlyAdded.value = recent.value ?? []
   } catch { /* non-critical */ }
 }
 
@@ -114,6 +117,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
     continueWatching.value = []
     trending.value = []
     recommended.value = []
+    recentlyAdded.value = []
     loadGeneralSuggestions()
   }
 }, { immediate: false })
@@ -437,6 +441,36 @@ onUnmounted(() => {
               </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="s.title">{{ s.title }}</p>
+          </NuxtLink>
+        </div>
+      </div>
+      <!-- Recently Added -->
+      <div v-if="recentlyAdded.length > 0" class="space-y-2">
+        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+          <UIcon name="i-lucide-sparkle" class="size-4 text-primary" />
+          Recently Added
+        </h2>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="r in recentlyAdded"
+            :key="r.id"
+            :to="`/player?id=${encodeURIComponent(r.id)}`"
+            class="group shrink-0 w-40"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                v-if="r.thumbnail_url"
+                :src="r.thumbnail_url"
+                :alt="r.name"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="r.name">{{ r.name }}</p>
+            <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
           </NuxtLink>
         </div>
       </div>

@@ -691,6 +691,47 @@ export interface CategoryStats {
   manual_overrides: number
 }
 
+export interface CategoryBrowseItem {
+  id: string
+  name: string
+  category: string
+  confidence: number
+  detected_info?: {
+    title?: string
+    year?: number
+    season?: number
+    episode?: number
+    show_name?: string
+    artist?: string
+    album?: string
+  }
+  thumbnail_url?: string
+}
+
+export interface CategoryBrowseResponse {
+  category: string
+  items: CategoryBrowseItem[]
+  total: number
+}
+
+export interface RatedItem {
+  media_id: string
+  name: string
+  category: string
+  media_type: string
+  rating: number
+  thumbnail_url?: string
+}
+
+export interface RecentItem {
+  id: string
+  name: string
+  type: string
+  category: string
+  date_added: string
+  thumbnail_url?: string
+}
+
 // ── Classify (HuggingFace) ────────────────────────────────────────────────────
 
 export interface ClassifyStatus {
