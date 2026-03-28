@@ -446,6 +446,20 @@ func (h *Handler) GetWatchHistory(c *gin.Context) {
 		return
 	}
 
+	if completedFilter := c.Query("completed"); completedFilter != "" {
+		var filtered []models.WatchHistoryItem
+		want := completedFilter == "true"
+		for _, item := range history {
+			if item.Completed == want {
+				filtered = append(filtered, item)
+			}
+		}
+		if filtered == nil {
+			filtered = []models.WatchHistoryItem{}
+		}
+		history = filtered
+	}
+
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit < len(history) {
 			history = history[:limit]
