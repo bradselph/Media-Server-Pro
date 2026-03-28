@@ -399,6 +399,7 @@ function cycleSpeed() {
   const idx = speeds.indexOf(playbackSpeed.value)
   playbackSpeed.value = speeds[(idx + 1) % speeds.length]
   if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
+  updatePreferences({ playback_speed: playbackSpeed.value }).catch(() => {})
 }
 
 function copyLinkAtTime() {
