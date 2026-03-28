@@ -1,17 +1,49 @@
 <script setup lang="ts">
 import type { MediaItem, MediaCategory, Suggestion } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { useApiEndpoints } from '~/composables/useApiEndpoints'
+import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ title: 'Media Library' })
 
 const mediaApi = useMediaApi()
 const suggestionsApi = useSuggestionsApi()
 const playbackApi = usePlaybackApi()
+const favoritesApi = useFavoritesApi()
 const authStore = useAuthStore()
 const router = useRouter()
 const toast = useToast()
 const { updatePreferences } = useApiEndpoints()
+
+// Favorite media IDs for the current user
+const favoriteIds = ref<Set<string>>(new Set())
+
+async function loadFavorites() {
+  if (!authStore.isLoggedIn) return
+  try {
+    const recs = await favoritesApi.list()
+    favoriteIds.value = new Set((recs ?? []).map(r => r.media_id))
+  } catch { /* non-critical */ }
+}
+
+async function toggleFavorite(e: Event, item: MediaItem) {
+  e.preventDefault()
+  e.stopPropagation()
+  if (!authStore.isLoggedIn) { router.push('/login'); return }
+  const wasFav = favoriteIds.value.has(item.id)
+  // Optimistic update
+  const next = new Set(favoriteIds.value)
+  if (wasFav) { next.delete(item.id) } else { next.add(item.id) }
+  favoriteIds.value = next
+  try {
+    if (wasFav) { await favoritesApi.remove(item.id) }
+    else { await favoritesApi.add(item.id) }
+  } catch {
+    // Revert on error
+    const reverted = new Set(favoriteIds.value)
+    if (wasFav) { reverted.add(item.id) } else { reverted.delete(item.id) }
+    favoriteIds.value = reverted
+  }
+}
 
 // Playback progress (ratio 0-1) per media ID — for progress bar overlays
 const playbackProgress = ref<Record<string, number>>({})
@@ -194,7 +226,7 @@ onMounted(() => {
   load()
   // Fetch recommendations for already-logged-in users (page refresh).
   // When the user logs in mid-session, the watch above handles this instead.
-  if (authStore.isLoggedIn) loadRecommendations()
+  if (authStore.isLoggedIn) { loadRecommendations(); loadFavorites() }
   else loadGeneralSuggestions()
 })
 
@@ -614,6 +646,18 @@ onUnmounted(() => {
           <div v-if="item.is_mature && canViewMature" class="absolute top-1 right-1">
             <UBadge label="18+" color="error" variant="solid" size="xs" />
           </div>
+          <!-- Favorite button -->
+          <button
+            v-if="authStore.isLoggedIn"
+            class="absolute bottom-6 right-1 p-0.5 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+            :aria-label="favoriteIds.has(item.id) ? 'Remove from favorites' : 'Add to favorites'"
+            @click.prevent.stop="toggleFavorite($event, item)"
+          >
+            <UIcon
+              name="i-lucide-heart"
+              :class="favoriteIds.has(item.id) ? 'size-4 text-red-400 [&>svg]:fill-current' : 'size-4 text-white'"
+            />
+          </button>
         </div>
         <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}

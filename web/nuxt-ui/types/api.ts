@@ -958,3 +958,25 @@ export interface UserSession {
   ip_address: string
   user_agent: string
 }
+
+// ── Favorites ─────────────────────────────────────────────────────────────────
+
+export interface FavoriteItem {
+  id: string
+  media_id: string
+  media_path: string
+  added_at: string
+}
+
+// ── API Tokens ────────────────────────────────────────────────────────────────
+
+export interface APIToken {
+  id: string
+  name: string
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface APITokenCreated extends APIToken {
+  token: string // raw value — only available on creation response
+}

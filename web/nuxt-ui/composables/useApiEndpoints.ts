@@ -23,6 +23,7 @@ import type {
   RemoteSourceState, RemoteSourceResponse, RemoteStats, RemoteMediaItem,
   DiscoverySuggestion,
   ModuleHealth, ServerStatus,
+  FavoriteItem, APIToken, APITokenCreated,
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
@@ -562,5 +563,26 @@ export function useAnalyticsApi() {
     },
     getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
     exportCsv: () => `/api/admin/analytics/export`,
+  }
+}
+
+// ── Favorites ─────────────────────────────────────────────────────────────────
+
+export function useFavoritesApi() {
+  return {
+    list: () => api.get<FavoriteItem[]>('/api/favorites'),
+    add: (mediaId: string) => api.post<void>('/api/favorites', { media_id: mediaId }),
+    remove: (mediaId: string) => api.delete<void>(`/api/favorites/${encodeURIComponent(mediaId)}`),
+    check: (mediaId: string) => api.get<{ is_favorite: boolean }>(`/api/favorites/${encodeURIComponent(mediaId)}`),
+  }
+}
+
+// ── API Tokens ────────────────────────────────────────────────────────────────
+
+export function useAPITokensApi() {
+  return {
+    list: () => api.get<APIToken[]>('/api/auth/tokens'),
+    create: (name: string) => api.post<APITokenCreated>('/api/auth/tokens', { name }),
+    delete: (id: string) => api.delete<void>(`/api/auth/tokens/${encodeURIComponent(id)}`),
   }
 }

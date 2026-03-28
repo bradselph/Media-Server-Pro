@@ -53,6 +53,7 @@ const navLinks = computed(() => {
   ]
   if (authStore.isLoggedIn) {
     links.push({ label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' })
+    links.push({ label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart' })
     if (authStore.user?.permissions?.can_upload) {
       links.push({ label: 'Upload', to: '/upload', icon: 'i-lucide-upload' })
     }

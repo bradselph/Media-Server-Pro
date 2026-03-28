@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, UserProfile } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, UserProfile, APIToken, APITokenCreated } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { useAPITokensApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
@@ -12,6 +13,7 @@ const { changePassword, deleteAccount, getPreferences, updatePreferences } = use
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
 const { getUsage, getPermissions } = useStorageApi()
 const { getMyProfile } = useSuggestionsApi()
+const tokensApi = useAPITokensApi()
 const toast = useToast()
 
 const storageUsage = ref<StorageUsage | null>(null)
@@ -166,7 +168,47 @@ async function handleDeleteAccount() {
   }
 }
 
-onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile() })
+// API Tokens
+const tokens = ref<APIToken[]>([])
+const tokensLoading = ref(false)
+const newTokenName = ref('')
+const newTokenCreating = ref(false)
+const revealedToken = ref<string | null>(null)
+
+async function loadTokens() {
+  tokensLoading.value = true
+  try { tokens.value = (await tokensApi.list()) ?? [] }
+  catch { /* non-critical */ }
+  finally { tokensLoading.value = false }
+}
+
+async function createToken() {
+  if (!newTokenName.value.trim()) return
+  newTokenCreating.value = true
+  try {
+    const created = await tokensApi.create(newTokenName.value.trim()) as APITokenCreated
+    revealedToken.value = created.token
+    tokens.value = [{ id: created.id, name: created.name, last_used_at: created.last_used_at, created_at: created.created_at }, ...tokens.value]
+    newTokenName.value = ''
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to create token', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    newTokenCreating.value = false
+  }
+}
+
+async function revokeToken(id: string) {
+  try {
+    await tokensApi.delete(id)
+    tokens.value = tokens.value.filter(t => t.id !== id)
+    if (revealedToken.value) revealedToken.value = null
+    toast.add({ title: 'Token revoked', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens() })
 </script>
 
 <template>
@@ -379,6 +421,55 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
         </div>
         <div v-if="historyTotalPages > 1" class="flex justify-center pt-3">
           <UPagination v-model:page="historyPage" :total="filteredHistory.length" :items-per-page="historyPerPage" />
+        </div>
+      </UCard>
+
+      <!-- API Tokens -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-key-round" class="size-4" />
+            API Tokens
+          </div>
+        </template>
+        <p class="text-sm text-muted mb-4">Create tokens to access the API from scripts or tools using <code class="bg-muted/40 px-1 rounded text-xs">Authorization: Bearer &lt;token&gt;</code>.</p>
+
+        <!-- Revealed token banner -->
+        <UAlert
+          v-if="revealedToken"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="Copy your token now — it won't be shown again."
+          class="mb-4"
+        >
+          <template #description>
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
+              <code class="text-xs break-all select-all">{{ revealedToken }}</code>
+              <UButton size="xs" icon="i-lucide-x" variant="ghost" color="neutral" aria-label="Dismiss" @click="revealedToken = null" />
+            </div>
+          </template>
+        </UAlert>
+
+        <!-- Create new token -->
+        <div class="flex gap-2 mb-4">
+          <UInput v-model="newTokenName" placeholder="Token name (e.g. My Script)" class="flex-1" @keydown.enter="createToken" />
+          <UButton :loading="newTokenCreating" icon="i-lucide-plus" label="Create" @click="createToken" />
+        </div>
+
+        <!-- Token list -->
+        <div v-if="tokensLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="tokens.length === 0" class="text-sm text-muted py-2">No API tokens yet.</div>
+        <div v-else class="divide-y divide-default">
+          <div v-for="t in tokens" :key="t.id" class="flex items-center justify-between py-2 gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium truncate">{{ t.name }}</p>
+              <p class="text-xs text-muted">Created {{ new Date(t.created_at).toLocaleDateString() }}<template v-if="t.last_used_at"> · Last used {{ new Date(t.last_used_at).toLocaleDateString() }}</template></p>
+            </div>
+            <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" aria-label="Revoke token" @click="revokeToken(t.id)" />
+          </div>
         </div>
       </UCard>
 
