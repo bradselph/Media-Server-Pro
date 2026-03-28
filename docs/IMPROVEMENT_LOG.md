@@ -4,6 +4,17 @@ Automated continuous improvement cycle history.
 
 ---
 
+## Cycle 2026-03-28 23:00
+
+- Items implemented: feat(backend): hide_watched filter on GET /api/media; feat(frontend): tag chips + hide-watched toggle + player keyboard shortcuts
+- Live site checks: 5 passed, 0 failed, 0 warnings
+- Issues fixed: 0, deferred: 0
+- Build: PASS
+- Deploy: SUCCESS
+- Live site: OK
+
+---
+
 ## Cycle 2026-03-28 09:00 (Manual)
 
 **Branch:** development

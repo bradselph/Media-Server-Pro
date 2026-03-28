@@ -653,6 +653,19 @@ The following non-admin routes exist in `routes.go` but are not called by any co
 - PWA / offline — HIGH effort
 - TMDB/IMDB metadata scraping — HIGH effort
 
+### 2026-03-28 (Automated Cycle 8)
+
+**Newly completed:**
+- ~~**Tag chips on browse cards**~~ ✅ **DONE** — Frontend: up to 2 clickable tag badges on each grid card; clicking a tag activates a tag filter for the browse library. Active tag shown as a dismissable chip in the filter row. `MediaListParams.tags` added to types; `useMediaApi.list()` serialises as comma-joined string.
+- ~~**"Hide watched" filter**~~ ✅ **DONE** — Backend: `GET /api/media?hide_watched=true` excludes items the authenticated user has completed watching (`CompletedAt` set in suggestion ViewHistory). Frontend: "Hide Watched" toggle button in browse filter row (logged-in users only).
+- ~~**Player keyboard shortcuts**~~ ✅ **DONE** — Frontend: Space/K=play-pause, ←/→=±10s seek, F=fullscreen, M=mute-toggle, ?=shortcuts overlay. Keyboard button in player toolbar also opens the overlay. Only active when focus is not in an input field.
+
+**Still outstanding (Tier 3 — architecture required):**
+- Subtitle track selection — HIGH effort
+- Smart playlists (rule-based) — HIGH effort
+- PWA / offline — HIGH effort
+- TMDB/IMDB metadata scraping — HIGH effort
+
 ### 2026-03-28 (Automated Cycle 7)
 
 **Newly completed:**
