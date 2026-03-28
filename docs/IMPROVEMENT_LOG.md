@@ -138,3 +138,16 @@ Automated continuous improvement cycle history.
 - Build: PASS (go build ./... + npx nuxi typecheck)
 - Deploy: SUCCESS — /health returns 200 post-deploy
 - Live site: OK
+
+## Cycle 2026-03-28 (Scheduled)
+- Items implemented:
+  - refactor(frontend): split 807-line SourcesTab into SourcesRemotePanel, SourcesCrawlerPanel, SourcesReceiverPanel sub-components
+  - feat(frontend): previous session date in Account card (previous_last_login field added to User type)
+  - feat(frontend): media type preferences (video/audio/image) bar chart in Watch Stats on profile page
+  - feat(frontend): ratings distribution histogram (5★→1★) in My Ratings card on profile page
+  - docs: gap report updated — all task-file Tier-1 items confirmed implemented; P1 personal stats extended
+- Live site checks: 2 passed (home page + API session), 0 failed, 1 warning (/api/status returns 401 — expected)
+- Issues fixed: 0, deferred: 0
+- Build: PASS (go build ./... clean, nuxi typecheck clean)
+- Deploy: SUCCESS (--branch development)
+- Live site: OK
