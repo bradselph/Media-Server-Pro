@@ -52,10 +52,11 @@ const deleting = ref(false)
 
 async function confirmDelete() {
   if (!deleteTarget.value) return
+  const targetId = deleteTarget.value.id
   deleting.value = true
   try {
-    await playlistApi.delete(deleteTarget.value.id)
-    playlists.value = playlists.value.filter(p => p.id !== deleteTarget.value!.id)
+    await playlistApi.delete(targetId)
+    playlists.value = playlists.value.filter(p => p.id !== targetId)
     toast.add({ title: 'Playlist deleted', color: 'success', icon: 'i-lucide-check' })
     deleteTarget.value = null
   } catch (e: unknown) {

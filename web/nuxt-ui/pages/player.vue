@@ -293,7 +293,7 @@ function navigateToNextItem() {
   const next = nextPlaylistItem.value
   if (!next) return
   const newIdx = playlistIdxParam.value + 1
-  navigateTo(`/player?id=${encodeURIComponent(next.media_id)}&playlist_id=${encodeURIComponent(playlistIdParam.value!)}&playlist_idx=${newIdx}`)
+  navigateTo(`/player?id=${encodeURIComponent(next.media_id)}&playlist_id=${encodeURIComponent(playlistIdParam.value ?? '')}&playlist_idx=${newIdx}`)
 }
 
 watch(playlistIdParam, async id => {
@@ -455,12 +455,13 @@ function trackPause() {
 }
 function trackSeek() {
   if (!mediaId.value) return
+  const seekMediaId = mediaId.value
   if (seekTimer) clearTimeout(seekTimer)
   seekTimer = setTimeout(() => {
     const pos = videoRef.value?.currentTime
     analyticsApi.submitEvent({
       type: 'seek',
-      media_id: mediaId.value!,
+      media_id: seekMediaId,
       data: { position: pos !== undefined ? Math.round(pos) : 0 },
     }).catch(() => {})
     seekTimer = null
