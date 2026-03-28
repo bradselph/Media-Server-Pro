@@ -3,6 +3,7 @@ package suggestions
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/rand" // Go 1.20+ auto-seeds the default source
 	"sort"
@@ -906,6 +907,24 @@ func (m *Module) GetUserProfile(userID string) *UserProfile {
 	// Return a shallow copy to avoid exposing internal mutable state.
 	copy := *profile
 	return &copy
+}
+
+// ResetUserProfile clears the in-memory profile and deletes persisted data (profile
+// row + view history) from the database for the given user.  After the reset the
+// user starts accumulating a fresh profile from their next viewing session.
+func (m *Module) ResetUserProfile(userID string) error {
+	m.mu.Lock()
+	delete(m.profiles, userID)
+	m.mu.Unlock()
+
+	ctx := context.Background()
+	if err := m.repo.DeleteProfile(ctx, userID); err != nil {
+		return fmt.Errorf("failed to delete suggestion profile: %w", err)
+	}
+	if err := m.repo.DeleteViewHistory(ctx, userID); err != nil {
+		return fmt.Errorf("failed to delete suggestion view history: %w", err)
+	}
+	return nil
 }
 
 func (m *Module) GetStats() SuggestionStats {

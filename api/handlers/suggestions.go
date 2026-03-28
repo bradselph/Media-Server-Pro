@@ -191,6 +191,24 @@ func (h *Handler) GetMyProfile(c *gin.Context) {
 	writeSuccess(c, profile)
 }
 
+// ResetMyProfile deletes the calling user's suggestion profile and view history,
+// allowing them to start accumulating a fresh recommendation profile.
+func (h *Handler) ResetMyProfile(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+	if err := h.suggestions.ResetUserProfile(session.UserID); err != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to reset suggestion profile")
+		return
+	}
+	writeSuccess(c, nil)
+}
+
 // GetSuggestionStats returns suggestion module statistics
 func (h *Handler) GetSuggestionStats(c *gin.Context) {
 	if !h.requireSuggestions(c) {

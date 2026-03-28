@@ -426,6 +426,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/suggestions/continue", requireAuth(), h.GetContinueWatching)
 	api.GET("/suggestions/personalized", requireAuth(), h.GetPersonalizedSuggestions)
 	api.GET("/suggestions/profile", requireAuth(), h.GetMyProfile)
+	api.DELETE("/suggestions/profile", requireAuth(), h.ResetMyProfile)
 	api.GET("/suggestions/recent", h.GetRecentContent)
 	api.GET("/suggestions/new", requireAuth(), h.GetNewSinceLastVisit)
 	api.GET("/suggestions/on-deck", requireAuth(), h.GetOnDeck)
