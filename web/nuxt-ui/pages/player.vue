@@ -335,8 +335,64 @@ function onPiPChange() {
   isPiP.value = document.pictureInPictureElement === videoRef.value
 }
 
-onMounted(() => { document.addEventListener('fullscreenchange', () => { isFullscreen.value = !!document.fullscreenElement }) })
-onUnmounted(() => { if (controlsTimer) clearTimeout(controlsTimer) })
+// Keyboard shortcuts overlay
+const showShortcuts = ref(false)
+
+function toggleMute() {
+  if (!videoRef.value) return
+  setVolume(videoRef.value.volume > 0 ? 0 : Math.max(volume.value, 0.5))
+}
+
+function onKeyDown(e: KeyboardEvent) {
+  // Don't intercept when user is typing in an input/textarea
+  const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+
+  switch (e.key) {
+    case ' ':
+    case 'k':
+      e.preventDefault()
+      togglePlay()
+      resetControlsTimer()
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      seek(-10)
+      resetControlsTimer()
+      break
+    case 'ArrowRight':
+      e.preventDefault()
+      seek(10)
+      resetControlsTimer()
+      break
+    case 'f':
+    case 'F':
+      e.preventDefault()
+      toggleFullscreen()
+      break
+    case 'm':
+    case 'M':
+      e.preventDefault()
+      toggleMute()
+      break
+    case '?':
+      e.preventDefault()
+      showShortcuts.value = !showShortcuts.value
+      break
+    case 'Escape':
+      if (showShortcuts.value) { e.preventDefault(); showShortcuts.value = false }
+      break
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('fullscreenchange', () => { isFullscreen.value = !!document.fullscreenElement })
+  document.addEventListener('keydown', onKeyDown)
+})
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeyDown)
+  if (controlsTimer) clearTimeout(controlsTimer)
+})
 
 function cycleSpeed() {
   const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2]
@@ -633,6 +689,15 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
                   @click="cycleLoop"
                 />
                 <UButton
+                  icon="i-lucide-keyboard"
+                  aria-label="Keyboard shortcuts"
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  class="text-white"
+                  @click.stop="showShortcuts = !showShortcuts"
+                />
+                <UButton
                   :icon="isFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
                   :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
                   variant="ghost"
@@ -644,6 +709,30 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
               </div>
             </div>
           </div>
+
+          <!-- Keyboard shortcuts overlay -->
+          <Transition name="fade">
+            <div
+              v-if="showShortcuts"
+              class="absolute inset-0 flex items-center justify-center bg-black/80 z-30"
+              @click.stop="showShortcuts = false"
+            >
+              <div class="bg-elevated rounded-xl p-6 max-w-xs w-full mx-4 shadow-xl" @click.stop>
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-semibold text-highlighted text-base">Keyboard Shortcuts</h3>
+                  <UButton icon="i-lucide-x" variant="ghost" color="neutral" size="xs" aria-label="Close" @click="showShortcuts = false" />
+                </div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Space / K</span><span class="text-muted">Play / Pause</span>
+                  <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">← →</span><span class="text-muted">Skip ±10 seconds</span>
+                  <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">F</span><span class="text-muted">Toggle fullscreen</span>
+                  <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">M</span><span class="text-muted">Mute / Unmute</span>
+                  <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">?</span><span class="text-muted">Show this overlay</span>
+                  <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Esc</span><span class="text-muted">Close overlay</span>
+                </div>
+              </div>
+            </div>
+          </Transition>
         </div>
         <div v-else class="max-md:px-4">
           <!-- Audio player -->

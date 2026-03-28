@@ -157,6 +157,26 @@ async function surpriseMe() {
   } catch { /* non-critical */ }
 }
 
+// Tag filter — single active tag (clicking a card tag sets this; clear X removes it)
+const filterTag = ref('')
+
+// Hide watched toggle — only active for logged-in users
+const hideWatched = ref(false)
+
+function setTagFilter(tag: string) {
+  filterTag.value = tag
+  params.page = 1
+  load()
+}
+
+function clearTagFilter() {
+  filterTag.value = ''
+  params.page = 1
+  load()
+}
+
+watch(hideWatched, () => { params.page = 1; load() })
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -165,6 +185,8 @@ async function load() {
       ...params,
       type: params.type === 'all' ? '' : params.type,
       category: params.category === 'all' ? '' : params.category,
+      ...(filterTag.value ? { tags: [filterTag.value] } : {}),
+      ...(hideWatched.value && authStore.isLoggedIn ? { hide_watched: true } : {}),
     }
     const res = await mediaApi.list(apiParams)
     items.value = res.items ?? []
@@ -598,6 +620,29 @@ onUnmounted(() => {
         aria-label="Pick a random item to watch"
         @click="surpriseMe"
       />
+      <!-- Active tag filter chip -->
+      <UButton
+        v-if="filterTag"
+        :label="filterTag"
+        icon="i-lucide-tag"
+        trailing-icon="i-lucide-x"
+        variant="soft"
+        color="primary"
+        size="sm"
+        aria-label="Clear tag filter"
+        @click="clearTagFilter"
+      />
+      <!-- Hide watched toggle (logged-in users only) -->
+      <UButton
+        v-if="authStore.isLoggedIn"
+        :icon="hideWatched ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+        :label="hideWatched ? 'Showing unwatched' : 'Hide watched'"
+        :variant="hideWatched ? 'solid' : 'ghost'"
+        :color="hideWatched ? 'primary' : 'neutral'"
+        size="sm"
+        :aria-label="hideWatched ? 'Show all items' : 'Hide completed items'"
+        @click="hideWatched = !hideWatched"
+      />
       <div class="ml-auto flex items-center gap-1">
         <p class="text-sm text-muted mr-2">{{ total.toLocaleString() }} items</p>
         <UButtonGroup>
@@ -752,6 +797,19 @@ onUnmounted(() => {
           {{ getDisplayTitle(item) }}
         </p>
         <p v-if="item.category && !(item.is_mature && !canViewMature)" class="text-xs text-muted truncate">{{ item.category }}</p>
+        <!-- Tag chips — click to filter by tag (hidden for gated items) -->
+        <div
+          v-if="item.tags?.length && !(item.is_mature && !canViewMature)"
+          class="flex gap-1 flex-wrap mt-0.5"
+        >
+          <button
+            v-for="tag in item.tags.slice(0, 2)"
+            :key="tag"
+            class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted hover:bg-primary/20 hover:text-primary transition-colors"
+            :aria-label="`Filter by tag: ${tag}`"
+            @click.prevent.stop="setTagFilter(tag)"
+          >{{ tag }}</button>
+        </div>
       </NuxtLink>
       <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
         No media found.

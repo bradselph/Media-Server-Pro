@@ -83,10 +83,14 @@ export function useMediaApi() {
       const qs = new URLSearchParams()
       if (params) {
         // Backend reads query param "sort" (see handlers.ListMedia), not sort_by.
-        const { page, limit, sort_order, sort_by, sort, ...rest } = params
+        const { page, limit, sort_order, sort_by, sort, tags, hide_watched, ...rest } = params
         Object.entries(rest).forEach(([k, v]) => {
           if (v !== undefined && v !== '') qs.set(k, String(v))
         })
+        // tags is an array — serialise as comma-joined string (backend splits on comma)
+        if (tags && tags.length > 0) qs.set('tags', tags.join(','))
+        // hide_watched is a boolean — only send when true to avoid adding a false param
+        if (hide_watched) qs.set('hide_watched', 'true')
         const sortKey = sort ?? sort_by
         if (sortKey !== undefined && sortKey !== '') qs.set('sort', String(sortKey))
         if (limit !== undefined) qs.set('limit', String(limit))
