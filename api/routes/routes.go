@@ -316,6 +316,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
+	api.GET("/playback/batch", requireAuth(), h.GetBatchPlaybackPositions)
 	api.POST("/playback", requireAuth(), h.TrackPlayback)
 
 	// HLS API routes (capabilities and status require auth to prevent fingerprinting)
@@ -404,6 +405,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Protected suggestions routes
 	api.GET("/suggestions/continue", requireAuth(), h.GetContinueWatching)
 	api.GET("/suggestions/personalized", requireAuth(), h.GetPersonalizedSuggestions)
+	api.GET("/suggestions/profile", requireAuth(), h.GetMyProfile)
 	api.POST("/ratings", requireAuth(), h.RecordRating)
 
 	// Upload routes (protected)

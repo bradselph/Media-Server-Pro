@@ -53,6 +53,7 @@ type MediaMetadataRepository interface {
 	IncrementViews(ctx context.Context, path string) error
 	UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error
 	GetPlaybackPosition(ctx context.Context, path, userID string) (float64, error)
+	BatchGetPlaybackPositions(ctx context.Context, paths []string, userID string) (map[string]float64, error)
 	DeleteAllPlaybackPositionsByUser(ctx context.Context, userID string) error
 	// UpdateBlurHash updates the BlurHash for a metadata row by path
 	UpdateBlurHash(ctx context.Context, path string, blurHash string) error

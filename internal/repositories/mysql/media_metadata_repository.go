@@ -344,6 +344,26 @@ func (r *MediaMetadataRepository) DeleteAllPlaybackPositionsByUser(ctx context.C
 	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&playbackPositionRow{}).Error
 }
 
+// BatchGetPlaybackPositions retrieves playback positions for multiple paths for a user.
+// Returns a map of path → position; paths with no stored position are omitted.
+func (r *MediaMetadataRepository) BatchGetPlaybackPositions(ctx context.Context, paths []string, userID string) (map[string]float64, error) {
+	if len(paths) == 0 {
+		return map[string]float64{}, nil
+	}
+	var rows []playbackPositionRow
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND path IN ?", userID, paths).
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to batch-query playback positions: %w", err)
+	}
+	result := make(map[string]float64, len(rows))
+	for _, row := range rows {
+		result[row.Path] = row.Position
+	}
+	return result, nil
+}
+
 // GetPlaybackPosition retrieves the playback position for a user
 func (r *MediaMetadataRepository) GetPlaybackPosition(ctx context.Context, path, userID string) (float64, error) {
 	var row playbackPositionRow

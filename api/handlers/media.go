@@ -535,6 +535,34 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	}
 }
 
+// GetBatchPlaybackPositions returns playback positions for multiple media IDs.
+// Query param: ids=id1,id2,... (max 100)
+func (h *Handler) GetBatchPlaybackPositions(c *gin.Context) {
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	raw := c.Query("ids")
+	if raw == "" {
+		writeSuccess(c, map[string]float64{})
+		return
+	}
+
+	ids := strings.Split(raw, ",")
+	if len(ids) > 100 {
+		ids = ids[:100]
+	}
+	// Trim whitespace from each ID.
+	for i, id := range ids {
+		ids[i] = strings.TrimSpace(id)
+	}
+
+	positions := h.media.BatchGetPlaybackPositions(c.Request.Context(), ids, session.UserID)
+	writeSuccess(c, map[string]interface{}{"positions": positions})
+}
+
 // GetPlaybackPosition returns the saved playback position for the current user.
 func (h *Handler) GetPlaybackPosition(c *gin.Context) {
 	id := c.Query("id")

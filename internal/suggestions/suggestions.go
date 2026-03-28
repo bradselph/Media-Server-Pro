@@ -894,6 +894,20 @@ func (m *Module) GetContinueWatching(userID string, limit int, canViewMature boo
 }
 
 // GetStats returns suggestion module statistics
+// GetUserProfile returns a copy of the user's suggestion profile, or nil if not found.
+func (m *Module) GetUserProfile(userID string) *UserProfile {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	profile, ok := m.profiles[userID]
+	if !ok {
+		return nil
+	}
+	// Return a shallow copy to avoid exposing internal mutable state.
+	copy := *profile
+	return &copy
+}
+
 func (m *Module) GetStats() SuggestionStats {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

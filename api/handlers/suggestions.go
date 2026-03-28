@@ -160,6 +160,31 @@ func (h *Handler) RecordRating(c *gin.Context) {
 	writeSuccess(c, nil)
 }
 
+// GetMyProfile returns the calling user's suggestion profile (watch stats, category scores).
+func (h *Handler) GetMyProfile(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+	profile := h.suggestions.GetUserProfile(session.UserID)
+	if profile == nil {
+		// Return an empty profile so the frontend always gets a valid object.
+		writeSuccess(c, map[string]interface{}{
+			"user_id":          session.UserID,
+			"total_views":      0,
+			"total_watch_time": 0.0,
+			"category_scores":  map[string]float64{},
+			"type_preferences": map[string]float64{},
+		})
+		return
+	}
+	writeSuccess(c, profile)
+}
+
 // GetSuggestionStats returns suggestion module statistics
 func (h *Handler) GetSuggestionStats(c *gin.Context) {
 	if !h.requireSuggestions(c) {
