@@ -347,7 +347,15 @@ function getThumbSrc(id: string): string {
   return mediaApi.getThumbnailUrl(id)
 }
 
-function onThumbnailError(id: string) {
+function onThumbnailError(event: Event, id: string) {
+  const src = (event.target as HTMLImageElement)?.src ?? ''
+  // Preview frames have '_preview_' in the path; if one 404s (still generating),
+  // clear the cache and stop cycling — do NOT mark the item as a failed thumbnail.
+  if (src.includes('_preview_')) {
+    previewCache.delete(id)
+    if (hoverItemId.value === id) onMediaHoverLeave()
+    return
+  }
   failedThumbnails.add(id)
   scheduleThumbnailRetry(id, failedThumbnails)
 }
@@ -672,7 +680,7 @@ onUnmounted(() => {
             :alt="getDisplayTitle(item)"
             :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
             loading="lazy"
-            @error="onThumbnailError(item.id)"
+            @error="onThumbnailError($event, item.id)"
           />
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
@@ -772,7 +780,7 @@ onUnmounted(() => {
                 :alt="getDisplayTitle(row.original)"
                 :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-xl saturate-0' : '']"
                 loading="lazy"
-                @error="onThumbnailError(row.original.id)"
+                @error="onThumbnailError($event, row.original.id)"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon :name="row.original.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-4 text-muted" />
