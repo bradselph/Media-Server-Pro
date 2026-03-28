@@ -414,6 +414,27 @@ var tableDefs = []struct {
 			INDEX idx_dup_fingerprint (fingerprint),
 			INDEX idx_dup_status (status)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"user_favorites", `
+		CREATE TABLE IF NOT EXISTS user_favorites (
+			id         VARCHAR(255) PRIMARY KEY,
+			user_id    VARCHAR(255) NOT NULL,
+			media_id   VARCHAR(255) NOT NULL,
+			media_path VARCHAR(500) NOT NULL,
+			added_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_fav_user_media (user_id, media_id),
+			INDEX idx_fav_user (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"user_api_tokens", `
+		CREATE TABLE IF NOT EXISTS user_api_tokens (
+			id           VARCHAR(255) PRIMARY KEY,
+			user_id      VARCHAR(255) NOT NULL,
+			name         VARCHAR(255) NOT NULL,
+			token_hash   VARCHAR(64)  NOT NULL,
+			last_used_at TIMESTAMP    NULL,
+			created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_api_token_hash (token_hash),
+			INDEX idx_api_token_user (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 }
 
 // ensureSchema idempotently creates all required tables and columns.

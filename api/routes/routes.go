@@ -31,11 +31,11 @@ const (
 	pathStats             = "/stats"
 )
 
-// sessionAuth loads session/user context from the session_id cookie and stores
-// both on the gin context so downstream handlers and auth middleware can read them.
-// Both admin and regular users share the session_id cookie.
+// sessionAuth loads session/user context from the session_id cookie (or a Bearer
+// API token) and stores both on the gin context so downstream handlers can read them.
 func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Cookie-based session (browser clients)
 		cookie, err := c.Cookie("session_id")
 		if err == nil && cookie != "" {
 			session, user, err := authModule.ValidateSession(c.Request.Context(), cookie)
@@ -44,8 +44,6 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 				c.Set("user", user)
 			} else {
 				// Clear stale/expired cookie so the browser stops resending it.
-				// Mirror the same HTTPS detection used in handlers.isSecureRequest:
-				// check TLS, X-Forwarded-Proto, and the Cloudflare visitor header.
 				secure := c.Request.TLS != nil ||
 					c.GetHeader("X-Forwarded-Proto") == "https" ||
 					strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
@@ -58,6 +56,16 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 					Secure:   secure,
 					SameSite: http.SameSiteStrictMode,
 				})
+			}
+			c.Next()
+			return
+		}
+		// Bearer API token (programmatic / headless clients)
+		if bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "); bearer != "" {
+			session, user, err := authModule.ValidateAPIToken(c.Request.Context(), bearer)
+			if err == nil {
+				c.Set("session", session)
+				c.Set("user", user)
 			}
 		}
 		c.Next()
@@ -361,6 +369,17 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 
 	// Self-service account deletion (protected) — user must confirm with their password
 	api.POST("/auth/delete-account", requireAuth(), h.DeleteAccount)
+
+	// User API tokens — programmatic access for scripts and tools
+	api.GET("/auth/tokens", requireAuth(), h.ListAPITokens)
+	api.POST("/auth/tokens", requireAuth(), h.CreateAPIToken)
+	api.DELETE("/auth/tokens/:id", requireAuth(), h.DeleteAPIToken)
+
+	// Favorites (Watch Later)
+	api.GET("/favorites", requireAuth(), h.GetFavorites)
+	api.POST("/favorites", requireAuth(), h.AddFavorite)
+	api.GET("/favorites/:media_id", requireAuth(), h.CheckFavorite)
+	api.DELETE("/favorites/:media_id", requireAuth(), h.RemoveFavorite)
 
 	// Watch history routes (protected)
 	api.GET(pathWatchHistory, requireAuth(), h.GetWatchHistory)

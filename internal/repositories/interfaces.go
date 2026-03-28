@@ -529,3 +529,39 @@ type CrawlerDiscoveryRecord struct {
 	ReviewedAt      *time.Time
 	DiscoveredAt    time.Time
 }
+
+// FavoriteRepository provides user favorites (Watch Later) storage.
+type FavoriteRepository interface {
+	Add(ctx context.Context, rec *FavoriteRecord) error
+	Remove(ctx context.Context, userID, mediaID string) error
+	List(ctx context.Context, userID string) ([]*FavoriteRecord, error)
+	Exists(ctx context.Context, userID, mediaID string) (bool, error)
+}
+
+// FavoriteRecord represents a single user favorite entry.
+type FavoriteRecord struct {
+	ID        string
+	UserID    string
+	MediaID   string
+	MediaPath string
+	AddedAt   time.Time
+}
+
+// APITokenRepository provides user API token storage.
+type APITokenRepository interface {
+	Create(ctx context.Context, token *APITokenRecord) error
+	GetByHash(ctx context.Context, tokenHash string) (*APITokenRecord, error)
+	ListByUser(ctx context.Context, userID string) ([]*APITokenRecord, error)
+	Delete(ctx context.Context, id, userID string) error
+	UpdateLastUsed(ctx context.Context, tokenHash string) error
+}
+
+// APITokenRecord represents a stored API token (raw value is never stored).
+type APITokenRecord struct {
+	ID         string
+	UserID     string
+	Name       string
+	TokenHash  string
+	LastUsedAt *time.Time
+	CreatedAt  time.Time
+}

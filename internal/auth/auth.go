@@ -50,6 +50,8 @@ type Module struct {
 	dbModule      *database.Module
 	userRepo      repositories.UserRepository
 	sessionRepo   repositories.SessionRepository
+	favoriteRepo  repositories.FavoriteRepository
+	tokenRepo     repositories.APITokenRepository
 	users         map[string]*models.User    // Kept for backward compatibility and caching
 	sessions      map[string]*models.Session // Kept for backward compatibility and caching
 	adminSessions map[string]*models.AdminSession
@@ -110,6 +112,8 @@ func (m *Module) Start(ctx context.Context) error {
 	m.log.Info("Using MySQL repositories for auth")
 	m.userRepo = mysql.NewUserRepository(m.dbModule.GORM())
 	m.sessionRepo = mysql.NewSessionRepository(m.dbModule.GORM())
+	m.favoriteRepo = mysql.NewFavoritesRepository(m.dbModule.GORM())
+	m.tokenRepo = mysql.NewAPITokenRepository(m.dbModule.GORM())
 
 	m.loadUsersIntoMap(ctx)
 	m.loadSessionsFromRepo(ctx)
