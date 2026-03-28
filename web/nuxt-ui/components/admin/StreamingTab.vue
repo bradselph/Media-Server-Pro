@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { HLSJob, HLSStats } from '~/types/api'
 import { formatBytes } from '~/utils/format'
+import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -9,14 +10,44 @@ const jobs = ref<HLSJob[]>([])
 const stats = ref<HLSStats | null>(null)
 const loading = ref(true)
 
+const fullConfig = ref<Record<string, unknown>>({})
+const autoGenerate = ref(false)
+const configSaving = ref(false)
+
 async function load() {
   loading.value = true
   try {
-    const [j, s] = await Promise.allSettled([adminApi.listHLSJobs(), adminApi.getHLSStats()])
+    const [j, s, cfg] = await Promise.allSettled([
+      adminApi.listHLSJobs(),
+      adminApi.getHLSStats(),
+      adminApi.getConfig(),
+    ])
     if (j.status === 'fulfilled') jobs.value = j.value ?? []
     if (s.status === 'fulfilled') stats.value = s.value
+    if (cfg.status === 'fulfilled' && cfg.value) {
+      fullConfig.value = cfg.value
+      autoGenerate.value = asRecord(cfg.value.hls)?.auto_generate === true
+    }
   } finally {
     loading.value = false
+  }
+}
+
+async function saveAutoGenerate(value: boolean) {
+  configSaving.value = true
+  try {
+    const updated = {
+      ...fullConfig.value,
+      hls: { ...asRecord(fullConfig.value.hls), auto_generate: value },
+    }
+    await adminApi.updateConfig(updated)
+    fullConfig.value = updated
+    autoGenerate.value = value
+    toast.add({ title: 'HLS settings saved', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    configSaving.value = false
   }
 }
 
@@ -51,6 +82,22 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+    <!-- Config -->
+    <UCard :ui="{ body: 'p-4' }">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="font-medium text-sm text-highlighted">Auto-generate HLS on scan</p>
+          <p class="text-xs text-muted mt-0.5">Automatically create HLS variants when new media is discovered during a library scan</p>
+        </div>
+        <USwitch
+          :model-value="autoGenerate"
+          :disabled="configSaving || loading"
+          aria-label="Auto-generate HLS on scan"
+          @update:model-value="saveAutoGenerate"
+        />
+      </div>
+    </UCard>
+
     <!-- Stats -->
     <div v-if="stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <UCard v-for="item in [
