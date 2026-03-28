@@ -236,7 +236,7 @@ function toggleFullscreen() {
 }
 
 const isPiP = ref(false)
-const pipSupported = import.meta.client && 'pictureInPictureEnabled' in document
+const pipSupported: boolean = !!(import.meta.client && 'pictureInPictureEnabled' in document)
 
 // Playlist context (passed from playlists page via URL query params)
 const playlistIdParam = computed(() => route.query.playlist_id as string | undefined)
