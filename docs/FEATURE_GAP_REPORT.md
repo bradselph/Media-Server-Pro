@@ -4,6 +4,11 @@
 > Based on: api_spec/openapi.yaml + web/nuxt-ui/ + internal/ modules + database schema
 > Updated: 2026-03-28 — P0 items 1, 2, 4, 5, 6, 7 resolved in subsequent improvement cycles.
 > P0 item 3 (export visibility) improved. P2 docs/metrics links added to admin.
+> Updated: 2026-03-28 (cycle 4) — P1 item 12 (personal stats) extended: type_preferences visualization
+> and ratings distribution histogram added to profile page. P2 previous_last_login shown in Account card.
+> SourcesTab (807 lines) refactored into SourcesRemotePanel, SourcesCrawlerPanel, SourcesReceiverPanel sub-components.
+> All listed task-file Tier-1 items now confirmed implemented: progress bars, RSS, user tokens, favorites,
+> timestamp deep-links, OpenAPI link, personal stats, persist filter prefs.
 
 ---
 

@@ -175,3 +175,18 @@ previous_last_login tracking) committed to `development` branch. Awaiting deploy
 
 Note: New features (persist playback speed, On Deck next-episode row, watch history
 completion filter) committed to `development` branch. Awaiting deploy.
+
+## Audit 2026-03-28 (Scheduled)
+
+| Check                | Result | Notes                                                       |
+|----------------------|--------|-------------------------------------------------------------|
+| Home page            | PASS   | 200 OK                                                      |
+| API health           | PASS   | /api/auth/session returns valid JSON (guests allowed)       |
+| /api/status          | WARN   | Returns 401 — auth-gated; site and API server are live      |
+| Media player         | SKIP   | Chrome DevTools MCP unavailable                             |
+| Browse & search      | SKIP   | Chrome DevTools MCP unavailable                             |
+| Surprise Me          | SKIP   | Chrome DevTools MCP unavailable                             |
+| Mobile (375px)       | SKIP   | Chrome DevTools MCP unavailable                             |
+| Admin panel          | SKIP   | Chrome DevTools MCP unavailable                             |
+
+Critical: 0 | Warnings: 1 (expected 401 on auth-gated endpoint)
