@@ -189,6 +189,32 @@ async function moveItem(idx: number, direction: -1 | 1) {
   }
 }
 
+// Public playlists
+const publicPlaylists = ref<Playlist[]>([])
+const publicLoading = ref(false)
+const showPublic = ref(false)
+
+async function loadPublicPlaylists() {
+  if (publicPlaylists.value.length > 0) return
+  publicLoading.value = true
+  try { publicPlaylists.value = (await playlistApi.listPublic()) ?? [] }
+  catch { publicPlaylists.value = [] }
+  finally { publicLoading.value = false }
+}
+
+async function copyPublicPlaylist(pl: Playlist) {
+  copyingId.value = pl.id
+  try {
+    const copy = await playlistApi.copy(pl.id, `${pl.name} (copy)`)
+    playlists.value.unshift(copy)
+    toast.add({ title: 'Playlist saved to your library', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to copy playlist', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    copyingId.value = null
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -393,6 +419,63 @@ onMounted(load)
           <UButton :loading="deleting" color="error" label="Delete" @click="confirmDelete" />
         </template>
       </UModal>
+
+      <!-- Public Playlist Browsing -->
+      <div class="pt-2">
+        <button
+          class="flex items-center gap-2 text-sm font-medium text-muted hover:text-default transition-colors w-full"
+          @click="showPublic = !showPublic; showPublic && loadPublicPlaylists()"
+        >
+          <UIcon name="i-lucide-globe" class="size-4" />
+          Public Playlists
+          <UIcon :name="showPublic ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-4 ml-auto" />
+        </button>
+
+        <div v-if="showPublic" class="mt-3 space-y-2">
+          <div v-if="publicLoading" class="flex justify-center py-6">
+            <UIcon name="i-lucide-loader-2" class="animate-spin size-5 text-primary" />
+          </div>
+          <div v-else-if="publicPlaylists.length === 0" class="text-center py-6 text-muted text-sm">
+            <UIcon name="i-lucide-globe" class="size-8 mx-auto mb-2 opacity-40" />
+            <p>No public playlists yet.</p>
+          </div>
+          <div v-else class="grid sm:grid-cols-2 gap-3">
+            <UCard
+              v-for="pl in publicPlaylists"
+              :key="pl.id"
+              :ui="{ body: 'p-3' }"
+            >
+              <div class="flex items-start gap-3">
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-sm truncate">{{ pl.name }}</p>
+                  <p class="text-xs text-muted mt-0.5">{{ (pl.items ?? []).length }} items</p>
+                  <p v-if="pl.description" class="text-xs text-muted truncate mt-0.5">{{ pl.description }}</p>
+                </div>
+                <div class="flex gap-1 shrink-0">
+                  <UButton
+                    icon="i-lucide-play"
+                    size="xs"
+                    variant="ghost"
+                    color="primary"
+                    aria-label="Play playlist"
+                    :to="pl.items?.[0] ? `/player?id=${encodeURIComponent(pl.items[0].media_id)}&playlist=${encodeURIComponent(pl.id)}` : undefined"
+                    :disabled="!pl.items?.length"
+                  />
+                  <UButton
+                    icon="i-lucide-copy"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    aria-label="Copy to my playlists"
+                    :loading="copyingId === pl.id"
+                    @click="copyPublicPlaylist(pl)"
+                  />
+                </div>
+              </div>
+            </UCard>
+          </div>
+        </div>
+      </div>
     </template>
   </UContainer>
 </template>

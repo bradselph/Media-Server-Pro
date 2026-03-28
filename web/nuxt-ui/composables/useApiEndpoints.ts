@@ -201,6 +201,7 @@ export function useStorageApi() {
 export function usePlaylistApi() {
   return {
     list: () => api.get<Playlist[]>('/api/playlists'),
+    listPublic: () => api.get<Playlist[]>('/api/playlists/public'),
     get: (id: string) => api.get<Playlist>(`/api/playlists/${encodeURIComponent(id)}`),
     create: (data: { name: string; description?: string; is_public?: boolean }) =>
       api.post<Playlist>('/api/playlists', data),
