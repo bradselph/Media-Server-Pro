@@ -48,6 +48,7 @@ export interface User {
   enabled: boolean
   created_at: string
   last_login?: string
+  previous_last_login?: string
   storage_used: number
   active_streams: number
   watch_history?: WatchHistoryItem[]

@@ -205,6 +205,21 @@ async function handleDeleteAccount() {
 const myRatings = ref<RatedItem[]>([])
 const ratingsLoading = ref(false)
 
+const ratingsDistribution = computed(() => {
+  if (!myRatings.value.length) return []
+  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  for (const r of myRatings.value) {
+    const star = Math.round(r.rating)
+    if (star >= 1 && star <= 5) counts[star]++
+  }
+  const max = Math.max(...Object.values(counts))
+  return [5, 4, 3, 2, 1].map(star => ({
+    star,
+    count: counts[star],
+    pct: max > 0 ? Math.round((counts[star] / max) * 100) : 0,
+  }))
+})
+
 async function loadMyRatings() {
   ratingsLoading.value = true
   try { myRatings.value = (await ratingsApi.getMyRatings()) ?? [] }
@@ -280,6 +295,7 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
             <div class="flex items-center gap-2 mt-1 flex-wrap">
               <UBadge :label="authStore.user.role" :color="authStore.isAdmin ? 'warning' : 'neutral'" variant="subtle" size="xs" />
               <span class="text-sm text-muted">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
+              <span v-if="authStore.user.previous_last_login" class="text-sm text-muted">· Previous session: {{ new Date(authStore.user.previous_last_login).toLocaleDateString() }}</span>
             </div>
             <div v-if="storageUsage" class="mt-2 max-w-xs space-y-1">
               <div class="flex justify-between text-xs text-muted">
@@ -350,6 +366,28 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
             </div>
           </div>
         </div>
+        <div v-if="userProfile && Object.keys(userProfile.type_preferences).length > 0" class="mt-3 pt-3 border-t border-default">
+          <p class="text-xs text-muted mb-1.5 font-medium">By media type</p>
+          <div class="flex flex-wrap gap-x-6 gap-y-1">
+            <div
+              v-for="[mtype, score] in Object.entries(userProfile.type_preferences).sort((a, b) => (b[1] as number) - (a[1] as number))"
+              :key="mtype"
+              class="flex items-center gap-1.5 min-w-32"
+            >
+              <UIcon
+                :name="mtype === 'video' ? 'i-lucide-film' : mtype === 'audio' ? 'i-lucide-music' : 'i-lucide-image'"
+                class="size-3 text-muted shrink-0"
+              />
+              <span class="text-xs text-default capitalize w-10 shrink-0">{{ mtype }}</span>
+              <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-primary rounded-full"
+                  :style="{ width: `${Math.min(100, Math.round(((score as number) / ((Object.values(userProfile.type_preferences)[0] as number) ?? 1)) * 100))}%` }"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </UCard>
 
       <!-- My Ratings -->
@@ -364,7 +402,17 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
         <div v-if="ratingsLoading" class="flex justify-center py-4">
           <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
         </div>
-        <div v-else class="flex gap-3 overflow-x-auto pb-2">
+        <template v-else>
+          <div v-if="ratingsDistribution.length > 0" class="mb-3 pb-3 border-b border-default space-y-0.5">
+            <div v-for="row in ratingsDistribution" :key="row.star" class="flex items-center gap-2">
+              <span class="text-xs text-muted w-5 shrink-0">{{ row.star }}★</span>
+              <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div class="h-full bg-yellow-400 rounded-full" :style="{ width: `${row.pct}%` }" />
+              </div>
+              <span class="text-xs text-muted w-4 text-right shrink-0">{{ row.count }}</span>
+            </div>
+          </div>
+        <div class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="item in myRatings"
             :key="item.media_id"
@@ -392,6 +440,7 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
             <p class="text-xs text-muted truncate">{{ item.category || item.media_type }}</p>
           </NuxtLink>
         </div>
+        </template>
       </UCard>
 
       <!-- Preferences -->
