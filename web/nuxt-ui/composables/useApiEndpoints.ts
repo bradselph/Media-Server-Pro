@@ -15,7 +15,7 @@ import type {
   ReceiverSlave, ReceiverMedia, ReceiverStats, ReceiverDuplicate, SlaveNode,
   CrawlerTarget, CrawlerDiscovery, CrawlerStats, ExtractorItem, ExtractorStats,
   DownloaderJob, DownloaderHealth, DownloaderDetectResult, DownloaderSettings, ImportableFile, ImportResult,
-  WatchHistoryItem, Suggestion, SuggestionStats, StorageUsage, PermissionsInfo,
+  WatchHistoryItem, Suggestion, SuggestionStats, StorageUsage, PermissionsInfo, UserProfile,
   ServerSettings, AgeGateStatus,
   ClassifyStatus, ClassifyStats,
   ValidationResult, ValidatorStats,
@@ -132,6 +132,8 @@ export function usePlaybackApi() {
     getPosition: (id: string) => api.get<{ position: number }>(`/api/playback?id=${encodeURIComponent(id)}`),
     savePosition: (id: string, position: number, duration: number) =>
       api.post<void>('/api/playback', { id, position, duration }),
+    getBatchPositions: (ids: string[]) =>
+      api.get<{ positions: Record<string, number> }>(`/api/playback/batch?ids=${ids.map(encodeURIComponent).join(',')}`),
   }
 }
 
@@ -155,6 +157,7 @@ export function useSuggestionsApi() {
     getContinueWatching: () => api.get<Suggestion[]>('/api/suggestions/continue'),
     getPersonalized: (limit?: number) =>
       api.get<Suggestion[]>(`/api/suggestions/personalized${limit ? `?limit=${limit}` : ''}`),
+    getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),
   }
 }
 

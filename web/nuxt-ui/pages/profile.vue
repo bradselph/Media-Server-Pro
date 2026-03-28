@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, UserProfile } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
@@ -11,6 +11,7 @@ const router = useRouter()
 const { changePassword, deleteAccount, getPreferences, updatePreferences } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
 const { getUsage, getPermissions } = useStorageApi()
+const { getMyProfile } = useSuggestionsApi()
 const toast = useToast()
 
 const storageUsage = ref<StorageUsage | null>(null)
@@ -21,6 +22,20 @@ async function loadStorageUsage() {
     if (u.status === 'fulfilled') storageUsage.value = u.value
     if (p.status === 'fulfilled') permissionsInfo.value = p.value
   } catch { /* optional */ }
+}
+
+const userProfile = ref<UserProfile | null>(null)
+async function loadUserProfile() {
+  try { userProfile.value = await getMyProfile() }
+  catch { /* non-critical */ }
+}
+
+function formatWatchTime(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
 // Redirect if not logged in
@@ -151,7 +166,7 @@ async function handleDeleteAccount() {
   }
 }
 
-onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
+onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile() })
 </script>
 
 <template>
@@ -196,6 +211,44 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
                 :variant="allowed ? 'subtle' : 'outline'"
                 size="xs"
               />
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <!-- Watch Stats -->
+      <UCard v-if="userProfile && (userProfile.total_views > 0 || userProfile.total_watch_time > 0)">
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-bar-chart-2" class="size-4" />
+            Watch Stats
+          </div>
+        </template>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div class="text-center">
+            <p class="text-2xl font-bold text-primary">{{ userProfile.total_views.toLocaleString() }}</p>
+            <p class="text-xs text-muted mt-0.5">Total views</p>
+          </div>
+          <div class="text-center">
+            <p class="text-2xl font-bold text-primary">{{ formatWatchTime(userProfile.total_watch_time) }}</p>
+            <p class="text-xs text-muted mt-0.5">Watch time</p>
+          </div>
+          <div class="col-span-2 sm:col-span-2">
+            <p class="text-xs text-muted mb-1.5 font-medium">Top categories</p>
+            <div class="space-y-1">
+              <div
+                v-for="[cat, score] in Object.entries(userProfile.category_scores).sort((a, b) => b[1] - a[1]).slice(0, 3)"
+                :key="cat"
+                class="flex items-center gap-2"
+              >
+                <span class="text-xs text-default truncate w-24 shrink-0">{{ cat || 'Uncategorized' }}</span>
+                <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-primary rounded-full"
+                    :style="{ width: `${Math.min(100, Math.round((score / (Object.values(userProfile.category_scores)[0] ?? 1)) * 100))}%` }"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

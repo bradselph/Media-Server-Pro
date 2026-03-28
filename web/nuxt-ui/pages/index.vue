@@ -7,10 +7,14 @@ definePageMeta({ title: 'Media Library' })
 
 const mediaApi = useMediaApi()
 const suggestionsApi = useSuggestionsApi()
+const playbackApi = usePlaybackApi()
 const authStore = useAuthStore()
 const router = useRouter()
 const toast = useToast()
 const { updatePreferences } = useApiEndpoints()
+
+// Playback progress (ratio 0-1) per media ID — for progress bar overlays
+const playbackProgress = ref<Record<string, number>>({})
 
 // Recommendations (only for logged-in users)
 const continueWatching = ref<Suggestion[]>([])
@@ -133,6 +137,20 @@ async function load() {
           const img = new Image()
           img.src = url
         }
+      }).catch(() => {})
+    }
+    // Batch-fetch playback positions for logged-in users to show progress bars.
+    if (authStore.isLoggedIn && batchIds.length > 0) {
+      playbackApi.getBatchPositions(batchIds).then(r => {
+        const positions = r?.positions ?? {}
+        const newProgress: Record<string, number> = {}
+        for (const item of items.value.slice(0, 50)) {
+          const pos = positions[item.id]
+          if (pos && item.duration > 0) {
+            newProgress[item.id] = pos / item.duration
+          }
+        }
+        playbackProgress.value = newProgress
       }).catch(() => {})
     }
   } catch (e: unknown) {
@@ -563,6 +581,16 @@ onUnmounted(() => {
             <p class="text-white text-xs font-semibold leading-tight">
               {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign in to view' }}
             </p>
+          </div>
+          <!-- Playback progress bar (logged-in, partially watched, not gated) -->
+          <div
+            v-if="authStore.isLoggedIn && playbackProgress[item.id] && !(item.is_mature && !canViewMature)"
+            class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
+          >
+            <div
+              class="h-full bg-primary"
+              :style="{ width: `${Math.min(100, Math.round((playbackProgress[item.id] ?? 0) * 100))}%` }"
+            />
           </div>
           <!-- Duration badge (hidden when gated) -->
           <div

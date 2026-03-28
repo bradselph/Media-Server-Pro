@@ -56,6 +56,15 @@ export interface User {
   metadata?: Record<string, unknown>
 }
 
+export interface UserProfile {
+  user_id: string
+  total_views: number
+  total_watch_time: number
+  category_scores: Record<string, number>
+  type_preferences: Record<string, number>
+  last_updated?: string
+}
+
 export interface LoginResponse {
   session_id: string
   username: string

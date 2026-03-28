@@ -161,6 +161,12 @@ async function loadMedia(id: string) {
 
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
+  // Honour ?t=N deep-link: seek to the given second, skipping the stored position.
+  const tParam = Number(route.query.t)
+  if (tParam > 0) {
+    videoRef.value.currentTime = tParam
+    return
+  }
   // Respect the user's resume_playback preference (defaults to true when unset)
   if (userPrefs.value?.resume_playback === false) return
   try {
@@ -279,6 +285,18 @@ function cycleSpeed() {
   const idx = speeds.indexOf(playbackSpeed.value)
   playbackSpeed.value = speeds[(idx + 1) % speeds.length]
   if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
+}
+
+function copyLinkAtTime() {
+  const t = Math.floor(currentTime.value)
+  if (!mediaId.value) return
+  const url = new URL(window.location.href)
+  url.searchParams.set('t', String(t))
+  navigator.clipboard.writeText(url.toString()).then(() => {
+    toast.add({ title: `Link copied at ${formatTime(t)}`, color: 'success', icon: 'i-lucide-link' })
+  }).catch(() => {
+    toast.add({ title: 'Failed to copy link', color: 'error', icon: 'i-lucide-x' })
+  })
 }
 
 function formatTime(s: number): string {
@@ -511,6 +529,15 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
                   @click.stop
                 />
 
+                <UButton
+                  icon="i-lucide-link"
+                  aria-label="Copy link at current time"
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  class="text-white"
+                  @click="copyLinkAtTime"
+                />
                 <UButton
                   v-if="pipSupported"
                   :icon="isPiP ? 'i-lucide-picture-in-picture-2' : 'i-lucide-picture-in-picture'"
