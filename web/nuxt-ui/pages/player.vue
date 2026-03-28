@@ -248,6 +248,32 @@ function toggleFullscreen() {
   }
 }
 
+const isPiP = ref(false)
+const pipSupported = import.meta.client && 'pictureInPictureEnabled' in document
+
+async function togglePiP() {
+  if (!videoRef.value) return
+  try {
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture()
+      isPiP.value = false
+    } else {
+      await videoRef.value.requestPictureInPicture()
+      isPiP.value = true
+    }
+  } catch {
+    // PiP not supported or denied — silently ignore
+  }
+}
+
+// Keep isPiP in sync if user closes PiP via browser chrome
+function onPiPChange() {
+  isPiP.value = document.pictureInPictureElement === videoRef.value
+}
+
+onMounted(() => { document.addEventListener('fullscreenchange', () => { isFullscreen.value = !!document.fullscreenElement }) })
+onUnmounted(() => { if (controlsTimer) clearTimeout(controlsTimer) })
+
 function cycleSpeed() {
   const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2]
   const idx = speeds.indexOf(playbackSpeed.value)
@@ -400,6 +426,8 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             @pause="onPlayPause(); trackPause()"
             @ended="savePosition(); trackComplete()"
             @error="onVideoError"
+            @leavepictureinpicture="onPiPChange"
+            @enterpictureinpicture="onPiPChange"
           />
 
           <!-- HLS loading overlay -->
@@ -483,6 +511,16 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
                   @click.stop
                 />
 
+                <UButton
+                  v-if="pipSupported"
+                  :icon="isPiP ? 'i-lucide-picture-in-picture-2' : 'i-lucide-picture-in-picture'"
+                  :aria-label="isPiP ? 'Exit picture-in-picture' : 'Picture-in-picture'"
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  class="text-white"
+                  @click="togglePiP"
+                />
                 <UButton
                   :icon="isFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
                   :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
@@ -667,6 +705,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
               <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
+              <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
             </div>
           </NuxtLink>
         </div>
@@ -686,6 +725,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
               <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
+              <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
             </div>
           </NuxtLink>
         </div>

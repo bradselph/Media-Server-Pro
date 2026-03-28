@@ -36,6 +36,7 @@ export interface UserPreferences {
   show_continue_watching: boolean
   show_recommended: boolean
   show_trending: boolean
+  subtitle_lang?: string
 }
 
 export interface User {
@@ -585,6 +586,10 @@ export interface ServerSettings {
   }
   age_gate: {
     enabled: boolean
+  }
+  auth: {
+    allow_registration: boolean
+    allow_guests: boolean
   }
 }
 

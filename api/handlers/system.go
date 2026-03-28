@@ -262,6 +262,10 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 		"age_gate": map[string]interface{}{
 			"enabled": cfg.AgeGate.Enabled,
 		},
+		"auth": map[string]interface{}{
+			"allow_registration": cfg.Auth.AllowRegistration,
+			"allow_guests":       cfg.Auth.AllowGuests,
+		},
 	}
 
 	writeSuccess(c, settings)

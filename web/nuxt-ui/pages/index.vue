@@ -87,6 +87,26 @@ function onSearchInput() {
   searchTimer = setTimeout(() => { params.page = 1; load() }, 300)
 }
 
+// Surprise Me — navigate to a random item from the current suggestions or library
+async function surpriseMe() {
+  try {
+    // Prefer personalized/trending suggestions for logged-in users, fall back to library
+    const pool = authStore.isLoggedIn
+      ? [...recommended.value, ...trending.value, ...general.value]
+      : general.value
+    if (pool.length > 0) {
+      const pick = pool[Math.floor(Math.random() * pool.length)]
+      router.push(`/player?id=${encodeURIComponent(pick.media_id)}`)
+      return
+    }
+    // Fall back to a random item from the loaded library grid
+    if (items.value.length > 0) {
+      const pick = items.value[Math.floor(Math.random() * items.value.length)]
+      router.push(`/player?id=${encodeURIComponent(pick.id)}`)
+    }
+  } catch { /* non-critical */ }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -393,6 +413,15 @@ onUnmounted(() => {
         color="neutral"
         size="sm"
         @click="params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'"
+      />
+      <UButton
+        icon="i-lucide-shuffle"
+        label="Surprise Me"
+        variant="soft"
+        color="primary"
+        size="sm"
+        aria-label="Pick a random item to watch"
+        @click="surpriseMe"
       />
       <div class="ml-auto flex items-center gap-1">
         <p class="text-sm text-muted mr-2">{{ total.toLocaleString() }} items</p>

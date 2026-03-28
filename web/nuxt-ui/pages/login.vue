@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import type { ServerSettings } from '~/types/api'
+
 definePageMeta({ layout: 'default', title: 'Login' })
 
 const authStore = useAuthStore()
+const settingsApi = useSettingsApi()
 const router = useRouter()
 const route = useRoute()
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
+const allowRegistration = ref(true) // optimistic default until settings load
 
 // Redirect if already logged in
 function loginRedirectDest() {
@@ -19,6 +23,14 @@ function loginRedirectDest() {
 onMounted(async () => {
   if (!authStore.isLoading && authStore.isLoggedIn) {
     router.replace(loginRedirectDest())
+    return
+  }
+  // Fetch server settings to know if registration is open
+  try {
+    const settings = await settingsApi.get() as ServerSettings
+    allowRegistration.value = settings.auth?.allow_registration ?? true
+  } catch {
+    // Non-critical — keep default (true) so the link stays visible if the call fails
   }
 })
 
@@ -80,9 +92,14 @@ async function handleLogin() {
         </form>
       </UCard>
 
-      <p class="text-center text-sm text-muted">
+      <!-- Registration link — hidden when server has disabled new accounts -->
+      <p v-if="allowRegistration" class="text-center text-sm text-muted">
         Don't have an account?
         <NuxtLink to="/signup" class="text-primary hover:underline">Sign up</NuxtLink>
+      </p>
+      <p v-else class="text-center text-sm text-muted">
+        <UIcon name="i-lucide-lock" class="size-3.5 inline-block mr-1 -mt-0.5" />
+        Registration is currently closed.
       </p>
     </div>
   </div>
