@@ -125,3 +125,16 @@ Automated continuous improvement cycle history.
 - Build: PASS (go build + go test + nuxi typecheck)
 - Deploy: SUCCESS
 - Live site: OK
+
+## Cycle 2026-03-28 (Cycle 10)
+- Items implemented:
+  - [frontend] `min_rating` filter in library toolbar — USelect (Any / ★1+ / ★★2+ / ★★★3+ / ★★★★4+ / ★★★★★5) for logged-in users; wires to existing `?min_rating=N` backend param
+  - [frontend] RSS/Atom subscribe icon button in library toolbar (links to `/api/feed`); shown for logged-in users
+  - [frontend] Admin System > Settings — "Developer Links" card with quick-links to OpenAPI Spec (`/api/docs`) and Prometheus Metrics (`/metrics`)
+  - [docs] Gap report update — marked all resolved P0 items; added notes for items resolved in prior cycles
+- Gap analysis: "Similar media", "playlist export/copy", "is_mature admin filter", "user API tokens", "watch history export", "persist filter prefs", "personal stats", "timestamp deep-links", "on-deck" — all confirmed done from prior cycles; gap report updated
+- Live site checks: 2 passed (home page HTTP 200, /health OK), 0 failed, 0 warnings (/api/status returns 401 as expected — admin-only)
+- Issues fixed: 0, deferred: 0
+- Build: PASS (go build ./... + npx nuxi typecheck)
+- Deploy: SUCCESS — /health returns 200 post-deploy
+- Live site: OK
