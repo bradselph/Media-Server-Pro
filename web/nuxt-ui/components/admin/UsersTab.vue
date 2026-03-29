@@ -407,8 +407,8 @@ onMounted(load)
             </div>
             <div class="text-xs text-muted">{{ s.user_agent }}</div>
             <div class="text-xs text-muted flex gap-4 flex-wrap">
-              <span>Created: {{ new Date(s.created_at).toLocaleString() }}</span>
-              <span>Expires: {{ new Date(s.expires_at).toLocaleString() }}</span>
+              <span>Created: {{ s.created_at ? new Date(s.created_at).toLocaleString() : '—' }}</span>
+              <span>Expires: {{ s.expires_at ? new Date(s.expires_at).toLocaleString() : '—' }}</span>
               <span v-if="s.last_activity">Last active: {{ new Date(s.last_activity).toLocaleString() }}</span>
             </div>
           </li>
