@@ -276,6 +276,21 @@ func (m *Module) ListPlaylists(userID UserID, includePublic bool) []*models.Play
 	return playlists
 }
 
+// ListPublicPlaylists returns all public playlists across all users.
+// Returned playlists are copies safe to read without holding any lock.
+func (m *Module) ListPublicPlaylists() []*models.Playlist {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var playlists []*models.Playlist
+	for _, playlist := range m.playlists {
+		if playlist.IsPublic {
+			playlists = append(playlists, copyPlaylist(playlist))
+		}
+	}
+	return playlists
+}
+
 // AddItemInput holds parameters for adding an item to a playlist.
 type AddItemInput struct {
 	PlaylistID PlaylistID

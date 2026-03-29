@@ -94,6 +94,7 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 	// Copy user before mutation to avoid data race on shared pointer
 	userCopy := *user
 	t := time.Now()
+	userCopy.PreviousLastLogin = userCopy.LastLogin
 	userCopy.LastLogin = &t
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Warn("Failed to persist LastLogin for %s: %v", req.Username, err)

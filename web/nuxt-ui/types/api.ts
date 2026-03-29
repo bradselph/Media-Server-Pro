@@ -36,6 +36,7 @@ export interface UserPreferences {
   show_continue_watching: boolean
   show_recommended: boolean
   show_trending: boolean
+  subtitle_lang?: string
 }
 
 export interface User {
@@ -47,12 +48,22 @@ export interface User {
   enabled: boolean
   created_at: string
   last_login?: string
+  previous_last_login?: string
   storage_used: number
   active_streams: number
   watch_history?: WatchHistoryItem[]
   permissions: UserPermissions
   preferences: UserPreferences
   metadata?: Record<string, unknown>
+}
+
+export interface UserProfile {
+  user_id: string
+  total_views: number
+  total_watch_time: number
+  category_scores: Record<string, number>
+  type_preferences: Record<string, number>
+  last_updated?: string
 }
 
 export interface LoginResponse {
@@ -74,7 +85,7 @@ export interface SessionCheckResponse {
 export interface MediaItem {
   id: string
   name: string
-  type: 'video' | 'audio' | 'unknown' | string
+  type: 'video' | 'audio' | 'unknown'
   size: number
   duration: number
   width?: number
@@ -107,6 +118,12 @@ export interface MediaListParams {
   sort_by?: string
   sort_order?: string
   mature?: boolean
+  /** Filter to items the user has rated at or above this value (1–5). */
+  min_rating?: number
+  /** Filter by tags (OR logic — item must have at least one). Serialised as comma-joined string. */
+  tags?: string[]
+  /** Exclude items the authenticated user has already completed watching. */
+  hide_watched?: boolean
 }
 
 export interface MediaListResponse {
@@ -118,6 +135,8 @@ export interface MediaListResponse {
   limit?: number
   scanning?: boolean
   initializing?: boolean
+  /** Map of media_id → user's rating (1–5). Only present for authenticated users who have rated items. */
+  user_ratings?: Record<string, number>
 }
 
 export interface MediaCategory {
@@ -356,6 +375,9 @@ export interface BackupEntry {
   created_at: string
   type: string
   description?: string
+  files?: string[]
+  errors?: string[]
+  version?: string
 }
 
 export interface ThumbnailStats {
@@ -383,6 +405,18 @@ export interface FileScanResult {
   reviewed_by?: string
   reviewed_at?: string
   review_decision?: string
+}
+
+// Matches the backend models.MatureReviewItem JSON response from GET /api/admin/scanner/queue
+export interface ReviewQueueItem {
+  id: string
+  name: string
+  detected_at: string
+  confidence: number
+  reasons: string[]
+  reviewed_by?: string
+  reviewed_at?: string
+  decision?: string
 }
 
 export interface UpdateInfo {
@@ -586,6 +620,10 @@ export interface ServerSettings {
   age_gate: {
     enabled: boolean
   }
+  auth: {
+    allow_registration: boolean
+    allow_guests: boolean
+  }
 }
 
 // ── Age Gate ──────────────────────────────────────────────────────────────────
@@ -675,6 +713,68 @@ export interface CategoryStats {
   total_items: number
   by_category: Record<string, number>
   manual_overrides: number
+}
+
+export interface CategoryBrowseItem {
+  id: string
+  name: string
+  category: string
+  confidence: number
+  detected_info?: {
+    title?: string
+    year?: number
+    season?: number
+    episode?: number
+    show_name?: string
+    artist?: string
+    album?: string
+  }
+  thumbnail_url?: string
+}
+
+export interface CategoryBrowseResponse {
+  category: string
+  items: CategoryBrowseItem[]
+  total: number
+}
+
+export interface RatedItem {
+  media_id: string
+  name: string
+  category: string
+  media_type: string
+  rating: number
+  thumbnail_url?: string
+}
+
+export interface RecentItem {
+  id: string
+  name: string
+  type: string
+  category: string
+  date_added: string
+  thumbnail_url?: string
+}
+
+export interface NewSinceResponse {
+  items: RecentItem[]
+  since: string
+  total: number
+}
+
+export interface OnDeckItem {
+  media_id: string
+  name: string
+  show_name: string
+  season: number
+  episode: number
+  category: string
+  thumbnail_url?: string
+}
+
+export interface OnDeckResponse {
+  items: OnDeckItem[]
+  total: number
 }
 
 // ── Classify (HuggingFace) ────────────────────────────────────────────────────
@@ -896,20 +996,6 @@ export interface BannedIP {
   reason: string
 }
 
-// ── Analytics Detail ──────────────────────────────────────────────────────────
-
-export interface AnalyticsEvent {
-  id: string
-  type: string
-  media_id?: string
-  user_id?: string
-  session_id?: string
-  ip_address: string
-  user_agent: string
-  timestamp: string
-  data?: Record<string, unknown>
-}
-
 export interface EventStats {
   total_events: number
   event_counts: Record<string, number>
@@ -943,4 +1029,26 @@ export interface UserSession {
   last_activity: string
   ip_address: string
   user_agent: string
+}
+
+// ── Favorites ─────────────────────────────────────────────────────────────────
+
+export interface FavoriteItem {
+  id: string
+  media_id: string
+  media_path: string
+  added_at: string
+}
+
+// ── API Tokens ────────────────────────────────────────────────────────────────
+
+export interface APIToken {
+  id: string
+  name: string
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface APITokenCreated extends APIToken {
+  token: string // raw value — only available on creation response
 }

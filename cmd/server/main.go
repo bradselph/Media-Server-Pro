@@ -472,12 +472,13 @@ func registerTasks(
 				needsGen := (isAudio && !thumbnailsModule.HasThumbnail(thumbnails.MediaID(item.ID))) ||
 					(!isAudio && !thumbnailsModule.HasAllPreviewThumbnails(thumbnails.MediaID(item.ID)))
 				if needsGen {
-					if _, err := thumbnailsModule.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: false}); err != nil {
-						if !errors.Is(err, thumbnails.ErrThumbnailPending) {
-							log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
-						}
-					} else {
+					_, err := thumbnailsModule.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: false})
+					if err == nil || errors.Is(err, thumbnails.ErrThumbnailPending) {
+						// nil  = already existed (audio) or all queued (video)
+						// Pending = jobs submitted to worker queue (video always returns this)
 						queued++
+					} else {
+						log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
 					}
 				}
 			}

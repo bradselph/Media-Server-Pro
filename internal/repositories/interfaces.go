@@ -53,6 +53,7 @@ type MediaMetadataRepository interface {
 	IncrementViews(ctx context.Context, path string) error
 	UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error
 	GetPlaybackPosition(ctx context.Context, path, userID string) (float64, error)
+	BatchGetPlaybackPositions(ctx context.Context, paths []string, userID string) (map[string]float64, error)
 	DeleteAllPlaybackPositionsByUser(ctx context.Context, userID string) error
 	// UpdateBlurHash updates the BlurHash for a metadata row by path
 	UpdateBlurHash(ctx context.Context, path string, blurHash string) error
@@ -527,4 +528,40 @@ type CrawlerDiscoveryRecord struct {
 	ReviewedBy      string
 	ReviewedAt      *time.Time
 	DiscoveredAt    time.Time
+}
+
+// FavoriteRepository provides user favorites (Watch Later) storage.
+type FavoriteRepository interface {
+	Add(ctx context.Context, rec *FavoriteRecord) error
+	Remove(ctx context.Context, userID, mediaID string) error
+	List(ctx context.Context, userID string) ([]*FavoriteRecord, error)
+	Exists(ctx context.Context, userID, mediaID string) (bool, error)
+}
+
+// FavoriteRecord represents a single user favorite entry.
+type FavoriteRecord struct {
+	ID        string
+	UserID    string
+	MediaID   string
+	MediaPath string
+	AddedAt   time.Time
+}
+
+// APITokenRepository provides user API token storage.
+type APITokenRepository interface {
+	Create(ctx context.Context, token *APITokenRecord) error
+	GetByHash(ctx context.Context, tokenHash string) (*APITokenRecord, error)
+	ListByUser(ctx context.Context, userID string) ([]*APITokenRecord, error)
+	Delete(ctx context.Context, id, userID string) error
+	UpdateLastUsed(ctx context.Context, tokenHash string) error
+}
+
+// APITokenRecord represents a stored API token (raw value is never stored).
+type APITokenRecord struct {
+	ID         string
+	UserID     string
+	Name       string
+	TokenHash  string
+	LastUsedAt *time.Time
+	CreatedAt  time.Time
 }

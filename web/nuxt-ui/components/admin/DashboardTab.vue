@@ -1,5 +1,22 @@
 <script setup lang="ts">
 import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ModuleHealth, ServerSettings, MediaStats } from '~/types/api'
+import { formatBytes } from '~/utils/format'
+
+const STREAM_COLUMNS = [
+  { accessorKey: 'user_id', header: 'User' },
+  { accessorKey: 'media_id', header: 'Media ID' },
+  { accessorKey: 'quality', header: 'Quality' },
+  { accessorKey: 'bytes_sent', header: 'Sent' },
+  { accessorKey: 'ip_address', header: 'Client IP' },
+  { accessorKey: 'started_at', header: 'Since' },
+]
+
+const UPLOAD_COLUMNS = [
+  { accessorKey: 'filename', header: 'File' },
+  { accessorKey: 'user_id', header: 'User' },
+  { accessorKey: 'progress', header: 'Progress' },
+  { accessorKey: 'status', header: 'Status' },
+]
 
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
@@ -14,14 +31,6 @@ const mediaStats = ref<MediaStats | null>(null)
 const streams = ref<StreamSession[]>([])
 const uploads = ref<UploadProgress[]>([])
 const statsLoading = ref(true)
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
-}
 
 function formatUptime(secs: number): string {
   if (!secs) return '—'
@@ -78,8 +87,8 @@ async function handleAction(fn: () => Promise<unknown>, successMsg: string) {
 }
 
 onMounted(loadAll)
-// Auto-refresh every 30s
-const interval = setInterval(loadAll, 30_000)
+// Auto-refresh every 30s — skip when tab is hidden to avoid wasteful background requests
+const interval = setInterval(() => { if (!document.hidden) loadAll() }, 30_000)
 onUnmounted(() => clearInterval(interval))
 </script>
 
@@ -156,14 +165,7 @@ onUnmounted(() => clearInterval(interval))
         <UTable
           v-else
           :data="streams"
-          :columns="[
-            { accessorKey: 'user_id', header: 'User' },
-            { accessorKey: 'media_id', header: 'Media ID' },
-            { accessorKey: 'quality', header: 'Quality' },
-            { accessorKey: 'bytes_sent', header: 'Sent' },
-            { accessorKey: 'ip_address', header: 'Client IP' },
-            { accessorKey: 'started_at', header: 'Since' },
-          ]"
+          :columns="STREAM_COLUMNS"
           class="text-sm"
         >
           <template #media_id-cell="{ row }">
@@ -190,12 +192,7 @@ onUnmounted(() => clearInterval(interval))
         </template>
         <UTable
           :data="uploads"
-          :columns="[
-            { accessorKey: 'filename', header: 'File' },
-            { accessorKey: 'user_id', header: 'User' },
-            { accessorKey: 'progress', header: 'Progress' },
-            { accessorKey: 'status', header: 'Status' },
-          ]"
+          :columns="UPLOAD_COLUMNS"
           class="text-sm"
         >
           <template #progress-cell="{ row }">

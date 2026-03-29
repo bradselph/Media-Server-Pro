@@ -1,10 +1,5 @@
 import type { LoginResponse, SessionCheckResponse, User, UserPermissions, UserPreferences } from '~/types/api'
-
-type AnyRecord = Record<string, unknown>
-
-function asRecord(value: unknown): AnyRecord | null {
-  return value && typeof value === 'object' ? (value as AnyRecord) : null
-}
+import { asRecord } from '~/utils/typeGuards'
 
 function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback

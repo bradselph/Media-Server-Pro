@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts, AnalyticsEvent } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { formatWatchTime } from '~/utils/format'
 
 const analyticsApi = useAnalyticsApi()
 const adminApi = useAdminApi()
@@ -8,6 +9,7 @@ const toast = useToast()
 
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
+const dailyMaxViews = computed(() => Math.max(1, ...daily.value.map(d => d.total_views ?? 0)))
 const topMedia = ref<TopMediaItem[]>([])
 const eventStats = ref<EventStats | null>(null)
 const eventTypeCounts = ref<EventTypeCounts | null>(null)
@@ -52,12 +54,7 @@ async function drillByUser() {
   } finally { drillLoading.value = false }
 }
 
-function formatTime(secs?: number): string {
-  if (!secs) return '—'
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
+// formatWatchTime imported from ~/utils/format
 
 async function load() {
   loading.value = true
@@ -220,6 +217,7 @@ onMounted(load)
               <span v-if="ev.ip_address" class="text-xs text-muted">{{ ev.ip_address }}</span>
             </div>
             <p class="text-xs text-muted mt-0.5">{{ ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '' }}</p>
+            <pre v-if="ev.data && Object.keys(ev.data).length > 0" class="text-xs text-muted mt-1 bg-elevated rounded px-2 py-1 whitespace-pre-wrap break-all max-h-20 overflow-y-auto">{{ JSON.stringify(ev.data, null, 2) }}</pre>
           </div>
         </div>
       </div>
@@ -260,6 +258,25 @@ onMounted(load)
           Daily Breakdown
         </div>
       </template>
+
+      <!-- CSS bar chart — views per day -->
+      <div class="mb-4 space-y-1">
+        <div
+          v-for="row in daily.slice().reverse()"
+          :key="row.date"
+          class="flex items-center gap-2 text-xs"
+        >
+          <span class="w-24 shrink-0 font-mono text-muted text-right">{{ row.date }}</span>
+          <div class="flex-1 bg-muted/20 rounded-full h-4 overflow-hidden">
+            <div
+              class="h-full rounded-full bg-primary transition-all duration-300"
+              :style="{ width: dailyMaxViews > 0 ? `${Math.round(((row.total_views ?? 0) / dailyMaxViews) * 100)}%` : '0%' }"
+            />
+          </div>
+          <span class="w-12 shrink-0 text-right text-muted">{{ (row.total_views ?? 0).toLocaleString() }}</span>
+        </div>
+      </div>
+
       <UTable
         :data="daily"
         :columns="[
@@ -274,7 +291,7 @@ onMounted(load)
         </template>
         <template #total_views-cell="{ row }">{{ (row.original.total_views ?? 0).toLocaleString() }}</template>
         <template #unique_users-cell="{ row }">{{ (row.original.unique_users ?? 0).toLocaleString() }}</template>
-        <template #total_watch_time-cell="{ row }">{{ formatTime(row.original.total_watch_time) }}</template>
+        <template #total_watch_time-cell="{ row }">{{ formatWatchTime(row.original.total_watch_time) }}</template>
       </UTable>
     </UCard>
   </div>

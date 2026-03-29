@@ -1,8 +1,4 @@
-type UnknownRecord = Record<string, unknown>
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === 'object' ? (value as UnknownRecord) : null
-}
+import { asRecord } from '~/utils/typeGuards'
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''

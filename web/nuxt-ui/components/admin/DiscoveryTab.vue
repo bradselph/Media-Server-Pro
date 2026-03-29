@@ -3,6 +3,7 @@ import type {
   CategoryStats, CategorizedItem, DiscoverySuggestion,
   SuggestionStats, ClassifyStatus, ClassifyStats,
 } from '~/types/api'
+import { formatWatchTime } from '~/utils/format'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -153,12 +154,7 @@ async function loadSuggestions() {
   } finally { suggestionsLoading.value = false }
 }
 
-function formatTime(seconds: number): string {
-  if (!seconds) return '—'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
+// formatWatchTime imported from ~/utils/format
 
 // ── HuggingFace Classification ─────────────────────────────────────────────────
 const classifyStatus = ref<ClassifyStatus | null>(null)
@@ -389,7 +385,7 @@ watch(subTab, (tab) => {
                   <p class="text-xs text-muted mt-1">Total Views</p>
                 </UCard>
                 <UCard>
-                  <p class="text-2xl font-bold">{{ formatTime(suggestionStats.total_watch_time) }}</p>
+                  <p class="text-2xl font-bold">{{ formatWatchTime(suggestionStats.total_watch_time) }}</p>
                   <p class="text-xs text-muted mt-1">Watch Time</p>
                 </UCard>
               </div>

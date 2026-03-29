@@ -36,7 +36,29 @@ const createLoading = ref(false)
 const createError = ref('')
 
 // Edit form
-const editForm = reactive({ role: 'viewer' as 'admin' | 'viewer', enabled: true, email: '', newPassword: '' })
+const editForm = reactive({
+  role: 'viewer' as 'admin' | 'viewer',
+  enabled: true,
+  email: '',
+  type: 'standard',
+  newPassword: '',
+  permissions: {
+    can_stream: true,
+    can_download: false,
+    can_upload: false,
+    can_delete: false,
+    can_manage: false,
+    can_view_mature: false,
+    can_create_playlists: true,
+  },
+})
+
+const USER_TYPE_OPTIONS = [
+  { label: 'Standard', value: 'standard' },
+  { label: 'Premium', value: 'premium' },
+  { label: 'Trial', value: 'trial' },
+  { label: 'Guest', value: 'guest' },
+]
 const editLoading = ref(false)
 const editError = ref('')
 
@@ -107,7 +129,22 @@ async function openEdit(user: User) {
   // current server state, not a potentially stale list entry.
   const fresh = await adminApi.getUser(user.username).catch(() => user)
   editUser.value = fresh
-  Object.assign(editForm, { role: fresh.role, enabled: fresh.enabled, email: fresh.email ?? '', newPassword: '' })
+  Object.assign(editForm, {
+    role: fresh.role,
+    enabled: fresh.enabled,
+    email: fresh.email ?? '',
+    type: fresh.type || 'standard',
+    newPassword: '',
+    permissions: {
+      can_stream: fresh.permissions?.can_stream ?? true,
+      can_download: fresh.permissions?.can_download ?? false,
+      can_upload: fresh.permissions?.can_upload ?? false,
+      can_delete: fresh.permissions?.can_delete ?? false,
+      can_manage: fresh.permissions?.can_manage ?? false,
+      can_view_mature: fresh.permissions?.can_view_mature ?? false,
+      can_create_playlists: fresh.permissions?.can_create_playlists ?? true,
+    },
+  })
   editError.value = ''
 }
 
@@ -120,6 +157,8 @@ async function handleSave() {
       role: editForm.role,
       enabled: editForm.enabled,
       email: editForm.email || undefined,
+      type: editForm.type,
+      permissions: { ...editForm.permissions },
     })
   } catch (e: unknown) {
     editError.value = e instanceof Error ? e.message : 'Failed to update user profile'
@@ -296,10 +335,45 @@ onMounted(load)
               :items="[{ label: 'Viewer', value: 'viewer' }, { label: 'Admin', value: 'admin' }]"
             />
           </UFormField>
+          <UFormField label="User Type" description="Affects feature access and display grouping">
+            <USelect v-model="editForm.type" :items="USER_TYPE_OPTIONS" />
+          </UFormField>
           <UFormField label="Status">
             <div class="flex items-center gap-2">
               <USwitch v-model="editForm.enabled" />
               <span class="text-sm">{{ editForm.enabled ? 'Active' : 'Disabled' }}</span>
+            </div>
+          </UFormField>
+          <UFormField label="Permissions">
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <UCheckbox v-model="editForm.permissions.can_stream" />
+                Stream media
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <UCheckbox v-model="editForm.permissions.can_download" />
+                Download
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <UCheckbox v-model="editForm.permissions.can_upload" />
+                Upload
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <UCheckbox v-model="editForm.permissions.can_delete" />
+                Delete media
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <UCheckbox v-model="editForm.permissions.can_manage" />
+                Manage library
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <UCheckbox v-model="editForm.permissions.can_view_mature" />
+                View mature
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <UCheckbox v-model="editForm.permissions.can_create_playlists" />
+                Create playlists
+              </label>
             </div>
           </UFormField>
           <UFormField label="New Password" description="Leave blank to keep current password">

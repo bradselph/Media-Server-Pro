@@ -8,14 +8,14 @@ import type {
   AnalyticsSummary, AnalyticsEvent, DailyStats, TopMediaItem, EventStats, EventTypeCounts,
   AdminStats, SystemInfo, StreamSession, UploadProgress, UploadResult,
   AuditLogEntry, LogEntry, ScheduledTask, BackupEntry,
-  ThumbnailStats, ThumbnailPreviews, ScannerStats, FileScanResult,
+  ThumbnailStats, ThumbnailPreviews, ScannerStats, FileScanResult, ReviewQueueItem,
   UpdateInfo, UpdateStatus,
   IPListEntry, BannedIP, SecurityStats,
   DatabaseStatus, QueryResult, UserSession,
   ReceiverSlave, ReceiverMedia, ReceiverStats, ReceiverDuplicate, SlaveNode,
   CrawlerTarget, CrawlerDiscovery, CrawlerStats, ExtractorItem, ExtractorStats,
   DownloaderJob, DownloaderHealth, DownloaderDetectResult, DownloaderSettings, ImportableFile, ImportResult,
-  WatchHistoryItem, Suggestion, SuggestionStats, StorageUsage, PermissionsInfo,
+  WatchHistoryItem, Suggestion, SuggestionStats, StorageUsage, PermissionsInfo, UserProfile,
   ServerSettings, AgeGateStatus,
   ClassifyStatus, ClassifyStats,
   ValidationResult, ValidatorStats,
@@ -23,6 +23,8 @@ import type {
   RemoteSourceState, RemoteSourceResponse, RemoteStats, RemoteMediaItem,
   DiscoverySuggestion,
   ModuleHealth, ServerStatus,
+  FavoriteItem, APIToken, APITokenCreated,
+  RatedItem, RecentItem, NewSinceResponse, CategoryBrowseResponse, OnDeckResponse,
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
@@ -81,10 +83,14 @@ export function useMediaApi() {
       const qs = new URLSearchParams()
       if (params) {
         // Backend reads query param "sort" (see handlers.ListMedia), not sort_by.
-        const { page, limit, sort_order, sort_by, sort, ...rest } = params
+        const { page, limit, sort_order, sort_by, sort, tags, hide_watched, ...rest } = params
         Object.entries(rest).forEach(([k, v]) => {
           if (v !== undefined && v !== '') qs.set(k, String(v))
         })
+        // tags is an array — serialise as comma-joined string (backend splits on comma)
+        if (tags && tags.length > 0) qs.set('tags', tags.join(','))
+        // hide_watched is a boolean — only send when true to avoid adding a false param
+        if (hide_watched) qs.set('hide_watched', 'true')
         const sortKey = sort ?? sort_by
         if (sortKey !== undefined && sortKey !== '') qs.set('sort', String(sortKey))
         if (limit !== undefined) qs.set('limit', String(limit))
@@ -132,6 +138,8 @@ export function usePlaybackApi() {
     getPosition: (id: string) => api.get<{ position: number }>(`/api/playback?id=${encodeURIComponent(id)}`),
     savePosition: (id: string, position: number, duration: number) =>
       api.post<void>('/api/playback', { id, position, duration }),
+    getBatchPositions: (ids: string[]) =>
+      api.get<{ positions: Record<string, number> }>(`/api/playback/batch?ids=${ids.map(encodeURIComponent).join(',')}`),
   }
 }
 
@@ -139,7 +147,12 @@ export function usePlaybackApi() {
 
 export function useWatchHistoryApi() {
   return {
-    list: (limit?: number) => api.get<WatchHistoryItem[]>(`/api/watch-history${limit ? `?limit=${limit}` : ''}`),
+    list: (limit?: number, completed?: boolean) => {
+      const parts: string[] = []
+      if (limit) parts.push(`limit=${limit}`)
+      if (completed !== undefined) parts.push(`completed=${completed}`)
+      return api.get<WatchHistoryItem[]>(`/api/watch-history${parts.length ? `?${parts.join('&')}` : ''}`)
+    },
     remove: (id: string) => api.delete<void>(`/api/watch-history?id=${encodeURIComponent(id)}`),
     clear: () => api.delete<void>('/api/watch-history'),
   }
@@ -155,6 +168,22 @@ export function useSuggestionsApi() {
     getContinueWatching: () => api.get<Suggestion[]>('/api/suggestions/continue'),
     getPersonalized: (limit?: number) =>
       api.get<Suggestion[]>(`/api/suggestions/personalized${limit ? `?limit=${limit}` : ''}`),
+    getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),
+    resetMyProfile: () => api.delete<void>('/api/suggestions/profile'),
+    getRecent: (days?: number, limit?: number) => {
+      const params: string[] = []
+      if (days) params.push(`days=${days}`)
+      if (limit) params.push(`limit=${limit}`)
+      return api.get<RecentItem[]>(`/api/suggestions/recent${params.length ? `?${params.join('&')}` : ''}`)
+    },
+    getNewSinceLastVisit: (limit?: number) => {
+      const qs = limit ? `?limit=${limit}` : ''
+      return api.get<NewSinceResponse>(`/api/suggestions/new${qs}`)
+    },
+    getOnDeck: (limit?: number) => {
+      const qs = limit ? `?limit=${limit}` : ''
+      return api.get<OnDeckResponse>(`/api/suggestions/on-deck${qs}`)
+    },
   }
 }
 
@@ -172,6 +201,7 @@ export function useStorageApi() {
 export function usePlaylistApi() {
   return {
     list: () => api.get<Playlist[]>('/api/playlists'),
+    listPublic: () => api.get<Playlist[]>('/api/playlists/public'),
     get: (id: string) => api.get<Playlist>(`/api/playlists/${encodeURIComponent(id)}`),
     create: (data: { name: string; description?: string; is_public?: boolean }) =>
       api.post<Playlist>('/api/playlists', data),
@@ -192,6 +222,8 @@ export function usePlaylistApi() {
       api.post<Playlist>(`/api/playlists/${encodeURIComponent(id)}/copy`, { name }),
     exportPlaylist: (id: string, format: 'json' | 'm3u' | 'm3u8') =>
       `/api/playlists/${encodeURIComponent(id)}/export?format=${format}`,
+    bulkDelete: (ids: string[]) =>
+      api.post<{ deleted: number; failed: number }>('/api/playlists/bulk-delete', { ids }),
   }
 }
 
@@ -225,6 +257,15 @@ export function useAgeGateApi() {
 export function useRatingsApi() {
   return {
     record: (id: string, rating: number) => api.post<void>('/api/ratings', { id, rating }),
+    getMyRatings: () => api.get<RatedItem[]>('/api/ratings'),
+  }
+}
+
+export function useCategoryBrowseApi() {
+  return {
+    getStats: () => api.get<CategoryStats>('/api/browse/categories'),
+    getByCategory: (category: string, limit?: number) =>
+      api.get<CategoryBrowseResponse>(`/api/browse/categories?category=${encodeURIComponent(category)}${limit ? `&limit=${limit}` : ''}`),
   }
 }
 
@@ -350,7 +391,7 @@ export function useAdminApi() {
     // Scanner / Content review
     getScannerStats: () => api.get<ScannerStats>(`${base}/scanner/stats`),
     runScan: (path?: string) => api.post<void>(`${base}/scanner/scan`, path ? { path } : undefined),
-    getReviewQueue: () => api.get<FileScanResult[]>(`${base}/scanner/queue`),
+    getReviewQueue: () => api.get<ReviewQueueItem[]>(`${base}/scanner/queue`),
     batchReview: (action: 'approve' | 'reject', ids: string[]) =>
       api.post<{ updated: number; total: number }>(`${base}/scanner/queue`, { action, ids }),
     clearReviewQueue: () => api.delete<void>(`${base}/scanner/queue`),
@@ -559,5 +600,26 @@ export function useAnalyticsApi() {
     },
     getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
     exportCsv: () => `/api/admin/analytics/export`,
+  }
+}
+
+// ── Favorites ─────────────────────────────────────────────────────────────────
+
+export function useFavoritesApi() {
+  return {
+    list: () => api.get<FavoriteItem[]>('/api/favorites'),
+    add: (mediaId: string) => api.post<void>('/api/favorites', { media_id: mediaId }),
+    remove: (mediaId: string) => api.delete<void>(`/api/favorites/${encodeURIComponent(mediaId)}`),
+    check: (mediaId: string) => api.get<{ is_favorite: boolean }>(`/api/favorites/${encodeURIComponent(mediaId)}`),
+  }
+}
+
+// ── API Tokens ────────────────────────────────────────────────────────────────
+
+export function useAPITokensApi() {
+  return {
+    list: () => api.get<APIToken[]>('/api/auth/tokens'),
+    create: (name: string) => api.post<APITokenCreated>('/api/auth/tokens', { name }),
+    delete: (id: string) => api.delete<void>(`/api/auth/tokens/${encodeURIComponent(id)}`),
   }
 }

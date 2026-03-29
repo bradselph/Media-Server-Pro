@@ -1096,6 +1096,13 @@ func (f Filter) SortItems(items []*models.MediaItem) {
 			return items[i].Type < items[j].Type
 		case "category":
 			return items[i].Category < items[j].Category
+		case "bitrate":
+			return items[i].Bitrate < items[j].Bitrate
+		case "codec":
+			if items[i].Codec != items[j].Codec {
+				return items[i].Codec < items[j].Codec
+			}
+			return items[i].Name < items[j].Name
 		case "is_mature":
 			if items[i].IsMature != items[j].IsMature {
 				return !items[i].IsMature // false < true: non-mature first in ascending
@@ -1330,6 +1337,61 @@ func (m *Module) GetPlaybackPosition(ctx context.Context, path, userID string) f
 		return 0
 	}
 	return meta.PlaybackPos[userID]
+}
+
+// BatchGetPlaybackPositions returns positions for multiple media IDs for a user.
+// IDs are resolved to paths using the in-memory index. Returns a map of ID → position.
+// IDs with no stored position are omitted from the result.
+func (m *Module) BatchGetPlaybackPositions(ctx context.Context, ids []string, userID string) map[string]float64 {
+	if len(ids) == 0 || userID == "" {
+		return map[string]float64{}
+	}
+
+	// Build ID → path mapping from in-memory index.
+	m.mu.RLock()
+	idToPath := make(map[string]string, len(ids))
+	for _, id := range ids {
+		if item, ok := m.mediaByID[id]; ok {
+			idToPath[id] = item.Path
+		}
+	}
+	m.mu.RUnlock()
+
+	if len(idToPath) == 0 {
+		return map[string]float64{}
+	}
+
+	paths := make([]string, 0, len(idToPath))
+	for _, p := range idToPath {
+		paths = append(paths, p)
+	}
+
+	result := make(map[string]float64, len(ids))
+
+	if m.metadataRepo != nil {
+		pathPositions, err := m.metadataRepo.BatchGetPlaybackPositions(ctx, paths, userID)
+		if err == nil {
+			// Re-key from path → position to id → position.
+			for id, path := range idToPath {
+				if pos, ok := pathPositions[path]; ok && pos > 0 {
+					result[id] = pos
+				}
+			}
+			return result
+		}
+	}
+
+	// Fallback: in-memory cache.
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for id, path := range idToPath {
+		if meta, ok := m.metadata[path]; ok && meta.PlaybackPos != nil {
+			if pos := meta.PlaybackPos[userID]; pos > 0 {
+				result[id] = pos
+			}
+		}
+	}
+	return result
 }
 
 // ClearPlaybackPosition removes the saved resume position for one user+path pair.

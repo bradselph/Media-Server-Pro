@@ -305,8 +305,9 @@ export function useHLS(
           jobRunning.value = true
           jobProgress.value = status.progress
 
-          // Poll for completion
+          // Poll for completion — skip while tab is hidden to avoid wasteful background requests
           pollTimer = setInterval(async () => {
+            if (document.hidden) return
             try {
               const updated = await hlsApi.check(id)
               jobProgress.value = updated.progress

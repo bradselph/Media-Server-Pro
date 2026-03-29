@@ -73,7 +73,8 @@ type User struct {
 	Type          string             `json:"type" db:"type" gorm:"size:50;default:standard;not null"`
 	Enabled       bool               `json:"enabled" db:"enabled" gorm:"default:true;not null"`
 	CreatedAt     time.Time          `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
-	LastLogin     *time.Time         `json:"last_login,omitempty" db:"last_login"`
+	LastLogin           *time.Time         `json:"last_login,omitempty" db:"last_login"`
+	PreviousLastLogin   *time.Time         `json:"previous_last_login,omitempty" db:"previous_last_login" gorm:"column:previous_last_login"`
 	Permissions   UserPermissions    `json:"permissions" db:"-" gorm:"-"`
 	Preferences   UserPreferences    `json:"preferences" db:"-" gorm:"-"`
 	WatchHistory  []WatchHistoryItem `json:"watch_history,omitempty" db:"watch_history" gorm:"type:json;serializer:json"`

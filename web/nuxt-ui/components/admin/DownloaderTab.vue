@@ -1,8 +1,48 @@
 <script setup lang="ts">
 import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress } from '~/types/api'
+import { formatBytes } from '~/utils/format'
+import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
 const toast = useToast()
+
+// ── Download server config ─────────────────────────────────────────────────────
+
+const fullConfig = ref<Record<string, unknown>>({})
+const downloadEnabled = ref(true)
+const downloadRequireAuth = ref(true)
+const configSaving = ref(false)
+
+async function loadDownloadConfig() {
+  try {
+    const cfg = await adminApi.getConfig()
+    if (cfg) {
+      fullConfig.value = cfg
+      const dl = asRecord(cfg.download)
+      downloadEnabled.value = dl?.enabled !== false
+      downloadRequireAuth.value = dl?.require_auth !== false
+    }
+  } catch { /* non-critical */ }
+}
+
+async function saveDownloadConfig(key: 'enabled' | 'require_auth', value: boolean) {
+  configSaving.value = true
+  try {
+    const updated = {
+      ...fullConfig.value,
+      download: { ...asRecord(fullConfig.value.download), [key]: value },
+    }
+    await adminApi.updateConfig(updated)
+    fullConfig.value = updated
+    if (key === 'enabled') downloadEnabled.value = value
+    else downloadRequireAuth.value = value
+    toast.add({ title: 'Download settings saved', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    configSaving.value = false
+  }
+}
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +101,7 @@ onMounted(() => {
   connectWS()
   loadHealth()
   loadSettings()
+  loadDownloadConfig()
   load()
   loadImportable()
 })
@@ -190,12 +231,6 @@ async function importFile(filename: string) {
   }
 }
 
-function formatBytes(bytes?: number): string {
-  if (!bytes) return '—'
-  const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
-}
 
 function progressBarColor(status: DownloaderProgress['status']) {
   if (status === 'error') return 'error'
@@ -206,6 +241,36 @@ function progressBarColor(status: DownloaderProgress['status']) {
 
 <template>
   <div class="space-y-4">
+    <!-- Download config toggles -->
+    <UCard :ui="{ body: 'p-4' }">
+      <div class="divide-y divide-default">
+        <div class="flex items-center justify-between gap-4 pb-3">
+          <div>
+            <p class="font-medium text-sm text-highlighted">Downloader enabled</p>
+            <p class="text-xs text-muted mt-0.5">Allow admins to queue and manage media downloads</p>
+          </div>
+          <USwitch
+            :model-value="downloadEnabled"
+            :disabled="configSaving"
+            aria-label="Downloader enabled"
+            @update:model-value="saveDownloadConfig('enabled', $event)"
+          />
+        </div>
+        <div class="flex items-center justify-between gap-4 pt-3">
+          <div>
+            <p class="font-medium text-sm text-highlighted">Require authentication</p>
+            <p class="text-xs text-muted mt-0.5">Only authenticated users can trigger downloads</p>
+          </div>
+          <USwitch
+            :model-value="downloadRequireAuth"
+            :disabled="configSaving || !downloadEnabled"
+            aria-label="Require authentication for downloads"
+            @update:model-value="saveDownloadConfig('require_auth', $event)"
+          />
+        </div>
+      </div>
+    </UCard>
+
     <!-- Downloader health -->
     <UCard v-if="health !== null" :ui="{ body: 'py-2 px-4' }">
       <div class="flex items-center gap-3 text-sm flex-wrap">

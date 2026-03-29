@@ -2,15 +2,17 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"fmt"
 	"media-server-pro/internal/analytics"
+	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/thumbnails"
@@ -24,6 +26,17 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	sortBy := c.Query("sort")
 	if sortBy == "date" {
 		sortBy = "date_modified"
+	}
+	sortByRating := sortBy == "my_rating"
+	if sortByRating {
+		sortBy = ""
+	}
+
+	var minRating float64
+	if mr := c.Query("min_rating"); mr != "" {
+		if v, err := strconv.ParseFloat(mr, 64); err == nil && v > 0 {
+			minRating = v
+		}
 	}
 
 	var limit, offset int
@@ -134,6 +147,69 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		filterNoPagination.SortItems(allItems)
 	}
 
+	// Build user ratings map (path → rating) for authenticated users.
+	// Used for sort=my_rating, min_rating filter, and the user_ratings response field.
+	var userRatingsByPath map[string]float64
+	if session := getSession(c); session != nil && h.suggestions != nil {
+		if profile := h.suggestions.GetUserProfile(session.UserID); profile != nil {
+			userRatingsByPath = make(map[string]float64, len(profile.ViewHistory))
+			for _, vh := range profile.ViewHistory {
+				if vh.Rating > 0 && vh.MediaPath != "" {
+					userRatingsByPath[vh.MediaPath] = vh.Rating
+				}
+			}
+		}
+	}
+
+	// Filter to only items the user has rated at or above min_rating.
+	if minRating > 0 && userRatingsByPath != nil {
+		filtered := make([]*models.MediaItem, 0, len(allItems))
+		for _, item := range allItems {
+			if userRatingsByPath[item.Path] >= minRating {
+				filtered = append(filtered, item)
+			}
+		}
+		allItems = filtered
+	}
+
+	// Sort by the user's personal rating (desc by default, asc if sort_order=asc).
+	if sortByRating && userRatingsByPath != nil {
+		sortDesc := c.Query("sort_order") != "asc"
+		sort.SliceStable(allItems, func(i, j int) bool {
+			ri := userRatingsByPath[allItems[i].Path]
+			rj := userRatingsByPath[allItems[j].Path]
+			if sortDesc {
+				return ri > rj
+			}
+			return ri < rj
+		})
+	}
+
+	// Hide completed items when hide_watched=true (authenticated users only).
+	// An item is "watched" when the user's ViewHistory entry has CompletedAt set
+	// (i.e. they watched past 90% of the runtime).
+	if (c.Query("hide_watched") == "true" || c.Query("hide_watched") == "1") && h.suggestions != nil {
+		if session := getSession(c); session != nil {
+			if profile := h.suggestions.GetUserProfile(session.UserID); profile != nil {
+				completedPaths := make(map[string]bool, len(profile.ViewHistory))
+				for _, vh := range profile.ViewHistory {
+					if vh.CompletedAt != nil && vh.MediaPath != "" {
+						completedPaths[vh.MediaPath] = true
+					}
+				}
+				if len(completedPaths) > 0 {
+					kept := make([]*models.MediaItem, 0, len(allItems))
+					for _, item := range allItems {
+						if !completedPaths[item.Path] {
+							kept = append(kept, item)
+						}
+					}
+					allItems = kept
+				}
+			}
+		}
+	}
+
 	// Mature content: always include mature items in the listing so the
 	// frontend can render them blurred with a gate overlay (sign-in prompt
 	// for guests, enable-in-settings prompt for authenticated users).
@@ -177,11 +253,30 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		}
 	}
 
+	// Build user_ratings map keyed by media ID for the current page items.
+	// Only included when the user is authenticated and has rated at least one item.
+	var userRatingsByID map[string]float64
+	if userRatingsByPath != nil {
+		for _, item := range items {
+			if item.Path != "" {
+				if r, ok := userRatingsByPath[item.Path]; ok {
+					if userRatingsByID == nil {
+						userRatingsByID = make(map[string]float64)
+					}
+					userRatingsByID[item.ID] = r
+				}
+			}
+		}
+	}
+
 	resp := map[string]interface{}{
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
 		"scanning":    h.media.IsScanning(),
+	}
+	if userRatingsByID != nil {
+		resp["user_ratings"] = userRatingsByID
 	}
 	if !h.media.IsReady() {
 		resp["initializing"] = true
@@ -294,6 +389,62 @@ func (h *Handler) ScanMedia(c *gin.Context) {
 func (h *Handler) GetCategories(c *gin.Context) {
 	categories := h.media.GetCategories()
 	writeSuccess(c, categories)
+}
+
+// GetCategoryBrowse returns user-facing categorized items for a given category.
+// When no category is specified, returns category counts (stats).
+// Accepts ?category=TV+Shows&limit=N (default 200, max 500).
+func (h *Handler) GetCategoryBrowse(c *gin.Context) {
+	if !h.requireCategorizer(c) {
+		return
+	}
+	category := c.Query("category")
+	limit := 200
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 500 {
+		limit = l
+	}
+
+	if category == "" {
+		stats := h.categorizer.GetStats()
+		writeSuccess(c, stats)
+		return
+	}
+
+	items := h.categorizer.GetByCategory(categorizer.Category(category))
+
+	// Enrich with thumbnail URLs from the media module
+	type browseItem struct {
+		ID           string      `json:"id"`
+		Name         string      `json:"name"`
+		Category     string      `json:"category"`
+		Confidence   float64     `json:"confidence"`
+		DetectedInfo interface{} `json:"detected_info,omitempty"`
+		ThumbnailURL string      `json:"thumbnail_url,omitempty"`
+	}
+	results := make([]browseItem, 0, len(items))
+	for _, item := range items {
+		bi := browseItem{
+			ID:           item.ID,
+			Name:         item.Name,
+			Category:     string(item.Category),
+			Confidence:   item.Confidence,
+			DetectedInfo: item.DetectedInfo,
+		}
+		if h.thumbnails != nil && item.ID != "" {
+			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+		}
+		results = append(results, bi)
+	}
+
+	if limit < len(results) {
+		results = results[:limit]
+	}
+
+	writeSuccess(c, map[string]interface{}{
+		"category": category,
+		"items":    results,
+		"total":    len(results),
+	})
 }
 
 // StreamMedia streams a media file
@@ -533,6 +684,34 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 			writeError(c, http.StatusInternalServerError, "Download error")
 		}
 	}
+}
+
+// GetBatchPlaybackPositions returns playback positions for multiple media IDs.
+// Query param: ids=id1,id2,... (max 100)
+func (h *Handler) GetBatchPlaybackPositions(c *gin.Context) {
+	session := getSession(c)
+	if session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return
+	}
+
+	raw := c.Query("ids")
+	if raw == "" {
+		writeSuccess(c, map[string]float64{})
+		return
+	}
+
+	ids := strings.Split(raw, ",")
+	if len(ids) > 100 {
+		ids = ids[:100]
+	}
+	// Trim whitespace from each ID.
+	for i, id := range ids {
+		ids[i] = strings.TrimSpace(id)
+	}
+
+	positions := h.media.BatchGetPlaybackPositions(c.Request.Context(), ids, session.UserID)
+	writeSuccess(c, map[string]interface{}{"positions": positions})
 }
 
 // GetPlaybackPosition returns the saved playback position for the current user.

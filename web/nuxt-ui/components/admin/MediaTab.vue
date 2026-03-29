@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MediaItem, AdminMediaListParams, ThumbnailStats } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { formatBytes, formatDuration } from '~/utils/format'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
@@ -132,22 +133,6 @@ async function handleScan() {
   } finally {
     scanning.value = false
   }
-}
-
-function formatBytes(bytes?: number): string {
-  if (!bytes) return '—'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
-}
-
-function formatDuration(secs?: number): string {
-  if (!secs) return '—'
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  const s = Math.floor(secs % 60)
-  return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`
 }
 
 function sortBy(col: string) {

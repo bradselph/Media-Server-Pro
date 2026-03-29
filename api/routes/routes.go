@@ -31,11 +31,11 @@ const (
 	pathStats             = "/stats"
 )
 
-// sessionAuth loads session/user context from the session_id cookie and stores
-// both on the gin context so downstream handlers and auth middleware can read them.
-// Both admin and regular users share the session_id cookie.
+// sessionAuth loads session/user context from the session_id cookie (or a Bearer
+// API token) and stores both on the gin context so downstream handlers can read them.
 func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Cookie-based session (browser clients)
 		cookie, err := c.Cookie("session_id")
 		if err == nil && cookie != "" {
 			session, user, err := authModule.ValidateSession(c.Request.Context(), cookie)
@@ -44,8 +44,6 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 				c.Set("user", user)
 			} else {
 				// Clear stale/expired cookie so the browser stops resending it.
-				// Mirror the same HTTPS detection used in handlers.isSecureRequest:
-				// check TLS, X-Forwarded-Proto, and the Cloudflare visitor header.
 				secure := c.Request.TLS != nil ||
 					c.GetHeader("X-Forwarded-Proto") == "https" ||
 					strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
@@ -58,6 +56,16 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 					Secure:   secure,
 					SameSite: http.SameSiteStrictMode,
 				})
+			}
+			c.Next()
+			return
+		}
+		// Bearer API token (programmatic / headless clients)
+		if bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "); bearer != "" {
+			session, user, err := authModule.ValidateAPIToken(c.Request.Context(), bearer)
+			if err == nil {
+				c.Set("session", session)
+				c.Set("user", user)
 			}
 		}
 		c.Next()
@@ -316,6 +324,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
+	api.GET("/playback/batch", requireAuth(), h.GetBatchPlaybackPositions)
 	api.POST("/playback", requireAuth(), h.TrackPlayback)
 
 	// HLS API routes (capabilities and status require auth to prevent fingerprinting)
@@ -341,6 +350,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// The frontend fetches this on initial load before any login occurs.
 	api.GET("/server-settings", h.GetServerSettings)
 
+	// OpenAPI specification — requires auth to prevent unauthenticated schema discovery.
+	api.GET("/docs", requireAuth(), h.GetOpenAPISpec)
+
+	// RSS/Atom feed — returns latest media as Atom XML; optional ?category=X&type=video&limit=N
+	api.GET("/feed", requireAuth(), h.GetRSSFeed)
+
 	// Age gate — public, no auth required (must be accessible before user logs in)
 	api.GET("/age-gate/status", ageGate.GinStatusHandler())
 	api.POST("/age-verify", ageGate.GinVerifyHandler())
@@ -355,13 +370,29 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Self-service account deletion (protected) — user must confirm with their password
 	api.POST("/auth/delete-account", requireAuth(), h.DeleteAccount)
 
+	// User API tokens — programmatic access for scripts and tools
+	api.GET("/auth/tokens", requireAuth(), h.ListAPITokens)
+	api.POST("/auth/tokens", requireAuth(), h.CreateAPIToken)
+	api.DELETE("/auth/tokens/:id", requireAuth(), h.DeleteAPIToken)
+
+	// Favorites (Watch Later)
+	api.GET("/favorites", requireAuth(), h.GetFavorites)
+	api.POST("/favorites", requireAuth(), h.AddFavorite)
+	api.GET("/favorites/:media_id", requireAuth(), h.CheckFavorite)
+	api.DELETE("/favorites/:media_id", requireAuth(), h.RemoveFavorite)
+
 	// Watch history routes (protected)
 	api.GET(pathWatchHistory, requireAuth(), h.GetWatchHistory)
 	api.DELETE(pathWatchHistory, requireAuth(), h.ClearWatchHistory)
+	api.GET(pathWatchHistory+"/export", requireAuth(), h.ExportWatchHistory)
+
+	// Public playlist browsing — no auth required
+	api.GET("/playlists/public", h.ListPublicPlaylists)
 
 	// Playlist routes (protected)
 	api.GET(pathPlaylists, requireAuth(), h.ListPlaylists)
 	api.POST(pathPlaylists, requireAuth(), h.CreatePlaylist)
+	api.POST("/playlists/bulk-delete", requireAuth(), h.BulkDeletePlaylists)
 	api.GET("/playlists/:id", requireAuth(), h.GetPlaylist)
 	api.DELETE("/playlists/:id", requireAuth(), h.DeletePlaylist)
 	api.PUT("/playlists/:id", requireAuth(), h.UpdatePlaylist)
@@ -398,7 +429,16 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Protected suggestions routes
 	api.GET("/suggestions/continue", requireAuth(), h.GetContinueWatching)
 	api.GET("/suggestions/personalized", requireAuth(), h.GetPersonalizedSuggestions)
+	api.GET("/suggestions/profile", requireAuth(), h.GetMyProfile)
+	api.DELETE("/suggestions/profile", requireAuth(), h.ResetMyProfile)
+	api.GET("/suggestions/recent", h.GetRecentContent)
+	api.GET("/suggestions/new", requireAuth(), h.GetNewSinceLastVisit)
+	api.GET("/suggestions/on-deck", requireAuth(), h.GetOnDeck)
 	api.POST("/ratings", requireAuth(), h.RecordRating)
+	api.GET("/ratings", requireAuth(), h.GetMyRatings)
+
+	// User-facing category browse (requires auth, returns categorized items)
+	api.GET("/browse/categories", requireAuth(), h.GetCategoryBrowse)
 
 	// Upload routes (protected)
 	api.POST("/upload", requireAuth(), h.UploadMedia)

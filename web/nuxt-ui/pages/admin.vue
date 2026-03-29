@@ -5,13 +5,6 @@ const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-// Redirect non-admins to the admin login page
-watchEffect(() => {
-  if (!authStore.isLoading && !authStore.isAdmin) {
-    router.replace('/admin-login')
-  }
-})
-
 const TABS = [
   { label: 'Dashboard', value: 'dashboard', icon: 'i-lucide-layout-dashboard' },
   { label: 'Users', value: 'users', icon: 'i-lucide-users' },
@@ -45,44 +38,66 @@ watch(activeTab, tab => {
       <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
     </div>
 
-    <div v-else-if="authStore.isAdmin" class="space-y-6">
+    <div v-else-if="authStore.isAdmin" class="space-y-4">
       <!-- Header -->
       <div class="flex items-center justify-between flex-wrap gap-3">
         <h1 class="text-2xl font-bold text-highlighted flex items-center gap-2">
           <UIcon name="i-lucide-shield" class="size-6 text-primary" />
           Admin Panel
         </h1>
-        <div class="flex gap-2">
-          <UButton to="/" icon="i-lucide-house" label="Home" variant="ghost" color="neutral" size="sm" />
-        </div>
+        <UButton to="/" icon="i-lucide-house" label="Home" variant="ghost" color="neutral" size="sm" />
       </div>
 
-      <!-- Tabs with inline content -->
-      <UTabs
-        v-model="activeTab"
-        :items="TABS"
-        orientation="horizontal"
-        class="w-full"
-        :ui="{ list: 'overflow-x-auto flex-nowrap' }"
-      >
-        <template #content="{ item }">
-          <div class="min-h-64 pt-2">
-            <AdminDashboardTab v-if="item.value === 'dashboard'" />
-            <AdminUsersTab v-else-if="item.value === 'users'" />
-            <AdminMediaTab v-else-if="item.value === 'media'" />
-            <AdminStreamingTab v-else-if="item.value === 'streaming'" />
-            <AdminAnalyticsTab v-else-if="item.value === 'analytics'" />
-            <AdminPlaylistsTab v-else-if="item.value === 'playlists'" />
-            <AdminSecurityTab v-else-if="item.value === 'security'" />
-            <AdminDownloaderTab v-else-if="item.value === 'downloader'" />
-            <AdminSystemTab v-else-if="item.value === 'system'" />
-            <AdminUpdatesTab v-else-if="item.value === 'updates'" />
-            <AdminContentTab v-else-if="item.value === 'content'" />
-            <AdminSourcesTab v-else-if="item.value === 'sources'" />
-            <AdminDiscoveryTab v-else-if="item.value === 'discovery'" />
-          </div>
-        </template>
-      </UTabs>
+      <!-- Sidebar layout -->
+      <div class="flex gap-4 items-start">
+        <!-- Mobile: horizontal scrollable pill nav -->
+        <div class="md:hidden w-full flex gap-1 overflow-x-auto pb-1">
+          <UButton
+            v-for="tab in TABS"
+            :key="tab.value"
+            :icon="tab.icon"
+            :label="tab.label"
+            size="xs"
+            :variant="activeTab === tab.value ? 'solid' : 'ghost'"
+            :color="activeTab === tab.value ? 'primary' : 'neutral'"
+            class="shrink-0"
+            @click="activeTab = tab.value"
+          />
+        </div>
+
+        <!-- Desktop: vertical sidebar -->
+        <nav class="hidden md:flex flex-col gap-0.5 w-44 shrink-0 sticky top-4">
+          <button
+            v-for="tab in TABS"
+            :key="tab.value"
+            class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium w-full text-left transition-colors"
+            :class="activeTab === tab.value
+              ? 'bg-primary text-white'
+              : 'text-muted hover:bg-elevated hover:text-highlighted'"
+            @click="activeTab = tab.value"
+          >
+            <UIcon :name="tab.icon" class="size-4 shrink-0" />
+            <span>{{ tab.label }}</span>
+          </button>
+        </nav>
+
+        <!-- Content panel -->
+        <div class="min-w-0 flex-1 min-h-64">
+          <AdminDashboardTab v-if="activeTab === 'dashboard'" />
+          <AdminUsersTab v-else-if="activeTab === 'users'" />
+          <AdminMediaTab v-else-if="activeTab === 'media'" />
+          <AdminStreamingTab v-else-if="activeTab === 'streaming'" />
+          <AdminAnalyticsTab v-else-if="activeTab === 'analytics'" />
+          <AdminPlaylistsTab v-else-if="activeTab === 'playlists'" />
+          <AdminSecurityTab v-else-if="activeTab === 'security'" />
+          <AdminDownloaderTab v-else-if="activeTab === 'downloader'" />
+          <AdminSystemTab v-else-if="activeTab === 'system'" />
+          <AdminUpdatesTab v-else-if="activeTab === 'updates'" />
+          <AdminContentTab v-else-if="activeTab === 'content'" />
+          <AdminSourcesTab v-else-if="activeTab === 'sources'" />
+          <AdminDiscoveryTab v-else-if="activeTab === 'discovery'" />
+        </div>
+      </div>
     </div>
   </UContainer>
 </template>

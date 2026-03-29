@@ -1,7 +1,34 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, UserProfile, APIToken, APITokenCreated, RatedItem } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { useAPITokensApi, useRatingsApi } from '~/composables/useApiEndpoints'
+import { formatWatchTime } from '~/utils/format'
+
+const QUALITY_OPTIONS = [
+  { label: 'Auto', value: 'auto' },
+  { label: '1080p', value: '1080p' },
+  { label: '720p', value: '720p' },
+  { label: '480p', value: '480p' },
+  { label: '360p', value: '360p' },
+]
+
+const SPEED_OPTIONS = [
+  { label: '0.5x', value: 0.5 },
+  { label: '0.75x', value: 0.75 },
+  { label: '1x (Normal)', value: 1 },
+  { label: '1.25x', value: 1.25 },
+  { label: '1.5x', value: 1.5 },
+  { label: '2x', value: 2 },
+]
+
+const ITEMS_PER_PAGE_OPTIONS = [
+  { label: '12', value: 12 },
+  { label: '20', value: 20 },
+  { label: '24', value: 24 },
+  { label: '48', value: 48 },
+  { label: '96', value: 96 },
+]
 
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
@@ -11,6 +38,9 @@ const router = useRouter()
 const { changePassword, deleteAccount, getPreferences, updatePreferences } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
 const { getUsage, getPermissions } = useStorageApi()
+const { getMyProfile, resetMyProfile } = useSuggestionsApi()
+const tokensApi = useAPITokensApi()
+const ratingsApi = useRatingsApi()
 const toast = useToast()
 
 const storageUsage = ref<StorageUsage | null>(null)
@@ -23,10 +53,26 @@ async function loadStorageUsage() {
   } catch { /* optional */ }
 }
 
-// Redirect if not logged in
-watchEffect(() => {
-  if (!authStore.isLoading && !authStore.isLoggedIn) router.replace('/login')
-})
+const userProfile = ref<UserProfile | null>(null)
+const profileResetting = ref(false)
+async function loadUserProfile() {
+  try { userProfile.value = await getMyProfile() }
+  catch { /* non-critical */ }
+}
+async function resetProfile() {
+  profileResetting.value = true
+  try {
+    await resetMyProfile()
+    userProfile.value = null
+    toast.add({ title: 'Recommendation profile reset', description: 'Your preference data has been cleared.', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to reset profile', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    profileResetting.value = false
+  }
+}
+
+// formatWatchTime imported from ~/utils/format
 
 // Preferences
 const prefs = ref<Partial<UserPreferences>>({})
@@ -62,6 +108,7 @@ async function savePrefs() {
 const history = ref<WatchHistoryItem[]>([])
 const historyLoading = ref(true)
 const historySearch = ref('')
+const historyFilter = ref<'all' | 'in-progress' | 'completed'>('all')
 const historyPage = ref(1)
 const historyPerPage = 20
 
@@ -95,9 +142,12 @@ async function doClearHistory() {
 }
 
 const filteredHistory = computed(() => {
-  if (!historySearch.value) return history.value
+  let result = history.value
+  if (historyFilter.value === 'completed') result = result.filter(h => h.completed)
+  else if (historyFilter.value === 'in-progress') result = result.filter(h => !h.completed)
+  if (!historySearch.value) return result
   const q = historySearch.value.toLowerCase()
-  return history.value.filter(h => (h.media_name || h.media_id || '').toLowerCase().includes(q))
+  return result.filter(h => (h.media_name || h.media_id || '').toLowerCase().includes(q))
 })
 
 const historyTotalPages = computed(() => Math.max(1, Math.ceil(filteredHistory.value.length / historyPerPage)))
@@ -106,7 +156,7 @@ const pagedHistory = computed(() => {
   return filteredHistory.value.slice(start, start + historyPerPage)
 })
 
-watch(historySearch, () => { historyPage.value = 1 })
+watch([historySearch, historyFilter], () => { historyPage.value = 1 })
 
 // Password
 const pw = reactive({ current: '', new: '', confirm: '' })
@@ -151,7 +201,73 @@ async function handleDeleteAccount() {
   }
 }
 
-onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
+// My Ratings
+const myRatings = ref<RatedItem[]>([])
+const ratingsLoading = ref(false)
+
+const ratingsDistribution = computed(() => {
+  if (!myRatings.value.length) return []
+  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  for (const r of myRatings.value) {
+    const star = Math.round(r.rating)
+    if (star >= 1 && star <= 5) counts[star]++
+  }
+  const max = Math.max(...Object.values(counts))
+  return [5, 4, 3, 2, 1].map(star => ({
+    star,
+    count: counts[star],
+    pct: max > 0 ? Math.round((counts[star] / max) * 100) : 0,
+  }))
+})
+
+async function loadMyRatings() {
+  ratingsLoading.value = true
+  try { myRatings.value = (await ratingsApi.getMyRatings()) ?? [] }
+  catch { /* non-critical */ }
+  finally { ratingsLoading.value = false }
+}
+
+// API Tokens
+const tokens = ref<APIToken[]>([])
+const tokensLoading = ref(false)
+const newTokenName = ref('')
+const newTokenCreating = ref(false)
+const revealedToken = ref<string | null>(null)
+
+async function loadTokens() {
+  tokensLoading.value = true
+  try { tokens.value = (await tokensApi.list()) ?? [] }
+  catch { /* non-critical */ }
+  finally { tokensLoading.value = false }
+}
+
+async function createToken() {
+  if (!newTokenName.value.trim()) return
+  newTokenCreating.value = true
+  try {
+    const created = await tokensApi.create(newTokenName.value.trim()) as APITokenCreated
+    revealedToken.value = created.token
+    tokens.value = [{ id: created.id, name: created.name, last_used_at: created.last_used_at, created_at: created.created_at }, ...tokens.value]
+    newTokenName.value = ''
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to create token', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    newTokenCreating.value = false
+  }
+}
+
+async function revokeToken(id: string) {
+  try {
+    await tokensApi.delete(id)
+    tokens.value = tokens.value.filter(t => t.id !== id)
+    if (revealedToken.value) revealedToken.value = null
+    toast.add({ title: 'Token revoked', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens(); loadMyRatings() })
 </script>
 
 <template>
@@ -179,6 +295,7 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
             <div class="flex items-center gap-2 mt-1 flex-wrap">
               <UBadge :label="authStore.user.role" :color="authStore.isAdmin ? 'warning' : 'neutral'" variant="subtle" size="xs" />
               <span class="text-sm text-muted">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
+              <span v-if="authStore.user.previous_last_login" class="text-sm text-muted">· Previous session: {{ new Date(authStore.user.previous_last_login).toLocaleDateString() }}</span>
             </div>
             <div v-if="storageUsage" class="mt-2 max-w-xs space-y-1">
               <div class="flex justify-between text-xs text-muted">
@@ -199,6 +316,131 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
             </div>
           </div>
         </div>
+      </UCard>
+
+      <!-- Watch Stats -->
+      <UCard v-if="userProfile && (userProfile.total_views > 0 || userProfile.total_watch_time > 0)">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 font-semibold">
+              <UIcon name="i-lucide-bar-chart-2" class="size-4" />
+              Watch Stats
+            </div>
+            <UButton
+              icon="i-lucide-refresh-ccw"
+              label="Reset Profile"
+              variant="ghost"
+              color="warning"
+              size="xs"
+              :loading="profileResetting"
+              aria-label="Reset recommendation profile"
+              @click="resetProfile"
+            />
+          </div>
+        </template>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div class="text-center">
+            <p class="text-2xl font-bold text-primary">{{ userProfile.total_views.toLocaleString() }}</p>
+            <p class="text-xs text-muted mt-0.5">Total views</p>
+          </div>
+          <div class="text-center">
+            <p class="text-2xl font-bold text-primary">{{ formatWatchTime(userProfile.total_watch_time) }}</p>
+            <p class="text-xs text-muted mt-0.5">Watch time</p>
+          </div>
+          <div class="col-span-2 sm:col-span-2">
+            <p class="text-xs text-muted mb-1.5 font-medium">Top categories</p>
+            <div class="space-y-1">
+              <div
+                v-for="[cat, score] in Object.entries(userProfile.category_scores).sort((a, b) => b[1] - a[1]).slice(0, 3)"
+                :key="cat"
+                class="flex items-center gap-2"
+              >
+                <span class="text-xs text-default truncate w-24 shrink-0">{{ cat || 'Uncategorized' }}</span>
+                <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-primary rounded-full"
+                    :style="{ width: `${Math.min(100, Math.round((score / (Object.values(userProfile.category_scores)[0] ?? 1)) * 100))}%` }"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="userProfile && Object.keys(userProfile.type_preferences).length > 0" class="mt-3 pt-3 border-t border-default">
+          <p class="text-xs text-muted mb-1.5 font-medium">By media type</p>
+          <div class="flex flex-wrap gap-x-6 gap-y-1">
+            <div
+              v-for="[mtype, score] in Object.entries(userProfile.type_preferences).sort((a, b) => (b[1] as number) - (a[1] as number))"
+              :key="mtype"
+              class="flex items-center gap-1.5 min-w-32"
+            >
+              <UIcon
+                :name="mtype === 'video' ? 'i-lucide-film' : mtype === 'audio' ? 'i-lucide-music' : 'i-lucide-image'"
+                class="size-3 text-muted shrink-0"
+              />
+              <span class="text-xs text-default capitalize w-10 shrink-0">{{ mtype }}</span>
+              <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-primary rounded-full"
+                  :style="{ width: `${Math.min(100, Math.round(((score as number) / ((Object.values(userProfile.type_preferences)[0] as number) ?? 1)) * 100))}%` }"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <!-- My Ratings -->
+      <UCard v-if="myRatings.length > 0 || ratingsLoading">
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-star" class="size-4" />
+            My Ratings
+            <UBadge v-if="myRatings.length > 0" :label="String(myRatings.length)" color="neutral" variant="subtle" size="xs" />
+          </div>
+        </template>
+        <div v-if="ratingsLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <template v-else>
+          <div v-if="ratingsDistribution.length > 0" class="mb-3 pb-3 border-b border-default space-y-0.5">
+            <div v-for="row in ratingsDistribution" :key="row.star" class="flex items-center gap-2">
+              <span class="text-xs text-muted w-5 shrink-0">{{ row.star }}★</span>
+              <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div class="h-full bg-yellow-400 rounded-full" :style="{ width: `${row.pct}%` }" />
+              </div>
+              <span class="text-xs text-muted w-4 text-right shrink-0">{{ row.count }}</span>
+            </div>
+          </div>
+        <div class="flex gap-3 overflow-x-auto pb-2">
+          <NuxtLink
+            v-for="item in myRatings"
+            :key="item.media_id"
+            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+            class="group shrink-0 w-36"
+          >
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+              <img
+                v-if="item.thumbnail_url"
+                :src="item.thumbnail_url"
+                :alt="item.name"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
+              <!-- Rating badge -->
+              <div class="absolute bottom-1 right-1 bg-black/70 text-yellow-400 text-xs px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                <UIcon name="i-lucide-star" class="size-3" />
+                {{ item.rating.toFixed(1) }}
+              </div>
+            </div>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.name">{{ item.name }}</p>
+            <p class="text-xs text-muted truncate">{{ item.category || item.media_type }}</p>
+          </NuxtLink>
+        </div>
+        </template>
       </UCard>
 
       <!-- Preferences -->
@@ -223,19 +465,19 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
           <UFormField label="Default Quality">
             <USelect
               v-model="prefs.default_quality"
-              :items="[{ label: 'Auto', value: 'auto' }, { label: '1080p', value: '1080p' }, { label: '720p', value: '720p' }, { label: '480p', value: '480p' }, { label: '360p', value: '360p' }]"
+              :items="QUALITY_OPTIONS"
             />
           </UFormField>
           <UFormField label="Playback Speed">
             <USelect
               v-model="prefs.playback_speed"
-              :items="[{ label: '0.5x', value: 0.5 }, { label: '0.75x', value: 0.75 }, { label: '1x (Normal)', value: 1 }, { label: '1.25x', value: 1.25 }, { label: '1.5x', value: 1.5 }, { label: '2x', value: 2 }]"
+              :items="SPEED_OPTIONS"
             />
           </UFormField>
           <UFormField label="Items per Page">
             <USelect
               v-model="prefs.items_per_page"
-              :items="[{ label: '12', value: 12 }, { label: '20', value: 20 }, { label: '24', value: 24 }, { label: '48', value: 48 }, { label: '96', value: 96 }]"
+              :items="ITEMS_PER_PAGE_OPTIONS"
             />
           </UFormField>
           <UFormField label="View Mode">
@@ -280,24 +522,47 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
               <UIcon name="i-lucide-history" class="size-4" />
               Watch History
             </div>
-            <UButton
-              v-if="history.length > 0"
-              icon="i-lucide-trash-2"
-              label="Clear All"
-              variant="ghost"
-              color="error"
-              size="xs"
-              @click="doClearHistory"
-            />
+            <div v-if="history.length > 0" class="flex items-center gap-1">
+              <UButton
+                icon="i-lucide-download"
+                label="Export CSV"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                :to="`/api/watch-history/export`"
+                target="_blank"
+                external
+              />
+              <UButton
+                icon="i-lucide-trash-2"
+                label="Clear All"
+                variant="ghost"
+                color="error"
+                size="xs"
+                @click="doClearHistory"
+              />
+            </div>
           </div>
         </template>
-        <UInput
-          v-if="history.length > 5"
-          v-model="historySearch"
-          icon="i-lucide-search"
-          placeholder="Search history…"
-          class="mb-3 w-64"
-        />
+        <div v-if="history.length > 5" class="flex flex-wrap items-center gap-2 mb-3">
+          <UInput
+            v-model="historySearch"
+            icon="i-lucide-search"
+            placeholder="Search history…"
+            class="w-56"
+          />
+          <div class="flex gap-1">
+            <UButton
+              v-for="opt in (['all', 'in-progress', 'completed'] as const)"
+              :key="opt"
+              size="xs"
+              :variant="historyFilter === opt ? 'solid' : 'outline'"
+              :color="historyFilter === opt ? 'primary' : 'neutral'"
+              :label="opt === 'all' ? 'All' : opt === 'in-progress' ? 'In Progress' : 'Completed'"
+              @click="historyFilter = opt"
+            />
+          </div>
+        </div>
         <div v-if="historyLoading" class="flex justify-center py-4">
           <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
         </div>
@@ -310,9 +575,17 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
             :key="item.media_id"
             class="flex items-center justify-between py-2 gap-3"
           >
-            <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
-              <p class="text-xs text-muted">{{ item.watched_at ? new Date(item.watched_at).toLocaleString() : '' }}</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <UBadge v-if="item.completed" label="Completed" color="success" variant="subtle" size="xs" class="shrink-0" />
+              </div>
+              <div class="flex items-center gap-2 mt-0.5">
+                <p class="text-xs text-muted">
+                  {{ item.completed ? 'Completed' : `${Math.round(item.progress)}% watched` }}
+                  <span v-if="item.watched_at"> · {{ new Date(item.watched_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
+                </p>
+              </div>
             </div>
             <UButton
               icon="i-lucide-x"
@@ -326,6 +599,55 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage() })
         </div>
         <div v-if="historyTotalPages > 1" class="flex justify-center pt-3">
           <UPagination v-model:page="historyPage" :total="filteredHistory.length" :items-per-page="historyPerPage" />
+        </div>
+      </UCard>
+
+      <!-- API Tokens -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-key-round" class="size-4" />
+            API Tokens
+          </div>
+        </template>
+        <p class="text-sm text-muted mb-4">Create tokens to access the API from scripts or tools using <code class="bg-muted/40 px-1 rounded text-xs">Authorization: Bearer &lt;token&gt;</code>.</p>
+
+        <!-- Revealed token banner -->
+        <UAlert
+          v-if="revealedToken"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="Copy your token now — it won't be shown again."
+          class="mb-4"
+        >
+          <template #description>
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
+              <code class="text-xs break-all select-all">{{ revealedToken }}</code>
+              <UButton size="xs" icon="i-lucide-x" variant="ghost" color="neutral" aria-label="Dismiss" @click="revealedToken = null" />
+            </div>
+          </template>
+        </UAlert>
+
+        <!-- Create new token -->
+        <div class="flex gap-2 mb-4">
+          <UInput v-model="newTokenName" placeholder="Token name (e.g. My Script)" class="flex-1" @keydown.enter="createToken" />
+          <UButton :loading="newTokenCreating" icon="i-lucide-plus" label="Create" @click="createToken" />
+        </div>
+
+        <!-- Token list -->
+        <div v-if="tokensLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="tokens.length === 0" class="text-sm text-muted py-2">No API tokens yet.</div>
+        <div v-else class="divide-y divide-default">
+          <div v-for="t in tokens" :key="t.id" class="flex items-center justify-between py-2 gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium truncate">{{ t.name }}</p>
+              <p class="text-xs text-muted">Created {{ new Date(t.created_at).toLocaleDateString() }}<template v-if="t.last_used_at"> · Last used {{ new Date(t.last_used_at).toLocaleDateString() }}</template></p>
+            </div>
+            <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" aria-label="Revoke token" @click="revokeToken(t.id)" />
+          </div>
         </div>
       </UCard>
 
