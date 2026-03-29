@@ -9,6 +9,9 @@
 > SourcesTab (807 lines) refactored into SourcesRemotePanel, SourcesCrawlerPanel, SourcesReceiverPanel sub-components.
 > All listed task-file Tier-1 items now confirmed implemented: progress bars, RSS, user tokens, favorites,
 > timestamp deep-links, OpenAPI link, personal stats, persist filter prefs.
+> Updated: 2026-03-28 (scheduled) — URL deep-linking for browse filters (index.vue), CSS daily bar chart
+> in admin analytics, and user bulk playlist delete (full-stack: POST /api/playlists/bulk-delete + playlists.vue
+> multi-select UI) implemented. Pre-existing TS2322 typecheck error in player.vue fixed.
 
 ---
 

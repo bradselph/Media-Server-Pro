@@ -151,3 +151,16 @@ Automated continuous improvement cycle history.
 - Build: PASS (go build ./... clean, nuxi typecheck clean)
 - Deploy: SUCCESS (--branch development)
 - Live site: OK
+
+## Cycle 2026-03-28 (Scheduled)
+- Items implemented:
+  - fix(frontend): `pipSupported` coerced to `boolean` via `!!` to resolve TS2322 typecheck error (Phase 0 gate)
+  - feat(frontend): URL deep-linking for browse filters — `index.vue` params initialized from `route.query` at setup time (overrides saved prefs); `router.replace` syncs URL as filters change; `hideWatched` also URL-aware
+  - feat(frontend): CSS daily views bar chart in admin analytics — horizontal bars using div widths scaled to max views, newest day at top; sits above existing table in Daily Breakdown card
+  - feat(backend): `POST /api/playlists/bulk-delete` — user-owned bulk playlist delete; verifies ownership via `playlist.DeletePlaylist(ctx, id, userID)`; max 100 IDs per request
+  - feat(frontend): Multi-select bulk delete on playlists page — "Select" toggle enables checkbox mode on each card; cards highlight when selected; "Delete (N)" button in header opens confirmation modal; calls new `/api/playlists/bulk-delete`
+- Live site checks: 3 passed (home, health, /api/media), 0 failed, 1 warning (/api/status → 401 expected)
+- Issues fixed: 1 (TS2322 typecheck error), deferred: 0
+- Build: `go build ./...` PASS | `go test ./api/handlers/...` PASS | `npx nuxi typecheck` PASS
+- Deploy: SUCCESS — /health returns 200 post-deploy
+- Live site: OK
