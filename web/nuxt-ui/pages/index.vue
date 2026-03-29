@@ -40,6 +40,7 @@ const playbackApi = usePlaybackApi()
 const favoritesApi = useFavoritesApi()
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 
 const sortOptions = computed(() =>
@@ -106,15 +107,17 @@ const loadError = ref('')
 const scanning = ref(false)
 const initializing = ref(false)
 
+// URL deep-link: query params take precedence over saved preferences so that
+// shared / bookmarked URLs open with the exact filters the sender intended.
 const params = reactive({
   page: 1,
   limit: authStore.user?.preferences?.items_per_page ?? 24,
-  search: '',
-  type: authStore.user?.preferences?.filter_media_type || 'all',
-  category: authStore.user?.preferences?.filter_category || 'all',
-  sort_by: authStore.user?.preferences?.sort_by || 'name',
-  sort_order: (authStore.user?.preferences?.sort_order ?? 'asc') as 'asc' | 'desc',
-  min_rating: 0,
+  search: typeof route.query.search === 'string' ? route.query.search : '',
+  type: typeof route.query.type === 'string' ? route.query.type : (authStore.user?.preferences?.filter_media_type || 'all'),
+  category: typeof route.query.category === 'string' ? route.query.category : (authStore.user?.preferences?.filter_category || 'all'),
+  sort_by: typeof route.query.sort_by === 'string' ? route.query.sort_by : (authStore.user?.preferences?.sort_by || 'name'),
+  sort_order: (typeof route.query.sort_order === 'string' ? route.query.sort_order : (authStore.user?.preferences?.sort_order ?? 'asc')) as 'asc' | 'desc',
+  min_rating: typeof route.query.min_rating === 'string' ? (parseInt(route.query.min_rating, 10) || 0) : 0,
 })
 
 async function loadGeneralSuggestions() {
@@ -199,7 +202,7 @@ async function surpriseMe() {
 const filterTag = ref('')
 
 // Hide watched toggle — only active for logged-in users
-const hideWatched = ref(false)
+const hideWatched = ref(route.query.hide_watched === 'true')
 
 function setTagFilter(tag: string) {
   filterTag.value = tag
@@ -215,6 +218,27 @@ function clearTagFilter() {
 
 watch(hideWatched, () => { params.page = 1; load() })
 watch(() => params.min_rating, () => { params.page = 1; load() })
+
+// Keep URL in sync with current filter state for deep-linking / bookmarking.
+// Uses router.replace so the browser back button is not polluted.
+let urlSyncTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, hideWatched],
+  () => {
+    if (urlSyncTimer) clearTimeout(urlSyncTimer)
+    urlSyncTimer = setTimeout(() => {
+      const query: Record<string, string> = {}
+      if (params.type !== 'all') query.type = params.type
+      if (params.category !== 'all') query.category = params.category
+      if (params.sort_by !== 'name') query.sort_by = params.sort_by
+      if (params.sort_order !== 'asc') query.sort_order = params.sort_order
+      if (params.min_rating > 0) query.min_rating = String(params.min_rating)
+      if (params.search) query.search = params.search
+      if (hideWatched.value) query.hide_watched = 'true'
+      router.replace({ query })
+    }, 300)
+  },
+)
 
 async function load() {
   loading.value = true
