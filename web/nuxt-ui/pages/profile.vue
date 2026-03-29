@@ -267,7 +267,13 @@ async function revokeToken(id: string) {
   }
 }
 
-onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens(); loadMyRatings() })
+let hasFetched = false
+function loadAll() {
+  hasFetched = true
+  loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens(); loadMyRatings()
+}
+onMounted(() => { if (!authStore.isLoading && authStore.user) loadAll() })
+watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
 </script>
 
 <template>
@@ -697,5 +703,10 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
         </UModal>
       </UCard>
     </template>
+
+    <!-- Fallback: prevents blank page if auth resolves without a user (edge case) -->
+    <div v-else class="flex justify-center py-16">
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+    </div>
   </UContainer>
 </template>
