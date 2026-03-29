@@ -1,5 +1,93 @@
 # Changelog
 
+## [0.125.0] - 2026-03-29 (minor)
+
+- Merge pull request #111 from bradselph/development
+- chore: improvement cycle 2026-03-28
+- docs: update gap report and improvement log — cycle 2026-03-28
+- feat(frontend): analytics event data, backup file count, scanner queue fix
+- chore: improvement cycle 2026-03-28
+- feat(frontend): multi-select bulk delete on playlists page — select mode with checkboxes, bulk delete confirmation modal
+- feat(backend): POST /api/playlists/bulk-delete — user-owned bulk playlist delete with ownership verification
+- feat(frontend): CSS bar chart for daily views in admin analytics — horizontal bars above the table, newest day at top
+- feat(frontend): URL deep-linking for browse filters — query params take precedence over saved prefs; URL stays in sync as filters change
+- fix(frontend): coerce pipSupported to boolean to fix TS2322 typecheck error
+- refactor(frontend): extract PlayerControls + RecommendationRow components
+- refactor(frontend): split SystemTab into 4 focused sub-panel components
+- chore: improvement cycle 2026-03-28
+- docs: update gap report and live site audit log — cycle 2026-03-28
+- feat(frontend): previous session date, type preferences, and ratings distribution on profile page
+- refactor(frontend): split SourcesTab into focused sub-panel components
+- feat(frontend): backup retention config + scanner confidence threshold UI
+- feat(frontend): public playlist browsing section on playlists page
+- feat(backend): GET /api/playlists/public — public playlist browsing
+- feat(frontend): structured user type and permissions form in admin UsersTab
+- feat(frontend): CORS/HTTPS/HSTS toggles in admin Security Settings tab
+- feat(frontend): add Bitrate and Codec to browse sort dropdown
+- feat(backend): add bitrate and codec sort options to media SortItems
+- feat(frontend): Reset Recommendation Profile button on profile page
+- feat(backend): DELETE /api/suggestions/profile — reset user suggestion profile
+- feat(frontend): watch history completion badge + S##E## episode labels
+- feat(frontend): blur-hash progressive placeholders on library thumbnails
+- feat(frontend): download enabled/require_auth config toggles in DownloaderTab
+- feat(frontend): HLS auto-generate toggle in admin StreamingTab
+- refactor(frontend): code quality — items 8–10
+- refactor(frontend): code quality — 7 audit items resolved
+- chore: improvement cycle 2026-03-28
+- docs: update gap report — mark resolved P0 items and add update note
+- feat(frontend): min_rating filter, RSS subscribe button, admin developer links
+- fix(frontend): replace truncating horizontal tabs with sidebar nav on admin panel
+- chore: improvement cycle 2026-03-28
+- feat(frontend): watch history All/In-Progress/Completed filter on profile page
+- feat(backend): add ?completed=true|false filter to GET /api/watch-history
+- feat(frontend): On Deck row on home page — next episode per TV show / Anime
+- feat(backend): add GET /api/suggestions/on-deck for next-episode per TV show
+- feat(frontend): persist playback speed preference on cycle
+- chore: improvement cycle 2026-03-28 23:00
+- feat(frontend): tag chips + hide-watched filter + player keyboard shortcuts
+- feat(backend): add hide_watched filter to GET /api/media
+- fix(frontend): prevent preview frame 404 from hiding main thumbnail
+- fix(backend): preview thumbnails — don't return URLs for in-progress files
+- chore: improvement cycle 2026-03-28 22:00
+- feat(frontend): user rating badges on browse cards, rating sort, new-since-last-visit row
+- feat(backend): user ratings on browse cards, sort/filter by rating, new-since-last-visit
+- chore: improvement cycle 2026-03-28 21:00
+- feat(frontend): watch history export, loop mode, playlist auto-advance
+- feat(backend): add GET /api/watch-history/export for CSV download
+- chore: improvement cycle 2026-03-28 20:00
+- feat(frontend): categories browse page, recently added row, my ratings section
+- feat(backend): categories browse, user ratings list, recent content endpoints
+- chore: improvement cycle 2026-03-28 19:00
+- feat(frontend): favorites + API token management UI
+- feat(backend): favorites + user API tokens
+- chore: improvement cycle 2026-03-28 18:00
+- feat(frontend): progress bars, profile stats, timestamp deep-links
+- feat(backend): add profile stats + batch positions endpoints
+- chore: improvement cycle 2026-03-28 17:00
+- feat(backend): add Atom feed at GET /api/feed
+- feat(frontend): persist filter_category + filter_media_type on change
+- feat(backend): serve embedded OpenAPI spec at GET /api/docs
+- chore: improvement cycle 2026-03-28
+- fix(frontend): self-healing thumbnail retry — reactive failed sets + backoff probe
+- feat: add Tier-1 gap report improvements
+- docs: add comprehensive feature gap analysis report
+- Create FRONTEND_CODE_AUDIT.md
+- Create BACKEND_API_SUMMARY.md
+- Merge branch 'main' into development
+- cleanup
+- cleanup
+- Merge pull request #110 from bradselph/development
+- cleanup
+- Merge branch 'main' into development
+- feat: add mobile hamburger menu; fix broken thumbnail handling in strips/list
+- fix: age gate blocks page content; strengthen mature content blur
+- ci: serialize pipeline and eliminate redundant parallel runs
+- ci: fix workflow interference and self-cancellation
+- ci: fix workflow interference and self-cancellation
+- Merge branch 'main' into development
+- Merge branch 'main' into development
+
+
 ## [0.124.0] - 2026-03-27 (minor)
 
 - feat(admin): show build_date, library size and last scan in dashboard
