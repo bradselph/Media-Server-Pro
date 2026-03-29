@@ -217,6 +217,7 @@ onMounted(load)
               <span v-if="ev.ip_address" class="text-xs text-muted">{{ ev.ip_address }}</span>
             </div>
             <p class="text-xs text-muted mt-0.5">{{ ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '' }}</p>
+            <pre v-if="ev.data && Object.keys(ev.data).length > 0" class="text-xs text-muted mt-1 bg-elevated rounded px-2 py-1 whitespace-pre-wrap break-all max-h-20 overflow-y-auto">{{ JSON.stringify(ev.data, null, 2) }}</pre>
           </div>
         </div>
       </div>

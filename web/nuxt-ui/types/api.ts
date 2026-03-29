@@ -375,6 +375,9 @@ export interface BackupEntry {
   created_at: string
   type: string
   description?: string
+  files?: string[]
+  errors?: string[]
+  version?: string
 }
 
 export interface ThumbnailStats {
@@ -402,6 +405,18 @@ export interface FileScanResult {
   reviewed_by?: string
   reviewed_at?: string
   review_decision?: string
+}
+
+// Matches the backend models.MatureReviewItem JSON response from GET /api/admin/scanner/queue
+export interface ReviewQueueItem {
+  id: string
+  name: string
+  detected_at: string
+  confidence: number
+  reasons: string[]
+  reviewed_by?: string
+  reviewed_at?: string
+  decision?: string
 }
 
 export interface UpdateInfo {

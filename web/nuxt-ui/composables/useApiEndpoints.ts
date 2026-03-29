@@ -8,7 +8,7 @@ import type {
   AnalyticsSummary, AnalyticsEvent, DailyStats, TopMediaItem, EventStats, EventTypeCounts,
   AdminStats, SystemInfo, StreamSession, UploadProgress, UploadResult,
   AuditLogEntry, LogEntry, ScheduledTask, BackupEntry,
-  ThumbnailStats, ThumbnailPreviews, ScannerStats, FileScanResult,
+  ThumbnailStats, ThumbnailPreviews, ScannerStats, FileScanResult, ReviewQueueItem,
   UpdateInfo, UpdateStatus,
   IPListEntry, BannedIP, SecurityStats,
   DatabaseStatus, QueryResult, UserSession,
@@ -391,7 +391,7 @@ export function useAdminApi() {
     // Scanner / Content review
     getScannerStats: () => api.get<ScannerStats>(`${base}/scanner/stats`),
     runScan: (path?: string) => api.post<void>(`${base}/scanner/scan`, path ? { path } : undefined),
-    getReviewQueue: () => api.get<FileScanResult[]>(`${base}/scanner/queue`),
+    getReviewQueue: () => api.get<ReviewQueueItem[]>(`${base}/scanner/queue`),
     batchReview: (action: 'approve' | 'reject', ids: string[]) =>
       api.post<{ updated: number; total: number }>(`${base}/scanner/queue`, { action, ids }),
     clearReviewQueue: () => api.delete<void>(`${base}/scanner/queue`),

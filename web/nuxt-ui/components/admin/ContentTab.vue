@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { FileScanResult, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities } from '~/types/api'
+import type { ReviewQueueItem, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities } from '~/types/api'
 import { formatBytes } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
 
@@ -16,7 +16,7 @@ const subTabs = [
 
 // ── Scanner ────────────────────────────────────────────────────────────────────
 const scannerStats = ref<ScannerStats | null>(null)
-const reviewQueue = ref<FileScanResult[]>([])
+const reviewQueue = ref<ReviewQueueItem[]>([])
 const scannerLoading = ref(false)
 const scanPath = ref('')
 const scanning = ref(false)
@@ -69,15 +69,15 @@ async function clearQueue() {
   }
 }
 
-function toggleSelect(path: string) {
-  const i = selected.value.indexOf(path)
-  if (i === -1) selected.value.push(path)
+function toggleSelect(id: string) {
+  const i = selected.value.indexOf(id)
+  if (i === -1) selected.value.push(id)
   else selected.value.splice(i, 1)
 }
 
 function toggleAll() {
   if (selected.value.length === reviewQueue.value.length) selected.value = []
-  else selected.value = reviewQueue.value.map(r => r.path)
+  else selected.value = reviewQueue.value.map(r => r.id)
 }
 
 // ── HLS ────────────────────────────────────────────────────────────────────────
@@ -327,20 +327,19 @@ watch(subTab, (v) => {
             <span class="w-20 text-right">Confidence</span>
             <span class="w-24 text-right">Actions</span>
           </div>
-          <div v-for="item in reviewQueue" :key="item.path" class="flex items-center gap-2 py-2">
-            <UCheckbox :model-value="selected.includes(item.path)" @update:model-value="toggleSelect(item.path)" />
+          <div v-for="item in reviewQueue" :key="item.id" class="flex items-center gap-2 py-2">
+            <UCheckbox :model-value="selected.includes(item.id)" @update:model-value="toggleSelect(item.id)" />
             <div class="flex-1 min-w-0">
-              <p class="truncate font-mono text-xs" :title="item.path">{{ item.path }}</p>
+              <p class="truncate text-xs font-medium" :title="item.name">{{ item.name }}</p>
               <div class="flex gap-1 mt-0.5 flex-wrap">
-                <UBadge v-if="item.is_mature" label="Mature" color="error" variant="subtle" size="xs" />
-                <UBadge v-if="item.auto_flagged" label="Auto-flagged" color="warning" variant="subtle" size="xs" />
                 <UBadge v-for="r in (item.reasons ?? [])" :key="r" :label="r" color="neutral" variant="subtle" size="xs" />
               </div>
+              <p v-if="item.detected_at" class="text-xs text-muted mt-0.5">Detected: {{ new Date(item.detected_at).toLocaleDateString() }}</p>
             </div>
             <span class="w-20 text-right text-muted">{{ item.confidence != null ? `${(item.confidence * 100).toFixed(0)}%` : '—' }}</span>
             <div class="w-24 flex justify-end gap-1">
-              <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" @click="adminApi.approveContent(item.path).then(loadScanner)" />
-              <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" @click="adminApi.rejectContent(item.path).then(loadScanner)" />
+              <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" @click="adminApi.approveContent(item.id).then(loadScanner)" />
+              <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" @click="adminApi.rejectContent(item.id).then(loadScanner)" />
             </div>
           </div>
         </div>

@@ -136,11 +136,18 @@ onMounted(() => {
           :columns="[
             { accessorKey: 'filename', header: 'File' },
             { accessorKey: 'type', header: 'Type' },
+            { accessorKey: 'file_count', header: 'Files' },
             { accessorKey: 'size', header: 'Size' },
             { accessorKey: 'created_at', header: 'Created' },
             { accessorKey: 'actions', header: '' },
           ]"
         >
+          <template #file_count-cell="{ row }">
+            <span class="text-sm tabular-nums">
+              {{ row.original.files?.length ?? '—' }}
+              <span v-if="row.original.errors?.length" class="text-error ml-1">({{ row.original.errors.length }} err)</span>
+            </span>
+          </template>
           <template #size-cell="{ row }">{{ formatBytes(row.original.size) }}</template>
           <template #created_at-cell="{ row }">
             <span class="text-sm">{{ new Date(row.original.created_at).toLocaleString() }}</span>
