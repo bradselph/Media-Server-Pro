@@ -201,7 +201,7 @@ watch(subTab, (v) => {
           class="text-sm"
         >
           <template #timestamp-cell="{ row }">
-            <span class="text-xs font-mono">{{ new Date(row.original.timestamp).toLocaleString() }}</span>
+            <span class="text-xs font-mono">{{ row.original.timestamp ? new Date(row.original.timestamp).toLocaleString() : '—' }}</span>
           </template>
           <template #success-cell="{ row }">
             <UBadge
@@ -247,7 +247,7 @@ watch(subTab, (v) => {
           >
             <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
             <template #comment-cell="{ row }"><span class="text-sm text-muted">{{ row.original.comment || '—' }}</span></template>
-            <template #added_at-cell="{ row }"><span class="text-sm">{{ new Date(row.original.added_at).toLocaleDateString() }}</span></template>
+            <template #added_at-cell="{ row }"><span class="text-sm">{{ row.original.added_at ? new Date(row.original.added_at).toLocaleDateString() : '—' }}</span></template>
             <template #actions-cell="{ row }">
               <UButton
                 icon="i-lucide-trash-2"
@@ -282,7 +282,7 @@ watch(subTab, (v) => {
           :columns="[{ accessorKey: 'ip', header: 'IP' }, { accessorKey: 'banned_at', header: 'Banned At' }, { accessorKey: 'reason', header: 'Reason' }, { accessorKey: 'actions', header: '' }]"
         >
           <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
-          <template #banned_at-cell="{ row }"><span class="text-sm">{{ new Date(row.original.banned_at).toLocaleString() }}</span></template>
+          <template #banned_at-cell="{ row }"><span class="text-sm">{{ row.original.banned_at ? new Date(row.original.banned_at).toLocaleString() : '—' }}</span></template>
           <template #reason-cell="{ row }"><span class="text-sm text-muted">{{ row.original.reason || '—' }}</span></template>
           <template #actions-cell="{ row }">
             <UButton icon="i-lucide-shield-off" size="xs" variant="ghost" color="warning" label="Unban" @click="unban(row.original.ip)" />

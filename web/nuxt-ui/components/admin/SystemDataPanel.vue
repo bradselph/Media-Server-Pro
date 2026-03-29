@@ -150,7 +150,7 @@ onMounted(() => {
           </template>
           <template #size-cell="{ row }">{{ formatBytes(row.original.size) }}</template>
           <template #created_at-cell="{ row }">
-            <span class="text-sm">{{ new Date(row.original.created_at).toLocaleString() }}</span>
+            <span class="text-sm">{{ row.original.created_at ? new Date(row.original.created_at).toLocaleString() : '—' }}</span>
           </template>
           <template #actions-cell="{ row }">
             <div class="flex gap-1 justify-end">
