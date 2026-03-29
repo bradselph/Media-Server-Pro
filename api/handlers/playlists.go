@@ -346,3 +346,42 @@ func (h *Handler) RemovePlaylistItem(c *gin.Context) {
 
 	writeSuccess(c, nil)
 }
+
+// BulkDeletePlaylists deletes multiple playlists owned by the requesting user.
+// Accepts { "ids": ["id1","id2",...] }. Each ID is deleted only if it belongs
+// to the caller; foreign-owned or missing IDs are counted as failures.
+func (h *Handler) BulkDeletePlaylists(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
+	session := RequireSession(c)
+	if session == nil {
+		return
+	}
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if !BindJSON(c, &req, "invalid request") {
+		return
+	}
+	if len(req.IDs) == 0 {
+		writeError(c, http.StatusBadRequest, "ids must not be empty")
+		return
+	}
+	if len(req.IDs) > 100 {
+		writeError(c, http.StatusBadRequest, "too many ids (max 100)")
+		return
+	}
+	successCount, failedCount := 0, 0
+	for _, id := range req.IDs {
+		if id == "" {
+			continue
+		}
+		if err := h.playlist.DeletePlaylist(c.Request.Context(), playlist.PlaylistID(id), playlist.UserID(session.UserID)); err != nil {
+			failedCount++
+		} else {
+			successCount++
+		}
+	}
+	writeSuccess(c, map[string]int{"deleted": successCount, "failed": failedCount})
+}

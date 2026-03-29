@@ -392,6 +392,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Playlist routes (protected)
 	api.GET(pathPlaylists, requireAuth(), h.ListPlaylists)
 	api.POST(pathPlaylists, requireAuth(), h.CreatePlaylist)
+	api.POST("/playlists/bulk-delete", requireAuth(), h.BulkDeletePlaylists)
 	api.GET("/playlists/:id", requireAuth(), h.GetPlaylist)
 	api.DELETE("/playlists/:id", requireAuth(), h.DeletePlaylist)
 	api.PUT("/playlists/:id", requireAuth(), h.UpdatePlaylist)
