@@ -215,6 +215,38 @@ async function copyPublicPlaylist(pl: Playlist) {
   }
 }
 
+// Bulk delete
+const selectMode = ref(false)
+const selectedIds = ref<Set<string>>(new Set())
+const bulkDeleteOpen = ref(false)
+const bulkDeleting = ref(false)
+
+function toggleSelect(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) { next.delete(id) } else { next.add(id) }
+  selectedIds.value = next
+}
+
+function exitSelectMode() {
+  selectMode.value = false
+  selectedIds.value = new Set()
+}
+
+async function confirmBulkDelete() {
+  const ids = [...selectedIds.value]
+  if (ids.length === 0) return
+  bulkDeleting.value = true
+  try {
+    const result = await playlistApi.bulkDelete(ids)
+    playlists.value = playlists.value.filter(p => !ids.includes(p.id))
+    toast.add({ title: `Deleted ${result?.deleted ?? ids.length} playlist(s)`, color: 'success', icon: 'i-lucide-check' })
+    exitSelectMode()
+    bulkDeleteOpen.value = false
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to delete', color: 'error', icon: 'i-lucide-x' })
+  } finally { bulkDeleting.value = false }
+}
+
 onMounted(load)
 </script>
 
@@ -232,12 +264,41 @@ onMounted(load)
           <UIcon name="i-lucide-list-music" class="size-6 text-primary" />
           My Playlists
         </h1>
-        <UButton
-          v-if="authStore.user.permissions?.can_create_playlists !== false"
-          icon="i-lucide-plus"
-          label="New Playlist"
-          @click="createOpen = true"
-        />
+        <div class="flex items-center gap-2 flex-wrap">
+          <template v-if="selectMode">
+            <UButton
+              v-if="selectedIds.size > 0"
+              icon="i-lucide-trash-2"
+              :label="`Delete (${selectedIds.size})`"
+              color="error"
+              size="sm"
+              @click="bulkDeleteOpen = true"
+            />
+            <UButton
+              icon="i-lucide-x"
+              label="Cancel"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="exitSelectMode()"
+            />
+          </template>
+          <UButton
+            v-else
+            icon="i-lucide-check-square"
+            label="Select"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            @click="selectMode = true"
+          />
+          <UButton
+            v-if="!selectMode && authStore.user.permissions?.can_create_playlists !== false"
+            icon="i-lucide-plus"
+            label="New Playlist"
+            @click="createOpen = true"
+          />
+        </div>
       </div>
 
       <!-- Playlist detail view -->
@@ -345,20 +406,33 @@ onMounted(load)
           <UCard
             v-for="pl in playlists"
             :key="pl.id"
-            class="cursor-pointer hover:ring-1 hover:ring-primary transition-all"
-            @click="openPlaylist(pl)"
+            :class="[
+              'transition-all',
+              selectMode ? 'cursor-pointer' : 'cursor-pointer hover:ring-1 hover:ring-primary',
+              selectMode && selectedIds.has(pl.id) ? 'ring-2 ring-primary' : '',
+            ]"
+            @click="selectMode ? toggleSelect(pl.id) : openPlaylist(pl)"
           >
             <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <p class="font-semibold truncate">{{ pl.name }}</p>
-                <p v-if="pl.description" class="text-xs text-muted truncate mt-0.5">{{ pl.description }}</p>
-                <div class="flex items-center gap-2 mt-2">
-                  <UBadge :label="pl.is_public ? 'Public' : 'Private'" :color="pl.is_public ? 'success' : 'neutral'" variant="subtle" size="xs" />
-                  <span class="text-xs text-muted">{{ (pl.items?.length ?? 0) }} items</span>
-                  <span class="text-xs text-muted">· {{ new Date(pl.modified_at).toLocaleDateString() }}</span>
+              <div class="flex items-start gap-2 min-w-0">
+                <UCheckbox
+                  v-if="selectMode"
+                  :model-value="selectedIds.has(pl.id)"
+                  class="mt-0.5 shrink-0"
+                  @click.stop
+                  @update:model-value="toggleSelect(pl.id)"
+                />
+                <div class="min-w-0">
+                  <p class="font-semibold truncate">{{ pl.name }}</p>
+                  <p v-if="pl.description" class="text-xs text-muted truncate mt-0.5">{{ pl.description }}</p>
+                  <div class="flex items-center gap-2 mt-2">
+                    <UBadge :label="pl.is_public ? 'Public' : 'Private'" :color="pl.is_public ? 'success' : 'neutral'" variant="subtle" size="xs" />
+                    <span class="text-xs text-muted">{{ (pl.items?.length ?? 0) }} items</span>
+                    <span class="text-xs text-muted">· {{ new Date(pl.modified_at).toLocaleDateString() }}</span>
+                  </div>
                 </div>
               </div>
-              <div class="flex items-center gap-1">
+              <div v-if="!selectMode" class="flex items-center gap-1">
                 <UButton icon="i-lucide-pencil" aria-label="Edit playlist" size="xs" variant="ghost" color="neutral" @click.stop="openEdit(pl)" />
                 <UButton icon="i-lucide-copy" aria-label="Duplicate playlist" size="xs" variant="ghost" color="neutral" :loading="copyingId === pl.id" @click.stop="copyPlaylist(pl)" />
                 <UButton icon="i-lucide-trash-2" aria-label="Delete playlist" size="xs" variant="ghost" color="error" @click.stop="deleteTarget = pl" />
@@ -417,6 +491,18 @@ onMounted(load)
         <template #footer>
           <UButton variant="ghost" color="neutral" label="Cancel" @click="deleteTarget = null" />
           <UButton :loading="deleting" color="error" label="Delete" @click="confirmDelete" />
+        </template>
+      </UModal>
+
+      <!-- Bulk delete confirm modal -->
+      <UModal
+        v-model:open="bulkDeleteOpen"
+        title="Delete Selected Playlists"
+        :description="`Permanently delete ${selectedIds.size} playlist(s) and all their items?`"
+      >
+        <template #footer>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="bulkDeleteOpen = false" />
+          <UButton :loading="bulkDeleting" color="error" :label="`Delete ${selectedIds.size}`" @click="confirmBulkDelete" />
         </template>
       </UModal>
 

@@ -222,6 +222,8 @@ export function usePlaylistApi() {
       api.post<Playlist>(`/api/playlists/${encodeURIComponent(id)}/copy`, { name }),
     exportPlaylist: (id: string, format: 'json' | 'm3u' | 'm3u8') =>
       `/api/playlists/${encodeURIComponent(id)}/export?format=${format}`,
+    bulkDelete: (ids: string[]) =>
+      api.post<{ deleted: number; failed: number }>('/api/playlists/bulk-delete', { ids }),
   }
 }
 
