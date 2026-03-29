@@ -48,6 +48,11 @@ const media = ref<MediaItem | null>(null)
 const loading = ref(true)
 const error = ref('')
 
+// Update browser tab title as soon as the media item loads
+useHead(computed(() => ({
+  title: media.value ? getDisplayTitle(media.value) : 'Player',
+})))
+
 // Player refs
 const videoRef = ref<HTMLVideoElement | null>(null)
 const isPlaying = ref(false)

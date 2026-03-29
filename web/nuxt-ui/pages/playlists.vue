@@ -441,7 +441,7 @@ watch(() => authStore.user, (user) => {
                   <div class="flex items-center gap-2 mt-2">
                     <UBadge :label="pl.is_public ? 'Public' : 'Private'" :color="pl.is_public ? 'success' : 'neutral'" variant="subtle" size="xs" />
                     <span class="text-xs text-muted">{{ (pl.items?.length ?? 0) }} items</span>
-                    <span class="text-xs text-muted">· {{ new Date(pl.modified_at).toLocaleDateString() }}</span>
+                    <span v-if="pl.modified_at" class="text-xs text-muted">· {{ new Date(pl.modified_at).toLocaleDateString() }}</span>
                   </div>
                 </div>
               </div>
