@@ -7,6 +7,8 @@ definePageMeta({ layout: 'default', title: 'Browse by Category', middleware: 'au
 const browseApi = useCategoryBrowseApi()
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
+const toast = useToast()
 
 const stats = ref<CategoryStats | null>(null)
 const items = ref<CategoryBrowseItem[]>([])
@@ -33,7 +35,9 @@ function iconFor(cat: string) {
 async function loadStats() {
   try {
     stats.value = await browseApi.getStats()
-  } catch { /* non-critical */ }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load categories', color: 'error', icon: 'i-lucide-x' })
+  }
 }
 
 async function loadCategory(cat: string) {
@@ -82,11 +86,20 @@ const availableCategories = computed(() => {
     .sort((a, b) => b[1] - a[1])
 })
 
-onMounted(async () => {
+let hasFetched = false
+async function loadAll() {
+  hasFetched = true
   await loadStats()
   if (selectedCategory.value) {
     await loadCategory(selectedCategory.value)
   }
+}
+
+onMounted(() => {
+  if (!authStore.isLoading && authStore.user) loadAll()
+})
+watch(() => authStore.user, (user) => {
+  if (user && !hasFetched) loadAll()
 })
 </script>
 

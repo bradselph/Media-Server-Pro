@@ -169,7 +169,7 @@ onMounted(() => {
                 variant="ghost"
                 color="error"
                 aria-label="Delete backup"
-                @click="adminApi.deleteBackup(row.original.id).then(loadBackups)"
+                @click="adminApi.deleteBackup(row.original.id).then(loadBackups).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' }))"
               />
             </div>
           </template>
