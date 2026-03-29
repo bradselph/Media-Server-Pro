@@ -173,3 +173,5 @@ Automated continuous improvement cycle history.
 - Live site checks: 3 passed (home, health, /api/media), 0 failed, 0 warnings
 - Issues fixed: 1 (scanner review queue approve/reject broken due to type mismatch), deferred: 0
 - Build: `go build ./...` PASS | `go test ./...` PASS | `npx nuxi typecheck` PASS
+- Deploy: SUCCESS — /health returns 200 post-deploy
+- Live site: OK
