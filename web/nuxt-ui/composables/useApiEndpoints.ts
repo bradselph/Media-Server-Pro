@@ -597,7 +597,23 @@ export function useAnalyticsApi() {
       return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user?${qs}`)
     },
     getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
-    exportCsv: () => `/api/admin/analytics/export`,
+    exportCsv: (period?: string) => {
+      const today = new Date()
+      const fmt = (d: Date) => d.toISOString().slice(0, 10)
+      const qs = new URLSearchParams()
+      if (period === 'today') {
+        qs.set('start_date', fmt(today))
+        qs.set('end_date', fmt(today))
+      } else if (period === '7d') {
+        const s = new Date(today); s.setDate(s.getDate() - 7)
+        qs.set('start_date', fmt(s)); qs.set('end_date', fmt(today))
+      } else if (period === '30d') {
+        const s = new Date(today); s.setDate(s.getDate() - 30)
+        qs.set('start_date', fmt(s)); qs.set('end_date', fmt(today))
+      }
+      const q = qs.toString()
+      return `/api/admin/analytics/export${q ? `?${q}` : ''}`
+    },
   }
 }
 

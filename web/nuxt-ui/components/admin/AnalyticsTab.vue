@@ -104,7 +104,7 @@ onMounted(load)
           color="neutral"
           size="xs"
           tag="a"
-          :href="analyticsApi.exportCsv()"
+          :href="analyticsApi.exportCsv(period)"
           download
         />
       </div>

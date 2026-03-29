@@ -368,7 +368,7 @@ watch(() => authStore.user, (user) => {
                 />
               </div>
               <NuxtLink
-                :to="`/player?id=${encodeURIComponent(item.media_id)}&playlist_id=${encodeURIComponent(activePlaylist!.id)}&playlist_idx=${idx}`"
+                :to="`/player?id=${encodeURIComponent(item.media_id)}&playlist_id=${encodeURIComponent(activePlaylist?.id ?? '')}&playlist_idx=${idx}`"
                 class="flex-1 min-w-0 text-sm font-medium truncate hover:text-primary transition-colors"
               >
                 {{ item.title || item.media_id }}
@@ -389,7 +389,7 @@ watch(() => authStore.user, (user) => {
                   size="xs"
                   variant="ghost"
                   color="neutral"
-                  :disabled="idx === (activePlaylist!.items?.length ?? 0) - 1"
+                  :disabled="idx === (activePlaylist?.items?.length ?? 0) - 1"
                   @click="moveItem(idx, 1)"
                 />
                 <UButton
@@ -398,7 +398,7 @@ watch(() => authStore.user, (user) => {
                   size="xs"
                   variant="ghost"
                   color="neutral"
-                  @click="removeItem(activePlaylist!.id, item.media_id, item.id)"
+                  @click="activePlaylist && removeItem(activePlaylist.id, item.media_id, item.id)"
                 />
               </div>
             </div>
