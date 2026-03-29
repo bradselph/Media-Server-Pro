@@ -898,7 +898,7 @@ onUnmounted(() => {
         </template>
         <template #views-cell="{ row }">{{ (row.original.views ?? 0).toLocaleString() }}</template>
         <template #date_added-cell="{ row }">
-          <span class="text-sm text-muted">{{ new Date(row.original.date_added).toLocaleDateString() }}</span>
+          <span class="text-sm text-muted">{{ row.original.date_added ? new Date(row.original.date_added).toLocaleDateString() : '—' }}</span>
         </template>
       </UTable>
       <p v-if="items.length === 0" class="text-center py-8 text-muted">No media found.</p>

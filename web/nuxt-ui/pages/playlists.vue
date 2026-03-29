@@ -557,7 +557,7 @@ watch(() => authStore.user, (user) => {
                     variant="ghost"
                     color="primary"
                     aria-label="Play playlist"
-                    :to="pl.items?.[0] ? `/player?id=${encodeURIComponent(pl.items[0].media_id)}&playlist=${encodeURIComponent(pl.id)}` : undefined"
+                    :to="pl.items?.[0] ? `/player?id=${encodeURIComponent(pl.items[0].media_id)}&playlist_id=${encodeURIComponent(pl.id)}&playlist_idx=0` : undefined"
                     :disabled="!pl.items?.length"
                   />
                   <UButton

@@ -157,7 +157,7 @@ onMounted(load)
         </template>
         <template #created_at-cell="{ row }">
           <span class="text-sm text-muted">
-            {{ new Date(row.original.created_at).toLocaleDateString() }}
+            {{ row.original.created_at ? new Date(row.original.created_at).toLocaleDateString() : '—' }}
           </span>
         </template>
         <template #actions-cell="{ row }">
