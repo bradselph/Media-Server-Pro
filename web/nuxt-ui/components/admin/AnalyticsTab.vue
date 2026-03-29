@@ -9,6 +9,7 @@ const toast = useToast()
 
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
+const dailyMaxViews = computed(() => Math.max(1, ...daily.value.map(d => d.total_views ?? 0)))
 const topMedia = ref<TopMediaItem[]>([])
 const eventStats = ref<EventStats | null>(null)
 const eventTypeCounts = ref<EventTypeCounts | null>(null)
@@ -256,6 +257,25 @@ onMounted(load)
           Daily Breakdown
         </div>
       </template>
+
+      <!-- CSS bar chart — views per day -->
+      <div class="mb-4 space-y-1">
+        <div
+          v-for="row in daily.slice().reverse()"
+          :key="row.date"
+          class="flex items-center gap-2 text-xs"
+        >
+          <span class="w-24 shrink-0 font-mono text-muted text-right">{{ row.date }}</span>
+          <div class="flex-1 bg-muted/20 rounded-full h-4 overflow-hidden">
+            <div
+              class="h-full rounded-full bg-primary transition-all duration-300"
+              :style="{ width: dailyMaxViews > 0 ? `${Math.round(((row.total_views ?? 0) / dailyMaxViews) * 100)}%` : '0%' }"
+            />
+          </div>
+          <span class="w-12 shrink-0 text-right text-muted">{{ (row.total_views ?? 0).toLocaleString() }}</span>
+        </div>
+      </div>
+
       <UTable
         :data="daily"
         :columns="[
