@@ -12,6 +12,10 @@
 > Updated: 2026-03-28 (scheduled) — URL deep-linking for browse filters (index.vue), CSS daily bar chart
 > in admin analytics, and user bulk playlist delete (full-stack: POST /api/playlists/bulk-delete + playlists.vue
 > multi-select UI) implemented. Pre-existing TS2322 typecheck error in player.vue fixed.
+> Updated: 2026-03-28 (scheduled) — analytics event data payload now shown in admin drill-down; backup
+> file/error count column added to admin backup table (BackupEntry type extended); scanner review queue
+> type mismatch fixed — approve/reject now uses correct item.id (was broken with item.path which was never
+> returned by backend). P2 "analytics_events.data" and "backup_manifests.files" items resolved.
 
 ---
 

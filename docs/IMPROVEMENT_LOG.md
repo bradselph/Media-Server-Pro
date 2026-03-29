@@ -164,3 +164,12 @@ Automated continuous improvement cycle history.
 - Build: `go build ./...` PASS | `go test ./api/handlers/...` PASS | `npx nuxi typecheck` PASS
 - Deploy: SUCCESS — /health returns 200 post-deploy
 - Live site: OK
+
+## Cycle 2026-03-28 (Scheduled)
+- Items implemented:
+  - fix(frontend): Scanner review queue type mismatch — `ReviewQueueItem` interface added matching actual backend `MatureReviewItem` response; approve/reject calls fixed from `item.path` (always undefined) to `item.id`; display changed to `item.name`; batch selection fixed. Review queue approve/reject was broken before this fix.
+  - feat(frontend): Analytics event data payload in admin drill-down — `ev.data` JSON shown below each event row when non-empty (seek position, quality selection, etc.)
+  - feat(frontend): Backup file count column in admin backup table — `BackupEntry` type extended with `files?/errors?/version?`; "Files" column shows count + error count from already-returned backend data
+- Live site checks: 3 passed (home, health, /api/media), 0 failed, 0 warnings
+- Issues fixed: 1 (scanner review queue approve/reject broken due to type mismatch), deferred: 0
+- Build: `go build ./...` PASS | `go test ./...` PASS | `npx nuxi typecheck` PASS
