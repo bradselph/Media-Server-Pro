@@ -67,11 +67,9 @@ export function useApiEndpoints() {
     const raw = await api.post<unknown>('/api/preferences', toPreferencesPatch(prefs))
     return normalizePreferences(raw)
   }
-  function getPermissions() { return api.get<PermissionsInfo>('/api/permissions') }
-
   return {
     login, logout, register, getSession, changePassword, deleteAccount,
-    getPreferences, updatePreferences, getPermissions,
+    getPreferences, updatePreferences,
   }
 }
 

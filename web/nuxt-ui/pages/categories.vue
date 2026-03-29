@@ -5,7 +5,6 @@ import { useCategoryBrowseApi } from '~/composables/useApiEndpoints'
 definePageMeta({ layout: 'default', title: 'Browse by Category', middleware: 'auth' })
 
 const browseApi = useCategoryBrowseApi()
-const mediaApi = useMediaApi()
 const route = useRoute()
 const router = useRouter()
 

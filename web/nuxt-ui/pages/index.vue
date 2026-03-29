@@ -244,8 +244,13 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
+    // Exclude min_rating from the spread — 0 is the "no filter" sentinel and must
+    // NOT be forwarded to the backend (the backend would treat min_rating=0 as a
+    // real filter condition and return only media with ≥0 stars, which skips
+    // unrated items depending on backend implementation).
+    const { min_rating: _minRating, ...paramsWithoutRating } = params
     const apiParams = {
-      ...params,
+      ...paramsWithoutRating,
       type: params.type === 'all' ? '' : params.type,
       category: params.category === 'all' ? '' : params.category,
       ...(filterTag.value ? { tags: [filterTag.value] } : {}),

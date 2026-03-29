@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { Playlist } from '~/types/api'
-import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Playlists', middleware: 'auth' })
 
@@ -12,8 +11,12 @@ const toast = useToast()
 // List
 const playlists = ref<Playlist[]>([])
 const loading = ref(true)
+// Track whether a fetch has been initiated to prevent duplicate loads when
+// the auth store resolves after the component mounts (SPA navigation race).
+let hasFetched = false
 
 async function load() {
+  hasFetched = true
   loading.value = true
   try { playlists.value = (await playlistApi.list()) ?? [] }
   catch (e: unknown) {
@@ -247,12 +250,22 @@ async function confirmBulkDelete() {
   } finally { bulkDeleting.value = false }
 }
 
-onMounted(load)
+// On mount: load immediately if auth has settled, otherwise wait for the user
+// to become available. This handles SPA navigations where the auth plugin may
+// still be resolving when the component mounts (isLoading=true) — without
+// this guard, the page shows a blank body until the user manually refreshes.
+onMounted(() => {
+  if (!authStore.isLoading && authStore.user) load()
+})
+
+watch(() => authStore.user, (user) => {
+  if (user && !hasFetched) load()
+})
 </script>
 
 <template>
   <UContainer class="py-6 max-w-4xl space-y-6">
-    <!-- Loading -->
+    <!-- Auth resolving -->
     <div v-if="authStore.isLoading" class="flex justify-center py-16">
       <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
     </div>
@@ -563,5 +576,11 @@ onMounted(load)
         </div>
       </div>
     </template>
+
+    <!-- Fallback: auth resolved but no user (should not normally be reached — middleware
+         redirects to /login, but this prevents a blank body during any transient state.) -->
+    <div v-else class="flex justify-center py-16">
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+    </div>
   </UContainer>
 </template>
