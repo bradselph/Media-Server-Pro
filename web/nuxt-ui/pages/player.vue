@@ -771,6 +771,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           </div>
           <div class="flex gap-2 mt-4 flex-wrap">
             <UButton
+              v-if="!authStore.isLoggedIn || authStore.user?.permissions?.can_download"
               icon="i-lucide-download"
               label="Download"
               variant="outline"
