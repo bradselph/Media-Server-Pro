@@ -192,7 +192,12 @@ function onVideoLoaded() {
   playbackStore.startAutoSave()
 }
 
+let lastTimeUpdateAt = 0
 function onTimeUpdate() {
+  // Throttle to ~4 updates/sec (250ms) instead of the browser's ~30/sec
+  const now = performance.now()
+  if (now - lastTimeUpdateAt < 250) return
+  lastTimeUpdateAt = now
   currentTime.value = videoRef.value?.currentTime ?? 0
   duration.value = videoRef.value?.duration ?? 0
   playbackStore.updatePosition(currentTime.value, duration.value)

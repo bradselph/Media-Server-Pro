@@ -10,6 +10,11 @@ const toast = useToast()
 const backups = ref<BackupEntry[]>([])
 const backupsLoading = ref(false)
 const creatingBackup = ref(false)
+const backupType = ref<'full' | 'incremental'>('full')
+const BACKUP_TYPE_OPTIONS = [
+  { label: 'Full', value: 'full' },
+  { label: 'Incremental', value: 'incremental' },
+]
 
 const backupFullConfig = ref<Record<string, unknown>>({})
 const backupRetentionCount = ref(5)
@@ -52,8 +57,8 @@ async function loadBackups() {
 async function createBackup() {
   creatingBackup.value = true
   try {
-    await adminApi.createBackup()
-    toast.add({ title: 'Backup created', color: 'success', icon: 'i-lucide-check' })
+    await adminApi.createBackup(undefined, backupType.value)
+    toast.add({ title: `${backupType.value === 'full' ? 'Full' : 'Incremental'} backup created`, color: 'success', icon: 'i-lucide-check' })
     await loadBackups()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Backup failed', color: 'error', icon: 'i-lucide-x' })
@@ -121,7 +126,8 @@ onMounted(() => {
         </div>
       </UCard>
 
-      <div class="flex gap-2">
+      <div class="flex gap-2 items-center">
+        <USelect v-model="backupType" :items="BACKUP_TYPE_OPTIONS" class="w-36" />
         <UButton icon="i-lucide-archive" :loading="creatingBackup" label="Create Backup" @click="createBackup" />
         <UButton icon="i-lucide-refresh-cw" aria-label="Refresh backups" variant="ghost" color="neutral" @click="loadBackups" />
       </div>
