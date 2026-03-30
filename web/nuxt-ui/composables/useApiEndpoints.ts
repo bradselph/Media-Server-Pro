@@ -161,9 +161,11 @@ export function useWatchHistoryApi() {
 export function useSuggestionsApi() {
   return {
     get: () => api.get<Suggestion[]>('/api/suggestions'),
-    getTrending: () => api.get<Suggestion[]>('/api/suggestions/trending'),
+    getTrending: (limit?: number) =>
+      api.get<Suggestion[]>(`/api/suggestions/trending${limit ? `?limit=${limit}` : ''}`),
     getSimilar: (id: string) => api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
-    getContinueWatching: () => api.get<Suggestion[]>('/api/suggestions/continue'),
+    getContinueWatching: (limit?: number) =>
+      api.get<Suggestion[]>(`/api/suggestions/continue${limit ? `?limit=${limit}` : ''}`),
     getPersonalized: (limit?: number) =>
       api.get<Suggestion[]>(`/api/suggestions/personalized${limit ? `?limit=${limit}` : ''}`),
     getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),

@@ -128,8 +128,8 @@ async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   try {
     const [cw, tr, rec, recent, newSince, deck] = await Promise.allSettled([
-      suggestionsApi.getContinueWatching(),
-      suggestionsApi.getTrending(),
+      suggestionsApi.getContinueWatching(20),
+      suggestionsApi.getTrending(20),
       suggestionsApi.getPersonalized(12),
       suggestionsApi.getRecent(14, 20),
       suggestionsApi.getNewSinceLastVisit(20),
@@ -176,6 +176,13 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => { params.page = 1; load() }, 300)
+}
+
+// Play All — navigate to player with the first item from the current grid
+function playAll() {
+  if (items.value.length === 0) return
+  const first = items.value[0]
+  router.push(`/player?id=${encodeURIComponent(first.id)}`)
 }
 
 // Surprise Me — navigate to a random item from the current suggestions or library
@@ -624,6 +631,16 @@ onUnmounted(() => {
         color="neutral"
         size="sm"
         @click="params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'"
+      />
+      <UButton
+        icon="i-lucide-play-circle"
+        label="Play All"
+        variant="soft"
+        color="primary"
+        size="sm"
+        aria-label="Play all items"
+        :disabled="items.length === 0"
+        @click="playAll"
       />
       <UButton
         icon="i-lucide-shuffle"
