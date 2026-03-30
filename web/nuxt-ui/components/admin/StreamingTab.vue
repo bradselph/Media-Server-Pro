@@ -12,7 +12,18 @@ const loading = ref(true)
 
 const fullConfig = ref<Record<string, unknown>>({})
 const autoGenerate = ref(false)
+const pregenIntervalHours = ref(1)
 const configSaving = ref(false)
+
+const INTERVAL_OPTIONS = [
+  { label: '15 minutes', value: 0 },
+  { label: '1 hour', value: 1 },
+  { label: '2 hours', value: 2 },
+  { label: '4 hours', value: 4 },
+  { label: '6 hours', value: 6 },
+  { label: '12 hours', value: 12 },
+  { label: '24 hours', value: 24 },
+]
 
 async function load() {
   loading.value = true
@@ -26,23 +37,30 @@ async function load() {
     if (s.status === 'fulfilled') stats.value = s.value
     if (cfg.status === 'fulfilled' && cfg.value) {
       fullConfig.value = cfg.value
-      autoGenerate.value = asRecord(cfg.value.hls)?.auto_generate === true
+      const hls = asRecord(cfg.value.hls)
+      autoGenerate.value = hls?.auto_generate === true
+      pregenIntervalHours.value = typeof hls?.pre_generate_interval_hours === 'number'
+        ? hls.pre_generate_interval_hours
+        : 1
     }
   } finally {
     loading.value = false
   }
 }
 
-async function saveAutoGenerate(value: boolean) {
+async function saveHLSConfig() {
   configSaving.value = true
   try {
     const updated = {
       ...fullConfig.value,
-      hls: { ...asRecord(fullConfig.value.hls), auto_generate: value },
+      hls: {
+        ...asRecord(fullConfig.value.hls),
+        auto_generate: autoGenerate.value,
+        pre_generate_interval_hours: pregenIntervalHours.value,
+      },
     }
     await adminApi.updateConfig(updated)
     fullConfig.value = updated
-    autoGenerate.value = value
     toast.add({ title: 'HLS settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
@@ -84,17 +102,39 @@ onMounted(load)
   <div class="space-y-4">
     <!-- Config -->
     <UCard :ui="{ body: 'p-4' }">
-      <div class="flex items-center justify-between gap-4">
-        <div>
-          <p class="font-medium text-sm text-highlighted">Auto-generate HLS on scan</p>
-          <p class="text-xs text-muted mt-0.5">Automatically create HLS variants when new media is discovered during a library scan</p>
+      <div class="space-y-4">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="font-medium text-sm text-highlighted">Auto-generate HLS on scan</p>
+            <p class="text-xs text-muted mt-0.5">Automatically create HLS variants when new media is discovered</p>
+          </div>
+          <USwitch v-model="autoGenerate" :disabled="configSaving || loading" aria-label="Auto-generate HLS on scan" />
         </div>
-        <USwitch
-          :model-value="autoGenerate"
-          :disabled="configSaving || loading"
-          aria-label="Auto-generate HLS on scan"
-          @update:model-value="saveAutoGenerate"
-        />
+
+        <div v-if="autoGenerate" class="flex items-center justify-between gap-4 pt-3 border-t border-default">
+          <div>
+            <p class="font-medium text-sm text-highlighted">Pre-generation interval</p>
+            <p class="text-xs text-muted mt-0.5">How often the scheduler scans for videos without HLS</p>
+          </div>
+          <USelect
+            v-model="pregenIntervalHours"
+            :items="INTERVAL_OPTIONS"
+            :disabled="configSaving || loading"
+            class="w-36"
+            size="sm"
+          />
+        </div>
+
+        <div class="flex justify-end pt-1">
+          <UButton
+            icon="i-lucide-save"
+            label="Save HLS Settings"
+            size="sm"
+            :loading="configSaving"
+            :disabled="loading"
+            @click="saveHLSConfig"
+          />
+        </div>
       </div>
     </UCard>
 

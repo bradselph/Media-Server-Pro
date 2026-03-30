@@ -662,13 +662,18 @@ func registerTasks(
 	})
 
 	// HLS pre-generation — generates HLS content for video media that doesn't have it yet.
-	// Runs every hour. Each cycle queues at most ConcurrentLimit jobs and skips entirely
-	// when existing jobs are already in flight, so the system is never overloaded.
+	// Interval is configurable via hls.pre_generate_interval_hours (default: 1).
+	// Each cycle queues at most ConcurrentLimit jobs and skips entirely when existing
+	// jobs are already in flight, so the system is never overloaded.
+	pregenInterval := time.Duration(cfg.Get().HLS.PreGenerateIntervalHours) * time.Hour
+	if pregenInterval < 15*time.Minute {
+		pregenInterval = 15 * time.Minute
+	}
 	scheduler.RegisterTask(tasks.TaskRegistration{
 		ID:          "hls-pregenerate",
 		Name:        "HLS Pre-generation",
 		Description: "Pre-generates HLS streaming content for video files that don't have it yet",
-		Schedule:    1 * time.Hour,
+		Schedule:    pregenInterval,
 		Func: func(ctx context.Context) error {
 			if !hlsModule.IsAvailable() {
 				return nil

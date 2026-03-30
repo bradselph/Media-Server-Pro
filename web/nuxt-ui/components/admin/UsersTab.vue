@@ -443,6 +443,9 @@ onMounted(load)
       </template>
     </UModal>
 
+    <!-- Data Deletion Requests -->
+    <AdminDeletionRequestsPanel class="mt-6" />
+
     <!-- Delete confirmation -->
     <UModal v-if="deleteUser" :open="!!deleteUser" title="Delete User" @update:open="val => { if (!val) deleteUser = null }">
       <template #body>

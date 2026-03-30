@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, UserProfile, APIToken, APITokenCreated, RatedItem } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, APIToken, APITokenCreated, RatedItem } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useAPITokensApi, useRatingsApi } from '~/composables/useApiEndpoints'
-import { formatWatchTime } from '~/utils/format'
 
 const QUALITY_OPTIONS = [
   { label: 'Auto', value: 'auto' },
@@ -35,10 +34,10 @@ definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const router = useRouter()
-const { changePassword, deleteAccount, getPreferences, updatePreferences } = useApiEndpoints()
+const { changePassword, getPreferences, updatePreferences, requestDataDeletion } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
 const { getUsage, getPermissions } = useStorageApi()
-const { getMyProfile, resetMyProfile } = useSuggestionsApi()
+
 const tokensApi = useAPITokensApi()
 const ratingsApi = useRatingsApi()
 const toast = useToast()
@@ -52,27 +51,6 @@ async function loadStorageUsage() {
     if (p.status === 'fulfilled') permissionsInfo.value = p.value
   } catch { /* optional */ }
 }
-
-const userProfile = ref<UserProfile | null>(null)
-const profileResetting = ref(false)
-async function loadUserProfile() {
-  try { userProfile.value = await getMyProfile() }
-  catch { /* non-critical */ }
-}
-async function resetProfile() {
-  profileResetting.value = true
-  try {
-    await resetMyProfile()
-    userProfile.value = null
-    toast.add({ title: 'Recommendation profile reset', description: 'Your preference data has been cleared.', color: 'success', icon: 'i-lucide-check' })
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to reset profile', color: 'error', icon: 'i-lucide-x' })
-  } finally {
-    profileResetting.value = false
-  }
-}
-
-// formatWatchTime imported from ~/utils/format
 
 // Preferences
 const prefs = ref<Partial<UserPreferences>>({})
@@ -183,21 +161,24 @@ async function handleChangePassword() {
   }
 }
 
-// Delete account
-const deleteOpen = ref(false)
-const deletePassword = ref('')
-const deleteLoading = ref(false)
+// Data deletion request
+const deletionRequestOpen = ref(false)
+const deletionReason = ref('')
+const deletionSubmitting = ref(false)
+const deletionSubmitted = ref(false)
 
-async function handleDeleteAccount() {
-  deleteLoading.value = true
+async function handleDeletionRequest() {
+  deletionSubmitting.value = true
   try {
-    await deleteAccount(deletePassword.value)
-    authStore.clear()
-    router.replace('/')
+    await requestDataDeletion(deletionReason.value)
+    deletionRequestOpen.value = false
+    deletionSubmitted.value = true
+    deletionReason.value = ''
+    toast.add({ title: 'Request submitted', description: 'An administrator will review your request.', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to submit request', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    deleteLoading.value = false
+    deletionSubmitting.value = false
   }
 }
 
@@ -270,7 +251,7 @@ async function revokeToken(id: string) {
 let hasFetched = false
 function loadAll() {
   hasFetched = true
-  loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens(); loadMyRatings()
+  loadPrefs(); loadHistory(); loadStorageUsage(); loadTokens(); loadMyRatings()
 }
 onMounted(() => { if (!authStore.isLoading && authStore.user) loadAll() })
 watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
@@ -319,78 +300,6 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
                 :variant="allowed ? 'subtle' : 'outline'"
                 size="xs"
               />
-            </div>
-          </div>
-        </div>
-      </UCard>
-
-      <!-- Watch Stats -->
-      <UCard v-if="userProfile && (userProfile.total_views > 0 || userProfile.total_watch_time > 0)">
-        <template #header>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2 font-semibold">
-              <UIcon name="i-lucide-bar-chart-2" class="size-4" />
-              Watch Stats
-            </div>
-            <UButton
-              icon="i-lucide-refresh-ccw"
-              label="Reset Profile"
-              variant="ghost"
-              color="warning"
-              size="xs"
-              :loading="profileResetting"
-              aria-label="Reset recommendation profile"
-              @click="resetProfile"
-            />
-          </div>
-        </template>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div class="text-center">
-            <p class="text-2xl font-bold text-primary">{{ userProfile.total_views.toLocaleString() }}</p>
-            <p class="text-xs text-muted mt-0.5">Total views</p>
-          </div>
-          <div class="text-center">
-            <p class="text-2xl font-bold text-primary">{{ formatWatchTime(userProfile.total_watch_time) }}</p>
-            <p class="text-xs text-muted mt-0.5">Watch time</p>
-          </div>
-          <div class="col-span-2 sm:col-span-2">
-            <p class="text-xs text-muted mb-1.5 font-medium">Top categories</p>
-            <div class="space-y-1">
-              <div
-                v-for="[cat, score] in Object.entries(userProfile.category_scores).sort((a, b) => b[1] - a[1]).slice(0, 3)"
-                :key="cat"
-                class="flex items-center gap-2"
-              >
-                <span class="text-xs text-default truncate w-24 shrink-0">{{ cat || 'Uncategorized' }}</span>
-                <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    class="h-full bg-primary rounded-full"
-                    :style="{ width: `${Math.min(100, Math.round((score / (Object.values(userProfile.category_scores)[0] ?? 1)) * 100))}%` }"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-if="userProfile && Object.keys(userProfile.type_preferences).length > 0" class="mt-3 pt-3 border-t border-default">
-          <p class="text-xs text-muted mb-1.5 font-medium">By media type</p>
-          <div class="flex flex-wrap gap-x-6 gap-y-1">
-            <div
-              v-for="[mtype, score] in Object.entries(userProfile.type_preferences).sort((a, b) => (b[1] as number) - (a[1] as number))"
-              :key="mtype"
-              class="flex items-center gap-1.5 min-w-32"
-            >
-              <UIcon
-                :name="mtype === 'video' ? 'i-lucide-film' : mtype === 'audio' ? 'i-lucide-music' : 'i-lucide-image'"
-                class="size-3 text-muted shrink-0"
-              />
-              <span class="text-xs text-default capitalize w-10 shrink-0">{{ mtype }}</span>
-              <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  class="h-full bg-primary rounded-full"
-                  :style="{ width: `${Math.min(100, Math.round(((score as number) / ((Object.values(userProfile.type_preferences)[0] as number) ?? 1)) * 100))}%` }"
-                />
-              </div>
             </div>
           </div>
         </div>
@@ -505,7 +414,6 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               { key: 'auto_play', label: 'Auto-play' },
               { key: 'resume_playback', label: 'Resume Playback' },
               { key: 'show_mature', label: 'Show Mature Content' },
-              { key: 'show_analytics', label: 'Analytics' },
               { key: 'show_continue_watching', label: 'Continue Watching' },
               { key: 'show_recommended', label: 'Recommended' },
               { key: 'show_trending', label: 'Trending' },
@@ -679,26 +587,33 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
         </div>
       </UCard>
 
-      <!-- Danger zone -->
-      <UCard v-if="!authStore.isAdmin" :ui="{ root: 'ring-1 ring-error/30' }">
+      <!-- Data privacy -->
+      <UCard v-if="!authStore.isAdmin">
         <template #header>
-          <div class="flex items-center gap-2 font-semibold text-error">
-            <UIcon name="i-lucide-triangle-alert" class="size-4" />
-            Danger Zone
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-shield-check" class="size-4" />
+            Data Privacy
           </div>
         </template>
-        <p class="text-sm text-muted mb-3">Permanently delete your account and all associated data.</p>
-        <UButton icon="i-lucide-trash-2" label="Delete Account" color="error" variant="outline" @click="deleteOpen = true" />
 
-        <UModal v-model:open="deleteOpen" title="Delete Account" description="This action cannot be undone. All your data will be permanently removed.">
+        <div v-if="deletionSubmitted" class="text-sm text-muted space-y-1">
+          <p class="font-medium text-default">Request submitted</p>
+          <p>Your data deletion request has been submitted. An administrator will review it and take action. You will not be notified by email unless an admin contacts you directly.</p>
+        </div>
+        <template v-else>
+          <p class="text-sm text-muted mb-3">To request deletion of your account and associated data, submit a request below. An administrator will review and process it.</p>
+          <UButton icon="i-lucide-file-text" label="Request Data Deletion" variant="outline" color="warning" @click="deletionRequestOpen = true" />
+        </template>
+
+        <UModal v-model:open="deletionRequestOpen" title="Request Data Deletion" description="Your request will be reviewed by an administrator before any data is removed.">
           <template #body>
-            <UFormField label="Enter your password to confirm">
-              <UInput v-model="deletePassword" type="password" placeholder="••••••••" />
+            <UFormField label="Reason (optional)">
+              <UTextarea v-model="deletionReason" placeholder="Let us know why you'd like your data deleted…" :rows="3" />
             </UFormField>
           </template>
           <template #footer>
-            <UButton variant="ghost" color="neutral" label="Cancel" @click="deleteOpen = false" />
-            <UButton :loading="deleteLoading" color="error" label="Delete My Account" @click="handleDeleteAccount" />
+            <UButton variant="ghost" color="neutral" label="Cancel" @click="deletionRequestOpen = false" />
+            <UButton :loading="deletionSubmitting" color="warning" label="Submit Request" @click="handleDeletionRequest" />
           </template>
         </UModal>
       </UCard>

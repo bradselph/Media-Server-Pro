@@ -24,6 +24,7 @@ import type {
   DiscoverySuggestion,
   ModuleHealth, ServerStatus,
   FavoriteItem, APIToken, APITokenCreated,
+  DataDeletionRequest,
   RatedItem, RecentItem, NewSinceResponse, CategoryBrowseResponse, OnDeckResponse,
 } from '~/types/api'
 import { normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch } from '~/utils/apiCompat'
@@ -55,8 +56,8 @@ export function useApiEndpoints() {
   function changePassword(currentPassword: string, newPassword: string) {
     return api.post<void>('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword })
   }
-  function deleteAccount(password: string) {
-    return api.post<void>('/api/auth/delete-account', { password })
+  function requestDataDeletion(reason?: string) {
+    return api.post<{ status: string; message: string; id: string }>('/api/auth/data-deletion-request', { reason: reason ?? '' })
   }
   async function getPreferences(): Promise<UserPreferences> {
     const raw = await api.get<unknown>('/api/preferences')
@@ -68,7 +69,7 @@ export function useApiEndpoints() {
     return normalizePreferences(raw)
   }
   return {
-    login, logout, register, getSession, changePassword, deleteAccount,
+    login, logout, register, getSession, changePassword, requestDataDeletion,
     getPreferences, updatePreferences,
   }
 }
@@ -561,6 +562,14 @@ export function useAdminApi() {
 
     // Receiver media — individual item
     getSlaveMediaItem: (id: string) => api.get<ReceiverMedia>(`/api/receiver/media/${encodeURIComponent(id)}`),
+
+    // Data deletion requests
+    listDeletionRequests: (status?: string) => {
+      const qs = status ? `?status=${encodeURIComponent(status)}` : ''
+      return api.get<DataDeletionRequest[]>(`${base}/data-deletion-requests${qs}`)
+    },
+    processDeletionRequest: (id: string, action: 'approve' | 'deny', adminNotes?: string) =>
+      api.post<{ status: string }>(`${base}/data-deletion-requests/${encodeURIComponent(id)}/process`, { action, admin_notes: adminNotes ?? '' }),
   }
 }
 

@@ -435,6 +435,22 @@ var tableDefs = []struct {
 			UNIQUE KEY uniq_api_token_hash (token_hash),
 			INDEX idx_api_token_user (user_id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"data_deletion_requests", `
+		CREATE TABLE IF NOT EXISTS data_deletion_requests (
+			id          VARCHAR(255) PRIMARY KEY,
+			user_id     VARCHAR(255) NOT NULL,
+			username    VARCHAR(255) NOT NULL,
+			email       VARCHAR(255),
+			reason      TEXT,
+			status      VARCHAR(50)  NOT NULL DEFAULT 'pending',
+			created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			reviewed_at TIMESTAMP    NULL,
+			reviewed_by VARCHAR(255),
+			admin_notes TEXT,
+			INDEX idx_ddr_user_id  (user_id),
+			INDEX idx_ddr_status   (status),
+			INDEX idx_ddr_created  (created_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 }
 
 // ensureSchema idempotently creates all required tables and columns.
