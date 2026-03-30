@@ -221,10 +221,17 @@ function copyLinkAtTime() {
           <h3 class="font-semibold text-highlighted text-base">Keyboard Shortcuts</h3>
           <UButton icon="i-lucide-x" variant="ghost" color="neutral" size="xs" aria-label="Close" @click="emit('update:showShortcuts', false)" />
         </div>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Space / K</span><span class="text-muted">Play / Pause</span>
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">← →</span><span class="text-muted">Skip ±10 seconds</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">J / L</span><span class="text-muted">Skip ±10 seconds</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">← →</span><span class="text-muted">Skip ±5 seconds</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">↑ ↓</span><span class="text-muted">Volume ±5%</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">0–9</span><span class="text-muted">Seek to 0–90%</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Home / End</span><span class="text-muted">Jump to start / end</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">, / .</span><span class="text-muted">Frame step (paused)</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">&lt; / &gt;</span><span class="text-muted">Decrease / increase speed</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">F</span><span class="text-muted">Toggle fullscreen</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">T</span><span class="text-muted">Toggle theater mode</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">M</span><span class="text-muted">Mute / Unmute</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">?</span><span class="text-muted">Show this overlay</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Esc</span><span class="text-muted">Close overlay</span>
