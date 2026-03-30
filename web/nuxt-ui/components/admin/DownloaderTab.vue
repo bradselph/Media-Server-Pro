@@ -52,8 +52,10 @@ const activeProgress = ref(new Map<string, DownloaderProgress>())
 let wsRef: WebSocket | null = null
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
 let wsBackoff = 1000
+let destroyed = false
 
 function connectWS() {
+  if (destroyed) return
   if (wsRef?.readyState === WebSocket.OPEN || wsRef?.readyState === WebSocket.CONNECTING) return
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
   const ws = new WebSocket(`${proto}//${location.host}/ws/admin/downloader`)
@@ -74,6 +76,7 @@ function connectWS() {
         activeProgress.value = next
         if (msg.status === 'complete' || msg.status === 'error' || msg.status === 'cancelled') {
           setTimeout(() => {
+            if (destroyed) return
             const m = new Map(activeProgress.value)
             m.delete(msg.downloadId)
             activeProgress.value = m
@@ -89,6 +92,7 @@ function connectWS() {
     wsConnected.value = false
     wsClientId.value = null
     wsRef = null
+    if (destroyed) return
     wsReconnectTimer = setTimeout(() => {
       wsBackoff = Math.min(wsBackoff * 2, 30000)
       connectWS()
@@ -107,6 +111,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  destroyed = true
   if (wsReconnectTimer) clearTimeout(wsReconnectTimer)
   wsRef?.close()
 })
