@@ -117,6 +117,7 @@ function submitRating(star: number) {
 }
 
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
+let positionSaveController: AbortController | null = null
 
 function resetControlsTimer() {
   showControls.value = true
@@ -169,7 +170,14 @@ async function savePosition() {
   const pos = videoRef.value.currentTime
   const dur = videoRef.value.duration || 0
   if (pos > 0) {
-    await playbackApi.savePosition(mediaId.value, pos, dur).catch(() => {})
+    // Cancel any in-flight save to prevent out-of-order writes
+    positionSaveController?.abort()
+    positionSaveController = new AbortController()
+    try {
+      await playbackApi.savePosition(mediaId.value, pos, dur)
+    } catch {
+      // Position save is best-effort
+    }
   }
 }
 
@@ -371,11 +379,16 @@ function onKeyDown(e: KeyboardEvent) {
   }
 }
 
+function onFullscreenChange() {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
 onMounted(() => {
-  document.addEventListener('fullscreenchange', () => { isFullscreen.value = !!document.fullscreenElement })
+  document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('keydown', onKeyDown)
 })
 onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
   document.removeEventListener('keydown', onKeyDown)
   if (controlsTimer) clearTimeout(controlsTimer)
 })
