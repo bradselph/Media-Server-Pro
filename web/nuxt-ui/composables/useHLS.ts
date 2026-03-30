@@ -97,6 +97,9 @@ export function useHLS(
   let hlsInstance: import('hls.js').default | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let checkDebounce: ReturnType<typeof setTimeout> | null = null
+  let pollStartTime = 0
+  const MAX_POLL_DURATION = 30 * 60 * 1000 // 30 minutes
+  const MAX_CONSECUTIVE_ERRORS = 10
 
   function cleanup() {
     if (checkDebounce) {
@@ -306,10 +309,20 @@ export function useHLS(
           jobProgress.value = status.progress
 
           // Poll for completion — skip while tab is hidden to avoid wasteful background requests
+          pollStartTime = Date.now()
+          let consecutiveErrors = 0
           pollTimer = setInterval(async () => {
             if (document.hidden) return
+            // Guard against infinite polling — stop after 30 minutes
+            if (Date.now() - pollStartTime > MAX_POLL_DURATION) {
+              jobRunning.value = false
+              hlsError.value = 'HLS generation timed out — try again later'
+              if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+              return
+            }
             try {
               const updated = await hlsApi.check(id)
+              consecutiveErrors = 0
               jobProgress.value = updated.progress
               if (updated.available && updated.hls_url) {
                 jobRunning.value = false
@@ -327,7 +340,12 @@ export function useHLS(
                 }
               }
             } catch {
-              // Ignore poll errors
+              consecutiveErrors++
+              if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                jobRunning.value = false
+                hlsError.value = 'Lost connection to HLS service'
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+              }
             }
           }, 3000)
         }
