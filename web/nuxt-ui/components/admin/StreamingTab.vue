@@ -140,7 +140,7 @@ onMounted(load)
         ]"
       >
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs" :title="row.original.id">{{ row.original.id?.slice(0, 12) }}…</span>
+          <span class="font-mono text-xs" :title="row.original.id ?? ''">{{ row.original.id?.slice(0, 12) }}…</span>
         </template>
         <template #status-cell="{ row }">
           <UBadge :label="row.original.status" :color="statusColor(row.original.status)" variant="subtle" size="xs" />

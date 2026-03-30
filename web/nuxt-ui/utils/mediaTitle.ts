@@ -11,7 +11,9 @@ function cleanupFilenameLikeTitle(input: string): string {
   const slash = Math.max(raw.lastIndexOf('/'), raw.lastIndexOf('\\'))
   const base = slash >= 0 ? raw.slice(slash + 1) : raw
   const noExt = base.replace(/\.[A-Za-z0-9]{2,5}$/, '')
-  const normalized = noExt
+  // Strip download/recording timestamp suffix, e.g. _2026-03-24T21-54-54
+  const noTimestamp = noExt.replace(/_\d{4}[-_]\d{2}[-_]\d{2}T\d{2}[-_]\d{2}[-_]\d{2}$/, '')
+  const normalized = noTimestamp
     .replace(/[_\.-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()

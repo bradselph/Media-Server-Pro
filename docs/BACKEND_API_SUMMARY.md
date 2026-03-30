@@ -1,7 +1,7 @@
 # Backend API Summary
-> Go/Gin · v0.115.0 · 215+ routes across 14 categories
-> All JSON responses use envelope: `{ "success": bool, "data": T, "message": string }`
-> Auth: `session_id` cookie (HttpOnly, Strict SameSite)
+> Go/Gin · v0.125.0 · 235+ routes across 39 categories
+> All JSON responses use envelope: `{ "success": bool, "data": T, "error": string }`
+> Auth: `session_id` cookie (HttpOnly, Strict SameSite) **or** `Authorization: Bearer <token>` (API tokens)
 
 ## Auth Tiers
 
@@ -38,6 +38,9 @@
 | `GET` | `/api/auth/session` | Public | — | Session check — returns `{ authenticated, allow_guests, user? }` |
 | `POST` | `/api/auth/change-password` | Auth | `{ current_password, new_password }` | Self-service password change |
 | `POST` | `/api/auth/delete-account` | Auth | `{ password }` | Permanently delete own account |
+| `GET` | `/api/auth/tokens` | Auth | — | List user's API tokens (id, name, last_used_at, created_at — no raw token) |
+| `POST` | `/api/auth/tokens` | Auth | `{ name }` | Create API token — returns `{ id, name, token, created_at }` (raw token shown once only) |
+| `DELETE` | `/api/auth/tokens/:id` | Auth | — | Revoke API token by ID |
 
 ---
 
@@ -95,6 +98,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
 | `GET` | `/api/playback` | Auth | `id=<uuid>` | Retrieve saved position for a media item |
+| `GET` | `/api/playback/batch` | Auth | `ids=id1,id2,...` (max 100) | Batch positions for multiple items — returns `{ positions: { [id]: { position, duration } } }` |
 | `POST` | `/api/playback` | Auth | `{ id, position, duration }` | Save current playback position |
 
 ---
@@ -114,6 +118,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 | Method | Path | Auth | Params | Description |
 |--------|------|------|--------|-------------|
 | `GET` | `/api/watch-history` | Auth | `limit?` | List recent watch history items |
+| `GET` | `/api/watch-history/export` | Auth | — | Download watch history as CSV (`media_name, media_id, watched_at, position_seconds, duration_seconds, progress_percent, completed`) |
 | `DELETE` | `/api/watch-history` | Auth | `id=<media_uuid>` | Remove single entry; no query param = clear all |
 
 ---
@@ -122,12 +127,20 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 | Method | Path | Auth | Params | Description |
 |--------|------|------|--------|-------------|
-| `GET` | `/api/suggestions` | Public | — | General curated suggestions |
-| `GET` | `/api/suggestions/trending` | Public | — | Trending media |
-| `GET` | `/api/suggestions/similar` | Public | `id=<uuid>` | Similar items to given media |
-| `GET` | `/api/suggestions/continue` | Auth | — | Continue-watching list for current user |
-| `GET` | `/api/suggestions/personalized` | Auth | `limit?` | Personalized recommendations |
-| `POST` | `/api/ratings` | Auth | `{ id, rating }` | Record star rating (1–5) |
+| `GET` | `/api/suggestions` | Public | `limit?` (1–100, default 10) | General curated suggestions (personalized if authed, random if guest) |
+| `GET` | `/api/suggestions/trending` | Public | `limit?` (1–100, default 10) | Trending media |
+| `GET` | `/api/suggestions/similar` | Public | `id=<uuid>&limit?` | Similar items to given media |
+| `GET` | `/api/suggestions/recent` | Public | `days?` (1–365, default 14), `limit?` (1–100, default 20) | Recently added media items — `[{ id, name, type, category, date_added, thumbnail_url? }]` |
+| `GET` | `/api/suggestions/continue` | Auth | `limit?` (1–50, default 10) | Continue-watching list for current user |
+| `GET` | `/api/suggestions/personalized` | Auth | `limit?` (1–100, default 10) | Personalized recommendations |
+| `GET` | `/api/suggestions/new` | Auth | `limit?` (1–100, default 20) | Media added since user's last login — `{ items, since, total }` |
+| `GET` | `/api/suggestions/on-deck` | Auth | `limit?` (1–50, default 10) | Next unwatched episode per TV/Anime show — `{ items: [{ media_id, name, show_name, season, episode, category, thumbnail_url? }], total }` |
+| `GET` | `/api/suggestions/profile` | Auth | — | Caller's suggestion profile `{ user_id, total_views, total_watch_time, category_scores, type_preferences }` |
+| `DELETE` | `/api/suggestions/profile` | Auth | — | Reset caller's suggestion profile and view history |
+| `POST` | `/api/ratings` | Auth | `{ id, rating: 0–5 }` | Record star rating |
+| `GET` | `/api/ratings` | Auth | — | List caller's ratings — `[{ media_id, name, category, media_type, rating, thumbnail_url? }]` |
+
+> **503 Retry-After: 3** is returned for suggestion endpoints while the media catalogue is being seeded at startup.
 
 ---
 
@@ -140,16 +153,18 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 ---
 
-## 12. Playlists (Auth Required)
+## 12. Playlists
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
+| `GET` | `/api/playlists/public` | Public | — | List all public playlists (no auth required) |
 | `GET` | `/api/playlists` | Auth | — | List all playlists for current user |
-| `POST` | `/api/playlists` | Auth | `{ name, description?, is_public? }` | Create playlist |
+| `POST` | `/api/playlists` | Auth | `{ name, description?, is_public? }` | Create playlist (requires `can_create_playlists` permission) |
+| `POST` | `/api/playlists/bulk-delete` | Auth | `{ ids: string[] }` (max 100) | Bulk delete own playlists — returns `{ deleted, failed }` |
 | `GET` | `/api/playlists/:id` | Auth | — | Get full playlist with items |
 | `PUT` | `/api/playlists/:id` | Auth | `Partial<Playlist>` | Update playlist metadata |
 | `DELETE` | `/api/playlists/:id` | Auth | — | Delete playlist |
-| `GET` | `/api/playlists/:id/export` | Auth | `format=json|m3u|m3u8` | Export playlist (redirects to file) |
+| `GET` | `/api/playlists/:id/export` | Auth | `format=json\|m3u\|m3u8` | Export playlist as file download |
 | `POST` | `/api/playlists/:id/items` | Auth | `{ media_id }` | Add media item to playlist |
 | `DELETE` | `/api/playlists/:id/items` | Auth | `media_id=` or `item_id=` | Remove item from playlist |
 | `PUT` | `/api/playlists/:id/reorder` | Auth | `{ positions: number[] }` | Reorder playlist items |
@@ -175,7 +190,42 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 ---
 
-## 15. Analytics (Mixed Auth)
+## 15. Favorites / Watch Later (Auth Required)
+
+| Method | Path | Auth | Body / Params | Description |
+|--------|------|------|---------------|-------------|
+| `GET` | `/api/favorites` | Auth | — | List favorited items — `[{ id, media_id, media_path, added_at }]` |
+| `POST` | `/api/favorites` | Auth | `{ media_id }` | Add media item to favorites |
+| `GET` | `/api/favorites/:media_id` | Auth | — | Check if item is favorited — `{ is_favorite: bool }` |
+| `DELETE` | `/api/favorites/:media_id` | Auth | — | Remove item from favorites |
+
+---
+
+## 16. Atom Feed (Auth Required)
+
+| Method | Path | Auth | Params | Description |
+|--------|------|------|--------|-------------|
+| `GET` | `/api/feed` | Auth | `category?`, `type?`, `limit?` (1–50, default 20) | Atom XML feed of recently-added media (`Content-Type: application/atom+xml`). Cache-Control: public, max-age=300 |
+
+---
+
+## 17. Category Browse (Auth Required)
+
+| Method | Path | Auth | Params | Description |
+|--------|------|------|--------|-------------|
+| `GET` | `/api/browse/categories` | Auth | `category=<name>&limit?` (1–500, default 200) | Without `category`: returns categorizer stats. With `category`: returns `[{ id, name, category, confidence, detected_info?, thumbnail_url? }]`. Requires categorizer module (503 if not ready) |
+
+---
+
+## 18. OpenAPI Specification (Auth Required)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/docs` | Auth | Embedded OpenAPI YAML spec (`Content-Type: application/yaml`). Cache-Control: public, max-age=3600 |
+
+---
+
+## 19. Analytics (Mixed Auth)
 
 | Method | Path | Auth | Params | Description |
 |--------|------|------|--------|-------------|
@@ -192,7 +242,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 ---
 
-## 16. Admin — Dashboard & Server
+## 36. Admin — Dashboard & Server
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -209,7 +259,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 ---
 
-## 17. Admin — Users
+## 37. Admin — Users
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -228,7 +278,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 ---
 
-## 18. Admin — Media Management
+## 38. Admin — Media Management
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -240,7 +290,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 ---
 
-## 19. Admin — HLS Jobs
+## 39. Admin — HLS Jobs
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -253,7 +303,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 ---
 
-## 20. Admin — Thumbnails
+## 36. Admin — Thumbnails
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -262,7 +312,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 
 ---
 
-## 21. Admin — Scheduled Tasks
+## 37. Admin — Scheduled Tasks
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -276,7 +326,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 22. Admin — Configuration & Database
+## 38. Admin — Configuration & Database
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -287,7 +337,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 23. Admin — Backups
+## 39. Admin — Backups
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -298,7 +348,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 24. Admin — Security / IP Management
+## 36. Admin — Security / IP Management
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -315,7 +365,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 25. Admin — Content Scanner (Mature Content)
+## 37. Admin — Content Scanner (Mature Content)
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -329,7 +379,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 26. Admin — HuggingFace Visual Classification
+## 38. Admin — HuggingFace Visual Classification
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -343,7 +393,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 27. Admin — Validator
+## 39. Admin — Validator
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -353,7 +403,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 28. Admin — Categorizer
+## 36. Admin — Categorizer
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -366,7 +416,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 29. Admin — Remote Sources
+## 37. Admin — Remote Sources
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -382,7 +432,7 @@ Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanu
 
 ---
 
-## 30. Admin — Extractor
+## 38. Admin — Extractor
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -401,7 +451,7 @@ Extractor HLS proxy (unauthenticated, rate-limited):
 
 ---
 
-## 31. Admin — Crawler
+## 39. Admin — Crawler
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -417,7 +467,7 @@ Extractor HLS proxy (unauthenticated, rate-limited):
 
 ---
 
-## 32. Admin — Receiver / Slave Nodes
+## 36. Admin — Receiver / Slave Nodes
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -441,7 +491,7 @@ Slave node API (X-API-Key auth):
 
 ---
 
-## 33. Admin — Downloader
+## 37. Admin — Downloader
 
 | Method | Path | Auth | Body / Params | Description |
 |--------|------|------|---------------|-------------|
@@ -459,7 +509,7 @@ Slave node API (X-API-Key auth):
 
 ---
 
-## 34. Admin — Auto-Discovery
+## 38. Admin — Auto-Discovery
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -471,7 +521,7 @@ Slave node API (X-API-Key auth):
 
 ---
 
-## 35. Admin — Updates
+## 39. Admin — Updates
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -502,19 +552,23 @@ Slave node API (X-API-Key auth):
 | Category | Public | Auth | Admin | Total |
 |----------|--------|------|-------|-------|
 | System / Health | 6 | — | 1 | 7 |
-| Authentication | 4 | 2 | — | 6 |
+| Authentication + API Tokens | 4 | 5 | — | 9 |
 | Media Library | 4 | — | — | 4 |
 | Media Streaming (direct) | 6 | — | — | 6 |
 | HLS Streaming (direct) | 3 | — | — | 3 |
 | HLS API | — | 4 | 6 | 10 |
-| Playback | — | 2 | — | 2 |
+| Playback | — | 3 | — | 3 |
 | Preferences / Storage | — | 3 | — | 3 |
-| Watch History | — | 2 | — | 2 |
-| Suggestions & Ratings | 3 | 3 | — | 6 |
+| Watch History | — | 3 | — | 3 |
+| Suggestions & Ratings | 4 | 8 | — | 12 |
 | Thumbnails API | 2 | — | — | 2 |
-| Playlists | — | 11 | 4 | 15 |
+| Playlists | 1 | 13 | 4 | 18 |
 | Upload | — | 2 | — | 2 |
 | Remote Streaming | — | 1 | — | 1 |
+| Favorites / Watch Later | — | 4 | — | 4 |
+| Atom Feed | — | 1 | — | 1 |
+| Category Browse | — | 1 | — | 1 |
+| OpenAPI Spec | — | 1 | — | 1 |
 | Analytics | — | 1 | 9 | 10 |
 | Admin Dashboard | — | — | 10 | 10 |
 | Admin Users | — | — | 11 | 11 |
@@ -536,4 +590,4 @@ Slave node API (X-API-Key auth):
 | Admin Downloader | — | — | 11 | 11 |
 | Admin Discovery | — | — | 5 | 5 |
 | Admin Updates | — | — | 8 | 8 |
-| **Totals** | **36** | **31** | **148** | **~215** |
+| **Totals** | **38** | **50** | **148** | **~236** |

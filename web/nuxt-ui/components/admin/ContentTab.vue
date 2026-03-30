@@ -53,9 +53,19 @@ async function batchAction(action: 'approve' | 'reject') {
     const res = await adminApi.batchReview(action, selected.value)
     toast.add({ title: `${action === 'approve' ? 'Approved' : 'Rejected'} ${res.updated} item(s)`, color: 'success', icon: 'i-lucide-check' })
     selected.value = []
-    loadScanner()
+    await loadScanner()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+async function quickReview(id: string, action: 'approve' | 'reject') {
+  try {
+    if (action === 'approve') await adminApi.approveContent(id)
+    else await adminApi.rejectContent(id)
+    await loadScanner()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : `Failed to ${action}`, color: 'error', icon: 'i-lucide-x' })
   }
 }
 
@@ -338,8 +348,8 @@ watch(subTab, (v) => {
             </div>
             <span class="w-20 text-right text-muted">{{ item.confidence != null ? `${(item.confidence * 100).toFixed(0)}%` : '—' }}</span>
             <div class="w-24 flex justify-end gap-1">
-              <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" @click="adminApi.approveContent(item.id).then(loadScanner)" />
-              <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" @click="adminApi.rejectContent(item.id).then(loadScanner)" />
+              <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" @click="quickReview(item.id, 'approve')" />
+              <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" @click="quickReview(item.id, 'reject')" />
             </div>
           </div>
         </div>

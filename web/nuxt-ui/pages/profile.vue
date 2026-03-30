@@ -267,7 +267,13 @@ async function revokeToken(id: string) {
   }
 }
 
-onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens(); loadMyRatings() })
+let hasFetched = false
+function loadAll() {
+  hasFetched = true
+  loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfile(); loadTokens(); loadMyRatings()
+}
+onMounted(() => { if (!authStore.isLoading && authStore.user) loadAll() })
+watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
 </script>
 
 <template>
@@ -294,7 +300,7 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
             <p class="font-semibold text-lg">{{ authStore.username }}</p>
             <div class="flex items-center gap-2 mt-1 flex-wrap">
               <UBadge :label="authStore.user.role" :color="authStore.isAdmin ? 'warning' : 'neutral'" variant="subtle" size="xs" />
-              <span class="text-sm text-muted">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
+              <span v-if="authStore.user.created_at" class="text-sm text-muted">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
               <span v-if="authStore.user.previous_last_login" class="text-sm text-muted">· Previous session: {{ new Date(authStore.user.previous_last_login).toLocaleDateString() }}</span>
             </div>
             <div v-if="storageUsage" class="mt-2 max-w-xs space-y-1">
@@ -644,7 +650,7 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
           <div v-for="t in tokens" :key="t.id" class="flex items-center justify-between py-2 gap-3">
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ t.name }}</p>
-              <p class="text-xs text-muted">Created {{ new Date(t.created_at).toLocaleDateString() }}<template v-if="t.last_used_at"> · Last used {{ new Date(t.last_used_at).toLocaleDateString() }}</template></p>
+              <p class="text-xs text-muted"><template v-if="t.created_at">Created {{ new Date(t.created_at).toLocaleDateString() }}</template><template v-if="t.last_used_at"> · Last used {{ new Date(t.last_used_at).toLocaleDateString() }}</template></p>
             </div>
             <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" aria-label="Revoke token" @click="revokeToken(t.id)" />
           </div>
@@ -697,5 +703,10 @@ onMounted(() => { loadPrefs(); loadHistory(); loadStorageUsage(); loadUserProfil
         </UModal>
       </UCard>
     </template>
+
+    <!-- Fallback: prevents blank page if auth resolves without a user (edge case) -->
+    <div v-else class="flex justify-center py-16">
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+    </div>
   </UContainer>
 </template>

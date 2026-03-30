@@ -62,11 +62,33 @@ const USER_TYPE_OPTIONS = [
 const editLoading = ref(false)
 const editError = ref('')
 
-const filtered = computed(() =>
-  search.value
-    ? users.value.filter(u => u.username.toLowerCase().includes(search.value.toLowerCase()) || u.email?.toLowerCase().includes(search.value.toLowerCase()))
-    : users.value,
-)
+const roleFilter = ref('all')
+const ROLE_FILTER_OPTIONS = [
+  { label: 'All Roles', value: 'all' },
+  { label: 'Admin', value: 'admin' },
+  { label: 'Viewer', value: 'viewer' },
+]
+const statusFilter = ref('all')
+const STATUS_FILTER_OPTIONS = [
+  { label: 'All Status', value: 'all' },
+  { label: 'Enabled', value: 'enabled' },
+  { label: 'Disabled', value: 'disabled' },
+]
+
+const filtered = computed(() => {
+  let result = users.value
+  if (search.value) {
+    const q = search.value.toLowerCase()
+    result = result.filter(u => u.username.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))
+  }
+  if (roleFilter.value !== 'all') {
+    result = result.filter(u => u.role === roleFilter.value)
+  }
+  if (statusFilter.value !== 'all') {
+    result = result.filter(u => statusFilter.value === 'enabled' ? u.enabled : !u.enabled)
+  }
+  return result
+})
 
 // Bulk actions
 const selectedUsernames = ref<string[]>([])
@@ -207,6 +229,8 @@ onMounted(load)
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div class="flex items-center gap-2 flex-wrap">
         <UInput v-model="search" icon="i-lucide-search" placeholder="Search users…" class="w-64" />
+        <USelect v-model="roleFilter" :items="ROLE_FILTER_OPTIONS" class="w-32" />
+        <USelect v-model="statusFilter" :items="STATUS_FILTER_OPTIONS" class="w-32" />
         <template v-if="selectedUsernames.length > 0">
           <span class="text-sm text-muted">{{ selectedUsernames.length }} selected</span>
           <UButton :loading="bulkLoading" icon="i-lucide-toggle-right" label="Enable" size="sm" variant="outline" color="success" @click="bulkAction('enable')" />
@@ -407,8 +431,8 @@ onMounted(load)
             </div>
             <div class="text-xs text-muted">{{ s.user_agent }}</div>
             <div class="text-xs text-muted flex gap-4 flex-wrap">
-              <span>Created: {{ new Date(s.created_at).toLocaleString() }}</span>
-              <span>Expires: {{ new Date(s.expires_at).toLocaleString() }}</span>
+              <span>Created: {{ s.created_at ? new Date(s.created_at).toLocaleString() : '—' }}</span>
+              <span>Expires: {{ s.expires_at ? new Date(s.expires_at).toLocaleString() : '—' }}</span>
               <span v-if="s.last_activity">Last active: {{ new Date(s.last_activity).toLocaleString() }}</span>
             </div>
           </li>

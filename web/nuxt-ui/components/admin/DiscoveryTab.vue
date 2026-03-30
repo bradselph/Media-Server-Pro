@@ -491,14 +491,14 @@ watch(subTab, (tab) => {
               </UCard>
 
               <!-- Recent classified items -->
-              <UCard v-if="classifyStats && classifyStats.recent_items.length > 0">
+              <UCard v-if="classifyStats?.recent_items?.length">
                 <template #header><span class="font-semibold">Recent Classifications</span></template>
                 <div class="divide-y divide-default">
                   <div v-for="it in classifyStats.recent_items" :key="it.id" class="flex items-center gap-3 py-2">
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium truncate">{{ it.name }}</p>
                       <div class="flex flex-wrap gap-1 mt-0.5">
-                        <UBadge v-for="tag in it.tags.slice(0, 5)" :key="tag" :label="tag" color="neutral" variant="subtle" size="xs" />
+                        <UBadge v-for="tag in (it.tags ?? []).slice(0, 5)" :key="tag" :label="tag" color="neutral" variant="subtle" size="xs" />
                       </div>
                     </div>
                     <UBadge

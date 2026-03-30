@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FavoriteItem, MediaItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { formatDuration } from '~/utils/format'
 import { useFavoritesApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Favorites', middleware: 'auth' })
@@ -14,8 +15,10 @@ const favorites = ref<FavoriteItem[]>([])
 const mediaMap = ref<Record<string, MediaItem>>({})
 const loading = ref(true)
 const removing = ref<Set<string>>(new Set())
+let hasFetched = false
 
 async function load() {
+  hasFetched = true
   loading.value = true
   try {
     favorites.value = (await favoritesApi.list()) ?? []
@@ -55,10 +58,16 @@ async function removeFavorite(mediaId: string) {
 
 function getThumbnailUrl(item: MediaItem): string | null {
   if (!item?.id) return null
-  return `/api/thumbnails/${encodeURIComponent(item.id)}`
+  // /thumbnail?id=X is the correct media-thumbnail route (served by Go, not /api/)
+  return mediaApi.getThumbnailUrl(item.id)
 }
 
-onMounted(load)
+onMounted(() => {
+  if (!authStore.isLoading && authStore.user) load()
+})
+watch(() => authStore.user, (user) => {
+  if (user && !hasFetched) load()
+})
 </script>
 
 <template>
@@ -103,13 +112,13 @@ onMounted(load)
               v-if="mediaMap[fav.media_id]?.duration"
               class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono"
             >
-              {{ (() => { const d = mediaMap[fav.media_id]!.duration; const m = Math.floor(d/60); const s = Math.floor(d%60); return `${m}:${s.toString().padStart(2,'0')}` })() }}
+              {{ formatDuration(mediaMap[fav.media_id]!.duration) }}
             </div>
           </div>
           <p class="text-sm font-medium truncate" :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_path">
             {{ mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_path.split('/').pop() }}
           </p>
-          <p class="text-xs text-muted">Saved {{ new Date(fav.added_at).toLocaleDateString() }}</p>
+          <p v-if="fav.added_at" class="text-xs text-muted">Saved {{ new Date(fav.added_at).toLocaleDateString() }}</p>
         </NuxtLink>
         <button
           class="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"

@@ -67,11 +67,9 @@ export function useApiEndpoints() {
     const raw = await api.post<unknown>('/api/preferences', toPreferencesPatch(prefs))
     return normalizePreferences(raw)
   }
-  function getPermissions() { return api.get<PermissionsInfo>('/api/permissions') }
-
   return {
     login, logout, register, getSession, changePassword, deleteAccount,
-    getPreferences, updatePreferences, getPermissions,
+    getPreferences, updatePreferences,
   }
 }
 
@@ -163,9 +161,11 @@ export function useWatchHistoryApi() {
 export function useSuggestionsApi() {
   return {
     get: () => api.get<Suggestion[]>('/api/suggestions'),
-    getTrending: () => api.get<Suggestion[]>('/api/suggestions/trending'),
+    getTrending: (limit?: number) =>
+      api.get<Suggestion[]>(`/api/suggestions/trending${limit ? `?limit=${limit}` : ''}`),
     getSimilar: (id: string) => api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
-    getContinueWatching: () => api.get<Suggestion[]>('/api/suggestions/continue'),
+    getContinueWatching: (limit?: number) =>
+      api.get<Suggestion[]>(`/api/suggestions/continue${limit ? `?limit=${limit}` : ''}`),
     getPersonalized: (limit?: number) =>
       api.get<Suggestion[]>(`/api/suggestions/personalized${limit ? `?limit=${limit}` : ''}`),
     getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),
@@ -599,7 +599,23 @@ export function useAnalyticsApi() {
       return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user?${qs}`)
     },
     getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
-    exportCsv: () => `/api/admin/analytics/export`,
+    exportCsv: (period?: string) => {
+      const today = new Date()
+      const fmt = (d: Date) => d.toISOString().slice(0, 10)
+      const qs = new URLSearchParams()
+      if (period === 'today') {
+        qs.set('start_date', fmt(today))
+        qs.set('end_date', fmt(today))
+      } else if (period === '7d') {
+        const s = new Date(today); s.setDate(s.getDate() - 7)
+        qs.set('start_date', fmt(s)); qs.set('end_date', fmt(today))
+      } else if (period === '30d') {
+        const s = new Date(today); s.setDate(s.getDate() - 30)
+        qs.set('start_date', fmt(s)); qs.set('end_date', fmt(today))
+      }
+      const q = qs.toString()
+      return `/api/admin/analytics/export${q ? `?${q}` : ''}`
+    },
   }
 }
 

@@ -66,7 +66,7 @@ onMounted(loadStatus)
         </template>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
           <div><span class="text-muted">Uptime:</span> <span class="font-medium">{{ serverStatus.uptime }}</span></div>
-          <div><span class="text-muted">Started:</span> {{ new Date(serverStatus.start_time).toLocaleString() }}</div>
+          <div><span class="text-muted">Started:</span> {{ serverStatus.start_time ? new Date(serverStatus.start_time).toLocaleString() : '—' }}</div>
           <div><span class="text-muted">Version:</span> <span class="font-mono">{{ serverStatus.version }}</span></div>
           <div><span class="text-muted">Go:</span> {{ serverStatus.go_version }}</div>
           <div><span class="text-muted">Modules:</span> {{ serverStatus.module_count }}</div>

@@ -127,7 +127,7 @@ onMounted(loadReceiver)
             <div class="flex items-center gap-2 mt-1">
               <UBadge :label="slave.status" :color="statusColor(slave.status)" variant="subtle" size="xs" />
               <span class="text-xs text-muted">{{ slave.media_count }} media</span>
-              <span class="text-xs text-muted">· last seen {{ new Date(slave.last_seen).toLocaleString() }}</span>
+              <span v-if="slave.last_seen" class="text-xs text-muted">· last seen {{ new Date(slave.last_seen).toLocaleString() }}</span>
             </div>
           </div>
           <UButton icon="i-lucide-trash-2" aria-label="Remove slave" size="xs" variant="ghost" color="error" @click="removeSlave(slave.id)" />
@@ -209,7 +209,7 @@ onMounted(loadReceiver)
             <div><span class="text-muted">Size:</span> {{ formatBytes(selectedSlaveMedia.size) }}</div>
             <div v-if="selectedSlaveMedia.duration"><span class="text-muted">Duration:</span> {{ selectedSlaveMedia.duration }}s</div>
             <div><span class="text-muted">Slave ID:</span> <span class="font-mono text-xs">{{ selectedSlaveMedia.slave_id }}</span></div>
-            <div><span class="text-muted">Added:</span> {{ new Date(selectedSlaveMedia.created_at).toLocaleString() }}</div>
+            <div v-if="selectedSlaveMedia.created_at"><span class="text-muted">Added:</span> {{ new Date(selectedSlaveMedia.created_at).toLocaleString() }}</div>
           </div>
           <div>
             <span class="text-muted">Path:</span>

@@ -48,6 +48,11 @@ const media = ref<MediaItem | null>(null)
 const loading = ref(true)
 const error = ref('')
 
+// Update browser tab title as soon as the media item loads
+useHead(computed(() => ({
+  title: media.value ? getDisplayTitle(media.value) : 'Player',
+})))
+
 // Player refs
 const videoRef = ref<HTMLVideoElement | null>(null)
 const isPlaying = ref(false)
@@ -56,6 +61,7 @@ const currentTime = ref(0)
 const duration = ref(0)
 const showControls = ref(true)
 const isFullscreen = ref(false)
+const isTheater = ref(false)
 const playbackSpeed = ref(userPrefs.value?.playback_speed ?? 1)
 
 // HLS — delegate to composable
@@ -112,6 +118,7 @@ function submitRating(star: number) {
 }
 
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
+let positionSaveController: AbortController | null = null
 
 function resetControlsTimer() {
   showControls.value = true
@@ -164,7 +171,14 @@ async function savePosition() {
   const pos = videoRef.value.currentTime
   const dur = videoRef.value.duration || 0
   if (pos > 0) {
-    await playbackApi.savePosition(mediaId.value, pos, dur).catch(() => {})
+    // Cancel any in-flight save to prevent out-of-order writes
+    positionSaveController?.abort()
+    positionSaveController = new AbortController()
+    try {
+      await playbackApi.savePosition(mediaId.value, pos, dur)
+    } catch {
+      // Position save is best-effort
+    }
   }
 }
 
@@ -178,7 +192,12 @@ function onVideoLoaded() {
   playbackStore.startAutoSave()
 }
 
+let lastTimeUpdateAt = 0
 function onTimeUpdate() {
+  // Throttle to ~4 updates/sec (250ms) instead of the browser's ~30/sec
+  const now = performance.now()
+  if (now - lastTimeUpdateAt < 250) return
+  lastTimeUpdateAt = now
   currentTime.value = videoRef.value?.currentTime ?? 0
   duration.value = videoRef.value?.duration ?? 0
   playbackStore.updatePosition(currentTime.value, duration.value)
@@ -324,6 +343,27 @@ function toggleMute() {
   setVolume(videoRef.value.volume > 0 ? 0 : Math.max(volume.value, 0.5))
 }
 
+function changeSpeed(delta: number) {
+  const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+  const curIdx = speeds.indexOf(playbackSpeed.value)
+  const newIdx = Math.max(0, Math.min(speeds.length - 1, curIdx + delta))
+  playbackSpeed.value = speeds[newIdx]
+  if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
+}
+
+function stepFrame(direction: number) {
+  if (!videoRef.value || !videoRef.value.paused) return
+  // Approximate frame duration (~30fps = 0.033s)
+  videoRef.value.currentTime = Math.max(0, Math.min(
+    videoRef.value.duration,
+    videoRef.value.currentTime + (direction * (1 / 30)),
+  ))
+}
+
+function toggleTheater() {
+  isTheater.value = !isTheater.value
+}
+
 function onKeyDown(e: KeyboardEvent) {
   // Don't intercept when user is typing in an input/textarea
   const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
@@ -332,29 +372,79 @@ function onKeyDown(e: KeyboardEvent) {
   switch (e.key) {
     case ' ':
     case 'k':
+    case 'K':
       e.preventDefault()
       togglePlay()
       resetControlsTimer()
       break
-    case 'ArrowLeft':
+    case 'j':
+    case 'J':
       e.preventDefault()
       seek(-10)
       resetControlsTimer()
       break
-    case 'ArrowRight':
+    case 'l':
+    case 'L':
       e.preventDefault()
       seek(10)
       resetControlsTimer()
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      seek(-5)
+      resetControlsTimer()
+      break
+    case 'ArrowRight':
+      e.preventDefault()
+      seek(5)
+      resetControlsTimer()
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      setVolume(Math.min(1, volume.value + 0.05))
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      setVolume(Math.max(0, volume.value - 0.05))
       break
     case 'f':
     case 'F':
       e.preventDefault()
       toggleFullscreen()
       break
+    case 't':
+    case 'T':
+      e.preventDefault()
+      toggleTheater()
+      break
     case 'm':
     case 'M':
       e.preventDefault()
       toggleMute()
+      break
+    case 'Home':
+      e.preventDefault()
+      if (videoRef.value) videoRef.value.currentTime = 0
+      break
+    case 'End':
+      e.preventDefault()
+      if (videoRef.value) videoRef.value.currentTime = videoRef.value.duration
+      break
+    case ',':
+      e.preventDefault()
+      stepFrame(-1)
+      break
+    case '.':
+      e.preventDefault()
+      stepFrame(1)
+      break
+    case '<':
+      e.preventDefault()
+      changeSpeed(-1)
+      break
+    case '>':
+      e.preventDefault()
+      changeSpeed(1)
       break
     case '?':
       e.preventDefault()
@@ -363,14 +453,27 @@ function onKeyDown(e: KeyboardEvent) {
     case 'Escape':
       if (showShortcuts.value) { e.preventDefault(); showShortcuts.value = false }
       break
+    default:
+      // 0-9: seek to percentage
+      if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault()
+        seekToFraction(parseInt(e.key) / 10)
+        resetControlsTimer()
+      }
+      break
   }
 }
 
+function onFullscreenChange() {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
 onMounted(() => {
-  document.addEventListener('fullscreenchange', () => { isFullscreen.value = !!document.fullscreenElement })
+  document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('keydown', onKeyDown)
 })
 onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
   document.removeEventListener('keydown', onKeyDown)
   if (controlsTimer) clearTimeout(controlsTimer)
 })
@@ -461,7 +564,8 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
 
 <template>
   <div
-    class="mx-auto w-full max-w-7xl"
+    class="mx-auto w-full"
+    :class="isTheater ? 'max-w-full' : 'max-w-7xl'"
     :class="
       media && mediaId && !loading && !error
         ? 'max-md:px-0 max-md:py-0 md:px-6 md:py-6'
@@ -502,7 +606,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
     </div>
 
     <!-- Player -->
-    <div v-else-if="media" class="grid grid-cols-1 xl:grid-cols-3 md:gap-6">
+    <div v-else-if="media" class="grid grid-cols-1 md:gap-6" :class="isTheater ? '' : 'xl:grid-cols-3'">
       <div class="xl:col-span-2 flex flex-col gap-0 md:gap-4">
         <!-- Video player -->
         <div

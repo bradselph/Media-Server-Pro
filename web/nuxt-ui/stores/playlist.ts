@@ -38,10 +38,15 @@ export const usePlaylistStore = defineStore('playlist', () => {
 
   async function addMediaToPlaylist(playlistId: string, mediaId: string) {
     await usePlaylistApi().addItem(playlistId, mediaId)
-    const updated = await usePlaylistApi().get(playlistId)
-    const idx = playlists.value.findIndex(p => p.id === playlistId)
-    if (idx !== -1) playlists.value[idx] = updated
-    return updated
+    try {
+      const updated = await usePlaylistApi().get(playlistId)
+      const idx = playlists.value.findIndex(p => p.id === playlistId)
+      if (idx !== -1) playlists.value[idx] = updated
+      return updated
+    } catch {
+      // Re-fetch failed but the item was added — trigger a full refresh next time
+      throw new Error('Item added but failed to refresh playlist')
+    }
   }
 
   async function removeMediaFromPlaylist(playlistId: string, itemId: string) {

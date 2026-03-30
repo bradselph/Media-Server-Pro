@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { Playlist } from '~/types/api'
-import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Playlists', middleware: 'auth' })
 
@@ -12,8 +11,12 @@ const toast = useToast()
 // List
 const playlists = ref<Playlist[]>([])
 const loading = ref(true)
+// Track whether a fetch has been initiated to prevent duplicate loads when
+// the auth store resolves after the component mounts (SPA navigation race).
+let hasFetched = false
 
 async function load() {
+  hasFetched = true
   loading.value = true
   try { playlists.value = (await playlistApi.list()) ?? [] }
   catch (e: unknown) {
@@ -247,12 +250,22 @@ async function confirmBulkDelete() {
   } finally { bulkDeleting.value = false }
 }
 
-onMounted(load)
+// On mount: load immediately if auth has settled, otherwise wait for the user
+// to become available. This handles SPA navigations where the auth plugin may
+// still be resolving when the component mounts (isLoading=true) — without
+// this guard, the page shows a blank body until the user manually refreshes.
+onMounted(() => {
+  if (!authStore.isLoading && authStore.user) load()
+})
+
+watch(() => authStore.user, (user) => {
+  if (user && !hasFetched) load()
+})
 </script>
 
 <template>
   <UContainer class="py-6 max-w-4xl space-y-6">
-    <!-- Loading -->
+    <!-- Auth resolving -->
     <div v-if="authStore.isLoading" class="flex justify-center py-16">
       <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
     </div>
@@ -355,7 +368,7 @@ onMounted(load)
                 />
               </div>
               <NuxtLink
-                :to="`/player?id=${encodeURIComponent(item.media_id)}&playlist_id=${encodeURIComponent(activePlaylist!.id)}&playlist_idx=${idx}`"
+                :to="`/player?id=${encodeURIComponent(item.media_id)}&playlist_id=${encodeURIComponent(activePlaylist?.id ?? '')}&playlist_idx=${idx}`"
                 class="flex-1 min-w-0 text-sm font-medium truncate hover:text-primary transition-colors"
               >
                 {{ item.title || item.media_id }}
@@ -376,7 +389,7 @@ onMounted(load)
                   size="xs"
                   variant="ghost"
                   color="neutral"
-                  :disabled="idx === (activePlaylist!.items?.length ?? 0) - 1"
+                  :disabled="idx === (activePlaylist?.items?.length ?? 0) - 1"
                   @click="moveItem(idx, 1)"
                 />
                 <UButton
@@ -385,7 +398,7 @@ onMounted(load)
                   size="xs"
                   variant="ghost"
                   color="neutral"
-                  @click="removeItem(activePlaylist!.id, item.media_id, item.id)"
+                  @click="activePlaylist && removeItem(activePlaylist.id, item.media_id, item.id)"
                 />
               </div>
             </div>
@@ -428,7 +441,7 @@ onMounted(load)
                   <div class="flex items-center gap-2 mt-2">
                     <UBadge :label="pl.is_public ? 'Public' : 'Private'" :color="pl.is_public ? 'success' : 'neutral'" variant="subtle" size="xs" />
                     <span class="text-xs text-muted">{{ (pl.items?.length ?? 0) }} items</span>
-                    <span class="text-xs text-muted">· {{ new Date(pl.modified_at).toLocaleDateString() }}</span>
+                    <span v-if="pl.modified_at" class="text-xs text-muted">· {{ new Date(pl.modified_at).toLocaleDateString() }}</span>
                   </div>
                 </div>
               </div>
@@ -544,7 +557,7 @@ onMounted(load)
                     variant="ghost"
                     color="primary"
                     aria-label="Play playlist"
-                    :to="pl.items?.[0] ? `/player?id=${encodeURIComponent(pl.items[0].media_id)}&playlist=${encodeURIComponent(pl.id)}` : undefined"
+                    :to="pl.items?.[0] ? `/player?id=${encodeURIComponent(pl.items[0].media_id)}&playlist_id=${encodeURIComponent(pl.id)}&playlist_idx=0` : undefined"
                     :disabled="!pl.items?.length"
                   />
                   <UButton
@@ -563,5 +576,11 @@ onMounted(load)
         </div>
       </div>
     </template>
+
+    <!-- Fallback: auth resolved but no user (should not normally be reached — middleware
+         redirects to /login, but this prevents a blank body during any transient state.) -->
+    <div v-else class="flex justify-center py-16">
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+    </div>
   </UContainer>
 </template>
