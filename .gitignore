@@ -49,6 +49,7 @@ dev-tools/
 *~
 
 .claude/
+!.claude/commands/
 
 .DS_Store
 Thumbs.db

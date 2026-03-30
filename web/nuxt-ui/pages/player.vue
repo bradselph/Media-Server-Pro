@@ -565,12 +565,12 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
 <template>
   <div
     class="mx-auto w-full"
-    :class="isTheater ? 'max-w-full' : 'max-w-7xl'"
-    :class="
+    :class="[
+      isTheater ? 'max-w-full' : 'max-w-7xl',
       media && mediaId && !loading && !error
         ? 'max-md:px-0 max-md:py-0 md:px-6 md:py-6'
-        : 'px-4 sm:px-6 py-6'
-    "
+        : 'px-4 sm:px-6 py-6',
+    ]"
   >
     <!-- No media selected -->
     <div v-if="!mediaId" class="flex flex-col items-center justify-center py-24 gap-4">
@@ -771,6 +771,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           </div>
           <div class="flex gap-2 mt-4 flex-wrap">
             <UButton
+              v-if="!authStore.isLoggedIn || authStore.user?.permissions?.can_download"
               icon="i-lucide-download"
               label="Download"
               variant="outline"

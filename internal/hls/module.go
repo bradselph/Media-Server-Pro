@@ -115,10 +115,9 @@ func (m *Module) Start(_ context.Context) error {
 
 	m.runPostLoadStartupTasks()
 
-	if cfg.HLS.CleanupEnabled {
-		m.cleanupTicker = time.NewTicker(cfg.HLS.CleanupInterval)
-		go m.cleanupLoop()
-	}
+	// Automatic cleanup is intentionally disabled: HLS cache is never deleted
+	// without an explicit admin action (POST /api/admin/hls/clean/inactive or
+	// DELETE /api/admin/hls/jobs/:id). The CleanupEnabled config flag is ignored.
 
 	m.healthMu.Lock()
 	m.healthy = true

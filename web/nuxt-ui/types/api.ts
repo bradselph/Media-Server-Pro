@@ -1052,3 +1052,20 @@ export interface APIToken {
 export interface APITokenCreated extends APIToken {
   token: string // raw value — only available on creation response
 }
+
+// ── Data Deletion Requests ────────────────────────────────────────────────────
+
+export type DataDeletionRequestStatus = 'pending' | 'approved' | 'denied'
+
+export interface DataDeletionRequest {
+  id: string
+  user_id: string
+  username: string
+  email?: string
+  reason?: string
+  status: DataDeletionRequestStatus
+  created_at: string
+  reviewed_at?: string | null
+  reviewed_by?: string
+  admin_notes?: string
+}

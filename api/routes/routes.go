@@ -367,8 +367,8 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// User password change (protected)
 	api.POST("/auth/change-password", requireAuth(), h.ChangePassword)
 
-	// Self-service account deletion (protected) — user must confirm with their password
-	api.POST("/auth/delete-account", requireAuth(), h.DeleteAccount)
+	// Data deletion request — users submit a request; admins review and decide
+	api.POST("/auth/data-deletion-request", requireAuth(), h.RequestDataDeletion)
 
 	// User API tokens — programmatic access for scripts and tools
 	api.GET("/auth/tokens", requireAuth(), h.ListAPITokens)
@@ -494,6 +494,8 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.DELETE("/users/:username", h.AdminDeleteUser)
 	adminGrp.POST("/users/:username/password", h.AdminChangePassword)
 	adminGrp.GET("/users/:username/sessions", h.AdminGetUserSessions)
+	adminGrp.GET("/data-deletion-requests", h.AdminListDeletionRequests)
+	adminGrp.POST("/data-deletion-requests/:id/process", h.AdminProcessDeletionRequest)
 	adminGrp.POST("/change-password", h.AdminChangeOwnPassword)
 	adminGrp.GET("/audit-log", h.AdminGetAuditLog)
 	adminGrp.GET("/audit-log/export", h.AdminExportAuditLog)

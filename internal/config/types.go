@@ -214,9 +214,10 @@ type HLSConfig struct {
 	CleanupEnabled   bool          `json:"cleanup_enabled"`
 	CleanupInterval  time.Duration `json:"cleanup_interval"`
 	RetentionMinutes int           `json:"retention_minutes"`
-	AutoGenerate     bool          `json:"auto_generate"`
-	QualityProfiles  []HLSQuality  `json:"quality_profiles"`
-	ConcurrentLimit  int           `json:"concurrent_limit"`
+	AutoGenerate              bool          `json:"auto_generate"`
+	PreGenerateIntervalHours  int           `json:"pre_generate_interval_hours"`
+	QualityProfiles           []HLSQuality  `json:"quality_profiles"`
+	ConcurrentLimit           int           `json:"concurrent_limit"`
 	CDNBaseURL       string        `json:"cdn_base_url"`
 	LazyTranscode    bool          `json:"lazy_transcode"`
 }
