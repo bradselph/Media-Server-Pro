@@ -652,8 +652,13 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               </div>
               <div class="flex items-center gap-2 mt-0.5">
                 <p class="text-xs text-muted">
-                  {{ item.completed ? 'Completed' : `${Math.round(item.progress)}% watched` }}
-                  <span v-if="item.watched_at"> · {{ new Date(item.watched_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
+                  <template v-if="item.completed">
+                    Completed<span v-if="item.watched_at"> on {{ new Date(item.watched_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }}</span>
+                  </template>
+                  <template v-else>
+                    {{ Math.round(item.progress) }}% watched<span v-if="item.watched_at"> · {{ new Date(item.watched_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
+                  </template>
+                  <span v-if="item.duration"> · {{ formatWatchTime(item.duration) }} total</span>
                 </p>
               </div>
             </div>
