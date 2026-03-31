@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, APIToken, APITokenCreated, RatedItem } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, APIToken, APITokenCreated, RatedItem, UserProfile } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useAPITokensApi, useRatingsApi, useSuggestionsApi } from '~/composables/useApiEndpoints'
@@ -52,6 +52,39 @@ async function loadStorageUsage() {
     if (p.status === 'fulfilled') permissionsInfo.value = p.value
   } catch { /* optional */ }
 }
+
+// Personal stats
+const myProfile = ref<UserProfile | null>(null)
+const statsLoading = ref(true)
+
+async function loadMyProfile() {
+  statsLoading.value = true
+  try { myProfile.value = await suggestionsApi.getMyProfile() }
+  catch { /* non-critical */ }
+  finally { statsLoading.value = false }
+}
+
+function formatWatchTime(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+  const h = Math.floor(seconds / 3600)
+  const m = Math.round((seconds % 3600) / 60)
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+const topCategories = computed(() => {
+  if (!myProfile.value?.category_scores) return []
+  return Object.entries(myProfile.value.category_scores)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 8)
+})
+
+const topTypes = computed(() => {
+  if (!myProfile.value?.type_preferences) return []
+  return Object.entries(myProfile.value.type_preferences)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 6)
+})
 
 // Preferences
 const prefs = ref<Partial<UserPreferences>>({})
@@ -296,7 +329,7 @@ async function revokeToken(id: string) {
 let hasFetched = false
 function loadAll() {
   hasFetched = true
-  loadPrefs(); loadHistory(); loadStorageUsage(); loadTokens(); loadMyRatings()
+  loadPrefs(); loadHistory(); loadStorageUsage(); loadTokens(); loadMyRatings(); loadMyProfile()
 }
 onMounted(() => { if (!authStore.isLoading && authStore.user) loadAll() })
 watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
@@ -348,6 +381,73 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
             </div>
           </div>
         </div>
+      </UCard>
+
+      <!-- Personal Stats -->
+      <UCard v-if="myProfile || statsLoading">
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-bar-chart-3" class="size-4" />
+            Your Stats
+          </div>
+        </template>
+        <div v-if="statsLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <template v-else-if="myProfile">
+          <!-- Summary row -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+            <div class="text-center p-3 rounded-lg bg-muted/30">
+              <p class="text-2xl font-bold text-primary">{{ myProfile.total_views.toLocaleString() }}</p>
+              <p class="text-xs text-muted mt-0.5">Total Views</p>
+            </div>
+            <div class="text-center p-3 rounded-lg bg-muted/30">
+              <p class="text-2xl font-bold text-primary">{{ formatWatchTime(myProfile.total_watch_time) }}</p>
+              <p class="text-xs text-muted mt-0.5">Watch Time</p>
+            </div>
+            <div class="text-center p-3 rounded-lg bg-muted/30 col-span-2 sm:col-span-1">
+              <p class="text-2xl font-bold text-primary">{{ Object.keys(myProfile.category_scores || {}).length }}</p>
+              <p class="text-xs text-muted mt-0.5">Categories Explored</p>
+            </div>
+          </div>
+
+          <!-- Category scores -->
+          <div v-if="topCategories.length > 0" class="mb-4">
+            <p class="text-sm font-medium mb-2">Top Categories</p>
+            <div class="space-y-1.5">
+              <div v-for="[cat, score] in topCategories" :key="cat" class="flex items-center gap-2">
+                <span class="text-xs text-muted w-24 shrink-0 truncate capitalize" :title="cat">{{ cat }}</span>
+                <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-primary rounded-full"
+                    :style="{ width: `${Math.min(100, Math.round((score / (topCategories[0]?.[1] || 1)) * 100))}%` }"
+                  />
+                </div>
+                <span class="text-xs text-muted w-8 text-right shrink-0">{{ score.toFixed(0) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Type preferences -->
+          <div v-if="topTypes.length > 0">
+            <p class="text-sm font-medium mb-2">Content Types</p>
+            <div class="flex flex-wrap gap-1.5">
+              <UBadge
+                v-for="[type, score] in topTypes"
+                :key="type"
+                :label="`${type} (${score.toFixed(0)})`"
+                color="primary"
+                variant="subtle"
+                size="sm"
+                class="capitalize"
+              />
+            </div>
+          </div>
+
+          <p v-if="myProfile.last_updated" class="text-xs text-muted mt-3">
+            Last updated {{ new Date(myProfile.last_updated).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}
+          </p>
+        </template>
       </UCard>
 
       <!-- My Ratings -->
