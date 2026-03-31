@@ -370,6 +370,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Data deletion request — users submit a request; admins review and decide
 	api.POST("/auth/data-deletion-request", requireAuth(), h.RequestDataDeletion)
 
+	// Self-service account deletion (requires password confirmation)
+	api.POST("/auth/delete-account", requireAuth(), h.DeleteAccount)
+
 	// User API tokens — programmatic access for scripts and tools
 	api.GET("/auth/tokens", requireAuth(), h.ListAPITokens)
 	api.POST("/auth/tokens", requireAuth(), h.CreateAPIToken)
