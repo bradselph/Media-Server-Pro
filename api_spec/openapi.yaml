@@ -1367,7 +1367,7 @@ paths:
       tags: [streaming]
       summary: Stream a media file
       parameters:
-        - name: path
+        - name: id
           in: query
           required: true
           schema:
@@ -1387,7 +1387,7 @@ paths:
       tags: [streaming]
       summary: Download a media file
       parameters:
-        - name: path
+        - name: id
           in: query
           required: true
           schema:
@@ -1460,9 +1460,9 @@ paths:
   /thumbnail:
     get:
       tags: [thumbnails]
-      summary: Get thumbnail for media path
+      summary: Get thumbnail for media item
       parameters:
-        - name: path
+        - name: id
           in: query
           schema:
             type: string
@@ -1890,7 +1890,7 @@ paths:
       security:
         - sessionCookie: []
       parameters:
-        - name: path
+        - name: id
           in: query
           required: true
           schema:
@@ -1921,9 +1921,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [path, position, duration]
+              required: [id, position, duration]
               properties:
-                path:
+                id:
                   type: string
                 position:
                   type: number
@@ -1953,9 +1953,9 @@ paths:
   /api/hls/check:
     get:
       tags: [hls]
-      summary: Check HLS availability for media path
+      summary: Check HLS availability for media item
       parameters:
-        - name: path
+        - name: id
           in: query
           required: true
           schema:
@@ -1983,9 +1983,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [path]
+              required: [id]
               properties:
-                path:
+                id:
                   type: string
                 quality:
                   type: string
@@ -2436,11 +2436,11 @@ paths:
       security:
         - sessionCookie: []
       parameters:
-        - name: path
+        - name: id
           in: query
           schema:
             type: string
-          description: Filter to single item
+          description: Filter to single item by media ID
         - name: limit
           in: query
           schema:
@@ -2465,11 +2465,11 @@ paths:
       security:
         - sessionCookie: []
       parameters:
-        - name: path
+        - name: id
           in: query
           schema:
             type: string
-          description: If provided, deletes single item; otherwise clears all.
+          description: If provided, deletes single item by media ID; otherwise clears all.
       responses:
         '200':
           description: History cleared/removed
@@ -2479,7 +2479,7 @@ paths:
       tags: [thumbnails]
       summary: Get thumbnail preview URLs
       parameters:
-        - name: path
+        - name: id
           in: query
           required: true
           schema:
@@ -2534,7 +2534,7 @@ paths:
       tags: [suggestions]
       summary: Get similar media
       parameters:
-        - name: path
+        - name: id
           in: query
           required: true
           schema:
@@ -2595,9 +2595,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [path, rating]
+              required: [id, rating]
               properties:
-                path:
+                id:
                   type: string
                 rating:
                   type: number
@@ -3276,9 +3276,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [paths, action]
+              required: [ids, action]
               properties:
-                paths:
+                ids:
                   type: array
                   items:
                     type: string
@@ -3439,12 +3439,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [action, paths]
+              required: [action, ids]
               properties:
                 action:
                   type: string
                   enum: [approve, reject]
-                paths:
+                ids:
                   type: array
                   items:
                     type: string
@@ -3583,9 +3583,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [path]
+              required: [id]
               properties:
-                path:
+                id:
                   type: string
                 is_audio:
                   type: boolean
