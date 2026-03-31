@@ -89,6 +89,35 @@ async function runDbQuery() {
   } finally { dbQueryRunning.value = false }
 }
 
+// Per-backup loading guard to prevent duplicate restore/delete operations
+const backupBusy = ref<Set<string>>(new Set())
+
+async function restoreBackup(id: string) {
+  if (backupBusy.value.has(`restore-${id}`)) return
+  const next = new Set(backupBusy.value); next.add(`restore-${id}`); backupBusy.value = next
+  try {
+    await adminApi.restoreBackup(id)
+    toast.add({ title: 'Restore started', color: 'info', icon: 'i-lucide-info' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Restore failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(backupBusy.value); cleared.delete(`restore-${id}`); backupBusy.value = cleared
+  }
+}
+
+async function deleteBackup(id: string) {
+  if (backupBusy.value.has(`delete-${id}`)) return
+  const next = new Set(backupBusy.value); next.add(`delete-${id}`); backupBusy.value = next
+  try {
+    await adminApi.deleteBackup(id)
+    await loadBackups()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(backupBusy.value); cleared.delete(`delete-${id}`); backupBusy.value = cleared
+  }
+}
+
 onMounted(() => {
   loadBackups()
   loadBackupConfig()
@@ -167,7 +196,8 @@ onMounted(() => {
                 color="warning"
                 title="Restore"
                 aria-label="Restore backup"
-                @click="adminApi.restoreBackup(row.original.id).then(() => toast.add({ title: 'Restore started', color: 'info', icon: 'i-lucide-info' }))"
+                :loading="backupBusy.has(`restore-${row.original.id}`)"
+                @click="restoreBackup(row.original.id)"
               />
               <UButton
                 icon="i-lucide-trash-2"
@@ -175,7 +205,8 @@ onMounted(() => {
                 variant="ghost"
                 color="error"
                 aria-label="Delete backup"
-                @click="adminApi.deleteBackup(row.original.id).then(loadBackups).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' }))"
+                :loading="backupBusy.has(`delete-${row.original.id}`)"
+                @click="deleteBackup(row.original.id)"
               />
             </div>
           </template>

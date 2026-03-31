@@ -59,13 +59,19 @@ async function batchAction(action: 'approve' | 'reject') {
   }
 }
 
+const reviewingId = ref<string | null>(null)
+
 async function quickReview(id: string, action: 'approve' | 'reject') {
+  if (reviewingId.value) return
+  reviewingId.value = id
   try {
     if (action === 'approve') await adminApi.approveContent(id)
     else await adminApi.rejectContent(id)
     await loadScanner()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : `Failed to ${action}`, color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    reviewingId.value = null
   }
 }
 
@@ -112,13 +118,19 @@ async function loadHLS() {
   } finally { hlsLoading.value = false }
 }
 
+const deletingHLSId = ref<string | null>(null)
+
 async function deleteHLSJob(id: string) {
+  if (deletingHLSId.value) return
+  deletingHLSId.value = id
   try {
     await adminApi.deleteHLSJob(id)
     hlsJobs.value = hlsJobs.value.filter(j => j.id !== id)
     toast.add({ title: 'HLS job deleted', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    deletingHLSId.value = null
   }
 }
 
@@ -348,8 +360,8 @@ watch(subTab, (v) => {
             </div>
             <span class="w-20 text-right text-muted">{{ item.confidence != null ? `${(item.confidence * 100).toFixed(0)}%` : '—' }}</span>
             <div class="w-24 flex justify-end gap-1">
-              <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" @click="quickReview(item.id, 'approve')" />
-              <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" @click="quickReview(item.id, 'reject')" />
+              <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" :loading="reviewingId === item.id" @click="quickReview(item.id, 'approve')" />
+              <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" :loading="reviewingId === item.id" @click="quickReview(item.id, 'reject')" />
             </div>
           </div>
         </div>
@@ -463,7 +475,7 @@ watch(subTab, (v) => {
                 :loading="hlsValidating === row.original.id"
                 @click="validateHLSJob(row.original.id)"
               />
-              <UButton icon="i-lucide-trash-2" aria-label="Delete HLS job" size="xs" variant="ghost" color="error" @click="deleteHLSJob(row.original.id)" />
+              <UButton icon="i-lucide-trash-2" aria-label="Delete HLS job" size="xs" variant="ghost" color="error" :loading="deletingHLSId === row.original.id" @click="deleteHLSJob(row.original.id)" />
             </div>
           </template>
         </UTable>
