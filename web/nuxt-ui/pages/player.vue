@@ -68,6 +68,79 @@ const isFullscreen = ref(false)
 const isTheater = ref(false)
 const playbackSpeed = ref(userPrefs.value?.playback_speed ?? 1)
 
+// Auto-play preference
+const autoPlay = computed(() => userPrefs.value?.auto_play ?? false)
+
+// Auto-next: play next suggestion when current media ends (non-playlist context)
+const autoNextEnabled = ref(true)
+
+// Graphic Equalizer (Web Audio API)
+const eqEnabled = ref(false)
+const eqBands = ref([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+const EQ_PRESETS: Record<string, number[]> = {
+  flat:       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  bass_boost: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
+  treble:     [0, 0, 0, 0, 0, 1, 2, 4, 5, 6],
+  vocal:      [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1],
+  rock:       [4, 3, 1, 0, -1, 0, 1, 3, 4, 4],
+  electronic: [4, 3, 1, 0, -2, 0, 1, 2, 4, 5],
+  acoustic:   [3, 2, 1, 0, 1, 1, 2, 3, 3, 2],
+  jazz:       [2, 1, 0, 1, 2, 2, 1, 1, 2, 3],
+  classical:  [3, 2, 1, 0, 0, 0, 0, 1, 2, 3],
+  loudness:   [4, 3, 0, 0, -2, 0, -1, -3, 4, 2],
+}
+let audioCtx: AudioContext | null = null
+let eqFilters: BiquadFilterNode[] = []
+let sourceNode: MediaElementAudioSourceNode | null = null
+
+function initEqualizer() {
+  if (!videoRef.value || audioCtx) return
+  audioCtx = new AudioContext()
+  sourceNode = audioCtx.createMediaElementSource(videoRef.value)
+  eqFilters = EQ_FREQUENCIES.map((freq, i) => {
+    const filter = audioCtx!.createBiquadFilter()
+    filter.type = 'peaking'
+    filter.frequency.value = freq
+    filter.Q.value = 1.4
+    filter.gain.value = eqBands.value[i]
+    return filter
+  })
+  // Chain: source → f0 → f1 → ... → f9 → destination
+  sourceNode.connect(eqFilters[0])
+  for (let i = 0; i < eqFilters.length - 1; i++) eqFilters[i].connect(eqFilters[i + 1])
+  eqFilters[eqFilters.length - 1].connect(audioCtx.destination)
+  eqEnabled.value = true
+}
+
+function setEqBand(index: number, gain: number) {
+  eqBands.value[index] = gain
+  if (eqFilters[index]) eqFilters[index].gain.value = gain
+}
+
+function applyEqPreset(name: string) {
+  const preset = EQ_PRESETS[name]
+  if (!preset) return
+  if (!eqEnabled.value) initEqualizer()
+  preset.forEach((gain, i) => setEqBand(i, gain))
+  if (authStore.isLoggedIn) updatePreferences({ equalizer_preset: name }).catch(() => {})
+}
+
+function toggleEqualizer() {
+  if (!eqEnabled.value) {
+    initEqualizer()
+    // Restore saved preset
+    const saved = userPrefs.value?.equalizer_preset
+    if (saved && EQ_PRESETS[saved]) applyEqPreset(saved)
+  } else {
+    // Bypass: set all to 0
+    eqBands.value.forEach((_v, i) => setEqBand(i, 0))
+    eqEnabled.value = false
+  }
+}
+
+const showEqualizer = ref(false)
+
 // HLS — delegate to composable
 const mediaIdRef = computed(() => mediaId.value ?? '')
 const {
@@ -195,6 +268,31 @@ function onVideoLoaded() {
   }
   restorePosition()
   playbackStore.startAutoSave()
+  // Auto-play when preference is enabled
+  if (autoPlay.value && videoRef.value && videoRef.value.paused) {
+    videoRef.value.play().catch(() => {})
+  }
+}
+
+// Auto-next: navigate to next similar item when video ends (non-playlist context)
+function autoNextFromSuggestions() {
+  if (!autoNextEnabled.value) return
+  // Playlist auto-advance takes priority
+  if (nextPlaylistItem.value) { startUpNextCountdown(); return }
+  // Pick first similar item that is not the current media
+  const next = similar.value.find(s => s.media_id !== mediaId.value)
+    ?? personalized.value.find(s => s.media_id !== mediaId.value)
+  if (next) {
+    showUpNext.value = true
+    upNextCountdown.value = 8
+    upNextTimer = setInterval(() => {
+      upNextCountdown.value -= 1
+      if (upNextCountdown.value <= 0) {
+        cancelUpNext()
+        navigateTo(`/player?id=${encodeURIComponent(next.media_id)}`)
+      }
+    }, 1000)
+  }
 }
 
 let lastTimeUpdateAt = 0
@@ -638,27 +736,50 @@ watch(mediaId, (id, oldId) => {
             @timeupdate="onTimeUpdate"
             @play="onPlayPause(); trackPlay()"
             @pause="onPlayPause(); trackPause()"
-            @ended="savePosition(); trackComplete(); if (loopMode === 'off') startUpNextCountdown()"
+            @ended="savePosition(); trackComplete(); if (loopMode === 'off') autoNextFromSuggestions()"
             @error="onVideoError"
             @leavepictureinpicture="onPiPChange"
             @enterpictureinpicture="onPiPChange"
           />
 
-          <!-- Up Next overlay (playlist auto-advance) -->
+          <!-- Up Next overlay (playlist auto-advance or auto-next from suggestions) -->
           <Transition name="fade">
             <div
-              v-if="showUpNext && nextPlaylistItem"
+              v-if="showUpNext"
               class="absolute inset-0 flex flex-col items-center justify-center bg-black/75 z-20 gap-4"
               @click.stop
             >
               <p class="text-white/70 text-sm uppercase tracking-widest">Up Next in {{ upNextCountdown }}s</p>
-              <p class="text-white font-semibold text-lg text-center px-8">{{ nextPlaylistItem.title || nextPlaylistItem.media_id }}</p>
+              <p class="text-white font-semibold text-lg text-center px-8">
+                {{ nextPlaylistItem ? (nextPlaylistItem.title || nextPlaylistItem.media_id) : 'Next recommendation' }}
+              </p>
               <div class="flex gap-3 mt-2">
-                <UButton label="Play Now" color="primary" size="sm" @click="navigateToNextItem" />
+                <UButton v-if="nextPlaylistItem" label="Play Now" color="primary" size="sm" @click="navigateToNextItem" />
                 <UButton label="Cancel" variant="outline" color="neutral" size="sm" class="text-white border-white/30" @click="cancelUpNext" />
               </div>
             </div>
           </Transition>
+
+          <!-- Mobile skip buttons (visible on touch devices) -->
+          <div class="absolute inset-0 flex items-center justify-between pointer-events-none md:hidden z-10">
+            <button
+              class="pointer-events-auto w-1/4 h-full flex items-center justify-center active:bg-white/10 transition-colors"
+              aria-label="Skip back 10 seconds"
+              @dblclick.stop="seek(-10)"
+              @click.stop
+            >
+              <UIcon name="i-lucide-rewind" class="size-8 text-white/50 opacity-0 active:opacity-100 transition-opacity" />
+            </button>
+            <div class="w-1/2" />
+            <button
+              class="pointer-events-auto w-1/4 h-full flex items-center justify-center active:bg-white/10 transition-colors"
+              aria-label="Skip forward 10 seconds"
+              @dblclick.stop="seek(10)"
+              @click.stop
+            >
+              <UIcon name="i-lucide-fast-forward" class="size-8 text-white/50 opacity-0 active:opacity-100 transition-opacity" />
+            </button>
+          </div>
 
           <!-- HLS loading overlay -->
           <div v-if="hlsLoading" class="absolute inset-0 flex items-center justify-center bg-black/60">
@@ -706,7 +827,7 @@ watch(mediaId, (id, oldId) => {
               @timeupdate="onTimeUpdate"
               @play="onPlayPause(); trackPlay()"
               @pause="onPlayPause(); trackPause()"
-              @ended="savePosition(); trackComplete(); if (loopMode === 'off') startUpNextCountdown()"
+              @ended="savePosition(); trackComplete(); if (loopMode === 'off') autoNextFromSuggestions()"
               @error="onVideoError"
             />
           </UCard>
@@ -803,6 +924,66 @@ watch(mediaId, (id, oldId) => {
               size="sm"
               @click="openAddToPlaylist"
             />
+            <UButton
+              icon="i-lucide-sliders-horizontal"
+              :label="eqEnabled ? 'EQ On' : 'Equalizer'"
+              :variant="eqEnabled ? 'solid' : 'outline'"
+              :color="eqEnabled ? 'primary' : 'neutral'"
+              size="sm"
+              @click="showEqualizer = !showEqualizer; if (!eqEnabled) toggleEqualizer()"
+            />
+            <UButton
+              :icon="autoNextEnabled ? 'i-lucide-skip-forward' : 'i-lucide-circle-stop'"
+              :label="autoNextEnabled ? 'Auto-Next' : 'Auto-Next Off'"
+              :variant="autoNextEnabled ? 'solid' : 'outline'"
+              :color="autoNextEnabled ? 'primary' : 'neutral'"
+              size="sm"
+              @click="autoNextEnabled = !autoNextEnabled"
+            />
+          </div>
+
+          <!-- Graphic Equalizer -->
+          <div v-if="showEqualizer" class="mt-4 p-4 rounded-lg bg-muted/50 space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-semibold text-highlighted">Equalizer</h4>
+              <div class="flex gap-1.5">
+                <UButton
+                  v-for="(_, name) in EQ_PRESETS"
+                  :key="name"
+                  :label="String(name).replace('_', ' ')"
+                  size="xs"
+                  variant="outline"
+                  color="neutral"
+                  class="capitalize text-xs"
+                  @click="applyEqPreset(String(name))"
+                />
+              </div>
+            </div>
+            <div class="flex items-end justify-between gap-1.5 h-32">
+              <div v-for="(freq, i) in EQ_FREQUENCIES" :key="freq" class="flex flex-col items-center flex-1 gap-1">
+                <input
+                  type="range"
+                  min="-12"
+                  max="12"
+                  step="1"
+                  :value="eqBands[i]"
+                  class="w-full accent-primary appearance-none [writing-mode:vertical-lr] h-24 rotate-180"
+                  :aria-label="`${freq >= 1000 ? (freq / 1000) + 'k' : freq} Hz`"
+                  @input="setEqBand(i, +($event.target as HTMLInputElement).value)"
+                />
+                <span class="text-[10px] text-muted">{{ freq >= 1000 ? (freq / 1000) + 'k' : freq }}</span>
+              </div>
+            </div>
+            <div class="flex justify-between items-center">
+              <UButton label="Flat" size="xs" variant="ghost" color="neutral" @click="applyEqPreset('flat')" />
+              <UButton
+                :label="eqEnabled ? 'Bypass EQ' : 'Enable EQ'"
+                size="xs"
+                :variant="eqEnabled ? 'outline' : 'solid'"
+                :color="eqEnabled ? 'neutral' : 'primary'"
+                @click="toggleEqualizer"
+              />
+            </div>
           </div>
 
           <!-- Star rating (logged-in users only) -->
