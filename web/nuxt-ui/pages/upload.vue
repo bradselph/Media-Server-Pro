@@ -90,13 +90,30 @@ function onFileInput(e: Event) {
   input.value = ''
 }
 
+const EXTENSION_ALLOWLIST = new Set(['.mkv', '.avi', '.flac', '.ogg', '.webm', '.m4a', '.aac', '.wav', '.wmv', '.mov', '.ts', '.m4v', '.mpg', '.mpeg', '.3gp', '.opus', '.wma'])
+
+function getExtension(name: string): string {
+  const idx = name.lastIndexOf('.')
+  return idx >= 0 ? name.slice(idx).toLowerCase() : ''
+}
+
 function addFiles(files: File[]) {
-  const allowed = files.filter(f => f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/'))
+  const allowed = files.filter(f => {
+    if (f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/')) return true
+    if (f.type === '' && EXTENSION_ALLOWLIST.has(getExtension(f.name))) return true
+    return false
+  })
   const rejected = files.length - allowed.length
   if (rejected > 0) {
     toast.add({ title: `${rejected} file(s) skipped — only video, audio, and image files are accepted`, color: 'warning', icon: 'i-lucide-alert-triangle' })
   }
-  selectedFiles.value = [...selectedFiles.value, ...allowed]
+  const existingNames = new Set(selectedFiles.value.map(f => f.name))
+  const deduped = allowed.filter(f => !existingNames.has(f.name))
+  const dupeCount = allowed.length - deduped.length
+  if (dupeCount > 0) {
+    toast.add({ title: `${dupeCount} duplicate file(s) skipped`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+  }
+  selectedFiles.value = [...selectedFiles.value, ...deduped]
 }
 
 function removeFile(index: number) {
