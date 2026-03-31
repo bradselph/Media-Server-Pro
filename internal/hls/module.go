@@ -85,7 +85,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		transSem:      make(chan struct{}, concurrentLimit),
 		cacheDir:      cfg.Get().Directories.HLSCache,
 		cleanupDone:   make(chan struct{}),
-		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time)},
+		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time), lastSaved: make(map[string]time.Time)},
 	}
 }
 

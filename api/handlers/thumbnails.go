@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -371,7 +372,13 @@ func (h *Handler) GetThumbnailBatch(c *gin.Context) {
 	if len(ids) > batchThumbnailMaxIDs {
 		ids = ids[:batchThumbnailMaxIDs]
 	}
-	w := strings.TrimSpace(c.Query("w"))
+	// Validate w as a positive integer to prevent arbitrary string injection into URLs
+	w := ""
+	if raw := strings.TrimSpace(c.Query("w")); raw != "" {
+		if wInt, err := strconv.Atoi(raw); err == nil && wInt > 0 {
+			w = strconv.Itoa(wInt)
+		}
+	}
 
 	thumbnailsMap := make(map[string]string, len(ids))
 	for _, id := range ids {

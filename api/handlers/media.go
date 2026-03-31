@@ -377,6 +377,10 @@ func (h *Handler) GetMediaStats(c *gin.Context) {
 
 // ScanMedia initiates a media scan
 func (h *Handler) ScanMedia(c *gin.Context) {
+	if h.media.IsScanning() {
+		writeSuccess(c, map[string]string{"message": "Scan already in progress"})
+		return
+	}
 	go func() {
 		if err := h.media.Scan(); err != nil {
 			h.log.Error("Media scan failed: %v", err)
