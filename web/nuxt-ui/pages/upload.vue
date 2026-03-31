@@ -23,17 +23,42 @@ const selectedFiles = ref<File[]>([])
 const result = ref<UploadResult | null>(null)
 const progressMap = ref<Record<string, UploadProgress>>({})
 
+// Track active poll controllers so they can be aborted on unmount
+const activePolls = new Map<string, AbortController>()
+
 async function pollProgress(uploadId: string) {
+  const controller = new AbortController()
+  activePolls.set(uploadId, controller)
   const maxAttempts = 20
+  let consecutiveErrors = 0
   for (let i = 0; i < maxAttempts; i++) {
+    if (controller.signal.aborted) return
     await new Promise(r => setTimeout(r, 1500))
+    if (controller.signal.aborted) return
     try {
       const p = await uploadApi.getProgress(uploadId)
+      consecutiveErrors = 0
       progressMap.value = { ...progressMap.value, [uploadId]: p }
-      if (p.status === 'completed' || p.status === 'error') return
-    } catch { return }
+      if (p.status === 'completed' || p.status === 'error') {
+        activePolls.delete(uploadId)
+        return
+      }
+    } catch {
+      consecutiveErrors++
+      if (consecutiveErrors >= 3) {
+        toast.add({ title: `Unable to check status for upload — it may still be processing in the background`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+        activePolls.delete(uploadId)
+        return
+      }
+    }
   }
+  activePolls.delete(uploadId)
 }
+
+onUnmounted(() => {
+  activePolls.forEach(c => c.abort())
+  activePolls.clear()
+})
 
 const dropZoneRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
