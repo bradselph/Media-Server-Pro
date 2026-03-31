@@ -70,6 +70,30 @@ function onSeekBarClick(e: MouseEvent) {
   emit('seek-to-fraction', fraction)
 }
 
+function onSeekBarTouch(e: TouchEvent) {
+  const touch = e.touches[0]
+  if (!touch) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const fraction = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+  seekBarHoverTime.value = fraction * props.duration
+  seekBarHoverX.value = touch.clientX - rect.left
+  if (e.type === 'touchend') {
+    emit('seek-to-fraction', fraction)
+    seekBarHovering.value = false
+  } else {
+    seekBarHovering.value = true
+  }
+}
+
+function onSeekBarTouchEnd(e: TouchEvent) {
+  const touch = e.changedTouches[0]
+  if (!touch) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const fraction = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+  emit('seek-to-fraction', fraction)
+  seekBarHovering.value = false
+}
+
 function copyLinkAtTime() {
   const t = Math.floor(props.currentTime)
   const url = new URL(window.location.href)
@@ -86,7 +110,7 @@ function copyLinkAtTime() {
   <!-- Controls overlay -->
   <div
     class="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent transition-opacity"
-    :class="showControls ? 'opacity-100' : 'opacity-0'"
+    :class="showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'"
     @click.stop
   >
     <!-- Progress bar -->
@@ -96,6 +120,9 @@ function copyLinkAtTime() {
       @mousemove="onSeekBarMouseMove"
       @mouseenter="seekBarHovering = true"
       @mouseleave="seekBarHovering = false"
+      @touchstart.prevent="onSeekBarTouch"
+      @touchmove.prevent="onSeekBarTouch"
+      @touchend.prevent="onSeekBarTouchEnd"
     >
       <Transition name="fade">
         <div

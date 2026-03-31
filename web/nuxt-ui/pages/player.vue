@@ -123,6 +123,7 @@ function submitRating(star: number) {
 
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
 let positionSaveController: AbortController | null = null
+let preMuteVolume = 1
 
 function resetControlsTimer() {
   showControls.value = true
@@ -344,15 +345,22 @@ const showShortcuts = ref(false)
 
 function toggleMute() {
   if (!videoRef.value) return
-  setVolume(videoRef.value.volume > 0 ? 0 : Math.max(volume.value, 0.5))
+  if (videoRef.value.volume > 0) {
+    preMuteVolume = volume.value || 0.5
+    setVolume(0)
+  } else {
+    setVolume(preMuteVolume)
+  }
 }
 
+const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
 function changeSpeed(delta: number) {
-  const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
-  const curIdx = speeds.indexOf(playbackSpeed.value)
-  const newIdx = Math.max(0, Math.min(speeds.length - 1, curIdx + delta))
-  playbackSpeed.value = speeds[newIdx]
+  const curIdx = SPEED_OPTIONS.indexOf(playbackSpeed.value)
+  const newIdx = Math.max(0, Math.min(SPEED_OPTIONS.length - 1, (curIdx === -1 ? 3 : curIdx) + delta))
+  playbackSpeed.value = SPEED_OPTIONS[newIdx]
   if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
+  if (authStore.isLoggedIn) updatePreferences({ playback_speed: playbackSpeed.value }).catch(() => {})
 }
 
 function stepFrame(direction: number) {
@@ -483,11 +491,10 @@ onUnmounted(() => {
 })
 
 function cycleSpeed() {
-  const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2]
-  const idx = speeds.indexOf(playbackSpeed.value)
-  playbackSpeed.value = speeds[(idx + 1) % speeds.length]
+  const idx = SPEED_OPTIONS.indexOf(playbackSpeed.value)
+  playbackSpeed.value = SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]
   if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
-  updatePreferences({ playback_speed: playbackSpeed.value }).catch(() => {})
+  if (authStore.isLoggedIn) updatePreferences({ playback_speed: playbackSpeed.value }).catch(() => {})
 }
 
 // formatDuration imported from ~/utils/format
@@ -563,7 +570,10 @@ onUnmounted(() => {
   if (upNextTimer) clearInterval(upNextTimer)
 })
 
-watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
+watch(mediaId, (id, oldId) => {
+  if (oldId && oldId !== id) savePosition()
+  if (id) loadMedia(id)
+}, { immediate: true })
 </script>
 
 <template>
@@ -775,7 +785,7 @@ watch(mediaId, id => { if (id) loadMedia(id) }, { immediate: true })
           </div>
           <div class="flex gap-2 mt-4 flex-wrap">
             <UButton
-              v-if="!authStore.isLoggedIn || authStore.user?.permissions?.can_download"
+              v-if="authStore.isLoggedIn && authStore.user?.permissions?.can_download"
               icon="i-lucide-download"
               label="Download"
               variant="outline"

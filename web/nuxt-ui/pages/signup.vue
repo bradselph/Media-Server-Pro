@@ -2,12 +2,22 @@
 definePageMeta({ layout: 'default', title: 'Sign Up' })
 
 const { register } = useApiEndpoints()
+const settingsApi = useSettingsApi()
 const authStore = useAuthStore()
 const router = useRouter()
 
 const form = reactive({ username: '', password: '', confirm: '', email: '' })
 const loading = ref(false)
 const error = ref('')
+const registrationClosed = ref(false)
+
+onMounted(async () => {
+  if (authStore.isLoggedIn) { router.replace('/'); return }
+  try {
+    const settings = await settingsApi.get()
+    if (settings?.auth?.allow_registration === false) registrationClosed.value = true
+  } catch {}
+})
 
 async function handleSignup() {
   error.value = ''
@@ -43,7 +53,12 @@ async function handleSignup() {
       </div>
 
       <UCard>
-        <form class="space-y-4" @submit.prevent="handleSignup">
+        <div v-if="registrationClosed" class="text-center py-6 space-y-3">
+          <UIcon name="i-lucide-user-x" class="size-10 text-muted mx-auto" />
+          <p class="text-muted">Registration is currently closed.</p>
+          <UButton to="/login" label="Sign In" variant="outline" />
+        </div>
+        <form v-else class="space-y-4" @submit.prevent="handleSignup">
           <UAlert v-if="error" :title="error" color="error" variant="soft" icon="i-lucide-x-circle" />
           <UFormField label="Username" required>
             <UInput v-model="form.username" placeholder="username" autocomplete="username" required />
