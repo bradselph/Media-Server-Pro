@@ -27,7 +27,11 @@ const addingToPlaylist = ref(false)
 async function openAddToPlaylist() {
   playlistOpen.value = true
   if (playlists.value.length === 0) {
-    try { playlists.value = (await playlistApi.list()) ?? [] } catch { /* ignore */ }
+    try {
+      playlists.value = (await playlistApi.list()) ?? []
+    } catch (e: unknown) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle' })
+    }
   }
 }
 

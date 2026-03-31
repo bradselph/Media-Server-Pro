@@ -86,8 +86,9 @@ async function loadAudit() {
     auditTotal.value = count === auditLimit
       ? auditPage.value * auditLimit + 1
       : (auditPage.value - 1) * auditLimit + count
-  } catch {}
-  finally { auditLoading.value = false }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load audit log', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { auditLoading.value = false }
 }
 
 // IP lists
