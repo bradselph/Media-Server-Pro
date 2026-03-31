@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,7 +26,11 @@ func (h *Handler) AdminRunTask(c *gin.Context) {
 	taskID := c.Param("id")
 
 	if err := h.tasks.RunNow(taskID); err != nil {
-		writeError(c, http.StatusNotFound, "Task not found")
+		if strings.Contains(err.Error(), "not found") {
+			writeError(c, http.StatusNotFound, err.Error())
+		} else {
+			writeError(c, http.StatusServiceUnavailable, err.Error())
+		}
 		return
 	}
 
@@ -73,7 +78,13 @@ func (h *Handler) AdminStopTask(c *gin.Context) {
 	taskID := c.Param("id")
 
 	if err := h.tasks.StopTask(taskID); err != nil {
-		writeError(c, http.StatusBadRequest, "Cannot stop task")
+		if strings.Contains(err.Error(), "not found") {
+			writeError(c, http.StatusNotFound, err.Error())
+		} else if strings.Contains(err.Error(), "not currently running") {
+			writeError(c, http.StatusConflict, err.Error())
+		} else {
+			writeError(c, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 
