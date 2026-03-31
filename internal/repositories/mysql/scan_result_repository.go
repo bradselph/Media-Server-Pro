@@ -158,11 +158,12 @@ func (r *ScanResultRepository) GetPendingReview(ctx context.Context) ([]*reposit
 
 	// Batch load all reasons with WHERE IN (fixes N+1)
 	var allReasons []scanReasonRow
-	if err := r.db.WithContext(ctx).Where("path IN ?", paths).Find(&allReasons).Error; err == nil {
-		for _, rr := range allReasons {
-			if result, ok := resultMap[rr.Path]; ok {
-				result.Reasons = append(result.Reasons, rr.Reason)
-			}
+	if err := r.db.WithContext(ctx).Where("path IN ?", paths).Find(&allReasons).Error; err != nil {
+		return nil, fmt.Errorf("failed to load scan reasons: %w", err)
+	}
+	for _, rr := range allReasons {
+		if result, ok := resultMap[rr.Path]; ok {
+			result.Reasons = append(result.Reasons, rr.Reason)
 		}
 	}
 

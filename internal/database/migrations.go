@@ -553,6 +553,10 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 			"ALTER TABLE media_metadata ADD INDEX idx_content_fingerprint (content_fingerprint)"},
 		{"receiver_media", "idx_receiver_media_fingerprint",
 			"ALTER TABLE receiver_media ADD INDEX idx_receiver_media_fingerprint (content_fingerprint)"},
+		// Prevent duplicate items in the same playlist after PK migration from
+		// composite (playlist_id, media_path) to single-column (id).
+		{"playlist_items", "uniq_playlist_media",
+			"ALTER TABLE playlist_items ADD UNIQUE INDEX uniq_playlist_media (playlist_id, media_id)"},
 	}
 	for _, idx := range indexes {
 		if err := m.ensureIndex(ctx, idx.table, idx.index, idx.sql); err != nil {
