@@ -909,12 +909,21 @@ export interface DownloaderHealth {
   error?: string
 }
 
+export interface DownloaderStreamInfo {
+  url: string
+  quality: string
+  type: string
+  resolution: string
+  size?: number
+  isAd?: boolean
+}
+
 export interface DownloaderDetectResult {
   url: string
   title: string
   isYouTube: boolean
   isYouTubeMusic: boolean
-  streams: Array<{ url: string; quality: string; type: string; size?: number; format?: string }>
+  streams: DownloaderStreamInfo[]
   relayId?: string
 }
 

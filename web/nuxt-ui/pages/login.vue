@@ -12,6 +12,7 @@ const form = reactive({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
 const allowRegistration = ref(true) // optimistic default until settings load
+const allowGuests = computed(() => authStore.allowGuests)
 
 // Redirect if already logged in
 function loginRedirectDest() {
@@ -93,6 +94,16 @@ async function handleLogin() {
       </UCard>
 
       <!-- Registration link — hidden when server has disabled new accounts -->
+      <UButton
+        v-if="allowGuests"
+        class="w-full justify-center"
+        variant="outline"
+        color="neutral"
+        icon="i-lucide-eye"
+        label="Browse as Guest"
+        @click="router.replace('/')"
+      />
+
       <p v-if="allowRegistration" class="text-center text-sm text-muted">
         Don't have an account?
         <NuxtLink to="/signup" class="text-primary hover:underline">Sign up</NuxtLink>

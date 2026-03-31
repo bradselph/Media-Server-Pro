@@ -10,10 +10,72 @@ const deleteTarget = ref<Playlist | null>(null)
 const deleting = ref(false)
 const stats = ref<AdminPlaylistStats | null>(null)
 
+// Search, filter, sort, pagination
+const search = ref('')
+const visibilityFilter = ref<'all' | 'public' | 'private'>('all')
+const sortKey = ref<'name' | 'user_id' | 'items' | 'is_public' | 'created_at'>('name')
+const sortDir = ref<'asc' | 'desc'>('asc')
+const page = ref(1)
+const perPage = ref(25)
+
+const PER_PAGE_OPTIONS = [
+  { label: '25', value: 25 },
+  { label: '50', value: 50 },
+  { label: '100', value: 100 },
+]
+
+function doSort(key: typeof sortKey.value) {
+  if (sortKey.value === key) {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortKey.value = key
+    sortDir.value = 'asc'
+  }
+}
+
+function sortIndicator(key: string) {
+  if (sortKey.value !== key) return ''
+  return sortDir.value === 'asc' ? ' \u2191' : ' \u2193'
+}
+
+const filtered = computed(() => {
+  let result = playlists.value
+  if (search.value) {
+    const q = search.value.toLowerCase()
+    result = result.filter(p =>
+      p.name.toLowerCase().includes(q) || (p.user_id ?? '').toLowerCase().includes(q),
+    )
+  }
+  if (visibilityFilter.value === 'public') result = result.filter(p => p.is_public)
+  else if (visibilityFilter.value === 'private') result = result.filter(p => !p.is_public)
+
+  result = [...result].sort((a, b) => {
+    let cmp = 0
+    switch (sortKey.value) {
+      case 'name': cmp = a.name.localeCompare(b.name); break
+      case 'user_id': cmp = (a.user_id ?? '').localeCompare(b.user_id ?? ''); break
+      case 'items': cmp = (a.items?.length ?? 0) - (b.items?.length ?? 0); break
+      case 'is_public': cmp = Number(a.is_public) - Number(b.is_public); break
+      case 'created_at': cmp = (a.created_at ?? '').localeCompare(b.created_at ?? ''); break
+    }
+    return sortDir.value === 'asc' ? cmp : -cmp
+  })
+  return result
+})
+
+const totalFiltered = computed(() => filtered.value.length)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalFiltered.value / perPage.value)))
+const paged = computed(() => {
+  const start = (page.value - 1) * perPage.value
+  return filtered.value.slice(start, start + perPage.value)
+})
+
+watch([search, visibilityFilter, sortKey, sortDir, perPage], () => { page.value = 1 })
+
 // Bulk selection
 const selected = ref<Set<string>>(new Set())
 const bulkDeleting = ref(false)
-const allSelected = computed(() => playlists.value.length > 0 && playlists.value.every(p => selected.value.has(p.id)))
+const allSelected = computed(() => paged.value.length > 0 && paged.value.every(p => selected.value.has(p.id)))
 
 function toggleSelect(id: string) {
   const s = new Set(selected.value)
@@ -25,7 +87,7 @@ function toggleAll() {
   if (allSelected.value) {
     selected.value = new Set()
   } else {
-    selected.value = new Set(playlists.value.map(p => p.id))
+    selected.value = new Set(paged.value.map(p => p.id))
   }
 }
 
@@ -95,85 +157,125 @@ onMounted(load)
       </UCard>
     </div>
 
-    <div class="flex items-center justify-between gap-3">
-      <UButton
-        v-if="selected.size > 0"
-        :loading="bulkDeleting"
-        icon="i-lucide-trash-2"
-        :label="`Delete Selected (${selected.size})`"
-        color="error"
-        variant="outline"
-        size="sm"
-        @click="bulkDelete"
-      />
-      <span v-else />
-      <UButton icon="i-lucide-refresh-cw" aria-label="Refresh playlists" variant="ghost" color="neutral" @click="load" />
+    <!-- Toolbar: search, filter, per-page -->
+    <div class="flex flex-wrap gap-2 items-center justify-between">
+      <div class="flex flex-wrap gap-2 items-center">
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          placeholder="Search name or owner…"
+          class="w-56"
+        />
+        <USelect
+          v-model="visibilityFilter"
+          :items="[
+            { label: 'All Visibility', value: 'all' },
+            { label: 'Public', value: 'public' },
+            { label: 'Private', value: 'private' },
+          ]"
+          class="w-40"
+        />
+        <USelect
+          v-model="perPage"
+          :items="PER_PAGE_OPTIONS"
+          class="w-24"
+        />
+      </div>
+      <div class="flex gap-2 items-center">
+        <UButton
+          v-if="selected.size > 0"
+          :loading="bulkDeleting"
+          icon="i-lucide-trash-2"
+          :label="`Delete Selected (${selected.size})`"
+          color="error"
+          variant="outline"
+          size="sm"
+          @click="bulkDelete"
+        />
+        <span class="text-sm text-muted">{{ totalFiltered }} playlist{{ totalFiltered !== 1 ? 's' : '' }}</span>
+        <UButton icon="i-lucide-refresh-cw" aria-label="Refresh playlists" variant="ghost" color="neutral" @click="load" />
+      </div>
     </div>
 
     <UCard>
       <div v-if="loading" class="flex justify-center py-8">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-6" />
       </div>
-      <UTable
-        v-else
-        :data="playlists"
-        :columns="[
-          { accessorKey: 'select', header: '' },
-          { accessorKey: 'name', header: 'Name' },
-          { accessorKey: 'user_id', header: 'Owner' },
-          { accessorKey: 'items', header: 'Items' },
-          { accessorKey: 'is_public', header: 'Visibility' },
-          { accessorKey: 'created_at', header: 'Created' },
-          { accessorKey: 'actions', header: '' },
-        ]"
-      >
-        <template #select-header>
-          <UCheckbox :model-value="allSelected" @update:model-value="toggleAll" />
-        </template>
-        <template #select-cell="{ row }">
-          <UCheckbox :model-value="selected.has(row.original.id)" @update:model-value="toggleSelect(row.original.id)" />
-        </template>
-        <template #name-cell="{ row }">
-          <div>
-            <p class="font-medium text-sm">{{ row.original.name }}</p>
-            <p v-if="row.original.description" class="text-xs text-muted truncate max-w-xs">
-              {{ row.original.description }}
-            </p>
-          </div>
-        </template>
-        <template #user_id-cell="{ row }">
-          <span class="text-sm font-mono">{{ row.original.user_id?.slice(0, 8) }}…</span>
-        </template>
-        <template #items-cell="{ row }">
-          <span class="text-sm">{{ row.original.items?.length ?? 0 }}</span>
-        </template>
-        <template #is_public-cell="{ row }">
-          <UBadge
-            :label="row.original.is_public ? 'Public' : 'Private'"
-            :color="row.original.is_public ? 'success' : 'neutral'"
-            variant="subtle"
-            size="xs"
-          />
-        </template>
-        <template #created_at-cell="{ row }">
-          <span class="text-sm text-muted">
-            {{ row.original.created_at ? new Date(row.original.created_at).toLocaleDateString() : '—' }}
-          </span>
-        </template>
-        <template #actions-cell="{ row }">
-          <UButton
-            icon="i-lucide-trash-2"
-            size="xs"
-            variant="ghost"
-            color="error"
-            @click="deleteTarget = row.original"
-          />
-        </template>
-      </UTable>
-      <p v-if="!loading && playlists.length === 0" class="text-center py-6 text-muted text-sm">
-        No playlists found.
-      </p>
+      <div v-else class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="border-b border-default text-left text-xs text-muted">
+              <th class="px-3 py-2 w-8">
+                <UCheckbox :model-value="allSelected" @update:model-value="toggleAll" />
+              </th>
+              <th class="px-3 py-2 cursor-pointer hover:text-default select-none" @click="doSort('name')">
+                Name{{ sortIndicator('name') }}
+              </th>
+              <th class="px-3 py-2 cursor-pointer hover:text-default select-none" @click="doSort('user_id')">
+                Owner{{ sortIndicator('user_id') }}
+              </th>
+              <th class="px-3 py-2 cursor-pointer hover:text-default select-none text-right" @click="doSort('items')">
+                Items{{ sortIndicator('items') }}
+              </th>
+              <th class="px-3 py-2 cursor-pointer hover:text-default select-none" @click="doSort('is_public')">
+                Visibility{{ sortIndicator('is_public') }}
+              </th>
+              <th class="px-3 py-2 cursor-pointer hover:text-default select-none" @click="doSort('created_at')">
+                Created{{ sortIndicator('created_at') }}
+              </th>
+              <th class="px-3 py-2 w-10" />
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-default">
+            <tr v-for="p in paged" :key="p.id" class="hover:bg-muted/30">
+              <td class="px-3 py-2">
+                <UCheckbox :model-value="selected.has(p.id)" @update:model-value="toggleSelect(p.id)" />
+              </td>
+              <td class="px-3 py-2">
+                <div>
+                  <p class="font-medium">{{ p.name }}</p>
+                  <p v-if="p.description" class="text-xs text-muted truncate max-w-xs">{{ p.description }}</p>
+                </div>
+              </td>
+              <td class="px-3 py-2 font-mono text-xs">{{ p.user_id?.slice(0, 8) }}…</td>
+              <td class="px-3 py-2 text-right">{{ p.items?.length ?? 0 }}</td>
+              <td class="px-3 py-2">
+                <UBadge
+                  :label="p.is_public ? 'Public' : 'Private'"
+                  :color="p.is_public ? 'success' : 'neutral'"
+                  variant="subtle"
+                  size="xs"
+                />
+              </td>
+              <td class="px-3 py-2 text-muted">
+                {{ p.created_at ? new Date(p.created_at).toLocaleDateString() : '—' }}
+              </td>
+              <td class="px-3 py-2 text-right">
+                <UButton
+                  icon="i-lucide-trash-2"
+                  size="xs"
+                  variant="ghost"
+                  color="error"
+                  @click="deleteTarget = p"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="paged.length === 0" class="text-center py-6 text-muted text-sm">
+          No playlists found.
+        </p>
+      </div>
     </UCard>
+
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex justify-center">
+      <UPagination
+        v-model:page="page"
+        :total="totalFiltered"
+        :items-per-page="perPage"
+      />
+    </div>
 
     <!-- Delete confirmation -->
     <UModal

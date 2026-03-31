@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress } from '~/types/api'
+import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress, DownloaderStreamInfo } from '~/types/api'
 import { formatBytes } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
 
@@ -101,6 +101,20 @@ function connectWS() {
   ws.onerror = () => { ws.close() }
 }
 
+// ── Auto-refresh interval ────────────────────────────────────────────────────
+// Poll downloads + importable every 5s so the UI stays fresh even when the WS
+// is disconnected or misses a message (matches React behaviour).
+let autoRefreshInterval: ReturnType<typeof setInterval> | null = null
+
+function startAutoRefresh() {
+  if (autoRefreshInterval) return
+  autoRefreshInterval = setInterval(() => {
+    if (destroyed || document.hidden) return
+    load()
+    loadImportable()
+  }, 5000)
+}
+
 onMounted(() => {
   connectWS()
   loadHealth()
@@ -108,11 +122,13 @@ onMounted(() => {
   loadDownloadConfig()
   load()
   loadImportable()
+  startAutoRefresh()
 })
 
 onUnmounted(() => {
   destroyed = true
   if (wsReconnectTimer) clearTimeout(wsReconnectTimer)
+  if (autoRefreshInterval) clearInterval(autoRefreshInterval)
   wsRef?.close()
 })
 
@@ -120,6 +136,7 @@ onUnmounted(() => {
 const health = ref<DownloaderHealth | null>(null)
 const settings = ref<DownloaderSettings | null>(null)
 const showSettings = ref(false)
+const isOnline = computed(() => health.value?.online ?? false)
 
 async function loadHealth() {
   try { health.value = await adminApi.getDownloaderHealth() }
@@ -131,17 +148,31 @@ async function loadSettings() {
   catch { settings.value = null }
 }
 
+function formatUptime(secs: number): string {
+  if (!secs) return '—'
+  const d = Math.floor(secs / 86400)
+  const h = Math.floor((secs % 86400) / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  return d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
 // ── Downloads list ────────────────────────────────────────────────────────────
 
 const downloads = ref<DownloaderJob[]>([])
 const loading = ref(true)
 
 async function load() {
-  loading.value = true
-  try { downloads.value = (await adminApi.listDownloaderJobs()) ?? [] }
-  catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load downloads', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { loading.value = false }
+  try {
+    const result = await adminApi.listDownloaderJobs()
+    downloads.value = result ?? []
+    // Only show the spinner on the very first load
+    if (loading.value) loading.value = false
+  } catch (e: unknown) {
+    if (loading.value) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed to load downloads', color: 'error', icon: 'i-lucide-alert-circle' })
+      loading.value = false
+    }
+  }
 }
 
 async function cancelDownload(id: string) {
@@ -169,6 +200,15 @@ const newUrl = ref('')
 const detecting = ref(false)
 const detected = ref<DownloaderDetectResult | null>(null)
 const downloading = ref(false)
+
+// Filter ad streams out — only show real content
+const filteredStreams = computed(() =>
+  (detected.value?.streams ?? []).filter(s => !s.isAd),
+)
+
+function streamLabel(s: DownloaderStreamInfo): string {
+  return s.quality || s.resolution || s.type || 'Stream'
+}
 
 async function detect() {
   if (!newUrl.value.trim()) return
@@ -217,17 +257,21 @@ const deleteSource = ref(true)
 const triggerScan = ref(true)
 
 async function loadImportable() {
-  importableLoading.value = true
-  try { importable.value = (await adminApi.listImportable()) ?? [] }
-  catch { /* downloader may be offline; silently skip */ }
-  finally { importableLoading.value = false }
+  try {
+    const result = await adminApi.listImportable()
+    importable.value = result ?? []
+    if (importableLoading.value) importableLoading.value = false
+  } catch {
+    if (importableLoading.value) importableLoading.value = false
+  }
 }
 
 async function importFile(filename: string) {
   importingFile.value = filename
   try {
     const result = await adminApi.importFile(filename, deleteSource.value, triggerScan.value)
-    toast.add({ title: `Imported to ${result?.destination ?? 'library'}`, color: 'success', icon: 'i-lucide-check' })
+    const deleteNote = result?.sourceDeleted === false ? ' (source file could not be removed)' : ''
+    toast.add({ title: `Imported to ${result?.destination ?? 'library'}${deleteNote}`, color: 'success', icon: 'i-lucide-check' })
     await Promise.allSettled([load(), loadImportable()])
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Import failed', color: 'error', icon: 'i-lucide-x' })
@@ -277,23 +321,41 @@ function progressBarColor(status: DownloaderProgress['status']) {
     </UCard>
 
     <!-- Downloader health -->
-    <UCard v-if="health !== null" :ui="{ body: 'py-2 px-4' }">
-      <div class="flex items-center gap-3 text-sm flex-wrap">
-        <div class="flex items-center gap-1.5">
-          <UIcon
-            :name="health.online ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
-            :class="health.online ? 'text-success' : 'text-error'"
-            class="size-4"
+    <UCard :ui="{ body: 'py-3 px-4' }">
+      <div class="space-y-2">
+        <div class="flex items-center gap-3 text-sm flex-wrap">
+          <div class="flex items-center gap-1.5">
+            <UIcon
+              :name="isOnline ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
+              :class="isOnline ? 'text-success' : 'text-error'"
+              class="size-4"
+            />
+            <span class="font-medium">{{ isOnline ? 'Online' : 'Offline' }}</span>
+          </div>
+          <span v-if="health?.activeDownloads != null" class="text-muted">{{ health.activeDownloads }} active</span>
+          <span v-if="health?.queuedDownloads != null" class="text-muted">· {{ health.queuedDownloads }} queued</span>
+          <span v-if="health?.uptime != null" class="text-muted">· Up {{ formatUptime(health.uptime) }}</span>
+          <div class="flex items-center gap-1.5 ml-auto">
+            <UIcon :name="wsConnected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'" class="size-3.5" :class="wsConnected ? 'text-success' : 'text-muted'" />
+            <span class="text-xs text-muted">{{ wsConnected ? 'WS connected' : 'WS disconnected' }}</span>
+          </div>
+          <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" @click="loadHealth" />
+        </div>
+
+        <!-- Dependencies -->
+        <div v-if="health?.online && health.dependencies && Object.keys(health.dependencies).length > 0" class="flex flex-wrap gap-2">
+          <UBadge
+            v-for="(ver, name) in health.dependencies"
+            :key="String(name)"
+            :label="`${name}: ${ver || '—'}`"
+            color="neutral"
+            variant="subtle"
+            size="xs"
           />
-          <span class="font-medium">{{ health.online ? 'Online' : 'Offline' }}</span>
         </div>
-        <span v-if="health.activeDownloads != null" class="text-muted">{{ health.activeDownloads }} active</span>
-        <span v-if="health.queuedDownloads != null" class="text-muted">· {{ health.queuedDownloads }} queued</span>
-        <div class="flex items-center gap-1.5 ml-auto">
-          <UIcon :name="wsConnected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'" class="size-3.5" :class="wsConnected ? 'text-success' : 'text-muted'" />
-          <span class="text-xs text-muted">{{ wsConnected ? 'WS connected' : 'WS disconnected' }}</span>
-        </div>
-        <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" @click="loadHealth" />
+
+        <!-- Error -->
+        <p v-if="health?.error" class="text-xs text-error">{{ health.error }}</p>
       </div>
     </UCard>
 
@@ -319,7 +381,7 @@ function progressBarColor(status: DownloaderProgress['status']) {
         </div>
         <div>
           <p class="text-xs text-muted">Server Storage</p>
-          <UBadge :label="settings.allowServerStorage ? 'Allowed' : 'Disabled'" :color="settings.allowServerStorage ? 'success' : 'neutral'" variant="subtle" size="xs" />
+          <UBadge :label="settings.allowServerStorage ? 'Allowed' : 'Browser only'" :color="settings.allowServerStorage ? 'success' : 'neutral'" variant="subtle" size="xs" />
         </div>
         <div v-if="settings.videoFormat">
           <p class="text-xs text-muted">Video Format</p>
@@ -358,24 +420,25 @@ function progressBarColor(status: DownloaderProgress['status']) {
           Detect the URL first to see available streams. With server storage enabled, completed downloads are saved to the configured import directory.
         </p>
         <div class="flex flex-wrap gap-2">
-          <UInput v-model="newUrl" placeholder="URL to download…" class="flex-1 min-w-64" @keyup.enter="detect" />
-          <UButton :loading="detecting" icon="i-lucide-search" label="Detect" variant="outline" color="neutral" :disabled="!newUrl.trim()" @click="detect" />
+          <UInput v-model="newUrl" placeholder="URL to download…" class="flex-1 min-w-64" :disabled="!isOnline" @keyup.enter="detect" />
+          <UButton :loading="detecting" icon="i-lucide-search" label="Detect" variant="outline" color="neutral" :disabled="!newUrl.trim() || !isOnline" @click="detect" />
         </div>
+        <p v-if="!isOnline" class="text-xs text-warning">Downloader is offline — detection and downloads are unavailable.</p>
 
         <!-- Stream options from detect -->
         <template v-if="detected">
           <UCard :ui="{ body: 'p-3' }">
             <p class="text-sm font-medium mb-2">{{ detected.title || 'Detected Streams' }}</p>
 
-            <!-- Multiple streams to choose from -->
-            <div v-if="detected.streams.length > 0" class="space-y-1.5">
+            <!-- Multiple streams to choose from (ad streams filtered) -->
+            <div v-if="filteredStreams.length > 0" class="space-y-1.5">
               <div
-                v-for="(s, i) in detected.streams"
+                v-for="(s, i) in filteredStreams"
                 :key="i"
                 class="flex items-center gap-2 rounded bg-muted px-2 py-1.5"
               >
                 <span class="flex-1 text-xs">
-                  {{ s.quality || s.type || s.format }}{{ s.size ? ` · ${formatBytes(s.size)}` : '' }}
+                  {{ streamLabel(s) }}{{ s.size ? ` · ${formatBytes(s.size)}` : '' }}
                 </span>
                 <UButton
                   :loading="downloading"
@@ -384,19 +447,25 @@ function progressBarColor(status: DownloaderProgress['status']) {
                   size="xs"
                   variant="outline"
                   color="primary"
+                  :disabled="!isOnline"
                   @click="startDownload(s.url)"
                 />
               </div>
             </div>
 
+            <p v-if="detected.streams.length > 0 && filteredStreams.length === 0" class="text-xs text-muted">
+              No non-ad streams detected.
+            </p>
+
             <!-- YouTube best quality / single stream -->
             <UButton
-              v-if="detected.isYouTube || detected.streams.length === 0"
+              v-if="detected.isYouTube || filteredStreams.length === 0"
               :loading="downloading"
               icon="i-lucide-download"
               :label="detected.isYouTube ? 'Download (best quality)' : 'Download'"
               color="primary"
-              :class="detected.streams.length > 0 ? 'mt-2' : ''"
+              :disabled="!isOnline"
+              :class="filteredStreams.length > 0 ? 'mt-2' : ''"
               @click="startDownload()"
             />
           </UCard>
