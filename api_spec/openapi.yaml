@@ -3624,9 +3624,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [path]
+              required: [id]
               properties:
-                path:
+                id:
                   type: string
       responses:
         '200':
@@ -3653,9 +3653,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [path]
+              required: [id]
               properties:
-                path:
+                id:
                   type: string
       responses:
         '200':
