@@ -2,7 +2,7 @@
 import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, APIToken, APITokenCreated, RatedItem } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { useAPITokensApi, useRatingsApi } from '~/composables/useApiEndpoints'
+import { useAPITokensApi, useRatingsApi, useSuggestionsApi } from '~/composables/useApiEndpoints'
 
 const QUALITY_OPTIONS = [
   { label: 'Auto', value: 'auto' },
@@ -40,6 +40,7 @@ const { getUsage, getPermissions } = useStorageApi()
 
 const tokensApi = useAPITokensApi()
 const ratingsApi = useRatingsApi()
+const suggestionsApi = useSuggestionsApi()
 const toast = useToast()
 
 const storageUsage = ref<StorageUsage | null>(null)
@@ -210,6 +211,23 @@ async function loadMyRatings() {
   try { myRatings.value = (await ratingsApi.getMyRatings()) ?? [] }
   catch { /* non-critical */ }
   finally { ratingsLoading.value = false }
+}
+
+// Suggestion profile reset
+const resetSuggestionsOpen = ref(false)
+const resetSuggestionsLoading = ref(false)
+
+async function handleResetSuggestions() {
+  resetSuggestionsLoading.value = true
+  try {
+    await suggestionsApi.resetMyProfile()
+    resetSuggestionsOpen.value = false
+    toast.add({ title: 'Recommendations reset', description: 'Your suggestion profile has been cleared. New recommendations will build up as you watch content.', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to reset recommendations', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    resetSuggestionsLoading.value = false
+  }
 }
 
 // API Tokens
@@ -451,9 +469,20 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
           </div>
         </div>
         <template #footer>
-          <UButton :loading="prefsSaving" icon="i-lucide-save" label="Save Preferences" @click="savePrefs" />
+          <div class="flex items-center justify-between w-full">
+            <UButton :loading="prefsSaving" icon="i-lucide-save" label="Save Preferences" @click="savePrefs" />
+            <UButton icon="i-lucide-rotate-ccw" label="Reset Recommendations" variant="outline" color="warning" size="sm" @click="resetSuggestionsOpen = true" />
+          </div>
         </template>
       </UCard>
+
+      <!-- Reset Suggestions Confirmation -->
+      <UModal v-model:open="resetSuggestionsOpen" title="Reset Recommendations" description="This will clear your suggestion profile. Your personalized recommendations, category scores, and type preferences will be reset. New recommendations will build up as you continue watching.">
+        <template #footer>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="resetSuggestionsOpen = false" />
+          <UButton :loading="resetSuggestionsLoading" color="warning" label="Reset" @click="handleResetSuggestions" />
+        </template>
+      </UModal>
 
       <!-- Watch history -->
       <UCard>
