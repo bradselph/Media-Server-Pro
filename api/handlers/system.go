@@ -282,11 +282,12 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	// filepath.Walk on the uploads directory for unauthenticated requests.
 	if session == nil {
 		writeSuccess(c, map[string]interface{}{
-			"used_gb":   0,
-			"quota_gb":  float64(h.getUserStorageQuota("standard")),
-			"percent":   0,
-			"username":  "",
-			"user_type": "standard",
+			"used_bytes":        int64(0),
+			"used_gb":           0,
+			"quota_gb":          float64(h.getUserStorageQuota("standard")),
+			"percentage":        0,
+			"is_authenticated":  false,
+			"user_type":         "standard",
 		})
 		return
 	}

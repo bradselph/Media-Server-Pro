@@ -133,6 +133,10 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "event type required")
 		return
 	}
+	if req.MediaID == "" {
+		writeError(c, http.StatusBadRequest, "media_id required")
+		return
+	}
 	if req.Duration > 0 {
 		if req.Data == nil {
 			req.Data = make(map[string]interface{})

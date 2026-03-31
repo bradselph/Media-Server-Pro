@@ -12,9 +12,20 @@ import (
 
 const errDeletionRequestsUnavailable = "Data deletion request service unavailable"
 
+func (h *Handler) requireDeletionDB(c *gin.Context) bool {
+	if h.database == nil || h.database.DB() == nil {
+		writeError(c, http.StatusServiceUnavailable, errDeletionRequestsUnavailable)
+		return false
+	}
+	return true
+}
+
 // RequestDataDeletion allows an authenticated user to submit a request to have their data deleted.
 // The request is queued for admin review — no immediate deletion occurs.
 func (h *Handler) RequestDataDeletion(c *gin.Context) {
+	if !h.requireDeletionDB(c) {
+		return
+	}
 	session := RequireSession(c)
 	if session == nil {
 		return
@@ -103,6 +114,9 @@ func (h *Handler) listDeletionRequests(ctx context.Context, status string) ([]*m
 
 // AdminListDeletionRequests returns all data deletion requests (admin only).
 func (h *Handler) AdminListDeletionRequests(c *gin.Context) {
+	if !h.requireDeletionDB(c) {
+		return
+	}
 	status := c.Query("status")
 	reqs, err := h.listDeletionRequests(c.Request.Context(), status)
 	if err != nil {
@@ -119,6 +133,9 @@ func (h *Handler) AdminListDeletionRequests(c *gin.Context) {
 // AdminProcessDeletionRequest approves or denies a data deletion request (admin only).
 // On approve, the user account is permanently deleted. On deny, the request is closed with a note.
 func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
+	if !h.requireDeletionDB(c) {
+		return
+	}
 	requestID := c.Param("id")
 	if requestID == "" {
 		writeError(c, http.StatusBadRequest, "request id is required")
