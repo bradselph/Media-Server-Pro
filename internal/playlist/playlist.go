@@ -344,16 +344,18 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 	return nil
 }
 
-// RemoveItem removes an item from a playlist
-func (m *Module) RemoveItem(ctx context.Context, playlistID PlaylistID, userID UserID, mediaPath string) error {
+// RemoveItem removes an item from a playlist. The key is matched against the
+// item's MediaPath, MediaID, and ID fields so callers can pass any of these
+// identifiers (the frontend typically sends the media UUID via ?media_id=...).
+func (m *Module) RemoveItem(ctx context.Context, playlistID PlaylistID, userID UserID, key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.removeItemLocked(ctx, playlistID, userID, mediaPath)
+	return m.removeItemLocked(ctx, playlistID, userID, key)
 }
 
 // removeItemLocked performs the removal; caller must hold m.mu.
-func (m *Module) removeItemLocked(ctx context.Context, playlistID PlaylistID, userID UserID, mediaPath string) error {
-	playlist, newItems, err := m.resolvePlaylistAndFilterItemByPath(ctx, playlistID, userID, mediaPath)
+func (m *Module) removeItemLocked(ctx context.Context, playlistID PlaylistID, userID UserID, key string) error {
+	playlist, newItems, err := m.resolvePlaylistAndFilterItem(ctx, playlistID, userID, key)
 	if err != nil {
 		return err
 	}
@@ -362,33 +364,38 @@ func (m *Module) removeItemLocked(ctx context.Context, playlistID PlaylistID, us
 	}
 	playlist.Items = newItems
 	playlist.ModifiedAt = time.Now()
-	m.log.Debug("Removed item from playlist %s: %s", string(playlistID), mediaPath)
+	m.log.Debug("Removed item from playlist %s: %s", string(playlistID), key)
 	return nil
 }
 
-// resolvePlaylistAndFilterItemByPath does playlist lookup and filter-by-mediaPath; caller must hold m.mu.
-func (m *Module) resolvePlaylistAndFilterItemByPath(ctx context.Context, playlistID PlaylistID, userID UserID, mediaPath string) (*models.Playlist, []models.PlaylistItem, error) {
+// itemMatchesKey returns true if the item matches the given key by MediaPath,
+// MediaID, or item ID.
+func itemMatchesKey(item *models.PlaylistItem, key string) bool {
+	return item.MediaPath == key || item.MediaID == key || item.ID == key
+}
+
+// resolvePlaylistAndFilterItem does playlist lookup and filters out the item
+// matching key (by MediaPath, MediaID, or item ID); caller must hold m.mu.
+func (m *Module) resolvePlaylistAndFilterItem(ctx context.Context, playlistID PlaylistID, userID UserID, key string) (*models.Playlist, []models.PlaylistItem, error) {
 	playlist, err := m.getPlaylistForUserLocked(playlistID, userID)
-	var newItems []models.PlaylistItem
-	if err == nil {
-		found := false
-		for _, item := range playlist.Items {
-			if item.MediaPath != mediaPath {
-				newItems = append(newItems, item)
-			} else {
-				found = true
-				if removeErr := m.playlistRepo.RemoveItem(ctx, item.ID); removeErr != nil {
-					m.log.Error("Failed to remove item from playlist in database: %v", removeErr)
-					return nil, nil, fmt.Errorf("failed to remove item from playlist: %w", removeErr)
-				}
-			}
-		}
-		if !found {
-			err = ErrItemNotFound
-		}
-	}
 	if err != nil {
 		return nil, nil, err
+	}
+	var newItems []models.PlaylistItem
+	found := false
+	for _, item := range playlist.Items {
+		if !itemMatchesKey(&item, key) {
+			newItems = append(newItems, item)
+		} else {
+			found = true
+			if removeErr := m.playlistRepo.RemoveItem(ctx, item.ID); removeErr != nil {
+				m.log.Error("Failed to remove item from playlist in database: %v", removeErr)
+				return nil, nil, fmt.Errorf("failed to remove item from playlist: %w", removeErr)
+			}
+		}
+	}
+	if !found {
+		return nil, nil, ErrItemNotFound
 	}
 	return playlist, newItems, nil
 }

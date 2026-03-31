@@ -102,7 +102,7 @@ func (h *Handler) Login(c *gin.Context) {
 		"session_id": session.ID,
 		"username":   session.Username,
 		"role":       session.Role,
-		"is_admin":   false,
+		"is_admin":   session.Role == models.RoleAdmin,
 		"expires_at": session.ExpiresAt,
 	})
 }
@@ -111,8 +111,11 @@ func (h *Handler) Login(c *gin.Context) {
 func (h *Handler) Logout(c *gin.Context) {
 	cookie, err := c.Request.Cookie("session_id")
 	if err == nil {
+		// Try regular session first; fall back to admin session
 		if logoutErr := h.auth.Logout(c.Request.Context(), cookie.Value); logoutErr != nil {
-			h.log.Warn("Failed to logout session: %v", logoutErr)
+			if adminErr := h.auth.LogoutAdmin(c.Request.Context(), cookie.Value); adminErr != nil {
+				h.log.Warn("Failed to logout session: %v", logoutErr)
+			}
 		}
 	}
 
