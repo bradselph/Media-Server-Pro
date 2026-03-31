@@ -12,9 +12,9 @@ const subTabs = [
     <UTabs v-model="subTab" :items="subTabs" orientation="horizontal" class="w-full">
       <template #content="{ item }">
         <div class="pt-3">
-          <SourcesRemotePanel v-if="item.value === 'remote'" />
-          <SourcesCrawlerPanel v-else-if="item.value === 'crawler'" />
-          <SourcesReceiverPanel v-else-if="item.value === 'receiver'" />
+          <AdminSourcesRemotePanel v-if="item.value === 'remote'" />
+          <AdminSourcesCrawlerPanel v-else-if="item.value === 'crawler'" />
+          <AdminSourcesReceiverPanel v-else-if="item.value === 'receiver'" />
         </div>
       </template>
     </UTabs>

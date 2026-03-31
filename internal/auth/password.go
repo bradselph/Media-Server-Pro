@@ -10,8 +10,8 @@ import (
 	"media-server-pro/internal/config"
 )
 
-// UpdatePassword updates a user's password. Holds the write lock only while updating
-// in-memory fields and re-checks that the stored hash is unchanged to avoid races.
+// UpdatePassword updates a user's password. Works on a copy to avoid data races;
+// only updates the cache after successful DB persistence.
 func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newPassword string) error {
 	if len(newPassword) < 8 {
 		return fmt.Errorf("password must be at least 8 characters")
@@ -37,26 +37,35 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 		return fmt.Errorf(errHashPasswordFmt, err)
 	}
 
-	m.usersMu.Lock()
+	// Work on a copy; only update cache after DB success to avoid cache/DB divergence.
+	m.usersMu.RLock()
 	user, exists = m.users[username]
 	if !exists || user == nil {
-		m.usersMu.Unlock()
+		m.usersMu.RUnlock()
 		return ErrUserNotFound
 	}
 	if user.PasswordHash != currentHash {
-		m.usersMu.Unlock()
+		m.usersMu.RUnlock()
 		return ErrUserNotFound
 	}
-	user.PasswordHash = string(hash)
-	user.Salt = salt
-	m.usersMu.Unlock()
+	userCopy := *user
+	m.usersMu.RUnlock()
+
+	userCopy.PasswordHash = string(hash)
+	userCopy.Salt = salt
 
 	m.log.Info("Password updated for user: %s", username)
 
-	if err := m.userRepo.Update(ctx, user); err != nil {
+	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after password update: %v", err)
-		return fmt.Errorf("password updated in memory but failed to persist: %w", err)
+		return fmt.Errorf("password update failed to persist: %w", err)
 	}
+	m.usersMu.Lock()
+	if u, ok := m.users[username]; ok && u.PasswordHash == currentHash {
+		u.PasswordHash = userCopy.PasswordHash
+		u.Salt = userCopy.Salt
+	}
+	m.usersMu.Unlock()
 	return nil
 }
 

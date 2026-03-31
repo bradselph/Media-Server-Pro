@@ -86,8 +86,9 @@ async function loadAudit() {
     auditTotal.value = count === auditLimit
       ? auditPage.value * auditLimit + 1
       : (auditPage.value - 1) * auditLimit + count
-  } catch {}
-  finally { auditLoading.value = false }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load audit log', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { auditLoading.value = false }
 }
 
 // IP lists
@@ -175,10 +176,12 @@ watch(subTab, (v) => {
 
 <template>
   <div class="space-y-4">
-    <UTabs v-model="subTab" :items="subTabs" size="sm" />
+    <UTabs v-model="subTab" :items="subTabs" size="sm">
+      <template #content="{ item }">
+        <div class="pt-3">
 
     <!-- Audit log -->
-    <div v-if="subTab === 'audit'" class="space-y-3">
+    <div v-if="item.value === 'audit'" class="space-y-3">
       <div class="flex gap-2 justify-end">
         <UButton icon="i-lucide-download" label="Export CSV" size="sm" variant="outline" color="neutral" :to="adminApi.exportAuditLogUrl()" />
         <UButton icon="i-lucide-refresh-cw" aria-label="Refresh audit log" variant="ghost" color="neutral" size="sm" @click="loadAudit" />
@@ -225,7 +228,7 @@ watch(subTab, (v) => {
     </div>
 
     <!-- IP List management template -->
-    <template v-if="subTab === 'whitelist' || subTab === 'blacklist'">
+    <template v-if="item.value === 'whitelist' || item.value === 'blacklist'">
       <div class="space-y-4">
         <!-- Add IP -->
         <UCard>
@@ -267,7 +270,7 @@ watch(subTab, (v) => {
     </template>
 
     <!-- Banned IPs -->
-    <div v-if="subTab === 'banned'" class="space-y-4">
+    <div v-if="item.value === 'banned'" class="space-y-4">
       <UCard>
         <template #header><div class="font-semibold">Ban IP Address</div></template>
         <div class="flex flex-wrap gap-2">
@@ -293,7 +296,7 @@ watch(subTab, (v) => {
     </div>
 
     <!-- Stats -->
-    <div v-if="subTab === 'stats' && stats" class="space-y-4">
+    <div v-if="item.value === 'stats' && stats" class="space-y-4">
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <UCard v-for="item in [
           { label: 'Blocked Total', value: stats.total_blocks_today, icon: 'i-lucide-shield-x' },
@@ -332,7 +335,7 @@ watch(subTab, (v) => {
       </div>
     </div>
     <!-- Security Settings -->
-    <div v-if="subTab === 'settings'" class="space-y-4">
+    <div v-if="item.value === 'settings'" class="space-y-4">
       <div v-if="configLoading" class="flex justify-center py-8">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
       </div>
@@ -377,5 +380,9 @@ watch(subTab, (v) => {
         </div>
       </UCard>
     </div>
+
+        </div>
+      </template>
+    </UTabs>
   </div>
 </template>

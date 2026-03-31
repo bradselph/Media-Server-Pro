@@ -84,13 +84,19 @@ async function browseByCategory() {
   } finally { categoryItemsLoading.value = false }
 }
 
+const cleaningStale = ref(false)
+
 async function cleanStaleCategories() {
+  if (cleaningStale.value) return
+  cleaningStale.value = true
   try {
     const res = await adminApi.cleanStaleCategories()
     toast.add({ title: `Cleaned ${(res as { removed: number }).removed ?? 0} stale entries`, color: 'success', icon: 'i-lucide-check' })
     await loadCategorizer()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    cleaningStale.value = false
   }
 }
 
@@ -121,23 +127,33 @@ async function runDiscoveryScan() {
   } finally { scanning.value = false }
 }
 
+const processingPath = ref<string | null>(null)
+
 async function applyDiscovery(path: string) {
+  if (processingPath.value) return
+  processingPath.value = path
   try {
     await adminApi.applyDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
     toast.add({ title: 'Suggestion applied', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    processingPath.value = null
   }
 }
 
 async function dismissDiscovery(path: string) {
+  if (processingPath.value) return
+  processingPath.value = path
   try {
     await adminApi.dismissDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
     toast.add({ title: 'Suggestion dismissed', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    processingPath.value = null
   }
 }
 
@@ -296,7 +312,7 @@ watch(subTab, (tab) => {
                   <UButton :loading="categorizing" icon="i-lucide-tag" label="Auto-Categorize File" :disabled="!categorizePath.trim()" @click="categorizeFile" />
                   <UButton :loading="categorizing" icon="i-lucide-folder-sync" label="Categorize Directory" :disabled="!categorizePath.trim()" color="neutral" variant="outline" @click="categorizeDirectory" />
                   <UButton :loading="categorizing" icon="i-lucide-pen" label="Set Category" :disabled="!categorizePath.trim() || !categorizeCategory.trim()" color="neutral" @click="setCategory" />
-                  <UButton icon="i-lucide-trash-2" label="Clean Stale" color="warning" variant="outline" @click="cleanStaleCategories" />
+                  <UButton icon="i-lucide-trash-2" label="Clean Stale" color="warning" variant="outline" :loading="cleaningStale" @click="cleanStaleCategories" />
                   <UButton icon="i-lucide-refresh-cw" aria-label="Refresh stats" variant="ghost" color="neutral" @click="loadCategorizer" />
                 </div>
               </div>
@@ -357,8 +373,8 @@ watch(subTab, (tab) => {
                     </div>
                   </div>
                   <div class="flex gap-1">
-                    <UButton icon="i-lucide-check" aria-label="Apply suggestion" size="xs" variant="ghost" color="success" @click="applyDiscovery(s.original_path)" />
-                    <UButton icon="i-lucide-x" aria-label="Dismiss suggestion" size="xs" variant="ghost" color="error" @click="dismissDiscovery(s.original_path)" />
+                    <UButton icon="i-lucide-check" aria-label="Apply suggestion" size="xs" variant="ghost" color="success" :loading="processingPath === s.original_path" @click="applyDiscovery(s.original_path)" />
+                    <UButton icon="i-lucide-x" aria-label="Dismiss suggestion" size="xs" variant="ghost" color="error" :loading="processingPath === s.original_path" @click="dismissDiscovery(s.original_path)" />
                   </div>
                 </div>
               </div>

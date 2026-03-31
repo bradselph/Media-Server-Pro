@@ -20,6 +20,8 @@ class ApiError extends Error {
   }
 }
 
+let _redirecting = false
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const opts: RequestInit = {
     method,
@@ -49,9 +51,11 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     // NOTE: use window.location.replace (not navigateTo) — useApi is imported at module
     // level in useApiEndpoints.ts so it must not reference Nuxt composables which require
     // the Nuxt app context; doing so creates a TDZ error in the production bundle.
-    if (res.status === 401 && import.meta.client) {
+    if (res.status === 401 && import.meta.client && !_redirecting) {
+      _redirecting = true
       const redirect = window.location.pathname + window.location.search
-      const target = redirect && redirect !== '/login'
+      const isAuthPage = ['/login', '/signup', '/admin-login'].some(p => redirect.startsWith(p))
+      const target = redirect && !isAuthPage
         ? `/login?redirect=${encodeURIComponent(redirect)}`
         : '/login'
       window.location.replace(target)

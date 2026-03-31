@@ -1,8 +1,8 @@
 # Frontend Code Audit — Nuxt UI v3
 
-**Date:** 2026-03-28
+**Date:** 2026-03-31 (updated)
 **Branch:** development
-**Version:** v0.125.0
+**Version:** v0.125.0-dev.711f9054
 **Scope:** `web/nuxt-ui/` — all pages, components, composables, stores
 
 ---
@@ -13,7 +13,7 @@
 | File | Lines | Purpose |
 |------|-------|---------|
 | `pages/index.vue` | ~560 | Media library grid, filters, recommendations |
-| `pages/player.vue` | 776 | Video/audio player (HLS, progress, playlists, ratings) |
+| `pages/player.vue` | ~1000 | Video/audio player (HLS, EQ, auto-next, playlists, ratings) |
 | `pages/playlists.vue` | 567 | Playlist management — user CRUD + public view |
 | `pages/upload.vue` | 256 | File upload with progress tracking |
 | `pages/admin.vue` | 104 | Admin panel — pure tab router, no API |
@@ -21,7 +21,7 @@
 | `pages/categories.vue` | 251 | Category browser with grouped TV/music views |
 | `pages/profile.vue` | 701 | Preferences, watch history, ratings, API tokens, password |
 | `pages/login.vue` | ~80 | Standard login form (delegates to authStore) |
-| `pages/signup.vue` | ~60 | Registration form |
+| `pages/signup.vue` | ~85 | Registration form (checks server settings, logged-in redirect) |
 | `pages/admin-login.vue` | 65 | Admin-specific login (delegates to authStore, redirects to /admin) |
 
 ### Admin Tab Components (13)
@@ -59,7 +59,7 @@
 ### Presentational Components (2)
 | File | Lines | Notes |
 |------|-------|-------|
-| `components/PlayerControls.vue` | 236 | Pure presentational — no API calls |
+| `components/PlayerControls.vue` | ~270 | Pure presentational — touch seek support, no API calls |
 | `components/RecommendationRow.vue` | 49 | Uses `mediaApi.getThumbnailUrl()` (URL builder only, no fetch) |
 
 ### Composables (3)
@@ -67,7 +67,7 @@
 |------|-------|------|
 | `composables/useApiEndpoints.ts` | 625 | All API factory functions (18 exports) |
 | `composables/useHLS.ts` | ~350 | HLS playback management — uses hlsApi.check, getMasterPlaylistUrl |
-| `composables/useApi.ts` | ~60 | Base HTTP client (envelope unwrap, auth headers) |
+| `composables/useApi.ts` | ~82 | Base HTTP client (envelope unwrap, auth headers, 401 dedup) |
 
 ### Stores (5)
 | File | API Usage |
@@ -475,3 +475,34 @@ Component files import specific composables explicitly where needed (e.g., `impo
 | Dead imports | 1 (`useMediaApi` in `categories.vue`) |
 | Intentional bypass routes | 5 (export/feed/docs/metrics/WebSocket) |
 | **Coverage** | **100%** — every admin-accessible backend route has a composable method; all composable methods are called |
+
+---
+
+## 7. Player Features (updated 2026-03-31)
+
+| Feature | Implementation |
+|---------|---------------|
+| Custom video controls | PlayerControls.vue — play, seek, volume, speed, quality, PiP, loop, fullscreen |
+| Touch seek | Seek bar supports touchstart/touchmove/touchend |
+| Mobile skip | Double-tap left/right screen halves to skip -10s/+10s (md:hidden) |
+| HLS adaptive streaming | useHLS.ts — hls.js with quality selection, Safari native fallback |
+| Auto-play | Respects `auto_play` user preference on load |
+| Auto-next | 8-second countdown to next similar/recommended item after video ends |
+| Graphic equalizer | 10-band (32Hz-16kHz) via Web Audio API, 10 presets, saved to user preferences |
+| Playback position | Auto-save every 15s, save on pause/unmount/media-switch, resume on revisit |
+| Keyboard shortcuts | 15+ shortcuts (space, j/l, arrows, 0-9, f, t, m, <>, etc.) |
+| Thumbnail previews | Seek bar shows preview thumbnails on hover |
+| Star rating | 1-5 star rating with optimistic update |
+| Playlist integration | Add to playlist modal, playlist auto-advance with Up Next overlay |
+| Analytics tracking | play/pause/seek/complete/error/quality_change events |
+
+## 8. Admin Safety Patterns (updated 2026-03-31)
+
+| Pattern | Components |
+|---------|-----------|
+| Per-row loading guard (rowBusy Set) | MediaTab, SystemDataPanel, ContentTab, DiscoveryTab |
+| Confirmation modal for destructive actions | MediaTab (single+bulk delete), UsersTab (bulk delete), PlaylistsTab (bulk delete), SystemDataPanel (backup restore) |
+| Per-action loading guard | DashboardTab (Restart/Shutdown/Scan/Clear Cache) |
+| Config save with revert on error | StreamingTab, SecurityTab, DownloaderTab |
+| Clear selection on filter change | UsersTab, MediaTab |
+| Client-side SQL guard | SystemDataPanel (rejects non-SELECT/SHOW queries) |

@@ -68,6 +68,7 @@ async function loadPrefs() {
 }
 
 async function savePrefs() {
+  if (prefsSaving.value) return
   prefsSaving.value = true
   try {
     const toSave = { ...prefs.value }
@@ -109,7 +110,10 @@ async function removeItem(id: string) {
   }
 }
 
+const clearHistoryConfirmOpen = ref(false)
+
 async function doClearHistory() {
+  clearHistoryConfirmOpen.value = false
   try {
     await clearHistory()
     history.value = []
@@ -214,6 +218,29 @@ const tokensLoading = ref(false)
 const newTokenName = ref('')
 const newTokenCreating = ref(false)
 const revealedToken = ref<string | null>(null)
+let revealedTokenTimer: ReturnType<typeof setTimeout> | null = null
+
+function startTokenAutoDismiss() {
+  if (revealedTokenTimer) clearTimeout(revealedTokenTimer)
+  revealedTokenTimer = setTimeout(() => { revealedToken.value = null }, 60000)
+}
+
+watch(revealedToken, (val) => {
+  if (val) startTokenAutoDismiss()
+  else if (revealedTokenTimer) { clearTimeout(revealedTokenTimer); revealedTokenTimer = null }
+})
+
+onUnmounted(() => { if (revealedTokenTimer) clearTimeout(revealedTokenTimer) })
+
+async function copyToken() {
+  if (!revealedToken.value) return
+  try {
+    await navigator.clipboard.writeText(revealedToken.value)
+    toast.add({ title: 'Token copied to clipboard', color: 'success', icon: 'i-lucide-check' })
+  } catch {
+    toast.add({ title: 'Failed to copy token', color: 'error', icon: 'i-lucide-x' })
+  }
+}
 
 async function loadTokens() {
   tokensLoading.value = true
@@ -453,7 +480,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
                 variant="ghost"
                 color="error"
                 size="xs"
-                @click="doClearHistory"
+                @click="clearHistoryConfirmOpen = true"
               />
             </div>
           </div>
@@ -516,6 +543,13 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
         </div>
       </UCard>
 
+      <UModal v-model:open="clearHistoryConfirmOpen" title="Clear Watch History" description="This will permanently delete all your watch history. This action cannot be undone.">
+        <template #footer>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="clearHistoryConfirmOpen = false" />
+          <UButton color="error" label="Clear All" @click="doClearHistory" />
+        </template>
+      </UModal>
+
       <!-- API Tokens -->
       <UCard>
         <template #header>
@@ -538,6 +572,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
           <template #description>
             <div class="flex items-center gap-2 mt-1 flex-wrap">
               <code class="text-xs break-all select-all">{{ revealedToken }}</code>
+              <UButton size="xs" icon="i-lucide-copy" variant="ghost" color="neutral" aria-label="Copy to clipboard" @click="copyToken" />
               <UButton size="xs" icon="i-lucide-x" variant="ghost" color="neutral" aria-label="Dismiss" @click="revealedToken = null" />
             </div>
           </template>

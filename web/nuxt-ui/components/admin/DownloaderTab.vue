@@ -39,6 +39,8 @@ async function saveDownloadConfig(key: 'enabled' | 'require_auth', value: boolea
     toast.add({ title: 'Download settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    // Reload config from server to revert UI to actual state
+    loadDownloadConfig()
   } finally {
     configSaving.value = false
   }

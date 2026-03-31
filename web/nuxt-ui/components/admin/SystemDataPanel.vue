@@ -77,8 +77,14 @@ async function loadDbStatus() {
   catch { /* non-critical; DB status card shows empty state */ }
 }
 
+const SQL_ALLOWED_RE = /^\s*(SELECT|SHOW|DESCRIBE|EXPLAIN|PRAGMA)\b/i
+
 async function runDbQuery() {
   if (!dbQuery.value.trim()) return
+  if (!SQL_ALLOWED_RE.test(dbQuery.value.trim())) {
+    dbQueryError.value = 'Only SELECT, SHOW, DESCRIBE, EXPLAIN, and PRAGMA queries are allowed.'
+    return
+  }
   dbQueryRunning.value = true
   dbQueryError.value = ''
   dbQueryResult.value = null
@@ -87,6 +93,47 @@ async function runDbQuery() {
   } catch (e: unknown) {
     dbQueryError.value = e instanceof Error ? e.message : 'Query failed'
   } finally { dbQueryRunning.value = false }
+}
+
+// Restore confirmation
+const confirmRestoreId = ref<string | null>(null)
+
+// Per-backup loading guard to prevent duplicate restore/delete operations
+const backupBusy = ref<Set<string>>(new Set())
+
+function requestRestore(id: string) {
+  confirmRestoreId.value = id
+}
+async function executeRestore() {
+  const id = confirmRestoreId.value
+  if (!id) return
+  confirmRestoreId.value = null
+  await restoreBackup(id)
+}
+async function restoreBackup(id: string) {
+  if (backupBusy.value.has(`restore-${id}`)) return
+  const next = new Set(backupBusy.value); next.add(`restore-${id}`); backupBusy.value = next
+  try {
+    await adminApi.restoreBackup(id)
+    toast.add({ title: 'Restore started', color: 'info', icon: 'i-lucide-info' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Restore failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(backupBusy.value); cleared.delete(`restore-${id}`); backupBusy.value = cleared
+  }
+}
+
+async function deleteBackup(id: string) {
+  if (backupBusy.value.has(`delete-${id}`)) return
+  const next = new Set(backupBusy.value); next.add(`delete-${id}`); backupBusy.value = next
+  try {
+    await adminApi.deleteBackup(id)
+    await loadBackups()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(backupBusy.value); cleared.delete(`delete-${id}`); backupBusy.value = cleared
+  }
 }
 
 onMounted(() => {
@@ -167,7 +214,8 @@ onMounted(() => {
                 color="warning"
                 title="Restore"
                 aria-label="Restore backup"
-                @click="adminApi.restoreBackup(row.original.id).then(() => toast.add({ title: 'Restore started', color: 'info', icon: 'i-lucide-info' }))"
+                :loading="backupBusy.has(`restore-${row.original.id}`)"
+                @click="requestRestore(row.original.id)"
               />
               <UButton
                 icon="i-lucide-trash-2"
@@ -175,7 +223,8 @@ onMounted(() => {
                 variant="ghost"
                 color="error"
                 aria-label="Delete backup"
-                @click="adminApi.deleteBackup(row.original.id).then(loadBackups).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' }))"
+                :loading="backupBusy.has(`delete-${row.original.id}`)"
+                @click="deleteBackup(row.original.id)"
               />
             </div>
           </template>
@@ -185,6 +234,21 @@ onMounted(() => {
         </p>
       </UCard>
     </div>
+
+    <!-- Restore confirmation -->
+    <UModal
+      :open="!!confirmRestoreId"
+      title="Restore Backup"
+      @update:open="val => { if (!val) confirmRestoreId = null }"
+    >
+      <template #body>
+        <p>Are you sure you want to restore this backup? This will overwrite the current database.</p>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmRestoreId = null" />
+        <UButton color="warning" label="Restore" :loading="!!confirmRestoreId && backupBusy.has(`restore-${confirmRestoreId}`)" @click="executeRestore" />
+      </template>
+    </UModal>
 
     <USeparator />
 

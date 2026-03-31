@@ -23,17 +23,42 @@ const selectedFiles = ref<File[]>([])
 const result = ref<UploadResult | null>(null)
 const progressMap = ref<Record<string, UploadProgress>>({})
 
+// Track active poll controllers so they can be aborted on unmount
+const activePolls = new Map<string, AbortController>()
+
 async function pollProgress(uploadId: string) {
+  const controller = new AbortController()
+  activePolls.set(uploadId, controller)
   const maxAttempts = 20
+  let consecutiveErrors = 0
   for (let i = 0; i < maxAttempts; i++) {
+    if (controller.signal.aborted) return
     await new Promise(r => setTimeout(r, 1500))
+    if (controller.signal.aborted) return
     try {
       const p = await uploadApi.getProgress(uploadId)
+      consecutiveErrors = 0
       progressMap.value = { ...progressMap.value, [uploadId]: p }
-      if (p.status === 'completed' || p.status === 'error') return
-    } catch { return }
+      if (p.status === 'completed' || p.status === 'error') {
+        activePolls.delete(uploadId)
+        return
+      }
+    } catch {
+      consecutiveErrors++
+      if (consecutiveErrors >= 3) {
+        toast.add({ title: `Unable to check status for upload — it may still be processing in the background`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+        activePolls.delete(uploadId)
+        return
+      }
+    }
   }
+  activePolls.delete(uploadId)
 }
+
+onUnmounted(() => {
+  activePolls.forEach(c => c.abort())
+  activePolls.clear()
+})
 
 const dropZoneRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -65,13 +90,30 @@ function onFileInput(e: Event) {
   input.value = ''
 }
 
+const EXTENSION_ALLOWLIST = new Set(['.mkv', '.avi', '.flac', '.ogg', '.webm', '.m4a', '.aac', '.wav', '.wmv', '.mov', '.ts', '.m4v', '.mpg', '.mpeg', '.3gp', '.opus', '.wma'])
+
+function getExtension(name: string): string {
+  const idx = name.lastIndexOf('.')
+  return idx >= 0 ? name.slice(idx).toLowerCase() : ''
+}
+
 function addFiles(files: File[]) {
-  const allowed = files.filter(f => f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/'))
+  const allowed = files.filter(f => {
+    if (f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/')) return true
+    if (f.type === '' && EXTENSION_ALLOWLIST.has(getExtension(f.name))) return true
+    return false
+  })
   const rejected = files.length - allowed.length
   if (rejected > 0) {
     toast.add({ title: `${rejected} file(s) skipped — only video, audio, and image files are accepted`, color: 'warning', icon: 'i-lucide-alert-triangle' })
   }
-  selectedFiles.value = [...selectedFiles.value, ...allowed]
+  const existingNames = new Set(selectedFiles.value.map(f => f.name))
+  const deduped = allowed.filter(f => !existingNames.has(f.name))
+  const dupeCount = allowed.length - deduped.length
+  if (dupeCount > 0) {
+    toast.add({ title: `${dupeCount} duplicate file(s) skipped`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+  }
+  selectedFiles.value = [...selectedFiles.value, ...deduped]
 }
 
 function removeFile(index: number) {

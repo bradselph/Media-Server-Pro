@@ -171,9 +171,16 @@ func (r *PlaylistRepository) RemoveItem(ctx context.Context, itemID string) erro
 	return r.db.WithContext(ctx).Delete(&models.PlaylistItem{}, "id = ?", itemID).Error
 }
 
-// UpdateItem updates an existing playlist item (e.g. its position after a reorder)
+// UpdateItem updates an existing playlist item (e.g. its position after a reorder).
+// Uses targeted Updates() instead of Save() to avoid overwriting unrelated fields.
 func (r *PlaylistRepository) UpdateItem(ctx context.Context, item *models.PlaylistItem) error {
-	return r.db.WithContext(ctx).Save(item).Error
+	return r.db.WithContext(ctx).Model(item).Where("id = ?", item.ID).Updates(map[string]interface{}{
+		"playlist_id": item.PlaylistID,
+		"media_id":    item.MediaID,
+		"media_path":  item.MediaPath,
+		"title":       item.Title,
+		"position":    item.Position,
+	}).Error
 }
 
 // GetItems retrieves all items for a playlist

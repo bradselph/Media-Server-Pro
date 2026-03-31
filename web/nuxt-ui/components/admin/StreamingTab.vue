@@ -64,6 +64,8 @@ async function saveHLSConfig() {
     toast.add({ title: 'HLS settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    // Reload config from server to revert UI to actual state
+    load()
   } finally {
     configSaving.value = false
   }

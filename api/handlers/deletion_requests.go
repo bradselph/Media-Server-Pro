@@ -51,7 +51,12 @@ func (h *Handler) RequestDataDeletion(c *gin.Context) {
 		`SELECT COUNT(*) FROM data_deletion_requests WHERE user_id = ? AND status = 'pending'`,
 		user.ID,
 	)
-	if err := row.Scan(&existing); err == nil && existing > 0 {
+	if err := row.Scan(&existing); err != nil {
+		h.log.Error("Failed to check existing deletion requests for %s: %v", user.Username, err)
+		writeError(c, http.StatusInternalServerError, errDeletionRequestsUnavailable)
+		return
+	}
+	if existing > 0 {
 		writeError(c, http.StatusConflict, "You already have a pending data deletion request. Please wait for admin review.")
 		return
 	}

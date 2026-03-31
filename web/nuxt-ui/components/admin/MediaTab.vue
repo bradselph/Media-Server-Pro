@@ -19,6 +19,10 @@ const scanning = ref(false)
 const totalItems = ref(0)
 const totalPages = ref(1)
 
+// Confirmation refs
+const confirmDeleteId = ref<string | null>(null)
+const confirmBulkDelete = ref(false)
+
 // Bulk selection
 const selectedIds = ref(new Set<string>())
 const allPageSelected = computed(() =>
@@ -40,6 +44,15 @@ function toggleSelect(id: string) {
 }
 const bulkRunning = ref(false)
 async function runBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  if (action === 'delete') {
+    confirmBulkDelete.value = true
+    return
+  }
+  await executeBulk(action, data)
+}
+async function executeBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
   const ids = [...selectedIds.value]
   if (!ids.length) return
   bulkRunning.value = true
@@ -135,6 +148,57 @@ async function handleScan() {
   }
 }
 
+// Per-row loading guards to prevent duplicate operations
+const rowBusy = ref<Set<string>>(new Set())
+
+async function generateThumbnail(id: string) {
+  if (rowBusy.value.has(`thumb-${id}`)) return
+  const next = new Set(rowBusy.value); next.add(`thumb-${id}`); rowBusy.value = next
+  try {
+    await adminApi.generateThumbnail(id)
+    toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(rowBusy.value); cleared.delete(`thumb-${id}`); rowBusy.value = cleared
+  }
+}
+
+async function generateHLS(id: string) {
+  if (rowBusy.value.has(`hls-${id}`)) return
+  const next = new Set(rowBusy.value); next.add(`hls-${id}`); rowBusy.value = next
+  try {
+    await hlsApi.generate(id)
+    toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'HLS generation failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(rowBusy.value); cleared.delete(`hls-${id}`); rowBusy.value = cleared
+  }
+}
+
+function confirmDelete(id: string) {
+  confirmDeleteId.value = id
+}
+async function executeDelete() {
+  const id = confirmDeleteId.value
+  if (!id) return
+  confirmDeleteId.value = null
+  await deleteMediaItem(id)
+}
+async function deleteMediaItem(id: string) {
+  if (rowBusy.value.has(`del-${id}`)) return
+  const next = new Set(rowBusy.value); next.add(`del-${id}`); rowBusy.value = next
+  try {
+    await adminApi.deleteMedia(id)
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(rowBusy.value); cleared.delete(`del-${id}`); rowBusy.value = cleared
+  }
+}
+
 function sortBy(col: string) {
   if (params.sort === col) {
     params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'
@@ -146,9 +210,14 @@ function sortBy(col: string) {
   load()
 }
 
-watch([() => params.type, () => params.is_mature], () => { params.page = 1; load() })
+watch([() => params.type, () => params.is_mature], () => {
+  params.page = 1
+  selectedIds.value = new Set()
+  load()
+})
 
 onMounted(() => { load(); loadThumbStats() })
+onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
 </script>
 
 <template>
@@ -346,7 +415,8 @@ onMounted(() => { load(); loadThumbStats() })
               variant="ghost"
               color="neutral"
               title="Generate thumbnail"
-              @click="adminApi.generateThumbnail(row.original.id).then(() => toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' }))"
+              :loading="rowBusy.has(`thumb-${row.original.id}`)"
+              @click="generateThumbnail(row.original.id)"
             />
             <UButton
               v-if="row.original.type !== 'audio'"
@@ -355,7 +425,8 @@ onMounted(() => { load(); loadThumbStats() })
               variant="ghost"
               color="neutral"
               title="Generate HLS"
-              @click="hlsApi.generate(row.original.id).then(() => toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'HLS generation failed', color: 'error', icon: 'i-lucide-x' }))"
+              :loading="rowBusy.has(`hls-${row.original.id}`)"
+              @click="generateHLS(row.original.id)"
             />
             <UButton
               icon="i-lucide-trash-2"
@@ -363,7 +434,8 @@ onMounted(() => { load(); loadThumbStats() })
               variant="ghost"
               color="error"
               title="Delete"
-              @click="adminApi.deleteMedia(row.original.id).then(load).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' }))"
+              :loading="rowBusy.has(`del-${row.original.id}`)"
+              @click="confirmDelete(row.original.id)"
             />
           </div>
         </template>
@@ -382,6 +454,36 @@ onMounted(() => { load(); loadThumbStats() })
         @update:page="load"
       />
     </div>
+
+    <!-- Single-item delete confirmation -->
+    <UModal
+      :open="!!confirmDeleteId"
+      title="Delete Media Item"
+      @update:open="val => { if (!val) confirmDeleteId = null }"
+    >
+      <template #body>
+        <p>Are you sure you want to delete this media item? This action cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmDeleteId = null" />
+        <UButton color="error" label="Delete" :loading="!!confirmDeleteId && rowBusy.has(`del-${confirmDeleteId}`)" @click="executeDelete" />
+      </template>
+    </UModal>
+
+    <!-- Bulk delete confirmation -->
+    <UModal
+      :open="confirmBulkDelete"
+      title="Delete Selected Items"
+      @update:open="val => { if (!val) confirmBulkDelete = false }"
+    >
+      <template #body>
+        <p>Are you sure you want to delete <strong>{{ selectedIds.size }}</strong> selected item{{ selectedIds.size !== 1 ? 's' : '' }}? This action cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false" />
+        <UButton color="error" label="Delete" :loading="bulkRunning" @click="confirmBulkDelete = false; executeBulk('delete')" />
+      </template>
+    </UModal>
 
     <!-- Edit media modal -->
     <UModal v-model:open="editOpen" title="Edit Media">

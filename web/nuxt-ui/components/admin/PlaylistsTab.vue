@@ -75,6 +75,7 @@ watch([search, visibilityFilter, sortKey, sortDir, perPage], () => { page.value 
 // Bulk selection
 const selected = ref<Set<string>>(new Set())
 const bulkDeleting = ref(false)
+const confirmBulkDelete = ref(false)
 const allSelected = computed(() => paged.value.length > 0 && paged.value.every(p => selected.value.has(p.id)))
 
 function toggleSelect(id: string) {
@@ -91,7 +92,11 @@ function toggleAll() {
   }
 }
 
-async function bulkDelete() {
+function bulkDelete() {
+  if (!selected.value.size) return
+  confirmBulkDelete.value = true
+}
+async function executeBulkDelete() {
   if (!selected.value.size) return
   bulkDeleting.value = true
   try {
@@ -276,6 +281,21 @@ onMounted(load)
         :items-per-page="perPage"
       />
     </div>
+
+    <!-- Bulk delete confirmation -->
+    <UModal
+      :open="confirmBulkDelete"
+      title="Delete Selected Playlists"
+      @update:open="val => { if (!val) confirmBulkDelete = false }"
+    >
+      <template #body>
+        <p>Are you sure you want to delete <strong>{{ selected.size }}</strong> selected playlist{{ selected.size !== 1 ? 's' : '' }}? This action cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false" />
+        <UButton :loading="bulkDeleting" color="error" label="Delete" @click="confirmBulkDelete = false; executeBulkDelete()" />
+      </template>
+    </UModal>
 
     <!-- Delete confirmation -->
     <UModal
