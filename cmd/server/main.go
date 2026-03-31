@@ -522,6 +522,32 @@ func registerTasks(
 		},
 	})
 
+	// Scheduled backup — creates automatic backups at the configured interval
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "scheduled-backup",
+		Name:        "Scheduled Backup",
+		Description: "Creates an automatic full backup at the configured interval",
+		Schedule:    24 * time.Hour,
+		Func: func(ctx context.Context) error {
+			if backupModule == nil {
+				return nil
+			}
+			backupCfg := cfg.Get().Backup
+			if !backupCfg.ScheduleEnabled {
+				return nil
+			}
+			manifest, err := backupModule.CreateBackup(backup.CreateBackupOptions{
+				Description: "Scheduled automatic backup",
+				Type:        "full",
+			})
+			if err != nil {
+				return fmt.Errorf("scheduled backup failed: %w", err)
+			}
+			log.Info("Scheduled backup created: %s (%d files)", manifest.Filename, len(manifest.Files))
+			return nil
+		},
+	})
+
 	// Mature content scan — scans all media directories for mature content every 12h
 	// and applies auto-flagged results to the media library so ListMedia can filter them.
 	scheduler.RegisterTask(tasks.TaskRegistration{

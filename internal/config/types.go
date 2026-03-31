@@ -277,7 +277,9 @@ type CrawlerConfig struct {
 
 // BackupConfig holds backup retention settings
 type BackupConfig struct {
-	RetentionCount int `json:"retention_count"`
+	RetentionCount   int           `json:"retention_count"`
+	ScheduleEnabled  bool          `json:"schedule_enabled"`
+	ScheduleInterval time.Duration `json:"schedule_interval"`
 }
 
 // MatureScannerConfig holds content scanning settings
