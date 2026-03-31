@@ -93,6 +93,12 @@ const filtered = computed(() => {
 // Bulk actions
 const selectedUsernames = ref<string[]>([])
 const bulkLoading = ref(false)
+const confirmBulkDelete = ref(false)
+
+// Clear selection when filters change
+watch([search, roleFilter, statusFilter], () => {
+  selectedUsernames.value = []
+})
 
 function toggleSelectAll() {
   if (selectedUsernames.value.length === filtered.value.length) {
@@ -109,6 +115,14 @@ function toggleSelectUser(username: string) {
 }
 
 async function bulkAction(action: 'delete' | 'enable' | 'disable') {
+  if (selectedUsernames.value.length === 0) return
+  if (action === 'delete') {
+    confirmBulkDelete.value = true
+    return
+  }
+  await executeBulkAction(action)
+}
+async function executeBulkAction(action: 'delete' | 'enable' | 'disable') {
   if (selectedUsernames.value.length === 0) return
   bulkLoading.value = true
   try {
@@ -445,6 +459,21 @@ onMounted(load)
 
     <!-- Data Deletion Requests -->
     <AdminDeletionRequestsPanel class="mt-6" />
+
+    <!-- Bulk delete confirmation -->
+    <UModal
+      :open="confirmBulkDelete"
+      title="Delete Selected Users"
+      @update:open="val => { if (!val) confirmBulkDelete = false }"
+    >
+      <template #body>
+        <p>Are you sure you want to delete <strong>{{ selectedUsernames.length }}</strong> selected user{{ selectedUsernames.length !== 1 ? 's' : '' }}? This action cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false" />
+        <UButton :loading="bulkLoading" color="error" label="Delete" @click="confirmBulkDelete = false; executeBulkAction('delete')" />
+      </template>
+    </UModal>
 
     <!-- Delete confirmation -->
     <UModal v-if="deleteUser" :open="!!deleteUser" title="Delete User" @update:open="val => { if (!val) deleteUser = null }">

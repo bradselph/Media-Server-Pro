@@ -77,12 +77,19 @@ async function loadAll() {
   }
 }
 
-async function handleAction(fn: () => Promise<unknown>, successMsg: string) {
+const actionBusy = ref<Set<string>>(new Set())
+
+async function handleAction(fn: () => Promise<unknown>, successMsg: string, actionKey?: string) {
+  const key = actionKey ?? successMsg
+  if (actionBusy.value.has(key)) return
+  const next = new Set(actionBusy.value); next.add(key); actionBusy.value = next
   try {
     await fn()
     toast.add({ title: successMsg, color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Action failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(actionBusy.value); cleared.delete(key); actionBusy.value = cleared
   }
 }
 
@@ -273,28 +280,32 @@ onUnmounted(() => clearInterval(interval))
           label="Clear Cache"
           variant="outline"
           color="neutral"
-          @click="handleAction(adminApi.clearCache, 'Cache cleared')"
+          :loading="actionBusy.has('clear-cache')"
+          @click="handleAction(adminApi.clearCache, 'Cache cleared', 'clear-cache')"
         />
         <UButton
           icon="i-lucide-scan"
           label="Scan Media"
           variant="outline"
           color="neutral"
-          @click="handleAction(adminApi.scanMedia, 'Media scan triggered')"
+          :loading="actionBusy.has('scan-media')"
+          @click="handleAction(adminApi.scanMedia, 'Media scan triggered', 'scan-media')"
         />
         <UButton
           icon="i-lucide-rotate-cw"
           label="Restart Server"
           variant="outline"
           color="warning"
-          @click="handleAction(adminApi.restartServer, 'Server restarting…')"
+          :loading="actionBusy.has('restart')"
+          @click="handleAction(adminApi.restartServer, 'Server restarting…', 'restart')"
         />
         <UButton
           icon="i-lucide-power"
           label="Shutdown"
           variant="outline"
           color="error"
-          @click="handleAction(adminApi.shutdownServer, 'Server shutting down…')"
+          :loading="actionBusy.has('shutdown')"
+          @click="handleAction(adminApi.shutdownServer, 'Server shutting down…', 'shutdown')"
         />
       </div>
     </UCard>

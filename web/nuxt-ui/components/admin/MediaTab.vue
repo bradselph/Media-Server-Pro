@@ -19,6 +19,10 @@ const scanning = ref(false)
 const totalItems = ref(0)
 const totalPages = ref(1)
 
+// Confirmation refs
+const confirmDeleteId = ref<string | null>(null)
+const confirmBulkDelete = ref(false)
+
 // Bulk selection
 const selectedIds = ref(new Set<string>())
 const allPageSelected = computed(() =>
@@ -40,6 +44,15 @@ function toggleSelect(id: string) {
 }
 const bulkRunning = ref(false)
 async function runBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  if (action === 'delete') {
+    confirmBulkDelete.value = true
+    return
+  }
+  await executeBulk(action, data)
+}
+async function executeBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
   const ids = [...selectedIds.value]
   if (!ids.length) return
   bulkRunning.value = true
@@ -164,6 +177,15 @@ async function generateHLS(id: string) {
   }
 }
 
+function confirmDelete(id: string) {
+  confirmDeleteId.value = id
+}
+async function executeDelete() {
+  const id = confirmDeleteId.value
+  if (!id) return
+  confirmDeleteId.value = null
+  await deleteMediaItem(id)
+}
 async function deleteMediaItem(id: string) {
   if (rowBusy.value.has(`del-${id}`)) return
   const next = new Set(rowBusy.value); next.add(`del-${id}`); rowBusy.value = next
@@ -188,9 +210,14 @@ function sortBy(col: string) {
   load()
 }
 
-watch([() => params.type, () => params.is_mature], () => { params.page = 1; load() })
+watch([() => params.type, () => params.is_mature], () => {
+  params.page = 1
+  selectedIds.value = new Set()
+  load()
+})
 
 onMounted(() => { load(); loadThumbStats() })
+onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
 </script>
 
 <template>
@@ -408,7 +435,7 @@ onMounted(() => { load(); loadThumbStats() })
               color="error"
               title="Delete"
               :loading="rowBusy.has(`del-${row.original.id}`)"
-              @click="deleteMediaItem(row.original.id)"
+              @click="confirmDelete(row.original.id)"
             />
           </div>
         </template>
@@ -427,6 +454,36 @@ onMounted(() => { load(); loadThumbStats() })
         @update:page="load"
       />
     </div>
+
+    <!-- Single-item delete confirmation -->
+    <UModal
+      :open="!!confirmDeleteId"
+      title="Delete Media Item"
+      @update:open="val => { if (!val) confirmDeleteId = null }"
+    >
+      <template #body>
+        <p>Are you sure you want to delete this media item? This action cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmDeleteId = null" />
+        <UButton color="error" label="Delete" :loading="!!confirmDeleteId && rowBusy.has(`del-${confirmDeleteId}`)" @click="executeDelete" />
+      </template>
+    </UModal>
+
+    <!-- Bulk delete confirmation -->
+    <UModal
+      :open="confirmBulkDelete"
+      title="Delete Selected Items"
+      @update:open="val => { if (!val) confirmBulkDelete = false }"
+    >
+      <template #body>
+        <p>Are you sure you want to delete <strong>{{ selectedIds.size }}</strong> selected item{{ selectedIds.size !== 1 ? 's' : '' }}? This action cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false" />
+        <UButton color="error" label="Delete" :loading="bulkRunning" @click="confirmBulkDelete = false; executeBulk('delete')" />
+      </template>
+    </UModal>
 
     <!-- Edit media modal -->
     <UModal v-model:open="editOpen" title="Edit Media">
