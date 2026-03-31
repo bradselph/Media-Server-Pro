@@ -135,6 +135,48 @@ async function handleScan() {
   }
 }
 
+// Per-row loading guards to prevent duplicate operations
+const rowBusy = ref<Set<string>>(new Set())
+
+async function generateThumbnail(id: string) {
+  if (rowBusy.value.has(`thumb-${id}`)) return
+  const next = new Set(rowBusy.value); next.add(`thumb-${id}`); rowBusy.value = next
+  try {
+    await adminApi.generateThumbnail(id)
+    toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(rowBusy.value); cleared.delete(`thumb-${id}`); rowBusy.value = cleared
+  }
+}
+
+async function generateHLS(id: string) {
+  if (rowBusy.value.has(`hls-${id}`)) return
+  const next = new Set(rowBusy.value); next.add(`hls-${id}`); rowBusy.value = next
+  try {
+    await hlsApi.generate(id)
+    toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'HLS generation failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(rowBusy.value); cleared.delete(`hls-${id}`); rowBusy.value = cleared
+  }
+}
+
+async function deleteMediaItem(id: string) {
+  if (rowBusy.value.has(`del-${id}`)) return
+  const next = new Set(rowBusy.value); next.add(`del-${id}`); rowBusy.value = next
+  try {
+    await adminApi.deleteMedia(id)
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    const cleared = new Set(rowBusy.value); cleared.delete(`del-${id}`); rowBusy.value = cleared
+  }
+}
+
 function sortBy(col: string) {
   if (params.sort === col) {
     params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'
@@ -346,7 +388,8 @@ onMounted(() => { load(); loadThumbStats() })
               variant="ghost"
               color="neutral"
               title="Generate thumbnail"
-              @click="adminApi.generateThumbnail(row.original.id).then(() => toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' }))"
+              :loading="rowBusy.has(`thumb-${row.original.id}`)"
+              @click="generateThumbnail(row.original.id)"
             />
             <UButton
               v-if="row.original.type !== 'audio'"
@@ -355,7 +398,8 @@ onMounted(() => { load(); loadThumbStats() })
               variant="ghost"
               color="neutral"
               title="Generate HLS"
-              @click="hlsApi.generate(row.original.id).then(() => toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'HLS generation failed', color: 'error', icon: 'i-lucide-x' }))"
+              :loading="rowBusy.has(`hls-${row.original.id}`)"
+              @click="generateHLS(row.original.id)"
             />
             <UButton
               icon="i-lucide-trash-2"
@@ -363,7 +407,8 @@ onMounted(() => { load(); loadThumbStats() })
               variant="ghost"
               color="error"
               title="Delete"
-              @click="adminApi.deleteMedia(row.original.id).then(load).catch((e: unknown) => toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' }))"
+              :loading="rowBusy.has(`del-${row.original.id}`)"
+              @click="deleteMediaItem(row.original.id)"
             />
           </div>
         </template>
