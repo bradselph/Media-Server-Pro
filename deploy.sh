@@ -117,7 +117,6 @@ BRANCH="${_BRANCH_DEFAULT}"   # may be overridden by flag parsing below
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --full)            shift ;;              # kept for backwards compat
     --dry-run)         DRY_RUN=true          ; shift ;;
     --fix-env)         FIX_ENV=true          ; shift ;;
     --rollback)        ROLLBACK=true         ; shift ;;
@@ -753,7 +752,7 @@ if $SETUP; then
     if command -v ufw &>/dev/null; then
       echo '[setup] Configuring UFW firewall...'
       sudo ufw allow ssh 2>/dev/null || true
-      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 3000)
+      APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' '$DEPLOY_DIR/.env' 2>/dev/null || echo 8080)
       sudo ufw allow \"\${APP_PORT}/tcp\" 2>/dev/null || true
       sudo ufw --force enable 2>/dev/null || true
       echo \"[setup] UFW: opened port \${APP_PORT}/tcp\"
@@ -1067,15 +1066,8 @@ run_or_dry remote "
     echo \"[deps] Installed Node \$(node --version) / npm \$(npm --version)\"
   fi
 
-  # ── nuxi (Nuxt CLI; used by npm run build inside web/nuxt-ui) ───────────────
-  # nuxi is shipped as a local devDependency; a global install is just a fallback.
-  if ! command -v nuxi &>/dev/null; then
-    echo '[deps] Installing nuxi globally (fallback)...'
-    sudo npm install -g nuxi 2>/dev/null || true
-    echo \"[deps] nuxi \$(nuxi --version 2>/dev/null || echo installed)\"
-  else
-    echo \"[deps] nuxi already installed: \$(nuxi --version 2>/dev/null || echo ok)\"
-  fi
+  # nuxi is a local devDependency in web/nuxt-ui/; npm ci installs it.
+  echo '[deps] nuxi provided by web/nuxt-ui node_modules (local)'
 "
 
 # ── Build on VPS ──────────────────────────────────────────────────────────────
@@ -1114,18 +1106,12 @@ run_or_dry remote "
   # Backup old binary
   [ -f server ] && cp server server.bak && echo '[deploy] Backed up server -> server.bak'
 
-  # Build Go binary
+  # Build Go binary (server only — slave binary is built by --slave deploy)
   echo '[deploy] Building Go binary...'
   VERSION=\$(cat VERSION 2>/dev/null || echo 0.0.0)
   go build \\
     -ldflags \"-X main.Version=\$VERSION -X main.BuildDate=\$(date +%Y-%m-%d)\" \\
     -o server ./cmd/server
-
-  # Build slave receiver binary
-  echo '[deploy] Building media-receiver (slave) binary...'
-  go build \\
-    -ldflags \"-X main.Version=\$VERSION -X main.BuildDate=\$(date +%Y-%m-%d)\" \\
-    -o media-receiver ./cmd/media-receiver
 
   echo '[deploy] Build complete'
 "
