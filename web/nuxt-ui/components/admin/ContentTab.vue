@@ -265,10 +265,12 @@ watch(subTab, (v) => {
 
 <template>
   <div class="space-y-4">
-    <UTabs v-model="subTab" :items="subTabs" size="sm" />
+    <UTabs v-model="subTab" :items="subTabs" size="sm">
+      <template #content="{ item }">
+        <div class="pt-3">
 
     <!-- Scanner -->
-    <div v-if="subTab === 'scanner'" class="space-y-4">
+    <div v-if="item.value === 'scanner'" class="space-y-4">
       <!-- Confidence thresholds config -->
       <UCard :ui="{ body: 'p-4' }">
         <p class="text-xs font-semibold text-muted mb-3 uppercase tracking-wide">Content Scanner Thresholds</p>
@@ -369,7 +371,7 @@ watch(subTab, (v) => {
     </div>
 
     <!-- HLS Jobs -->
-    <div v-if="subTab === 'hls'" class="space-y-4">
+    <div v-if="item.value === 'hls'" class="space-y-4">
       <!-- Capabilities -->
       <UCard v-if="hlsCaps">
         <div class="flex flex-wrap items-center gap-4 text-sm">
@@ -499,7 +501,7 @@ watch(subTab, (v) => {
     </div>
 
     <!-- Validator -->
-    <div v-if="subTab === 'validator'" class="space-y-4">
+    <div v-if="item.value === 'validator'" class="space-y-4">
       <!-- Stats -->
       <div v-if="validatorStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <UCard v-for="item in [
@@ -526,5 +528,9 @@ watch(subTab, (v) => {
         </div>
       </UCard>
     </div>
+
+        </div>
+      </template>
+    </UTabs>
   </div>
 </template>
