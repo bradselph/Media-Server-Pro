@@ -13,10 +13,10 @@ const subTabs = [
     <UTabs v-model="subTab" :items="subTabs" size="sm">
       <template #content="{ item }">
         <div class="pt-3">
-          <SystemStatusPanel v-if="item.value === 'status'" />
-          <SystemSettingsPanel v-else-if="item.value === 'settings'" />
-          <SystemOpsPanel v-else-if="item.value === 'ops'" />
-          <SystemDataPanel v-else-if="item.value === 'data'" />
+          <AdminSystemStatusPanel v-if="item.value === 'status'" />
+          <AdminSystemSettingsPanel v-else-if="item.value === 'settings'" />
+          <AdminSystemOpsPanel v-else-if="item.value === 'ops'" />
+          <AdminSystemDataPanel v-else-if="item.value === 'data'" />
         </div>
       </template>
     </UTabs>
