@@ -244,6 +244,22 @@ func (te *TestEnv) CreateTestUser(t *testing.T, username, password string) *mode
 	return user
 }
 
+// CreateTestAdmin creates an admin user via the auth module and returns the User model.
+func (te *TestEnv) CreateTestAdmin(t *testing.T, username, password string) *models.User {
+	t.Helper()
+	user, err := te.Auth.CreateUser(context.Background(), auth.CreateUserParams{
+		Username: username,
+		Password: password,
+		Email:    username + "@test.local",
+		UserType: "admin",
+		Role:     models.RoleAdmin,
+	})
+	if err != nil {
+		t.Fatalf("testutil.CreateTestAdmin(%s): %v", username, err)
+	}
+	return user
+}
+
 // LoginUser authenticates a user and returns the session ID.
 // The test fails immediately if authentication fails.
 func (te *TestEnv) LoginUser(t *testing.T, username, password string) string {

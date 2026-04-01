@@ -1,17 +1,18 @@
 # Frontend API Consumption Map
 
-> Generated: 2026-03-31  
+> Updated: 2026-04-01  
 > Source: web/nuxt-ui/  
-> Contract: api_spec/openapi.yaml
+> Contract: api_spec/openapi.yaml + docs/BACKEND_API_SUMMARY.md
 
 ## Coverage Summary
 
-- **Total spec routes**: 147+ documented endpoints
-- **Covered by frontend**: ~85 (57%)
-- **Phantom calls** (not in spec): 4 CRITICAL gaps
-- **Dead spec routes**: 62+ (mostly admin/diagnostic)
-- **Type mismatches**: 3 identified
+- **Total backend routes**: 241+ registered endpoints
+- **Covered by frontend**: ~90 wrapper functions (81 composable + 9 direct)
+- **Phantom calls** (not in spec): 0 (previously 4, resolved — spec was stale, endpoints exist)
+- **Dead spec routes**: 62+ (mostly admin/diagnostic — by design)
+- **Type mismatches**: 2 identified (HLS media_path, MediaItem path fields)
 - **Auth mismatches**: 0 (correct)
+- **New endpoints (v0.125.2)**: `GET /api/media/batch`, `GET /api/analytics/content`, `POST /api/admin/thumbnails/cleanup`
 
 ---
 
@@ -60,7 +61,7 @@
 - useHlsApi() - HLS status/generation ✓
 - usePlaybackApi() - position tracking ✓
 - useWatchHistoryApi() - history ✓
-- useSuggestionsApi() - **HAS PHANTOM CALLS** ✗
+- useSuggestionsApi() ✓ (all 9 endpoints exist in backend)
 - useStorageApi() - storage usage ✓
 - usePlaylistApi() - playlists ✓
 - useSettingsApi() ✓

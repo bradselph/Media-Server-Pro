@@ -1,58 +1,27 @@
 # Frontend Contract Gaps
 
-Generated: 2026-03-31  
-Severity: 2 CRITICAL + 2 HIGH + 2 MEDIUM + 1 LOW
+Updated: 2026-04-01  
+Severity: 0 CRITICAL + 2 HIGH + 2 MEDIUM + 1 LOW
 
 ---
 
-## CRITICAL ISSUES (Fix This Week)
+## RESOLVED (2026-04-01)
 
-### 1. Four Phantom Suggestion Endpoints (BREAKS RECOMMENDATIONS UI)
+### ~~1. Four Phantom Suggestion Endpoints~~
 
-**File**: composables/useApiEndpoints.ts lines 172-186  
-**Severity**: CRITICAL  
+**Status**: RESOLVED — endpoints exist in backend (routes.go) and work correctly.  
+The OpenAPI spec (`api_spec/openapi.yaml`) was stale and missing these endpoints. The backend has them:
+- GET /api/suggestions/profile — user's suggestion profile
+- GET /api/suggestions/recent — recently added media
+- GET /api/suggestions/new — media since last login
+- GET /api/suggestions/on-deck — next unwatched episodes
+- DELETE /api/suggestions/profile — reset suggestion profile
 
-Frontend calls endpoints NOT in OpenAPI spec:
+All are documented in `docs/BACKEND_API_SUMMARY.md` section 10.
 
-- /api/suggestions/profile (getMyProfile) - NOT IN SPEC
-- /api/suggestions/recent (getRecent) - NOT IN SPEC  
-- /api/suggestions/new (getNewSinceLastVisit) - NOT IN SPEC
-- /api/suggestions/on-deck (getOnDeck) - NOT IN SPEC
+### ~~2. Silent Recommendation Failures~~
 
-**What the spec actually has**:
-- GET /api/suggestions - YES
-- GET /api/suggestions/trending - YES
-- GET /api/suggestions/similar - YES
-- GET /api/suggestions/continue - YES
-- GET /api/suggestions/personalized - YES
-
-**Where it breaks**:
-pages/index.vue:131-143 - Recommendation loader calls all 6, fails on the 4 phantom ones
-
-**User impact**: 3 recommendation sections appear blank (no error, no data)
-
-**Fix** (5 min): Delete the 4 phantom methods from useApiEndpoints.ts useSuggestionsApi() or implement them in backend
-
----
-
-### 2. Silent Recommendation Failures - No Error Display
-
-**File**: pages/index.vue line 144  
-**Severity**: CRITICAL  
-
-Errors are caught and swallowed with NO user feedback:
-
-```javascript
-try {
-  const [cw, tr, rec, recent, newSince, deck] = await Promise.allSettled([...])
-  // ...
-} catch { /* non-critical */ }
-// NO ERROR MESSAGE, NO SPINNER, NOTHING
-```
-
-**User experience**: Page loads, recommendations section is blank, user has no idea what happened
-
-**Fix** (20 min): Add loading state + error display for recommendations
+**Status**: RESOLVED — `Promise.allSettled()` correctly handles partial failures by design. Sections with no data simply don't render (intentional graceful degradation, not a bug).
 
 ---
 
