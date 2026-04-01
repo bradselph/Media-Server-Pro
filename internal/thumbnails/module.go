@@ -118,6 +118,12 @@ func (m *Module) Start(_ context.Context) error {
 	return nil
 }
 
+// SetMediaIDProvider sets the provider used to determine valid media IDs for cleanup.
+// Must be called before Start() or during server wiring.
+func (m *Module) SetMediaIDProvider(p MediaIDProvider) {
+	m.mediaIDProvider = p
+}
+
 // evictStaleInFlight scans the inFlight map every minute and removes entries
 // that have been pending for more than 5 minutes.  Stale entries arise when a
 // worker goroutine exits unexpectedly without completing its job (e.g. context

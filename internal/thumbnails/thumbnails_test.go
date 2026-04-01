@@ -1,7 +1,13 @@
 package thumbnails
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
+
+	"media-server-pro/internal/config"
+	"media-server-pro/internal/logger"
 )
 
 // ---------------------------------------------------------------------------
@@ -42,5 +48,146 @@ func TestModuleHealth_Default(t *testing.T) {
 	h := m.Health()
 	if h.Name != "thumbnails" {
 		t.Errorf("Health().Name = %q", h.Name)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup
+// ---------------------------------------------------------------------------
+
+type fakeMediaIDProvider struct {
+	ids map[string]bool
+}
+
+func (f *fakeMediaIDProvider) GetAllMediaIDs() map[string]bool { return f.ids }
+
+func newTestModule(t *testing.T) (*Module, string) {
+	t.Helper()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	cfg := config.NewManager(cfgPath)
+	if err := cfg.Update(func(c *config.Config) {
+		c.Thumbnails.PreviewCount = 3
+		c.Directories.Thumbnails = dir
+	}); err != nil {
+		t.Fatalf("failed to update config: %v", err)
+	}
+	return &Module{thumbnailDir: dir, config: cfg, log: logger.New("thumbnails-test")}, dir
+}
+
+func writeTestFile(t *testing.T, path string, size int) {
+	t.Helper()
+	if err := os.WriteFile(path, make([]byte, size), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCleanup_RemovesOrphans(t *testing.T) {
+	m, dir := newTestModule(t)
+	m.mediaIDProvider = &fakeMediaIDProvider{ids: map[string]bool{
+		"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee": true,
+	}}
+
+	// Valid file — should survive
+	writeTestFile(t, filepath.Join(dir, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg"), 100)
+	// Orphan — should be removed
+	writeTestFile(t, filepath.Join(dir, "11111111-2222-3333-4444-555555555555.jpg"), 200)
+
+	result, err := m.Cleanup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OrphansRemoved != 1 {
+		t.Errorf("OrphansRemoved = %d, want 1", result.OrphansRemoved)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg")); err != nil {
+		t.Error("valid thumbnail should still exist")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "11111111-2222-3333-4444-555555555555.jpg")); err == nil {
+		t.Error("orphan thumbnail should have been removed")
+	}
+}
+
+func TestCleanup_RemovesExcessPreviews(t *testing.T) {
+	m, dir := newTestModule(t)
+	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	m.mediaIDProvider = &fakeMediaIDProvider{ids: map[string]bool{id: true}}
+
+	// Config has PreviewCount=3, so _preview_0..2 are valid; 3..4 are excess
+	for i := 0; i < 5; i++ {
+		writeTestFile(t, filepath.Join(dir, id+"_preview_"+strconv.Itoa(i)+".jpg"), 50)
+	}
+
+	result, err := m.Cleanup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExcessRemoved != 2 {
+		t.Errorf("ExcessRemoved = %d, want 2", result.ExcessRemoved)
+	}
+}
+
+func TestCleanup_RemovesCorruptFiles(t *testing.T) {
+	m, dir := newTestModule(t)
+	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	m.mediaIDProvider = &fakeMediaIDProvider{ids: map[string]bool{id: true}}
+
+	// 0-byte file (corrupt)
+	writeTestFile(t, filepath.Join(dir, id+".jpg"), 0)
+
+	result, err := m.Cleanup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CorruptRemoved != 1 {
+		t.Errorf("CorruptRemoved = %d, want 1", result.CorruptRemoved)
+	}
+}
+
+func TestCleanup_SkipsPlaceholders(t *testing.T) {
+	m, dir := newTestModule(t)
+	m.mediaIDProvider = &fakeMediaIDProvider{ids: map[string]bool{}}
+
+	writeTestFile(t, filepath.Join(dir, "placeholder.jpg"), 50)
+	writeTestFile(t, filepath.Join(dir, "audio_placeholder.jpg"), 50)
+	writeTestFile(t, filepath.Join(dir, "censored_placeholder.jpg"), 50)
+
+	result, err := m.Cleanup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OrphansRemoved != 0 {
+		t.Errorf("OrphansRemoved = %d, want 0 (placeholders should be skipped)", result.OrphansRemoved)
+	}
+}
+
+func TestCleanup_NoProviderReturnsError(t *testing.T) {
+	m, _ := newTestModule(t)
+	_, err := m.Cleanup()
+	if err == nil {
+		t.Error("Cleanup with no provider should return error")
+	}
+}
+
+func TestIsValidThumbnailFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Non-existent file
+	if isValidThumbnailFile(filepath.Join(dir, "nope.jpg")) {
+		t.Error("non-existent file should not be valid")
+	}
+
+	// 0-byte file
+	emptyPath := filepath.Join(dir, "empty.jpg")
+	writeTestFile(t, emptyPath, 0)
+	if isValidThumbnailFile(emptyPath) {
+		t.Error("0-byte file should not be valid")
+	}
+
+	// Valid file
+	validPath := filepath.Join(dir, "valid.jpg")
+	writeTestFile(t, validPath, 100)
+	if !isValidThumbnailFile(validPath) {
+		t.Error("non-empty file should be valid")
 	}
 }

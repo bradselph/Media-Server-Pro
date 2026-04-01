@@ -39,11 +39,9 @@ func (m *Module) GetThumbnailFilePath(mediaID MediaID) string {
 	return m.getThumbnailPath(mediaID)
 }
 
-// HasThumbnail checks if a thumbnail exists for a media ID
+// HasThumbnail checks if a valid (non-empty) thumbnail exists for a media ID
 func (m *Module) HasThumbnail(mediaID MediaID) bool {
-	path := m.getThumbnailPath(mediaID)
-	_, err := os.Stat(path)
-	return err == nil
+	return isValidThumbnailFile(m.getThumbnailPath(mediaID))
 }
 
 // HasWebPThumbnail checks if a WebP thumbnail exists for a media ID
@@ -86,14 +84,15 @@ func (m *Module) GetThumbnailFilePathForSize(mediaID MediaID, width int) string 
 	return ""
 }
 
-// HasAllPreviewThumbnails checks if all preview thumbnails exist for a media ID
+// HasAllPreviewThumbnails checks if all preview thumbnails exist for a media ID.
+// Files must be non-empty (0-byte files from failed generation are treated as missing).
 func (m *Module) HasAllPreviewThumbnails(mediaID MediaID) bool {
 	cfg := m.config.Get()
 	s := string(mediaID)
 
 	// Check main thumbnail
 	mainPath := filepath.Join(m.thumbnailDir, s+".jpg")
-	if _, err := os.Stat(mainPath); err != nil {
+	if !isValidThumbnailFile(mainPath) {
 		return false
 	}
 
@@ -101,11 +100,20 @@ func (m *Module) HasAllPreviewThumbnails(mediaID MediaID) bool {
 	for i := 0; i < cfg.Thumbnails.PreviewCount; i++ {
 		filename := fmt.Sprintf("%s_preview_%d.jpg", s, i)
 		path := filepath.Join(m.thumbnailDir, filename)
-		if _, err := os.Stat(path); err != nil {
+		if !isValidThumbnailFile(path) {
 			return false
 		}
 	}
 	return true
+}
+
+// isValidThumbnailFile returns true if the file exists and is non-empty.
+func isValidThumbnailFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.Size() > 0
 }
 
 // GetThumbnailURL returns the URL path for a thumbnail given the media's stable ID.

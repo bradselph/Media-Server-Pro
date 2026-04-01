@@ -51,11 +51,13 @@ func previewTimeRange(duration float64) (startOffset, endOffset, usableDuration 
 	return startOffset, endOffset, usableDuration
 }
 
-// queueMainPreviewThumbnail queues the main (index 0) preview thumbnail if it does not exist on disk.
+// queueMainPreviewThumbnail queues the main (index 0) preview thumbnail if it does not exist or is corrupt.
 func (m *Module) queueMainPreviewThumbnail(opts *queueMainPreviewThumbnailOpts) {
-	if _, err := os.Stat(opts.MainPath); err == nil {
+	if isValidThumbnailFile(opts.MainPath) {
 		return
 	}
+	// Remove 0-byte corrupt file so ffmpeg can overwrite
+	os.Remove(opts.MainPath)
 	cfg := m.config.Get()
 	job := &ThumbnailJob{
 		MediaPath:  opts.MediaPath,

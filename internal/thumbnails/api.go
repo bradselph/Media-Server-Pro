@@ -33,11 +33,13 @@ func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (st
 		})
 	}
 
-	// For audio: single waveform thumbnail — skip if already on disk.
-	if _, err := os.Stat(outputPath); err == nil {
+	// For audio: single waveform thumbnail — skip if already on disk and valid.
+	if isValidThumbnailFile(outputPath) {
 		m.log.Debug("Thumbnail already exists: %s", outputPath)
 		return outputPath, nil
 	}
+	// Remove 0-byte corrupt file so ffmpeg can overwrite
+	os.Remove(outputPath)
 
 	// For audio, just generate one waveform.
 	// Guard against duplicate queuing: if another caller already queued this
@@ -128,11 +130,12 @@ func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (st
 	cfg := m.config.Get()
 	outputPath := m.getThumbnailPath(MediaID(req.MediaID))
 
-	// Check if already exists
-	if _, err := os.Stat(outputPath); err == nil {
+	// Check if already exists and is valid
+	if isValidThumbnailFile(outputPath) {
 		m.log.Debug("Thumbnail already exists: %s", outputPath)
 		return outputPath, nil
 	}
+	os.Remove(outputPath) // remove 0-byte corrupt file if present
 
 	job := &ThumbnailJob{
 		MediaPath:  req.MediaPath,

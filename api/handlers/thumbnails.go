@@ -397,10 +397,17 @@ func (h *Handler) GetThumbnailStats(c *gin.Context) {
 		return
 	}
 	stats := h.thumbnails.GetStats()
-	writeSuccess(c, map[string]interface{}{
+	resp := map[string]interface{}{
 		"total_thumbnails":   stats.Generated,
 		"total_size_mb":      float64(stats.TotalSize) / (1024 * 1024),
 		"pending_generation": stats.Pending,
 		"generation_errors":  stats.Failed,
-	})
+		"orphans_removed":    stats.OrphansRemoved,
+		"excess_removed":     stats.ExcessRemoved,
+		"corrupt_removed":    stats.CorruptRemoved,
+	}
+	if !stats.LastCleanup.IsZero() {
+		resp["last_cleanup"] = stats.LastCleanup
+	}
+	writeSuccess(c, resp)
 }

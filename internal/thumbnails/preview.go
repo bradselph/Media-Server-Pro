@@ -26,9 +26,11 @@ func (m *Module) getPreviewConfig(mediaPath string) (previewCount int, duration 
 func (m *Module) queuePreviewThumbnailsLoop(opts *queuePreviewThumbnailsLoopOpts) {
 	for i := 0; i < opts.PreviewCount; i++ {
 		outputPath := filepath.Join(m.thumbnailDir, fmt.Sprintf("%s_preview_%d.jpg", opts.MediaID, i))
-		if _, err := os.Stat(outputPath); err == nil {
+		if isValidThumbnailFile(outputPath) {
 			continue
 		}
+		// Remove 0-byte corrupt file so ffmpeg can overwrite
+		os.Remove(outputPath)
 		timestamp := previewTimestamp(opts.PreviewCount, i, opts.StartOffset, opts.UsableDuration)
 		job := m.buildPreviewJob(&buildPreviewJobOpts{MediaPath: opts.MediaPath, OutputPath: outputPath, Timestamp: timestamp})
 		queued, ok := m.tryEnqueueThumbnailJob(job, outputPath, opts.HighPriority)
@@ -86,7 +88,7 @@ func (m *Module) previewURLForIndex(opts *buildPreviewURLListOpts, i int) string
 	previewPath := filepath.Join(m.thumbnailDir, previewFilename)
 	previewURL := "/thumbnails/" + previewFilename
 
-	if _, err := os.Stat(previewPath); err == nil {
+	if isValidThumbnailFile(previewPath) {
 		return previewURL
 	}
 	if opts.Cfg.Thumbnails.GenerateOnAccess {
@@ -97,7 +99,7 @@ func (m *Module) previewURLForIndex(opts *buildPreviewURLListOpts, i int) string
 		// and the caller will get the URL on the next request once generation completes.
 		previewOpts := &tryGeneratePreviewOpts{MediaPath: opts.MediaPath, PreviewPath: previewPath, PreviewURL: previewURL, Timestamp: timestamp}
 		m.tryGeneratePreview(previewOpts)
-		if _, err := os.Stat(previewPath); err == nil {
+		if isValidThumbnailFile(previewPath) {
 			return previewURL
 		}
 		return ""
