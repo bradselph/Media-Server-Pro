@@ -244,9 +244,21 @@ export interface AnalyticsSummary {
   today_views: number
   total_views: number
   total_media: number
+  total_watch_time: number
   unique_clients: number
   top_viewed: TopMediaItem[]
   recent_activity: { type: string; media_id: string; filename: string; timestamp: number }[]
+}
+
+export interface ContentPerformanceItem {
+  media_id: string
+  filename: string
+  total_views: number
+  total_playbacks: number
+  total_completions: number
+  completion_rate: number
+  avg_watch_duration: number
+  unique_viewers: number
 }
 
 export interface TopMediaItem {

@@ -610,6 +610,10 @@ export function useAnalyticsApi() {
       return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user?${qs}`)
     },
     getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
+    getContentPerformance: (limit?: number) => {
+      const qs = limit ? `?limit=${limit}` : ''
+      return api.get<ContentPerformanceItem[]>(`/api/analytics/content${qs}`)
+    },
     exportCsv: (period?: string) => {
       const today = new Date()
       const fmt = (d: Date) => d.toISOString().slice(0, 10)
