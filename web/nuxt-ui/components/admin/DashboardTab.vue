@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ModuleHealth, ServerSettings, MediaStats } from '~/types/api'
-import { formatBytes } from '~/utils/format'
+import { formatBytes, formatUptime } from '~/utils/format'
 
 const STREAM_COLUMNS = [
   { accessorKey: 'user_id', header: 'User' },
@@ -32,13 +32,6 @@ const streams = ref<StreamSession[]>([])
 const uploads = ref<UploadProgress[]>([])
 const statsLoading = ref(true)
 
-function formatUptime(secs: number): string {
-  if (!secs) return '—'
-  const d = Math.floor(secs / 86400)
-  const h = Math.floor((secs % 86400) / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  return d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`
-}
 
 const diskPct = computed(() => {
   if (!stats.value) return 0

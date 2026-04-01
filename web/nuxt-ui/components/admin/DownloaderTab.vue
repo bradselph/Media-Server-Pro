@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress, DownloaderStreamInfo } from '~/types/api'
-import { formatBytes } from '~/utils/format'
+import { formatBytes, formatUptime } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
@@ -150,13 +150,6 @@ async function loadSettings() {
   catch { settings.value = null }
 }
 
-function formatUptime(secs: number): string {
-  if (!secs) return '—'
-  const d = Math.floor(secs / 86400)
-  const h = Math.floor((secs % 86400) / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  return d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`
-}
 
 // ── Downloads list ────────────────────────────────────────────────────────────
 
