@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -123,6 +124,7 @@ func New(opts ...Option) (*Server, error) {
 		return nil, err
 	}
 
+	s.validateSecrets()
 	s.registerTasks()
 	s.wireRoutes()
 
@@ -446,4 +448,51 @@ func (s *Server) wireRoutes() {
 			}
 		})
 	}
+}
+
+// validateSecrets checks critical configuration values and logs actionable
+// warnings for any that are absent or obviously insecure. A fatal error is
+// logged (and the process exits) only for conditions that would render the
+// server completely insecure or non-functional.
+func (s *Server) validateSecrets() {
+	appCfg := s.cfg.Get()
+
+	// Receiver: API keys are the sole authentication mechanism for slave nodes.
+	if appCfg.Receiver.Enabled && len(appCfg.Receiver.APIKeys) == 0 {
+		s.log.Error("FATAL: receiver is enabled but no API keys are configured. " +
+			"Set RECEIVER_API_KEYS in .env or receiver.api_keys in config.json, then restart.")
+		os.Exit(1)
+	}
+
+	// Enforce minimum length and warn on known-weak receiver API key values.
+	const minAPIKeyLen = 32
+	for _, key := range appCfg.Receiver.APIKeys {
+		if len(key) < minAPIKeyLen {
+			s.log.Warn("Receiver API key is shorter than %d characters — use at least 32 for production", minAPIKeyLen)
+		}
+		if isWeakKey(key) {
+			s.log.Warn("Receiver API key %q is a known-weak value — replace it in production", key)
+		}
+	}
+
+	// CORS: wildcard origin in production allows any site to make credentialed
+	// requests to the API and exfiltrate session data.
+	if appCfg.Security.CORSEnabled {
+		for _, origin := range appCfg.Security.CORSOrigins {
+			if origin == "*" {
+				s.log.Warn("CORS is configured with wildcard origin '*'. " +
+					"This allows any website to make credentialed requests. " +
+					"Restrict cors_origins to your frontend domains in production.")
+			}
+		}
+	}
+}
+
+// isWeakKey returns true if the key is a known-weak placeholder value.
+func isWeakKey(key string) bool {
+	switch strings.ToLower(key) {
+	case "changeme", "secret", "password", "test", "default", "apikey", "api-key":
+		return true
+	}
+	return false
 }

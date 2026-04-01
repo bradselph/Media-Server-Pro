@@ -3,9 +3,11 @@ package mediaserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
+	"media-server-pro/internal/backup"
 	"media-server-pro/internal/hls"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/scanner"
@@ -159,6 +161,33 @@ func (s *Server) registerBackupTask(scheduler *tasks.Module) {
 				s.log.Info("Cleaned %d old backups (keeping %d)", removed, keepCount)
 			}
 			return err
+		},
+	})
+
+	// Scheduled automatic backup — runs at the configured interval but only
+	// creates a backup when schedule_enabled is true in the backup config.
+	scheduleInterval := s.cfg.Get().Backup.ScheduleInterval
+	if scheduleInterval < 1*time.Hour {
+		scheduleInterval = 24 * time.Hour
+	}
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID: "scheduled-backup", Name: "Scheduled Backup",
+		Description: "Creates an automatic full backup at the configured interval",
+		Schedule:    scheduleInterval,
+		Func: func(ctx context.Context) error {
+			backupCfg := s.cfg.Get().Backup
+			if !backupCfg.ScheduleEnabled {
+				return nil
+			}
+			manifest, err := s.Backup.CreateBackup(backup.CreateBackupOptions{
+				Description: "Scheduled automatic backup",
+				Type:        "full",
+			})
+			if err != nil {
+				return fmt.Errorf("scheduled backup failed: %w", err)
+			}
+			s.log.Info("Scheduled backup created: %s (%d files)", manifest.Filename, len(manifest.Files))
+			return nil
 		},
 	})
 }

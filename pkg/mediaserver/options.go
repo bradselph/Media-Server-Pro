@@ -11,11 +11,7 @@ type serverConfig struct {
 	logLevel   logger.Level
 	version    string
 	buildDate  string
-	moduleSet  ModuleSet
-	// onReady is called after all modules have started and the HTTP server is
-	// about to begin accepting connections. Useful for integration tests or
-	// programmatic consumers that need to know when the server is ready.
-	onReady func(*Server)
+	moduleSet ModuleSet
 }
 
 func defaultServerConfig() *serverConfig {
@@ -75,10 +71,3 @@ func WithModules(modules ...ModuleID) Option {
 	}
 }
 
-// WithOnReady registers a callback that fires after all modules have started
-// and the HTTP listener is bound.
-func WithOnReady(fn func(*Server)) Option {
-	return func(c *serverConfig) {
-		c.onReady = fn
-	}
-}
