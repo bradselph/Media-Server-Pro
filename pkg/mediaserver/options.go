@@ -62,12 +62,25 @@ func WithModuleSet(set ModuleSet) Option {
 	}
 }
 
+// requiredModules are always included regardless of what the caller selects.
+// Without these the server cannot boot (database, auth) or will nil-panic
+// in route setup (security, media, streaming).
+var requiredModules = []ModuleID{
+	ModDatabase, ModSecurity, ModAuth, ModMedia, ModStreaming,
+}
+
 // WithModules selects individual modules to register.
-// The required dependency modules (database, auth, security) are always
-// included even if not specified.
+// The required dependency modules (database, auth, security, media, streaming)
+// are always included even if not specified.
 func WithModules(modules ...ModuleID) Option {
 	return func(c *serverConfig) {
-		c.moduleSet = ModuleSet(modules)
+		set := ModuleSet(modules)
+		for _, req := range requiredModules {
+			if !moduleSetContains(set, req) {
+				set = append(set, req)
+			}
+		}
+		c.moduleSet = set
 	}
 }
 
