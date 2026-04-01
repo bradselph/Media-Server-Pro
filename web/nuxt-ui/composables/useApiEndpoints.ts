@@ -102,6 +102,8 @@ export function useMediaApi() {
       return api.get<MediaListResponse>(`/api/media${q ? `?${q}` : ''}`)
     },
     getById: (id: string) => api.get<MediaItem>(`/api/media/${encodeURIComponent(id)}`),
+    getBatch: (ids: string[]) =>
+      api.get<{ items: Record<string, MediaItem> }>(`/api/media/batch?ids=${ids.map(encodeURIComponent).join(',')}`),
     getStats: () => api.get<MediaStats>('/api/media/stats'),
     getCategories: () => api.get<MediaCategory[]>('/api/media/categories'),
     getThumbnailUrl: (id: string) => `/thumbnail?id=${encodeURIComponent(id)}`,

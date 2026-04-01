@@ -320,6 +320,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET(pathMedia, h.ListMedia)
 	api.GET(pathMedia+pathStats, h.GetMediaStats)
 	api.GET(pathMedia+"/categories", h.GetCategories)
+	api.GET(pathMedia+"/batch", h.GetBatchMedia)
 	api.GET(pathMedia+"/:id", h.GetMedia)
 
 	// Playback

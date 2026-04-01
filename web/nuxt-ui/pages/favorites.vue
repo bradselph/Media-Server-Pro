@@ -22,15 +22,11 @@ async function load() {
   loading.value = true
   try {
     favorites.value = (await favoritesApi.list()) ?? []
-    // Resolve media items by stable ID for display
+    // Resolve media items by stable ID in a single batch request
     const ids = favorites.value.map(f => f.media_id)
     if (ids.length > 0) {
-      const results = await Promise.allSettled(ids.map(id => mediaApi.getById(id)))
-      const newMap: Record<string, MediaItem> = {}
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled' && r.value) newMap[ids[i]] = r.value
-      })
-      mediaMap.value = newMap
+      const res = await mediaApi.getBatch(ids)
+      mediaMap.value = res?.items ?? {}
     }
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load favorites', color: 'error', icon: 'i-lucide-alert-circle' })

@@ -718,6 +718,40 @@ func (h *Handler) GetBatchPlaybackPositions(c *gin.Context) {
 	writeSuccess(c, map[string]interface{}{"positions": positions})
 }
 
+// GetBatchMedia returns media items for multiple IDs in a single request.
+// Query param: ids=id1,id2,... (max 100)
+func (h *Handler) GetBatchMedia(c *gin.Context) {
+	raw := c.Query("ids")
+	if raw == "" {
+		writeSuccess(c, map[string]interface{}{"items": map[string]*models.MediaItem{}})
+		return
+	}
+
+	ids := strings.Split(raw, ",")
+	if len(ids) > 100 {
+		ids = ids[:100]
+	}
+
+	canViewMature := h.canViewMatureContent(c)
+	items := make(map[string]*models.MediaItem, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		item, err := h.media.GetMediaByID(id)
+		if err != nil {
+			continue
+		}
+		if item.IsMature && !canViewMature {
+			continue
+		}
+		items[id] = item
+	}
+
+	writeSuccess(c, map[string]interface{}{"items": items})
+}
+
 // GetPlaybackPosition returns the saved playback position for the current user.
 func (h *Handler) GetPlaybackPosition(c *gin.Context) {
 	id := c.Query("id")
