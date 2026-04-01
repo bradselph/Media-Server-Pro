@@ -349,7 +349,6 @@ watch(subTab, (v) => {
             <UCheckbox :model-value="selected.length === reviewQueue.length && reviewQueue.length > 0" @update:model-value="toggleAll" />
             <span class="flex-1">Path</span>
             <span class="w-20 text-right">Confidence</span>
-            <span class="w-32 text-right">Review</span>
             <span class="w-24 text-right">Actions</span>
           </div>
           <div v-for="item in reviewQueue" :key="item.id" class="flex items-center gap-2 py-2">
@@ -362,21 +361,6 @@ watch(subTab, (v) => {
               <p v-if="item.detected_at" class="text-xs text-muted mt-0.5">Detected: {{ new Date(item.detected_at).toLocaleDateString() }}</p>
             </div>
             <span class="w-20 text-right text-muted">{{ item.confidence != null ? `${(item.confidence * 100).toFixed(0)}%` : '—' }}</span>
-            <div class="w-32 text-right">
-              <template v-if="item.reviewed_at">
-                <UBadge
-                  :label="item.decision === 'approved' ? 'Approved' : item.decision === 'rejected' ? 'Rejected' : (item.decision || 'Reviewed')"
-                  :color="item.decision === 'approved' ? 'success' : item.decision === 'rejected' ? 'error' : 'neutral'"
-                  variant="subtle"
-                  size="xs"
-                />
-                <p class="text-xs text-muted mt-0.5">
-                  <span v-if="item.reviewed_by">{{ item.reviewed_by }}</span>
-                  <span v-if="item.reviewed_at"> · {{ new Date(item.reviewed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }}</span>
-                </p>
-              </template>
-              <span v-else class="text-xs text-muted">Pending</span>
-            </div>
             <div class="w-24 flex justify-end gap-1">
               <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" :loading="reviewingId === item.id" @click="quickReview(item.id, 'approve')" />
               <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" :loading="reviewingId === item.id" @click="quickReview(item.id, 'reject')" />
