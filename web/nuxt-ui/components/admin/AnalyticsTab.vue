@@ -54,7 +54,37 @@ async function drillByUser() {
   } finally { drillLoading.value = false }
 }
 
-// formatWatchTime imported from ~/utils/format
+// Trend calculations from daily data
+const trendData = computed(() => {
+  if (daily.value.length < 2) return null
+  const sorted = [...daily.value].sort((a, b) => a.date.localeCompare(b.date))
+  const halfIdx = Math.floor(sorted.length / 2)
+  const firstHalf = sorted.slice(0, halfIdx)
+  const secondHalf = sorted.slice(halfIdx)
+
+  const avg = (arr: DailyStats[], key: keyof DailyStats) =>
+    arr.length > 0 ? arr.reduce((sum, d) => sum + (Number(d[key]) || 0), 0) / arr.length : 0
+
+  const viewsTrend = calcTrend(avg(firstHalf, 'total_views'), avg(secondHalf, 'total_views'))
+  const usersTrend = calcTrend(avg(firstHalf, 'unique_users'), avg(secondHalf, 'unique_users'))
+  const watchTimeTrend = calcTrend(avg(firstHalf, 'total_watch_time'), avg(secondHalf, 'total_watch_time'))
+
+  return { viewsTrend, usersTrend, watchTimeTrend }
+})
+
+function calcTrend(prev: number, curr: number): { pct: number; direction: 'up' | 'down' | 'flat' } {
+  if (prev === 0 && curr === 0) return { pct: 0, direction: 'flat' }
+  if (prev === 0) return { pct: 100, direction: 'up' }
+  const pct = Math.round(((curr - prev) / prev) * 100)
+  return { pct: Math.abs(pct), direction: pct > 2 ? 'up' : pct < -2 ? 'down' : 'flat' }
+}
+
+// Daily chart metric selector
+const chartMetric = ref<'total_views' | 'unique_users' | 'total_watch_time'>('total_views')
+const chartMetricMax = computed(() => {
+  const key = chartMetric.value
+  return Math.max(1, ...daily.value.map(d => Number(d[key]) || 0))
+})
 
 async function load() {
   loading.value = true
@@ -115,22 +145,32 @@ onMounted(load)
       <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
     </div>
 
-    <!-- Summary cards -->
+    <!-- Summary cards with trend indicators -->
     <div v-if="summary" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <UCard
         v-for="item in [
-          { label: 'Total Views', value: (summary.total_views ?? 0).toLocaleString(), icon: 'i-lucide-eye' },
-          { label: 'Today Views', value: (summary.today_views ?? 0).toLocaleString(), icon: 'i-lucide-calendar' },
-          { label: 'Unique Clients', value: (summary.unique_clients ?? 0).toLocaleString(), icon: 'i-lucide-users' },
-          { label: 'Active Sessions', value: (summary.active_sessions ?? 0).toLocaleString(), icon: 'i-lucide-activity' },
+          { label: 'Total Views', value: (summary.total_views ?? 0).toLocaleString(), icon: 'i-lucide-eye', trend: trendData?.viewsTrend },
+          { label: 'Today Views', value: (summary.today_views ?? 0).toLocaleString(), icon: 'i-lucide-calendar', trend: null },
+          { label: 'Unique Clients', value: (summary.unique_clients ?? 0).toLocaleString(), icon: 'i-lucide-users', trend: trendData?.usersTrend },
+          { label: 'Active Sessions', value: (summary.active_sessions ?? 0).toLocaleString(), icon: 'i-lucide-activity', trend: trendData?.watchTimeTrend },
         ]"
         :key="item.label"
         :ui="{ body: 'p-4' }"
       >
         <div class="flex items-center gap-2">
           <UIcon :name="item.icon" class="size-4 text-muted" />
-          <div>
-            <p class="text-lg font-bold text-highlighted">{{ item.value }}</p>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5">
+              <p class="text-lg font-bold text-highlighted">{{ item.value }}</p>
+              <span
+                v-if="item.trend && item.trend.direction !== 'flat'"
+                class="inline-flex items-center text-xs font-medium"
+                :class="item.trend.direction === 'up' ? 'text-green-500' : 'text-red-500'"
+              >
+                <UIcon :name="item.trend.direction === 'up' ? 'i-lucide-trending-up' : 'i-lucide-trending-down'" class="size-3" />
+                {{ item.trend.pct }}%
+              </span>
+            </div>
             <p class="text-xs text-muted">{{ item.label }}</p>
           </div>
         </div>
@@ -253,13 +293,30 @@ onMounted(load)
     <!-- Daily breakdown -->
     <UCard v-if="daily.length > 0">
       <template #header>
-        <div class="font-semibold flex items-center gap-2">
-          <UIcon name="i-lucide-bar-chart-2" class="size-4" />
-          Daily Breakdown
+        <div class="flex items-center justify-between">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-bar-chart-2" class="size-4" />
+            Daily Breakdown
+          </div>
+          <UButtonGroup>
+            <UButton
+              v-for="m in [
+                { label: 'Views', value: 'total_views' },
+                { label: 'Users', value: 'unique_users' },
+                { label: 'Watch Time', value: 'total_watch_time' },
+              ]"
+              :key="m.value"
+              :label="m.label"
+              size="xs"
+              :variant="chartMetric === m.value ? 'solid' : 'outline'"
+              :color="chartMetric === m.value ? 'primary' : 'neutral'"
+              @click="chartMetric = m.value as typeof chartMetric"
+            />
+          </UButtonGroup>
         </div>
       </template>
 
-      <!-- CSS bar chart — views per day -->
+      <!-- CSS bar chart — switchable metric -->
       <div class="mb-4 space-y-1">
         <div
           v-for="row in daily.slice().reverse()"
@@ -269,11 +326,14 @@ onMounted(load)
           <span class="w-24 shrink-0 font-mono text-muted text-right">{{ row.date }}</span>
           <div class="flex-1 bg-muted/20 rounded-full h-4 overflow-hidden">
             <div
-              class="h-full rounded-full bg-primary transition-all duration-300"
-              :style="{ width: dailyMaxViews > 0 ? `${Math.round(((row.total_views ?? 0) / dailyMaxViews) * 100)}%` : '0%' }"
+              class="h-full rounded-full transition-all duration-300"
+              :class="chartMetric === 'total_views' ? 'bg-primary' : chartMetric === 'unique_users' ? 'bg-emerald-500' : 'bg-amber-500'"
+              :style="{ width: chartMetricMax > 0 ? `${Math.round(((Number(row[chartMetric]) || 0) / chartMetricMax) * 100)}%` : '0%' }"
             />
           </div>
-          <span class="w-12 shrink-0 text-right text-muted">{{ (row.total_views ?? 0).toLocaleString() }}</span>
+          <span class="w-16 shrink-0 text-right text-muted">
+            {{ chartMetric === 'total_watch_time' ? formatWatchTime(row[chartMetric]) : (Number(row[chartMetric]) ?? 0).toLocaleString() }}
+          </span>
         </div>
       </div>
 

@@ -34,7 +34,7 @@ func DefaultConfig() *Config {
 		Crawler:       defaultCrawlerConfig(),
 		MatureScanner: defaultMatureScannerConfig(),
 		HuggingFace:   defaultHuggingFaceConfig(),
-		Backup:        BackupConfig{RetentionCount: 10},
+		Backup:        BackupConfig{RetentionCount: 10, ScheduleEnabled: false, ScheduleInterval: 24 * time.Hour},
 		Logging:       defaultLoggingConfig(),
 		Features:      defaultFeaturesConfig(),
 		Database:      defaultDatabaseConfig(),

@@ -18,7 +18,32 @@ const BACKUP_TYPE_OPTIONS = [
 
 const backupFullConfig = ref<Record<string, unknown>>({})
 const backupRetentionCount = ref(5)
+const backupScheduleEnabled = ref(false)
+const backupScheduleInterval = ref('24h')
 const backupConfigSaving = ref(false)
+
+const SCHEDULE_INTERVAL_OPTIONS = [
+  { label: 'Every 6 hours', value: '6h' },
+  { label: 'Every 12 hours', value: '12h' },
+  { label: 'Every 24 hours', value: '24h' },
+  { label: 'Every 48 hours', value: '48h' },
+  { label: 'Every 7 days', value: '168h' },
+]
+
+function parseDurationToLabel(ns: unknown): string {
+  if (typeof ns === 'number' && ns > 0) {
+    const hours = Math.round(ns / 3600000000000)
+    const match = SCHEDULE_INTERVAL_OPTIONS.find(o => o.value === `${hours}h`)
+    return match ? match.value : '24h'
+  }
+  if (typeof ns === 'string') return ns
+  return '24h'
+}
+
+function labelToDurationNs(label: string): number {
+  const h = parseInt(label)
+  return isNaN(h) ? 86400000000000 : h * 3600000000000
+}
 
 async function loadBackupConfig() {
   try {
@@ -27,16 +52,23 @@ async function loadBackupConfig() {
       backupFullConfig.value = cfg
       const bk = asRecord(cfg.backup)
       backupRetentionCount.value = typeof bk?.retention_count === 'number' ? bk.retention_count : 5
+      backupScheduleEnabled.value = bk?.schedule_enabled === true
+      backupScheduleInterval.value = parseDurationToLabel(bk?.schedule_interval)
     }
   } catch { /* non-critical */ }
 }
 
-async function saveBackupRetention() {
+async function saveBackupConfig() {
   backupConfigSaving.value = true
   try {
     const updated = {
       ...backupFullConfig.value,
-      backup: { ...asRecord(backupFullConfig.value.backup), retention_count: backupRetentionCount.value },
+      backup: {
+        ...asRecord(backupFullConfig.value.backup),
+        retention_count: backupRetentionCount.value,
+        schedule_enabled: backupScheduleEnabled.value,
+        schedule_interval: labelToDurationNs(backupScheduleInterval.value),
+      },
     }
     await adminApi.updateConfig(updated)
     backupFullConfig.value = updated
@@ -151,24 +183,44 @@ onMounted(() => {
         <UIcon name="i-lucide-archive" class="size-4" /> Backups
       </h3>
 
-      <!-- Retention config -->
+      <!-- Backup settings -->
       <UCard :ui="{ body: 'p-4' }">
-        <div class="flex flex-wrap items-end gap-4">
-          <UFormField label="Retention count" description="Number of backup files to keep (older ones are deleted automatically)">
-            <UInput
-              v-model.number="backupRetentionCount"
-              type="number"
-              min="1"
-              max="100"
-              class="w-24"
-            />
-          </UFormField>
+        <div class="space-y-4">
+          <!-- Schedule toggle -->
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="font-medium text-sm">Automatic Backups</p>
+              <p class="text-xs text-muted mt-0.5">Create full backups on a recurring schedule</p>
+            </div>
+            <USwitch v-model="backupScheduleEnabled" />
+          </div>
+
+          <!-- Schedule interval -->
+          <div v-if="backupScheduleEnabled" class="flex flex-wrap items-end gap-4">
+            <UFormField label="Backup interval">
+              <USelect v-model="backupScheduleInterval" :items="SCHEDULE_INTERVAL_OPTIONS" class="w-48" />
+            </UFormField>
+          </div>
+
+          <!-- Retention -->
+          <div class="flex flex-wrap items-end gap-4">
+            <UFormField label="Retention count" description="Number of backup files to keep (older ones are deleted automatically)">
+              <UInput
+                v-model.number="backupRetentionCount"
+                type="number"
+                min="1"
+                max="100"
+                class="w-24"
+              />
+            </UFormField>
+          </div>
+
           <UButton
             :loading="backupConfigSaving"
             icon="i-lucide-save"
-            label="Save"
+            label="Save Backup Settings"
             size="sm"
-            @click="saveBackupRetention"
+            @click="saveBackupConfig"
           />
         </div>
       </UCard>
