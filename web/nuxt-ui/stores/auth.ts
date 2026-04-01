@@ -99,13 +99,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  function clear() {
-    user.value = null
-  }
-
-  function setUser(u: User) {
-    user.value = u
-  }
-
-  return { user, allowGuests, isLoading, isLoggedIn, isAdmin, username, fetchSession, login, logout, clear, setUser }
+  return { user, allowGuests, isLoading, isLoggedIn, isAdmin, username, fetchSession, login, logout }
 })
