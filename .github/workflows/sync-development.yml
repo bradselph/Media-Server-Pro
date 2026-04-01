@@ -28,7 +28,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Merge main into development
+      - name: Merge main into development (preserving dev version)
         id: merge
         run: |
           git config user.name "github-actions[bot]"
@@ -40,12 +40,30 @@ jobs:
           git checkout development
           git pull origin development
 
-          # Merge the release bump commit from main into development.
+          # Save development's version files before merge
+          DEV_VERSION=$(cat VERSION)
+          cp VERSION VERSION.dev.bak
+          cp cmd/server/main.go cmd/server/main.go.dev.bak
+
+          # Merge the release commit from main into development.
           if git merge origin/main --no-ff -m "chore: sync development with main after release [auto-version]"; then
+            # Restore development's version files — main's release version
+            # must not overwrite the independent dev version track.
+            cp VERSION.dev.bak VERSION
+            cp cmd/server/main.go.dev.bak cmd/server/main.go
+            rm -f VERSION.dev.bak cmd/server/main.go.dev.bak
+
+            # If version files changed, amend the merge commit
+            if ! git diff --quiet VERSION cmd/server/main.go; then
+              git add VERSION cmd/server/main.go
+              git commit --amend --no-edit
+            fi
+
             git push origin development
             echo "synced=true" >> "$GITHUB_OUTPUT"
-            echo "Development synced successfully."
+            echo "Development synced with main. Dev version preserved: ${DEV_VERSION}"
           else
+            rm -f VERSION.dev.bak cmd/server/main.go.dev.bak
             echo "synced=false" >> "$GITHUB_OUTPUT"
             git merge --abort
             echo "::error::Merge conflict while syncing development with main."
@@ -70,7 +88,7 @@ jobs:
           git checkout development
           git fetch origin
           git merge origin/main
-          # resolve conflicts
+          # resolve conflicts (keep development's VERSION and cmd/server/main.go)
           git add .
           git commit
           git push origin development

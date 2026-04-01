@@ -53,7 +53,15 @@ jobs:
       - name: Determine bump type and new version
         id: bump
         run: |
-          CURRENT=$(cat VERSION | tr -d '[:space:]')
+          # Derive current version from the latest release tag (vX.Y.Z),
+          # NOT the VERSION file which may contain dev suffixes from merged PRs.
+          LATEST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No release tag found — starting at 1.0.0"
+            CURRENT="1.0.0"
+          else
+            CURRENT="${LATEST_TAG#v}"
+          fi
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
 
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
@@ -61,11 +69,11 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             BUMP_TYPE="${{ github.event.inputs.bump_type }}"
           else
-            MERGE_MSG="${{ github.event.head_commit.message }}"
+            MERGE_MSG="${{ github.event.workflow_run.head_commit.message }}"
             if echo "$MERGE_MSG" | grep -qiE '(BREAKING CHANGE:|^major:)'; then
               BUMP_TYPE="major"
             else
-              BUMP_TYPE="minor"
+              BUMP_TYPE="patch"
             fi
           fi
 
@@ -90,7 +98,7 @@ jobs:
 
       - name: Generate CHANGELOG entry
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
           if [ -n "$PREV_TAG" ]; then
             COMMITS=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" | grep -v '\[auto-version\]')
           else
