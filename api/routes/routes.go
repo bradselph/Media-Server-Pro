@@ -413,6 +413,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/analytics", adminAuth(authModule), h.GetAnalyticsSummary)
 	api.GET("/analytics/daily", adminAuth(authModule), h.GetDailyStats)
 	api.GET("/analytics/top", adminAuth(authModule), h.GetTopMedia)
+	api.GET("/analytics/content", adminAuth(authModule), h.GetContentPerformance)
 	api.POST("/analytics/events", requireAuth(), h.SubmitEvent)
 	api.GET("/analytics/events/stats", adminAuth(authModule), h.GetEventStats)
 	api.GET("/analytics/events/by-type", adminAuth(authModule), h.GetEventsByType)
