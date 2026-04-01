@@ -600,13 +600,26 @@ function onFullscreenChange() {
   isFullscreen.value = !!document.fullscreenElement
 }
 
+// Save position when user closes the tab/browser (best-effort via sendBeacon)
+function onBeforeUnload() {
+  if (!mediaId.value || !videoRef.value) return
+  const pos = videoRef.value.currentTime
+  const dur = videoRef.value.duration || 0
+  if (pos > 0) {
+    const body = JSON.stringify({ id: mediaId.value, position: Math.round(pos), duration: Math.round(dur) })
+    navigator.sendBeacon('/api/playback', new Blob([body], { type: 'application/json' }))
+  }
+}
+
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('keydown', onKeyDown)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
 onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   document.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
   if (controlsTimer) clearTimeout(controlsTimer)
 })
 
