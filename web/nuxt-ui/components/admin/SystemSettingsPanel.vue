@@ -33,6 +33,18 @@ function toggle(section: string, key: string) {
   set(section, key, !get(section, key))
 }
 
+function toggleHlsProfile(index: number, enabled: boolean) {
+  const profiles = get('hls', 'quality_profiles')
+  if (!profiles) return
+  // Prevent disabling the last enabled profile
+  if (!enabled) {
+    const enabledCount = profiles.filter((p: any) => p.enabled).length
+    if (enabledCount <= 1) return
+  }
+  profiles[index] = { ...profiles[index], enabled }
+  set('hls', 'quality_profiles', [...profiles])
+}
+
 // ── Load / Save ───────────────────────────────────────────────────────────
 async function loadConfig() {
   loading.value = true
@@ -270,21 +282,32 @@ onMounted(loadConfig)
               <UInput type="number" :model-value="get('hls', 'retention_minutes')" @update:model-value="set('hls', 'retention_minutes', Number($event))" />
             </UFormField>
           </div>
-          <!-- Quality profiles (read-only summary) -->
+          <!-- Quality profiles -->
           <div v-if="get('hls', 'quality_profiles')?.length" class="mt-4">
             <p class="text-xs text-neutral-400 mb-2">Quality Profiles</p>
-            <div class="flex flex-wrap gap-2">
-              <UBadge
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div
                 v-for="(p, i) in get('hls', 'quality_profiles')"
                 :key="i"
-                variant="subtle"
-                color="neutral"
-                size="sm"
+                class="flex items-center gap-3 rounded-lg border border-neutral-700 px-3 py-2"
+                :class="p.enabled ? 'bg-neutral-800/50' : 'bg-neutral-900/50 opacity-50'"
               >
-                {{ p.name || `${p.width}x${p.height}` }} &mdash; {{ Math.round(p.bitrate / 1000) }}k
-              </UBadge>
+                <USwitch
+                  :model-value="p.enabled"
+                  @update:model-value="toggleHlsProfile(Number(i), $event)"
+                  size="sm"
+                />
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium" :class="p.enabled ? 'text-white' : 'text-neutral-500'">
+                    {{ p.name }}
+                  </div>
+                  <div class="text-xs text-neutral-500">
+                    {{ p.width }}x{{ p.height }} &mdash; {{ Math.round(p.bitrate / 1000) }}k video / {{ Math.round(p.audio_bitrate / 1000) }}k audio
+                  </div>
+                </div>
+              </div>
             </div>
-            <p class="text-xs text-neutral-500 mt-1">Edit quality profiles via Raw JSON view</p>
+            <p class="text-xs text-neutral-500 mt-2">Toggle profiles to control which quality levels are generated. At least one must be enabled.</p>
           </div>
         </UCard>
 

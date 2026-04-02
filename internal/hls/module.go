@@ -346,7 +346,9 @@ func (m *Module) GetCapabilities() Capabilities {
 
 	qualities := make([]string, 0, len(cfg.HLS.QualityProfiles))
 	for _, qp := range cfg.HLS.QualityProfiles {
-		qualities = append(qualities, qp.Name)
+		if qp.Enabled {
+			qualities = append(qualities, qp.Name)
+		}
 	}
 
 	return Capabilities{

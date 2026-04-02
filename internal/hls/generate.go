@@ -58,7 +58,7 @@ func (m *Module) checkGenerateHLSPrereqs(mediaPath string) error {
 	return nil
 }
 
-// defaultQualitiesFromConfig returns quality names from config when none are specified.
+// defaultQualitiesFromConfig returns enabled quality names from config when none are specified.
 func (m *Module) defaultQualitiesFromConfig(qualities []string) []string {
 	if len(qualities) > 0 {
 		return qualities
@@ -66,7 +66,9 @@ func (m *Module) defaultQualitiesFromConfig(qualities []string) []string {
 	cfg := m.config.Get()
 	out := make([]string, 0, len(cfg.HLS.QualityProfiles))
 	for _, qp := range cfg.HLS.QualityProfiles {
-		out = append(out, qp.Name)
+		if qp.Enabled {
+			out = append(out, qp.Name)
+		}
 	}
 	return out
 }

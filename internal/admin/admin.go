@@ -376,6 +376,7 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]interface{} {
 			"height":        qp.Height,
 			"bitrate":       qp.Bitrate,
 			"audio_bitrate": qp.AudioBitrate,
+			"enabled":       qp.Enabled,
 		})
 	}
 	return map[string]interface{}{
