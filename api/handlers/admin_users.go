@@ -173,10 +173,14 @@ func (h *Handler) AdminDeleteUser(c *gin.Context) {
 	if err := h.auth.DeleteUser(c.Request.Context(), username); err != nil {
 		if errors.Is(err, auth.ErrUserNotFound) {
 			writeError(c, http.StatusNotFound, "User not found")
-		} else {
-			h.log.Error("Failed to delete user %s: %v", username, err)
-			writeError(c, http.StatusInternalServerError, "Internal server error")
+			return
 		}
+		if errors.Is(err, auth.ErrCannotDemoteLastAdmin) {
+			writeError(c, http.StatusBadRequest, "Cannot delete the last admin account")
+			return
+		}
+		h.log.Error("Failed to delete user %s: %v", username, err)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -272,9 +276,8 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		currentUser = sess.Username
 	}
 
-	// Last-admin protection is handled by the auth layer (lastAdminMu) which
-	// serializes demote/disable operations and returns ErrCannotDemoteLastAdmin.
-	// No redundant pre-flight snapshot needed — it was racy under concurrent requests.
+	// Last-admin protection is enforced in auth (UpdateUser demote/disable; DeleteUser)
+	// and returns ErrCannotDemoteLastAdmin. No redundant handler snapshot — it was racy.
 	var successCount, failedCount int
 	errs := make([]string, 0)
 

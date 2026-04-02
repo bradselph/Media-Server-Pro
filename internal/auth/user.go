@@ -386,6 +386,28 @@ func (m *Module) DeleteUser(ctx context.Context, username string) error {
 		return err
 	}
 
+	// Prevent removing the last enabled admin (same invariant as UpdateUser demote/disable).
+	// Hold lastAdminMu through delete so two concurrent deletes cannot both pass the count check.
+	if user.Role == models.RoleAdmin && user.Enabled {
+		m.lastAdminMu.Lock()
+		defer m.lastAdminMu.Unlock()
+		user, err = m.GetUser(ctx, username)
+		if err != nil {
+			return err
+		}
+		if user.Role == models.RoleAdmin && user.Enabled {
+			count := 0
+			for _, u := range m.ListUsers(ctx) {
+				if u.Role == models.RoleAdmin && u.Enabled {
+					count++
+				}
+			}
+			if count <= 1 {
+				return ErrCannotDemoteLastAdmin
+			}
+		}
+	}
+
 	if err := m.userRepo.Delete(ctx, user.ID); err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
