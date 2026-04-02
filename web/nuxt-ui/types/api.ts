@@ -248,6 +248,12 @@ export interface AnalyticsSummary {
   unique_clients: number
   top_viewed: TopMediaItem[]
   recent_activity: { type: string; media_id: string; filename: string; timestamp: number }[]
+  today_logins?: number
+  today_logins_failed?: number
+  today_registrations?: number
+  today_age_gate_passes?: number
+  today_downloads?: number
+  today_searches?: number
 }
 
 export interface ContentPerformanceItem {
