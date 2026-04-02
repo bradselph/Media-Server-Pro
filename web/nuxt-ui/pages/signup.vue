@@ -21,6 +21,14 @@ onMounted(async () => {
 
 async function handleSignup() {
   error.value = ''
+  if (!form.username.trim()) {
+    error.value = 'Username is required'
+    return
+  }
+  if (form.username.trim().length < 3) {
+    error.value = 'Username must be at least 3 characters'
+    return
+  }
   if (form.password !== form.confirm) {
     error.value = 'Passwords do not match'
     return

@@ -473,7 +473,7 @@ export function useAdminApi() {
     applyDiscoverySuggestion: (originalPath: string) =>
       api.post<void>(`${base}/discovery/apply`, { original_path: originalPath }),
     dismissDiscoverySuggestion: (originalPath: string) =>
-      api.delete<void>(`${base}/discovery/${originalPath.split('/').map(encodeURIComponent).join('/')}`),
+      api.delete<void>(`${base}/discovery/${originalPath.replace(/^\//, '').split('/').map(encodeURIComponent).join('/')}`),
 
     // Suggestion stats
     getSuggestionStats: () => api.get<SuggestionStats>(`${base}/suggestions/stats`),

@@ -59,8 +59,21 @@ export function normalizePreferences(input: unknown): UserPreferences {
   }
 }
 
+// Only send user-settable preference fields to prevent sending internal flags
+const PREF_PATCH_KEYS: (keyof UserPreferences)[] = [
+  'theme', 'view_mode', 'default_quality', 'auto_play', 'playback_speed',
+  'volume', 'show_mature', 'language', 'equalizer_preset', 'resume_playback',
+  'show_analytics', 'items_per_page', 'sort_by', 'sort_order',
+  'filter_category', 'filter_media_type', 'custom_eq_presets',
+  'show_continue_watching', 'show_recommended', 'show_trending',
+]
+
 export function toPreferencesPatch(input: Partial<UserPreferences>): Record<string, unknown> {
-  return { ...input }
+  const out: Record<string, unknown> = {}
+  for (const k of PREF_PATCH_KEYS) {
+    if (k in input) out[k] = input[k]
+  }
+  return out
 }
 
 export function normalizeUser(input: unknown): User | null {
