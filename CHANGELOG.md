@@ -1,5 +1,174 @@
 # Changelog
 
+## [1.0.0] - 2026-04-02 (major)
+
+- fix: clarify security stats labels as session-scoped
+- fix: initialize thumbnail stats from disk on startup
+- fix: add Cloudflare Insights to CSP script-src default
+- Update remember.md
+- feat: admin analytics traffic breakdown UI
+- feat: traffic analytics — login, age gate, download, search, registration tracking
+- fix: update golangci-lint to v2.11.4 — CI was failing since Go 1.26
+- fix: update version comment and fallback in main.go
+- fix: release workflow — use creatordate sort, fix CHANGELOG generation
+- fix: medium-priority — UpdatesTab unmount guard, bulk-admin TOCTOU race
+- fix: backend hardening — trusted proxy check on isSecureRequest, rename requireAdmin
+- fix: harden user-facing UI — preferences allowlist, signup validation, token cleanup
+- fix: harden admin UI — confirmations, validation, error handling
+- fix: critical frontend security — 401 redirect reset, middleware auth blocking
+- fix: critical backend security — CanViewMature elevation, password verify, session token exposure
+- feat: per-profile enable/disable for HLS quality levels
+- fix: wire dead config settings — thumbnail quality and HF max_concurrent
+- feat: structured admin settings UI with form controls
+- test: add handler integration tests and update API documentation
+- feat: thumbnail cleanup, orphan removal, and corrupt file handling
+- fix: decouple development and main branch version tracking
+- feat: comprehensive analytics dashboard overhaul
+- feat: add content performance endpoint and enrich analytics summary
+- fix: replace N+1 favorites media lookups with batch endpoint
+- chore: extract duplicated formatUptime to shared utils/format.ts
+- chore: remove dead code — unused usePlaylistStore and authStore.clear/setUser
+- fix: hydrate playlist item titles from media names instead of showing UUIDs
+- fix: save playback position on tab/browser close via beforeunload
+- fix: PiP continues seamlessly across auto-next media transitions
+- Revert "Package"
+- fix(backend): auto-include required modules in WithModules option
+- fix(backend): restore validateSecrets and scheduled backup task in pkg/mediaserver
+- refactor(server): restructure main.go to use pkg/mediaserver for server initialization
+- feat(frontend): add moderation audit trail to content review queue
+- feat(frontend): add backup scheduling UI to admin data panel
+- feat(backend): add scheduled automatic backup support
+- feat(frontend): add trend indicators and multi-metric chart to analytics
+- feat(frontend): replace raw JSON config editor with structured forms
+- feat(frontend): show completion timestamps and duration in watch history
+- feat(frontend): add personal stats dashboard to profile page
+- feat(frontend): add suggestion profile reset button to profile page
+- Update FEATURE_GAP_REPORT.md
+- Revert "chore(frontend): remove dead code and deduplicate formatUptime"
+- chore(frontend): remove dead code and deduplicate formatUptime
+- chore(backend): remove dead stub and stale audit snapshots
+- chore: clear session handoff buffer
+- fix(backend): database layer bugs — duplicate check, error swallowing, index
+- fix(backend): critical playlist removal bug, auth response, password race
+- docs: update code audit, add audit report, update handoff state
+- fix(frontend): profile and upload UX improvements
+- fix(frontend): add missing confirmation dialogs and safety guards to admin panels
+- feat(frontend): add auto-play, auto-next, mobile skip, graphic equalizer to player
+- fix(frontend): critical audit fixes — security, player bugs, auth hardening
+- fix(frontend): add Admin prefix to sub-panel component names in System and Sources tabs
+- fix(frontend): use UTabs #content slot for System, Content, Security sub-panels
+- fix(frontend): add loading guards to admin backup, content review, discovery actions
+- fix(frontend): add error feedback for audit log load and player playlist load
+- fix(frontend): add per-row loading guards to admin media table actions
+- fix(frontend): reload config from server on admin settings save failure
+- fix(frontend): upload progress polling error feedback and cleanup on unmount
+- fix(backend): scan dedup guard, HLS access debounce, thumbnail param validation
+- fix(backend): nil-guard deletion requests DB, improve task error responses
+- fix(contract): update validator spec path→id to match handler bindings
+- fix(backend): wire delete-account route, add analytics validation, fix storage response
+- fix(contract): align OpenAPI spec parameter names with implementation
+- chore: clean up deploy.sh — remove dead code and fix defaults
+- fix(frontend): restore missing React features — downloader, playlists, guest login
+- fix(frontend): gate download button on can_download permission
+- feat: access control, data privacy, HLS cache protection, and scheduling
+- feat: add agent workflow slash commands for project maintenance
+- fix: resolve duplicate :class attribute build error in player.vue
+- feat: backup type selection, throttle player updates, admin user filters
+- feat: add Play All button and limit suggestion API payloads
+- feat: restore full keyboard shortcuts, theater mode, and frame stepping
+- fix: resolve WebSocket unmount race, login double-submit, and playlist error handling
+- fix: resolve memory leak and playback position race condition in player
+- fix: add timeout and error limits to HLS polling loop
+- fix: guard null access in DiscoveryTab recent_items and StreamingTab job id title
+- fix: handle deleteBackup rejection, surface categories load error, auth-aware loading for categories page
+- fix: resolve analytics export period filter, approve/reject error handling, and playlist non-null assertions
+- fix: guard remaining unguarded date displays in admin components
+- fix: guard all unguarded date displays in admin panel components
+- fix: playlist play URL and unguarded date displays
+- fix: apply auth-aware load pattern to profile and favorites pages
+- Update profile.vue
+- fix: favorites thumbnail URL, player dynamic title, playlists date guard
+- fix: resolve 4 confirmed frontend bugs from live site audit
+- docs: comprehensive frontend code audit v0.125.0
+- docs: remove stale audit report, deep-update backend API summary
+- chore: improvement cycle 2026-03-28
+- docs: update gap report and improvement log — cycle 2026-03-28
+- feat(frontend): analytics event data, backup file count, scanner queue fix
+- chore: improvement cycle 2026-03-28
+- feat(frontend): multi-select bulk delete on playlists page — select mode with checkboxes, bulk delete confirmation modal
+- feat(backend): POST /api/playlists/bulk-delete — user-owned bulk playlist delete with ownership verification
+- feat(frontend): CSS bar chart for daily views in admin analytics — horizontal bars above the table, newest day at top
+- feat(frontend): URL deep-linking for browse filters — query params take precedence over saved prefs; URL stays in sync as filters change
+- fix(frontend): coerce pipSupported to boolean to fix TS2322 typecheck error
+- refactor(frontend): extract PlayerControls + RecommendationRow components
+- refactor(frontend): split SystemTab into 4 focused sub-panel components
+- chore: improvement cycle 2026-03-28
+- docs: update gap report and live site audit log — cycle 2026-03-28
+- feat(frontend): previous session date, type preferences, and ratings distribution on profile page
+- refactor(frontend): split SourcesTab into focused sub-panel components
+- feat(frontend): backup retention config + scanner confidence threshold UI
+- feat(frontend): public playlist browsing section on playlists page
+- feat(backend): GET /api/playlists/public — public playlist browsing
+- feat(frontend): structured user type and permissions form in admin UsersTab
+- feat(frontend): CORS/HTTPS/HSTS toggles in admin Security Settings tab
+- feat(frontend): add Bitrate and Codec to browse sort dropdown
+- feat(backend): add bitrate and codec sort options to media SortItems
+- feat(frontend): Reset Recommendation Profile button on profile page
+- feat(backend): DELETE /api/suggestions/profile — reset user suggestion profile
+- feat(frontend): watch history completion badge + S##E## episode labels
+- feat(frontend): blur-hash progressive placeholders on library thumbnails
+- feat(frontend): download enabled/require_auth config toggles in DownloaderTab
+- feat(frontend): HLS auto-generate toggle in admin StreamingTab
+- refactor(frontend): code quality — items 8–10
+- refactor(frontend): code quality — 7 audit items resolved
+- chore: improvement cycle 2026-03-28
+- docs: update gap report — mark resolved P0 items and add update note
+- feat(frontend): min_rating filter, RSS subscribe button, admin developer links
+- fix(frontend): replace truncating horizontal tabs with sidebar nav on admin panel
+- chore: improvement cycle 2026-03-28
+- feat(frontend): watch history All/In-Progress/Completed filter on profile page
+- feat(backend): add ?completed=true|false filter to GET /api/watch-history
+- feat(frontend): On Deck row on home page — next episode per TV show / Anime
+- feat(backend): add GET /api/suggestions/on-deck for next-episode per TV show
+- feat(frontend): persist playback speed preference on cycle
+- chore: improvement cycle 2026-03-28 23:00
+- feat(frontend): tag chips + hide-watched filter + player keyboard shortcuts
+- feat(backend): add hide_watched filter to GET /api/media
+- fix(frontend): prevent preview frame 404 from hiding main thumbnail
+- fix(backend): preview thumbnails — don't return URLs for in-progress files
+- chore: improvement cycle 2026-03-28 22:00
+- feat(frontend): user rating badges on browse cards, rating sort, new-since-last-visit row
+- feat(backend): user ratings on browse cards, sort/filter by rating, new-since-last-visit
+- chore: improvement cycle 2026-03-28 21:00
+- feat(frontend): watch history export, loop mode, playlist auto-advance
+- feat(backend): add GET /api/watch-history/export for CSV download
+- chore: improvement cycle 2026-03-28 20:00
+- feat(frontend): categories browse page, recently added row, my ratings section
+- feat(backend): categories browse, user ratings list, recent content endpoints
+- chore: improvement cycle 2026-03-28 19:00
+- feat(frontend): favorites + API token management UI
+- feat(backend): favorites + user API tokens
+- chore: improvement cycle 2026-03-28 18:00
+- feat(frontend): progress bars, profile stats, timestamp deep-links
+- feat(backend): add profile stats + batch positions endpoints
+- chore: improvement cycle 2026-03-28 17:00
+- feat(backend): add Atom feed at GET /api/feed
+- feat(frontend): persist filter_category + filter_media_type on change
+- feat(backend): serve embedded OpenAPI spec at GET /api/docs
+- chore: improvement cycle 2026-03-28
+- fix(frontend): self-healing thumbnail retry — reactive failed sets + backoff probe
+- feat: add Tier-1 gap report improvements
+- docs: add comprehensive feature gap analysis report
+- Create FRONTEND_CODE_AUDIT.md
+- Create BACKEND_API_SUMMARY.md
+- cleanup
+- cleanup
+- feat: add mobile hamburger menu; fix broken thumbnail handling in strips/list
+- fix: age gate blocks page content; strengthen mature content blur
+- ci: serialize pipeline and eliminate redundant parallel runs
+- ci: fix workflow interference and self-cancellation
+
+
 ## [0.125.0] - 2026-03-29 (minor)
 
 - Merge pull request #111 from bradselph/development
