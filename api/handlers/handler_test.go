@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/tls"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -173,6 +174,21 @@ func TestIsSecureRequest(t *testing.T) {
 	req.Header.Set("Cf-Visitor", `{"scheme":"https"}`)
 	if !isSecureRequest(req) {
 		t.Error("Cf-Visitor with https from trusted proxy should be secure")
+	}
+
+	// Cf-Visitor from untrusted client — must not be treated as HTTPS
+	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.5:1234"
+	req.Header.Set("Cf-Visitor", `{"scheme":"https"}`)
+	if isSecureRequest(req) {
+		t.Error("Cf-Visitor from untrusted client should not be secure")
+	}
+
+	// Direct TLS (no proxy headers)
+	req = httptest.NewRequest("GET", "/", nil)
+	req.TLS = &tls.ConnectionState{}
+	if !isSecureRequest(req) {
+		t.Error("request with TLS should be secure regardless of headers")
 	}
 }
 
