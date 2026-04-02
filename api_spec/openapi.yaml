@@ -5,7 +5,7 @@ info:
     Modular media streaming server providing video/audio streaming with HLS
     adaptive streaming, thumbnail generation, analytics, user authentication,
     mature content scanning, and admin management.
-  version: 0.0.2
+  version: 0.0.3
   license:
     name: Proprietary
 
@@ -491,6 +491,24 @@ components:
                 type: string
               timestamp:
                 type: integer
+        today_logins:
+          type: integer
+          description: Successful logins today (server-tracked traffic)
+        today_logins_failed:
+          type: integer
+          description: Failed login attempts today
+        today_registrations:
+          type: integer
+          description: New user registrations today
+        today_age_gate_passes:
+          type: integer
+          description: Age-gate verifications completed today
+        today_downloads:
+          type: integer
+          description: Media download events today
+        today_searches:
+          type: integer
+          description: Library search requests with non-empty query today
 
     AnalyticsEvent:
       type: object
@@ -1085,6 +1103,23 @@ components:
           type: array
           items:
             type: string
+        logins:
+          type: integer
+          description: Successful logins that day
+        logins_failed:
+          type: integer
+        logouts:
+          type: integer
+        registrations:
+          type: integer
+          description: New registrations that day (also increments new_users)
+        age_gate_passes:
+          type: integer
+        downloads:
+          type: integer
+        searches:
+          type: integer
+          description: Non-empty media list searches
 
     TopMediaItem:
       type: object
