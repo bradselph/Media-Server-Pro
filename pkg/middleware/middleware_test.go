@@ -279,7 +279,7 @@ func TestAllowOrigin(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// isTrustedProxy
+// IsTrustedProxy
 // ---------------------------------------------------------------------------
 
 func TestIsTrustedProxy(t *testing.T) {
@@ -297,9 +297,9 @@ func TestIsTrustedProxy(t *testing.T) {
 		{"invalid", false},
 	}
 	for _, tc := range tests {
-		got := isTrustedProxy(tc.ip)
+		got := IsTrustedProxy(tc.ip)
 		if got != tc.want {
-			t.Errorf("isTrustedProxy(%q) = %v, want %v", tc.ip, got, tc.want)
+			t.Errorf("IsTrustedProxy(%q) = %v, want %v", tc.ip, got, tc.want)
 		}
 	}
 }

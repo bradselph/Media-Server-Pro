@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/auth"
 	"media-server-pro/pkg/models"
 )
@@ -68,6 +69,13 @@ func (h *Handler) Login(c *gin.Context) {
 			SameSite: http.SameSiteStrictMode,
 			Secure:   isSecureRequest(c.Request),
 		})
+		if h.analytics != nil {
+			h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+				Type: analytics.EventLogin, UserID: session.UserID, SessionID: session.ID,
+				IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+				Data: map[string]interface{}{"username": session.Username, "role": string(session.Role)},
+			})
+		}
 		writeSuccess(c, map[string]interface{}{
 			"session_id": session.ID,
 			"username":   session.Username,
@@ -80,6 +88,17 @@ func (h *Handler) Login(c *gin.Context) {
 
 	session, err := h.auth.Authenticate(c.Request.Context(), authReq)
 	if err != nil {
+		// Track failed login attempt
+		if h.analytics != nil {
+			reason := "invalid_credentials"
+			if errors.Is(err, auth.ErrAccountLocked) {
+				reason = "account_locked"
+			}
+			h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+				Type: analytics.EventLoginFailed, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+				Data: map[string]interface{}{"username": req.Username, "reason": reason},
+			})
+		}
 		if errors.Is(err, auth.ErrAccountLocked) {
 			writeError(c, http.StatusTooManyRequests, "Too many failed login attempts. Please try again later.")
 			return
@@ -97,6 +116,15 @@ func (h *Handler) Login(c *gin.Context) {
 		SameSite: http.SameSiteStrictMode,
 		Secure:   isSecureRequest(c.Request),
 	})
+
+	// Track successful login for traffic analytics
+	if h.analytics != nil {
+		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+			Type: analytics.EventLogin, UserID: session.UserID, SessionID: session.ID,
+			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+			Data: map[string]interface{}{"username": session.Username, "role": string(session.Role)},
+		})
+	}
 
 	writeSuccess(c, map[string]interface{}{
 		"session_id": session.ID,
@@ -117,6 +145,20 @@ func (h *Handler) Logout(c *gin.Context) {
 				h.log.Warn("Failed to logout session: %v", logoutErr)
 			}
 		}
+	}
+
+	// Track logout for traffic analytics
+	if h.analytics != nil {
+		sess := getSession(c)
+		var uid, sid string
+		if sess != nil {
+			uid = sess.UserID
+			sid = sess.ID
+		}
+		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+			Type: analytics.EventLogout, UserID: uid, SessionID: sid,
+			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+		})
 	}
 
 	clearSessionCookie(c.Writer, c.Request)
@@ -220,6 +262,15 @@ func (h *Handler) Register(c *gin.Context) {
 		SameSite: http.SameSiteStrictMode,
 		Secure:   isSecureRequest(c.Request),
 	})
+
+	// Track registration for traffic analytics
+	if h.analytics != nil {
+		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+			Type: analytics.EventRegister, UserID: session.UserID, SessionID: session.ID,
+			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+			Data: map[string]interface{}{"username": req.Username},
+		})
+	}
 
 	writeSuccess(c, user)
 }
@@ -609,15 +660,6 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 
 	if len(req.NewPassword) < 8 {
 		writeError(c, http.StatusBadRequest, "New password must be at least 8 characters")
-		return
-	}
-
-	if user.Role == models.RoleAdmin && user.ID == "admin" {
-		if err := h.auth.ChangeAdminPassword(c.Request.Context(), req.CurrentPassword, req.NewPassword); err != nil {
-			writeError(c, http.StatusUnauthorized, "Current password is incorrect")
-			return
-		}
-		writeSuccess(c, map[string]string{"status": "password_changed"})
 		return
 	}
 

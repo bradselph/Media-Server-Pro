@@ -41,6 +41,15 @@ const (
 	EventBuffering     = "buffering"
 	EventVolumeChange  = "volume_change"
 	EventFullscreen    = "fullscreen"
+
+	// Traffic / auth events (server-generated, not client-submitted)
+	EventLogin       = "login"
+	EventLoginFailed = "login_failed"
+	EventLogout      = "logout"
+	EventRegister    = "register"
+	EventAgeGatePass = "age_gate_pass"
+	EventDownload    = "download"
+	EventSearch      = "search"
 )
 
 // ClientEventInput holds parameters for SubmitClientEvent.
@@ -139,12 +148,54 @@ func (m *Module) TrackPlayback(ctx context.Context, params PlaybackParams) {
 	})
 }
 
+// TrafficEventParams holds parameters for server-generated traffic events.
+type TrafficEventParams struct {
+	Type      string
+	UserID    string
+	SessionID string
+	IPAddress string
+	UserAgent string
+	Data      map[string]interface{}
+}
+
+// TrackTrafficEvent records a server-generated traffic event (login, register, age gate, etc.).
+func (m *Module) TrackTrafficEvent(ctx context.Context, params TrafficEventParams) {
+	data := params.Data
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	m.TrackEvent(ctx, models.AnalyticsEvent{
+		Type:      params.Type,
+		UserID:    params.UserID,
+		SessionID: params.SessionID,
+		IPAddress: params.IPAddress,
+		UserAgent: params.UserAgent,
+		Data:      data,
+	})
+}
+
+// TrackDownload records a media download event.
+func (m *Module) TrackDownload(ctx context.Context, params ViewParams) {
+	m.TrackEvent(ctx, models.AnalyticsEvent{
+		Type:      EventDownload,
+		MediaID:   params.MediaID,
+		UserID:    params.UserID,
+		SessionID: params.SessionID,
+		IPAddress: params.IPAddress,
+		UserAgent: params.UserAgent,
+		Data:      map[string]interface{}{"timestamp": time.Now()},
+	})
+}
+
 // SubmitClientEvent processes an event submitted by a client.
 func (m *Module) SubmitClientEvent(ctx context.Context, input ClientEventInput) {
 	validTypes := map[string]bool{
 		EventPlay: true, EventPause: true, EventResume: true, EventSeek: true,
 		EventComplete: true, EventError: true, EventQualityChange: true,
 		EventBuffering: true, EventVolumeChange: true, EventFullscreen: true,
+		EventLogin: true, EventLoginFailed: true, EventLogout: true,
+		EventRegister: true, EventAgeGatePass: true, EventDownload: true,
+		EventSearch: true,
 		"view": true, "playback": true,
 	}
 

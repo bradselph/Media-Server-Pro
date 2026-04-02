@@ -44,6 +44,7 @@ import (
 	"media-server-pro/internal/updater"
 	"media-server-pro/internal/upload"
 	"media-server-pro/internal/validator"
+	"media-server-pro/pkg/middleware"
 	"media-server-pro/pkg/models"
 )
 
@@ -261,15 +262,23 @@ func isClientDisconnect(err error) bool {
 }
 
 // isSecureRequest detects HTTPS connections, including behind TLS-terminating reverse proxies.
+// X-Forwarded-Proto and Cf-Visitor are only honored when the request comes from a trusted proxy
+// to prevent clients from spoofing HTTPS on plain HTTP connections.
 func isSecureRequest(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
 	}
-	if r.Header.Get("X-Forwarded-Proto") == "https" {
-		return true
+	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		remoteIP = r.RemoteAddr
 	}
-	if strings.Contains(r.Header.Get("Cf-Visitor"), `"scheme":"https"`) {
-		return true
+	if middleware.IsTrustedProxy(remoteIP) {
+		if r.Header.Get("X-Forwarded-Proto") == "https" {
+			return true
+		}
+		if strings.Contains(r.Header.Get("Cf-Visitor"), `"scheme":"https"`) {
+			return true
+		}
 	}
 	return false
 }
@@ -329,7 +338,10 @@ func requireModule(c *gin.Context, module any, name string) bool {
 	return true
 }
 
-func (h *Handler) requireAdmin(c *gin.Context) bool { return requireModule(c, h.admin, "Admin module") }
+// requireAdminModule checks that the admin module is initialized (not an auth check).
+func (h *Handler) requireAdminModule(c *gin.Context) bool {
+	return requireModule(c, h.admin, "Admin module")
+}
 func (h *Handler) requirePlaylist(c *gin.Context) bool {
 	return requireModule(c, h.playlist, "Playlist feature")
 }

@@ -276,6 +276,14 @@ export interface DailyStats {
   total_watch_time: number
   new_users: number
   top_media: string[]
+  // Traffic breakdown
+  logins: number
+  logins_failed: number
+  logouts: number
+  registrations: number
+  age_gate_passes: number
+  downloads: number
+  searches: number
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

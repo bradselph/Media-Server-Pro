@@ -34,7 +34,7 @@ func redactSensitiveConfigKeys(m map[string]interface{}) map[string]interface{} 
 
 // AdminGetConfig returns the current configuration
 func (h *Handler) AdminGetConfig(c *gin.Context) {
-	if !h.requireAdmin(c) {
+	if !h.requireAdminModule(c) {
 		return
 	}
 	cfg := h.admin.GetConfigMap()
@@ -65,7 +65,7 @@ func filterDeniedConfigKeys(updates map[string]interface{}) []string {
 
 // AdminUpdateConfig updates the configuration (raw updates passed to admin; some changes require restart).
 func (h *Handler) AdminUpdateConfig(c *gin.Context) {
-	if !h.requireAdmin(c) {
+	if !h.requireAdminModule(c) {
 		return
 	}
 	var updates map[string]interface{}

@@ -230,7 +230,10 @@ watch(revealedToken, (val) => {
   else if (revealedTokenTimer) { clearTimeout(revealedTokenTimer); revealedTokenTimer = null }
 })
 
-onUnmounted(() => { if (revealedTokenTimer) clearTimeout(revealedTokenTimer) })
+onUnmounted(() => {
+  if (revealedTokenTimer) clearTimeout(revealedTokenTimer)
+  revealedToken.value = null
+})
 
 async function copyToken() {
   if (!revealedToken.value) return

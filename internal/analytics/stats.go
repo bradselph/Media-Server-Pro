@@ -23,6 +23,14 @@ type Summary struct {
 	TotalViews     int     `json:"total_views"`
 	TotalMedia     int     `json:"total_media"`
 	TotalWatchTime float64 `json:"total_watch_time"`
+
+	// Today's traffic breakdown
+	TodayLogins       int `json:"today_logins"`
+	TodayLoginsFailed int `json:"today_logins_failed"`
+	TodayRegistrations int `json:"today_registrations"`
+	TodayAgeGatePasses int `json:"today_age_gate_passes"`
+	TodayDownloads    int `json:"today_downloads"`
+	TodaySearches     int `json:"today_searches"`
 }
 
 // Stats holds statistics for metrics export.
@@ -69,6 +77,21 @@ func (m *Module) updateDailyStatsLocked(event models.AnalyticsEvent, today strin
 		m.applyViewToDailyStatsLocked(event, daily, today)
 	case "playback":
 		m.applyPlaybackToDailyStatsLocked(event, daily)
+	case EventLogin:
+		daily.Logins++
+	case EventLoginFailed:
+		daily.LoginsFailed++
+	case EventLogout:
+		daily.Logouts++
+	case EventRegister:
+		daily.NewUsers++
+		daily.Registrations++
+	case EventAgeGatePass:
+		daily.AgeGatePasses++
+	case EventDownload:
+		daily.Downloads++
+	case EventSearch:
+		daily.Searches++
 	}
 }
 
@@ -283,6 +306,12 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 	today := time.Now().Format(dateFormat)
 	if daily, ok := m.dailyStats[today]; ok {
 		summary.TodayViews = daily.TotalViews
+		summary.TodayLogins = daily.Logins
+		summary.TodayLoginsFailed = daily.LoginsFailed
+		summary.TodayRegistrations = daily.Registrations
+		summary.TodayAgeGatePasses = daily.AgeGatePasses
+		summary.TodayDownloads = daily.Downloads
+		summary.TodaySearches = daily.Searches
 	}
 	for _, stats := range m.mediaStats {
 		summary.TotalViews += stats.TotalViews
@@ -339,7 +368,7 @@ func (m *Module) reconstructStats() {
 	m.log.Debug("Reconstructed stats from %d events", len(events))
 }
 
-// rebuildStatsFromEvent updates in-memory maps from a stored event (only TotalViews/LastViewed; other stats repopulate from new events).
+// rebuildStatsFromEvent updates in-memory maps from a stored event.
 func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 	today := event.Timestamp.Format(dateFormat)
 	daily, exists := m.dailyStats[today]
@@ -347,8 +376,24 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 		daily = &models.DailyStats{Date: today}
 		m.dailyStats[today] = daily
 	}
-	if event.Type == "view" {
+	switch event.Type {
+	case "view":
 		daily.TotalViews++
+	case EventLogin:
+		daily.Logins++
+	case EventLoginFailed:
+		daily.LoginsFailed++
+	case EventLogout:
+		daily.Logouts++
+	case EventRegister:
+		daily.NewUsers++
+		daily.Registrations++
+	case EventAgeGatePass:
+		daily.AgeGatePasses++
+	case EventDownload:
+		daily.Downloads++
+	case EventSearch:
+		daily.Searches++
 	}
 
 	if event.MediaID == "" {

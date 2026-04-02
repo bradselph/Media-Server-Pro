@@ -95,8 +95,9 @@ async function runDbQuery() {
   } finally { dbQueryRunning.value = false }
 }
 
-// Restore confirmation
+// Restore / delete confirmation
 const confirmRestoreId = ref<string | null>(null)
+const confirmDeleteId = ref<string | null>(null)
 
 // Per-backup loading guard to prevent duplicate restore/delete operations
 const backupBusy = ref<Set<string>>(new Set())
@@ -224,7 +225,7 @@ onMounted(() => {
                 color="error"
                 aria-label="Delete backup"
                 :loading="backupBusy.has(`delete-${row.original.id}`)"
-                @click="deleteBackup(row.original.id)"
+                @click="confirmDeleteId = row.original.id"
               />
             </div>
           </template>
@@ -247,6 +248,21 @@ onMounted(() => {
       <template #footer>
         <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmRestoreId = null" />
         <UButton color="warning" label="Restore" :loading="!!confirmRestoreId && backupBusy.has(`restore-${confirmRestoreId}`)" @click="executeRestore" />
+      </template>
+    </UModal>
+
+    <!-- Delete confirmation -->
+    <UModal
+      :open="!!confirmDeleteId"
+      title="Delete Backup"
+      @update:open="val => { if (!val) confirmDeleteId = null }"
+    >
+      <template #body>
+        <p>Are you sure you want to permanently delete this backup? This action cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmDeleteId = null" />
+        <UButton color="error" label="Delete" :loading="!!confirmDeleteId && backupBusy.has(`delete-${confirmDeleteId}`)" @click="() => { const id = confirmDeleteId; confirmDeleteId = null; if (id) deleteBackup(id) }" />
       </template>
     </UModal>
 

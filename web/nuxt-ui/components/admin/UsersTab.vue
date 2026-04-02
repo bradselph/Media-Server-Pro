@@ -145,6 +145,15 @@ async function load() {
 }
 
 async function handleCreate() {
+  if (createLoading.value) return
+  if (!createForm.username.trim()) {
+    createError.value = 'Username is required'
+    return
+  }
+  if (createForm.username.trim().length < 3) {
+    createError.value = 'Username must be at least 3 characters'
+    return
+  }
   createLoading.value = true
   createError.value = ''
   try {

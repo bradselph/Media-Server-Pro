@@ -60,7 +60,17 @@ async function loadConfig() {
   }
 }
 
+const jsonError = ref('')
+
 async function saveConfig() {
+  jsonError.value = ''
+  if (showRawJson.value) {
+    try { JSON.parse(rawJsonText.value) }
+    catch (e) {
+      jsonError.value = e instanceof SyntaxError ? e.message : 'Invalid JSON'
+      return
+    }
+  }
   saving.value = true
   try {
     const payload = showRawJson.value ? JSON.parse(rawJsonText.value) : config.value
@@ -79,6 +89,14 @@ async function saveConfig() {
 }
 
 async function changeAdminPassword() {
+  if (!pwCurrent.value) {
+    toast.add({ title: 'Current password is required', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
+  if (pwNew.value.length < 8) {
+    toast.add({ title: 'New password must be at least 8 characters', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
   if (pwNew.value !== pwConfirm.value) {
     toast.add({ title: 'Passwords do not match', color: 'error', icon: 'i-lucide-x' })
     return
@@ -131,7 +149,8 @@ onMounted(loadConfig)
       <template v-if="showRawJson">
         <UCard>
           <template #header><div class="font-semibold text-sm">Raw Configuration (JSON)</div></template>
-          <UTextarea v-model="rawJsonText" :rows="24" class="font-mono text-xs" />
+          <UTextarea v-model="rawJsonText" :rows="24" class="font-mono text-xs" @input="jsonError = ''" />
+          <UAlert v-if="jsonError" :title="jsonError" color="error" variant="soft" icon="i-lucide-x-circle" class="mt-2" />
         </UCard>
       </template>
 

@@ -48,7 +48,8 @@ function stopPolling() {
   }
 }
 
-onUnmounted(stopPolling)
+let destroyed = false
+onUnmounted(() => { destroyed = true; stopPolling() })
 
 async function checkForUpdates() {
   checking.value = true
@@ -71,6 +72,7 @@ async function applyUpdate() {
     if (status.value?.in_progress) {
       stopPolling()
       pollInterval.value = setInterval(async () => {
+        if (destroyed) { stopPolling(); return }
         try {
           const s = await adminApi.getUpdateStatus()
           status.value = s
@@ -111,6 +113,7 @@ async function applySourceUpdate() {
     if (status.value?.in_progress) {
       stopPolling()
       pollInterval.value = setInterval(async () => {
+        if (destroyed) { stopPolling(); return }
         try {
           const s = await adminApi.getSourceUpdateProgress()
           status.value = s

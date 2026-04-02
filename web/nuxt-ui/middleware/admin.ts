@@ -7,7 +7,9 @@
 // prevents a redirect-flash if that invariant ever changes (e.g. lazy plugin).
 export default defineNuxtRouteMiddleware(to => {
   const authStore = useAuthStore()
-  if (!authStore.isLoading && !authStore.isAdmin) {
+  // Block navigation while session is still resolving — do not allow through
+  if (authStore.isLoading) return abortNavigation()
+  if (!authStore.isAdmin) {
     return navigateTo({ path: '/admin-login', query: { redirect: to.fullPath } })
   }
 })

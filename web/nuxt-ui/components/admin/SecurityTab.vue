@@ -98,13 +98,31 @@ const banned = ref<BannedIP[]>([])
 const newIP = ref('')
 const newComment = ref('')
 const ipLoading = ref(false)
+const ipError = ref('')
 
-async function loadWhitelist() { whitelist.value = (await adminApi.getWhitelist()) ?? [] }
-async function loadBlacklist() { blacklist.value = (await adminApi.getBlacklist()) ?? [] }
-async function loadBanned() { banned.value = (await adminApi.getBannedIPs()) ?? [] }
+// Basic IP/CIDR format validation
+const IP_CIDR_RE = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$|^([0-9a-fA-F:]+)(\/\d{1,3})?$/
+
+async function loadWhitelist() {
+  try { whitelist.value = (await adminApi.getWhitelist()) ?? [] }
+  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load whitelist', color: 'error', icon: 'i-lucide-alert-circle' }) }
+}
+async function loadBlacklist() {
+  try { blacklist.value = (await adminApi.getBlacklist()) ?? [] }
+  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load blacklist', color: 'error', icon: 'i-lucide-alert-circle' }) }
+}
+async function loadBanned() {
+  try { banned.value = (await adminApi.getBannedIPs()) ?? [] }
+  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load banned IPs', color: 'error', icon: 'i-lucide-alert-circle' }) }
+}
 
 async function addToList(type: 'whitelist' | 'blacklist') {
   if (!newIP.value) return
+  if (!IP_CIDR_RE.test(newIP.value.trim())) {
+    ipError.value = 'Invalid IP address or CIDR format'
+    return
+  }
+  ipError.value = ''
   ipLoading.value = true
   try {
     if (type === 'whitelist') await adminApi.addToWhitelist(newIP.value, newComment.value || undefined)
@@ -146,6 +164,10 @@ const banning = ref(false)
 
 async function banIPAddress() {
   if (!newBanIP.value) return
+  if (!IP_CIDR_RE.test(newBanIP.value.trim())) {
+    toast.add({ title: 'Invalid IP address or CIDR format', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
   banning.value = true
   try {
     const dur = parseInt(newBanDuration.value)
@@ -183,7 +205,7 @@ watch(subTab, (v) => {
     <!-- Audit log -->
     <div v-if="item.value === 'audit'" class="space-y-3">
       <div class="flex gap-2 justify-end">
-        <UButton icon="i-lucide-download" label="Export CSV" size="sm" variant="outline" color="neutral" :to="adminApi.exportAuditLogUrl()" />
+        <UButton icon="i-lucide-download" label="Export CSV" size="sm" variant="outline" color="neutral" :to="adminApi.exportAuditLogUrl()" target="_blank" external />
         <UButton icon="i-lucide-refresh-cw" aria-label="Refresh audit log" variant="ghost" color="neutral" size="sm" @click="loadAudit" />
       </div>
       <UCard>
@@ -236,10 +258,11 @@ watch(subTab, (v) => {
             <div class="font-semibold">Add IP to {{ subTab === 'whitelist' ? 'Whitelist' : 'Blacklist' }}</div>
           </template>
           <div class="flex flex-wrap gap-2">
-            <UInput v-model="newIP" placeholder="IP address or CIDR" class="w-48" />
+            <UInput v-model="newIP" placeholder="IP address or CIDR" class="w-48" @input="ipError = ''" />
             <UInput v-model="newComment" placeholder="Comment (optional)" class="flex-1 min-w-40" />
             <UButton :loading="ipLoading" icon="i-lucide-plus" label="Add" @click="addToList(subTab as 'whitelist' | 'blacklist')" />
           </div>
+          <p v-if="ipError" class="text-sm text-error mt-1">{{ ipError }}</p>
         </UCard>
 
         <!-- List -->

@@ -74,6 +74,20 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		SortDesc: c.Query("sort_order") == "desc",
 	}
 
+	// Track search queries for analytics (non-empty search terms only)
+	if h.analytics != nil && filterNoPagination.Search != "" {
+		sess := getSession(c)
+		uid := ""
+		if sess != nil {
+			uid = sess.UserID
+		}
+		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+			Type: analytics.EventSearch, UserID: uid,
+			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+			Data: map[string]interface{}{"query": filterNoPagination.Search},
+		})
+	}
+
 	allItems := h.media.ListMedia(filterNoPagination)
 
 	// Merge receiver (slave) media into the listing so users see one unified library.
@@ -670,6 +684,20 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 
 	if !h.checkMatureAccess(c, absPath) {
 		return
+	}
+
+	// Track download for analytics
+	if h.analytics != nil {
+		userID := ""
+		sessionID := ""
+		if session != nil {
+			userID = session.UserID
+			sessionID = session.ID
+		}
+		h.analytics.TrackDownload(c.Request.Context(), analytics.ViewParams{
+			MediaID: id, UserID: userID, SessionID: sessionID,
+			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+		})
 	}
 
 	if err := h.streaming.Download(c.Writer, c.Request, absPath); err != nil {

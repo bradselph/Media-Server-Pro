@@ -53,6 +53,8 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     // the Nuxt app context; doing so creates a TDZ error in the production bundle.
     if (res.status === 401 && import.meta.client && !_redirecting) {
       _redirecting = true
+      // Reset after 3s in case navigation didn't happen (e.g. already on auth page)
+      setTimeout(() => { _redirecting = false }, 3000)
       const redirect = window.location.pathname + window.location.search
       const isAuthPage = ['/login', '/signup', '/admin-login'].some(p => redirect.startsWith(p))
       const target = redirect && !isAuthPage

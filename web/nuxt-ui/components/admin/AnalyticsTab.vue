@@ -191,6 +191,30 @@ const EVENT_COLORS: Record<string, string> = {
       </UCard>
     </div>
 
+    <!-- Today's Traffic Breakdown -->
+    <div v-if="summary && (summary.today_logins || summary.today_logins_failed || summary.today_registrations || summary.today_age_gate_passes || summary.today_downloads || summary.today_searches)" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <UCard
+        v-for="item in [
+          { label: 'Logins', value: summary.today_logins ?? 0, icon: 'i-lucide-log-in', color: 'text-success' },
+          { label: 'Failed Logins', value: summary.today_logins_failed ?? 0, icon: 'i-lucide-shield-alert', color: 'text-error' },
+          { label: 'Registrations', value: summary.today_registrations ?? 0, icon: 'i-lucide-user-plus', color: 'text-primary' },
+          { label: 'Age Gate', value: summary.today_age_gate_passes ?? 0, icon: 'i-lucide-shield-check', color: 'text-warning' },
+          { label: 'Downloads', value: summary.today_downloads ?? 0, icon: 'i-lucide-download', color: 'text-info' },
+          { label: 'Searches', value: summary.today_searches ?? 0, icon: 'i-lucide-search', color: 'text-muted' },
+        ].filter(i => i.value > 0)"
+        :key="item.label"
+        :ui="{ body: 'p-3' }"
+      >
+        <div class="flex items-center gap-2">
+          <UIcon :name="item.icon" :class="[item.color, 'size-4 shrink-0']" />
+          <div class="min-w-0">
+            <p class="text-lg font-bold text-highlighted truncate">{{ item.value.toLocaleString() }}</p>
+            <p class="text-xs text-muted">{{ item.label }}</p>
+          </div>
+        </div>
+      </UCard>
+    </div>
+
     <!-- Charts row: Event Distribution + Hourly Activity -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Event Type Distribution -->

@@ -99,5 +99,12 @@ watch(activeTab, tab => {
         </div>
       </div>
     </div>
+
+    <!-- Non-admin fallback -->
+    <div v-else class="flex flex-col items-center justify-center py-20 space-y-4">
+      <UIcon name="i-lucide-shield-x" class="size-12 text-muted" />
+      <p class="text-lg text-muted">You do not have admin access.</p>
+      <UButton to="/" icon="i-lucide-house" label="Go Home" variant="outline" />
+    </div>
   </UContainer>
 </template>
