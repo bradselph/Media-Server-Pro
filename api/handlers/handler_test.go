@@ -151,18 +151,28 @@ func TestIsSecureRequest(t *testing.T) {
 		t.Error("plain HTTP should not be secure")
 	}
 
-	// X-Forwarded-Proto
+	// X-Forwarded-Proto from trusted proxy (loopback)
 	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("X-Forwarded-Proto", "https")
 	if !isSecureRequest(req) {
-		t.Error("X-Forwarded-Proto: https should be secure")
+		t.Error("X-Forwarded-Proto: https from trusted proxy should be secure")
 	}
 
-	// Cloudflare
+	// X-Forwarded-Proto from untrusted client — should NOT be secure
 	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.5:1234"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	if isSecureRequest(req) {
+		t.Error("X-Forwarded-Proto: https from untrusted client should not be secure")
+	}
+
+	// Cloudflare from trusted proxy
+	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("Cf-Visitor", `{"scheme":"https"}`)
 	if !isSecureRequest(req) {
-		t.Error("Cf-Visitor with https should be secure")
+		t.Error("Cf-Visitor with https from trusted proxy should be secure")
 	}
 }
 

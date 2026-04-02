@@ -30,7 +30,7 @@ func parseAuditOffset(q string, defaultVal int) int {
 
 // AdminGetAuditLog returns audit log, optionally filtered by user_id query param.
 func (h *Handler) AdminGetAuditLog(c *gin.Context) {
-	if !h.requireAdmin(c) {
+	if !h.requireAdminModule(c) {
 		return
 	}
 	limit := parseAuditLimit(c.Query("limit"), 100, 1000)
@@ -43,7 +43,7 @@ func (h *Handler) AdminGetAuditLog(c *gin.Context) {
 
 // AdminExportAuditLog exports the audit log as a CSV file download
 func (h *Handler) AdminExportAuditLog(c *gin.Context) {
-	if !h.requireAdmin(c) {
+	if !h.requireAdminModule(c) {
 		return
 	}
 	filename, err := h.admin.ExportAuditLog(c.Request.Context())

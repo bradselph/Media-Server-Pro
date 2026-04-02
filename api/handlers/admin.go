@@ -13,7 +13,7 @@ import (
 
 // AdminGetStats returns admin statistics.
 func (h *Handler) AdminGetStats(c *gin.Context) {
-	if !h.requireAdmin(c) {
+	if !h.requireAdminModule(c) {
 		return
 	}
 	adminStats := h.admin.GetServerStats()
@@ -63,7 +63,7 @@ func (h *Handler) AdminGetStats(c *gin.Context) {
 
 // AdminGetSystemInfo returns system information shaped for the frontend SystemInfo type.
 func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
-	if !h.requireAdmin(c) {
+	if !h.requireAdminModule(c) {
 		return
 	}
 	info := h.admin.GetSystemInfo()

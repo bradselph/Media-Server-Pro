@@ -86,7 +86,7 @@ func extractClientIP(r *http.Request) string {
 		remoteIP = r.RemoteAddr
 	}
 
-	if isTrustedProxy(remoteIP) {
+	if IsTrustedProxy(remoteIP) {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			if idx := strings.IndexByte(xff, ','); idx != -1 {
 				return strings.TrimSpace(xff[:idx])
@@ -187,7 +187,7 @@ func ageGateSecure(r *http.Request) bool {
 	if err != nil {
 		remoteIP = r.RemoteAddr
 	}
-	if isTrustedProxy(remoteIP) {
+	if IsTrustedProxy(remoteIP) {
 		if r.Header.Get("X-Forwarded-Proto") == "https" {
 			return true
 		}

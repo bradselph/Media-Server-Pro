@@ -63,7 +63,9 @@ func initTrustedProxies() {
 	})
 }
 
-func isTrustedProxy(remoteAddr string) bool {
+// IsTrustedProxy reports whether remoteAddr belongs to a trusted proxy range
+// (private networks by default). Exported so handlers can use the same logic.
+func IsTrustedProxy(remoteAddr string) bool {
 	initTrustedProxies()
 	ip := net.ParseIP(remoteAddr)
 	if ip == nil {
@@ -116,7 +118,7 @@ func isHTTPS(c *gin.Context) bool {
 	if err != nil {
 		remoteIP = c.Request.RemoteAddr
 	}
-	if isTrustedProxy(remoteIP) && c.GetHeader("X-Forwarded-Proto") == "https" {
+	if IsTrustedProxy(remoteIP) && c.GetHeader("X-Forwarded-Proto") == "https" {
 		return true
 	}
 	return false
