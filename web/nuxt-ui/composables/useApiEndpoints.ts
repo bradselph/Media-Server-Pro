@@ -5,7 +5,7 @@ import type {
   AdminMediaListResponse, AdminMediaListParams,
   HLSAvailability, HLSCapabilities, HLSJob, HLSStats, HLSValidationResult,
   Playlist, PlaylistItem, AdminPlaylistListResponse, AdminPlaylistStats,
-  AnalyticsSummary, AnalyticsEvent, DailyStats, TopMediaItem, EventStats, EventTypeCounts,
+  AnalyticsSummary, AnalyticsEvent, DailyStats, TopMediaItem, EventStats, EventTypeCounts, ContentPerformanceItem,
   AdminStats, SystemInfo, StreamSession, UploadProgress, UploadResult,
   AuditLogEntry, LogEntry, ScheduledTask, BackupEntry,
   ThumbnailStats, ThumbnailPreviews, ScannerStats, FileScanResult, ReviewQueueItem,
