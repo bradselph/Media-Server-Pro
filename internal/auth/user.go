@@ -436,9 +436,8 @@ func (m *Module) UpdateUserPreferences(ctx context.Context, username string, pre
 	}
 	userCopy := *user
 	userCopy.Preferences = prefs
-	if prefs.ShowMature && !userCopy.Permissions.CanViewMature {
-		userCopy.Permissions.CanViewMature = true
-	}
+	// ShowMature preference only takes effect when user already holds CanViewMature
+	// (admin-granted). Never auto-elevate permissions from a preference update.
 	m.usersMu.Unlock()
 
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {

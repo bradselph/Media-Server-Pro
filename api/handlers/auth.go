@@ -612,15 +612,6 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if user.Role == models.RoleAdmin && user.ID == "admin" {
-		if err := h.auth.ChangeAdminPassword(c.Request.Context(), req.CurrentPassword, req.NewPassword); err != nil {
-			writeError(c, http.StatusUnauthorized, "Current password is incorrect")
-			return
-		}
-		writeSuccess(c, map[string]string{"status": "password_changed"})
-		return
-	}
-
 	if h.auth.VerifyPassword(c.Request.Context(), user.Username, req.CurrentPassword) != nil {
 		writeError(c, http.StatusUnauthorized, "Current password is incorrect")
 		return
