@@ -54,6 +54,9 @@ func (m *Module) Start(_ context.Context) error {
 	}
 	m.log.Info("Thumbnail directory: %s", m.thumbnailDir)
 
+	// Scan existing thumbnails to initialize stats from disk
+	m.scanExistingThumbnails()
+
 	// Check for ffmpeg
 	ffmpegPath, err := helpers.FindBinary("ffmpeg")
 	if err != nil {
