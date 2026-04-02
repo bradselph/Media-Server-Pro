@@ -322,8 +322,8 @@ watch(subTab, (v) => {
     <div v-if="item.value === 'stats' && stats" class="space-y-4">
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <UCard v-for="item in [
-          { label: 'Blocked Total', value: stats.total_blocks_today, icon: 'i-lucide-shield-x' },
-          { label: 'Rate Limited Total', value: stats.total_rate_limited, icon: 'i-lucide-gauge' },
+          { label: 'Blocked (Session)', value: stats.total_blocks_today, icon: 'i-lucide-shield-x' },
+          { label: 'Rate Limited (Session)', value: stats.total_rate_limited, icon: 'i-lucide-gauge' },
           { label: 'Active Rate Limits', value: stats.active_rate_limits, icon: 'i-lucide-activity' },
           { label: 'Banned IPs', value: stats.banned_ips, icon: 'i-lucide-ban' },
           { label: 'Whitelisted', value: stats.whitelisted_ips, icon: 'i-lucide-shield-check' },
