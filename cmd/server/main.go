@@ -166,6 +166,7 @@ func main() {
 			Model:             hfCfg.Model,
 			EndpointURL:       hfCfg.EndpointURL,
 			RequestsPerMinute: rateLimit,
+			MaxConcurrent:     hfCfg.MaxConcurrent,
 			Timeout:           timeout,
 			Log:               log,
 		})

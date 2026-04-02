@@ -14,6 +14,25 @@ import (
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
+// jpegQuality converts the config quality (1-100, higher=better) to ffmpeg's
+// -q:v scale (2-31, lower=better). Returns "2" at quality=100, "31" at quality=1.
+func jpegQuality(configQuality int) string {
+	if configQuality <= 0 || configQuality > 100 {
+		configQuality = 80
+	}
+	q := 2 + (100-configQuality)*29/99
+	return fmt.Sprintf("%d", q)
+}
+
+// webpQuality returns the config quality directly (1-100) for WebP's -q:v flag,
+// which maps linearly to compression quality.
+func webpQuality(configQuality int) string {
+	if configQuality <= 0 || configQuality > 100 {
+		configQuality = 80
+	}
+	return fmt.Sprintf("%d", configQuality)
+}
+
 // generateThumbnail performs the actual thumbnail generation
 func (m *Module) generateThumbnail(job *ThumbnailJob) error {
 	// Ensure output directory exists
@@ -105,13 +124,14 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 
 	// format=yuv420p ensures 8-bit output before JPEG encoding;
 	// without it, 10-bit HDR/HEVC/AV1 sources fail with "codec not supported" errors.
+	cfg := m.config.Get()
 	scaleFilter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
 		job.Width, job.Height, job.Width, job.Height)
 	stream := ffmpeg.Input(job.MediaPath, ffmpeg.KwArgs{"ss": fmt.Sprintf("%.2f", timestamp)}).
 		Output(job.OutputPath, ffmpeg.KwArgs{
 			"vframes": "1",
 			"vf":      scaleFilter,
-			"q:v":     "2",
+			"q:v":     jpegQuality(cfg.Thumbnails.Quality),
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 	cmd := stream.Compile()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -179,6 +199,7 @@ type webPFromVideoOpts struct {
 
 // generateWebPFromVideo extracts a frame and encodes as WebP
 func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
+	cfg := m.config.Get()
 	scaleFilter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
 		opts.width, opts.height, opts.width, opts.height)
 
@@ -187,7 +208,7 @@ func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
 			"vframes": "1",
 			"vf":      scaleFilter,
 			"c:v":     "libwebp",
-			"q:v":     "80",
+			"q:v":     webpQuality(cfg.Thumbnails.Quality),
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 
 	cmd := stream.Compile()
@@ -269,6 +290,7 @@ func (m *Module) updateBlurHashForAudioThumbnail(job *ThumbnailJob) {
 
 // generateWebPFromAudio creates waveform as WebP
 func (m *Module) generateWebPFromAudio(opts *webPFromAudioOpts) error {
+	cfg := m.config.Get()
 	waveformFilter := fmt.Sprintf("showwavespic=s=%dx%d:colors=#0080ff", opts.Width, opts.Height)
 
 	stream := ffmpeg.Input(opts.MediaPath).
@@ -276,7 +298,7 @@ func (m *Module) generateWebPFromAudio(opts *webPFromAudioOpts) error {
 			"filter_complex": waveformFilter,
 			"frames:v":       "1",
 			"c:v":            "libwebp",
-			"q:v":            "80",
+			"q:v":            webpQuality(cfg.Thumbnails.Quality),
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 
 	cmd := stream.Compile()

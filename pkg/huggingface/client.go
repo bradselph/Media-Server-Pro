@@ -54,6 +54,7 @@ type Client struct {
 	model       string
 	endpointURL string
 	rateLimiter *rate.Limiter
+	concSem     chan struct{} // semaphore limiting concurrent API requests
 	log         *logger.Logger
 }
 
@@ -63,6 +64,7 @@ type ClientConfig struct {
 	Model             string
 	EndpointURL       string
 	RequestsPerMinute int
+	MaxConcurrent     int
 	Timeout           time.Duration
 	Log               *logger.Logger
 }
@@ -89,6 +91,12 @@ func NewClient(cfg ClientConfig) *Client {
 	}
 	rl := rate.NewLimiter(rate.Limit(rps), 2)
 
+	maxConc := cfg.MaxConcurrent
+	if maxConc <= 0 {
+		maxConc = 2
+	}
+	sem := make(chan struct{}, maxConc)
+
 	baseURL := resolveBaseURL(cfg.EndpointURL)
 
 	timeout := cfg.Timeout
@@ -103,6 +111,7 @@ func NewClient(cfg ClientConfig) *Client {
 		model:       cfg.Model,
 		endpointURL: baseURL,
 		rateLimiter: rl,
+		concSem:     sem,
 		log:         cfg.Log,
 	}
 }
@@ -115,6 +124,15 @@ func (c *Client) ClassifyImage(ctx context.Context, imageData ImageData) (*Class
 	if c.apiKey == "" {
 		return empty, nil
 	}
+
+	// Acquire concurrency semaphore
+	select {
+	case c.concSem <- struct{}{}:
+		defer func() { <-c.concSem }()
+	case <-ctx.Done():
+		return empty, ctx.Err()
+	}
+
 	if err := c.rateLimiter.Wait(ctx); err != nil {
 		return empty, nil
 	}
