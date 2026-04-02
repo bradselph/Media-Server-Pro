@@ -46,9 +46,10 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-// Version and BuildDate are set at build time via -ldflags:
+// Version and BuildDate are set at build time via -ldflags.
+// deploy.sh reads the VERSION file; CI workflows set them automatically.
 //
-//	go build -ldflags "-X main.Version=4.1.0 -X main.BuildDate=2026-02-26" ./cmd/server
+//	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
 	Version   = "0.125.8"
 	BuildDate = ""
