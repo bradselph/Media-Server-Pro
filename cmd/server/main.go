@@ -273,6 +273,14 @@ func main() {
 	// ── Age gate middleware ────────────────────────────────────────────────
 	appCfg := cfg.Get()
 	ageGate := middleware.NewAgeGate(appCfg.AgeGate)
+	// Wire age gate analytics callback so passage events are tracked
+	if analyticsModule != nil {
+		ageGate.OnVerify = func(ip, userAgent string) {
+			analyticsModule.TrackTrafficEvent(context.Background(), analytics.TrafficEventParams{
+				Type: analytics.EventAgeGatePass, IPAddress: ip, UserAgent: userAgent,
+			})
+		}
+	}
 
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(tasksModule, mediaModule, scannerModule, thumbnailsModule,

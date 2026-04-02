@@ -453,6 +453,15 @@ type DailyStats struct {
 	TotalWatchTime float64  `json:"total_watch_time"`
 	NewUsers       int      `json:"new_users"`
 	TopMedia       []string `json:"top_media"`
+
+	// Traffic breakdown (server-generated events)
+	Logins       int `json:"logins"`
+	LoginsFailed int `json:"logins_failed"`
+	Logouts      int `json:"logouts"`
+	Registrations int `json:"registrations"`
+	AgeGatePasses int `json:"age_gate_passes"`
+	Downloads    int `json:"downloads"`
+	Searches     int `json:"searches"`
 }
 
 // HLSJob represents an HLS transcoding job

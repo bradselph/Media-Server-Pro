@@ -34,6 +34,10 @@ type AgeGate struct {
 	log            *logger.Logger
 	evictMu        sync.Mutex
 	evicting       bool
+	// OnVerify is called when a visitor passes the age gate. Set by the caller
+	// to integrate with analytics without creating a dependency from middleware
+	// to the analytics package.
+	OnVerify func(ip, userAgent string)
 }
 
 // parseBypassCIDR parses a single bypass IP or CIDR string.
@@ -238,6 +242,11 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 				Secure:   ageGateSecure(c.Request),
 			})
 		}
+		// Notify analytics callback if set
+		if ag.OnVerify != nil {
+			ag.OnVerify(extractClientIP(c.Request), c.Request.UserAgent())
+		}
+
 		c.JSON(http.StatusOK, gin.H{"success": true})
 	}
 }
