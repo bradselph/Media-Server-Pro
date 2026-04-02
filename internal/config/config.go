@@ -72,6 +72,7 @@ func (m *Manager) Load() error {
 	m.applyEnvOverrides()
 	m.resolveAbsolutePaths()
 	m.syncFeatureToggles()
+	m.migrateHLSQualityEnabled()
 
 	m.log.Info("Configuration loaded successfully")
 	return nil
@@ -107,6 +108,27 @@ func (m *Manager) syncFeatureToggles() {
 	syncToggle(f.EnableUserAuth, &cfg.Auth.Enabled)
 	syncToggle(f.EnableAdminPanel, &cfg.Admin.Enabled)
 	syncToggle(f.EnableDownloader, &cfg.Downloader.Enabled)
+}
+
+// migrateHLSQualityEnabled sets Enabled=true for HLS quality profiles that
+// were saved before the Enabled field was added. Without this, existing configs
+// would have all profiles disabled (Go zero-value for bool = false).
+func (m *Manager) migrateHLSQualityEnabled() {
+	profiles := m.config.HLS.QualityProfiles
+	if len(profiles) == 0 {
+		return
+	}
+	// If ANY profile has Enabled=true, the config is already migrated.
+	for _, p := range profiles {
+		if p.Enabled {
+			return
+		}
+	}
+	// All profiles are Enabled=false — this is a pre-migration config. Enable all.
+	for i := range profiles {
+		profiles[i].Enabled = true
+	}
+	m.log.Info("Migrated %d HLS quality profiles to include enabled flag", len(profiles))
 }
 
 // Save saves the current configuration to file

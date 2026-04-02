@@ -49,6 +49,36 @@ func (h *Handler) requireSessionWithPlaylistCreate(c *gin.Context) (session *mod
 	return session, true
 }
 
+// hydratePlaylistTitles fills in empty item titles from the media module.
+// Uses a single batch lookup so it only acquires the media lock once.
+func (h *Handler) hydratePlaylistTitles(playlists ...*models.Playlist) {
+	if h.media == nil {
+		return
+	}
+	// Collect media IDs with missing titles
+	var ids []string
+	for _, pl := range playlists {
+		for i := range pl.Items {
+			if pl.Items[i].Title == "" && pl.Items[i].MediaID != "" {
+				ids = append(ids, pl.Items[i].MediaID)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	names := h.media.GetMediaNamesByIDs(ids)
+	for _, pl := range playlists {
+		for i := range pl.Items {
+			if pl.Items[i].Title == "" {
+				if name, ok := names[pl.Items[i].MediaID]; ok {
+					pl.Items[i].Title = name
+				}
+			}
+		}
+	}
+}
+
 // ListPlaylists returns user's playlists
 func (h *Handler) ListPlaylists(c *gin.Context) {
 	if !h.requirePlaylist(c) {
@@ -62,6 +92,7 @@ func (h *Handler) ListPlaylists(c *gin.Context) {
 	if playlists == nil {
 		playlists = []*models.Playlist{}
 	}
+	h.hydratePlaylistTitles(playlists...)
 	writeSuccess(c, playlists)
 }
 
@@ -74,6 +105,7 @@ func (h *Handler) ListPublicPlaylists(c *gin.Context) {
 	if playlists == nil {
 		playlists = []*models.Playlist{}
 	}
+	h.hydratePlaylistTitles(playlists...)
 	writeSuccess(c, playlists)
 }
 
@@ -127,6 +159,7 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 		return
 	}
 
+	h.hydratePlaylistTitles(pl)
 	writeSuccess(c, pl)
 }
 
@@ -160,6 +193,7 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 		writeSuccess(c, map[string]string{"message": "Playlist updated"})
 		return
 	}
+	h.hydratePlaylistTitles(updatedPlaylist)
 	writeSuccess(c, updatedPlaylist)
 }
 

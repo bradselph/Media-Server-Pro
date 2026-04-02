@@ -175,3 +175,64 @@ func TestGetCategories(t *testing.T) {
 		t.Errorf("expected success=true, got %v", result["success"])
 	}
 }
+
+// TestGetBatchMedia_EmptyIDs tests batch endpoint with no ids parameter.
+func TestGetBatchMedia_EmptyIDs(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+
+	resp := ts.Request("GET", "/api/media/batch", nil)
+	result := ts.ParseJSON(resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	data, _ := result["data"].(map[string]any)
+	items, ok := data["items"].(map[string]any)
+	if !ok {
+		t.Fatal("expected items to be a map")
+	}
+	if len(items) != 0 {
+		t.Errorf("expected empty items map, got %d entries", len(items))
+	}
+}
+
+// TestGetBatchMedia_WithIDs tests batch endpoint with non-existent IDs.
+func TestGetBatchMedia_WithIDs(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+
+	resp := ts.Request("GET", "/api/media/batch?ids=fake-id-1,fake-id-2", nil)
+	result := ts.ParseJSON(resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	data, _ := result["data"].(map[string]any)
+	items, ok := data["items"].(map[string]any)
+	if !ok {
+		t.Fatal("expected items to be a map")
+	}
+	// Non-existent IDs are silently omitted
+	if len(items) != 0 {
+		t.Errorf("expected empty items (IDs don't exist), got %d", len(items))
+	}
+}
+
+// TestGetBatchMedia_IDLimit tests that batch is capped at 100 IDs.
+func TestGetBatchMedia_IDLimit(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+
+	// Build 110 fake IDs
+	ids := ""
+	for i := 0; i < 110; i++ {
+		if i > 0 {
+			ids += ","
+		}
+		ids += "fake-" + string(rune('a'+i%26))
+	}
+
+	resp := ts.Request("GET", "/api/media/batch?ids="+ids, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}

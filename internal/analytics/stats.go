@@ -17,11 +17,12 @@ type MediaViewCount struct {
 
 // Summary holds summary statistics.
 type Summary struct {
-	TotalEvents    int `json:"total_events"`
-	ActiveSessions int `json:"active_sessions"`
-	TodayViews     int `json:"today_views"`
-	TotalViews     int `json:"total_views"`
-	TotalMedia     int `json:"total_media"`
+	TotalEvents    int     `json:"total_events"`
+	ActiveSessions int     `json:"active_sessions"`
+	TodayViews     int     `json:"today_views"`
+	TotalViews     int     `json:"total_views"`
+	TotalMedia     int     `json:"total_media"`
+	TotalWatchTime float64 `json:"total_watch_time"`
 }
 
 // Stats holds statistics for metrics export.
@@ -183,6 +184,61 @@ func (m *Module) GetMediaStats(mediaID string) *models.ViewStats {
 	return &models.ViewStats{}
 }
 
+// ContentPerformance holds per-media performance metrics.
+type ContentPerformance struct {
+	MediaID          string  `json:"media_id"`
+	TotalViews       int     `json:"total_views"`
+	TotalPlaybacks   int     `json:"total_playbacks"`
+	TotalCompletions int     `json:"total_completions"`
+	CompletionRate   float64 `json:"completion_rate"`
+	AvgWatchDuration float64 `json:"avg_watch_duration"`
+	UniqueViewers    int     `json:"unique_viewers"`
+}
+
+// GetContentPerformance returns media items sorted by completions/views with rich metrics.
+func (m *Module) GetContentPerformance(limit int) []ContentPerformance {
+	m.statsMu.RLock()
+	defer m.statsMu.RUnlock()
+
+	var items []ContentPerformance
+	for mediaID, stats := range m.mediaStats {
+		items = append(items, ContentPerformance{
+			MediaID:          mediaID,
+			TotalViews:       stats.TotalViews,
+			TotalPlaybacks:   stats.TotalPlaybacks,
+			TotalCompletions: stats.TotalCompletions,
+			CompletionRate:   stats.CompletionRate,
+			AvgWatchDuration: stats.AvgWatchDuration,
+			UniqueViewers:    stats.UniqueViewers,
+		})
+	}
+
+	// Sort by completion count descending, break ties by views
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].TotalCompletions != items[j].TotalCompletions {
+			return items[i].TotalCompletions > items[j].TotalCompletions
+		}
+		return items[i].TotalViews > items[j].TotalViews
+	})
+
+	if limit > 0 && limit < len(items) {
+		items = items[:limit]
+	}
+	return items
+}
+
+// GetTotalWatchTime returns the sum of all daily watch time tracked.
+func (m *Module) GetTotalWatchTime() float64 {
+	m.statsMu.RLock()
+	defer m.statsMu.RUnlock()
+
+	var total float64
+	for _, ds := range m.dailyStats {
+		total += ds.TotalWatchTime
+	}
+	return total
+}
+
 // GetTopMedia returns most viewed media.
 func (m *Module) GetTopMedia(limit int) []MediaViewCount {
 	m.statsMu.RLock()
@@ -230,6 +286,9 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 	}
 	for _, stats := range m.mediaStats {
 		summary.TotalViews += stats.TotalViews
+	}
+	for _, ds := range m.dailyStats {
+		summary.TotalWatchTime += ds.TotalWatchTime
 	}
 	m.statsMu.RUnlock()
 

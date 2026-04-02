@@ -1,5 +1,5 @@
 # Backend API Summary
-> Go/Gin · v0.125.0 · 235+ routes across 39 categories
+> Go/Gin · v0.125.2 · 241+ routes across 39 categories
 > All JSON responses use envelope: `{ "success": bool, "data": T, "error": string }`
 > Auth: `session_id` cookie (HttpOnly, Strict SameSite) **or** `Authorization: Bearer <token>` (API tokens)
 
@@ -52,6 +52,7 @@
 | `GET` | `/api/media/stats` | Public | — | Total counts + sizes + last scan time |
 | `GET` | `/api/media/categories` | Public | — | Category list with item counts |
 | `GET` | `/api/media/:id` | Public | — | Single media item by UUID |
+| `GET` | `/api/media/batch` | Public | `ids=id1,id2,...` (max 100) | Batch lookup — returns `{ items: { [id]: MediaItem } }` |
 
 ---
 
@@ -230,9 +231,10 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 | Method | Path | Auth | Params | Description |
 |--------|------|------|--------|-------------|
 | `POST` | `/api/analytics/events` | Auth | `{ type, media_id, duration?, data? }` | Submit a playback event |
-| `GET` | `/api/analytics` | Admin | `period?` | Summary: total views, active sessions, top media |
+| `GET` | `/api/analytics` | Admin | `period?` | Summary: total views, active sessions, top media, `total_watch_time` |
 | `GET` | `/api/analytics/daily` | Admin | `days?` | Per-day view counts |
 | `GET` | `/api/analytics/top` | Admin | `limit?` | Top-viewed media items |
+| `GET` | `/api/analytics/content` | Admin | `limit?` (default 20) | Content performance: `[{ media_id, name, category, views, watch_time, avg_completion, last_viewed }]` |
 | `GET` | `/api/analytics/events/stats` | Admin | — | Aggregate event counts by type |
 | `GET` | `/api/analytics/events/by-type` | Admin | `type, limit?` | Event list filtered by type |
 | `GET` | `/api/analytics/events/by-media` | Admin | `media_id, limit?` | Events for a specific media item |
@@ -308,7 +310,8 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
 | `POST` | `/api/admin/thumbnails/generate` | Admin | `{ id, is_audio? }` | Force-generate thumbnail for media |
-| `GET` | `/api/admin/thumbnails/stats` | Admin | — | Total thumbnails, size, pending, errors |
+| `POST` | `/api/admin/thumbnails/cleanup` | Admin | — | Remove orphaned, excess, and corrupt (0-byte) thumbnails — returns `{ orphans_removed, excess_removed, corrupt_removed, bytes_freed }` |
+| `GET` | `/api/admin/thumbnails/stats` | Admin | — | Total thumbnails, size, pending, errors, cleanup counters (`orphans_removed`, `excess_removed`, `corrupt_removed`, `last_cleanup`) |
 
 ---
 
@@ -322,7 +325,7 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 | `POST` | `/api/admin/tasks/:id/disable` | Admin | Disable scheduled task |
 | `POST` | `/api/admin/tasks/:id/stop` | Admin | Stop currently running task |
 
-Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `session-cleanup`, `backup-cleanup`, `mature-content-scan`, `hf-classification`, `duplicate-scan`, `audit-log-cleanup`, `health-check`, `hls-pregenerate`
+Tasks: `media-scan`, `metadata-cleanup`, `thumbnail-generation`, `thumbnail-cleanup`, `session-cleanup`, `backup-cleanup`, `mature-content-scan`, `hf-classification`, `duplicate-scan`, `audit-log-cleanup`, `health-check`, `hls-pregenerate`
 
 ---
 

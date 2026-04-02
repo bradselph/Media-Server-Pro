@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/logger"
@@ -54,6 +55,11 @@ type BlurHashUpdater interface {
 	UpdateBlurHash(ctx context.Context, path string, hash string) error
 }
 
+// MediaIDProvider returns the set of all valid media IDs for orphan detection.
+type MediaIDProvider interface {
+	GetAllMediaIDs() map[string]bool
+}
+
 // Module handles thumbnail generation
 type Module struct {
 	log             *logger.Logger
@@ -74,6 +80,7 @@ type Module struct {
 	healthy         bool
 	healthMsg       string
 	blurHashUpdater BlurHashUpdater
+	mediaIDProvider MediaIDProvider
 	// inFlight tracks output paths currently queued or being processed to
 	// prevent duplicate jobs when the background task and HTTP handlers both
 	// call GenerateThumbnail for the same file before it is written to disk.
@@ -199,4 +206,17 @@ type Stats struct {
 	Failed    int64
 	Pending   int64
 	TotalSize int64
+	// Cleanup stats
+	OrphansRemoved int64
+	ExcessRemoved  int64
+	CorruptRemoved int64
+	LastCleanup    time.Time
+}
+
+// CleanupResult holds the result of a single cleanup run.
+type CleanupResult struct {
+	OrphansRemoved int
+	ExcessRemoved  int
+	CorruptRemoved int
+	BytesFreed     int64
 }

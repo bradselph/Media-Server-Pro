@@ -5,7 +5,7 @@ import type {
   AdminMediaListResponse, AdminMediaListParams,
   HLSAvailability, HLSCapabilities, HLSJob, HLSStats, HLSValidationResult,
   Playlist, PlaylistItem, AdminPlaylistListResponse, AdminPlaylistStats,
-  AnalyticsSummary, AnalyticsEvent, DailyStats, TopMediaItem, EventStats, EventTypeCounts,
+  AnalyticsSummary, AnalyticsEvent, DailyStats, TopMediaItem, EventStats, EventTypeCounts, ContentPerformanceItem,
   AdminStats, SystemInfo, StreamSession, UploadProgress, UploadResult,
   AuditLogEntry, LogEntry, ScheduledTask, BackupEntry,
   ThumbnailStats, ThumbnailPreviews, ScannerStats, FileScanResult, ReviewQueueItem,
@@ -102,6 +102,8 @@ export function useMediaApi() {
       return api.get<MediaListResponse>(`/api/media${q ? `?${q}` : ''}`)
     },
     getById: (id: string) => api.get<MediaItem>(`/api/media/${encodeURIComponent(id)}`),
+    getBatch: (ids: string[]) =>
+      api.get<{ items: Record<string, MediaItem> }>(`/api/media/batch?ids=${ids.map(encodeURIComponent).join(',')}`),
     getStats: () => api.get<MediaStats>('/api/media/stats'),
     getCategories: () => api.get<MediaCategory[]>('/api/media/categories'),
     getThumbnailUrl: (id: string) => `/thumbnail?id=${encodeURIComponent(id)}`,
@@ -608,6 +610,10 @@ export function useAnalyticsApi() {
       return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user?${qs}`)
     },
     getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
+    getContentPerformance: (limit?: number) => {
+      const qs = limit ? `?limit=${limit}` : ''
+      return api.get<ContentPerformanceItem[]>(`/api/analytics/content${qs}`)
+    },
     exportCsv: (period?: string) => {
       const today = new Date()
       const fmt = (d: Date) => d.toISOString().slice(0, 10)

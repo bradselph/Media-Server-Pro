@@ -320,6 +320,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET(pathMedia, h.ListMedia)
 	api.GET(pathMedia+pathStats, h.GetMediaStats)
 	api.GET(pathMedia+"/categories", h.GetCategories)
+	api.GET(pathMedia+"/batch", h.GetBatchMedia)
 	api.GET(pathMedia+"/:id", h.GetMedia)
 
 	// Playback
@@ -412,6 +413,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/analytics", adminAuth(authModule), h.GetAnalyticsSummary)
 	api.GET("/analytics/daily", adminAuth(authModule), h.GetDailyStats)
 	api.GET("/analytics/top", adminAuth(authModule), h.GetTopMedia)
+	api.GET("/analytics/content", adminAuth(authModule), h.GetContentPerformance)
 	api.POST("/analytics/events", requireAuth(), h.SubmitEvent)
 	api.GET("/analytics/events/stats", adminAuth(authModule), h.GetEventStats)
 	api.GET("/analytics/events/by-type", adminAuth(authModule), h.GetEventsByType)
@@ -545,6 +547,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 
 	// Thumbnail admin routes
 	adminGrp.POST("/thumbnails/generate", h.GenerateThumbnail)
+	adminGrp.POST("/thumbnails/cleanup", h.CleanupThumbnails)
 	adminGrp.GET("/thumbnails/stats", h.GetThumbnailStats)
 
 	// HLS admin routes

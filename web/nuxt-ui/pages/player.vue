@@ -197,6 +197,7 @@ function submitRating(star: number) {
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
 let positionSaveController: AbortController | null = null
 let preMuteVolume = 1
+let _restorePiP = false
 
 function resetControlsTimer() {
   showControls.value = true
@@ -205,7 +206,10 @@ function resetControlsTimer() {
 }
 
 async function loadMedia(id: string) {
-  loading.value = true
+  // Only show loading spinner on initial load — switching media keeps the video element
+  // alive in the DOM so PiP continues working across auto-next transitions.
+  const isSwitch = !!media.value
+  if (!isSwitch) loading.value = true
   error.value = ''
   similar.value = []
   personalized.value = []
@@ -272,6 +276,13 @@ function onVideoLoaded() {
   if (autoPlay.value && videoRef.value && videoRef.value.paused) {
     videoRef.value.play().catch(() => {})
   }
+  // Restore PiP if we were in PiP before an auto-next transition
+  if (_restorePiP && videoRef.value) {
+    _restorePiP = false
+    videoRef.value.requestPictureInPicture()
+      .then(() => { isPiP.value = true })
+      .catch(() => { _restorePiP = false })
+  }
 }
 
 // Auto-next: navigate to next similar item when video ends (non-playlist context)
@@ -289,6 +300,7 @@ function autoNextFromSuggestions() {
       upNextCountdown.value -= 1
       if (upNextCountdown.value <= 0) {
         cancelUpNext()
+        exitPiPForTransition()
         navigateTo(`/player?id=${encodeURIComponent(next.media_id)}`)
       }
     }, 1000)
@@ -392,6 +404,7 @@ function cancelUpNext() {
 
 function navigateToNextItem() {
   cancelUpNext()
+  exitPiPForTransition()
   const next = nextPlaylistItem.value
   if (!next) return
   const newIdx = playlistIdxParam.value + 1
@@ -436,6 +449,15 @@ async function togglePiP() {
 // Keep isPiP in sync if user closes PiP via browser chrome
 function onPiPChange() {
   isPiP.value = document.pictureInPictureElement === videoRef.value
+}
+
+// Exit PiP before media transition, flag for restoration after new media loads
+async function exitPiPForTransition() {
+  if (document.pictureInPictureElement) {
+    _restorePiP = true
+    try { await document.exitPictureInPicture() } catch {}
+    isPiP.value = false
+  }
 }
 
 // Keyboard shortcuts overlay
@@ -578,13 +600,26 @@ function onFullscreenChange() {
   isFullscreen.value = !!document.fullscreenElement
 }
 
+// Save position when user closes the tab/browser (best-effort via sendBeacon)
+function onBeforeUnload() {
+  if (!mediaId.value || !videoRef.value) return
+  const pos = videoRef.value.currentTime
+  const dur = videoRef.value.duration || 0
+  if (pos > 0) {
+    const body = JSON.stringify({ id: mediaId.value, position: Math.round(pos), duration: Math.round(dur) })
+    navigator.sendBeacon('/api/playback', new Blob([body], { type: 'application/json' }))
+  }
+}
+
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('keydown', onKeyDown)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
 onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   document.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
   if (controlsTimer) clearTimeout(controlsTimer)
 })
 

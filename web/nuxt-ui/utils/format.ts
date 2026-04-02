@@ -45,3 +45,17 @@ export function formatWatchTime(secs?: number, fallback = '—'): string {
   const m = Math.floor((secs % 3600) / 60)
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
+
+/**
+ * Format seconds into a concise uptime string (e.g. "3d 2h 15m").
+ * Used in admin dashboard and downloader health displays.
+ * @param secs  Uptime in seconds
+ * @param fallback  String to return when secs is falsy (default '—')
+ */
+export function formatUptime(secs?: number, fallback = '—'): string {
+  if (!secs) return fallback
+  const d = Math.floor(secs / 86400)
+  const h = Math.floor((secs % 86400) / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  return d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`
+}

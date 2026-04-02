@@ -978,6 +978,18 @@ func (m *Module) GetMediaByID(id string) (*models.MediaItem, error) {
 	return nil, fmt.Errorf("media not found with ID: %s", id)
 }
 
+// GetAllMediaIDs returns the set of all known media IDs for bulk operations
+// like thumbnail cleanup. Callers must not mutate the returned map.
+func (m *Module) GetAllMediaIDs() map[string]bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	ids := make(map[string]bool, len(m.mediaByID))
+	for id := range m.mediaByID {
+		ids[id] = true
+	}
+	return ids
+}
+
 // GetMediaNamesByIDs returns a map of stable-ID → display-name for the given IDs.
 // IDs not found in the library are omitted from the result. Uses a single lock
 // acquisition for the entire batch instead of one per ID.

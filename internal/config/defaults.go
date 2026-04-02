@@ -182,10 +182,10 @@ func defaultHLSConfig() HLSConfig {
 		PreGenerateIntervalHours: 1,
 		ConcurrentLimit:          2,
 		QualityProfiles: []HLSQuality{
-			{Name: "1080p", Width: 1920, Height: 1080, Bitrate: 5000000, AudioBitrate: 192000},
-			{Name: "720p", Width: 1280, Height: 720, Bitrate: 2500000, AudioBitrate: 128000},
-			{Name: "480p", Width: 854, Height: 480, Bitrate: 1000000, AudioBitrate: 128000},
-			{Name: "360p", Width: 640, Height: 360, Bitrate: 500000, AudioBitrate: 96000},
+			{Name: "1080p", Width: 1920, Height: 1080, Bitrate: 5000000, AudioBitrate: 192000, Enabled: true},
+			{Name: "720p", Width: 1280, Height: 720, Bitrate: 2500000, AudioBitrate: 128000, Enabled: true},
+			{Name: "480p", Width: 854, Height: 480, Bitrate: 1000000, AudioBitrate: 128000, Enabled: true},
+			{Name: "360p", Width: 640, Height: 360, Bitrate: 500000, AudioBitrate: 96000, Enabled: true},
 		},
 	}
 }

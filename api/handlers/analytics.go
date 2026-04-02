@@ -54,14 +54,15 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	}
 
 	writeSuccess(c, map[string]interface{}{
-		"total_events":    summary.TotalEvents,
-		"active_sessions": summary.ActiveSessions,
-		"today_views":     summary.TodayViews,
-		"total_views":     summary.TotalViews,
-		"total_media":     summary.TotalMedia,
-		"unique_clients":  globalStats.UniqueClients,
-		"top_viewed":      topViewed,
-		"recent_activity": recentActivity,
+		"total_events":     summary.TotalEvents,
+		"active_sessions":  summary.ActiveSessions,
+		"today_views":      summary.TodayViews,
+		"total_views":      summary.TotalViews,
+		"total_media":      summary.TotalMedia,
+		"total_watch_time": summary.TotalWatchTime,
+		"unique_clients":   globalStats.UniqueClients,
+		"top_viewed":       topViewed,
+		"recent_activity":  recentActivity,
 	})
 }
 
@@ -113,6 +114,39 @@ func (h *Handler) GetTopMedia(c *gin.Context) {
 			"views":    item.Views,
 		}
 		enriched = append(enriched, entry)
+	}
+	writeSuccess(c, enriched)
+}
+
+// GetContentPerformance returns media items with rich performance metrics
+// (completion rate, avg watch duration, unique viewers).
+func (h *Handler) GetContentPerformance(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []interface{}{})
+		return
+	}
+	limit := 20
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 500 {
+		limit = l
+	}
+
+	items := h.analytics.GetContentPerformance(limit)
+	enriched := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		filename := item.MediaID
+		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
+			filename = mediaItem.Name
+		}
+		enriched = append(enriched, map[string]interface{}{
+			"media_id":           item.MediaID,
+			"filename":           filename,
+			"total_views":        item.TotalViews,
+			"total_playbacks":    item.TotalPlaybacks,
+			"total_completions":  item.TotalCompletions,
+			"completion_rate":    item.CompletionRate,
+			"avg_watch_duration": item.AvgWatchDuration,
+			"unique_viewers":     item.UniqueViewers,
+		})
 	}
 	writeSuccess(c, enriched)
 }

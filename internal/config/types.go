@@ -229,6 +229,7 @@ type HLSQuality struct {
 	Height       int    `json:"height"`
 	Bitrate      int    `json:"bitrate"`
 	AudioBitrate int    `json:"audio_bitrate"`
+	Enabled      bool   `json:"enabled"`
 }
 
 // RemoteMediaConfig holds remote media source settings

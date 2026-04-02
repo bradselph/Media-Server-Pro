@@ -50,7 +50,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=4.1.0 -X main.BuildDate=2026-02-26" ./cmd/server
 var (
-	Version   = "0.125.0"
+	Version   = "0.125.6"
 	BuildDate = ""
 )
 
@@ -166,6 +166,7 @@ func main() {
 			Model:             hfCfg.Model,
 			EndpointURL:       hfCfg.EndpointURL,
 			RequestsPerMinute: rateLimit,
+			MaxConcurrent:     hfCfg.MaxConcurrent,
 			Timeout:           timeout,
 			Log:               log,
 		})
@@ -176,6 +177,7 @@ func main() {
 	// Thumbnails (critical — optional BlurHash storage via metadata repo)
 	metadataRepo := mysql.NewMediaMetadataRepository(dbModule.GORM())
 	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
+	thumbnailsModule.SetMediaIDProvider(mediaModule)
 	mustRegister(srv, thumbnailsModule)
 
 	// ── Non-critical modules ───────────────────────────────────────────────
@@ -460,6 +462,9 @@ func registerTasks(
 		Description: "Generates missing thumbnails for media files",
 		Schedule:    30 * time.Minute,
 		Func: func(ctx context.Context) error {
+			if !cfg.Get().Thumbnails.AutoGenerate {
+				return nil
+			}
 			items := mediaModule.ListMedia(media.Filter{})
 			queued := 0
 			for _, item := range items {
@@ -474,8 +479,6 @@ func registerTasks(
 				if needsGen {
 					_, err := thumbnailsModule.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: false})
 					if err == nil || errors.Is(err, thumbnails.ErrThumbnailPending) {
-						// nil  = already existed (audio) or all queued (video)
-						// Pending = jobs submitted to worker queue (video always returns this)
 						queued++
 					} else {
 						log.Debug("Thumbnail generation skipped for %s: %v", item.Name, err)
@@ -484,6 +487,26 @@ func registerTasks(
 			}
 			if queued > 0 {
 				log.Info("Queued %d thumbnail generation jobs", queued)
+			}
+			return nil
+		},
+	})
+
+	// Thumbnail cleanup — removes orphans, excess previews, and corrupt files every 6h
+	scheduler.RegisterTask(tasks.TaskRegistration{
+		ID:          "thumbnail-cleanup",
+		Name:        "Thumbnail Cleanup",
+		Description: "Removes orphaned, excess, and corrupt thumbnail files",
+		Schedule:    6 * time.Hour,
+		Func: func(ctx context.Context) error {
+			result, err := thumbnailsModule.Cleanup()
+			if err != nil {
+				return err
+			}
+			total := result.OrphansRemoved + result.ExcessRemoved + result.CorruptRemoved
+			if total > 0 {
+				log.Info("Thumbnail cleanup: %d orphans, %d excess, %d corrupt removed",
+					result.OrphansRemoved, result.ExcessRemoved, result.CorruptRemoved)
 			}
 			return nil
 		},
