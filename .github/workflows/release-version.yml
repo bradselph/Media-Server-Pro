@@ -54,11 +54,11 @@ jobs:
         id: bump
         run: |
           # Derive current version from the latest release tag (vX.Y.Z),
-          # NOT the VERSION file which may contain dev suffixes from merged PRs.
-          LATEST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          # sorted by creation date (not semver) to avoid picking up errant tags.
+          LATEST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-creatordate | head -1)
           if [ -z "$LATEST_TAG" ]; then
-            echo "No release tag found — starting at 1.0.0"
-            CURRENT="1.0.0"
+            echo "No release tag found — starting at 0.1.0"
+            CURRENT="0.1.0"
           else
             CURRENT="${LATEST_TAG#v}"
           fi
@@ -98,26 +98,42 @@ jobs:
 
       - name: Generate CHANGELOG entry
         run: |
-          PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-creatordate | head -1)
           if [ -n "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" | grep -v '\[auto-version\]')
+            COMMITS=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" -- . ':!VERSION' ':!CHANGELOG.md' | grep -v '\[auto-version\]' || true)
           else
-            COMMITS=$(git log --pretty=format:"- %s" | grep -v '\[auto-version\]')
+            COMMITS=$(git log --pretty=format:"- %s" -- . ':!VERSION' ':!CHANGELOG.md' | grep -v '\[auto-version\]' || true)
           fi
 
           DATE=$(date +%Y-%m-%d)
           VERSION="${{ steps.bump.outputs.new }}"
           BUMP_TYPE="${{ steps.bump.outputs.type }}"
 
-          NEW_ENTRY="## [${VERSION}] - ${DATE} (${BUMP_TYPE})\n\n${COMMITS}\n"
+          # Write changelog entry to a temp file to avoid printf escaping issues
+          {
+            echo "## [${VERSION}] - ${DATE} (${BUMP_TYPE})"
+            echo ""
+            echo "$COMMITS"
+            echo ""
+          } > /tmp/new_entry.md
 
           if [ -f CHANGELOG.md ]; then
             HEADING=$(head -1 CHANGELOG.md)
             REST=$(tail -n +2 CHANGELOG.md)
-            printf '%s\n\n%b\n%s' "$HEADING" "$NEW_ENTRY" "$REST" > CHANGELOG.md
+            {
+              echo "$HEADING"
+              echo ""
+              cat /tmp/new_entry.md
+              echo "$REST"
+            } > CHANGELOG.md
           else
-            printf '# Changelog\n\n%b' "$NEW_ENTRY" > CHANGELOG.md
+            {
+              echo "# Changelog"
+              echo ""
+              cat /tmp/new_entry.md
+            } > CHANGELOG.md
           fi
+          rm -f /tmp/new_entry.md
 
       - name: Commit and push release bump
         run: |
