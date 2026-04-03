@@ -261,6 +261,48 @@ onMounted(loadConfig)
           <p class="text-xs text-neutral-500 mt-3">Server address/port changes require a restart.</p>
         </UCard>
 
+        <!-- ── Storage Backend ──────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-hard-drive" class="text-primary" />
+              <span class="font-semibold text-sm">Storage Backend</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl">
+            <UFormField label="Backend">
+              <USelect :model-value="get('storage', 'backend') || 'local'" :items="[{label:'Local Filesystem',value:'local'},{label:'S3 Compatible (B2, AWS, MinIO)',value:'s3'}]" @update:model-value="set('storage', 'backend', $event)" />
+            </UFormField>
+            <template v-if="get('storage', 'backend') === 's3'">
+              <UFormField label="S3 Endpoint">
+                <UInput :model-value="get('storage', 's3')?.endpoint" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), endpoint: $event })" placeholder="s3.us-west-004.backblazeb2.com" />
+              </UFormField>
+              <UFormField label="Region">
+                <UInput :model-value="get('storage', 's3')?.region" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), region: $event })" placeholder="us-west-004" />
+              </UFormField>
+              <UFormField label="Access Key ID">
+                <UInput :model-value="get('storage', 's3')?.access_key_id" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), access_key_id: $event })" placeholder="Application Key ID" />
+              </UFormField>
+              <UFormField label="Secret Access Key">
+                <UInput type="password" :model-value="get('storage', 's3')?.secret_access_key" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), secret_access_key: $event })" placeholder="••••••••" />
+              </UFormField>
+              <UFormField label="Bucket">
+                <UInput :model-value="get('storage', 's3')?.bucket" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), bucket: $event })" placeholder="my-media-bucket" />
+              </UFormField>
+              <div class="flex items-center justify-between">
+                <span class="text-sm">Path-Style Access</span>
+                <USwitch :model-value="get('storage', 's3')?.use_path_style" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), use_path_style: $event })" />
+              </div>
+            </template>
+          </div>
+          <p v-if="get('storage', 'backend') === 's3'" class="text-xs text-neutral-500 mt-3">
+            S3-compatible storage works with Backblaze B2, AWS S3, MinIO, Cloudflare R2, and Wasabi. Changing storage backend requires a server restart.
+          </p>
+          <p v-else class="text-xs text-neutral-500 mt-3">
+            Files are stored on the local filesystem. Switch to S3 for cloud/CDN-backed storage.
+          </p>
+        </UCard>
+
         <!-- ── Security ────────────────────────────────────────────── -->
         <UCard>
           <template #header>
