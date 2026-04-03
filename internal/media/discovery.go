@@ -32,6 +32,7 @@ import (
 	"media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
+	"media-server-pro/pkg/storage"
 )
 
 // Video file extensions
@@ -110,6 +111,18 @@ type Module struct {
 	// onInitialScanDone is called when the first scan completes (with the current media list).
 	// Used by the server to seed the suggestions module without polling.
 	onInitialScanDone func([]*models.MediaItem)
+	// videoStore, musicStore, uploadStore are optional storage backends.
+	// When set, file operations use these instead of direct os.* calls.
+	videoStore  storage.Backend
+	musicStore  storage.Backend
+	uploadStore storage.Backend
+}
+
+// SetStores sets the storage backends for media file operations.
+func (m *Module) SetStores(video, music, upload storage.Backend) {
+	m.videoStore = video
+	m.musicStore = music
+	m.uploadStore = upload
 }
 
 // Metadata holds extended metadata for a media item

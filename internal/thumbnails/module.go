@@ -11,7 +11,13 @@ import (
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
+	"media-server-pro/pkg/storage"
 )
+
+// SetStore sets the storage backend for thumbnail I/O.
+func (m *Module) SetStore(s storage.Backend) {
+	m.store = s
+}
 
 // Name returns the module name
 func (m *Module) Name() string {

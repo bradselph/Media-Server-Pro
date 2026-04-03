@@ -18,6 +18,7 @@ import (
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/repositories"
+	"media-server-pro/pkg/storage"
 	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
@@ -67,6 +68,12 @@ type Module struct {
 	activeJobs    sync.WaitGroup // Tracks active transcoding jobs for graceful shutdown
 	stopping      atomic.Bool    // Set to true during Stop() to distinguish cancellation from real failures
 	qualityLocks  sync.Map       // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
+	store         storage.Backend // optional storage backend for HLS cache I/O
+}
+
+// SetStore sets the storage backend for HLS cache I/O.
+func (m *Module) SetStore(s storage.Backend) {
+	m.store = s
 }
 
 // NewModule creates a new HLS module

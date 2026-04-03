@@ -148,7 +148,27 @@ func main() {
 		log.Error("Failed to create video storage backend: %v", err)
 		os.Exit(1)
 	}
-	log.Info("Storage backend: %s (videos: %s)", cfg.Get().Storage.Backend, videoStore.AbsPath(""))
+	musicStore, err := storageFactory.NewBackend(initCtx, "music", dirs.Music)
+	if err != nil {
+		log.Error("Failed to create music storage backend: %v", err)
+		os.Exit(1)
+	}
+	thumbnailStore, err := storageFactory.NewBackend(initCtx, "thumbnails", dirs.Thumbnails)
+	if err != nil {
+		log.Error("Failed to create thumbnail storage backend: %v", err)
+		os.Exit(1)
+	}
+	uploadStore, err := storageFactory.NewBackend(initCtx, "uploads", dirs.Uploads)
+	if err != nil {
+		log.Error("Failed to create upload storage backend: %v", err)
+		os.Exit(1)
+	}
+	hlsStore, err := storageFactory.NewBackend(initCtx, "hls_cache", dirs.HLSCache)
+	if err != nil {
+		log.Error("Failed to create HLS storage backend: %v", err)
+		os.Exit(1)
+	}
+	log.Info("Storage backend: %s", cfg.Get().Storage.Backend)
 
 	// ── Startup security checks ────────────────────────────────────────────
 	validateSecrets(cfg, log)
@@ -171,12 +191,13 @@ func main() {
 	}
 	mustRegister(srv, authModule)
 
-	// Media (critical — requires database)
+	// Media (critical — requires database, uses storage backends)
 	mediaModule, err := media.NewModule(cfg, dbModule)
 	if err != nil {
 		log.Error("Failed to create media module: %v", err)
 		os.Exit(1)
 	}
+	mediaModule.SetStores(videoStore, musicStore, uploadStore)
 	mustRegister(srv, mediaModule)
 
 	// Streaming (critical — uses storage backend for S3 support)
@@ -219,16 +240,18 @@ func main() {
 		log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
 	}
 
-	// Thumbnails (critical — optional BlurHash storage via metadata repo)
+	// Thumbnails (critical — optional BlurHash storage via metadata repo, uses storage backend)
 	metadataRepo := mysql.NewMediaMetadataRepository(dbModule.GORM())
 	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
 	thumbnailsModule.SetMediaIDProvider(mediaModule)
+	thumbnailsModule.SetStore(thumbnailStore)
 	mustRegister(srv, thumbnailsModule)
 
 	// ── Non-critical modules ───────────────────────────────────────────────
 
-	// HLS (non-critical — falls back gracefully if ffmpeg unavailable)
+	// HLS (non-critical — falls back gracefully if ffmpeg unavailable, uses storage backend)
 	hlsModule := hls.NewModule(cfg, dbModule)
+	hlsModule.SetStore(hlsStore)
 	mustRegister(srv, hlsModule)
 
 	// Analytics (non-critical — requires database)
@@ -258,8 +281,9 @@ func main() {
 		mustRegister(srv, adminModule)
 	}
 
-	// Upload (non-critical)
+	// Upload (non-critical — uses storage backend)
 	uploadModule := upload.NewModule(cfg)
+	uploadModule.SetStore(uploadStore)
 	mustRegister(srv, uploadModule)
 
 	// Validator (non-critical — requires database for validation results)
