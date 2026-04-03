@@ -89,8 +89,7 @@ func (b *Backend) Stat(_ context.Context, path string) (*storage.FileInfo, error
 	if err != nil {
 		return nil, mapError(err)
 	}
-	info := toFileInfo(fi)
-	return &info, nil
+	return new(toFileInfo(fi)), nil
 }
 
 // Walk recursively visits entries under prefix.

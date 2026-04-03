@@ -319,7 +319,7 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 
 	for i, vh := range profile.ViewHistory {
 		if vh.MediaPath == mediaPath {
-			completedAt := time.Now(); profile.ViewHistory[i].CompletedAt = &completedAt
+			profile.ViewHistory[i].CompletedAt = new(time.Now())
 			break
 		}
 	}
@@ -929,8 +929,7 @@ func (m *Module) GetUserProfile(userID string) *UserProfile {
 		return nil
 	}
 	// Return a shallow copy to avoid exposing internal mutable state.
-	copy := *profile
-	return &copy
+	return new(*profile)
 }
 
 // ResetUserProfile clears the in-memory profile and deletes persisted data (profile

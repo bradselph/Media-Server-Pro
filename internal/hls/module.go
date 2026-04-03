@@ -19,10 +19,10 @@ import (
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/repositories"
-	"media-server-pro/pkg/storage"
 	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
+	"media-server-pro/pkg/storage"
 )
 
 const (
@@ -48,26 +48,26 @@ type Capabilities struct {
 
 // Module implements HLS transcoding and serving
 type Module struct {
-	config        *config.Manager
-	log           *logger.Logger
-	dbModule      *database.Module
-	repo          repositories.HLSJobRepository
-	jobs          map[string]*models.HLSJob
-	jobCancels    map[string]context.CancelFunc
-	jobsMu        sync.RWMutex
-	transSem      chan struct{}
-	healthy       bool
-	healthMsg     string
-	healthMu      sync.RWMutex
-	cacheDir      string
-	cleanupTicker   *time.Ticker
-	cleanupDone     chan struct{}
-	cleanupDoneOnce sync.Once
-	ffmpegPath    string
-	ffprobePath   string
-	accessTracker *AccessTracker
-	activeJobs    sync.WaitGroup // Tracks active transcoding jobs for graceful shutdown
-	stopping      atomic.Bool    // Set to true during Stop() to distinguish cancellation from real failures
+	config             *config.Manager
+	log                *logger.Logger
+	dbModule           *database.Module
+	repo               repositories.HLSJobRepository
+	jobs               map[string]*models.HLSJob
+	jobCancels         map[string]context.CancelFunc
+	jobsMu             sync.RWMutex
+	transSem           chan struct{}
+	healthy            bool
+	healthMsg          string
+	healthMu           sync.RWMutex
+	cacheDir           string
+	cleanupTicker      *time.Ticker
+	cleanupDone        chan struct{}
+	cleanupDoneOnce    sync.Once
+	ffmpegPath         string
+	ffprobePath        string
+	accessTracker      *AccessTracker
+	activeJobs         sync.WaitGroup     // Tracks active transcoding jobs for graceful shutdown
+	stopping           atomic.Bool        // Set to true during Stop() to distinguish cancellation from real failures
 	qualityLocks       sync.Map           // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
 	store              storage.Backend    // optional storage backend for HLS cache I/O
 	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs

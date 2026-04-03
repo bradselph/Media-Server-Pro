@@ -718,8 +718,7 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			item.Category = string(mediaType)
 		}
 		if meta.LastPlayed != nil {
-			t := *meta.LastPlayed
-			item.LastPlayed = &t
+			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 	} else {
@@ -1403,7 +1402,7 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	}
 
 	meta.Views++
-	lastPlayed := time.Now(); meta.LastPlayed = &lastPlayed
+	meta.LastPlayed = new(time.Now())
 
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views

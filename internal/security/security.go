@@ -187,13 +187,12 @@ func (m *Module) Start(_ context.Context) error {
 	// Wire up auto-ban persistence callback so rate-limit bans survive restarts
 	persistBan := func(ip string, duration time.Duration, reason string) {
 		ctx := context.Background()
-		autoExpiresAt := time.Now().Add(duration)
 		rec := &repositories.IPEntryRecord{
 			Value:     ip,
 			Comment:   reason,
 			AddedAt:   time.Now(),
 			AddedBy:   "rate-limiter",
-			ExpiresAt: &autoExpiresAt,
+			ExpiresAt: new(time.Now().Add(duration)),
 		}
 		if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 			m.log.Warn("Failed to persist auto-ban for %s: %v", ip, err)
@@ -297,13 +296,12 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 	m.rateLimiter.BanIP(ip, duration, reason)
 	// Persist to DB
 	ctx := context.Background()
-	banExpiresAt := time.Now().Add(duration)
 	rec := &repositories.IPEntryRecord{
 		Value:     ip,
 		Comment:   reason,
 		AddedAt:   time.Now(),
 		AddedBy:   "system",
-		ExpiresAt: &banExpiresAt,
+		ExpiresAt: new(time.Now().Add(duration)),
 	}
 	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 		m.log.Warn("Failed to persist ban for %s: %v", ip, err)
