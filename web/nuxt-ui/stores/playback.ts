@@ -6,6 +6,9 @@ export const usePlaybackStore = defineStore('playback', () => {
   const duration = ref(0)
   const isPlaying = ref(false)
 
+  // Initialize composable once at store creation, not inside interval callbacks
+  const playbackApi = usePlaybackApi()
+
   let saveInterval: ReturnType<typeof setInterval> | null = null
 
   function setMedia(id: string) {
@@ -23,15 +26,13 @@ export const usePlaybackStore = defineStore('playback', () => {
   async function savePosition() {
     if (!currentMediaId.value || position.value <= 0) return
     try {
-      const { savePosition: apiSave } = usePlaybackApi()
-      await apiSave(currentMediaId.value, position.value, duration.value)
+      await playbackApi.savePosition(currentMediaId.value, position.value, duration.value)
     } catch {}
   }
 
   async function loadPosition(mediaId: string): Promise<number> {
     try {
-      const { getPosition } = usePlaybackApi()
-      const res = await getPosition(mediaId)
+      const res = await playbackApi.getPosition(mediaId)
       return res.position ?? 0
     } catch {
       return 0

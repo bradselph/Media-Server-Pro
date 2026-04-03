@@ -174,14 +174,17 @@ async function removeItem(playlistId: string, mediaId: string, itemId?: string) 
   }
 }
 
+const reordering = ref(false)
+
 async function moveItem(idx: number, direction: -1 | 1) {
-  if (!activePlaylist.value) return
+  if (!activePlaylist.value || reordering.value) return
   const items = activePlaylist.value.items ?? []
   const target = idx + direction
   if (target < 0 || target >= items.length) return
   const positions = items.map((_, j) => j)
   positions[idx] = target
   positions[target] = idx
+  reordering.value = true
   try {
     await playlistApi.reorder(activePlaylist.value.id, positions)
     const newItems = [...items]
@@ -189,6 +192,8 @@ async function moveItem(idx: number, direction: -1 | 1) {
     activePlaylist.value = { ...activePlaylist.value, items: newItems }
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to reorder', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    reordering.value = false
   }
 }
 
@@ -197,11 +202,16 @@ const publicPlaylists = ref<Playlist[]>([])
 const publicLoading = ref(false)
 const showPublic = ref(false)
 
-async function loadPublicPlaylists() {
-  if (publicPlaylists.value.length > 0) return
+let publicLastFetched = 0
+const PUBLIC_CACHE_MS = 60_000 // refresh after 60s
+
+async function loadPublicPlaylists(force = false) {
+  if (!force && publicPlaylists.value.length > 0 && Date.now() - publicLastFetched < PUBLIC_CACHE_MS) return
   publicLoading.value = true
-  try { publicPlaylists.value = (await playlistApi.listPublic()) ?? [] }
-  catch { publicPlaylists.value = [] }
+  try {
+    publicPlaylists.value = (await playlistApi.listPublic()) ?? []
+    publicLastFetched = Date.now()
+  } catch { publicPlaylists.value = [] }
   finally { publicLoading.value = false }
 }
 
@@ -380,7 +390,7 @@ watch(() => authStore.user, (user) => {
                   size="xs"
                   variant="ghost"
                   color="neutral"
-                  :disabled="idx === 0"
+                  :disabled="idx === 0 || reordering"
                   @click="moveItem(idx, -1)"
                 />
                 <UButton
@@ -389,7 +399,7 @@ watch(() => authStore.user, (user) => {
                   size="xs"
                   variant="ghost"
                   color="neutral"
-                  :disabled="idx === (activePlaylist?.items?.length ?? 0) - 1"
+                  :disabled="idx === (activePlaylist?.items?.length ?? 0) - 1 || reordering"
                   @click="moveItem(idx, 1)"
                 />
                 <UButton

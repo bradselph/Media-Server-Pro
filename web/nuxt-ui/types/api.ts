@@ -246,6 +246,12 @@ export interface AnalyticsSummary {
   total_media: number
   total_watch_time: number
   unique_clients: number
+  today_logins?: number
+  today_logins_failed?: number
+  today_registrations?: number
+  today_age_gate_passes?: number
+  today_downloads?: number
+  today_searches?: number
   top_viewed: TopMediaItem[]
   recent_activity: { type: string; media_id: string; filename: string; timestamp: number }[]
 }

@@ -51,6 +51,15 @@ const logsLoading = ref(false)
 const logLevel = ref('all')
 const logModule = ref('')
 const logsContainer = ref<HTMLElement | null>(null)
+const autoRefreshLogs = ref(false)
+let logRefreshInterval: ReturnType<typeof setInterval> | null = null
+
+watch(autoRefreshLogs, (enabled) => {
+  if (logRefreshInterval) { clearInterval(logRefreshInterval); logRefreshInterval = null }
+  if (enabled) {
+    logRefreshInterval = setInterval(() => { if (!document.hidden) loadLogs() }, 5_000)
+  }
+})
 
 async function loadLogs() {
   logsLoading.value = true
@@ -66,6 +75,10 @@ async function loadLogs() {
 onMounted(() => {
   loadTasks()
   loadLogs()
+})
+
+onUnmounted(() => {
+  if (logRefreshInterval) clearInterval(logRefreshInterval)
 })
 </script>
 
@@ -155,6 +168,14 @@ onMounted(() => {
         />
         <UInput v-model="logModule" placeholder="Filter module…" class="w-48" @keyup.enter="loadLogs" />
         <UButton icon="i-lucide-refresh-cw" label="Refresh" variant="outline" color="neutral" @click="loadLogs" />
+        <UButton
+          :icon="autoRefreshLogs ? 'i-lucide-pause' : 'i-lucide-play'"
+          :label="autoRefreshLogs ? 'Auto (On)' : 'Auto (Off)'"
+          :variant="autoRefreshLogs ? 'solid' : 'outline'"
+          :color="autoRefreshLogs ? 'primary' : 'neutral'"
+          size="sm"
+          @click="autoRefreshLogs = !autoRefreshLogs"
+        />
       </div>
       <div v-if="logsLoading" class="flex justify-center py-4">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
