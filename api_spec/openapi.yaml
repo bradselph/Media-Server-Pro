@@ -90,6 +90,34 @@ tags:
     description: Admin database management
   - name: admin-analytics
     description: Admin analytics detail and export
+  - name: favorites
+    description: User favorites / watch later
+  - name: tokens
+    description: API token management
+  - name: feed
+    description: RSS/Atom content feed
+  - name: version
+    description: Server version info
+  - name: browse
+    description: Category browsing
+  - name: docs
+    description: OpenAPI spec endpoint
+  - name: admin-classify
+    description: Admin HuggingFace visual classification
+  - name: admin-extractor
+    description: Admin stream extractor / HLS proxy
+  - name: admin-crawler
+    description: Admin web crawler for stream discovery
+  - name: admin-downloader
+    description: Admin media downloader (yt-dlp)
+  - name: admin-duplicates
+    description: Admin duplicate detection and resolution
+  - name: admin-receiver
+    description: Admin receiver master-slave management
+  - name: receiver
+    description: Receiver slave-to-master API (X-API-Key auth)
+  - name: admin-streams
+    description: Admin active streams and uploads
 
 components:
   securitySchemes:
@@ -1333,6 +1361,488 @@ components:
           items:
             type: string
 
+    FavoriteItem:
+      type: object
+      properties:
+        id:
+          type: string
+        media_id:
+          type: string
+        media_path:
+          type: string
+        added_at:
+          type: string
+          format: date-time
+
+    APIToken:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    APITokenCreated:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        token:
+          type: string
+          description: Raw token value, returned only at creation
+        created_at:
+          type: string
+          format: date-time
+
+    DeletionRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        reason:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, denied]
+        created_at:
+          type: string
+          format: date-time
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        reviewed_by:
+          type: string
+        admin_notes:
+          type: string
+
+    ContentPerformance:
+      type: object
+      properties:
+        media_id:
+          type: string
+        filename:
+          type: string
+        total_views:
+          type: integer
+        total_playbacks:
+          type: integer
+        total_completions:
+          type: integer
+        completion_rate:
+          type: number
+        avg_watch_duration:
+          type: number
+        unique_viewers:
+          type: integer
+
+    UserProfile:
+      type: object
+      properties:
+        user_id:
+          type: string
+        total_views:
+          type: integer
+        total_watch_time:
+          type: number
+        category_scores:
+          type: object
+          additionalProperties:
+            type: number
+        type_preferences:
+          type: object
+          additionalProperties:
+            type: number
+
+    SessionEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Truncated session ID
+        user_id:
+          type: string
+        username:
+          type: string
+        role:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        last_activity:
+          type: string
+          format: date-time
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+
+    CleanupResult:
+      type: object
+      properties:
+        orphans_removed:
+          type: integer
+        excess_removed:
+          type: integer
+        corrupt_removed:
+          type: integer
+        bytes_freed:
+          type: integer
+
+    ClassifyStatus:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        enabled:
+          type: boolean
+        model:
+          type: string
+        rate_limit:
+          type: integer
+        max_frames:
+          type: integer
+        max_concurrent:
+          type: integer
+        task_running:
+          type: boolean
+        task_last_run:
+          type: string
+          format: date-time
+        task_next_run:
+          type: string
+          format: date-time
+        task_last_error:
+          type: string
+        task_enabled:
+          type: boolean
+
+    ClassifyStats:
+      type: object
+      properties:
+        classified:
+          type: integer
+        pending:
+          type: integer
+        recent:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              path:
+                type: string
+              tags:
+                type: array
+                items:
+                  type: string
+              classified_at:
+                type: string
+                format: date-time
+
+    ExtractorItem:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+        title:
+          type: string
+        added_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ExtractorStats:
+      type: object
+      properties:
+        total_items:
+          type: integer
+        total_requests:
+          type: integer
+        total_errors:
+          type: integer
+        active_streams:
+          type: integer
+
+    CrawlerTarget:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+        site:
+          type: string
+        enabled:
+          type: boolean
+        last_crawled:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CrawlerDiscovery:
+      type: object
+      properties:
+        id:
+          type: string
+        target_id:
+          type: string
+        page_url:
+          type: string
+        title:
+          type: string
+        stream_url:
+          type: string
+        stream_type:
+          type: string
+        quality:
+          type: integer
+        status:
+          type: string
+        reviewed_by:
+          type: string
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        discovered_at:
+          type: string
+          format: date-time
+
+    CrawlerStats:
+      type: object
+      properties:
+        total_targets:
+          type: integer
+        enabled_targets:
+          type: integer
+        total_discoveries:
+          type: integer
+        pending_discoveries:
+          type: integer
+        crawling:
+          type: boolean
+
+    DownloaderHealth:
+      type: object
+      properties:
+        online:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+        activeDownloads:
+          type: integer
+          nullable: true
+        queuedDownloads:
+          type: integer
+          nullable: true
+        uptime:
+          type: number
+          nullable: true
+        dependencies:
+          type: object
+          nullable: true
+          properties:
+            yt-dlp:
+              type: string
+              nullable: true
+            ffmpeg:
+              type: string
+              nullable: true
+
+    DownloaderDetectResult:
+      type: object
+      properties:
+        url:
+          type: string
+        title:
+          type: string
+        isYouTube:
+          type: boolean
+        isYouTubeMusic:
+          type: boolean
+        streams:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              type:
+                type: string
+              quality:
+                type: string
+              resolution:
+                type: string
+              size:
+                type: integer
+              isAd:
+                type: boolean
+        relayId:
+          type: string
+
+    DownloaderSettings:
+      type: object
+      properties:
+        allowServerStorage:
+          type: boolean
+        audioFormat:
+          type: string
+        supportedSites:
+          type: array
+          items:
+            type: string
+
+    DownloadFile:
+      type: object
+      properties:
+        filename:
+          type: string
+        size:
+          type: integer
+        created:
+          type: integer
+          format: int64
+
+    DuplicateEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        item_a:
+          type: object
+          properties:
+            id:
+              type: string
+            path:
+              type: string
+            size:
+              type: integer
+        item_b:
+          type: object
+          properties:
+            id:
+              type: string
+            path:
+              type: string
+            size:
+              type: integer
+        similarity:
+          type: number
+        status:
+          type: string
+          enum: [pending, resolved, ignored]
+        action_taken:
+          type: string
+          nullable: true
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolved_by:
+          type: string
+          nullable: true
+
+    ReceiverSlave:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [online, offline]
+        last_heartbeat:
+          type: string
+          format: date-time
+        media_count:
+          type: integer
+        ip_address:
+          type: string
+        version:
+          type: string
+
+    ReceiverStats:
+      type: object
+      properties:
+        total_slaves:
+          type: integer
+        online_slaves:
+          type: integer
+        total_media:
+          type: integer
+        total_bytes:
+          type: integer
+          format: int64
+        last_sync:
+          type: string
+          format: date-time
+
+    ActiveStream:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        media_id:
+          type: string
+        media_path:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        last_activity:
+          type: string
+          format: date-time
+
+    ActiveUpload:
+      type: object
+      properties:
+        filename:
+          type: string
+        destination:
+          type: string
+        uploaded_bytes:
+          type: integer
+        total_bytes:
+          type: integer
+        percent_complete:
+          type: number
+        started_at:
+          type: string
+          format: date-time
+
 paths:
   # ─── Direct routes (not under /api) ───
 
@@ -1512,7 +2022,92 @@ paths:
         '200':
           description: Proxied media stream
 
+  /extractor/hls/{id}/master.m3u8:
+    get:
+      tags: [admin-extractor]
+      summary: Proxy extractor HLS master playlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: HLS master playlist
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+
+  /extractor/hls/{id}/{quality}/playlist.m3u8:
+    get:
+      tags: [admin-extractor]
+      summary: Proxy extractor HLS variant playlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: quality
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: HLS variant playlist
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+
+  /extractor/hls/{id}/{quality}/{segment}:
+    get:
+      tags: [admin-extractor]
+      summary: Proxy extractor HLS segment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: quality
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: segment
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Binary TS segment data
+
   # ─── API routes (/api) ───
+
+  /api/version:
+    get:
+      tags: [version]
+      summary: Get server version
+      responses:
+        '200':
+          description: Server version
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          version:
+                            type: string
 
   /api/auth/login:
     post:
@@ -1645,6 +2240,105 @@ paths:
         '200':
           description: Account deleted
 
+  /api/auth/data-deletion-request:
+    post:
+      tags: [auth]
+      summary: Request account data deletion
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Deletion request submitted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                          message:
+                            type: string
+                          id:
+                            type: string
+
+  /api/auth/tokens:
+    get:
+      tags: [tokens]
+      summary: List API tokens
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Token list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/APIToken'
+    post:
+      tags: [tokens]
+      summary: Create API token
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Token created (raw token returned once)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/APITokenCreated'
+
+  /api/auth/tokens/{id}:
+    delete:
+      tags: [tokens]
+      summary: Delete API token
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Token deleted
+
   /api/permissions:
     get:
       tags: [permissions]
@@ -1697,6 +2391,50 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/ServerSettings'
+
+  /api/docs:
+    get:
+      tags: [docs]
+      summary: Get OpenAPI specification
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: OpenAPI YAML specification
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /api/feed:
+    get:
+      tags: [feed]
+      summary: Get Atom content feed
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [video, audio]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 50
+      responses:
+        '200':
+          description: Atom XML feed
+          content:
+            application/atom+xml:
+              schema:
+                type: string
 
   /api/age-gate/status:
     get:
@@ -1860,6 +2598,35 @@ paths:
                         items:
                           $ref: '#/components/schemas/MediaCategory'
 
+  /api/media/batch:
+    get:
+      tags: [media]
+      summary: Get multiple media items by ID
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Comma-separated media IDs (max 100)
+      responses:
+        '200':
+          description: Batch media lookup
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: object
+                            additionalProperties:
+                              $ref: '#/components/schemas/MediaItem'
+
   /api/media/{id}:
     get:
       tags: [media]
@@ -1932,6 +2699,37 @@ paths:
       responses:
         '200':
           description: Tracked
+
+  /api/playback/batch:
+    get:
+      tags: [playback]
+      summary: Get batch playback positions
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Comma-separated media IDs (max 100)
+      responses:
+        '200':
+          description: Batch playback positions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          positions:
+                            type: object
+                            additionalProperties:
+                              type: number
 
   /api/hls/capabilities:
     get:
@@ -2028,6 +2826,25 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/HLSJob'
+
+  /api/playlists/public:
+    get:
+      tags: [playlists]
+      summary: List public playlists
+      responses:
+        '200':
+          description: Public playlists
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Playlist'
 
   /api/playlists:
     get:
@@ -2218,6 +3035,122 @@ paths:
       responses:
         '200':
           description: Item removed
+
+  /api/playlists/bulk-delete:
+    post:
+      tags: [playlists]
+      summary: Bulk delete playlists
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 100
+      responses:
+        '200':
+          description: Bulk delete result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          deleted:
+                            type: integer
+                          failed:
+                            type: integer
+
+  /api/playlists/{id}/reorder:
+    put:
+      tags: [playlists]
+      summary: Reorder playlist items
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [positions]
+              properties:
+                positions:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: Items reordered
+
+  /api/playlists/{id}/clear:
+    delete:
+      tags: [playlists]
+      summary: Clear all items from playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Playlist cleared
+
+  /api/playlists/{id}/copy:
+    post:
+      tags: [playlists]
+      summary: Copy playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Copied playlist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Playlist'
 
   /api/analytics:
     get:
@@ -2429,6 +3362,67 @@ paths:
                       data:
                         $ref: '#/components/schemas/EventTypeCounts'
 
+  /api/analytics/content:
+    get:
+      tags: [admin-analytics]
+      summary: Get content performance (admin only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 500
+      responses:
+        '200':
+          description: Content performance data
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ContentPerformance'
+
+  /api/analytics/events/by-user:
+    get:
+      tags: [admin-analytics]
+      summary: Get events by user (admin only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        '200':
+          description: Events for user
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AnalyticsEvent'
+
   /api/watch-history:
     get:
       tags: [watch-history]
@@ -2474,6 +3468,20 @@ paths:
         '200':
           description: History cleared/removed
 
+  /api/watch-history/export:
+    get:
+      tags: [watch-history]
+      summary: Export watch history as CSV
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+
   /api/thumbnails/previews:
     get:
       tags: [thumbnails]
@@ -2487,6 +3495,40 @@ paths:
       responses:
         '200':
           description: Preview URLs
+
+  /api/thumbnails/batch:
+    get:
+      tags: [thumbnails]
+      summary: Get thumbnail URLs for multiple media items
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Comma-separated media IDs (max 50)
+        - name: w
+          in: query
+          schema:
+            type: integer
+          description: Responsive width
+      responses:
+        '200':
+          description: Thumbnail URL map
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          thumbnails:
+                            type: object
+                            additionalProperties:
+                              type: string
 
   /api/suggestions:
     get:
@@ -2583,6 +3625,134 @@ paths:
         '200':
           description: Personalized suggestions
 
+  /api/suggestions/profile:
+    get:
+      tags: [suggestions]
+      summary: Get user suggestion profile
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+    delete:
+      tags: [suggestions]
+      summary: Reset user suggestion profile
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Profile reset
+
+  /api/suggestions/recent:
+    get:
+      tags: [suggestions]
+      summary: Get recently added content
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 14
+            maximum: 365
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Recent content
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MediaItem'
+
+  /api/suggestions/new:
+    get:
+      tags: [suggestions]
+      summary: Get content added since last visit
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: New content since last visit
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/MediaItem'
+                          since:
+                            type: string
+                            format: date-time
+                          total:
+                            type: integer
+
+  /api/suggestions/on-deck:
+    get:
+      tags: [suggestions]
+      summary: Get on-deck content (next episodes, etc.)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: On-deck items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/MediaItem'
+                          total:
+                            type: integer
+
   /api/ratings:
     post:
       tags: [ratings]
@@ -2604,6 +3774,127 @@ paths:
       responses:
         '200':
           description: Rating recorded
+
+  /api/favorites:
+    get:
+      tags: [favorites]
+      summary: List user favorites
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Favorites list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/FavoriteItem'
+    post:
+      tags: [favorites]
+      summary: Add media to favorites
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [media_id]
+              properties:
+                media_id:
+                  type: string
+      responses:
+        '200':
+          description: Added to favorites
+
+  /api/favorites/{media_id}:
+    get:
+      tags: [favorites]
+      summary: Check if media is in favorites
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: media_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Favorite status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          is_favorite:
+                            type: boolean
+    delete:
+      tags: [favorites]
+      summary: Remove media from favorites
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: media_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Removed from favorites
+
+  /api/browse/categories:
+    get:
+      tags: [browse]
+      summary: Browse media by category
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter to specific category; omit for category stats overview
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+            maximum: 500
+      responses:
+        '200':
+          description: Category browse results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          category:
+                            type: string
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/MediaItem'
+                          total:
+                            type: integer
 
   /api/upload:
     post:
@@ -2712,6 +4003,130 @@ paths:
       responses:
         '200':
           description: Cache cleared
+
+  /api/admin/streams:
+    get:
+      tags: [admin-streams]
+      summary: Get active streams
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Active streams
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ActiveStream'
+
+  /api/admin/uploads/active:
+    get:
+      tags: [admin-streams]
+      summary: Get active uploads
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Active uploads
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ActiveUpload'
+
+  /api/status:
+    get:
+      tags: [system]
+      summary: Get server status (admin only)
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Server status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [ok, degraded]
+                          version:
+                            type: string
+                          timestamp:
+                            type: integer
+                            format: int64
+                          modules:
+                            type: object
+                            additionalProperties:
+                              type: string
+                          problems:
+                            type: array
+                            items:
+                              type: string
+
+  /api/modules:
+    get:
+      tags: [system]
+      summary: List modules (admin only)
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Module list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ModuleHealth'
+
+  /api/modules/{name}/health:
+    get:
+      tags: [system]
+      summary: Get module health (admin only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Module health
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ModuleHealth'
 
   /api/admin/server/restart:
     post:
@@ -2981,6 +4396,102 @@ paths:
       responses:
         '200':
           description: Password changed
+
+  /api/admin/users/{username}/sessions:
+    get:
+      tags: [admin-users]
+      summary: Get user sessions
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User sessions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SessionEntry'
+
+  /api/admin/data-deletion-requests:
+    get:
+      tags: [admin-users]
+      summary: List data deletion requests
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, denied]
+          description: Filter by status; omit for all
+      responses:
+        '200':
+          description: Deletion requests
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DeletionRequest'
+
+  /api/admin/data-deletion-requests/{id}/process:
+    post:
+      tags: [admin-users]
+      summary: Process data deletion request
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve, deny]
+                admin_notes:
+                  type: string
+      responses:
+        '200':
+          description: Request processed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status:
+                            type: string
 
   /api/admin/change-password:
     post:
@@ -3297,6 +4808,66 @@ paths:
         '200':
           description: Bulk result
 
+  /api/admin/media/{id}:
+    put:
+      tags: [admin-media]
+      summary: Update media item
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                category:
+                  type: string
+                is_mature:
+                  type: boolean
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Updated media item
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MediaItem'
+    delete:
+      tags: [admin-media]
+      summary: Delete media item
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Media deleted
+
   /api/admin/backups/v2:
     get:
       tags: [admin-backups]
@@ -3460,6 +5031,38 @@ paths:
         '200':
           description: Queue cleared
 
+  /api/admin/scanner/approve/{id}:
+    post:
+      tags: [admin-scanner]
+      summary: Approve content (set mature flag)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Content approved
+
+  /api/admin/scanner/reject/{id}:
+    post:
+      tags: [admin-scanner]
+      summary: Reject content (clear mature flag)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Content rejected
+
   /api/admin/hls/stats:
     get:
       tags: [admin-hls]
@@ -3592,6 +5195,25 @@ paths:
       responses:
         '200':
           description: Thumbnail generated
+
+  /api/admin/thumbnails/cleanup:
+    post:
+      tags: [admin-thumbnails]
+      summary: Clean up orphan and corrupt thumbnails
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Cleanup result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CleanupResult'
 
   /api/admin/thumbnails/stats:
     get:
@@ -4369,3 +5991,974 @@ paths:
       responses:
         '200':
           description: Cache cleaned
+
+  # ─── Classify / HuggingFace subsystem ───
+
+  /api/admin/classify/status:
+    get:
+      tags: [admin-classify]
+      summary: Get classification service status
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Classify status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ClassifyStatus'
+
+  /api/admin/classify/stats:
+    get:
+      tags: [admin-classify]
+      summary: Get classification statistics
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Classify stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ClassifyStats'
+
+  /api/admin/classify/file:
+    post:
+      tags: [admin-classify]
+      summary: Classify a single file
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+      responses:
+        '200':
+          description: Classification result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          path:
+                            type: string
+                          tags:
+                            type: array
+                            items:
+                              type: string
+
+  /api/admin/classify/directory:
+    post:
+      tags: [admin-classify]
+      summary: Classify all mature files in a directory (background)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+      responses:
+        '202':
+          description: Classification started in background
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                          directory:
+                            type: string
+
+  /api/admin/classify/run-task:
+    post:
+      tags: [admin-classify]
+      summary: Trigger HF classification background task
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Task started
+
+  /api/admin/classify/clear-tags:
+    post:
+      tags: [admin-classify]
+      summary: Clear classification tags for a media item
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+      responses:
+        '200':
+          description: Tags cleared
+
+  /api/admin/classify/all-pending:
+    post:
+      tags: [admin-classify]
+      summary: Classify all pending mature items (background)
+      security:
+        - sessionCookie: []
+      responses:
+        '202':
+          description: Classification started
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                          count:
+                            type: integer
+
+  # ─── Extractor subsystem ───
+
+  /api/admin/extractor/items:
+    get:
+      tags: [admin-extractor]
+      summary: List extractor items
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Extractor items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExtractorItem'
+    post:
+      tags: [admin-extractor]
+      summary: Add extractor item (M3U8 stream URL)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                title:
+                  type: string
+      responses:
+        '200':
+          description: Item added
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExtractorItem'
+
+  /api/admin/extractor/items/{id}:
+    delete:
+      tags: [admin-extractor]
+      summary: Remove extractor item
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Item removed
+
+  /api/admin/extractor/stats:
+    get:
+      tags: [admin-extractor]
+      summary: Get extractor statistics
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Extractor stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExtractorStats'
+
+  # ─── Crawler subsystem ───
+
+  /api/admin/crawler/targets:
+    get:
+      tags: [admin-crawler]
+      summary: List crawler targets
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Crawler targets
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CrawlerTarget'
+    post:
+      tags: [admin-crawler]
+      summary: Add crawler target
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Target added
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CrawlerTarget'
+
+  /api/admin/crawler/targets/{id}:
+    delete:
+      tags: [admin-crawler]
+      summary: Remove crawler target
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Target removed
+
+  /api/admin/crawler/targets/{id}/crawl:
+    post:
+      tags: [admin-crawler]
+      summary: Trigger crawl on target
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Crawl result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          new_discoveries:
+                            type: integer
+
+  /api/admin/crawler/discoveries:
+    get:
+      tags: [admin-crawler]
+      summary: List crawler discoveries
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: Filter by status (e.g. pending)
+      responses:
+        '200':
+          description: Discoveries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CrawlerDiscovery'
+
+  /api/admin/crawler/discoveries/{id}/approve:
+    post:
+      tags: [admin-crawler]
+      summary: Approve crawler discovery
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Discovery approved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CrawlerDiscovery'
+
+  /api/admin/crawler/discoveries/{id}/ignore:
+    post:
+      tags: [admin-crawler]
+      summary: Ignore crawler discovery
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Discovery ignored
+
+  /api/admin/crawler/discoveries/{id}:
+    delete:
+      tags: [admin-crawler]
+      summary: Delete crawler discovery
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Discovery deleted
+
+  /api/admin/crawler/stats:
+    get:
+      tags: [admin-crawler]
+      summary: Get crawler statistics
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Crawler stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CrawlerStats'
+
+  # ─── Receiver / slave subsystem ───
+
+  /api/receiver/register:
+    post:
+      tags: [receiver]
+      summary: Register slave node
+      parameters:
+        - name: X-API-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                version:
+                  type: string
+                address:
+                  type: string
+      responses:
+        '200':
+          description: Slave registered
+
+  /api/receiver/catalog:
+    post:
+      tags: [receiver]
+      summary: Push media catalog from slave
+      parameters:
+        - name: X-API-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slave_id, items]
+              properties:
+                slave_id:
+                  type: string
+                full:
+                  type: boolean
+                  description: If true, replaces entire catalog
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      path:
+                        type: string
+                      type:
+                        type: string
+                      duration:
+                        type: integer
+                      size:
+                        type: integer
+      responses:
+        '200':
+          description: Catalog received
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items_received:
+                            type: integer
+                          full_sync:
+                            type: boolean
+
+  /api/receiver/heartbeat:
+    post:
+      tags: [receiver]
+      summary: Slave heartbeat
+      parameters:
+        - name: X-API-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slave_id]
+              properties:
+                slave_id:
+                  type: string
+      responses:
+        '200':
+          description: Heartbeat acknowledged
+
+  /api/receiver/stream-push/{token}:
+    post:
+      tags: [receiver]
+      summary: Push stream data from slave
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stream received
+
+  /api/receiver/media:
+    get:
+      tags: [admin-receiver]
+      summary: List receiver media
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search query
+        - name: slave_id
+          in: query
+          schema:
+            type: string
+          description: Filter by slave
+      responses:
+        '200':
+          description: Receiver media list
+
+  /api/receiver/media/{id}:
+    get:
+      tags: [admin-receiver]
+      summary: Get receiver media item
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Receiver media item
+
+  /api/admin/receiver/slaves:
+    get:
+      tags: [admin-receiver]
+      summary: List connected slave nodes
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Slave list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ReceiverSlave'
+
+  /api/admin/receiver/stats:
+    get:
+      tags: [admin-receiver]
+      summary: Get receiver statistics
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Receiver stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ReceiverStats'
+
+  /api/admin/receiver/slaves/{id}:
+    delete:
+      tags: [admin-receiver]
+      summary: Remove slave node
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Slave removed
+
+  # ─── Downloader subsystem ───
+
+  /api/admin/downloader/health:
+    get:
+      tags: [admin-downloader]
+      summary: Get downloader health status
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Downloader health
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DownloaderHealth'
+
+  /api/admin/downloader/detect:
+    post:
+      tags: [admin-downloader]
+      summary: Detect streams from URL
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+      responses:
+        '200':
+          description: Detected streams
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DownloaderDetectResult'
+
+  /api/admin/downloader/download:
+    post:
+      tags: [admin-downloader]
+      summary: Start a download
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, clientId]
+              properties:
+                url:
+                  type: string
+                title:
+                  type: string
+                clientId:
+                  type: string
+                isYouTube:
+                  type: boolean
+                isYouTubeMusic:
+                  type: boolean
+                relayId:
+                  type: string
+      responses:
+        '200':
+          description: Download started
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          success:
+                            type: boolean
+                          downloadId:
+                            type: string
+                          streamUrl:
+                            type: string
+                          message:
+                            type: string
+
+  /api/admin/downloader/cancel/{id}:
+    post:
+      tags: [admin-downloader]
+      summary: Cancel a download
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Download cancelled
+
+  /api/admin/downloader/downloads:
+    get:
+      tags: [admin-downloader]
+      summary: List completed downloads
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Download list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DownloadFile'
+
+  /api/admin/downloader/downloads/{filename}:
+    delete:
+      tags: [admin-downloader]
+      summary: Delete a downloaded file
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File deleted
+
+  /api/admin/downloader/settings:
+    get:
+      tags: [admin-downloader]
+      summary: Get downloader settings
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Downloader settings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DownloaderSettings'
+
+  /api/admin/downloader/importable:
+    get:
+      tags: [admin-downloader]
+      summary: List importable downloaded files
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Importable files
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DownloadFile'
+
+  /api/admin/downloader/import:
+    post:
+      tags: [admin-downloader]
+      summary: Import downloaded file into media library
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename]
+              properties:
+                filename:
+                  type: string
+                delete_source:
+                  type: boolean
+                trigger_scan:
+                  type: boolean
+      responses:
+        '200':
+          description: Import result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          source:
+                            type: string
+                          destination:
+                            type: string
+                          scanTriggered:
+                            type: boolean
+                          sourceDeleted:
+                            type: boolean
+
+  /api/admin/downloader/verify:
+    get:
+      tags: [admin-downloader]
+      summary: Verify downloader availability
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Downloader verified
+
+  # ─── Duplicates subsystem ───
+
+  /api/admin/duplicates:
+    get:
+      tags: [admin-duplicates]
+      summary: List duplicate media pairs
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            default: pending
+            enum: [pending, all]
+      responses:
+        '200':
+          description: Duplicate list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DuplicateEntry'
+
+  /api/admin/duplicates/{id}/resolve:
+    post:
+      tags: [admin-duplicates]
+      summary: Resolve duplicate pair
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [remove_a, remove_b, keep_both, ignore]
+      responses:
+        '200':
+          description: Duplicate resolved
