@@ -301,6 +301,20 @@ onMounted(loadConfig)
               <span class="text-sm">Content Security Policy</span>
               <USwitch :model-value="get('security', 'csp_enabled')" @update:model-value="set('security', 'csp_enabled', $event)" />
             </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">HSTS</span>
+              <USwitch :model-value="get('security', 'hsts_enabled')" @update:model-value="set('security', 'hsts_enabled', $event)" />
+            </div>
+            <UFormField label="HSTS Max Age (s)">
+              <UInput type="number" :model-value="get('security', 'hsts_max_age')" @update:model-value="set('security', 'hsts_max_age', Number($event))" :disabled="!get('security', 'hsts_enabled')" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">CORS</span>
+              <USwitch :model-value="get('security', 'cors_enabled')" @update:model-value="set('security', 'cors_enabled', $event)" />
+            </div>
+            <UFormField label="Max File Size (MB, 0=no limit)">
+              <UInput type="number" :model-value="get('security', 'max_file_size_mb')" @update:model-value="set('security', 'max_file_size_mb', Number($event))" />
+            </UFormField>
           </div>
         </UCard>
 
@@ -323,6 +337,37 @@ onMounted(loadConfig)
             </div>
             <UFormField label="Unauth Stream Limit (per IP)">
               <UInput type="number" :model-value="get('streaming', 'unauth_stream_limit')" @update:model-value="set('streaming', 'unauth_stream_limit', Number($event))" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Keep-Alive</span>
+              <USwitch :model-value="get('streaming', 'keep_alive_enabled')" @update:model-value="set('streaming', 'keep_alive_enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Adaptive Bitrate</span>
+              <USwitch :model-value="get('streaming', 'adaptive')" @update:model-value="set('streaming', 'adaptive', $event)" />
+            </div>
+          </div>
+        </UCard>
+
+        <!-- ── Download ──────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-download" class="text-primary" />
+              <span class="font-semibold text-sm">Download</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Enabled</span>
+              <USwitch :model-value="get('download', 'enabled')" @update:model-value="set('download', 'enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Require Auth</span>
+              <USwitch :model-value="get('download', 'require_auth')" @update:model-value="set('download', 'require_auth', $event)" />
+            </div>
+            <UFormField label="Chunk Size (KB)">
+              <UInput type="number" :model-value="get('download', 'chunk_size_kb')" @update:model-value="set('download', 'chunk_size_kb', Number($event))" />
             </UFormField>
           </div>
         </UCard>
@@ -424,6 +469,9 @@ onMounted(loadConfig)
             </div>
             <UFormField label="CDN Base URL">
               <UInput :model-value="get('hls', 'cdn_base_url')" @update:model-value="set('hls', 'cdn_base_url', $event)" placeholder="https://cdn.example.com (optional)" />
+            </UFormField>
+            <UFormField label="Pre-Generate Interval (hours)">
+              <UInput type="number" :model-value="get('hls', 'pre_generate_interval_hours')" @update:model-value="set('hls', 'pre_generate_interval_hours', Number($event))" />
             </UFormField>
           </div>
           <!-- Quality profiles -->
@@ -565,6 +613,113 @@ onMounted(loadConfig)
               <span class="text-sm">Enabled</span>
               <USwitch :model-value="get('age_gate', 'enabled')" @update:model-value="set('age_gate', 'enabled', $event)" />
             </div>
+            <UFormField label="Cookie Name">
+              <UInput :model-value="get('age_gate', 'cookie_name')" @update:model-value="set('age_gate', 'cookie_name', $event)" placeholder="age_verified" />
+            </UFormField>
+            <UFormField label="Cookie Max Age (s)">
+              <UInput type="number" :model-value="get('age_gate', 'cookie_max_age')" @update:model-value="set('age_gate', 'cookie_max_age', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Remote Media ───────────────────────────────────────── -->
+        <UCard v-if="get('features', 'enable_remote_media')">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-globe" class="text-primary" />
+              <span class="font-semibold text-sm">Remote Media</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Cache Enabled</span>
+              <USwitch :model-value="get('remote_media', 'cache_enabled')" @update:model-value="set('remote_media', 'cache_enabled', $event)" />
+            </div>
+          </div>
+        </UCard>
+
+        <!-- ── Crawler ────────────────────────────────────────────── -->
+        <UCard v-if="get('features', 'enable_crawler')">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-bug" class="text-primary" />
+              <span class="font-semibold text-sm">Crawler</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Browser Enabled</span>
+              <USwitch :model-value="get('crawler', 'browser_enabled')" @update:model-value="set('crawler', 'browser_enabled', $event)" />
+            </div>
+            <UFormField label="Max Pages">
+              <UInput type="number" :model-value="get('crawler', 'max_pages')" @update:model-value="set('crawler', 'max_pages', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Extractor ──────────────────────────────────────────── -->
+        <UCard v-if="get('features', 'enable_extractor')">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-link" class="text-primary" />
+              <span class="font-semibold text-sm">Extractor</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Max Items">
+              <UInput type="number" :model-value="get('extractor', 'max_items')" @update:model-value="set('extractor', 'max_items', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Backup ─────────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-archive" class="text-primary" />
+              <span class="font-semibold text-sm">Backup</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Config Backup Retention Count">
+              <UInput type="number" :model-value="get('backup', 'retention_count')" @update:model-value="set('backup', 'retention_count', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── UI Defaults ────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-layout-grid" class="text-primary" />
+              <span class="font-semibold text-sm">UI Defaults</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+            <UFormField label="Items per Page (Desktop)">
+              <UInput type="number" :model-value="get('ui', 'items_per_page')" @update:model-value="set('ui', 'items_per_page', Number($event))" />
+            </UFormField>
+            <UFormField label="Items per Page (Mobile)">
+              <UInput type="number" :model-value="get('ui', 'mobile_items_per_page')" @update:model-value="set('ui', 'mobile_items_per_page', Number($event))" />
+            </UFormField>
+            <UFormField label="Mobile Grid Columns">
+              <UInput type="number" :model-value="get('ui', 'mobile_grid_columns')" @update:model-value="set('ui', 'mobile_grid_columns', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Admin Panel ────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-lock" class="text-primary" />
+              <span class="font-semibold text-sm">Admin Panel</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Max Query Rows">
+              <UInput type="number" :model-value="get('admin', 'max_query_rows')" @update:model-value="set('admin', 'max_query_rows', Number($event))" />
+            </UFormField>
           </div>
         </UCard>
 
@@ -615,6 +770,46 @@ onMounted(loadConfig)
           </div>
         </UCard>
 
+        <!-- ── Updater ─────────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-refresh-cw" class="text-primary" />
+              <span class="font-semibold text-sm">Updater</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Update Method">
+              <USelect :model-value="get('updater', 'update_method') || 'source'" :items="[{label:'Source (git pull)',value:'source'},{label:'Binary',value:'binary'},{label:'Docker',value:'docker'}]" @update:model-value="set('updater', 'update_method', $event)" />
+            </UFormField>
+            <UFormField label="Branch">
+              <UInput :model-value="get('updater', 'branch')" @update:model-value="set('updater', 'branch', $event)" placeholder="main" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Directories (read-only) ────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-folder" class="text-primary" />
+              <span class="font-semibold text-sm">Directories</span>
+              <UBadge variant="subtle" color="neutral" size="xs">Read-only</UBadge>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
+            <div v-for="[label, key] in [
+              ['Videos', 'videos'], ['Music', 'music'], ['Thumbnails', 'thumbnails'],
+              ['Playlists', 'playlists'], ['Uploads', 'uploads'], ['HLS Cache', 'hls_cache'],
+              ['Data', 'data'], ['Logs', 'logs'], ['Temp', 'temp'],
+            ]" :key="key" class="text-sm">
+              <span class="text-neutral-400">{{ label }}:</span>
+              <span class="font-mono text-xs ml-1">{{ get('directories', key) || '—' }}</span>
+            </div>
+          </div>
+          <p class="text-xs text-neutral-500 mt-3">Directory paths can only be changed via environment variables or config file.</p>
+        </UCard>
+
         <!-- ── Database (read-only) ────────────────────────────────── -->
         <UCard>
           <template #header>
@@ -636,6 +831,49 @@ onMounted(loadConfig)
             </UFormField>
           </div>
           <p class="text-xs text-neutral-500 mt-3">Database settings can only be changed via environment variables or config file.</p>
+        </UCard>
+
+        <!-- ── Locked Sections (denylist) ─────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-lock" class="text-warning" />
+              <span class="font-semibold text-sm">Environment-Only Settings</span>
+            </div>
+          </template>
+          <p class="text-sm text-neutral-400 mb-3">
+            The following settings cannot be changed at runtime for security reasons. They must be configured via environment variables or by editing config.json directly.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <div>
+              <p class="font-medium text-highlighted mb-1">Auth</p>
+              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+                <li>Session timeout</li>
+                <li>Secure cookies</li>
+                <li>Login attempts / lockout</li>
+                <li>Registration / guests</li>
+                <li>User type definitions</li>
+              </ul>
+            </div>
+            <div>
+              <p class="font-medium text-highlighted mb-1">Database</p>
+              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+                <li>Host / port / name</li>
+                <li>Credentials</li>
+                <li>Connection pool settings</li>
+                <li>TLS mode</li>
+              </ul>
+            </div>
+            <div>
+              <p class="font-medium text-highlighted mb-1">Receiver</p>
+              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+                <li>API keys</li>
+                <li>Proxy timeout</li>
+                <li>Health check interval</li>
+                <li>Connection limits</li>
+              </ul>
+            </div>
+          </div>
         </UCard>
       </template>
 
