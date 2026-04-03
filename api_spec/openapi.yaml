@@ -547,8 +547,6 @@ components:
       properties:
         media_id:
           type: string
-        media_path:
-          type: string
         position:
           type: number
         duration:
@@ -563,8 +561,9 @@ components:
 
     Suggestion:
       type: object
+      required: [media_id, title, category, media_type, score]
       properties:
-        media_path:
+        media_id:
           type: string
         title:
           type: string
@@ -1451,6 +1450,82 @@ components:
         unique_viewers:
           type: integer
 
+    ViewHistory:
+      type: object
+      required: [category, media_type, view_count, total_time, last_viewed]
+      properties:
+        category:
+          type: string
+        media_type:
+          type: string
+        view_count:
+          type: integer
+        total_time:
+          type: number
+        last_viewed:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        rating:
+          type: number
+
+    RecentItem:
+      type: object
+      required: [id, name, type, category, date_added]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        category:
+          type: string
+        date_added:
+          type: string
+          format: date-time
+        thumbnail_url:
+          type: string
+
+    OnDeckItem:
+      type: object
+      required: [media_id, name, show_name, season, episode, category]
+      properties:
+        media_id:
+          type: string
+        name:
+          type: string
+        show_name:
+          type: string
+        season:
+          type: integer
+        episode:
+          type: integer
+        category:
+          type: string
+        thumbnail_url:
+          type: string
+
+    RatedItem:
+      type: object
+      required: [media_id, name, category, media_type, rating]
+      properties:
+        media_id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        media_type:
+          type: string
+        rating:
+          type: number
+        thumbnail_url:
+          type: string
+
     UserProfile:
       type: object
       properties:
@@ -1460,6 +1535,9 @@ components:
           type: integer
         total_watch_time:
           type: number
+        last_updated:
+          type: string
+          format: date-time
         category_scores:
           type: object
           additionalProperties:
@@ -1468,6 +1546,10 @@ components:
           type: object
           additionalProperties:
             type: number
+        view_history:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ViewHistory'
 
     SessionEntry:
       type: object
@@ -3682,7 +3764,7 @@ paths:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/MediaItem'
+                          $ref: '#/components/schemas/RecentItem'
 
   /api/suggestions/new:
     get:
@@ -3713,7 +3795,7 @@ paths:
                           items:
                             type: array
                             items:
-                              $ref: '#/components/schemas/MediaItem'
+                              $ref: '#/components/schemas/RecentItem'
                           since:
                             type: string
                             format: date-time
@@ -3749,11 +3831,30 @@ paths:
                           items:
                             type: array
                             items:
-                              $ref: '#/components/schemas/MediaItem'
+                              $ref: '#/components/schemas/OnDeckItem'
                           total:
                             type: integer
 
   /api/ratings:
+    get:
+      tags: [ratings]
+      summary: Get user's ratings
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: User ratings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RatedItem'
     post:
       tags: [ratings]
       summary: Record media rating

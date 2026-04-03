@@ -1,3 +1,10 @@
+import type { components } from '~/types/openapi.generated'
+
+// Re-export generated schema types — these are derived from api_spec/openapi.yaml.
+// Prefer these over hand-written duplicates when schemas match the backend exactly.
+export type { components }
+export type GeneratedSchemas = components['schemas']
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export type UserRole = 'admin' | 'viewer'
@@ -566,15 +573,8 @@ export interface WatchHistoryItem {
 
 // ── Suggestions ───────────────────────────────────────────────────────────────
 
-export interface Suggestion {
-  media_id: string
-  title: string
-  category: string
-  media_type: string
-  score: number
-  reasons: string[] | null
-  thumbnail_url?: string
-}
+// Generated from api_spec/openapi.yaml — do not edit manually
+export type Suggestion = components['schemas']['Suggestion']
 
 // ── Storage / Permissions ─────────────────────────────────────────────────────
 
@@ -764,38 +764,16 @@ export interface CategoryBrowseResponse {
   total: number
 }
 
-export interface RatedItem {
-  media_id: string
-  name: string
-  category: string
-  media_type: string
-  rating: number
-  thumbnail_url?: string
-}
-
-export interface RecentItem {
-  id: string
-  name: string
-  type: string
-  category: string
-  date_added: string
-  thumbnail_url?: string
-}
+// Generated from api_spec/openapi.yaml — do not edit manually
+export type RatedItem = components['schemas']['RatedItem']
+export type RecentItem = components['schemas']['RecentItem']
+export type OnDeckItem = components['schemas']['OnDeckItem']
+export type ViewHistory = components['schemas']['ViewHistory']
 
 export interface NewSinceResponse {
   items: RecentItem[]
   since: string
   total: number
-}
-
-export interface OnDeckItem {
-  media_id: string
-  name: string
-  show_name: string
-  season: number
-  episode: number
-  category: string
-  thumbnail_url?: string
 }
 
 export interface OnDeckResponse {
