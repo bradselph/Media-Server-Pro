@@ -381,13 +381,15 @@ const failedThumbnails = reactive(new Set<string>())
 // 3 probes with exponential backoff. On success, remove from the failed set so
 // Vue re-renders the <img> instead of the fallback icon.
 const retryCounters = new Map<string, number>()
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const RETRY_DELAYS_MS = [5_000, 15_000, 45_000] // 5s, 15s, 45s
 
 function scheduleThumbnailRetry(id: string, failedSet: Set<string>) {
   const attempt = retryCounters.get(id) ?? 0
   if (attempt >= RETRY_DELAYS_MS.length) return // give up after max attempts
   retryCounters.set(id, attempt + 1)
-  setTimeout(() => {
+  const timer = setTimeout(() => {
+    retryTimers.delete(id)
     const probe = new Image()
     probe.onload = () => {
       // Thumbnail is now available — remove from the failed set so Vue shows the image
@@ -401,6 +403,7 @@ function scheduleThumbnailRetry(id: string, failedSet: Set<string>) {
     // Cache-bust so the browser doesn't return the cached error response
     probe.src = `/thumbnail?id=${encodeURIComponent(id)}&_r=${Date.now()}`
   }, RETRY_DELAYS_MS[attempt])
+  retryTimers.set(id, timer)
 }
 const hoverItemId = ref<string | null>(null)
 const hoverFrameIdx = ref(0)
@@ -456,6 +459,10 @@ function onThumbnailError(event: Event, id: string) {
 
 onUnmounted(() => {
   if (hoverCycleTimer) clearInterval(hoverCycleTimer)
+  if (searchTimer) clearTimeout(searchTimer)
+  if (urlSyncTimer) clearTimeout(urlSyncTimer)
+  retryTimers.forEach(t => clearTimeout(t))
+  retryTimers.clear()
 })
 </script>
 

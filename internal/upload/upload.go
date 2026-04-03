@@ -20,6 +20,7 @@ import (
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
+	"media-server-pro/pkg/storage"
 )
 
 var (
@@ -65,6 +66,7 @@ type UploadID string
 type Module struct {
 	config        *config.Manager
 	log           *logger.Logger
+	store         storage.Backend // optional storage backend for upload I/O
 	activeUploads map[UploadID]*Progress
 	mu            sync.RWMutex
 	healthy       bool
@@ -73,6 +75,11 @@ type Module struct {
 	uploadDir     string
 	done          chan struct{}
 	doneOnce      sync.Once
+}
+
+// SetStore sets the storage backend for upload I/O.
+func (m *Module) SetStore(s storage.Backend) {
+	m.store = s
 }
 
 // Progress tracks upload progress.

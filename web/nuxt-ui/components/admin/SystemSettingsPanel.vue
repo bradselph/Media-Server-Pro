@@ -185,7 +185,48 @@ onMounted(loadConfig)
               <span class="text-sm">HuggingFace AI</span>
               <USwitch :model-value="get('features', 'enable_huggingface')" @update:model-value="set('features', 'enable_huggingface', $event)" />
             </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Playlists</span>
+              <USwitch :model-value="get('features', 'enable_playlists')" @update:model-value="set('features', 'enable_playlists', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Suggestions</span>
+              <USwitch :model-value="get('features', 'enable_suggestions')" @update:model-value="set('features', 'enable_suggestions', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Auto Discovery</span>
+              <USwitch :model-value="get('features', 'enable_auto_discovery')" @update:model-value="set('features', 'enable_auto_discovery', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Content Scanner</span>
+              <USwitch :model-value="get('features', 'enable_mature_scanner')" @update:model-value="set('features', 'enable_mature_scanner', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Remote Media</span>
+              <USwitch :model-value="get('features', 'enable_remote_media')" @update:model-value="set('features', 'enable_remote_media', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Receiver</span>
+              <USwitch :model-value="get('features', 'enable_receiver')" @update:model-value="set('features', 'enable_receiver', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Extractor</span>
+              <USwitch :model-value="get('features', 'enable_extractor')" @update:model-value="set('features', 'enable_extractor', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Crawler</span>
+              <USwitch :model-value="get('features', 'enable_crawler')" @update:model-value="set('features', 'enable_crawler', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Duplicate Detection</span>
+              <USwitch :model-value="get('features', 'enable_duplicate_detection')" @update:model-value="set('features', 'enable_duplicate_detection', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Downloader</span>
+              <USwitch :model-value="get('features', 'enable_downloader')" @update:model-value="set('features', 'enable_downloader', $event)" />
+            </div>
           </div>
+          <p class="text-xs text-neutral-500 mt-3">Some toggles require a server restart to take effect.</p>
         </UCard>
 
         <!-- ── Server ──────────────────────────────────────────────── -->
@@ -196,7 +237,7 @@ onMounted(loadConfig)
               <span class="font-semibold text-sm">Server</span>
             </div>
           </template>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
             <UFormField label="Host">
               <UInput :model-value="get('server', 'host')" @update:model-value="set('server', 'host', $event)" placeholder="0.0.0.0" />
             </UFormField>
@@ -208,7 +249,58 @@ onMounted(loadConfig)
                 <USwitch :model-value="get('server', 'enable_https')" @update:model-value="set('server', 'enable_https', $event)" />
               </div>
             </UFormField>
+            <template v-if="get('server', 'enable_https')">
+              <UFormField label="Certificate File">
+                <UInput :model-value="get('server', 'cert_file')" @update:model-value="set('server', 'cert_file', $event)" placeholder="/path/to/cert.pem" />
+              </UFormField>
+              <UFormField label="Key File">
+                <UInput :model-value="get('server', 'key_file')" @update:model-value="set('server', 'key_file', $event)" placeholder="/path/to/key.pem" />
+              </UFormField>
+            </template>
           </div>
+          <p class="text-xs text-neutral-500 mt-3">Server address/port changes require a restart.</p>
+        </UCard>
+
+        <!-- ── Storage Backend ──────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-hard-drive" class="text-primary" />
+              <span class="font-semibold text-sm">Storage Backend</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl">
+            <UFormField label="Backend">
+              <USelect :model-value="get('storage', 'backend') || 'local'" :items="[{label:'Local Filesystem',value:'local'},{label:'S3 Compatible (B2, AWS, MinIO)',value:'s3'}]" @update:model-value="set('storage', 'backend', $event)" />
+            </UFormField>
+            <template v-if="get('storage', 'backend') === 's3'">
+              <UFormField label="S3 Endpoint">
+                <UInput :model-value="get('storage', 's3')?.endpoint" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), endpoint: $event })" placeholder="s3.us-west-004.backblazeb2.com" />
+              </UFormField>
+              <UFormField label="Region">
+                <UInput :model-value="get('storage', 's3')?.region" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), region: $event })" placeholder="us-west-004" />
+              </UFormField>
+              <UFormField label="Access Key ID">
+                <UInput :model-value="get('storage', 's3')?.access_key_id" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), access_key_id: $event })" placeholder="Application Key ID" />
+              </UFormField>
+              <UFormField label="Secret Access Key">
+                <UInput type="password" :model-value="get('storage', 's3')?.secret_access_key" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), secret_access_key: $event })" placeholder="••••••••" />
+              </UFormField>
+              <UFormField label="Bucket">
+                <UInput :model-value="get('storage', 's3')?.bucket" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), bucket: $event })" placeholder="my-media-bucket" />
+              </UFormField>
+              <div class="flex items-center justify-between">
+                <span class="text-sm">Path-Style Access</span>
+                <USwitch :model-value="get('storage', 's3')?.use_path_style" @update:model-value="set('storage', 's3', { ...get('storage', 's3'), use_path_style: $event })" />
+              </div>
+            </template>
+          </div>
+          <p v-if="get('storage', 'backend') === 's3'" class="text-xs text-neutral-500 mt-3">
+            S3-compatible storage works with Backblaze B2, AWS S3, MinIO, Cloudflare R2, and Wasabi. Changing storage backend requires a server restart.
+          </p>
+          <p v-else class="text-xs text-neutral-500 mt-3">
+            Files are stored on the local filesystem. Switch to S3 for cloud/CDN-backed storage.
+          </p>
         </UCard>
 
         <!-- ── Security ────────────────────────────────────────────── -->
@@ -219,13 +311,25 @@ onMounted(loadConfig)
               <span class="font-semibold text-sm">Security</span>
             </div>
           </template>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl">
             <div class="flex items-center justify-between">
               <span class="text-sm">Rate Limiting</span>
               <USwitch :model-value="get('security', 'rate_limit_enabled')" @update:model-value="set('security', 'rate_limit_enabled', $event)" />
             </div>
             <UFormField label="Rate Limit (req/window)">
               <UInput type="number" :model-value="get('security', 'rate_limit_requests')" @update:model-value="set('security', 'rate_limit_requests', Number($event))" :disabled="!get('security', 'rate_limit_enabled')" />
+            </UFormField>
+            <UFormField label="Burst Limit">
+              <UInput type="number" :model-value="get('security', 'burst_limit')" @update:model-value="set('security', 'burst_limit', Number($event))" :disabled="!get('security', 'rate_limit_enabled')" />
+            </UFormField>
+            <UFormField label="Auth Rate Limit (req/window)">
+              <UInput type="number" :model-value="get('security', 'auth_rate_limit')" @update:model-value="set('security', 'auth_rate_limit', Number($event))" />
+            </UFormField>
+            <UFormField label="Auth Burst Limit">
+              <UInput type="number" :model-value="get('security', 'auth_burst_limit')" @update:model-value="set('security', 'auth_burst_limit', Number($event))" />
+            </UFormField>
+            <UFormField label="Violations for Ban">
+              <UInput type="number" :model-value="get('security', 'violations_for_ban')" @update:model-value="set('security', 'violations_for_ban', Number($event))" />
             </UFormField>
             <div class="flex items-center justify-between">
               <span class="text-sm">IP Whitelist</span>
@@ -235,6 +339,101 @@ onMounted(loadConfig)
               <span class="text-sm">IP Blacklist</span>
               <USwitch :model-value="get('security', 'enable_ip_blacklist')" @update:model-value="set('security', 'enable_ip_blacklist', $event)" />
             </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Content Security Policy</span>
+              <USwitch :model-value="get('security', 'csp_enabled')" @update:model-value="set('security', 'csp_enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">HSTS</span>
+              <USwitch :model-value="get('security', 'hsts_enabled')" @update:model-value="set('security', 'hsts_enabled', $event)" />
+            </div>
+            <UFormField label="HSTS Max Age (s)">
+              <UInput type="number" :model-value="get('security', 'hsts_max_age')" @update:model-value="set('security', 'hsts_max_age', Number($event))" :disabled="!get('security', 'hsts_enabled')" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">CORS</span>
+              <USwitch :model-value="get('security', 'cors_enabled')" @update:model-value="set('security', 'cors_enabled', $event)" />
+            </div>
+            <UFormField label="Max File Size (MB, 0=no limit)">
+              <UInput type="number" :model-value="get('security', 'max_file_size_mb')" @update:model-value="set('security', 'max_file_size_mb', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Streaming ──────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-radio" class="text-primary" />
+              <span class="font-semibold text-sm">Streaming</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Require Auth</span>
+              <USwitch :model-value="get('streaming', 'require_auth')" @update:model-value="set('streaming', 'require_auth', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Mobile Optimization</span>
+              <USwitch :model-value="get('streaming', 'mobile_optimization')" @update:model-value="set('streaming', 'mobile_optimization', $event)" />
+            </div>
+            <UFormField label="Unauth Stream Limit (per IP)">
+              <UInput type="number" :model-value="get('streaming', 'unauth_stream_limit')" @update:model-value="set('streaming', 'unauth_stream_limit', Number($event))" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Keep-Alive</span>
+              <USwitch :model-value="get('streaming', 'keep_alive_enabled')" @update:model-value="set('streaming', 'keep_alive_enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Adaptive Bitrate</span>
+              <USwitch :model-value="get('streaming', 'adaptive')" @update:model-value="set('streaming', 'adaptive', $event)" />
+            </div>
+          </div>
+        </UCard>
+
+        <!-- ── Download ──────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-download" class="text-primary" />
+              <span class="font-semibold text-sm">Download</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Enabled</span>
+              <USwitch :model-value="get('download', 'enabled')" @update:model-value="set('download', 'enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Require Auth</span>
+              <USwitch :model-value="get('download', 'require_auth')" @update:model-value="set('download', 'require_auth', $event)" />
+            </div>
+            <UFormField label="Chunk Size (KB)">
+              <UInput type="number" :model-value="get('download', 'chunk_size_kb')" @update:model-value="set('download', 'chunk_size_kb', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Uploads ────────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-upload" class="text-primary" />
+              <span class="font-semibold text-sm">Uploads</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Require Auth</span>
+              <USwitch :model-value="get('uploads', 'require_auth')" @update:model-value="set('uploads', 'require_auth', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Scan for Mature</span>
+              <USwitch :model-value="get('uploads', 'scan_for_mature')" @update:model-value="set('uploads', 'scan_for_mature', $event)" />
+            </div>
+            <UFormField label="Max File Size (bytes)">
+              <UInput type="number" :model-value="get('uploads', 'max_file_size')" @update:model-value="set('uploads', 'max_file_size', Number($event))" />
+            </UFormField>
           </div>
         </UCard>
 
@@ -266,6 +465,12 @@ onMounted(loadConfig)
             </UFormField>
             <UFormField label="Quality (1-100)">
               <UInput type="number" :model-value="get('thumbnails', 'quality')" @update:model-value="set('thumbnails', 'quality', Number($event))" />
+            </UFormField>
+            <UFormField label="Video Interval (s)">
+              <UInput type="number" :model-value="get('thumbnails', 'video_interval')" @update:model-value="set('thumbnails', 'video_interval', Number($event))" />
+            </UFormField>
+            <UFormField label="Worker Count">
+              <UInput type="number" :model-value="get('thumbnails', 'worker_count')" @update:model-value="set('thumbnails', 'worker_count', Number($event))" />
             </UFormField>
           </div>
         </UCard>
@@ -299,6 +504,16 @@ onMounted(loadConfig)
             </UFormField>
             <UFormField label="Retention (minutes)">
               <UInput type="number" :model-value="get('hls', 'retention_minutes')" @update:model-value="set('hls', 'retention_minutes', Number($event))" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Cleanup Enabled</span>
+              <USwitch :model-value="get('hls', 'cleanup_enabled')" @update:model-value="set('hls', 'cleanup_enabled', $event)" />
+            </div>
+            <UFormField label="CDN Base URL">
+              <UInput :model-value="get('hls', 'cdn_base_url')" @update:model-value="set('hls', 'cdn_base_url', $event)" placeholder="https://cdn.example.com (optional)" />
+            </UFormField>
+            <UFormField label="Pre-Generate Interval (hours)">
+              <UInput type="number" :model-value="get('hls', 'pre_generate_interval_hours')" @update:model-value="set('hls', 'pre_generate_interval_hours', Number($event))" />
             </UFormField>
           </div>
           <!-- Quality profiles -->
@@ -351,6 +566,9 @@ onMounted(loadConfig)
               <span class="text-sm">Track Views</span>
               <USwitch :model-value="get('analytics', 'track_views')" @update:model-value="set('analytics', 'track_views', $event)" />
             </div>
+            <UFormField label="Retention (days)">
+              <UInput type="number" :model-value="get('analytics', 'retention_days')" @update:model-value="set('analytics', 'retention_days', Number($event))" />
+            </UFormField>
           </div>
         </UCard>
 
@@ -406,6 +624,9 @@ onMounted(loadConfig)
             <UFormField label="Model">
               <UInput :model-value="get('huggingface', 'model')" @update:model-value="set('huggingface', 'model', $event)" placeholder="google/vit-base-patch16-224" />
             </UFormField>
+            <UFormField label="Endpoint URL">
+              <UInput :model-value="get('huggingface', 'endpoint_url')" @update:model-value="set('huggingface', 'endpoint_url', $event)" placeholder="https://router.huggingface.co (optional)" />
+            </UFormField>
             <UFormField label="Rate Limit (req/min)">
               <UInput type="number" :model-value="get('huggingface', 'rate_limit')" @update:model-value="set('huggingface', 'rate_limit', Number($event))" />
             </UFormField>
@@ -419,6 +640,216 @@ onMounted(loadConfig)
               <UInput type="number" :model-value="get('huggingface', 'max_frames')" @update:model-value="set('huggingface', 'max_frames', Number($event))" />
             </UFormField>
           </div>
+        </UCard>
+
+        <!-- ── Age Gate ────────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-shield-check" class="text-primary" />
+              <span class="font-semibold text-sm">Age Gate</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Enabled</span>
+              <USwitch :model-value="get('age_gate', 'enabled')" @update:model-value="set('age_gate', 'enabled', $event)" />
+            </div>
+            <UFormField label="Cookie Name">
+              <UInput :model-value="get('age_gate', 'cookie_name')" @update:model-value="set('age_gate', 'cookie_name', $event)" placeholder="age_verified" />
+            </UFormField>
+            <UFormField label="Cookie Max Age (s)">
+              <UInput type="number" :model-value="get('age_gate', 'cookie_max_age')" @update:model-value="set('age_gate', 'cookie_max_age', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Remote Media ───────────────────────────────────────── -->
+        <UCard v-if="get('features', 'enable_remote_media')">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-globe" class="text-primary" />
+              <span class="font-semibold text-sm">Remote Media</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Cache Enabled</span>
+              <USwitch :model-value="get('remote_media', 'cache_enabled')" @update:model-value="set('remote_media', 'cache_enabled', $event)" />
+            </div>
+          </div>
+        </UCard>
+
+        <!-- ── Crawler ────────────────────────────────────────────── -->
+        <UCard v-if="get('features', 'enable_crawler')">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-bug" class="text-primary" />
+              <span class="font-semibold text-sm">Crawler</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Browser Enabled</span>
+              <USwitch :model-value="get('crawler', 'browser_enabled')" @update:model-value="set('crawler', 'browser_enabled', $event)" />
+            </div>
+            <UFormField label="Max Pages">
+              <UInput type="number" :model-value="get('crawler', 'max_pages')" @update:model-value="set('crawler', 'max_pages', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Extractor ──────────────────────────────────────────── -->
+        <UCard v-if="get('features', 'enable_extractor')">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-link" class="text-primary" />
+              <span class="font-semibold text-sm">Extractor</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Max Items">
+              <UInput type="number" :model-value="get('extractor', 'max_items')" @update:model-value="set('extractor', 'max_items', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Backup ─────────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-archive" class="text-primary" />
+              <span class="font-semibold text-sm">Backup</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Config Backup Retention Count">
+              <UInput type="number" :model-value="get('backup', 'retention_count')" @update:model-value="set('backup', 'retention_count', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── UI Defaults ────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-layout-grid" class="text-primary" />
+              <span class="font-semibold text-sm">UI Defaults</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+            <UFormField label="Items per Page (Desktop)">
+              <UInput type="number" :model-value="get('ui', 'items_per_page')" @update:model-value="set('ui', 'items_per_page', Number($event))" />
+            </UFormField>
+            <UFormField label="Items per Page (Mobile)">
+              <UInput type="number" :model-value="get('ui', 'mobile_items_per_page')" @update:model-value="set('ui', 'mobile_items_per_page', Number($event))" />
+            </UFormField>
+            <UFormField label="Mobile Grid Columns">
+              <UInput type="number" :model-value="get('ui', 'mobile_grid_columns')" @update:model-value="set('ui', 'mobile_grid_columns', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Admin Panel ────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-lock" class="text-primary" />
+              <span class="font-semibold text-sm">Admin Panel</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Max Query Rows">
+              <UInput type="number" :model-value="get('admin', 'max_query_rows')" @update:model-value="set('admin', 'max_query_rows', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Logging ────────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-file-text" class="text-primary" />
+              <span class="font-semibold text-sm">Logging</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <UFormField label="Log Level">
+              <USelect :model-value="get('logging', 'level') || 'info'" :items="[{label:'Debug',value:'debug'},{label:'Info',value:'info'},{label:'Warn',value:'warn'},{label:'Error',value:'error'}]" @update:model-value="set('logging', 'level', $event)" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">File Logging</span>
+              <USwitch :model-value="get('logging', 'file_enabled')" @update:model-value="set('logging', 'file_enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Log Rotation</span>
+              <USwitch :model-value="get('logging', 'file_rotation')" @update:model-value="set('logging', 'file_rotation', $event)" />
+            </div>
+            <UFormField label="Max Backups">
+              <UInput type="number" :model-value="get('logging', 'max_backups')" @update:model-value="set('logging', 'max_backups', Number($event))" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Downloader ─────────────────────────────────────────── -->
+        <UCard v-if="get('features', 'enable_downloader')">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-download" class="text-primary" />
+              <span class="font-semibold text-sm">Downloader</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Service URL">
+              <UInput :model-value="get('downloader', 'url')" @update:model-value="set('downloader', 'url', $event)" placeholder="http://localhost:3000" />
+            </UFormField>
+            <UFormField label="Downloads Directory">
+              <UInput :model-value="get('downloader', 'downloads_dir')" @update:model-value="set('downloader', 'downloads_dir', $event)" placeholder="/path/to/downloads" />
+            </UFormField>
+            <UFormField label="Import Directory">
+              <UInput :model-value="get('downloader', 'import_dir')" @update:model-value="set('downloader', 'import_dir', $event)" placeholder="/path/to/import" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Updater ─────────────────────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-refresh-cw" class="text-primary" />
+              <span class="font-semibold text-sm">Updater</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <UFormField label="Update Method">
+              <USelect :model-value="get('updater', 'update_method') || 'source'" :items="[{label:'Source (git pull)',value:'source'},{label:'Binary',value:'binary'},{label:'Docker',value:'docker'}]" @update:model-value="set('updater', 'update_method', $event)" />
+            </UFormField>
+            <UFormField label="Branch">
+              <UInput :model-value="get('updater', 'branch')" @update:model-value="set('updater', 'branch', $event)" placeholder="main" />
+            </UFormField>
+          </div>
+        </UCard>
+
+        <!-- ── Directories (read-only) ────────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-folder" class="text-primary" />
+              <span class="font-semibold text-sm">Directories</span>
+              <UBadge variant="subtle" color="neutral" size="xs">Read-only</UBadge>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
+            <div v-for="[label, key] in [
+              ['Videos', 'videos'], ['Music', 'music'], ['Thumbnails', 'thumbnails'],
+              ['Playlists', 'playlists'], ['Uploads', 'uploads'], ['HLS Cache', 'hls_cache'],
+              ['Data', 'data'], ['Logs', 'logs'], ['Temp', 'temp'],
+            ]" :key="key" class="text-sm">
+              <span class="text-neutral-400">{{ label }}:</span>
+              <span class="font-mono text-xs ml-1">{{ get('directories', key) || '—' }}</span>
+            </div>
+          </div>
+          <p class="text-xs text-neutral-500 mt-3">Directory paths can only be changed via environment variables or config file.</p>
         </UCard>
 
         <!-- ── Database (read-only) ────────────────────────────────── -->
@@ -442,6 +873,49 @@ onMounted(loadConfig)
             </UFormField>
           </div>
           <p class="text-xs text-neutral-500 mt-3">Database settings can only be changed via environment variables or config file.</p>
+        </UCard>
+
+        <!-- ── Locked Sections (denylist) ─────────────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-lock" class="text-warning" />
+              <span class="font-semibold text-sm">Environment-Only Settings</span>
+            </div>
+          </template>
+          <p class="text-sm text-neutral-400 mb-3">
+            The following settings cannot be changed at runtime for security reasons. They must be configured via environment variables or by editing config.json directly.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <div>
+              <p class="font-medium text-highlighted mb-1">Auth</p>
+              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+                <li>Session timeout</li>
+                <li>Secure cookies</li>
+                <li>Login attempts / lockout</li>
+                <li>Registration / guests</li>
+                <li>User type definitions</li>
+              </ul>
+            </div>
+            <div>
+              <p class="font-medium text-highlighted mb-1">Database</p>
+              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+                <li>Host / port / name</li>
+                <li>Credentials</li>
+                <li>Connection pool settings</li>
+                <li>TLS mode</li>
+              </ul>
+            </div>
+            <div>
+              <p class="font-medium text-highlighted mb-1">Receiver</p>
+              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+                <li>API keys</li>
+                <li>Proxy timeout</li>
+                <li>Health check interval</li>
+                <li>Connection limits</li>
+              </ul>
+            </div>
+          </div>
         </UCard>
       </template>
 

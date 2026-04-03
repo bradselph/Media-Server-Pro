@@ -15,6 +15,7 @@ const favorites = ref<FavoriteItem[]>([])
 const mediaMap = ref<Record<string, MediaItem>>({})
 const loading = ref(true)
 const removing = ref<Set<string>>(new Set())
+const failedThumbnails = reactive(new Set<string>())
 let hasFetched = false
 
 async function load() {
@@ -94,14 +95,15 @@ watch(() => authStore.user, (user) => {
         <NuxtLink :to="`/player?id=${encodeURIComponent(fav.media_id)}`" class="block">
           <div class="aspect-video relative rounded overflow-hidden bg-muted mb-1.5">
             <img
-              v-if="mediaMap[fav.media_id]"
+              v-if="mediaMap[fav.media_id] && !failedThumbnails.has(fav.media_id)"
               :src="getThumbnailUrl(mediaMap[fav.media_id])!"
               :alt="getDisplayTitle(mediaMap[fav.media_id])"
               class="w-full h-full object-cover"
               loading="lazy"
+              @error="failedThumbnails.add(fav.media_id)"
             />
             <div v-else class="w-full h-full flex items-center justify-center">
-              <UIcon name="i-lucide-film" class="size-8 text-muted" />
+              <UIcon :name="mediaMap[fav.media_id]?.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
             </div>
             <!-- Duration badge -->
             <div

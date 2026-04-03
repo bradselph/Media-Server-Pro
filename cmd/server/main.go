@@ -44,6 +44,9 @@ import (
 	"media-server-pro/pkg/huggingface"
 	"media-server-pro/pkg/middleware"
 	"media-server-pro/pkg/models"
+	"media-server-pro/pkg/storage"
+	"media-server-pro/pkg/storage/local"
+	"media-server-pro/pkg/storage/s3compat"
 )
 
 // Version and BuildDate are set at build time via -ldflags.
@@ -51,7 +54,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.0.0"
+	Version   = "0.125.17"
 	BuildDate = ""
 )
 
@@ -107,6 +110,66 @@ func main() {
 	cfg := srv.Config()
 	log := logger.New("main")
 
+	// ── Storage backend ────────────────────────────────────────────────────
+	storageFactory := &storage.BackendFactory{
+		Config: storage.StorageConfig{
+			Backend: cfg.Get().Storage.Backend,
+			S3: storage.S3Config{
+				Endpoint:        cfg.Get().Storage.S3.Endpoint,
+				Region:          cfg.Get().Storage.S3.Region,
+				AccessKeyID:     cfg.Get().Storage.S3.AccessKeyID,
+				SecretAccessKey: cfg.Get().Storage.S3.SecretAccessKey,
+				Bucket:          cfg.Get().Storage.S3.Bucket,
+				UsePathStyle:    cfg.Get().Storage.S3.UsePathStyle,
+				Prefixes:        cfg.Get().Storage.S3.Prefixes,
+			},
+		},
+		NewLocal: func(root string) (storage.Backend, error) {
+			return local.New(root)
+		},
+		NewS3: func(ctx context.Context, endpoint, region, keyID, secret, bucket, prefix string, pathStyle bool) (storage.Backend, error) {
+			return s3compat.New(ctx, s3compat.Config{
+				Endpoint:        endpoint,
+				Region:          region,
+				AccessKeyID:     keyID,
+				SecretAccessKey: secret,
+				Bucket:          bucket,
+				Prefix:          prefix,
+				UsePathStyle:    pathStyle,
+			})
+		},
+	}
+
+	initCtx := context.Background()
+	dirs := cfg.Get().Directories
+
+	videoStore, err := storageFactory.NewBackend(initCtx, "videos", dirs.Videos)
+	if err != nil {
+		log.Error("Failed to create video storage backend: %v", err)
+		os.Exit(1)
+	}
+	musicStore, err := storageFactory.NewBackend(initCtx, "music", dirs.Music)
+	if err != nil {
+		log.Error("Failed to create music storage backend: %v", err)
+		os.Exit(1)
+	}
+	thumbnailStore, err := storageFactory.NewBackend(initCtx, "thumbnails", dirs.Thumbnails)
+	if err != nil {
+		log.Error("Failed to create thumbnail storage backend: %v", err)
+		os.Exit(1)
+	}
+	uploadStore, err := storageFactory.NewBackend(initCtx, "uploads", dirs.Uploads)
+	if err != nil {
+		log.Error("Failed to create upload storage backend: %v", err)
+		os.Exit(1)
+	}
+	hlsStore, err := storageFactory.NewBackend(initCtx, "hls_cache", dirs.HLSCache)
+	if err != nil {
+		log.Error("Failed to create HLS storage backend: %v", err)
+		os.Exit(1)
+	}
+	log.Info("Storage backend: %s", cfg.Get().Storage.Backend)
+
 	// ── Startup security checks ────────────────────────────────────────────
 	validateSecrets(cfg, log)
 
@@ -128,16 +191,18 @@ func main() {
 	}
 	mustRegister(srv, authModule)
 
-	// Media (critical — requires database)
+	// Media (critical — requires database, uses storage backends)
 	mediaModule, err := media.NewModule(cfg, dbModule)
 	if err != nil {
 		log.Error("Failed to create media module: %v", err)
 		os.Exit(1)
 	}
+	mediaModule.SetStores(videoStore, musicStore, uploadStore)
 	mustRegister(srv, mediaModule)
 
-	// Streaming (critical)
+	// Streaming (critical — uses storage backend for S3 support)
 	streamingModule := streaming.NewModule(cfg)
+	streamingModule.SetStore(videoStore)
 	mustRegister(srv, streamingModule)
 
 	// Tasks scheduler (critical)
@@ -175,16 +240,18 @@ func main() {
 		log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
 	}
 
-	// Thumbnails (critical — optional BlurHash storage via metadata repo)
+	// Thumbnails (critical — optional BlurHash storage via metadata repo, uses storage backend)
 	metadataRepo := mysql.NewMediaMetadataRepository(dbModule.GORM())
 	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
 	thumbnailsModule.SetMediaIDProvider(mediaModule)
+	thumbnailsModule.SetStore(thumbnailStore)
 	mustRegister(srv, thumbnailsModule)
 
 	// ── Non-critical modules ───────────────────────────────────────────────
 
-	// HLS (non-critical — falls back gracefully if ffmpeg unavailable)
+	// HLS (non-critical — falls back gracefully if ffmpeg unavailable, uses storage backend)
 	hlsModule := hls.NewModule(cfg, dbModule)
+	hlsModule.SetStore(hlsStore)
 	mustRegister(srv, hlsModule)
 
 	// Analytics (non-critical — requires database)
@@ -214,8 +281,9 @@ func main() {
 		mustRegister(srv, adminModule)
 	}
 
-	// Upload (non-critical)
+	// Upload (non-critical — uses storage backend)
 	uploadModule := upload.NewModule(cfg)
+	uploadModule.SetStore(uploadStore)
 	mustRegister(srv, uploadModule)
 
 	// Validator (non-critical — requires database for validation results)

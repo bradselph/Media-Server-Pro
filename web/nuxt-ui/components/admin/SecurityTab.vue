@@ -185,13 +185,24 @@ async function banIPAddress() {
 
 // Stats
 const stats = ref<SecurityStats | null>(null)
+const statsError = ref('')
+
+async function loadStats() {
+  statsError.value = ''
+  try {
+    stats.value = await adminApi.getSecurityStats()
+  } catch (e: unknown) {
+    statsError.value = e instanceof Error ? e.message : 'Failed to load security stats'
+    toast.add({ title: statsError.value, color: 'error', icon: 'i-lucide-alert-circle' })
+  }
+}
 
 watch(subTab, (v) => {
   if (v === 'audit') loadAudit()
   else if (v === 'whitelist') loadWhitelist()
   else if (v === 'blacklist') loadBlacklist()
   else if (v === 'banned') loadBanned()
-  else if (v === 'stats') adminApi.getSecurityStats().then(s => { stats.value = s }).catch(() => {})
+  else if (v === 'stats') loadStats()
   else if (v === 'settings') loadSecurityConfig()
 }, { immediate: true })
 </script>
@@ -319,6 +330,7 @@ watch(subTab, (v) => {
     </div>
 
     <!-- Stats -->
+    <UAlert v-if="item.value === 'stats' && statsError" :title="statsError" color="error" icon="i-lucide-alert-circle" class="mb-4" />
     <div v-if="item.value === 'stats' && stats" class="space-y-4">
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <UCard v-for="item in [

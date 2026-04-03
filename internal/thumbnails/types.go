@@ -12,6 +12,7 @@ import (
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/logger"
+	"media-server-pro/pkg/storage"
 )
 
 var (
@@ -65,6 +66,7 @@ type Module struct {
 	log             *logger.Logger
 	config          *config.Manager
 	thumbnailDir    string
+	store           storage.Backend // optional storage backend for thumbnail I/O
 	ffmpegPath      string
 	ffprobePath     string
 	jobHeap         jobHeap

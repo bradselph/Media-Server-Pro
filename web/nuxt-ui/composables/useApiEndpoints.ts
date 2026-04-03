@@ -281,6 +281,12 @@ export function useUploadApi() {
       files.forEach(f => formData.append('files', f))
       if (category) formData.append('category', category)
       const res = await fetch('/api/upload', { method: 'POST', credentials: 'include', body: formData })
+      // Handle 401 the same way useApi does — redirect to login
+      if (res.status === 401 && import.meta.client) {
+        const redirect = window.location.pathname + window.location.search
+        window.location.replace(`/login?redirect=${encodeURIComponent(redirect)}`)
+        throw new Error('Session expired')
+      }
       const envelope = await res.json()
       if (!res.ok || envelope.success === false) throw new Error(envelope.message ?? envelope.error ?? `HTTP ${res.status}`)
       return (envelope.data ?? envelope) as UploadResult

@@ -15,6 +15,8 @@ const items = ref<CategoryBrowseItem[]>([])
 const selectedCategory = ref<string>((route.query.category as string) || '')
 const loading = ref(false)
 const error = ref('')
+const ITEMS_PER_PAGE = 60
+const categoryPage = ref(1)
 
 // Map category to a lucide icon
 const categoryIcon: Record<string, string> = {
@@ -42,6 +44,7 @@ async function loadStats() {
 
 async function loadCategory(cat: string) {
   selectedCategory.value = cat
+  categoryPage.value = 1
   router.replace({ query: { category: cat } })
   loading.value = true
   error.value = ''
@@ -55,6 +58,13 @@ async function loadCategory(cat: string) {
     loading.value = false
   }
 }
+
+const paginatedItems = computed(() => {
+  const start = (categoryPage.value - 1) * ITEMS_PER_PAGE
+  return items.value.slice(start, start + ITEMS_PER_PAGE)
+})
+
+const totalCategoryPages = computed(() => Math.ceil(items.value.length / ITEMS_PER_PAGE))
 
 // Sort key for grouping TV Shows by show name, Music by artist
 const grouped = computed(() => {
@@ -203,7 +213,7 @@ watch(() => authStore.user, (user) => {
       <!-- Flat grid (Movies, Documentaries, etc.) -->
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <NuxtLink
-          v-for="item in items"
+          v-for="item in paginatedItems"
           :key="item.id"
           :to="`/player?id=${encodeURIComponent(item.id)}`"
           class="group"
@@ -244,6 +254,11 @@ watch(() => authStore.user, (user) => {
             {{ item.name }}
           </p>
         </NuxtLink>
+      </div>
+
+      <!-- Pagination for flat grid -->
+      <div v-if="!grouped && totalCategoryPages > 1" class="flex justify-center pt-4">
+        <UPagination v-model:page="categoryPage" :total="items.length" :items-per-page="ITEMS_PER_PAGE" />
       </div>
     </div>
 
