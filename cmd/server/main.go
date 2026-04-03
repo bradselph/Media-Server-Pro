@@ -44,6 +44,9 @@ import (
 	"media-server-pro/pkg/huggingface"
 	"media-server-pro/pkg/middleware"
 	"media-server-pro/pkg/models"
+	"media-server-pro/pkg/storage"
+	"media-server-pro/pkg/storage/local"
+	"media-server-pro/pkg/storage/s3compat"
 )
 
 // Version and BuildDate are set at build time via -ldflags.
@@ -107,6 +110,46 @@ func main() {
 	cfg := srv.Config()
 	log := logger.New("main")
 
+	// ── Storage backend ────────────────────────────────────────────────────
+	storageFactory := &storage.BackendFactory{
+		Config: storage.StorageConfig{
+			Backend: cfg.Get().Storage.Backend,
+			S3: storage.S3Config{
+				Endpoint:        cfg.Get().Storage.S3.Endpoint,
+				Region:          cfg.Get().Storage.S3.Region,
+				AccessKeyID:     cfg.Get().Storage.S3.AccessKeyID,
+				SecretAccessKey: cfg.Get().Storage.S3.SecretAccessKey,
+				Bucket:          cfg.Get().Storage.S3.Bucket,
+				UsePathStyle:    cfg.Get().Storage.S3.UsePathStyle,
+				Prefixes:        cfg.Get().Storage.S3.Prefixes,
+			},
+		},
+		NewLocal: func(root string) (storage.Backend, error) {
+			return local.New(root)
+		},
+		NewS3: func(ctx context.Context, endpoint, region, keyID, secret, bucket, prefix string, pathStyle bool) (storage.Backend, error) {
+			return s3compat.New(ctx, s3compat.Config{
+				Endpoint:        endpoint,
+				Region:          region,
+				AccessKeyID:     keyID,
+				SecretAccessKey: secret,
+				Bucket:          bucket,
+				Prefix:          prefix,
+				UsePathStyle:    pathStyle,
+			})
+		},
+	}
+
+	initCtx := context.Background()
+	dirs := cfg.Get().Directories
+
+	videoStore, err := storageFactory.NewBackend(initCtx, "videos", dirs.Videos)
+	if err != nil {
+		log.Error("Failed to create video storage backend: %v", err)
+		os.Exit(1)
+	}
+	log.Info("Storage backend: %s (videos: %s)", cfg.Get().Storage.Backend, videoStore.AbsPath(""))
+
 	// ── Startup security checks ────────────────────────────────────────────
 	validateSecrets(cfg, log)
 
@@ -136,8 +179,9 @@ func main() {
 	}
 	mustRegister(srv, mediaModule)
 
-	// Streaming (critical)
+	// Streaming (critical — uses storage backend for S3 support)
 	streamingModule := streaming.NewModule(cfg)
+	streamingModule.SetStore(videoStore)
 	mustRegister(srv, streamingModule)
 
 	// Tasks scheduler (critical)

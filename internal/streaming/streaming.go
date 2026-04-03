@@ -22,6 +22,7 @@ import (
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
+	"media-server-pro/pkg/storage"
 )
 
 var (
@@ -54,6 +55,7 @@ func safeContentDispositionFilename(filename string) string {
 type Module struct {
 	config         *config.Manager
 	log            *logger.Logger
+	store          storage.Backend // optional; when nil, falls back to direct os.Open
 	activeSessions map[string]*models.StreamSession
 	sessionMu      sync.RWMutex
 	healthy        bool
@@ -86,6 +88,12 @@ func NewModule(cfg *config.Manager) *Module {
 			},
 		},
 	}
+}
+
+// SetStore sets the storage backend for file I/O. When set, the module
+// uses the backend instead of direct os.Open calls. This enables S3 support.
+func (m *Module) SetStore(s storage.Backend) {
+	m.store = s
 }
 
 // Name returns the module name
@@ -162,26 +170,29 @@ type StreamResponse struct {
 func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamRequest) error {
 	m.log.Debug("Stream request for %s from %s", req.Path, req.IPAddress)
 
-	// Validate file exists
-	file, err := os.Open(req.Path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return ErrFileNotFound
-		}
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn(errCloseFileFmt, err)
-		}
-	}()
+	ctx := context.Background()
 
-	// Get file info
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to stat file: %w", err)
+	// Get file size via stat (works for both local and S3)
+	var fileSize int64
+	if m.store != nil {
+		info, err := m.store.Stat(ctx, req.Path)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return ErrFileNotFound
+			}
+			return fmt.Errorf("failed to stat file: %w", err)
+		}
+		fileSize = info.Size
+	} else {
+		fi, err := os.Stat(req.Path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return ErrFileNotFound
+			}
+			return fmt.Errorf("failed to stat file: %w", err)
+		}
+		fileSize = fi.Size()
 	}
-	fileSize := fileInfo.Size()
 
 	// Determine content type
 	contentType := m.getContentType(req.Path)
@@ -212,7 +223,41 @@ func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamReques
 		w.WriteHeader(http.StatusOK)
 	}
 
-	// Stream the content
+	// For S3 backends with RangeOpener, use efficient ranged GET
+	if m.store != nil {
+		if ro, ok := m.store.(storage.RangeOpener); ok {
+			reader, err := ro.OpenRange(ctx, req.Path, start, end)
+			if err != nil {
+				return fmt.Errorf("failed to open range: %w", err)
+			}
+			defer reader.Close()
+			return m.streamFromReader(w, reader, end-start+1, chunkSize, session)
+		}
+		// Fallback: open full file from storage backend
+		f, err := m.store.Open(ctx, req.Path)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return ErrFileNotFound
+			}
+			return fmt.Errorf("failed to open file: %w", err)
+		}
+		defer f.Close()
+		return m.streamContentSeeker(w, f, start, end, chunkSize, session)
+	}
+
+	// Legacy: direct filesystem
+	file, err := os.Open(req.Path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrFileNotFound
+		}
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			m.log.Warn(errCloseFileFmt, err)
+		}
+	}()
 	return m.streamContent(w, file, start, end, chunkSize, session)
 }
 
@@ -385,6 +430,130 @@ func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize,
 	// Cache headers for partial content
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+}
+
+// streamFromReader streams content from an io.Reader (e.g., S3 ranged GET response)
+// to the response writer. Used when the backend supports efficient range reads.
+func (m *Module) streamFromReader(w http.ResponseWriter, reader io.Reader, totalBytes, chunkSize int64, session *models.StreamSession) error {
+	bufInterface := m.bufferPool.Get()
+	buf := bufInterface.([]byte)
+	defer m.bufferPool.Put(bufInterface)
+
+	effectiveChunkSize := int64(len(buf))
+	if chunkSize < effectiveChunkSize {
+		effectiveChunkSize = chunkSize
+	}
+
+	remaining := totalBytes
+	var accumulatedBytes int64
+
+	for remaining > 0 {
+		toRead := effectiveChunkSize
+		if remaining < effectiveChunkSize {
+			toRead = remaining
+		}
+
+		n, err := reader.Read(buf[:toRead])
+		if err != nil && err != io.EOF {
+			if accumulatedBytes > 0 {
+				m.updateSessionStats(session.ID, accumulatedBytes)
+			}
+			return fmt.Errorf("read error: %w", err)
+		}
+		if n == 0 {
+			break
+		}
+
+		chunk := buf[:n]
+		totalWritten := 0
+		for totalWritten < n {
+			written, err := w.Write(chunk[totalWritten:])
+			if err != nil {
+				if accumulatedBytes > 0 {
+					m.updateSessionStats(session.ID, accumulatedBytes)
+				}
+				m.log.Debug("Client disconnected during stream: %v", err)
+				return nil
+			}
+			totalWritten += written
+		}
+
+		remaining -= int64(totalWritten)
+		accumulatedBytes += int64(totalWritten)
+
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	if accumulatedBytes > 0 {
+		m.updateSessionStats(session.ID, accumulatedBytes)
+	}
+	return nil
+}
+
+// streamContentSeeker streams from an io.ReadSeeker (storage.ReadSeekCloser).
+// Same as streamContent but accepts io.ReadSeeker instead of *os.File.
+func (m *Module) streamContentSeeker(w http.ResponseWriter, reader io.ReadSeeker, start, end, chunkSize int64, session *models.StreamSession) error {
+	if _, err := reader.Seek(start, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek: %w", err)
+	}
+
+	bufInterface := m.bufferPool.Get()
+	buf := bufInterface.([]byte)
+	defer m.bufferPool.Put(bufInterface)
+
+	effectiveChunkSize := int64(len(buf))
+	if chunkSize < effectiveChunkSize {
+		effectiveChunkSize = chunkSize
+	}
+
+	remaining := end - start + 1
+	var accumulatedBytes int64
+
+	for remaining > 0 {
+		toRead := effectiveChunkSize
+		if remaining < effectiveChunkSize {
+			toRead = remaining
+		}
+
+		n, err := reader.Read(buf[:toRead])
+		if err != nil && err != io.EOF {
+			if accumulatedBytes > 0 {
+				m.updateSessionStats(session.ID, accumulatedBytes)
+			}
+			return fmt.Errorf("read error: %w", err)
+		}
+		if n == 0 {
+			break
+		}
+
+		chunk := buf[:n]
+		totalWritten := 0
+		for totalWritten < n {
+			written, err := w.Write(chunk[totalWritten:])
+			if err != nil {
+				if accumulatedBytes > 0 {
+					m.updateSessionStats(session.ID, accumulatedBytes)
+				}
+				m.log.Debug("Client disconnected during stream: %v", err)
+				return nil
+			}
+			totalWritten += written
+		}
+
+		remaining -= int64(totalWritten)
+		accumulatedBytes += int64(totalWritten)
+
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	if accumulatedBytes > 0 {
+		m.updateSessionStats(session.ID, accumulatedBytes)
+	}
+	return nil
 }
 
 // streamContent streams file content to the response writer using buffer pool.
@@ -596,15 +765,26 @@ func (m *Module) TrackProxyStream(userID string) (release func()) {
 func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) error {
 	m.log.Debug("Download request for %s", path)
 
-	file, fileSize, err := m.openFileForDownload(path)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn(errCloseFileFmt, err)
+	ctx := context.Background()
+
+	var fileSize int64
+	if m.store != nil {
+		info, err := m.store.Stat(ctx, path)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return ErrFileNotFound
+			}
+			return fmt.Errorf("failed to stat file: %w", err)
 		}
-	}()
+		fileSize = info.Size
+	} else {
+		file, fs, err := m.openFileForDownload(path)
+		if err != nil {
+			return err
+		}
+		file.Close()
+		fileSize = fs
+	}
 
 	if err := m.validateDownloadFileSize(fileSize); err != nil {
 		return err
@@ -617,13 +797,52 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 	rangeHeader := r.Header.Get("Range")
 	start, end, err := m.parseRange(rangeHeader, fileSize)
 	if err != nil {
-		// Invalid range - return 416 Range Not Satisfiable
 		w.Header().Set(headerContentRange, fmt.Sprintf("bytes */%d", fileSize))
 		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 		return nil
 	}
 
 	m.setDownloadHeaders(w, filename, contentType, rangeHeader, fileSize, start, end)
+
+	// For S3 backends with RangeOpener, use ranged GET
+	if m.store != nil {
+		if ro, ok := m.store.(storage.RangeOpener); ok {
+			reader, err := ro.OpenRange(ctx, path, start, end)
+			if err != nil {
+				return fmt.Errorf("failed to open range for download: %w", err)
+			}
+			defer reader.Close()
+			_, copyErr := io.Copy(w, reader)
+			return copyErr
+		}
+		// Fallback: open full file from storage backend
+		f, err := m.store.Open(ctx, path)
+		if err != nil {
+			return fmt.Errorf("failed to open file: %w", err)
+		}
+		defer f.Close()
+		if start > 0 {
+			if _, err := f.Seek(start, io.SeekStart); err != nil {
+				return fmt.Errorf("failed to seek: %w", err)
+			}
+		}
+		_, copyErr := io.CopyN(w, f, end-start+1)
+		if copyErr != nil && copyErr != io.EOF {
+			return copyErr
+		}
+		return nil
+	}
+
+	// Legacy: direct filesystem
+	file, _, err := m.openFileForDownload(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			m.log.Warn(errCloseFileFmt, err)
+		}
+	}()
 
 	return m.streamFileChunked(w, file, filename, start, end)
 }
