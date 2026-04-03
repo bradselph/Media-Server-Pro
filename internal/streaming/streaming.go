@@ -988,8 +988,25 @@ func (m *Module) writeChunkedData(w http.ResponseWriter, file *os.File, filename
 	return bytesSent, nil
 }
 
-// ServeStatic serves a static file
+// ServeStatic serves a static file, routing to the storage backend when remote.
 func (m *Module) ServeStatic(w http.ResponseWriter, r *http.Request, path string) error {
+	if m.store != nil && !m.store.IsLocal() {
+		rc, err := m.store.Open(r.Context(), path)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return ErrFileNotFound
+			}
+			return err
+		}
+		defer rc.Close()
+		fi, err := m.store.Stat(r.Context(), path)
+		if err != nil {
+			return err
+		}
+		http.ServeContent(w, r, fi.Name, fi.ModTime, rc)
+		return nil
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {

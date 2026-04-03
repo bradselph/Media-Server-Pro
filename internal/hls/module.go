@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -226,11 +227,16 @@ func (m *Module) resumeInterruptedJobs() int {
 		if !m.shouldResumeJob(job) {
 			continue
 		}
-		if _, err := os.Stat(job.MediaPath); err != nil {
-			m.log.Warn("Skipping resume of HLS job %s: media file no longer exists at %s", job.ID, job.MediaPath)
-			job.Status = models.HLSStatusFailed
-			job.Error = "Media file not found on startup resume"
-			continue
+		// Only verify existence for absolute local paths. S3 object keys
+		// (e.g. "videos/foo.mp4") are not absolute and cannot be checked
+		// with os.Stat; they will be validated by ffmpeg at transcode time.
+		if filepath.IsAbs(job.MediaPath) {
+			if _, err := os.Stat(job.MediaPath); err != nil {
+				m.log.Warn("Skipping resume of HLS job %s: media file no longer exists at %s", job.ID, job.MediaPath)
+				job.Status = models.HLSStatusFailed
+				job.Error = "Media file not found on startup resume"
+				continue
+			}
 		}
 		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)
 		jobCtx, jobCancel := context.WithCancel(context.Background())

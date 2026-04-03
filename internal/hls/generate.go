@@ -52,8 +52,13 @@ func (m *Module) checkGenerateHLSPrereqs(mediaPath string) error {
 		}
 		return fmt.Errorf("HLS transcoding is disabled in server configuration")
 	}
-	if _, err := os.Stat(mediaPath); err != nil {
-		return fmt.Errorf("media file not found: %w", err)
+	// Only stat-check absolute local filesystem paths. S3 object keys such as
+	// "videos/foo.mp4" are not absolute and cannot be checked with os.Stat;
+	// ffmpeg will report the error directly when transcoding starts.
+	if filepath.IsAbs(mediaPath) {
+		if _, err := os.Stat(mediaPath); err != nil {
+			return fmt.Errorf("media file not found: %w", err)
+		}
 	}
 	return nil
 }
