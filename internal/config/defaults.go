@@ -42,6 +42,7 @@ func DefaultConfig() *Config {
 		AgeGate:       defaultAgeGateConfig(),
 		UI:            UIConfig{ItemsPerPage: 48, MobileItemsPerPage: 24, MobileGridColumns: 2},
 		Downloader:    defaultDownloaderConfig(),
+		Storage:       StorageConfig{Backend: "local"},
 	}
 }
 

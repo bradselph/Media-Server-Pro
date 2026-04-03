@@ -24,4 +24,5 @@ func (m *Manager) applyEnvOverrides() {
 	m.applyUpdaterEnvOverrides()
 	m.applyAgeGateEnvOverrides()
 	m.applyDownloaderEnvOverrides()
+	m.applyStorageEnvOverrides()
 }

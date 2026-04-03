@@ -29,6 +29,28 @@ type Config struct {
 	AgeGate       AgeGateConfig       `json:"age_gate"`
 	UI            UIConfig            `json:"ui"`
 	Downloader    DownloaderConfig    `json:"downloader"`
+	Storage       StorageConfig       `json:"storage"`
+}
+
+// StorageConfig selects and configures the file storage backend.
+type StorageConfig struct {
+	// Backend selects the storage backend: "local" (default) or "s3".
+	Backend string `json:"backend"`
+
+	// S3 holds S3-compatible storage settings (Backblaze B2, AWS S3, MinIO, etc.).
+	// Only used when Backend is "s3".
+	S3 S3StorageConfig `json:"s3"`
+}
+
+// S3StorageConfig holds credentials and settings for S3-compatible storage.
+type S3StorageConfig struct {
+	Endpoint        string            `json:"endpoint"`           // e.g., "s3.us-west-004.backblazeb2.com"
+	Region          string            `json:"region"`             // e.g., "us-west-004"
+	AccessKeyID     string            `json:"access_key_id"`      // B2 application key ID
+	SecretAccessKey string            `json:"secret_access_key"`  // B2 application key
+	Bucket          string            `json:"bucket"`             // bucket name
+	UsePathStyle    bool              `json:"use_path_style"`     // true for B2 and MinIO
+	Prefixes        map[string]string `json:"prefixes"`           // per-role key prefixes
 }
 
 // DownloaderConfig holds settings for the external media downloader integration.
