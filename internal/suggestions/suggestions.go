@@ -327,23 +327,47 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 
 // RecordRating records a user rating for a media item.
 // mediaPath is the filesystem path used to match ViewHistory entries.
+// A rating-only ViewHistory entry is created if none exists yet, so that ratings
+// made before a first view (e.g. browsing) are not silently dropped.
 func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	profile, ok := m.profiles[userID]
 	if !ok {
-		return
+		// No in-memory profile (server restart or eviction). Create a minimal one
+		// so the rating is captured and written on the next periodic save.
+		profile = &UserProfile{
+			UserID:          userID,
+			CategoryScores:  make(map[string]float64),
+			TypePreferences: make(map[string]float64),
+			ViewHistory:     make([]ViewHistory, 0),
+		}
+		m.profiles[userID] = profile
 	}
 
 	for i, vh := range profile.ViewHistory {
 		if vh.MediaPath == mediaPath {
 			profile.ViewHistory[i].Rating = rating
-			break
+			profile.LastUpdated = time.Now()
+			m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
+			return
 		}
 	}
 
-	m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
+	// No ViewHistory entry for this item (user rated without watching).
+	// Create a rating-only record so the rating is persisted.
+	profile.ViewHistory = append(profile.ViewHistory, ViewHistory{
+		MediaPath:  mediaPath,
+		Rating:     rating,
+		LastViewed: time.Now(),
+	})
+	const maxViewHistory = 500
+	if len(profile.ViewHistory) > maxViewHistory {
+		profile.ViewHistory = profile.ViewHistory[len(profile.ViewHistory)-maxViewHistory:]
+	}
+	profile.LastUpdated = time.Now()
+	m.log.Debug("Recorded rating %.1f for %s by user %s (new entry)", rating, mediaPath, userID)
 }
 
 // UpdateMediaData atomically replaces the in-memory media catalogue used for suggestions.

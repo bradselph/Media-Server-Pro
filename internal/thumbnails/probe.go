@@ -5,14 +5,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
+// resolveMediaInputPath converts a stored media path to a form ffmpeg can read.
+// Absolute local paths are returned unchanged. S3 object keys are resolved to a
+// short-lived presigned HTTPS URL via m.mediaInputResolver when one is set.
+// Uses context.Background() because callers lack a request context.
+func (m *Module) resolveMediaInputPath(mediaPath string) string {
+	if m.mediaInputResolver == nil || filepath.IsAbs(mediaPath) {
+		return mediaPath
+	}
+	url, err := m.mediaInputResolver.ResolveForFFmpeg(context.Background(), mediaPath)
+	if err != nil {
+		m.log.Warn("failed to resolve media input path %q: %v", mediaPath, err)
+		return mediaPath
+	}
+	return url
+}
+
 // getMediaDuration uses ffmpeg-go Probe to get duration
 func (m *Module) getMediaDuration(path string) (float64, error) {
+	path = m.resolveMediaInputPath(path)
 	// Try ffmpeg-go Probe first, using the explicit ffprobe path when available
 	// so this works under systemd (which strips PATH to a minimal set).
 	var probeJSON string

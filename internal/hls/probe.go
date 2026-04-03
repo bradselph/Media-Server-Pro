@@ -11,9 +11,26 @@ import (
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
+// resolveMediaInputPath converts a stored media path to a form ffmpeg can read.
+// Absolute local paths are returned unchanged. S3 object keys are resolved to a
+// short-lived presigned HTTPS URL via m.mediaInputResolver when one is set.
+// Falls back to the original path on error so ffmpeg produces a clear error message.
+func (m *Module) resolveMediaInputPath(ctx context.Context, mediaPath string) string {
+	if m.mediaInputResolver == nil || filepath.IsAbs(mediaPath) {
+		return mediaPath
+	}
+	url, err := m.mediaInputResolver.ResolveForFFmpeg(ctx, mediaPath)
+	if err != nil {
+		m.log.Warn("failed to resolve media input path %q: %v", mediaPath, err)
+		return mediaPath
+	}
+	return url
+}
+
 // getMediaDuration uses ffprobe to get media duration in seconds. Prefers the context-aware
 // exec path when ffprobePath is set so ctx cancellation (e.g. shutdown) is honored.
 func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64 {
+	mediaPath = m.resolveMediaInputPath(ctx, mediaPath)
 	if m.ffprobePath == "" && m.ffmpegPath == "" {
 		return 0
 	}
@@ -63,6 +80,7 @@ func (m *Module) parseProbeDuration(probeJSON string) float64 {
 
 // getSourceHeight probes the source media file and returns the video stream height in pixels.
 func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
+	mediaPath = m.resolveMediaInputPath(ctx, mediaPath)
 	if m.ffmpegPath == "" && m.ffprobePath == "" {
 		return 0
 	}

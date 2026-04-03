@@ -96,6 +96,25 @@ func (m *Module) storeFor(p string) storeResult {
 	return storeResult{relPath: p}
 }
 
+// ResolveForFFmpeg converts a stored media path to a form that ffmpeg can read.
+// For absolute local paths it returns the path unchanged.
+// For remote S3 paths it returns a short-lived presigned GET URL.
+// Implements the MediaInputResolver interface consumed by the hls and thumbnails modules.
+func (m *Module) ResolveForFFmpeg(ctx context.Context, mediaPath string) (string, error) {
+	if filepath.IsAbs(mediaPath) {
+		return mediaPath, nil // absolute local path — ffmpeg reads directly
+	}
+	sr := m.storeFor(mediaPath)
+	if sr.store == nil || sr.store.IsLocal() {
+		return mediaPath, nil // local or unrecognised — pass through
+	}
+	presigner, ok := sr.store.(storage.PresignURLer)
+	if !ok {
+		return mediaPath, nil // remote but no presign support
+	}
+	return presigner.PresignGetURL(ctx, sr.relPath, 2*time.Hour)
+}
+
 // crossStoreMove copies a file from srcStore/srcRel to dstStore/dstRel, then
 // deletes the source. Used when moving a file between backends that share the
 // same bucket but use different key prefixes (e.g. videos/ → music/).

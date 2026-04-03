@@ -68,13 +68,26 @@ type Module struct {
 	accessTracker *AccessTracker
 	activeJobs    sync.WaitGroup // Tracks active transcoding jobs for graceful shutdown
 	stopping      atomic.Bool    // Set to true during Stop() to distinguish cancellation from real failures
-	qualityLocks  sync.Map       // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
-	store         storage.Backend // optional storage backend for HLS cache I/O
+	qualityLocks       sync.Map           // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
+	store              storage.Backend    // optional storage backend for HLS cache I/O
+	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
+}
+
+// MediaInputResolver converts a stored media path (possibly an S3 key) to a
+// form that ffmpeg can read — an absolute local path or a presigned HTTPS URL.
+type MediaInputResolver interface {
+	ResolveForFFmpeg(ctx context.Context, mediaPath string) (string, error)
 }
 
 // SetStore sets the storage backend for HLS cache I/O.
 func (m *Module) SetStore(s storage.Backend) {
 	m.store = s
+}
+
+// SetMediaInputResolver sets the resolver used to convert S3 media keys to
+// ffmpeg-readable URLs (presigned GET URLs). Must be called before Start().
+func (m *Module) SetMediaInputResolver(r MediaInputResolver) {
+	m.mediaInputResolver = r
 }
 
 // NewModule creates a new HLS module

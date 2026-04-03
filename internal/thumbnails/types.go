@@ -56,6 +56,12 @@ type BlurHashUpdater interface {
 	UpdateBlurHash(ctx context.Context, path string, hash string) error
 }
 
+// MediaInputResolver converts a stored media path (possibly an S3 key) to a
+// form that ffmpeg can read — an absolute local path or a presigned HTTPS URL.
+type MediaInputResolver interface {
+	ResolveForFFmpeg(ctx context.Context, mediaPath string) (string, error)
+}
+
 // MediaIDProvider returns the set of all valid media IDs for orphan detection.
 type MediaIDProvider interface {
 	GetAllMediaIDs() map[string]bool
@@ -66,7 +72,8 @@ type Module struct {
 	log             *logger.Logger
 	config          *config.Manager
 	thumbnailDir    string
-	store           storage.Backend // optional storage backend for thumbnail I/O
+	store              storage.Backend    // optional storage backend for thumbnail I/O
+	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
 	ffmpegPath      string
 	ffprobePath     string
 	jobHeap         jobHeap
@@ -94,12 +101,13 @@ type Module struct {
 
 // ThumbnailJob represents a thumbnail generation task
 type ThumbnailJob struct {
-	MediaPath  string
-	OutputPath string
-	Width      int
-	Height     int
-	Timestamp  float64
-	IsAudio    bool
+	MediaPath   string // stored path (S3 key or local absolute path); used as DB key
+	FFmpegInput string // ffmpeg-readable path or URL (set by generateThumbnail); empty until resolved
+	OutputPath  string
+	Width       int
+	Height      int
+	Timestamp   float64
+	IsAudio     bool
 }
 
 // priorityJob wraps ThumbnailJob with priority (0=high/user-triggered, 1=low/background)

@@ -245,6 +245,7 @@ func main() {
 	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
 	thumbnailsModule.SetMediaIDProvider(mediaModule)
 	thumbnailsModule.SetStore(thumbnailStore)
+	thumbnailsModule.SetMediaInputResolver(mediaModule)
 	mustRegister(srv, thumbnailsModule)
 
 	// ── Non-critical modules ───────────────────────────────────────────────
@@ -252,6 +253,7 @@ func main() {
 	// HLS (non-critical — falls back gracefully if ffmpeg unavailable, uses storage backend)
 	hlsModule := hls.NewModule(cfg, dbModule)
 	hlsModule.SetStore(hlsStore)
+	hlsModule.SetMediaInputResolver(mediaModule)
 	mustRegister(srv, hlsModule)
 
 	// Analytics (non-critical — requires database)

@@ -182,7 +182,9 @@ func (m *Module) prepareVariantDir(job *models.HLSJob, quality string) (variantD
 // Keyframes are placed at segment boundaries via force_key_frames (frame-rate independent).
 func (m *Module) buildFFmpegTranscodeCmd(ctx context.Context, paths *transcodePaths, profile *config.HLSQuality) *exec.Cmd {
 	cfg := m.config.Get()
-	stream := ffmpeg.Input(paths.MediaPath)
+	// Resolve S3 keys to presigned URLs so ffmpeg can fetch the source over HTTPS.
+	mediaInput := m.resolveMediaInputPath(ctx, paths.MediaPath)
+	stream := ffmpeg.Input(mediaInput)
 	stream = stream.Output(paths.PlaylistPath,
 		ffmpeg.KwArgs{
 			"c:v":              "libx264",
