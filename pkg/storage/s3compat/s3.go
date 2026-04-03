@@ -1,5 +1,11 @@
 // Package s3compat implements the storage.Backend interface for S3-compatible
-// services (Backblaze B2, AWS S3, MinIO, Cloudflare R2, Wasabi, etc.).
+// services (Backblaze B2, AWS S3, MinIO, Cloudflare R2, Wasabi, etc.) using
+// the minio-go client.  Key advantages over the AWS SDK:
+//   - PutObject with size=-1 automatically uses chunked/multipart upload,
+//     so large video files are streamed without buffering in memory.
+//   - GetObject returns a *minio.Object that is a true io.ReadSeekCloser —
+//     no need to buffer the entire file for Open().
+//   - Excellent Backblaze B2 S3-API compatibility.
 package s3compat
 
 import (
@@ -11,13 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"media-server-pro/pkg/storage"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"media-server-pro/pkg/storage"
 )
 
 // Config holds S3-compatible storage settings.
@@ -27,19 +30,20 @@ type Config struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	Bucket          string
-	Prefix          string // key prefix within the bucket (e.g., "videos/")
-	UsePathStyle    bool
+	Prefix          string // key prefix within the bucket (e.g. "videos/")
+	UsePathStyle    bool   // true for Backblaze B2 and MinIO; false for AWS virtual-hosted
 }
 
 // Backend stores files in an S3-compatible bucket under a key prefix.
 type Backend struct {
-	client   *s3.Client
-	presign  *s3.PresignClient
-	bucket   string
-	prefix   string // normalized: always ends with "/" or is empty
+	client *minio.Client
+	bucket string
+	prefix string // normalised: always ends with "/" or is empty
 }
 
-// New creates an S3 storage backend.
+// New creates an S3-compatible storage backend.
+// The endpoint may include or omit the scheme; HTTPS is used unless the endpoint
+// explicitly starts with "http://".
 func New(ctx context.Context, cfg Config) (*Backend, error) {
 	if cfg.Bucket == "" {
 		return nil, fmt.Errorf("s3 storage: bucket name is required")
@@ -48,30 +52,24 @@ func New(ctx context.Context, cfg Config) (*Backend, error) {
 		return nil, fmt.Errorf("s3 storage: endpoint is required")
 	}
 
-	region := cfg.Region
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	awsCfg, err := config.LoadDefaultConfig(ctx,
-		config.WithRegion(region),
-		config.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
-		),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("s3 storage: load config: %w", err)
-	}
-
+	// Strip scheme — minio.New takes the bare host[:port].
+	secure := true
 	endpoint := cfg.Endpoint
-	if !strings.HasPrefix(endpoint, "http") {
-		endpoint = "https://" + endpoint
+	if strings.HasPrefix(endpoint, "http://") {
+		endpoint = strings.TrimPrefix(endpoint, "http://")
+		secure = false
+	} else {
+		endpoint = strings.TrimPrefix(endpoint, "https://")
 	}
 
-	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
-		o.BaseEndpoint = aws.String(endpoint)
-		o.UsePathStyle = cfg.UsePathStyle
+	client, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
+		Secure: secure,
+		Region: cfg.Region,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("s3 storage: create client: %w", err)
+	}
 
 	prefix := cfg.Prefix
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
@@ -79,10 +77,9 @@ func New(ctx context.Context, cfg Config) (*Backend, error) {
 	}
 
 	return &Backend{
-		client:  client,
-		presign: s3.NewPresignClient(client),
-		bucket:  cfg.Bucket,
-		prefix:  prefix,
+		client: client,
+		bucket: cfg.Bucket,
+		prefix: prefix,
 	}, nil
 }
 
@@ -92,92 +89,86 @@ func (b *Backend) key(rel string) string {
 	if cleaned == "." || cleaned == "" {
 		return b.prefix
 	}
-	// Strip leading slash or dot-slash
+	// Strip leading slash or dot-slash so callers can pass either form.
 	cleaned = strings.TrimPrefix(cleaned, "/")
 	cleaned = strings.TrimPrefix(cleaned, "./")
 	return b.prefix + cleaned
 }
 
-// Open returns a seekable reader for the object. Uses a buffered download
-// for small files. For large files or range-based access, prefer OpenRange.
+// KeyPrefix returns the configured key prefix for this backend (e.g. "videos/").
+// Used by storeFor in the media module to match S3 key paths to their owner backend.
+func (b *Backend) KeyPrefix() string { return b.prefix }
+
+// Open returns a seekable reader for the object.
+// The returned *minio.Object is a true io.ReadSeekCloser — no memory buffering.
+// The caller must close the returned reader.
 func (b *Backend) Open(ctx context.Context, p string) (storage.ReadSeekCloser, error) {
-	out, err := b.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(b.key(p)),
-	})
+	obj, err := b.client.GetObject(ctx, b.bucket, b.key(p), minio.GetObjectOptions{})
 	if err != nil {
 		return nil, b.mapError(err)
 	}
-	// Buffer the entire object so we can seek. For streaming large files,
-	// callers should use RangeOpener instead.
-	data, err := io.ReadAll(out.Body)
-	out.Body.Close()
-	if err != nil {
-		return nil, fmt.Errorf("s3 storage: read object: %w", err)
+	// Trigger the first network request so we can surface 404s immediately.
+	if _, err := obj.Stat(); err != nil {
+		obj.Close()
+		return nil, b.mapError(err)
 	}
-	return &readSeekCloser{Reader: bytes.NewReader(data)}, nil
+	return obj, nil
 }
 
 // OpenRange returns a reader for a byte range of the object.
-// Implements storage.RangeOpener.
+// Implements storage.RangeOpener — used by the streaming module for HTTP 206.
 func (b *Backend) OpenRange(ctx context.Context, p string, start, end int64) (io.ReadCloser, error) {
-	rangeStr := fmt.Sprintf("bytes=%d-%d", start, end)
-	out, err := b.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(b.key(p)),
-		Range:  aws.String(rangeStr),
-	})
+	opts := minio.GetObjectOptions{}
+	if err := opts.SetRange(start, end); err != nil {
+		return nil, fmt.Errorf("s3 storage: set range: %w", err)
+	}
+	obj, err := b.client.GetObject(ctx, b.bucket, b.key(p), opts)
 	if err != nil {
 		return nil, b.mapError(err)
 	}
-	return out.Body, nil
+	// Surface 404s before returning — otherwise they appear mid-stream as a
+	// truncated HTTP response body with no error status code.
+	if _, err := obj.Stat(); err != nil {
+		obj.Close()
+		return nil, b.mapError(err)
+	}
+	return obj, nil
 }
 
-// Stat returns object metadata using HeadObject.
+// Stat returns object metadata without downloading the body.
 func (b *Backend) Stat(ctx context.Context, p string) (*storage.FileInfo, error) {
 	k := b.key(p)
 
-	// Try as file first
-	out, err := b.client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(k),
-	})
+	// Try as a regular object first.
+	info, err := b.client.StatObject(ctx, b.bucket, k, minio.StatObjectOptions{})
 	if err == nil {
-		name := path.Base(k)
-		var modTime time.Time
-		if out.LastModified != nil {
-			modTime = *out.LastModified
-		}
-		var size int64
-		if out.ContentLength != nil {
-			size = *out.ContentLength
-		}
 		return &storage.FileInfo{
-			Name:    name,
-			Size:    size,
-			ModTime: modTime,
+			Name:    path.Base(k),
+			Size:    info.Size,
+			ModTime: info.LastModified,
 			IsDir:   false,
 		}, nil
 	}
 
-	// Check if it's a "directory" (prefix with children)
-	prefix := k
-	if !strings.HasSuffix(prefix, "/") {
-		prefix += "/"
-	}
-	listOut, listErr := b.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-		Bucket:  aws.String(b.bucket),
-		Prefix:  aws.String(prefix),
-		MaxKeys: aws.Int32(1),
-	})
-	if listErr == nil && listOut.KeyCount != nil && *listOut.KeyCount > 0 {
-		return &storage.FileInfo{
-			Name:  path.Base(k),
-			IsDir: true,
-		}, nil
+	// If not found as a file, check whether it exists as a "directory" prefix.
+	errResp := minio.ToErrorResponse(err)
+	if errResp.Code == "NoSuchKey" || errResp.StatusCode == 404 {
+		prefix := k
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		for obj := range b.client.ListObjects(ctx, b.bucket, minio.ListObjectsOptions{
+			Prefix:  prefix,
+			MaxKeys: 1,
+		}) {
+			if obj.Err == nil {
+				return &storage.FileInfo{Name: path.Base(k), IsDir: true}, nil
+			}
+		}
+		return nil, storage.ErrNotFound
 	}
 
-	return nil, storage.ErrNotFound
+	return nil, err
 }
 
 // Walk lists all objects under prefix and calls fn for each.
@@ -187,42 +178,26 @@ func (b *Backend) Walk(ctx context.Context, prefix string, fn storage.WalkFunc) 
 		s3Prefix += "/"
 	}
 
-	paginator := s3.NewListObjectsV2Paginator(b.client, &s3.ListObjectsV2Input{
-		Bucket: aws.String(b.bucket),
-		Prefix: aws.String(s3Prefix),
-	})
-
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("s3 storage: list objects: %w", err)
+	for obj := range b.client.ListObjects(ctx, b.bucket, minio.ListObjectsOptions{
+		Prefix:    s3Prefix,
+		Recursive: true,
+	}) {
+		if obj.Err != nil {
+			return fmt.Errorf("s3 storage: list objects: %w", obj.Err)
 		}
-		for _, obj := range page.Contents {
-			if obj.Key == nil {
-				continue
-			}
-			// Make path relative to backend prefix
-			rel := strings.TrimPrefix(*obj.Key, b.prefix)
-			if rel == "" {
-				continue
-			}
-			var modTime time.Time
-			if obj.LastModified != nil {
-				modTime = *obj.LastModified
-			}
-			var size int64
-			if obj.Size != nil {
-				size = *obj.Size
-			}
-			info := storage.FileInfo{
-				Name:    path.Base(rel),
-				Size:    size,
-				ModTime: modTime,
-				IsDir:   strings.HasSuffix(rel, "/"),
-			}
-			if err := fn(rel, info, nil); err != nil {
-				return err
-			}
+		// Make path relative to backend prefix.
+		rel := strings.TrimPrefix(obj.Key, b.prefix)
+		if rel == "" {
+			continue
+		}
+		info := storage.FileInfo{
+			Name:    path.Base(rel),
+			Size:    obj.Size,
+			ModTime: obj.LastModified,
+			IsDir:   strings.HasSuffix(rel, "/"),
+		}
+		if err := fn(rel, info, nil); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -235,50 +210,34 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]storage.FileInfo, er
 		prefix += "/"
 	}
 
-	delimiter := "/"
-	out, err := b.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-		Bucket:    aws.String(b.bucket),
-		Prefix:    aws.String(prefix),
-		Delimiter: aws.String(delimiter),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("s3 storage: list: %w", err)
-	}
-
 	var result []storage.FileInfo
 
-	// Common prefixes = subdirectories
-	for _, cp := range out.CommonPrefixes {
-		if cp.Prefix == nil {
-			continue
+	for obj := range b.client.ListObjects(ctx, b.bucket, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: false, // delimiter "/" is implied when Recursive=false
+	}) {
+		if obj.Err != nil {
+			return nil, fmt.Errorf("s3 storage: read dir: %w", obj.Err)
 		}
-		name := strings.TrimSuffix(strings.TrimPrefix(*cp.Prefix, prefix), "/")
-		if name != "" {
-			result = append(result, storage.FileInfo{Name: name, IsDir: true})
-		}
-	}
 
-	// Objects = files
-	for _, obj := range out.Contents {
-		if obj.Key == nil {
+		// When Recursive=false the client returns common-prefix entries for
+		// "directories" — these have a trailing slash.
+		if strings.HasSuffix(obj.Key, "/") {
+			name := strings.TrimSuffix(strings.TrimPrefix(obj.Key, prefix), "/")
+			if name != "" {
+				result = append(result, storage.FileInfo{Name: name, IsDir: true})
+			}
 			continue
 		}
-		name := strings.TrimPrefix(*obj.Key, prefix)
+
+		name := strings.TrimPrefix(obj.Key, prefix)
 		if name == "" || strings.Contains(name, "/") {
-			continue
-		}
-		var modTime time.Time
-		if obj.LastModified != nil {
-			modTime = *obj.LastModified
-		}
-		var size int64
-		if obj.Size != nil {
-			size = *obj.Size
+			continue // skip unexpected nested paths
 		}
 		result = append(result, storage.FileInfo{
 			Name:    name,
-			Size:    size,
-			ModTime: modTime,
+			Size:    obj.Size,
+			ModTime: obj.LastModified,
 		})
 	}
 
@@ -287,34 +246,33 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]storage.FileInfo, er
 
 // ReadFile downloads an entire object into memory.
 func (b *Backend) ReadFile(ctx context.Context, p string) ([]byte, error) {
-	out, err := b.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(b.key(p)),
-	})
+	obj, err := b.client.GetObject(ctx, b.bucket, b.key(p), minio.GetObjectOptions{})
 	if err != nil {
 		return nil, b.mapError(err)
 	}
-	defer out.Body.Close()
-	return io.ReadAll(out.Body)
+	defer obj.Close()
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, b.mapError(err)
+	}
+	return data, nil
 }
 
-// Create writes data to an S3 object.
+// Create writes data from r to an S3 object.
+// Passing size=-1 triggers automatic chunked/multipart upload in minio-go,
+// so large video files are streamed without buffering the entire body.
+// Returns the number of bytes written.
 func (b *Backend) Create(ctx context.Context, p string, r io.Reader) (int64, error) {
-	// Buffer the content to know size for PutObject.
-	// For large files, callers should use multipart upload instead.
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return 0, fmt.Errorf("s3 storage: read input: %w", err)
-	}
-	_, err = b.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(b.key(p)),
-		Body:   bytes.NewReader(data),
-	})
+	info, err := b.client.PutObject(ctx, b.bucket, b.key(p), r, -1,
+		minio.PutObjectOptions{
+			// Instruct B2/S3 to compute the checksum server-side.
+			SendContentMd5: true,
+		},
+	)
 	if err != nil {
 		return 0, fmt.Errorf("s3 storage: put object: %w", err)
 	}
-	return int64(len(data)), nil
+	return info.Size, nil
 }
 
 // MkdirAll is a no-op for S3 (no real directories).
@@ -322,87 +280,112 @@ func (b *Backend) MkdirAll(_ context.Context, _ string) error { return nil }
 
 // Remove deletes a single object.
 func (b *Backend) Remove(ctx context.Context, p string) error {
-	_, err := b.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(b.key(p)),
-	})
-	return err
+	err := b.client.RemoveObject(ctx, b.bucket, b.key(p), minio.RemoveObjectOptions{})
+	return b.mapError(err)
 }
 
-// RemoveAll deletes all objects under a prefix.
+// RemoveAll deletes all objects under a prefix (recursive).
+// Keys are collected synchronously before deletion so that listing errors are
+// surfaced immediately rather than being swallowed by a goroutine.
 func (b *Backend) RemoveAll(ctx context.Context, p string) error {
 	prefix := b.key(p)
+
+	// First try to delete as a single object (non-directory path).
+	_ = b.client.RemoveObject(ctx, b.bucket, prefix, minio.RemoveObjectOptions{})
+
+	// Then delete everything under the directory prefix.
 	if !strings.HasSuffix(prefix, "/") {
-		// First try to delete as a single object
-		b.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-			Bucket: aws.String(b.bucket),
-			Key:    aws.String(prefix),
-		})
 		prefix += "/"
 	}
 
-	// Delete all objects under the prefix
-	paginator := s3.NewListObjectsV2Paginator(b.client, &s3.ListObjectsV2Input{
-		Bucket: aws.String(b.bucket),
-		Prefix: aws.String(prefix),
-	})
+	// Collect all keys first so that any listing error is returned before we
+	// begin deleting, and so the goroutine feeding RemoveObjects cannot silently
+	// drop a listing error mid-walk.
+	var toDelete []minio.ObjectInfo
+	for obj := range b.client.ListObjects(ctx, b.bucket, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: true,
+	}) {
+		if obj.Err != nil {
+			return fmt.Errorf("s3 storage: list for delete: %w", obj.Err)
+		}
+		toDelete = append(toDelete, obj)
+	}
+	if len(toDelete) == 0 {
+		return nil
+	}
 
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("s3 storage: list for delete: %w", err)
-		}
-		if len(page.Contents) == 0 {
-			continue
-		}
-		objects := make([]types.ObjectIdentifier, len(page.Contents))
-		for i, obj := range page.Contents {
-			objects[i] = types.ObjectIdentifier{Key: obj.Key}
-		}
-		_, err = b.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
-			Bucket: aws.String(b.bucket),
-			Delete: &types.Delete{Objects: objects, Quiet: aws.Bool(true)},
-		})
-		if err != nil {
-			return fmt.Errorf("s3 storage: batch delete: %w", err)
+	objectsCh := make(chan minio.ObjectInfo, len(toDelete))
+	for _, o := range toDelete {
+		objectsCh <- o
+	}
+	close(objectsCh)
+
+	for rErr := range b.client.RemoveObjects(ctx, b.bucket, objectsCh, minio.RemoveObjectsOptions{}) {
+		if rErr.Err != nil {
+			return fmt.Errorf("s3 storage: batch delete: %w", rErr.Err)
 		}
 	}
 	return nil
 }
 
 // Rename copies src to dst then deletes src. S3 has no native rename.
+// For objects larger than 5 GB (Backblaze B2's single-part copy limit),
+// CopyObject returns EntityTooLarge; we fall back to a streaming download +
+// re-upload so that large video files can always be renamed.
 func (b *Backend) Rename(ctx context.Context, src, dst string) error {
 	srcKey := b.key(src)
 	dstKey := b.key(dst)
 
-	// Copy
-	_, err := b.client.CopyObject(ctx, &s3.CopyObjectInput{
-		Bucket:     aws.String(b.bucket),
-		CopySource: aws.String(b.bucket + "/" + srcKey),
-		Key:        aws.String(dstKey),
-	})
+	_, err := b.client.CopyObject(ctx,
+		minio.CopyDestOptions{Bucket: b.bucket, Object: dstKey},
+		minio.CopySrcOptions{Bucket: b.bucket, Object: srcKey},
+	)
 	if err != nil {
-		return fmt.Errorf("s3 storage: copy for rename: %w", err)
+		// Fall back to streaming copy for objects >5 GB (B2 CopyObject limit).
+		resp := minio.ToErrorResponse(err)
+		if resp.Code == "EntityTooLarge" || resp.StatusCode == 413 {
+			if streamErr := b.streamCopy(ctx, srcKey, dstKey); streamErr != nil {
+				return fmt.Errorf("s3 storage: stream copy for rename: %w", streamErr)
+			}
+		} else {
+			return fmt.Errorf("s3 storage: copy for rename: %w", err)
+		}
 	}
 
-	// Delete original
-	_, err = b.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(srcKey),
-	})
-	if err != nil {
+	if err := b.client.RemoveObject(ctx, b.bucket, srcKey, minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("s3 storage: delete after rename: %w", err)
 	}
 	return nil
 }
 
-// WriteFile writes data to an S3 object.
+// streamCopy downloads srcKey and re-uploads it as dstKey using PutObject with
+// automatic multipart.  Used as a fallback for objects larger than 5 GB where
+// CopyObject is not supported by B2's S3-compatible API.
+func (b *Backend) streamCopy(ctx context.Context, srcKey, dstKey string) error {
+	obj, err := b.client.GetObject(ctx, b.bucket, srcKey, minio.GetObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("get source: %w", err)
+	}
+	defer obj.Close()
+
+	stat, err := obj.Stat()
+	if err != nil {
+		return fmt.Errorf("stat source: %w", err)
+	}
+
+	_, err = b.client.PutObject(ctx, b.bucket, dstKey, obj, stat.Size,
+		minio.PutObjectOptions{SendContentMd5: true},
+	)
+	return err
+}
+
+// WriteFile writes data to an S3 object atomically.
 func (b *Backend) WriteFile(ctx context.Context, p string, data []byte) error {
-	_, err := b.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(b.key(p)),
-		Body:   bytes.NewReader(data),
-	})
+	_, err := b.client.PutObject(ctx, b.bucket, b.key(p),
+		bytes.NewReader(data), int64(len(data)),
+		minio.PutObjectOptions{SendContentMd5: true},
+	)
 	if err != nil {
 		return fmt.Errorf("s3 storage: write file: %w", err)
 	}
@@ -410,6 +393,8 @@ func (b *Backend) WriteFile(ctx context.Context, p string, data []byte) error {
 }
 
 // AbsPath returns the full S3 key for a relative path.
+// Callers use this as the canonical identifier for an object (analogous to
+// the absolute filesystem path returned by the local backend).
 func (b *Backend) AbsPath(p string) string {
 	return b.key(p)
 }
@@ -417,45 +402,34 @@ func (b *Backend) AbsPath(p string) string {
 // IsLocal returns false — this is a remote S3 backend.
 func (b *Backend) IsLocal() bool { return false }
 
-// PresignGetURL generates a presigned GET URL for the object.
+// PresignGetURL generates a pre-signed GET URL for the object.
+// Implements storage.PresignURLer.
 func (b *Backend) PresignGetURL(ctx context.Context, p string, ttl time.Duration) (string, error) {
-	out, err := b.presign.PresignGetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(b.key(p)),
-	}, s3.WithPresignExpires(ttl))
+	u, err := b.client.PresignedGetObject(ctx, b.bucket, b.key(p), ttl, nil)
 	if err != nil {
 		return "", fmt.Errorf("s3 storage: presign get: %w", err)
 	}
-	return out.URL, nil
+	return u.String(), nil
 }
 
-// PresignPutURL generates a presigned PUT URL for direct uploads.
+// PresignPutURL generates a pre-signed PUT URL for direct client-side uploads.
+// Implements storage.PresignURLer.
 func (b *Backend) PresignPutURL(ctx context.Context, p string, ttl time.Duration) (string, error) {
-	out, err := b.presign.PresignPutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(b.key(p)),
-	}, s3.WithPresignExpires(ttl))
+	u, err := b.client.PresignedPutObject(ctx, b.bucket, b.key(p), ttl)
 	if err != nil {
 		return "", fmt.Errorf("s3 storage: presign put: %w", err)
 	}
-	return out.URL, nil
+	return u.String(), nil
 }
 
-// mapError converts S3 errors to storage errors.
+// mapError converts minio errors to storage sentinel errors.
 func (b *Backend) mapError(err error) error {
 	if err == nil {
 		return nil
 	}
-	msg := err.Error()
-	if strings.Contains(msg, "NoSuchKey") || strings.Contains(msg, "NotFound") || strings.Contains(msg, "404") {
+	resp := minio.ToErrorResponse(err)
+	if resp.Code == "NoSuchKey" || resp.StatusCode == 404 {
 		return storage.ErrNotFound
 	}
 	return err
 }
-
-// readSeekCloser wraps a bytes.Reader to implement storage.ReadSeekCloser.
-type readSeekCloser struct {
-	*bytes.Reader
-}
-
-func (r *readSeekCloser) Close() error { return nil }

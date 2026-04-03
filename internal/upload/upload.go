@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -149,14 +150,16 @@ func (m *Module) Name() string {
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting upload module...")
 
-	// Ensure upload directory exists
-	if err := os.MkdirAll(m.uploadDir, 0755); err != nil {
-		m.log.Error("Failed to create upload directory: %v", err)
-		m.healthMu.Lock()
-		m.healthy = false
-		m.healthMsg = fmt.Sprintf("Directory error: %v", err)
-		m.healthMu.Unlock()
-		return err
+	// Ensure upload directory exists (local backends only; S3/B2 have no directories).
+	if m.store == nil || m.store.IsLocal() {
+		if err := os.MkdirAll(m.uploadDir, 0755); err != nil {
+			m.log.Error("Failed to create upload directory: %v", err)
+			m.healthMu.Lock()
+			m.healthy = false
+			m.healthMsg = fmt.Sprintf("Directory error: %v", err)
+			m.healthMu.Unlock()
+			return err
+		}
 	}
 
 	m.healthMu.Lock()
@@ -231,14 +234,26 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 	})
 	defer m.scheduleUnregisterUpload(uploadID, 5*time.Minute)
 
-	destPath, destFile, err := m.createUniqueUploadFile(prepared.DestDir, prepared.Filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create unique file: %w", err)
-	}
-	progress.DestPath = destPath
-	tempPath := destPath + ".tmp"
+	var destPath string
+	var written int64
 
-	written, err := m.copyAndRenameUpload(file, destFile, copyPaths{tempPath, destPath}, progress)
+	if m.store != nil && !m.store.IsLocal() {
+		// Remote backend (S3/B2): stream directly via the storage backend.
+		// No temp-file/rename needed — object writes in S3 are atomic.
+		destPath, written, err = m.uploadToRemoteStore(context.Background(), file, prepared, progress)
+	} else {
+		// Local filesystem: use the existing temp-file-then-rename pattern.
+		var destFile *os.File
+		tempPath := ""
+		destPath, destFile, err = m.createUniqueUploadFile(prepared.DestDir, prepared.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create unique file: %w", err)
+		}
+		progress.DestPath = destPath
+		tempPath = destPath + ".tmp"
+		written, err = m.copyAndRenameUpload(file, destFile, copyPaths{tempPath, destPath}, progress)
+	}
+
 	if err != nil {
 		progress.Status = UploadStatusFailed
 		progress.Error = err.Error()
@@ -260,6 +275,103 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 	}, nil
 }
 
+// uploadToRemoteStore streams the uploaded file to the configured remote backend
+// (S3/B2).  A progress-tracking reader wraps the source so that the UI sees
+// live byte counts even though we never touch the local filesystem.
+func (m *Module) uploadToRemoteStore(ctx context.Context, file multipart.File, prepared *PreparedUpload, progress *Progress) (string, int64, error) {
+	// Compute the relative key path within the upload backend.
+	// prepared.DestDir is an absolute local path like /uploads/userID[/category].
+	// Strip the upload root prefix to get the relative part.
+	absRoot, err := filepath.Abs(m.uploadDir)
+	if err != nil {
+		return "", 0, fmt.Errorf("resolve upload root: %w", err)
+	}
+	relDir, err := filepath.Rel(absRoot, prepared.DestDir)
+	if err != nil {
+		return "", 0, fmt.Errorf("compute relative dest dir: %w", err)
+	}
+	relDir = filepath.ToSlash(relDir)
+	// Guard against ".." segments that could escape the upload prefix (e.g. if
+	// the config is reloaded and uploadDir becomes stale relative to DestDir).
+	if strings.HasPrefix(relDir, "..") {
+		return "", 0, fmt.Errorf("upload destination escapes upload root (got %q)", relDir)
+	}
+
+	// Find a unique key within the backend.
+	relPath, err := m.uniqueRemoteKey(ctx, relDir, prepared.Filename)
+	if err != nil {
+		return "", 0, fmt.Errorf("find unique remote key: %w", err)
+	}
+	progress.DestPath = m.store.AbsPath(relPath)
+
+	// Wrap the reader with a progress counter that uses its own dedicated mutex
+	// so that it does not contend with the module's global RWMutex on every
+	// read call (which would block concurrent GetActiveUploads/GetProgress calls
+	// for the full duration of every S3 chunk write).
+	pr := &progressReader{src: file, progress: progress}
+	written, err := m.store.Create(ctx, relPath, pr)
+	if err != nil {
+		return "", 0, fmt.Errorf("store write: %w", err)
+	}
+
+	return m.store.AbsPath(relPath), written, nil
+}
+
+// uniqueRemoteKey finds an available object key within the remote backend,
+// appending _1, _2, … suffixes when the preferred key is already taken.
+func (m *Module) uniqueRemoteKey(ctx context.Context, dir, filename string) (string, error) {
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+
+	try := func(name string) string {
+		if dir == "" || dir == "." {
+			return name
+		}
+		return path.Join(dir, name)
+	}
+
+	relPath := try(filename)
+	if _, err := m.store.Stat(ctx, relPath); err != nil {
+		return relPath, nil // key is free
+	}
+
+	for i := 1; i < 1000; i++ {
+		relPath = try(fmt.Sprintf("%s_%d%s", base, i, ext))
+		if _, err := m.store.Stat(ctx, relPath); err != nil {
+			return relPath, nil
+		}
+	}
+
+	// Timestamp fallback for guaranteed uniqueness.
+	relPath = try(fmt.Sprintf("%s_%d%s", base, time.Now().UnixNano(), ext))
+	return relPath, nil
+}
+
+// progressReader wraps an io.Reader and updates an upload Progress as bytes
+// are consumed.  Used for remote backend uploads where we never touch an
+// os.File.  It uses a dedicated per-reader mutex so that progress updates do
+// not contend with the module's global RWMutex on every chunk read.  Readers
+// of Progress (GetProgress, GetActiveUploads) may observe a value lagging by
+// at most one chunk, which is acceptable for a progress indicator.
+type progressReader struct {
+	src      io.Reader
+	progress *Progress
+	mu       sync.Mutex // per-reader lock, not the module's global RWMutex
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.src.Read(p)
+	if n > 0 {
+		pr.mu.Lock()
+		pr.progress.Uploaded += int64(n)
+		if pr.progress.Size > 0 {
+			pr.progress.Progress = float64(pr.progress.Uploaded) / float64(pr.progress.Size) * 100
+		}
+		pr.mu.Unlock()
+	}
+	return n, err
+}
+
 // validateAndPrepareUpload checks size/filename/extension, resolves media type and destination directory.
 func (m *Module) validateAndPrepareUpload(fh *multipart.FileHeader, scope UploadScope) (*PreparedUpload, error) {
 	if err := validateUploadSize(m.config.Get(), fh.Size); err != nil {
@@ -277,8 +389,11 @@ func (m *Module) validateAndPrepareUpload(fh *multipart.FileHeader, scope Upload
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create directory: %w", err)
+	// MkdirAll is only needed for local backends; remote backends (S3/B2) have no real directories.
+	if m.store == nil || m.store.IsLocal() {
+		if err := os.MkdirAll(destDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create directory: %w", err)
+		}
 	}
 	return &PreparedUpload{
 		Filename:  filename,
@@ -635,15 +750,31 @@ func (m *Module) GetActiveUploads() []*Progress {
 // GetUserStorageUsed calculates storage used by a specific user by walking
 // only their per-user upload subdirectory (uploads/{userID}/).
 func (m *Module) GetUserStorageUsed(userID string) (int64, error) {
-	userDir := filepath.Join(m.uploadDir, filepath.Base(userID))
+	safeUserID := filepath.Base(userID)
+
+	if m.store != nil && !m.store.IsLocal() {
+		// Remote backend: walk the user's key prefix.
+		ctx := context.Background()
+		var total int64
+		err := m.store.Walk(ctx, safeUserID, func(_ string, fi storage.FileInfo, _ error) error {
+			if !fi.IsDir {
+				total += fi.Size
+			}
+			return nil
+		})
+		return total, err
+	}
+
+	// Local filesystem.
+	userDir := filepath.Join(m.uploadDir, safeUserID)
 	if _, err := os.Stat(userDir); os.IsNotExist(err) {
 		return 0, nil
 	}
 
 	var total int64
-	err := filepath.Walk(userDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(userDir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Continue on error
+			return nil
 		}
 		if !info.IsDir() {
 			total += info.Size()
