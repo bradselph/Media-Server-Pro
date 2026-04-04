@@ -93,7 +93,7 @@ type Module struct {
 	// detect moved/renamed files by matching fingerprint instead of path.
 	fingerprintIndex map[string]string // fingerprint -> path
 	mu               sync.RWMutex      // protects media, mediaByID, categories, metadata, fingerprintIndex, version, lastScan
-	saveMu           sync.Mutex        // serialises concurrent saveMetadata calls to prevent MySQL lock waits
+	saveMu           sync.Mutex        // serializes concurrent saveMetadata calls to prevent MySQL lock waits
 	dataDir          string
 	scanning         bool // protected by healthMu; true while Scan() is running
 	healthy          bool
@@ -101,7 +101,7 @@ type Module struct {
 	healthMu         sync.RWMutex
 	scanTicker       *time.Ticker
 	scanDone         chan struct{}
-	scanCtx          context.Context    // Cancelled on shutdown; used by background saves
+	scanCtx          context.Context    // Canceled on shutdown; used by background saves
 	scanCancel       context.CancelFunc // Cancels background scans on shutdown
 	version          int64
 	lastScan         time.Time
@@ -163,7 +163,7 @@ func computeContentFingerprint(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {
@@ -175,7 +175,7 @@ func computeContentFingerprint(path string) (string, error) {
 
 	// Write file size into the hash so that files with identical leading/trailing
 	// bytes but different lengths produce different fingerprints.
-	fmt.Fprintf(h, "size:%d\n", size)
+	_, _ = fmt.Fprintf(h, "size:%d\n", size)
 
 	// Read first 64 KB (or entire file if smaller)
 	head := make([]byte, sampleSize)
@@ -257,7 +257,7 @@ func (m *Module) Start(_ context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
-			m.log.Info("Initial media start cancelled before metadata load")
+			m.log.Info("Initial media start canceled before metadata load")
 			return
 		default:
 		}
@@ -1639,7 +1639,7 @@ func (m *Module) saveMetadataItem(path string) error {
 	repoMeta := m.convertInternalToRepo(path, meta)
 	m.mu.RUnlock()
 
-	// Use saveMu to serialise with the bulk saveMetadata loop: both code paths
+	// Use saveMu to serialize with the bulk saveMetadata loop: both code paths
 	// delete+insert on media_tags for the same row, causing lock-wait timeouts
 	// when they run concurrently against the same file.
 	m.saveMu.Lock()
@@ -1665,7 +1665,7 @@ func (m *Module) saveMetadata(ctx context.Context) error {
 	}
 	m.mu.RUnlock()
 
-	// Serialise DB writes: prevents concurrent upserts to the same rows from
+	// Serialize DB writes: prevents concurrent upserts to the same rows from
 	// racing and hitting MySQL row-lock timeouts.
 	m.saveMu.Lock()
 	defer m.saveMu.Unlock()

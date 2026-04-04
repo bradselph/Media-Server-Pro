@@ -252,7 +252,7 @@ func (m *Module) resumeInterruptedJobs() int {
 			}
 		}
 		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)
-		jobCtx, jobCancel := context.WithCancel(context.Background())
+		jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
 		m.jobCancels[job.ID] = jobCancel
 		job.Status = models.HLSStatusPending
 		job.Error = ""
@@ -303,7 +303,7 @@ func (m *Module) Stop(ctx context.Context) error {
 		}
 	}
 	for id, cancel := range m.jobCancels {
-		m.log.Debug("Cancelling HLS job: %s", id)
+		m.log.Debug("Canceling HLS job: %s", id)
 		cancel()
 		delete(m.jobCancels, id)
 	}

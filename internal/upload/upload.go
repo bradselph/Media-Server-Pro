@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -152,7 +153,7 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Ensure upload directory exists (local backends only; S3/B2 have no directories).
 	if m.store == nil || m.store.IsLocal() {
-		if err := os.MkdirAll(m.uploadDir, 0755); err != nil {
+		if err := os.MkdirAll(m.uploadDir, 0o750); err != nil {
 			m.log.Error("Failed to create upload directory: %v", err)
 			m.healthMu.Lock()
 			m.healthy = false
@@ -206,8 +207,8 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn("Failed to close uploaded file: %v", err)
+		if closeErr := file.Close(); closeErr != nil {
+			m.log.Warn("Failed to close uploaded file: %v", closeErr)
 		}
 	}()
 
@@ -221,8 +222,8 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 		}
 	}
 	// Seek back to the start so the full file is written to disk.
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to reset file reader: %w", err)
+	if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+		return nil, fmt.Errorf("failed to reset file reader: %w", seekErr)
 	}
 
 	uploadID := m.generateUploadID()
@@ -298,10 +299,7 @@ func (m *Module) uploadToRemoteStore(ctx context.Context, file multipart.File, p
 	}
 
 	// Find a unique key within the backend.
-	relPath, err := m.uniqueRemoteKey(ctx, relDir, prepared.Filename)
-	if err != nil {
-		return "", 0, fmt.Errorf("find unique remote key: %w", err)
-	}
+	relPath := m.uniqueRemoteKey(ctx, relDir, prepared.Filename)
 	progress.DestPath = m.store.AbsPath(relPath)
 
 	// Wrap the reader with a progress counter that uses its own dedicated mutex
@@ -319,7 +317,7 @@ func (m *Module) uploadToRemoteStore(ctx context.Context, file multipart.File, p
 
 // uniqueRemoteKey finds an available object key within the remote backend,
 // appending _1, _2, … suffixes when the preferred key is already taken.
-func (m *Module) uniqueRemoteKey(ctx context.Context, dir, filename string) (string, error) {
+func (m *Module) uniqueRemoteKey(ctx context.Context, dir, filename string) string {
 	ext := filepath.Ext(filename)
 	base := strings.TrimSuffix(filename, ext)
 
@@ -332,19 +330,18 @@ func (m *Module) uniqueRemoteKey(ctx context.Context, dir, filename string) (str
 
 	relPath := try(filename)
 	if _, err := m.store.Stat(ctx, relPath); err != nil {
-		return relPath, nil // key is free
+		return relPath // key is free
 	}
 
 	for i := 1; i < 1000; i++ {
 		relPath = try(fmt.Sprintf("%s_%d%s", base, i, ext))
 		if _, err := m.store.Stat(ctx, relPath); err != nil {
-			return relPath, nil
+			return relPath
 		}
 	}
 
 	// Timestamp fallback for guaranteed uniqueness.
-	relPath = try(fmt.Sprintf("%s_%d%s", base, time.Now().UnixNano(), ext))
-	return relPath, nil
+	return try(fmt.Sprintf("%s_%d%s", base, time.Now().UnixNano(), ext))
 }
 
 // progressReader wraps an io.Reader and updates an upload Progress as bytes
@@ -639,7 +636,7 @@ func (m *Module) createUniqueUploadFile(destDir, filename string) (string, *os.F
 	tempPath := destPath + ".tmp"
 
 	// O_CREATE|O_EXCL ensures atomic check-and-create (fails if file exists)
-	file, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	file, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err == nil {
 		return destPath, file, nil
 	}
@@ -652,7 +649,7 @@ func (m *Module) createUniqueUploadFile(destDir, filename string) (string, *os.F
 		destPath = filepath.Join(destDir, fmt.Sprintf("%s_%d%s", base, i, ext))
 		tempPath = destPath + ".tmp"
 
-		file, err = os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		file, err = os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
 			return destPath, file, nil
 		}
@@ -665,7 +662,7 @@ func (m *Module) createUniqueUploadFile(destDir, filename string) (string, *os.F
 	destPath = filepath.Join(destDir, fmt.Sprintf("%s_%d%s", base, time.Now().UnixNano(), ext))
 	tempPath = destPath + ".tmp"
 
-	file, err = os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	file, err = os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create unique file even with timestamp: %w", err)
 	}
@@ -690,7 +687,7 @@ func (m *Module) copyWithProgress(dst io.Writer, src multipart.File, progress *P
 				return written, io.ErrShortWrite
 			}
 		}
-		if readErr == io.EOF {
+		if errors.Is(readErr, io.EOF) {
 			break
 		}
 		if readErr != nil {
@@ -772,9 +769,9 @@ func (m *Module) GetUserStorageUsed(userID string) (int64, error) {
 	}
 
 	var total int64
-	err := filepath.Walk(userDir, func(p string, info os.FileInfo, err error) error {
+	err := filepath.Walk(userDir, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // skip unreadable entries; continue walking
 		}
 		if !info.IsDir() {
 			total += info.Size()
@@ -786,7 +783,7 @@ func (m *Module) GetUserStorageUsed(userID string) (int64, error) {
 }
 
 // CheckQuota checks if user has storage quota available
-func (m *Module) CheckQuota(userID string, fileSize int64, quota int64) (bool, error) {
+func (m *Module) CheckQuota(userID string, fileSize, quota int64) (bool, error) {
 	if quota <= 0 {
 		return true, nil // No quota limit
 	}

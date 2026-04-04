@@ -609,8 +609,8 @@ func (m *Module) downloadWithGhCLI(version, assetName string) (string, error) {
 		"--dir", tmpDir,
 		"--clobber",
 	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("gh release download failed: %v — %s", err, strings.TrimSpace(string(out)))
+	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
+		return "", fmt.Errorf("gh release download failed: %w — %s", cmdErr, strings.TrimSpace(string(cmdOut)))
 	}
 
 	entries, err := os.ReadDir(tmpDir)
@@ -640,7 +640,7 @@ func (m *Module) downloadWithGhCLI(version, assetName string) (string, error) {
 // downloadUpdate downloads a release asset via direct HTTP, adding GitHub auth
 // from admin settings when configured.
 func (m *Module) downloadUpdate(url string) (string, error) {
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return "", err
 	}
@@ -653,8 +653,8 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 		return "", err
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			m.log.Warn("Failed to close response body: %v", err)
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			m.log.Warn("Failed to close response body: %v", closeErr)
 		}
 	}()
 
@@ -669,8 +669,8 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 		return "", err
 	}
 	defer func() {
-		if err := tmpFile.Close(); err != nil {
-			m.log.Warn("Failed to close temporary file: %v", err)
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			m.log.Warn("Failed to close temporary file: %v", closeErr)
 		}
 	}()
 
@@ -745,8 +745,11 @@ func computeFileSHA256(path string) (string, error) {
 // must reject the update.
 func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) error {
 	checksumURL2, err := m.fetchChecksumAssetURL(version)
-	if err != nil || checksumURL2 == "" {
-		return nil // already logged
+	if err != nil {
+		return nil //nolint:nilerr // already logged; treat as no checksum available
+	}
+	if checksumURL2 == "" {
+		return nil
 	}
 	expectedHash, err := m.downloadAndParseChecksum(checksumURL2, assetName)
 	if err != nil {
@@ -882,7 +885,7 @@ func (m *Module) installUpdate(updateFile string) error {
 
 	// Apply executable permissions to the installed binary.
 	// copyFile uses os.Create which does not copy source permissions.
-	if err := os.Chmod(execPath, 0755); err != nil {
+	if err := os.Chmod(execPath, 0o755); err != nil { //nolint:gosec // executable binaries require execute permissions
 		m.log.Warn("Failed to set executable bit on installed binary: %v", err)
 	}
 
@@ -923,16 +926,16 @@ func writeGitAskPass(token string) (scriptPath string, err error) {
 	// Write a POSIX shell script that prints the token and exits.
 	_, err = fmt.Fprintf(f, "#!/bin/sh\necho '%s'\n", strings.ReplaceAll(token, "'", "'\\''"))
 	if err != nil {
-		f.Close()
-		os.Remove(f.Name())
+		_ = f.Close()
+		_ = os.Remove(f.Name())
 		return "", fmt.Errorf("write askpass script: %w", err)
 	}
-	if err := f.Close(); err != nil {
-		os.Remove(f.Name())
-		return "", fmt.Errorf("close askpass script: %w", err)
+	if closeErr := f.Close(); closeErr != nil {
+		_ = os.Remove(f.Name())
+		return "", fmt.Errorf("close askpass script: %w", closeErr)
 	}
-	if err := os.Chmod(f.Name(), 0700); err != nil {
-		os.Remove(f.Name())
+	if err := os.Chmod(f.Name(), 0o700); err != nil { //nolint:gosec // script must be executable
+		_ = os.Remove(f.Name())
 		return "", fmt.Errorf("chmod askpass script: %w", err)
 	}
 	return f.Name(), nil
@@ -975,7 +978,7 @@ func (m *Module) gitAuthVars() (vars []string, cleanup func()) {
 				"GIT_CONFIG_VALUE_0=Authorization: Bearer "+cfg.Updater.GitHubToken,
 			)
 		} else {
-			cleanups = append(cleanups, func() { os.Remove(askPassPath) })
+			cleanups = append(cleanups, func() { _ = os.Remove(askPassPath) })
 			username := cfg.Updater.GitHubUsername
 			if username == "" {
 				username = "x-access-token"
@@ -1011,12 +1014,13 @@ func (m *Module) goModEnv() ([]string, func()) {
 	if cfg.Updater.GitHubToken == "" {
 		return nil, func() {}
 	}
-	vars := []string{
-		"GOPRIVATE=github.com/bradselph/*",
-		"GONOSUMDB=github.com/bradselph/*",
-	}
 	// Include git auth so go build/mod can fetch private GitHub modules.
 	authVars, cleanup := m.gitAuthVars()
+	vars := make([]string, 0, 2+len(authVars))
+	vars = append(vars,
+		"GOPRIVATE=github.com/bradselph/*",
+		"GONOSUMDB=github.com/bradselph/*",
+	)
 	vars = append(vars, authVars...)
 	return vars, cleanup
 }
@@ -1060,7 +1064,7 @@ func (m *Module) CheckForSourceUpdates(ctx context.Context) (bool, string, error
 		return false, "", err
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+	if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr != nil {
 		return false, "", fmt.Errorf("not a git repository: %s", dir)
 	}
 
@@ -1075,8 +1079,8 @@ func (m *Module) CheckForSourceUpdates(ctx context.Context) (bool, string, error
 	// Fetch only the configured branch
 	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "--quiet", "origin", branch)
 	fetchCmd.Env = gitEnv
-	if out, err := fetchCmd.CombinedOutput(); err != nil {
-		return false, "", fmt.Errorf("git fetch failed: %w\n%s", err, string(out))
+	if fetchOut, fetchErr := fetchCmd.CombinedOutput(); fetchErr != nil {
+		return false, "", fmt.Errorf("git fetch failed: %w\n%s", fetchErr, string(fetchOut))
 	}
 
 	// Local HEAD commit
@@ -1172,7 +1176,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		branch = "main"
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+	if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr != nil {
 		e := fmt.Errorf("not a git repository: %s", dir)
 		m.publishBuildStatus(&UpdateStatus{Error: e.Error(), InProgress: false})
 		return &UpdateStatus{Error: e.Error(), InProgress: false}, e
@@ -1241,14 +1245,14 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	m.publishBuildStatus(status)
 
 	frontendDir := filepath.Join(dir, "web", "frontend")
-	if _, err := os.Stat(frontendDir); err == nil {
+	if _, statErr := os.Stat(frontendDir); statErr == nil {
 		m.log.Info("Source update: npm ci in %s", frontendDir)
 		// Use npm ci without --prefer-offline so it works on fresh servers with no cache
 		npmCi := exec.CommandContext(ctx, "npm", "ci", "--no-audit", "--no-fund")
 		npmCi.Dir = frontendDir
-		if out, err := npmCi.CombinedOutput(); err != nil {
+		if npmCiOut, npmCiErr := npmCi.CombinedOutput(); npmCiErr != nil {
 			// Non-fatal: log and continue — frontend may already be built
-			m.log.Warn("npm ci failed (continuing): %v\n%s", err, string(out))
+			m.log.Warn("npm ci failed (continuing): %v\n%s", npmCiErr, string(npmCiOut))
 		}
 
 		status.Stage = "building frontend"
@@ -1258,12 +1262,12 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		m.log.Info("Source update: npm run build")
 		npmBuild := exec.CommandContext(ctx, "npm", "run", "build")
 		npmBuild.Dir = frontendDir
-		if out, err := npmBuild.CombinedOutput(); err != nil {
-			status.Error = fmt.Sprintf("frontend build failed: %v", err)
+		if npmBuildOut, npmBuildErr := npmBuild.CombinedOutput(); npmBuildErr != nil {
+			status.Error = fmt.Sprintf("frontend build failed: %v", npmBuildErr)
 			status.InProgress = false
 			m.publishBuildStatus(status)
-			m.log.Error("npm run build failed: %v\n%s", err, string(out))
-			return status, fmt.Errorf("npm build: %w", err)
+			m.log.Error("npm run build failed: %v\n%s", npmBuildErr, string(npmBuildOut))
+			return status, fmt.Errorf("npm build: %w", npmBuildErr)
 		}
 		m.log.Info("Source update: frontend built successfully")
 	}
@@ -1363,7 +1367,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	status.Progress = 85
 	m.publishBuildStatus(status)
 
-	if err := os.Chmod(tmpBin, 0755); err != nil {
+	if err := os.Chmod(tmpBin, 0o755); err != nil {
 		_ = os.Remove(tmpBin)
 		status.Error = "failed to set binary permissions"
 		status.InProgress = false
@@ -1416,8 +1420,8 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer func() {
-		if err := source.Close(); err != nil {
-			_ = err // best-effort close
+		if closeErr := source.Close(); closeErr != nil {
+			_ = closeErr // best-effort close
 		}
 	}()
 
@@ -1426,8 +1430,8 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer func() {
-		if err := dest.Close(); err != nil {
-			_ = err // best-effort close
+		if closeErr := dest.Close(); closeErr != nil {
+			_ = closeErr // best-effort close
 		}
 	}()
 

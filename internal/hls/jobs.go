@@ -138,7 +138,7 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 		Qualities: p.Qualities,
 		StartedAt: time.Now(),
 	}
-	jobCtx, jobCancel := context.WithCancel(context.Background())
+	jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
 	m.jobs[p.JobID] = job
 	m.jobCancels[p.JobID] = jobCancel
 	m.activeJobs.Add(1)

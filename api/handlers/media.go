@@ -498,7 +498,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 			if item := h.receiver.GetMediaItem(id); item != nil {
 				// Receiver items inherit the mature flag from the scanner if the
 				// master has scanned the same content. If the fingerprint matches a
-				// mature local item, deny access for unauthorised callers.
+				// mature local item, deny access for unauthorized callers.
 				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
 					writeError(c, http.StatusForbidden,
 						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
@@ -881,7 +881,7 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 	writeSuccess(c, nil)
 }
 
-// canViewMatureContent reports whether the current request's user is authorised
+// canViewMatureContent reports whether the current request's user is authorized
 // to access mature content (session + CanViewMature permission + ShowMature pref).
 func (h *Handler) canViewMatureContent(c *gin.Context) bool {
 	user := getUser(c)

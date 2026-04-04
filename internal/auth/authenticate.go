@@ -1,4 +1,4 @@
-// Login, admin login, and rate limiting.
+// Package auth handles login, admin login, and rate limiting.
 package auth
 
 import (
@@ -81,7 +81,7 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		m.log.Debug("Login failed - account disabled: %s", req.Username)
 		return nil, ErrAccountDisabled
 	}
-	if err := m.verifyPasswordWithCacheRefresh(ctx, user, &creds{Username: req.Username, Password: req.Password}); err != nil {
+	if verifyErr := m.verifyPasswordWithCacheRefresh(ctx, user, &creds{Username: req.Username, Password: req.Password}); verifyErr != nil {
 		m.recordFailedAttempt(req.IPAddress)
 		m.log.Debug("Login failed - invalid password for: %s", req.Username)
 		return nil, ErrInvalidCredentials
@@ -176,7 +176,7 @@ func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, e
 	if !exists {
 		return nil, ErrSessionNotFound
 	}
-	if session.Session.IsExpired() {
+	if session.IsExpired() {
 		m.sessionsMu.Lock()
 		delete(m.adminSessions, sessionID)
 		m.sessionsMu.Unlock()

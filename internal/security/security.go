@@ -202,9 +202,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.authRateLimiter.onBan = persistBan
 
 	// Load IP lists
-	if err := m.loadIPLists(); err != nil {
-		m.log.Warn("Failed to load IP lists: %v", err)
-	}
+	m.loadIPLists()
 
 	// Start rate limiter cleanup (also cleans expired IP list entries)
 	m.rateLimiter.StartCleanup(m.whitelist, m.blacklist)
@@ -570,7 +568,7 @@ func (m *Module) GetStats() Stats {
 
 // Persistence — reads/writes via MySQL repository
 
-func (m *Module) loadIPLists() error {
+func (m *Module) loadIPLists() {
 	ctx := context.Background()
 
 	// Load whitelist config
@@ -638,8 +636,6 @@ func (m *Module) loadIPLists() error {
 			m.rateLimiter.BanIP(rec.Value, remaining, rec.Comment)
 		}
 	}
-
-	return nil
 }
 
 func (m *Module) parseIPEntry(entry *IPEntry) {
@@ -699,9 +695,9 @@ func (m *Module) saveIPLists() error {
 // RateLimiter implementation
 
 // NewRateLimiter creates a new rate limiter
-func NewRateLimiter(config RateLimitConfig) *RateLimiter {
+func NewRateLimiter(cfg RateLimitConfig) *RateLimiter {
 	return &RateLimiter{
-		config:      config,
+		config:      cfg,
 		clients:     make(map[string]*ClientState),
 		bannedIPs:   make(map[string]BanRecord),
 		stopCleanup: make(chan struct{}),

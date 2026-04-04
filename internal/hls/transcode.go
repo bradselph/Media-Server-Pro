@@ -87,7 +87,7 @@ func (m *Module) acquireTranscodeSem(ctx context.Context, job *models.HLSJob) bo
 	case m.transSem <- struct{}{}:
 		return true
 	case <-ctx.Done():
-		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCancelled, ErrorMsg: "Context cancelled", Progress: 0})
+		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCancelled, ErrorMsg: "Context canceled", Progress: 0})
 		return false
 	}
 }
@@ -219,8 +219,8 @@ func (m *Module) buildFFmpegTranscodeCmd(ctx context.Context, paths *transcodePa
 
 func (m *Module) handleTranscodeWaitError(ctx context.Context, errCtx *transcodeErrorContext, waitErr error) error {
 	if m.isTranscodeCancelled(ctx, errCtx.StderrStr) {
-		m.log.Info("HLS transcoding cancelled for job %s quality %s", errCtx.JobID, errCtx.Quality)
-		m.updateJobStatus(&updateJobStatusParams{JobID: errCtx.JobID, Status: models.HLSStatusCancelled, ErrorMsg: "Transcoding cancelled", Progress: 0})
+		m.log.Info("HLS transcoding canceled for job %s quality %s", errCtx.JobID, errCtx.Quality)
+		m.updateJobStatus(&updateJobStatusParams{JobID: errCtx.JobID, Status: models.HLSStatusCancelled, ErrorMsg: "Transcoding canceled", Progress: 0})
 		return waitErr
 	}
 	if errOutput := strings.TrimSpace(errCtx.StderrStr); errOutput != "" {
@@ -246,7 +246,10 @@ func (m *Module) isTranscodeCancelled(ctx context.Context, stderrStr string) boo
 func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, quality string) error {
 	lockKey := job.ID + "/" + quality
 	mu, _ := m.qualityLocks.LoadOrStore(lockKey, &sync.Mutex{})
-	qMu := mu.(*sync.Mutex)
+	qMu, ok := mu.(*sync.Mutex)
+	if !ok {
+		return fmt.Errorf("internal lock type error for key %s", lockKey)
+	}
 	qMu.Lock()
 	defer qMu.Unlock()
 
@@ -284,7 +287,7 @@ func (m *Module) monitorProgress(jobID string, stderr io.Reader, run *qualityRun
 }
 
 // handleProgressUpdate processes a single ffmpeg progress line and updates job progress.
-func (m *Module) handleProgressUpdate(jobID string, rawTimeStr string, run *qualityRunParams) {
+func (m *Module) handleProgressUpdate(jobID, rawTimeStr string, run *qualityRunParams) {
 	timeStr := rawTimeStr
 	if spaceIdx := strings.IndexAny(timeStr, " \t"); spaceIdx > 0 {
 		timeStr = timeStr[:spaceIdx]
