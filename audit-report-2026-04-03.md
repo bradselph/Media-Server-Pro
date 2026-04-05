@@ -5,7 +5,28 @@
 
 ---
 
-## === AUDIT SUMMARY ===
+## === STATUS UPDATE — 2026-04-05 ===
+
+**Build status:** `go build ./...` passes cleanly. All tests pass.
+
+**Corrections:**
+- `new(expr)` items (8 of 10 BROKEN entries): Go's `new()` builtin accepts expressions, not just type literals. `new(r.recordToRow(item))` compiles and creates `*categorizedItemRow` initialized to the method's return value — **not a compile error**. These 8 items are **INVALID** as filed; relabeled below.
+- `new(rows[start:end])` (receiver_transfer_repository): Similarly valid Go — creates `*[]receiverMediaRow` pointing to the actual slice data. GORM receives and inserts the rows correctly. **INVALID** as filed.
+
+**Resolved since 2026-04-03:**
+- `[SECURITY] internal/receiver/receiver.go:746-753` — SSRF via proxyViaHTTP: **FIXED** in commit `3559e1f1`. Added `helpers.ValidateURLForSSRF(req.BaseURL)` in `RegisterSlave` and replaced plain `http.Transport` with `helpers.SafeHTTPTransport()` in receiver `Start()`.
+
+**Remaining open:** 1 true BROKEN (ReorderItems), all SECURITY/RACE/FRAGILE/GAP/SILENT FAIL items not listed above.
+
+**Adjusted open counts:**
+```
+BROKEN:         1   (was 10; 9 items were invalid or fixed)
+SECURITY:      43   (was 44; receiver SSRF fixed)
+```
+
+---
+
+## === AUDIT SUMMARY (original, 2026-04-03) ===
 
 ```
 Files analyzed:    ~190 Go source files (excluding vendor/)
@@ -33,7 +54,7 @@ These issues cause compilation failures, data loss, or exploitable security vuln
 
 ---
 
-### [BROKEN] internal/repositories/mysql/categorized_item_repository.go:51 — `new(value)` compile error in Upsert
+### ~~[BROKEN]~~ [INVALID] internal/repositories/mysql/categorized_item_repository.go:51 — `new(value)` — NOT a compile error
 ```
 WHAT: new(r.recordToRow(item)) is invalid Go — new() takes a type, not an expression.
 WHY: Misuse of new() builtin; intent was to pass a pointer to a stack-allocated struct.
@@ -42,7 +63,7 @@ TRACE: CategorizeFile → saveItem → repo.Upsert → new(r.recordToRow(item)) 
 FIX DIRECTION: row := r.recordToRow(item); ... .Create(&row)
 ```
 
-### [BROKEN] internal/repositories/mysql/crawler_repository.go:42 — `new(value)` compile error in CrawlerTargetRepository.Upsert
+### ~~[BROKEN]~~ [INVALID] internal/repositories/mysql/crawler_repository.go:42 — `new(value)` — NOT a compile error
 ```
 WHAT: new(r.recordToRow(target)) is the same invalid new(value) pattern.
 WHY: Same copy-paste error.
@@ -51,7 +72,7 @@ TRACE: AddTarget → targetRepo.Upsert → new(r.recordToRow(target)) — compil
 FIX DIRECTION: row := r.recordToRow(target); ... .Create(&row)
 ```
 
-### [BROKEN] internal/repositories/mysql/crawler_repository.go:157 — `new(value)` compile error in CrawlerDiscoveryRepository.Create
+### ~~[BROKEN]~~ [INVALID] internal/repositories/mysql/crawler_repository.go:157 — `new(value)` — NOT a compile error
 ```
 WHAT: new(r.recordToRow(disc)) is invalid.
 WHY: Same error class.
@@ -59,7 +80,7 @@ IMPACT: Binary does not compile; doCrawl → discoveryRepo.Create is broken.
 FIX DIRECTION: row := r.recordToRow(disc); ... .Create(&row)
 ```
 
-### [BROKEN] internal/repositories/mysql/extractor_item_repository.go:57 — `new(value)` compile error in ExtractorItemRepository.Upsert
+### ~~[BROKEN]~~ [INVALID] internal/repositories/mysql/extractor_item_repository.go:57 — `new(value)` — NOT a compile error
 ```
 WHAT: new(r.recordToRow(item)) is invalid.
 WHY: Same error class.
@@ -67,7 +88,7 @@ IMPACT: Binary does not compile; AddItem → repo.Upsert is broken.
 FIX DIRECTION: row := r.recordToRow(item); ... .Create(&row)
 ```
 
-### [BROKEN] internal/repositories/mysql/validation_result_repository.go:51 — `new(value)` compile error in ValidationResultRepository.Upsert
+### ~~[BROKEN]~~ [INVALID] internal/repositories/mysql/validation_result_repository.go:51 — `new(value)` — NOT a compile error
 ```
 WHAT: new(r.recordToRow(result)) is invalid.
 WHY: Same error class.
@@ -75,7 +96,7 @@ IMPACT: Binary does not compile; validator persistence is broken.
 FIX DIRECTION: row := r.recordToRow(result); ... .Create(&row)
 ```
 
-### [BROKEN] internal/repositories/mysql/crawler_repository.go:101 / extractor_item_repository.go:143 — `new(pointer.Format(...))` for optional time fields
+### ~~[BROKEN]~~ [INVALID] internal/repositories/mysql/crawler_repository.go:101 / extractor_item_repository.go:143 — `new(pointer.Format(...))` — NOT a compile error
 ```
 WHAT: new(rec.LastCrawled.Format(...)) and new(rec.ExpiresAt.Format(...)) pass expressions to new(), not types.
 WHY: Same error class; intent was to create a *string.
@@ -83,7 +104,7 @@ IMPACT: Binary does not compile.
 FIX DIRECTION: s := rec.LastCrawled.Format(layout); row.LastCrawled = &s
 ```
 
-### [BROKEN] internal/updater/updater.go:311-312 — `new(release.PublishedAt)` compile error
+### ~~[BROKEN]~~ [INVALID] internal/updater/updater.go:311-312 — `new(release.PublishedAt)` — NOT a compile error
 ```
 WHAT: result.PublishedAt = new(release.PublishedAt) — new() takes a type, not a time.Time value.
 WHY: Same new(value) class of bug.
@@ -91,7 +112,7 @@ IMPACT: Binary does not compile; CheckForUpdates is broken.
 FIX DIRECTION: t := release.PublishedAt; result.PublishedAt = &t
 ```
 
-### [BROKEN] api/handlers/admin_security.go:152 — `new(rec.ExpiresAt)` compile error in GetBannedIPs
+### ~~[BROKEN]~~ [INVALID] api/handlers/admin_security.go:152 — `new(rec.ExpiresAt)` — NOT a compile error
 ```
 WHAT: entry.ExpiresAt = new(rec.ExpiresAt) — same issue.
 WHY: Same error class.
@@ -99,7 +120,7 @@ IMPACT: Binary does not compile; GetBannedIPs is entirely broken.
 FIX DIRECTION: t := rec.ExpiresAt; entry.ExpiresAt = &t
 ```
 
-### [BROKEN] internal/repositories/mysql/receiver_transfer_repository.go:176 — `new(rows[start:end])` silently inserts nothing for batches after the first
+### ~~[BROKEN]~~ [INVALID] internal/repositories/mysql/receiver_transfer_repository.go:176 — `new(rows[start:end])` — NOT broken
 ```
 WHAT: new(rows[start:end]) allocates a *[]receiverMediaRow pointing to a new nil slice, ignoring the actual slice data. GORM receives a pointer to nil and inserts zero rows.
 WHY: new(slice_expr) was intended as &rows[start:end].
@@ -159,7 +180,7 @@ TRACE: POST /api/analytics/events → SubmitEvent:184-190 → ClientEventInput{S
 FIX DIRECTION: Always derive SessionID from the authenticated session only; never accept client-supplied SessionID.
 ```
 
-### [SECURITY] internal/receiver/receiver.go:746-753 — proxyViaHTTP has no SSRF protection on slave BaseURL
+### ~~[SECURITY]~~ [FIXED — 3559e1f1] internal/receiver/receiver.go:746-753 — proxyViaHTTP SSRF protection
 ```
 WHAT: m.httpClient uses a plain http.Transport with no SSRF dial-time IP guard. A slave registered with BaseURL="http://169.254.169.254/latest/meta-data/" causes any user playing media from that slave to trigger an SSRF request from the master to the cloud metadata endpoint.
 WHY: Receiver's http.Client uses &http.Transport{} not helpers.SafeHTTPTransport().
@@ -384,8 +405,8 @@ TRACE: Authenticate → getOrLoadUser (returns m.users[username] pointer) → ve
 FIX DIRECTION: Remove the *user = *dbUser mutation; update the cache explicitly under usersMu after the function returns.
 ```
 
-### [SECURITY] api/handlers/admin_security.go:152 — GetBannedIPs compile error (new(rec.ExpiresAt))
-*(see also BROKEN section above)*
+### ~~[SECURITY]~~ [INVALID] api/handlers/admin_security.go:152 — GetBannedIPs `new(rec.ExpiresAt)` — NOT a compile error
+*(see also BROKEN section above — reclassified INVALID)*
 
 ### [SECURITY] internal/analytics/export.go:44 — CSV export includes full IP addresses
 ```
