@@ -41,7 +41,7 @@ func TestIsAuthPath(t *testing.T) {
 func TestGetClientIP_RemoteAddr(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "192.168.1.100:12345"
-	ip := getClientIP(req)
+	ip := getClientIP(req, nil)
 	if ip != "192.168.1.100" {
 		t.Errorf("getClientIP = %q, want 192.168.1.100", ip)
 	}
@@ -50,7 +50,7 @@ func TestGetClientIP_RemoteAddr(t *testing.T) {
 func TestGetClientIP_NoPort(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "10.0.0.1"
-	ip := getClientIP(req)
+	ip := getClientIP(req, nil)
 	if ip == "" {
 		t.Error("should handle RemoteAddr without port")
 	}
@@ -60,7 +60,7 @@ func TestGetClientIP_XForwardedFor(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "10.0.0.1:1234"
 	req.Header.Set("X-Forwarded-For", "203.0.113.50, 10.0.0.1")
-	ip := getClientIP(req)
+	ip := getClientIP(req, nil)
 	if ip != "203.0.113.50" {
 		t.Logf("getClientIP with X-Forwarded-For = %q (implementation dependent)", ip)
 	}

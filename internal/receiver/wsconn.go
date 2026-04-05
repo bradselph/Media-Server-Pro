@@ -149,20 +149,33 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		done: make(chan struct{}),
 	}
 
+	rcfg := m.config.Get().Receiver
+	wsReadLimit := rcfg.WSReadLimit
+	if wsReadLimit <= 0 {
+		wsReadLimit = 16 * 1024 * 1024
+	}
+	wsReadDeadline := rcfg.WSReadDeadline
+	if wsReadDeadline <= 0 {
+		wsReadDeadline = 60 * time.Second
+	}
+	wsPingInterval := rcfg.WSPingInterval
+	if wsPingInterval <= 0 {
+		wsPingInterval = 25 * time.Second
+	}
+
 	// Limit incoming message size to prevent memory exhaustion from malicious slaves.
-	// 16 MB accommodates large catalog pushes while bounding memory usage.
-	conn.SetReadLimit(16 * 1024 * 1024)
+	conn.SetReadLimit(wsReadLimit)
 
 	// Configure keep-alive via ping/pong
-	setReadDeadline(conn, 60*time.Second, m.log)
+	setReadDeadline(conn, wsReadDeadline, m.log)
 	conn.SetPongHandler(func(string) error {
-		setReadDeadline(conn, 60*time.Second, m.log)
+		setReadDeadline(conn, wsReadDeadline, m.log)
 		return nil
 	})
 
 	// Start ping ticker — stopped when done channel is closed on disconnect
 	go func() {
-		ticker := time.NewTicker(25 * time.Second)
+		ticker := time.NewTicker(wsPingInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -230,7 +243,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			m.log.Info("Slave %s registered via WebSocket (name: %s)", node.ID, node.Name)
 
 			// Reset read deadline after successful registration
-			setReadDeadline(conn, 60*time.Second, m.log)
+			setReadDeadline(conn, wsReadDeadline, m.log)
 
 		case msgTypeCatalog:
 			var data wsCatalogData
@@ -255,7 +268,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Reset read deadline
-			setReadDeadline(conn, 60*time.Second, m.log)
+			setReadDeadline(conn, wsReadDeadline, m.log)
 
 		case msgTypeHeartbeat:
 			var data wsHeartbeatData
@@ -273,7 +286,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Reset read deadline
-			setReadDeadline(conn, 60*time.Second, m.log)
+			setReadDeadline(conn, wsReadDeadline, m.log)
 
 		default:
 			m.log.Debug("Unknown WS message type: %s", msg.Type)
@@ -377,8 +390,12 @@ func (m *Module) DeliverStream(token string) (*PendingStream, bool) {
 func (m *Module) cleanupStalePending() {
 	m.pendingMu.Lock()
 	defer m.pendingMu.Unlock()
+	ttl := m.config.Get().Receiver.PendingStreamTTL
+	if ttl <= 0 {
+		ttl = 30 * time.Second
+	}
 	for token, ps := range m.pendingStreams {
-		if time.Since(ps.CreatedAt) > 30*time.Second {
+		if time.Since(ps.CreatedAt) > ttl {
 			ps.cancel()
 			ps.readyOnce.Do(func() { close(ps.Ready) })
 			delete(m.pendingStreams, token)

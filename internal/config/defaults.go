@@ -40,7 +40,7 @@ func DefaultConfig() *Config {
 		Database:      defaultDatabaseConfig(),
 		Updater:       UpdaterConfig{Branch: "main", UpdateMethod: "source"},
 		AgeGate:       defaultAgeGateConfig(),
-		UI:            UIConfig{ItemsPerPage: 48, MobileItemsPerPage: 24, MobileGridColumns: 2},
+		UI:            UIConfig{ItemsPerPage: 48, MobileItemsPerPage: 24, MobileGridColumns: 2, FeedMaxItems: 50, FeedDefaultItems: 20},
 		Downloader:    defaultDownloaderConfig(),
 		Storage:       StorageConfig{Backend: "local"},
 	}
@@ -83,16 +83,18 @@ func defaultDownloadConfig() DownloadConfig {
 
 func defaultThumbnailsConfig() ThumbnailsConfig {
 	return ThumbnailsConfig{
-		Enabled:          true,
-		AutoGenerate:     true,
-		Width:            320,
-		Height:           180,
-		Quality:          80,
-		VideoInterval:    30,
-		PreviewCount:     10,
-		GenerateOnAccess: true,
-		QueueSize:        1000,
-		WorkerCount:      4,
+		Enabled:                 true,
+		AutoGenerate:            true,
+		Width:                   320,
+		Height:                  180,
+		Quality:                 80,
+		VideoInterval:           30,
+		PreviewCount:            10,
+		GenerateOnAccess:        true,
+		QueueSize:               1000,
+		WorkerCount:             4,
+		InFlightEvictionTimeout: 5 * time.Minute,
+		InFlightScanInterval:    1 * time.Minute,
 	}
 }
 
@@ -104,6 +106,7 @@ func defaultAnalyticsConfig() AnalyticsConfig {
 		CleanupInterval: 12 * time.Hour,
 		TrackPlayback:   true,
 		TrackViews:      true,
+		ViewCooldown:    5 * time.Minute,
 	}
 }
 
@@ -121,6 +124,7 @@ func defaultUploadsConfig() UploadsConfig {
 
 func defaultSecurityConfig() SecurityConfig {
 	return SecurityConfig{
+		TrustedProxyCIDRs: []string{}, // empty = use built-in RFC-1918 + loopback defaults
 		EnableIPWhitelist: false,
 		EnableIPBlacklist: false,
 		RateLimitEnabled:  true,
@@ -182,6 +186,8 @@ func defaultHLSConfig() HLSConfig {
 		AutoGenerate:             false,
 		PreGenerateIntervalHours: 1,
 		ConcurrentLimit:          2,
+		MaxConsecutiveFailures:   3,
+		ProbeTimeout:             30 * time.Second,
 		QualityProfiles: []HLSQuality{
 			{Name: "1080p", Width: 1920, Height: 1080, Bitrate: 5000000, AudioBitrate: 192000, Enabled: true},
 			{Name: "720p", Width: 1280, Height: 720, Bitrate: 2500000, AudioBitrate: 128000, Enabled: true},
@@ -193,21 +199,27 @@ func defaultHLSConfig() HLSConfig {
 
 func defaultRemoteMediaConfig() RemoteMediaConfig {
 	return RemoteMediaConfig{
-		Enabled:      false,
-		SyncInterval: 1 * time.Hour,
-		CacheEnabled: true,
-		CacheSize:    1024 * 1024 * 1024,
-		CacheTTL:     7 * 24 * time.Hour,
+		Enabled:                false,
+		SyncInterval:           1 * time.Hour,
+		CacheEnabled:           true,
+		CacheSize:              1024 * 1024 * 1024,
+		CacheTTL:               7 * 24 * time.Hour,
+		HTTPTimeout:            30 * time.Second,
+		MaxConcurrentDownloads: 4,
 	}
 }
 
 func defaultReceiverConfig() ReceiverConfig {
 	return ReceiverConfig{
-		Enabled:       false,
-		ProxyTimeout:  60 * time.Second,
-		HealthCheck:   30 * time.Second,
-		MaxProxyConns: 50,
-		BufferSize:    64 * 1024,
+		Enabled:             false,
+		ProxyTimeout:        60 * time.Second,
+		HealthCheck:         30 * time.Second,
+		MaxProxyConns:       50,
+		WSReadLimit:         16 * 1024 * 1024, // 16 MB — fits large slave catalog pushes
+		WSReadDeadline:      60 * time.Second,
+		WSPingInterval:      25 * time.Second,
+		PendingStreamTTL:    30 * time.Second,
+		HeartbeatDBDebounce: 60 * time.Second,
 	}
 }
 
@@ -302,18 +314,19 @@ func defaultDownloaderConfig() DownloaderConfig {
 
 func defaultDatabaseConfig() DatabaseConfig {
 	return DatabaseConfig{
-		Enabled:         true,
-		Host:            "localhost",
-		Port:            3306,
-		Name:            "mediaserver",
-		Username:        "mediaserver",
-		Password:        "",
-		MaxOpenConns:    25,
-		MaxIdleConns:    10,
-		ConnMaxLifetime: 1 * time.Hour,
-		Timeout:         10 * time.Second,
-		MaxRetries:      3,
-		RetryInterval:   2 * time.Second,
+		Enabled:            true,
+		Host:               "localhost",
+		Port:               3306,
+		Name:               "mediaserver",
+		Username:           "mediaserver",
+		Password:           "",
+		MaxOpenConns:       25,
+		MaxIdleConns:       10,
+		ConnMaxLifetime:    1 * time.Hour,
+		Timeout:            10 * time.Second,
+		MaxRetries:         3,
+		RetryInterval:      2 * time.Second,
+		SlowQueryThreshold: 500 * time.Millisecond,
 	}
 }
 

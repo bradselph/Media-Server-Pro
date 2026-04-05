@@ -112,6 +112,15 @@ type CachedMedia struct {
 
 // NewModule creates a new remote media module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
+	remoteCfg := cfg.Get().RemoteMedia
+	httpTimeout := remoteCfg.HTTPTimeout
+	if httpTimeout <= 0 {
+		httpTimeout = 30 * time.Second
+	}
+	maxDownloads := remoteCfg.MaxConcurrentDownloads
+	if maxDownloads <= 0 {
+		maxDownloads = 4
+	}
 	transport := helpers.SafeHTTPTransport()
 	return &Module{
 		config:   cfg,
@@ -119,7 +128,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		dbModule: dbModule,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   30 * time.Second,
+			Timeout:   httpTimeout,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
 					return fmt.Errorf("too many redirects")
@@ -137,7 +146,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		mediaCache: make(map[string]*CachedMedia),
 		cacheDir:   filepath.Join(cfg.Get().Directories.Data, "remote_cache"),
 		syncDone:   make(chan struct{}),
-		cacheSem:   make(chan struct{}, 4), // max 4 concurrent background cache downloads
+		cacheSem:   make(chan struct{}, maxDownloads),
 	}
 }
 

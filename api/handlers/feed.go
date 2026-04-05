@@ -57,10 +57,19 @@ type atomSummary struct {
 // pass the session cookie (same-origin tooling, Inoreader with cookie auth, etc.)
 // can subscribe to library updates.
 func (h *Handler) GetRSSFeed(c *gin.Context) {
-	limit := feedDefaultItems
+	uiCfg := h.config.Get().UI
+	maxItems := uiCfg.FeedMaxItems
+	if maxItems <= 0 {
+		maxItems = feedMaxItems
+	}
+	defaultItems := uiCfg.FeedDefaultItems
+	if defaultItems <= 0 {
+		defaultItems = feedDefaultItems
+	}
+	limit := defaultItems
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
-		if l > feedMaxItems {
-			l = feedMaxItems
+		if l > maxItems {
+			l = maxItems
 		}
 		limit = l
 	}

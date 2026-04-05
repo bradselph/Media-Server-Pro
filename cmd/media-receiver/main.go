@@ -82,6 +82,10 @@ type slaveConfig struct {
 	MediaDirs         []string
 	ScanInterval      time.Duration
 	HeartbeatInterval time.Duration
+	MaxStreams         int           // max concurrent stream deliveries to master
+	ReconnectBase     time.Duration // initial WS reconnect backoff delay
+	ReconnectMax      time.Duration // maximum WS reconnect backoff delay
+	WSDeadline        time.Duration // WS read deadline (must be > master ping interval)
 }
 
 // fingerprint cache: avoid recomputing SHA-256 for unchanged files.
@@ -129,10 +133,7 @@ func pruneFpCache(keep map[string]bool) {
 	}
 }
 
-// streamSem limits concurrent stream deliveries to avoid goroutine/file descriptor exhaustion.
-const maxConcurrentStreams = 10
-
-var streamSem = make(chan struct{}, maxConcurrentStreams)
+// streamSem is initialised in main() from cfg.MaxStreams and passed into the run loop.
 
 // streamHTTPClient is reused for stream deliveries (default TLS; no request timeout).
 var streamHTTPClient = &http.Client{
@@ -202,17 +203,27 @@ func main() {
 		cancel()
 	}()
 
+	maxStreams := cfg.MaxStreams
+	if maxStreams <= 0 {
+		maxStreams = 10
+	}
+	streamSem := make(chan struct{}, maxStreams)
+
 	// Run the WebSocket connection loop — reconnects automatically
-	runSlaveLoop(ctx, cfg)
+	runSlaveLoop(ctx, cfg, streamSem)
 }
 
 // runSlaveLoop connects to the master via WebSocket and handles all communication.
 // If the connection drops, it waits and reconnects with exponential backoff.
-func runSlaveLoop(ctx context.Context, cfg *slaveConfig) {
-	const (
+func runSlaveLoop(ctx context.Context, cfg *slaveConfig, streamSem chan struct{}) {
+	baseDelay := cfg.ReconnectBase
+	if baseDelay <= 0 {
 		baseDelay = 2 * time.Second
-		maxDelay  = 2 * time.Minute
-	)
+	}
+	maxDelay := cfg.ReconnectMax
+	if maxDelay <= 0 {
+		maxDelay = 2 * time.Minute
+	}
 	delay := baseDelay
 
 	for {
@@ -220,7 +231,7 @@ func runSlaveLoop(ctx context.Context, cfg *slaveConfig) {
 			return
 		}
 
-		err := connectAndRun(ctx, cfg)
+		err := connectAndRun(ctx, cfg, streamSem)
 		if ctx.Err() != nil {
 			return // shutdown requested
 		}
@@ -245,7 +256,7 @@ func runSlaveLoop(ctx context.Context, cfg *slaveConfig) {
 
 // connectAndRun establishes one WebSocket connection, sends registration + catalog,
 // and runs the heartbeat/scan/stream-request loop until the connection drops.
-func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
+func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{}) error {
 	wsURL := buildWSURL(cfg.MasterURL)
 	fmt.Printf("Connecting to %s...\n", wsURL)
 
@@ -267,13 +278,16 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 	defer conn.Close()
 	fmt.Println("Connected to master via WebSocket")
 
+	wsDeadline := cfg.WSDeadline
+	if wsDeadline <= 0 {
+		wsDeadline = 90 * time.Second
+	}
+
 	// Set read deadline — extended on every incoming message/ping.
-	// If no data arrives within 90s (3x the master's 25s ping interval),
-	// the connection is considered dead and we reconnect.
-	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(wsDeadline))
 	var writeMu sync.Mutex
 	conn.SetPingHandler(func(data string) error {
-		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(wsDeadline))
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		return conn.WriteMessage(websocket.PongMessage, []byte(data))
@@ -319,7 +333,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig) error {
 				}
 				return
 			}
-			conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+			conn.SetReadDeadline(time.Now().Add(wsDeadline))
 
 			var msg wsMessage
 			if err := json.Unmarshal(raw, &msg); err != nil {
@@ -585,6 +599,10 @@ func parseFlags() (*slaveConfig, autoDiscovered) {
 	dirs := flag.String("dirs", "", "Comma-separated media directories")
 	interval := flag.Duration("interval", 5*time.Minute, "Scan/catalog push interval")
 	heartbeat := flag.Duration("heartbeat", 15*time.Second, "Heartbeat interval")
+	maxStreams := flag.Int("max-streams", 10, "Max concurrent stream deliveries to master")
+	reconnectBase := flag.Duration("reconnect-base", 2*time.Second, "Initial WS reconnect backoff delay")
+	reconnectMax := flag.Duration("reconnect-max", 2*time.Minute, "Maximum WS reconnect backoff delay")
+	wsDeadline := flag.Duration("ws-deadline", 90*time.Second, "WS read deadline (should be > master ping interval)")
 	flag.Parse()
 
 	cfg := &slaveConfig{
@@ -594,6 +612,10 @@ func parseFlags() (*slaveConfig, autoDiscovered) {
 		SlaveName:         *slaveName,
 		ScanInterval:      *interval,
 		HeartbeatInterval: *heartbeat,
+		MaxStreams:        *maxStreams,
+		ReconnectBase:     *reconnectBase,
+		ReconnectMax:      *reconnectMax,
+		WSDeadline:        *wsDeadline,
 	}
 
 	if *dirs != "" {
@@ -624,6 +646,26 @@ func parseFlags() (*slaveConfig, autoDiscovered) {
 	if v := os.Getenv("HEARTBEAT_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.HeartbeatInterval = d
+		}
+	}
+	if v := os.Getenv("SLAVE_MAX_STREAMS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.MaxStreams = n
+		}
+	}
+	if v := os.Getenv("SLAVE_RECONNECT_BASE"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.ReconnectBase = d
+		}
+	}
+	if v := os.Getenv("SLAVE_RECONNECT_MAX"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.ReconnectMax = d
+		}
+	}
+	if v := os.Getenv("SLAVE_WS_DEADLINE"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.WSDeadline = d
 		}
 	}
 

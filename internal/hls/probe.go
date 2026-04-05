@@ -27,6 +27,14 @@ func (m *Module) resolveMediaInputPath(ctx context.Context, mediaPath string) st
 	return url
 }
 
+// probeTimeout returns the configured probe deadline with a safe fallback.
+func (m *Module) probeTimeout() time.Duration {
+	if d := m.config.Get().HLS.ProbeTimeout; d > 0 {
+		return d
+	}
+	return 30 * time.Second
+}
+
 // getMediaDuration uses ffprobe to get media duration in seconds. Prefers the context-aware
 // exec path when ffprobePath is set so ctx cancellation (e.g. shutdown) is honored.
 func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64 {
@@ -36,7 +44,7 @@ func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64
 	}
 
 	if m.ffprobePath != "" {
-		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		probeCtx, cancel := context.WithTimeout(ctx, m.probeTimeout())
 		defer cancel()
 		cmd := exec.CommandContext(probeCtx, m.ffprobePath,
 			"-v", "quiet",
@@ -54,7 +62,7 @@ func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64
 		}
 	}
 	// Fallback when ffprobePath is unset or context path failed (no ctx cancellation in fallback)
-	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaPath, 15*time.Second, nil)
+	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaPath, m.probeTimeout(), nil)
 	if err != nil {
 		return 0
 	}
@@ -85,7 +93,7 @@ func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
 		return 0
 	}
 
-	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaPath, 15*time.Second, nil)
+	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaPath, m.probeTimeout(), nil)
 	if err == nil {
 		if h := m.parseProbeHeight(probeJSON); h > 0 {
 			return h
@@ -96,7 +104,7 @@ func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
 		return 0
 	}
 
-	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, m.probeTimeout())
 	defer cancel()
 
 	cmd := exec.CommandContext(probeCtx, m.ffprobePath,

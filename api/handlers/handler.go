@@ -169,8 +169,12 @@ type Handler struct {
 func (h *Handler) tryRecordView(userID, mediaID string) bool {
 	key := userID + "|" + mediaID
 	now := time.Now()
+	cooldown := h.config.Get().Analytics.ViewCooldown
+	if cooldown <= 0 {
+		cooldown = viewCooldownDuration
+	}
 	if prev, ok := h.viewCooldown.Load(key); ok {
-		if now.Sub(prev.(time.Time)) < viewCooldownDuration {
+		if now.Sub(prev.(time.Time)) < cooldown {
 			return false
 		}
 	}

@@ -145,8 +145,16 @@ func (m *Module) SetMediaIDProvider(p MediaIDProvider) {
 // cancelled during a long ffmpeg run) and the deferred Delete never ran.
 func (m *Module) evictStaleInFlight(ctx context.Context) {
 	defer m.wg.Done()
-	const staleDuration = 5 * time.Minute
-	ticker := time.NewTicker(1 * time.Minute)
+	cfg := m.config.Get().Thumbnails
+	staleDuration := cfg.InFlightEvictionTimeout
+	if staleDuration <= 0 {
+		staleDuration = 5 * time.Minute
+	}
+	scanInterval := cfg.InFlightScanInterval
+	if scanInterval <= 0 {
+		scanInterval = 1 * time.Minute
+	}
+	ticker := time.NewTicker(scanInterval)
 	defer ticker.Stop()
 	for {
 		select {

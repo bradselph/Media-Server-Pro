@@ -913,7 +913,7 @@ func isAuthPath(path string) bool {
 // to prevent brute-force and credential-stuffing attacks.
 func (m *Module) GinMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := getClientIP(c.Request)
+		ip := getClientIP(c.Request, m.parsedTrustedCIDRs())
 
 		// Check IP access
 		allowed, reason := m.CheckAccess(ip)
@@ -982,9 +982,27 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 	}
 }
 
-// getClientIP extracts the real client IP, trusting X-Forwarded-For only from private network proxies.
-// Uses pre-parsed privateCIDRs for performance. Validates the extracted IP to ensure it's well-formed.
-func getClientIP(r *http.Request) string {
+// parsedTrustedCIDRs returns parsed *net.IPNet values for SecurityConfig.TrustedProxyCIDRs.
+// Invalid entries are silently skipped (logged at Warn during Start is not worth it for hot-path).
+func (m *Module) parsedTrustedCIDRs() []*net.IPNet {
+	raw := m.config.Get().Security.TrustedProxyCIDRs
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]*net.IPNet, 0, len(raw))
+	for _, cidr := range raw {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err == nil {
+			out = append(out, ipNet)
+		}
+	}
+	return out
+}
+
+// getClientIP extracts the real client IP, trusting X-Forwarded-For only from private network
+// proxies (RFC-1918 + loopback) and any additional CIDRs in extraTrusted.
+// Validates the extracted IP to ensure it's well-formed.
+func getClientIP(r *http.Request, extraTrusted []*net.IPNet) string {
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		remoteIP = r.RemoteAddr
@@ -998,6 +1016,14 @@ func getClientIP(r *http.Request) string {
 			if ipNet.Contains(ip) {
 				trusted = true
 				break
+			}
+		}
+		if !trusted {
+			for _, ipNet := range extraTrusted {
+				if ipNet.Contains(ip) {
+					trusted = true
+					break
+				}
 			}
 		}
 	}

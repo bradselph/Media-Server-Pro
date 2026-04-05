@@ -508,7 +508,11 @@ func (m *Module) Heartbeat(slaveID string) error {
 	record := nodeToSlaveRecord(node)
 	m.mu.Unlock()
 
-	if time.Since(prevLastSeen) < 60*time.Second {
+	debounce := m.config.Get().Receiver.HeartbeatDBDebounce
+	if debounce <= 0 {
+		debounce = 60 * time.Second
+	}
+	if time.Since(prevLastSeen) < debounce {
 		return nil
 	}
 	return m.slaveRepo.Upsert(context.Background(), record)

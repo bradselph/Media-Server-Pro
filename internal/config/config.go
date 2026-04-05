@@ -5,6 +5,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"sync"
 
@@ -73,8 +74,38 @@ func (m *Manager) Load() error {
 	m.resolveAbsolutePaths()
 	m.syncFeatureToggles()
 	m.migrateHLSQualityEnabled()
+	if err := m.validate(); err != nil {
+		return err
+	}
 
 	m.log.Info("Configuration loaded successfully")
+	return nil
+}
+
+// validate checks configuration for obviously incorrect values.
+// Hard errors prevent startup; warnings are logged but do not fail.
+func (m *Manager) validate() error {
+	cfg := m.config
+
+	// Database port must be in a valid range when database is enabled.
+	if cfg.Database.Enabled {
+		if cfg.Database.Port < 1 || cfg.Database.Port > 65535 {
+			return fmt.Errorf("invalid database port %d: must be 1–65535", cfg.Database.Port)
+		}
+	}
+
+	// Warn about invalid entries in TrustedProxyCIDRs so operators notice misconfiguration.
+	for _, cidr := range cfg.Security.TrustedProxyCIDRs {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			m.log.Warn("Invalid CIDR in security.trusted_proxy_cidrs (will be ignored): %q: %v", cidr, err)
+		}
+	}
+
+	// HLS concurrent limit must be at least 1 when HLS is enabled.
+	if cfg.HLS.Enabled && cfg.HLS.ConcurrentLimit < 0 {
+		m.log.Warn("HLS concurrent_limit is negative (%d); will use default of 2", cfg.HLS.ConcurrentLimit)
+	}
+
 	return nil
 }
 

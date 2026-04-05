@@ -68,6 +68,8 @@ type UIConfig struct {
 	ItemsPerPage       int `json:"items_per_page"`
 	MobileItemsPerPage int `json:"mobile_items_per_page"`
 	MobileGridColumns  int `json:"mobile_grid_columns"`
+	FeedMaxItems       int `json:"feed_max_items"`    // hard cap on Atom/RSS feed entries; default 50
+	FeedDefaultItems   int `json:"feed_default_items"` // default count when no limit is requested; default 20
 }
 
 // AgeGateConfig holds age verification gate settings.
@@ -150,6 +152,10 @@ type ThumbnailsConfig struct {
 	GenerateOnAccess bool `json:"generate_on_access"`
 	QueueSize        int  `json:"queue_size"`
 	WorkerCount      int  `json:"worker_count"`
+
+	// In-flight job eviction — prevents permanent stalls when a worker exits mid-job.
+	InFlightEvictionTimeout time.Duration `json:"inflight_eviction_timeout"` // how long before a stuck job is evicted; default 5m
+	InFlightScanInterval    time.Duration `json:"inflight_scan_interval"`    // how often the eviction loop runs; default 1m
 }
 
 // AnalyticsConfig holds analytics settings
@@ -160,6 +166,7 @@ type AnalyticsConfig struct {
 	CleanupInterval time.Duration `json:"cleanup_interval"`
 	TrackPlayback   bool          `json:"track_playback"`
 	TrackViews      bool          `json:"track_views"`
+	ViewCooldown    time.Duration `json:"view_cooldown"` // min gap between counting repeated views of the same item; default 5m
 }
 
 // UploadsConfig holds upload settings
@@ -173,6 +180,9 @@ type UploadsConfig struct {
 
 // SecurityConfig holds security settings
 type SecurityConfig struct {
+	// TrustedProxyCIDRs lists CIDR ranges whose X-Forwarded-For headers are trusted.
+	// When empty, the built-in RFC-1918 + loopback defaults are used.
+	TrustedProxyCIDRs []string      `json:"trusted_proxy_cidrs"`
 	EnableIPWhitelist bool          `json:"enable_ip_whitelist"`
 	IPWhitelist       []string      `json:"ip_whitelist"`
 	EnableIPBlacklist bool          `json:"enable_ip_blacklist"`
@@ -242,6 +252,10 @@ type HLSConfig struct {
 	ConcurrentLimit           int           `json:"concurrent_limit"`
 	CDNBaseURL       string        `json:"cdn_base_url"`
 	LazyTranscode    bool          `json:"lazy_transcode"`
+
+	// Reliability and probe tuning.
+	MaxConsecutiveFailures int           `json:"max_consecutive_failures"` // retries before a job is abandoned; default 3
+	ProbeTimeout           time.Duration `json:"probe_timeout"`            // ffprobe/ffmpeg probe deadline; default 30s
 }
 
 // HLSQuality defines an HLS quality profile
@@ -262,6 +276,10 @@ type RemoteMediaConfig struct {
 	CacheEnabled bool           `json:"cache_enabled"`
 	CacheSize    int64          `json:"cache_size"`
 	CacheTTL     time.Duration  `json:"cache_ttl"`
+
+	// HTTP client tuning for fetching remote sources.
+	HTTPTimeout            time.Duration `json:"http_timeout"`             // per-request deadline; default 30s
+	MaxConcurrentDownloads int           `json:"max_concurrent_downloads"` // background cache download parallelism; default 4
 }
 
 // RemoteSource defines a remote media source connection.
@@ -280,7 +298,13 @@ type ReceiverConfig struct {
 	ProxyTimeout  time.Duration `json:"proxy_timeout"`
 	HealthCheck   time.Duration `json:"health_check_interval"`
 	MaxProxyConns int           `json:"max_proxy_conns"`
-	BufferSize    int           `json:"buffer_size"`
+
+	// WebSocket protocol tuning — affects all connected slave nodes.
+	WSReadLimit         int64         `json:"ws_read_limit"`          // max WS message bytes; default 16 MB
+	WSReadDeadline      time.Duration `json:"ws_read_deadline"`       // idle read timeout; default 60s
+	WSPingInterval      time.Duration `json:"ws_ping_interval"`       // server→slave ping cadence; default 25s
+	PendingStreamTTL    time.Duration `json:"pending_stream_ttl"`     // how long to wait for a slave to deliver a stream before cleanup; default 30s
+	HeartbeatDBDebounce time.Duration `json:"heartbeat_db_debounce"`  // min interval between heartbeat DB writes; default 60s
 }
 
 // ExtractorConfig holds settings for the stream extractor/proxy.
@@ -373,4 +397,5 @@ type DatabaseConfig struct {
 	MaxRetries      int           `json:"max_retries"`
 	RetryInterval   time.Duration `json:"retry_interval"`
 	TLSMode         string        `json:"tls_mode,omitempty"`
+	SlowQueryThreshold time.Duration `json:"slow_query_threshold"` // GORM slow-query log threshold; 0 = disabled; default 500ms
 }

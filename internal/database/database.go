@@ -105,11 +105,15 @@ func safeDSNString(db config.DatabaseConfig) string {
 }
 
 // newGORMLogger creates a GORM logger that writes to the module logger (Error level).
-func newGORMLogger(log *logger.Logger) gormlogger.Interface {
+// slowThreshold is sourced from DatabaseConfig.SlowQueryThreshold; 0 disables slow-query logging.
+func newGORMLogger(log *logger.Logger, slowThreshold time.Duration) gormlogger.Interface {
+	if slowThreshold <= 0 {
+		slowThreshold = 500 * time.Millisecond
+	}
 	return gormlogger.New(
 		&gormLogWriter{log: log},
 		gormlogger.Config{
-			SlowThreshold:             500 * time.Millisecond,
+			SlowThreshold:             slowThreshold,
 			LogLevel:                  gormlogger.Error,
 			IgnoreRecordNotFoundError: true,
 			Colorful:                  false,
@@ -139,7 +143,7 @@ func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, t
 
 // connectWithRetry opens a GORM connection with retries and ping; returns gorm.DB, sql.DB, and error.
 func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (*gorm.DB, *sql.DB, error) {
-	gormLog := newGORMLogger(log)
+	gormLog := newGORMLogger(log, dbCfg.SlowQueryThreshold)
 	var lastErr error
 	for i := 0; i < dbCfg.MaxRetries; i++ {
 		db, sqlDB, err := tryConnect(ctx, dsn, gormLog, dbCfg.Timeout)
