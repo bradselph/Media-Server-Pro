@@ -231,8 +231,8 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 | Method | Path | Auth | Params | Description |
 |--------|------|------|--------|-------------|
 | `POST` | `/api/analytics/events` | Auth | `{ type, media_id, duration?, data? }` | Submit a playback event |
-| `GET` | `/api/analytics` | Admin | `period?` | Summary: total views, active sessions, top media, `total_watch_time` |
-| `GET` | `/api/analytics/daily` | Admin | `days?` | Per-day view counts |
+| `GET` | `/api/analytics` | Admin | `period?` (sent by the Nuxt client for consistency; **backend ignores it**) | Summary JSON: views, sessions, `total_watch_time`, `top_viewed`, `recent_activity`, plus **today’s traffic counters** (see below) |
+| `GET` | `/api/analytics/daily` | Admin | `days?` | Per-day aggregates; each day includes **traffic breakdown** fields (see below) |
 | `GET` | `/api/analytics/top` | Admin | `limit?` | Top-viewed media items |
 | `GET` | `/api/analytics/content` | Admin | `limit?` (default 20) | Content performance: `[{ media_id, name, category, views, watch_time, avg_completion, last_viewed }]` |
 | `GET` | `/api/analytics/events/stats` | Admin | — | Aggregate event counts by type |
@@ -241,6 +241,26 @@ High-frequency; excluded from rate limiting and gzip. Auth not required for segm
 | `GET` | `/api/analytics/events/by-user` | Admin | `user_id, limit?` | Events for a specific user |
 | `GET` | `/api/analytics/events/counts` | Admin | — | Map of event-type → count |
 | `GET` | `/api/admin/analytics/export` | Admin | — | Download analytics as CSV |
+
+### Traffic analytics (server-generated)
+
+These counts come from **`TrackTrafficEvent`** and related hooks in the Go backend, not from client `POST /api/analytics/events`. They roll into **the server’s local calendar day** (same bucketing as other daily stats).
+
+| Signal | When it increments | Code paths |
+|--------|-------------------|------------|
+| `login` | Successful session cookie set (including admin login path) | `api/handlers/auth.go` |
+| `login_failed` | Bad password or locked account on login | `api/handlers/auth.go` |
+| `logout` | `POST /api/auth/logout` (user id/session may be empty if cookie was missing) | `api/handlers/auth.go` |
+| `register` | Successful self-registration | `api/handlers/auth.go` |
+| `age_gate_pass` | User completes age verification (middleware callback) | `cmd/server/main.go` → `middleware.NewAgeGate` `OnVerify` |
+| `download` | Media download served | `api/handlers/media.go` → `TrackDownload` |
+| `search` | `GET /api/media` with **non-empty** `search` query | `api/handlers/media.go` |
+
+**Summary response (`GET /api/analytics`):** `today_logins`, `today_logins_failed`, `today_registrations`, `today_age_gate_passes`, `today_downloads`, `today_searches` (today only; omit or zero when no activity).
+
+**Daily rows (`GET /api/analytics/daily`):** per-date `logins`, `logins_failed`, `logouts`, `registrations`, `age_gate_passes`, `downloads`, `searches`. Registrations also increment `new_users` for that day.
+
+Playback-focused client event types (`play`, `pause`, `seek`, `complete`, etc.) are defined in `internal/analytics/events.go` and appear in event drill-downs and `event_counts`; they are separate from the traffic table above.
 
 ---
 
