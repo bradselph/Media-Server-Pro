@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.1.0] - 2026-04-05 (minor)
+
+- Merge pull request #124 from bradselph/cursor/documentation-automation-system-835e
+- Add consumer cancellation & SSRF protections
+- Misc: refactors, safety fixes, and typo fixes
+- Apply audit fixes, small handler refactors, and add report
+- Sync OpenAPI schemas and TS types
+- Support presigned ffmpeg inputs & storage routing
+- Handle remote storage for HLS and static files
+- Add remote S3/B2 storage support
+- Update openapi.yaml
+- feat: add S3 storage backend configuration to admin settings UI
+- feat: wire storage backends into all major modules
+- feat: wire storage backend into streaming module and server startup
+- feat: add storage abstraction layer with local + S3 backends
+- feat: expose all remaining non-denylist config options in admin UI
+- feat: expand admin settings panel with ~40 missing config options
+- feat: enhance admin UI with stats loading and error handling
+- docs: document server traffic analytics and summary daily counters
+- fix(frontend): type AnalyticsSummary today_* traffic counters
+- fix(analytics): include today traffic counters in admin summary response
+- docs(contract): document analytics traffic fields on summary and daily stats
+
+
 ## [1.0.0] - 2026-04-02 (major)
 
 - fix: clarify security stats labels as session-scoped
