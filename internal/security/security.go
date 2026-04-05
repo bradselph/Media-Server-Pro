@@ -187,13 +187,12 @@ func (m *Module) Start(_ context.Context) error {
 	// Wire up auto-ban persistence callback so rate-limit bans survive restarts
 	persistBan := func(ip string, duration time.Duration, reason string) {
 		ctx := context.Background()
-		autoExpiresAt := time.Now().Add(duration)
 		rec := &repositories.IPEntryRecord{
 			Value:     ip,
 			Comment:   reason,
 			AddedAt:   time.Now(),
 			AddedBy:   "rate-limiter",
-			ExpiresAt: &autoExpiresAt,
+			ExpiresAt: new(time.Now().Add(duration)),
 		}
 		if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 			m.log.Warn("Failed to persist auto-ban for %s: %v", ip, err)
@@ -203,9 +202,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.authRateLimiter.onBan = persistBan
 
 	// Load IP lists
-	if err := m.loadIPLists(); err != nil {
-		m.log.Warn("Failed to load IP lists: %v", err)
-	}
+	m.loadIPLists()
 
 	// Start rate limiter cleanup (also cleans expired IP list entries)
 	m.rateLimiter.StartCleanup(m.whitelist, m.blacklist)
@@ -297,13 +294,12 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 	m.rateLimiter.BanIP(ip, duration, reason)
 	// Persist to DB
 	ctx := context.Background()
-	banExpiresAt := time.Now().Add(duration)
 	rec := &repositories.IPEntryRecord{
 		Value:     ip,
 		Comment:   reason,
 		AddedAt:   time.Now(),
 		AddedBy:   "system",
-		ExpiresAt: &banExpiresAt,
+		ExpiresAt: new(time.Now().Add(duration)),
 	}
 	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 		m.log.Warn("Failed to persist ban for %s: %v", ip, err)
@@ -572,7 +568,7 @@ func (m *Module) GetStats() Stats {
 
 // Persistence — reads/writes via MySQL repository
 
-func (m *Module) loadIPLists() error {
+func (m *Module) loadIPLists() {
 	ctx := context.Background()
 
 	// Load whitelist config
@@ -640,8 +636,6 @@ func (m *Module) loadIPLists() error {
 			m.rateLimiter.BanIP(rec.Value, remaining, rec.Comment)
 		}
 	}
-
-	return nil
 }
 
 func (m *Module) parseIPEntry(entry *IPEntry) {
@@ -701,9 +695,9 @@ func (m *Module) saveIPLists() error {
 // RateLimiter implementation
 
 // NewRateLimiter creates a new rate limiter
-func NewRateLimiter(config RateLimitConfig) *RateLimiter {
+func NewRateLimiter(cfg RateLimitConfig) *RateLimiter {
 	return &RateLimiter{
-		config:      config,
+		config:      cfg,
 		clients:     make(map[string]*ClientState),
 		bannedIPs:   make(map[string]BanRecord),
 		stopCleanup: make(chan struct{}),

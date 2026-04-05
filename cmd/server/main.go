@@ -54,7 +54,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "0.125.18"
+	Version   = "0.125.24"
 	BuildDate = ""
 )
 
@@ -245,6 +245,7 @@ func main() {
 	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
 	thumbnailsModule.SetMediaIDProvider(mediaModule)
 	thumbnailsModule.SetStore(thumbnailStore)
+	thumbnailsModule.SetMediaInputResolver(mediaModule)
 	mustRegister(srv, thumbnailsModule)
 
 	// ── Non-critical modules ───────────────────────────────────────────────
@@ -252,6 +253,7 @@ func main() {
 	// HLS (non-critical — falls back gracefully if ffmpeg unavailable, uses storage backend)
 	hlsModule := hls.NewModule(cfg, dbModule)
 	hlsModule.SetStore(hlsStore)
+	hlsModule.SetMediaInputResolver(mediaModule)
 	mustRegister(srv, hlsModule)
 
 	// Analytics (non-critical — requires database)

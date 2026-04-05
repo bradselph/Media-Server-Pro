@@ -237,9 +237,10 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 			query = query.Where("(path LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\')", like, like)
 		}
 	}
-	if filter.Type == "video" {
+	switch filter.Type {
+	case "video":
 		query = query.Where("LOWER(path) REGEXP ?", `\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts|m2ts|vob|ogv)$`)
-	} else if filter.Type == "audio" {
+	case "audio":
 		query = query.Where("LOWER(path) REGEXP ?", `\.(mp3|wav|flac|aac|ogg|m4a|wma|aiff|alac|opus|ape|mka)$`)
 	}
 	if len(filter.Tags) > 0 {
@@ -325,7 +326,7 @@ func (r *MediaMetadataRepository) IncrementViews(ctx context.Context, path strin
 	if result.Error != nil {
 		return result.Error
 	}
-	// If no row existed, the media hasn't been catalogued yet — skip silently.
+	// If no row existed, the media hasn't been cataloged yet — skip silently.
 	// The next full scan will create the row with a proper stable_id.
 	return nil
 }
@@ -393,10 +394,10 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 	}
 
 	if row.LastPlayed != nil {
-		s := row.LastPlayed.Format(time.RFC3339); metadata.LastPlayed = &s
+		metadata.LastPlayed = new(row.LastPlayed.Format(time.RFC3339))
 	}
 	if row.ProbeModTime != nil {
-		t := *row.ProbeModTime; metadata.ProbeModTime = &t
+		metadata.ProbeModTime = new(*row.ProbeModTime)
 	}
 	metadata.BlurHash = row.BlurHash
 
@@ -404,7 +405,7 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 }
 
 // UpdateBlurHash updates the BlurHash for a metadata row by path
-func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path string, blurHash string) error {
+func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path, blurHash string) error {
 	result := r.db.WithContext(ctx).Model(&mediaMetadataRow{}).
 		Where("path = ?", path).
 		Update("blur_hash", blurHash)

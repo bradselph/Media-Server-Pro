@@ -1,4 +1,4 @@
-// Login, admin login, and rate limiting.
+// Package auth handles login, admin login, and rate limiting.
 package auth
 
 import (
@@ -81,7 +81,7 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		m.log.Debug("Login failed - account disabled: %s", req.Username)
 		return nil, ErrAccountDisabled
 	}
-	if err := m.verifyPasswordWithCacheRefresh(ctx, user, &creds{Username: req.Username, Password: req.Password}); err != nil {
+	if verifyErr := m.verifyPasswordWithCacheRefresh(ctx, user, &creds{Username: req.Username, Password: req.Password}); verifyErr != nil {
 		m.recordFailedAttempt(req.IPAddress)
 		m.log.Debug("Login failed - invalid password for: %s", req.Username)
 		return nil, ErrInvalidCredentials
@@ -93,9 +93,8 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 	}
 	// Copy user before mutation to avoid data race on shared pointer
 	userCopy := *user
-	t := time.Now()
 	userCopy.PreviousLastLogin = userCopy.LastLogin
-	userCopy.LastLogin = &t
+	userCopy.LastLogin = new(time.Now())
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Warn("Failed to persist LastLogin for %s: %v", req.Username, err)
 	} else {
@@ -177,7 +176,7 @@ func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, e
 	if !exists {
 		return nil, ErrSessionNotFound
 	}
-	if session.Session.IsExpired() {
+	if session.IsExpired() {
 		m.sessionsMu.Lock()
 		delete(m.adminSessions, sessionID)
 		m.sessionsMu.Unlock()
@@ -236,8 +235,7 @@ func (m *Module) recordFailedAttempt(ip string) {
 
 	attempt.Count++
 	if attempt.Count >= cfg.Auth.MaxLoginAttempts {
-		lockedAt := time.Now()
-		attempt.LockedAt = &lockedAt
+		attempt.LockedAt = new(time.Now())
 		m.log.Warn("Locked out IP due to too many failed attempts: %s", ip)
 	}
 }

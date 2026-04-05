@@ -40,6 +40,12 @@ func (m *Module) generateThumbnail(job *ThumbnailJob) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
+	// Resolve S3 keys to presigned URLs once so all ffmpeg calls in this job use
+	// the same URL. MediaPath is kept as the DB identifier for BlurHash updates etc.
+	if job.FFmpegInput == "" {
+		job.FFmpegInput = m.resolveMediaInputPath(job.MediaPath)
+	}
+
 	if job.IsAudio {
 		return m.generateAudioThumbnail(job)
 	}
@@ -86,7 +92,7 @@ func (m *Module) addFileSizeToStats(path string) {
 // tryGenerateWebPVariant generates a WebP variant for the main JPEG and updates stats on success.
 func (m *Module) tryGenerateWebPVariant(job *ThumbnailJob, timestamp float64) {
 	webpPath := m.getThumbnailPathWebp(job.OutputPath)
-	if err := m.generateWebPFromVideo(&webPFromVideoOpts{job.MediaPath, webpPath, job.Width, job.Height, timestamp}); err != nil {
+	if err := m.generateWebPFromVideo(&webPFromVideoOpts{job.FFmpegInput, webpPath, job.Width, job.Height, timestamp}); err != nil {
 		m.log.Warn("WebP thumbnail generation failed (JPEG served): %v", err)
 		return
 	}
@@ -102,7 +108,7 @@ func (m *Module) generateResponsiveThumbnailsIfMain(job *ThumbnailJob, timestamp
 	for _, v := range responsiveVariants {
 		h := v.Width * 9 / 16
 		outPath := filepath.Join(m.thumbnailDir, mediaID+v.Suffix+".webp")
-		if err := m.generateWebPFromVideo(&webPFromVideoOpts{job.MediaPath, outPath, v.Width, h, timestamp}); err != nil {
+		if err := m.generateWebPFromVideo(&webPFromVideoOpts{job.FFmpegInput, outPath, v.Width, h, timestamp}); err != nil {
 			m.log.Debug("Responsive thumbnail %dw failed: %v", v.Width, err)
 		}
 	}
@@ -127,7 +133,7 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 	cfg := m.config.Get()
 	scaleFilter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
 		job.Width, job.Height, job.Width, job.Height)
-	stream := ffmpeg.Input(job.MediaPath, ffmpeg.KwArgs{"ss": fmt.Sprintf("%.2f", timestamp)}).
+	stream := ffmpeg.Input(job.FFmpegInput, ffmpeg.KwArgs{"ss": fmt.Sprintf("%.2f", timestamp)}).
 		Output(job.OutputPath, ffmpeg.KwArgs{
 			"vframes": "1",
 			"vf":      scaleFilter,
@@ -236,7 +242,7 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 	// Build ffmpeg pipeline using ffmpeg-go
 	waveformFilter := fmt.Sprintf("showwavespic=s=%dx%d:colors=#0080ff", job.Width, job.Height)
 
-	stream := ffmpeg.Input(job.MediaPath).
+	stream := ffmpeg.Input(job.FFmpegInput).
 		Output(job.OutputPath, ffmpeg.KwArgs{
 			"filter_complex": waveformFilter,
 			"frames:v":       "1",
@@ -273,7 +279,7 @@ func (m *Module) verifyAndPostProcessAudioThumbnail(job *ThumbnailJob) error {
 		return fmt.Errorf("waveform file not created")
 	}
 	webpPath := m.getThumbnailPathWebp(job.OutputPath)
-	if err := m.generateWebPFromAudio(&webPFromAudioOpts{MediaPath: job.MediaPath, OutputPath: webpPath, Width: job.Width, Height: job.Height}); err != nil {
+	if err := m.generateWebPFromAudio(&webPFromAudioOpts{MediaPath: job.FFmpegInput, OutputPath: webpPath, Width: job.Width, Height: job.Height}); err != nil {
 		m.log.Warn("WebP waveform generation failed (JPEG served): %v", err)
 	}
 	m.updateBlurHashForAudioThumbnail(job)

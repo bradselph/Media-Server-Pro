@@ -5,12 +5,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/pkg/storage"
 )
 
 var (
@@ -18,14 +20,122 @@ var (
 	dangerousPatterns = regexp.MustCompile(`[<>:"|?*\x00-\x1f]`)
 )
 
+// storeResult holds the backend and relative key path for a media file.
+type storeResult struct {
+	store   storage.Backend
+	relPath string // path relative to the backend root/prefix
+}
+
+// keyPrefixer is implemented by remote backends that expose their S3 key prefix.
+type keyPrefixer interface {
+	KeyPrefix() string
+}
+
+// storeFor resolves which backend owns the given path and returns the backend
+// plus the relative path within that backend.
+//
+// For local backends the path must be an absolute filesystem path under the
+// configured directory. For remote backends (S3/B2) the path is the S3 key
+// stored in the media index (e.g. "videos/foo.mp4"); storeFor matches it
+// against the backend's key prefix so that management operations correctly
+// route to the right store.
+//
+// If no store matches, storeResult.store is nil and callers fall back to
+// direct os.* operations.
+func (m *Module) storeFor(p string) storeResult {
+	cfg := m.config.Get()
+
+	type entry struct {
+		dir   string
+		store storage.Backend
+	}
+
+	candidates := []entry{
+		{cfg.Directories.Videos, m.videoStore},
+		{cfg.Directories.Music, m.musicStore},
+		{cfg.Directories.Uploads, m.uploadStore},
+	}
+
+	for _, c := range candidates {
+		if c.store == nil || c.dir == "" {
+			continue
+		}
+
+		if !c.store.IsLocal() {
+			// Remote backend (S3/B2): match against the backend's key prefix.
+			// The path stored in the media index is already an S3 key like
+			// "videos/foo.mp4", so check whether it begins with the prefix.
+			if kp, ok := c.store.(keyPrefixer); ok {
+				prefix := kp.KeyPrefix()
+				if prefix != "" && strings.HasPrefix(p, prefix) {
+					return storeResult{
+						store:   c.store,
+						relPath: strings.TrimPrefix(p, prefix),
+					}
+				}
+			}
+			continue
+		}
+
+		// Local backend: match against the absolute filesystem directory.
+		absDir, err := filepath.Abs(c.dir)
+		if err != nil {
+			continue
+		}
+		sep := string(filepath.Separator)
+		if !strings.HasPrefix(p, absDir+sep) && p != absDir {
+			continue
+		}
+		rel, err := filepath.Rel(absDir, p)
+		if err != nil {
+			continue
+		}
+		return storeResult{store: c.store, relPath: filepath.ToSlash(rel)}
+	}
+
+	return storeResult{relPath: p}
+}
+
+// ResolveForFFmpeg converts a stored media path to a form that ffmpeg can read.
+// For absolute local paths it returns the path unchanged.
+// For remote S3 paths it returns a short-lived presigned GET URL.
+// Implements the MediaInputResolver interface consumed by the hls and thumbnails modules.
+func (m *Module) ResolveForFFmpeg(ctx context.Context, mediaPath string) (string, error) {
+	if filepath.IsAbs(mediaPath) {
+		return mediaPath, nil // absolute local path — ffmpeg reads directly
+	}
+	sr := m.storeFor(mediaPath)
+	if sr.store == nil || sr.store.IsLocal() {
+		return mediaPath, nil // local or unrecognised — pass through
+	}
+	presigner, ok := sr.store.(storage.PresignURLer)
+	if !ok {
+		return mediaPath, nil // remote but no presign support
+	}
+	return presigner.PresignGetURL(ctx, sr.relPath, 2*time.Hour)
+}
+
+// crossStoreMove copies a file from srcStore/srcRel to dstStore/dstRel, then
+// deletes the source. Used when moving a file between backends that share the
+// same bucket but use different key prefixes (e.g. videos/ → music/).
+func crossStoreMove(ctx context.Context, srcStore storage.Backend, srcRel string, dstStore storage.Backend, dstRel string) error {
+	r, err := srcStore.Open(ctx, srcRel)
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer r.Close()
+
+	if _, err := dstStore.Create(ctx, dstRel, r); err != nil {
+		return fmt.Errorf("write destination: %w", err)
+	}
+
+	return srcStore.Remove(ctx, srcRel)
+}
+
 // RenameMedia renames a media file. Validates oldPath is within allowed directories.
 func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	if err := m.validatePath(oldPath); err != nil {
 		return "", err
-	}
-	// Validate old path exists (no lock needed for stat)
-	if _, err := os.Stat(oldPath); err != nil {
-		return "", fmt.Errorf("source file not found: %w", err)
 	}
 
 	// Sanitize new name
@@ -34,18 +144,39 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 		return "", err
 	}
 
-	// Construct new path in same directory
-	dir := filepath.Dir(oldPath)
-	newPath := filepath.Join(dir, newName)
+	ctx := context.Background()
+	sr := m.storeFor(oldPath)
 
-	// Check if destination already exists
-	if _, err := os.Stat(newPath); err == nil {
-		return "", fmt.Errorf("destination file already exists: %s", newName)
-	}
+	var newPath string
 
-	// Perform rename
-	if err := os.Rename(oldPath, newPath); err != nil {
-		return "", fmt.Errorf("failed to rename: %w", err)
+	if sr.store != nil && !sr.store.IsLocal() {
+		// Remote backend (S3/B2): use key-based rename.
+		newRelPath := path.Join(path.Dir(sr.relPath), newName)
+
+		if _, err := sr.store.Stat(ctx, sr.relPath); err != nil {
+			return "", fmt.Errorf("source file not found: %w", err)
+		}
+		if _, err := sr.store.Stat(ctx, newRelPath); err == nil {
+			return "", fmt.Errorf("destination file already exists: %s", newName)
+		}
+		if err := sr.store.Rename(ctx, sr.relPath, newRelPath); err != nil {
+			return "", fmt.Errorf("failed to rename: %w", err)
+		}
+		// Use AbsPath so the index key is the canonical S3 key (forward-slash,
+		// correct prefix) rather than a filepath.Join result which uses OS separators.
+		newPath = sr.store.AbsPath(newRelPath)
+	} else {
+		// Local filesystem (original behaviour).
+		if _, err := os.Stat(oldPath); err != nil {
+			return "", fmt.Errorf("source file not found: %w", err)
+		}
+		newPath = filepath.Join(filepath.Dir(oldPath), newName)
+		if _, err := os.Stat(newPath); err == nil {
+			return "", fmt.Errorf("destination file already exists: %s", newName)
+		}
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return "", fmt.Errorf("failed to rename: %w", err)
+		}
 	}
 
 	// Update in-memory indexes (media + metadata share mu). mediaByID key is by item.ID;
@@ -83,34 +214,65 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	if err := m.validatePath(oldPath); err != nil {
 		return "", err
 	}
-	// Validate old path exists (no lock needed for stat)
-	if _, err := os.Stat(oldPath); err != nil {
-		return "", fmt.Errorf("source file not found: %w", err)
-	}
 
-	// Validate new directory
+	// Validate new directory (must be within allowed dirs).
 	newDir, err := validateDirectory(newDir, m.config.Get())
 	if err != nil {
 		return "", err
 	}
 
-	// Ensure destination directory exists
-	if err := os.MkdirAll(newDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create directory: %w", err)
-	}
+	// For local backends, filename comes from the filesystem path.
+	// For remote backends, oldPath is an S3 key so path.Base is correct.
+	filename := path.Base(oldPath)
+	newPath := filepath.Join(newDir, filename) // used for local; overridden for remote below
 
-	// Construct new path
-	filename := filepath.Base(oldPath)
-	newPath := filepath.Join(newDir, filename)
+	ctx := context.Background()
+	srcSR := m.storeFor(oldPath)
+	dstSR := m.storeFor(newPath) // newPath is local dir + filename → matches local store
 
-	// Check if destination already exists
-	if _, err := os.Stat(newPath); err == nil {
-		return "", fmt.Errorf("destination file already exists: %s", newPath)
-	}
+	if srcSR.store != nil && !srcSR.store.IsLocal() {
+		// Remote backend: check source exists.
+		if _, err := srcSR.store.Stat(ctx, srcSR.relPath); err != nil {
+			return "", fmt.Errorf("source file not found: %w", err)
+		}
 
-	// Perform move
-	if err := os.Rename(oldPath, newPath); err != nil {
-		return "", fmt.Errorf("failed to move: %w", err)
+		// dstSR must be non-nil; the destination directory was validated against
+		// known local dirs which map 1-to-1 with a configured backend.
+		if dstSR.store == nil {
+			return "", fmt.Errorf("destination directory has no configured storage backend")
+		}
+		if _, err := dstSR.store.Stat(ctx, dstSR.relPath); err == nil {
+			return "", fmt.Errorf("destination file already exists: %s", newPath)
+		}
+
+		if srcSR.store == dstSR.store {
+			// Same backend (same prefix): use Rename (server-side copy + delete).
+			if err := srcSR.store.Rename(ctx, srcSR.relPath, dstSR.relPath); err != nil {
+				return "", fmt.Errorf("failed to move: %w", err)
+			}
+		} else {
+			// Different backends / prefixes: stream-copy then delete source.
+			if err := crossStoreMove(ctx, srcSR.store, srcSR.relPath, dstSR.store, dstSR.relPath); err != nil {
+				return "", fmt.Errorf("failed to move across stores: %w", err)
+			}
+		}
+
+		// Override newPath with the canonical S3 key so the index stays consistent.
+		newPath = dstSR.store.AbsPath(dstSR.relPath)
+	} else {
+		// Local filesystem (original behaviour).
+		if _, err := os.Stat(oldPath); err != nil {
+			return "", fmt.Errorf("source file not found: %w", err)
+		}
+		if err := os.MkdirAll(newDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create directory: %w", err)
+		}
+		if _, err := os.Stat(newPath); err == nil {
+			return "", fmt.Errorf("destination file already exists: %s", newPath)
+		}
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return "", fmt.Errorf("failed to move: %w", err)
+		}
 	}
 
 	// Update in-memory indexes (media + metadata share mu); keep fingerprintIndex in sync
@@ -142,19 +304,32 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 // DeleteMedia removes a media file from the filesystem and from in-memory indexes
 // (including fingerprintIndex so the next scan does not treat a new file with the
 // same fingerprint as a move from the deleted path).
-func (m *Module) DeleteMedia(ctx context.Context, path string) error {
-	// Validate path exists and is within allowed directories (no lock needed)
-	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("file not found: %w", err)
-	}
-	if err := m.validatePath(path); err != nil {
+func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
+	if err := m.validatePath(filePath); err != nil {
 		return err
 	}
 
-	// Delete the file
-	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("failed to delete: %w", err)
+	sr := m.storeFor(filePath)
+
+	if sr.store != nil && !sr.store.IsLocal() {
+		// Remote backend (S3/B2).
+		if _, err := sr.store.Stat(ctx, sr.relPath); err != nil {
+			return fmt.Errorf("file not found: %w", err)
+		}
+		if err := sr.store.Remove(ctx, sr.relPath); err != nil {
+			return fmt.Errorf("failed to delete: %w", err)
+		}
+	} else {
+		// Local filesystem (original behaviour).
+		if _, err := os.Stat(filePath); err != nil {
+			return fmt.Errorf("file not found: %w", err)
+		}
+		if err := os.Remove(filePath); err != nil {
+			return fmt.Errorf("failed to delete: %w", err)
+		}
 	}
+
+	path := filePath
 
 	// Remove from in-memory indexes (media + metadata + fingerprintIndex)
 	m.mu.Lock()
@@ -440,10 +615,22 @@ func (m *Module) RemoveTag(path, tag string) error {
 	return nil
 }
 
-// validatePath ensures the path is within allowed directories
-func (m *Module) validatePath(path string) error {
+// validatePath ensures the path is managed by one of the configured stores
+// (local directories or remote backend key prefixes).
+func (m *Module) validatePath(filePath string) error {
+	// storeFor checks both local directory prefixes and remote key prefixes.
+	// If it returns a non-nil store OR a relPath that was successfully resolved,
+	// we know the path is within a managed partition.
+	sr := m.storeFor(filePath)
+	if sr.store != nil {
+		// Matched a configured store (local or remote).
+		return nil
+	}
+
+	// Fall back to the filesystem-only check for the case where stores
+	// haven't been set yet (e.g., during early startup).
 	cfg := m.config.Get()
-	absPath, err := filepath.Abs(path)
+	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return err
 	}
@@ -468,7 +655,7 @@ func (m *Module) validatePath(path string) error {
 		}
 	}
 
-	return fmt.Errorf("path not in allowed directory: %s", path)
+	return fmt.Errorf("path not in allowed directory: %s", filePath)
 }
 
 // sanitizeFilename cleans and validates a filename

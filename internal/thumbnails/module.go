@@ -19,6 +19,12 @@ func (m *Module) SetStore(s storage.Backend) {
 	m.store = s
 }
 
+// SetMediaInputResolver sets the resolver used to convert S3 media keys to
+// ffmpeg-readable URLs (presigned GET URLs). Must be called before Start().
+func (m *Module) SetMediaInputResolver(r MediaInputResolver) {
+	m.mediaInputResolver = r
+}
+
 // Name returns the module name
 func (m *Module) Name() string {
 	return "thumbnails"

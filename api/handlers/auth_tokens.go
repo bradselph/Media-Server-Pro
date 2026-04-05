@@ -33,8 +33,7 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 			CreatedAt: t.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		}
 		if t.LastUsedAt != nil {
-			s := t.LastUsedAt.Format("2006-01-02T15:04:05Z07:00")
-			v.LastUsedAt = &s
+			v.LastUsedAt = new(t.LastUsedAt.Format("2006-01-02T15:04:05Z07:00"))
 		}
 		views[i] = v
 	}

@@ -22,11 +22,11 @@ func (h *Handler) AdminListUsers(c *gin.Context) {
 // validUsername checks that name is 3–64 chars of [a-zA-Z0-9_-].
 func validUsername(name string) error {
 	if len(name) < 3 || len(name) > 64 {
-		return fmt.Errorf("Username must be between 3 and 64 characters")
+		return fmt.Errorf("username must be between 3 and 64 characters")
 	}
 	for _, ch := range name {
 		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_' && ch != '-' {
-			return fmt.Errorf("Username may only contain letters, numbers, underscores, and hyphens")
+			return fmt.Errorf("username may only contain letters, numbers, underscores, and hyphens")
 		}
 	}
 	return nil

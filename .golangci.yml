@@ -163,6 +163,7 @@ linters:
           - gocognit
 
     paths:
+      - .trunk
       - _old_code
       - vendor
       - web/static

@@ -46,8 +46,7 @@ func parseAdminListIsMature(c *gin.Context) *bool {
 	if im == "" {
 		return nil
 	}
-	b := im == "true" || im == "1"
-	return &b
+	return new(im == "true" || im == "1")
 }
 
 func parseAdminListLimit(c *gin.Context) int {
@@ -85,7 +84,7 @@ func parseAdminListQuery(c *gin.Context) adminListParams {
 	}
 }
 
-func (h *Handler) fetchAdminListItems(ctx context.Context, filter media.Filter, limit, offset int) ([]*models.MediaItem, int64) {
+func (h *Handler) fetchAdminListItems(ctx context.Context, filter media.Filter, limit, offset int) (items []*models.MediaItem, total int64) {
 	if limit > 0 {
 		items, total, err := h.media.ListMediaPaginated(ctx, filter, limit, offset)
 		if err == nil {
@@ -180,7 +179,7 @@ func decodeAdminUpdateField(rawBody map[string]json.RawMessage, key string, dest
 }
 
 // validateAdminMetadata checks metadata keys/values and returns the sanitized map or an error message.
-func validateAdminMetadata(metadata map[string]string) (map[string]string, string) {
+func validateAdminMetadata(metadata map[string]string) (sanitized map[string]string, errMsg string) {
 	for k, v := range metadata {
 		if !helpers.ValidateMetadataKey(k) {
 			return nil, fmt.Sprintf("Invalid metadata key: %s", k)
@@ -194,7 +193,7 @@ func validateAdminMetadata(metadata map[string]string) (map[string]string, strin
 
 // parseAdminUpdateBody decodes the JSON body and builds the updates map.
 // Returns an error message (for writeError) or empty string on success.
-func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (adminUpdateRequest, string) {
+func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRequest, errMsg string) {
 	var reqName string
 	var reqTags []string
 	var reqCategory string

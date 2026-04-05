@@ -96,6 +96,18 @@ func (m *Module) SetStore(s storage.Backend) {
 	m.store = s
 }
 
+// storeRelPath strips the backend's key prefix from an absolute S3 key so that
+// m.store's methods (which add the prefix internally) receive only the relative
+// component. For example "videos/foo.mp4" with prefix "videos/" → "foo.mp4".
+// For local backends (no KeyPrefix), the path is returned unchanged.
+func (m *Module) storeRelPath(p string) string {
+	type keyPrefixer interface{ KeyPrefix() string }
+	if kp, ok := m.store.(keyPrefixer); ok {
+		return strings.TrimPrefix(p, kp.KeyPrefix())
+	}
+	return p
+}
+
 // Name returns the module name
 func (m *Module) Name() string {
 	return "streaming"
@@ -172,10 +184,11 @@ func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamReques
 
 	ctx := context.Background()
 
-	// Get file size via stat (works for both local and S3)
+	// Get file size via stat (S3 uses backend; local always uses os.Stat directly
+	// to avoid cross-root errors when videoStore serves music paths).
 	var fileSize int64
-	if m.store != nil {
-		info, err := m.store.Stat(ctx, req.Path)
+	if m.store != nil && !m.store.IsLocal() {
+		info, err := m.store.Stat(ctx, m.storeRelPath(req.Path))
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return ErrFileNotFound
@@ -223,10 +236,13 @@ func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamReques
 		w.WriteHeader(http.StatusOK)
 	}
 
-	// For S3 backends with RangeOpener, use efficient ranged GET
-	if m.store != nil {
+	// For remote S3 backends, route through the backend (with prefix stripping).
+	// Local backends fall through to os.Open below to handle cross-root paths
+	// (e.g. videoStore root cannot serve music directory paths).
+	if m.store != nil && !m.store.IsLocal() {
+		relPath := m.storeRelPath(req.Path)
 		if ro, ok := m.store.(storage.RangeOpener); ok {
-			reader, err := ro.OpenRange(ctx, req.Path, start, end)
+			reader, err := ro.OpenRange(ctx, relPath, start, end)
 			if err != nil {
 				return fmt.Errorf("failed to open range: %w", err)
 			}
@@ -234,7 +250,7 @@ func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamReques
 			return m.streamFromReader(w, reader, end-start+1, chunkSize, session)
 		}
 		// Fallback: open full file from storage backend
-		f, err := m.store.Open(ctx, req.Path)
+		f, err := m.store.Open(ctx, relPath)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return ErrFileNotFound
@@ -768,8 +784,8 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 	ctx := context.Background()
 
 	var fileSize int64
-	if m.store != nil {
-		info, err := m.store.Stat(ctx, path)
+	if m.store != nil && !m.store.IsLocal() {
+		info, err := m.store.Stat(ctx, m.storeRelPath(path))
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return ErrFileNotFound
@@ -804,10 +820,11 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 
 	m.setDownloadHeaders(w, filename, contentType, rangeHeader, fileSize, start, end)
 
-	// For S3 backends with RangeOpener, use ranged GET
-	if m.store != nil {
+	// Remote S3 backends: route through the backend with prefix stripping.
+	if m.store != nil && !m.store.IsLocal() {
+		relPath := m.storeRelPath(path)
 		if ro, ok := m.store.(storage.RangeOpener); ok {
-			reader, err := ro.OpenRange(ctx, path, start, end)
+			reader, err := ro.OpenRange(ctx, relPath, start, end)
 			if err != nil {
 				return fmt.Errorf("failed to open range for download: %w", err)
 			}
@@ -816,7 +833,7 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 			return copyErr
 		}
 		// Fallback: open full file from storage backend
-		f, err := m.store.Open(ctx, path)
+		f, err := m.store.Open(ctx, relPath)
 		if err != nil {
 			return fmt.Errorf("failed to open file: %w", err)
 		}
@@ -988,8 +1005,26 @@ func (m *Module) writeChunkedData(w http.ResponseWriter, file *os.File, filename
 	return bytesSent, nil
 }
 
-// ServeStatic serves a static file
+// ServeStatic serves a static file, routing to the storage backend when remote.
 func (m *Module) ServeStatic(w http.ResponseWriter, r *http.Request, path string) error {
+	if m.store != nil && !m.store.IsLocal() {
+		relPath := m.storeRelPath(path)
+		rc, err := m.store.Open(r.Context(), relPath)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return ErrFileNotFound
+			}
+			return err
+		}
+		defer rc.Close()
+		fi, err := m.store.Stat(r.Context(), relPath)
+		if err != nil {
+			return err
+		}
+		http.ServeContent(w, r, fi.Name, fi.ModTime, rc)
+		return nil
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {

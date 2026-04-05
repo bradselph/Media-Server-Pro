@@ -21,12 +21,10 @@ func copyHLSJob(j *models.HLSJob) *models.HLSJob {
 	c := *j
 	c.Qualities = append([]string(nil), j.Qualities...)
 	if j.CompletedAt != nil {
-		t := *j.CompletedAt
-		c.CompletedAt = &t
+		c.CompletedAt = new(*j.CompletedAt)
 	}
 	if j.LastAccessedAt != nil {
-		t := *j.LastAccessedAt
-		c.LastAccessedAt = &t
+		c.LastAccessedAt = new(*j.LastAccessedAt)
 	}
 	return &c
 }
@@ -140,7 +138,7 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 		Qualities: p.Qualities,
 		StartedAt: time.Now(),
 	}
-	jobCtx, jobCancel := context.WithCancel(context.Background())
+	jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
 	m.jobs[p.JobID] = job
 	m.jobCancels[p.JobID] = jobCancel
 	m.activeJobs.Add(1)

@@ -217,7 +217,7 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 			// Save each stale profile to MySQL before evicting from memory.
 			bgCtx := context.Background()
 			for _, profile := range toEvict {
-				m.saveOneProfile(bgCtx, profile)
+				_ = m.saveOneProfile(bgCtx, profile)
 			}
 
 			// Re-check LastUpdated under write lock before evicting (TOCTOU: profile may have been updated).
@@ -319,7 +319,7 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 
 	for i, vh := range profile.ViewHistory {
 		if vh.MediaPath == mediaPath {
-			completedAt := time.Now(); profile.ViewHistory[i].CompletedAt = &completedAt
+			profile.ViewHistory[i].CompletedAt = new(time.Now())
 			break
 		}
 	}
@@ -327,26 +327,50 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 
 // RecordRating records a user rating for a media item.
 // mediaPath is the filesystem path used to match ViewHistory entries.
+// A rating-only ViewHistory entry is created if none exists yet, so that ratings
+// made before a first view (e.g. browsing) are not silently dropped.
 func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	profile, ok := m.profiles[userID]
 	if !ok {
-		return
+		// No in-memory profile (server restart or eviction). Create a minimal one
+		// so the rating is captured and written on the next periodic save.
+		profile = &UserProfile{
+			UserID:          userID,
+			CategoryScores:  make(map[string]float64),
+			TypePreferences: make(map[string]float64),
+			ViewHistory:     make([]ViewHistory, 0),
+		}
+		m.profiles[userID] = profile
 	}
 
 	for i, vh := range profile.ViewHistory {
 		if vh.MediaPath == mediaPath {
 			profile.ViewHistory[i].Rating = rating
-			break
+			profile.LastUpdated = time.Now()
+			m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
+			return
 		}
 	}
 
-	m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
+	// No ViewHistory entry for this item (user rated without watching).
+	// Create a rating-only record so the rating is persisted.
+	profile.ViewHistory = append(profile.ViewHistory, ViewHistory{
+		MediaPath:  mediaPath,
+		Rating:     rating,
+		LastViewed: time.Now(),
+	})
+	const maxViewHistory = 500
+	if len(profile.ViewHistory) > maxViewHistory {
+		profile.ViewHistory = profile.ViewHistory[len(profile.ViewHistory)-maxViewHistory:]
+	}
+	profile.LastUpdated = time.Now()
+	m.log.Debug("Recorded rating %.1f for %s by user %s (new entry)", rating, mediaPath, userID)
 }
 
-// UpdateMediaData atomically replaces the in-memory media catalogue used for suggestions.
+// UpdateMediaData atomically replaces the in-memory media catalog used for suggestions.
 // Builds both indexes outside the lock then swaps in one operation to eliminate the
 // window where mediaData is empty (IC-05).
 func (m *Module) UpdateMediaData(items []*MediaInfo) {
@@ -362,7 +386,7 @@ func (m *Module) UpdateMediaData(items []*MediaInfo) {
 	m.mu.Lock()
 	m.mediaData = newData
 	m.mediaByID = newByID
-	// Mark catalogue ready after first update (even if empty) so API returns 200 with []
+	// Mark catalog ready after first update (even if empty) so API returns 200 with []
 	// instead of 503 while the UI can show "no suggestions yet" or retry.
 	m.catalogueSeeded = true
 	m.mu.Unlock()
@@ -370,7 +394,7 @@ func (m *Module) UpdateMediaData(items []*MediaInfo) {
 	m.log.Info("Updated media data: %d items", len(items))
 }
 
-// IsCatalogueReady reports whether the media catalogue has been seeded at least
+// IsCatalogueReady reports whether the media catalog has been seeded at least
 // once with a non-empty data set. Before this returns true, all suggestion
 // endpoints will return empty results. Handlers use this to return 503 with
 // Retry-After instead of misleading empty arrays.
@@ -485,8 +509,8 @@ func diversify(sorted []*Suggestion, limit, maxPerCategory int) []*Suggestion {
 }
 
 // scoreMedia calculates a suggestion score for a media item
-func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo) (float64, []string) {
-	score, reasons := scoreMediaBase(media)
+func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo) (score float64, reasons []string) {
+	score, reasons = scoreMediaBase(media)
 
 	if profile != nil {
 		profileScore, profileReasons := scoreMediaForProfile(profile, media)
@@ -690,7 +714,7 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int, canViewMature bool) 
 		sourceMedia = m.mediaData[mediaID]
 	}
 
-	// Source not found in catalogue (not yet scanned or catalogue empty):
+	// Source not found in catalog (not yet scanned or catalog empty):
 	// return a random sample from the library so the sidebar is never blank.
 	if sourceMedia == nil {
 		return m.randomSample(mediaID, limit, canViewMature)
@@ -748,7 +772,7 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int, canViewMature bool) 
 	return diversify(candidates, limit, sameCategory)
 }
 
-// randomSample returns a random selection from the catalogue, excluding the item
+// randomSample returns a random selection from the catalog, excluding the item
 // with the given StableID. Mature items are excluded when canViewMature is false.
 func (m *Module) randomSample(excludeID string, n int, canViewMature bool) []*Suggestion {
 	pool := make([]*Suggestion, 0, len(m.mediaData))
@@ -894,7 +918,6 @@ func (m *Module) GetContinueWatching(userID string, limit int, canViewMature boo
 	return suggestions
 }
 
-// GetStats returns suggestion module statistics
 // GetUserProfile returns a copy of the user's suggestion profile, or nil if not found.
 func (m *Module) GetUserProfile(userID string) *UserProfile {
 	m.mu.RLock()
@@ -905,8 +928,7 @@ func (m *Module) GetUserProfile(userID string) *UserProfile {
 		return nil
 	}
 	// Return a shallow copy to avoid exposing internal mutable state.
-	copy := *profile
-	return &copy
+	return new(*profile)
 }
 
 // ResetUserProfile clears the in-memory profile and deletes persisted data (profile

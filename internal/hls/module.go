@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -18,10 +19,10 @@ import (
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/repositories"
-	"media-server-pro/pkg/storage"
 	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
+	"media-server-pro/pkg/storage"
 )
 
 const (
@@ -47,33 +48,46 @@ type Capabilities struct {
 
 // Module implements HLS transcoding and serving
 type Module struct {
-	config        *config.Manager
-	log           *logger.Logger
-	dbModule      *database.Module
-	repo          repositories.HLSJobRepository
-	jobs          map[string]*models.HLSJob
-	jobCancels    map[string]context.CancelFunc
-	jobsMu        sync.RWMutex
-	transSem      chan struct{}
-	healthy       bool
-	healthMsg     string
-	healthMu      sync.RWMutex
-	cacheDir      string
-	cleanupTicker   *time.Ticker
-	cleanupDone     chan struct{}
-	cleanupDoneOnce sync.Once
-	ffmpegPath    string
-	ffprobePath   string
-	accessTracker *AccessTracker
-	activeJobs    sync.WaitGroup // Tracks active transcoding jobs for graceful shutdown
-	stopping      atomic.Bool    // Set to true during Stop() to distinguish cancellation from real failures
-	qualityLocks  sync.Map       // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
-	store         storage.Backend // optional storage backend for HLS cache I/O
+	config             *config.Manager
+	log                *logger.Logger
+	dbModule           *database.Module
+	repo               repositories.HLSJobRepository
+	jobs               map[string]*models.HLSJob
+	jobCancels         map[string]context.CancelFunc
+	jobsMu             sync.RWMutex
+	transSem           chan struct{}
+	healthy            bool
+	healthMsg          string
+	healthMu           sync.RWMutex
+	cacheDir           string
+	cleanupTicker      *time.Ticker
+	cleanupDone        chan struct{}
+	cleanupDoneOnce    sync.Once
+	ffmpegPath         string
+	ffprobePath        string
+	accessTracker      *AccessTracker
+	activeJobs         sync.WaitGroup     // Tracks active transcoding jobs for graceful shutdown
+	stopping           atomic.Bool        // Set to true during Stop() to distinguish cancellation from real failures
+	qualityLocks       sync.Map           // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
+	store              storage.Backend    // optional storage backend for HLS cache I/O
+	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
+}
+
+// MediaInputResolver converts a stored media path (possibly an S3 key) to a
+// form that ffmpeg can read — an absolute local path or a presigned HTTPS URL.
+type MediaInputResolver interface {
+	ResolveForFFmpeg(ctx context.Context, mediaPath string) (string, error)
 }
 
 // SetStore sets the storage backend for HLS cache I/O.
 func (m *Module) SetStore(s storage.Backend) {
 	m.store = s
+}
+
+// SetMediaInputResolver sets the resolver used to convert S3 media keys to
+// ffmpeg-readable URLs (presigned GET URLs). Must be called before Start().
+func (m *Module) SetMediaInputResolver(r MediaInputResolver) {
+	m.mediaInputResolver = r
 }
 
 // NewModule creates a new HLS module
@@ -226,14 +240,19 @@ func (m *Module) resumeInterruptedJobs() int {
 		if !m.shouldResumeJob(job) {
 			continue
 		}
-		if _, err := os.Stat(job.MediaPath); err != nil {
-			m.log.Warn("Skipping resume of HLS job %s: media file no longer exists at %s", job.ID, job.MediaPath)
-			job.Status = models.HLSStatusFailed
-			job.Error = "Media file not found on startup resume"
-			continue
+		// Only verify existence for absolute local paths. S3 object keys
+		// (e.g. "videos/foo.mp4") are not absolute and cannot be checked
+		// with os.Stat; they will be validated by ffmpeg at transcode time.
+		if filepath.IsAbs(job.MediaPath) {
+			if _, err := os.Stat(job.MediaPath); err != nil {
+				m.log.Warn("Skipping resume of HLS job %s: media file no longer exists at %s", job.ID, job.MediaPath)
+				job.Status = models.HLSStatusFailed
+				job.Error = "Media file not found on startup resume"
+				continue
+			}
 		}
 		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)
-		jobCtx, jobCancel := context.WithCancel(context.Background())
+		jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
 		m.jobCancels[job.ID] = jobCancel
 		job.Status = models.HLSStatusPending
 		job.Error = ""
@@ -284,7 +303,7 @@ func (m *Module) Stop(ctx context.Context) error {
 		}
 	}
 	for id, cancel := range m.jobCancels {
-		m.log.Debug("Cancelling HLS job: %s", id)
+		m.log.Debug("Canceling HLS job: %s", id)
 		cancel()
 		delete(m.jobCancels, id)
 	}

@@ -627,7 +627,7 @@ var maturePatterns = []struct {
 	// Common adult content file naming patterns (increased from 0.20 to 0.25)
 	{regexp.MustCompile(`(?i)\b\d{3,6}[\-_ ]\d{2,4}p\b`), 0.25, "Numeric ID + resolution pattern"},
 	{regexp.MustCompile(`(?i)\b(720p|1080p|2160p|4k)[\-_ ]?(hardcore|xxx|porn|anal|oral)\b`), 0.90, "Resolution + explicit content"},
-	{regexp.MustCompile(`(?i)\b(jav|av)[\-_ ]?\d+\b`), 0.75, "JAV-style ID pattern"},
+	{regexp.MustCompile(`(?i)\b(j?av)[\-_ ]?\d+\b`), 0.75, "JAV-style ID pattern"},
 
 	// Studio code patterns (increased from 0.10 to 0.15)
 	{regexp.MustCompile(`(?i)\b[a-z]{2,5}-?\d{3,5}\b`), 0.15, "Studio content code pattern"},
@@ -951,7 +951,7 @@ func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature
 		result.Reasons = append(result.Reasons, "Manual: "+reason)
 	}
 	result.ReviewDecision = "manual"
-	reviewedAt := time.Now(); result.ReviewedAt = &reviewedAt
+	result.ReviewedAt = new(time.Now())
 
 	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
 	repoResult := s.convertScannerToRepo(result)
@@ -1190,7 +1190,7 @@ func (s *MatureScanner) ClassifyMatureContent(ctx context.Context, path string) 
 // Returns a map of file path to generated tags. Skips files that are not mature.
 func (s *MatureScanner) ClassifyMatureDirectory(ctx context.Context, dir string) (map[string][]string, error) {
 	if s.getHFClient() == nil {
-		return nil, nil
+		return map[string][]string{}, nil
 	}
 	results, err := s.ScanDirectory(dir)
 	if err != nil {
@@ -1202,7 +1202,7 @@ func (s *MatureScanner) ClassifyMatureDirectory(ctx context.Context, dir string)
 			continue
 		}
 		if ctx.Err() != nil {
-			break
+			return out, ctx.Err()
 		}
 		tags, err := s.ClassifyMatureContent(ctx, result.Path)
 		if err != nil {

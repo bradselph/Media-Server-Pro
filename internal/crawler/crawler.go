@@ -108,7 +108,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module, extractorModule *
 		httpClient: &http.Client{
 			Transport: helpers.SafeHTTPTransport(),
 			Timeout:   30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
 					return fmt.Errorf("too many redirects")
 				}
@@ -325,7 +325,7 @@ func (m *Module) doCrawl(ctx context.Context, target *repositories.CrawlerTarget
 	newCount := 0
 	for i, link := range contentLinks {
 		if err := ctx.Err(); err != nil {
-			return newCount, fmt.Errorf("crawl cancelled: %w", err)
+			return newCount, fmt.Errorf("crawl canceled: %w", err)
 		}
 		m.log.Debug("Probing [%d/%d]: %s", i+1, len(contentLinks), link)
 
@@ -389,7 +389,7 @@ func (m *Module) doCrawl(ctx context.Context, target *repositories.CrawlerTarget
 
 // fetchPage fetches a page's HTML body.
 func (m *Module) fetchPage(ctx context.Context, rawURL string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
 		return "", err
 	}
@@ -400,7 +400,7 @@ func (m *Module) fetchPage(ctx context.Context, rawURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -489,7 +489,7 @@ func (m *Module) extractContentLinks(html string, baseURL *url.URL) []string {
 // intercepting network requests), then falls back to simple HTML regex matching.
 // This is the core fix: modern video sites load streams via JavaScript after
 // user interaction, so plain HTML fetching misses them entirely.
-func (m *Module) probeForStreams(ctx context.Context, pageURL string) ([]detectedStream, string) {
+func (m *Module) probeForStreams(ctx context.Context, pageURL string) (streams []detectedStream, title string) {
 	if m.browser != nil && m.browser.available() {
 		result, err := m.browser.probe(ctx, pageURL)
 		if err != nil {
@@ -500,11 +500,12 @@ func (m *Module) probeForStreams(ctx context.Context, pageURL string) ([]detecte
 		m.log.Debug("Browser found no streams on %s, trying HTML fallback", pageURL)
 	}
 
-	m3u8s, title := m.probeForM3U8HTML(ctx, pageURL)
+	var m3u8s []string
+	m3u8s, title = m.probeForM3U8HTML(ctx, pageURL)
 	if len(m3u8s) == 0 {
 		return nil, title
 	}
-	streams := make([]detectedStream, len(m3u8s))
+	streams = make([]detectedStream, len(m3u8s))
 	for i, u := range m3u8s {
 		streams[i] = detectedStream{
 			URL:             u,
@@ -516,7 +517,7 @@ func (m *Module) probeForStreams(ctx context.Context, pageURL string) ([]detecte
 }
 
 // probeForM3U8HTML is the original HTML-only prober (kept as fallback).
-func (m *Module) probeForM3U8HTML(ctx context.Context, pageURL string) ([]string, string) {
+func (m *Module) probeForM3U8HTML(ctx context.Context, pageURL string) (urls []string, title string) {
 	body, err := m.fetchPage(ctx, pageURL)
 	if err != nil {
 		m.log.Debug("Failed to fetch %s: %v", pageURL, err)
@@ -524,7 +525,6 @@ func (m *Module) probeForM3U8HTML(ctx context.Context, pageURL string) ([]string
 	}
 
 	// Extract title
-	title := ""
 	if matches := titleRegex.FindStringSubmatch(body); len(matches) >= 2 {
 		title = strings.TrimSpace(matches[1])
 		// Clean up common title suffixes
@@ -538,7 +538,6 @@ func (m *Module) probeForM3U8HTML(ctx context.Context, pageURL string) ([]string
 
 	// Deduplicate and clean
 	seen := make(map[string]bool)
-	var unique []string
 	for _, u := range m3u8s {
 		// Unescape common HTML entities
 		u = strings.ReplaceAll(u, "&amp;", "&")
@@ -549,10 +548,10 @@ func (m *Module) probeForM3U8HTML(ctx context.Context, pageURL string) ([]string
 			continue
 		}
 		seen[u] = true
-		unique = append(unique, u)
+		urls = append(urls, u)
 	}
 
-	return unique, title
+	return urls, title
 }
 
 // --- Discovery Review ---
@@ -611,7 +610,7 @@ func (m *Module) ApproveDiscovery(id, reviewedBy string) (*Discovery, error) {
 
 	disc.Status = "added"
 	disc.ReviewedBy = reviewedBy
-	reviewedAt := time.Now(); disc.ReviewedAt = &reviewedAt
+	disc.ReviewedAt = new(time.Now())
 
 	m.log.Info("Approved discovery: %s -> %s", disc.Title, disc.StreamURL)
 	return recordToDiscovery(disc), nil

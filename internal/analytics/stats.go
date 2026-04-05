@@ -25,12 +25,12 @@ type Summary struct {
 	TotalWatchTime float64 `json:"total_watch_time"`
 
 	// Today's traffic breakdown
-	TodayLogins       int `json:"today_logins"`
-	TodayLoginsFailed int `json:"today_logins_failed"`
+	TodayLogins        int `json:"today_logins"`
+	TodayLoginsFailed  int `json:"today_logins_failed"`
 	TodayRegistrations int `json:"today_registrations"`
 	TodayAgeGatePasses int `json:"today_age_gate_passes"`
-	TodayDownloads    int `json:"today_downloads"`
-	TodaySearches     int `json:"today_searches"`
+	TodayDownloads     int `json:"today_downloads"`
+	TodaySearches      int `json:"today_searches"`
 }
 
 // Stats holds statistics for metrics export.
@@ -189,7 +189,7 @@ func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 	for i := 0; i < days; i++ {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		if daily, ok := m.dailyStats[date]; ok {
-			dailyCopy := *daily; stats = append(stats, &dailyCopy)
+			stats = append(stats, new(*daily))
 		}
 	}
 
@@ -202,7 +202,7 @@ func (m *Module) GetMediaStats(mediaID string) *models.ViewStats {
 	defer m.statsMu.RUnlock()
 
 	if stats, ok := m.mediaStats[mediaID]; ok {
-		statsCopy := *stats; return &statsCopy
+		return new(*stats)
 	}
 	return &models.ViewStats{}
 }

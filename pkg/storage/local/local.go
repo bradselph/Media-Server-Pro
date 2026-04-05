@@ -89,8 +89,7 @@ func (b *Backend) Stat(_ context.Context, path string) (*storage.FileInfo, error
 	if err != nil {
 		return nil, mapError(err)
 	}
-	info := toFileInfo(fi)
-	return &info, nil
+	return new(toFileInfo(fi)), nil
 }
 
 // Walk recursively visits entries under prefix.
@@ -164,15 +163,15 @@ func (b *Backend) Create(_ context.Context, path string, r io.Reader) (int64, er
 	n, copyErr := io.Copy(tmp, r)
 	closeErr := tmp.Close()
 	if copyErr != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return 0, fmt.Errorf("local storage: write: %w", copyErr)
 	}
 	if closeErr != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return 0, fmt.Errorf("local storage: close: %w", closeErr)
 	}
 	if err := os.Rename(tmpName, abs); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return 0, fmt.Errorf("local storage: rename: %w", err)
 	}
 	return n, nil
@@ -222,7 +221,7 @@ func (b *Backend) Rename(_ context.Context, src, dst string) error {
 }
 
 // WriteFile writes data to a file atomically.
-func (b *Backend) WriteFile(ctx context.Context, path string, data []byte) error {
+func (b *Backend) WriteFile(_ context.Context, path string, data []byte) error {
 	abs, err := b.resolve(path)
 	if err != nil {
 		return err
@@ -239,11 +238,11 @@ func (b *Backend) WriteFile(ctx context.Context, path string, data []byte) error
 	_, writeErr := tmp.Write(data)
 	closeErr := tmp.Close()
 	if writeErr != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("local storage: write: %w", writeErr)
 	}
 	if closeErr != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("local storage: close: %w", closeErr)
 	}
 	return os.Rename(tmpName, abs)

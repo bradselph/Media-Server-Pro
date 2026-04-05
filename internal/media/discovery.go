@@ -93,7 +93,7 @@ type Module struct {
 	// detect moved/renamed files by matching fingerprint instead of path.
 	fingerprintIndex map[string]string // fingerprint -> path
 	mu               sync.RWMutex      // protects media, mediaByID, categories, metadata, fingerprintIndex, version, lastScan
-	saveMu           sync.Mutex        // serialises concurrent saveMetadata calls to prevent MySQL lock waits
+	saveMu           sync.Mutex        // serializes concurrent saveMetadata calls to prevent MySQL lock waits
 	dataDir          string
 	scanning         bool // protected by healthMu; true while Scan() is running
 	healthy          bool
@@ -101,7 +101,7 @@ type Module struct {
 	healthMu         sync.RWMutex
 	scanTicker       *time.Ticker
 	scanDone         chan struct{}
-	scanCtx          context.Context    // Cancelled on shutdown; used by background saves
+	scanCtx          context.Context    // Canceled on shutdown; used by background saves
 	scanCancel       context.CancelFunc // Cancels background scans on shutdown
 	version          int64
 	lastScan         time.Time
@@ -163,7 +163,7 @@ func computeContentFingerprint(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {
@@ -175,7 +175,7 @@ func computeContentFingerprint(path string) (string, error) {
 
 	// Write file size into the hash so that files with identical leading/trailing
 	// bytes but different lengths produce different fingerprints.
-	fmt.Fprintf(h, "size:%d\n", size)
+	_, _ = fmt.Fprintf(h, "size:%d\n", size)
 
 	// Read first 64 KB (or entire file if smaller)
 	head := make([]byte, sampleSize)
@@ -257,7 +257,7 @@ func (m *Module) Start(_ context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
-			m.log.Info("Initial media start cancelled before metadata load")
+			m.log.Info("Initial media start canceled before metadata load")
 			return
 		default:
 		}
@@ -423,7 +423,7 @@ func (m *Module) Scan() error {
 	// Scan video directory
 	if cfg.Directories.Videos != "" {
 		m.log.Debug("Scanning video directory: %s", cfg.Directories.Videos)
-		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Videos, models.MediaTypeVideo, newMedia); err != nil {
+		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Videos, models.MediaTypeVideo, newMedia, m.videoStore); err != nil {
 			m.log.Error("Failed to scan videos directory: %v", err)
 		}
 	}
@@ -431,7 +431,7 @@ func (m *Module) Scan() error {
 	// Scan music directory
 	if cfg.Directories.Music != "" {
 		m.log.Debug("Scanning music directory: %s", cfg.Directories.Music)
-		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Music, models.MediaTypeAudio, newMedia); err != nil {
+		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Music, models.MediaTypeAudio, newMedia, m.musicStore); err != nil {
 			m.log.Error("Failed to scan music directory: %v", err)
 		}
 	}
@@ -439,7 +439,7 @@ func (m *Module) Scan() error {
 	// Scan uploads directory
 	if cfg.Directories.Uploads != "" && cfg.Features.EnableUploads {
 		m.log.Debug("Scanning uploads directory: %s", cfg.Directories.Uploads)
-		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Uploads, models.MediaTypeUnknown, newMedia); err != nil {
+		if err := m.scanDirectory(m.scanCtx, cfg.Directories.Uploads, models.MediaTypeUnknown, newMedia, m.uploadStore); err != nil {
 			m.log.Error("Failed to scan uploads directory: %v", err)
 		}
 	}
@@ -585,8 +585,15 @@ func (m *Module) Scan() error {
 }
 
 // scanDirectory recursively scans a directory for media files.
-// The context allows cancellation during server shutdown.
-func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType models.MediaType, result map[string]*models.MediaItem) error {
+// When store is non-nil and remote (S3/B2), the backend's Walk is used and
+// paths in result are the backend's AbsPath keys. When store is nil or local,
+// the local filesystem is walked.
+func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType models.MediaType, result map[string]*models.MediaItem, store storage.Backend) error {
+	if store != nil && !store.IsLocal() {
+		return m.scanRemoteStore(ctx, store, dir, defaultType, result)
+	}
+
+	// Local filesystem walk.
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return fmt.Errorf("failed to resolve path: %w", err)
@@ -639,6 +646,99 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 
 		return nil
 	})
+}
+
+// scanRemoteStore walks the storage backend and registers discovered media.
+// Paths in result are backend AbsPath keys (e.g. S3 keys).
+func (m *Module) scanRemoteStore(ctx context.Context, store storage.Backend, _ string, defaultType models.MediaType, result map[string]*models.MediaItem) error {
+	return store.Walk(ctx, "", func(relPath string, info storage.FileInfo, err error) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if err != nil {
+			m.log.Warn("Error walking remote store at %s: %v", relPath, err)
+			return nil
+		}
+		if info.IsDir {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(relPath))
+		if partialDownloadExtensions[ext] {
+			return nil
+		}
+
+		var mediaType models.MediaType
+		if videoExtensions[ext] {
+			mediaType = models.MediaTypeVideo
+		} else if audioExtensions[ext] {
+			mediaType = models.MediaTypeAudio
+		} else if defaultType != models.MediaTypeUnknown {
+			mediaType = defaultType
+		} else {
+			return nil
+		}
+
+		absKey := store.AbsPath(relPath)
+		item := m.createMediaItemFromStorageInfo(absKey, info, mediaType)
+		result[absKey] = item
+		return nil
+	})
+}
+
+// createMediaItemFromStorageInfo creates a MediaItem from a storage.FileInfo.
+// Used when scanning remote backends where os.FileInfo is unavailable.
+func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.FileInfo, mediaType models.MediaType) *models.MediaItem {
+	item := &models.MediaItem{
+		Path:         absKey,
+		Name:         info.Name,
+		Type:         mediaType,
+		Size:         info.Size,
+		DateModified: info.ModTime,
+		Metadata:     make(map[string]string),
+	}
+
+	// Hold the write lock for the full check-and-set to prevent a race where
+	// two concurrent goroutines (e.g. the scan walk and an ffprobe worker) both
+	// observe hasMeta==false for the same key and assign different stable IDs.
+	m.mu.Lock()
+	meta, hasMeta := m.metadata[absKey]
+	if hasMeta {
+		m.mu.Unlock()
+		item.ID = meta.StableID
+		item.Views = meta.Views
+		item.IsMature = meta.IsMature
+		item.Tags = meta.Tags
+		if meta.Category != "" {
+			item.Category = meta.Category
+		} else {
+			item.Category = string(mediaType)
+		}
+		if meta.LastPlayed != nil {
+			item.LastPlayed = new(*meta.LastPlayed)
+		}
+		item.DateAdded = meta.DateAdded
+	} else {
+		item.ID = uuid.New().String()
+		item.Category = string(mediaType)
+		item.DateAdded = time.Now()
+		m.metadata[absKey] = &Metadata{
+			StableID:    item.ID,
+			DateAdded:   item.DateAdded,
+			PlaybackPos: make(map[string]float64),
+			CustomMeta:  make(map[string]string),
+		}
+		m.mu.Unlock()
+	}
+
+	if item.ID == "" {
+		item.ID = uuid.New().String()
+	}
+
+	return item
 }
 
 // createMediaItem creates a MediaItem from file info.
@@ -1302,7 +1402,7 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	}
 
 	meta.Views++
-	lastPlayed := time.Now(); meta.LastPlayed = &lastPlayed
+	meta.LastPlayed = new(time.Now())
 
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views
@@ -1539,7 +1639,7 @@ func (m *Module) saveMetadataItem(path string) error {
 	repoMeta := m.convertInternalToRepo(path, meta)
 	m.mu.RUnlock()
 
-	// Use saveMu to serialise with the bulk saveMetadata loop: both code paths
+	// Use saveMu to serialize with the bulk saveMetadata loop: both code paths
 	// delete+insert on media_tags for the same row, causing lock-wait timeouts
 	// when they run concurrently against the same file.
 	m.saveMu.Lock()
@@ -1565,7 +1665,7 @@ func (m *Module) saveMetadata(ctx context.Context) error {
 	}
 	m.mu.RUnlock()
 
-	// Serialise DB writes: prevents concurrent upserts to the same rows from
+	// Serialize DB writes: prevents concurrent upserts to the same rows from
 	// racing and hitting MySQL row-lock timeouts.
 	m.saveMu.Lock()
 	defer m.saveMu.Unlock()
