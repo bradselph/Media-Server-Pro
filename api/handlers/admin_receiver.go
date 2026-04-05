@@ -237,8 +237,20 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 		Body:        pr,
 	}
 
-	// Signal the waiting proxy handler
+	// Signal the waiting proxy handler.
 	ps.Ready <- delivery
+
+	// If the consumer gave up (timeout / client disconnect) after we sent the
+	// delivery but before it started reading, nobody will drain pr. Watch the
+	// consumer context and close pw so io.Copy below returns promptly instead
+	// of leaking this goroutine until the slave's connection eventually drops.
+	go func() {
+		select {
+		case <-ps.ConsumerContext().Done():
+		case <-c.Request.Context().Done():
+		}
+		pw.CloseWithError(fmt.Errorf("stream consumer exited"))
+	}()
 
 	// Copy the slave's request body into the pipe. This blocks until
 	// ProxyStream (the consumer) finishes reading or the pipe is closed.

@@ -158,14 +158,10 @@ func (m *Module) Name() string { return "receiver" }
 // Start implements server.Module.
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting receiver module...")
-	// Shared client for HTTP fallback proxy (connection pooling).
-	// ResponseHeaderTimeout limits time to first response byte so slow/malicious slaves cannot hold connections open indefinitely.
-	m.httpClient = &http.Client{Transport: &http.Transport{
-		MaxIdleConns:           10,
-		IdleConnTimeout:        90 * time.Second,
-		TLSHandshakeTimeout:    10 * time.Second,
-		ResponseHeaderTimeout:  30 * time.Second,
-	}}
+	// Shared client for HTTP fallback proxy.
+	// SafeHTTPTransport adds SSRF protection (rejects private/loopback IPs at dial time)
+	// in addition to the connection-pooling and timeout settings.
+	m.httpClient = &http.Client{Transport: helpers.SafeHTTPTransport()}
 
 	m.slaveRepo = mysqlrepo.NewReceiverSlaveRepository(m.dbModule.GORM())
 	m.mediaRepo = mysqlrepo.NewReceiverMediaRepository(m.dbModule.GORM())
@@ -353,6 +349,9 @@ func (m *Module) RegisterSlave(req *RegisterRequest) (*SlaveNode, error) {
 		u, err := url.Parse(req.BaseURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return nil, fmt.Errorf("base_url must be a valid http(s) URL")
+		}
+		if err := helpers.ValidateURLForSSRF(req.BaseURL); err != nil {
+			return nil, fmt.Errorf("base_url rejected: %w", err)
 		}
 	}
 
@@ -688,6 +687,8 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 	if err != nil {
 		return fmt.Errorf("failed to request stream: %w", err)
 	}
+	// Always cancel ps so ReceiverStreamPush's watcher goroutine can unblock.
+	defer ps.cancel()
 
 	cfg := m.config.Get()
 	timeout := cfg.Receiver.ProxyTimeout

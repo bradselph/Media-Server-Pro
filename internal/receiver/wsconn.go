@@ -1,6 +1,7 @@
 package receiver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -66,8 +67,16 @@ type PendingStream struct {
 	Range     string
 	Ready     chan *StreamDelivery // slave posts delivery here
 	CreatedAt time.Time
-	readyOnce sync.Once // guards close(Ready) to prevent double-close panic
+	readyOnce sync.Once          // guards close(Ready) to prevent double-close panic
+	ctx       context.Context    // cancelled when the consumer exits (any path)
+	cancel    context.CancelFunc // call on all consumer exit paths
 }
+
+// ConsumerContext returns a context that is cancelled when the consumer
+// finishes (normal read, timeout, client disconnect, or cleanup). Push
+// handlers can watch this to avoid blocking indefinitely when the consumer
+// has already exited.
+func (ps *PendingStream) ConsumerContext() context.Context { return ps.ctx }
 
 // StreamDelivery is the data the slave sends back for a pending stream.
 type StreamDelivery struct {
@@ -174,7 +183,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		close(sw.done)
 		conn.Close()
 		if sw.slaveID != "" {
-			m.removeSlaveWS(sw.slaveID)
+			m.removeSlaveWS(sw.slaveID, sw)
 			m.log.Info("Slave %s WebSocket disconnected", sw.slaveID)
 		}
 	}()
@@ -284,14 +293,22 @@ func (m *Module) setSlaveWS(slaveID string, sw *slaveWS) {
 }
 
 // removeSlaveWS removes a slave's WebSocket connection and marks it offline.
-func (m *Module) removeSlaveWS(slaveID string) {
+// sw must be the connection being torn down; if a reconnect has already replaced
+// it in wsConns, we leave the new connection untouched.
+func (m *Module) removeSlaveWS(slaveID string, sw *slaveWS) {
 	m.wsMu.Lock()
-	delete(m.wsConns, slaveID)
+	current, ok := m.wsConns[slaveID]
+	if ok && current == sw {
+		delete(m.wsConns, slaveID)
+	}
 	m.wsMu.Unlock()
 
-	// Mark slave as offline
+	// Only mark offline if we were still the registered connection.
+	if !ok || current != sw {
+		return
+	}
 	m.mu.Lock()
-	if node, ok := m.slaves[slaveID]; ok {
+	if node, ok2 := m.slaves[slaveID]; ok2 {
 		node.Status = "offline"
 	}
 	m.mu.Unlock()
@@ -313,12 +330,15 @@ func (m *Module) RequestStream(slaveID, token, path, rangeHeader string) (*Pendi
 		return nil, fmt.Errorf("slave %s is not connected via WebSocket", slaveID)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	ps := &PendingStream{
 		SlaveID:   slaveID,
 		Path:      path,
 		Range:     rangeHeader,
 		Ready:     make(chan *StreamDelivery, 1),
 		CreatedAt: time.Now(),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 
 	m.pendingMu.Lock()
@@ -359,6 +379,7 @@ func (m *Module) cleanupStalePending() {
 	defer m.pendingMu.Unlock()
 	for token, ps := range m.pendingStreams {
 		if time.Since(ps.CreatedAt) > 30*time.Second {
+			ps.cancel()
 			ps.readyOnce.Do(func() { close(ps.Ready) })
 			delete(m.pendingStreams, token)
 		}
