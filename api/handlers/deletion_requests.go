@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/auth"
 	"media-server-pro/pkg/models"
 )
 
@@ -204,6 +206,10 @@ func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
 	// If approved, delete the actual user account.
 	if req.Action == "approve" {
 		if err := h.auth.DeleteUser(ctx, dr.Username); err != nil {
+			if errors.Is(err, auth.ErrCannotDemoteLastAdmin) {
+				writeError(c, http.StatusBadRequest, "Cannot delete the last admin account")
+				return
+			}
 			h.log.Error("Failed to delete user %s after request approval: %v", dr.Username, err)
 			writeError(c, http.StatusInternalServerError, "Request approved but user deletion failed — check logs")
 			return
