@@ -111,18 +111,23 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	}
 
 	// --- 2. Launch Chrome ---
-	// Block private IP resolution to mitigate SSRF when --disable-web-security allows
-	// malicious page JS to access local network. Block RFC1918, loopback, and link-local
-	// so crawled pages cannot reach localhost (admin API) or cloud metadata (169.254.169.254).
-	hostRules := "MAP 10.0.0.0/8 0.0.0.0, MAP 172.16.0.0/12 0.0.0.0, MAP 192.168.0.0/16 0.0.0.0, MAP 127.0.0.0/8 0.0.0.0, MAP 169.254.0.0/16 0.0.0.0, MAP ::1/128 0.0.0.0"
+	// SSRF mitigation: block the most dangerous SSRF targets via host-resolver-rules.
+	// NOTE: Chrome's --host-resolver-rules does NOT support CIDR notation; rules with
+	// CIDR (e.g. "MAP 10.0.0.0/8 ...") are silently ignored. Use exact hostname/IP maps
+	// for the highest-risk targets. --disable-web-security is intentionally NOT used so
+	// that the Same-Origin Policy prevents crawled page JS from reaching internal services.
+	hostRules := strings.Join([]string{
+		"MAP localhost ~NOTFOUND",
+		"MAP 127.0.0.1 ~NOTFOUND",
+		"MAP 169.254.169.254 ~NOTFOUND", // cloud metadata (AWS/GCP/Azure)
+		"MAP metadata.google.internal ~NOTFOUND",
+	}, ", ")
 	args := []string{
 		"--headless",
 		"--disable-gpu",
 		"--no-sandbox",
 		"--disable-setuid-sandbox",
 		"--disable-dev-shm-usage",
-		"--disable-web-security",
-		"--disable-features=IsolateOrigins,site-per-process",
 		"--disable-blink-features=AutomationControlled",
 		"--host-resolver-rules=" + hostRules,
 		"--no-first-run",
@@ -235,6 +240,25 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		if _, err := send(method, map[string]interface{}{}); err != nil {
 			return nil, fmt.Errorf("enable %s: %w", method, err)
 		}
+	}
+
+	// Block requests to private IP ranges via CDP to defend against SSRF from
+	// crawled pages. These patterns supplement the host-resolver-rules above.
+	// setBlockedURLs uses glob patterns matched against the full URL.
+	blockedURLPatterns := []string{
+		"*://10.*",
+		"*://172.16.*", "*://172.17.*", "*://172.18.*", "*://172.19.*",
+		"*://172.20.*", "*://172.21.*", "*://172.22.*", "*://172.23.*",
+		"*://172.24.*", "*://172.25.*", "*://172.26.*", "*://172.27.*",
+		"*://172.28.*", "*://172.29.*", "*://172.30.*", "*://172.31.*",
+		"*://192.168.*",
+		"*://169.254.*",
+		"*://[::1]/*",
+		"*://[::1]",
+	}
+	if _, err := send("Network.setBlockedURLs", map[string]interface{}{"urls": blockedURLPatterns}); err != nil {
+		// Non-fatal: log and continue. Older Chrome builds may not support this method.
+		bd.log.Warn("CDP setBlockedURLs not supported: %v — private IP blocking limited to host-resolver-rules", err)
 	}
 
 	// --- 5. Collect network responses ---
