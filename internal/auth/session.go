@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -90,7 +91,12 @@ func (m *Module) getOrLoadSession(ctx context.Context, sessionID string) (*model
 	}
 	session, err := m.sessionRepo.Get(ctx, sessionID)
 	if err != nil {
-		return nil, ErrSessionNotFound
+		if errors.Is(err, ErrSessionNotFound) {
+			return nil, ErrSessionNotFound
+		}
+		// Propagate DB errors (timeouts, connection failures) so callers can
+		// return 503 instead of 401 and avoid clearing the user's session cookie.
+		return nil, err
 	}
 	m.sessionsMu.Lock()
 	m.sessions[sessionID] = session

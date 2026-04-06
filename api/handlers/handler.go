@@ -512,6 +512,8 @@ func isPathWithinDirs(absPath string, dirs []string) bool {
 func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
 	item, err := h.media.GetMedia(absPath)
 	if err != nil {
+		// Log a warning so DB outages or scan gaps don't silently bypass mature protection.
+		h.log.Warn("checkMatureAccess: media lookup failed for %s: %v — allowing access (item may not be in library)", absPath, err)
 		return true
 	}
 	if item == nil {

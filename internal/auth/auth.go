@@ -41,6 +41,13 @@ var (
 	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-constant-time-pad"), bcrypt.DefaultCost)
 )
 
+// IsSessionError returns true for definitive session rejection errors (not-found, expired).
+// Returns false for transient errors (DB timeout, connection failure) so callers can avoid
+// clearing session cookies during outages.
+func IsSessionError(err error) bool {
+	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExpired)
+}
+
 const errHashPasswordFmt = "failed to hash password: %w"
 
 // Module implements the authentication module
@@ -70,9 +77,10 @@ type Module struct {
 }
 
 type loginAttempt struct {
-	Count    int
-	FirstTry time.Time
-	LockedAt *time.Time
+	Count      int
+	FirstTry   time.Time
+	LockedAt   *time.Time
+	Windows    int // cumulative count of lockout windows observed for this IP
 }
 
 // NewModule creates a new authentication module.

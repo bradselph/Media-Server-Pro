@@ -42,8 +42,10 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 			if err == nil {
 				c.Set("session", session)
 				c.Set("user", user)
-			} else {
-				// Clear stale/expired cookie so the browser stops resending it.
+			} else if auth.IsSessionError(err) {
+				// Clear stale/expired/invalid cookie so the browser stops resending it.
+				// DB/transient errors are NOT treated as invalid sessions — the cookie is
+				// preserved so the user is not silently logged out during a DB outage.
 				secure := c.Request.TLS != nil ||
 					c.GetHeader("X-Forwarded-Proto") == "https" ||
 					strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)

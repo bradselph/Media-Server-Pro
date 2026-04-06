@@ -231,9 +231,17 @@ func (m *Module) recordFailedAttempt(ip string) {
 	}
 
 	if time.Since(attempt.FirstTry) > cfg.Auth.LockoutDuration {
+		// Window expired: start fresh count but increment Windows so repeated
+		// lockout-window breaches accumulate a penalty instead of fully resetting.
+		attempt.Windows++
 		attempt.Count = 1
 		attempt.FirstTry = time.Now()
 		attempt.LockedAt = nil
+		// Re-lock immediately if this IP has already triggered enough lockout windows.
+		if attempt.Windows >= cfg.Auth.MaxLoginAttempts {
+			attempt.LockedAt = new(time.Now())
+			m.log.Warn("Re-locked IP %s after %d repeated lockout windows", ip, attempt.Windows)
+		}
 		return
 	}
 
