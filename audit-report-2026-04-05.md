@@ -274,8 +274,12 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `e6736d54` 2026-04-06 — M-23 [GAP] receiver/receiver.go:232 — Legacy composite DB IDs never persisted; stale rows accumulate
 > **Resolved**: `loadFromDB` now collects all legacy `slaveID:itemID` composite-key rows and migrates them asynchronously after the in-memory cache is populated: the old row is deleted by `DeleteByID` and a fresh row with the opaque ID is upserted via `UpsertBatch`. Legacy rows no longer accumulate across restarts.
 > **Verified**: pending deploy
-### M-24 [GAP] analytics/stats.go:350 — rebuildStatsFromEvent doesn't reconstruct UniqueUsers/AvgWatchDuration
-### M-25 [GAP] analytics/stats.go:68 — updateStats uses wall clock not event.Timestamp
+### ✅ `694c4077` 2026-04-06 — M-24 [GAP] analytics/stats.go:350 — rebuildStatsFromEvent doesn't reconstruct UniqueUsers/AvgWatchDuration
+> **Resolved**: `rebuildStatsFromEvent` now populates `dailyUsers` (→ `UniqueUsers`), `mediaViewers` (→ `UniqueViewers`), and calls `updateAvgWatchDurationLocked` for playback events so `AvgWatchDuration` is reconstructed correctly on startup.
+> **Verified**: pending deploy
+### ✅ `694c4077` 2026-04-06 — M-25 [GAP] analytics/stats.go:68 — updateStats uses wall clock not event.Timestamp
+> **Resolved**: `updateStats` now uses `event.Timestamp.Format(dateFormat)` instead of `time.Now()` so events with historical timestamps are bucketed to the correct day.
+> **Verified**: pending deploy
 ### ✅ `f5461cc9` 2026-04-06 — M-26 [GAP] analytics/stats.go:350 — reconstructStats capped at 2000 events; may undercount
 > **Resolved**: Added `MaxReconstructEvents int` to `AnalyticsConfig` (default 2000). Configurable via `ANALYTICS_MAX_RECONSTRUCT_EVENTS`. The analytics module now reads the limit from config instead of a hardcoded value.
 > **Verified**: pending deploy
