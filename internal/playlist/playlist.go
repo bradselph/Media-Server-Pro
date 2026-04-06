@@ -478,6 +478,7 @@ func (m *Module) ClearPlaylist(ctx context.Context, playlistID PlaylistID, userI
 	for _, item := range playlist.Items {
 		if err := m.playlistRepo.RemoveItem(ctx, item.ID); err != nil {
 			m.log.Error("Failed to remove item from database during clear: %v", err)
+			return fmt.Errorf("failed to clear playlist: %w", err)
 		}
 	}
 
@@ -648,7 +649,9 @@ func (m *Module) ExportPlaylist(playlistID PlaylistID, userID UserID, format str
 		b.WriteString(fmt.Sprintf("#PLAYLIST:%s\n", snapshot.Name))
 		for _, item := range snapshot.Items {
 			b.WriteString(fmt.Sprintf("#EXTINF:-1,%s\n", item.Title))
-			b.WriteString(item.MediaPath + "\n")
+			// Use the API stream path instead of the filesystem path to avoid
+			// leaking server-side directory structure.
+			b.WriteString(fmt.Sprintf("/api/stream/%s\n", item.MediaID))
 		}
 		export.M3UContent = b.String()
 	}

@@ -111,6 +111,30 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 
 func (m *Module) Name() string { return "extractor" }
 
+// corsOrigin returns the correct Access-Control-Allow-Origin value for HLS proxy
+// responses, respecting the server CORS configuration.
+func (m *Module) corsOrigin(r *http.Request) string {
+	cfg := m.config.Get()
+	if !cfg.Security.CORSEnabled || len(cfg.Security.CORSOrigins) == 0 {
+		return "*"
+	}
+	for _, o := range cfg.Security.CORSOrigins {
+		if o == "*" {
+			return "*"
+		}
+	}
+	requestOrigin := r.Header.Get("Origin")
+	if requestOrigin == "" {
+		return "*"
+	}
+	for _, allowed := range cfg.Security.CORSOrigins {
+		if strings.EqualFold(allowed, requestOrigin) {
+			return requestOrigin
+		}
+	}
+	return ""
+}
+
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting extractor module...")
 
@@ -352,7 +376,9 @@ func (m *Module) ProxyHLSMaster(w http.ResponseWriter, r *http.Request, itemID s
 
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if origin := m.corsOrigin(r); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(rewritten))
 	return nil
@@ -417,7 +443,9 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if origin := m.corsOrigin(r); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(rewritten))
 	return nil
@@ -462,7 +490,7 @@ func (m *Module) ProxyHLSSegment(w http.ResponseWriter, r *http.Request, itemID 
 
 // --- Internal helpers ---
 
-func (m *Module) proxyMediaPlaylist(ctx context.Context, w http.ResponseWriter, _ *http.Request, itemID string, qualityIdx int) error {
+func (m *Module) proxyMediaPlaylist(ctx context.Context, w http.ResponseWriter, r *http.Request, itemID string, qualityIdx int) error {
 	item := m.GetItem(itemID)
 	if item == nil {
 		return fmt.Errorf("item not found: %s", itemID)
@@ -484,7 +512,9 @@ func (m *Module) proxyMediaPlaylist(ctx context.Context, w http.ResponseWriter, 
 
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if origin := m.corsOrigin(r); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(rewritten))
 	return nil
@@ -534,7 +564,9 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	if w.Header().Get("Content-Type") == "" {
 		w.Header().Set("Content-Type", contentType)
 	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if origin := m.corsOrigin(r); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
 
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {

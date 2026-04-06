@@ -236,6 +236,13 @@ func (m *Manager) getCopy() *Config {
 	cp.MatureScanner.MediumConfidenceKeywords = append([]string(nil), m.config.MatureScanner.MediumConfidenceKeywords...)
 	cp.AgeGate.BypassIPs = append([]string(nil), m.config.AgeGate.BypassIPs...)
 	cp.Receiver.APIKeys = append([]string(nil), m.config.Receiver.APIKeys...)
+	cp.Security.TrustedProxyCIDRs = append([]string(nil), m.config.Security.TrustedProxyCIDRs...)
+	if m.config.Storage.S3.Prefixes != nil {
+		cp.Storage.S3.Prefixes = make(map[string]string, len(m.config.Storage.S3.Prefixes))
+		for k, v := range m.config.Storage.S3.Prefixes {
+			cp.Storage.S3.Prefixes[k] = v
+		}
+	}
 	return &cp
 }
 
