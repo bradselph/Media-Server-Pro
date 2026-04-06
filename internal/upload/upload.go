@@ -226,6 +226,15 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 		return nil, fmt.Errorf("failed to reset file reader: %w", seekErr)
 	}
 
+	// Enforce the actual byte limit regardless of the client-supplied fh.Size.
+	// io.LimitReader caps reads at maxFileSize+1; if written > maxFileSize after
+	// the copy we know the stream was larger than fh.Size claimed.
+	maxFileSize := m.config.Get().Uploads.MaxFileSize
+	var reader io.Reader = file
+	if maxFileSize > 0 {
+		reader = io.LimitReader(file, maxFileSize+1)
+	}
+
 	uploadID := m.generateUploadID()
 	progress := m.registerUploadProgress(ProgressRegistration{
 		UploadID: uploadID,
@@ -241,7 +250,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 	if m.store != nil && !m.store.IsLocal() {
 		// Remote backend (S3/B2): stream directly via the storage backend.
 		// No temp-file/rename needed — object writes in S3 are atomic.
-		destPath, written, err = m.uploadToRemoteStore(context.Background(), file, prepared, progress)
+		destPath, written, err = m.uploadToRemoteStore(context.Background(), reader, prepared, progress)
 	} else {
 		// Local filesystem: use the existing temp-file-then-rename pattern.
 		var destFile *os.File
@@ -252,13 +261,24 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 		}
 		progress.DestPath = destPath
 		tempPath = destPath + ".tmp"
-		written, err = m.copyAndRenameUpload(file, destFile, copyPaths{tempPath, destPath}, progress)
+		written, err = m.copyAndRenameUpload(reader, destFile, copyPaths{tempPath, destPath}, progress)
 	}
 
 	if err != nil {
 		progress.Status = UploadStatusFailed
 		progress.Error = err.Error()
 		return nil, fmt.Errorf("upload failed: %w", err)
+	}
+
+	// LimitReader stops at maxFileSize+1, so hitting that exact count means the
+	// actual file is larger. Clean up and reject.
+	if maxFileSize > 0 && written > maxFileSize {
+		if destPath != "" {
+			_ = os.Remove(destPath)
+		}
+		progress.Status = UploadStatusFailed
+		progress.Error = "file exceeds size limit"
+		return nil, fmt.Errorf("file size exceeds maximum of %d bytes", maxFileSize)
 	}
 
 	progress.Status = UploadStatusCompleted
@@ -279,7 +299,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 // uploadToRemoteStore streams the uploaded file to the configured remote backend
 // (S3/B2).  A progress-tracking reader wraps the source so that the UI sees
 // live byte counts even though we never touch the local filesystem.
-func (m *Module) uploadToRemoteStore(ctx context.Context, file multipart.File, prepared *PreparedUpload, progress *Progress) (string, int64, error) {
+func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepared *PreparedUpload, progress *Progress) (string, int64, error) {
 	// Compute the relative key path within the upload backend.
 	// prepared.DestDir is an absolute local path like /uploads/userID[/category].
 	// Strip the upload root prefix to get the relative part.
@@ -468,7 +488,7 @@ type copyPaths struct {
 }
 
 // copyAndRenameUpload copies src to destFile with progress, closes destFile, then renames paths.tempPath to paths.destPath.
-func (m *Module) copyAndRenameUpload(src multipart.File, destFile *os.File, paths copyPaths, progress *Progress) (int64, error) {
+func (m *Module) copyAndRenameUpload(src io.Reader, destFile *os.File, paths copyPaths, progress *Progress) (int64, error) {
 	written, err := m.copyWithProgress(destFile, src, progress)
 	if closeErr := destFile.Close(); closeErr != nil {
 		m.log.Warn("Failed to close temporary file %s: %v", paths.tempPath, closeErr)
@@ -671,7 +691,7 @@ func (m *Module) createUniqueUploadFile(destDir, filename string) (string, *os.F
 }
 
 // copyWithProgress copies data while updating progress
-func (m *Module) copyWithProgress(dst io.Writer, src multipart.File, progress *Progress) (int64, error) {
+func (m *Module) copyWithProgress(dst io.Writer, src io.Reader, progress *Progress) (int64, error) {
 	buf := make([]byte, 32*1024) // 32KB buffer
 	var written int64
 
