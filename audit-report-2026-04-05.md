@@ -223,7 +223,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `19ba154c` 2026-04-06 — M-03 [FRAGILE] config/config.go:147 — migrateHLSQualityEnabled falsely re-enables all-disabled profiles
 > **Resolved**: Added `QualityProfilesMigrated bool` to `HLSConfig`. The migration sets it `true` on first run; subsequent restarts skip the migration so a user who deliberately disables all profiles keeps them disabled.
 > **Verified**: pending deploy
-### M-04 [DRIFT] config/validate.go:10 — Two validation paths (private validate vs public Validate) with different coverage
+### ✅ `19188f3a` 2026-04-06 — M-04 [DRIFT] config/validate.go:10 — Two validation paths (private validate vs public Validate) with different coverage
+> **Resolved**: Extracted `validateLocked()` as a shared lock-free inner validator in `internal/config/validate.go`. Both `Validate()` (holds RLock) and private `validate()` (called from `Load()` which holds write lock) now call `validateLocked()`, eliminating the former duplicate check coverage drift and the deadlock risk.
+> **Verified**: pending deploy
 ### ✅ `c2bee4ed` 2026-04-06 — M-05 [FRAGILE] config/env_helpers.go:20 — envGetBool returns (false,true) for "yes"/"on" → disables features
 > **Resolved**: `envGetBool` switch in `internal/config/env_helpers.go` now recognizes "yes"/"on" as true and "no"/"off" as false.
 > **Verified**: pending deploy
