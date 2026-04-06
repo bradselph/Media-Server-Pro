@@ -10,6 +10,7 @@ import (
 	"media-server-pro/pkg/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // UserRepository implements repositories.UserRepository using GORM
@@ -153,45 +154,33 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			return err
 		}
 
-		// Update permissions inside the same transaction
+		// Upsert permissions: INSERT … ON DUPLICATE KEY UPDATE so a missing row
+		// gets created rather than silently skipping the update.
 		user.Permissions.UserID = user.ID
-		if err := tx.Model(&models.UserPermissions{}).Where("user_id = ?", user.ID).Updates(map[string]interface{}{
-			"can_stream":           user.Permissions.CanStream,
-			"can_download":         user.Permissions.CanDownload,
-			"can_upload":           user.Permissions.CanUpload,
-			"can_delete":           user.Permissions.CanDelete,
-			"can_manage":           user.Permissions.CanManage,
-			"can_view_mature":      user.Permissions.CanViewMature,
-			"can_create_playlists": user.Permissions.CanCreatePlaylists,
-		}).Error; err != nil {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "user_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"can_stream", "can_download", "can_upload", "can_delete",
+				"can_manage", "can_view_mature", "can_create_playlists",
+			}),
+		}).Create(&user.Permissions).Error; err != nil {
 			return err
 		}
 
-		// Update preferences inside the same transaction
+		// Upsert preferences: same pattern. GORM's serializer:json tag handles
+		// CustomEQPresets automatically when using Create.
 		user.Preferences.UserID = user.ID
-		if err := tx.Model(&models.UserPreferences{}).Where("user_id = ?", user.ID).Updates(map[string]interface{}{
-			"theme":                  user.Preferences.Theme,
-			"view_mode":              user.Preferences.ViewMode,
-			"default_quality":        user.Preferences.DefaultQuality,
-			"auto_play":              user.Preferences.AutoPlay,
-			"playback_speed":         user.Preferences.PlaybackSpeed,
-			"volume":                 user.Preferences.Volume,
-			"show_mature":            user.Preferences.ShowMature,
-			"mature_preference_set":  user.Preferences.MaturePreferenceSet,
-			"language":               user.Preferences.Language,
-			"equalizer_preset":       user.Preferences.EqualizerPreset,
-			"resume_playback":        user.Preferences.ResumePlayback,
-			"show_analytics":         user.Preferences.ShowAnalytics,
-			"items_per_page":        user.Preferences.ItemsPerPage,
-			"sort_by":                user.Preferences.SortBy,
-			"sort_order":             user.Preferences.SortOrder,
-			"filter_category":       user.Preferences.FilterCategory,
-			"filter_media_type":     user.Preferences.FilterMediaType,
-			"custom_eq_presets":     marshalJSONParam(user.Preferences.CustomEQPresets),
-			"show_continue_watching": user.Preferences.ShowContinueWatching,
-			"show_recommended":      user.Preferences.ShowRecommended,
-			"show_trending":         user.Preferences.ShowTrending,
-		}).Error; err != nil {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "user_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"theme", "view_mode", "default_quality", "auto_play",
+				"playback_speed", "volume", "show_mature", "mature_preference_set",
+				"language", "equalizer_preset", "resume_playback", "show_analytics",
+				"items_per_page", "sort_by", "sort_order", "filter_category",
+				"filter_media_type", "custom_eq_presets",
+				"show_continue_watching", "show_recommended", "show_trending",
+			}),
+		}).Create(&user.Preferences).Error; err != nil {
 			return err
 		}
 
