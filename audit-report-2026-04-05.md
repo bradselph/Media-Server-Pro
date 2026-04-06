@@ -324,7 +324,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `2552434a` 2026-04-06 — L-06 [REDUNDANT] auth/authenticate.go:169 — ValidateAdminSession is unreachable dead code
 > **Resolved**: `ValidateAdminSession` removed from `internal/auth/authenticate.go`. It was never called; the `adminSessions` map has not been populated since H-11 fixed `AdminAuthenticate`.
 > **Verified**: pending deploy
-### L-07 [GAP] admin/admin.go:249 — UpdateConfig accepts arbitrary keys including security-sensitive
+### ✅ `7856c444` 2026-04-06 — L-07 [GAP] admin/admin.go:249 — UpdateConfig accepts arbitrary keys including security-sensitive
+> **Resolved**: `filterDeniedConfigKeys` in `api/handlers/admin_config.go` now extracts the top-level section from dot-notation paths before checking the deny list (so `admin.password_hash` → `admin` is correctly blocked). Added `admin`, `storage`, and `huggingface` to the deny list alongside the existing `database`, `auth`, and `receiver` entries.
+> **Verified**: pending deploy
 ### ✅ `812f1d83` 2026-04-06 — L-08 [FRAGILE] admin/admin.go:173 — ExportAuditLog race on same-second concurrent exports
 > **Resolved**: Filename now includes nanosecond suffix (`%d.csv`) to avoid collision between concurrent same-second exports.
 > **Verified**: pending deploy
