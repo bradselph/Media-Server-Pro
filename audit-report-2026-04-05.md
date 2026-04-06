@@ -216,7 +216,9 @@ FIX: Add env var mappings for each missing field.
 
 ---
 
-### M-01 [RACE] auth/authenticate.go:29 — getOrLoadUser has TOCTOU cache-load window
+### ✅ `990159d4` 2026-04-06 — M-01 [RACE] auth/authenticate.go:29 — getOrLoadUser has TOCTOU cache-load window
+> **Resolved**: `getOrLoadUser` in `internal/auth/authenticate.go` now uses double-checked locking: after loading from DB, re-checks the cache under write lock before storing. If another goroutine already populated the entry during the DB round-trip, the existing cached pointer is returned, preventing concurrent callers from holding divergent copies.
+> **Verified**: pending deploy
 ### ✅ `4747ba9c` 2026-04-06 — M-02 [SECURITY] auth/watch_history.go:20 — Update branch has no rollback on DB failure
 > **Resolved**: `AddToWatchHistory` now snapshots the old item/slice before modifying the cache and restores it if the DB write fails, matching the copy-before-unlock pattern used by `ClearWatchHistory` and `RemoveWatchHistoryItem`.
 > **Verified**: pending deploy
@@ -253,9 +255,15 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `d5ea9b20` 2026-04-06 — M-13 [INCOMPLETE] config/config.go:226 — getCopy() does not deep-copy Storage.S3.Prefixes map
 > **Resolved**: `getCopy()` in `internal/config/config.go` now deep-copies `Storage.S3.Prefixes` map and `Security.TrustedProxyCIDRs` slice.
 > **Verified**: pending deploy
-### M-14 [RACE] hls/cleanup.go:170 — cleanInactiveJob reads lastAccess outside write lock
-### M-15 [RACE] hls/access.go:26 — RecordAccess and cleanup acquire locks in opposite orders
-### M-16 [LEAK] hls/transcode.go:246 — lazyTranscodeQuality holds per-quality mutex across semaphore
+### ✅ `990159d4` 2026-04-06 — M-14 [RACE] hls/cleanup.go:170 — cleanInactiveJob reads lastAccess outside write lock
+> **Resolved**: `cleanInactiveJob` in `internal/hls/cleanup.go` now re-reads `GetLastAccess` immediately before acquiring `jobsMu.Lock()`, narrowing the stale-read window. `RecordAccess` updates `accessTracker.lastAccess` under its own lock independently of `jobsMu`, so a fresh access arriving between the initial read and the write-lock acquisition is now caught.
+> **Verified**: pending deploy
+### ✅ `990159d4` 2026-04-06 — M-15 [RACE] hls/access.go:26 — RecordAccess and cleanup acquire locks in opposite orders
+> **Resolved**: Under the `jobsMu.Lock()` TOCTOU re-check in `cleanInactiveJob`, also checks `job.LastAccessedAt` — which `RecordAccess` writes under `jobsMu` during its debounced DB-save path. A debounced access that arrived between the initial lastAccess read and the write lock is now caught before the job is deleted.
+> **Verified**: pending deploy
+### ✅ `990159d4` 2026-04-06 — M-16 [LEAK] hls/transcode.go:246 — lazyTranscodeQuality holds per-quality mutex across semaphore
+> **Resolved**: `lazyTranscodeQuality` in `internal/hls/transcode.go` now acquires the transcode semaphore BEFORE acquiring the per-quality mutex `qMu`. Previously, holding `qMu.Lock()` while blocking on `m.transSem` could deadlock when all semaphore slots were occupied by goroutines also waiting on `qMu` for the same quality. A fast-path `os.Stat` check before semaphore acquisition avoids unnecessary contention for already-complete qualities.
+> **Verified**: pending deploy
 ### ⏭ SKIPPED — M-17 [SILENT_FAIL] hls/cleanup.go:12 — cleanupLoop dead code; RetentionMinutes silently ignored
 > **Reason**: Intentional by design — HLS cache is never auto-deleted per product requirements. Cleanup is triggered only via explicit admin actions (POST /api/admin/hls/clean/inactive or DELETE /api/admin/hls/jobs/:id). The comment at module.go:139 documents this.
 ### ✅ `a396ef65` 2026-04-06 — M-18 [GAP] hls/jobs.go:424 — findMediaPathForJob returns "" for completed jobs (lock file removed)
