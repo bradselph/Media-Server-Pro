@@ -1218,9 +1218,15 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	m.log.Info("git fetch: %s", strings.TrimSpace(string(fetchOut)))
 
 	// Compare local branch tip with origin/branch; if equal, no new commits — skip build.
-	localOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output()
-	remoteOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
-	if strings.TrimSpace(string(localOut)) == strings.TrimSpace(string(remoteOut)) {
+	localOut, localErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output()
+	if localErr != nil {
+		m.log.Warn("git rev-parse %s failed (new repo?): %v — proceeding with build", branch, localErr)
+	}
+	remoteOut, remoteErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
+	if remoteErr != nil {
+		m.log.Warn("git rev-parse origin/%s failed: %v — proceeding with build", branch, remoteErr)
+	}
+	if localErr == nil && remoteErr == nil && strings.TrimSpace(string(localOut)) == strings.TrimSpace(string(remoteOut)) {
 		m.log.Info("Source update: already up to date")
 		status.Stage = "already up to date"
 		status.Progress = 100
