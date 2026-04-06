@@ -417,3 +417,40 @@ func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path, blur
 	}
 	return nil
 }
+
+// GetPathByStableID returns the file path for the given stable ID.
+// Returns ("", nil) when no matching row exists.
+func (r *MediaMetadataRepository) GetPathByStableID(ctx context.Context, stableID string) (string, error) {
+	var row mediaMetadataRow
+	err := r.db.WithContext(ctx).
+		Select("path").
+		Where("stable_id = ?", stableID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get path by stable_id: %w", err)
+	}
+	return row.Path, nil
+}
+
+// ListDuplicateCandidates returns only rows that have both a non-empty
+// content_fingerprint and stable_id.  Tags are not loaded — callers that need
+// only fingerprint/stableID/path (e.g. the duplicate-detection scan) avoid
+// the cost of fetching the full table and the extra tag batch query.
+func (r *MediaMetadataRepository) ListDuplicateCandidates(ctx context.Context) (map[string]*repositories.MediaMetadata, error) {
+	var rows []mediaMetadataRow
+	if err := r.db.WithContext(ctx).
+		Where("content_fingerprint != '' AND stable_id != ''").
+		Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("failed to query duplicate candidates: %w", err)
+	}
+	results := make(map[string]*repositories.MediaMetadata, len(rows))
+	for i := range rows {
+		metadata := r.rowToMetadata(&rows[i])
+		metadata.Tags = []string{}
+		results[rows[i].Path] = metadata
+	}
+	return results, nil
+}

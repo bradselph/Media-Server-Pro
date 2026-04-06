@@ -329,15 +329,17 @@ func (m *Module) processFingerprintGroup(ctx context.Context, fp string, group [
 	}
 }
 
-// ScanLocalMedia finds fingerprint collisions in media_metadata and persists pairs (loads full table).
+// ScanLocalMedia finds fingerprint collisions in media_metadata and persists pairs.
+// Uses ListDuplicateCandidates to fetch only rows with non-empty content_fingerprint
+// and stable_id, avoiding loading the full table for large libraries.
 func (m *Module) ScanLocalMedia(ctx context.Context) error {
 	if !m.enabled() || m.metaRepo == nil {
 		return nil
 	}
 
-	all, err := m.metaRepo.List(ctx)
+	all, err := m.metaRepo.ListDuplicateCandidates(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to list media metadata: %w", err)
+		return fmt.Errorf("failed to list duplicate candidates: %w", err)
 	}
 
 	fpGroups := buildLocalFingerprintGroups(all)
@@ -485,18 +487,13 @@ func (m *Module) removeLocalItem(ctx context.Context, itemID string) error {
 	return m.deleteLocalFileAndMetadata(ctx, path)
 }
 
-// findLocalPathByStableID returns the file path for the given stable ID (scans full metadata list).
+// findLocalPathByStableID returns the file path for the given stable ID.
 func (m *Module) findLocalPathByStableID(ctx context.Context, itemID string) (string, error) {
-	all, err := m.metaRepo.List(ctx)
+	path, err := m.metaRepo.GetPathByStableID(ctx, itemID)
 	if err != nil {
-		return "", fmt.Errorf("failed to list metadata: %w", err)
+		return "", fmt.Errorf("failed to look up stable ID %s: %w", itemID, err)
 	}
-	for path, meta := range all {
-		if meta.StableID == itemID {
-			return path, nil
-		}
-	}
-	return "", nil
+	return path, nil
 }
 
 // deleteLocalFileAndMetadata removes the metadata row and the file on disk for the given path.

@@ -57,6 +57,14 @@ type MediaMetadataRepository interface {
 	DeleteAllPlaybackPositionsByUser(ctx context.Context, userID string) error
 	// UpdateBlurHash updates the BlurHash for a metadata row by path
 	UpdateBlurHash(ctx context.Context, path string, blurHash string) error
+	// GetPathByStableID returns the file path for the given stable ID.
+	// Returns ("", nil) when no row matches (avoids O(N) full-table scan in callers).
+	GetPathByStableID(ctx context.Context, stableID string) (string, error)
+	// ListDuplicateCandidates returns rows that have both a non-empty
+	// content_fingerprint and stable_id, which is the only set used by the
+	// duplicate-detection scan.  Tags are not loaded (not needed for fingerprint
+	// grouping) so this is significantly cheaper than List for large libraries.
+	ListDuplicateCandidates(ctx context.Context) (map[string]*MediaMetadata, error)
 }
 
 // MediaFilter defines DB-level filtering and pagination for media queries.
