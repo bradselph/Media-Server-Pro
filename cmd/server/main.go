@@ -844,4 +844,16 @@ func registerTasks(
 			return nil
 		},
 	})
+
+	// Re-apply the interval when it is changed via the admin config panel so that
+	// a server restart is not required to pick up a new pre-generation schedule.
+	cfg.OnChange(func(newCfg *config.Config) {
+		newInterval := time.Duration(newCfg.HLS.PreGenerateIntervalHours) * time.Hour
+		if newInterval < 15*time.Minute {
+			newInterval = 15 * time.Minute
+		}
+		if err := scheduler.UpdateSchedule("hls-pregenerate", newInterval); err != nil {
+			log.Warn("Failed to update HLS pre-generation schedule: %v", err)
+		}
+	})
 }
