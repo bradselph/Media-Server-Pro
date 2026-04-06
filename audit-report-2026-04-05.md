@@ -295,8 +295,12 @@ FIX: Add env var mappings for each missing field.
 > **Resolved**: `ValidateAdminSession` removed from `internal/auth/authenticate.go`. It was never called; the `adminSessions` map has not been populated since H-11 fixed `AdminAuthenticate`.
 > **Verified**: pending deploy
 ### L-07 [GAP] admin/admin.go:249 — UpdateConfig accepts arbitrary keys including security-sensitive
-### L-08 [FRAGILE] admin/admin.go:173 — ExportAuditLog race on same-second concurrent exports
-### L-09 [GAP] audit_log_repository.go:71 — GetByUser with limit=0 runs unbounded query
+### ✅ `812f1d83` 2026-04-06 — L-08 [FRAGILE] admin/admin.go:173 — ExportAuditLog race on same-second concurrent exports
+> **Resolved**: Filename now includes nanosecond suffix (`%d.csv`) to avoid collision between concurrent same-second exports.
+> **Verified**: pending deploy
+### ✅ `812f1d83` 2026-04-06 — L-09 [GAP] audit_log_repository.go:71 — GetByUser with limit=0 runs unbounded query
+> **Resolved**: `GetByUser` in `internal/repositories/mysql/audit_log_repository.go` now defaults to `getByUserMaxLimit = 1000` when `limit <= 0`.
+> **Verified**: pending deploy
 ### ✅ already safe — L-10 [GAP] analytics.go:344 — AdminExportAnalytics defer calls f.Close() on nil file → panic
 > **Resolved**: Code at `api/handlers/analytics.go:344` already returns before setting up the defer when `openErr != nil`; no nil panic is possible. No change needed.
 > **Verified**: code review confirmed
@@ -311,7 +315,9 @@ FIX: Add env var mappings for each missing field.
 ### L-17 [GAP] duplicates/duplicates.go:333 — ScanLocalMedia loads entire metadata table
 ### L-18 [FRAGILE] validator/validator.go:441 — FixFile output path collision
 ### L-19 [FRAGILE] logger/logger.go:415 — Log rotation only creates .1; cleanOldBackups no-op
-### L-20 [RACE] handler.go:168 — viewCooldown sync.Map never purged; unbounded memory growth
+### ✅ `812f1d83` 2026-04-06 — L-20 [RACE] handler.go:168 — viewCooldown sync.Map never purged; unbounded memory growth
+> **Resolved**: `tryRecordView` now schedules `time.AfterFunc(cooldown*2, ...)` to delete each entry after 2× the cooldown window, bounding the map's lifetime growth.
+> **Verified**: pending deploy
 ### L-21 [GAP] Multiple files — filepath.Walk follows symlinks in scanner, categorizer, autodiscovery
 ### L-22 [GAP] Multiple files — context.Background() used for DB calls in module Stop paths
 ### ✅ `2552434a` 2026-04-06 — L-23 [FRAGILE] downloader/websocket.go:67 — DefaultDialer.Dial has no handshake timeout
