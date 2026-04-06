@@ -118,11 +118,13 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module
-func (m *Module) Stop(_ context.Context) error {
+func (m *Module) Stop(ctx context.Context) error {
 	m.log.Info("Stopping auto-discovery module...")
 
-	// Save suggestions
-	if err := m.saveSuggestions(); err != nil {
+	// Save suggestions with a bounded context so a slow DB cannot block shutdown indefinitely.
+	stopCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := m.saveSuggestions(stopCtx); err != nil {
 		m.log.Error("Failed to save suggestions: %v", err)
 	}
 
@@ -176,7 +178,7 @@ func (m *Module) ScanDirectory(dir FilePath) ([]*models.AutoDiscoverySuggestion,
 	})
 
 	if err == nil && len(suggestions) > 0 {
-		if saveErr := m.saveSuggestions(); saveErr != nil {
+		if saveErr := m.saveSuggestions(context.Background()); saveErr != nil {
 			m.log.Warn("Failed to persist suggestions after scan: %v", saveErr)
 		}
 	}
@@ -545,7 +547,7 @@ func (m *Module) ApplySuggestion(originalPath FilePath) error {
 	delete(m.suggestions, SuggestionKey(pathStr))
 	m.mu.Unlock()
 
-	if saveErr := m.saveSuggestions(); saveErr != nil {
+	if saveErr := m.saveSuggestions(context.Background()); saveErr != nil {
 		m.log.Warn("Failed to persist suggestions after apply: %v", saveErr)
 	}
 
@@ -651,11 +653,10 @@ func (m *Module) loadSuggestions() error {
 	return nil
 }
 
-func (m *Module) saveSuggestions() error {
+func (m *Module) saveSuggestions(ctx context.Context) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	ctx := context.Background()
 	for _, s := range m.suggestions {
 		metadata := make(map[string]string, len(s.Metadata))
 		for k, v := range s.Metadata {
