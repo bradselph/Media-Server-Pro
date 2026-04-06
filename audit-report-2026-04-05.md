@@ -325,7 +325,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `803e1bbd` 2026-04-06 — L-01 [GAP] cmd/server/main.go:430 — validateSecrets incomplete (no admin password, no S3 creds check)
 > **Resolved**: `validateSecrets` now warns when admin panel is enabled without `PasswordHash`/`Username`, and when S3 backend is selected but `AccessKeyID`, `SecretAccessKey`, `Bucket`, or `Endpoint` are missing.
 > **Verified**: pending deploy
-### L-02 [GAP] cmd/server/main.go:770 — HLS pre-gen interval read once; config change ignored
+### ✅ `4790ad8b` 2026-04-06 — L-02 [GAP] cmd/server/main.go:770 — HLS pre-gen interval read once; config change ignored
+> **Resolved**: Added a `cfg.OnChange` watcher in `cmd/server/main.go` immediately after the `hls-pregenerate` task is registered. When `hls.pre_generate_interval_hours` changes via the admin panel, the watcher calls `scheduler.UpdateSchedule("hls-pregenerate", newInterval)` so the ticker is recreated without a restart.
+> **Verified**: pending deploy
 ### ✅ `51e7baa2` 2026-04-06 — L-03 [FRAGILE] cmd/server/main.go:148 — os.Exit(1) after log.Error without logger flush
 > **Resolved**: Added `fatalExit(log, ...)` helper that calls `logger.Shutdown()` before `os.Exit(1)`; all `log.Error + os.Exit(1)` pairs in main.go now use it.
 > **Verified**: pending deploy
