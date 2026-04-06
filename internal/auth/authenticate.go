@@ -78,8 +78,12 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		return nil, ErrInvalidCredentials
 	}
 	if !user.Enabled {
+		// Record failed attempt so disabled accounts incur the same brute-force
+		// penalty as wrong passwords, preventing unlimited-rate enumeration.
+		// Return generic credentials error to avoid leaking account existence.
+		m.recordFailedAttempt(req.IPAddress)
 		m.log.Debug("Login failed - account disabled: %s", req.Username)
-		return nil, ErrAccountDisabled
+		return nil, ErrInvalidCredentials
 	}
 	if verifyErr := m.verifyPasswordWithCacheRefresh(ctx, user, &creds{Username: req.Username, Password: req.Password}); verifyErr != nil {
 		m.recordFailedAttempt(req.IPAddress)
