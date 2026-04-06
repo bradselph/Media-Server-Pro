@@ -217,8 +217,12 @@ FIX: Add env var mappings for each missing field.
 ---
 
 ### M-01 [RACE] auth/authenticate.go:29 — getOrLoadUser has TOCTOU cache-load window
-### M-02 [SECURITY] auth/watch_history.go:20 — Update branch has no rollback on DB failure
-### M-03 [FRAGILE] config/config.go:147 — migrateHLSQualityEnabled falsely re-enables all-disabled profiles
+### ✅ `4747ba9c` 2026-04-06 — M-02 [SECURITY] auth/watch_history.go:20 — Update branch has no rollback on DB failure
+> **Resolved**: `AddToWatchHistory` now snapshots the old item/slice before modifying the cache and restores it if the DB write fails, matching the copy-before-unlock pattern used by `ClearWatchHistory` and `RemoveWatchHistoryItem`.
+> **Verified**: pending deploy
+### ✅ `19ba154c` 2026-04-06 — M-03 [FRAGILE] config/config.go:147 — migrateHLSQualityEnabled falsely re-enables all-disabled profiles
+> **Resolved**: Added `QualityProfilesMigrated bool` to `HLSConfig`. The migration sets it `true` on first run; subsequent restarts skip the migration so a user who deliberately disables all profiles keeps them disabled.
+> **Verified**: pending deploy
 ### M-04 [DRIFT] config/validate.go:10 — Two validation paths (private validate vs public Validate) with different coverage
 ### ✅ `c2bee4ed` 2026-04-06 — M-05 [FRAGILE] config/env_helpers.go:20 — envGetBool returns (false,true) for "yes"/"on" → disables features
 > **Resolved**: `envGetBool` switch in `internal/config/env_helpers.go` now recognizes "yes"/"on" as true and "no"/"off" as false.
@@ -269,11 +273,17 @@ FIX: Add env var mappings for each missing field.
 > **Resolved**: M3U export now writes `/api/stream/{mediaID}` URLs instead of `item.MediaPath` filesystem paths.
 > **Verified**: pending deploy
 ### M-30 [GAP] suggestions/suggestions.go:332 — RecordRating not persisted for up to 10 minutes
-### M-31 [GAP] updater/updater.go:746 — verifyBinaryChecksum silently skips when no checksum exists
+### ✅ `already addressed` 2026-04-06 — M-31 [GAP] updater/updater.go:746 — verifyBinaryChecksum silently skips when no checksum exists
+> **Resolved**: `fetchChecksumAssetURL` already logs `m.log.Warn("No SHA256SUMS asset found in release...")` for all skip paths. No silent skip; issue was pre-existing in code.
+> **Verified**: pending deploy
 ### M-32 [FRAGILE] updater/updater.go:1221 — rev-parse errors silently ignored in SourceUpdate
 ### M-33 [FRAGILE] remote_cache_repository.go:48 — String columns for timestamps vs GORM time.Time
-### M-34 [GAP] user_repository_gorm.go:152 — Update silently does nothing if perms/prefs rows missing
-### M-35 [RACE] tasks/scheduler.go:224 — Ticker reschedule doesn't drain buffered tick
+### ✅ `cc1fd996` 2026-04-06 — M-34 [GAP] user_repository_gorm.go:152 — Update silently does nothing if perms/prefs rows missing
+> **Resolved**: Replaced `Updates(map)` with `clause.OnConflict` upsert for `user_permissions` and `user_preferences`. Missing rows are now inserted rather than silently skipped.
+> **Verified**: pending deploy
+### ✅ `449ca745` 2026-04-06 — M-35 [RACE] tasks/scheduler.go:224 — Ticker reschedule doesn't drain buffered tick
+> **Resolved**: Added `select { case <-ticker.C: default: }` drain after `ticker.Stop()` in the reschedule case of `runTaskLoop`.
+> **Verified**: pending deploy
 ### ✅ `d5ea9b20` 2026-04-06 — M-36 [SECURITY] extractor/extractor.go:325 — Access-Control-Allow-Origin: * on unauthenticated endpoints
 > **Resolved**: Extractor proxy handlers now call `corsOrigin(r)` which respects `Security.CORSOrigins` allow-list (same logic as HLS module). Hardcoded `"*"` removed from all 4 response paths.
 > **Verified**: pending deploy
@@ -284,7 +294,9 @@ FIX: Add env var mappings for each missing field.
 
 ---
 
-### L-01 [GAP] cmd/server/main.go:430 — validateSecrets incomplete (no admin password, no S3 creds check)
+### ✅ `803e1bbd` 2026-04-06 — L-01 [GAP] cmd/server/main.go:430 — validateSecrets incomplete (no admin password, no S3 creds check)
+> **Resolved**: `validateSecrets` now warns when admin panel is enabled without `PasswordHash`/`Username`, and when S3 backend is selected but `AccessKeyID`, `SecretAccessKey`, `Bucket`, or `Endpoint` are missing.
+> **Verified**: pending deploy
 ### L-02 [GAP] cmd/server/main.go:770 — HLS pre-gen interval read once; config change ignored
 ### ✅ `51e7baa2` 2026-04-06 — L-03 [FRAGILE] cmd/server/main.go:148 — os.Exit(1) after log.Error without logger flush
 > **Resolved**: Added `fatalExit(log, ...)` helper that calls `logger.Shutdown()` before `os.Exit(1)`; all `log.Error + os.Exit(1)` pairs in main.go now use it.
@@ -308,7 +320,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ already safe — L-10 [GAP] analytics.go:344 — AdminExportAnalytics defer calls f.Close() on nil file → panic
 > **Resolved**: Code at `api/handlers/analytics.go:344` already returns before setting up the defer when `openErr != nil`; no nil panic is possible. No change needed.
 > **Verified**: code review confirmed
-### L-11 [FRAGILE] admin_updates.go:100 — Source update audit log hardcodes "admin" actor
+### ✅ `477e713e` 2026-04-06 — L-11 [FRAGILE] admin_updates.go:100 — Source update audit log hardcodes "admin" actor
+> **Resolved**: `ApplySourceUpdate` now captures `session.UserID`/`session.Username` from the Gin context before spawning the goroutine and uses those values in the audit log call.
+> **Verified**: pending deploy
 ### L-12 [FRAGILE] auth.go:323 — Admin preference update silently creates DB user record
 ### L-13 [FRAGILE] system.go:362 — ClearMediaCache runs synchronous full scan in HTTP handler
 ### L-14 [FRAGILE] playlists.go:276 — AddPlaylistItem can't add receiver/extractor items
@@ -317,7 +331,9 @@ FIX: Add env var mappings for each missing field.
 > **Verified**: pending deploy
 ### L-16 [GAP] duplicates/duplicates.go:489 — findLocalPathByStableID O(N) full table scan
 ### L-17 [GAP] duplicates/duplicates.go:333 — ScanLocalMedia loads entire metadata table
-### L-18 [FRAGILE] validator/validator.go:441 — FixFile output path collision
+### ✅ `5f397f14` 2026-04-06 — L-18 [FRAGILE] validator/validator.go:441 — FixFile output path collision
+> **Resolved**: `FixFile` now increments a counter suffix (`_fixed_1.mp4`, `_fixed_2.mp4`, …) until it finds a path that does not already exist, preventing silent overwrites of prior fix attempts.
+> **Verified**: pending deploy
 ### L-19 [FRAGILE] logger/logger.go:415 — Log rotation only creates .1; cleanOldBackups no-op
 ### ✅ `812f1d83` 2026-04-06 — L-20 [RACE] handler.go:168 — viewCooldown sync.Map never purged; unbounded memory growth
 > **Resolved**: `tryRecordView` now schedules `time.AfterFunc(cooldown*2, ...)` to delete each entry after 2× the cooldown window, bounding the map's lifetime growth.
