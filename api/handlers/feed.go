@@ -81,7 +81,16 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		SortDesc: true,
 	}
 
-	items := h.media.ListMedia(filter)
+	allItems := h.media.ListMedia(filter)
+
+	// Filter out mature content for users who are not authorised to view it.
+	canViewMature := h.canViewMatureContent(c)
+	items := allItems[:0]
+	for _, item := range allItems {
+		if !item.IsMature || canViewMature {
+			items = append(items, item)
+		}
+	}
 
 	// Truncate to requested limit
 	if len(items) > limit {
