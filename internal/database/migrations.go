@@ -526,6 +526,7 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"media_metadata", "blur_hash", "VARCHAR(100) NULL"},
 		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
 		{"hls_jobs", "last_accessed_at", "TIMESTAMP NULL"},
+		{"user_api_tokens", "expires_at", "TIMESTAMP NULL DEFAULT NULL"},
 		// PlaylistItem schema alignment: GORM model expects id and media_id columns
 		{"playlist_items", "id", "VARCHAR(255) NOT NULL DEFAULT '' FIRST"},
 		{"playlist_items", "media_id", "VARCHAR(255) NOT NULL DEFAULT '' AFTER playlist_id"},

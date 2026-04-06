@@ -563,5 +563,6 @@ type APITokenRecord struct {
 	Name       string
 	TokenHash  string
 	LastUsedAt *time.Time
+	ExpiresAt  *time.Time // nil means no expiry
 	CreatedAt  time.Time
 }
