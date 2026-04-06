@@ -188,6 +188,7 @@ func defaultHLSConfig() HLSConfig {
 		ConcurrentLimit:          2,
 		MaxConsecutiveFailures:   3,
 		ProbeTimeout:             30 * time.Second,
+		StaleLockThreshold:       2 * time.Hour,
 		QualityProfiles: []HLSQuality{
 			{Name: "1080p", Width: 1920, Height: 1080, Bitrate: 5000000, AudioBitrate: 192000, Enabled: true},
 			{Name: "720p", Width: 1280, Height: 720, Bitrate: 2500000, AudioBitrate: 128000, Enabled: true},

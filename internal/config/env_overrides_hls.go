@@ -86,4 +86,7 @@ func (m *Manager) applyHLSOptionsOverrides() {
 	if val, ok := envGetInt("HLS_PRE_GENERATE_INTERVAL_HOURS"); ok {
 		m.config.HLS.PreGenerateIntervalHours = val
 	}
+	if val, ok := envGetDuration(time.Hour, "HLS_STALE_LOCK_THRESHOLD_HOURS"); ok {
+		m.config.HLS.StaleLockThreshold = val
+	}
 }

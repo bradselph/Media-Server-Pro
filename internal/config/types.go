@@ -256,6 +256,7 @@ type HLSConfig struct {
 	// Reliability and probe tuning.
 	MaxConsecutiveFailures int           `json:"max_consecutive_failures"` // retries before a job is abandoned; default 3
 	ProbeTimeout           time.Duration `json:"probe_timeout"`            // ffprobe/ffmpeg probe deadline; default 30s
+	StaleLockThreshold     time.Duration `json:"stale_lock_threshold"`     // how old a lock must be before it is considered stale; default 2h
 
 	// Migration flag: set to true once migrateHLSQualityEnabled has run so
 	// the migration is not repeated when a user deliberately disables all profiles.
