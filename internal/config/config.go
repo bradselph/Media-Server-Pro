@@ -53,10 +53,20 @@ func (m *Manager) Load() error {
 		}
 	}
 
-	// Check if config file exists
+	// Check if config file exists. If it does not, check for a .bak file left
+	// by a crash between the rename steps in save() — if found, restore it
+	// rather than silently creating a fresh default config.
 	if _, err := os.Stat(m.configPath); os.IsNotExist(err) {
-		m.log.Info("Configuration file not found, creating with current settings")
-		return m.save()
+		bakPath := m.configPath + ".bak"
+		if _, bakErr := os.Stat(bakPath); bakErr == nil {
+			m.log.Warn("config.json missing but %s exists (crash recovery) — restoring from backup", bakPath)
+			if renameErr := os.Rename(bakPath, m.configPath); renameErr != nil {
+				return fmt.Errorf("crash recovery: failed to restore %s to %s: %w", bakPath, m.configPath, renameErr)
+			}
+		} else {
+			m.log.Info("Configuration file not found, creating with current settings")
+			return m.save()
+		}
 	}
 
 	// Read config file
