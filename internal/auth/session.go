@@ -99,6 +99,10 @@ func (m *Module) getOrLoadSession(ctx context.Context, sessionID string) (*model
 		return nil, err
 	}
 	m.sessionsMu.Lock()
+	if existing, ok := m.sessions[sessionID]; ok {
+		m.sessionsMu.Unlock()
+		return existing, nil
+	}
 	m.sessions[sessionID] = session
 	m.sessionsMu.Unlock()
 	return session, nil

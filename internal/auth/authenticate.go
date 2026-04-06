@@ -167,7 +167,6 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 	return session, nil
 }
 
-
 // isLockedOut returns whether the IP is currently locked out due to failed attempts.
 // When lockout has expired, the attempt is reset so the next failure starts a fresh count.
 func (m *Module) isLockedOut(ip string) bool {

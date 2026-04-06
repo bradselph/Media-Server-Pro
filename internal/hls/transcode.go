@@ -254,16 +254,15 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 		return nil
 	}
 
-	m.activeJobs.Add(1)
-	defer m.activeJobs.Done()
-
-	// Acquire semaphore first — before the per-quality lock.
 	select {
 	case m.transSem <- struct{}{}:
 		defer func() { <-m.transSem }()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+
+	m.activeJobs.Add(1)
+	defer m.activeJobs.Done()
 
 	lockKey := job.ID + "/" + quality
 	mu, _ := m.qualityLocks.LoadOrStore(lockKey, &sync.Mutex{})
