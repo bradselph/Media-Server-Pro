@@ -329,14 +329,14 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 // mediaPath is the filesystem path used to match ViewHistory entries.
 // A rating-only ViewHistory entry is created if none exists yet, so that ratings
 // made before a first view (e.g. browsing) are not silently dropped.
+// The updated profile is persisted immediately rather than waiting for the next
+// periodic save (up to 10 minutes).
 func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	profile, ok := m.profiles[userID]
 	if !ok {
-		// No in-memory profile (server restart or eviction). Create a minimal one
-		// so the rating is captured and written on the next periodic save.
+		// No in-memory profile (server restart or eviction). Create a minimal one.
 		profile = &UserProfile{
 			UserID:          userID,
 			CategoryScores:  make(map[string]float64),
@@ -351,6 +351,9 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 			profile.ViewHistory[i].Rating = rating
 			profile.LastUpdated = time.Now()
 			m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
+			snap := m.snapshotProfile(profile)
+			m.mu.Unlock()
+			m.persistRating(userID, snap)
 			return
 		}
 	}
@@ -368,6 +371,41 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 	}
 	profile.LastUpdated = time.Now()
 	m.log.Debug("Recorded rating %.1f for %s by user %s (new entry)", rating, mediaPath, userID)
+	snap := m.snapshotProfile(profile)
+	m.mu.Unlock()
+	m.persistRating(userID, snap)
+}
+
+// snapshotProfile returns a deep copy of a UserProfile safe to use after releasing m.mu.
+func (m *Module) snapshotProfile(profile *UserProfile) *UserProfile {
+	cp := *profile
+	cp.CategoryScores = make(map[string]float64, len(profile.CategoryScores))
+	for k, v := range profile.CategoryScores {
+		cp.CategoryScores[k] = v
+	}
+	cp.TypePreferences = make(map[string]float64, len(profile.TypePreferences))
+	for k, v := range profile.TypePreferences {
+		cp.TypePreferences[k] = v
+	}
+	cp.ViewHistory = make([]ViewHistory, len(profile.ViewHistory))
+	copy(cp.ViewHistory, profile.ViewHistory)
+	return &cp
+}
+
+// persistRating immediately saves a profile snapshot to the DB in a background goroutine.
+// Errors are logged but not returned — rating persistence is best-effort relative to the
+// HTTP response, but no longer delayed by the periodic save interval.
+func (m *Module) persistRating(userID string, snap *UserProfile) {
+	if m.repo == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := m.saveOneProfile(ctx, snap); err != nil {
+			m.log.Warn("RecordRating: failed to persist rating for %s: %v", userID, err)
+		}
+	}()
 }
 
 // UpdateMediaData atomically replaces the in-memory media catalog used for suggestions.
