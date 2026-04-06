@@ -188,12 +188,13 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 
 	session := getSession(c)
 	userID := ""
+	// Always use the server-side session ID for authenticated requests.
+	// Allowing a client-supplied session_id lets any user forge events under
+	// another session, inflating or corrupting analytics data.
 	sessionID := req.SessionID
 	if session != nil {
 		userID = session.UserID
-		if sessionID == "" {
-			sessionID = session.ID
-		}
+		sessionID = session.ID
 	}
 
 	if h.analytics != nil {

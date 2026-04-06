@@ -224,8 +224,13 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	// would close it when this handler returns, racing with ProxyStream's read.
 	statusCode := http.StatusOK
 	if status := c.GetHeader("X-Stream-Status"); status != "" {
-		if parsed, err := strconv.Atoi(status); err == nil && parsed > 0 {
-			statusCode = parsed
+		if parsed, err := strconv.Atoi(status); err == nil {
+			switch parsed {
+			case http.StatusOK, http.StatusPartialContent,
+				http.StatusNotFound, http.StatusRequestedRangeNotSatisfiable,
+				http.StatusServiceUnavailable:
+				statusCode = parsed
+			}
 		}
 	}
 
