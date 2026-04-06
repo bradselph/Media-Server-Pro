@@ -136,7 +136,9 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 			m.log.Warn("Failed to persist session LastActivity for %s: %v", sessionCopy.Username, err)
 		}
 	}()
-	return session, user, nil
+	// Return the copy, not the shared pointer from the map, to prevent concurrent
+	// callers from racing on the same *Session after the lock is released.
+	return &sessionCopy, user, nil
 }
 
 // Logout invalidates a session
