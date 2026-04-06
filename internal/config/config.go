@@ -144,21 +144,32 @@ func (m *Manager) syncFeatureToggles() {
 // migrateHLSQualityEnabled sets Enabled=true for HLS quality profiles that
 // were saved before the Enabled field was added. Without this, existing configs
 // would have all profiles disabled (Go zero-value for bool = false).
+// The migration is idempotent: once QualityProfilesMigrated is true it will not
+// fire again, so a user who later deliberately disables all profiles will not
+// have them silently re-enabled on the next restart.
 func (m *Manager) migrateHLSQualityEnabled() {
-	profiles := m.config.HLS.QualityProfiles
-	if len(profiles) == 0 {
+	if m.config.HLS.QualityProfilesMigrated {
 		return
 	}
-	// If ANY profile has Enabled=true, the config is already migrated.
+	profiles := m.config.HLS.QualityProfiles
+	if len(profiles) == 0 {
+		m.config.HLS.QualityProfilesMigrated = true
+		return
+	}
+	// If ANY profile has Enabled=true the config was already written after the
+	// Enabled field existed — mark migrated and leave profiles unchanged.
 	for _, p := range profiles {
 		if p.Enabled {
+			m.config.HLS.QualityProfilesMigrated = true
 			return
 		}
 	}
-	// All profiles are Enabled=false — this is a pre-migration config. Enable all.
+	// All profiles are Enabled=false and the migration flag is unset — this is a
+	// pre-migration config. Enable all profiles and mark the migration done.
 	for i := range profiles {
 		profiles[i].Enabled = true
 	}
+	m.config.HLS.QualityProfilesMigrated = true
 	m.log.Info("Migrated %d HLS quality profiles to include enabled flag", len(profiles))
 }
 
