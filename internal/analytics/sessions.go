@@ -17,6 +17,10 @@ type sessionData struct {
 	EventCount   int
 }
 
+// maxAnalyticsSessions is the maximum number of in-memory analytics sessions.
+// Entries beyond this cap are evicted LRU-style to prevent OOM from bot/scraper traffic.
+const maxAnalyticsSessions = 10_000
+
 // updateSession updates session tracking.
 func (m *Module) updateSession(event models.AnalyticsEvent) {
 	m.sessionsMu.Lock()
@@ -24,6 +28,18 @@ func (m *Module) updateSession(event models.AnalyticsEvent) {
 
 	session, exists := m.sessions[event.SessionID]
 	if !exists {
+		// Enforce cap: evict the least-recently-active entry before adding a new one.
+		if len(m.sessions) >= maxAnalyticsSessions {
+			var oldestID string
+			var oldestTime time.Time
+			for id, s := range m.sessions {
+				if oldestID == "" || s.LastActivity.Before(oldestTime) {
+					oldestID = id
+					oldestTime = s.LastActivity
+				}
+			}
+			delete(m.sessions, oldestID)
+		}
 		session = &sessionData{
 			ID:          event.SessionID,
 			UserID:      event.UserID,

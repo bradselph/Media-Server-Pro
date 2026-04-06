@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/downloader"
+	"media-server-pro/pkg/helpers"
 )
 
 func (h *Handler) checkDownloaderEnabled(c *gin.Context) bool {
@@ -77,6 +78,11 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 		return
 	}
 
+	if err := helpers.ValidateURLForSSRF(req.URL); err != nil {
+		writeError(c, http.StatusBadRequest, "Invalid URL: "+err.Error())
+		return
+	}
+
 	result, err := h.downloader.GetClient().Detect(req.URL)
 	if err != nil {
 		writeError(c, http.StatusBadGateway, "Detection failed: "+err.Error())
@@ -124,6 +130,11 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := helpers.ValidateURLForSSRF(req.URL); err != nil {
+		writeError(c, http.StatusBadRequest, "Invalid URL: "+err.Error())
 		return
 	}
 
