@@ -33,12 +33,6 @@ var (
 		".3gp": true, ".ts": true, ".m2ts": true, ".vob": true, ".ogv": true,
 	}
 
-	// Allowed audio extensions
-	audioExtensions = map[string]bool{
-		".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".ogg": true,
-		".m4a": true, ".wma": true, ".aiff": true, ".alac": true, ".opus": true,
-	}
-
 	// Dangerous patterns in filenames (include backslash for Windows path traversal)
 	dangerousPatterns = regexp.MustCompile(`[<>:"|?*\\\x00-\x1f]`)
 )
@@ -432,7 +426,7 @@ func resolveMediaType(ext string) MediaType {
 	if videoExtensions[ext] {
 		return MediaTypeVideo
 	}
-	if audioExtensions[ext] {
+	if helpers.IsAudioExtension(ext) {
 		return MediaTypeAudio
 	}
 	return MediaTypeUnknown
@@ -590,7 +584,7 @@ func (m *Module) isAllowedExtension(ext string) bool {
 	}
 
 	// Fall back to built-in lists
-	return videoExtensions[ext] || audioExtensions[ext]
+	return videoExtensions[ext] || helpers.IsAudioExtension(ext)
 }
 
 // isContentTypeAllowed checks that the detected MIME type is compatible with the expected media type.

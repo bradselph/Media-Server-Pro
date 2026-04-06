@@ -35,15 +35,23 @@ func deleteExpiredFromMap[V any](m map[string]V, now time.Time, expiresAt func(V
 	return n
 }
 
-// cleanupExpiredLoginAttempts removes login attempts older than twice the lockout duration.
+// cleanupExpiredLoginAttempts removes stale login attempt records.
+// Evicts: (a) any entry whose FirstTry is older than 2× LockoutDuration regardless of count,
+// and (b) non-locked entries whose window has expired (LockedAt == nil and FirstTry older
+// than LockoutDuration) — prevents the map growing unboundedly under IP-rotation attacks.
 // Caller must not hold sessionsMu; attemptsMu is taken internally.
 func (m *Module) cleanupExpiredLoginAttempts() {
 	m.attemptsMu.Lock()
 	defer m.attemptsMu.Unlock()
 	cfg := m.config.Get()
-	cutoff := time.Now().Add(-cfg.Auth.LockoutDuration * 2)
+	now := time.Now()
+	hardCutoff := now.Add(-cfg.Auth.LockoutDuration * 2)
+	windowCutoff := now.Add(-cfg.Auth.LockoutDuration)
 	for ip, attempt := range m.loginAttempts {
-		if attempt.FirstTry.Before(cutoff) {
+		if attempt.FirstTry.Before(hardCutoff) {
+			delete(m.loginAttempts, ip)
+		} else if attempt.LockedAt == nil && attempt.FirstTry.Before(windowCutoff) {
+			// Window expired and never triggered a lockout — safe to evict.
 			delete(m.loginAttempts, ip)
 		}
 	}

@@ -59,7 +59,8 @@ type Module struct {
 	sessionRepo   repositories.SessionRepository
 	favoriteRepo  repositories.FavoriteRepository
 	tokenRepo     repositories.APITokenRepository
-	users         map[string]*models.User    // Kept for backward compatibility and caching
+	users         map[string]*models.User    // username → user
+	usersByID     map[string]*models.User    // id → user; secondary index to avoid O(N) GetUserByID scans
 	sessions      map[string]*models.Session // Kept for backward compatibility and caching
 	adminSessions map[string]*models.AdminSession
 	loginAttempts map[string]*loginAttempt
@@ -96,6 +97,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		log:           logger.New("auth"),
 		dbModule:      dbModule,
 		users:         make(map[string]*models.User),
+		usersByID:     make(map[string]*models.User),
 		sessions:      make(map[string]*models.Session),
 		adminSessions: make(map[string]*models.AdminSession),
 		loginAttempts: make(map[string]*loginAttempt),
@@ -146,6 +148,7 @@ func (m *Module) loadUsersIntoMap(ctx context.Context) {
 	m.usersMu.Lock()
 	for _, user := range users {
 		m.users[user.Username] = user
+		m.usersByID[user.ID] = user
 	}
 	m.usersMu.Unlock()
 }

@@ -54,6 +54,13 @@ func (m *Module) Start(ctx context.Context) error {
 	m.log.Info("Database config: Host=%s, Port=%d, Name=%s, User=%s",
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.Name, cfg.Database.Username)
 
+	// Create the database if it does not exist yet (first-run / fresh deployment).
+	if err := ensureDatabase(ctx, cfg.Database, m.log); err != nil {
+		m.log.Error("Failed to ensure database exists: %v", err)
+		m.setHealth(false, fmt.Sprintf("Failed to create database: %v", err))
+		return fmt.Errorf("database setup failed: %w", err)
+	}
+
 	dsn := buildDSN(cfg.Database)
 	m.log.Info("Connecting to: %s", safeDSNString(cfg.Database))
 
@@ -97,6 +104,49 @@ func buildDSN(db config.DatabaseConfig) string {
 		dsnCfg.TLSConfig = "false"
 	}
 	return dsnCfg.FormatDSN()
+}
+
+// ensureDatabase connects to MySQL without specifying a database and runs
+// CREATE DATABASE IF NOT EXISTS so a fresh deployment works without manual DB provisioning.
+// MySQL grants ALL PRIVILEGES ON `db`.* to a user allow that user to create that specific
+// database even when it does not yet exist, so no root credentials are required.
+// If the CREATE DATABASE command fails (e.g. insufficient privileges), a clear error is
+// returned so the operator knows to create the database manually.
+func ensureDatabase(ctx context.Context, dbCfg config.DatabaseConfig, log *logger.Logger) error {
+	noCfg := driverMysql.NewConfig()
+	noCfg.User = dbCfg.Username
+	noCfg.Passwd = dbCfg.Password
+	noCfg.Net = "tcp"
+	noCfg.Addr = fmt.Sprintf("%s:%d", dbCfg.Host, dbCfg.Port)
+	noCfg.ParseTime = true
+	noCfg.Timeout = dbCfg.Timeout
+	if dbCfg.TLSMode != "" && dbCfg.TLSMode != "false" {
+		noCfg.TLSConfig = dbCfg.TLSMode
+	} else {
+		noCfg.TLSConfig = "false"
+	}
+
+	connector, err := driverMysql.NewConnector(noCfg)
+	if err != nil {
+		return fmt.Errorf("build connector: %w", err)
+	}
+	rawDB := sql.OpenDB(connector)
+	defer rawDB.Close()
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, dbCfg.Timeout)
+	defer cancel()
+
+	query := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", dbCfg.Name)
+	if _, err := rawDB.ExecContext(ctxTimeout, query); err != nil {
+		return fmt.Errorf(
+			"cannot create database %q (Error: %w). "+
+				"Create it manually: CREATE DATABASE `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; "+
+				"then GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%'; FLUSH PRIVILEGES;",
+			dbCfg.Name, err, dbCfg.Name, dbCfg.Name, dbCfg.Username,
+		)
+	}
+	log.Info("Database %q ready (created if not exists)", dbCfg.Name)
+	return nil
 }
 
 // safeDSNString returns a log-safe DSN (password redacted).

@@ -104,10 +104,11 @@ func adminPermissions() models.UserPermissions {
 	}
 }
 
-// cacheUser stores a user in the in-memory cache (must hold no locks).
+// cacheUser stores a user in both in-memory caches (must hold no locks).
 func (m *Module) cacheUser(user *models.User) {
 	m.usersMu.Lock()
 	m.users[user.Username] = user
+	m.usersByID[user.ID] = user
 	m.usersMu.Unlock()
 }
 
@@ -175,12 +176,7 @@ func (m *Module) getUserFromCacheByUsername(username string) *models.User {
 func (m *Module) getUserFromCacheByID(id string) *models.User {
 	m.usersMu.RLock()
 	defer m.usersMu.RUnlock()
-	for _, u := range m.users {
-		if u.ID == id {
-			return u
-		}
-	}
-	return nil
+	return m.usersByID[id]
 }
 
 // UpdateUser updates a user's information.
@@ -345,37 +341,30 @@ func (m *Module) deleteSessionFromDB(ctx context.Context, sessionID string) {
 }
 
 func (m *Module) evictSessionsForUser(ctx context.Context, username, reason string) {
+	// Collect IDs under lock, then delete from DB outside the lock to avoid
+	// holding sessionsMu across synchronous DB round-trips.
 	m.sessionsMu.Lock()
-	evicted := m.evictUserFromSessionMap(ctx, m.sessions, username)
-	evicted += m.evictUserFromAdminSessionMap(ctx, m.adminSessions, username)
+	var ids []string
+	for id, s := range m.sessions {
+		if s.Username == username {
+			delete(m.sessions, id)
+			ids = append(ids, id)
+		}
+	}
+	for id, s := range m.adminSessions {
+		if s.Username == username {
+			delete(m.adminSessions, id)
+			ids = append(ids, id)
+		}
+	}
 	m.sessionsMu.Unlock()
-	if evicted > 0 {
-		m.log.Info("Evicted %d sessions for user %s (%s)", evicted, username, reason)
-	}
-}
 
-func (m *Module) evictUserFromSessionMap(ctx context.Context, sessions map[string]*models.Session, username string) int {
-	var n int
-	for id, session := range sessions {
-		if session.Username == username {
-			delete(sessions, id)
-			m.deleteSessionFromDB(ctx, id)
-			n++
-		}
+	for _, id := range ids {
+		m.deleteSessionFromDB(ctx, id)
 	}
-	return n
-}
-
-func (m *Module) evictUserFromAdminSessionMap(ctx context.Context, sessions map[string]*models.AdminSession, username string) int {
-	var n int
-	for id, session := range sessions {
-		if session.Username == username {
-			delete(sessions, id)
-			m.deleteSessionFromDB(ctx, id)
-			n++
-		}
+	if len(ids) > 0 {
+		m.log.Info("Evicted %d sessions for user %s (%s)", len(ids), username, reason)
 	}
-	return n
 }
 
 // DeleteUser removes a user and evicts all of their sessions (user + admin) from memory and DB.
@@ -412,6 +401,9 @@ func (m *Module) DeleteUser(ctx context.Context, username string) error {
 	}
 
 	m.usersMu.Lock()
+	if u, ok := m.users[username]; ok {
+		delete(m.usersByID, u.ID)
+	}
 	delete(m.users, username)
 	m.usersMu.Unlock()
 

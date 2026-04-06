@@ -38,18 +38,6 @@ const (
 	errCloseFileFmt          = "failed to close file: %v"
 )
 
-// safeContentDispositionFilename removes runes that could break the Content-Disposition
-// header (quotes, backslashes, newlines, control chars) and returns the full header value.
-func safeContentDispositionFilename(filename string) string {
-	var b strings.Builder
-	for _, r := range filename {
-		if r == '"' || r == '\\' || r == '\n' || r == '\r' || r < 0x20 {
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return fmt.Sprintf("attachment; filename=\"%s\"", b.String())
-}
 
 // Module implements media streaming
 type Module struct {
@@ -892,7 +880,7 @@ func (m *Module) validateDownloadFileSize(fileSize int64) error {
 // setDownloadHeaders sets HTTP response headers and writes the status code for a download.
 func (m *Module) setDownloadHeaders(w http.ResponseWriter, filename, contentType, rangeHeader string, fileSize, start, end int64) {
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set(headerContentDisposition, safeContentDispositionFilename(filename))
+	w.Header().Set(headerContentDisposition, helpers.SafeContentDispositionFilename(filename))
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Cache-Control", "no-cache")
 

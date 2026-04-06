@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/pkg/helpers"
 )
 
 func newTestModule(t *testing.T) *Module {
@@ -49,7 +50,7 @@ func TestModule_StartStop(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// safeContentDispositionFilename
+// helpers.SafeContentDispositionFilename (canonical implementation in pkg/helpers)
 // ---------------------------------------------------------------------------
 
 func TestSafeContentDispositionFilename(t *testing.T) {
@@ -64,9 +65,9 @@ func TestSafeContentDispositionFilename(t *testing.T) {
 		{"control\x01char.mp4", `attachment; filename="controlchar.mp4"`},
 	}
 	for _, tc := range tests {
-		got := safeContentDispositionFilename(tc.input)
+		got := helpers.SafeContentDispositionFilename(tc.input)
 		if got != tc.want {
-			t.Errorf("safeContentDispositionFilename(%q) = %q, want %q", tc.input, got, tc.want)
+			t.Errorf("SafeContentDispositionFilename(%q) = %q, want %q", tc.input, got, tc.want)
 		}
 	}
 }

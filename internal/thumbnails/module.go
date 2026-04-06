@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	mysql "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 	"media-server-pro/pkg/storage"
@@ -30,8 +32,9 @@ func (m *Module) Name() string {
 	return "thumbnails"
 }
 
-// NewModule creates a new thumbnail module. blurHashUpdater may be nil to skip BlurHash storage.
-func NewModule(cfg *config.Manager, blurHashUpdater BlurHashUpdater) *Module {
+// NewModule creates a new thumbnail module. dbModule is used in Start() to wire
+// BlurHash storage after the database has connected.
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	log := logger.New("thumbnails")
 	currentConfig := cfg.Get()
 
@@ -42,14 +45,14 @@ func NewModule(cfg *config.Manager, blurHashUpdater BlurHashUpdater) *Module {
 	}
 
 	m := &Module{
-		log:             log,
-		config:          cfg,
-		thumbnailDir:    currentConfig.Directories.Thumbnails,
-		jobHeap:         jobHeap{},
-		jobCap:          queueSize,
-		healthy:         false,
-		healthMsg:       "", // Empty message to suppress warning before Start() is called
-		blurHashUpdater: blurHashUpdater,
+		log:          log,
+		config:       cfg,
+		thumbnailDir: currentConfig.Directories.Thumbnails,
+		dbModule:     dbModule,
+		jobHeap:      jobHeap{},
+		jobCap:       queueSize,
+		healthy:      false,
+		healthMsg:    "", // Empty message to suppress warning before Start() is called
 	}
 	m.jobCond = sync.NewCond(&m.jobMu)
 	return m
@@ -68,6 +71,11 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Scan existing thumbnails to initialize stats from disk
 	m.scanExistingThumbnails()
+
+	// Wire BlurHash storage now that the database module has started and GORM is valid.
+	if m.dbModule != nil && m.dbModule.IsConnected() {
+		m.blurHashUpdater = mysql.NewMediaMetadataRepository(m.dbModule.GORM())
+	}
 
 	// Check for ffmpeg
 	ffmpegPath, err := helpers.FindBinary("ffmpeg")

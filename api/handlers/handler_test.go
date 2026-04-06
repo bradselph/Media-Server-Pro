@@ -53,7 +53,7 @@ func TestWriteError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// safeContentDisposition / unsafeContentDispositionChar
+// safeContentDisposition
 // ---------------------------------------------------------------------------
 
 func TestSafeContentDisposition(t *testing.T) {
@@ -75,26 +75,6 @@ func TestSafeContentDisposition(t *testing.T) {
 	}
 }
 
-func TestUnsafeContentDispositionChar(t *testing.T) {
-	if !unsafeContentDispositionChar('"') {
-		t.Error("double quote should be unsafe")
-	}
-	if !unsafeContentDispositionChar('\\') {
-		t.Error("backslash should be unsafe")
-	}
-	if !unsafeContentDispositionChar('\n') {
-		t.Error("newline should be unsafe")
-	}
-	if !unsafeContentDispositionChar('\x01') {
-		t.Error("control char should be unsafe")
-	}
-	if unsafeContentDispositionChar('a') {
-		t.Error("'a' should be safe")
-	}
-	if unsafeContentDispositionChar(' ') {
-		t.Error("space should be safe")
-	}
-}
 
 // ---------------------------------------------------------------------------
 // getSession / getUser

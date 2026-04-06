@@ -42,13 +42,6 @@ var videoExtensions = map[string]bool{
 	".3gp": true, ".ts": true, ".m2ts": true, ".vob": true, ".ogv": true,
 }
 
-// Audio file extensions
-var audioExtensions = map[string]bool{
-	".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".ogg": true,
-	".m4a": true, ".wma": true, ".aiff": true, ".alac": true, ".opus": true,
-	".ape": true, ".mka": true,
-}
-
 // Partial/incomplete download extensions to skip during scanning
 var partialDownloadExtensions = map[string]bool{
 	".filepart": true, ".part": true, ".crdownload": true,
@@ -639,7 +632,7 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 
 		if videoExtensions[ext] {
 			mediaType = models.MediaTypeVideo
-		} else if audioExtensions[ext] {
+		} else if helpers.IsAudioExtension(ext) {
 			mediaType = models.MediaTypeAudio
 		} else if defaultType != models.MediaTypeUnknown {
 			mediaType = defaultType
@@ -680,7 +673,7 @@ func (m *Module) scanRemoteStore(ctx context.Context, store storage.Backend, _ s
 		var mediaType models.MediaType
 		if videoExtensions[ext] {
 			mediaType = models.MediaTypeVideo
-		} else if audioExtensions[ext] {
+		} else if helpers.IsAudioExtension(ext) {
 			mediaType = models.MediaTypeAudio
 		} else if defaultType != models.MediaTypeUnknown {
 			mediaType = defaultType

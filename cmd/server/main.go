@@ -28,7 +28,6 @@ import (
 	"media-server-pro/internal/playlist"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
-	"media-server-pro/internal/repositories/mysql"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
 	"media-server-pro/internal/server"
@@ -231,9 +230,8 @@ func main() {
 		log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
 	}
 
-	// Thumbnails (critical — optional BlurHash storage via metadata repo, uses storage backend)
-	metadataRepo := mysql.NewMediaMetadataRepository(dbModule.GORM())
-	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
+	// Thumbnails (critical — BlurHash repo is wired inside Start() after DB connects)
+	thumbnailsModule := thumbnails.NewModule(cfg, dbModule)
 	thumbnailsModule.SetMediaIDProvider(mediaModule)
 	thumbnailsModule.SetStore(thumbnailStore)
 	thumbnailsModule.SetMediaInputResolver(mediaModule)

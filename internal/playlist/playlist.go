@@ -196,66 +196,80 @@ func (m *Module) GetPlaylistForUser(id PlaylistID, userID UserID) (*models.Playl
 }
 
 // UpdatePlaylist updates playlist metadata
-func (m *Module) UpdatePlaylist(ctx context.Context, id PlaylistID, userID UserID, updates map[string]interface{}) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+func (m *Module) UpdatePlaylist(ctx context.Context, id PlaylistID, userID UserID, updates map[string]any) error {
+	m.mu.RLock()
 	playlist, exists := m.playlists[id]
 	if !exists {
+		m.mu.RUnlock()
 		return ErrPlaylistNotFound
 	}
-
 	if playlist.UserID != string(userID) {
+		m.mu.RUnlock()
 		return ErrAccessDenied
 	}
+	// Build an updated copy under RLock so the DB write happens outside any lock.
+	updated := *playlist
+	m.mu.RUnlock()
 
 	if name, ok := updates["name"].(string); ok {
-		playlist.Name = name
+		updated.Name = name
 	}
 	if desc, ok := updates["description"].(string); ok {
-		playlist.Description = desc
+		updated.Description = desc
 	}
 	if isPublic, ok := updates["is_public"].(bool); ok {
-		playlist.IsPublic = isPublic
+		updated.IsPublic = isPublic
 	}
 	if cover, ok := updates["cover_image"].(string); ok {
-		playlist.CoverImage = cover
+		updated.CoverImage = cover
 	}
+	updated.ModifiedAt = time.Now()
 
-	playlist.ModifiedAt = time.Now()
-
-	if err := m.playlistRepo.Update(ctx, playlist); err != nil {
+	if err := m.playlistRepo.Update(ctx, &updated); err != nil {
 		m.log.Error("Failed to update playlist in database: %v", err)
 		return err
 	}
 
-	m.log.Info("Updated playlist: %s", string(id))
+	// Apply only the metadata fields back; Items slice is untouched to avoid clobbering
+	// concurrent AddItem/RemoveItem mutations that completed during the DB write.
+	m.mu.Lock()
+	if p, ok := m.playlists[id]; ok && p.UserID == string(userID) {
+		p.Name = updated.Name
+		p.Description = updated.Description
+		p.IsPublic = updated.IsPublic
+		p.CoverImage = updated.CoverImage
+		p.ModifiedAt = updated.ModifiedAt
+	}
+	m.mu.Unlock()
 
+	m.log.Info("Updated playlist: %s", string(id))
 	return nil
 }
 
 // DeletePlaylist removes a playlist
 func (m *Module) DeletePlaylist(ctx context.Context, id PlaylistID, userID UserID) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	m.mu.RLock()
 	playlist, exists := m.playlists[id]
 	if !exists {
+		m.mu.RUnlock()
 		return ErrPlaylistNotFound
 	}
-
 	if playlist.UserID != string(userID) {
+		m.mu.RUnlock()
 		return ErrAccessDenied
 	}
+	m.mu.RUnlock()
 
 	if err := m.playlistRepo.Delete(ctx, string(id)); err != nil {
 		m.log.Error("Failed to delete playlist from database: %v", err)
 		return err
 	}
 
+	m.mu.Lock()
 	delete(m.playlists, id)
-	m.log.Info("Deleted playlist: %s", string(id))
+	m.mu.Unlock()
 
+	m.log.Info("Deleted playlist: %s", string(id))
 	return nil
 }
 
@@ -302,24 +316,24 @@ type AddItemInput struct {
 
 // AddItem adds an item to a playlist
 func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	m.mu.RLock()
 	playlist, exists := m.playlists[input.PlaylistID]
 	if !exists {
+		m.mu.RUnlock()
 		return ErrPlaylistNotFound
 	}
-
 	if playlist.UserID != string(input.UserID) {
+		m.mu.RUnlock()
 		return ErrAccessDenied
 	}
-
-	// Check if already in playlist (by path or by media ID to avoid symlink/move duplicates)
+	// Check for duplicate under RLock.
 	for _, item := range playlist.Items {
 		if item.MediaPath == input.MediaPath || (input.MediaID != "" && item.MediaID == input.MediaID) {
+			m.mu.RUnlock()
 			return nil // Already exists
 		}
 	}
+	m.mu.RUnlock()
 
 	item := models.PlaylistItem{
 		ID:         uuid.New().String(),
@@ -327,7 +341,6 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 		MediaID:    input.MediaID,
 		MediaPath:  input.MediaPath,
 		Title:      input.Title,
-		Position:   len(playlist.Items),
 		AddedAt:    time.Now(),
 	}
 
@@ -336,35 +349,23 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 		return fmt.Errorf("failed to add item to playlist: %w", err)
 	}
 
-	playlist.Items = append(playlist.Items, item)
-	playlist.ModifiedAt = time.Now()
+	m.mu.Lock()
+	if p, ok := m.playlists[input.PlaylistID]; ok && p.UserID == string(input.UserID) {
+		// Re-check under write lock: a concurrent AddItem may have added the same item
+		// between our RLock check and now. Prefer the earlier DB row; discard ours.
+		for _, existing := range p.Items {
+			if existing.MediaPath == input.MediaPath || (input.MediaID != "" && existing.MediaID == input.MediaID) {
+				m.mu.Unlock()
+				return nil
+			}
+		}
+		item.Position = len(p.Items)
+		p.Items = append(p.Items, item)
+		p.ModifiedAt = time.Now()
+	}
+	m.mu.Unlock()
 
 	m.log.Debug("Added item to playlist %s: %s", string(input.PlaylistID), input.MediaPath)
-
-	return nil
-}
-
-// RemoveItem removes an item from a playlist. The key is matched against the
-// item's MediaPath, MediaID, and ID fields so callers can pass any of these
-// identifiers (the frontend typically sends the media UUID via ?media_id=...).
-func (m *Module) RemoveItem(ctx context.Context, playlistID PlaylistID, userID UserID, key string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.removeItemLocked(ctx, playlistID, userID, key)
-}
-
-// removeItemLocked performs the removal; caller must hold m.mu.
-func (m *Module) removeItemLocked(ctx context.Context, playlistID PlaylistID, userID UserID, key string) error {
-	playlist, newItems, err := m.resolvePlaylistAndFilterItem(ctx, playlistID, userID, key)
-	if err != nil {
-		return err
-	}
-	for i := range newItems {
-		newItems[i].Position = i
-	}
-	playlist.Items = newItems
-	playlist.ModifiedAt = time.Now()
-	m.log.Debug("Removed item from playlist %s: %s", string(playlistID), key)
 	return nil
 }
 
@@ -374,82 +375,102 @@ func itemMatchesKey(item *models.PlaylistItem, key string) bool {
 	return item.MediaPath == key || item.MediaID == key || item.ID == key
 }
 
-// resolvePlaylistAndFilterItem does playlist lookup and filters out the item
-// matching key (by MediaPath, MediaID, or item ID); caller must hold m.mu.
-func (m *Module) resolvePlaylistAndFilterItem(ctx context.Context, playlistID PlaylistID, userID UserID, key string) (*models.Playlist, []models.PlaylistItem, error) {
+// RemoveItem removes an item from a playlist. The key is matched against the
+// item's MediaPath, MediaID, and ID fields so callers can pass any of these
+// identifiers (the frontend typically sends the media UUID via ?media_id=...).
+func (m *Module) RemoveItem(ctx context.Context, playlistID PlaylistID, userID UserID, key string) error {
+	// Find the matching item's ID under read lock.
+	m.mu.RLock()
 	playlist, err := m.getPlaylistForUserLocked(playlistID, userID)
 	if err != nil {
-		return nil, nil, err
+		m.mu.RUnlock()
+		return err
 	}
-	var newItems []models.PlaylistItem
-	found := false
+	var itemID string
 	for _, item := range playlist.Items {
-		if !itemMatchesKey(&item, key) {
-			newItems = append(newItems, item)
-		} else {
-			found = true
-			if removeErr := m.playlistRepo.RemoveItem(ctx, item.ID); removeErr != nil {
-				m.log.Error("Failed to remove item from playlist in database: %v", removeErr)
-				return nil, nil, fmt.Errorf("failed to remove item from playlist: %w", removeErr)
-			}
+		if itemMatchesKey(&item, key) {
+			itemID = item.ID
+			break
 		}
 	}
-	if !found {
-		return nil, nil, ErrItemNotFound
+	m.mu.RUnlock()
+
+	if itemID == "" {
+		return ErrItemNotFound
 	}
-	return playlist, newItems, nil
+
+	if err := m.playlistRepo.RemoveItem(ctx, itemID); err != nil {
+		m.log.Error("Failed to remove item from playlist in database: %v", err)
+		return fmt.Errorf("failed to remove item from playlist: %w", err)
+	}
+
+	m.mu.Lock()
+	if p, ok := m.playlists[playlistID]; ok && p.UserID == string(userID) {
+		newItems := p.Items[:0]
+		for _, item := range p.Items {
+			if item.ID != itemID {
+				newItems = append(newItems, item)
+			}
+		}
+		for i := range newItems {
+			newItems[i].Position = i
+		}
+		p.Items = newItems
+		p.ModifiedAt = time.Now()
+	}
+	m.mu.Unlock()
+
+	m.log.Debug("Removed item from playlist %s: %s", string(playlistID), key)
+	return nil
 }
 
 // ReorderItems reorders playlist items
 func (m *Module) ReorderItems(ctx context.Context, playlistID PlaylistID, userID UserID, positions []int) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.reorderItemsLocked(ctx, playlistID, userID, positions)
-}
-
-// reorderItemsLocked performs the reorder; caller must hold m.mu.
-// DB is updated first; in-memory is only mutated after all DB writes succeed
-// to prevent divergence on partial DB failure.
-func (m *Module) reorderItemsLocked(ctx context.Context, playlistID PlaylistID, userID UserID, positions []int) error {
-	playlist, newItems, err := m.getPlaylistAndBuildReorderLocked(playlistID, userID, positions)
+	m.mu.RLock()
+	newItems, err := m.buildReorderedItems(playlistID, userID, positions)
+	m.mu.RUnlock()
 	if err != nil {
 		return err
 	}
-	// Persist new positions to DB before touching in-memory state.
+
 	for i := range newItems {
 		if dbErr := m.playlistRepo.UpdateItem(ctx, &newItems[i]); dbErr != nil {
 			return fmt.Errorf("failed to update item position in database: %w", dbErr)
 		}
 	}
-	// All DB writes succeeded — now safe to update in-memory.
-	playlist.Items = newItems
-	playlist.ModifiedAt = time.Now()
+
+	m.mu.Lock()
+	if p, ok := m.playlists[playlistID]; ok && p.UserID == string(userID) && len(p.Items) == len(newItems) {
+		p.Items = newItems
+		p.ModifiedAt = time.Now()
+	}
+	m.mu.Unlock()
 	return nil
 }
 
-// getPlaylistAndBuildReorderLocked resolves playlist and builds reordered items slice; caller must hold m.mu.
-func (m *Module) getPlaylistAndBuildReorderLocked(playlistID PlaylistID, userID UserID, positions []int) (*models.Playlist, []models.PlaylistItem, error) {
+// buildReorderedItems resolves the playlist and builds a reordered items slice; caller must hold m.mu for reading.
+func (m *Module) buildReorderedItems(playlistID PlaylistID, userID UserID, positions []int) ([]models.PlaylistItem, error) {
 	playlist, err := m.getPlaylistForUserLocked(playlistID, userID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if len(positions) != len(playlist.Items) {
-		return nil, nil, fmt.Errorf("position count mismatch")
+		return nil, fmt.Errorf("position count mismatch")
 	}
 	seen := make(map[int]bool, len(positions))
 	newItems := make([]models.PlaylistItem, len(playlist.Items))
 	for i, pos := range positions {
 		if pos < 0 || pos >= len(playlist.Items) {
-			return nil, nil, fmt.Errorf("invalid position: %d", pos)
+			return nil, fmt.Errorf("invalid position: %d", pos)
 		}
 		if seen[pos] {
-			return nil, nil, fmt.Errorf("duplicate position: %d", pos)
+			return nil, fmt.Errorf("duplicate position: %d", pos)
 		}
 		seen[pos] = true
 		newItems[i] = playlist.Items[pos]
 		newItems[i].Position = i
 	}
-	return playlist, newItems, nil
+	return newItems, nil
 }
 
 // GetPlaylistItems returns items in a playlist
@@ -463,62 +484,72 @@ func (m *Module) GetPlaylistItems(playlistID PlaylistID, userID UserID) ([]model
 
 // ClearPlaylist removes all items from a playlist
 func (m *Module) ClearPlaylist(ctx context.Context, playlistID PlaylistID, userID UserID) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	m.mu.RLock()
 	playlist, exists := m.playlists[playlistID]
 	if !exists {
+		m.mu.RUnlock()
 		return ErrPlaylistNotFound
 	}
-
 	if playlist.UserID != string(userID) {
+		m.mu.RUnlock()
 		return ErrAccessDenied
 	}
+	// Snapshot item IDs to delete; DB writes happen outside the lock.
+	itemIDs := make([]string, len(playlist.Items))
+	for i, item := range playlist.Items {
+		itemIDs[i] = item.ID
+	}
+	m.mu.RUnlock()
 
-	for _, item := range playlist.Items {
-		if err := m.playlistRepo.RemoveItem(ctx, item.ID); err != nil {
+	for _, id := range itemIDs {
+		if err := m.playlistRepo.RemoveItem(ctx, id); err != nil {
 			m.log.Error("Failed to remove item from database during clear: %v", err)
 			return fmt.Errorf("failed to clear playlist: %w", err)
 		}
 	}
 
-	playlist.Items = make([]models.PlaylistItem, 0)
-	playlist.ModifiedAt = time.Now()
-
+	// Remove only the items we deleted; preserve any items added concurrently.
+	deleted := make(map[string]bool, len(itemIDs))
+	for _, id := range itemIDs {
+		deleted[id] = true
+	}
+	m.mu.Lock()
+	if p, ok := m.playlists[playlistID]; ok && p.UserID == string(userID) {
+		remaining := p.Items[:0]
+		for _, item := range p.Items {
+			if !deleted[item.ID] {
+				remaining = append(remaining, item)
+			}
+		}
+		p.Items = remaining
+		p.ModifiedAt = time.Now()
+	}
+	m.mu.Unlock()
 	return nil
 }
 
-// CopyPlaylist creates a copy of a playlist. The entire read-source and write-copy
-// operation is performed under a single lock to avoid race conditions.
+// CopyPlaylist creates a copy of a playlist.
 func (m *Module) CopyPlaylist(ctx context.Context, sourceID PlaylistID, userID UserID, newName string) (*models.Playlist, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Look up source playlist (inlined to avoid nested lock acquisition)
+	// Snapshot source under read lock.
+	m.mu.RLock()
 	source, exists := m.playlists[sourceID]
 	if !exists {
+		m.mu.RUnlock()
 		return nil, ErrPlaylistNotFound
 	}
 	if source.UserID != string(userID) && !source.IsPublic {
+		m.mu.RUnlock()
 		return nil, ErrAccessDenied
 	}
-
-	// Snapshot source items and build the copy under the same lock
-	items := make([]models.PlaylistItem, len(source.Items))
-	for i, item := range source.Items {
-		items[i] = models.PlaylistItem{
-			MediaID:   item.MediaID,
-			MediaPath: item.MediaPath,
-			Title:     item.Title,
-			Position:  i,
-			AddedAt:   time.Now(),
-		}
-	}
+	srcDescription := source.Description
+	srcItems := make([]models.PlaylistItem, len(source.Items))
+	copy(srcItems, source.Items)
+	m.mu.RUnlock()
 
 	newPlaylist := &models.Playlist{
 		ID:          uuid.New().String(),
 		Name:        newName,
-		Description: source.Description,
+		Description: srcDescription,
 		UserID:      string(userID),
 		Items:       make([]models.PlaylistItem, 0),
 		CreatedAt:   time.Now(),
@@ -526,12 +557,18 @@ func (m *Module) CopyPlaylist(ctx context.Context, sourceID PlaylistID, userID U
 		IsPublic:    false,
 	}
 
-	// Prepare items with new IDs; create playlist + items in one transaction to avoid orphans.
-	newItems := make([]models.PlaylistItem, 0, len(items))
-	for _, item := range items {
-		item.PlaylistID = newPlaylist.ID
-		item.ID = uuid.New().String()
-		newItems = append(newItems, item)
+	// Assign new IDs outside the lock; create playlist + items in one transaction to avoid orphans.
+	newItems := make([]models.PlaylistItem, len(srcItems))
+	for i, item := range srcItems {
+		newItems[i] = models.PlaylistItem{
+			ID:        uuid.New().String(),
+			PlaylistID: newPlaylist.ID,
+			MediaID:   item.MediaID,
+			MediaPath: item.MediaPath,
+			Title:     item.Title,
+			Position:  i,
+			AddedAt:   time.Now(),
+		}
 	}
 	if err := m.playlistRepo.CreateWithItems(ctx, newPlaylist, newItems); err != nil {
 		m.log.Error("Failed to create copied playlist in database: %v", err)
@@ -539,10 +576,11 @@ func (m *Module) CopyPlaylist(ctx context.Context, sourceID PlaylistID, userID U
 	}
 	newPlaylist.Items = newItems
 
+	m.mu.Lock()
 	m.playlists[PlaylistID(newPlaylist.ID)] = newPlaylist
+	m.mu.Unlock()
 
 	m.log.Info("Copied playlist %s to %s (user: %s)", string(sourceID), newPlaylist.ID, string(userID))
-
 	return copyPlaylist(newPlaylist), nil
 }
 
@@ -587,10 +625,10 @@ func (m *Module) ListAllPlaylists() []*models.Playlist {
 
 // AdminDeletePlaylist deletes a playlist without checking ownership (admin only)
 func (m *Module) AdminDeletePlaylist(ctx context.Context, id PlaylistID) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if _, exists := m.playlists[id]; !exists {
+	m.mu.RLock()
+	_, exists := m.playlists[id]
+	m.mu.RUnlock()
+	if !exists {
 		return ErrPlaylistNotFound
 	}
 
@@ -599,9 +637,10 @@ func (m *Module) AdminDeletePlaylist(ctx context.Context, id PlaylistID) error {
 		return fmt.Errorf("failed to delete playlist from database: %w", err)
 	}
 
+	m.mu.Lock()
 	delete(m.playlists, id)
+	m.mu.Unlock()
 	m.log.Info("Admin deleted playlist: %s", string(id))
-
 	return nil
 }
 
@@ -646,12 +685,12 @@ func (m *Module) ExportPlaylist(playlistID PlaylistID, userID UserID, format str
 	if format == "m3u" || format == "m3u8" {
 		var b strings.Builder
 		b.WriteString("#EXTM3U\n")
-		b.WriteString(fmt.Sprintf("#PLAYLIST:%s\n", snapshot.Name))
+		fmt.Fprintf(&b, "#PLAYLIST:%s\n", snapshot.Name)
 		for _, item := range snapshot.Items {
-			b.WriteString(fmt.Sprintf("#EXTINF:-1,%s\n", item.Title))
+			fmt.Fprintf(&b, "#EXTINF:-1,%s\n", item.Title)
 			// Use the API stream path instead of the filesystem path to avoid
 			// leaking server-side directory structure.
-			b.WriteString(fmt.Sprintf("/api/stream/%s\n", item.MediaID))
+			fmt.Fprintf(&b, "/api/stream/%s\n", item.MediaID)
 		}
 		export.M3UContent = b.String()
 	}
