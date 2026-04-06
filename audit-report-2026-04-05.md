@@ -361,7 +361,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `268bbd70` 2026-04-06 — L-13 [FRAGILE] system.go:362 — ClearMediaCache runs synchronous full scan in HTTP handler
 > **Resolved**: `ClearMediaCache` now returns 202 Accepted immediately and runs `h.media.Scan()` in a background goroutine, preventing HTTP handler from blocking for the entire scan duration.
 > **Verified**: pending deploy
-### L-14 [FRAGILE] playlists.go:276 — AddPlaylistItem can't add receiver/extractor items
+### ✅ `3c484921` 2026-04-06 — L-14 [FRAGILE] playlists.go:276 — AddPlaylistItem can't add receiver/extractor items
+> **Resolved**: `AddPlaylistItem` in `api/handlers/playlists.go` now calls `resolveMediaPathOrReceiver` (which falls back to receiver and extractor modules) instead of `resolveMediaByID` (local only). Receiver items get synthetic path `"receiver:<id>"` and extractor items `"extractor:<id>"`, matching what watch-history and other handlers store.
+> **Verified**: pending deploy
 ### ✅ `c7de1592` 2026-04-06 — L-15 [GAP] routes.go:87 — adminAuth returns 401 instead of 403 for wrong-role users
 > **Resolved**: `adminAuth` in `api/routes/routes.go:89` now returns 403 Forbidden for authenticated users with non-admin role; 401 is still returned when no session exists.
 > **Verified**: pending deploy
