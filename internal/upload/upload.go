@@ -504,37 +504,6 @@ func (m *Module) copyAndRenameUpload(src io.Reader, destFile *os.File, paths cop
 	return written, nil
 }
 
-// HandleUpload processes a multipart file upload (legacy single-file path).
-// Prefer using ProcessFileHeader for multi-file support.
-// w is used only for MaxBytesReader; the caller must write the response.
-func (m *Module) HandleUpload(w http.ResponseWriter, r *http.Request, userID string) (*Result, error) {
-	cfg := m.config.Get()
-
-	if !cfg.Uploads.Enabled {
-		return nil, fmt.Errorf("uploads are disabled")
-	}
-
-	if cfg.Uploads.MaxFileSize > 0 {
-		r.Body = http.MaxBytesReader(w, r.Body, cfg.Uploads.MaxFileSize)
-	}
-
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		return nil, fmt.Errorf("failed to parse form: %w", err)
-	}
-	defer func() {
-		if err := r.MultipartForm.RemoveAll(); err != nil {
-			m.log.Warn("Failed to clean up multipart form: %v", err)
-		}
-	}()
-
-	_, header, err := r.FormFile("file")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get file: %w", err)
-	}
-
-	return m.ProcessFileHeader(header, UploadScope{UserID: userID, Category: r.FormValue("category")})
-}
-
 // containsPathTraversal returns true if s contains path traversal or separator characters.
 func containsPathTraversal(s string) bool {
 	for _, substr := range []string{"..", "/", "\\"} {

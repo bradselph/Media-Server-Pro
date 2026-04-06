@@ -464,10 +464,6 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 	if err := m.createTables(ctx); err != nil {
 		return err
 	}
-	// Remove legacy FK on sessions.user_id if it exists (older DBs may block admin sessions).
-	if err := m.dropConstraintIfExists(ctx, dropConstraintSpec{table: "sessions", constraint: "sessions_ibfk_1", constraintType: "FOREIGN KEY"}); err != nil {
-		return fmt.Errorf("failed to remove sessions FK: %w", err)
-	}
 	if err := m.ensureSchemaColumns(ctx); err != nil {
 		return err
 	}
@@ -706,39 +702,6 @@ func (m *Module) ensureForeignKey(ctx context.Context, table, constraint, cleanu
 		return fmt.Errorf("add FK %s.%s: %w", table, constraint, err)
 	}
 	return nil
-}
-
-// dropConstraintSpec holds parameters for dropConstraintIfExists.
-type dropConstraintSpec struct {
-	table          string
-	constraint     string
-	constraintType string
-}
-
-// dropConstraintIfExists drops a named constraint from a table if it exists.
-func (m *Module) dropConstraintIfExists(ctx context.Context, spec dropConstraintSpec) error {
-	if !validIdent.MatchString(spec.table) || !validIdent.MatchString(spec.constraint) {
-		return fmt.Errorf("invalid table or constraint name: %q.%q", spec.table, spec.constraint)
-	}
-	var count int
-	err := m.sqlDB.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM information_schema.TABLE_CONSTRAINTS
-		WHERE TABLE_SCHEMA    = DATABASE()
-		  AND TABLE_NAME      = ?
-		  AND CONSTRAINT_NAME = ?
-		  AND CONSTRAINT_TYPE = ?
-	`, spec.table, spec.constraint, spec.constraintType).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check constraint %s.%s: %w", spec.table, spec.constraint, err)
-	}
-	if count == 0 {
-		return nil
-	}
-	m.log.Info("Dropping legacy constraint %s from %s", spec.constraint, spec.table)
-	_, err = m.sqlDB.ExecContext(ctx,
-		fmt.Sprintf("ALTER TABLE `%s` DROP FOREIGN KEY `%s`", spec.table, spec.constraint))
-	return err
 }
 
 // migratePlaylistItemsPK migrates playlist_items from composite PK (playlist_id, media_path)
