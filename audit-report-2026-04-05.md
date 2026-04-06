@@ -256,13 +256,17 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `c2bee4ed` 2026-04-06 — M-19 [SECURITY] hls/serve.go:67 — CORS origin falls back to "*" for non-matching origins
 > **Resolved**: `hlsCORSOrigin` in `internal/hls/serve.go` now returns `""` (omit header) instead of `"*"` when an allow-list is configured and the request origin doesn't match.
 > **Verified**: pending deploy
-### M-20 [FRAGILE] hls/locks.go:60 — Stale lock threshold hardcoded at 2 hours; kills long 4K encodes
+### ✅ `082d27fd` 2026-04-06 — M-20 [FRAGILE] hls/locks.go:60 — Stale lock threshold hardcoded at 2 hours; kills long 4K encodes
+> **Resolved**: Added `StaleLockThreshold time.Duration` to `HLSConfig` (default 2h); configurable via `HLS_STALE_LOCK_THRESHOLD_HOURS` env var. `checkLock` uses the config value instead of a hardcoded constant.
+> **Verified**: pending deploy
 ### M-21 [FRAGILE] receiver/wsconn.go:302 — Replacing WS connection doesn't drain pending streams
 ### M-22 [RACE] receiver/wsconn.go:195 — Ping goroutine orphaned on reconnect for up to 25s
 ### M-23 [GAP] receiver/receiver.go:232 — Legacy composite DB IDs never persisted; stale rows accumulate
 ### M-24 [GAP] analytics/stats.go:350 — rebuildStatsFromEvent doesn't reconstruct UniqueUsers/AvgWatchDuration
 ### M-25 [GAP] analytics/stats.go:68 — updateStats uses wall clock not event.Timestamp
-### M-26 [GAP] analytics/stats.go:350 — reconstructStats capped at 2000 events; may undercount
+### ✅ `f5461cc9` 2026-04-06 — M-26 [GAP] analytics/stats.go:350 — reconstructStats capped at 2000 events; may undercount
+> **Resolved**: Added `MaxReconstructEvents int` to `AnalyticsConfig` (default 2000). Configurable via `ANALYTICS_MAX_RECONSTRUCT_EVENTS`. The analytics module now reads the limit from config instead of a hardcoded value.
+> **Verified**: pending deploy
 ### ✅ `d5ea9b20` 2026-04-06 — M-27 [SECURITY] analytics/export.go:44 — CSV export includes raw IP addresses (GDPR risk)
 > **Resolved**: `ExportCSV` now calls `maskIP()` to pseudonymize addresses (IPv4 last octet zeroed, IPv6 /64 truncated); column renamed to `IPMasked`.
 > **Verified**: pending deploy
@@ -276,7 +280,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `already addressed` 2026-04-06 — M-31 [GAP] updater/updater.go:746 — verifyBinaryChecksum silently skips when no checksum exists
 > **Resolved**: `fetchChecksumAssetURL` already logs `m.log.Warn("No SHA256SUMS asset found in release...")` for all skip paths. No silent skip; issue was pre-existing in code.
 > **Verified**: pending deploy
-### M-32 [FRAGILE] updater/updater.go:1221 — rev-parse errors silently ignored in SourceUpdate
+### ✅ `ff1f5b20` 2026-04-06 — M-32 [FRAGILE] updater/updater.go:1221 — rev-parse errors silently ignored in SourceUpdate
+> **Resolved**: Both `rev-parse` calls now capture and log errors. The up-to-date check is only skipped when both succeed; on failure the build proceeds with a warning rather than silently using empty strings.
+> **Verified**: pending deploy
 ### M-33 [FRAGILE] remote_cache_repository.go:48 — String columns for timestamps vs GORM time.Time
 ### ✅ `cc1fd996` 2026-04-06 — M-34 [GAP] user_repository_gorm.go:152 — Update silently does nothing if perms/prefs rows missing
 > **Resolved**: Replaced `Updates(map)` with `clause.OnConflict` upsert for `user_permissions` and `user_preferences`. Missing rows are now inserted rather than silently skipped.
@@ -339,7 +345,9 @@ FIX: Add env var mappings for each missing field.
 > **Resolved**: `tryRecordView` now schedules `time.AfterFunc(cooldown*2, ...)` to delete each entry after 2× the cooldown window, bounding the map's lifetime growth.
 > **Verified**: pending deploy
 ### L-21 [GAP] Multiple files — filepath.Walk follows symlinks in scanner, categorizer, autodiscovery
-### L-22 [GAP] Multiple files — context.Background() used for DB calls in module Stop paths
+### ✅ `a594d8ee` 2026-04-06 — L-22 [GAP] Multiple files — context.Background() used for DB calls in module Stop paths
+> **Resolved**: `autodiscovery.Stop` and `categorizer.Stop` now pass a 30s-bounded context to their DB flush routines. `saveSuggestions` and `saveItems` updated to accept a context parameter.
+> **Verified**: pending deploy
 ### ✅ `2552434a` 2026-04-06 — L-23 [FRAGILE] downloader/websocket.go:67 — DefaultDialer.Dial has no handshake timeout
 > **Resolved**: Replaced `websocket.DefaultDialer.Dial` with a `websocket.Dialer{HandshakeTimeout: 10 * time.Second}` instance.
 > **Verified**: pending deploy
