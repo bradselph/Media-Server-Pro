@@ -187,37 +187,39 @@ func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
 		return
 	}
 
-	newStatus := models.DeletionRequestDenied
-	if req.Action == "approve" {
-		newStatus = models.DeletionRequestApproved
-	}
-
 	now := time.Now().UTC()
-	_, err := db.ExecContext(ctx,
-		`UPDATE data_deletion_requests SET status=?, reviewed_at=?, reviewed_by=?, admin_notes=? WHERE id=?`,
-		string(newStatus), now, adminSession.Username, req.AdminNotes, requestID,
-	)
-	if err != nil {
-		h.log.Error("Failed to update deletion request %s: %v", requestID, err)
-		writeError(c, http.StatusInternalServerError, errDeletionRequestsUnavailable)
-		return
-	}
 
-	// If approved, delete the actual user account.
 	if req.Action == "approve" {
+		// Delete the user first. Only record the approval in the DB if deletion succeeds,
+		// so the request doesn't get stuck as "approved" while the account still exists.
 		if err := h.auth.DeleteUser(ctx, dr.Username); err != nil {
 			if errors.Is(err, auth.ErrCannotDemoteLastAdmin) {
 				writeError(c, http.StatusBadRequest, "Cannot delete the last admin account")
 				return
 			}
-			h.log.Error("Failed to delete user %s after request approval: %v", dr.Username, err)
-			writeError(c, http.StatusInternalServerError, "Request approved but user deletion failed — check logs")
+			h.log.Error("Failed to delete user %s for deletion request %s: %v", dr.Username, requestID, err)
+			writeError(c, http.StatusInternalServerError, "User deletion failed — check logs")
 			return
 		}
+		if _, err := db.ExecContext(ctx,
+			`UPDATE data_deletion_requests SET status=?, reviewed_at=?, reviewed_by=?, admin_notes=? WHERE id=?`,
+			string(models.DeletionRequestApproved), now, adminSession.Username, req.AdminNotes, requestID,
+		); err != nil {
+			// User was already deleted; log the DB failure but don't fail the request.
+			h.log.Error("Failed to mark deletion request %s approved after user deletion: %v", requestID, err)
+		}
 		h.log.Info("Admin %s approved data deletion request %s — user %s deleted", adminSession.Username, requestID, dr.Username)
+		writeSuccess(c, map[string]string{"status": string(models.DeletionRequestApproved)})
 	} else {
+		if _, err := db.ExecContext(ctx,
+			`UPDATE data_deletion_requests SET status=?, reviewed_at=?, reviewed_by=?, admin_notes=? WHERE id=?`,
+			string(models.DeletionRequestDenied), now, adminSession.Username, req.AdminNotes, requestID,
+		); err != nil {
+			h.log.Error("Failed to update deletion request %s: %v", requestID, err)
+			writeError(c, http.StatusInternalServerError, errDeletionRequestsUnavailable)
+			return
+		}
 		h.log.Info("Admin %s denied data deletion request %s for user %s", adminSession.Username, requestID, dr.Username)
+		writeSuccess(c, map[string]string{"status": string(models.DeletionRequestDenied)})
 	}
-
-	writeSuccess(c, map[string]string{"status": string(newStatus)})
 }

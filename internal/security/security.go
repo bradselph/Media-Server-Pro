@@ -263,7 +263,13 @@ func (m *Module) CheckAccess(ip string) (allowed bool, reason string) {
 		return false, "Invalid IP address"
 	}
 
-	// Check blacklist first
+	// Check rate-limiter ban list regardless of whether rate limiting is enabled.
+	// Auto-bans and manual BanIP bans must be enforced even when rate limiting is off.
+	if m.rateLimiter.IsBanned(ip) {
+		return false, "IP is banned"
+	}
+
+	// Check blacklist
 	if m.blacklist.Enabled && m.blacklist.Contains(parsedIP) {
 		return false, "IP is blacklisted"
 	}

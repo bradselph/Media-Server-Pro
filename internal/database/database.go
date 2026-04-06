@@ -144,15 +144,19 @@ func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, t
 // connectWithRetry opens a GORM connection with retries and ping; returns gorm.DB, sql.DB, and error.
 func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (*gorm.DB, *sql.DB, error) {
 	gormLog := newGORMLogger(log, dbCfg.SlowQueryThreshold)
+	maxRetries := dbCfg.MaxRetries
+	if maxRetries < 1 {
+		maxRetries = 1
+	}
 	var lastErr error
-	for i := 0; i < dbCfg.MaxRetries; i++ {
+	for i := 0; i < maxRetries; i++ {
 		db, sqlDB, err := tryConnect(ctx, dsn, gormLog, dbCfg.Timeout)
 		if err == nil {
 			return db, sqlDB, nil
 		}
 		lastErr = err
-		log.Warn("Database connection attempt %d/%d failed: %v", i+1, dbCfg.MaxRetries, err)
-		if i < dbCfg.MaxRetries-1 {
+		log.Warn("Database connection attempt %d/%d failed: %v", i+1, maxRetries, err)
+		if i < maxRetries-1 {
 			timer := time.NewTimer(dbCfg.RetryInterval)
 			select {
 			case <-ctx.Done():

@@ -107,7 +107,7 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 }
 
 // ChangeAdminPassword verifies the current admin password and replaces it with a new one.
-func (m *Module) ChangeAdminPassword(_ context.Context, currentPassword, newPassword string) error {
+func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPassword string) error {
 	cfg := m.config.Get()
 
 	if err := bcrypt.CompareHashAndPassword([]byte(cfg.Admin.PasswordHash), []byte(currentPassword)); err != nil {
@@ -128,6 +128,9 @@ func (m *Module) ChangeAdminPassword(_ context.Context, currentPassword, newPass
 	}); err != nil {
 		return fmt.Errorf("failed to persist new admin password: %w", err)
 	}
+
+	// Evict all existing admin sessions so the old password can no longer be used.
+	m.evictSessionsForUser(ctx, cfg.Admin.Username, "admin password changed")
 
 	m.log.Info("Admin password changed successfully")
 	return nil
