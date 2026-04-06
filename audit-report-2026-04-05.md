@@ -329,8 +329,12 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `477e713e` 2026-04-06 — L-11 [FRAGILE] admin_updates.go:100 — Source update audit log hardcodes "admin" actor
 > **Resolved**: `ApplySourceUpdate` now captures `session.UserID`/`session.Username` from the Gin context before spawning the goroutine and uses those values in the audit log call.
 > **Verified**: pending deploy
-### L-12 [FRAGILE] auth.go:323 — Admin preference update silently creates DB user record
-### L-13 [FRAGILE] system.go:362 — ClearMediaCache runs synchronous full scan in HTTP handler
+### ✅ `cc1fd996` 2026-04-06 — L-12 [FRAGILE] auth.go:323 — Admin preference update silently creates DB user record
+> **Resolved**: Admin user is bootstrapped with a full DB record at startup (`bootstrap.go`). The M-34 fix (`cc1fd996`) changed `UpdateUserPreferences` → `User.Update` to use `clause.OnConflict` upsert, so preferences/permissions rows are created when missing rather than silently skipped.
+> **Verified**: pending deploy
+### ✅ `268bbd70` 2026-04-06 — L-13 [FRAGILE] system.go:362 — ClearMediaCache runs synchronous full scan in HTTP handler
+> **Resolved**: `ClearMediaCache` now returns 202 Accepted immediately and runs `h.media.Scan()` in a background goroutine, preventing HTTP handler from blocking for the entire scan duration.
+> **Verified**: pending deploy
 ### L-14 [FRAGILE] playlists.go:276 — AddPlaylistItem can't add receiver/extractor items
 ### ✅ `c7de1592` 2026-04-06 — L-15 [GAP] routes.go:87 — adminAuth returns 401 instead of 403 for wrong-role users
 > **Resolved**: `adminAuth` in `api/routes/routes.go:89` now returns 403 Forbidden for authenticated users with non-admin role; 401 is still returned when no session exists.
