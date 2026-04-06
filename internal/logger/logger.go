@@ -411,8 +411,10 @@ func (l *Logger) rotateIfNeeded() {
 		_ = err // best-effort close
 	}
 
-	// Rename current to .1 (shift existing backups)
-	rotatedPath := currentPath + ".1"
+	// Rename current to a timestamped backup so that successive rotations
+	// produce distinct files (.2006-01-02T150405) rather than overwriting the
+	// single .1 backup that the old approach created.
+	rotatedPath := currentPath + "." + time.Now().Format("20060102T150405")
 	if err := os.Rename(currentPath, rotatedPath); err != nil {
 		_ = err // best-effort rename
 	}
