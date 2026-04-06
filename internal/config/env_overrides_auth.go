@@ -14,6 +14,9 @@ func (m *Manager) applyAuthEnvOverrides() {
 	if val, ok := envGetBool("AUTH_ALLOW_GUESTS"); ok {
 		m.config.Auth.AllowGuests = val
 	}
+	if val, ok := envGetBool("AUTH_ALLOW_REGISTRATION"); ok {
+		m.config.Auth.AllowRegistration = val
+	}
 	if val, ok := envGetDuration(time.Hour, "AUTH_SESSION_TIMEOUT_HOURS"); ok {
 		m.config.Auth.SessionTimeout = val
 	}

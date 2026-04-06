@@ -46,10 +46,10 @@ func (m *Manager) applyMatureScannerEnvOverrides() {
 		m.config.MatureScanner.MediumConfidenceThreshold = val
 	}
 	if val := envGetStr("MATURE_SCANNER_HIGH_CONFIDENCE_KEYWORDS"); val != "" {
-		m.config.MatureScanner.HighConfidenceKeywords = strings.Split(val, ",")
+		m.config.MatureScanner.HighConfidenceKeywords = splitTrimmed(val, ",")
 	}
 	if val := envGetStr("MATURE_SCANNER_MEDIUM_CONFIDENCE_KEYWORDS"); val != "" {
-		m.config.MatureScanner.MediumConfidenceKeywords = strings.Split(val, ",")
+		m.config.MatureScanner.MediumConfidenceKeywords = splitTrimmed(val, ",")
 	}
 	if val, ok := envGetBool("MATURE_SCANNER_REQUIRE_REVIEW"); ok {
 		m.config.MatureScanner.RequireReview = val

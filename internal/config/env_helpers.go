@@ -82,3 +82,16 @@ func envGetDurationString(keys ...string) (time.Duration, bool) {
 	}
 	return 0, false
 }
+
+// splitTrimmed splits s by sep and trims whitespace from each element.
+// Empty elements after trimming are excluded from the result.
+func splitTrimmed(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
