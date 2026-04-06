@@ -358,17 +358,19 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	writeSuccess(c, storageInfo)
 }
 
-// ClearMediaCache clears the media cache and rescans (runs synchronously).
+// ClearMediaCache triggers an asynchronous media rescan and returns 202 Accepted.
+// The previous synchronous implementation blocked the HTTP handler for the entire
+// scan duration (potentially minutes on large libraries).
 func (h *Handler) ClearMediaCache(c *gin.Context) {
-	if err := h.media.Scan(); err != nil {
-		h.log.Error("Failed to clear cache and rescan media: %v", err)
-		writeError(c, http.StatusInternalServerError, "Failed to clear cache")
-		return
-	}
+	go func() {
+		if err := h.media.Scan(); err != nil {
+			h.log.Error("Background media rescan failed: %v", err)
+		}
+	}()
 
-	writeSuccess(c, map[string]string{
-		"status":  "success",
-		"message": "Cache cleared and media rescanned",
+	c.JSON(http.StatusAccepted, map[string]string{
+		"status":  "accepted",
+		"message": "Media rescan started in background",
 	})
 }
 
