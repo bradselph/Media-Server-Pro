@@ -271,7 +271,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `55c89029` 2026-04-06 — M-22 [RACE] receiver/wsconn.go:195 — Ping goroutine orphaned on reconnect for up to 25s
 > **Resolved**: Added `doneOnce sync.Once` to `slaveWS`; `setSlaveWS` closes `old.done` via Once so the ping goroutine exits immediately on connection replacement. The deferred close in `HandleWebSocket` also uses Once to prevent double-close panic.
 > **Verified**: pending deploy
-### M-23 [GAP] receiver/receiver.go:232 — Legacy composite DB IDs never persisted; stale rows accumulate
+### ✅ `e6736d54` 2026-04-06 — M-23 [GAP] receiver/receiver.go:232 — Legacy composite DB IDs never persisted; stale rows accumulate
+> **Resolved**: `loadFromDB` now collects all legacy `slaveID:itemID` composite-key rows and migrates them asynchronously after the in-memory cache is populated: the old row is deleted by `DeleteByID` and a fresh row with the opaque ID is upserted via `UpsertBatch`. Legacy rows no longer accumulate across restarts.
+> **Verified**: pending deploy
 ### M-24 [GAP] analytics/stats.go:350 — rebuildStatsFromEvent doesn't reconstruct UniqueUsers/AvgWatchDuration
 ### M-25 [GAP] analytics/stats.go:68 — updateStats uses wall clock not event.Timestamp
 ### ✅ `f5461cc9` 2026-04-06 — M-26 [GAP] analytics/stats.go:350 — reconstructStats capped at 2000 events; may undercount
