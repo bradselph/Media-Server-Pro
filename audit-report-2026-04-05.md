@@ -282,7 +282,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `d5ea9b20` 2026-04-06 — M-29 [SECURITY] playlist/playlist.go:603 — ExportPlaylist M3U leaks filesystem paths
 > **Resolved**: M3U export now writes `/api/stream/{mediaID}` URLs instead of `item.MediaPath` filesystem paths.
 > **Verified**: pending deploy
-### M-30 [GAP] suggestions/suggestions.go:332 — RecordRating not persisted for up to 10 minutes
+### ✅ `46a9fade` 2026-04-06 — M-30 [GAP] suggestions/suggestions.go:332 — RecordRating not persisted for up to 10 minutes
+> **Resolved**: `RecordRating` now snapshots the updated profile under the write lock, releases it, then calls `saveOneProfile` in a background goroutine (10-second context timeout). Ratings are persisted immediately to DB rather than waiting up to 10 minutes for the next periodic flush. Added `snapshotProfile` and `persistRating` helpers.
+> **Verified**: pending deploy
 ### ✅ `already addressed` 2026-04-06 — M-31 [GAP] updater/updater.go:746 — verifyBinaryChecksum silently skips when no checksum exists
 > **Resolved**: `fetchChecksumAssetURL` already logs `m.log.Warn("No SHA256SUMS asset found in release...")` for all skip paths. No silent skip; issue was pre-existing in code.
 > **Verified**: pending deploy
