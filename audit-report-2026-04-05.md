@@ -218,21 +218,33 @@ FIX: Add env var mappings for each missing field.
 ### M-02 [SECURITY] auth/watch_history.go:20 — Update branch has no rollback on DB failure
 ### M-03 [FRAGILE] config/config.go:147 — migrateHLSQualityEnabled falsely re-enables all-disabled profiles
 ### M-04 [DRIFT] config/validate.go:10 — Two validation paths (private validate vs public Validate) with different coverage
-### M-05 [FRAGILE] config/env_helpers.go:20 — envGetBool returns (false,true) for "yes"/"on" → disables features
+### ✅ `c2bee4ed` 2026-04-06 — M-05 [FRAGILE] config/env_helpers.go:20 — envGetBool returns (false,true) for "yes"/"on" → disables features
+> **Resolved**: `envGetBool` switch in `internal/config/env_helpers.go` now recognizes "yes"/"on" as true and "no"/"off" as false.
+> **Verified**: pending deploy
 ### M-06 [FRAGILE] config/env_helpers.go:64 — envGetDuration only accepts integers, not duration strings
 ### M-07 [FRAGILE] config/envfile.go:54 — .env parser mishandles inline comments, multiline values
 ### M-08 [FRAGILE] config/config.go:192 — save() .bak not used as fallback on crash between rename steps
-### M-09 [GAP] config/env_overrides_auth.go — Auth.AllowRegistration has no env override
-### M-10 [FRAGILE] env_overrides_misc.go:49 — Mature scanner keywords not whitespace-trimmed on split
-### M-11 [FRAGILE] env_overrides_updater.go:33 — AGE_GATE_BYPASS_IPS not whitespace-trimmed
-### M-12 [FRAGILE] env_overrides_uploads.go:13 — UPLOADS_ALLOWED_EXTENSIONS not whitespace-trimmed
+### ✅ `79264ab9` 2026-04-06 — M-09 [GAP] config/env_overrides_auth.go — Auth.AllowRegistration has no env override
+> **Resolved**: Added `AUTH_ALLOW_REGISTRATION` env override in `internal/config/env_overrides_auth.go`.
+> **Verified**: pending deploy
+### ✅ `79264ab9` 2026-04-06 — M-10 [FRAGILE] env_overrides_misc.go:49 — Mature scanner keywords not whitespace-trimmed on split
+> **Resolved**: `splitTrimmed` helper replaces bare `strings.Split` for keyword lists in `internal/config/env_overrides_misc.go`.
+> **Verified**: pending deploy
+### ✅ `79264ab9` 2026-04-06 — M-11 [FRAGILE] env_overrides_updater.go:33 — AGE_GATE_BYPASS_IPS not whitespace-trimmed
+> **Resolved**: `splitTrimmed` helper used for `AGE_GATE_BYPASS_IPS` in `internal/config/env_overrides_updater.go`.
+> **Verified**: pending deploy
+### ✅ `79264ab9` 2026-04-06 — M-12 [FRAGILE] env_overrides_uploads.go:13 — UPLOADS_ALLOWED_EXTENSIONS not whitespace-trimmed
+> **Resolved**: `splitTrimmed` helper used for `UPLOADS_ALLOWED_EXTENSIONS` in `internal/config/env_overrides_uploads.go`.
+> **Verified**: pending deploy
 ### M-13 [INCOMPLETE] config/config.go:226 — getCopy() does not deep-copy Storage.S3.Prefixes map
 ### M-14 [RACE] hls/cleanup.go:170 — cleanInactiveJob reads lastAccess outside write lock
 ### M-15 [RACE] hls/access.go:26 — RecordAccess and cleanup acquire locks in opposite orders
 ### M-16 [LEAK] hls/transcode.go:246 — lazyTranscodeQuality holds per-quality mutex across semaphore
 ### M-17 [SILENT_FAIL] hls/cleanup.go:12 — cleanupLoop dead code; RetentionMinutes silently ignored
 ### M-18 [GAP] hls/jobs.go:424 — findMediaPathForJob returns "" for completed jobs (lock file removed)
-### M-19 [SECURITY] hls/serve.go:67 — CORS origin falls back to "*" for non-matching origins
+### ✅ `c2bee4ed` 2026-04-06 — M-19 [SECURITY] hls/serve.go:67 — CORS origin falls back to "*" for non-matching origins
+> **Resolved**: `hlsCORSOrigin` in `internal/hls/serve.go` now returns `""` (omit header) instead of `"*"` when an allow-list is configured and the request origin doesn't match.
+> **Verified**: pending deploy
 ### M-20 [FRAGILE] hls/locks.go:60 — Stale lock threshold hardcoded at 2 hours; kills long 4K encodes
 ### M-21 [FRAGILE] receiver/wsconn.go:302 — Replacing WS connection doesn't drain pending streams
 ### M-22 [RACE] receiver/wsconn.go:195 — Ping goroutine orphaned on reconnect for up to 25s
@@ -266,12 +278,16 @@ FIX: Add env var mappings for each missing field.
 ### L-07 [GAP] admin/admin.go:249 — UpdateConfig accepts arbitrary keys including security-sensitive
 ### L-08 [FRAGILE] admin/admin.go:173 — ExportAuditLog race on same-second concurrent exports
 ### L-09 [GAP] audit_log_repository.go:71 — GetByUser with limit=0 runs unbounded query
-### L-10 [GAP] analytics.go:344 — AdminExportAnalytics defer calls f.Close() on nil file → panic
+### ✅ already safe — L-10 [GAP] analytics.go:344 — AdminExportAnalytics defer calls f.Close() on nil file → panic
+> **Resolved**: Code at `api/handlers/analytics.go:344` already returns before setting up the defer when `openErr != nil`; no nil panic is possible. No change needed.
+> **Verified**: code review confirmed
 ### L-11 [FRAGILE] admin_updates.go:100 — Source update audit log hardcodes "admin" actor
 ### L-12 [FRAGILE] auth.go:323 — Admin preference update silently creates DB user record
 ### L-13 [FRAGILE] system.go:362 — ClearMediaCache runs synchronous full scan in HTTP handler
 ### L-14 [FRAGILE] playlists.go:276 — AddPlaylistItem can't add receiver/extractor items
-### L-15 [GAP] routes.go:87 — adminAuth returns 401 instead of 403 for wrong-role users
+### ✅ `c7de1592` 2026-04-06 — L-15 [GAP] routes.go:87 — adminAuth returns 401 instead of 403 for wrong-role users
+> **Resolved**: `adminAuth` in `api/routes/routes.go:89` now returns 403 Forbidden for authenticated users with non-admin role; 401 is still returned when no session exists.
+> **Verified**: pending deploy
 ### L-16 [GAP] duplicates/duplicates.go:489 — findLocalPathByStableID O(N) full table scan
 ### L-17 [GAP] duplicates/duplicates.go:333 — ScanLocalMedia loads entire metadata table
 ### L-18 [FRAGILE] validator/validator.go:441 — FixFile output path collision
