@@ -191,7 +191,7 @@ These issues cause security vulnerabilities, data corruption, or exploitable log
 > **Resolved**: `APITokenRecord` gains `ExpiresAt *time.Time`; `CreateAPIToken` accepts optional `ttl_seconds`; `ValidateAPIToken` rejects expired tokens; DB migration adds `expires_at` column to `user_api_tokens` in `internal/auth/tokens.go` and related files.
 > **Verified**: pending deploy
 
-### H-26 [GAP] config/env_overrides — 20+ config fields have no env override
+### ✅ `d98d2f40` 2026-04-06 — H-26 [GAP] config/env_overrides — 20+ config fields have no env override
 ```
 WHAT: Streaming.RequireAuth, UnauthStreamLimit, all Receiver WS fields, HLS.ProbeTimeout,
       RemoteMedia fields, Thumbnails eviction fields, Database.SlowQueryThreshold, UI fields,
@@ -199,6 +199,8 @@ WHAT: Streaming.RequireAuth, UnauthStreamLimit, all Receiver WS fields, HLS.Prob
 IMPACT: Docker/K8s operators cannot tune these without modifying config.json.
 FIX: Add env var mappings for each missing field.
 ```
+> **Resolved**: Added 21 new env var overrides across streaming, HLS, thumbnails, analytics, database, remote media, receiver, and UI config sections.
+> **Verified**: pending deploy
 
 ### ✅ `d8c99f13` 2026-04-06 — H-27 [SECURITY] CheckAccess doesn't check rate-limiter ban list
 > **Resolved**: `CheckAccess` now calls `m.rateLimiter.IsBanned(ip)` at the top before the blacklist check, enforcing bans regardless of whether rate limiting is enabled in `internal/security/security.go`.
