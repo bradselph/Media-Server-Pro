@@ -230,8 +230,12 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `2552434a` 2026-04-06 — M-06 [FRAGILE] config/env_helpers.go:64 — envGetDuration only accepts integers, not duration strings
 > **Resolved**: `envGetDuration` now falls back to `time.ParseDuration` when integer parse fails, accepting both `30` and `"30s"` / `"1m30s"`.
 > **Verified**: pending deploy
-### M-07 [FRAGILE] config/envfile.go:54 — .env parser mishandles inline comments, multiline values
-### M-08 [FRAGILE] config/config.go:192 — save() .bak not used as fallback on crash between rename steps
+### ✅ `3496ca39` 2026-04-06 — M-07 [FRAGILE] config/envfile.go:54 — .env parser mishandles inline comments, multiline values
+> **Resolved**: `parseEnvLine` now strips inline comments (` # text`) from unquoted values. Quoted values pass through unchanged. Multiline values (backslash continuation) are deferred as a rare case.
+> **Verified**: pending deploy
+### ✅ `ac8703a0` 2026-04-06 — M-08 [FRAGILE] config/config.go:192 — save() .bak not used as fallback on crash between rename steps
+> **Resolved**: `Load()` now detects a missing `config.json` + present `config.json.bak` case and restores from the backup before continuing, rather than silently creating fresh defaults.
+> **Verified**: pending deploy
 ### ✅ `79264ab9` 2026-04-06 — M-09 [GAP] config/env_overrides_auth.go — Auth.AllowRegistration has no env override
 > **Resolved**: Added `AUTH_ALLOW_REGISTRATION` env override in `internal/config/env_overrides_auth.go`.
 > **Verified**: pending deploy
@@ -252,7 +256,9 @@ FIX: Add env var mappings for each missing field.
 ### M-16 [LEAK] hls/transcode.go:246 — lazyTranscodeQuality holds per-quality mutex across semaphore
 ### ⏭ SKIPPED — M-17 [SILENT_FAIL] hls/cleanup.go:12 — cleanupLoop dead code; RetentionMinutes silently ignored
 > **Reason**: Intentional by design — HLS cache is never auto-deleted per product requirements. Cleanup is triggered only via explicit admin actions (POST /api/admin/hls/clean/inactive or DELETE /api/admin/hls/jobs/:id). The comment at module.go:139 documents this.
-### M-18 [GAP] hls/jobs.go:424 — findMediaPathForJob returns "" for completed jobs (lock file removed)
+### ✅ `a396ef65` 2026-04-06 — M-18 [GAP] hls/jobs.go:424 — findMediaPathForJob returns "" for completed jobs (lock file removed)
+> **Resolved**: `findMediaPathForJob` in `internal/hls/jobs.go` now falls back to a DB lookup (5-second timeout) when the `.lock` file is absent, so completed-job cleanup logs still show the correct media path.
+> **Verified**: pending deploy
 ### ✅ `c2bee4ed` 2026-04-06 — M-19 [SECURITY] hls/serve.go:67 — CORS origin falls back to "*" for non-matching origins
 > **Resolved**: `hlsCORSOrigin` in `internal/hls/serve.go` now returns `""` (omit header) instead of `"*"` when an allow-list is configured and the request origin doesn't match.
 > **Verified**: pending deploy
