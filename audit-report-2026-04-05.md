@@ -223,7 +223,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `c2bee4ed` 2026-04-06 — M-05 [FRAGILE] config/env_helpers.go:20 — envGetBool returns (false,true) for "yes"/"on" → disables features
 > **Resolved**: `envGetBool` switch in `internal/config/env_helpers.go` now recognizes "yes"/"on" as true and "no"/"off" as false.
 > **Verified**: pending deploy
-### M-06 [FRAGILE] config/env_helpers.go:64 — envGetDuration only accepts integers, not duration strings
+### ✅ `2552434a` 2026-04-06 — M-06 [FRAGILE] config/env_helpers.go:64 — envGetDuration only accepts integers, not duration strings
+> **Resolved**: `envGetDuration` now falls back to `time.ParseDuration` when integer parse fails, accepting both `30` and `"30s"` / `"1m30s"`.
+> **Verified**: pending deploy
 ### M-07 [FRAGILE] config/envfile.go:54 — .env parser mishandles inline comments, multiline values
 ### M-08 [FRAGILE] config/config.go:192 — save() .bak not used as fallback on crash between rename steps
 ### ✅ `79264ab9` 2026-04-06 — M-09 [GAP] config/env_overrides_auth.go — Auth.AllowRegistration has no env override
@@ -244,7 +246,8 @@ FIX: Add env var mappings for each missing field.
 ### M-14 [RACE] hls/cleanup.go:170 — cleanInactiveJob reads lastAccess outside write lock
 ### M-15 [RACE] hls/access.go:26 — RecordAccess and cleanup acquire locks in opposite orders
 ### M-16 [LEAK] hls/transcode.go:246 — lazyTranscodeQuality holds per-quality mutex across semaphore
-### M-17 [SILENT_FAIL] hls/cleanup.go:12 — cleanupLoop dead code; RetentionMinutes silently ignored
+### ⏭ SKIPPED — M-17 [SILENT_FAIL] hls/cleanup.go:12 — cleanupLoop dead code; RetentionMinutes silently ignored
+> **Reason**: Intentional by design — HLS cache is never auto-deleted per product requirements. Cleanup is triggered only via explicit admin actions (POST /api/admin/hls/clean/inactive or DELETE /api/admin/hls/jobs/:id). The comment at module.go:139 documents this.
 ### M-18 [GAP] hls/jobs.go:424 — findMediaPathForJob returns "" for completed jobs (lock file removed)
 ### ✅ `c2bee4ed` 2026-04-06 — M-19 [SECURITY] hls/serve.go:67 — CORS origin falls back to "*" for non-matching origins
 > **Resolved**: `hlsCORSOrigin` in `internal/hls/serve.go` now returns `""` (omit header) instead of `"*"` when an allow-list is configured and the request origin doesn't match.
@@ -285,8 +288,12 @@ FIX: Add env var mappings for each missing field.
 ### L-02 [GAP] cmd/server/main.go:770 — HLS pre-gen interval read once; config change ignored
 ### L-03 [FRAGILE] cmd/server/main.go:148 — os.Exit(1) after log.Error without logger flush
 ### L-04 [REDUNDANT] cmd/server/main.go:64 — .env loaded twice (godotenv + custom loader)
-### L-05 [FRAGILE] auth/session.go:163 — LogoutAdmin holds sessionsMu across DB delete
-### L-06 [REDUNDANT] auth/authenticate.go:169 — ValidateAdminSession is unreachable dead code
+### ✅ `2552434a` 2026-04-06 — L-05 [FRAGILE] auth/session.go:163 — LogoutAdmin holds sessionsMu across DB delete
+> **Resolved**: `LogoutAdmin` now releases `sessionsMu` before the DB `Delete` call, matching the pattern used by regular `Logout`.
+> **Verified**: pending deploy
+### ✅ `2552434a` 2026-04-06 — L-06 [REDUNDANT] auth/authenticate.go:169 — ValidateAdminSession is unreachable dead code
+> **Resolved**: `ValidateAdminSession` removed from `internal/auth/authenticate.go`. It was never called; the `adminSessions` map has not been populated since H-11 fixed `AdminAuthenticate`.
+> **Verified**: pending deploy
 ### L-07 [GAP] admin/admin.go:249 — UpdateConfig accepts arbitrary keys including security-sensitive
 ### L-08 [FRAGILE] admin/admin.go:173 — ExportAuditLog race on same-second concurrent exports
 ### L-09 [GAP] audit_log_repository.go:71 — GetByUser with limit=0 runs unbounded query
@@ -307,9 +314,15 @@ FIX: Add env var mappings for each missing field.
 ### L-20 [RACE] handler.go:168 — viewCooldown sync.Map never purged; unbounded memory growth
 ### L-21 [GAP] Multiple files — filepath.Walk follows symlinks in scanner, categorizer, autodiscovery
 ### L-22 [GAP] Multiple files — context.Background() used for DB calls in module Stop paths
-### L-23 [FRAGILE] downloader/websocket.go:67 — DefaultDialer.Dial has no handshake timeout
-### L-24 [GAP] thumbnails/queue.go:79 — dequeue doesn't decrement stats.Pending on context cancel
-### L-25 [FRAGILE] s3compat/s3.go:336 — Rename leaves partial dst on streamCopy failure
+### ✅ `2552434a` 2026-04-06 — L-23 [FRAGILE] downloader/websocket.go:67 — DefaultDialer.Dial has no handshake timeout
+> **Resolved**: Replaced `websocket.DefaultDialer.Dial` with a `websocket.Dialer{HandshakeTimeout: 10 * time.Second}` instance.
+> **Verified**: pending deploy
+### ✅ `2552434a` 2026-04-06 — L-24 [GAP] thumbnails/queue.go:79 — dequeue doesn't decrement stats.Pending on context cancel
+> **Resolved**: `Stop()` in `internal/thumbnails/module.go` now drains the job heap after workers exit and decrements `stats.Pending` for each remaining job.
+> **Verified**: pending deploy
+### ✅ `2552434a` 2026-04-06 — L-25 [FRAGILE] s3compat/s3.go:336 — Rename leaves partial dst on streamCopy failure
+> **Resolved**: `Rename` in `pkg/storage/s3compat/s3.go` now calls `RemoveObject(dstKey)` when `streamCopy` fails to clean up any partial upload.
+> **Verified**: pending deploy
 
 ---
 
