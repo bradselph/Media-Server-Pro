@@ -109,6 +109,10 @@ func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 			return err
 		}
 	}
+	if err := m.validate(); err != nil {
+		m.rollbackFromJSON(originalJSON, err)
+		return fmt.Errorf("config validation failed: %w", err)
+	}
 	if err := m.save(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
 		return err

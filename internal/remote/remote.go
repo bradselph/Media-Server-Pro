@@ -660,25 +660,29 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 	// Generate cache filename
 	filename := generateCacheFilename(remoteURL)
 	localPath := filepath.Join(m.cacheDir, filename)
+	tmpPath := localPath + ".tmp"
 
-	// Create cache file
-	file, err := os.Create(localPath)
+	// Write to a temp file first; rename to final path only on success so a
+	// process kill mid-copy never leaves a partial file at the target path.
+	file, err := os.Create(tmpPath)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn("Failed to close cache file: %v", err)
-		}
-	}()
 
 	// Copy content (limited to maxSingleCacheFile to avoid unbounded disk use)
-	size, err := io.Copy(file, io.LimitReader(resp.Body, maxSingleCacheFile))
-	if err != nil {
-		if removeErr := os.Remove(localPath); removeErr != nil {
-			m.log.Warn("Failed to remove incomplete cache file %s: %v", localPath, removeErr)
-		}
-		return nil, err
+	size, copyErr := io.Copy(file, io.LimitReader(resp.Body, maxSingleCacheFile))
+	closeErr := file.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return nil, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return nil, fmt.Errorf("failed to flush cache file: %w", closeErr)
+	}
+	if err := os.Rename(tmpPath, localPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, fmt.Errorf("failed to rename cache file: %w", err)
 	}
 
 	cached := &CachedMedia{

@@ -437,8 +437,11 @@ func (m *Module) extractContentLinks(html string, baseURL *url.URL) []string {
 			continue
 		}
 
-		// Only follow same-host links
-		if !strings.Contains(u.Hostname(), strings.TrimPrefix(baseURL.Hostname(), "www.")) {
+		// Only follow same-host links. Use an exact match or dot-boundary suffix
+		// to prevent "evil-example.com" from matching "example.com".
+		baseHost := strings.TrimPrefix(baseURL.Hostname(), "www.")
+		host := u.Hostname()
+		if host != baseHost && !strings.HasSuffix(host, "."+baseHost) {
 			continue
 		}
 

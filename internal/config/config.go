@@ -249,6 +249,10 @@ func (m *Manager) Update(updater func(*Config)) error {
 		return fmt.Errorf("failed to marshal original config for backup: %w", err)
 	}
 	updater(m.config)
+	if err := m.validate(); err != nil {
+		m.rollbackFromJSON(originalJSON, err)
+		return fmt.Errorf("config validation failed: %w", err)
+	}
 	if err := m.save(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
 		return err
