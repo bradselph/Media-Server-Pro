@@ -382,7 +382,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `812f1d83` 2026-04-06 — L-20 [RACE] handler.go:168 — viewCooldown sync.Map never purged; unbounded memory growth
 > **Resolved**: `tryRecordView` now schedules `time.AfterFunc(cooldown*2, ...)` to delete each entry after 2× the cooldown window, bounding the map's lifetime growth.
 > **Verified**: pending deploy
-### L-21 [GAP] Multiple files — filepath.Walk follows symlinks in scanner, categorizer, autodiscovery
+### ✅ `80a29a18` 2026-04-06 — L-21 [GAP] Multiple files — filepath.Walk follows symlinks in scanner, categorizer, autodiscovery
+> **Resolved**: Added `info.Mode()&os.ModeSymlink != 0` guard to the `filepath.Walk` callbacks in `internal/autodiscovery/autodiscovery.go`, `internal/categorizer/categorizer.go`, and `internal/media/discovery.go`. Symlinks are now skipped rather than processed as media files, preventing them from being catalogued or categorized if they point outside the media directory.
+> **Verified**: pending deploy
 ### ✅ `a594d8ee` 2026-04-06 — L-22 [GAP] Multiple files — context.Background() used for DB calls in module Stop paths
 > **Resolved**: `autodiscovery.Stop` and `categorizer.Stop` now pass a 30s-bounded context to their DB flush routines. `saveSuggestions` and `saveItems` updated to accept a context parameter.
 > **Verified**: pending deploy
