@@ -420,6 +420,8 @@ func (m *Module) discoverExistingJobs() int {
 }
 
 // findMediaPathForJob attempts to determine the original media path for a job.
+// First checks the .lock file (present while a job is running). For completed
+// jobs whose lock file has been removed, falls back to the DB record.
 func (m *Module) findMediaPathForJob(outputDir string) string {
 	lockPath := filepath.Join(outputDir, ".lock")
 	data, err := os.ReadFile(lockPath)
@@ -427,6 +429,15 @@ func (m *Module) findMediaPathForJob(outputDir string) string {
 		var lock LockFile
 		if json.Unmarshal(data, &lock) == nil && lock.MediaPath != "" {
 			return lock.MediaPath
+		}
+	}
+	// Lock file absent (job completed and lock removed) — try the DB.
+	if m.repo != nil {
+		jobID := filepath.Base(outputDir)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if job, dbErr := m.repo.Get(ctx, jobID); dbErr == nil && job != nil && job.MediaPath != "" {
+			return job.MediaPath
 		}
 	}
 	return ""
