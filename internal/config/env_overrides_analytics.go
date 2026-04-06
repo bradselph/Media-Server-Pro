@@ -21,4 +21,7 @@ func (m *Manager) applyAnalyticsEnvOverrides() {
 	if val, ok := envGetBool("ANALYTICS_TRACK_VIEWS"); ok {
 		m.config.Analytics.TrackViews = val
 	}
+	if val, ok := envGetDuration(time.Minute, "ANALYTICS_VIEW_COOLDOWN_MINUTES"); ok {
+		m.config.Analytics.ViewCooldown = val
+	}
 }

@@ -2,6 +2,24 @@ package config
 
 import "time"
 
+func (m *Manager) applyUIEnvOverrides() {
+	if val, ok := envGetInt("UI_ITEMS_PER_PAGE"); ok {
+		m.config.UI.ItemsPerPage = val
+	}
+	if val, ok := envGetInt("UI_MOBILE_ITEMS_PER_PAGE"); ok {
+		m.config.UI.MobileItemsPerPage = val
+	}
+	if val, ok := envGetInt("UI_MOBILE_GRID_COLUMNS"); ok {
+		m.config.UI.MobileGridColumns = val
+	}
+	if val, ok := envGetInt("UI_FEED_MAX_ITEMS"); ok {
+		m.config.UI.FeedMaxItems = val
+	}
+	if val, ok := envGetInt("UI_FEED_DEFAULT_ITEMS"); ok {
+		m.config.UI.FeedDefaultItems = val
+	}
+}
+
 func (m *Manager) applyServerEnvOverrides() {
 	if val := envGetStr("SERVER_HOST", "MEDIA_SERVER_HOST"); val != "" {
 		m.config.Server.Host = val
