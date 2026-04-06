@@ -367,8 +367,12 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `c7de1592` 2026-04-06 — L-15 [GAP] routes.go:87 — adminAuth returns 401 instead of 403 for wrong-role users
 > **Resolved**: `adminAuth` in `api/routes/routes.go:89` now returns 403 Forbidden for authenticated users with non-admin role; 401 is still returned when no session exists.
 > **Verified**: pending deploy
-### L-16 [GAP] duplicates/duplicates.go:489 — findLocalPathByStableID O(N) full table scan
-### L-17 [GAP] duplicates/duplicates.go:333 — ScanLocalMedia loads entire metadata table
+### ✅ `5d03c3d2` 2026-04-06 — L-16 [GAP] duplicates/duplicates.go:489 — findLocalPathByStableID O(N) full table scan
+> **Resolved**: Added `GetPathByStableID(ctx, stableID)` to `MediaMetadataRepository` (single `SELECT WHERE stable_id = ?`). `findLocalPathByStableID` now calls it instead of loading the full table and iterating in Go.
+> **Verified**: pending deploy
+### ✅ `5d03c3d2` 2026-04-06 — L-17 [GAP] duplicates/duplicates.go:333 — ScanLocalMedia loads entire metadata table
+> **Resolved**: Added `ListDuplicateCandidates(ctx)` to `MediaMetadataRepository` which fetches only rows with non-empty `content_fingerprint AND stable_id` (no tags loaded). `ScanLocalMedia` now uses this instead of `List`, avoiding a full table load for libraries where most rows have no fingerprint.
+> **Verified**: pending deploy
 ### ✅ `5f397f14` 2026-04-06 — L-18 [FRAGILE] validator/validator.go:441 — FixFile output path collision
 > **Resolved**: `FixFile` now increments a counter suffix (`_fixed_1.mp4`, `_fixed_2.mp4`, …) until it finds a path that does not already exist, preventing silent overwrites of prior fix attempts.
 > **Verified**: pending deploy
