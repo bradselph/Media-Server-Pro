@@ -84,9 +84,10 @@ func (m *Module) hlsCORSOrigin(r *http.Request) string {
 			return requestOrigin
 		}
 	}
-	// Origin not in allow-list; return "*" so the stream still loads in non-CORS
-	// contexts (e.g., native players). Browsers will enforce the mismatch themselves.
-	return "*"
+	// Origin is set but not in the allow-list; return empty so the CORS header is
+	// omitted. Browsers will block the cross-origin request; native players that
+	// send an Origin header unexpectedly are blocked too, which is the safer default.
+	return ""
 }
 
 // servePlaylist writes the playlist to w, rewriting URLs for CDN if cdnBase is set.

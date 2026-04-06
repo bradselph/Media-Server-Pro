@@ -20,10 +20,15 @@ func envGetStr(keys ...string) string {
 func envGetBool(keys ...string) (bool, bool) {
 	if val := envGetStr(keys...); val != "" {
 		lower := strings.ToLower(val)
-		if lower != "true" && lower != "false" && val != "1" && val != "0" {
-			fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid boolean value %q, treating as false\n", keys[0], val)
+		switch lower {
+		case "true", "1", "yes", "on":
+			return true, true
+		case "false", "0", "no", "off":
+			return false, true
+		default:
+			fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid boolean value %q, ignoring\n", keys[0], val)
+			return false, false
 		}
-		return lower == "true" || val == "1", true
 	}
 	return false, false
 }
