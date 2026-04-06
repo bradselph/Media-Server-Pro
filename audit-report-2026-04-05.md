@@ -286,8 +286,12 @@ FIX: Add env var mappings for each missing field.
 
 ### L-01 [GAP] cmd/server/main.go:430 — validateSecrets incomplete (no admin password, no S3 creds check)
 ### L-02 [GAP] cmd/server/main.go:770 — HLS pre-gen interval read once; config change ignored
-### L-03 [FRAGILE] cmd/server/main.go:148 — os.Exit(1) after log.Error without logger flush
-### L-04 [REDUNDANT] cmd/server/main.go:64 — .env loaded twice (godotenv + custom loader)
+### ✅ `51e7baa2` 2026-04-06 — L-03 [FRAGILE] cmd/server/main.go:148 — os.Exit(1) after log.Error without logger flush
+> **Resolved**: Added `fatalExit(log, ...)` helper that calls `logger.Shutdown()` before `os.Exit(1)`; all `log.Error + os.Exit(1)` pairs in main.go now use it.
+> **Verified**: pending deploy
+### ✅ `51e7baa2` 2026-04-06 — L-04 [REDUNDANT] cmd/server/main.go:64 — .env loaded twice (godotenv + custom loader)
+> **Resolved**: `godotenv.Load()` removed from `main()`; the config module's `loadEnvFile()` handles .env loading in `NewManager()`.
+> **Verified**: pending deploy
 ### ✅ `2552434a` 2026-04-06 — L-05 [FRAGILE] auth/session.go:163 — LogoutAdmin holds sessionsMu across DB delete
 > **Resolved**: `LogoutAdmin` now releases `sessionsMu` before the DB `Delete` call, matching the pattern used by regular `Logout`.
 > **Verified**: pending deploy
