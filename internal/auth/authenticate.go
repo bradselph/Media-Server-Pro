@@ -26,6 +26,9 @@ type creds struct {
 }
 
 // getOrLoadUser returns the user from cache or loads from DB and caches. Returns (nil, err) when not found or on error.
+// Uses double-checked locking to prevent the TOCTOU window where two concurrent callers
+// both miss the cache, both load from DB, and then race to write — potentially leaving
+// callers holding stale pointers that diverge from the cached copy.
 func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.User, error) {
 	m.usersMu.RLock()
 	user, exists := m.users[username]
@@ -38,6 +41,11 @@ func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.Us
 		return nil, err
 	}
 	m.usersMu.Lock()
+	// Re-check: another goroutine may have populated the cache while we were loading from DB.
+	if existing, ok := m.users[username]; ok {
+		m.usersMu.Unlock()
+		return existing, nil
+	}
 	m.users[username] = user
 	m.usersMu.Unlock()
 	return user, nil
