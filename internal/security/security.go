@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	pathpkg "path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,16 @@ func init() {
 	}
 }
 
+// authPaths are endpoints that require the stricter auth rate limit.
+var authPaths = map[string]struct{}{
+	"/api/auth/login":           {},
+	"/api/auth/register":        {},
+	"/api/auth/admin-login":     {},
+	"/api/admin/login":          {},
+	"/api/auth/change-password": {},
+	"/api/auth/delete-account":  {},
+}
+
 // Module handles security controls
 type Module struct {
 	config          *config.Manager
@@ -61,6 +72,11 @@ type Module struct {
 	totalBlocked     int64
 	totalRateLimited int64
 	mu               sync.RWMutex
+	// cidrRaw and cidrParsed cache the parsed trusted-proxy CIDRs so that net.ParseCIDR
+	// is not called on every HTTP request. Rebuilt whenever the raw config strings change.
+	cidrMu     sync.Mutex
+	cidrRaw    []string
+	cidrParsed []*net.IPNet
 }
 
 // IPList manages a list of IP addresses/ranges
@@ -908,9 +924,8 @@ func (r *RateLimiter) cleanupWithIPLists(whitelist, blacklist *IPList) {
 // current_password field and are vulnerable to brute-force if left under
 // the general rate limit).
 func isAuthPath(path string) bool {
-	return path == "/api/auth/login" || path == "/api/auth/register" ||
-		path == "/api/auth/admin-login" || path == "/api/admin/login" ||
-		path == "/api/auth/change-password" || path == "/api/auth/delete-account"
+	_, ok := authPaths[path]
+	return ok
 }
 
 // GinMiddleware returns a gin.HandlerFunc that applies security checks
@@ -989,20 +1004,23 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 }
 
 // parsedTrustedCIDRs returns parsed *net.IPNet values for SecurityConfig.TrustedProxyCIDRs.
-// Invalid entries are silently skipped (logged at Warn during Start is not worth it for hot-path).
+// Results are cached and only rebuilt when the raw config strings change, avoiding
+// per-request net.ParseCIDR overhead on the hot-path middleware.
 func (m *Module) parsedTrustedCIDRs() []*net.IPNet {
 	raw := m.config.Get().Security.TrustedProxyCIDRs
-	if len(raw) == 0 {
-		return nil
-	}
-	out := make([]*net.IPNet, 0, len(raw))
-	for _, cidr := range raw {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err == nil {
-			out = append(out, ipNet)
+	m.cidrMu.Lock()
+	defer m.cidrMu.Unlock()
+	if !slices.Equal(raw, m.cidrRaw) {
+		m.cidrRaw = raw
+		out := make([]*net.IPNet, 0, len(raw))
+		for _, cidr := range raw {
+			if _, ipNet, err := net.ParseCIDR(cidr); err == nil {
+				out = append(out, ipNet)
+			}
 		}
+		m.cidrParsed = out
 	}
-	return out
+	return m.cidrParsed
 }
 
 // getClientIP extracts the real client IP, trusting X-Forwarded-For only from private network

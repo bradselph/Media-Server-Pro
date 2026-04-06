@@ -9,6 +9,7 @@ const toast = useToast()
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
 const dailyMaxViews = computed(() => Math.max(1, ...daily.value.map(d => d.total_views ?? 0)))
+const dailyReversed = computed(() => [...daily.value].reverse())
 const topMedia = ref<TopMediaItem[]>([])
 const contentPerf = ref<ContentPerformanceItem[]>([])
 const eventStats = ref<EventStats | null>(null)
@@ -423,7 +424,7 @@ const EVENT_COLORS: Record<string, string> = {
       <!-- CSS bar chart — views per day -->
       <div class="mb-4 space-y-1">
         <div
-          v-for="row in daily.slice().reverse()"
+          v-for="row in dailyReversed"
           :key="row.date"
           class="flex items-center gap-2 text-xs"
         >

@@ -318,13 +318,9 @@ func (s *MatureScanner) Start(_ context.Context) error {
 	s.log.Info("  Regex patterns: %d", len(maturePatterns))
 
 	// Load existing scan results
-	if err := s.loadResults(); err != nil {
-		s.log.Warn("Failed to load scan results: %v", err)
-	} else {
-		s.mu.RLock()
-		s.log.Info("Loaded %d previous scan results", len(s.results))
-		s.mu.RUnlock()
-	}
+	s.mu.RLock()
+	s.log.Info("Loaded %d previous scan results", len(s.results))
+	s.mu.RUnlock()
 
 	// Load review queue
 	if err := s.loadReviewQueue(); err != nil {

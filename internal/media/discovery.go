@@ -286,11 +286,14 @@ func (m *Module) Start(_ context.Context) error {
 			m.initialScanDone = true // Mark ready even on failure so handlers stop returning 503
 			m.healthMu.Unlock()
 		} else {
+			m.mu.RLock()
+			count := len(m.media)
+			m.mu.RUnlock()
 			m.healthMu.Lock()
-			m.healthMsg = fmt.Sprintf("Running (%d items)", len(m.media))
+			m.healthMsg = fmt.Sprintf("Running (%d items)", count)
 			m.initialScanDone = true
 			m.healthMu.Unlock()
-			m.log.Info("Initial media scan completed with %d items", len(m.media))
+			m.log.Info("Initial media scan completed with %d items", count)
 		}
 		if cb := m.onInitialScanDone; cb != nil {
 			items := m.ListMedia(Filter{})

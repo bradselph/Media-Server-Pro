@@ -277,31 +277,32 @@ func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamReques
 	return m.streamContent(w, file, start, end, chunkSize, session)
 }
 
+// mediaContentTypes maps common media extensions to their MIME types.
+// Parsed once at package init; supplemented by mime.TypeByExtension for unknown extensions.
+var mediaContentTypes = map[string]string{
+	".mp4":  "video/mp4",
+	".webm": "video/webm",
+	".mkv":  "video/x-matroska",
+	".avi":  "video/x-msvideo",
+	".mov":  "video/quicktime",
+	".wmv":  "video/x-ms-wmv",
+	".flv":  "video/x-flv",
+	".m4v":  "video/x-m4v",
+	".ts":   "video/mp2t",
+	".mp3":  "audio/mpeg",
+	".wav":  "audio/wav",
+	".flac": "audio/flac",
+	".aac":  "audio/aac",
+	".ogg":  "audio/ogg",
+	".m4a":  "audio/mp4",
+	".opus": "audio/opus",
+}
+
 // getContentType returns the MIME type for a file
 func (m *Module) getContentType(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
 
-	// Common media types
-	types := map[string]string{
-		".mp4":  "video/mp4",
-		".webm": "video/webm",
-		".mkv":  "video/x-matroska",
-		".avi":  "video/x-msvideo",
-		".mov":  "video/quicktime",
-		".wmv":  "video/x-ms-wmv",
-		".flv":  "video/x-flv",
-		".m4v":  "video/x-m4v",
-		".ts":   "video/mp2t",
-		".mp3":  "audio/mpeg",
-		".wav":  "audio/wav",
-		".flac": "audio/flac",
-		".aac":  "audio/aac",
-		".ogg":  "audio/ogg",
-		".m4a":  "audio/mp4",
-		".opus": "audio/opus",
-	}
-
-	if ct, ok := types[ext]; ok {
+	if ct, ok := mediaContentTypes[ext]; ok {
 		return ct
 	}
 
@@ -671,7 +672,6 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 
 	m.statsMu.Lock()
 	m.stats.TotalStreams++
-	m.stats.ActiveStreams = activeCount
 	if activeCount > m.stats.PeakConcurrent {
 		m.stats.PeakConcurrent = activeCount
 	}
@@ -689,12 +689,7 @@ func (m *Module) endSession(sessionID string) {
 		delete(m.activeSessions, sessionID)
 		m.log.Debug("Ended stream session %s (bytes: %d)", sessionID, session.BytesSent)
 	}
-	activeCount := len(m.activeSessions)
 	m.sessionMu.Unlock()
-
-	m.statsMu.Lock()
-	m.stats.ActiveStreams = activeCount
-	m.statsMu.Unlock()
 }
 
 // updateSessionStats updates session statistics
