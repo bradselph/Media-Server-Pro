@@ -54,15 +54,21 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	}
 
 	writeSuccess(c, map[string]interface{}{
-		"total_events":     summary.TotalEvents,
-		"active_sessions":  summary.ActiveSessions,
-		"today_views":      summary.TodayViews,
-		"total_views":      summary.TotalViews,
-		"total_media":      summary.TotalMedia,
-		"total_watch_time": summary.TotalWatchTime,
-		"unique_clients":   globalStats.UniqueClients,
-		"top_viewed":       topViewed,
-		"recent_activity":  recentActivity,
+		"total_events":          summary.TotalEvents,
+		"active_sessions":       summary.ActiveSessions,
+		"today_views":           summary.TodayViews,
+		"total_views":           summary.TotalViews,
+		"total_media":           summary.TotalMedia,
+		"total_watch_time":      summary.TotalWatchTime,
+		"unique_clients":        globalStats.UniqueClients,
+		"top_viewed":            topViewed,
+		"recent_activity":       recentActivity,
+		"today_logins":          summary.TodayLogins,
+		"today_logins_failed":   summary.TodayLoginsFailed,
+		"today_registrations":   summary.TodayRegistrations,
+		"today_age_gate_passes": summary.TodayAgeGatePasses,
+		"today_downloads":       summary.TodayDownloads,
+		"today_searches":        summary.TodaySearches,
 	})
 }
 
