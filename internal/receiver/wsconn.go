@@ -251,8 +251,13 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				m.log.Warn("Invalid catalog data: %v", err)
 				continue
 			}
-			// Enforce that catalog pushes can only target the authenticated slave's own ID
-			if sw.slaveID != "" && data.SlaveID != sw.slaveID {
+			// Reject catalog pushes from connections that have not registered yet,
+			// and enforce that they can only target the authenticated slave's own ID.
+			if sw.slaveID == "" {
+				m.log.Warn("Catalog push rejected: slave not yet registered on this connection")
+				continue
+			}
+			if data.SlaveID != sw.slaveID {
 				m.log.Warn("Catalog push SlaveID mismatch: connection=%s message=%s", sw.slaveID, data.SlaveID)
 				continue
 			}
@@ -276,8 +281,13 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				m.log.Warn("Invalid heartbeat data: %v", err)
 				continue
 			}
-			// Enforce that heartbeats can only target the authenticated slave's own ID
-			if sw.slaveID != "" && data.SlaveID != sw.slaveID {
+			// Reject heartbeats from connections that have not registered yet,
+			// and enforce that they can only target the authenticated slave's own ID.
+			if sw.slaveID == "" {
+				m.log.Warn("Heartbeat rejected: slave not yet registered on this connection")
+				continue
+			}
+			if data.SlaveID != sw.slaveID {
 				m.log.Warn("Heartbeat SlaveID mismatch: connection=%s message=%s", sw.slaveID, data.SlaveID)
 				continue
 			}
