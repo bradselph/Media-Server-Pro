@@ -87,7 +87,7 @@ func adminAuth(_ *auth.Module) gin.HandlerFunc {
 		}
 		user, ok := userVal.(*models.User)
 		if !ok || user.Role != models.RoleAdmin {
-			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Unauthorized"})
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Forbidden"})
 			c.Abort()
 			return
 		}
