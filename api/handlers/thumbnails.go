@@ -260,9 +260,22 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 		return
 	}
 
-	// Mature content check: extract media ID from filename (e.g. "uuid.jpg" → "uuid"),
-	// look up the media item, and serve a censored placeholder if the user isn't authorised.
+	// Mature content check: extract media ID from filename, stripping responsive
+	// size suffixes (-sm, -md, -lg) and preview suffixes (_preview_N) so that
+	// "uuid-sm.webp" and "uuid_preview_1.jpg" are correctly identified as "uuid".
+	// Without this, GetMediaByID would fail and the mature check would be skipped.
 	mediaID := strings.TrimSuffix(filename, ext)
+	// Strip responsive size suffixes (-sm / -md / -lg)
+	for _, sfx := range []string{"-sm", "-md", "-lg"} {
+		if stripped := strings.TrimSuffix(mediaID, sfx); stripped != mediaID {
+			mediaID = stripped
+			break
+		}
+	}
+	// Strip preview frame suffixes (_preview_N)
+	if idx := strings.LastIndex(mediaID, "_preview_"); idx != -1 {
+		mediaID = mediaID[:idx]
+	}
 	if item, err := h.media.GetMediaByID(mediaID); err == nil && item != nil && item.IsMature {
 		canView := false
 		if user := getUser(c); user != nil {
