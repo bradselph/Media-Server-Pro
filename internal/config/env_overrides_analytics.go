@@ -24,4 +24,7 @@ func (m *Manager) applyAnalyticsEnvOverrides() {
 	if val, ok := envGetDuration(time.Minute, "ANALYTICS_VIEW_COOLDOWN_MINUTES"); ok {
 		m.config.Analytics.ViewCooldown = val
 	}
+	if val, ok := envGetInt("ANALYTICS_MAX_RECONSTRUCT_EVENTS"); ok {
+		m.config.Analytics.MaxReconstructEvents = val
+	}
 }

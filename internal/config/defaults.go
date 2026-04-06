@@ -105,8 +105,9 @@ func defaultAnalyticsConfig() AnalyticsConfig {
 		SessionTimeout:  30 * time.Minute,
 		CleanupInterval: 12 * time.Hour,
 		TrackPlayback:   true,
-		TrackViews:      true,
-		ViewCooldown:    5 * time.Minute,
+		TrackViews:           true,
+		ViewCooldown:         5 * time.Minute,
+		MaxReconstructEvents: 2000,
 	}
 }
 

@@ -167,6 +167,10 @@ type AnalyticsConfig struct {
 	TrackPlayback   bool          `json:"track_playback"`
 	TrackViews      bool          `json:"track_views"`
 	ViewCooldown    time.Duration `json:"view_cooldown"` // min gap between counting repeated views of the same item; default 5m
+	// MaxReconstructEvents caps how many events are loaded at startup for in-memory
+	// stat reconstruction. Higher values improve accuracy but increase startup time.
+	// Default 2000 (10000 caused 500ms+ queries on moderate datasets).
+	MaxReconstructEvents int `json:"max_reconstruct_events"`
 }
 
 // UploadsConfig holds upload settings
