@@ -238,7 +238,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `79264ab9` 2026-04-06 — M-12 [FRAGILE] env_overrides_uploads.go:13 — UPLOADS_ALLOWED_EXTENSIONS not whitespace-trimmed
 > **Resolved**: `splitTrimmed` helper used for `UPLOADS_ALLOWED_EXTENSIONS` in `internal/config/env_overrides_uploads.go`.
 > **Verified**: pending deploy
-### M-13 [INCOMPLETE] config/config.go:226 — getCopy() does not deep-copy Storage.S3.Prefixes map
+### ✅ `d5ea9b20` 2026-04-06 — M-13 [INCOMPLETE] config/config.go:226 — getCopy() does not deep-copy Storage.S3.Prefixes map
+> **Resolved**: `getCopy()` in `internal/config/config.go` now deep-copies `Storage.S3.Prefixes` map and `Security.TrustedProxyCIDRs` slice.
+> **Verified**: pending deploy
 ### M-14 [RACE] hls/cleanup.go:170 — cleanInactiveJob reads lastAccess outside write lock
 ### M-15 [RACE] hls/access.go:26 — RecordAccess and cleanup acquire locks in opposite orders
 ### M-16 [LEAK] hls/transcode.go:246 — lazyTranscodeQuality holds per-quality mutex across semaphore
@@ -254,16 +256,24 @@ FIX: Add env var mappings for each missing field.
 ### M-24 [GAP] analytics/stats.go:350 — rebuildStatsFromEvent doesn't reconstruct UniqueUsers/AvgWatchDuration
 ### M-25 [GAP] analytics/stats.go:68 — updateStats uses wall clock not event.Timestamp
 ### M-26 [GAP] analytics/stats.go:350 — reconstructStats capped at 2000 events; may undercount
-### M-27 [SECURITY] analytics/export.go:44 — CSV export includes raw IP addresses (GDPR risk)
-### M-28 [BROKEN] playlist/playlist.go:461 — ClearPlaylist continues on DB error then clears in-memory
-### M-29 [SECURITY] playlist/playlist.go:603 — ExportPlaylist M3U leaks filesystem paths
+### ✅ `d5ea9b20` 2026-04-06 — M-27 [SECURITY] analytics/export.go:44 — CSV export includes raw IP addresses (GDPR risk)
+> **Resolved**: `ExportCSV` now calls `maskIP()` to pseudonymize addresses (IPv4 last octet zeroed, IPv6 /64 truncated); column renamed to `IPMasked`.
+> **Verified**: pending deploy
+### ✅ `d5ea9b20` 2026-04-06 — M-28 [BROKEN] playlist/playlist.go:461 — ClearPlaylist continues on DB error then clears in-memory
+> **Resolved**: `ClearPlaylist` now returns an error immediately on DB removal failure and does not clear in-memory state.
+> **Verified**: pending deploy
+### ✅ `d5ea9b20` 2026-04-06 — M-29 [SECURITY] playlist/playlist.go:603 — ExportPlaylist M3U leaks filesystem paths
+> **Resolved**: M3U export now writes `/api/stream/{mediaID}` URLs instead of `item.MediaPath` filesystem paths.
+> **Verified**: pending deploy
 ### M-30 [GAP] suggestions/suggestions.go:332 — RecordRating not persisted for up to 10 minutes
 ### M-31 [GAP] updater/updater.go:746 — verifyBinaryChecksum silently skips when no checksum exists
 ### M-32 [FRAGILE] updater/updater.go:1221 — rev-parse errors silently ignored in SourceUpdate
 ### M-33 [FRAGILE] remote_cache_repository.go:48 — String columns for timestamps vs GORM time.Time
 ### M-34 [GAP] user_repository_gorm.go:152 — Update silently does nothing if perms/prefs rows missing
 ### M-35 [RACE] tasks/scheduler.go:224 — Ticker reschedule doesn't drain buffered tick
-### M-36 [SECURITY] extractor/extractor.go:325 — Access-Control-Allow-Origin: * on unauthenticated endpoints
+### ✅ `d5ea9b20` 2026-04-06 — M-36 [SECURITY] extractor/extractor.go:325 — Access-Control-Allow-Origin: * on unauthenticated endpoints
+> **Resolved**: Extractor proxy handlers now call `corsOrigin(r)` which respects `Security.CORSOrigins` allow-list (same logic as HLS module). Hardcoded `"*"` removed from all 4 response paths.
+> **Verified**: pending deploy
 
 ---
 
