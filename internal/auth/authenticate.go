@@ -144,27 +144,16 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 		return nil, fmt.Errorf("failed to get admin user record: %w", err)
 	}
 
+	// Return a minimal AdminSession carrying just the username so the handler can
+	// call CreateSessionForUser. The AdminSession is NOT stored in adminSessions or
+	// the session repository — the handler creates the actual usable session itself.
 	session := &models.AdminSession{
 		Session: models.Session{
-			ID:           generateSessionID(),
-			UserID:       adminUser.ID,
-			Username:     req.Username,
-			Role:         models.RoleAdmin,
-			CreatedAt:    time.Now(),
-			ExpiresAt:    time.Now().Add(cfg.Admin.SessionTimeout),
-			LastActivity: time.Now(),
-			IPAddress:    req.IPAddress,
-			UserAgent:    req.UserAgent,
+			Username: req.Username,
+			UserID:   adminUser.ID,
+			Role:     models.RoleAdmin,
 		},
 	}
-
-	if err := m.sessionRepo.Create(ctx, &session.Session); err != nil {
-		m.log.Warn("Failed to persist admin session to repository: %v", err)
-	}
-
-	m.sessionsMu.Lock()
-	m.adminSessions[session.ID] = session
-	m.sessionsMu.Unlock()
 
 	m.log.Info("Admin logged in from %s", req.IPAddress)
 	return session, nil

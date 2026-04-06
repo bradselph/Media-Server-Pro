@@ -537,6 +537,23 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		// Try extractor items — proxy HLS from M3U8 stream
 		if h.extractor != nil {
 			if ei := h.extractor.GetItem(id); ei != nil && ei.Status == "active" {
+				// Enforce per-user stream limits before redirecting.
+				// Extractor items have no IsMature flag so mature content filtering is not applicable here.
+				if session != nil {
+					if user, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
+						maxStreams := h.getUserStreamLimit(user.Type)
+						if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
+							writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
+							return
+						}
+					}
+				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
+					ipKey := "ip:" + c.ClientIP()
+					if !h.streaming.CanStartStream(ipKey, limit) {
+						writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached for this connection")
+						return
+					}
+				}
 				// Redirect to the proxy HLS master playlist
 				c.Redirect(http.StatusFound, fmt.Sprintf("/extractor/hls/%s/master.m3u8", id))
 				return
