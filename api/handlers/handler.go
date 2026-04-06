@@ -179,6 +179,8 @@ func (h *Handler) tryRecordView(userID, mediaID string) bool {
 		}
 	}
 	h.viewCooldown.Store(key, now)
+	// Evict this entry after 2× the cooldown window so the map doesn't grow unboundedly.
+	time.AfterFunc(cooldown*2, func() { h.viewCooldown.Delete(key) })
 	return true
 }
 

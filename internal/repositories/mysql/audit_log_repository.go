@@ -67,18 +67,20 @@ func (r *AuditLogRepository) List(ctx context.Context, filter repositories.Audit
 	return entries, nil
 }
 
+// getByUserMaxLimit is the hard cap applied when limit <= 0 to prevent unbounded queries.
+const getByUserMaxLimit = 1000
+
 // GetByUser retrieves audit log entries for a specific user
 func (r *AuditLogRepository) GetByUser(ctx context.Context, userID string, limit int) ([]*models.AuditLogEntry, error) {
 	var entries []*models.AuditLogEntry
-	query := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("timestamp DESC")
-
-	if limit > 0 {
-		query = query.Limit(limit)
+	if limit <= 0 {
+		limit = getByUserMaxLimit
 	}
-
-	err := query.Find(&entries).Error
+	err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("timestamp DESC").
+		Limit(limit).
+		Find(&entries).Error
 	return entries, err
 }
 
