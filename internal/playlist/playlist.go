@@ -408,18 +408,22 @@ func (m *Module) ReorderItems(ctx context.Context, playlistID PlaylistID, userID
 }
 
 // reorderItemsLocked performs the reorder; caller must hold m.mu.
+// DB is updated first; in-memory is only mutated after all DB writes succeed
+// to prevent divergence on partial DB failure.
 func (m *Module) reorderItemsLocked(ctx context.Context, playlistID PlaylistID, userID UserID, positions []int) error {
 	playlist, newItems, err := m.getPlaylistAndBuildReorderLocked(playlistID, userID, positions)
 	if err != nil {
 		return err
 	}
-	playlist.Items = newItems
-	playlist.ModifiedAt = time.Now()
+	// Persist new positions to DB before touching in-memory state.
 	for i := range newItems {
-		if err := m.playlistRepo.UpdateItem(ctx, &newItems[i]); err != nil {
-			m.log.Error("Failed to update item position in database: %v", err)
+		if dbErr := m.playlistRepo.UpdateItem(ctx, &newItems[i]); dbErr != nil {
+			return fmt.Errorf("failed to update item position in database: %w", dbErr)
 		}
 	}
+	// All DB writes succeeded — now safe to update in-memory.
+	playlist.Items = newItems
+	playlist.ModifiedAt = time.Now()
 	return nil
 }
 
