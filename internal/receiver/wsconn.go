@@ -88,11 +88,12 @@ type StreamDelivery struct {
 
 // slaveWS represents an active WebSocket connection from a slave.
 type slaveWS struct {
-	slaveID string
-	conn    *websocket.Conn
-	mu      sync.Mutex // protects writes to conn
-	log     *logger.Logger
-	done    chan struct{} // closed on disconnect to stop the ping goroutine
+	slaveID  string
+	conn     *websocket.Conn
+	mu       sync.Mutex // protects writes to conn
+	log      *logger.Logger
+	done     chan struct{} // closed on disconnect to stop the ping goroutine
+	doneOnce sync.Once   // guards close(done) to prevent double-close panic
 }
 
 // sendJSON sends a typed JSON message to the slave.
@@ -193,7 +194,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	defer func() {
-		close(sw.done)
+		sw.doneOnce.Do(func() { close(sw.done) })
 		conn.Close()
 		if sw.slaveID != "" {
 			m.removeSlaveWS(sw.slaveID, sw)
@@ -305,14 +306,39 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 // setSlaveWS stores a WebSocket connection for a slave.
+// If a connection already exists for this slave it is replaced: the old
+// connection is closed, its ping goroutine is stopped immediately (M-22),
+// and any pending streams that were sent over it are cancelled so that
+// waiting proxy handlers unblock promptly (M-21).
 func (m *Module) setSlaveWS(slaveID string, sw *slaveWS) {
 	m.wsMu.Lock()
 	defer m.wsMu.Unlock()
-	// Close any existing connection
 	if old, ok := m.wsConns[slaveID]; ok {
+		// Stop the ping goroutine immediately instead of waiting for the next
+		// failed write (up to wsPingInterval, typically 25 s).
+		old.doneOnce.Do(func() { close(old.done) })
 		old.conn.Close()
 	}
 	m.wsConns[slaveID] = sw
+	// Cancel pending streams for the old connection outside wsMu to avoid
+	// holding two locks simultaneously; the new sw is already registered so
+	// new RequestStream calls will use the fresh connection.
+	go m.drainPendingForSlave(slaveID)
+}
+
+// drainPendingForSlave cancels and removes every pending stream that was sent
+// to slaveID.  Called after a slave reconnects so that proxy goroutines waiting
+// on the old connection unblock rather than timing out.
+func (m *Module) drainPendingForSlave(slaveID string) {
+	m.pendingMu.Lock()
+	defer m.pendingMu.Unlock()
+	for token, ps := range m.pendingStreams {
+		if ps.SlaveID == slaveID {
+			ps.cancel()
+			ps.readyOnce.Do(func() { close(ps.Ready) })
+			delete(m.pendingStreams, token)
+		}
+	}
 }
 
 // removeSlaveWS removes a slave's WebSocket connection and marks it offline.
