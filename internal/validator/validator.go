@@ -438,10 +438,17 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 		return result, nil // No fix needed
 	}
 
-	// Generate output path
+	// Generate output path, incrementing a counter until we find a name that
+	// does not already exist to avoid overwriting a previous fix attempt.
 	dir := filepath.Dir(path)
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	outputPath := filepath.Join(dir, base+"_fixed.mp4")
+	for i := 1; ; i++ {
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			break
+		}
+		outputPath = filepath.Join(dir, fmt.Sprintf("%s_fixed_%d.mp4", base, i))
+	}
 
 	m.log.Info("Transcoding %s to %s", path, outputPath)
 
