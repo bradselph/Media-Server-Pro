@@ -621,6 +621,9 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 		if info.IsDir() {
 			return nil
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil // skip symlinks — they may point outside the media directory
+		}
 
 		ext := strings.ToLower(filepath.Ext(path))
 

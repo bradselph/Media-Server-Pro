@@ -159,6 +159,9 @@ func (m *Module) ScanDirectory(dir FilePath) ([]*models.AutoDiscoverySuggestion,
 		if info.IsDir() {
 			return nil
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil // skip symlinks — they may point outside the media directory
+		}
 
 		// Only process media files
 		ext := strings.ToLower(filepath.Ext(path))

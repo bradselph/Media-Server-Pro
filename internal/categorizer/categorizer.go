@@ -498,6 +498,9 @@ func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 		if info.IsDir() {
 			return nil
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil // skip symlinks — they may point outside the media directory
+		}
 
 		// Only process media files
 		if !helpers.IsMediaExtension(strings.ToLower(filepath.Ext(path))) {
