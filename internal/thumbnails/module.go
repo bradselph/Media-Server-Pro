@@ -74,7 +74,9 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Wire BlurHash storage now that the database module has started and GORM is valid.
 	if m.dbModule != nil && m.dbModule.IsConnected() {
-		m.blurHashUpdater = mysql.NewMediaMetadataRepository(m.dbModule.GORM())
+		if db := m.dbModule.GORM(); db != nil {
+			m.blurHashUpdater = mysql.NewMediaMetadataRepository(db)
+		}
 	}
 
 	// Check for ffmpeg

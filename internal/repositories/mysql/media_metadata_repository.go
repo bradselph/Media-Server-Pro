@@ -406,6 +406,9 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 
 // UpdateBlurHash updates the BlurHash for a metadata row by path
 func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path, blurHash string) error {
+	if r.db == nil {
+		return fmt.Errorf("database not available")
+	}
 	result := r.db.WithContext(ctx).Model(&mediaMetadataRow{}).
 		Where("path = ?", path).
 		Update("blur_hash", blurHash)
