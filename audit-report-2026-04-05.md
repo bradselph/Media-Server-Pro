@@ -301,7 +301,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `ff1f5b20` 2026-04-06 — M-32 [FRAGILE] updater/updater.go:1221 — rev-parse errors silently ignored in SourceUpdate
 > **Resolved**: Both `rev-parse` calls now capture and log errors. The up-to-date check is only skipped when both succeed; on failure the build proceeds with a warning rather than silently using empty strings.
 > **Verified**: pending deploy
-### M-33 [FRAGILE] remote_cache_repository.go:48 — String columns for timestamps vs GORM time.Time
+### ✅ `06d4ba83` 2026-04-06 — M-33 [FRAGILE] remote_cache_repository.go:48 — String columns for timestamps vs GORM time.Time
+> **Resolved**: `remoteCacheRow.CachedAt` and `LastAccess` changed from `string` to `time.Time` in `internal/repositories/mysql/remote_cache_repository.go`. GORM now handles serialization natively; the manual string format (in `Save`) and multi-layout parse loop (in `rowToRecord`) are removed.
+> **Verified**: pending deploy
 ### ✅ `cc1fd996` 2026-04-06 — M-34 [GAP] user_repository_gorm.go:152 — Update silently does nothing if perms/prefs rows missing
 > **Resolved**: Replaced `Updates(map)` with `clause.OnConflict` upsert for `user_permissions` and `user_preferences`. Missing rows are now inserted rather than silently skipped.
 > **Verified**: pending deploy
