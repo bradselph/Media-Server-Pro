@@ -88,6 +88,11 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 		return
 	}
 	clientIP := c.ClientIP()
+	actorID, actorName := "admin", "admin"
+	if session := getSession(c); session != nil {
+		actorID = session.UserID
+		actorName = session.Username
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
@@ -98,7 +103,7 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 		}
 		if h.admin != nil {
 			h.admin.LogAction(context.Background(), &admin.AuditLogParams{
-				UserID: "admin", Username: "admin", Action: "apply_source_update",
+				UserID: actorID, Username: actorName, Action: "apply_source_update",
 				Resource: status.Stage, Details: nil, IPAddress: clientIP, Success: status.Error == "",
 			})
 		}
