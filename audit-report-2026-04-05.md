@@ -344,7 +344,9 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `5f397f14` 2026-04-06 — L-18 [FRAGILE] validator/validator.go:441 — FixFile output path collision
 > **Resolved**: `FixFile` now increments a counter suffix (`_fixed_1.mp4`, `_fixed_2.mp4`, …) until it finds a path that does not already exist, preventing silent overwrites of prior fix attempts.
 > **Verified**: pending deploy
-### L-19 [FRAGILE] logger/logger.go:415 — Log rotation only creates .1; cleanOldBackups no-op
+### ✅ `a8a06adc` 2026-04-06 — L-19 [FRAGILE] logger/logger.go:415 — Log rotation only creates .1; cleanOldBackups no-op
+> **Resolved**: Rotated files now use timestamp names (`.20060102T150405`) so each rotation produces a distinct file. `cleanOldBackups` can now actually prune old ones since multiple files accumulate over time.
+> **Verified**: pending deploy
 ### ✅ `812f1d83` 2026-04-06 — L-20 [RACE] handler.go:168 — viewCooldown sync.Map never purged; unbounded memory growth
 > **Resolved**: `tryRecordView` now schedules `time.AfterFunc(cooldown*2, ...)` to delete each entry after 2× the cooldown window, bounding the map's lifetime growth.
 > **Verified**: pending deploy
