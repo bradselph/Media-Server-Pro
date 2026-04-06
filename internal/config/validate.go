@@ -10,7 +10,14 @@ import (
 func (m *Manager) Validate() []error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return m.validateLocked()
+}
 
+// validateLocked runs all sub-validators without acquiring the lock.
+// Called by both Validate() (which holds RLock) and the private validate()
+// called during Load() (which holds the write lock). This eliminates the
+// former M-04 drift where the two paths had different coverage.
+func (m *Manager) validateLocked() []error {
 	var errors []error
 	errors = append(errors, m.validateServer()...)
 	errors = append(errors, m.validateStreaming()...)
