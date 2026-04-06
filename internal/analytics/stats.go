@@ -65,7 +65,9 @@ func (m *Module) updateStats(event models.AnalyticsEvent) {
 	m.statsMu.Lock()
 	defer m.statsMu.Unlock()
 
-	today := time.Now().Format(dateFormat)
+	// Use event.Timestamp so events with historical timestamps (e.g. replayed
+	// or bulk-imported) are bucketed to the correct day, not always "today".
+	today := event.Timestamp.Format(dateFormat)
 	m.updateDailyStatsLocked(event, today)
 	m.updateMediaStatsLocked(event)
 }
@@ -369,16 +371,23 @@ func (m *Module) reconstructStats() {
 }
 
 // rebuildStatsFromEvent updates in-memory maps from a stored event.
+// Must be called with m.statsMu held for writing.
 func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
-	today := event.Timestamp.Format(dateFormat)
-	daily, exists := m.dailyStats[today]
+	date := event.Timestamp.Format(dateFormat)
+	daily, exists := m.dailyStats[date]
 	if !exists {
-		daily = &models.DailyStats{Date: today}
-		m.dailyStats[today] = daily
+		daily = &models.DailyStats{Date: date}
+		m.dailyStats[date] = daily
 	}
 	switch event.Type {
 	case "view":
 		daily.TotalViews++
+		// Reconstruct UniqueUsers so it matches what updateStats would produce.
+		if event.UserID != "" {
+			m.ensureDailyUsersLocked(date)
+			m.dailyUsers[date][event.UserID] = struct{}{}
+			daily.UniqueUsers = len(m.dailyUsers[date])
+		}
 	case EventLogin:
 		daily.Logins++
 	case EventLoginFailed:
@@ -409,11 +418,20 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 		if event.Timestamp.After(stats.LastViewed) {
 			stats.LastViewed = event.Timestamp
 		}
+		// Reconstruct UniqueViewers.
+		if event.UserID != "" {
+			m.ensureMediaViewersLocked(event.MediaID)
+			m.mediaViewers[event.MediaID][event.UserID] = struct{}{}
+			stats.UniqueViewers = len(m.mediaViewers[event.MediaID])
+		}
 		return
 	}
 	if event.Type == "playback" {
 		if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
 			stats.TotalPlaybacks++
+			// Reconstruct AvgWatchDuration using the same running-average helper
+			// used by the live path so the values are consistent.
+			m.updateAvgWatchDurationLocked(event.MediaID, stats, dur)
 		}
 		if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
 			stats.TotalCompletions++
