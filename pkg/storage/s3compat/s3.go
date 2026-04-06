@@ -388,6 +388,8 @@ func (b *Backend) Rename(ctx context.Context, src, dst string) error {
 		resp := minio.ToErrorResponse(err)
 		if resp.Code == "EntityTooLarge" || resp.StatusCode == 413 {
 			if streamErr := b.streamCopy(ctx, srcKey, dstKey); streamErr != nil {
+				// Clean up any partial object at dstKey to avoid leaving orphaned data.
+				_ = b.client.RemoveObject(ctx, b.bucket, dstKey, minio.RemoveObjectOptions{})
 				return fmt.Errorf("s3 storage: stream copy for rename: %w", streamErr)
 			}
 		} else {

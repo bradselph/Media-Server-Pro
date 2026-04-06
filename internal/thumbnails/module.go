@@ -197,6 +197,20 @@ func (m *Module) Stop(_ context.Context) error {
 		m.log.Warn("Workers did not stop gracefully")
 	}
 
+	// Drain any jobs still in the heap so stats.Pending is accurate.
+	m.jobMu.Lock()
+	remaining := len(m.jobHeap)
+	m.jobHeap = m.jobHeap[:0]
+	m.jobMu.Unlock()
+	if remaining > 0 {
+		m.statsMu.Lock()
+		m.stats.Pending -= int64(remaining)
+		if m.stats.Pending < 0 {
+			m.stats.Pending = 0
+		}
+		m.statsMu.Unlock()
+	}
+
 	m.healthMu.Lock()
 	m.healthy = false
 	m.healthMsg = "Stopped"

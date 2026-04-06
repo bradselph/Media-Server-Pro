@@ -159,27 +159,6 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 	return session, nil
 }
 
-// ValidateAdminSession validates an admin session.
-// When a session is expired, it is removed from the in-memory map and from the session repository.
-func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, error) {
-	m.sessionsMu.RLock()
-	session, exists := m.adminSessions[sessionID]
-	m.sessionsMu.RUnlock()
-
-	if !exists {
-		return nil, ErrSessionNotFound
-	}
-	if session.IsExpired() {
-		m.sessionsMu.Lock()
-		delete(m.adminSessions, sessionID)
-		m.sessionsMu.Unlock()
-		if err := m.sessionRepo.Delete(context.Background(), sessionID); err != nil {
-			m.log.Warn("Failed to delete expired admin session from repository: %v", err)
-		}
-		return nil, ErrSessionExpired
-	}
-	return session, nil
-}
 
 // isLockedOut returns whether the IP is currently locked out due to failed attempts.
 // When lockout has expired, the attempt is reset so the next failure starts a fresh count.

@@ -170,9 +170,12 @@ func (m *Module) Logout(ctx context.Context, sessionID string) error {
 // LogoutAdmin invalidates an admin session
 func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
 	m.sessionsMu.Lock()
-	defer m.sessionsMu.Unlock()
-
 	session, exists := m.adminSessions[sessionID]
+	if exists {
+		delete(m.adminSessions, sessionID)
+	}
+	m.sessionsMu.Unlock()
+
 	if !exists {
 		return ErrSessionNotFound
 	}
@@ -182,7 +185,6 @@ func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
 	}
 
 	m.log.Info("Admin logged out: %s", session.Username)
-	delete(m.adminSessions, sessionID)
 	return nil
 }
 

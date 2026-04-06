@@ -63,8 +63,11 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	dlURL = strings.Replace(dlURL, "https://", "wss://", 1)
 	dlURL = strings.Replace(dlURL, "http://", "ws://", 1)
 
-	// Connect to the downloader's WebSocket
-	dlConn, _, err := websocket.DefaultDialer.Dial(dlURL, nil)
+	// Connect to the downloader's WebSocket (10s handshake timeout)
+	wsDialer := &websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+	dlConn, _, err := wsDialer.Dial(dlURL, nil)
 	if err != nil {
 		log.Warn("Downloader WS dial failed: %v", err)
 		adminConn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Cannot connect to downloader"}`))
