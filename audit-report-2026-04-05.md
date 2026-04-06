@@ -265,8 +265,12 @@ FIX: Add env var mappings for each missing field.
 ### ✅ `082d27fd` 2026-04-06 — M-20 [FRAGILE] hls/locks.go:60 — Stale lock threshold hardcoded at 2 hours; kills long 4K encodes
 > **Resolved**: Added `StaleLockThreshold time.Duration` to `HLSConfig` (default 2h); configurable via `HLS_STALE_LOCK_THRESHOLD_HOURS` env var. `checkLock` uses the config value instead of a hardcoded constant.
 > **Verified**: pending deploy
-### M-21 [FRAGILE] receiver/wsconn.go:302 — Replacing WS connection doesn't drain pending streams
-### M-22 [RACE] receiver/wsconn.go:195 — Ping goroutine orphaned on reconnect for up to 25s
+### ✅ `55c89029` 2026-04-06 — M-21 [FRAGILE] receiver/wsconn.go:302 — Replacing WS connection doesn't drain pending streams
+> **Resolved**: `setSlaveWS` now calls `drainPendingForSlave` (in a goroutine after registering the new connection) which cancels and removes every pending stream for the slave so proxy goroutines unblock immediately instead of timing out.
+> **Verified**: pending deploy
+### ✅ `55c89029` 2026-04-06 — M-22 [RACE] receiver/wsconn.go:195 — Ping goroutine orphaned on reconnect for up to 25s
+> **Resolved**: Added `doneOnce sync.Once` to `slaveWS`; `setSlaveWS` closes `old.done` via Once so the ping goroutine exits immediately on connection replacement. The deferred close in `HandleWebSocket` also uses Once to prevent double-close panic.
+> **Verified**: pending deploy
 ### M-23 [GAP] receiver/receiver.go:232 — Legacy composite DB IDs never persisted; stale rows accumulate
 ### M-24 [GAP] analytics/stats.go:350 — rebuildStatsFromEvent doesn't reconstruct UniqueUsers/AvgWatchDuration
 ### M-25 [GAP] analytics/stats.go:68 — updateStats uses wall clock not event.Timestamp
