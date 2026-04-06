@@ -452,6 +452,34 @@ func validateSecrets(cfg *config.Manager, log *logger.Logger) {
 			}
 		}
 	}
+
+	// Admin panel: warn when enabled without a password hash so the operator
+	// knows the panel is inaccessible (or worse, open to default credentials).
+	if appCfg.Admin.Enabled {
+		if appCfg.Admin.PasswordHash == "" {
+			log.Warn("Admin panel is enabled but ADMIN_PASSWORD_HASH is not set — " +
+				"admin login will fail until a bcrypt hash is configured.")
+		}
+		if appCfg.Admin.Username == "" {
+			log.Warn("Admin panel is enabled but ADMIN_USERNAME is not set — " +
+				"admin login will fail until a username is configured.")
+		}
+	}
+
+	// S3 storage: warn when selected but required credentials are absent.
+	if appCfg.Storage.Backend == "s3" {
+		s3 := appCfg.Storage.S3
+		if s3.AccessKeyID == "" || s3.SecretAccessKey == "" {
+			log.Warn("S3 storage backend is selected but access credentials are missing. " +
+				"Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (or config.json storage.s3 fields).")
+		}
+		if s3.Bucket == "" {
+			log.Warn("S3 storage backend is selected but storage.s3.bucket is not set.")
+		}
+		if s3.Endpoint == "" {
+			log.Warn("S3 storage backend is selected but storage.s3.endpoint is not set.")
+		}
+	}
 }
 
 // mustRegister registers a module and exits on failure.
