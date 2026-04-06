@@ -68,11 +68,14 @@ func envGetFloat64(keys ...string) (float64, bool) {
 
 func envGetDuration(unit time.Duration, keys ...string) (time.Duration, bool) {
 	if val := envGetStr(keys...); val != "" {
-		i, err := strconv.Atoi(val)
-		if err == nil {
+		if i, err := strconv.Atoi(val); err == nil {
 			return time.Duration(i) * unit, true
 		}
-		fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid duration value %q: %v\n", keys[0], val, err)
+		// Fall back to Go duration string (e.g. "30s", "1m30s")
+		if d, err := time.ParseDuration(val); err == nil {
+			return d, true
+		}
+		fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid duration value %q (expected integer or duration string)\n", keys[0], val)
 	}
 	return 0, false
 }
