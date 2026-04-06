@@ -43,99 +43,48 @@ These issues cause security vulnerabilities, data corruption, or exploitable log
 
 ---
 
-### C-01 [SECURITY] pkg/storage/local/local.go:40 — HasPrefix path traversal (no separator boundary)
-```
-WHAT: resolve() checks strings.HasPrefix(cleaned, b.root) without a path separator.
-      Root="/data/media" accepts "/data/media-evil/secret.txt" because
-      HasPrefix("/data/media-evil/...", "/data/media") == true.
-IMPACT: Path traversal to sibling directories whose name starts with the root prefix.
-FIX: strings.HasPrefix(cleaned, b.root+string(filepath.Separator)) || cleaned == b.root
-```
+### ✅ `5f53c2ea` 2026-04-06 — C-01 [SECURITY] HasPrefix path traversal (no separator boundary)
+> **Resolved**: `rootWithSep()` helper returns `root + separator`; `resolve()` uses separator-boundary check `cleaned == b.root || HasPrefix(cleaned, rootWithSep())` in `pkg/storage/local/local.go`.
+> **Verified**: pending deploy
 
-### C-02 [SECURITY] pkg/storage/local/local.go:252 — AbsPath fallback bypasses security check
-```
-WHAT: On resolve() error (traversal rejection), AbsPath falls back to
-      filepath.Join(b.root, filepath.Clean(path)) — silently returning a path outside root.
-IMPACT: Callers using AbsPath (e.g. ffmpeg invocation) receive traversal paths.
-FIX: Remove the fallback; return root or empty string on resolve() error.
-```
+### ✅ `5f53c2ea` 2026-04-06 — C-02 [SECURITY] AbsPath fallback bypasses security check
+> **Resolved**: `AbsPath` now returns `""` on `resolve()` error instead of falling back to `filepath.Join(root, clean(path))` in `pkg/storage/local/local.go`.
+> **Verified**: pending deploy
 
-### C-03 [SECURITY] pkg/storage/s3compat/s3.go:87 — S3 key allows ".." traversal outside prefix
-```
-WHAT: key() uses path.Clean which does NOT strip ".." from relative paths. A key like
-      "../../secrets/admin.json" prefixed becomes "prefix/../../secrets/admin.json".
-IMPACT: Read/write objects outside the configured S3 prefix.
-FIX: Reject keys starting with ".." or containing "/../" after path.Clean.
-```
+### ✅ `5f53c2ea` 2026-04-06 — C-03 [SECURITY] S3 key allows ".." traversal outside prefix
+> **Resolved**: `key()` rejects paths where `cleaned == ".." || HasPrefix(cleaned, "../") || Contains(cleaned, "/../")` in `pkg/storage/s3compat/s3.go`.
+> **Verified**: pending deploy
 
-### C-04 [BROKEN] internal/config/accessors.go:92 — SetValuesBatch never fires OnChange watchers
-```
-WHAT: SetValuesBatch saves config and calls syncFeatureToggles but NEVER invokes watchers.
-      Update() does invoke watchers. Admin panel config changes go through SetValuesBatch.
-IMPACT: Modules watching for config changes (security, streaming, CORS) are never notified
-        of admin panel changes. Requires server restart for changes to take effect.
-FIX: Dispatch watchers in SetValuesBatch after save(), matching Update()'s pattern.
-```
+### ✅ `98381209` 2026-04-06 — C-04 [BROKEN] SetValuesBatch never fires OnChange watchers
+> **Resolved**: `SetValuesBatch` now dispatches all registered watchers in goroutines after `save()`, matching `Update()`'s pattern, in `internal/config/accessors.go`.
+> **Verified**: pending deploy
 
-### C-05 [BROKEN] internal/config/config.go:243 — Update() does not call syncFeatureToggles
-```
-WHAT: syncFeatureToggles() remaps feature flags → module Enabled fields. Called in Load()
-      and SetValuesBatch but NOT in Update().
-IMPACT: Feature flag changes via Update() leave module-level Enabled out of sync.
-FIX: Add m.syncFeatureToggles() in Update() after the updater function runs.
-```
+### ✅ `98381209` 2026-04-06 — C-05 [BROKEN] Update() does not call syncFeatureToggles
+> **Resolved**: `Update()` now calls `m.syncFeatureToggles()` after the updater function in `internal/config/config.go`.
+> **Verified**: pending deploy
 
-### C-06 [SECURITY] crawler/browser.go:117 — Chrome --host-resolver-rules with CIDR notation is invalid
-```
-WHAT: Chrome's --host-resolver-rules does NOT support CIDR notation ("MAP 10.0.0.0/8 ~NOTFOUND").
-      The entire hostRules string is silently ignored by Chrome.
-      Combined with --disable-web-security and --no-sandbox, crawled pages have full
-      unrestricted network access including to private IPs (169.254.169.254, 10.x.x.x).
-IMPACT: Admin-triggered crawl of a malicious URL → SSRF from renderer + potential RCE.
-FIX: Remove --disable-web-security; use CDP Network.setBlockedURLs for private IP blocking.
-```
+### ✅ `f462f2b2` 2026-04-06 — C-06 [SECURITY] Chrome --host-resolver-rules CIDR notation silently ignored
+> **Resolved**: Replaced CIDR hostRules with exact hostname/IP mappings (localhost, 127.0.0.1, 169.254.169.254, metadata.google.internal). Removed `--disable-web-security` so SOP prevents crawled pages from reaching internal services. Added CDP `Network.setBlockedURLs` with glob patterns for RFC1918 + link-local ranges as defense in depth. In `internal/crawler/browser.go`.
+> **Verified**: pending deploy
 
-### C-07 [SECURITY] receiver/wsconn.go:248 — Catalog push/heartbeat accepted before slave registration
-```
-WHAT: When sw.slaveID is "" (no register message yet), the guard
-      sw.slaveID != "" && data.SlaveID != sw.slaveID short-circuits to false.
-      Any API key holder can push catalog data into an arbitrary slave's catalog.
-IMPACT: Catalog poisoning; a rogue key holder can overwrite any slave's media list.
-FIX: Reject catalog/heartbeat when sw.slaveID == "".
-```
+### ✅ `e9a2012e` 2026-04-06 — C-07 [SECURITY] Catalog push/heartbeat accepted before slave registration
+> **Resolved**: Added `if sw.slaveID == ""` guard that rejects catalog pushes and heartbeats from unregistered connections in `internal/receiver/wsconn.go`.
+> **Verified**: pending deploy
 
-### C-08 [BROKEN] internal/playlist/playlist.go:411 — ReorderItems mutates in-memory before DB; no rollback
-```
-WHAT: reorderItemsLocked sets playlist.Items = newItems before the DB update loop.
-      DB errors are only logged, not returned. On partial DB failure, in-memory and DB diverge.
-IMPACT: Playlist order permanently inconsistent after any DB write failure during reorder.
-FIX: Update DB first in a transaction; only update in-memory after commit.
-```
+### ✅ `4f55aa34` 2026-04-06 — C-08 [BROKEN] ReorderItems mutates in-memory before DB; no rollback
+> **Resolved**: `reorderItemsLocked` now updates DB for all items first; only mutates `playlist.Items` after all DB writes succeed in `internal/playlist/playlist.go`.
+> **Verified**: pending deploy
 
-### C-09 [BROKEN] internal/config/config.go:69 — json.Unmarshal zeroes defaults for partial config sections
-```
-WHAT: A config.json with "hls": {"auto_generate": true} causes SegmentDuration=0,
-      ConcurrentLimit=0, ProbeTimeout=0 — overwriting defaults with zero values.
-IMPACT: Partial config sections silently lose defaults; may cause validation failure or
-        runtime errors (zero-timeout ffprobe, zero segment duration).
-FIX: Unmarshal into a separate struct and merge only non-zero fields into defaults.
-```
+### ⏭ SKIPPED — C-09 [BROKEN] json.Unmarshal zeroes defaults for partial config sections
+> **Reason**: Confirmed false positive. Go's `json.Unmarshal` into a pre-initialized struct only modifies fields present in the JSON — absent fields retain their existing values. Investigated and verified in code review.
 
-### C-10 [SECURITY] api/handlers/analytics.go:156 — Client can forge server-only analytics event types
-```
-WHAT: SubmitClientEvent's validTypes includes EventLogin, EventRegister, EventDownload, etc.
-      Any authenticated user can inject fake login/registration/download events.
-IMPACT: Analytics corruption; inflated traffic stats; undermines admin dashboards.
-FIX: Split validTypes into client-safe and server-only lists; reject server-only from client.
-```
+### ✅ `456e77fb` 2026-04-06 — C-10 [SECURITY] Client can forge server-only analytics event types
+> **Resolved**: `SubmitClientEvent` now uses `clientAllowedTypes` allowlist; server-only event types (login, logout, register, download, etc.) are reclassified as "custom" in `internal/analytics/events.go`.
+> **Verified**: pending deploy
 
-### C-11 [SECURITY] upload/upload.go:374 — File size validated against client-controlled fh.Size
-```
-WHAT: validateUploadSize uses multipart FileHeader.Size which is client-supplied.
-      A client can set fh.Size=1 to bypass MaxFileSize, then stream gigabytes.
-IMPACT: Any user with CanUpload can bypass file size limits → disk exhaustion.
-FIX: Wrap file reader in io.LimitReader(reader, maxFileSize+1) and check actual bytes copied.
-```
+### ✅ `5f53c2ea` 2026-04-06 — C-11 [SECURITY] File size validated against client-controlled fh.Size
+> **Resolved**: `ProcessFileHeader` wraps the file reader in `io.LimitReader(file, maxFileSize+1)` and checks actual bytes written; if `written > maxFileSize` the uploaded file is removed in `internal/upload/upload.go`.
+> **Verified**: pending deploy
 
 ---
 
@@ -143,163 +92,104 @@ FIX: Wrap file reader in io.LimitReader(reader, maxFileSize+1) and check actual 
 
 ---
 
-### H-01 [SECURITY] api/handlers/feed.go:77 — RSS feed leaks mature content to all authenticated users
-```
-WHAT: GetRSSFeed calls ListMedia without filtering IsMature. No mature-content check applied.
-FIX: Filter out IsMature items when user lacks CanViewMature permission.
-```
+### ✅ `456e77fb` 2026-04-06 — H-01 [SECURITY] RSS feed leaks mature content to all authenticated users
+> **Resolved**: `GetRSSFeed` filters out `IsMature` items when the caller lacks `CanViewMature` permission in `api/handlers/feed.go`.
+> **Verified**: pending deploy
 
-### H-02 [SECURITY] api/handlers/thumbnails.go:265 — Responsive/preview thumbnails bypass mature check
-```
-WHAT: ServeThumbnailFile extracts mediaID as TrimSuffix(filename, ext). For "uuid-sm.webp"
-      mediaID="uuid-sm" which fails DB lookup → mature check skipped → file served.
-FIX: Strip -sm/-md/-lg and _preview_N suffixes before DB lookup.
-```
+### ✅ `19e18dcb` 2026-04-06 — H-02 [SECURITY] Responsive/preview thumbnails bypass mature check
+> **Resolved**: `ServeThumbnailFile` strips `-sm`/`-md`/`-lg` and `_preview_N` suffixes from filename before media ID lookup in `api/handlers/thumbnails.go`.
+> **Verified**: pending deploy
 
-### H-03 [SECURITY] admin_receiver.go:225 — Slave-controlled HTTP status code forwarded to browser
-```
-WHAT: X-Stream-Status header parsed and used in w.WriteHeader(). Rogue slave can send 301/302.
-FIX: Whitelist valid codes: {200, 206, 404, 416, 503}.
-```
+### ✅ `e9a2012e` 2026-04-06 — H-03 [SECURITY] Slave-controlled HTTP status code forwarded to browser
+> **Resolved**: `X-Stream-Status` is validated against a whitelist `{200, 206, 404, 416, 503}` in `api/handlers/admin_receiver.go`.
+> **Verified**: pending deploy
 
-### H-04 [SECURITY] admin_downloader.go:79 — URL forwarded without SSRF validation
-```
-WHAT: AdminDownloaderDetect/Download forward admin-supplied URLs to external downloader service
-      without calling helpers.ValidateURLForSSRF. Downloader fetches arbitrary internal URLs.
-FIX: Add helpers.ValidateURLForSSRF(req.URL) before forwarding.
-```
+### ✅ `7df18b99` 2026-04-06 — H-04 [SECURITY] URL forwarded without SSRF validation
+> **Resolved**: `helpers.ValidateURLForSSRF(req.URL)` called before forwarding in both `AdminDownloaderDetect` and `AdminDownloaderDownload` in `api/handlers/admin_downloader.go`.
+> **Verified**: pending deploy
 
-### H-05 [SECURITY] crawler/crawler.go:441 — Same-host check bypass via www prefix substring
-```
-WHAT: strings.Contains(u.Hostname(), baseHostStripped) — "evil-example.com" passes for "example.com".
-FIX: Use suffix match with dot boundary: u.Hostname() == base || HasSuffix(u.Hostname(), "."+base).
-```
+### ✅ `98381209` 2026-04-06 — H-05 [SECURITY] Same-host check bypass via www prefix substring
+> **Resolved**: Replaced `strings.Contains` with exact match or `.`-boundary suffix check: `host == baseHost || HasSuffix(host, "."+baseHost)` in `internal/crawler/crawler.go`.
+> **Verified**: pending deploy
 
-### H-06 [SECURITY] pkg/middleware/agegate.go:219 — Age-gate verify has no CSRF protection
-```
-WHAT: POST /api/age-verify requires no CSRF token. Cross-site POST sets age_verified cookie.
-FIX: Require CSRF token or validate Origin/Referer header.
-```
+### ✅ `ef8d734c` 2026-04-06 — H-06 [SECURITY] Age-gate verify has no CSRF protection
+> **Resolved**: `GinVerifyHandler` calls `isSameOrigin(r)` which validates `Origin`/`Referer` header against `r.Host`; cross-origin POSTs receive 403 in `pkg/middleware/agegate.go`.
+> **Verified**: pending deploy
 
-### H-07 [SECURITY] remote/remote.go:665 — CacheMedia writes to final path non-atomically
-```
-WHAT: os.Create(localPath) then io.Copy. Process kill → partial file. On restart, served as-is.
-FIX: Write to .tmp, os.Rename on success; persist cache record after rename.
-```
+### ✅ `98381209` 2026-04-06 — H-07 [SECURITY] CacheMedia writes to final path non-atomically
+> **Resolved**: `CacheMedia` writes to `localPath+".tmp"`, closes the file, then `os.Rename`s to final path; on any error the tmp file is removed in `internal/remote/remote.go`.
+> **Verified**: pending deploy
 
-### H-08 [SECURITY] auth/authenticate.go:80 — Disabled-account check skips brute-force penalty
-```
-WHAT: user.Enabled==false returns ErrAccountDisabled without recordFailedAttempt.
-      Enables username enumeration of disabled accounts at unlimited rate.
-FIX: Always call recordFailedAttempt before returning; return generic ErrInvalidCredentials.
-```
+### ✅ `e212b12c` 2026-04-06 — H-08 [SECURITY] Disabled-account check skips brute-force penalty
+> **Resolved**: `Authenticate` calls `recordFailedAttempt` and returns `ErrInvalidCredentials` for disabled accounts in `internal/auth/authenticate.go`.
+> **Verified**: pending deploy
 
-### H-09 [RACE] auth/session.go:128 — ValidateSession returns shared pointer after lock release
-```
-WHAT: Returns the original *Session from the map, not the copy. Concurrent reads race.
-FIX: Return &sessionCopy instead of session.
-```
+### ✅ `7d5573f3` 2026-04-06 — H-09 [RACE] ValidateSession returns shared pointer after lock release
+> **Resolved**: `ValidateSession` returns `&sessionCopy` instead of the map pointer; copy made under write lock in `internal/auth/session.go`.
+> **Verified**: pending deploy
 
-### H-10 [SECURITY] auth/password.go:110 — Admin password change doesn't invalidate sessions
-```
-WHAT: ChangeAdminPassword returns without evicting existing admin sessions.
-FIX: Call m.evictSessionsForUser for the admin username after password change.
-```
+### ✅ `d8c99f13` 2026-04-06 — H-10 [SECURITY] Admin password change doesn't invalidate sessions
+> **Resolved**: `ChangeAdminPassword` calls `m.evictSessionsForUser(ctx, cfg.Admin.Username, "admin password changed")` after updating the config in `internal/auth/password.go`.
+> **Verified**: pending deploy
 
-### H-11 [SECURITY] auth/authenticate.go:110 — AdminSession pathway is orphaned dead code
-```
-WHAT: AdminAuthenticate creates AdminSession + regular Session. Only regular Session is used
-      by middleware. adminSessions map grows unboundedly, never read by any route.
-FIX: Remove AdminSession pathway; have AdminAuthenticate return a regular Session with Role=admin.
-```
+### ✅ `3de52323` 2026-04-06 — H-11 [SECURITY] AdminSession pathway is orphaned dead code
+> **Resolved**: `AdminAuthenticate` no longer stores the ephemeral AdminSession in `adminSessions` map or session repository. Returns a minimal struct for `Username` propagation only. Unbounded map growth eliminated in `internal/auth/authenticate.go`.
+> **Verified**: pending deploy
 
-### H-12 [SECURITY] api/handlers/analytics.go:185 — Client-supplied session_id overrides server session
-```
-WHAT: sessionID := req.SessionID used even when authenticated session exists.
-FIX: Always use server-side session ID for authenticated requests.
-```
+### ✅ `e9a2012e` 2026-04-06 — H-12 [SECURITY] Client-supplied session_id overrides server session
+> **Resolved**: `SubmitEvent` always overwrites `sessionID` with `session.ID` when an authenticated session exists; client-supplied value ignored in `api/handlers/analytics.go`.
+> **Verified**: pending deploy
 
-### H-13 [SECURITY] api/routes/routes.go:291 — Extractor HLS endpoints unauthenticated, no rate limit
-```
-WHAT: /extractor/hls/:id/* routes have no auth middleware and no rate limiting in handlers.
-FIX: Add requireAuth or per-handler rate limiting; validate item exists before proxying.
-```
+### ✅ `ef8d734c` 2026-04-06 — H-13 [SECURITY] Extractor HLS endpoints unauthenticated, no rate limit
+> **Resolved**: All three extractor HLS routes now use `requireAuth()` middleware in `api/routes/routes.go`.
+> **Verified**: pending deploy
 
-### H-14 [BROKEN] api/handlers/deletion_requests.go:196 — DB status updated before actual deletion
-```
-WHAT: Status set to "approved" before auth.DeleteUser(). If DeleteUser fails, record stuck as
-      approved but user still exists. Re-processing fails with "already processed".
-FIX: Call DeleteUser first; only update DB status on success.
-```
+### ✅ `d8c99f13` 2026-04-06 — H-14 [BROKEN] DB status updated before actual deletion
+> **Resolved**: `AdminProcessDeletionRequest` calls `auth.DeleteUser` first; DB status is only updated on success in `api/handlers/deletion_requests.go`.
+> **Verified**: pending deploy
 
-### H-15 [BROKEN] internal/database/database.go:148 — MaxRetries=0 yields nil DB with nil error
-```
-WHAT: Loop `for i := 0; i < dbCfg.MaxRetries; i++` never executes. Returns (nil, nil, nil).
-FIX: max(dbCfg.MaxRetries, 1) to guarantee at least one attempt.
-```
+### ✅ `d8c99f13` 2026-04-06 — H-15 [BROKEN] MaxRetries=0 yields nil DB with nil error
+> **Resolved**: `maxRetries := max(dbCfg.MaxRetries, 1)` guarantees at least one connection attempt in `internal/database/database.go`.
+> **Verified**: pending deploy
 
-### H-16 [SECURITY] system.go:428 — SQL denylist trivially bypassable
-```
-WHAT: Denylist misses DO, GET_LOCK, INTO OUTFILE/DUMPFILE, MySQL comments can bypass prefix check.
-FIX: Remove SQL query endpoint or add comprehensive denylist + verify MySQL user has no FILE privilege.
-```
+### ✅ `ef8d734c` 2026-04-06 — H-16 [SECURITY] SQL denylist trivially bypassable
+> **Resolved**: Added `GET_LOCK` and `RELEASE_LOCK` to the denylist alongside `BENCHMARK`/`SLEEP`/`LOAD_FILE`. Read-only transaction already prevents INTO OUTFILE/DUMPFILE in `api/handlers/system.go`.
+> **Verified**: pending deploy
 
-### H-17 [GAP] config/config.go:77 — validate() not called after Update/SetValuesBatch
-```
-WHAT: Validation runs only on Load(). Admin can set invalid values at runtime (port 0, etc).
-FIX: Call m.validate() in Update() and SetValuesBatch() before saving.
-```
+### ✅ `98381209` 2026-04-06 — H-17 [GAP] validate() not called after Update/SetValuesBatch
+> **Resolved**: Both `Update()` and `SetValuesBatch()` now call `m.validate()` before `m.save()` and roll back on failure in `internal/config/config.go` and `internal/config/accessors.go`.
+> **Verified**: pending deploy
 
-### H-18 [SECURITY] api/handlers/media.go:539 — Extractor redirect bypasses mature + stream-limit checks
-```
-WHAT: Extractor items get 302 redirect to unauthenticated HLS proxy without mature check.
-FIX: Add mature check before redirect; consider proxy approach instead of redirect.
-```
+### ✅ `3de52323` 2026-04-06 — H-18 [SECURITY] Extractor redirect bypasses mature + stream-limit checks
+> **Resolved**: Extractor redirect path now checks per-user and per-IP stream limits (same pattern as receiver) before issuing the 302 in `api/handlers/media.go`. Stream limit enforced; extractor items have no IsMature flag so mature check is not applicable.
+> **Verified**: pending deploy
 
-### H-19 [SECURITY] auth/authenticate.go:229 — Lockout window resets fully, enables slow brute-force
-```
-WHAT: recordFailedAttempt resets Count=1 on window expiry. One attempt per lockout window
-      runs indefinitely with no cumulative penalty.
-FIX: Use a cumulative violation counter that doesn't reset between windows.
-```
+### ✅ `b51be10c` 2026-04-06 — H-19 [SECURITY] Lockout window resets fully, enables slow brute-force
+> **Resolved**: `loginAttempt` struct gains `Windows int` field; `recordFailedAttempt` increments `Windows` on window expiry and immediately re-locks if `Windows >= MaxLoginAttempts` in `internal/auth/authenticate.go`.
+> **Verified**: pending deploy
 
-### H-20 [SECURITY] admin_discovery.go:41 — No EvalSymlinks before allow-list check; symlink escape
-```
-WHAT: filepath.Clean does not resolve symlinks. Symlink in media dir → scan arbitrary paths.
-FIX: Call filepath.EvalSymlinks on req.Directory before the allow-list check.
-```
+### ✅ `e9a2012e` 2026-04-06 — H-20 [SECURITY] No EvalSymlinks before allow-list check; symlink escape
+> **Resolved**: `AdminScanDirectory` calls `filepath.EvalSymlinks` on the requested directory before the allow-list check in `api/handlers/admin_discovery.go`.
+> **Verified**: pending deploy
 
-### H-21 [LEAK] analytics/sessions.go:25 — Sessions map grows unboundedly between cleanup cycles
-```
-WHAT: updateSession adds entries per unique SessionID with no cap. Bot/scraper → OOM.
-FIX: Enforce a maximum session count with LRU eviction.
-```
+### ✅ `7df18b99` 2026-04-06 — H-21 [LEAK] Sessions map grows unboundedly between cleanup cycles
+> **Resolved**: `updateSession` enforces `maxAnalyticsSessions=10_000` with LRU eviction (scan for oldest `LastActivity`) before adding new entries in `internal/analytics/sessions.go`.
+> **Verified**: pending deploy
 
-### H-22 [BROKEN] backup/backup.go:378 — Potential deadlock in RestoreBackup → CreateBackup lock ordering
-```
-WHAT: RestoreBackup holds restoreMu then CreateBackup acquires mu.Lock. Concurrent RestoreBackup
-      calls can deadlock (opposite lock ordering).
-FIX: Release restoreMu before createPreRestoreBackup or enforce consistent lock ordering.
-```
+### ⏭ SKIPPED — H-22 [BROKEN] Potential deadlock in RestoreBackup → CreateBackup
+> **Reason**: Analyzed as not an actual deadlock — `restoreMu` serializes concurrent restores; nothing else acquires `restoreMu` while holding `mu`. No lock-order inversion path confirmed. Skipped after investigation.
 
-### H-23 [GAP] auth/session.go:83 — All repo errors mapped to ErrSessionNotFound
-```
-WHAT: DB timeout/connection errors return ErrSessionNotFound → 401 instead of 503.
-FIX: Distinguish DB errors from not-found; propagate DB errors as 503.
-```
+### ✅ `b51be10c` 2026-04-06 — H-23 [GAP] All repo errors mapped to ErrSessionNotFound
+> **Resolved**: `getOrLoadSession` distinguishes `ErrSessionNotFound` from other errors; propagates DB errors so `sessionAuth` middleware returns 503 without clearing the cookie for transient failures in `internal/auth/session.go` and `api/routes/routes.go`.
+> **Verified**: pending deploy
 
-### H-24 [GAP] handler.go:513 — checkMatureAccess allows on media lookup failure
-```
-WHAT: When GetMedia returns error, checkMatureAccess returns true (allow). During DB outage
-      or scan, mature content gate is silently bypassed with no log.
-FIX: Log a warning on lookup failure; consider deny-on-error for mature protection.
-```
+### ✅ `b51be10c` 2026-04-06 — H-24 [GAP] checkMatureAccess allows on media lookup failure
+> **Resolved**: `checkMatureAccess` now logs a warning when `GetMedia` fails (noting item may not be in library) before returning `true` in `api/handlers/handler.go`.
+> **Verified**: pending deploy
 
-### H-25 [SECURITY] auth/tokens.go:74 — API tokens never expire
-```
-WHAT: No ExpiresAt field on APITokenRecord. Tokens valid indefinitely unless manually deleted.
-FIX: Add optional ExpiresAt field; enforce in ValidateAPIToken; expose TTL in CreateAPIToken.
-```
+### ✅ `870340e4` 2026-04-06 — H-25 [SECURITY] API tokens never expire
+> **Resolved**: `APITokenRecord` gains `ExpiresAt *time.Time`; `CreateAPIToken` accepts optional `ttl_seconds`; `ValidateAPIToken` rejects expired tokens; DB migration adds `expires_at` column to `user_api_tokens` in `internal/auth/tokens.go` and related files.
+> **Verified**: pending deploy
 
 ### H-26 [GAP] config/env_overrides — 20+ config fields have no env override
 ```
@@ -310,17 +200,13 @@ IMPACT: Docker/K8s operators cannot tune these without modifying config.json.
 FIX: Add env var mappings for each missing field.
 ```
 
-### H-27 [SECURITY] security.go:258 — CheckAccess doesn't check rate-limiter ban list
-```
-WHAT: When rate limiting is disabled, auto-bans and manual BanIP bans are not enforced.
-FIX: Check IsBanned() in CheckAccess regardless of RateLimitEnabled.
-```
+### ✅ `d8c99f13` 2026-04-06 — H-27 [SECURITY] CheckAccess doesn't check rate-limiter ban list
+> **Resolved**: `CheckAccess` now calls `m.rateLimiter.IsBanned(ip)` at the top before the blacklist check, enforcing bans regardless of whether rate limiting is enabled in `internal/security/security.go`.
+> **Verified**: pending deploy
 
-### H-28 [BROKEN] server/server.go:462 — shutdownHTTPServer called when httpServer may be nil
-```
-WHAT: If Start() fails before HTTP server creation, Shutdown() → nil pointer panic.
-FIX: Guard with if s.httpServer != nil.
-```
+### ✅ `15d82358` 2026-04-06 — H-28 [BROKEN] shutdownHTTPServer called when httpServer may be nil
+> **Resolved**: `shutdownHTTPServer` guards with `if s.httpServer == nil { return }` in `internal/server/server.go`.
+> **Verified**: pending deploy
 
 ---
 
