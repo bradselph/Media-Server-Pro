@@ -4,6 +4,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -215,9 +216,34 @@ func (ag *AgeGate) GinStatusHandler() gin.HandlerFunc {
 	}
 }
 
+// isSameOrigin returns true when the request's Origin or Referer header matches
+// the request Host. Absent headers are treated as same-origin (e.g. curl, native
+// apps) to avoid breaking non-browser callers. A mismatched Origin is a CSRF signal.
+func (ag *AgeGate) isSameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = r.Header.Get("Referer")
+	}
+	if origin == "" {
+		return true // no browser origin header → not a cross-site POST
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return u.Host == r.Host
+}
+
 // GinVerifyHandler returns a gin handler for POST /api/age-verify
 func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// CSRF protection: reject POSTs whose Origin/Referer doesn't match the server host.
+		if !ag.isSameOrigin(c.Request) {
+			ag.log.Warn("Age-gate verify rejected: cross-origin request Origin=%q Host=%q",
+				c.Request.Header.Get("Origin"), c.Request.Host)
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "forbidden"})
+			return
+		}
 		if ag.cfg.Enabled {
 			ip := extractClientIP(c.Request)
 			ag.mu.Lock()

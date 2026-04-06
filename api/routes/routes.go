@@ -289,10 +289,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Remote streaming — frontend uses mediaApi.getRemoteStreamUrl()
 	r.GET("/remote/stream", requireAuth(), h.StreamRemoteMedia)
 
-	// Extractor HLS proxy — unauthenticated; handlers apply rate limits (direct, high-frequency; excluded from gzip)
-	r.GET("/extractor/hls/:id/master.m3u8", h.ExtractorHLSMaster)
-	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", h.ExtractorHLSVariant)
-	r.GET("/extractor/hls/:id/:quality/:segment", h.ExtractorHLSSegment)
+	// Extractor HLS proxy — session auth required; excluded from gzip; handlers validate item exists.
+	r.GET("/extractor/hls/:id/master.m3u8", requireAuth(), h.ExtractorHLSMaster)
+	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", requireAuth(), h.ExtractorHLSVariant)
+	r.GET("/extractor/hls/:id/:quality/:segment", requireAuth(), h.ExtractorHLSSegment)
 
 	// Receiver WebSocket — middleware enforces valid X-API-Key or api_key before upgrade.
 	r.GET("/ws/receiver", h.RequireReceiverWithAPIKey(), h.ReceiverWebSocket)

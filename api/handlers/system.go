@@ -442,10 +442,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	h.log.Info("Admin %s executing query: %s", username, query)
 
 	// Block dangerous SQL functions even in SELECT subqueries.
-	// BENCHMARK and SLEEP are DoS vectors; LOAD_FILE reads arbitrary server-side
-	// files — it is a scalar function and is NOT blocked by a READ ONLY transaction.
+	// BENCHMARK/SLEEP/GET_LOCK/RELEASE_LOCK are DoS vectors; LOAD_FILE reads arbitrary
+	// server-side files — it is a scalar function and is NOT blocked by a READ ONLY transaction.
 	queryUpper := strings.ToUpper(query)
-	for _, banned := range []string{"BENCHMARK", "SLEEP", "LOAD_FILE"} {
+	for _, banned := range []string{"BENCHMARK", "SLEEP", "LOAD_FILE", "GET_LOCK", "RELEASE_LOCK"} {
 		if strings.Contains(queryUpper, banned) {
 			writeError(c, http.StatusBadRequest, banned+"() is not permitted in queries")
 			return
