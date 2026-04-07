@@ -238,7 +238,10 @@ func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRe
 		return adminUpdateRequest{}, msg
 	}
 	if _, ok := rawBody["mature_content"]; ok {
-		updates["is_mature"] = reqMatureContent
+		// mature_content is a legacy alias; only apply if is_mature wasn't explicitly set
+		if _, alreadySet := rawBody["is_mature"]; !alreadySet {
+			updates["is_mature"] = reqMatureContent
+		}
 	}
 	for k, v := range reqMetadata {
 		updates[k] = v

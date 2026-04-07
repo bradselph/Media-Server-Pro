@@ -111,6 +111,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		Role        string                 `json:"role"`
 		Enabled     *bool                  `json:"enabled"`
 		Email       string                 `json:"email"`
+		Type        string                 `json:"type"`
 		Permissions map[string]interface{} `json:"permissions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -134,6 +135,9 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 			return
 		}
 		updates["email"] = req.Email
+	}
+	if req.Type != "" {
+		updates["type"] = req.Type
 	}
 	if req.Permissions != nil {
 		updates["permissions"] = req.Permissions
