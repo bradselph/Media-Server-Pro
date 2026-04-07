@@ -479,6 +479,9 @@ func (m *Module) syncMediaItem(path string, updates map[string]interface{}) {
 	if isMature, ok := updates["is_mature"].(bool); ok {
 		item.IsMature = isMature
 	}
+	if score, ok := updates["mature_score"].(float64); ok {
+		item.MatureScore = score
+	}
 	if category, ok := updates["category"].(string); ok {
 		item.Category = category
 	}
