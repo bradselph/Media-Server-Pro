@@ -555,6 +555,29 @@ type FavoriteRecord struct {
 	AddedAt   time.Time
 }
 
+// DataDeletionRequestRepository provides data deletion request storage.
+type DataDeletionRequestRepository interface {
+	Create(ctx context.Context, req *DataDeletionRequestRecord) error
+	Get(ctx context.Context, id string) (*DataDeletionRequestRecord, error)
+	ListByStatus(ctx context.Context, status string) ([]*DataDeletionRequestRecord, error)
+	CountPendingByUser(ctx context.Context, userID string) (int64, error)
+	UpdateStatus(ctx context.Context, id string, status, reviewedBy, adminNotes string) error
+}
+
+// DataDeletionRequestRecord represents a data deletion request in the database.
+type DataDeletionRequestRecord struct {
+	ID         string
+	UserID     string
+	Username   string
+	Email      string
+	Reason     string
+	Status     string // "pending", "approved", "denied"
+	CreatedAt  time.Time
+	ReviewedAt *time.Time
+	ReviewedBy string
+	AdminNotes string
+}
+
 // APITokenRepository provides user API token storage.
 type APITokenRepository interface {
 	Create(ctx context.Context, token *APITokenRecord) error

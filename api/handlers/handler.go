@@ -20,6 +20,8 @@ import (
 	"media-server-pro/internal/admin"
 	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/auth"
+	"media-server-pro/internal/repositories"
+	repoMysql "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/categorizer"
@@ -156,10 +158,11 @@ type Handler struct {
 	extractor     *extractor.Module
 	crawler       *crawler.Module
 	duplicates    *duplicates.Module
-	downloader    *downloader.Module
-	config        *config.Manager
-	shutdownFunc  func()
-	viewCooldown  sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
+	downloader        *downloader.Module
+	config            *config.Manager
+	shutdownFunc      func()
+	deletionRequests  repositories.DataDeletionRequestRepository
+	viewCooldown      sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
 }
 
 // tryRecordView returns true if the view should be counted (not within the
@@ -199,14 +202,15 @@ func NewHandler(deps HandlerDeps) *Handler {
 	}
 
 	return &Handler{
-		log:           logger.New("handlers"),
-		buildInfo:     deps.BuildInfo,
-		media:         c.Media,
-		streaming:     c.Streaming,
-		hls:           c.HLS,
-		auth:          c.Auth,
-		database:      c.Database,
-		config:        c.Config,
+		log:              logger.New("handlers"),
+		buildInfo:        deps.BuildInfo,
+		media:            c.Media,
+		streaming:        c.Streaming,
+		hls:              c.HLS,
+		auth:             c.Auth,
+		database:         c.Database,
+		config:           c.Config,
+		deletionRequests: repoMysql.NewDataDeletionRequestRepository(c.Database.GORM()),
 		analytics:     o.Analytics,
 		playlist:      o.Playlist,
 		admin:         o.Admin,

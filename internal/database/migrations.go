@@ -661,6 +661,30 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			cleanupSQL: "DELETE FROM suggestion_view_history WHERE user_id NOT IN (SELECT id FROM users)",
 			alterSQL:   "ALTER TABLE suggestion_view_history ADD CONSTRAINT fk_suggestion_view_history_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
 		},
+		{
+			table:      "receiver_media",
+			constraint: "fk_receiver_media_slave",
+			cleanupSQL: "DELETE FROM receiver_media WHERE slave_id NOT IN (SELECT id FROM receiver_slaves)",
+			alterSQL:   "ALTER TABLE receiver_media ADD CONSTRAINT fk_receiver_media_slave FOREIGN KEY (slave_id) REFERENCES receiver_slaves(id) ON DELETE CASCADE",
+		},
+		{
+			table:      "user_favorites",
+			constraint: "fk_user_favorites_user",
+			cleanupSQL: "DELETE FROM user_favorites WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE user_favorites ADD CONSTRAINT fk_user_favorites_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+		{
+			table:      "user_api_tokens",
+			constraint: "fk_user_api_tokens_user",
+			cleanupSQL: "DELETE FROM user_api_tokens WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE user_api_tokens ADD CONSTRAINT fk_user_api_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+		{
+			table:      "hls_jobs",
+			constraint: "fk_hls_jobs_media",
+			cleanupSQL: "DELETE FROM hls_jobs WHERE media_path NOT IN (SELECT path FROM media_metadata)",
+			alterSQL:   "ALTER TABLE hls_jobs ADD CONSTRAINT fk_hls_jobs_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
+		},
 	}
 	for _, fk := range fks {
 		if err := m.ensureForeignKey(ctx, fk.table, fk.constraint, fk.cleanupSQL, fk.alterSQL); err != nil {
