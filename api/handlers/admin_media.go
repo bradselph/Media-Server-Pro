@@ -292,12 +292,6 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 		return
 	}
 
-	// If the file was renamed, update the stored path in the metadata so the key
-	// used by UpdateMetadata matches the new on-disk location.
-	if newPath != path && len(parsed.updates) > 0 {
-		parsed.updates["path"] = newPath
-	}
-
 	if err := h.media.UpdateMetadata(newPath, parsed.updates); err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
