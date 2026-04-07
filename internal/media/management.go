@@ -203,6 +203,7 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	// Save only the renamed item (not all 261) to avoid long blocking writes
 	if err := m.saveMetadataItem(newPath); err != nil {
 		m.log.Error("Failed to save metadata after rename: %v", err)
+		return newPath, fmt.Errorf("file renamed but metadata save failed: %w", err)
 	}
 
 	return newPath, nil
@@ -296,6 +297,7 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 
 	if err := m.saveMetadataItem(newPath); err != nil {
 		m.log.Error("Failed to save metadata after move: %v", err)
+		return newPath, fmt.Errorf("file moved but metadata save failed: %w", err)
 	}
 
 	return newPath, nil
@@ -412,11 +414,10 @@ func (m *Module) UpdateMetadata(path string, updates map[string]interface{}) err
 
 	m.log.Debug("Updated metadata for: %s", path)
 
-	go func() {
-		if err := m.saveMetadataItem(path); err != nil {
-			m.log.Warn("Failed to save metadata after update: %v", err)
-		}
-	}()
+	if err := m.saveMetadataItem(path); err != nil {
+		m.log.Error("Failed to save metadata after update: %v", err)
+		return fmt.Errorf("metadata updated in memory but DB save failed: %w", err)
+	}
 
 	return nil
 }

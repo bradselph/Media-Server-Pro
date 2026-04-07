@@ -8,7 +8,7 @@ import type {
   AnalyticsSummary, AnalyticsEvent, DailyStats, TopMediaItem, EventStats, EventTypeCounts, ContentPerformanceItem,
   AdminStats, SystemInfo, StreamSession, UploadProgress, UploadResult,
   AuditLogEntry, LogEntry, ScheduledTask, BackupEntry,
-  ThumbnailStats, ThumbnailPreviews, ScannerStats, FileScanResult, ReviewQueueItem,
+  ThumbnailStats, ThumbnailPreviews, ScannerStats, ReviewQueueItem,
   UpdateInfo, UpdateStatus,
   IPListEntry, BannedIP, SecurityStats,
   DatabaseStatus, QueryResult, UserSession,
