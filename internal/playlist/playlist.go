@@ -352,10 +352,13 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 	m.mu.Lock()
 	if p, ok := m.playlists[input.PlaylistID]; ok && p.UserID == string(input.UserID) {
 		// Re-check under write lock: a concurrent AddItem may have added the same item
-		// between our RLock check and now. Prefer the earlier DB row; discard ours.
+		// between our RLock check and now. Prefer the earlier DB row; remove ours.
 		for _, existing := range p.Items {
 			if existing.MediaPath == input.MediaPath || (input.MediaID != "" && existing.MediaID == input.MediaID) {
 				m.mu.Unlock()
+				if err := m.playlistRepo.RemoveItem(ctx, item.ID); err != nil {
+					m.log.Warn("Failed to remove duplicate playlist item %s from DB: %v", item.ID, err)
+				}
 				return nil
 			}
 		}
