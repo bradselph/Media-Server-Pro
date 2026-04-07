@@ -423,9 +423,9 @@ run_step "govulncheck" "$SKIP_VULN" govulncheck ./...
 
 echo ""
 
-# ── Frontend checks ───────────────────────────────────────────────────────────
+# ── Frontend checks (Nuxt UI) ─────────────────────────────────────────────────
 section "Frontend"
-FRONTEND_DIR="${REPO_ROOT}/web/frontend"
+FRONTEND_DIR="${REPO_ROOT}/web/nuxt-ui"
 
 if ! $OPT_SKIP_FRONTEND; then
   if [[ ! -d "$FRONTEND_DIR" ]]; then
@@ -461,54 +461,26 @@ fe_step() {
   run_step "$label" "$skip" bash -c "cd '${FRONTEND_DIR}' && $*"
 }
 
-if $OPT_FIX; then
-  fe_step "npm run lint (--fix)" "$OPT_SKIP_FRONTEND" "npx eslint --fix ."
-else
-  fe_step "npm run lint"         "$OPT_SKIP_FRONTEND" "npm run lint"
-fi
-# tsc --noEmit (from fix-issues.py — catches TS errors without full build)
+# nuxi typecheck — catches Vue/TS errors without full build
 SKIP_TSC="$(skip_if "$OPT_SKIP_FRONTEND")"
 if [[ "$SKIP_TSC" == "false" ]]; then
-  printf "  ${CYAN}▶${RESET} %-48s" "tsc --noEmit"
+  printf "  ${CYAN}▶${RESET} %-48s" "nuxi typecheck"
   t0=$(date +%s)
-  tsc_out=$(cd "$FRONTEND_DIR" && npx tsc --noEmit --pretty false 2>&1) && tsc_rc=0 || tsc_rc=$?
+  tsc_out=$(cd "$FRONTEND_DIR" && npm run typecheck 2>&1) && tsc_rc=0 || tsc_rc=$?
   elapsed=$(( $(date +%s) - t0 ))
   if [[ $tsc_rc -eq 0 ]]; then
     echo -e "${PASS} ${DIM}${elapsed}s${RESET}"
   else
     echo -e "${FAIL} ${DIM}${elapsed}s${RESET}"
     echo ""
-    echo -e "${RED}─── TypeScript errors (file:line) ─────────────────────────────${RESET}"
-    echo "$tsc_out" | grep -E '\.tsx?\([0-9]+,' | head -30 | sed 's/^/    /'
-    echo -e "${RED}─────────────────────────────────────────────────────────────${RESET}"
+    echo -e "${RED}─── TypeScript errors ─────────────────────────────────────────${RESET}"
+    echo "$tsc_out" | grep -E '\.(vue|ts)\(' | head -30 | sed 's/^/    /'
+    echo -e "${RED}──────────────────────────────────────────────────────────────${RESET}"
     echo ""
-    FAILED_STEPS+=("tsc --noEmit")
+    FAILED_STEPS+=("nuxi typecheck")
   fi
 fi
 fe_step "npm run build"      "$OPT_SKIP_FRONTEND" "npm run build"
-
-# vitest — mirror CI: warn instead of fail when no test files exist
-SKIP_VITEST="$(skip_if "$OPT_SKIP_FRONTEND" "$OPT_SKIP_TESTS")"
-if [[ "$SKIP_VITEST" == "false" ]]; then
-  printf "  ${CYAN}▶${RESET} %-48s" "vitest run"
-  t0=$(date +%s)
-  vtest_out=$(cd "$FRONTEND_DIR" && npx vitest run 2>&1) && vtest_rc=0 || vtest_rc=$?
-  elapsed=$(( $(date +%s) - t0 ))
-  if [[ $vtest_rc -eq 0 ]]; then
-    echo -e "${PASS} ${DIM}${elapsed}s${RESET}"
-  elif echo "$vtest_out" | grep -qiE "no test files|no tests"; then
-    echo -e "${WARN} ${DIM}${elapsed}s — no test files configured${RESET}"
-  else
-    echo -e "${FAIL} ${DIM}${elapsed}s${RESET}"
-    echo ""
-    echo "$vtest_out" | head -50
-    echo ""
-    FAILED_STEPS+=("vitest run")
-  fi
-else
-  echo -e "  ${SKIP_MARK} ${DIM}vitest run (skipped)${RESET}"
-  SKIPPED_STEPS+=("vitest run")
-fi
 
 SKIP_AUDIT="$(skip_if "$OPT_SKIP_FRONTEND" "$OPT_SKIP_SECURITY")"
 fe_step "npm audit (high+)"  "$SKIP_AUDIT" "npm audit --audit-level=high"

@@ -23,12 +23,10 @@ func (h *Handler) RestartServer(c *gin.Context) {
 	go func() {
 		time.Sleep(1 * time.Second)
 
-		// Drain connections and stop modules before exiting.
-		h.log.Info("Running graceful shutdown before restart...")
-		h.shutdownFunc()
-
+		// systemd case: let the service manager handle the restart.
 		if os.Getenv("INVOCATION_ID") != "" {
 			h.log.Info("Running under systemd — exiting with code 1 for service manager restart")
+			h.shutdownFunc()
 			os.Exit(1)
 			return
 		}
@@ -38,6 +36,7 @@ func (h *Handler) RestartServer(c *gin.Context) {
 		exe, err := os.Executable()
 		if err != nil {
 			h.log.Error("Failed to resolve executable path for restart: %v — falling back to exit", err)
+			h.shutdownFunc()
 			os.Exit(0)
 			return
 		}
@@ -45,22 +44,34 @@ func (h *Handler) RestartServer(c *gin.Context) {
 		exe, err = filepath.EvalSymlinks(exe)
 		if err != nil {
 			h.log.Error("Failed to evaluate symlinks for restart: %v — falling back to exit", err)
+			h.shutdownFunc()
 			os.Exit(0)
 			return
 		}
 
+		// Spawn the replacement process BEFORE calling shutdown.
+		// Calling shutdown first causes main() to return (when the HTTP listener closes),
+		// which kills all goroutines — including this one — before cmd.Start() is reached.
+		// The child inherits MEDIA_SERVER_RESTART_DELAY so it waits for the parent to
+		// exit and free the port before binding.
 		cmd := exec.Command(exe, os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		cmd.Env = append(os.Environ(), "MEDIA_SERVER_RESTART_DELAY=3")
 		setCmdRestartAttrs(cmd) // detach child from parent session (platform-specific)
 
 		if err := cmd.Start(); err != nil {
 			h.log.Error("Failed to start replacement process: %v — falling back to exit", err)
+			h.shutdownFunc()
 			os.Exit(1)
 			return
 		}
 
-		h.log.Info("Replacement process started (PID %d), exiting current instance", cmd.Process.Pid)
+		h.log.Info("Replacement process started (PID %d), shutting down current instance", cmd.Process.Pid)
+		// Graceful shutdown after spawning the child so in-flight requests drain cleanly.
+		// When shutdown closes the HTTP listener, main() may return and kill this goroutine,
+		// but the child process is already running independently.
+		h.shutdownFunc()
 		os.Exit(0)
 	}()
 }

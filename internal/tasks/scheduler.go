@@ -247,6 +247,10 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 			return
 		case newSchedule := <-task.reschedule:
 			ticker.Stop()
+			select {
+			case <-ticker.C:
+			default:
+			}
 			ticker = time.NewTicker(newSchedule)
 		case <-ticker.C:
 			if !m.tryRunScheduledTask(ctx, task) {

@@ -57,6 +57,14 @@ type MediaMetadataRepository interface {
 	DeleteAllPlaybackPositionsByUser(ctx context.Context, userID string) error
 	// UpdateBlurHash updates the BlurHash for a metadata row by path
 	UpdateBlurHash(ctx context.Context, path string, blurHash string) error
+	// GetPathByStableID returns the file path for the given stable ID.
+	// Returns ("", nil) when no row matches (avoids O(N) full-table scan in callers).
+	GetPathByStableID(ctx context.Context, stableID string) (string, error)
+	// ListDuplicateCandidates returns rows that have both a non-empty
+	// content_fingerprint and stable_id, which is the only set used by the
+	// duplicate-detection scan.  Tags are not loaded (not needed for fingerprint
+	// grouping) so this is significantly cheaper than List for large libraries.
+	ListDuplicateCandidates(ctx context.Context) (map[string]*MediaMetadata, error)
 }
 
 // MediaFilter defines DB-level filtering and pagination for media queries.
@@ -547,6 +555,29 @@ type FavoriteRecord struct {
 	AddedAt   time.Time
 }
 
+// DataDeletionRequestRepository provides data deletion request storage.
+type DataDeletionRequestRepository interface {
+	Create(ctx context.Context, req *DataDeletionRequestRecord) error
+	Get(ctx context.Context, id string) (*DataDeletionRequestRecord, error)
+	ListByStatus(ctx context.Context, status string) ([]*DataDeletionRequestRecord, error)
+	CountPendingByUser(ctx context.Context, userID string) (int64, error)
+	UpdateStatus(ctx context.Context, id string, status, reviewedBy, adminNotes string) error
+}
+
+// DataDeletionRequestRecord represents a data deletion request in the database.
+type DataDeletionRequestRecord struct {
+	ID         string
+	UserID     string
+	Username   string
+	Email      string
+	Reason     string
+	Status     string // "pending", "approved", "denied"
+	CreatedAt  time.Time
+	ReviewedAt *time.Time
+	ReviewedBy string
+	AdminNotes string
+}
+
 // APITokenRepository provides user API token storage.
 type APITokenRepository interface {
 	Create(ctx context.Context, token *APITokenRecord) error
@@ -563,5 +594,6 @@ type APITokenRecord struct {
 	Name       string
 	TokenHash  string
 	LastUsedAt *time.Time
+	ExpiresAt  *time.Time // nil means no expiry
 	CreatedAt  time.Time
 }

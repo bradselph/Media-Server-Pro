@@ -20,6 +20,8 @@ import (
 	"media-server-pro/internal/admin"
 	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/auth"
+	"media-server-pro/internal/repositories"
+	repoMysql "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/categorizer"
@@ -156,10 +158,11 @@ type Handler struct {
 	extractor     *extractor.Module
 	crawler       *crawler.Module
 	duplicates    *duplicates.Module
-	downloader    *downloader.Module
-	config        *config.Manager
-	shutdownFunc  func()
-	viewCooldown  sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
+	downloader        *downloader.Module
+	config            *config.Manager
+	shutdownFunc      func()
+	deletionRequests  repositories.DataDeletionRequestRepository
+	viewCooldown      sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
 }
 
 // tryRecordView returns true if the view should be counted (not within the
@@ -169,12 +172,18 @@ type Handler struct {
 func (h *Handler) tryRecordView(userID, mediaID string) bool {
 	key := userID + "|" + mediaID
 	now := time.Now()
+	cooldown := h.config.Get().Analytics.ViewCooldown
+	if cooldown <= 0 {
+		cooldown = viewCooldownDuration
+	}
 	if prev, ok := h.viewCooldown.Load(key); ok {
-		if now.Sub(prev.(time.Time)) < viewCooldownDuration {
+		if now.Sub(prev.(time.Time)) < cooldown {
 			return false
 		}
 	}
 	h.viewCooldown.Store(key, now)
+	// Evict this entry after 2× the cooldown window so the map doesn't grow unboundedly.
+	time.AfterFunc(cooldown*2, func() { h.viewCooldown.Delete(key) })
 	return true
 }
 
@@ -193,14 +202,15 @@ func NewHandler(deps HandlerDeps) *Handler {
 	}
 
 	return &Handler{
-		log:           logger.New("handlers"),
-		buildInfo:     deps.BuildInfo,
-		media:         c.Media,
-		streaming:     c.Streaming,
-		hls:           c.HLS,
-		auth:          c.Auth,
-		database:      c.Database,
-		config:        c.Config,
+		log:              logger.New("handlers"),
+		buildInfo:        deps.BuildInfo,
+		media:            c.Media,
+		streaming:        c.Streaming,
+		hls:              c.HLS,
+		auth:             c.Auth,
+		database:         c.Database,
+		config:           c.Config,
+		deletionRequests: repoMysql.NewDataDeletionRequestRepository(c.Database.GORM()),
 		analytics:     o.Analytics,
 		playlist:      o.Playlist,
 		admin:         o.Admin,
@@ -485,22 +495,9 @@ func (h *Handler) resolveRelativePath(path string, allowedDirs []string) string 
 }
 
 // isPathWithinDirs checks whether absPath resides within at least one of the given directories.
+// Delegates to isPathUnderDirs which uses filepath.Clean + HasPrefix for consistent behaviour.
 func isPathWithinDirs(absPath string, dirs []string) bool {
-	for _, dir := range dirs {
-		absDir, err := filepath.Abs(dir)
-		if err != nil {
-			continue
-		}
-		relPath, err := filepath.Rel(absDir, absPath)
-		if err != nil {
-			continue
-		}
-		escapesUp := strings.HasPrefix(relPath, ".."+string(filepath.Separator)) || relPath == ".."
-		if !escapesUp {
-			return true
-		}
-	}
-	return false
+	return isPathUnderDirs(absPath, dirs)
 }
 
 // checkMatureAccess verifies the current user has permission to access mature content at
@@ -508,6 +505,8 @@ func isPathWithinDirs(absPath string, dirs []string) bool {
 func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
 	item, err := h.media.GetMedia(absPath)
 	if err != nil {
+		// Log a warning so DB outages or scan gaps don't silently bypass mature protection.
+		h.log.Warn("checkMatureAccess: media lookup failed for %s: %v — allowing access (item may not be in library)", absPath, err)
 		return true
 	}
 	if item == nil {

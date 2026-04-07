@@ -187,20 +187,24 @@ func (m *Module) TrackDownload(ctx context.Context, params ViewParams) {
 	})
 }
 
-// SubmitClientEvent processes an event submitted by a client.
-func (m *Module) SubmitClientEvent(ctx context.Context, input ClientEventInput) {
-	validTypes := map[string]bool{
-		EventPlay: true, EventPause: true, EventResume: true, EventSeek: true,
-		EventComplete: true, EventError: true, EventQualityChange: true,
-		EventBuffering: true, EventVolumeChange: true, EventFullscreen: true,
-		EventLogin: true, EventLoginFailed: true, EventLogout: true,
-		EventRegister: true, EventAgeGatePass: true, EventDownload: true,
-		EventSearch: true,
-		"view": true, "playback": true,
-	}
+// clientAllowedTypes lists event types that clients (browser players) may submit.
+// Server-only events (login, logout, register, download, etc.) are intentionally
+// excluded — accepting them from clients would allow forged traffic stats.
+var clientAllowedTypes = map[string]bool{
+	EventPlay: true, EventPause: true, EventResume: true, EventSeek: true,
+	EventComplete: true, EventError: true, EventQualityChange: true,
+	EventBuffering: true, EventVolumeChange: true, EventFullscreen: true,
+	"view": true, "playback": true,
+}
 
+// SubmitClientEvent processes an event submitted by a client.
+// Server-only event types (login, register, download, etc.) are rejected to
+// prevent clients from forging traffic statistics.
+func (m *Module) SubmitClientEvent(ctx context.Context, input ClientEventInput) {
 	eventType := input.Type
-	if !validTypes[eventType] {
+	if !clientAllowedTypes[eventType] {
+		// Reclassify unknown or server-only types as "custom" so they are still
+		// recorded but cannot inflate server-side counters (logins, downloads, etc.).
 		eventType = "custom"
 	}
 

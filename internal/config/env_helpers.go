@@ -20,10 +20,15 @@ func envGetStr(keys ...string) string {
 func envGetBool(keys ...string) (bool, bool) {
 	if val := envGetStr(keys...); val != "" {
 		lower := strings.ToLower(val)
-		if lower != "true" && lower != "false" && val != "1" && val != "0" {
-			fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid boolean value %q, treating as false\n", keys[0], val)
+		switch lower {
+		case "true", "1", "yes", "on":
+			return true, true
+		case "false", "0", "no", "off":
+			return false, true
+		default:
+			fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid boolean value %q, ignoring\n", keys[0], val)
+			return false, false
 		}
-		return lower == "true" || val == "1", true
 	}
 	return false, false
 }
@@ -63,11 +68,14 @@ func envGetFloat64(keys ...string) (float64, bool) {
 
 func envGetDuration(unit time.Duration, keys ...string) (time.Duration, bool) {
 	if val := envGetStr(keys...); val != "" {
-		i, err := strconv.Atoi(val)
-		if err == nil {
+		if i, err := strconv.Atoi(val); err == nil {
 			return time.Duration(i) * unit, true
 		}
-		fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid duration value %q: %v\n", keys[0], val, err)
+		// Fall back to Go duration string (e.g. "30s", "1m30s")
+		if d, err := time.ParseDuration(val); err == nil {
+			return d, true
+		}
+		fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid duration value %q (expected integer or duration string)\n", keys[0], val)
 	}
 	return 0, false
 }
@@ -81,4 +89,17 @@ func envGetDurationString(keys ...string) (time.Duration, bool) {
 		fmt.Fprintf(os.Stderr, "Warning: env var %s has invalid duration string %q: %v\n", keys[0], val, err)
 	}
 	return 0, false
+}
+
+// splitTrimmed splits s by sep and trims whitespace from each element.
+// Empty elements after trimming are excluded from the result.
+func splitTrimmed(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }

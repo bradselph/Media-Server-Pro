@@ -31,20 +31,29 @@ func New(root string) (*Backend, error) {
 	return &Backend{root: abs}, nil
 }
 
+// rootWithSep returns the root directory path with a trailing separator,
+// used to correctly check that a path is under root without false positives
+// from sibling directories whose names start with the root prefix
+// (e.g. root="/data/media" must not match "/data/media-evil/...").
+func (b *Backend) rootWithSep() string {
+	return b.root + string(filepath.Separator)
+}
+
 // resolve returns the absolute path for a relative path, ensuring it stays
 // within the root directory to prevent path traversal attacks.
 func (b *Backend) resolve(rel string) (string, error) {
 	cleaned := filepath.Clean(rel)
 	if filepath.IsAbs(cleaned) {
-		// Allow absolute paths that are already under root (legacy code passes these)
-		if strings.HasPrefix(cleaned, b.root) {
+		// Allow absolute paths that are already under root (legacy code passes these).
+		// Use separator boundary to prevent "/data/media-evil" matching root="/data/media".
+		if cleaned == b.root || strings.HasPrefix(cleaned, b.rootWithSep()) {
 			return cleaned, nil
 		}
 		return "", fmt.Errorf("local storage: absolute path %q outside root %q", cleaned, b.root)
 	}
 	full := filepath.Join(b.root, cleaned)
-	// Verify the resolved path is still under root after cleaning
-	if !strings.HasPrefix(full, b.root) {
+	// Verify the resolved path is still under root after cleaning.
+	if full != b.root && !strings.HasPrefix(full, b.rootWithSep()) {
 		return "", fmt.Errorf("local storage: path traversal %q", rel)
 	}
 	return full, nil
@@ -249,10 +258,12 @@ func (b *Backend) WriteFile(_ context.Context, path string, data []byte) error {
 }
 
 // AbsPath returns the absolute filesystem path.
+// Returns an empty string if the path is outside the root to prevent callers
+// (e.g. ffmpeg invocations) from accidentally operating on traversal paths.
 func (b *Backend) AbsPath(path string) string {
 	abs, err := b.resolve(path)
 	if err != nil {
-		return filepath.Join(b.root, filepath.Clean(path))
+		return ""
 	}
 	return abs
 }

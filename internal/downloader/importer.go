@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/logger"
+	"media-server-pro/pkg/helpers"
 )
 
 // mediaExtensions matches the download-move.sh script's supported media types.
@@ -25,11 +26,6 @@ type ImportableFile struct {
 	Size     int64  `json:"size"`
 	Modified int64  `json:"modified"`
 	IsAudio  bool   `json:"isAudio"`
-}
-
-var audioExtensions = map[string]bool{
-	".mp3": true, ".m4a": true, ".opus": true, ".ogg": true,
-	".flac": true, ".wav": true, ".aac": true,
 }
 
 // ListImportableFiles scans the downloads directory and returns files that
@@ -94,7 +90,7 @@ func ListImportableFiles(downloadsDir string) ([]ImportableFile, error) {
 			Name:     name,
 			Size:     info.Size(),
 			Modified: info.ModTime().Unix(),
-			IsAudio:  audioExtensions[ext],
+			IsAudio:  helpers.IsAudioExtension(ext),
 		})
 	}
 

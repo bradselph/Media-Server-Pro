@@ -12,8 +12,9 @@ import (
 )
 
 // CreateAPIToken generates a new API token for the user and persists it.
+// If ttl > 0 the token will expire after that duration; ttl=0 means no expiry.
 // Returns the raw token value (shown only once) and the stored record.
-func (m *Module) CreateAPIToken(ctx context.Context, userID, name string) (rawToken string, rec *repositories.APITokenRecord, err error) {
+func (m *Module) CreateAPIToken(ctx context.Context, userID, name string, ttl time.Duration) (rawToken string, rec *repositories.APITokenRecord, err error) {
 	rawToken = generateSessionID() // 32 bytes → URL-safe base64 (~44 chars)
 	hash := hashToken(rawToken)
 	rec = &repositories.APITokenRecord{
@@ -22,6 +23,10 @@ func (m *Module) CreateAPIToken(ctx context.Context, userID, name string) (rawTo
 		Name:      name,
 		TokenHash: hash,
 		CreatedAt: time.Now(),
+	}
+	if ttl > 0 {
+		exp := time.Now().Add(ttl)
+		rec.ExpiresAt = &exp
 	}
 	if err = m.tokenRepo.Create(ctx, rec); err != nil {
 		return "", nil, fmt.Errorf("create api token: %w", err)
@@ -50,6 +55,9 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 	if rec == nil {
 		return nil, nil, ErrInvalidCredentials
 	}
+	if rec.ExpiresAt != nil && time.Now().After(*rec.ExpiresAt) {
+		return nil, nil, ErrSessionExpired
+	}
 
 	user, err := m.userRepo.GetByID(ctx, rec.UserID)
 	if err != nil {
@@ -65,13 +73,18 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 	}()
 
 	// Synthetic session — not stored in the sessions table; used only for context propagation.
+	// ExpiresAt is bounded by the token's actual TTL when set, otherwise defaults to 24h.
+	expiresAt := time.Now().Add(24 * time.Hour)
+	if rec.ExpiresAt != nil {
+		expiresAt = *rec.ExpiresAt
+	}
 	session := &models.Session{
 		ID:           "token:" + rec.ID,
 		UserID:       user.ID,
 		Username:     user.Username,
 		Role:         user.Role,
 		CreatedAt:    rec.CreatedAt,
-		ExpiresAt:    time.Now().Add(365 * 24 * time.Hour), // tokens don't expire
+		ExpiresAt:    expiresAt,
 		LastActivity: time.Now(),
 	}
 	return session, user, nil

@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/pkg/helpers"
+	"media-server-pro/pkg/models"
 	"media-server-pro/pkg/storage"
 )
 
@@ -203,6 +205,7 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	// Save only the renamed item (not all 261) to avoid long blocking writes
 	if err := m.saveMetadataItem(newPath); err != nil {
 		m.log.Error("Failed to save metadata after rename: %v", err)
+		return newPath, fmt.Errorf("file renamed but metadata save failed: %w", err)
 	}
 
 	return newPath, nil
@@ -296,6 +299,7 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 
 	if err := m.saveMetadataItem(newPath); err != nil {
 		m.log.Error("Failed to save metadata after move: %v", err)
+		return newPath, fmt.Errorf("file moved but metadata save failed: %w", err)
 	}
 
 	return newPath, nil
@@ -412,11 +416,10 @@ func (m *Module) UpdateMetadata(path string, updates map[string]interface{}) err
 
 	m.log.Debug("Updated metadata for: %s", path)
 
-	go func() {
-		if err := m.saveMetadataItem(path); err != nil {
-			m.log.Warn("Failed to save metadata after update: %v", err)
-		}
-	}()
+	if err := m.saveMetadataItem(path); err != nil {
+		m.log.Error("Failed to save metadata after update: %v", err)
+		return fmt.Errorf("metadata updated in memory but DB save failed: %w", err)
+	}
 
 	return nil
 }
@@ -726,4 +729,51 @@ func validateDirectory(dir string, cfg *config.Config) (string, error) {
 	}
 
 	return "", fmt.Errorf("directory not allowed: %s", dir)
+}
+
+// RegisterUploadedFile indexes a single newly-uploaded file so it appears in
+// the media library immediately without waiting for the next scheduled scan.
+// It creates a MediaItem, adds it to the in-memory index, runs ffprobe for
+// metadata extraction, and persists the metadata to the database.
+func (m *Module) RegisterUploadedFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat uploaded file: %w", err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	var mediaType models.MediaType
+	if videoExtensions[ext] {
+		mediaType = models.MediaTypeVideo
+	} else if helpers.IsAudioExtension(ext) {
+		mediaType = models.MediaTypeAudio
+	} else {
+		mediaType = models.MediaTypeUnknown
+	}
+
+	item := m.createMediaItem(path, info, mediaType)
+	if item == nil {
+		return fmt.Errorf("failed to create media item for %s", path)
+	}
+
+	// Extract metadata (duration, codec, etc.) synchronously so the item is
+	// fully populated before it becomes visible to API consumers.
+	if m.ffprobeAvail {
+		m.extractMetadata(item)
+	}
+
+	m.mu.Lock()
+	m.media[path] = item
+	m.mediaByID[item.ID] = item
+	m.version++
+	m.mu.Unlock()
+
+	// Persist to DB.
+	if err := m.saveMetadataItem(path); err != nil {
+		m.log.Error("Failed to persist metadata for uploaded file %s: %v", path, err)
+		return fmt.Errorf("file indexed but metadata save failed: %w", err)
+	}
+
+	m.log.Info("Registered uploaded file: %s (id: %s)", path, item.ID)
+	return nil
 }

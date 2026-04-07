@@ -8,8 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/joho/godotenv"
-
 	"media-server-pro/api/handlers"
 	"media-server-pro/api/routes"
 	"media-server-pro/internal/admin"
@@ -30,7 +28,6 @@ import (
 	"media-server-pro/internal/playlist"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
-	"media-server-pro/internal/repositories/mysql"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
 	"media-server-pro/internal/server"
@@ -54,17 +51,18 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.1.0"
+	Version   = "1.1.39"
 	BuildDate = ""
 )
 
-func main() {
-	// Load .env before anything else so environment variables are available
-	// during config loading. Missing file is ignored; other errors are logged.
-	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Warning: loading .env: %v\n", err)
-	}
+// fatalExit logs an error, flushes the logger, and exits with code 1.
+func fatalExit(log *logger.Logger, format string, args ...interface{}) {
+	log.Error(format, args...)
+	logger.Shutdown()
+	os.Exit(1)
+}
 
+func main() {
 	// Parse flags
 	var (
 		configPath = flag.String("config", "config.json", "Path to config file")
@@ -145,28 +143,23 @@ func main() {
 
 	videoStore, err := storageFactory.NewBackend(initCtx, "videos", dirs.Videos)
 	if err != nil {
-		log.Error("Failed to create video storage backend: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Failed to create video storage backend: %v", err)
 	}
 	musicStore, err := storageFactory.NewBackend(initCtx, "music", dirs.Music)
 	if err != nil {
-		log.Error("Failed to create music storage backend: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Failed to create music storage backend: %v", err)
 	}
 	thumbnailStore, err := storageFactory.NewBackend(initCtx, "thumbnails", dirs.Thumbnails)
 	if err != nil {
-		log.Error("Failed to create thumbnail storage backend: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Failed to create thumbnail storage backend: %v", err)
 	}
 	uploadStore, err := storageFactory.NewBackend(initCtx, "uploads", dirs.Uploads)
 	if err != nil {
-		log.Error("Failed to create upload storage backend: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Failed to create upload storage backend: %v", err)
 	}
 	hlsStore, err := storageFactory.NewBackend(initCtx, "hls_cache", dirs.HLSCache)
 	if err != nil {
-		log.Error("Failed to create HLS storage backend: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Failed to create HLS storage backend: %v", err)
 	}
 	log.Info("Storage backend: %s", cfg.Get().Storage.Backend)
 
@@ -186,16 +179,14 @@ func main() {
 	// Auth (critical — requires database)
 	authModule, err := auth.NewModule(cfg, dbModule)
 	if err != nil {
-		log.Error("Failed to create auth module: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Failed to create auth module: %v", err)
 	}
 	mustRegister(srv, authModule)
 
 	// Media (critical — requires database, uses storage backends)
 	mediaModule, err := media.NewModule(cfg, dbModule)
 	if err != nil {
-		log.Error("Failed to create media module: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Failed to create media module: %v", err)
 	}
 	mediaModule.SetStores(videoStore, musicStore, uploadStore)
 	mustRegister(srv, mediaModule)
@@ -212,8 +203,7 @@ func main() {
 	// Scanner (critical — requires database)
 	scannerModule, err := scanner.NewModule(cfg, dbModule)
 	if err != nil {
-		log.Error("Failed to create scanner module: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Failed to create scanner module: %v", err)
 	}
 	mustRegister(srv, scannerModule)
 
@@ -240,9 +230,8 @@ func main() {
 		log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
 	}
 
-	// Thumbnails (critical — optional BlurHash storage via metadata repo, uses storage backend)
-	metadataRepo := mysql.NewMediaMetadataRepository(dbModule.GORM())
-	thumbnailsModule := thumbnails.NewModule(cfg, metadataRepo)
+	// Thumbnails (critical — BlurHash repo is wired inside Start() after DB connects)
+	thumbnailsModule := thumbnails.NewModule(cfg, dbModule)
 	thumbnailsModule.SetMediaIDProvider(mediaModule)
 	thumbnailsModule.SetStore(thumbnailStore)
 	thumbnailsModule.SetMediaInputResolver(mediaModule)
@@ -418,8 +407,7 @@ func main() {
 
 	// ── Start server (blocks until graceful shutdown) ──────────────────────
 	if err := srv.Start(); err != nil {
-		log.Error("Server error: %v", err)
-		os.Exit(1)
+		fatalExit(log, "Server error: %v", err)
 	}
 }
 
@@ -432,9 +420,8 @@ func validateSecrets(cfg *config.Manager, log *logger.Logger) {
 
 	// Receiver: API keys are the sole authentication mechanism for slave nodes.
 	if appCfg.Receiver.Enabled && len(appCfg.Receiver.APIKeys) == 0 {
-		log.Error("FATAL: receiver is enabled but no API keys are configured. " +
+		fatalExit(log, "FATAL: receiver is enabled but no API keys are configured. "+
 			"Set RECEIVER_API_KEYS in .env or receiver.api_keys in config.json, then restart.")
-		os.Exit(1)
 	}
 
 	// Enforce minimum length and warn on known-weak receiver API key values.
@@ -461,6 +448,34 @@ func validateSecrets(cfg *config.Manager, log *logger.Logger) {
 					"This allows any website to make credentialed requests. " +
 					"Restrict cors_origins to your frontend domains in production.")
 			}
+		}
+	}
+
+	// Admin panel: warn when enabled without a password hash so the operator
+	// knows the panel is inaccessible (or worse, open to default credentials).
+	if appCfg.Admin.Enabled {
+		if appCfg.Admin.PasswordHash == "" {
+			log.Warn("Admin panel is enabled but ADMIN_PASSWORD_HASH is not set — " +
+				"admin login will fail until a bcrypt hash is configured.")
+		}
+		if appCfg.Admin.Username == "" {
+			log.Warn("Admin panel is enabled but ADMIN_USERNAME is not set — " +
+				"admin login will fail until a username is configured.")
+		}
+	}
+
+	// S3 storage: warn when selected but required credentials are absent.
+	if appCfg.Storage.Backend == "s3" {
+		s3 := appCfg.Storage.S3
+		if s3.AccessKeyID == "" || s3.SecretAccessKey == "" {
+			log.Warn("S3 storage backend is selected but access credentials are missing. " +
+				"Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (or config.json storage.s3 fields).")
+		}
+		if s3.Bucket == "" {
+			log.Warn("S3 storage backend is selected but storage.s3.bucket is not set.")
+		}
+		if s3.Endpoint == "" {
+			log.Warn("S3 storage backend is selected but storage.s3.endpoint is not set.")
 		}
 	}
 }
@@ -826,5 +841,17 @@ func registerTasks(
 			}
 			return nil
 		},
+	})
+
+	// Re-apply the interval when it is changed via the admin config panel so that
+	// a server restart is not required to pick up a new pre-generation schedule.
+	cfg.OnChange(func(newCfg *config.Config) {
+		newInterval := time.Duration(newCfg.HLS.PreGenerateIntervalHours) * time.Hour
+		if newInterval < 15*time.Minute {
+			newInterval = 15 * time.Minute
+		}
+		if err := scheduler.UpdateSchedule("hls-pregenerate", newInterval); err != nil {
+			log.Warn("Failed to update HLS pre-generation schedule: %v", err)
+		}
 	})
 }

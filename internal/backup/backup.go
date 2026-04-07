@@ -169,7 +169,8 @@ func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 	}
 
 	if err := m.saveManifest(manifest); err != nil {
-		m.log.Warn("Failed to save backup manifest: %v", err)
+		m.log.Error("Failed to save backup manifest: %v", err)
+		manifest.Errors = append(manifest.Errors, fmt.Sprintf("manifest save failed: %v", err))
 	}
 
 	m.log.Info("Created backup: %s (%d files, %d bytes)", backupID, len(manifest.Files), manifest.Size)

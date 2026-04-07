@@ -372,6 +372,10 @@ func (s *Server) startWatchdog(ctx context.Context) {
 }
 
 func (s *Server) startHTTP() error {
+	if d := restartBindDelay(); d > 0 {
+		s.log.Info("Waiting %s for previous instance to release port...", d)
+		time.Sleep(d)
+	}
 	ln, err := net.Listen("tcp", s.httpServer.Addr)
 	if err != nil {
 		return fmt.Errorf("HTTP listen error: %w", err)
@@ -392,6 +396,10 @@ func (s *Server) startHTTP() error {
 }
 
 func (s *Server) startHTTPS() error {
+	if d := restartBindDelay(); d > 0 {
+		s.log.Info("Waiting %s for previous instance to release port...", d)
+		time.Sleep(d)
+	}
 	cfg := s.config.Get()
 
 	tlsConfig, err := createTLSConfig(cfg.Server.CertFile, cfg.Server.KeyFile)
@@ -458,10 +466,29 @@ func (s *Server) Shutdown() {
 }
 
 func (s *Server) shutdownHTTPServer(ctx context.Context) {
+	if s.httpServer == nil {
+		return
+	}
 	s.log.Info("Stopping HTTP server...")
 	if err := s.httpServer.Shutdown(ctx); err != nil {
 		s.log.Error("HTTP server shutdown error: %v", err)
 	}
+}
+
+// restartBindDelay returns the port-bind delay for a replacement process.
+// The parent sets MEDIA_SERVER_RESTART_DELAY=N (seconds) on the child's environment
+// so the child waits for the parent to exit and release the port before binding.
+func restartBindDelay() time.Duration {
+	val := os.Getenv("MEDIA_SERVER_RESTART_DELAY")
+	if val == "" {
+		return 0
+	}
+	os.Unsetenv("MEDIA_SERVER_RESTART_DELAY")
+	var secs int
+	if _, err := fmt.Sscanf(val, "%d", &secs); err == nil && secs > 0 {
+		return time.Duration(secs) * time.Second
+	}
+	return 0
 }
 
 func (s *Server) shutdownModules(ctx context.Context) {

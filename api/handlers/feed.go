@@ -57,10 +57,19 @@ type atomSummary struct {
 // pass the session cookie (same-origin tooling, Inoreader with cookie auth, etc.)
 // can subscribe to library updates.
 func (h *Handler) GetRSSFeed(c *gin.Context) {
-	limit := feedDefaultItems
+	uiCfg := h.config.Get().UI
+	maxItems := uiCfg.FeedMaxItems
+	if maxItems <= 0 {
+		maxItems = feedMaxItems
+	}
+	defaultItems := uiCfg.FeedDefaultItems
+	if defaultItems <= 0 {
+		defaultItems = feedDefaultItems
+	}
+	limit := defaultItems
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
-		if l > feedMaxItems {
-			l = feedMaxItems
+		if l > maxItems {
+			l = maxItems
 		}
 		limit = l
 	}
@@ -72,7 +81,16 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		SortDesc: true,
 	}
 
-	items := h.media.ListMedia(filter)
+	allItems := h.media.ListMedia(filter)
+
+	// Filter out mature content for users who are not authorised to view it.
+	canViewMature := h.canViewMatureContent(c)
+	items := allItems[:0]
+	for _, item := range allItems {
+		if !item.IsMature || canViewMature {
+			items = append(items, item)
+		}
+	}
 
 	// Truncate to requested limit
 	if len(items) > limit {

@@ -56,8 +56,12 @@ func (m *Module) checkLock(jobID string) (exists bool, stale bool, lock *LockFil
 		return true, true, nil // Corrupted lock is stale
 	}
 
-	// Check if lock is stale (lock older than 2h is considered stale so large-file transcodes aren't killed early)
-	staleThreshold := 2 * time.Hour
+	// Check if lock is stale. The threshold is configurable (default 2h) so
+	// operators running long 4K encodes can raise it without touching code.
+	staleThreshold := m.config.Get().HLS.StaleLockThreshold
+	if staleThreshold <= 0 {
+		staleThreshold = 2 * time.Hour
+	}
 	if time.Since(lock.StartedAt) > staleThreshold {
 		return true, true, lock
 	}

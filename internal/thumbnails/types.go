@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/storage"
 )
@@ -72,6 +73,7 @@ type Module struct {
 	log             *logger.Logger
 	config          *config.Manager
 	thumbnailDir    string
+	dbModule           *database.Module   // used in Start() to wire blurHashUpdater after DB connects
 	store              storage.Backend    // optional storage backend for thumbnail I/O
 	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
 	ffmpegPath      string

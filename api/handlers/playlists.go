@@ -273,7 +273,7 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 		return
 	}
 
-	mediaPath, ok := h.resolveMediaByID(c, req.MediaID)
+	mediaPath, itemName, ok := h.resolveMediaPathOrReceiver(c, req.MediaID)
 	if !ok {
 		return
 	}
@@ -282,11 +282,9 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 	if title == "" {
 		title = req.Name
 	}
-	// Fall back to the media item name when the client didn't send a title
+	// Fall back to the resolved item name (covers local, receiver, and extractor items)
 	if title == "" {
-		if item, err := h.media.GetMediaByID(req.MediaID); err == nil && item != nil {
-			title = item.Name
-		}
+		title = itemName
 	}
 
 	if err := h.playlist.AddItem(c.Request.Context(), playlist.AddItemInput{

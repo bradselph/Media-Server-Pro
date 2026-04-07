@@ -44,15 +44,17 @@ func parseOptionalTime(s *string) *time.Time {
 	return &t
 }
 
-// remoteCacheRow maps DB columns (CachedAt/LastAccess as strings; parseTime used in rowToRecord).
+// remoteCacheRow maps to the remote_cache_entries table.
+// CachedAt and LastAccess are TIMESTAMP columns — GORM maps them to time.Time directly,
+// avoiding the manual string parse/format round-trip that was fragile and timezone-sensitive.
 type remoteCacheRow struct {
-	RemoteURL   string `gorm:"column:remote_url;primaryKey"`
-	LocalPath   string `gorm:"column:local_path"`
-	Size        int64  `gorm:"column:file_size"`
-	ContentType string `gorm:"column:content_type"`
-	CachedAt    string `gorm:"column:cached_at"`
-	LastAccess  string `gorm:"column:last_access"`
-	Hits        int    `gorm:"column:hits"`
+	RemoteURL   string    `gorm:"column:remote_url;primaryKey"`
+	LocalPath   string    `gorm:"column:local_path"`
+	Size        int64     `gorm:"column:file_size"`
+	ContentType string    `gorm:"column:content_type"`
+	CachedAt    time.Time `gorm:"column:cached_at"`
+	LastAccess  time.Time `gorm:"column:last_access"`
+	Hits        int       `gorm:"column:hits"`
 }
 
 func (remoteCacheRow) TableName() string { return "remote_cache_entries" }
@@ -71,8 +73,8 @@ func (r *RemoteCacheRepository) Save(ctx context.Context, entry *repositories.Re
 		LocalPath:   entry.LocalPath,
 		Size:        entry.Size,
 		ContentType: entry.ContentType,
-		CachedAt:    entry.CachedAt.Format("2006-01-02 15:04:05"),
-		LastAccess:  entry.LastAccess.Format("2006-01-02 15:04:05"),
+		CachedAt:    entry.CachedAt,
+		LastAccess:  entry.LastAccess,
 		Hits:        entry.Hits,
 	}
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
@@ -119,19 +121,13 @@ func (r *RemoteCacheRepository) List(ctx context.Context) ([]*repositories.Remot
 }
 
 func (r *RemoteCacheRepository) rowToRecord(row *remoteCacheRow) *repositories.RemoteCacheRecord {
-	rec := &repositories.RemoteCacheRecord{
+	return &repositories.RemoteCacheRecord{
 		RemoteURL:   row.RemoteURL,
 		LocalPath:   row.LocalPath,
 		Size:        row.Size,
 		ContentType: row.ContentType,
+		CachedAt:    row.CachedAt,
+		LastAccess:  row.LastAccess,
 		Hits:        row.Hits,
 	}
-	// Parse timestamps — use zero time on failure
-	if t, err := parseTime(row.CachedAt); err == nil {
-		rec.CachedAt = t
-	}
-	if t, err := parseTime(row.LastAccess); err == nil {
-		rec.LastAccess = t
-	}
-	return rec
 }

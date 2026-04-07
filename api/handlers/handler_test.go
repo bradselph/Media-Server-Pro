@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/tls"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -52,7 +53,7 @@ func TestWriteError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// safeContentDisposition / unsafeContentDispositionChar
+// safeContentDisposition
 // ---------------------------------------------------------------------------
 
 func TestSafeContentDisposition(t *testing.T) {
@@ -74,26 +75,6 @@ func TestSafeContentDisposition(t *testing.T) {
 	}
 }
 
-func TestUnsafeContentDispositionChar(t *testing.T) {
-	if !unsafeContentDispositionChar('"') {
-		t.Error("double quote should be unsafe")
-	}
-	if !unsafeContentDispositionChar('\\') {
-		t.Error("backslash should be unsafe")
-	}
-	if !unsafeContentDispositionChar('\n') {
-		t.Error("newline should be unsafe")
-	}
-	if !unsafeContentDispositionChar('\x01') {
-		t.Error("control char should be unsafe")
-	}
-	if unsafeContentDispositionChar('a') {
-		t.Error("'a' should be safe")
-	}
-	if unsafeContentDispositionChar(' ') {
-		t.Error("space should be safe")
-	}
-}
 
 // ---------------------------------------------------------------------------
 // getSession / getUser
@@ -173,6 +154,21 @@ func TestIsSecureRequest(t *testing.T) {
 	req.Header.Set("Cf-Visitor", `{"scheme":"https"}`)
 	if !isSecureRequest(req) {
 		t.Error("Cf-Visitor with https from trusted proxy should be secure")
+	}
+
+	// Cf-Visitor from untrusted client — must not be treated as HTTPS
+	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.5:1234"
+	req.Header.Set("Cf-Visitor", `{"scheme":"https"}`)
+	if isSecureRequest(req) {
+		t.Error("Cf-Visitor from untrusted client should not be secure")
+	}
+
+	// Direct TLS (no proxy headers)
+	req = httptest.NewRequest("GET", "/", nil)
+	req.TLS = &tls.ConnectionState{}
+	if !isSecureRequest(req) {
+		t.Error("request with TLS should be secure regardless of headers")
 	}
 }
 

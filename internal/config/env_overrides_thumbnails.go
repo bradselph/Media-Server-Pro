@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 func (m *Manager) applyThumbnailsEnvOverrides() {
 	m.applyThumbnailsFeatureOverrides()
 	m.applyThumbnailsDimensionOverrides()
@@ -46,5 +48,11 @@ func (m *Manager) applyThumbnailsWorkerOverrides() {
 	}
 	if val, ok := envGetInt("THUMBNAILS_WORKER_COUNT"); ok {
 		m.config.Thumbnails.WorkerCount = val
+	}
+	if val, ok := envGetDuration(time.Minute, "THUMBNAILS_INFLIGHT_EVICTION_TIMEOUT_MINUTES"); ok {
+		m.config.Thumbnails.InFlightEvictionTimeout = val
+	}
+	if val, ok := envGetDuration(time.Second, "THUMBNAILS_INFLIGHT_SCAN_INTERVAL_SECONDS"); ok {
+		m.config.Thumbnails.InFlightScanInterval = val
 	}
 }

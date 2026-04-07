@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -41,7 +42,7 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 
 	writer := csv.NewWriter(file)
 
-	rows := [][]string{{"Timestamp", "Type", "MediaID", "UserID", "SessionID", "IPAddress"}}
+	rows := [][]string{{"Timestamp", "Type", "MediaID", "UserID", "SessionID", "IPMasked"}}
 	for _, event := range events {
 		rows = append(rows, []string{
 			event.Timestamp.Format(time.RFC3339),
@@ -49,7 +50,7 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 			event.MediaID,
 			event.UserID,
 			event.SessionID,
-			event.IPAddress,
+			maskIP(event.IPAddress),
 		})
 	}
 	if err := writer.WriteAll(rows); err != nil {
@@ -59,4 +60,24 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 	succeeded = true
 	m.log.Info("Exported analytics to %s", filename)
 	return filename, nil
+}
+
+// maskIP pseudonymizes an IP address for GDPR compliance.
+// IPv4: last octet replaced with 0 (e.g. 192.168.1.0).
+// IPv6: last 8 bytes zeroed (keeps /64 prefix).
+// Non-parseable values are replaced with "masked".
+func maskIP(ip string) string {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return "masked"
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		v4[3] = 0
+		return v4.String()
+	}
+	v6 := parsed.To16()
+	for i := 8; i < 16; i++ {
+		v6[i] = 0
+	}
+	return v6.String()
 }

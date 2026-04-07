@@ -331,7 +331,7 @@ onMounted(() => {
   const prefs = authStore.user?.preferences
   if (prefs) {
     if (prefs.items_per_page && prefs.items_per_page !== params.limit) params.limit = prefs.items_per_page
-    if (prefs.view_mode && (prefs.view_mode === 'grid' || prefs.view_mode === 'list')) viewMode.value = prefs.view_mode
+    if (prefs.view_mode) viewMode.value = prefs.view_mode === 'list' ? 'list' : 'grid'
   }
   loadCategories()
   load()
@@ -341,8 +341,8 @@ onMounted(() => {
   else loadGeneralSuggestions()
 })
 
-// View mode — initialized from user preference; defaults to grid
-const viewMode = ref<'grid' | 'list'>((authStore.user?.preferences?.view_mode as 'grid' | 'list') || 'grid')
+// View mode — initialized from user preference; only 'grid' and 'list' are supported here
+const viewMode = ref<'grid' | 'list'>(authStore.user?.preferences?.view_mode === 'list' ? 'list' : 'grid')
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
 const canViewMature = computed(() =>

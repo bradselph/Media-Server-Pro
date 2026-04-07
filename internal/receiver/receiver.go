@@ -251,6 +251,13 @@ func (m *Module) loadFromDB() {
 		return
 	}
 
+	type legacyMigration struct {
+		legacyID string
+		newID    string
+		rec      *repositories.ReceiverMediaRecord
+	}
+	var migrations []legacyMigration
+
 	for _, rec := range mediaRecords {
 		func() {
 			defer func() {
@@ -267,14 +274,18 @@ func (m *Module) loadFromDB() {
 			}
 
 			// Migrate legacy "slaveID:itemID" composite keys to opaque IDs.
-			// The next full catalog push will rewrite the DB rows; for now we
-			// just fix the in-memory index so lookups work.
 			id := rec.ID
 			if strings.Contains(id, ":") {
 				parts := strings.SplitN(id, ":", 2)
 				if len(parts) == 2 {
 					id = opaqueMediaID(parts[0], parts[1])
 					item.ID = id
+					// Collect for async DB migration so we don't hold m.mu during I/O.
+					migrations = append(migrations, legacyMigration{
+						legacyID: rec.ID,
+						newID:    id,
+						rec:      rec,
+					})
 				}
 			}
 			m.media[id] = item
@@ -282,6 +293,27 @@ func (m *Module) loadFromDB() {
 	}
 
 	m.log.Info("Loaded %d slaves, %d media items from DB", len(m.slaves), len(m.media))
+
+	// Persist migrated IDs: delete the stale composite-key row and upsert the
+	// opaque-ID row so they don't accumulate across restarts.
+	if len(migrations) > 0 {
+		migs := migrations
+		go func() {
+			migCtx := context.Background()
+			for _, mig := range migs {
+				newRec := *mig.rec
+				newRec.ID = mig.newID
+				if err := m.mediaRepo.DeleteByID(migCtx, mig.legacyID); err != nil {
+					m.log.Warn("Legacy media ID migration: failed to delete %s: %v", mig.legacyID, err)
+					continue
+				}
+				if err := m.mediaRepo.UpsertBatch(migCtx, newRec.SlaveID, []*repositories.ReceiverMediaRecord{&newRec}); err != nil {
+					m.log.Warn("Legacy media ID migration: failed to upsert %s: %v", mig.newID, err)
+				}
+			}
+			m.log.Info("Migrated %d legacy composite receiver media IDs to opaque IDs", len(migs))
+		}()
+	}
 }
 
 func (m *Module) healthCheckLoop() {
@@ -508,7 +540,11 @@ func (m *Module) Heartbeat(slaveID string) error {
 	record := nodeToSlaveRecord(node)
 	m.mu.Unlock()
 
-	if time.Since(prevLastSeen) < 60*time.Second {
+	debounce := m.config.Get().Receiver.HeartbeatDBDebounce
+	if debounce <= 0 {
+		debounce = 60 * time.Second
+	}
+	if time.Since(prevLastSeen) < debounce {
 		return nil
 	}
 	return m.slaveRepo.Upsert(context.Background(), record)

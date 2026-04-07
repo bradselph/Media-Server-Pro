@@ -46,10 +46,10 @@ func (m *Manager) applyMatureScannerEnvOverrides() {
 		m.config.MatureScanner.MediumConfidenceThreshold = val
 	}
 	if val := envGetStr("MATURE_SCANNER_HIGH_CONFIDENCE_KEYWORDS"); val != "" {
-		m.config.MatureScanner.HighConfidenceKeywords = strings.Split(val, ",")
+		m.config.MatureScanner.HighConfidenceKeywords = splitTrimmed(val, ",")
 	}
 	if val := envGetStr("MATURE_SCANNER_MEDIUM_CONFIDENCE_KEYWORDS"); val != "" {
-		m.config.MatureScanner.MediumConfidenceKeywords = strings.Split(val, ",")
+		m.config.MatureScanner.MediumConfidenceKeywords = splitTrimmed(val, ",")
 	}
 	if val, ok := envGetBool("MATURE_SCANNER_REQUIRE_REVIEW"); ok {
 		m.config.MatureScanner.RequireReview = val
@@ -74,6 +74,12 @@ func (m *Manager) applyRemoteMediaEnvOverrides() {
 	if val, ok := envGetDuration(time.Hour, "REMOTE_MEDIA_CACHE_TTL_HOURS"); ok {
 		m.config.RemoteMedia.CacheTTL = val
 	}
+	if val, ok := envGetDuration(time.Second, "REMOTE_MEDIA_HTTP_TIMEOUT_SECONDS"); ok {
+		m.config.RemoteMedia.HTTPTimeout = val
+	}
+	if val, ok := envGetInt("REMOTE_MEDIA_MAX_CONCURRENT_DOWNLOADS"); ok {
+		m.config.RemoteMedia.MaxConcurrentDownloads = val
+	}
 }
 
 func (m *Manager) applyReceiverEnvOverrides() {
@@ -89,6 +95,21 @@ func (m *Manager) applyReceiverEnvOverrides() {
 	}
 	if val, ok := envGetDuration(time.Second, "RECEIVER_HEALTH_CHECK_SECONDS"); ok {
 		m.config.Receiver.HealthCheck = val
+	}
+	if val, ok := envGetInt64("RECEIVER_WS_READ_LIMIT"); ok {
+		m.config.Receiver.WSReadLimit = val
+	}
+	if val, ok := envGetDuration(time.Second, "RECEIVER_WS_READ_DEADLINE_SECONDS"); ok {
+		m.config.Receiver.WSReadDeadline = val
+	}
+	if val, ok := envGetDuration(time.Second, "RECEIVER_WS_PING_INTERVAL_SECONDS"); ok {
+		m.config.Receiver.WSPingInterval = val
+	}
+	if val, ok := envGetDuration(time.Second, "RECEIVER_PENDING_STREAM_TTL_SECONDS"); ok {
+		m.config.Receiver.PendingStreamTTL = val
+	}
+	if val, ok := envGetDuration(time.Second, "RECEIVER_HEARTBEAT_DB_DEBOUNCE_SECONDS"); ok {
+		m.config.Receiver.HeartbeatDBDebounce = val
 	}
 }
 

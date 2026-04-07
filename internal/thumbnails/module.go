@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
+	mysql "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 	"media-server-pro/pkg/storage"
@@ -30,8 +32,9 @@ func (m *Module) Name() string {
 	return "thumbnails"
 }
 
-// NewModule creates a new thumbnail module. blurHashUpdater may be nil to skip BlurHash storage.
-func NewModule(cfg *config.Manager, blurHashUpdater BlurHashUpdater) *Module {
+// NewModule creates a new thumbnail module. dbModule is used in Start() to wire
+// BlurHash storage after the database has connected.
+func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	log := logger.New("thumbnails")
 	currentConfig := cfg.Get()
 
@@ -42,14 +45,14 @@ func NewModule(cfg *config.Manager, blurHashUpdater BlurHashUpdater) *Module {
 	}
 
 	m := &Module{
-		log:             log,
-		config:          cfg,
-		thumbnailDir:    currentConfig.Directories.Thumbnails,
-		jobHeap:         jobHeap{},
-		jobCap:          queueSize,
-		healthy:         false,
-		healthMsg:       "", // Empty message to suppress warning before Start() is called
-		blurHashUpdater: blurHashUpdater,
+		log:          log,
+		config:       cfg,
+		thumbnailDir: currentConfig.Directories.Thumbnails,
+		dbModule:     dbModule,
+		jobHeap:      jobHeap{},
+		jobCap:       queueSize,
+		healthy:      false,
+		healthMsg:    "", // Empty message to suppress warning before Start() is called
 	}
 	m.jobCond = sync.NewCond(&m.jobMu)
 	return m
@@ -68,6 +71,13 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Scan existing thumbnails to initialize stats from disk
 	m.scanExistingThumbnails()
+
+	// Wire BlurHash storage now that the database module has started and GORM is valid.
+	if m.dbModule != nil && m.dbModule.IsConnected() {
+		if db := m.dbModule.GORM(); db != nil {
+			m.blurHashUpdater = mysql.NewMediaMetadataRepository(db)
+		}
+	}
 
 	// Check for ffmpeg
 	ffmpegPath, err := helpers.FindBinary("ffmpeg")
@@ -145,8 +155,16 @@ func (m *Module) SetMediaIDProvider(p MediaIDProvider) {
 // cancelled during a long ffmpeg run) and the deferred Delete never ran.
 func (m *Module) evictStaleInFlight(ctx context.Context) {
 	defer m.wg.Done()
-	const staleDuration = 5 * time.Minute
-	ticker := time.NewTicker(1 * time.Minute)
+	cfg := m.config.Get().Thumbnails
+	staleDuration := cfg.InFlightEvictionTimeout
+	if staleDuration <= 0 {
+		staleDuration = 5 * time.Minute
+	}
+	scanInterval := cfg.InFlightScanInterval
+	if scanInterval <= 0 {
+		scanInterval = 1 * time.Minute
+	}
+	ticker := time.NewTicker(scanInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -187,6 +205,20 @@ func (m *Module) Stop(_ context.Context) error {
 		m.log.Info("All workers stopped")
 	case <-time.After(5 * time.Second):
 		m.log.Warn("Workers did not stop gracefully")
+	}
+
+	// Drain any jobs still in the heap so stats.Pending is accurate.
+	m.jobMu.Lock()
+	remaining := len(m.jobHeap)
+	m.jobHeap = m.jobHeap[:0]
+	m.jobMu.Unlock()
+	if remaining > 0 {
+		m.statsMu.Lock()
+		m.stats.Pending -= int64(remaining)
+		if m.stats.Pending < 0 {
+			m.stats.Pending = 0
+		}
+		m.statsMu.Unlock()
 	}
 
 	m.healthMu.Lock()

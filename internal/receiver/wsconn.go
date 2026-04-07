@@ -88,11 +88,12 @@ type StreamDelivery struct {
 
 // slaveWS represents an active WebSocket connection from a slave.
 type slaveWS struct {
-	slaveID string
-	conn    *websocket.Conn
-	mu      sync.Mutex // protects writes to conn
-	log     *logger.Logger
-	done    chan struct{} // closed on disconnect to stop the ping goroutine
+	slaveID  string
+	conn     *websocket.Conn
+	mu       sync.Mutex // protects writes to conn
+	log      *logger.Logger
+	done     chan struct{} // closed on disconnect to stop the ping goroutine
+	doneOnce sync.Once   // guards close(done) to prevent double-close panic
 }
 
 // sendJSON sends a typed JSON message to the slave.
@@ -149,20 +150,33 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		done: make(chan struct{}),
 	}
 
+	rcfg := m.config.Get().Receiver
+	wsReadLimit := rcfg.WSReadLimit
+	if wsReadLimit <= 0 {
+		wsReadLimit = 16 * 1024 * 1024
+	}
+	wsReadDeadline := rcfg.WSReadDeadline
+	if wsReadDeadline <= 0 {
+		wsReadDeadline = 60 * time.Second
+	}
+	wsPingInterval := rcfg.WSPingInterval
+	if wsPingInterval <= 0 {
+		wsPingInterval = 25 * time.Second
+	}
+
 	// Limit incoming message size to prevent memory exhaustion from malicious slaves.
-	// 16 MB accommodates large catalog pushes while bounding memory usage.
-	conn.SetReadLimit(16 * 1024 * 1024)
+	conn.SetReadLimit(wsReadLimit)
 
 	// Configure keep-alive via ping/pong
-	setReadDeadline(conn, 60*time.Second, m.log)
+	setReadDeadline(conn, wsReadDeadline, m.log)
 	conn.SetPongHandler(func(string) error {
-		setReadDeadline(conn, 60*time.Second, m.log)
+		setReadDeadline(conn, wsReadDeadline, m.log)
 		return nil
 	})
 
 	// Start ping ticker — stopped when done channel is closed on disconnect
 	go func() {
-		ticker := time.NewTicker(25 * time.Second)
+		ticker := time.NewTicker(wsPingInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -180,7 +194,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	defer func() {
-		close(sw.done)
+		sw.doneOnce.Do(func() { close(sw.done) })
 		conn.Close()
 		if sw.slaveID != "" {
 			m.removeSlaveWS(sw.slaveID, sw)
@@ -230,7 +244,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			m.log.Info("Slave %s registered via WebSocket (name: %s)", node.ID, node.Name)
 
 			// Reset read deadline after successful registration
-			setReadDeadline(conn, 60*time.Second, m.log)
+			setReadDeadline(conn, wsReadDeadline, m.log)
 
 		case msgTypeCatalog:
 			var data wsCatalogData
@@ -238,8 +252,13 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				m.log.Warn("Invalid catalog data: %v", err)
 				continue
 			}
-			// Enforce that catalog pushes can only target the authenticated slave's own ID
-			if sw.slaveID != "" && data.SlaveID != sw.slaveID {
+			// Reject catalog pushes from connections that have not registered yet,
+			// and enforce that they can only target the authenticated slave's own ID.
+			if sw.slaveID == "" {
+				m.log.Warn("Catalog push rejected: slave not yet registered on this connection")
+				continue
+			}
+			if data.SlaveID != sw.slaveID {
 				m.log.Warn("Catalog push SlaveID mismatch: connection=%s message=%s", sw.slaveID, data.SlaveID)
 				continue
 			}
@@ -255,7 +274,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Reset read deadline
-			setReadDeadline(conn, 60*time.Second, m.log)
+			setReadDeadline(conn, wsReadDeadline, m.log)
 
 		case msgTypeHeartbeat:
 			var data wsHeartbeatData
@@ -263,8 +282,13 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				m.log.Warn("Invalid heartbeat data: %v", err)
 				continue
 			}
-			// Enforce that heartbeats can only target the authenticated slave's own ID
-			if sw.slaveID != "" && data.SlaveID != sw.slaveID {
+			// Reject heartbeats from connections that have not registered yet,
+			// and enforce that they can only target the authenticated slave's own ID.
+			if sw.slaveID == "" {
+				m.log.Warn("Heartbeat rejected: slave not yet registered on this connection")
+				continue
+			}
+			if data.SlaveID != sw.slaveID {
 				m.log.Warn("Heartbeat SlaveID mismatch: connection=%s message=%s", sw.slaveID, data.SlaveID)
 				continue
 			}
@@ -273,7 +297,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Reset read deadline
-			setReadDeadline(conn, 60*time.Second, m.log)
+			setReadDeadline(conn, wsReadDeadline, m.log)
 
 		default:
 			m.log.Debug("Unknown WS message type: %s", msg.Type)
@@ -282,14 +306,39 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 // setSlaveWS stores a WebSocket connection for a slave.
+// If a connection already exists for this slave it is replaced: the old
+// connection is closed, its ping goroutine is stopped immediately (M-22),
+// and any pending streams that were sent over it are cancelled so that
+// waiting proxy handlers unblock promptly (M-21).
 func (m *Module) setSlaveWS(slaveID string, sw *slaveWS) {
 	m.wsMu.Lock()
 	defer m.wsMu.Unlock()
-	// Close any existing connection
 	if old, ok := m.wsConns[slaveID]; ok {
+		// Stop the ping goroutine immediately instead of waiting for the next
+		// failed write (up to wsPingInterval, typically 25 s).
+		old.doneOnce.Do(func() { close(old.done) })
 		old.conn.Close()
 	}
 	m.wsConns[slaveID] = sw
+	// Cancel pending streams for the old connection outside wsMu to avoid
+	// holding two locks simultaneously; the new sw is already registered so
+	// new RequestStream calls will use the fresh connection.
+	go m.drainPendingForSlave(slaveID)
+}
+
+// drainPendingForSlave cancels and removes every pending stream that was sent
+// to slaveID.  Called after a slave reconnects so that proxy goroutines waiting
+// on the old connection unblock rather than timing out.
+func (m *Module) drainPendingForSlave(slaveID string) {
+	m.pendingMu.Lock()
+	defer m.pendingMu.Unlock()
+	for token, ps := range m.pendingStreams {
+		if ps.SlaveID == slaveID {
+			ps.cancel()
+			ps.readyOnce.Do(func() { close(ps.Ready) })
+			delete(m.pendingStreams, token)
+		}
+	}
 }
 
 // removeSlaveWS removes a slave's WebSocket connection and marks it offline.
@@ -377,8 +426,12 @@ func (m *Module) DeliverStream(token string) (*PendingStream, bool) {
 func (m *Module) cleanupStalePending() {
 	m.pendingMu.Lock()
 	defer m.pendingMu.Unlock()
+	ttl := m.config.Get().Receiver.PendingStreamTTL
+	if ttl <= 0 {
+		ttl = 30 * time.Second
+	}
 	for token, ps := range m.pendingStreams {
-		if time.Since(ps.CreatedAt) > 30*time.Second {
+		if time.Since(ps.CreatedAt) > ttl {
 			ps.cancel()
 			ps.readyOnce.Do(func() { close(ps.Ready) })
 			delete(m.pendingStreams, token)

@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"fmt"
 	"html"
 	"strings"
 )
@@ -77,4 +78,18 @@ func ValidateMetadataKey(key string) bool {
 func ValidateMetadataValue(value string) bool {
 	// Limit metadata values to 10KB to prevent abuse
 	return len(value) <= 10240
+}
+
+// SafeContentDispositionFilename returns a Content-Disposition attachment header value
+// with the filename sanitized to prevent header injection. Quotes, backslashes, newlines,
+// and control characters (< 0x20) are stripped.
+func SafeContentDispositionFilename(filename string) string {
+	var b strings.Builder
+	for _, r := range filename {
+		if r == '"' || r == '\\' || r == '\n' || r == '\r' || r < 0x20 {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return fmt.Sprintf(`attachment; filename="%s"`, b.String())
 }

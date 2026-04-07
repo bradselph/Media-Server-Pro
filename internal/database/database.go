@@ -54,6 +54,13 @@ func (m *Module) Start(ctx context.Context) error {
 	m.log.Info("Database config: Host=%s, Port=%d, Name=%s, User=%s",
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.Name, cfg.Database.Username)
 
+	// Create the database if it does not exist yet (first-run / fresh deployment).
+	if err := ensureDatabase(ctx, cfg.Database, m.log); err != nil {
+		m.log.Error("Failed to ensure database exists: %v", err)
+		m.setHealth(false, fmt.Sprintf("Failed to create database: %v", err))
+		return fmt.Errorf("database setup failed: %w", err)
+	}
+
 	dsn := buildDSN(cfg.Database)
 	m.log.Info("Connecting to: %s", safeDSNString(cfg.Database))
 
@@ -99,17 +106,64 @@ func buildDSN(db config.DatabaseConfig) string {
 	return dsnCfg.FormatDSN()
 }
 
+// ensureDatabase connects to MySQL without specifying a database and runs
+// CREATE DATABASE IF NOT EXISTS so a fresh deployment works without manual DB provisioning.
+// MySQL grants ALL PRIVILEGES ON `db`.* to a user allow that user to create that specific
+// database even when it does not yet exist, so no root credentials are required.
+// If the CREATE DATABASE command fails (e.g. insufficient privileges), a clear error is
+// returned so the operator knows to create the database manually.
+func ensureDatabase(ctx context.Context, dbCfg config.DatabaseConfig, log *logger.Logger) error {
+	noCfg := driverMysql.NewConfig()
+	noCfg.User = dbCfg.Username
+	noCfg.Passwd = dbCfg.Password
+	noCfg.Net = "tcp"
+	noCfg.Addr = fmt.Sprintf("%s:%d", dbCfg.Host, dbCfg.Port)
+	noCfg.ParseTime = true
+	noCfg.Timeout = dbCfg.Timeout
+	if dbCfg.TLSMode != "" && dbCfg.TLSMode != "false" {
+		noCfg.TLSConfig = dbCfg.TLSMode
+	} else {
+		noCfg.TLSConfig = "false"
+	}
+
+	connector, err := driverMysql.NewConnector(noCfg)
+	if err != nil {
+		return fmt.Errorf("build connector: %w", err)
+	}
+	rawDB := sql.OpenDB(connector)
+	defer rawDB.Close()
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, dbCfg.Timeout)
+	defer cancel()
+
+	query := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", dbCfg.Name)
+	if _, err := rawDB.ExecContext(ctxTimeout, query); err != nil {
+		return fmt.Errorf(
+			"cannot create database %q (Error: %w). "+
+				"Create it manually: CREATE DATABASE `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; "+
+				"then GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%'; FLUSH PRIVILEGES;",
+			dbCfg.Name, err, dbCfg.Name, dbCfg.Name, dbCfg.Username,
+		)
+	}
+	log.Info("Database %q ready (created if not exists)", dbCfg.Name)
+	return nil
+}
+
 // safeDSNString returns a log-safe DSN (password redacted).
 func safeDSNString(db config.DatabaseConfig) string {
 	return fmt.Sprintf("%s:***@tcp(%s:%d)/%s", db.Username, db.Host, db.Port, db.Name)
 }
 
 // newGORMLogger creates a GORM logger that writes to the module logger (Error level).
-func newGORMLogger(log *logger.Logger) gormlogger.Interface {
+// slowThreshold is sourced from DatabaseConfig.SlowQueryThreshold; 0 disables slow-query logging.
+func newGORMLogger(log *logger.Logger, slowThreshold time.Duration) gormlogger.Interface {
+	if slowThreshold <= 0 {
+		slowThreshold = 500 * time.Millisecond
+	}
 	return gormlogger.New(
 		&gormLogWriter{log: log},
 		gormlogger.Config{
-			SlowThreshold:             500 * time.Millisecond,
+			SlowThreshold:             slowThreshold,
 			LogLevel:                  gormlogger.Error,
 			IgnoreRecordNotFoundError: true,
 			Colorful:                  false,
@@ -139,16 +193,20 @@ func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, t
 
 // connectWithRetry opens a GORM connection with retries and ping; returns gorm.DB, sql.DB, and error.
 func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (*gorm.DB, *sql.DB, error) {
-	gormLog := newGORMLogger(log)
+	gormLog := newGORMLogger(log, dbCfg.SlowQueryThreshold)
+	maxRetries := dbCfg.MaxRetries
+	if maxRetries < 1 {
+		maxRetries = 1
+	}
 	var lastErr error
-	for i := 0; i < dbCfg.MaxRetries; i++ {
+	for i := 0; i < maxRetries; i++ {
 		db, sqlDB, err := tryConnect(ctx, dsn, gormLog, dbCfg.Timeout)
 		if err == nil {
 			return db, sqlDB, nil
 		}
 		lastErr = err
-		log.Warn("Database connection attempt %d/%d failed: %v", i+1, dbCfg.MaxRetries, err)
-		if i < dbCfg.MaxRetries-1 {
+		log.Warn("Database connection attempt %d/%d failed: %v", i+1, maxRetries, err)
+		if i < maxRetries-1 {
 			timer := time.NewTimer(dbCfg.RetryInterval)
 			select {
 			case <-ctx.Done():

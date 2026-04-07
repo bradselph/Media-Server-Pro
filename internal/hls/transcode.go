@@ -243,7 +243,27 @@ func (m *Module) isTranscodeCancelled(ctx context.Context, stderrStr string) boo
 }
 
 // lazyTranscodeQuality transcodes a single quality on-demand with per-quality locking.
+// M-16: semaphore is acquired BEFORE the per-quality mutex to prevent deadlock.
+// Holding qMu while blocking on transSem could deadlock when all semaphore slots are
+// occupied by goroutines that are also waiting to acquire qMu for the same quality.
 func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, quality string) error {
+	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
+
+	// Fast path: avoid semaphore contention if already done (racy read, re-checked under lock below).
+	if _, err := os.Stat(playlistPath); err == nil {
+		return nil
+	}
+
+	select {
+	case m.transSem <- struct{}{}:
+		defer func() { <-m.transSem }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	m.activeJobs.Add(1)
+	defer m.activeJobs.Done()
+
 	lockKey := job.ID + "/" + quality
 	mu, _ := m.qualityLocks.LoadOrStore(lockKey, &sync.Mutex{})
 	qMu, ok := mu.(*sync.Mutex)
@@ -253,22 +273,12 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 	qMu.Lock()
 	defer qMu.Unlock()
 
-	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
+	// Re-check under lock — another goroutine may have completed while we waited for semaphore.
 	if _, err := os.Stat(playlistPath); err == nil {
 		return nil
 	}
 
 	m.log.Info("On-demand lazy transcode of quality %s for job %s", quality, job.ID)
-
-	m.activeJobs.Add(1)
-	defer m.activeJobs.Done()
-
-	select {
-	case m.transSem <- struct{}{}:
-		defer func() { <-m.transSem }()
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 
 	totalDuration := m.getMediaDuration(ctx, job.MediaPath)
 	run := &qualityRunParams{JobID: job.ID, TotalQualities: 1, CurrentQuality: 1, TotalDuration: totalDuration}

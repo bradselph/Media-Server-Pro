@@ -84,15 +84,21 @@ func New(ctx context.Context, cfg Config) (*Backend, error) {
 }
 
 // key returns the full S3 object key for a relative path.
-func (b *Backend) key(rel string) string {
+// Returns an error if the cleaned key would escape the configured prefix via
+// ".." components (e.g. "../../secrets/admin.json").
+func (b *Backend) key(rel string) (string, error) {
 	cleaned := path.Clean(rel)
 	if cleaned == "." || cleaned == "" {
-		return b.prefix
+		return b.prefix, nil
 	}
 	// Strip leading slash or dot-slash so callers can pass either form.
 	cleaned = strings.TrimPrefix(cleaned, "/")
 	cleaned = strings.TrimPrefix(cleaned, "./")
-	return b.prefix + cleaned
+	// Reject traversal attempts — path.Clean does not strip ".." from relative paths.
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.Contains(cleaned, "/../") {
+		return "", fmt.Errorf("s3 storage: key %q escapes prefix boundary", rel)
+	}
+	return b.prefix + cleaned, nil
 }
 
 // KeyPrefix returns the configured key prefix for this backend (e.g. "videos/").
@@ -103,7 +109,11 @@ func (b *Backend) KeyPrefix() string { return b.prefix }
 // The returned *minio.Object is a true io.ReadSeekCloser — no memory buffering.
 // The caller must close the returned reader.
 func (b *Backend) Open(ctx context.Context, p string) (storage.ReadSeekCloser, error) {
-	obj, err := b.client.GetObject(ctx, b.bucket, b.key(p), minio.GetObjectOptions{})
+	k, err := b.key(p)
+	if err != nil {
+		return nil, err
+	}
+	obj, err := b.client.GetObject(ctx, b.bucket, k, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, b.mapError(err)
 	}
@@ -118,11 +128,15 @@ func (b *Backend) Open(ctx context.Context, p string) (storage.ReadSeekCloser, e
 // OpenRange returns a reader for a byte range of the object.
 // Implements storage.RangeOpener — used by the streaming module for HTTP 206.
 func (b *Backend) OpenRange(ctx context.Context, p string, start, end int64) (io.ReadCloser, error) {
+	k, err := b.key(p)
+	if err != nil {
+		return nil, err
+	}
 	opts := minio.GetObjectOptions{}
 	if err := opts.SetRange(start, end); err != nil {
 		return nil, fmt.Errorf("s3 storage: set range: %w", err)
 	}
-	obj, err := b.client.GetObject(ctx, b.bucket, b.key(p), opts)
+	obj, err := b.client.GetObject(ctx, b.bucket, k, opts)
 	if err != nil {
 		return nil, b.mapError(err)
 	}
@@ -137,8 +151,10 @@ func (b *Backend) OpenRange(ctx context.Context, p string, start, end int64) (io
 
 // Stat returns object metadata without downloading the body.
 func (b *Backend) Stat(ctx context.Context, p string) (*storage.FileInfo, error) {
-	k := b.key(p)
-
+	k, err := b.key(p)
+	if err != nil {
+		return nil, err
+	}
 	// Try as a regular object first.
 	info, err := b.client.StatObject(ctx, b.bucket, k, minio.StatObjectOptions{})
 	if err == nil {
@@ -173,7 +189,10 @@ func (b *Backend) Stat(ctx context.Context, p string) (*storage.FileInfo, error)
 
 // Walk lists all objects under prefix and calls fn for each.
 func (b *Backend) Walk(ctx context.Context, prefix string, fn storage.WalkFunc) error {
-	s3Prefix := b.key(prefix)
+	s3Prefix, err := b.key(prefix)
+	if err != nil {
+		return err
+	}
 	if s3Prefix != "" && !strings.HasSuffix(s3Prefix, "/") {
 		s3Prefix += "/"
 	}
@@ -205,7 +224,10 @@ func (b *Backend) Walk(ctx context.Context, prefix string, fn storage.WalkFunc) 
 
 // ReadDir lists the immediate children of a "directory" prefix.
 func (b *Backend) ReadDir(ctx context.Context, p string) ([]storage.FileInfo, error) {
-	prefix := b.key(p)
+	prefix, err := b.key(p)
+	if err != nil {
+		return nil, err
+	}
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
@@ -246,7 +268,11 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]storage.FileInfo, er
 
 // ReadFile downloads an entire object into memory.
 func (b *Backend) ReadFile(ctx context.Context, p string) ([]byte, error) {
-	obj, err := b.client.GetObject(ctx, b.bucket, b.key(p), minio.GetObjectOptions{})
+	k, err := b.key(p)
+	if err != nil {
+		return nil, err
+	}
+	obj, err := b.client.GetObject(ctx, b.bucket, k, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, b.mapError(err)
 	}
@@ -263,7 +289,11 @@ func (b *Backend) ReadFile(ctx context.Context, p string) ([]byte, error) {
 // so large video files are streamed without buffering the entire body.
 // Returns the number of bytes written.
 func (b *Backend) Create(ctx context.Context, p string, r io.Reader) (int64, error) {
-	info, err := b.client.PutObject(ctx, b.bucket, b.key(p), r, -1,
+	k, err := b.key(p)
+	if err != nil {
+		return 0, err
+	}
+	info, err := b.client.PutObject(ctx, b.bucket, k, r, -1,
 		minio.PutObjectOptions{
 			// Instruct B2/S3 to compute the checksum server-side.
 			SendContentMd5: true,
@@ -280,15 +310,21 @@ func (b *Backend) MkdirAll(_ context.Context, _ string) error { return nil }
 
 // Remove deletes a single object.
 func (b *Backend) Remove(ctx context.Context, p string) error {
-	err := b.client.RemoveObject(ctx, b.bucket, b.key(p), minio.RemoveObjectOptions{})
-	return b.mapError(err)
+	k, err := b.key(p)
+	if err != nil {
+		return err
+	}
+	return b.mapError(b.client.RemoveObject(ctx, b.bucket, k, minio.RemoveObjectOptions{}))
 }
 
 // RemoveAll deletes all objects under a prefix (recursive).
 // Keys are collected synchronously before deletion so that listing errors are
 // surfaced immediately rather than being swallowed by a goroutine.
 func (b *Backend) RemoveAll(ctx context.Context, p string) error {
-	prefix := b.key(p)
+	prefix, err := b.key(p)
+	if err != nil {
+		return err
+	}
 
 	// First try to delete as a single object (non-directory path).
 	_ = b.client.RemoveObject(ctx, b.bucket, prefix, minio.RemoveObjectOptions{})
@@ -334,10 +370,16 @@ func (b *Backend) RemoveAll(ctx context.Context, p string) error {
 // CopyObject returns EntityTooLarge; we fall back to a streaming download +
 // re-upload so that large video files can always be renamed.
 func (b *Backend) Rename(ctx context.Context, src, dst string) error {
-	srcKey := b.key(src)
-	dstKey := b.key(dst)
+	srcKey, err := b.key(src)
+	if err != nil {
+		return err
+	}
+	dstKey, err := b.key(dst)
+	if err != nil {
+		return err
+	}
 
-	_, err := b.client.CopyObject(ctx,
+	_, err = b.client.CopyObject(ctx,
 		minio.CopyDestOptions{Bucket: b.bucket, Object: dstKey},
 		minio.CopySrcOptions{Bucket: b.bucket, Object: srcKey},
 	)
@@ -346,6 +388,8 @@ func (b *Backend) Rename(ctx context.Context, src, dst string) error {
 		resp := minio.ToErrorResponse(err)
 		if resp.Code == "EntityTooLarge" || resp.StatusCode == 413 {
 			if streamErr := b.streamCopy(ctx, srcKey, dstKey); streamErr != nil {
+				// Clean up any partial object at dstKey to avoid leaving orphaned data.
+				_ = b.client.RemoveObject(ctx, b.bucket, dstKey, minio.RemoveObjectOptions{})
 				return fmt.Errorf("s3 storage: stream copy for rename: %w", streamErr)
 			}
 		} else {
@@ -382,7 +426,11 @@ func (b *Backend) streamCopy(ctx context.Context, srcKey, dstKey string) error {
 
 // WriteFile writes data to an S3 object atomically.
 func (b *Backend) WriteFile(ctx context.Context, p string, data []byte) error {
-	_, err := b.client.PutObject(ctx, b.bucket, b.key(p),
+	k, err := b.key(p)
+	if err != nil {
+		return err
+	}
+	_, err = b.client.PutObject(ctx, b.bucket, k,
 		bytes.NewReader(data), int64(len(data)),
 		minio.PutObjectOptions{SendContentMd5: true},
 	)
@@ -395,8 +443,13 @@ func (b *Backend) WriteFile(ctx context.Context, p string, data []byte) error {
 // AbsPath returns the full S3 key for a relative path.
 // Callers use this as the canonical identifier for an object (analogous to
 // the absolute filesystem path returned by the local backend).
+// Returns an empty string if the path contains traversal components.
 func (b *Backend) AbsPath(p string) string {
-	return b.key(p)
+	k, err := b.key(p)
+	if err != nil {
+		return ""
+	}
+	return k
 }
 
 // IsLocal returns false — this is a remote S3 backend.
@@ -405,7 +458,11 @@ func (b *Backend) IsLocal() bool { return false }
 // PresignGetURL generates a pre-signed GET URL for the object.
 // Implements storage.PresignURLer.
 func (b *Backend) PresignGetURL(ctx context.Context, p string, ttl time.Duration) (string, error) {
-	u, err := b.client.PresignedGetObject(ctx, b.bucket, b.key(p), ttl, nil)
+	k, err := b.key(p)
+	if err != nil {
+		return "", err
+	}
+	u, err := b.client.PresignedGetObject(ctx, b.bucket, k, ttl, nil)
 	if err != nil {
 		return "", fmt.Errorf("s3 storage: presign get: %w", err)
 	}
@@ -415,7 +472,11 @@ func (b *Backend) PresignGetURL(ctx context.Context, p string, ttl time.Duration
 // PresignPutURL generates a pre-signed PUT URL for direct client-side uploads.
 // Implements storage.PresignURLer.
 func (b *Backend) PresignPutURL(ctx context.Context, p string, ttl time.Duration) (string, error) {
-	u, err := b.client.PresignedPutObject(ctx, b.bucket, b.key(p), ttl)
+	k, err := b.key(p)
+	if err != nil {
+		return "", err
+	}
+	u, err := b.client.PresignedPutObject(ctx, b.bucket, k, ttl)
 	if err != nil {
 		return "", fmt.Errorf("s3 storage: presign put: %w", err)
 	}

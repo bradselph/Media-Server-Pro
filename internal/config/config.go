@@ -5,6 +5,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"sync"
 
@@ -52,10 +53,20 @@ func (m *Manager) Load() error {
 		}
 	}
 
-	// Check if config file exists
+	// Check if config file exists. If it does not, check for a .bak file left
+	// by a crash between the rename steps in save() — if found, restore it
+	// rather than silently creating a fresh default config.
 	if _, err := os.Stat(m.configPath); os.IsNotExist(err) {
-		m.log.Info("Configuration file not found, creating with current settings")
-		return m.save()
+		bakPath := m.configPath + ".bak"
+		if _, bakErr := os.Stat(bakPath); bakErr == nil {
+			m.log.Warn("config.json missing but %s exists (crash recovery) — restoring from backup", bakPath)
+			if renameErr := os.Rename(bakPath, m.configPath); renameErr != nil {
+				return fmt.Errorf("crash recovery: failed to restore %s to %s: %w", bakPath, m.configPath, renameErr)
+			}
+		} else {
+			m.log.Info("Configuration file not found, creating with current settings")
+			return m.save()
+		}
 	}
 
 	// Read config file
@@ -73,8 +84,36 @@ func (m *Manager) Load() error {
 	m.resolveAbsolutePaths()
 	m.syncFeatureToggles()
 	m.migrateHLSQualityEnabled()
+	if err := m.validate(); err != nil {
+		return err
+	}
 
 	m.log.Info("Configuration loaded successfully")
+	return nil
+}
+
+// validate checks configuration for obviously incorrect values.
+// Called from Load() while the write lock is already held. It runs the same
+// sub-validators as Validate() but without acquiring the lock again (which
+// would deadlock). Additional startup-only warnings are also emitted here.
+func (m *Manager) validate() error {
+	// Warn about invalid CIDR entries.
+	for _, cidr := range m.config.Security.TrustedProxyCIDRs {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			m.log.Warn("Invalid CIDR in security.trusted_proxy_cidrs (will be ignored): %q: %v", cidr, err)
+		}
+	}
+
+	// Warn about negative HLS concurrent limit.
+	if m.config.HLS.Enabled && m.config.HLS.ConcurrentLimit < 0 {
+		m.log.Warn("HLS concurrent_limit is negative (%d); will use default of 2", m.config.HLS.ConcurrentLimit)
+	}
+
+	// Run the same sub-validators as Validate() (lock already held — do NOT
+	// call Validate() which would try to acquire the lock and deadlock).
+	if errs := m.validateLocked(); len(errs) > 0 {
+		return errs[0]
+	}
 	return nil
 }
 
@@ -113,21 +152,32 @@ func (m *Manager) syncFeatureToggles() {
 // migrateHLSQualityEnabled sets Enabled=true for HLS quality profiles that
 // were saved before the Enabled field was added. Without this, existing configs
 // would have all profiles disabled (Go zero-value for bool = false).
+// The migration is idempotent: once QualityProfilesMigrated is true it will not
+// fire again, so a user who later deliberately disables all profiles will not
+// have them silently re-enabled on the next restart.
 func (m *Manager) migrateHLSQualityEnabled() {
-	profiles := m.config.HLS.QualityProfiles
-	if len(profiles) == 0 {
+	if m.config.HLS.QualityProfilesMigrated {
 		return
 	}
-	// If ANY profile has Enabled=true, the config is already migrated.
+	profiles := m.config.HLS.QualityProfiles
+	if len(profiles) == 0 {
+		m.config.HLS.QualityProfilesMigrated = true
+		return
+	}
+	// If ANY profile has Enabled=true the config was already written after the
+	// Enabled field existed — mark migrated and leave profiles unchanged.
 	for _, p := range profiles {
 		if p.Enabled {
+			m.config.HLS.QualityProfilesMigrated = true
 			return
 		}
 	}
-	// All profiles are Enabled=false — this is a pre-migration config. Enable all.
+	// All profiles are Enabled=false and the migration flag is unset — this is a
+	// pre-migration config. Enable all profiles and mark the migration done.
 	for i := range profiles {
 		profiles[i].Enabled = true
 	}
+	m.config.HLS.QualityProfilesMigrated = true
 	m.log.Info("Migrated %d HLS quality profiles to include enabled flag", len(profiles))
 }
 
@@ -205,6 +255,13 @@ func (m *Manager) getCopy() *Config {
 	cp.MatureScanner.MediumConfidenceKeywords = append([]string(nil), m.config.MatureScanner.MediumConfidenceKeywords...)
 	cp.AgeGate.BypassIPs = append([]string(nil), m.config.AgeGate.BypassIPs...)
 	cp.Receiver.APIKeys = append([]string(nil), m.config.Receiver.APIKeys...)
+	cp.Security.TrustedProxyCIDRs = append([]string(nil), m.config.Security.TrustedProxyCIDRs...)
+	if m.config.Storage.S3.Prefixes != nil {
+		cp.Storage.S3.Prefixes = make(map[string]string, len(m.config.Storage.S3.Prefixes))
+		for k, v := range m.config.Storage.S3.Prefixes {
+			cp.Storage.S3.Prefixes[k] = v
+		}
+	}
 	return &cp
 }
 
@@ -218,10 +275,16 @@ func (m *Manager) Update(updater func(*Config)) error {
 		return fmt.Errorf("failed to marshal original config for backup: %w", err)
 	}
 	updater(m.config)
+	if err := m.validate(); err != nil {
+		m.rollbackFromJSON(originalJSON, err)
+		return fmt.Errorf("config validation failed: %w", err)
+	}
 	if err := m.save(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
 		return err
 	}
+	// Sync feature toggles so module-level Enabled fields match the new config.
+	m.syncFeatureToggles()
 	cfg := m.getCopy()
 	watchers := make([]func(*Config), len(m.watchers))
 	copy(watchers, m.watchers)

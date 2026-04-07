@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -34,15 +35,23 @@ func deleteExpiredFromMap[V any](m map[string]V, now time.Time, expiresAt func(V
 	return n
 }
 
-// cleanupExpiredLoginAttempts removes login attempts older than twice the lockout duration.
+// cleanupExpiredLoginAttempts removes stale login attempt records.
+// Evicts: (a) any entry whose FirstTry is older than 2× LockoutDuration regardless of count,
+// and (b) non-locked entries whose window has expired (LockedAt == nil and FirstTry older
+// than LockoutDuration) — prevents the map growing unboundedly under IP-rotation attacks.
 // Caller must not hold sessionsMu; attemptsMu is taken internally.
 func (m *Module) cleanupExpiredLoginAttempts() {
 	m.attemptsMu.Lock()
 	defer m.attemptsMu.Unlock()
 	cfg := m.config.Get()
-	cutoff := time.Now().Add(-cfg.Auth.LockoutDuration * 2)
+	now := time.Now()
+	hardCutoff := now.Add(-cfg.Auth.LockoutDuration * 2)
+	windowCutoff := now.Add(-cfg.Auth.LockoutDuration)
 	for ip, attempt := range m.loginAttempts {
-		if attempt.FirstTry.Before(cutoff) {
+		if attempt.FirstTry.Before(hardCutoff) {
+			delete(m.loginAttempts, ip)
+		} else if attempt.LockedAt == nil && attempt.FirstTry.Before(windowCutoff) {
+			// Window expired and never triggered a lockout — safe to evict.
 			delete(m.loginAttempts, ip)
 		}
 	}
@@ -90,9 +99,18 @@ func (m *Module) getOrLoadSession(ctx context.Context, sessionID string) (*model
 	}
 	session, err := m.sessionRepo.Get(ctx, sessionID)
 	if err != nil {
-		return nil, ErrSessionNotFound
+		if errors.Is(err, ErrSessionNotFound) {
+			return nil, ErrSessionNotFound
+		}
+		// Propagate DB errors (timeouts, connection failures) so callers can
+		// return 503 instead of 401 and avoid clearing the user's session cookie.
+		return nil, err
 	}
 	m.sessionsMu.Lock()
+	if existing, ok := m.sessions[sessionID]; ok {
+		m.sessionsMu.Unlock()
+		return existing, nil
+	}
 	m.sessions[sessionID] = session
 	m.sessionsMu.Unlock()
 	return session, nil
@@ -136,7 +154,9 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 			m.log.Warn("Failed to persist session LastActivity for %s: %v", sessionCopy.Username, err)
 		}
 	}()
-	return session, user, nil
+	// Return the copy, not the shared pointer from the map, to prevent concurrent
+	// callers from racing on the same *Session after the lock is released.
+	return &sessionCopy, user, nil
 }
 
 // Logout invalidates a session
@@ -162,9 +182,12 @@ func (m *Module) Logout(ctx context.Context, sessionID string) error {
 // LogoutAdmin invalidates an admin session
 func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
 	m.sessionsMu.Lock()
-	defer m.sessionsMu.Unlock()
-
 	session, exists := m.adminSessions[sessionID]
+	if exists {
+		delete(m.adminSessions, sessionID)
+	}
+	m.sessionsMu.Unlock()
+
 	if !exists {
 		return ErrSessionNotFound
 	}
@@ -174,7 +197,6 @@ func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
 	}
 
 	m.log.Info("Admin logged out: %s", session.Username)
-	delete(m.adminSessions, sessionID)
 	return nil
 }
 

@@ -773,7 +773,7 @@ func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) err
 func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 	checksumURL := fmt.Sprintf("%s/repos/%s/%s/releases/tags/v%s",
 		GitHubAPI, GitHubOwner, GitHubRepo, version)
-	req, err := http.NewRequest("GET", checksumURL, nil)
+	req, err := http.NewRequest(http.MethodGet, checksumURL, nil)
 	if err != nil {
 		m.log.Warn("Could not build checksum request: %v — skipping", err)
 		return "", nil
@@ -807,7 +807,7 @@ func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 }
 
 func (m *Module) downloadAndParseChecksum(checksumURL2, assetName string) (string, error) {
-	cReq, err := http.NewRequest("GET", checksumURL2, nil)
+	cReq, err := http.NewRequest(http.MethodGet, checksumURL2, nil)
 	if err != nil {
 		return "", fmt.Errorf("build checksum download request: %w", err)
 	}
@@ -1218,9 +1218,15 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	m.log.Info("git fetch: %s", strings.TrimSpace(string(fetchOut)))
 
 	// Compare local branch tip with origin/branch; if equal, no new commits — skip build.
-	localOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output()
-	remoteOut, _ := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
-	if strings.TrimSpace(string(localOut)) == strings.TrimSpace(string(remoteOut)) {
+	localOut, localErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output()
+	if localErr != nil {
+		m.log.Warn("git rev-parse %s failed (new repo?): %v — proceeding with build", branch, localErr)
+	}
+	remoteOut, remoteErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
+	if remoteErr != nil {
+		m.log.Warn("git rev-parse origin/%s failed: %v — proceeding with build", branch, remoteErr)
+	}
+	if localErr == nil && remoteErr == nil && strings.TrimSpace(string(localOut)) == strings.TrimSpace(string(remoteOut)) {
 		m.log.Info("Source update: already up to date")
 		status.Stage = "already up to date"
 		status.Progress = 100
@@ -1314,6 +1320,10 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		newVersion = buildDate // fallback: use build date if VERSION file missing
 	}
 
+	// Resolve Go module auth vars once — used for both go mod download and go build.
+	goModVars, goModCleanup := m.goModEnv()
+	defer goModCleanup()
+
 	// Determine whether to use vendor/ or download modules
 	goModFlag := ""
 	if _, serr := os.Stat(filepath.Join(dir, "vendor")); serr == nil {
@@ -1326,9 +1336,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		m.publishBuildStatus(status)
 		goDownload := exec.CommandContext(ctx, goBin, "mod", "download")
 		goDownload.Dir = dir
-		goModVars, goModCleanup := m.goModEnv()
 		goDownload.Env = append(os.Environ(), goModVars...)
-		defer goModCleanup()
 		if out, merr := goDownload.CombinedOutput(); merr != nil {
 			m.log.Warn("go mod download failed (continuing): %v\n%s", merr, string(out))
 		}
@@ -1350,9 +1358,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	m.log.Info("Source update: go build -o %s ./cmd/server", tmpBin)
 	buildCmd := exec.CommandContext(ctx, goBin, buildArgs...)
 	buildCmd.Dir = dir
-	goBuildModVars, goBuildModCleanup := m.goModEnv()
-	buildCmd.Env = append(os.Environ(), goBuildModVars...)
-	defer goBuildModCleanup()
+	buildCmd.Env = append(os.Environ(), goModVars...)
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		_ = os.Remove(tmpBin)
 		status.Error = fmt.Sprintf("go build failed: %v\n%s", err, string(out))

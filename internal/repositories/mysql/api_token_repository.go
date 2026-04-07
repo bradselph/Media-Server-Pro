@@ -17,6 +17,7 @@ type apiTokenRow struct {
 	Name       string     `gorm:"column:name"`
 	TokenHash  string     `gorm:"column:token_hash"`
 	LastUsedAt *time.Time `gorm:"column:last_used_at"`
+	ExpiresAt  *time.Time `gorm:"column:expires_at"`
 	CreatedAt  time.Time  `gorm:"column:created_at;autoCreateTime"`
 }
 
@@ -38,6 +39,7 @@ func (r *APITokenRepositoryImpl) Create(ctx context.Context, token *repositories
 		UserID:    token.UserID,
 		Name:      token.Name,
 		TokenHash: token.TokenHash,
+		ExpiresAt: token.ExpiresAt,
 	}
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return fmt.Errorf("create api token: %w", err)
@@ -92,6 +94,7 @@ func rowToAPITokenRecord(row *apiTokenRow) *repositories.APITokenRecord {
 		Name:       row.Name,
 		TokenHash:  row.TokenHash,
 		LastUsedAt: row.LastUsedAt,
+		ExpiresAt:  row.ExpiresAt,
 		CreatedAt:  row.CreatedAt,
 	}
 }

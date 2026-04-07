@@ -750,13 +750,16 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="watch_history_%s.csv"`, user.Username))
 
 	w := csv.NewWriter(c.Writer)
-	_ = w.Write([]string{"media_name", "media_id", "watched_at", "position_seconds", "duration_seconds", "progress_percent", "completed"})
+	if err := w.Write([]string{"media_name", "media_id", "watched_at", "position_seconds", "duration_seconds", "progress_percent", "completed"}); err != nil {
+		h.log.Error("CSV header write failed: %v", err)
+		return
+	}
 	for _, item := range history {
 		completed := "no"
 		if item.Completed {
 			completed = "yes"
 		}
-		_ = w.Write([]string{
+		if err := w.Write([]string{
 			item.MediaName,
 			item.MediaID,
 			item.WatchedAt.Format("2006-01-02T15:04:05Z"),
@@ -764,7 +767,13 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 			fmt.Sprintf("%.1f", item.Duration),
 			fmt.Sprintf("%.1f", item.Progress*100),
 			completed,
-		})
+		}); err != nil {
+			h.log.Error("CSV row write failed: %v", err)
+			return
+		}
 	}
 	w.Flush()
+	if err := w.Error(); err != nil {
+		h.log.Error("CSV flush failed for user %s: %v", user.Username, err)
+	}
 }

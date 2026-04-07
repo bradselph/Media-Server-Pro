@@ -129,16 +129,24 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		uploaded = append(uploaded, uploadedEntry{UploadID: string(result.UploadID), Filename: result.Filename, Size: result.Size})
 		totalAdded += result.Size
 
+		// Register the file in the media index immediately so it's visible in the
+		// library without waiting for the next scheduled scan.
+		if result.Path != "" {
+			if err := h.media.RegisterUploadedFile(result.Path); err != nil {
+				h.log.Warn("Failed to register uploaded file in library: %v", err)
+			}
+		}
+
+		// Mature flagging now works because RegisterUploadedFile added the file to
+		// the index above, so GetMedia will find it.
 		if cfg.Uploads.ScanForMature && result.Path != "" && h.scanner != nil {
 			if scanResult := h.scanner.ScanFile(result.Path); scanResult != nil && scanResult.IsMature && cfg.MatureScanner.AutoFlag {
-				if _, err := h.media.GetMedia(result.Path); err == nil {
-					updates := map[string]interface{}{"is_mature": true}
-					if len(scanResult.Reasons) > 0 {
-						updates["mature_reason"] = scanResult.Reasons[0]
-					}
-					if err := h.media.UpdateMetadata(result.Path, updates); err != nil {
-						h.log.Error("Failed to flag uploaded file as mature: %v", err)
-					}
+				updates := map[string]interface{}{"is_mature": true}
+				if len(scanResult.Reasons) > 0 {
+					updates["mature_reason"] = scanResult.Reasons[0]
+				}
+				if err := h.media.UpdateMetadata(result.Path, updates); err != nil {
+					h.log.Error("Failed to flag uploaded file as mature: %v", err)
 				}
 			}
 		}

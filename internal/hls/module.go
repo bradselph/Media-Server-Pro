@@ -29,7 +29,7 @@ const (
 	errReadCacheDirFmt = "Failed to read HLS cache directory: %v"
 	masterPlaylistName = "master.m3u8"
 	errJobNotFoundFmt  = "job not found: %s"
-	maxHLSFailures     = 3 // consecutive failures after which a job will not be auto-retried
+	defaultMaxHLSFailures = 3 // fallback when HLSConfig.MaxConsecutiveFailures is unset
 )
 
 // Capabilities holds information about what the HLS module can do
@@ -273,13 +273,21 @@ func (m *Module) resumeInterruptedJobs() int {
 	return resumed
 }
 
+// maxFailures returns the configured consecutive-failure limit, with a safe fallback.
+func (m *Module) maxFailures() int {
+	if n := m.config.Get().HLS.MaxConsecutiveFailures; n > 0 {
+		return n
+	}
+	return defaultMaxHLSFailures
+}
+
 // shouldResumeJob returns true if a job should be re-enqueued on startup.
 func (m *Module) shouldResumeJob(job *models.HLSJob) bool {
 	switch job.Status {
 	case models.HLSStatusPending, models.HLSStatusRunning:
 		return true
 	case models.HLSStatusFailed:
-		return job.FailCount < maxHLSFailures
+		return job.FailCount < m.maxFailures()
 	default:
 		return false
 	}

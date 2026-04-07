@@ -46,7 +46,21 @@ func parseEnvLine(line string) (key, value string) {
 		return "", ""
 	}
 	key = strings.TrimSpace(line[:idx])
-	value = stripEnvQuotes(strings.TrimSpace(line[idx+1:]))
+	raw := strings.TrimSpace(line[idx+1:])
+
+	// If the value is quoted, pass it through as-is (comments inside quotes are
+	// part of the value). Otherwise strip inline comments (# preceded by whitespace).
+	if len(raw) >= 2 && ((raw[0] == '"' && raw[len(raw)-1] == '"') || (raw[0] == '\'' && raw[len(raw)-1] == '\'')) {
+		value = stripEnvQuotes(raw)
+	} else {
+		// Strip inline comment: find the first unquoted " #"
+		if i := strings.Index(raw, " #"); i >= 0 {
+			raw = strings.TrimSpace(raw[:i])
+		} else if strings.HasPrefix(raw, "#") {
+			raw = ""
+		}
+		value = raw
+	}
 	return key, value
 }
 

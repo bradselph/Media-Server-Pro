@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	pathpkg "path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,16 @@ func init() {
 	}
 }
 
+// authPaths are endpoints that require the stricter auth rate limit.
+var authPaths = map[string]struct{}{
+	"/api/auth/login":           {},
+	"/api/auth/register":        {},
+	"/api/auth/admin-login":     {},
+	"/api/admin/login":          {},
+	"/api/auth/change-password": {},
+	"/api/auth/delete-account":  {},
+}
+
 // Module handles security controls
 type Module struct {
 	config          *config.Manager
@@ -61,6 +72,11 @@ type Module struct {
 	totalBlocked     int64
 	totalRateLimited int64
 	mu               sync.RWMutex
+	// cidrRaw and cidrParsed cache the parsed trusted-proxy CIDRs so that net.ParseCIDR
+	// is not called on every HTTP request. Rebuilt whenever the raw config strings change.
+	cidrMu     sync.Mutex
+	cidrRaw    []string
+	cidrParsed []*net.IPNet
 }
 
 // IPList manages a list of IP addresses/ranges
@@ -263,7 +279,13 @@ func (m *Module) CheckAccess(ip string) (allowed bool, reason string) {
 		return false, "Invalid IP address"
 	}
 
-	// Check blacklist first
+	// Check rate-limiter ban list regardless of whether rate limiting is enabled.
+	// Auto-bans and manual BanIP bans must be enforced even when rate limiting is off.
+	if m.rateLimiter.IsBanned(ip) {
+		return false, "IP is banned"
+	}
+
+	// Check blacklist
 	if m.blacklist.Enabled && m.blacklist.Contains(parsedIP) {
 		return false, "IP is blacklisted"
 	}
@@ -902,9 +924,8 @@ func (r *RateLimiter) cleanupWithIPLists(whitelist, blacklist *IPList) {
 // current_password field and are vulnerable to brute-force if left under
 // the general rate limit).
 func isAuthPath(path string) bool {
-	return path == "/api/auth/login" || path == "/api/auth/register" ||
-		path == "/api/auth/admin-login" || path == "/api/admin/login" ||
-		path == "/api/auth/change-password" || path == "/api/auth/delete-account"
+	_, ok := authPaths[path]
+	return ok
 }
 
 // GinMiddleware returns a gin.HandlerFunc that applies security checks
@@ -913,7 +934,7 @@ func isAuthPath(path string) bool {
 // to prevent brute-force and credential-stuffing attacks.
 func (m *Module) GinMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := getClientIP(c.Request)
+		ip := getClientIP(c.Request, m.parsedTrustedCIDRs())
 
 		// Check IP access
 		allowed, reason := m.CheckAccess(ip)
@@ -982,9 +1003,30 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 	}
 }
 
-// getClientIP extracts the real client IP, trusting X-Forwarded-For only from private network proxies.
-// Uses pre-parsed privateCIDRs for performance. Validates the extracted IP to ensure it's well-formed.
-func getClientIP(r *http.Request) string {
+// parsedTrustedCIDRs returns parsed *net.IPNet values for SecurityConfig.TrustedProxyCIDRs.
+// Results are cached and only rebuilt when the raw config strings change, avoiding
+// per-request net.ParseCIDR overhead on the hot-path middleware.
+func (m *Module) parsedTrustedCIDRs() []*net.IPNet {
+	raw := m.config.Get().Security.TrustedProxyCIDRs
+	m.cidrMu.Lock()
+	defer m.cidrMu.Unlock()
+	if !slices.Equal(raw, m.cidrRaw) {
+		m.cidrRaw = raw
+		out := make([]*net.IPNet, 0, len(raw))
+		for _, cidr := range raw {
+			if _, ipNet, err := net.ParseCIDR(cidr); err == nil {
+				out = append(out, ipNet)
+			}
+		}
+		m.cidrParsed = out
+	}
+	return m.cidrParsed
+}
+
+// getClientIP extracts the real client IP, trusting X-Forwarded-For only from private network
+// proxies (RFC-1918 + loopback) and any additional CIDRs in extraTrusted.
+// Validates the extracted IP to ensure it's well-formed.
+func getClientIP(r *http.Request, extraTrusted []*net.IPNet) string {
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		remoteIP = r.RemoteAddr
@@ -998,6 +1040,14 @@ func getClientIP(r *http.Request) string {
 			if ipNet.Contains(ip) {
 				trusted = true
 				break
+			}
+		}
+		if !trusted {
+			for _, ipNet := range extraTrusted {
+				if ipNet.Contains(ip) {
+					trusted = true
+					break
+				}
 			}
 		}
 	}

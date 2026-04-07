@@ -211,9 +211,9 @@ onMounted(() => {
               <p class="font-medium text-sm">{{ t.name || t.url }}</p>
               <p v-if="t.name" class="text-xs text-muted truncate">{{ t.url }}</p>
               <div class="flex items-center gap-2 mt-1">
-                <UBadge :label="t.status" :color="statusColor(t.status)" variant="subtle" size="xs" />
-                <span class="text-xs text-muted">{{ t.discoveries }} discoveries</span>
-                <span v-if="t.last_crawl" class="text-xs text-muted">· {{ new Date(t.last_crawl).toLocaleDateString() }}</span>
+                <UBadge :label="t.enabled ? 'enabled' : 'disabled'" :color="t.enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
+                <span v-if="t.site" class="text-xs text-muted">{{ t.site }}</span>
+                <span v-if="t.last_crawled" class="text-xs text-muted">· Last crawled {{ new Date(t.last_crawled).toLocaleDateString() }}</span>
               </div>
             </div>
             <div class="flex gap-1">

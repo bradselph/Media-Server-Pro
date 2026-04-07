@@ -358,17 +358,19 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	writeSuccess(c, storageInfo)
 }
 
-// ClearMediaCache clears the media cache and rescans (runs synchronously).
+// ClearMediaCache triggers an asynchronous media rescan and returns 202 Accepted.
+// The previous synchronous implementation blocked the HTTP handler for the entire
+// scan duration (potentially minutes on large libraries).
 func (h *Handler) ClearMediaCache(c *gin.Context) {
-	if err := h.media.Scan(); err != nil {
-		h.log.Error("Failed to clear cache and rescan media: %v", err)
-		writeError(c, http.StatusInternalServerError, "Failed to clear cache")
-		return
-	}
+	go func() {
+		if err := h.media.Scan(); err != nil {
+			h.log.Error("Background media rescan failed: %v", err)
+		}
+	}()
 
-	writeSuccess(c, map[string]string{
-		"status":  "success",
-		"message": "Cache cleared and media rescanned",
+	c.JSON(http.StatusAccepted, map[string]string{
+		"status":  "accepted",
+		"message": "Media rescan started in background",
 	})
 }
 
@@ -442,10 +444,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	h.log.Info("Admin %s executing query: %s", username, query)
 
 	// Block dangerous SQL functions even in SELECT subqueries.
-	// BENCHMARK and SLEEP are DoS vectors; LOAD_FILE reads arbitrary server-side
-	// files — it is a scalar function and is NOT blocked by a READ ONLY transaction.
+	// BENCHMARK/SLEEP/GET_LOCK/RELEASE_LOCK are DoS vectors; LOAD_FILE reads arbitrary
+	// server-side files — it is a scalar function and is NOT blocked by a READ ONLY transaction.
 	queryUpper := strings.ToUpper(query)
-	for _, banned := range []string{"BENCHMARK", "SLEEP", "LOAD_FILE"} {
+	for _, banned := range []string{"BENCHMARK", "SLEEP", "LOAD_FILE", "GET_LOCK", "RELEASE_LOCK"} {
 		if strings.Contains(queryUpper, banned) {
 			writeError(c, http.StatusBadRequest, banned+"() is not permitted in queries")
 			return

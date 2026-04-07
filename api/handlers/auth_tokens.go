@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +24,7 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 		ID         string  `json:"id"`
 		Name       string  `json:"name"`
 		LastUsedAt *string `json:"last_used_at"`
+		ExpiresAt  *string `json:"expires_at"`
 		CreatedAt  string  `json:"created_at"`
 	}
 	views := make([]tokenView, len(tokens))
@@ -34,6 +36,9 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 		}
 		if t.LastUsedAt != nil {
 			v.LastUsedAt = new(t.LastUsedAt.Format("2006-01-02T15:04:05Z07:00"))
+		}
+		if t.ExpiresAt != nil {
+			v.ExpiresAt = new(t.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"))
 		}
 		views[i] = v
 	}
@@ -49,7 +54,8 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name string `json:"name"`
+		Name       string `json:"name"`
+		TTLSeconds int    `json:"ttl_seconds"` // optional; 0 = no expiry
 	}
 	if !BindJSON(c, &req, "") {
 		return
@@ -58,19 +64,27 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "name is required")
 		return
 	}
+	var ttl time.Duration
+	if req.TTLSeconds > 0 {
+		ttl = time.Duration(req.TTLSeconds) * time.Second
+	}
 
-	raw, rec, err := h.auth.CreateAPIToken(c.Request.Context(), session.UserID, req.Name)
+	raw, rec, err := h.auth.CreateAPIToken(c.Request.Context(), session.UserID, req.Name, ttl)
 	if err != nil {
 		h.log.Error("CreateAPIToken: %v", err)
 		writeError(c, http.StatusInternalServerError, "Failed to create API token")
 		return
 	}
-	writeSuccess(c, gin.H{
+	resp := gin.H{
 		"id":         rec.ID,
 		"name":       rec.Name,
 		"token":      raw,
 		"created_at": rec.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	}
+	if rec.ExpiresAt != nil {
+		resp["expires_at"] = rec.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")
+	}
+	writeSuccess(c, resp)
 }
 
 // DeleteAPIToken revokes an API token by ID.

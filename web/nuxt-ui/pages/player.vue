@@ -427,9 +427,6 @@ function cycleLoop() {
   if (videoRef.value) videoRef.value.loop = loopMode.value === 'one'
 }
 
-watch(loopMode, mode => {
-  if (videoRef.value) videoRef.value.loop = mode === 'one'
-})
 
 async function togglePiP() {
   if (!videoRef.value) return
@@ -620,7 +617,6 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   document.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('beforeunload', onBeforeUnload)
-  if (controlsTimer) clearTimeout(controlsTimer)
 })
 
 function cycleSpeed() {

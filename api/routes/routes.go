@@ -42,8 +42,10 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 			if err == nil {
 				c.Set("session", session)
 				c.Set("user", user)
-			} else {
-				// Clear stale/expired cookie so the browser stops resending it.
+			} else if auth.IsSessionError(err) {
+				// Clear stale/expired/invalid cookie so the browser stops resending it.
+				// DB/transient errors are NOT treated as invalid sessions — the cookie is
+				// preserved so the user is not silently logged out during a DB outage.
 				secure := c.Request.TLS != nil ||
 					c.GetHeader("X-Forwarded-Proto") == "https" ||
 					strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
@@ -85,7 +87,7 @@ func adminAuth(_ *auth.Module) gin.HandlerFunc {
 		}
 		user, ok := userVal.(*models.User)
 		if !ok || user.Role != models.RoleAdmin {
-			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Unauthorized"})
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Forbidden"})
 			c.Abort()
 			return
 		}
@@ -287,10 +289,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Remote streaming — frontend uses mediaApi.getRemoteStreamUrl()
 	r.GET("/remote/stream", requireAuth(), h.StreamRemoteMedia)
 
-	// Extractor HLS proxy — unauthenticated; handlers apply rate limits (direct, high-frequency; excluded from gzip)
-	r.GET("/extractor/hls/:id/master.m3u8", h.ExtractorHLSMaster)
-	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", h.ExtractorHLSVariant)
-	r.GET("/extractor/hls/:id/:quality/:segment", h.ExtractorHLSSegment)
+	// Extractor HLS proxy — session auth required; excluded from gzip; handlers validate item exists.
+	r.GET("/extractor/hls/:id/master.m3u8", requireAuth(), h.ExtractorHLSMaster)
+	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", requireAuth(), h.ExtractorHLSVariant)
+	r.GET("/extractor/hls/:id/:quality/:segment", requireAuth(), h.ExtractorHLSSegment)
 
 	// Receiver WebSocket — middleware enforces valid X-API-Key or api_key before upgrade.
 	r.GET("/ws/receiver", h.RequireReceiverWithAPIKey(), h.ReceiverWebSocket)

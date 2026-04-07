@@ -182,10 +182,13 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module
-func (m *Module) Stop(_ context.Context) error {
+func (m *Module) Stop(ctx context.Context) error {
 	m.log.Info("Stopping categorizer module...")
 
-	if err := m.saveItems(); err != nil {
+	// Use a bounded context for the DB flush so shutdown cannot block indefinitely.
+	stopCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := m.saveItems(stopCtx); err != nil {
 		m.log.Error("Failed to save categorized items: %v", err)
 	}
 
@@ -495,6 +498,9 @@ func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 		if info.IsDir() {
 			return nil
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil // skip symlinks — they may point outside the media directory
+		}
 
 		// Only process media files
 		if !helpers.IsMediaExtension(strings.ToLower(filepath.Ext(path))) {
@@ -652,16 +658,15 @@ func (m *Module) loadItems() error {
 	return nil
 }
 
-func (m *Module) saveItems() error {
+func (m *Module) saveItems(ctx context.Context) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.saveItemsLocked()
+	return m.saveItemsLocked(ctx)
 }
 
 // saveItemsLocked persists all in-memory items to the database.
 // Caller must already hold mu (at least RLock).
-func (m *Module) saveItemsLocked() error {
-	ctx := context.Background()
+func (m *Module) saveItemsLocked(ctx context.Context) error {
 	for path, item := range m.items {
 		if err := m.repo.Upsert(ctx, m.itemToRecord(path, item)); err != nil {
 			return err

@@ -112,6 +112,15 @@ type CachedMedia struct {
 
 // NewModule creates a new remote media module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
+	remoteCfg := cfg.Get().RemoteMedia
+	httpTimeout := remoteCfg.HTTPTimeout
+	if httpTimeout <= 0 {
+		httpTimeout = 30 * time.Second
+	}
+	maxDownloads := remoteCfg.MaxConcurrentDownloads
+	if maxDownloads <= 0 {
+		maxDownloads = 4
+	}
 	transport := helpers.SafeHTTPTransport()
 	return &Module{
 		config:   cfg,
@@ -119,7 +128,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		dbModule: dbModule,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   30 * time.Second,
+			Timeout:   httpTimeout,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
 					return fmt.Errorf("too many redirects")
@@ -137,7 +146,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		mediaCache: make(map[string]*CachedMedia),
 		cacheDir:   filepath.Join(cfg.Get().Directories.Data, "remote_cache"),
 		syncDone:   make(chan struct{}),
-		cacheSem:   make(chan struct{}, 4), // max 4 concurrent background cache downloads
+		cacheSem:   make(chan struct{}, maxDownloads),
 	}
 }
 
@@ -651,25 +660,29 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 	// Generate cache filename
 	filename := generateCacheFilename(remoteURL)
 	localPath := filepath.Join(m.cacheDir, filename)
+	tmpPath := localPath + ".tmp"
 
-	// Create cache file
-	file, err := os.Create(localPath)
+	// Write to a temp file first; rename to final path only on success so a
+	// process kill mid-copy never leaves a partial file at the target path.
+	file, err := os.Create(tmpPath)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn("Failed to close cache file: %v", err)
-		}
-	}()
 
 	// Copy content (limited to maxSingleCacheFile to avoid unbounded disk use)
-	size, err := io.Copy(file, io.LimitReader(resp.Body, maxSingleCacheFile))
-	if err != nil {
-		if removeErr := os.Remove(localPath); removeErr != nil {
-			m.log.Warn("Failed to remove incomplete cache file %s: %v", localPath, removeErr)
-		}
-		return nil, err
+	size, copyErr := io.Copy(file, io.LimitReader(resp.Body, maxSingleCacheFile))
+	closeErr := file.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return nil, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return nil, fmt.Errorf("failed to flush cache file: %w", closeErr)
+	}
+	if err := os.Rename(tmpPath, localPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, fmt.Errorf("failed to rename cache file: %w", err)
 	}
 
 	cached := &CachedMedia{

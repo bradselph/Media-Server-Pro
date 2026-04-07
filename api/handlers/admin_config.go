@@ -41,21 +41,27 @@ func (h *Handler) AdminGetConfig(c *gin.Context) {
 	writeSuccess(c, cfg)
 }
 
-// configDenyList contains top-level config keys that must not be mutated at runtime
-// via the admin API. Database credentials, auth secrets, admin password hashes, and
-// receiver API keys should only be changed via env vars or direct config file edits.
+// configDenyList contains top-level config sections that must not be mutated at
+// runtime via the admin API. Credentials, secrets, and password hashes must be
+// changed via env vars or direct config file edits only.
 var configDenyList = map[string]bool{
-	"database": true,
-	"auth":     true, // admin password hash, session secrets, lockout policy
-	"receiver": true, // slave API keys
+	"database":    true, // DB host, user, password
+	"auth":        true, // session secrets, lockout policy
+	"admin":       true, // admin username, password_hash
+	"receiver":    true, // slave API keys
+	"storage":     true, // S3 access key, secret key
+	"huggingface": true, // classification API key
 }
 
-// filterDeniedConfigKeys removes denied top-level keys from the update map
-// and returns the list of rejected keys.
+// filterDeniedConfigKeys removes denied keys from the update map and returns
+// the list of rejected keys.  A key is denied when its top-level section
+// (the part before the first ".") appears in configDenyList, so both flat keys
+// ("admin") and dot-notation keys ("admin.password_hash") are caught.
 func filterDeniedConfigKeys(updates map[string]interface{}) []string {
 	var rejected []string
 	for k := range updates {
-		if configDenyList[strings.ToLower(k)] {
+		topLevel := strings.SplitN(strings.ToLower(k), ".", 2)[0]
+		if configDenyList[topLevel] {
 			rejected = append(rejected, k)
 			delete(updates, k)
 		}

@@ -38,12 +38,19 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 		return
 	}
 	dirs := h.config.Get().Directories
+	// EvalSymlinks resolves symlinks so a symlink pointing outside the allowed
+	// roots cannot bypass the allow-list check via filepath.Clean alone.
+	resolvedDir, err := filepath.EvalSymlinks(req.Directory)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "Invalid directory path")
+		return
+	}
 	allowedRoots := []string{dirs.Videos, dirs.Music, dirs.Uploads}
-	if !isDirectoryWithinMediaPaths(filepath.Clean(req.Directory), allowedRoots) {
+	if !isDirectoryWithinMediaPaths(resolvedDir, allowedRoots) {
 		writeError(c, http.StatusBadRequest, "Directory must be within a configured media path")
 		return
 	}
-	scanResults, err := h.autodiscovery.ScanDirectory(autodiscovery.FilePath(req.Directory))
+	scanResults, err := h.autodiscovery.ScanDirectory(autodiscovery.FilePath(resolvedDir))
 	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")

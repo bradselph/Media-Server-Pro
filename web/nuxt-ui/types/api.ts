@@ -261,12 +261,6 @@ export interface AnalyticsSummary {
   today_searches?: number
   top_viewed: TopMediaItem[]
   recent_activity: { type: string; media_id: string; filename: string; timestamp: number }[]
-  today_logins?: number
-  today_logins_failed?: number
-  today_registrations?: number
-  today_age_gate_passes?: number
-  today_downloads?: number
-  today_searches?: number
 }
 
 export interface ContentPerformanceItem {
@@ -534,9 +528,9 @@ export interface CrawlerTarget {
   id: string
   url: string
   name?: string
-  status: string
-  last_crawl?: string
-  discoveries: number
+  site?: string
+  last_crawled?: string
+  created_at?: string
   enabled: boolean
 }
 

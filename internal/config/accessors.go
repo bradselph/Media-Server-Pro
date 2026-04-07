@@ -109,10 +109,30 @@ func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 			return err
 		}
 	}
+	if err := m.validate(); err != nil {
+		m.rollbackFromJSON(originalJSON, err)
+		return fmt.Errorf("config validation failed: %w", err)
+	}
 	if err := m.save(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
 		return err
 	}
 	m.syncFeatureToggles()
+	// Notify watchers so modules (security, streaming, CORS, etc.) pick up changes
+	// made via the admin panel without requiring a server restart.
+	cfg := m.getCopy()
+	watchers := make([]func(*Config), len(m.watchers))
+	copy(watchers, m.watchers)
+	for _, watcher := range watchers {
+		w := watcher
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.Error("Config watcher panic recovered: %v", r)
+				}
+			}()
+			w(cfg)
+		}()
+	}
 	return nil
 }

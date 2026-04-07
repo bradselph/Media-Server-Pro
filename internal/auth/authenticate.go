@@ -26,6 +26,9 @@ type creds struct {
 }
 
 // getOrLoadUser returns the user from cache or loads from DB and caches. Returns (nil, err) when not found or on error.
+// Uses double-checked locking to prevent the TOCTOU window where two concurrent callers
+// both miss the cache, both load from DB, and then race to write — potentially leaving
+// callers holding stale pointers that diverge from the cached copy.
 func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.User, error) {
 	m.usersMu.RLock()
 	user, exists := m.users[username]
@@ -38,6 +41,11 @@ func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.Us
 		return nil, err
 	}
 	m.usersMu.Lock()
+	// Re-check: another goroutine may have populated the cache while we were loading from DB.
+	if existing, ok := m.users[username]; ok {
+		m.usersMu.Unlock()
+		return existing, nil
+	}
 	m.users[username] = user
 	m.usersMu.Unlock()
 	return user, nil
@@ -78,8 +86,12 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		return nil, ErrInvalidCredentials
 	}
 	if !user.Enabled {
+		// Record failed attempt so disabled accounts incur the same brute-force
+		// penalty as wrong passwords, preventing unlimited-rate enumeration.
+		// Return generic credentials error to avoid leaking account existence.
+		m.recordFailedAttempt(req.IPAddress)
 		m.log.Debug("Login failed - account disabled: %s", req.Username)
-		return nil, ErrAccountDisabled
+		return nil, ErrInvalidCredentials
 	}
 	if verifyErr := m.verifyPasswordWithCacheRefresh(ctx, user, &creds{Username: req.Username, Password: req.Password}); verifyErr != nil {
 		m.recordFailedAttempt(req.IPAddress)
@@ -140,51 +152,18 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 		return nil, fmt.Errorf("failed to get admin user record: %w", err)
 	}
 
+	// Return a minimal AdminSession carrying just the username so the handler can
+	// call CreateSessionForUser. The AdminSession is NOT stored in adminSessions or
+	// the session repository — the handler creates the actual usable session itself.
 	session := &models.AdminSession{
 		Session: models.Session{
-			ID:           generateSessionID(),
-			UserID:       adminUser.ID,
-			Username:     req.Username,
-			Role:         models.RoleAdmin,
-			CreatedAt:    time.Now(),
-			ExpiresAt:    time.Now().Add(cfg.Admin.SessionTimeout),
-			LastActivity: time.Now(),
-			IPAddress:    req.IPAddress,
-			UserAgent:    req.UserAgent,
+			Username: req.Username,
+			UserID:   adminUser.ID,
+			Role:     models.RoleAdmin,
 		},
 	}
 
-	if err := m.sessionRepo.Create(ctx, &session.Session); err != nil {
-		m.log.Warn("Failed to persist admin session to repository: %v", err)
-	}
-
-	m.sessionsMu.Lock()
-	m.adminSessions[session.ID] = session
-	m.sessionsMu.Unlock()
-
 	m.log.Info("Admin logged in from %s", req.IPAddress)
-	return session, nil
-}
-
-// ValidateAdminSession validates an admin session.
-// When a session is expired, it is removed from the in-memory map and from the session repository.
-func (m *Module) ValidateAdminSession(sessionID string) (*models.AdminSession, error) {
-	m.sessionsMu.RLock()
-	session, exists := m.adminSessions[sessionID]
-	m.sessionsMu.RUnlock()
-
-	if !exists {
-		return nil, ErrSessionNotFound
-	}
-	if session.IsExpired() {
-		m.sessionsMu.Lock()
-		delete(m.adminSessions, sessionID)
-		m.sessionsMu.Unlock()
-		if err := m.sessionRepo.Delete(context.Background(), sessionID); err != nil {
-			m.log.Warn("Failed to delete expired admin session from repository: %v", err)
-		}
-		return nil, ErrSessionExpired
-	}
 	return session, nil
 }
 
@@ -227,9 +206,17 @@ func (m *Module) recordFailedAttempt(ip string) {
 	}
 
 	if time.Since(attempt.FirstTry) > cfg.Auth.LockoutDuration {
+		// Window expired: start fresh count but increment Windows so repeated
+		// lockout-window breaches accumulate a penalty instead of fully resetting.
+		attempt.Windows++
 		attempt.Count = 1
 		attempt.FirstTry = time.Now()
 		attempt.LockedAt = nil
+		// Re-lock immediately if this IP has already triggered enough lockout windows.
+		if attempt.Windows >= cfg.Auth.MaxLoginAttempts {
+			attempt.LockedAt = new(time.Now())
+			m.log.Warn("Re-locked IP %s after %d repeated lockout windows", ip, attempt.Windows)
+		}
 		return
 	}
 

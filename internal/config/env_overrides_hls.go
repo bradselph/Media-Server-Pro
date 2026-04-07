@@ -77,4 +77,16 @@ func (m *Manager) applyHLSOptionsOverrides() {
 	if val, ok := envGetBool("HLS_LAZY_TRANSCODE"); ok {
 		m.config.HLS.LazyTranscode = val
 	}
+	if val, ok := envGetInt("HLS_MAX_CONSECUTIVE_FAILURES"); ok {
+		m.config.HLS.MaxConsecutiveFailures = val
+	}
+	if val, ok := envGetDuration(time.Second, "HLS_PROBE_TIMEOUT_SECONDS"); ok {
+		m.config.HLS.ProbeTimeout = val
+	}
+	if val, ok := envGetInt("HLS_PRE_GENERATE_INTERVAL_HOURS"); ok {
+		m.config.HLS.PreGenerateIntervalHours = val
+	}
+	if val, ok := envGetDuration(time.Hour, "HLS_STALE_LOCK_THRESHOLD_HOURS"); ok {
+		m.config.HLS.StaleLockThreshold = val
+	}
 }

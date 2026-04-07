@@ -186,11 +186,23 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 		return false
 	}
 
+	// M-14: Re-read lastAccess immediately before the write lock to narrow the stale-read
+	// window. RecordAccess updates accessTracker.lastAccess under its own lock independently
+	// of jobsMu, so a fresh access may have arrived since the initial read above.
+	if t, ok := m.GetLastAccess(jobID); ok && !t.Before(cutoff) {
+		return false
+	}
+
 	// Re-check under write lock to avoid TOCTOU: job could have started between RLock and removal.
-	// This matches the pattern used in removeSegmentDirAndState.
 	m.jobsMu.Lock()
 	job, exists = m.jobs[jobID]
 	if isJobRunningOrPending(job, exists) {
+		m.jobsMu.Unlock()
+		return false
+	}
+	// M-15: RecordAccess debounce updates job.LastAccessedAt under jobsMu — re-check here
+	// so a fresh debounced access that arrived between our read and this write lock is not missed.
+	if exists && job != nil && job.LastAccessedAt != nil && !job.LastAccessedAt.Before(cutoff) {
 		m.jobsMu.Unlock()
 		return false
 	}

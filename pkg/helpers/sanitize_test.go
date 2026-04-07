@@ -42,6 +42,24 @@ func TestValidateMetadataKey(t *testing.T) {
 	}
 }
 
+func TestSafeContentDispositionFilename(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  string
+	}{
+		{"video.mp4", `attachment; filename="video.mp4"`},
+		{`has"quote.mp4`, `attachment; filename="hasquote.mp4"`},
+		{"has\\back.mp4", `attachment; filename="hasback.mp4"`},
+		{"has\nnewline.mp4", `attachment; filename="hasnewline.mp4"`},
+		{"has\x01control.mp4", `attachment; filename="hascontrol.mp4"`},
+		{"normal name.mp4", `attachment; filename="normal name.mp4"`},
+	} {
+		if got := SafeContentDispositionFilename(tc.input); got != tc.want {
+			t.Errorf("SafeContentDispositionFilename(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestValidateMetadataValue(t *testing.T) {
 	if !ValidateMetadataValue("short") {
 		t.Error("ValidateMetadataValue(short) should be true")

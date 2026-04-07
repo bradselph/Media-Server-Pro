@@ -40,6 +40,12 @@ func (m *Manager) applyStreamingAdaptiveOverrides() {
 	if val, ok := envGetInt64("STREAMING_MOBILE_CHUNK_SIZE"); ok {
 		m.config.Streaming.MobileChunkSize = val
 	}
+	if val, ok := envGetBool("STREAMING_REQUIRE_AUTH"); ok {
+		m.config.Streaming.RequireAuth = val
+	}
+	if val, ok := envGetInt("STREAMING_UNAUTH_STREAM_LIMIT"); ok {
+		m.config.Streaming.UnauthStreamLimit = val
+	}
 }
 
 func (m *Manager) applyDownloadEnvOverrides() {

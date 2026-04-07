@@ -464,10 +464,6 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 	if err := m.createTables(ctx); err != nil {
 		return err
 	}
-	// Remove legacy FK on sessions.user_id if it exists (older DBs may block admin sessions).
-	if err := m.dropConstraintIfExists(ctx, dropConstraintSpec{table: "sessions", constraint: "sessions_ibfk_1", constraintType: "FOREIGN KEY"}); err != nil {
-		return fmt.Errorf("failed to remove sessions FK: %w", err)
-	}
 	if err := m.ensureSchemaColumns(ctx); err != nil {
 		return err
 	}
@@ -526,6 +522,7 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"media_metadata", "blur_hash", "VARCHAR(100) NULL"},
 		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
 		{"hls_jobs", "last_accessed_at", "TIMESTAMP NULL"},
+		{"user_api_tokens", "expires_at", "TIMESTAMP NULL DEFAULT NULL"},
 		// PlaylistItem schema alignment: GORM model expects id and media_id columns
 		{"playlist_items", "id", "VARCHAR(255) NOT NULL DEFAULT '' FIRST"},
 		{"playlist_items", "media_id", "VARCHAR(255) NOT NULL DEFAULT '' AFTER playlist_id"},
@@ -664,6 +661,42 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			cleanupSQL: "DELETE FROM suggestion_view_history WHERE user_id NOT IN (SELECT id FROM users)",
 			alterSQL:   "ALTER TABLE suggestion_view_history ADD CONSTRAINT fk_suggestion_view_history_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
 		},
+		{
+			table:      "receiver_media",
+			constraint: "fk_receiver_media_slave",
+			cleanupSQL: "DELETE FROM receiver_media WHERE slave_id NOT IN (SELECT id FROM receiver_slaves)",
+			alterSQL:   "ALTER TABLE receiver_media ADD CONSTRAINT fk_receiver_media_slave FOREIGN KEY (slave_id) REFERENCES receiver_slaves(id) ON DELETE CASCADE",
+		},
+		{
+			table:      "user_favorites",
+			constraint: "fk_user_favorites_user",
+			cleanupSQL: "DELETE FROM user_favorites WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE user_favorites ADD CONSTRAINT fk_user_favorites_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+		{
+			table:      "user_api_tokens",
+			constraint: "fk_user_api_tokens_user",
+			cleanupSQL: "DELETE FROM user_api_tokens WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE user_api_tokens ADD CONSTRAINT fk_user_api_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+		{
+			table:      "hls_jobs",
+			constraint: "fk_hls_jobs_media",
+			cleanupSQL: "DELETE FROM hls_jobs WHERE media_path NOT IN (SELECT path FROM media_metadata)",
+			alterSQL:   "ALTER TABLE hls_jobs ADD CONSTRAINT fk_hls_jobs_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
+		},
+		{
+			table:      "playlist_items",
+			constraint: "fk_playlist_items_media",
+			cleanupSQL: "DELETE FROM playlist_items WHERE media_path != '' AND media_path NOT IN (SELECT path FROM media_metadata)",
+			alterSQL:   "ALTER TABLE playlist_items ADD CONSTRAINT fk_playlist_items_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
+		},
+		{
+			table:      "user_favorites",
+			constraint: "fk_user_favorites_media",
+			cleanupSQL: "DELETE FROM user_favorites WHERE media_path NOT IN (SELECT path FROM media_metadata)",
+			alterSQL:   "ALTER TABLE user_favorites ADD CONSTRAINT fk_user_favorites_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
+		},
 	}
 	for _, fk := range fks {
 		if err := m.ensureForeignKey(ctx, fk.table, fk.constraint, fk.cleanupSQL, fk.alterSQL); err != nil {
@@ -705,39 +738,6 @@ func (m *Module) ensureForeignKey(ctx context.Context, table, constraint, cleanu
 		return fmt.Errorf("add FK %s.%s: %w", table, constraint, err)
 	}
 	return nil
-}
-
-// dropConstraintSpec holds parameters for dropConstraintIfExists.
-type dropConstraintSpec struct {
-	table          string
-	constraint     string
-	constraintType string
-}
-
-// dropConstraintIfExists drops a named constraint from a table if it exists.
-func (m *Module) dropConstraintIfExists(ctx context.Context, spec dropConstraintSpec) error {
-	if !validIdent.MatchString(spec.table) || !validIdent.MatchString(spec.constraint) {
-		return fmt.Errorf("invalid table or constraint name: %q.%q", spec.table, spec.constraint)
-	}
-	var count int
-	err := m.sqlDB.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM information_schema.TABLE_CONSTRAINTS
-		WHERE TABLE_SCHEMA    = DATABASE()
-		  AND TABLE_NAME      = ?
-		  AND CONSTRAINT_NAME = ?
-		  AND CONSTRAINT_TYPE = ?
-	`, spec.table, spec.constraint, spec.constraintType).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check constraint %s.%s: %w", spec.table, spec.constraint, err)
-	}
-	if count == 0 {
-		return nil
-	}
-	m.log.Info("Dropping legacy constraint %s from %s", spec.constraint, spec.table)
-	_, err = m.sqlDB.ExecContext(ctx,
-		fmt.Sprintf("ALTER TABLE `%s` DROP FOREIGN KEY `%s`", spec.table, spec.constraint))
-	return err
 }
 
 // migratePlaylistItemsPK migrates playlist_items from composite PK (playlist_id, media_path)
