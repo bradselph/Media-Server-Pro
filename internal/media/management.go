@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/pkg/helpers"
+	"media-server-pro/pkg/models"
 	"media-server-pro/pkg/storage"
 )
 
@@ -727,4 +729,51 @@ func validateDirectory(dir string, cfg *config.Config) (string, error) {
 	}
 
 	return "", fmt.Errorf("directory not allowed: %s", dir)
+}
+
+// RegisterUploadedFile indexes a single newly-uploaded file so it appears in
+// the media library immediately without waiting for the next scheduled scan.
+// It creates a MediaItem, adds it to the in-memory index, runs ffprobe for
+// metadata extraction, and persists the metadata to the database.
+func (m *Module) RegisterUploadedFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat uploaded file: %w", err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	var mediaType models.MediaType
+	if videoExtensions[ext] {
+		mediaType = models.MediaTypeVideo
+	} else if helpers.IsAudioExtension(ext) {
+		mediaType = models.MediaTypeAudio
+	} else {
+		mediaType = models.MediaTypeUnknown
+	}
+
+	item := m.createMediaItem(path, info, mediaType)
+	if item == nil {
+		return fmt.Errorf("failed to create media item for %s", path)
+	}
+
+	// Extract metadata (duration, codec, etc.) synchronously so the item is
+	// fully populated before it becomes visible to API consumers.
+	if m.ffprobeAvail {
+		m.extractMetadata(item)
+	}
+
+	m.mu.Lock()
+	m.media[path] = item
+	m.mediaByID[item.ID] = item
+	m.version++
+	m.mu.Unlock()
+
+	// Persist to DB.
+	if err := m.saveMetadataItem(path); err != nil {
+		m.log.Error("Failed to persist metadata for uploaded file %s: %v", path, err)
+		return fmt.Errorf("file indexed but metadata save failed: %w", err)
+	}
+
+	m.log.Info("Registered uploaded file: %s (id: %s)", path, item.ID)
+	return nil
 }

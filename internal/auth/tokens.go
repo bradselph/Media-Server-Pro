@@ -73,13 +73,18 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 	}()
 
 	// Synthetic session — not stored in the sessions table; used only for context propagation.
+	// ExpiresAt is bounded by the token's actual TTL when set, otherwise defaults to 24h.
+	expiresAt := time.Now().Add(24 * time.Hour)
+	if rec.ExpiresAt != nil {
+		expiresAt = *rec.ExpiresAt
+	}
 	session := &models.Session{
 		ID:           "token:" + rec.ID,
 		UserID:       user.ID,
 		Username:     user.Username,
 		Role:         user.Role,
 		CreatedAt:    rec.CreatedAt,
-		ExpiresAt:    time.Now().Add(365 * 24 * time.Hour), // tokens don't expire
+		ExpiresAt:    expiresAt,
 		LastActivity: time.Now(),
 	}
 	return session, user, nil

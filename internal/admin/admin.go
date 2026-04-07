@@ -450,6 +450,112 @@ func buildConfigDatabaseMap(cfg *config.Config, _ []string) map[string]interface
 	}
 }
 
+func buildConfigStreamingMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"require_auth":        cfg.Streaming.RequireAuth,
+		"mobile_optimization": cfg.Streaming.MobileOptimization,
+		"unauth_stream_limit": cfg.Streaming.UnauthStreamLimit,
+	}
+}
+
+func buildConfigDownloadMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":       cfg.Download.Enabled,
+		"require_auth":  cfg.Download.RequireAuth,
+		"chunk_size_kb": cfg.Download.ChunkSizeKB,
+	}
+}
+
+func buildConfigLoggingMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"level":         cfg.Logging.Level,
+		"file_enabled":  cfg.Logging.FileEnabled,
+		"file_rotation": cfg.Logging.FileRotation,
+		"max_backups":   cfg.Logging.MaxBackups,
+	}
+}
+
+func buildConfigAgeGateMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":        cfg.AgeGate.Enabled,
+		"cookie_name":    cfg.AgeGate.CookieName,
+		"cookie_max_age": cfg.AgeGate.CookieMaxAge,
+	}
+}
+
+func buildConfigUploadsMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"max_file_size":    cfg.Uploads.MaxFileSize,
+		"allowed_types":    cfg.Uploads.AllowedExtensions,
+		"scan_for_mature":  cfg.Uploads.ScanForMature,
+	}
+}
+
+func buildConfigUIMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"items_per_page":        cfg.UI.ItemsPerPage,
+		"mobile_items_per_page": cfg.UI.MobileItemsPerPage,
+		"mobile_grid_columns":   cfg.UI.MobileGridColumns,
+	}
+}
+
+func buildConfigDownloaderMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":       cfg.Downloader.Enabled,
+		"url":           cfg.Downloader.URL,
+		"downloads_dir": cfg.Downloader.DownloadsDir,
+		"import_dir":    cfg.Downloader.ImportDir,
+	}
+}
+
+func buildConfigStorageMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"backend": cfg.Storage.Backend,
+		"s3": map[string]interface{}{
+			"endpoint":       cfg.Storage.S3.Endpoint,
+			"region":         cfg.Storage.S3.Region,
+			"bucket":         cfg.Storage.S3.Bucket,
+			"access_key_set": len(cfg.Storage.S3.AccessKeyID) > 0,
+			"secret_key_set": len(cfg.Storage.S3.SecretAccessKey) > 0,
+		},
+	}
+}
+
+func buildConfigBackupMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"retention_count": cfg.Backup.RetentionCount,
+	}
+}
+
+func buildConfigUpdaterMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"update_method": cfg.Updater.UpdateMethod,
+		"branch":        cfg.Updater.Branch,
+	}
+}
+
+func buildConfigRemoteMediaMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":       cfg.RemoteMedia.Enabled,
+		"cache_enabled": cfg.RemoteMedia.CacheEnabled,
+	}
+}
+
+func buildConfigCrawlerMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":         cfg.Crawler.Enabled,
+		"browser_enabled": cfg.Crawler.BrowserEnabled,
+		"max_pages":       cfg.Crawler.MaxPages,
+	}
+}
+
+func buildConfigExtractorMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":   cfg.Extractor.Enabled,
+		"max_items": cfg.Extractor.MaxItems,
+	}
+}
+
 // GetConfigMap returns config as a map for JSON serialization
 func (m *Module) GetConfigMap() map[string]interface{} {
 	cfg := m.config.Get()
@@ -466,6 +572,19 @@ func (m *Module) GetConfigMap() map[string]interface{} {
 		{"mature_scanner", buildConfigMatureScannerMap},
 		{"huggingface", buildConfigHuggingFaceMap},
 		{"database", buildConfigDatabaseMap},
+		{"streaming", buildConfigStreamingMap},
+		{"download", buildConfigDownloadMap},
+		{"logging", buildConfigLoggingMap},
+		{"age_gate", buildConfigAgeGateMap},
+		{"uploads", buildConfigUploadsMap},
+		{"ui", buildConfigUIMap},
+		{"downloader", buildConfigDownloaderMap},
+		{"storage", buildConfigStorageMap},
+		{"backup", buildConfigBackupMap},
+		{"updater", buildConfigUpdaterMap},
+		{"remote_media", buildConfigRemoteMediaMap},
+		{"crawler", buildConfigCrawlerMap},
+		{"extractor", buildConfigExtractorMap},
 	}
 	out := make(map[string]interface{}, len(sections)+1)
 	out["directories"] = map[string]interface{}{"configured": true}

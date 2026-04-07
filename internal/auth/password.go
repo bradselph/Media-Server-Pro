@@ -66,6 +66,10 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 		u.Salt = userCopy.Salt
 	}
 	m.usersMu.Unlock()
+
+	// Evict all sessions so the old password cannot be reused via an existing session.
+	m.evictSessionsForUser(ctx, username, "password changed by user")
+
 	return nil
 }
 
@@ -103,6 +107,10 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 	user.PasswordHash = userCopy.PasswordHash
 	user.Salt = userCopy.Salt
 	m.usersMu.Unlock()
+
+	// Evict all sessions so the old password cannot be reused via an existing session.
+	m.evictSessionsForUser(ctx, username, "password reset by admin")
+
 	return nil
 }
 

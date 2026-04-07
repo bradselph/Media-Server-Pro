@@ -528,9 +528,9 @@ export interface CrawlerTarget {
   id: string
   url: string
   name?: string
-  status: string
-  last_crawl?: string
-  discoveries: number
+  site?: string
+  last_crawled?: string
+  created_at?: string
   enabled: boolean
 }
 
