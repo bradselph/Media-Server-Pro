@@ -166,6 +166,22 @@ func (h *Handler) validateClassifyDirectoryRequest(c *gin.Context) (dirPath stri
 	return path, true
 }
 
+// applyClassifyTags persists classification tags for a set of paths.
+// Returns the number of items successfully tagged.
+func (h *Handler) applyClassifyTags(results map[string][]string) int {
+	tagged := 0
+	for path, tags := range results {
+		if len(tags) > 0 {
+			if err := h.media.UpdateTags(path, tags); err != nil {
+				h.log.Warn("Failed to update tags for %s: %v", path, err)
+			} else {
+				tagged++
+			}
+		}
+	}
+	return tagged
+}
+
 // runClassifyDirectoryBackground runs classification on mature-flagged files in dirPath (in background).
 func (h *Handler) runClassifyDirectoryBackground(dirPath string) {
 	defer func() {
@@ -179,14 +195,8 @@ func (h *Handler) runClassifyDirectoryBackground(dirPath string) {
 		h.log.Warn("ClassifyDirectory failed for %s: %v", dirPath, err)
 		return
 	}
-	for path, tags := range results {
-		if len(tags) > 0 {
-			if err := h.media.UpdateTags(path, tags); err != nil {
-				h.log.Warn("Failed to update tags for %s: %v", path, err)
-			}
-		}
-	}
-	h.log.Info("ClassifyDirectory completed for %s: %d files", dirPath, len(results))
+	tagged := h.applyClassifyTags(results)
+	h.log.Info("ClassifyDirectory completed for %s: tagged %d of %d files", dirPath, tagged, len(results))
 }
 
 // ClassifyDirectory runs visual classification on all mature-flagged files in a directory.
@@ -258,7 +268,7 @@ func (h *Handler) runClassifyAllPendingBackground(paths []string) {
 		}
 	}()
 	ctx := context.Background()
-	tagged := 0
+	results := make(map[string][]string, len(paths))
 	for _, path := range paths {
 		if ctx.Err() != nil {
 			break
@@ -268,13 +278,8 @@ func (h *Handler) runClassifyAllPendingBackground(paths []string) {
 			h.log.Warn("ClassifyAllPending failed for %s: %v", path, err)
 			continue
 		}
-		if len(tags) > 0 {
-			if err := h.media.UpdateTags(path, tags); err != nil {
-				h.log.Warn("Failed to update tags for %s: %v", path, err)
-			} else {
-				tagged++
-			}
-		}
+		results[path] = tags
 	}
+	tagged := h.applyClassifyTags(results)
 	h.log.Info("ClassifyAllPending completed: tagged %d of %d items", tagged, len(paths))
 }

@@ -495,22 +495,9 @@ func (h *Handler) resolveRelativePath(path string, allowedDirs []string) string 
 }
 
 // isPathWithinDirs checks whether absPath resides within at least one of the given directories.
+// Delegates to isPathUnderDirs which uses filepath.Clean + HasPrefix for consistent behaviour.
 func isPathWithinDirs(absPath string, dirs []string) bool {
-	for _, dir := range dirs {
-		absDir, err := filepath.Abs(dir)
-		if err != nil {
-			continue
-		}
-		relPath, err := filepath.Rel(absDir, absPath)
-		if err != nil {
-			continue
-		}
-		escapesUp := strings.HasPrefix(relPath, ".."+string(filepath.Separator)) || relPath == ".."
-		if !escapesUp {
-			return true
-		}
-	}
-	return false
+	return isPathUnderDirs(absPath, dirs)
 }
 
 // checkMatureAccess verifies the current user has permission to access mature content at

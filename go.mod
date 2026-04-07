@@ -8,7 +8,6 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/joho/godotenv v1.5.1
 	github.com/u2takey/ffmpeg-go v0.5.0
 	golang.org/x/crypto v0.49.0
 	golang.org/x/text v0.35.0
