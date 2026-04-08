@@ -148,9 +148,12 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	session.LastActivity = time.Now()
 	sessionCopy := *session
 	m.sessionsMu.Unlock()
-	// Persist LastActivity in background using the safe copy
+	// Persist LastActivity in background using the safe copy.
+	// ErrSessionNotFound is suppressed: the cleanup ticker may have deleted the
+	// DB row between the lock release above and the goroutine executing, which
+	// is a normal race between session expiry and activity updates.
 	go func() {
-		if err := m.sessionRepo.Update(context.Background(), &sessionCopy); err != nil {
+		if err := m.sessionRepo.Update(context.Background(), &sessionCopy); err != nil && !errors.Is(err, ErrSessionNotFound) {
 			m.log.Warn("Failed to persist session LastActivity for %s: %v", sessionCopy.Username, err)
 		}
 	}()

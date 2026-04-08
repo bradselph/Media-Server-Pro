@@ -51,7 +51,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.1.42"
+	Version   = "1.1.44"
 	BuildDate = ""
 )
 
@@ -310,6 +310,7 @@ func main() {
 
 	// Duplicates (non-critical — independent duplicate detection for local and receiver media)
 	duplicatesModule := duplicates.NewModule(cfg, dbModule)
+	duplicatesModule.SetMediaModule(mediaModule)
 	mustRegister(srv, duplicatesModule)
 
 	// Receiver (non-critical — requires database for slave registry and media catalog)

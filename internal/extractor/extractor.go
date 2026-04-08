@@ -252,6 +252,15 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 	// atomically.  Checking the count under RLock and adding under Lock would
 	// be a TOCTOU race: two concurrent callers could both pass the check and
 	// both add, exceeding the configured limit.
+	// Persist to DB before inserting into memory so a DB failure does not leave
+	// a ghost item in the in-memory index.
+	if m.repo != nil {
+		rec := itemToRecord(item)
+		if err := m.repo.Upsert(context.Background(), rec); err != nil {
+			return nil, fmt.Errorf("failed to save extractor item to DB: %w", err)
+		}
+	}
+
 	m.mu.Lock()
 	if cfg.Extractor.MaxItems > 0 && len(m.items) >= cfg.Extractor.MaxItems {
 		// Don't count an update to an existing item against the limit.
@@ -262,14 +271,6 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 	}
 	m.items[id] = item
 	m.mu.Unlock()
-
-	// Save to DB
-	if m.repo != nil {
-		rec := itemToRecord(item)
-		if err := m.repo.Upsert(context.Background(), rec); err != nil {
-			m.log.Warn("Failed to save extractor item to DB: %v", err)
-		}
-	}
 
 	m.log.Info("Added extractor item: %s -> %s", item.Title, item.StreamURL)
 	return item, nil

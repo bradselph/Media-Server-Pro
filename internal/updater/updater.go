@@ -1420,27 +1420,23 @@ func (m *Module) GetVersion() map[string]interface{} {
 }
 
 // copyFile copies a file from src to dst
-func copyFile(src, dst string) error {
+func copyFile(src, dst string) (retErr error) {
 	source, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if closeErr := source.Close(); closeErr != nil {
-			_ = closeErr // best-effort close
-		}
-	}()
+	defer source.Close() // read-only; close error is not meaningful
 
 	dest, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if closeErr := dest.Close(); closeErr != nil {
-			_ = closeErr // best-effort close
+		if closeErr := dest.Close(); closeErr != nil && retErr == nil {
+			retErr = fmt.Errorf("failed to close destination file %s: %w", dst, closeErr)
 		}
 	}()
 
-	_, err = io.Copy(dest, source)
-	return err
+	_, retErr = io.Copy(dest, source)
+	return retErr
 }

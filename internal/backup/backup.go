@@ -493,11 +493,13 @@ func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
 	defer m.closeAndWarn(srcFile.Close, "Failed to close source file: %v")
 
 	limitedReader := io.LimitReader(srcFile, maxExtractSize+1)
-	n, err := io.Copy(destFile, limitedReader)
-	destFile.Close()
-	if err != nil {
+	n, copyErr := io.Copy(destFile, limitedReader)
+	if closeErr := destFile.Close(); closeErr != nil && copyErr == nil {
+		copyErr = fmt.Errorf("failed to close extracted file %s: %w", destPath, closeErr)
+	}
+	if copyErr != nil {
 		m.removeFileQuietly(removeFileOpts{Path: destPath, Label: "failed extracted file"})
-		return err
+		return copyErr
 	}
 	if n > maxExtractSize {
 		m.removeFileQuietly(removeFileOpts{Path: destPath, Label: "oversize extracted file"})

@@ -1380,16 +1380,16 @@ type Stats struct {
 
 // IncrementViews increments view count for a media item (DB and in-memory updated separately; not atomic).
 func (m *Module) IncrementViews(ctx context.Context, path string) error {
-	// Use repository if available
+	// Update DB first; only mirror to in-memory on success so the cache does not
+	// diverge from the persistent store.
 	if m.metadataRepo != nil {
 		if err := m.metadataRepo.IncrementViews(ctx, path); err != nil {
 			m.log.Error("Failed to increment views via repository: %v", err)
+			return err
 		}
 	}
 
-	// Also update in-memory cache
 	m.mu.Lock()
-
 	meta, exists := m.metadata[path]
 	if !exists {
 		meta = &Metadata{
@@ -1399,10 +1399,8 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 		}
 		m.metadata[path] = meta
 	}
-
 	meta.Views++
 	meta.LastPlayed = new(time.Now())
-
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views
 		item.LastPlayed = meta.LastPlayed
@@ -1414,14 +1412,15 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 
 // UpdatePlaybackPosition updates playback position for a user
 func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error {
-	// Use repository if available
+	// Update DB first; only mirror to in-memory on success so the cache does not
+	// diverge from the persistent store.
 	if m.metadataRepo != nil {
 		if err := m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, position); err != nil {
 			m.log.Error("Failed to update playback position via repository: %v", err)
+			return err
 		}
 	}
 
-	// Also update in-memory cache
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -1434,7 +1433,6 @@ func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string
 		}
 		m.metadata[path] = meta
 	}
-
 	if meta.PlaybackPos == nil {
 		meta.PlaybackPos = make(map[string]float64)
 	}
