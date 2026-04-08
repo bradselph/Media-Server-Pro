@@ -148,15 +148,22 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	session.LastActivity = time.Now()
 	sessionCopy := *session
 	m.sessionsMu.Unlock()
-	// Persist LastActivity in background using the safe copy.
+	// Persist LastActivity in background using the safe copy, bounded by a
+	// semaphore to prevent goroutine accumulation under sustained load.
 	// ErrSessionNotFound is suppressed: the cleanup ticker may have deleted the
-	// DB row between the lock release above and the goroutine executing, which
-	// is a normal race between session expiry and activity updates.
-	go func() {
-		if err := m.sessionRepo.Update(context.Background(), &sessionCopy); err != nil && !errors.Is(err, ErrSessionNotFound) {
-			m.log.Warn("Failed to persist session LastActivity for %s: %v", sessionCopy.Username, err)
-		}
-	}()
+	// DB row between the lock release above and the goroutine executing.
+	select {
+	case m.sessionUpdateSem <- struct{}{}:
+		go func() {
+			defer func() { <-m.sessionUpdateSem }()
+			if err := m.sessionRepo.Update(context.Background(), &sessionCopy); err != nil && !errors.Is(err, ErrSessionNotFound) {
+				m.log.Warn("Failed to persist session LastActivity for %s: %v", sessionCopy.Username, err)
+			}
+		}()
+	default:
+		// Semaphore full — skip this persist to avoid goroutine buildup.
+		// LastActivity will be updated on the next request.
+	}
 	// Return the copy, not the shared pointer from the map, to prevent concurrent
 	// callers from racing on the same *Session after the lock is released.
 	return &sessionCopy, user, nil

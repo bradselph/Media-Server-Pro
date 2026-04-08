@@ -618,10 +618,8 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 			})
 		}
 
-		if h.suggestions != nil && userID != "" {
-			if item, err := h.media.GetMedia(absPath); err == nil && item != nil {
-				h.suggestions.RecordView(userID, absPath, item.Category, string(item.Type), 0)
-			}
+		if h.suggestions != nil && userID != "" && localItem != nil {
+			h.suggestions.RecordView(userID, absPath, localItem.Category, string(localItem.Type), 0)
 		}
 
 		if err := h.media.IncrementViews(c.Request.Context(), absPath); err != nil {

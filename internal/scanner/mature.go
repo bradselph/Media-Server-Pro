@@ -317,10 +317,8 @@ func (s *MatureScanner) Start(_ context.Context) error {
 	s.log.Info("  Directory patterns: %d", len(directoryPatterns))
 	s.log.Info("  Regex patterns: %d", len(maturePatterns))
 
-	// Load existing scan results
-	s.mu.RLock()
-	s.log.Info("Loaded %d previous scan results", len(s.results))
-	s.mu.RUnlock()
+	// Scan results are loaded lazily on first access, not at startup.
+	s.log.Info("Scan results will be loaded lazily on first access")
 
 	// Load review queue
 	if err := s.loadReviewQueue(); err != nil {
