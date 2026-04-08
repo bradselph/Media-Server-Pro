@@ -49,29 +49,47 @@ func StatusString(healthy bool) string {
 	return "unhealthy"
 }
 
-// mediaExts is the canonical set of recognized media file extensions, initialized once.
-var mediaExts = map[string]bool{
+// mediaType tags each extension as video or audio.
+type mediaType int
+
+const (
+	mediaVideo mediaType = iota
+	mediaAudio
+)
+
+// mediaExtTypes is the single source of truth for all recognized media extensions.
+// To add a format, add it here — IsMediaExtension and IsAudioExtension derive automatically.
+var mediaExtTypes = map[string]mediaType{
 	// Video
-	".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true,
-	".flv": true, ".webm": true, ".m4v": true, ".mpg": true, ".mpeg": true,
-	".3gp": true, ".ts": true, ".m2ts": true, ".vob": true, ".ogv": true,
+	".mp4": mediaVideo, ".mkv": mediaVideo, ".avi": mediaVideo, ".mov": mediaVideo, ".wmv": mediaVideo,
+	".flv": mediaVideo, ".webm": mediaVideo, ".m4v": mediaVideo, ".mpg": mediaVideo, ".mpeg": mediaVideo,
+	".3gp": mediaVideo, ".ts": mediaVideo, ".m2ts": mediaVideo, ".vob": mediaVideo, ".ogv": mediaVideo,
 	// Audio
-	".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".ogg": true,
-	".m4a": true, ".opus": true, ".wma": true, ".alac": true, ".ape": true,
-	".aiff": true, ".mka": true,
+	".mp3": mediaAudio, ".wav": mediaAudio, ".flac": mediaAudio, ".aac": mediaAudio, ".ogg": mediaAudio,
+	".m4a": mediaAudio, ".opus": mediaAudio, ".wma": mediaAudio, ".alac": mediaAudio, ".ape": mediaAudio,
+	".aiff": mediaAudio, ".mka": mediaAudio,
+}
+
+// mediaExts and audioExts are derived from mediaExtTypes at init so they
+// cannot drift out of sync.
+var (
+	mediaExts = make(map[string]bool, len(mediaExtTypes))
+	audioExts = make(map[string]bool)
+)
+
+func init() {
+	for ext, mt := range mediaExtTypes {
+		mediaExts[ext] = true
+		if mt == mediaAudio {
+			audioExts[ext] = true
+		}
+	}
 }
 
 // IsMediaExtension checks if a file extension (with leading dot, e.g. ".mp4")
 // belongs to a known media format. This is the canonical check used across modules.
 func IsMediaExtension(ext string) bool {
 	return mediaExts[strings.ToLower(ext)]
-}
-
-// audioExts is the canonical set of recognized audio-only file extensions.
-var audioExts = map[string]bool{
-	".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".ogg": true,
-	".m4a": true, ".opus": true, ".wma": true, ".alac": true, ".ape": true,
-	".aiff": true, ".mka": true,
 }
 
 // IsAudioExtension checks if a file extension (with leading dot, e.g. ".mp3")
