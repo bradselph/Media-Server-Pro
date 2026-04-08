@@ -482,7 +482,7 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 		return "", false
 	}
 
-	if !isPathWithinDirs(absPath, allowedDirs) {
+	if !isPathUnderDirs(absPath, allowedDirs) {
 		h.log.Warn("Path traversal attempt detected: %s", path)
 		writeError(c, http.StatusForbidden, "Access denied: path outside allowed directories")
 		return "", false
@@ -515,12 +515,6 @@ func (h *Handler) resolveRelativePath(path string, allowedDirs []string) string 
 		}
 	}
 	return ""
-}
-
-// isPathWithinDirs checks whether absPath resides within at least one of the given directories.
-// Delegates to isPathUnderDirs which uses filepath.Clean + HasPrefix for consistent behaviour.
-func isPathWithinDirs(absPath string, dirs []string) bool {
-	return isPathUnderDirs(absPath, dirs)
 }
 
 // checkMatureAccess verifies the current user has permission to access mature content at
@@ -702,7 +696,7 @@ func validatePathType(c *gin.Context, info os.FileInfo, mustBeDir bool) bool {
 // validatePathInDirsAndStat checks absPath is under allowedDirs, exists, and matches
 // mustBeDir (true = directory, false = file). Writes error and returns false on failure.
 func validatePathInDirsAndStat(c *gin.Context, absPath string, allowedDirs []string, mustBeDir bool) bool {
-	if !isPathWithinDirs(absPath, allowedDirs) {
+	if !isPathUnderDirs(absPath, allowedDirs) {
 		writeError(c, http.StatusForbidden, "Access denied: path outside allowed media directories")
 		return false
 	}
