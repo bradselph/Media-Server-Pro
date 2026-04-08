@@ -93,18 +93,21 @@ func (h *Handler) AdminListDeletionRequests(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, errDeletionRequestsUnavailable)
 		return
 	}
-	reqs := make([]*models.DataDeletionRequest, len(records))
+	reqs := make([]*models.AdminDeletionRequestView, len(records))
 	for i, r := range records {
-		reqs[i] = &models.DataDeletionRequest{
-			ID:         r.ID,
-			UserID:     r.UserID,
-			Username:   r.Username,
-			Email:      r.Email,
-			Reason:     r.Reason,
-			Status:     models.DataDeletionRequestStatus(r.Status),
-			CreatedAt:  r.CreatedAt,
-			ReviewedAt: r.ReviewedAt,
-			ReviewedBy: r.ReviewedBy,
+		reqs[i] = &models.AdminDeletionRequestView{
+			DataDeletionRequest: models.DataDeletionRequest{
+				ID:         r.ID,
+				UserID:     r.UserID,
+				Username:   r.Username,
+				Email:      r.Email,
+				Reason:     r.Reason,
+				Status:     models.DataDeletionRequestStatus(r.Status),
+				CreatedAt:  r.CreatedAt,
+				ReviewedAt: r.ReviewedAt,
+				ReviewedBy: r.ReviewedBy,
+				AdminNotes: r.AdminNotes,
+			},
 			AdminNotes: r.AdminNotes,
 		}
 	}
