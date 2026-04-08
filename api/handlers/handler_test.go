@@ -199,35 +199,8 @@ func TestIsClientDisconnect(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// isPathWithinDirs / isPathUnderDirs
+// isPathUnderDirs
 // ---------------------------------------------------------------------------
-
-func TestIsPathWithinDirs(t *testing.T) {
-	base := t.TempDir()
-	mediaDir := filepath.Join(base, "media")
-	etcDir := filepath.Join(base, "etc")
-	os.MkdirAll(mediaDir, 0755)
-	os.MkdirAll(filepath.Join(mediaDir, "sub"), 0755)
-	os.MkdirAll(etcDir, 0755)
-
-	tests := []struct {
-		path string
-		dirs []string
-		want bool
-	}{
-		{filepath.Join(mediaDir, "video.mp4"), []string{mediaDir}, true},
-		{filepath.Join(mediaDir, "sub", "video.mp4"), []string{mediaDir}, true},
-		{filepath.Join(etcDir, "passwd"), []string{mediaDir}, false},
-		{mediaDir, []string{mediaDir}, true},
-		{filepath.Join(mediaDir, "..", "etc", "passwd"), []string{mediaDir}, false},
-	}
-	for _, tc := range tests {
-		got := isPathWithinDirs(tc.path, tc.dirs)
-		if got != tc.want {
-			t.Errorf("isPathWithinDirs(%q, %v) = %v, want %v", tc.path, tc.dirs, got, tc.want)
-		}
-	}
-}
 
 func TestIsPathUnderDirs(t *testing.T) {
 	base := t.TempDir()
@@ -246,6 +219,8 @@ func TestIsPathUnderDirs(t *testing.T) {
 		{filepath.Join(mediaDir, "sub", "video.mp4"), []string{mediaDir}, true},
 		{filepath.Join(etcDir, "passwd"), []string{mediaDir}, false},
 		{filepath.Join(mediaDir, "video.mp4"), []string{""}, false},
+		{mediaDir, []string{mediaDir}, true},                                      // dir matches itself
+		{filepath.Join(mediaDir, "..", "etc", "passwd"), []string{mediaDir}, false}, // traversal
 	}
 	for _, tc := range tests {
 		got := isPathUnderDirs(tc.path, tc.dirs)

@@ -116,8 +116,16 @@ func (m *Module) applyViewToDailyStatsLocked(event models.AnalyticsEvent, daily 
 }
 
 func (m *Module) applyPlaybackToDailyStatsLocked(event models.AnalyticsEvent, daily *models.DailyStats) {
-	if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
-		daily.TotalWatchTime += dur
+	// Use the actual watched time (position), not the full media duration.
+	// Position represents how far the user watched; duration is the total length.
+	pos, _ := event.Data["position"].(float64)
+	dur, _ := event.Data["duration"].(float64)
+	watchTime := pos
+	if dur > 0 && watchTime > dur {
+		watchTime = dur
+	}
+	if watchTime > 0 {
+		daily.TotalWatchTime += watchTime
 	}
 }
 
@@ -403,6 +411,9 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 		daily.Downloads++
 	case EventSearch:
 		daily.Searches++
+	case "playback":
+		// Reconstruct TotalWatchTime in daily stats (mirrors live path in applyPlaybackToDailyStatsLocked).
+		m.applyPlaybackToDailyStatsLocked(event, daily)
 	}
 
 	if event.MediaID == "" {

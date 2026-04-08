@@ -369,6 +369,10 @@ func (b *Backend) RemoveAll(ctx context.Context, p string) error {
 // For objects larger than 5 GB (Backblaze B2's single-part copy limit),
 // CopyObject returns EntityTooLarge; we fall back to a streaming download +
 // re-upload so that large video files can always be renamed.
+//
+// NOTE: S3 has no atomic rename. This is a copy+delete operation. If the delete
+// fails after a successful copy, the file exists at both src and dst. Callers
+// should handle partial rename errors (dst exists, src still exists) gracefully.
 func (b *Backend) Rename(ctx context.Context, src, dst string) error {
 	srcKey, err := b.key(src)
 	if err != nil {

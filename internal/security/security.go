@@ -115,6 +115,7 @@ type RateLimiter struct {
 	stopCleanup chan struct{}
 	stopOnce    sync.Once
 	onBan       func(ip string, duration time.Duration, reason string) // Optional callback when auto-ban is triggered
+	banSem      chan struct{} // bounds concurrent onBan goroutines
 }
 
 // RateLimitConfig holds rate limiter configuration
@@ -723,6 +724,7 @@ func NewRateLimiter(cfg RateLimitConfig) *RateLimiter {
 		clients:     make(map[string]*ClientState),
 		bannedIPs:   make(map[string]BanRecord),
 		stopCleanup: make(chan struct{}),
+		banSem:      make(chan struct{}, 50), // bound concurrent onBan goroutines
 	}
 }
 
@@ -833,9 +835,18 @@ func (r *RateLimiter) recordViolation(client *ClientState, ip string, now time.T
 		}
 		client.Violations = 0 // Reset for after ban expires
 
-		// Persist the auto-ban asynchronously so it survives restarts
+		// Persist the auto-ban asynchronously so it survives restarts.
+		// Bounded by banSem to prevent goroutine exhaustion under DDoS.
 		if r.onBan != nil {
-			go r.onBan(ip, duration, reason)
+			select {
+			case r.banSem <- struct{}{}:
+				go func() {
+					defer func() { <-r.banSem }()
+					r.onBan(ip, duration, reason)
+				}()
+			default:
+				// Semaphore full — skip async persist; ban is in memory regardless.
+			}
 		}
 	}
 }
@@ -1053,17 +1064,36 @@ func getClientIP(r *http.Request, extraTrusted []*net.IPNet) string {
 	}
 
 	if trusted {
-		// Trust X-Forwarded-For header from proxy. Use the rightmost entry (parts[len-1]),
-		// which is appended by the trusted proxy and reflects the actual client IP.
-		// The leftmost entry (parts[0]) is client-supplied and must not be trusted for
-		// security-sensitive operations such as rate limiting and IP banning.
+		// Walk X-Forwarded-For right-to-left, skipping entries that are themselves
+		// trusted proxies (private IPs or extraTrusted CIDRs). The first untrusted
+		// entry is the actual client IP. This is correct for both single-proxy
+		// (nginx → app) and multi-proxy (CDN → nginx → app) topologies.
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
-			if len(parts) > 0 {
-				clientIP := strings.TrimSpace(parts[len(parts)-1])
-				// Validate that the extracted IP is well-formed
-				if parsedIP := net.ParseIP(clientIP); parsedIP != nil {
-					return clientIP
+			for i := len(parts) - 1; i >= 0; i-- {
+				candidate := strings.TrimSpace(parts[i])
+				parsedIP := net.ParseIP(candidate)
+				if parsedIP == nil {
+					continue
+				}
+				// Check if this entry is itself a trusted proxy
+				isTrustedEntry := false
+				for _, ipNet := range privateCIDRs {
+					if ipNet.Contains(parsedIP) {
+						isTrustedEntry = true
+						break
+					}
+				}
+				if !isTrustedEntry {
+					for _, ipNet := range extraTrusted {
+						if ipNet.Contains(parsedIP) {
+							isTrustedEntry = true
+							break
+						}
+					}
+				}
+				if !isTrustedEntry {
+					return candidate
 				}
 			}
 		}

@@ -317,8 +317,10 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Create HTTP server — gin.Engine implements http.Handler directly
+	// Create HTTP server — gin.Engine implements http.Handler directly.
+	// Assign under mu so shutdownHTTPServer sees the new value.
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	s.mu.Lock()
 	s.httpServer = &http.Server{
 		Addr:           addr,
 		Handler:        s.engine,
@@ -327,6 +329,7 @@ func (s *Server) Start() error {
 		IdleTimeout:    cfg.Server.IdleTimeout,
 		MaxHeaderBytes: cfg.Server.MaxHeaderBytes,
 	}
+	s.mu.Unlock()
 
 	// Setup signal handling for graceful shutdown
 	go s.handleSignals()
@@ -466,11 +469,14 @@ func (s *Server) Shutdown() {
 }
 
 func (s *Server) shutdownHTTPServer(ctx context.Context) {
-	if s.httpServer == nil {
+	s.mu.RLock()
+	srv := s.httpServer
+	s.mu.RUnlock()
+	if srv == nil {
 		return
 	}
 	s.log.Info("Stopping HTTP server...")
-	if err := s.httpServer.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(ctx); err != nil {
 		s.log.Error("HTTP server shutdown error: %v", err)
 	}
 }

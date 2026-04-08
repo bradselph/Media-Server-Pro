@@ -275,6 +275,9 @@ func (m *Manager) Update(updater func(*Config)) error {
 		return fmt.Errorf("failed to marshal original config for backup: %w", err)
 	}
 	updater(m.config)
+	// Sync feature toggles BEFORE validation so that module-level Enabled fields
+	// reflect the new config. This matches the ordering in Load().
+	m.syncFeatureToggles()
 	if err := m.validate(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
 		return fmt.Errorf("config validation failed: %w", err)
@@ -283,8 +286,6 @@ func (m *Manager) Update(updater func(*Config)) error {
 		m.rollbackFromJSON(originalJSON, err)
 		return err
 	}
-	// Sync feature toggles so module-level Enabled fields match the new config.
-	m.syncFeatureToggles()
 	cfg := m.getCopy()
 	watchers := make([]func(*Config), len(m.watchers))
 	copy(watchers, m.watchers)

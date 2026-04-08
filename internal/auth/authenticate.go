@@ -103,7 +103,10 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 	if err != nil {
 		return nil, fmt.Errorf("session creation failed: %w", err)
 	}
-	// Copy user before mutation to avoid data race on shared pointer
+	// Copy user before mutation to avoid data race on shared pointer.
+	// Only update LastLogin/PreviousLastLogin fields on the existing cached pointer
+	// under the lock (instead of replacing the entire pointer) to avoid clobbering
+	// concurrent password changes or preference updates.
 	userCopy := *user
 	userCopy.PreviousLastLogin = userCopy.LastLogin
 	userCopy.LastLogin = new(time.Now())
@@ -111,7 +114,10 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		m.log.Warn("Failed to persist LastLogin for %s: %v", req.Username, err)
 	} else {
 		m.usersMu.Lock()
-		m.users[req.Username] = &userCopy
+		if u, ok := m.users[req.Username]; ok {
+			u.PreviousLastLogin = userCopy.PreviousLastLogin
+			u.LastLogin = userCopy.LastLogin
+		}
 		m.usersMu.Unlock()
 	}
 	m.log.Info("User logged in: %s from %s", req.Username, req.IPAddress)

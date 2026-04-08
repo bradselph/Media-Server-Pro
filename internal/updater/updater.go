@@ -181,8 +181,14 @@ func (m *Module) Start(_ context.Context) error {
 	m.checkTicker = time.NewTicker(24 * time.Hour)
 	go m.checkLoop()
 
-	// Do an initial check
+	// Do an initial check — check checkDone before starting so a rapid
+	// Stop() after Start() doesn't leave an orphaned HTTP request.
 	go func() {
+		select {
+		case <-m.checkDone:
+			return
+		default:
+		}
 		if _, err := m.CheckForUpdates(); err != nil {
 			m.log.Warn("Initial update check failed: %v", err)
 		}

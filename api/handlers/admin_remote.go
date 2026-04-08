@@ -174,10 +174,8 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 	if !h.checkRemoteMediaEnabled(c) {
 		return
 	}
-	sourceName := c.Param("source")
-
-	if sourceName == "" {
-		writeError(c, http.StatusBadRequest, "source name required")
+	sourceName, ok := RequireParamID(c, "source")
+	if !ok {
 		return
 	}
 
@@ -250,6 +248,13 @@ func (h *Handler) StreamRemoteMedia(c *gin.Context) {
 
 	if remoteURL == "" {
 		writeError(c, http.StatusBadRequest, "url parameter required")
+		return
+	}
+
+	// Verify the URL is from a discovered source or cached entry to prevent
+	// the stream endpoint from being used as an open HTTP proxy.
+	if !h.remote.IsKnownRemoteURL(remoteURL) {
+		writeError(c, http.StatusForbidden, "URL does not belong to a known remote source")
 		return
 	}
 

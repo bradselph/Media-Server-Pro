@@ -237,9 +237,16 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 	ticker := time.NewTicker(task.Schedule)
 	defer ticker.Stop()
 
-	// Initial run: execute once when started, then at predetermined intervals
-	m.log.Debug("Task %s: initial run", task.Name)
-	m.executeTask(ctx, task)
+	// Check if the task was disabled during the startup delay before the initial run.
+	m.mu.RLock()
+	enabled := task.Enabled
+	m.mu.RUnlock()
+	if !enabled {
+		m.log.Debug("Task %s: skipping initial run (disabled during startup delay)", task.Name)
+	} else {
+		m.log.Debug("Task %s: initial run", task.Name)
+		m.executeTask(ctx, task)
+	}
 
 	for {
 		select {

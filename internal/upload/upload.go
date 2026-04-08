@@ -91,6 +91,7 @@ type Progress struct {
 	Error       string       `json:"error,omitempty"`
 	UserID      string       `json:"user_id"`
 	DestPath    string       `json:"-"`
+	mu          sync.Mutex   `json:"-"` // per-upload lock; avoids module-wide mutex per chunk write
 }
 
 // Result contains the result of an upload.
@@ -687,12 +688,14 @@ func (m *Module) writeChunkAndTrack(dst io.Writer, chunk []byte, progress *Progr
 	nw, writeErr := dst.Write(chunk)
 	if nw > 0 {
 		totalWritten := prevWritten + int64(nw)
-		m.mu.Lock()
+		// Use per-upload mutex instead of module-wide lock to reduce contention
+		// during concurrent uploads.
+		progress.mu.Lock()
 		progress.Uploaded = totalWritten
 		if progress.Size > 0 {
 			progress.Progress = float64(totalWritten) / float64(progress.Size) * 100
 		}
-		m.mu.Unlock()
+		progress.mu.Unlock()
 	}
 	return int64(nw), writeErr
 }

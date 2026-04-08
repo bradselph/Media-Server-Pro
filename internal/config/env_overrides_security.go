@@ -1,7 +1,6 @@
 package config
 
 import (
-	"strings"
 	"time"
 )
 
@@ -64,11 +63,7 @@ func (m *Manager) applySecurityCORSOverrides() {
 		m.config.Security.CORSEnabled = val
 	}
 	if val := envGetStr("CORS_ORIGINS"); val != "" {
-		parts := strings.Split(val, ",")
-		for i, p := range parts {
-			parts[i] = strings.TrimSpace(p)
-		}
-		m.config.Security.CORSOrigins = parts
+		m.config.Security.CORSOrigins = splitTrimmed(val, ",")
 	}
 }
 
@@ -92,21 +87,13 @@ func (m *Manager) applySecurityIPOverrides() {
 		m.config.Security.EnableIPWhitelist = val
 	}
 	if val := envGetStr("SECURITY_IP_WHITELIST"); val != "" {
-		parts := strings.Split(val, ",")
-		for i, p := range parts {
-			parts[i] = strings.TrimSpace(p)
-		}
-		m.config.Security.IPWhitelist = parts
+		m.config.Security.IPWhitelist = splitTrimmed(val, ",")
 	}
 	if val, ok := envGetBool("SECURITY_ENABLE_IP_BLACKLIST"); ok {
 		m.config.Security.EnableIPBlacklist = val
 	}
 	if val := envGetStr("SECURITY_IP_BLACKLIST"); val != "" {
-		parts := strings.Split(val, ",")
-		for i, p := range parts {
-			parts[i] = strings.TrimSpace(p)
-		}
-		m.config.Security.IPBlacklist = parts
+		m.config.Security.IPBlacklist = splitTrimmed(val, ",")
 	}
 }
 

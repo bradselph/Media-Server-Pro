@@ -67,8 +67,9 @@ type Module struct {
 	usersMu       sync.RWMutex
 	sessionsMu    sync.RWMutex
 	attemptsMu    sync.RWMutex
-	lastAdminMu   sync.Mutex // serializes demote/disable admin to prevent TOCTOU
-	dataDir       string
+	lastAdminMu      sync.Mutex // serializes demote/disable admin to prevent TOCTOU
+	sessionUpdateSem chan struct{} // bounds concurrent background session-persist goroutines
+	dataDir          string
 	healthy       bool
 	healthMsg     string
 	healthMu      sync.RWMutex
@@ -100,9 +101,10 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		usersByID:     make(map[string]*models.User),
 		sessions:      make(map[string]*models.Session),
 		adminSessions: make(map[string]*models.AdminSession),
-		loginAttempts: make(map[string]*loginAttempt),
-		dataDir:       cfg.Get().Directories.Data,
-		cleanupDone:   make(chan struct{}),
+		loginAttempts:    make(map[string]*loginAttempt),
+		sessionUpdateSem: make(chan struct{}, 100), // bound concurrent session-persist goroutines
+		dataDir:          cfg.Get().Directories.Data,
+		cleanupDone:      make(chan struct{}),
 	}, nil
 }
 

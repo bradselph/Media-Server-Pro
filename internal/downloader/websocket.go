@@ -100,6 +100,11 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Limit incoming message size on both connections to prevent memory exhaustion.
+	const wsRelayReadLimit = 1 * 1024 * 1024 // 1 MB
+	adminConn.SetReadLimit(wsRelayReadLimit)
+	dlConn.SetReadLimit(wsRelayReadLimit)
+
 	log.Info("WS proxy established (clientId: %s)", clientID)
 
 	// Bidirectional relay

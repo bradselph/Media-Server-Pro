@@ -79,3 +79,19 @@ var audioExts = map[string]bool{
 func IsAudioExtension(ext string) bool {
 	return audioExts[strings.ToLower(ext)]
 }
+
+// AllowedProxyHeaders is the canonical set of HTTP response headers that may be
+// forwarded from an upstream origin (remote source, slave node) to the client.
+// Only media-relevant headers are included to avoid leaking server identity or
+// infrastructure details (Server, X-Powered-By, etc.).
+var AllowedProxyHeaders = map[string]bool{
+	"Content-Type":        true,
+	"Content-Length":      true,
+	"Content-Range":       true,
+	"Content-Disposition": true,
+	"Accept-Ranges":       true,
+	"Last-Modified":       true,
+	"Etag":                true,
+	"Cache-Control":       true,
+}
+

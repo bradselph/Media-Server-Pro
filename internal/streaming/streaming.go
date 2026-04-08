@@ -39,6 +39,10 @@ const (
 )
 
 
+// staleSessionTimeout is the maximum age of an active session's LastUpdate before
+// it is considered stale and evicted by the cleanup sweep.
+const staleSessionTimeout = 30 * time.Minute
+
 // Module implements media streaming
 type Module struct {
 	config         *config.Manager
@@ -52,6 +56,8 @@ type Module struct {
 	stats          StreamStats
 	statsMu        sync.RWMutex
 	bufferPool     *sync.Pool
+	cleanupTicker  *time.Ticker
+	cleanupDone    chan struct{}
 }
 
 // StreamStats holds streaming statistics. TotalStreams and TotalBytesSent reset on
@@ -108,6 +114,12 @@ func (m *Module) Start(_ context.Context) error {
 	m.healthy = true
 	m.healthMsg = "Running"
 	m.healthMu.Unlock()
+
+	// Periodic cleanup of stale sessions (e.g. from panicked handlers or abandoned streams).
+	m.cleanupDone = make(chan struct{})
+	m.cleanupTicker = time.NewTicker(5 * time.Minute)
+	go m.sessionCleanupLoop()
+
 	m.log.Info("Streaming module started")
 	return nil
 }
@@ -116,6 +128,10 @@ func (m *Module) Start(_ context.Context) error {
 // they are left to finish or close on their own; we log the count for visibility.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping streaming module...")
+	if m.cleanupTicker != nil {
+		m.cleanupTicker.Stop()
+		close(m.cleanupDone)
+	}
 	m.healthMu.Lock()
 	m.healthy = false
 	m.healthMsg = "Stopped"
@@ -127,6 +143,36 @@ func (m *Module) Stop(_ context.Context) error {
 		m.log.Info("Leaving %d active stream session(s) to finish or close", activeCount)
 	}
 	return nil
+}
+
+// sessionCleanupLoop periodically evicts stale sessions whose LastUpdate exceeds
+// staleSessionTimeout. This prevents memory leaks from abandoned or panicked streams.
+func (m *Module) sessionCleanupLoop() {
+	for {
+		select {
+		case <-m.cleanupTicker.C:
+			m.evictStaleSessions()
+		case <-m.cleanupDone:
+			return
+		}
+	}
+}
+
+// evictStaleSessions removes sessions that have not been updated within staleSessionTimeout.
+func (m *Module) evictStaleSessions() {
+	now := time.Now()
+	m.sessionMu.Lock()
+	evicted := 0
+	for id, session := range m.activeSessions {
+		if now.Sub(session.LastUpdate) > staleSessionTimeout {
+			delete(m.activeSessions, id)
+			evicted++
+		}
+	}
+	m.sessionMu.Unlock()
+	if evicted > 0 {
+		m.log.Info("Evicted %d stale stream session(s)", evicted)
+	}
 }
 
 // Health returns the module health status
@@ -167,10 +213,11 @@ type StreamResponse struct {
 }
 
 // Stream handles a streaming request
-func (m *Module) Stream(w http.ResponseWriter, _ *http.Request, req StreamRequest) error {
+func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamRequest) error {
 	m.log.Debug("Stream request for %s from %s", req.Path, req.IPAddress)
 
-	ctx := context.Background()
+	// Use request context so S3 operations are cancelled when the client disconnects.
+	ctx := r.Context()
 
 	// Get file size via stat (S3 uses backend; local always uses os.Stat directly
 	// to avoid cross-root errors when videoStore serves music paths).
@@ -777,12 +824,15 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 		}
 		fileSize = info.Size
 	} else {
-		file, fs, err := m.openFileForDownload(path)
+		// Use os.Stat (not open+stat+close) to avoid opening the file twice.
+		fi, err := os.Stat(path)
 		if err != nil {
-			return err
+			if os.IsNotExist(err) {
+				return ErrFileNotFound
+			}
+			return fmt.Errorf("failed to stat file: %w", err)
 		}
-		file.Close()
-		fileSize = fs
+		fileSize = fi.Size()
 	}
 
 	if err := m.validateDownloadFileSize(fileSize); err != nil {

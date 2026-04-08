@@ -56,6 +56,12 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 		return nil, nil, ErrInvalidCredentials
 	}
 	if rec.ExpiresAt != nil && time.Now().After(*rec.ExpiresAt) {
+		// Clean up expired token so it doesn't accumulate in the database.
+		go func() {
+			if delErr := m.tokenRepo.Delete(context.Background(), rec.ID, rec.UserID); delErr != nil {
+				m.log.Warn("Failed to delete expired API token %s: %v", rec.ID, delErr)
+			}
+		}()
 		return nil, nil, ErrSessionExpired
 	}
 

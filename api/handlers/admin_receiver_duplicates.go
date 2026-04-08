@@ -34,16 +34,18 @@ func (h *Handler) AdminResolveDuplicate(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("id")
-	if id == "" {
-		writeError(c, http.StatusBadRequest, "duplicate ID required")
+	id, ok := RequireParamID(c, "id")
+	if !ok {
 		return
 	}
 
 	var body struct {
 		Action string `json:"action"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil || body.Action == "" {
+	if !BindJSON(c, &body, "action required (remove_a, remove_b, keep_both, ignore)") {
+		return
+	}
+	if body.Action == "" {
 		writeError(c, http.StatusBadRequest, "action required (remove_a, remove_b, keep_both, ignore)")
 		return
 	}

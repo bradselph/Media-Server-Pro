@@ -248,6 +248,7 @@ func (m *Module) loadFromDB() {
 	mediaRecords, err := m.mediaRepo.ListAll(ctx)
 	if err != nil {
 		m.log.Warn("Failed to load media from DB: %v", err)
+		m.setHealth(true, "Running (media cache empty — awaiting slave catalog push)")
 		return
 	}
 
@@ -294,8 +295,9 @@ func (m *Module) loadFromDB() {
 
 	m.log.Info("Loaded %d slaves, %d media items from DB", len(m.slaves), len(m.media))
 
-	// Persist migrated IDs: delete the stale composite-key row and upsert the
-	// opaque-ID row so they don't accumulate across restarts.
+	// Persist migrated IDs: upsert the opaque-ID row FIRST, then delete the stale
+	// composite-key row. This ordering ensures the new row exists before the old is
+	// removed, so a crash between the two operations never loses the record.
 	if len(migrations) > 0 {
 		migs := migrations
 		go func() {
@@ -303,12 +305,12 @@ func (m *Module) loadFromDB() {
 			for _, mig := range migs {
 				newRec := *mig.rec
 				newRec.ID = mig.newID
-				if err := m.mediaRepo.DeleteByID(migCtx, mig.legacyID); err != nil {
-					m.log.Warn("Legacy media ID migration: failed to delete %s: %v", mig.legacyID, err)
-					continue
-				}
 				if err := m.mediaRepo.UpsertBatch(migCtx, newRec.SlaveID, []*repositories.ReceiverMediaRecord{&newRec}); err != nil {
 					m.log.Warn("Legacy media ID migration: failed to upsert %s: %v", mig.newID, err)
+					continue
+				}
+				if err := m.mediaRepo.DeleteByID(migCtx, mig.legacyID); err != nil {
+					m.log.Warn("Legacy media ID migration: failed to delete %s: %v", mig.legacyID, err)
 				}
 			}
 			m.log.Info("Migrated %d legacy composite receiver media IDs to opaque IDs", len(migs))
@@ -487,8 +489,14 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 		}
 	}
 
-	// Rebuild in-memory media for this slave
+	// Rebuild in-memory media for this slave.
+	// Re-read node under write lock to avoid TOCTOU if UnregisterSlave ran during DB I/O.
 	m.mu.Lock()
+	node, exists = m.slaves[req.SlaveID]
+	if !exists {
+		m.mu.Unlock()
+		return len(records), nil // slave unregistered during DB I/O; media persisted, skip cache
+	}
 	if req.Full {
 		for id, item := range m.media {
 			if item.SlaveID == req.SlaveID {
@@ -501,7 +509,9 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 		item.SlaveName = node.Name
 		m.media[rec.ID] = item
 	}
-	node.MediaCount = len(req.Items)
+	// Use len(records) — the post-filter count — not len(req.Items) which includes
+	// items rejected by path validation.
+	node.MediaCount = len(records)
 	node.Status = "online"
 	node.LastSeen = time.Now()
 	m.mu.Unlock()
@@ -660,19 +670,6 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
-// allowedProxyHeaders is the set of response headers forwarded from the slave
-// to the client.  Only media-relevant headers are allowed to prevent leaking
-// slave identity, server software, or internal infrastructure details.
-var allowedProxyHeaders = map[string]bool{
-	"Content-Type":        true,
-	"Content-Length":      true,
-	"Content-Range":       true,
-	"Content-Disposition": true,
-	"Accept-Ranges":       true,
-	"Last-Modified":       true,
-	"Etag":                true,
-	"Cache-Control":       true,
-}
 
 // ProxyStream streams media from a slave to the client.
 // It first attempts a WebSocket-based request (slave pushes data back via HTTP
@@ -746,7 +743,7 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 			return fmt.Errorf("stream delivery failed for %s", mediaID)
 		}
 		for key, values := range delivery.Headers {
-			if !allowedProxyHeaders[key] {
+			if !helpers.AllowedProxyHeaders[key] {
 				continue
 			}
 			for _, v := range values {
@@ -825,7 +822,7 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 
 	// Forward allowed headers only.
 	for key, values := range resp.Header {
-		if !allowedProxyHeaders[key] {
+		if !helpers.AllowedProxyHeaders[key] {
 			continue
 		}
 		for _, v := range values {

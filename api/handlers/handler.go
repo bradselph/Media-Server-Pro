@@ -182,9 +182,30 @@ func (h *Handler) tryRecordView(userID, mediaID string) bool {
 		}
 	}
 	h.viewCooldown.Store(key, now)
-	// Evict this entry after 2× the cooldown window so the map doesn't grow unboundedly.
-	time.AfterFunc(cooldown*2, func() { h.viewCooldown.Delete(key) })
 	return true
+}
+
+// startViewCooldownSweeper runs a periodic sweep to evict expired entries from
+// the viewCooldown map. This replaces per-entry time.AfterFunc timers which
+// create one goroutine per view under high traffic.
+func (h *Handler) startViewCooldownSweeper() {
+	ticker := time.NewTicker(viewCooldownDuration)
+	go func() {
+		for range ticker.C {
+			now := time.Now()
+			cooldown := h.config.Get().Analytics.ViewCooldown
+			if cooldown <= 0 {
+				cooldown = viewCooldownDuration
+			}
+			evictBefore := now.Add(-cooldown * 2)
+			h.viewCooldown.Range(func(key, value any) bool {
+				if value.(time.Time).Before(evictBefore) {
+					h.viewCooldown.Delete(key)
+				}
+				return true
+			})
+		}
+	}()
 }
 
 // NewHandler creates a new handler with dependencies.
@@ -201,7 +222,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		shutdownFunc = func() {} // no-op default for tests
 	}
 
-	return &Handler{
+	h := &Handler{
 		log:              logger.New("handlers"),
 		buildInfo:        deps.BuildInfo,
 		media:            c.Media,
@@ -233,6 +254,8 @@ func NewHandler(deps HandlerDeps) *Handler {
 		downloader:    o.Downloader,
 		shutdownFunc:  shutdownFunc,
 	}
+	h.startViewCooldownSweeper()
+	return h
 }
 
 // getSession retrieves the session from the gin context.
@@ -459,7 +482,7 @@ func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDir
 		return "", false
 	}
 
-	if !isPathWithinDirs(absPath, allowedDirs) {
+	if !isPathUnderDirs(absPath, allowedDirs) {
 		h.log.Warn("Path traversal attempt detected: %s", path)
 		writeError(c, http.StatusForbidden, "Access denied: path outside allowed directories")
 		return "", false
@@ -492,12 +515,6 @@ func (h *Handler) resolveRelativePath(path string, allowedDirs []string) string 
 		}
 	}
 	return ""
-}
-
-// isPathWithinDirs checks whether absPath resides within at least one of the given directories.
-// Delegates to isPathUnderDirs which uses filepath.Clean + HasPrefix for consistent behaviour.
-func isPathWithinDirs(absPath string, dirs []string) bool {
-	return isPathUnderDirs(absPath, dirs)
 }
 
 // checkMatureAccess verifies the current user has permission to access mature content at
@@ -679,7 +696,7 @@ func validatePathType(c *gin.Context, info os.FileInfo, mustBeDir bool) bool {
 // validatePathInDirsAndStat checks absPath is under allowedDirs, exists, and matches
 // mustBeDir (true = directory, false = file). Writes error and returns false on failure.
 func validatePathInDirsAndStat(c *gin.Context, absPath string, allowedDirs []string, mustBeDir bool) bool {
-	if !isPathWithinDirs(absPath, allowedDirs) {
+	if !isPathUnderDirs(absPath, allowedDirs) {
 		writeError(c, http.StatusForbidden, "Access denied: path outside allowed media directories")
 		return false
 	}

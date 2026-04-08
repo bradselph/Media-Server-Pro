@@ -266,6 +266,12 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 		// Don't count an update to an existing item against the limit.
 		if _, exists := m.items[id]; !exists {
 			m.mu.Unlock()
+			// Clean up the DB row that was already persisted to prevent orphan.
+			if m.repo != nil {
+				if delErr := m.repo.Delete(context.Background(), id); delErr != nil {
+					m.log.Warn("Failed to clean up orphan extractor DB row %s: %v", id, delErr)
+				}
+			}
 			return nil, fmt.Errorf("maximum extracted items limit reached (%d)", cfg.Extractor.MaxItems)
 		}
 	}

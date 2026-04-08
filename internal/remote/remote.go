@@ -39,19 +39,6 @@ const (
 	userAgentValue       = "MediaServerPro/4.0"
 )
 
-// allowedRemoteHeaders is the set of response headers forwarded from the remote
-// origin to the client. Only media-relevant headers are allowed to avoid leaking
-// server identity or infrastructure details (Server, X-Powered-By, etc.).
-var allowedRemoteHeaders = map[string]bool{
-	"Content-Type":        true,
-	"Content-Length":      true,
-	"Content-Range":       true,
-	"Content-Disposition": true,
-	"Accept-Ranges":       true,
-	"Last-Modified":       true,
-	"Etag":                true,
-	"Cache-Control":       true,
-}
 
 // Module handles remote media sources
 type Module struct {
@@ -270,6 +257,10 @@ func (m *Module) syncAllSources() {
 	m.mu.RUnlock()
 
 	for _, source := range sources {
+		// Check module context so syncAllSources exits promptly on Stop().
+		if m.ctx.Err() != nil {
+			return
+		}
 		if err := m.syncSource(source.Source.Name); err != nil {
 			m.log.Error("Failed to sync source %s: %v", source.Source.Name, err)
 		}
@@ -351,9 +342,13 @@ func (m *Module) discoverMedia(source config.RemoteSource) ([]*MediaItem, error)
 	// Supports both array format [{"id":...},...] and wrapper format {"items":[...],"data":[...]}
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "application/json") {
+		// Limit the JSON body to 32 MB to prevent OOM from malicious sources.
+		const maxDiscoverBody = 32 * 1024 * 1024
+		limitedBody := io.LimitReader(resp.Body, maxDiscoverBody)
+
 		// First, decode into raw JSON to detect structure
 		var raw json.RawMessage
-		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		if err := json.NewDecoder(limitedBody).Decode(&raw); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 		}
 
@@ -456,6 +451,26 @@ func (m *Module) GetAllRemoteMedia() []*MediaItem {
 	return all
 }
 
+// IsKnownRemoteURL reports whether remoteURL belongs to a discovered media item
+// across any source. This prevents the stream endpoint from being used as an
+// open HTTP proxy to arbitrary external URLs.
+func (m *Module) IsKnownRemoteURL(remoteURL string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, state := range m.sources {
+		for _, item := range state.Media {
+			if item.URL == remoteURL {
+				return true
+			}
+		}
+	}
+	// Also accept URLs that match a cached entry (previously fetched & validated).
+	if _, ok := m.mediaCache[remoteURL]; ok {
+		return true
+	}
+	return false
+}
+
 // StreamRemote streams a remote media file
 func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL string, sourceName string) error {
 	// Validate URL against SSRF before streaming
@@ -515,7 +530,7 @@ func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL 
 
 	// Copy only allowed response headers (allowlist to avoid leaking Server, X-Powered-By, etc.)
 	for key, values := range resp.Header {
-		if !allowedRemoteHeaders[http.CanonicalHeaderKey(key)] {
+		if !helpers.AllowedProxyHeaders[http.CanonicalHeaderKey(key)] {
 			continue
 		}
 		for _, value := range values {
@@ -543,16 +558,22 @@ func (m *Module) ProxyRemoteWithCache(w http.ResponseWriter, r *http.Request, re
 		return m.StreamRemote(w, r, remoteURL, sourceName)
 	}
 
-	// Check cache
+	// Check cache — re-verify file exists right before serving to handle the
+	// race where CleanCache removes the file between getCachedMedia's stat and
+	// http.ServeFile. On miss, fall through to stream + background cache.
 	cached := m.getCachedMedia(remoteURL)
 	if cached != nil {
-		m.mu.Lock()
-		cached.LastAccess = time.Now()
-		cached.Hits++
-		m.mu.Unlock()
+		if _, err := os.Stat(cached.LocalPath); err == nil {
+			m.mu.Lock()
+			cached.LastAccess = time.Now()
+			cached.Hits++
+			m.mu.Unlock()
 
-		http.ServeFile(w, r, cached.LocalPath)
-		return nil
+			http.ServeFile(w, r, cached.LocalPath)
+			return nil
+		}
+		// File was evicted between getCachedMedia and now — fall through to re-download
+		m.log.Debug("Cache file missing for %s, falling through to stream", remoteURL)
 	}
 
 	// Cache miss: stream to the client immediately, then cache in the background so
@@ -822,12 +843,14 @@ func (m *Module) loadCacheIndex() {
 }
 
 // saveCacheIndex persists the in-memory cache index to the repository.
-// Returns the first error encountered so callers can handle persistence failures.
+// Continues on individual save failures to persist as many entries as possible.
+// Returns the last error encountered so callers know persistence was partial.
 func (m *Module) saveCacheIndex() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	ctx := context.Background()
+	var lastErr error
 	for _, cached := range m.mediaCache {
 		rec := &repositories.RemoteCacheRecord{
 			RemoteURL:   cached.RemoteURL,
@@ -839,11 +862,11 @@ func (m *Module) saveCacheIndex() error {
 			Hits:        cached.Hits,
 		}
 		if err := m.repo.Save(ctx, rec); err != nil {
-			m.log.Warn("Failed to save cache entry: %v", err)
-			return err
+			m.log.Warn("Failed to save cache entry for %s: %v", cached.RemoteURL, err)
+			lastErr = err
 		}
 	}
-	return nil
+	return lastErr
 }
 
 // cacheEntry pairs a URL key with its cached media for sorting.

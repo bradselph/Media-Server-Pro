@@ -4,6 +4,7 @@ package routes
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -46,9 +47,19 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 				// Clear stale/expired/invalid cookie so the browser stops resending it.
 				// DB/transient errors are NOT treated as invalid sessions — the cookie is
 				// preserved so the user is not silently logged out during a DB outage.
-				secure := c.Request.TLS != nil ||
-					c.GetHeader("X-Forwarded-Proto") == "https" ||
-					strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
+				// Only trust proxy headers (X-Forwarded-Proto, Cf-Visitor) from
+				// trusted proxy IPs to prevent clients from spoofing HTTPS.
+				secure := c.Request.TLS != nil
+				if !secure {
+					remoteIP, _, splitErr := net.SplitHostPort(c.Request.RemoteAddr)
+					if splitErr != nil {
+						remoteIP = c.Request.RemoteAddr
+					}
+					if middleware.IsTrustedProxy(remoteIP) {
+						secure = c.GetHeader("X-Forwarded-Proto") == "https" ||
+							strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
+					}
+				}
 				http.SetCookie(c.Writer, &http.Cookie{
 					Name:     "session_id",
 					Value:    "",
@@ -192,12 +203,13 @@ func (w *etagBufferWriter) Write(b []byte) (int, error) {
 	return w.body.Write(b)
 }
 
-// hashFNV1a computes an FNV-1a hash of the given bytes and returns it as a hex string.
+// hashFNV1a computes a 64-bit FNV-1a hash of the given bytes and returns it as a hex string.
+// 64-bit reduces birthday collision probability vs the original 32-bit version.
 func hashFNV1a(data []byte) string {
-	h := uint32(2166136261)
+	h := uint64(14695981039346656037)
 	for _, b := range data {
-		h ^= uint32(b)
-		h *= 16777619
+		h ^= uint64(b)
+		h *= 1099511628211
 	}
 	return fmt.Sprintf("%x", h)
 }

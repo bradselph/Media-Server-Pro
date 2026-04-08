@@ -16,6 +16,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"media-server-pro/internal/logger"
+	"media-server-pro/pkg/helpers"
 )
 
 // ImageData represents raw image bytes sent to the Hugging Face API.
@@ -105,7 +106,8 @@ func NewClient(cfg ClientConfig) *Client {
 	}
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: timeout,
+			Timeout:   timeout,
+			Transport: helpers.SafeHTTPTransport(),
 		},
 		apiKey:      cfg.APIKey,
 		model:       cfg.Model,

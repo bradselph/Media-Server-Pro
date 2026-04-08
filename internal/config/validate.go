@@ -34,6 +34,7 @@ func (m *Manager) validateLocked() []error {
 	errors = append(errors, m.validateHuggingFace()...)
 	errors = append(errors, m.validateExtractor()...)
 	errors = append(errors, m.validateCrawler()...)
+	errors = append(errors, m.validateStorage()...)
 	m.warnCORS()
 	return errors
 }
@@ -103,10 +104,27 @@ func (m *Manager) validateAdmin() []error {
 }
 
 func (m *Manager) validateSecurity() []error {
-	if m.config.Security.RateLimitEnabled && m.config.Security.RateLimitRequests < 1 {
-		return []error{fmt.Errorf("rate_limit_requests must be positive")}
+	sec := m.config.Security
+	if !sec.RateLimitEnabled {
+		return nil
 	}
-	return nil
+	var errs []error
+	if sec.RateLimitRequests < 1 {
+		errs = append(errs, fmt.Errorf("rate_limit_requests must be positive"))
+	}
+	if sec.BurstLimit < 1 {
+		errs = append(errs, fmt.Errorf("burst_limit must be positive when rate limiting is enabled"))
+	}
+	if sec.BurstWindow <= 0 {
+		errs = append(errs, fmt.Errorf("burst_window must be positive when rate limiting is enabled"))
+	}
+	if sec.BanDuration <= 0 {
+		errs = append(errs, fmt.Errorf("ban_duration must be positive when rate limiting is enabled"))
+	}
+	if sec.ViolationsForBan < 1 {
+		errs = append(errs, fmt.Errorf("violations_for_ban must be positive when rate limiting is enabled"))
+	}
+	return errs
 }
 
 func (m *Manager) validateHLS() []error {
@@ -132,6 +150,27 @@ func (m *Manager) validateDatabase() []error {
 	}
 	if m.config.Database.Name == "" {
 		errs = append(errs, fmt.Errorf("database name is required"))
+	}
+	return errs
+}
+
+func (m *Manager) validateStorage() []error {
+	if m.config.Storage.Backend != "s3" {
+		return nil
+	}
+	var errs []error
+	s3 := m.config.Storage.S3
+	if s3.Endpoint == "" {
+		errs = append(errs, fmt.Errorf("storage.s3.endpoint is required when backend is s3"))
+	}
+	if s3.Bucket == "" {
+		errs = append(errs, fmt.Errorf("storage.s3.bucket is required when backend is s3"))
+	}
+	if s3.AccessKeyID == "" {
+		errs = append(errs, fmt.Errorf("storage.s3.access_key_id is required when backend is s3"))
+	}
+	if s3.SecretAccessKey == "" {
+		errs = append(errs, fmt.Errorf("storage.s3.secret_access_key is required when backend is s3"))
 	}
 	return errs
 }

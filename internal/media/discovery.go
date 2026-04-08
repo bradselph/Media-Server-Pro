@@ -104,11 +104,27 @@ type Module struct {
 	// onInitialScanDone is called when the first scan completes (with the current media list).
 	// Used by the server to seed the suggestions module without polling.
 	onInitialScanDone func([]*models.MediaItem)
+	// thumbnailQueuer queues background thumbnail generation for items missing thumbnails.
+	// Set via SetThumbnailQueuer; called after each scan completes.
+	thumbnailQueuer ThumbnailQueuer
 	// videoStore, musicStore, uploadStore are optional storage backends.
 	// When set, file operations use these instead of direct os.* calls.
 	videoStore  storage.Backend
 	musicStore  storage.Backend
 	uploadStore storage.Backend
+}
+
+// ThumbnailQueuer is called after scans to queue thumbnail generation for
+// media items that don't have thumbnails yet.
+type ThumbnailQueuer interface {
+	// QueueThumbnailIfMissing queues a thumbnail for the given media item
+	// if one doesn't already exist. isAudio indicates audio-only media.
+	QueueThumbnailIfMissing(mediaPath, mediaID string, isAudio bool)
+}
+
+// SetThumbnailQueuer sets the thumbnail queuer that runs after scans.
+func (m *Module) SetThumbnailQueuer(q ThumbnailQueuer) {
+	m.thumbnailQueuer = q
 }
 
 // SetStores sets the storage backends for media file operations.
@@ -570,6 +586,22 @@ func (m *Module) Scan() error {
 	m.healthMsg = fmt.Sprintf("Running (%d items)", len(newMedia))
 	m.healthMu.Unlock()
 
+	// Queue thumbnail generation for media items that don't have thumbnails yet.
+	if m.thumbnailQueuer != nil {
+		go func() {
+			queued := 0
+			for _, item := range newMedia {
+				if item.ThumbnailURL == "" && item.Path != "" {
+					m.thumbnailQueuer.QueueThumbnailIfMissing(item.Path, item.ID, item.Type == models.MediaTypeAudio)
+					queued++
+				}
+			}
+			if queued > 0 {
+				m.log.Info("Queued %d thumbnail generation requests after scan", queued)
+			}
+		}()
+	}
+
 	// Save metadata in background; concurrent scans can start overlapping saves (saveMu serializes DB writes).
 	go func() {
 		if err := m.saveMetadata(m.scanCtx); err != nil {
@@ -769,27 +801,25 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		}
 
 		if fp != "" {
-			m.mu.RLock()
+			// Use a single Lock for the fingerprint check-and-set to prevent
+			// concurrent workers from both detecting the same fingerprint as a
+			// "move" and both trying to migrate, corrupting the index.
+			m.mu.Lock()
 			oldPath, found := m.fingerprintIndex[fp]
 			var oldMeta *Metadata
 			if found && oldPath != path {
 				oldMeta = m.metadata[oldPath]
 			}
-			m.mu.RUnlock()
 
 			if oldMeta != nil {
-				// Before assuming a move, verify the old path no longer exists.
-				// If both paths are present on disk the file was copied (duplicate),
-				// not moved.  In that case treat this as a new file and let the
-				// post-scan dedup pass pick the winner.
+				// Before assuming a move, verify the old path no longer exists (outside lock
+				// would be ideal, but the stat is fast for local FS and correctness > speed).
 				if _, statErr := os.Stat(oldPath); statErr != nil && os.IsNotExist(statErr) {
 					// Old path gone — genuine move/rename.
 					m.log.Info("Detected moved file: %s -> %s (fingerprint %s…)", oldPath, path, fp[:12])
-					m.mu.Lock()
 					m.metadata[path] = oldMeta
 					delete(m.metadata, oldPath)
 					m.fingerprintIndex[fp] = path
-					m.mu.Unlock()
 					meta = oldMeta
 					hasMeta = true
 				} else {
@@ -798,8 +828,6 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 				}
 			} else if found {
 				// Same file at same path — just use existing metadata normally.
-				// This happens when the fingerprint was computed for the first time
-				// on a file that already had metadata by path.
 			} else {
 				// Truly new file — record fingerprint for future move detection
 				m.log.Debug("New content fingerprint for %s: %s…", path, fp[:12])
@@ -809,7 +837,6 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 			if !hasMeta {
 				now := time.Now()
 				item.DateAdded = now
-				m.mu.Lock()
 				m.metadata[path] = &Metadata{
 					ContentFingerprint: fp,
 					DateAdded:          now,
@@ -818,13 +845,11 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 				}
 				meta = m.metadata[path]
 				m.fingerprintIndex[fp] = path
-				m.mu.Unlock()
 			} else if meta.ContentFingerprint == "" {
-				m.mu.Lock()
 				meta.ContentFingerprint = fp
 				m.fingerprintIndex[fp] = path
-				m.mu.Unlock()
 			}
+			m.mu.Unlock()
 		} else {
 			// Fingerprint failed — create basic metadata entry
 			now := time.Now()

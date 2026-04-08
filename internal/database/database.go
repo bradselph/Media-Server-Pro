@@ -244,6 +244,10 @@ func (w *gormLogWriter) Printf(format string, args ...interface{}) {
 }
 
 // Stop closes the database connection
+// Stop closes the database connection. IMPORTANT: db and sqlDB are set to nil
+// without synchronization. Callers of DB()/GORM() must not use the module after
+// Stop returns. The server's reverse-order shutdown ensures all modules that
+// depend on the database are stopped before this module.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping database module...")
 
@@ -260,20 +264,34 @@ func (m *Module) Stop(_ context.Context) error {
 	return nil
 }
 
-// Health returns the current health status of the database module
+// Health returns the current health status of the database module.
+// Performs a live ping to detect connection loss between health checks.
 func (m *Module) Health() models.HealthStatus {
 	m.healthMu.RLock()
-	defer m.healthMu.RUnlock()
+	healthy := m.healthy
+	msg := m.healthMsg
+	m.healthMu.RUnlock()
+
+	// Live-ping the database if we think we're healthy, to detect silent disconnects.
+	if healthy && m.sqlDB != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := m.sqlDB.PingContext(ctx); err != nil {
+			healthy = false
+			msg = fmt.Sprintf("Ping failed: %v", err)
+			m.setHealth(false, msg)
+		}
+	}
 
 	status := models.StatusHealthy
-	if !m.healthy {
+	if !healthy {
 		status = models.StatusUnhealthy
 	}
 
 	return models.HealthStatus{
 		Name:      m.Name(),
 		Status:    status,
-		Message:   m.healthMsg,
+		Message:   msg,
 		CheckedAt: time.Now(),
 	}
 }

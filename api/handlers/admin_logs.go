@@ -6,24 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-// parseLogLimit returns a clamped limit from query string, or defaultVal if invalid.
-func parseLogLimit(q string, defaultVal, max int) int {
-	l, err := strconv.Atoi(q)
-	if err != nil || l <= 0 || l > max {
-		return defaultVal
-	}
-	return l
-}
-
 // GetServerLogs reads recent entries from the server log files.
 func (h *Handler) GetServerLogs(c *gin.Context) {
-	limit := parseLogLimit(c.Query("limit"), 200, 2000)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 200, Min: 1, Max: 2000})
 
 	cfg := h.media.GetConfig()
 	logsDir := cfg.Directories.Logs

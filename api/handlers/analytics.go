@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -188,13 +190,17 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 
 	session := getSession(c)
 	userID := ""
-	// Always use the server-side session ID for authenticated requests.
-	// Allowing a client-supplied session_id lets any user forge events under
-	// another session, inflating or corrupting analytics data.
-	sessionID := req.SessionID
+	// Always use server-side session IDs — never trust client-supplied values.
+	// For authenticated users, use the session ID from the cookie.
+	// For anonymous users, generate a deterministic ID from IP+UserAgent so
+	// events from the same browser are grouped without trusting client input.
+	var sessionID string
 	if session != nil {
 		userID = session.UserID
 		sessionID = session.ID
+	} else {
+		hash := sha256.Sum256([]byte(c.ClientIP() + "|" + c.Request.UserAgent()))
+		sessionID = "anon-" + fmt.Sprintf("%x", hash[:8])
 	}
 
 	if h.analytics != nil {

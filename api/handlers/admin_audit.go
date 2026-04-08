@@ -4,37 +4,18 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
-
-// parseAuditLimit returns a clamped limit from query string, or defaultVal if invalid.
-func parseAuditLimit(q string, defaultVal, max int) int {
-	l, err := strconv.Atoi(q)
-	if err != nil || l <= 0 || l > max {
-		return defaultVal
-	}
-	return l
-}
-
-// parseAuditOffset returns a non-negative offset from query string, or defaultVal if invalid.
-func parseAuditOffset(q string, defaultVal int) int {
-	o, err := strconv.Atoi(q)
-	if err != nil || o < 0 {
-		return defaultVal
-	}
-	return o
-}
 
 // AdminGetAuditLog returns audit log, optionally filtered by user_id query param.
 func (h *Handler) AdminGetAuditLog(c *gin.Context) {
 	if !h.requireAdminModule(c) {
 		return
 	}
-	limit := parseAuditLimit(c.Query("limit"), 100, 1000)
-	offset := parseAuditOffset(c.Query("offset"), 0)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 100, Min: 1, Max: 1000})
+	offset := ParseQueryInt(c, "offset", QueryIntOpts{Default: 0, Min: 0, Max: 100000})
 	userID := strings.TrimSpace(c.Query("user_id"))
 
 	log := h.admin.GetAuditLog(c.Request.Context(), limit, offset, userID)

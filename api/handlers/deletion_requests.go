@@ -117,9 +117,8 @@ func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
 	if !h.requireDeletionRepo(c) {
 		return
 	}
-	requestID := c.Param("id")
-	if requestID == "" {
-		writeError(c, http.StatusBadRequest, "request id is required")
+	requestID, ok := RequireParamID(c, "id")
+	if !ok {
 		return
 	}
 

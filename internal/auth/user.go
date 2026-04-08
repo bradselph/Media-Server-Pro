@@ -187,23 +187,37 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 		return err
 	}
 
-	demoting := user.Role == models.RoleAdmin && updates["role"] == string(models.RoleViewer)
-	var disabling bool
+	// Check if this update would demote or disable an admin. Read role/enabled
+	// inside lastAdminMu to prevent two concurrent demotions from both seeing
+	// count=2 and both proceeding.
+	wantsDemote := updates["role"] == string(models.RoleViewer)
+	wantsDisable := false
 	if v, ok := updates["enabled"].(bool); ok && !v {
-		disabling = user.Role == models.RoleAdmin && user.Enabled
+		wantsDisable = true
 	}
-	if demoting || disabling {
+	if wantsDemote || wantsDisable {
 		m.lastAdminMu.Lock()
 		defer m.lastAdminMu.Unlock()
-		count := 0
-		for _, u := range m.ListUsers(ctx) {
-			if u.Role == models.RoleAdmin && u.Enabled {
-				count++
+		// Re-read user under lastAdminMu so the role/enabled check is serialized
+		// with other concurrent UpdateUser calls.
+		freshUser, freshErr := m.GetUser(ctx, username)
+		if freshErr != nil {
+			return freshErr
+		}
+		demoting := freshUser.Role == models.RoleAdmin && wantsDemote
+		disabling := freshUser.Role == models.RoleAdmin && freshUser.Enabled && wantsDisable
+		if demoting || disabling {
+			count := 0
+			for _, u := range m.ListUsers(ctx) {
+				if u.Role == models.RoleAdmin && u.Enabled {
+					count++
+				}
+			}
+			if count <= 1 {
+				return ErrCannotDemoteLastAdmin
 			}
 		}
-		if count <= 1 {
-			return ErrCannotDemoteLastAdmin
-		}
+		user = freshUser
 	}
 
 	wasEnabled := user.Enabled

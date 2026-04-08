@@ -51,7 +51,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.1.44"
+	Version   = "1.1.57"
 	BuildDate = ""
 )
 
@@ -235,6 +235,7 @@ func main() {
 	thumbnailsModule.SetMediaIDProvider(mediaModule)
 	thumbnailsModule.SetStore(thumbnailStore)
 	thumbnailsModule.SetMediaInputResolver(mediaModule)
+	mediaModule.SetThumbnailQueuer(thumbnailsModule)
 	mustRegister(srv, thumbnailsModule)
 
 	// ── Non-critical modules ───────────────────────────────────────────────

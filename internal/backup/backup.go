@@ -183,6 +183,7 @@ func (m *Module) writeBackupArchive(backupPath string, manifest *Manifest) error
 	if err != nil {
 		return fmt.Errorf("failed to create backup file: %w", err)
 	}
+	defer zipFile.Close() // safety net in case of panic between create and explicit close
 
 	zipWriter := zip.NewWriter(zipFile)
 	filesToBackup := m.getFilesToBackup(manifest.Type)

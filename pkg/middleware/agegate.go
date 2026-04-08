@@ -83,8 +83,10 @@ func NewAgeGate(cfg config.AgeGateConfig) *AgeGate {
 }
 
 // extractClientIP returns the real client IP, honouring X-Forwarded-For only
-// from trusted reverse proxies (private network ranges). Uses the same trusted
-// proxy validation as the main middleware to prevent IP spoofing.
+// from trusted reverse proxies (private network ranges). Walks right-to-left
+// through X-Forwarded-For, skipping trusted proxy entries, to find the actual
+// client IP. This matches the strategy used by the security module's getClientIP
+// and is correct for both single-proxy and multi-proxy (CDN) topologies.
 func extractClientIP(r *http.Request) string {
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -93,10 +95,13 @@ func extractClientIP(r *http.Request) string {
 
 	if IsTrustedProxy(remoteIP) {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if idx := strings.IndexByte(xff, ','); idx != -1 {
-				return strings.TrimSpace(xff[:idx])
+			parts := strings.Split(xff, ",")
+			for i := len(parts) - 1; i >= 0; i-- {
+				candidate := strings.TrimSpace(parts[i])
+				if candidate != "" && !IsTrustedProxy(candidate) {
+					return candidate
+				}
 			}
-			return strings.TrimSpace(xff)
 		}
 		if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
 			return realIP

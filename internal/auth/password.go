@@ -92,8 +92,17 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 		return fmt.Errorf(errHashPasswordFmt, err)
 	}
 
-	// Work on a copy; only update cache after DB success to avoid cache/DB divergence.
+	// Re-read user under lock and copy atomically to avoid data race with concurrent mutations.
+	m.usersMu.RLock()
+	user, exists = m.users[username]
+	if !exists || user == nil {
+		m.usersMu.RUnlock()
+		return ErrUserNotFound
+	}
+	currentHash := user.PasswordHash
 	userCopy := *user
+	m.usersMu.RUnlock()
+
 	userCopy.PasswordHash = string(hash)
 	userCopy.Salt = salt
 
@@ -103,9 +112,12 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 		m.log.Error("Failed to save user after password set: %v", err)
 		return fmt.Errorf("password set failed to persist: %w", err)
 	}
+	// Only update cache fields if the hash hasn't changed since our read (CAS pattern).
 	m.usersMu.Lock()
-	user.PasswordHash = userCopy.PasswordHash
-	user.Salt = userCopy.Salt
+	if u, ok := m.users[username]; ok && u.PasswordHash == currentHash {
+		u.PasswordHash = userCopy.PasswordHash
+		u.Salt = userCopy.Salt
+	}
 	m.usersMu.Unlock()
 
 	// Evict all sessions so the old password cannot be reused via an existing session.
