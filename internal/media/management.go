@@ -540,11 +540,10 @@ func (m *Module) UpdateTags(path string, tags []string) error {
 
 	m.log.Debug("Updated tags for: %s", path)
 
-	go func() {
-		if err := m.saveMetadataItem(path); err != nil {
-			m.log.Warn("Failed to save metadata after tag update: %v", err)
-		}
-	}()
+	if err := m.saveMetadataItem(path); err != nil {
+		m.log.Error("Failed to save metadata after tag update: %v", err)
+		return fmt.Errorf("tags updated in memory but DB save failed: %w", err)
+	}
 
 	return nil
 }
@@ -579,11 +578,10 @@ func (m *Module) AddTag(path, tag string) error {
 	}
 	m.mu.Unlock()
 
-	go func() {
-		if err := m.saveMetadataItem(path); err != nil {
-			m.log.Warn("Failed to save metadata after adding tag: %v", err)
-		}
-	}()
+	if err := m.saveMetadataItem(path); err != nil {
+		m.log.Error("Failed to save metadata after adding tag: %v", err)
+		return fmt.Errorf("tag added in memory but DB save failed: %w", err)
+	}
 
 	return nil
 }
@@ -613,11 +611,10 @@ func (m *Module) RemoveTag(path, tag string) error {
 	}
 	m.mu.Unlock()
 
-	go func() {
-		if err := m.saveMetadataItem(path); err != nil {
-			m.log.Warn("Failed to save metadata after removing tag: %v", err)
-		}
-	}()
+	if err := m.saveMetadataItem(path); err != nil {
+		m.log.Error("Failed to save metadata after removing tag: %v", err)
+		return fmt.Errorf("tag removed in memory but DB save failed: %w", err)
+	}
 
 	return nil
 }
