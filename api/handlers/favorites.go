@@ -76,9 +76,8 @@ func (h *Handler) RemoveFavorite(c *gin.Context) {
 	if session == nil {
 		return
 	}
-	mediaID := c.Param("media_id")
-	if mediaID == "" {
-		writeError(c, http.StatusBadRequest, "media_id param is required")
+	mediaID, ok := RequireParamID(c, "media_id")
+	if !ok {
 		return
 	}
 
@@ -96,9 +95,8 @@ func (h *Handler) CheckFavorite(c *gin.Context) {
 	if session == nil {
 		return
 	}
-	mediaID := c.Param("media_id")
-	if mediaID == "" {
-		writeError(c, http.StatusBadRequest, "media_id param is required")
+	mediaID, ok := RequireParamID(c, "media_id")
+	if !ok {
 		return
 	}
 	exists, err := h.auth.IsFavorite(c.Request.Context(), session.UserID, mediaID)

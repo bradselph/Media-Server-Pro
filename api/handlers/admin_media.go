@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -50,22 +49,11 @@ func parseAdminListIsMature(c *gin.Context) *bool {
 }
 
 func parseAdminListLimit(c *gin.Context) int {
-	l, err := strconv.Atoi(c.Query("limit"))
-	if err != nil || l <= 0 {
-		return 50
-	}
-	if l > 1000 {
-		return 1000
-	}
-	return l
+	return ParseQueryInt(c, "limit", QueryIntOpts{Default: 50, Min: 1, Max: 1000})
 }
 
 func parseAdminListPage(c *gin.Context) int {
-	p, err := strconv.Atoi(c.Query("page"))
-	if err != nil || p < 1 {
-		return 1
-	}
-	return p
+	return ParseQueryInt(c, "page", QueryIntOpts{Default: 1, Min: 1, Max: 100000})
 }
 
 func parseAdminListQuery(c *gin.Context) adminListParams {

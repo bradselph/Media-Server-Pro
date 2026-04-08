@@ -172,8 +172,7 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 		UpdateMethod string `json:"update_method"`
 		Branch       string `json:"branch"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 

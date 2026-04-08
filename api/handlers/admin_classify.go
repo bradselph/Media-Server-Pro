@@ -80,8 +80,7 @@ func (h *Handler) ClassifyClearTags(c *gin.Context) {
 	var req struct {
 		ID string `json:"id"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if req.ID == "" {
@@ -155,8 +154,7 @@ func (h *Handler) validateClassifyDirectoryRequest(c *gin.Context) (dirPath stri
 	var req struct {
 		Path string `json:"path"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "path is required")
+	if !BindJSON(c, &req, "path is required") {
 		return "", false
 	}
 	path, resolved := h.resolvePathForAdmin(c, req.Path, true)

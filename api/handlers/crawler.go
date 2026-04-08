@@ -21,8 +21,7 @@ func (h *Handler) AddCrawlerTarget(c *gin.Context) {
 		URL  string `json:"url" binding:"required"`
 		Name string `json:"name"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "url is required")
+	if !BindJSON(c, &req, "url is required") {
 		return
 	}
 

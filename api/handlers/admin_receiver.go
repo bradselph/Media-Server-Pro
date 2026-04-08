@@ -212,9 +212,8 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 		return
 	}
 
-	token := c.Param("token")
-	if token == "" {
-		writeError(c, http.StatusBadRequest, "token required")
+	token, ok := RequireParamID(c, "token")
+	if !ok {
 		return
 	}
 	// Validate token format: must be a UUID (8-4-4-4-12 hex with hyphens).

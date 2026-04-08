@@ -22,8 +22,7 @@ func (h *Handler) AddExtractorItem(c *gin.Context) {
 		URL   string `json:"url" binding:"required"`
 		Title string `json:"title"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "url is required")
+	if !BindJSON(c, &req, "url is required") {
 		return
 	}
 
@@ -64,9 +63,8 @@ func (h *Handler) RemoveExtractorItem(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("id")
-	if id == "" {
-		writeError(c, http.StatusBadRequest, "ID is required")
+	id, ok := RequireParamID(c, "id")
+	if !ok {
 		return
 	}
 

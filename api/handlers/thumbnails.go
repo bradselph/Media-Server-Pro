@@ -237,10 +237,8 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	if !h.requireThumbnails(c) {
 		return
 	}
-	filename := c.Param("filename")
-
-	if filename == "" {
-		writeError(c, http.StatusBadRequest, "filename required")
+	filename, ok := RequireParamID(c, "filename")
+	if !ok {
 		return
 	}
 

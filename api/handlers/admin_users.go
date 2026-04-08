@@ -114,8 +114,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		Type        string                 `json:"type"`
 		Permissions map[string]interface{} `json:"permissions"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, errInvalidRequest)
+	if !BindJSON(c, &req, "") {
 		return
 	}
 	if req.Role != "" && req.Role != string(models.RoleAdmin) && req.Role != string(models.RoleViewer) {

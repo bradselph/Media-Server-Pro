@@ -73,8 +73,7 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 	var req struct {
 		URL string `json:"url" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "URL is required")
+	if !BindJSON(c, &req, "URL is required") {
 		return
 	}
 
@@ -128,8 +127,7 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 		IsYouTubeMusic bool   `json:"isYouTubeMusic"`
 		RelayID        string `json:"relayId"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
+	if !BindJSON(c, &req, "") {
 		return
 	}
 
@@ -170,9 +168,8 @@ func (h *Handler) AdminDownloaderCancel(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("id")
-	if id == "" {
-		writeError(c, http.StatusBadRequest, "Download ID is required")
+	id, ok := RequireParamID(c, "id")
+	if !ok {
 		return
 	}
 
@@ -223,9 +220,8 @@ func (h *Handler) AdminDownloaderDeleteDownload(c *gin.Context) {
 		return
 	}
 
-	filename := c.Param("filename")
-	if filename == "" {
-		writeError(c, http.StatusBadRequest, "Filename is required")
+	filename, ok := RequireParamID(c, "filename")
+	if !ok {
 		return
 	}
 	// Sanitize to prevent path traversal — strip directory components
@@ -297,8 +293,7 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 		DeleteSource bool   `json:"delete_source"`
 		TriggerScan  bool   `json:"trigger_scan"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
+	if !BindJSON(c, &req, "") {
 		return
 	}
 

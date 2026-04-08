@@ -174,10 +174,8 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 	if !h.checkRemoteMediaEnabled(c) {
 		return
 	}
-	sourceName := c.Param("source")
-
-	if sourceName == "" {
-		writeError(c, http.StatusBadRequest, "source name required")
+	sourceName, ok := RequireParamID(c, "source")
+	if !ok {
 		return
 	}
 

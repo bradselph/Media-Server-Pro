@@ -13,17 +13,6 @@ import (
 	"media-server-pro/internal/thumbnails"
 )
 
-// parseSuggestionsLimit parses the limit query param; returns defaultVal if missing/invalid.
-func parseSuggestionsLimit(c *gin.Context, defaultVal, max int) int {
-	l, err := strconv.Atoi(c.Query("limit"))
-	if err != nil {
-		return defaultVal
-	}
-	if l <= 0 || l > max {
-		return defaultVal
-	}
-	return l
-}
 
 // requireSuggestionsCatalogue checks that the suggestions module's media
 // catalogue has been seeded. Returns 503 with Retry-After if the catalogue
@@ -39,7 +28,7 @@ func (h *Handler) requireSuggestionsCatalogue(c *gin.Context) bool {
 
 // respondSuggestions fetches personalized suggestions and writes the response.
 func (h *Handler) respondSuggestions(c *gin.Context, userID string, defaultLimit, maxLimit int) {
-	limit := parseSuggestionsLimit(c, defaultLimit, maxLimit)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: defaultLimit, Min: 1, Max: maxLimit})
 	canViewMature := h.canViewMatureContent(c)
 	suggestions := h.suggestions.GetSuggestions(userID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(suggestions)
@@ -70,7 +59,7 @@ func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
 	if !h.requireSuggestionsCatalogue(c) {
 		return
 	}
-	limit := parseSuggestionsLimit(c, 10, 100)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 100})
 	canViewMature := h.canViewMatureContent(c)
 	trending := h.suggestions.GetTrendingSuggestions(limit, canViewMature)
 	h.enrichSuggestionThumbnails(trending)
@@ -88,7 +77,7 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 		return
 	}
 
-	limit := parseSuggestionsLimit(c, 10, 100)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 100})
 
 	// Pass the StableID directly to the suggestions module which has its own
 	// catalogue indexed by ID. No need to validate via the media module —
@@ -110,7 +99,7 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 		return
 	}
 
-	limit := parseSuggestionsLimit(c, 10, 50)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 50})
 	canViewMature := h.canViewMatureContent(c)
 	items := h.suggestions.GetContinueWatching(session.UserID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(items)
@@ -330,7 +319,7 @@ func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
 		return
 	}
 
-	limit := parseSuggestionsLimit(c, 20, 100)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 20, Min: 1, Max: 100})
 
 	// Determine the cutoff: the user's previous last login, or 7 days ago as fallback.
 	cutoff := time.Now().AddDate(0, 0, -7)
@@ -406,7 +395,7 @@ func (h *Handler) GetOnDeck(c *gin.Context) {
 		return
 	}
 
-	limit := parseSuggestionsLimit(c, 10, 50)
+	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 50})
 	canViewMature := h.canViewMatureContent(c)
 
 	// Build watched-path set + last-viewed time from suggestion profile.
