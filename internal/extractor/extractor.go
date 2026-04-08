@@ -236,16 +236,13 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 
 	// SSRF: validate URL before fetching (SafeHTTPTransport also blocks private IPs at connect time)
 	if err := helpers.ValidateURLForSSRF(streamURL); err != nil {
-		item.Status = "error"
-		item.ErrorMessage = fmt.Sprintf("Invalid URL: %v", err)
 		m.log.Warn("M3U8 URL rejected: %s — %v", streamURL, err)
-		return item, nil
+		return nil, fmt.Errorf("invalid URL: %w", err)
 	}
-	// Verify the M3U8 URL is reachable (outside the lock — can be slow)
+	// Verify the M3U8 URL is reachable — don't persist items that can't be played.
 	if _, _, err := m.fetchURL(context.Background(), streamURL); err != nil {
-		item.Status = "error"
-		item.ErrorMessage = fmt.Sprintf("Failed to fetch M3U8: %v", err)
 		m.log.Warn("M3U8 URL unreachable: %s — %v", streamURL, err)
+		return nil, fmt.Errorf("URL unreachable: %w", err)
 	}
 
 	// Acquire the write lock to enforce the max-items limit and add the item

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -40,7 +41,7 @@ func (h *Handler) AddExtractorItem(c *gin.Context) {
 	item, err := h.extractor.AddItem(req.URL, req.Title, addedBy)
 	if err != nil {
 		h.log.Error("Failed to add extractor item: %v", err)
-		writeError(c, http.StatusBadRequest, "Failed to add item")
+		writeError(c, http.StatusBadRequest, fmt.Sprintf("Failed to add item: %v", err))
 		return
 	}
 

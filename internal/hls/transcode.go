@@ -49,7 +49,7 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 	if !m.acquireTranscodeSem(ctx, job) {
 		return
 	}
-	defer func() { <-m.transSem }()
+	defer m.releaseTranscode()
 
 	m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusRunning, Progress: 0})
 	if err := m.createLock(job.ID, job.MediaPath); err != nil {
@@ -83,12 +83,18 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 }
 
 func (m *Module) acquireTranscodeSem(ctx context.Context, job *models.HLSJob) bool {
-	select {
-	case m.transSem <- struct{}{}:
-		return true
-	case <-ctx.Done():
-		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCancelled, ErrorMsg: "Context canceled", Progress: 0})
-		return false
+	// Spin-wait with context check — the dynamic semaphore doesn't support channel-based select.
+	for {
+		if m.tryAcquireTranscode() {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCancelled, ErrorMsg: "Context canceled", Progress: 0})
+			return false
+		case <-time.After(250 * time.Millisecond):
+			// retry
+		}
 	}
 }
 
@@ -244,7 +250,7 @@ func (m *Module) isTranscodeCancelled(ctx context.Context, stderrStr string) boo
 
 // lazyTranscodeQuality transcodes a single quality on-demand with per-quality locking.
 // M-16: semaphore is acquired BEFORE the per-quality mutex to prevent deadlock.
-// Holding qMu while blocking on transSem could deadlock when all semaphore slots are
+// Holding qMu while blocking on the semaphore could deadlock when all slots are
 // occupied by goroutines that are also waiting to acquire qMu for the same quality.
 func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, quality string) error {
 	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
@@ -254,12 +260,18 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 		return nil
 	}
 
-	select {
-	case m.transSem <- struct{}{}:
-		defer func() { <-m.transSem }()
-	case <-ctx.Done():
-		return ctx.Err()
+	// Acquire dynamic semaphore with context awareness.
+	for {
+		if m.tryAcquireTranscode() {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
 	}
+	defer m.releaseTranscode()
 
 	m.activeJobs.Add(1)
 	defer m.activeJobs.Done()

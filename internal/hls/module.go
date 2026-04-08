@@ -55,7 +55,8 @@ type Module struct {
 	jobs               map[string]*models.HLSJob
 	jobCancels         map[string]context.CancelFunc
 	jobsMu             sync.RWMutex
-	transSem           chan struct{}
+	transMu            sync.Mutex // guards transActive for dynamic concurrency limit
+	transActive        int        // current number of active transcodes
 	healthy            bool
 	healthMsg          string
 	healthMu           sync.RWMutex
@@ -103,11 +104,35 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		dbModule:      dbModule,
 		jobs:          make(map[string]*models.HLSJob),
 		jobCancels:    make(map[string]context.CancelFunc),
-		transSem:      make(chan struct{}, concurrentLimit),
 		cacheDir:      cfg.Get().Directories.HLSCache,
 		cleanupDone:   make(chan struct{}),
 		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time), lastSaved: make(map[string]time.Time)},
 	}
+}
+
+// tryAcquireTranscode attempts to acquire a transcode slot. Returns true if
+// acquired (caller must call releaseTranscode when done). Returns false if
+// the concurrency limit is reached. The limit is read from config on each
+// call so admin changes take effect without restart.
+func (m *Module) tryAcquireTranscode() bool {
+	limit := m.config.Get().HLS.ConcurrentLimit
+	if limit <= 0 {
+		limit = 2
+	}
+	m.transMu.Lock()
+	defer m.transMu.Unlock()
+	if m.transActive >= limit {
+		return false
+	}
+	m.transActive++
+	return true
+}
+
+// releaseTranscode returns a transcode slot.
+func (m *Module) releaseTranscode() {
+	m.transMu.Lock()
+	m.transActive--
+	m.transMu.Unlock()
 }
 
 // Name returns the module name

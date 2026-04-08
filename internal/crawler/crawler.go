@@ -38,8 +38,8 @@ type Module struct {
 	httpClient *http.Client
 	browser    *browserDetector
 
-	crawlMu   sync.RWMutex
-	crawling  bool
+	crawlMu      sync.RWMutex
+	activeCrawls map[string]bool // per-target crawl tracking; allows concurrent crawls on different targets
 	healthMu  sync.RWMutex
 	healthy   bool
 	healthMsg string
@@ -105,6 +105,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module, extractorModule *
 		dbModule:  dbModule,
 		extractor: extractorModule,
 		browser:   bd,
+		activeCrawls: make(map[string]bool),
 		httpClient: &http.Client{
 			Transport: helpers.SafeHTTPTransport(),
 			Timeout:   30 * time.Second,
@@ -272,16 +273,16 @@ func (m *Module) CrawlTarget(ctx context.Context, targetID string) (int, error) 
 		return 0, errDisabled
 	}
 	m.crawlMu.Lock()
-	if m.crawling {
+	if m.activeCrawls[targetID] {
 		m.crawlMu.Unlock()
-		return 0, fmt.Errorf("a crawl is already in progress")
+		return 0, fmt.Errorf("crawl already in progress for target %s", targetID)
 	}
-	m.crawling = true
+	m.activeCrawls[targetID] = true
 	m.crawlMu.Unlock()
 
 	defer func() {
 		m.crawlMu.Lock()
-		m.crawling = false
+		delete(m.activeCrawls, targetID)
 		m.crawlMu.Unlock()
 	}()
 
@@ -653,7 +654,7 @@ func (m *Module) GetStats() Stats {
 	stats := Stats{}
 
 	m.crawlMu.RLock()
-	stats.Crawling = m.crawling
+	stats.Crawling = len(m.activeCrawls) > 0
 	m.crawlMu.RUnlock()
 
 	if m.targetRepo != nil {
@@ -688,11 +689,11 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
-// IsCrawling returns whether a crawl is currently in progress.
+// IsCrawling returns whether any crawl is currently in progress.
 func (m *Module) IsCrawling() bool {
 	m.crawlMu.RLock()
 	defer m.crawlMu.RUnlock()
-	return m.crawling
+	return len(m.activeCrawls) > 0
 }
 
 // --- Utilities ---
