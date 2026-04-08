@@ -235,6 +235,7 @@ func main() {
 	thumbnailsModule.SetMediaIDProvider(mediaModule)
 	thumbnailsModule.SetStore(thumbnailStore)
 	thumbnailsModule.SetMediaInputResolver(mediaModule)
+	mediaModule.SetThumbnailQueuer(thumbnailsModule)
 	mustRegister(srv, thumbnailsModule)
 
 	// ── Non-critical modules ───────────────────────────────────────────────

@@ -104,11 +104,27 @@ type Module struct {
 	// onInitialScanDone is called when the first scan completes (with the current media list).
 	// Used by the server to seed the suggestions module without polling.
 	onInitialScanDone func([]*models.MediaItem)
+	// thumbnailQueuer queues background thumbnail generation for items missing thumbnails.
+	// Set via SetThumbnailQueuer; called after each scan completes.
+	thumbnailQueuer ThumbnailQueuer
 	// videoStore, musicStore, uploadStore are optional storage backends.
 	// When set, file operations use these instead of direct os.* calls.
 	videoStore  storage.Backend
 	musicStore  storage.Backend
 	uploadStore storage.Backend
+}
+
+// ThumbnailQueuer is called after scans to queue thumbnail generation for
+// media items that don't have thumbnails yet.
+type ThumbnailQueuer interface {
+	// QueueThumbnailIfMissing queues a thumbnail for the given media item
+	// if one doesn't already exist. isAudio indicates audio-only media.
+	QueueThumbnailIfMissing(mediaPath, mediaID string, isAudio bool)
+}
+
+// SetThumbnailQueuer sets the thumbnail queuer that runs after scans.
+func (m *Module) SetThumbnailQueuer(q ThumbnailQueuer) {
+	m.thumbnailQueuer = q
 }
 
 // SetStores sets the storage backends for media file operations.
@@ -569,6 +585,22 @@ func (m *Module) Scan() error {
 	m.healthMu.Lock()
 	m.healthMsg = fmt.Sprintf("Running (%d items)", len(newMedia))
 	m.healthMu.Unlock()
+
+	// Queue thumbnail generation for media items that don't have thumbnails yet.
+	if m.thumbnailQueuer != nil {
+		go func() {
+			queued := 0
+			for _, item := range newMedia {
+				if item.ThumbnailURL == "" && item.Path != "" {
+					m.thumbnailQueuer.QueueThumbnailIfMissing(item.Path, item.ID, item.Type == models.MediaTypeAudio)
+					queued++
+				}
+			}
+			if queued > 0 {
+				m.log.Info("Queued %d thumbnail generation requests after scan", queued)
+			}
+		}()
+	}
 
 	// Save metadata in background; concurrent scans can start overlapping saves (saveMu serializes DB writes).
 	go func() {

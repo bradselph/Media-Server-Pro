@@ -121,6 +121,23 @@ func (m *Module) GenerateThumbnailSyncRequest(req *ThumbnailSyncRequest) (string
 	return m.generateThumbnailSyncFromRequest(req)
 }
 
+// QueueThumbnailIfMissing implements media.ThumbnailQueuer.
+// It queues a low-priority background thumbnail job if one doesn't already exist.
+func (m *Module) QueueThumbnailIfMissing(mediaPath, mediaID string, isAudio bool) {
+	if m.HasThumbnail(MediaID(mediaID)) {
+		return
+	}
+	_, err := m.GenerateThumbnailRequest(&ThumbnailRequest{
+		MediaPath:    mediaPath,
+		MediaID:      mediaID,
+		IsAudio:      isAudio,
+		HighPriority: false,
+	})
+	if err != nil && err != ErrThumbnailPending {
+		m.log.Debug("Background thumbnail queue failed for %s: %v", mediaPath, err)
+	}
+}
+
 func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (string, error) {
 	if m.ffmpegPath == "" {
 		m.log.Error("Cannot generate thumbnail - FFmpeg not available")
