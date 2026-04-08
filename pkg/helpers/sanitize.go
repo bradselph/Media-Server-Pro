@@ -86,7 +86,7 @@ func ValidateMetadataValue(value string) bool {
 func SafeContentDispositionFilename(filename string) string {
 	var b strings.Builder
 	for _, r := range filename {
-		if r == '"' || r == '\\' || r == '\n' || r == '\r' || r < 0x20 {
+		if r == '"' || r == '\\' || r == '\n' || r == '\r' || r == ';' || r < 0x20 {
 			continue
 		}
 		b.WriteRune(r)

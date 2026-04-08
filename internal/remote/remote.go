@@ -833,12 +833,14 @@ func (m *Module) loadCacheIndex() {
 }
 
 // saveCacheIndex persists the in-memory cache index to the repository.
-// Returns the first error encountered so callers can handle persistence failures.
+// Continues on individual save failures to persist as many entries as possible.
+// Returns the last error encountered so callers know persistence was partial.
 func (m *Module) saveCacheIndex() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	ctx := context.Background()
+	var lastErr error
 	for _, cached := range m.mediaCache {
 		rec := &repositories.RemoteCacheRecord{
 			RemoteURL:   cached.RemoteURL,
@@ -850,11 +852,11 @@ func (m *Module) saveCacheIndex() error {
 			Hits:        cached.Hits,
 		}
 		if err := m.repo.Save(ctx, rec); err != nil {
-			m.log.Warn("Failed to save cache entry: %v", err)
-			return err
+			m.log.Warn("Failed to save cache entry for %s: %v", cached.RemoteURL, err)
+			lastErr = err
 		}
 	}
-	return nil
+	return lastErr
 }
 
 // cacheEntry pairs a URL key with its cached media for sorting.

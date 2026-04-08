@@ -248,6 +248,7 @@ func (m *Module) loadFromDB() {
 	mediaRecords, err := m.mediaRepo.ListAll(ctx)
 	if err != nil {
 		m.log.Warn("Failed to load media from DB: %v", err)
+		m.setHealth(true, "Running (media cache empty — awaiting slave catalog push)")
 		return
 	}
 
@@ -294,8 +295,9 @@ func (m *Module) loadFromDB() {
 
 	m.log.Info("Loaded %d slaves, %d media items from DB", len(m.slaves), len(m.media))
 
-	// Persist migrated IDs: delete the stale composite-key row and upsert the
-	// opaque-ID row so they don't accumulate across restarts.
+	// Persist migrated IDs: upsert the opaque-ID row FIRST, then delete the stale
+	// composite-key row. This ordering ensures the new row exists before the old is
+	// removed, so a crash between the two operations never loses the record.
 	if len(migrations) > 0 {
 		migs := migrations
 		go func() {
@@ -303,12 +305,12 @@ func (m *Module) loadFromDB() {
 			for _, mig := range migs {
 				newRec := *mig.rec
 				newRec.ID = mig.newID
-				if err := m.mediaRepo.DeleteByID(migCtx, mig.legacyID); err != nil {
-					m.log.Warn("Legacy media ID migration: failed to delete %s: %v", mig.legacyID, err)
-					continue
-				}
 				if err := m.mediaRepo.UpsertBatch(migCtx, newRec.SlaveID, []*repositories.ReceiverMediaRecord{&newRec}); err != nil {
 					m.log.Warn("Legacy media ID migration: failed to upsert %s: %v", mig.newID, err)
+					continue
+				}
+				if err := m.mediaRepo.DeleteByID(migCtx, mig.legacyID); err != nil {
+					m.log.Warn("Legacy media ID migration: failed to delete %s: %v", mig.legacyID, err)
 				}
 			}
 			m.log.Info("Migrated %d legacy composite receiver media IDs to opaque IDs", len(migs))

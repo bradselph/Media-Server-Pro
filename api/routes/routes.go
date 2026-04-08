@@ -203,12 +203,13 @@ func (w *etagBufferWriter) Write(b []byte) (int, error) {
 	return w.body.Write(b)
 }
 
-// hashFNV1a computes an FNV-1a hash of the given bytes and returns it as a hex string.
+// hashFNV1a computes a 64-bit FNV-1a hash of the given bytes and returns it as a hex string.
+// 64-bit reduces birthday collision probability vs the original 32-bit version.
 func hashFNV1a(data []byte) string {
-	h := uint32(2166136261)
+	h := uint64(14695981039346656037)
 	for _, b := range data {
-		h ^= uint32(b)
-		h *= 16777619
+		h ^= uint64(b)
+		h *= 1099511628211
 	}
 	return fmt.Sprintf("%x", h)
 }

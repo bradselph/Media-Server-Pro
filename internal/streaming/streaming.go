@@ -824,12 +824,15 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 		}
 		fileSize = info.Size
 	} else {
-		file, fs, err := m.openFileForDownload(path)
+		// Use os.Stat (not open+stat+close) to avoid opening the file twice.
+		fi, err := os.Stat(path)
 		if err != nil {
-			return err
+			if os.IsNotExist(err) {
+				return ErrFileNotFound
+			}
+			return fmt.Errorf("failed to stat file: %w", err)
 		}
-		file.Close()
-		fileSize = fs
+		fileSize = fi.Size()
 	}
 
 	if err := m.validateDownloadFileSize(fileSize); err != nil {

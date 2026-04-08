@@ -368,9 +368,12 @@ func (h *Handler) ClearMediaCache(c *gin.Context) {
 		}
 	}()
 
-	c.JSON(http.StatusAccepted, map[string]string{
-		"status":  "accepted",
-		"message": "Media rescan started in background",
+	c.JSON(http.StatusAccepted, models.APIResponse{
+		Success: true,
+		Data: map[string]string{
+			"status":  "accepted",
+			"message": "Media rescan started in background",
+		},
 	})
 }
 

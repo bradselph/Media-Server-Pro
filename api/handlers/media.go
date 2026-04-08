@@ -506,17 +506,18 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 				}
 				// Enforce per-user or per-IP stream limits for receiver-sourced media.
 				if session != nil {
+					streamKey := session.UserID
+					maxStreams := 3 // default fallback if user lookup fails
 					if user, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
-						maxStreams := h.getUserStreamLimit(user.Type)
-						if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
-							writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
-							return
-						}
-						// Track the proxy stream for authenticated users so the counter
-						// is decremented when the stream ends, preventing limit bypass.
-						release := h.streaming.TrackProxyStream(session.UserID)
-						defer release()
+						maxStreams = h.getUserStreamLimit(user.Type)
 					}
+					if maxStreams > 0 && !h.streaming.CanStartStream(streamKey, maxStreams) {
+						writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
+						return
+					}
+					// Track the proxy stream so the counter is decremented when the stream ends.
+					release := h.streaming.TrackProxyStream(streamKey)
+					defer release()
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
 					if !h.streaming.CanStartStream(ipKey, limit) {

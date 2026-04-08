@@ -56,6 +56,7 @@ func (m *Module) GenerateSecurePassword(length int) (string, error) {
 }
 
 // GetActiveSessions returns active sessions for a user.
+// Returns copies so callers cannot mutate shared cache entries.
 func (m *Module) GetActiveSessions(username string) []*models.Session {
 	m.sessionsMu.RLock()
 	defer m.sessionsMu.RUnlock()
@@ -63,7 +64,8 @@ func (m *Module) GetActiveSessions(username string) []*models.Session {
 	var sessions []*models.Session
 	for _, session := range m.sessions {
 		if session.Username == username && !session.IsExpired() {
-			sessions = append(sessions, session)
+			cp := *session
+			sessions = append(sessions, &cp)
 		}
 	}
 	return sessions
