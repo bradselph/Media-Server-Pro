@@ -745,7 +745,7 @@ func (h *Handler) GetBatchPlaybackPositions(c *gin.Context) {
 
 	raw := c.Query("ids")
 	if raw == "" {
-		writeSuccess(c, map[string]float64{})
+		writeSuccess(c, map[string]interface{}{"positions": map[string]float64{}})
 		return
 	}
 

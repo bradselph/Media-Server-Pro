@@ -457,8 +457,6 @@ func (m *Module) UpdateUserPreferences(ctx context.Context, username string, pre
 		m.log.Error("Failed to save user after preference update: %v", err)
 		return err
 	}
-	m.usersMu.Lock()
-	m.users[username] = &userCopy
-	m.usersMu.Unlock()
+	m.cacheUser(&userCopy)
 	return nil
 }

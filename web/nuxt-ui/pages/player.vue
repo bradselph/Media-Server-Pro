@@ -71,6 +71,17 @@ const playbackSpeed = ref(userPrefs.value?.playback_speed ?? 1)
 // Auto-play preference
 const autoPlay = computed(() => userPrefs.value?.auto_play ?? false)
 
+// Keep volume / speed in sync when session or preferences load or update after mount.
+watch(
+  userPrefs,
+  (p) => {
+    if (p == null) return
+    if (typeof p.volume === 'number') volume.value = p.volume
+    if (typeof p.playback_speed === 'number') playbackSpeed.value = p.playback_speed
+  },
+  { deep: true },
+)
+
 // Auto-next: play next suggestion when current media ends (non-playlist context)
 const autoNextEnabled = ref(true)
 

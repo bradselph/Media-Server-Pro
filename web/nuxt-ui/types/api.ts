@@ -600,6 +600,8 @@ export interface PermissionsInfo {
     canDownload: boolean
     canCreatePlaylists: boolean
     canViewMature: boolean
+    canDelete?: boolean
+    canManage?: boolean
   }
 }
 
