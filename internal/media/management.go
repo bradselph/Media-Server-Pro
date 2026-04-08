@@ -114,7 +114,8 @@ func (m *Module) ResolveForFFmpeg(ctx context.Context, mediaPath string) (string
 	if !ok {
 		return mediaPath, nil // remote but no presign support
 	}
-	return presigner.PresignGetURL(ctx, sr.relPath, 2*time.Hour)
+	// 12-hour TTL ensures presigned URLs survive long HLS transcodes of 4K content.
+	return presigner.PresignGetURL(ctx, sr.relPath, 12*time.Hour)
 }
 
 // crossStoreMove copies a file from srcStore/srcRel to dstStore/dstRel, then

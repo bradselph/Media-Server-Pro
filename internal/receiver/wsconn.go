@@ -320,10 +320,10 @@ func (m *Module) setSlaveWS(slaveID string, sw *slaveWS) {
 		old.conn.Close()
 	}
 	m.wsConns[slaveID] = sw
-	// Cancel pending streams for the old connection outside wsMu to avoid
-	// holding two locks simultaneously; the new sw is already registered so
-	// new RequestStream calls will use the fresh connection.
-	go m.drainPendingForSlave(slaveID)
+	// Cancel pending streams for the old connection synchronously so that no
+	// race window exists between registering the new connection and draining
+	// pending streams. pendingMu and wsMu are independent locks — no deadlock risk.
+	m.drainPendingForSlave(slaveID)
 }
 
 // drainPendingForSlave cancels and removes every pending stream that was sent

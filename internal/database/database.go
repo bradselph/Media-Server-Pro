@@ -244,6 +244,10 @@ func (w *gormLogWriter) Printf(format string, args ...interface{}) {
 }
 
 // Stop closes the database connection
+// Stop closes the database connection. IMPORTANT: db and sqlDB are set to nil
+// without synchronization. Callers of DB()/GORM() must not use the module after
+// Stop returns. The server's reverse-order shutdown ensures all modules that
+// depend on the database are stopped before this module.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping database module...")
 

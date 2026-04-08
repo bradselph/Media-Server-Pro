@@ -257,6 +257,10 @@ func (m *Module) syncAllSources() {
 	m.mu.RUnlock()
 
 	for _, source := range sources {
+		// Check module context so syncAllSources exits promptly on Stop().
+		if m.ctx.Err() != nil {
+			return
+		}
 		if err := m.syncSource(source.Source.Name); err != nil {
 			m.log.Error("Failed to sync source %s: %v", source.Source.Name, err)
 		}
