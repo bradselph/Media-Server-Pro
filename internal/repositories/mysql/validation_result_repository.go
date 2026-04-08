@@ -41,6 +41,10 @@ func NewValidationResultRepository(db *gorm.DB) repositories.ValidationResultRep
 }
 
 func (r *ValidationResultRepository) Upsert(ctx context.Context, result *repositories.ValidationResultRecord) error {
+	row, err := r.recordToRow(result)
+	if err != nil {
+		return err
+	}
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "path"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -48,7 +52,7 @@ func (r *ValidationResultRepository) Upsert(ctx context.Context, result *reposit
 			"width", "height", "bitrate", "container", "issues",
 			"error_message", "video_supported", "audio_supported",
 		}),
-	}).Create(new(r.recordToRow(result))).Error; err != nil {
+	}).Create(&row).Error; err != nil {
 		return fmt.Errorf("failed to upsert validation result: %w", err)
 	}
 	return nil
@@ -88,8 +92,11 @@ func (r *ValidationResultRepository) List(ctx context.Context) ([]*repositories.
 	return records, nil
 }
 
-func (r *ValidationResultRepository) recordToRow(rec *repositories.ValidationResultRecord) validationResultRow {
-	issuesJSON, _ := json.Marshal(rec.Issues)
+func (r *ValidationResultRepository) recordToRow(rec *repositories.ValidationResultRecord) (validationResultRow, error) {
+	issuesJSON, err := json.Marshal(rec.Issues)
+	if err != nil {
+		return validationResultRow{}, fmt.Errorf("failed to marshal validation issues: %w", err)
+	}
 	row := validationResultRow{
 		Path:           rec.Path,
 		Status:         rec.Status,
@@ -114,7 +121,7 @@ func (r *ValidationResultRepository) recordToRow(rec *repositories.ValidationRes
 	if rec.Error != "" {
 		row.Error = &rec.Error
 	}
-	return row
+	return row, nil
 }
 
 func (r *ValidationResultRepository) rowToRecord(row *validationResultRow) *repositories.ValidationResultRecord {

@@ -310,6 +310,7 @@ func main() {
 
 	// Duplicates (non-critical — independent duplicate detection for local and receiver media)
 	duplicatesModule := duplicates.NewModule(cfg, dbModule)
+	duplicatesModule.SetMediaModule(mediaModule)
 	mustRegister(srv, duplicatesModule)
 
 	// Receiver (non-critical — requires database for slave registry and media catalog)

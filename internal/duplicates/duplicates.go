@@ -52,6 +52,12 @@ type ReceiverItemRef struct {
 	ContentFingerprint string
 }
 
+// mediaIndexRemover is the subset of the media module needed to clean in-memory
+// indexes when a local file is deleted during duplicate resolution.
+type mediaIndexRemover interface {
+	RemoveMedia(path string) error
+}
+
 // Module manages detection and resolution of duplicate media items.
 type Module struct {
 	cfg          *config.Manager
@@ -60,9 +66,16 @@ type Module struct {
 	dupRepo      repositories.ReceiverDuplicateRepository
 	metaRepo     repositories.MediaMetadataRepository
 	receiverRepo repositories.ReceiverMediaRepository
+	mediaModule  mediaIndexRemover
 	healthMu     sync.RWMutex
 	healthy      bool
 	healthMsg    string
+}
+
+// SetMediaModule wires the media module so deleteLocalFileAndMetadata can evict
+// ghost items from the in-memory indexes after removing a duplicate.
+func (m *Module) SetMediaModule(mm mediaIndexRemover) {
+	m.mediaModule = mm
 }
 
 // NewModule creates a new duplicates module.
@@ -496,13 +509,22 @@ func (m *Module) findLocalPathByStableID(ctx context.Context, itemID string) (st
 	return path, nil
 }
 
-// deleteLocalFileAndMetadata removes the metadata row and the file on disk for the given path.
+// deleteLocalFileAndMetadata removes the metadata row, the file on disk, and the
+// in-memory media-module indexes for the given path.
 func (m *Module) deleteLocalFileAndMetadata(ctx context.Context, path string) error {
 	if err := m.metaRepo.Delete(ctx, path); err != nil {
 		return fmt.Errorf("failed to delete local metadata for %s: %w", path, err)
 	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete local file %s: %w", path, err)
+	}
+	// Evict the item from the media module's in-memory indexes so it is not
+	// served as a ghost after the DB row and disk file are gone.  Non-fatal:
+	// the ghost will be swept on the next periodic scan if this fails.
+	if m.mediaModule != nil {
+		if err := m.mediaModule.RemoveMedia(path); err != nil {
+			m.log.Warn("Failed to remove duplicate from media index for %s: %v", path, err)
+		}
 	}
 	return nil
 }
