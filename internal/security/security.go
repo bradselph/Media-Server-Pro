@@ -115,6 +115,7 @@ type RateLimiter struct {
 	stopCleanup chan struct{}
 	stopOnce    sync.Once
 	onBan       func(ip string, duration time.Duration, reason string) // Optional callback when auto-ban is triggered
+	banSem      chan struct{} // bounds concurrent onBan goroutines
 }
 
 // RateLimitConfig holds rate limiter configuration
@@ -723,6 +724,7 @@ func NewRateLimiter(cfg RateLimitConfig) *RateLimiter {
 		clients:     make(map[string]*ClientState),
 		bannedIPs:   make(map[string]BanRecord),
 		stopCleanup: make(chan struct{}),
+		banSem:      make(chan struct{}, 50), // bound concurrent onBan goroutines
 	}
 }
 
@@ -833,9 +835,18 @@ func (r *RateLimiter) recordViolation(client *ClientState, ip string, now time.T
 		}
 		client.Violations = 0 // Reset for after ban expires
 
-		// Persist the auto-ban asynchronously so it survives restarts
+		// Persist the auto-ban asynchronously so it survives restarts.
+		// Bounded by banSem to prevent goroutine exhaustion under DDoS.
 		if r.onBan != nil {
-			go r.onBan(ip, duration, reason)
+			select {
+			case r.banSem <- struct{}{}:
+				go func() {
+					defer func() { <-r.banSem }()
+					r.onBan(ip, duration, reason)
+				}()
+			default:
+				// Semaphore full — skip async persist; ban is in memory regardless.
+			}
 		}
 	}
 }

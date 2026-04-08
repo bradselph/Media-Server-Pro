@@ -558,16 +558,22 @@ func (m *Module) ProxyRemoteWithCache(w http.ResponseWriter, r *http.Request, re
 		return m.StreamRemote(w, r, remoteURL, sourceName)
 	}
 
-	// Check cache
+	// Check cache — re-verify file exists right before serving to handle the
+	// race where CleanCache removes the file between getCachedMedia's stat and
+	// http.ServeFile. On miss, fall through to stream + background cache.
 	cached := m.getCachedMedia(remoteURL)
 	if cached != nil {
-		m.mu.Lock()
-		cached.LastAccess = time.Now()
-		cached.Hits++
-		m.mu.Unlock()
+		if _, err := os.Stat(cached.LocalPath); err == nil {
+			m.mu.Lock()
+			cached.LastAccess = time.Now()
+			cached.Hits++
+			m.mu.Unlock()
 
-		http.ServeFile(w, r, cached.LocalPath)
-		return nil
+			http.ServeFile(w, r, cached.LocalPath)
+			return nil
+		}
+		// File was evicted between getCachedMedia and now — fall through to re-download
+		m.log.Debug("Cache file missing for %s, falling through to stream", remoteURL)
 	}
 
 	// Cache miss: stream to the client immediately, then cache in the background so
