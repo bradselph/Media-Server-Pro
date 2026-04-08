@@ -419,6 +419,12 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 
 // deliverStream reads a local file and POSTs it to the master's stream-push endpoint.
 func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
+	// Validate token format before using it in a URL to prevent path injection.
+	if !isValidToken(req.Token) {
+		fmt.Fprintf(os.Stderr, "Stream request rejected: invalid token format %q\n", req.Token)
+		return
+	}
+
 	// Resolve and validate path
 	absPath, err := resolveAndValidate(req.Path, cfg.MediaDirs)
 	if err != nil {
@@ -467,7 +473,6 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 			contentLength = length
 			extraHeaders = map[string]string{
 				"Content-Range": fmt.Sprintf("bytes %d-%d/%d", start, end, stat.Size()),
-				"Accept-Ranges": "bytes",
 			}
 		}
 	}
@@ -483,6 +488,7 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.Header.Set("X-API-Key", cfg.APIKey)
 	httpReq.Header.Set("X-Stream-Status", fmt.Sprintf("%d", statusCode))
+	httpReq.Header.Set("Accept-Ranges", "bytes")
 	httpReq.ContentLength = contentLength
 
 	for k, v := range extraHeaders {
@@ -501,6 +507,20 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	if resp.StatusCode >= 400 {
 		fmt.Fprintf(os.Stderr, "Stream push %s returned HTTP %d\n", req.Token, resp.StatusCode)
 	}
+}
+
+// isValidToken reports whether token contains only alphanumeric characters and hyphens.
+// This prevents path injection in the stream-push URL (e.g. "../../admin").
+func isValidToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	for _, ch := range token {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // parseRange parses a "bytes=start-end" Range header value.
@@ -956,8 +976,8 @@ func resolveAndValidate(path string, allowedDirs []string) (string, error) {
 			continue
 		}
 
-		// Check file exists
-		if _, err := os.Stat(absPath); err == nil {
+		// Check file exists and is a regular file (not a directory or device)
+		if info, err := os.Stat(absPath); err == nil && info.Mode().IsRegular() {
 			return absPath, nil
 		}
 	}

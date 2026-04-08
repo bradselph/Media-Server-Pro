@@ -419,11 +419,19 @@ func (m *Module) RegisterSlave(req *RegisterRequest) (*SlaveNode, error) {
 	return node, nil
 }
 
+// maxCatalogItems is the upper bound on items accepted in a single catalog push.
+// Prevents memory exhaustion from a misbehaving or compromised slave.
+const maxCatalogItems = 100_000
+
 // PushCatalog updates the slave's media catalog.
 // If req.Full is true, the existing catalog for this slave is replaced entirely.
 func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	if req.SlaveID == "" {
 		return 0, fmt.Errorf("slave_id is required")
+	}
+
+	if len(req.Items) > maxCatalogItems {
+		return 0, fmt.Errorf("catalog too large: %d items (max %d)", len(req.Items), maxCatalogItems)
 	}
 
 	m.mu.RLock()
