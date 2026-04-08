@@ -787,7 +787,7 @@ onUnmounted(() => {
             :alt="getDisplayTitle(item)"
             :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
             loading="lazy"
-            @error="onThumbnailError($event, item.id)"
+            @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, item.id)"
           />
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
@@ -903,7 +903,7 @@ onUnmounted(() => {
                 :alt="getDisplayTitle(row.original)"
                 :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-xl saturate-0' : '']"
                 loading="lazy"
-                @error="onThumbnailError($event, row.original.id)"
+                @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, row.original.id)"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon :name="row.original.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-4 text-muted" />

@@ -10,19 +10,19 @@ Workflows traced:  25+ (auth, streaming, receiver proxy, remote cache, HLS, uplo
 
 BROKEN:       2
 INCOMPLETE:   0
-GAP:          7
+GAP:          14
 REDUNDANT:    3
-FRAGILE:      19
+FRAGILE:      28
 SILENT FAIL:  5
-DRIFT:        3
+DRIFT:        5
 LEAK:         4
-SECURITY:     2
+SECURITY:     4
 OK:           140+ modules/functions verified correct
 
-Critical (must fix before deploy): #1, #2, #36, #37
-High (will cause user-facing bugs):  #3, #4, #5, #38
-Medium (tech debt / time bombs):     #6–#20, #39–#44
-Low (cleanup / style):               #21–#35, #45
+Critical (must fix before deploy): #1, #2, #36, #37, #49, #50
+High (will cause user-facing bugs):  #3, #4, #5, #38, #51, #52, #53
+Medium (tech debt / time bombs):     #6–#20, #39–#44, #46, #54–#63
+Low (cleanup / style):               #21–#35, #45, #47, #48
 ```
 
 ---
@@ -655,6 +655,283 @@ FIX DIRECTION: Derive audioExts from mediaExts at init, or use a single map with
 
 ---
 
+### API HANDLER LAYER (from parallel audit)
+
+---
+
+#### #46 [DRIFT] api/handlers/system.go:371 — ClearMediaCache returns raw map instead of APIResponse envelope
+
+```
+WHAT: ClearMediaCache uses c.JSON(http.StatusAccepted, map[string]string{...}) directly,
+      breaking the {success, data, error} response envelope that every other endpoint follows.
+WHY:  202 Accepted handlers were implemented inconsistently — ClassifyDirectory at
+      admin_classify.go:212 correctly wraps in models.APIResponse.
+IMPACT: Frontend must handle two response shapes from this endpoint. Any generic error handling
+        that checks response.success will silently fail for this endpoint.
+TRACE: ClearMediaCache → c.JSON(202, raw map) instead of models.APIResponse{Success: true, Data: ...}
+FIX DIRECTION: Wrap in models.APIResponse like ClassifyDirectory does.
+```
+
+---
+
+#### #47 [FRAGILE] api/handlers/media.go:516-517 — Receiver stream limit not enforced when GetUser fails
+
+```
+WHAT: When streaming receiver media for an authenticated user, if h.auth.GetUser fails (line 509),
+      the error path falls through without applying stream limits. The stream proceeds without
+      concurrent stream limit enforcement.
+WHY:  The error from GetUser is logged but doesn't prevent streaming.
+IMPACT: Low — GetUser failure is rare for an authenticated session. The stream works but no
+        limit enforcement. Could allow exceeding concurrent stream limit during DB outage.
+TRACE: StreamMedia → receiver path → GetUser fails → no limit check → ProxyStream proceeds
+FIX DIRECTION: Use session.UserID as fallback stream key even when GetUser fails.
+```
+
+---
+
+#### #48 [FRAGILE] api/handlers/analytics.go:196 — Unauthenticated client-supplied session_id trusted for analytics
+
+```
+WHAT: When session is nil (anonymous user), req.SessionID from the client request body is used
+      as the analytics session identifier.
+WHY:  Anonymous analytics tracking needs session grouping; no server-side session exists.
+IMPACT: Low — the session_id is only used for aggregation, not authorization. A malicious client
+        could pollute analytics by forging session IDs, but cannot access other users' data.
+TRACE: SubmitEvent → session == nil → sessionID = req.SessionID (client-supplied)
+FIX DIRECTION: Generate server-side anonymous session IDs instead of trusting client input.
+```
+
+---
+
+### CORE MODULES LAYER — auth, config, media, database, server (from parallel audit)
+
+---
+
+#### #49 [SECURITY] internal/auth/password.go:95-96 — SetPassword reads shared user pointer outside lock (data race)
+
+```
+WHAT: SetPassword obtains the user pointer under RLock (line 83), releases the lock (line 84),
+      then copies the user at line 96 (`userCopy := *user`) WITHOUT holding any lock. The
+      shared pointer could be mutated by a concurrent UpdateUser or UpdateUserPreferences.
+WHY:  Lock released before the copy dereference.
+IMPACT: A concurrent mutation creates a torn read — userCopy contains a mix of old and new
+        field values. The DB update then persists a corrupted user record. Could corrupt
+        preferences, permissions, or even the password hash if timed with another SetPassword.
+TRACE: SetPassword → RLock → user := m.users[...] → RUnlock → ... → userCopy := *user (race)
+FIX DIRECTION: Hold RLock across the copy, or re-read user from map under lock right before copying.
+```
+
+---
+
+#### #50 [SECURITY] internal/auth/authenticate.go:109-116 — LastLogin update replaces entire user pointer, clobbering concurrent changes
+
+```
+WHAT: After successful authentication, the code copies the user, updates LastLogin/PreviousLastLogin,
+      then replaces m.users[username] with the new pointer (line 113-115). Between the RLock
+      release (in getOrLoadUser) and the write Lock at line 113, another goroutine could update
+      the same user (e.g., password change). The full pointer replacement clobbers that change.
+WHY:  Replaces entire user pointer instead of mutating individual fields on the existing pointer.
+IMPACT: If a user changes their password at the exact moment they log in (different session),
+        the password change could be reverted in the cache. DB still has the new password,
+        creating cache/DB divergence until next cache refresh.
+TRACE: Authenticate → getOrLoadUser → ... → Lock → m.users[req.Username] = &userCopy (clobbers)
+FIX DIRECTION: Mutate only LastLogin/PreviousLastLogin on the existing cached pointer under Lock,
+               rather than replacing the entire pointer.
+```
+
+---
+
+#### #51 [GAP] internal/auth/bootstrap.go:70-73, 117-118 — Admin user not added to usersByID index
+
+```
+WHAT: ensureAdminUserRecord loads/creates the admin user into m.users[adminUsername] but does
+      NOT update m.usersByID[user.ID].
+WHY:  usersByID index was added later; this code path was not updated.
+IMPACT: GetUserByID(adminUserID) misses cache, falls through to DB on every call until the
+        next full user reload. Unnecessary DB queries for admin user lookups.
+TRACE: Start → ensureAdminUserRecord → m.users[...] = user (but not m.usersByID[...])
+FIX DIRECTION: Add m.usersByID[user.ID] = user in both the load and create paths.
+```
+
+---
+
+#### #52 [GAP] internal/config/config.go:84-86 vs :278 — syncFeatureToggles ordering inconsistent between Load and Update
+
+```
+WHAT: In Load(), order is: applyEnvOverrides → resolveAbsolutePaths → syncFeatureToggles → validate.
+      In Update(), order is: updater → validate → save → syncFeatureToggles.
+WHY:  Inconsistent implementation.
+IMPACT: An Update() that changes a feature toggle (e.g., EnableHLS=false) will pass validation
+        with HLS.Enabled still true (old value), then syncFeatureToggles changes it after.
+        Validation of HLS-specific fields may spuriously pass or fail.
+TRACE: Update() → validate (toggle not yet synced) → save → syncFeatureToggles (too late)
+FIX DIRECTION: Call syncFeatureToggles before validate() in Update(), matching Load() order.
+```
+
+---
+
+#### #53 [GAP] internal/auth/session.go:206-221 — CreateSessionForUser only checks cache, not DB
+
+```
+WHAT: CreateSessionForUser uses m.users[params.Username] directly. If a user exists in DB
+      but is not in the in-memory cache (startup race), it returns ErrUserNotFound.
+WHY:  Direct map lookup instead of getOrLoadUser.
+IMPACT: After restart, if user cache isn't fully loaded, CreateSessionForUser fails for valid
+        users. Admin login flow uses this function.
+TRACE: Login → AdminAuthenticate OK → CreateSessionForUser → m.users[...] miss → ErrUserNotFound
+FIX DIRECTION: Replace direct map lookup with getOrLoadUser(ctx, params.Username).
+```
+
+---
+
+#### #54 [GAP] internal/auth/tokens.go:58-59 — Expired API tokens never cleaned up from DB
+
+```
+WHAT: ValidateAPIToken detects expired tokens and returns ErrSessionExpired but does not
+      delete the token from the database.
+WHY:  No cleanup path for expired tokens (unlike sessions which have CleanupExpiredSessions).
+IMPACT: Expired tokens accumulate in the user_api_tokens table indefinitely.
+TRACE: ValidateAPIToken → token expired → return error (no delete)
+FIX DIRECTION: Add async deletion of expired tokens, or a periodic cleanup task.
+```
+
+---
+
+#### #55 [GAP] internal/config/validate.go — Rate limit fields not validated when enabled
+
+```
+WHAT: validateSecurity only checks RateLimitRequests < 1. BurstLimit, BurstWindow,
+      ViolationsForBan, BanDuration are never validated.
+WHY:  Fields added incrementally without corresponding validators.
+IMPACT: BurstLimit=0 or negative BanDuration silently accepted, causing runtime misbehavior
+        (no burst budget, always-expired bans).
+TRACE: config.Update → validate → validateSecurity → only checks RateLimitRequests
+FIX DIRECTION: Add bounds checks for BurstLimit > 0, BurstWindow > 0, BanDuration > 0.
+```
+
+---
+
+#### #56 [GAP] internal/config/validate.go — No validation for S3 fields when Backend="s3"
+
+```
+WHAT: When Storage.Backend is "s3", S3 config (Endpoint, Bucket, AccessKeyID, SecretAccessKey)
+      is never validated.
+WHY:  S3 config added without validateStorage() function.
+IMPACT: Server starts with Backend="s3" but empty credentials, failing at runtime with cryptic
+        S3 SDK error during first media scan.
+TRACE: Start → config.Load → validate (no S3 check) → storageFactory.NewBackend → S3 error
+FIX DIRECTION: Add validateStorage() for required S3 fields when Backend != "local".
+```
+
+---
+
+#### #57 [GAP] internal/database/database.go — No periodic health check or reconnect detection
+
+```
+WHAT: After initial connection, no background ping verifies DB connectivity. healthMsg stays
+      "Connected" even when MySQL is unreachable.
+WHY:  Relies on Go's sql.DB connection pool management (automatic reconnect).
+IMPACT: /api/modules/database/health reports "Connected" when DB is actually down. Operators
+        cannot trust the health check.
+TRACE: Start → setHealth("Connected") → Health() always returns "Connected"
+FIX DIRECTION: Add periodic Ping goroutine that updates healthy/healthMsg, or live-ping in Health().
+```
+
+---
+
+#### #58 [FRAGILE] internal/database/database.go:247-261 — Stop sets db/sqlDB to nil without synchronization
+
+```
+WHAT: Stop() sets m.sqlDB = nil and m.db = nil without holding any lock. Concurrent callers
+      of GORM() or DB() could get nil.
+WHY:  Stop is called during shutdown when modules should already be stopped.
+IMPACT: If shutdown order is wrong, GORM() returns nil causing nil pointer dereference in
+        repository calls. Current reverse-order shutdown prevents this, but it's fragile.
+TRACE: Stop() → m.db = nil → concurrent GORM() → nil dereference
+FIX DIRECTION: Protect with a mutex or document unsafe-after-Stop contract.
+```
+
+---
+
+#### #59 [FRAGILE] internal/server/server.go:431-466 — Shutdown races with Start on httpServer
+
+```
+WHAT: Shutdown() reads s.httpServer without holding mu. If called before Start() assigns
+      httpServer, the nil check passes but the HTTP server never stops.
+WHY:  httpServer assigned after mu is released in Start().
+IMPACT: If a signal arrives during module start phase, Shutdown() misses the HTTP server.
+        Modules are stopped but the listener continues accepting connections.
+TRACE: Start() → mu.Unlock() → ... → httpServer = &http.Server{} vs Shutdown() → s.httpServer == nil
+FIX DIRECTION: Guard httpServer with mu, or ensure Shutdown waits for Start to complete.
+```
+
+---
+
+#### #60 [FRAGILE] internal/auth/helpers.go:59-69 — GetActiveSessions returns pointers to shared session objects
+
+```
+WHAT: Returns []*models.Session with pointers directly into the m.sessions map.
+WHY:  No copy-before-return pattern.
+IMPACT: If any caller mutates a returned session, it silently corrupts the shared cache.
+TRACE: GetActiveSessions → append(sessions, session) [shared pointer, not copy]
+FIX DIRECTION: Return copies: cp := *session; sessions = append(sessions, &cp).
+```
+
+---
+
+#### #61 [FRAGILE] internal/auth/user.go:184-231 — UpdateUser reads shared user outside lock, race with concurrent updates
+
+```
+WHAT: GetUser at line 185 returns a shared pointer. Lines 190-193 read Role and Enabled
+      without holding usersMu. Two concurrent UpdateUser calls could both read count=2 and
+      both proceed to demote, ending with 0 admins.
+WHY:  lastAdminMu protects the count check but the initial role/enabled reads are unprotected.
+IMPACT: Last-admin protection could be bypassed by carefully timed concurrent requests.
+TRACE: UpdateUser → GetUser (shared ptr) → read role (no lock) → lastAdminMu check → apply
+FIX DIRECTION: Move user read and role/enabled check inside the lastAdminMu block.
+```
+
+---
+
+#### #62 [FRAGILE] internal/media/discovery.go:758-764 — createMediaItem RLock/Lock interleaving during scan
+
+```
+WHAT: createMediaItem checks metadata under RLock, releases it, then acquires Lock to update.
+      Between these, concurrent workers could modify metadata for the same fingerprint.
+WHY:  TOCTOU between RLock and Lock.
+IMPACT: Two concurrent workers discovering files with the same fingerprint could both detect
+        a "move" and both try to migrate, corrupting the fingerprint index.
+TRACE: scanWorker → createMediaItem → RLock(check fingerprint) → RUnlock → Lock(migrate)
+FIX DIRECTION: Use a single Lock for the entire check-and-set block.
+```
+
+---
+
+#### #63 [FRAGILE] internal/auth/session.go:147-159 — ValidateSession background goroutines accumulate unboundedly
+
+```
+WHAT: Every session validation spawns a background goroutine to persist LastActivity.
+      Uses context.Background() so they're detached from request context.
+WHY:  Intentional — update should survive cancelled request.
+IMPACT: Under sustained load, thousands of goroutines could be outstanding waiting for DB writes.
+TRACE: ValidateSession → go func() { sessionRepo.Update(context.Background(), ...) }()
+FIX DIRECTION: Add a bounded semaphore or debounce (only persist every N seconds per session).
+```
+
+---
+
+#### Handler Layer Verification Summary
+
+The handler audit confirmed **all 38 handler files** are clean:
+- **0** missing-return-after-writeError bugs
+- **0** nil dereferences on optional modules (all properly guarded by requireModule)
+- **0** unguarded path traversal (resolvePathForAdmin, resolveMediaByID, resolveAndValidatePath)
+- **0** SQL injection vectors (all queries parameterized via GORM)
+- **0** error swallowing on critical paths
+- **Uncommitted ParseQueryInt migration** verified correct across all 4 modified files
+
+---
+
 ## Architecture Notes
 
 ### Lock Hierarchy (verified no deadlocks)
@@ -697,16 +974,29 @@ panic on nil in `NewHandler`. Optional modules are nil-checked via `requireModul
 
 ## Conclusion
 
-This codebase is in strong shape. The 7-phase audit found **2 critical data-correctness issues**
-(both in analytics stats), **0 security vulnerabilities**, and **0 incomplete features**. The
-remaining 33 findings span FRAGILE, SILENT_FAIL, GAP, LEAK, DRIFT, and REDUNDANT categories.
+This codebase is well-engineered overall. The 7-phase audit found **2 critical data-correctness
+issues** (analytics stats), **4 security issues** (2 auth data races, XFF trust, cookie Secure
+flag), and **0 incomplete features**. The remaining 57 findings span FRAGILE, GAP, SILENT_FAIL,
+LEAK, DRIFT, and REDUNDANT categories.
 
-**Immediate action items:**
+**Immediate action items (Critical — 6 issues):**
 1. Fix TotalWatchTime to use actual watched time, not full duration (#1)
 2. Fix rebuildStatsFromEvent to reconstruct playback stats on restart (#2)
-3. Fix PushCatalog MediaCount to use post-filter count (#6)
-4. Add streaming session cleanup mechanism (#4)
+3. Add trusted proxy check to sessionAuth cookie-clearing code (#36)
+4. Fix rate limiter XFF parsing for multi-proxy topologies (#37)
+5. Fix SetPassword data race — hold lock across user copy (#49)
+6. Fix LastLogin update to mutate fields instead of replacing pointer (#50)
 
-Previous audit sessions (2026-04-05, 2026-04-07) fixed the more serious issues. The patterns
-established in those fixes (copy-before-unlock, double-check locking, semaphore-before-mutex)
-are consistently applied across the codebase.
+**High priority (7 issues):**
+7. Fix streaming context propagation for S3 backends (#3)
+8. Add streaming session cleanup mechanism (#4)
+9. Fix PushCatalog node TOCTOU (#5)
+10. Unify IP extraction strategy across agegate and security modules (#38)
+11. Add admin user to usersByID index in bootstrap (#51)
+12. Fix syncFeatureToggles ordering in config.Update (#52)
+13. Fix CreateSessionForUser to use getOrLoadUser instead of direct cache lookup (#53)
+
+Previous audit sessions (2026-04-05, 2026-04-07) fixed the more serious issues. The auth
+data-race findings (#49, #50) represent the most impactful new discoveries — they can corrupt
+cached user records under concurrent login + password-change timing. The patterns from prior
+fixes (copy-before-unlock, double-check locking) need to be extended to these auth code paths.
