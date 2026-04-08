@@ -461,6 +461,7 @@ onUnmounted(() => {
   if (hoverCycleTimer) clearInterval(hoverCycleTimer)
   if (searchTimer) clearTimeout(searchTimer)
   if (urlSyncTimer) clearTimeout(urlSyncTimer)
+  if (filterSaveTimer) clearTimeout(filterSaveTimer)
   retryTimers.forEach(t => clearTimeout(t))
   retryTimers.clear()
 })
