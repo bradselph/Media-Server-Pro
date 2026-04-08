@@ -204,12 +204,10 @@ func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
 }
 
 // CreateSessionForUser creates a new session for a user without password verification.
+// Uses getOrLoadUser to handle cache misses (e.g., during startup before full cache warm-up).
 func (m *Module) CreateSessionForUser(ctx context.Context, params *CreateSessionParams) (*models.Session, error) {
-	m.usersMu.RLock()
-	user, exists := m.users[params.Username]
-	m.usersMu.RUnlock()
-
-	if !exists {
+	user, err := m.getOrLoadUser(ctx, params.Username)
+	if err != nil || user == nil {
 		return nil, ErrUserNotFound
 	}
 
