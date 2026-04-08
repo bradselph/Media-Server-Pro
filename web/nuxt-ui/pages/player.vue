@@ -689,8 +689,13 @@ function trackQualityChange(index: number) {
   const qLabel = index === -1 ? 'auto' : (qualities.value[index]?.name ?? String(index))
   analyticsApi.submitEvent({ type: 'quality_change', media_id: mediaId.value, data: { quality: qLabel } }).catch(() => {})
 }
-function onVideoError() {
+function onVideoError(e?: Event) {
   if (!mediaId.value) return
+  // Log the underlying MediaError for debugging; otherwise playback failures are invisible.
+  const el = videoRef.value
+  if (el?.error) {
+    console.error(`[player] MediaError code=${el.error.code} message=${el.error.message ?? '(none)'}`, el.error)
+  }
   analyticsApi.submitEvent({ type: 'error', media_id: mediaId.value }).catch(() => {})
 }
 function trackComplete() {
