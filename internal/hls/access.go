@@ -13,6 +13,11 @@ import (
 // segment requests behind a DB round-trip.
 const accessSaveInterval = 30 * time.Second
 
+// Lock ordering invariant for the HLS package:
+//   accessTracker.mu  <  jobsMu  <  transMu
+// RecordAccess acquires accessTracker.mu then jobsMu. No code path acquires
+// them in reverse order. transMu (dynamic semaphore) is independent.
+
 // AccessTracker tracks last access time for HLS jobs
 type AccessTracker struct {
 	lastAccess map[string]time.Time
