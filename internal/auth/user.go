@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -268,17 +269,44 @@ func (m *Module) evictSessionsAfterUpdate(ctx context.Context, p evictSessionUpd
 	}
 }
 
+// maxUserMetadataSize is the maximum JSON-encoded size for User.Metadata (64 KB).
+const maxUserMetadataSize = 64 * 1024
+
 func (m *Module) applyUserUpdates(user *models.User, updates map[string]interface{}) error {
 	m.applyBasicUserUpdates(user, updates)
 	if err := m.applyPasswordUpdateFromMap(user, updates["password"]); err != nil {
 		return err
 	}
 	m.applyPermissionsFromMap(user, updates["permissions"])
+	if err := applyMetadataUpdate(user, updates["metadata"]); err != nil {
+		return err
+	}
 	// Admin users must always retain full permissions regardless of explicit
 	// overrides in the request — re-enforce after all other mutations.
 	if user.Role == models.RoleAdmin {
 		user.Permissions = adminPermissions()
 	}
+	return nil
+}
+
+// applyMetadataUpdate validates and sets User.Metadata if present in the update.
+// Rejects payloads exceeding maxUserMetadataSize to prevent DB bloat.
+func applyMetadataUpdate(user *models.User, metadataVal interface{}) error {
+	if metadataVal == nil {
+		return nil
+	}
+	meta, ok := metadataVal.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("metadata must be a JSON object")
+	}
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("invalid metadata: %w", err)
+	}
+	if len(raw) > maxUserMetadataSize {
+		return fmt.Errorf("metadata too large: %d bytes (max %d)", len(raw), maxUserMetadataSize)
+	}
+	user.Metadata = meta
 	return nil
 }
 

@@ -34,6 +34,9 @@ func validUsername(name string) error {
 
 // AdminCreateUser creates a user
 func (h *Handler) AdminCreateUser(c *gin.Context) {
+	const maxUserCreateBody = 64 * 1024 // 64 KB
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUserCreateBody)
+
 	var req struct {
 		Username string          `json:"username"`
 		Password string          `json:"password"`
@@ -105,6 +108,10 @@ func (h *Handler) AdminGetUser(c *gin.Context) {
 
 // AdminUpdateUser updates a user's details. Prevents demoting or disabling the last admin.
 func (h *Handler) AdminUpdateUser(c *gin.Context) {
+	// Cap request body to prevent oversized metadata payloads.
+	const maxUserUpdateBody = 256 * 1024 // 256 KB
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUserUpdateBody)
+
 	username := c.Param("username")
 
 	var req struct {
@@ -253,6 +260,9 @@ func (h *Handler) AdminChangeOwnPassword(c *gin.Context) {
 
 // AdminBulkUsers performs a bulk action (delete, enable, disable) on multiple users.
 func (h *Handler) AdminBulkUsers(c *gin.Context) {
+	const maxBulkUsersBody = 64 * 1024 // 64 KB
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBulkUsersBody)
+
 	var req struct {
 		Usernames []string `json:"usernames"`
 		Action    string   `json:"action"`
