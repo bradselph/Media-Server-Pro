@@ -694,7 +694,16 @@ function onVideoError(e?: Event) {
   // Log the underlying MediaError for debugging; otherwise playback failures are invisible.
   const el = videoRef.value
   if (el?.error) {
-    console.error(`[player] MediaError code=${el.error.code} message=${el.error.message ?? '(none)'}`, el.error)
+    const code = el.error.code
+    const msg = el.error.message ?? ''
+    console.error(`[player] MediaError code=${code} message=${msg}`, el.error)
+    // Show user-visible error with actionable info
+    const desc = code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+      ? 'This file format may not be supported by your browser'
+      : code === MediaError.MEDIA_ERR_NETWORK
+        ? 'Network error — check your connection'
+        : 'Playback error'
+    toast.add({ title: desc, color: 'error', icon: 'i-lucide-alert-circle' })
   }
   analyticsApi.submitEvent({ type: 'error', media_id: mediaId.value }).catch(() => {})
 }
