@@ -70,6 +70,7 @@ func (m *Module) ensureAdminUserRecord() error {
 	if err == nil {
 		m.usersMu.Lock()
 		m.users[adminUsername] = existingUser
+		m.usersByID[existingUser.ID] = existingUser
 		m.usersMu.Unlock()
 		return nil
 	}
@@ -115,6 +116,7 @@ func (m *Module) ensureAdminUserRecord() error {
 
 	m.usersMu.Lock()
 	m.users[adminUsername] = adminUser
+	m.usersByID[adminUser.ID] = adminUser
 	m.usersMu.Unlock()
 
 	m.log.Info("Created admin user record in database for: %s", adminUsername)

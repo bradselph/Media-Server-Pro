@@ -487,8 +487,14 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 		}
 	}
 
-	// Rebuild in-memory media for this slave
+	// Rebuild in-memory media for this slave.
+	// Re-read node under write lock to avoid TOCTOU if UnregisterSlave ran during DB I/O.
 	m.mu.Lock()
+	node, exists = m.slaves[req.SlaveID]
+	if !exists {
+		m.mu.Unlock()
+		return len(records), nil // slave unregistered during DB I/O; media persisted, skip cache
+	}
 	if req.Full {
 		for id, item := range m.media {
 			if item.SlaveID == req.SlaveID {
@@ -501,7 +507,9 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 		item.SlaveName = node.Name
 		m.media[rec.ID] = item
 	}
-	node.MediaCount = len(req.Items)
+	// Use len(records) — the post-filter count — not len(req.Items) which includes
+	// items rejected by path validation.
+	node.MediaCount = len(records)
 	node.Status = "online"
 	node.LastSeen = time.Now()
 	m.mu.Unlock()
