@@ -351,9 +351,13 @@ func (m *Module) discoverMedia(source config.RemoteSource) ([]*MediaItem, error)
 	// Supports both array format [{"id":...},...] and wrapper format {"items":[...],"data":[...]}
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "application/json") {
+		// Limit the JSON body to 32 MB to prevent OOM from malicious sources.
+		const maxDiscoverBody = 32 * 1024 * 1024
+		limitedBody := io.LimitReader(resp.Body, maxDiscoverBody)
+
 		// First, decode into raw JSON to detect structure
 		var raw json.RawMessage
-		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		if err := json.NewDecoder(limitedBody).Decode(&raw); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 		}
 
@@ -454,6 +458,26 @@ func (m *Module) GetAllRemoteMedia() []*MediaItem {
 		all = append(all, state.Media...)
 	}
 	return all
+}
+
+// IsKnownRemoteURL reports whether remoteURL belongs to a discovered media item
+// across any source. This prevents the stream endpoint from being used as an
+// open HTTP proxy to arbitrary external URLs.
+func (m *Module) IsKnownRemoteURL(remoteURL string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, state := range m.sources {
+		for _, item := range state.Media {
+			if item.URL == remoteURL {
+				return true
+			}
+		}
+	}
+	// Also accept URLs that match a cached entry (previously fetched & validated).
+	if _, ok := m.mediaCache[remoteURL]; ok {
+		return true
+	}
+	return false
 }
 
 // StreamRemote streams a remote media file

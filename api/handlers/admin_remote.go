@@ -253,6 +253,13 @@ func (h *Handler) StreamRemoteMedia(c *gin.Context) {
 		return
 	}
 
+	// Verify the URL is from a discovered source or cached entry to prevent
+	// the stream endpoint from being used as an open HTTP proxy.
+	if !h.remote.IsKnownRemoteURL(remoteURL) {
+		writeError(c, http.StatusForbidden, "URL does not belong to a known remote source")
+		return
+	}
+
 	if err := h.remote.ProxyRemoteWithCache(c.Writer, c.Request, remoteURL, sourceName); err != nil {
 		h.log.Error("Remote stream error: %v", err)
 		// Only write error response if headers haven't been sent yet

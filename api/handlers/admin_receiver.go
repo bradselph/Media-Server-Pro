@@ -77,6 +77,11 @@ func (h *Handler) ReceiverRegisterSlave(c *gin.Context) {
 // ReceiverPushCatalog receives a media catalog update from a slave.
 // POST /api/receiver/catalog
 func (h *Handler) ReceiverPushCatalog(c *gin.Context) {
+	// Cap request body at 32 MB to prevent memory exhaustion from huge payloads.
+	// The WS path already has wsReadLimit (16 MB); this covers the HTTP REST path.
+	const maxCatalogBody = 32 * 1024 * 1024
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCatalogBody)
+
 	var req receiver.CatalogPushRequest
 	if !BindJSON(c, &req, "Invalid request") {
 		return
@@ -211,6 +216,11 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "token required")
 		return
 	}
+	// Validate token format: must be a UUID (8-4-4-4-12 hex with hyphens).
+	if len(token) != 36 {
+		writeError(c, http.StatusBadRequest, "invalid token format")
+		return
+	}
 
 	ps, ok := h.receiver.DeliverStream(token)
 	if !ok {
@@ -234,11 +244,26 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 		}
 	}
 
+	// Filter incoming slave headers to only media-relevant ones before building
+	// the delivery.  This prevents accidental leakage of internal headers
+	// (X-API-Key, X-Forwarded-For, etc.) into the StreamDelivery that is read
+	// by ProxyStream and forwarded to the end user.
+	safeHeaders := make(http.Header)
+	for _, key := range []string{
+		"Content-Type", "Content-Length", "Content-Range",
+		"Content-Disposition", "Accept-Ranges", "Last-Modified",
+		"Etag", "Cache-Control",
+	} {
+		if vals := c.Request.Header.Values(key); len(vals) > 0 {
+			safeHeaders[key] = vals
+		}
+	}
+
 	pr, pw := io.Pipe()
 	delivery := &receiver.StreamDelivery{
 		StatusCode:  statusCode,
 		ContentType: c.GetHeader("Content-Type"),
-		Headers:     c.Request.Header.Clone(),
+		Headers:     safeHeaders,
 		Body:        pr,
 	}
 
