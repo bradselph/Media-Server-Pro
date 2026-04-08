@@ -268,6 +268,7 @@ type SuggestionProfileRepository interface {
 	DeleteProfile(ctx context.Context, userID string) error
 	ListProfiles(ctx context.Context) ([]*SuggestionProfileRecord, error)
 	SaveViewHistory(ctx context.Context, userID string, entry *ViewHistoryRecord) error
+	BatchSaveViewHistory(ctx context.Context, userID string, entries []*ViewHistoryRecord) error
 	GetViewHistory(ctx context.Context, userID string) ([]*ViewHistoryRecord, error)
 	DeleteViewHistory(ctx context.Context, userID string) error
 }

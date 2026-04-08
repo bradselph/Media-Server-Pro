@@ -41,6 +41,7 @@ type UserProfile struct {
 	TotalViews      int                `json:"total_views"`
 	TotalWatchTime  float64            `json:"total_watch_time"`
 	LastUpdated     time.Time          `json:"last_updated"`
+	dirty           bool               // true when profile has unsaved mutations
 }
 
 // Suggestion represents a content recommendation.
@@ -302,6 +303,7 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 	profile.TotalViews++
 	profile.TotalWatchTime += duration
 	profile.LastUpdated = time.Now()
+	profile.dirty = true
 
 	m.log.Debug("Recorded view for user %s: %s (category: %s)", userID, mediaPath, category)
 }
@@ -320,6 +322,7 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 	for i, vh := range profile.ViewHistory {
 		if vh.MediaPath == mediaPath {
 			profile.ViewHistory[i].CompletedAt = new(time.Now())
+			profile.dirty = true
 			break
 		}
 	}
@@ -350,6 +353,7 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 		if vh.MediaPath == mediaPath {
 			profile.ViewHistory[i].Rating = rating
 			profile.LastUpdated = time.Now()
+			profile.dirty = true
 			m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
 			snap := m.snapshotProfile(profile)
 			m.mu.Unlock()
@@ -370,6 +374,7 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 		profile.ViewHistory = profile.ViewHistory[len(profile.ViewHistory)-maxViewHistory:]
 	}
 	profile.LastUpdated = time.Now()
+	profile.dirty = true
 	m.log.Debug("Recorded rating %.1f for %s by user %s (new entry)", rating, mediaPath, userID)
 	snap := m.snapshotProfile(profile)
 	m.mu.Unlock()
@@ -1056,23 +1061,34 @@ func (m *Module) loadProfiles() error {
 	return nil
 }
 
-// saveProfiles persists all profiles; continues on error and returns the last error.
+// saveProfiles persists dirty profiles only; continues on error and returns the last error.
 func (m *Module) saveProfiles() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	ctx := context.Background()
 	var lastErr error
+	saved := 0
 	for _, profile := range m.profiles {
+		if !profile.dirty {
+			continue
+		}
 		if err := m.saveOneProfile(ctx, profile); err != nil {
 			m.log.Warn("Failed to save suggestion profile for %s: %v", profile.UserID, err)
 			lastErr = err
+		} else {
+			profile.dirty = false
+			saved++
 		}
+	}
+	if saved > 0 {
+		m.log.Debug("Saved %d dirty suggestion profiles", saved)
 	}
 	return lastErr
 }
 
-// saveOneProfile persists a single user profile and its view history to MySQL (O(n) writes per profile).
+// saveOneProfile persists a single user profile and its view history to MySQL.
+// Uses batch upsert for view history entries instead of individual writes.
 func (m *Module) saveOneProfile(ctx context.Context, profile *UserProfile) error {
 	rec := &repositories.SuggestionProfileRecord{
 		UserID:          profile.UserID,
@@ -1085,9 +1101,10 @@ func (m *Module) saveOneProfile(ctx context.Context, profile *UserProfile) error
 	if err := m.repo.SaveProfile(ctx, rec); err != nil {
 		return err
 	}
+	entries := make([]*repositories.ViewHistoryRecord, len(profile.ViewHistory))
 	for i := range profile.ViewHistory {
 		vh := &profile.ViewHistory[i]
-		entry := &repositories.ViewHistoryRecord{
+		entries[i] = &repositories.ViewHistoryRecord{
 			MediaPath:   vh.MediaPath,
 			Category:    vh.Category,
 			MediaType:   vh.MediaType,
@@ -1097,9 +1114,6 @@ func (m *Module) saveOneProfile(ctx context.Context, profile *UserProfile) error
 			CompletedAt: vh.CompletedAt,
 			Rating:      vh.Rating,
 		}
-		if err := m.repo.SaveViewHistory(ctx, profile.UserID, entry); err != nil {
-			return err
-		}
 	}
-	return nil
+	return m.repo.BatchSaveViewHistory(ctx, profile.UserID, entries)
 }

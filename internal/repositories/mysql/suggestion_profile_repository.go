@@ -173,6 +173,36 @@ func (r *SuggestionProfileRepository) SaveViewHistory(ctx context.Context, userI
 	return nil
 }
 
+func (r *SuggestionProfileRepository) BatchSaveViewHistory(ctx context.Context, userID string, entries []*repositories.ViewHistoryRecord) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	rows := make([]viewHistoryRow, len(entries))
+	for i, e := range entries {
+		rows[i] = viewHistoryRow{
+			UserID:      userID,
+			MediaPath:   e.MediaPath,
+			Category:    e.Category,
+			MediaType:   e.MediaType,
+			ViewCount:   e.ViewCount,
+			TotalTime:   e.TotalTime,
+			LastViewed:  e.LastViewed,
+			CompletedAt: e.CompletedAt,
+			Rating:      e.Rating,
+		}
+	}
+	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}, {Name: "media_path"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"category", "media_type", "view_count", "total_time",
+			"last_viewed", "completed_at", "rating",
+		}),
+	}).CreateInBatches(rows, 100).Error; err != nil {
+		return fmt.Errorf("failed to batch save view history: %w", err)
+	}
+	return nil
+}
+
 func (r *SuggestionProfileRepository) GetViewHistory(ctx context.Context, userID string) ([]*repositories.ViewHistoryRecord, error) {
 	var rows []viewHistoryRow
 	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("last_viewed DESC").Find(&rows).Error; err != nil {
