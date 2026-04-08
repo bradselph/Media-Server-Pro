@@ -4,6 +4,7 @@ package routes
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -46,9 +47,19 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 				// Clear stale/expired/invalid cookie so the browser stops resending it.
 				// DB/transient errors are NOT treated as invalid sessions — the cookie is
 				// preserved so the user is not silently logged out during a DB outage.
-				secure := c.Request.TLS != nil ||
-					c.GetHeader("X-Forwarded-Proto") == "https" ||
-					strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
+				// Only trust proxy headers (X-Forwarded-Proto, Cf-Visitor) from
+				// trusted proxy IPs to prevent clients from spoofing HTTPS.
+				secure := c.Request.TLS != nil
+				if !secure {
+					remoteIP, _, splitErr := net.SplitHostPort(c.Request.RemoteAddr)
+					if splitErr != nil {
+						remoteIP = c.Request.RemoteAddr
+					}
+					if middleware.IsTrustedProxy(remoteIP) {
+						secure = c.GetHeader("X-Forwarded-Proto") == "https" ||
+							strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
+					}
+				}
 				http.SetCookie(c.Writer, &http.Cookie{
 					Name:     "session_id",
 					Value:    "",
