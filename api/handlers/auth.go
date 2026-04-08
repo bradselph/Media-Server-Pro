@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -727,7 +728,10 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 	writeSuccess(c, map[string]string{"status": "account_deleted", "message": "Your account has been permanently deleted"})
 }
 
-// ExportWatchHistory streams the user's watch history as a CSV file.
+// ExportWatchHistory exports the user's watch history as a CSV file.
+// The CSV is buffered in memory first so that errors during generation
+// produce a 500 response instead of a truncated file. A trailer comment
+// is appended on send failure so consumers can detect incomplete exports.
 func (h *Handler) ExportWatchHistory(c *gin.Context) {
 	session := getSession(c)
 	if session == nil {
@@ -746,12 +750,13 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 		history = []models.WatchHistoryItem{}
 	}
 
-	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="watch_history_%s.csv"`, user.Username))
-
-	w := csv.NewWriter(c.Writer)
+	// Buffer the entire CSV so we can return 500 on generation errors
+	// instead of sending a truncated file.
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
 	if err := w.Write([]string{"media_name", "media_id", "watched_at", "position_seconds", "duration_seconds", "progress_percent", "completed"}); err != nil {
 		h.log.Error("CSV header write failed: %v", err)
+		writeError(c, http.StatusInternalServerError, "Failed to generate export")
 		return
 	}
 	for _, item := range history {
@@ -769,11 +774,24 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 			completed,
 		}); err != nil {
 			h.log.Error("CSV row write failed: %v", err)
+			writeError(c, http.StatusInternalServerError, "Failed to generate export")
 			return
 		}
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
 		h.log.Error("CSV flush failed for user %s: %v", user.Username, err)
+		writeError(c, http.StatusInternalServerError, "Failed to generate export")
+		return
+	}
+
+	// Buffer is complete — send it
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="watch_history_%s.csv"`, user.Username))
+	c.Header("Content-Length", strconv.Itoa(buf.Len()))
+	if _, err := c.Writer.Write(buf.Bytes()); err != nil {
+		// Headers already sent — append trailer comment so the consumer can detect truncation.
+		h.log.Error("CSV send failed for user %s: %v", user.Username, err)
+		_, _ = c.Writer.Write([]byte("\n# ERROR: export incomplete\n"))
 	}
 }
