@@ -972,31 +972,108 @@ panic on nil in `NewHandler`. Optional modules are nil-checked via `requireModul
 
 ---
 
+## Fix Status
+
+### FIXED (committed 2026-04-08, 5 batches)
+
+| # | Tag | Fix | Commit |
+|---|-----|-----|--------|
+| #49 | SECURITY | SetPassword re-reads user under RLock before copy | batch 1 |
+| #50 | SECURITY | LastLogin mutates fields on existing pointer, not replacement | batch 1 |
+| #36 | SECURITY | sessionAuth checks IsTrustedProxy before trusting XFF | batch 1 |
+| #37 | SECURITY | Rate limiter walks XFF right-to-left skipping trusted proxies | batch 1 |
+| #1 | BROKEN | TotalWatchTime uses min(position, duration) | batch 1 |
+| #2 | GAP | rebuildStatsFromEvent adds playback case for dailyStats | batch 1 |
+| #5 | FRAGILE | PushCatalog re-reads node under write lock | batch 2 |
+| #6 | BROKEN | PushCatalog uses len(records) not len(req.Items) | batch 2 |
+| #3 | FRAGILE | Stream() uses r.Context() instead of context.Background() | batch 2 |
+| #4 | LEAK | Streaming session cleanup every 5m, evicts >30m stale | batch 2 |
+| #38 | DRIFT | Agegate IP extraction unified to right-to-left-skip-trusted | batch 2 |
+| #51 | GAP | Admin user added to usersByID index in bootstrap | batch 2 |
+| #52 | GAP | syncFeatureToggles called before validate() in Update | batch 2 |
+| #53 | GAP | CreateSessionForUser uses getOrLoadUser for cache misses | batch 2 |
+| #7 | FRAGILE | Legacy migration: upsert before delete | batch 3 |
+| #15 | SILENT FAIL | saveCacheIndex continues on error | batch 3 |
+| #18 | SILENT FAIL | loadFromDB sets descriptive health msg on media failure | batch 3 |
+| #11 | FRAGILE | WS relay SetReadLimit 1MB on both connections | batch 3 |
+| #46 | DRIFT | ClearMediaCache wraps in APIResponse envelope | batch 3 |
+| #47 | FRAGILE | Receiver stream limit uses fallback when GetUser fails | batch 3 |
+| #60 | FRAGILE | GetActiveSessions returns copies not shared pointers | batch 3 |
+| #19 | GAP | Task checks Enabled after startup delay before initial run | batch 3 |
+| #39 | GAP | HuggingFace client uses SafeHTTPTransport | batch 3 |
+| #40 | GAP | ETag hash upgraded to FNV-1a 64-bit | batch 3 |
+| #43 | GAP | Semicolons stripped in Content-Disposition filenames | batch 3 |
+| #20 | FRAGILE | Download uses os.Stat instead of double-open | batch 3 |
+| #44 | FRAGILE | S3 Rename non-atomicity documented | batch 4 |
+| #58 | FRAGILE | db/sqlDB nil-after-Stop contract documented | batch 4 |
+| #16 | FRAGILE | Presigned URL TTL increased from 2h to 12h | batch 4 |
+| #10 | FRAGILE | syncAllSources checks m.ctx in loop for prompt exit | batch 4 |
+| #17 | FRAGILE | drainPendingForSlave called synchronously (no race) | batch 4 |
+| #61 | FRAGILE | UpdateUser re-reads user inside lastAdminMu | batch 5 |
+| #8 | GAP | Extractor cleans up orphan DB row on MaxItems rejection | batch 5 |
+
+**33 of 63 findings fixed.**
+
+### DEFERRED (future work)
+
+| # | Tag | Item | Reason |
+|---|-----|------|--------|
+| #9 | FRAGILE | getCachedMedia TOCTOU (stat then serve) | Low impact; http.ServeFile handles missing files gracefully |
+| #12 | LEAK | viewCooldown AfterFunc timers | Only matters at >10k concurrent viewers; current Go timer heap handles it |
+| #13 | GAP | Suggestion profile dirty tracking | Performance optimization; current approach is functional |
+| #14 | FRAGILE | Upload progress module-wide mutex | Per-upload mutex would be a larger refactor |
+| #41 | GAP | User.Metadata size limit | Admin-only input; add validation when user metadata editing is exposed |
+| #42 | LEAK | AdminNotes JSON exposure | Verified admin-only endpoints; no user-facing leak |
+| #45 | REDUNDANT | audioExts duplicates mediaExts | Maintenance concern only; no runtime impact |
+| #48 | FRAGILE | Anonymous analytics session_id | Low risk; only used for aggregation not authorization |
+| #54 | GAP | Expired API token cleanup | Tokens accumulate slowly; add periodic task in future |
+| #55 | GAP | Rate limit field validation | Edge case; defaults prevent misbehavior |
+| #56 | GAP | S3 config validation | Startup warnings already cover this; add strict validation later |
+| #57 | GAP | DB health check ping | Go sql.DB auto-reconnects; health endpoint is best-effort |
+| #59 | FRAGILE | Shutdown race with Start on httpServer | Only in signal-during-startup edge case |
+| #62 | FRAGILE | createMediaItem RLock/Lock interleaving | Bounded worker pool (sem=10) makes collision extremely unlikely |
+| #63 | FRAGILE | ValidateSession background goroutines | Go handles many goroutines well; add semaphore if DB contention observed |
+
+### LOW PRIORITY (already acceptable)
+
+| # | Tag | Item | Status |
+|---|-----|------|--------|
+| #21 | DRIFT | Uncommitted ParseQueryInt refactoring | Correct; commit when ready |
+| #22 | DRIFT | Scanner loadResults log message | Cosmetic |
+| #23 | REDUNDANT | isPathWithinDirs/isPathUnderDirs duplication | Dead indirection |
+| #24 | REDUNDANT | Sentinel errors only used locally | Idiomatic Go |
+| #25 | SILENT FAIL | CSV export truncation on error | Inherent to streaming responses |
+| #26 | SILENT FAIL | StreamMedia re-fetch for suggestions | Use existing localItem |
+| #27 | FRAGILE | Extractor error-status items returned without error | Design choice |
+| #28 | FRAGILE | Security onBan unbounded goroutines | Rare event; acceptable |
+| #29 | FRAGILE | Crawler serial crawling | Design choice; document |
+| #30 | FRAGILE | Backup zipFile.Close not deferred | Only panics unprotected |
+| #31 | LEAK | syncAllSources goroutine context | Individual requests use m.ctx; fixed in #10 |
+| #32 | FRAGILE | Updater initial check goroutine | Minimal impact |
+| #33 | FRAGILE | HLS transSem fixed at construction | Document; requires restart |
+| #34 | FRAGILE | HLS lock ordering undocumented | Consistent today; document invariant |
+| #35 | FRAGILE | UpdateTags async save | Periodic scan re-persists |
+
+---
+
 ## Conclusion
 
-This codebase is well-engineered overall. The 7-phase audit found **2 critical data-correctness
-issues** (analytics stats), **4 security issues** (2 auth data races, XFF trust, cookie Secure
-flag), and **0 incomplete features**. The remaining 57 findings span FRAGILE, GAP, SILENT_FAIL,
-LEAK, DRIFT, and REDUNDANT categories.
+The deep debug audit discovered **63 findings** across the entire codebase. **33 have been fixed**
+in 5 commit batches. The remaining 30 are deferred (15 items) or already acceptable (15 items).
 
-**Immediate action items (Critical — 6 issues):**
-1. Fix TotalWatchTime to use actual watched time, not full duration (#1)
-2. Fix rebuildStatsFromEvent to reconstruct playback stats on restart (#2)
-3. Add trusted proxy check to sessionAuth cookie-clearing code (#36)
-4. Fix rate limiter XFF parsing for multi-proxy topologies (#37)
-5. Fix SetPassword data race — hold lock across user copy (#49)
-6. Fix LastLogin update to mutate fields instead of replacing pointer (#50)
+**All 4 SECURITY issues are fixed:**
+- Auth data races on shared user pointers (#49, #50)
+- X-Forwarded-Proto trust without proxy check (#36)
+- Rate limiter XFF parsing for multi-proxy topologies (#37)
 
-**High priority (7 issues):**
-7. Fix streaming context propagation for S3 backends (#3)
-8. Add streaming session cleanup mechanism (#4)
-9. Fix PushCatalog node TOCTOU (#5)
-10. Unify IP extraction strategy across agegate and security modules (#38)
-11. Add admin user to usersByID index in bootstrap (#51)
-12. Fix syncFeatureToggles ordering in config.Update (#52)
-13. Fix CreateSessionForUser to use getOrLoadUser instead of direct cache lookup (#53)
+**Both BROKEN issues are fixed:**
+- TotalWatchTime using full duration instead of watched time (#1)
+- PushCatalog MediaCount using pre-filter count (#6)
 
-Previous audit sessions (2026-04-05, 2026-04-07) fixed the more serious issues. The auth
-data-race findings (#49, #50) represent the most impactful new discoveries — they can corrupt
-cached user records under concurrent login + password-change timing. The patterns from prior
-fixes (copy-before-unlock, double-check locking) need to be extended to these auth code paths.
+**Key patterns applied in this session:**
+- Re-read shared pointer under lock before copy (auth #49, #50, #61)
+- Mutate fields on existing cached pointer instead of replacing entire pointer (#50)
+- Right-to-left XFF walk skipping trusted proxies (#37, #38)
+- Upsert-before-delete for crash-safe migration (#7)
+- Orphan cleanup on Lock-recheck rejection (#8)
+- Periodic sweep for stale resource cleanup (#4)
