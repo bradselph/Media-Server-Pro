@@ -41,7 +41,7 @@ type UserProfile struct {
 	TotalViews      int                `json:"total_views"`
 	TotalWatchTime  float64            `json:"total_watch_time"`
 	LastUpdated     time.Time          `json:"last_updated"`
-	dirty           bool               // true when profile has unsaved mutations
+	dirty           bool               // true when profile has unsaved mutations; protected by module mu (writers hold Lock, saveProfiles holds RLock)
 }
 
 // Suggestion represents a content recommendation.

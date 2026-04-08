@@ -738,11 +738,15 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 	m.mu.Lock()
 	meta, hasMeta := m.metadata[absKey]
 	if hasMeta {
-		m.mu.Unlock()
+		// Copy fields from meta under the lock to avoid reading shared
+		// pointer fields after unlock (concurrent mutations possible).
 		item.ID = meta.StableID
 		item.Views = meta.Views
 		item.IsMature = meta.IsMature
-		item.Tags = meta.Tags
+		if meta.Tags != nil {
+			item.Tags = make([]string, len(meta.Tags))
+			copy(item.Tags, meta.Tags)
+		}
 		if meta.Category != "" {
 			item.Category = meta.Category
 		} else {
@@ -752,6 +756,7 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
+		m.mu.Unlock()
 	} else {
 		item.ID = uuid.New().String()
 		item.Category = string(mediaType)
