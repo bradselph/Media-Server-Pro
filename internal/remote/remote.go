@@ -39,19 +39,6 @@ const (
 	userAgentValue       = "MediaServerPro/4.0"
 )
 
-// allowedRemoteHeaders is the set of response headers forwarded from the remote
-// origin to the client. Only media-relevant headers are allowed to avoid leaking
-// server identity or infrastructure details (Server, X-Powered-By, etc.).
-var allowedRemoteHeaders = map[string]bool{
-	"Content-Type":        true,
-	"Content-Length":      true,
-	"Content-Range":       true,
-	"Content-Disposition": true,
-	"Accept-Ranges":       true,
-	"Last-Modified":       true,
-	"Etag":                true,
-	"Cache-Control":       true,
-}
 
 // Module handles remote media sources
 type Module struct {
@@ -539,7 +526,7 @@ func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL 
 
 	// Copy only allowed response headers (allowlist to avoid leaking Server, X-Powered-By, etc.)
 	for key, values := range resp.Header {
-		if !allowedRemoteHeaders[http.CanonicalHeaderKey(key)] {
+		if !helpers.AllowedProxyHeaders[http.CanonicalHeaderKey(key)] {
 			continue
 		}
 		for _, value := range values {

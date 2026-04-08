@@ -660,19 +660,6 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
-// allowedProxyHeaders is the set of response headers forwarded from the slave
-// to the client.  Only media-relevant headers are allowed to prevent leaking
-// slave identity, server software, or internal infrastructure details.
-var allowedProxyHeaders = map[string]bool{
-	"Content-Type":        true,
-	"Content-Length":      true,
-	"Content-Range":       true,
-	"Content-Disposition": true,
-	"Accept-Ranges":       true,
-	"Last-Modified":       true,
-	"Etag":                true,
-	"Cache-Control":       true,
-}
 
 // ProxyStream streams media from a slave to the client.
 // It first attempts a WebSocket-based request (slave pushes data back via HTTP
@@ -746,7 +733,7 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 			return fmt.Errorf("stream delivery failed for %s", mediaID)
 		}
 		for key, values := range delivery.Headers {
-			if !allowedProxyHeaders[key] {
+			if !helpers.AllowedProxyHeaders[key] {
 				continue
 			}
 			for _, v := range values {
@@ -825,7 +812,7 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 
 	// Forward allowed headers only.
 	for key, values := range resp.Header {
-		if !allowedProxyHeaders[key] {
+		if !helpers.AllowedProxyHeaders[key] {
 			continue
 		}
 		for _, v := range values {

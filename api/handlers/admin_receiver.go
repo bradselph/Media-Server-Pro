@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/receiver"
+	"media-server-pro/pkg/helpers"
 )
 
 func (h *Handler) checkDuplicateDetectionEnabled(c *gin.Context) bool {
@@ -249,11 +250,7 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	// (X-API-Key, X-Forwarded-For, etc.) into the StreamDelivery that is read
 	// by ProxyStream and forwarded to the end user.
 	safeHeaders := make(http.Header)
-	for _, key := range []string{
-		"Content-Type", "Content-Length", "Content-Range",
-		"Content-Disposition", "Accept-Ranges", "Last-Modified",
-		"Etag", "Cache-Control",
-	} {
+	for key := range helpers.AllowedProxyHeaders {
 		if vals := c.Request.Header.Values(key); len(vals) > 0 {
 			safeHeaders[key] = vals
 		}
