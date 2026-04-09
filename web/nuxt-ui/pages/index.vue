@@ -2,7 +2,7 @@
 import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
-import { formatDuration } from '~/utils/format'
+import { formatDuration, formatBytes, formatRelativeDate, formatResolution } from '~/utils/format'
 import { blurHashToDataUrl } from '~/utils/blurhash'
 
 const TYPE_OPTIONS = [
@@ -331,7 +331,7 @@ onMounted(() => {
   const prefs = authStore.user?.preferences
   if (prefs) {
     if (prefs.items_per_page && prefs.items_per_page !== params.limit) params.limit = prefs.items_per_page
-    if (prefs.view_mode) viewMode.value = prefs.view_mode === 'list' ? 'list' : 'grid'
+    if (prefs.view_mode && ['grid', 'list', 'compact'].includes(prefs.view_mode)) viewMode.value = prefs.view_mode as ViewMode
   }
   loadCategories()
   load()
@@ -341,8 +341,13 @@ onMounted(() => {
   else loadGeneralSuggestions()
 })
 
-// View mode — initialized from user preference; only 'grid' and 'list' are supported here
-const viewMode = ref<'grid' | 'list'>(authStore.user?.preferences?.view_mode === 'list' ? 'list' : 'grid')
+// View mode — initialized from user preference; supports 'grid', 'list', and 'compact'
+type ViewMode = 'grid' | 'list' | 'compact'
+const viewMode = ref<ViewMode>(
+  (['grid', 'list', 'compact'] as ViewMode[]).includes(authStore.user?.preferences?.view_mode as ViewMode)
+    ? (authStore.user?.preferences?.view_mode as ViewMode)
+    : 'grid'
+)
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
 const canViewMature = computed(() =>
@@ -484,11 +489,17 @@ onUnmounted(() => {
 
       <!-- On Deck (next episode per TV show / Anime series) -->
       <div v-if="onDeck.length > 0" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-tv-2" class="size-4 text-primary" />
-          On Deck
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+            <UIcon name="i-lucide-tv-2" class="size-4 text-primary" />
+            On Deck
+          </h2>
+          <div class="flex gap-1">
+            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          </div>
+        </div>
+        <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="ep in onDeck"
             :key="ep.media_id"
@@ -539,11 +550,17 @@ onUnmounted(() => {
       />
       <!-- New Since Last Visit -->
       <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-bell" class="size-4 text-primary" />
-          New Since Your Last Visit
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+            <UIcon name="i-lucide-bell" class="size-4 text-primary" />
+            New Since Your Last Visit
+          </h2>
+          <div class="flex gap-1">
+            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          </div>
+        </div>
+        <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="r in newSinceLastVisit.items"
             :key="r.id"
@@ -571,11 +588,17 @@ onUnmounted(() => {
       </div>
       <!-- Recently Added -->
       <div v-if="recentlyAdded.length > 0" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-sparkle" class="size-4 text-primary" />
-          Recently Added
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+            <UIcon name="i-lucide-sparkle" class="size-4 text-primary" />
+            Recently Added
+          </h2>
+          <div class="flex gap-1">
+            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          </div>
+        </div>
+        <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="r in recentlyAdded"
             :key="r.id"
@@ -728,6 +751,14 @@ onUnmounted(() => {
             size="sm"
             @click="viewMode = 'list'"
           />
+          <UButton
+            icon="i-lucide-rows-3"
+            aria-label="Compact view"
+            :variant="viewMode === 'compact' ? 'solid' : 'ghost'"
+            :color="viewMode === 'compact' ? 'primary' : 'neutral'"
+            size="sm"
+            @click="viewMode = 'compact'"
+          />
         </UButtonGroup>
       </div>
     </div>
@@ -798,8 +829,12 @@ onUnmounted(() => {
             loading="lazy"
             @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, item.id)"
           />
+          <div v-else-if="item.type === 'audio'" class="w-full h-full flex flex-col items-center justify-center bg-linear-to-br from-primary/10 to-primary/5 gap-2">
+            <AudioBars size="lg" :bars="7" class="opacity-70 group-hover:opacity-100 transition-opacity" />
+            <span class="text-[10px] font-medium text-muted uppercase tracking-wider">{{ item.codec || 'Audio' }}</span>
+          </div>
           <div v-else class="w-full h-full flex items-center justify-center">
-            <UIcon :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
+            <UIcon name="i-lucide-film" class="size-8 text-muted" />
           </div>
           <!-- Mature gate overlay (guests + users with show_mature disabled) -->
           <div
@@ -867,7 +902,14 @@ onUnmounted(() => {
         <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
-        <p v-if="item.category && !(item.is_mature && !canViewMature)" class="text-xs text-muted truncate">{{ item.category }}</p>
+        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size)" class="text-xs text-muted truncate">
+          {{ [
+            item.category,
+            item.type === 'audio' && item.codec ? item.codec.toUpperCase() : null,
+            item.type === 'video' && item.height ? formatResolution(item.width, item.height) : null,
+            !item.category && !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
+          ].filter(Boolean).join(' · ') }}
+        </p>
         <!-- Tag chips — click to filter by tag (hidden for gated items) -->
         <div
           v-if="item.tags?.length && !(item.is_mature && !canViewMature)"
@@ -887,6 +929,32 @@ onUnmounted(() => {
       </p>
     </div>
 
+    <!-- Compact view -->
+    <div
+      v-else-if="viewMode === 'compact'"
+      class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-1.5"
+    >
+      <NuxtLink
+        v-for="item in items"
+        :key="item.id"
+        :to="matureGateHref(item)"
+        class="flex items-center gap-2 px-2.5 py-1.5 rounded-md hover:bg-muted/50 transition-colors group"
+      >
+        <UIcon
+          :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'"
+          :class="['size-4 shrink-0', item.type === 'audio' ? 'text-primary' : 'text-muted']"
+        />
+        <span class="text-sm truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
+          {{ getDisplayTitle(item) }}
+        </span>
+        <span v-if="item.codec" class="text-[10px] text-muted/60 shrink-0 uppercase">{{ item.codec }}</span>
+        <span class="text-xs text-muted shrink-0 ml-auto font-mono tabular-nums">{{ formatDuration(item.duration) || formatBytes(item.size) }}</span>
+      </NuxtLink>
+      <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
+        No media found.
+      </p>
+    </div>
+
     <!-- List view -->
     <UCard v-else>
       <UTable
@@ -895,6 +963,7 @@ onUnmounted(() => {
           { accessorKey: 'name', header: 'Name' },
           { accessorKey: 'type', header: 'Type' },
           { accessorKey: 'duration', header: 'Duration' },
+          { accessorKey: 'size', header: 'Size' },
           { accessorKey: 'category', header: 'Category' },
           { accessorKey: 'views', header: 'Views' },
           { accessorKey: 'date_added', header: 'Added' },
@@ -907,7 +976,7 @@ onUnmounted(() => {
               :style="row.original.blur_hash ? { backgroundImage: `url(${blurHashToDataUrl(row.original.blur_hash)})`, backgroundSize: 'cover' } : {}"
             >
               <img
-                v-if="!failedThumbnails.has(row.original.id)"
+                v-if="row.original.type !== 'audio' && !failedThumbnails.has(row.original.id)"
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
                 :alt="getDisplayTitle(row.original)"
                 width="64"
@@ -916,25 +985,41 @@ onUnmounted(() => {
                 loading="lazy"
                 @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, row.original.id)"
               />
+              <div v-else-if="row.original.type === 'audio'" class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
+                <AudioBars size="xs" :bars="5" />
+              </div>
               <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon :name="row.original.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-4 text-muted" />
+                <UIcon name="i-lucide-film" class="size-4 text-muted" />
               </div>
               <div v-if="row.original.is_mature && !canViewMature" class="absolute inset-0 flex items-center justify-center bg-black/80">
                 <UIcon name="i-lucide-lock" class="size-3 text-white" />
               </div>
             </div>
-            <span class="font-medium truncate max-w-xs">{{ getDisplayTitle(row.original) }}</span>
+            <div class="min-w-0">
+              <span class="font-medium truncate block max-w-xs">{{ getDisplayTitle(row.original) }}</span>
+              <span v-if="row.original.codec" class="text-[10px] text-muted uppercase">{{ row.original.codec }}</span>
+            </div>
           </NuxtLink>
         </template>
         <template #type-cell="{ row }">
-          <UBadge :label="row.original.type" color="neutral" variant="subtle" size="xs" />
+          <UBadge
+            :label="row.original.type"
+            :color="row.original.type === 'audio' ? 'info' : 'neutral'"
+            variant="subtle"
+            size="xs"
+          />
         </template>
         <template #duration-cell="{ row }">
-          <span class="font-mono text-sm">{{ formatDuration(row.original.duration) || '—' }}</span>
+          <span class="font-mono text-sm tabular-nums">{{ formatDuration(row.original.duration) || '—' }}</span>
+        </template>
+        <template #size-cell="{ row }">
+          <span class="text-sm text-muted">{{ formatBytes(row.original.size) }}</span>
         </template>
         <template #views-cell="{ row }">{{ (row.original.views ?? 0).toLocaleString() }}</template>
         <template #date_added-cell="{ row }">
-          <span class="text-sm text-muted">{{ row.original.date_added ? new Date(row.original.date_added).toLocaleDateString() : '—' }}</span>
+          <span class="text-sm text-muted" :title="row.original.date_added ? new Date(row.original.date_added).toLocaleString() : ''">
+            {{ formatRelativeDate(row.original.date_added) }}
+          </span>
         </template>
       </UTable>
       <p v-if="items.length === 0" class="text-center py-8 text-muted">No media found.</p>

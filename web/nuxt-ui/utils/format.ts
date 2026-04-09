@@ -47,6 +47,61 @@ export function formatWatchTime(secs?: number, fallback = '—'): string {
 }
 
 /**
+ * Format a date into a relative string (e.g. "2d ago", "3mo ago", "just now").
+ * Falls back to absolute date when older than 1 year.
+ * @param date  ISO date string or Date object
+ * @param fallback  String to return when date is falsy (default '—')
+ */
+export function formatRelativeDate(date?: string | Date | null, fallback = '—'): string {
+  if (!date) return fallback
+  const d = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(d.getTime())) return fallback
+  const now = Date.now()
+  const diff = now - d.getTime()
+  if (diff < 0) return 'just now'
+  const secs = Math.floor(diff / 1000)
+  if (secs < 60) return 'just now'
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return d.toLocaleDateString()
+}
+
+/**
+ * Build a concise metadata line from media properties.
+ * Returns items like "MP4 · 1080p · 4.2 MB" joined by " · ".
+ * Skips null/undefined/empty values automatically.
+ */
+export function formatMetaLine(...parts: (string | number | null | undefined | false)[]): string {
+  return parts.filter((p): p is string | number => p != null && p !== false && p !== '').map(String).join(' · ')
+}
+
+/**
+ * Format a resolution from width/height (e.g. "1080p", "4K", "720p").
+ */
+export function formatResolution(width?: number, height?: number): string {
+  if (!height) return ''
+  if (height >= 2160) return '4K'
+  if (height >= 1440) return '1440p'
+  return `${height}p`
+}
+
+/**
+ * Format a bitrate value (e.g. "3.2 Mbps", "256 kbps").
+ */
+export function formatBitrate(bps?: number): string {
+  if (!bps) return ''
+  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`
+  if (bps >= 1_000) return `${Math.round(bps / 1_000)} kbps`
+  return `${bps} bps`
+}
+
+/**
  * Format seconds into a concise uptime string (e.g. "3d 2h 15m").
  * Used in admin dashboard and downloader health displays.
  * @param secs  Uptime in seconds

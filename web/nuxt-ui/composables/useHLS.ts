@@ -273,16 +273,28 @@ export function useHLS(
   }
 
   async function activateHLS() {
-    if (hlsUrl.value) {
-      hlsActivated.value = true
-      // Wait for Vue to patch the DOM (removes :src binding) before hls.js
-      // takes control of the video element — prevents a race where Vue's
-      // nextTick DOM update overwrites hls.js's MediaSource blob URL.
+    if (!hlsUrl.value) return
+    hlsActivated.value = true
+
+    // Wait for Vue to patch the DOM (removes :src binding) before hls.js
+    // takes control of the video element — prevents a race where Vue's
+    // nextTick DOM update overwrites hls.js's MediaSource blob URL.
+    // If videoRef is not yet mounted (media still loading), retry a few
+    // times with increasing delays to handle the auto-activate race.
+    for (let attempt = 0; attempt < 10; attempt++) {
       await nextTick()
-      attachHLS(hlsUrl.value).catch(() => {
-        hlsActivated.value = false
-      })
+      if (videoRef.value?.isConnected) break
+      await new Promise(r => setTimeout(r, 100 * (attempt + 1)))
     }
+
+    if (!videoRef.value?.isConnected) {
+      hlsActivated.value = false
+      return
+    }
+
+    attachHLS(hlsUrl.value).catch(() => {
+      hlsActivated.value = false
+    })
   }
 
   // Check HLS availability when media ID changes (debounced to prevent burst requests)
@@ -304,6 +316,8 @@ export function useHLS(
         if (status.available && status.hls_url) {
           hlsAvailable.value = true
           hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
+          // Auto-activate HLS when available — no user action needed
+          activateHLS()
         } else if (status.status === 'running') {
           jobRunning.value = true
           jobProgress.value = status.progress
@@ -332,6 +346,8 @@ export function useHLS(
                   clearInterval(pollTimer)
                   pollTimer = null
                 }
+                // Auto-activate once generation completes
+                activateHLS()
               } else if (updated.status !== 'running' && updated.status !== 'pending') {
                 jobRunning.value = false
                 if (pollTimer) {

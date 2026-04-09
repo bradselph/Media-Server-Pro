@@ -71,6 +71,11 @@ async function saveHLSConfig() {
   }
 }
 
+function copyJobId(id: string) {
+  navigator.clipboard.writeText(id)
+  toast.add({ title: 'ID copied', color: 'success', icon: 'i-lucide-check' })
+}
+
 async function deleteJob(id: string) {
   try {
     await adminApi.deleteHLSJob(id)
@@ -191,7 +196,11 @@ onMounted(load)
         ]"
       >
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs" :title="row.original.id ?? ''">{{ row.original.id?.slice(0, 12) }}…</span>
+          <button
+            class="font-mono text-xs hover:text-primary cursor-pointer"
+            :title="`${row.original.id} (click to copy)`"
+            @click="copyJobId(row.original.id ?? '')"
+          >{{ row.original.id?.slice(0, 12) }}…</button>
         </template>
         <template #status-cell="{ row }">
           <UBadge :label="row.original.status" :color="statusColor(row.original.status)" variant="subtle" size="xs" />

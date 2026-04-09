@@ -84,7 +84,7 @@ Media Server Pro 4 is a mature, feature-rich self-hosted media server. The front
 
 | # | Feature | Gap Description | Evidence | Backend Status | Effort | Impact |
 |---|---------|----------------|----------|---------------|--------|--------|
-| 7 | Compact view mode | Profile preferences offer 3 view modes (grid, list, compact) but index.vue only renders `grid` and `list` — `compact` is never implemented. | `profile.vue` line 431 shows compact button; `index.vue` line 345 only checks for `list` vs `grid` | N/A (frontend-only) | LOW | LOW |
+| ✅ `82a5ac7c` 2026-04-09 | Compact view mode | Implemented compact view: dense text-only layout with type icon, title, and duration. | `index.vue` now supports all 3 modes | N/A (frontend-only) | LOW | LOW |
 | 8 | Media info overlay in player | The player shows media info in a card below the video, but there is no in-player overlay (codec, bitrate, resolution visible while watching). | No overlay component in player template | N/A (frontend-only) | LOW | LOW |
 | 9 | Bulk add to playlist from browse | Users can add items to playlists only one at a time from the player page. No multi-select on the browse grid. | Only `addToPlaylist()` in player.vue; no bulk selection in index.vue | Partial — playlist `addItem` is per-item | MEDIUM | MEDIUM |
 | 10 | Personal "new since last visit" count badge | The backend returns `GET /api/suggestions/new` with a `total` count of items added since last login. The home page shows the row but the nav bar has no notification badge. | `suggestions/new` returns `total`; layout `default.vue` has no badge | YES (backend has data) | LOW | MEDIUM |
