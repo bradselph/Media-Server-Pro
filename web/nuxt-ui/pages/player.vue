@@ -116,11 +116,40 @@ const EQ_PRESETS: Record<string, number[]> = {
 let audioCtx: AudioContext | null = null
 let eqFilters: BiquadFilterNode[] = []
 let sourceNode: MediaElementAudioSourceNode | null = null
+let analyserNode: AnalyserNode | null = null
+const visualizerAnalyser = ref<AnalyserNode | null>(null)
+
+/**
+ * Ensures the shared AudioContext and MediaElementSource are created.
+ * Safe to call multiple times — no-ops if already initialised.
+ * Chain: source → [EQ filters] → analyser → destination
+ */
+function ensureAudioGraph() {
+  if (!videoRef.value || audioCtx) return
+  try {
+    audioCtx = new AudioContext()
+    sourceNode = audioCtx.createMediaElementSource(videoRef.value)
+    analyserNode = audioCtx.createAnalyser()
+    analyserNode.fftSize = 256
+    analyserNode.smoothingTimeConstant = 0.8
+    // Default chain (no EQ): source → analyser → destination
+    sourceNode.connect(analyserNode)
+    analyserNode.connect(audioCtx.destination)
+    visualizerAnalyser.value = analyserNode
+  } catch {
+    // Web Audio unavailable
+  }
+}
 
 function initEqualizer() {
-  if (!videoRef.value || audioCtx) return
-  audioCtx = new AudioContext()
-  sourceNode = audioCtx.createMediaElementSource(videoRef.value)
+  if (!videoRef.value) return
+  ensureAudioGraph()
+  if (!audioCtx || !sourceNode || !analyserNode) return
+  if (eqFilters.length > 0) {
+    // Already have EQ filters — just ensure enabled
+    eqEnabled.value = true
+    return
+  }
   eqFilters = EQ_FREQUENCIES.map((freq, i) => {
     const filter = audioCtx!.createBiquadFilter()
     filter.type = 'peaking'
@@ -129,10 +158,13 @@ function initEqualizer() {
     filter.gain.value = eqBands.value[i]
     return filter
   })
-  // Chain: source → f0 → f1 → ... → f9 → destination
+  // Rewire: source → f0 → ... → f9 → analyser → destination
+  sourceNode.disconnect()
+  analyserNode.disconnect()
   sourceNode.connect(eqFilters[0])
   for (let i = 0; i < eqFilters.length - 1; i++) eqFilters[i].connect(eqFilters[i + 1])
-  eqFilters[eqFilters.length - 1].connect(audioCtx.destination)
+  eqFilters[eqFilters.length - 1].connect(analyserNode)
+  analyserNode.connect(audioCtx.destination)
   eqEnabled.value = true
 }
 
@@ -292,6 +324,13 @@ function onVideoLoaded() {
   if (videoRef.value) {
     videoRef.value.playbackRate = playbackSpeed.value
     videoRef.value.volume = volume.value
+  }
+  // For audio media, pre-wire the audio graph so the visualizer works immediately.
+  // For video with EQ disabled, this is a no-op (ensureAudioGraph is guarded).
+  if (media.value?.type === 'audio') {
+    ensureAudioGraph()
+    // Resume AudioContext if browser suspended it (requires user gesture — play does that)
+    videoRef.value?.addEventListener('play', () => audioCtx?.resume(), { once: true })
   }
   restorePosition()
   playbackStore.startAutoSave()
@@ -882,7 +921,7 @@ watch(mediaId, (id, oldId) => {
           <!-- Audio player -->
           <UCard class="overflow-hidden">
             <div class="flex flex-col items-center py-8 px-4 bg-linear-to-b from-primary/8 to-transparent">
-              <AudioVisualizer :media-element="videoRef" :bars="32" :height="140" class="w-full max-w-md mb-4" />
+              <AudioVisualizer :analyser-node="visualizerAnalyser" :bars="48" :height="160" class="w-full max-w-md mb-4" />
               <p class="font-bold text-xl text-highlighted text-center max-w-md">{{ getDisplayTitle(media) }}</p>
               <div class="flex items-center gap-2 mt-1.5 text-xs text-muted">
                 <span v-if="media.codec" class="uppercase font-medium">{{ media.codec }}</span>
