@@ -73,8 +73,15 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		// Bearer API token (programmatic / headless clients)
-		if bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "); bearer != "" {
+		// Bearer API token via Authorization header (programmatic / headless clients)
+		bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
+		// URL query token fallback — used by RSS readers and other clients that
+		// cannot set arbitrary request headers (e.g. ?token=<api-token>).
+		// Only accepted on the /api/feed route to limit the surface area.
+		if bearer == "" && c.FullPath() == "/api/feed" {
+			bearer = c.Query("token")
+		}
+		if bearer != "" {
 			session, user, tokenErr := authModule.ValidateAPIToken(c.Request.Context(), bearer)
 			if tokenErr == nil {
 				c.Set("session", session)
