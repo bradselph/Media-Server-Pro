@@ -293,9 +293,10 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 
 	// Content negotiation: serve WebP when client accepts it
 	contentType := "image/jpeg"
-	if ext == ".png" {
+	switch ext {
+	case ".png":
 		contentType = "image/png"
-	} else if ext == ".webp" {
+	case ".webp":
 		contentType = "image/webp"
 	}
 	if acceptsWebP(c.Request) && ext != ".webp" {
