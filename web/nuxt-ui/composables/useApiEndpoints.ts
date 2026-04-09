@@ -59,6 +59,9 @@ export function useApiEndpoints() {
   function requestDataDeletion(reason?: string) {
     return api.post<{ status: string; message: string; id: string }>('/api/auth/data-deletion-request', { reason: reason ?? '' })
   }
+  function deleteAccount(password: string) {
+    return api.post<{ status: string; message: string }>('/api/auth/delete-account', { password })
+  }
   async function getPreferences(): Promise<UserPreferences> {
     const raw = await api.get<unknown>('/api/preferences')
     return normalizePreferences(raw)
@@ -69,7 +72,7 @@ export function useApiEndpoints() {
     return normalizePreferences(raw)
   }
   return {
-    login, logout, register, getSession, changePassword, requestDataDeletion,
+    login, logout, register, getSession, changePassword, requestDataDeletion, deleteAccount,
     getPreferences, updatePreferences,
   }
 }

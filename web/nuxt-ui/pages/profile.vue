@@ -35,7 +35,7 @@ definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const router = useRouter()
-const { changePassword, getPreferences, updatePreferences, requestDataDeletion } = useApiEndpoints()
+const { changePassword, getPreferences, updatePreferences, requestDataDeletion, deleteAccount } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
 const { getUsage, getPermissions } = useStorageApi()
 
@@ -210,6 +210,27 @@ async function handleDeletionRequest() {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to submit request', color: 'error', icon: 'i-lucide-x' })
   } finally {
     deletionSubmitting.value = false
+  }
+}
+
+// Self-service account deletion
+const selfDeleteOpen = ref(false)
+const selfDeletePassword = ref('')
+const selfDeleteLoading = ref(false)
+const selfDeleteError = ref<string | null>(null)
+
+async function handleSelfDelete() {
+  selfDeleteError.value = null
+  selfDeleteLoading.value = true
+  try {
+    await deleteAccount(selfDeletePassword.value)
+    // Server clears session cookie; redirect to login
+    await authStore.logout()
+    router.push('/login')
+  } catch (e: unknown) {
+    selfDeleteError.value = e instanceof Error ? e.message : 'Failed to delete account'
+  } finally {
+    selfDeleteLoading.value = false
   }
 }
 
@@ -683,6 +704,25 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
           <template #footer>
             <UButton variant="ghost" color="neutral" label="Cancel" @click="deletionRequestOpen = false" />
             <UButton :loading="deletionSubmitting" color="warning" label="Submit Request" @click="handleDeletionRequest" />
+          </template>
+        </UModal>
+
+        <UDivider class="my-4" />
+
+        <p class="text-sm font-medium text-default mb-1">Delete Account Immediately</p>
+        <p class="text-sm text-muted mb-3">Permanently delete your account and all associated data right now. This cannot be undone.</p>
+        <UButton icon="i-lucide-trash-2" label="Delete My Account" variant="outline" color="error" @click="selfDeleteOpen = true" />
+
+        <UModal v-model:open="selfDeleteOpen" title="Delete Your Account" description="This is permanent and cannot be undone. All your data will be deleted immediately.">
+          <template #body>
+            <p class="text-sm text-muted mb-4">Enter your password to confirm account deletion.</p>
+            <UFormField label="Password" :error="selfDeleteError ?? undefined">
+              <UInput v-model="selfDeletePassword" type="password" placeholder="Your current password" @keydown.enter="handleSelfDelete" />
+            </UFormField>
+          </template>
+          <template #footer>
+            <UButton variant="ghost" color="neutral" label="Cancel" @click="selfDeleteOpen = false; selfDeletePassword = ''; selfDeleteError = null" />
+            <UButton :loading="selfDeleteLoading" color="error" icon="i-lucide-trash-2" label="Delete My Account" :disabled="!selfDeletePassword" @click="handleSelfDelete" />
           </template>
         </UModal>
       </UCard>
