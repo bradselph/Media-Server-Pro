@@ -273,7 +273,9 @@ func TestBindJSON_EmptyErrMsg(t *testing.T) {
 	BindJSON(c, &dest, "")
 	// Should use the default error constant
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
 	if resp["error"] == "" {
 		t.Error("should use default error when errMsg is empty")
 	}

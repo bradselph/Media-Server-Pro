@@ -1,12 +1,14 @@
 package hls
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/models"
 )
+
 
 // ---------------------------------------------------------------------------
 // isSegmentLine
@@ -46,14 +48,14 @@ func TestRewritePlaylistLines_Simple(t *testing.T) {
 		t.Fatal("result should not be empty")
 	}
 	// Comment lines should be preserved as-is
-	if !containsStr(got, "#EXTM3U") {
+	if !strings.Contains(got, "#EXTM3U") {
 		t.Error("should preserve #EXTM3U tag")
 	}
 	// Segment lines should be rewritten with base URL
-	if !containsStr(got, "/hls/job123/720p/seg001.ts") {
+	if !strings.Contains(got, "/hls/job123/720p/seg001.ts") {
 		t.Errorf("should rewrite segment URI, got:\n%s", got)
 	}
-	if !containsStr(got, "/hls/job123/720p/seg002.ts") {
+	if !strings.Contains(got, "/hls/job123/720p/seg002.ts") {
 		t.Errorf("should rewrite second segment URI, got:\n%s", got)
 	}
 }
@@ -61,10 +63,10 @@ func TestRewritePlaylistLines_Simple(t *testing.T) {
 func TestRewritePlaylistLines_PreservesComments(t *testing.T) {
 	data := []byte("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:10.0,\nseg.ts\n#EXT-X-ENDLIST\n")
 	got := string(rewritePlaylistLines(data, "/base/"))
-	if !containsStr(got, "#EXT-X-VERSION:3") {
+	if !strings.Contains(got, "#EXT-X-VERSION:3") {
 		t.Error("should preserve version tag")
 	}
-	if !containsStr(got, "#EXT-X-ENDLIST") {
+	if !strings.Contains(got, "#EXT-X-ENDLIST") {
 		t.Error("should preserve endlist tag")
 	}
 }
@@ -289,12 +291,3 @@ func TestParseProbeHeight_InvalidJSON(t *testing.T) {
 	}
 }
 
-// helper
-func containsStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}

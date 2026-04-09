@@ -454,5 +454,3 @@ func newTestBackend(t *testing.T) *Backend {
 	}
 	return b
 }
-
-func new(fi storage.FileInfo) *storage.FileInfo { return &fi }

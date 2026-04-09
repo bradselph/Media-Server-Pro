@@ -108,9 +108,16 @@ func TestGetClientIP_XRealIP(t *testing.T) {
 	req.RemoteAddr = "10.0.0.1:1234"
 	req.Header.Set("X-Real-IP", "203.0.113.100")
 	ip := getClientIP(req, nil)
-	// X-Real-IP should be considered (exact behavior depends on implementation)
+	// RemoteAddr 10.0.0.1 is private/trusted, so X-Real-IP or X-Forwarded-For
+	// should be consulted. The exact returned value depends on which header the
+	// implementation prefers, but it must not be empty.
 	if ip == "" {
 		t.Error("should return a non-empty IP")
+	}
+	// When the remote is trusted and X-Real-IP is set, the implementation
+	// should return the X-Real-IP value.
+	if ip != "203.0.113.100" && ip != "10.0.0.1" {
+		t.Errorf("getClientIP = %q, want 203.0.113.100 or 10.0.0.1", ip)
 	}
 }
 
@@ -121,7 +128,7 @@ func TestGetClientIP_ExtraTrusted(t *testing.T) {
 	_, cidr, _ := net.ParseCIDR("172.16.0.0/12")
 	ip := getClientIP(req, []*net.IPNet{cidr})
 	if ip != "203.0.113.50" {
-		t.Logf("with extra trusted CIDR, getClientIP = %q", ip)
+		t.Errorf("with extra trusted CIDR, getClientIP = %q, want 203.0.113.50", ip)
 	}
 }
 

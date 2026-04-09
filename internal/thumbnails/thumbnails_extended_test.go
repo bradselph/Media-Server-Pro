@@ -1,6 +1,7 @@
 package thumbnails
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -52,7 +53,7 @@ func TestGetThumbnailPathByIndex_Preview(t *testing.T) {
 		t.Error("path should not be empty")
 	}
 	// Preview index is N-1 in the filename
-	if !containsStr(got, "preview_2") {
+	if !strings.Contains(got, "preview_2") {
 		t.Errorf("index 3 should produce preview_2 filename, got %q", got)
 	}
 }
@@ -78,12 +79,3 @@ func TestGetThumbnailPathWebp_NoJpg(t *testing.T) {
 	}
 }
 
-// helper
-func containsStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}

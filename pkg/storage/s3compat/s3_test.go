@@ -85,7 +85,9 @@ func TestNew_HTTPEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = b // Client should be created with secure=false
+	if b.IsLocal() {
+		t.Error("S3 backend should not be local")
+	}
 }
 
 func TestNew_HTTPSEndpoint(t *testing.T) {
@@ -96,7 +98,9 @@ func TestNew_HTTPSEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = b
+	if b.IsLocal() {
+		t.Error("S3 backend should not be local")
+	}
 }
 
 // ---------------------------------------------------------------------------

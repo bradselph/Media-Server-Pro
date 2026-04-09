@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"media-server-pro/pkg/models"
 )
 
 // ---------------------------------------------------------------------------
@@ -200,5 +198,3 @@ func TestAdminPermissions(t *testing.T) {
 	}
 }
 
-// Make sure models is used
-var _ = models.UserPreferences{}
