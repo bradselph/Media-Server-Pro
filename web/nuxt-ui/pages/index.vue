@@ -2,7 +2,7 @@
 import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
-import { formatDuration } from '~/utils/format'
+import { formatDuration, formatBytes, formatRelativeDate, formatResolution, formatBitrate } from '~/utils/format'
 import { blurHashToDataUrl } from '~/utils/blurhash'
 
 const TYPE_OPTIONS = [
@@ -829,8 +829,12 @@ onUnmounted(() => {
             loading="lazy"
             @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, item.id)"
           />
+          <div v-else-if="item.type === 'audio'" class="w-full h-full flex flex-col items-center justify-center bg-linear-to-br from-primary/10 to-primary/5 gap-2">
+            <AudioBars size="lg" :bars="7" class="opacity-70 group-hover:opacity-100 transition-opacity" />
+            <span class="text-[10px] font-medium text-muted uppercase tracking-wider">{{ item.codec || 'Audio' }}</span>
+          </div>
           <div v-else class="w-full h-full flex items-center justify-center">
-            <UIcon :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
+            <UIcon name="i-lucide-film" class="size-8 text-muted" />
           </div>
           <!-- Mature gate overlay (guests + users with show_mature disabled) -->
           <div
@@ -898,7 +902,13 @@ onUnmounted(() => {
         <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
-        <p v-if="item.category && !(item.is_mature && !canViewMature)" class="text-xs text-muted truncate">{{ item.category }}</p>
+        <p v-if="!(item.is_mature && !canViewMature)" class="text-xs text-muted truncate">
+          <template v-if="item.category">{{ item.category }}</template>
+          <template v-if="item.category && (item.codec || item.size)"> · </template>
+          <template v-if="item.type === 'audio' && item.codec">{{ item.codec.toUpperCase() }}</template>
+          <template v-else-if="item.type === 'video' && item.height">{{ formatResolution(item.width, item.height) }}</template>
+          <template v-if="item.size && !item.category && !item.codec && !item.height">{{ formatBytes(item.size) }}</template>
+        </p>
         <!-- Tag chips — click to filter by tag (hidden for gated items) -->
         <div
           v-if="item.tags?.length && !(item.is_mature && !canViewMature)"
@@ -931,12 +941,13 @@ onUnmounted(() => {
       >
         <UIcon
           :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'"
-          class="size-4 text-muted shrink-0"
+          :class="['size-4 shrink-0', item.type === 'audio' ? 'text-primary' : 'text-muted']"
         />
         <span class="text-sm truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </span>
-        <span v-if="item.duration" class="text-xs text-muted shrink-0 ml-auto font-mono">{{ formatDuration(item.duration) }}</span>
+        <span v-if="item.codec" class="text-[10px] text-muted/60 shrink-0 uppercase">{{ item.codec }}</span>
+        <span class="text-xs text-muted shrink-0 ml-auto font-mono tabular-nums">{{ formatDuration(item.duration) || formatBytes(item.size) }}</span>
       </NuxtLink>
       <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
         No media found.
@@ -951,6 +962,7 @@ onUnmounted(() => {
           { accessorKey: 'name', header: 'Name' },
           { accessorKey: 'type', header: 'Type' },
           { accessorKey: 'duration', header: 'Duration' },
+          { accessorKey: 'size', header: 'Size' },
           { accessorKey: 'category', header: 'Category' },
           { accessorKey: 'views', header: 'Views' },
           { accessorKey: 'date_added', header: 'Added' },
@@ -963,7 +975,7 @@ onUnmounted(() => {
               :style="row.original.blur_hash ? { backgroundImage: `url(${blurHashToDataUrl(row.original.blur_hash)})`, backgroundSize: 'cover' } : {}"
             >
               <img
-                v-if="!failedThumbnails.has(row.original.id)"
+                v-if="row.original.type !== 'audio' && !failedThumbnails.has(row.original.id)"
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
                 :alt="getDisplayTitle(row.original)"
                 width="64"
@@ -972,25 +984,41 @@ onUnmounted(() => {
                 loading="lazy"
                 @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, row.original.id)"
               />
+              <div v-else-if="row.original.type === 'audio'" class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
+                <AudioBars size="xs" :bars="5" />
+              </div>
               <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon :name="row.original.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-4 text-muted" />
+                <UIcon name="i-lucide-film" class="size-4 text-muted" />
               </div>
               <div v-if="row.original.is_mature && !canViewMature" class="absolute inset-0 flex items-center justify-center bg-black/80">
                 <UIcon name="i-lucide-lock" class="size-3 text-white" />
               </div>
             </div>
-            <span class="font-medium truncate max-w-xs">{{ getDisplayTitle(row.original) }}</span>
+            <div class="min-w-0">
+              <span class="font-medium truncate block max-w-xs">{{ getDisplayTitle(row.original) }}</span>
+              <span v-if="row.original.codec" class="text-[10px] text-muted uppercase">{{ row.original.codec }}</span>
+            </div>
           </NuxtLink>
         </template>
         <template #type-cell="{ row }">
-          <UBadge :label="row.original.type" color="neutral" variant="subtle" size="xs" />
+          <UBadge
+            :label="row.original.type"
+            :color="row.original.type === 'audio' ? 'info' : 'neutral'"
+            variant="subtle"
+            size="xs"
+          />
         </template>
         <template #duration-cell="{ row }">
-          <span class="font-mono text-sm">{{ formatDuration(row.original.duration) || '—' }}</span>
+          <span class="font-mono text-sm tabular-nums">{{ formatDuration(row.original.duration) || '—' }}</span>
+        </template>
+        <template #size-cell="{ row }">
+          <span class="text-sm text-muted">{{ formatBytes(row.original.size) }}</span>
         </template>
         <template #views-cell="{ row }">{{ (row.original.views ?? 0).toLocaleString() }}</template>
         <template #date_added-cell="{ row }">
-          <span class="text-sm text-muted">{{ row.original.date_added ? new Date(row.original.date_added).toLocaleDateString() : '—' }}</span>
+          <span class="text-sm text-muted" :title="row.original.date_added ? new Date(row.original.date_added).toLocaleString() : ''">
+            {{ formatRelativeDate(row.original.date_added) }}
+          </span>
         </template>
       </UTable>
       <p v-if="items.length === 0" class="text-center py-8 text-muted">No media found.</p>
