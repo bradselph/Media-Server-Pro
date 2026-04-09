@@ -255,16 +255,18 @@ func (h *Handler) AdminDownloaderSettings(c *gin.Context) {
 		return
 	}
 
-	// Map to frontend shape; downloader service may not expose all fields
-	out := map[string]interface{}{
-		"allowServerStorage": resp.AllowServerStorage,
-		"audioFormat":        resp.AudioFormat,
-		"supportedSites":    resp.SupportedSites,
+	sites := resp.SupportedSites
+	if sites == nil {
+		sites = []string{}
 	}
-	if resp.SupportedSites == nil {
-		out["supportedSites"] = []string{}
-	}
-	writeSuccess(c, out)
+	writeSuccess(c, map[string]interface{}{
+		"allowServerStorage":     resp.AllowServerStorage,
+		"audioFormat":            resp.AudioFormat,
+		"supportedSites":         sites,
+		"theme":                  resp.Theme,
+		"browserRelayConfigured": resp.BrowserRelayConfigured,
+		"downloadsDir":           h.config.Get().Downloader.DownloadsDir,
+	})
 }
 
 // AdminDownloaderImportable lists files ready to import from the downloader.
