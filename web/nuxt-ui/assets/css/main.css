@@ -48,3 +48,13 @@ body {
 .log-line.info  { color: var(--ui-text); }
 .log-line.warn  { color: rgb(234 179 8); }
 .log-line.error { color: rgb(239 68 68); }
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
