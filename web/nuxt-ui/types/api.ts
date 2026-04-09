@@ -945,14 +945,18 @@ export interface DownloaderProgress {
 }
 
 export interface DownloaderSettings {
-  maxConcurrent?: number
-  downloadsDir?: string
   allowServerStorage: boolean
   audioFormat?: string
+  supportedSites?: string[]
+  // Fields below are declared in the type but not currently returned by the
+  // backend (admin_downloader.go returns only the 3 fields above).  They are
+  // kept optional so the admin UI template compiles and will render them if
+  // the backend is extended later.
+  maxConcurrent?: number
+  downloadsDir?: string
   audioQuality?: string
   videoFormat?: string
   proxy?: { enabled: boolean }
-  supportedSites?: string[]
 }
 
 export interface ImportableFile {
