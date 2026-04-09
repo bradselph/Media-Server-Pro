@@ -304,6 +304,8 @@ export function useHLS(
         if (status.available && status.hls_url) {
           hlsAvailable.value = true
           hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
+          // Auto-activate HLS when available — no user action needed
+          activateHLS()
         } else if (status.status === 'running') {
           jobRunning.value = true
           jobProgress.value = status.progress
@@ -332,6 +334,8 @@ export function useHLS(
                   clearInterval(pollTimer)
                   pollTimer = null
                 }
+                // Auto-activate once generation completes
+                activateHLS()
               } else if (updated.status !== 'running' && updated.status !== 'pending') {
                 jobRunning.value = false
                 if (pollTimer) {
