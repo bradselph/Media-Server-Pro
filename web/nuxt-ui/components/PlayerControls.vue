@@ -158,14 +158,14 @@ function copyLinkAtTime() {
       </span>
 
       <div class="ml-auto flex items-center gap-2">
-        <UButton :label="`${playbackSpeed}x`" aria-label="Playback speed" variant="ghost" color="neutral" size="sm" class="text-white text-xs" @click="emit('cycle-speed')" />
+        <UButton :label="`${playbackSpeed}x`" :aria-label="`Playback speed: ${playbackSpeed}x`" variant="ghost" color="neutral" size="sm" class="text-white text-xs" @click="emit('cycle-speed')" />
 
         <!-- Quality selector (HLS only) -->
         <UDropdownMenu v-if="qualities.length > 0" :items="qualityMenuItems">
           <UButton
             :label="currentQualityLabel"
             icon="i-lucide-layers"
-            aria-label="Video quality"
+            :aria-label="`Video quality: ${currentQualityLabel}`"
             variant="ghost"
             color="neutral"
             size="sm"
