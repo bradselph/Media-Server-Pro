@@ -49,6 +49,14 @@ body {
 .log-line.warn  { color: rgb(234 179 8); }
 .log-line.error { color: rgb(239 68 68); }
 
+/* Ensure icon-only buttons meet 44px minimum touch target on mobile */
+@media (pointer: coarse) {
+  button:not([disabled]) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* Respect user's motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
