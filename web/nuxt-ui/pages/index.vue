@@ -469,6 +469,7 @@ onUnmounted(() => {
 
 <template>
   <UContainer class="py-6 space-y-6">
+    <h1 class="sr-only">Media Library</h1>
     <!-- Recommendations (logged-in only) -->
     <template v-if="authStore.isLoggedIn">
       <!-- Continue Watching -->
