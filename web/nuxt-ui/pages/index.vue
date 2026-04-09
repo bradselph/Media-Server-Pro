@@ -687,6 +687,8 @@ onUnmounted(() => {
         v-model="params.search"
         icon="i-lucide-search"
         placeholder="Search media…"
+        autocomplete="on"
+        name="media-search"
         class="w-64"
         @input="onSearchInput"
       />
