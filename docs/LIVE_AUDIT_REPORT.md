@@ -87,9 +87,9 @@ The site is in solid working condition with all core features functional: media 
 | M3 | All | Images missing explicit width/height attributes | All 103 images on home page lack `width` and `height` attributes, which can cause Cumulative Layout Shift (CLS) as images load. | CWV / CLS |
 | M4 | Home | Recommendation sections lack horizontal scroll controls | Continue Watching, Trending, Recommended rows are horizontal carousels but have no visible prev/next buttons for keyboard/mouse navigation. | UX |
 | M5 | Profile | Watch history shows duplicate entries | Same media appears multiple times in watch history (e.g., "f3lq9FCn" appears 3 times, "Hot Poly Girlfriends" 3 times) with slightly different timestamps. Consider deduplicating to show only the latest entry per media item. | UX |
-| M6 | Profile | Watch progress shows "0% watched" for items with 26% actual progress | f3lq9FCn shows "0% watched" but actual position is 76/292 (26%). The display appears to truncate or round down incorrectly. | Bug |
+| ✅ `24731bd3` 2026-04-09 | Watch progress shows "0% watched" for 26% actual | Backend stores progress as 0-1 ratio; frontend now normalizes to percentage. | Bug |
 | M7 | Home | Media card titles display raw filenames | Titles like "f3lq9FCn.mp4", "D0FtKuAz.mp4", "n0TIoFEr.mp4" are raw filenames with no human-readable names. While some media has clean titles, these appear to have no metadata set. | UX |
-| M8 | Home | File extension shown in media titles | Media titles include file extensions (.mp4, .mp3). These should be stripped for cleaner display. | UX |
+| ✅ `da7573f5` 2026-04-09 | File extension shown in media titles | Recommendation rows now use getDisplayTitle() which strips extensions. | UX |
 | M9 | Categories | Empty categories page | "No categories found" message shown. All 290 items are in "uncategorized". The auto-categorizer may not be running or effective. | Feature gap |
 
 ### LOW (polish / cosmetic / improvement)
