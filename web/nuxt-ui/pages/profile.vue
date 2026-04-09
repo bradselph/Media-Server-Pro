@@ -553,7 +553,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               <div class="flex items-center gap-2 mt-0.5">
                 <p class="text-xs text-muted">
                   <span v-if="!item.completed">{{ Math.round((item.progress > 1 ? item.progress : item.progress * 100) ) }}%</span>
-                  <span v-if="item.duration"> · {{ formatDuration(item.position) }} / {{ formatDuration(item.duration) }}</span>
+                  <span v-if="item.duration"> · {{ formatDuration(item.position) || '0:00' }} / {{ formatDuration(item.duration) }}</span>
                   <span v-if="item.watched_at"> · {{ formatRelativeDate(item.watched_at) }}</span>
                 </p>
               </div>

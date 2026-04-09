@@ -2,7 +2,7 @@
 import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
-import { formatDuration, formatBytes, formatRelativeDate, formatResolution, formatBitrate } from '~/utils/format'
+import { formatDuration, formatBytes, formatRelativeDate, formatResolution } from '~/utils/format'
 import { blurHashToDataUrl } from '~/utils/blurhash'
 
 const TYPE_OPTIONS = [
@@ -902,12 +902,13 @@ onUnmounted(() => {
         <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
-        <p v-if="!(item.is_mature && !canViewMature)" class="text-xs text-muted truncate">
-          <template v-if="item.category">{{ item.category }}</template>
-          <template v-if="item.category && (item.codec || item.size)"> · </template>
-          <template v-if="item.type === 'audio' && item.codec">{{ item.codec.toUpperCase() }}</template>
-          <template v-else-if="item.type === 'video' && item.height">{{ formatResolution(item.width, item.height) }}</template>
-          <template v-if="item.size && !item.category && !item.codec && !item.height">{{ formatBytes(item.size) }}</template>
+        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size)" class="text-xs text-muted truncate">
+          {{ [
+            item.category,
+            item.type === 'audio' && item.codec ? item.codec.toUpperCase() : null,
+            item.type === 'video' && item.height ? formatResolution(item.width, item.height) : null,
+            !item.category && !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
+          ].filter(Boolean).join(' · ') }}
         </p>
         <!-- Tag chips — click to filter by tag (hidden for gated items) -->
         <div
