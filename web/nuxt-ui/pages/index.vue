@@ -710,7 +710,7 @@ onUnmounted(() => {
         external
       />
       <div class="ml-auto flex items-center gap-1">
-        <p class="text-sm text-muted mr-2">{{ total.toLocaleString() }} items</p>
+        <p class="text-sm text-muted mr-2" aria-live="polite" aria-atomic="true">{{ total.toLocaleString() }} items</p>
         <UButtonGroup>
           <UButton
             icon="i-lucide-grid-2x2"
