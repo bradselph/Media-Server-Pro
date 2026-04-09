@@ -468,8 +468,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	receiverSlave.POST("/register", h.ReceiverRegisterSlave)
 	receiverSlave.POST("/catalog", h.ReceiverPushCatalog)
 	receiverSlave.POST("/heartbeat", h.ReceiverHeartbeat)
-	// Stream push — slave delivers file data in response to a WS stream_request
-	api.POST("/receiver/stream-push/:token", h.ReceiverStreamPush)
+	// Stream push — slave delivers file data in response to a WS stream_request.
+	// Part of the receiver slave group: RequireReceiverWithAPIKey middleware handles auth.
+	receiverSlave.POST("/stream-push/:token", h.ReceiverStreamPush)
 
 	// Receiver media browsing — admin only (exposes slave IDs, paths, internal topology).
 	// Regular users see slave media seamlessly through the unified /api/media listing.

@@ -131,6 +131,7 @@ func GinSecurityHeaders(csp string, hstsMaxAge int) gin.HandlerFunc {
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-XSS-Protection", "1; mode=block")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
 
 		if csp != "" {
 			c.Header("Content-Security-Policy", csp)

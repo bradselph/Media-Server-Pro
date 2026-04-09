@@ -75,7 +75,9 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 
 	// Update last_used_at asynchronously — don't block the request on a non-critical write.
 	go func() {
-		_ = m.tokenRepo.UpdateLastUsed(context.Background(), hash)
+		if err := m.tokenRepo.UpdateLastUsed(context.Background(), hash); err != nil {
+			m.log.Warn("Failed to update API token last_used_at: %v", err)
+		}
 	}()
 
 	// Synthetic session — not stored in the sessions table; used only for context propagation.
