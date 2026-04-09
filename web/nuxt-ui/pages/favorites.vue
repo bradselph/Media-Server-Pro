@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FavoriteItem, MediaItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatDuration } from '~/utils/format'
+import { formatDuration, formatRelativeDate } from '~/utils/format'
 import { useFavoritesApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Favorites', middleware: 'auth' })
@@ -102,8 +102,11 @@ watch(() => authStore.user, (user) => {
               loading="lazy"
               @error="failedThumbnails.add(fav.media_id)"
             />
+            <div v-else-if="mediaMap[fav.media_id]?.type === 'audio'" class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
+              <AudioBars size="sm" :bars="5" />
+            </div>
             <div v-else class="w-full h-full flex items-center justify-center">
-              <UIcon :name="mediaMap[fav.media_id]?.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-8 text-muted" />
+              <UIcon name="i-lucide-film" class="size-8 text-muted" />
             </div>
             <!-- Duration badge -->
             <div
@@ -116,7 +119,7 @@ watch(() => authStore.user, (user) => {
           <p class="text-sm font-medium truncate" :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_path">
             {{ mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_path.split('/').pop() }}
           </p>
-          <p v-if="fav.added_at" class="text-xs text-muted">Saved {{ new Date(fav.added_at).toLocaleDateString() }}</p>
+          <p v-if="fav.added_at" class="text-xs text-muted" :title="new Date(fav.added_at).toLocaleString()">Saved {{ formatRelativeDate(fav.added_at) }}</p>
         </NuxtLink>
         <button
           class="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"

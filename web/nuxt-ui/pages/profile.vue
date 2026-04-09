@@ -2,6 +2,7 @@
 import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, APIToken, APITokenCreated, RatedItem } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { formatRelativeDate, formatDuration } from '~/utils/format'
 import { useAPITokensApi, useRatingsApi } from '~/composables/useApiEndpoints'
 
 const QUALITY_OPTIONS = [
@@ -551,9 +552,14 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               </div>
               <div class="flex items-center gap-2 mt-0.5">
                 <p class="text-xs text-muted">
-                  {{ item.completed ? 'Completed' : `${Math.round((item.progress > 1 ? item.progress : item.progress * 100))}% watched` }}
-                  <span v-if="item.watched_at"> · {{ new Date(item.watched_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
+                  <span v-if="!item.completed">{{ Math.round((item.progress > 1 ? item.progress : item.progress * 100) ) }}%</span>
+                  <span v-if="item.duration"> · {{ formatDuration(item.position) }} / {{ formatDuration(item.duration) }}</span>
+                  <span v-if="item.watched_at"> · {{ formatRelativeDate(item.watched_at) }}</span>
                 </p>
+              </div>
+              <!-- Mini progress bar for incomplete items -->
+              <div v-if="!item.completed && item.progress > 0" class="mt-1 h-0.5 w-full max-w-32 rounded-full bg-muted/50 overflow-hidden">
+                <div class="h-full bg-primary rounded-full" :style="{ width: `${Math.min(100, Math.round((item.progress > 1 ? item.progress : item.progress * 100)))}%` }" />
               </div>
             </div>
             <UButton
