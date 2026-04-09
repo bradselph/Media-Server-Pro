@@ -18,7 +18,7 @@ defineProps<{
 
 <template>
   <div
-    class="audio-bars flex items-end justify-center gap-[2px]"
+    class="audio-bars flex items-end justify-center gap-0.5"
     :class="[
       size === 'xs' ? 'h-5' : size === 'lg' ? 'h-16' : size === 'md' ? 'h-10' : 'h-8',
       color || 'text-primary',

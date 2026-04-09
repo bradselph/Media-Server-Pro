@@ -109,7 +109,7 @@ function copyLinkAtTime() {
 <template>
   <!-- Controls overlay -->
   <div
-    class="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent transition-opacity"
+    class="absolute bottom-0 left-0 right-0 p-3 bg-linear-to-t from-black/80 to-transparent transition-opacity"
     :class="showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'"
     @click.stop
   >
