@@ -191,7 +191,11 @@ onMounted(load)
         ]"
       >
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs" :title="row.original.id ?? ''">{{ row.original.id?.slice(0, 12) }}…</span>
+          <button
+            class="font-mono text-xs hover:text-primary cursor-pointer"
+            :title="`${row.original.id} (click to copy)`"
+            @click="navigator.clipboard.writeText(row.original.id ?? ''); toast.add({ title: 'ID copied', color: 'success', icon: 'i-lucide-check' })"
+          >{{ row.original.id?.slice(0, 12) }}…</button>
         </template>
         <template #status-cell="{ row }">
           <UBadge :label="row.original.status" :color="statusColor(row.original.status)" variant="subtle" size="xs" />
