@@ -23,14 +23,22 @@ Media Server Pro 4 is a mature, feature-rich self-hosted media server. The front
 
 ## P0 — Quick Wins (Backend ready, just needs UI)
 
-### 1. Self-Service Account Deletion (no UI)
+### ✅ `b8958e01` 2026-04-09 — Self-Service Account Deletion
+> **Resolved**: Added password-confirmed delete button to profile Data Privacy card. Soft "Request Data Deletion" option retained as alternative.
+> **Verified**: pending deploy
+
+### ~~1. Self-Service Account Deletion (no UI)~~ (ORIGINAL)
 **What's missing**: The backend has `POST /api/auth/delete-account` (confirmed in `api/routes/routes.go` line 389 and `types/openapi.generated.ts` line 754) which lets users delete their own account with password confirmation. However, the frontend profile page (`pages/profile.vue`) only offers a "Data Deletion Request" form (which goes to admin review) — there is no direct self-service delete button.
 **Evidence**: Route registered at `api.POST("/auth/delete-account", requireAuth(), h.DeleteAccount)`. No reference to `/auth/delete-account` in any `.vue` file.
 **Backend support**: Fully implemented — requires password confirmation.
 **User impact**: HIGH — users who want to leave have no way to immediately remove their account without admin intervention.
 **Suggested UI**: Add a "Delete My Account" section to the Data Privacy card on the profile page, with a password confirmation modal. The existing "Request Data Deletion" can remain as a softer alternative.
 
-### 2. Personal Watch Statistics Dashboard
+### ✅ `8addd702` 2026-04-09 — Personal Watch Statistics Dashboard
+> **Resolved**: "My Stats" card added to profile page showing total views, watch time, media type percentages, and top 5 genres as proportional bars. Fetches from /api/suggestions/profile.
+> **Verified**: pending deploy
+
+### ~~2. Personal Watch Statistics Dashboard~~ (ORIGINAL)
 **What's missing**: The backend stores rich per-user data in `suggestion_profiles` (total_views, total_watch_time, category_scores, type_preferences) and `suggestion_view_history` (per-item view_count, total_time, rating, completed_at). The API exposes `GET /api/suggestions/profile` (returns `UserProfile` with total_views, total_watch_time, category_scores, type_preferences). The frontend calls this endpoint (`useSuggestionsApi().getMyProfile()`) but **never displays it anywhere** — it is defined but unused in any page template.
 **Evidence**: `useApiEndpoints.ts` line 174: `getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile')`. No template in any `.vue` file renders UserProfile data. The `UserProfile` type includes `total_views`, `total_watch_time`, `category_scores`, `type_preferences`.
 **Backend support**: Fully implemented — endpoint returns all data.
@@ -85,12 +93,18 @@ Media Server Pro 4 is a mature, feature-rich self-hosted media server. The front
 | # | Feature | Gap Description | Evidence | Backend Status | Effort | Impact |
 |---|---------|----------------|----------|---------------|--------|--------|
 | ✅ `82a5ac7c` 2026-04-09 | Compact view mode | Implemented compact view: dense text-only layout with type icon, title, and duration. | `index.vue` now supports all 3 modes | N/A (frontend-only) | LOW | LOW |
-| 8 | Media info overlay in player | The player shows media info in a card below the video, but there is no in-player overlay (codec, bitrate, resolution visible while watching). | No overlay component in player template | N/A (frontend-only) | LOW | LOW |
-| 9 | Bulk add to playlist from browse | Users can add items to playlists only one at a time from the player page. No multi-select on the browse grid. | Only `addToPlaylist()` in player.vue; no bulk selection in index.vue | Partial — playlist `addItem` is per-item | MEDIUM | MEDIUM |
-| 10 | Personal "new since last visit" count badge | The backend returns `GET /api/suggestions/new` with a `total` count of items added since last login. The home page shows the row but the nav bar has no notification badge. | `suggestions/new` returns `total`; layout `default.vue` has no badge | YES (backend has data) | LOW | MEDIUM |
-| 11 | RSS feed with API token auth | The RSS feed endpoint requires session cookie auth. RSS readers typically use URL-based token auth (e.g. `?token=xxx`). API tokens exist but the feed handler may not accept Bearer tokens via URL parameter. | `routes.go` line 372: `api.GET("/feed", requireAuth(), h.GetRSSFeed)`. Feed readers cannot pass cookies. | PARTIAL — API tokens work via `Authorization: Bearer` header but not URL params | MEDIUM | MEDIUM |
-| 12 | OpenAPI spec browser | The spec is at `GET /api/docs` (requires auth) but there is no Swagger UI or ReDoc viewer. Developers get raw YAML. | `routes.go` line 369: `api.GET("/docs", requireAuth(), h.GetOpenAPISpec)` | YES (spec served) | LOW | LOW |
-| 13 | Public media stats on home page | `GET /api/media/stats` is public (no auth) and returns total_count, video_count, audio_count, total_size. Not displayed to logged-out users. | `routes.go` line 335; not called in index.vue for guests | YES | LOW | LOW |
+| ✅ `4abe1b48` 2026-04-09 | Media info overlay in player | Press I to toggle overlay showing codec, resolution, bitrate, HLS quality/bandwidth, file size. | player.vue | N/A (frontend-only) | LOW | LOW |
+| ~~8~~ | ~~Media info overlay in player~~ | The player shows media info in a card below the video, but there is no in-player overlay (codec, bitrate, resolution visible while watching). | No overlay component in player template | N/A (frontend-only) | LOW | LOW |
+| ✅ `339a31d8` 2026-04-09 | Bulk add to playlist from browse | "Select" button enables multi-select mode; sticky bulk action bar adds all selected items to chosen playlist. | index.vue | N/A (frontend-only) | MEDIUM | MEDIUM |
+| ~~9~~ | ~~Bulk add to playlist from browse~~ | Users can add items to playlists only one at a time from the player page. No multi-select on the browse grid. | Only `addToPlaylist()` in player.vue; no bulk selection in index.vue | Partial — playlist `addItem` is per-item | MEDIUM | MEDIUM |
+| ✅ `a2a7c2fb` 2026-04-09 | Personal "new since last visit" count badge | Badge shown on Home nav link when new items exist since last visit. | default.vue | YES (backend has data) | LOW | MEDIUM |
+| ~~10~~ | ~~Personal "new since last visit" count badge~~ | The backend returns `GET /api/suggestions/new` with a `total` count of items added since last login. The home page shows the row but the nav bar has no notification badge. | `suggestions/new` returns `total`; layout `default.vue` has no badge | YES (backend has data) | LOW | MEDIUM |
+| ✅ `30f2fe67` 2026-04-09 | RSS feed with API token auth | /api/feed now accepts ?token=<api-token> for RSS readers. Bearer header auth still preferred for other endpoints. | routes.go | YES | MEDIUM | MEDIUM |
+| ~~11~~ | ~~RSS feed with API token auth~~ | The RSS feed endpoint requires session cookie auth. RSS readers typically use URL-based token auth (e.g. `?token=xxx`). API tokens exist but the feed handler may not accept Bearer tokens via URL parameter. | `routes.go` line 372: `api.GET("/feed", requireAuth(), h.GetRSSFeed)`. Feed readers cannot pass cookies. | PARTIAL — API tokens work via `Authorization: Bearer` header but not URL params | MEDIUM | MEDIUM |
+| ✅ `80793615` 2026-04-09 | OpenAPI spec browser | /docs page fetches and renders the YAML spec with a Download button. Auth-guarded. | pages/docs.vue | YES (spec served) | LOW | LOW |
+| ~~12~~ | ~~OpenAPI spec browser~~ | The spec is at `GET /api/docs` (requires auth) but there is no Swagger UI or ReDoc viewer. Developers get raw YAML. | `routes.go` line 369: `api.GET("/docs", requireAuth(), h.GetOpenAPISpec)` | YES (spec served) | LOW | LOW |
+| ✅ `bf1a0f9e` 2026-04-09 | Public media stats on home page | Stats bar above filters shows total items, video/audio counts, and total size for logged-out guests. | index.vue | YES | LOW | LOW |
+| ~~13~~ | ~~Public media stats on home page~~ | `GET /api/media/stats` is public (no auth) and returns total_count, video_count, audio_count, total_size. Not displayed to logged-out users. | `routes.go` line 335; not called in index.vue for guests | YES | LOW | LOW |
 
 ---
 

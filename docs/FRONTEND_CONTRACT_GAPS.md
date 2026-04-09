@@ -46,11 +46,9 @@ Audited files:
 - **Frontend** (`api.ts:591-606`): `PermissionsInfo` has no `user_type` or `limits` fields
 - **Severity**: LOW. Extra backend fields are harmlessly ignored.
 
-### 6. DownloaderSettings — backend omits several fields frontend type declares
-
-- **Backend** (`admin_downloader.go:260-267`): Returns only `allowServerStorage`, `audioFormat`, `supportedSites`
-- **Frontend** (`api.ts:948-956`): `DownloaderSettings` declares `maxConcurrent`, `downloadsDir`, `audioQuality`, `videoFormat`, `proxy`
-- **Severity**: MEDIUM. Frontend reads `maxConcurrent`, `downloadsDir`, `audioQuality`, `videoFormat`, `proxy` -- all will be `undefined`. If any component renders these without null checks, it will show "undefined" in the UI.
+### ✅ `ad830f94` 2026-04-09 — DownloaderSettings — backend omits several fields frontend type declares
+> **Resolved**: Backend now returns `downloadsDir`, `theme`, `browserRelayConfigured`. Frontend type removes phantom fields (`maxConcurrent`, `videoFormat`, `audioQuality`, `proxy`). Admin UI updated to reflect actual fields.
+> **Verified**: pending deploy
 
 ### 7. DownloaderHealth — backend `dependencies` is `Record<string, string>`, frontend type is `Record<string, unknown>`
 

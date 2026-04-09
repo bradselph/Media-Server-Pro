@@ -83,7 +83,7 @@ The site is in solid working condition with all core features functional: media 
 | # | Page | Issue | Notes | Standard |
 |---|------|-------|-------|----------|
 | ✅ `c5f2b3b3` 2026-04-09 | No `prefers-reduced-motion` CSS rules | Added global reduced-motion media query to main.css. | WCAG 2.3.3 |
-| M2 | All | No print stylesheet | No print media queries detected. Printing media lists or playlists will include nav/footer chrome. | UX |
+| ✅ `9c17f8c5` 2026-04-09 | No print stylesheet | Added @media print: hides nav/header/footer chrome, sets serif font, shows URLs after links. | UX |
 | ✅ `a88c27c4` 2026-04-09 | Images missing explicit width/height attributes | Added width/height to all thumbnail images on home page. | CWV / CLS |
 | ✅ `4e8317a5` 2026-04-09 | Recommendation sections lack horizontal scroll controls | Added chevron prev/next buttons to all carousel rows. | UX |
 | ✅ `61d3a493` 2026-04-09 | Watch history shows duplicate entries | Frontend deduplicates by media_id, showing only latest entry per item. | UX |
@@ -97,13 +97,13 @@ The site is in solid working condition with all core features functional: media 
 | # | Page | Issue | Notes |
 |---|------|-------|-------|
 | ✅ Standard behavior | `aria-current="page"` set on logo link | NuxtLink sets aria-current="page" on exact route match — correct behavior. |
-| L2 | All | Lighthouse "label-content-name-mismatch" | Some visible text labels don't match their accessible names exactly. |
-| L3 | Home | Sections repeat the same media items | The same items appear in Continue Watching, Trending, and Recommended sections simultaneously. |
+| ✅ `0321e9d1` 2026-04-09 | Lighthouse "label-content-name-mismatch" | PlayerControls speed and quality buttons now include visible text in aria-label. |
+| ✅ `fddac37d` 2026-04-09 | Sections repeat the same media items | Frontend deduplicates across rows in priority order (continueWatching → onDeck → trending → recommended → recent). |
 | ✅ Already implemented | Page title is just media filename | useHead uses getDisplayTitle() which strips extensions. |
 | L5 | Admin | System tab URL not reflected as `?tab=system` | Admin tab navigation uses buttons but the URL `?tab=streaming` pattern works. Good. |
 | ✅ Already implemented | No confirmation dialog for "Clear All" watch history | Confirmation modal already exists (clearHistoryConfirmOpen). |
 | ✅ `b085cd82` 2026-04-09 | Upload button disabled with no explanation | Added "Select files to upload" helper text. |
-| L8 | Home | Search input uses `autocomplete="off"` | Search could benefit from `autocomplete` for returning users. |
+| ✅ `eb61ad55` 2026-04-09 | Search input uses `autocomplete="off"` | Added autocomplete="on" and name="media-search" so browsers offer previous search terms. |
 | ✅ `dfe9c01d` 2026-04-09 | HLS jobs show truncated UUIDs | IDs now clickable to copy full UUID; tooltip shows full ID. |
 
 ## Security Audit
