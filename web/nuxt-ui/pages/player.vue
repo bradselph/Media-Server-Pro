@@ -85,6 +85,18 @@ watch(
 // Auto-next: play next suggestion when current media ends (non-playlist context)
 const autoNextEnabled = ref(true)
 
+// Share at timestamp
+const linkCopied = ref(false)
+function copyTimestampLink() {
+  const t = Math.floor(currentTime.value)
+  const url = new URL(window.location.href)
+  if (t > 0) url.searchParams.set('t', String(t))
+  else url.searchParams.delete('t')
+  navigator.clipboard.writeText(url.toString())
+  linkCopied.value = true
+  setTimeout(() => { linkCopied.value = false }, 2000)
+}
+
 // Graphic Equalizer (Web Audio API)
 const eqEnabled = ref(false)
 const eqBands = ref([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
@@ -995,6 +1007,14 @@ watch(mediaId, (id, oldId) => {
               :color="autoNextEnabled ? 'primary' : 'neutral'"
               size="sm"
               @click="autoNextEnabled = !autoNextEnabled"
+            />
+            <UButton
+              icon="i-lucide-share-2"
+              :label="linkCopied ? 'Copied!' : 'Share'"
+              :variant="linkCopied ? 'solid' : 'outline'"
+              :color="linkCopied ? 'success' : 'neutral'"
+              size="sm"
+              @click="copyTimestampLink"
             />
           </div>
 
