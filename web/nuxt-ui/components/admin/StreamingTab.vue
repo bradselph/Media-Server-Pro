@@ -214,6 +214,7 @@ onMounted(load)
         <template #actions-cell="{ row }">
           <UButton
             icon="i-lucide-trash-2"
+            :aria-label="`Delete HLS job ${row.original.id}`"
             size="xs"
             variant="ghost"
             color="error"
