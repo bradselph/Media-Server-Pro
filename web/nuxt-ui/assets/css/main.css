@@ -66,3 +66,55 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Print styles — hide nav/footer chrome, show content cleanly */
+@media print {
+  header, footer, nav, aside,
+  .no-print, [data-no-print] {
+    display: none !important;
+  }
+
+  body {
+    font-family: serif;
+    font-size: 11pt;
+    color: #000;
+    background: #fff;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: underline;
+  }
+
+  /* Show full URL after links for reference */
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #555;
+  }
+
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+
+  p, li {
+    orphans: 3;
+    widows: 3;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th, td {
+    border: 1px solid #ccc;
+    padding: 4pt 6pt;
+    text-align: left;
+  }
+}
