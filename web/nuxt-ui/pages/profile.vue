@@ -111,6 +111,26 @@ async function removeItem(id: string) {
 }
 
 const clearHistoryConfirmOpen = ref(false)
+const exportingCsv = ref(false)
+
+async function exportWatchHistoryCsv() {
+  exportingCsv.value = true
+  try {
+    const res = await fetch('/api/watch-history/export', { credentials: 'include' })
+    if (!res.ok) throw new Error(`Export failed: ${res.status}`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `watch-history-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Export failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    exportingCsv.value = false
+  }
+}
 
 async function doClearHistory() {
   clearHistoryConfirmOpen.value = false
@@ -473,9 +493,8 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
                 variant="ghost"
                 color="neutral"
                 size="xs"
-                :to="`/api/watch-history/export`"
-                target="_blank"
-                external
+                :loading="exportingCsv"
+                @click="exportWatchHistoryCsv"
               />
               <UButton
                 icon="i-lucide-trash-2"
@@ -526,7 +545,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               </div>
               <div class="flex items-center gap-2 mt-0.5">
                 <p class="text-xs text-muted">
-                  {{ item.completed ? 'Completed' : `${Math.round(item.progress)}% watched` }}
+                  {{ item.completed ? 'Completed' : `${Math.round((item.progress > 1 ? item.progress : item.progress * 100))}% watched` }}
                   <span v-if="item.watched_at"> · {{ new Date(item.watched_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
                 </p>
               </div>

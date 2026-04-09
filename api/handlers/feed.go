@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/xml"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/media"
+	"media-server-pro/pkg/middleware"
 	"media-server-pro/pkg/models"
 )
 
@@ -98,11 +100,20 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 	}
 
 	// Derive a canonical base URL for self-links.
-	scheme := "https"
-	if c.Request.TLS == nil &&
-		c.GetHeader("X-Forwarded-Proto") != "https" &&
-		!strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`) {
-		scheme = "http"
+	// Only trust proxy headers (X-Forwarded-Proto, Cf-Visitor) from trusted proxies.
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	} else {
+		remoteIP, _, splitErr := net.SplitHostPort(c.Request.RemoteAddr)
+		if splitErr != nil {
+			remoteIP = c.Request.RemoteAddr
+		}
+		if middleware.IsTrustedProxy(remoteIP) &&
+			(c.GetHeader("X-Forwarded-Proto") == "https" ||
+				strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)) {
+			scheme = "https"
+		}
 	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, c.Request.Host)
 

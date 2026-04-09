@@ -509,9 +509,20 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 		item.SlaveName = node.Name
 		m.media[rec.ID] = item
 	}
-	// Use len(records) — the post-filter count — not len(req.Items) which includes
-	// items rejected by path validation.
-	node.MediaCount = len(records)
+	// For full pushes, use len(records) (complete replacement).
+	// For incremental pushes, count all media for this slave in the map
+	// since the batch was merged, not replaced.
+	if req.Full {
+		node.MediaCount = len(records)
+	} else {
+		count := 0
+		for _, item := range m.media {
+			if item.SlaveID == req.SlaveID {
+				count++
+			}
+		}
+		node.MediaCount = count
+	}
 	node.Status = "online"
 	node.LastSeen = time.Now()
 	m.mu.Unlock()

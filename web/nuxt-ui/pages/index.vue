@@ -266,7 +266,7 @@ async function load() {
     }
     const res = await mediaApi.list(apiParams)
     items.value = res.items ?? []
-    total.value = res.total_items ?? res.total ?? 0
+    total.value = res.total_items ?? 0
     scanning.value = res.scanning ?? false
     initializing.value = res.initializing ?? false
     userRatings.value = res.user_ratings ?? {}
@@ -469,6 +469,7 @@ onUnmounted(() => {
 
 <template>
   <UContainer class="py-6 space-y-6">
+    <h1 class="sr-only">Media Library</h1>
     <!-- Recommendations (logged-in only) -->
     <template v-if="authStore.isLoggedIn">
       <!-- Continue Watching -->
@@ -498,7 +499,9 @@ onUnmounted(() => {
               <img
                 v-if="ep.thumbnail_url"
                 :src="ep.thumbnail_url"
-                :alt="ep.name"
+                :alt="getDisplayTitle(ep)"
+                width="320"
+                height="180"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
               />
@@ -510,7 +513,7 @@ onUnmounted(() => {
               </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors leading-tight" :title="ep.show_name">{{ ep.show_name }}</p>
-            <p class="text-[10px] text-muted truncate" :title="ep.name">{{ ep.name }}</p>
+            <p class="text-[10px] text-muted truncate" :title="getDisplayTitle(ep)">{{ getDisplayTitle(ep) }}</p>
           </NuxtLink>
         </div>
       </div>
@@ -551,7 +554,9 @@ onUnmounted(() => {
               <img
                 v-if="r.thumbnail_url"
                 :src="r.thumbnail_url"
-                :alt="r.name"
+                :alt="getDisplayTitle(r)"
+                width="320"
+                height="180"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
               />
@@ -559,7 +564,7 @@ onUnmounted(() => {
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
               </div>
             </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="r.name">{{ r.name }}</p>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
             <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
           </NuxtLink>
         </div>
@@ -581,7 +586,9 @@ onUnmounted(() => {
               <img
                 v-if="r.thumbnail_url"
                 :src="r.thumbnail_url"
-                :alt="r.name"
+                :alt="getDisplayTitle(r)"
+                width="320"
+                height="180"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
               />
@@ -589,7 +596,7 @@ onUnmounted(() => {
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
               </div>
             </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="r.name">{{ r.name }}</p>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
             <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
           </NuxtLink>
         </div>
@@ -703,7 +710,7 @@ onUnmounted(() => {
         external
       />
       <div class="ml-auto flex items-center gap-1">
-        <p class="text-sm text-muted mr-2">{{ total.toLocaleString() }} items</p>
+        <p class="text-sm text-muted mr-2" aria-live="polite" aria-atomic="true">{{ total.toLocaleString() }} items</p>
         <UButtonGroup>
           <UButton
             icon="i-lucide-grid-2x2"
@@ -785,6 +792,8 @@ onUnmounted(() => {
             v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
             :src="getThumbSrc(item.id)"
             :alt="getDisplayTitle(item)"
+            width="320"
+            height="180"
             :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
             loading="lazy"
             @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, item.id)"
@@ -901,6 +910,8 @@ onUnmounted(() => {
                 v-if="!failedThumbnails.has(row.original.id)"
                 :src="mediaApi.getThumbnailUrl(row.original.id)"
                 :alt="getDisplayTitle(row.original)"
+                width="64"
+                height="36"
                 :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-xl saturate-0' : '']"
                 loading="lazy"
                 @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, row.original.id)"

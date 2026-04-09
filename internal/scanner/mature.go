@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
+	"crypto/sha256"
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
@@ -811,12 +811,23 @@ func (s *MatureScanner) isAllowedExtension(ext string) bool {
 	return false
 }
 
+// stableReviewID returns a deterministic UUID v5 derived from the file path,
+// so the same file always gets the same review queue ID across restarts.
+func stableReviewID(path string) string {
+	hash := sha256.Sum256([]byte(path))
+	// Build a UUID v5-style string from the first 16 bytes of the hash.
+	b := hash[:16]
+	b[6] = (b[6] & 0x0f) | 0x50 // version 5
+	b[8] = (b[8] & 0x3f) | 0x80 // variant RFC 4122
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
 // addToReviewQueue adds an item to the in-memory review queue.
 // The underlying scan result (with needs_review=true) is already persisted to MySQL
 // via scanRepo.Save() when ScanFile is called.
 func (s *MatureScanner) addToReviewQueue(result *ScanResult) {
 	item := &models.MatureReviewItem{
-		ID:         uuid.New().String(),
+		ID:         stableReviewID(result.Path),
 		Name:       filepath.Base(result.Path),
 		MediaPath:  result.Path,
 		DetectedAt: result.ScannedAt,
@@ -1017,7 +1028,7 @@ func (s *MatureScanner) loadReviewQueue() error {
 	for _, r := range pending {
 		scannedAt, _ := time.Parse(time.RFC3339, r.ScannedAt)
 		s.reviewQueue[r.Path] = &models.MatureReviewItem{
-			ID:         uuid.New().String(),
+			ID:         stableReviewID(r.Path),
 			Name:       filepath.Base(r.Path),
 			MediaPath:  r.Path,
 			DetectedAt: scannedAt,

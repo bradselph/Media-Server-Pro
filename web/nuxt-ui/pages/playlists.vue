@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Playlist } from '~/types/api'
 
-definePageMeta({ layout: 'default', title: 'Playlists', middleware: 'auth' })
+definePageMeta({ layout: 'default', title: 'Playlists' })
 
 const playlistApi = usePlaylistApi()
 const mediaApi = useMediaApi()
@@ -265,11 +265,19 @@ async function confirmBulkDelete() {
 // still be resolving when the component mounts (isLoading=true) — without
 // this guard, the page shows a blank body until the user manually refreshes.
 onMounted(() => {
-  if (!authStore.isLoading && authStore.user) load()
+  if (!authStore.isLoading) {
+    if (authStore.user) load()
+    else { showPublic.value = true; loadPublicPlaylists() }
+  }
 })
 
 watch(() => authStore.user, (user) => {
   if (user && !hasFetched) load()
+  else if (!user && !authStore.isLoading) { showPublic.value = true; loadPublicPlaylists() }
+})
+
+watch(() => authStore.isLoading, (loading) => {
+  if (!loading && !authStore.user && !hasFetched) { showPublic.value = true; loadPublicPlaylists() }
 })
 </script>
 
@@ -587,10 +595,44 @@ watch(() => authStore.user, (user) => {
       </div>
     </template>
 
-    <!-- Fallback: auth resolved but no user (should not normally be reached — middleware
-         redirects to /login, but this prevents a blank body during any transient state.) -->
-    <div v-else class="flex justify-center py-16">
-      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
-    </div>
+    <!-- Guest view: show public playlists only -->
+    <template v-else>
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <h1 class="text-2xl font-bold text-highlighted flex items-center gap-2">
+          <UIcon name="i-lucide-globe" class="size-6 text-primary" />
+          Public Playlists
+        </h1>
+        <UButton icon="i-lucide-log-in" label="Log in to create playlists" variant="outline" color="neutral" to="/login" />
+      </div>
+
+      <div v-if="publicLoading" class="flex justify-center py-16">
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+      </div>
+      <div v-else-if="publicPlaylists.length === 0" class="text-center py-16 text-muted text-sm">
+        <UIcon name="i-lucide-globe" class="size-12 mx-auto mb-3 opacity-40" />
+        <p class="text-base">No public playlists yet.</p>
+        <p class="mt-1 text-xs">Log in to create and share your own playlists.</p>
+      </div>
+      <div v-else class="grid sm:grid-cols-2 gap-3">
+        <UCard v-for="pl in publicPlaylists" :key="pl.id" :ui="{ body: 'p-3' }">
+          <div class="flex items-start gap-3">
+            <div class="flex-1 min-w-0">
+              <p class="font-medium text-sm truncate">{{ pl.name }}</p>
+              <p class="text-xs text-muted mt-0.5">{{ (pl.items ?? []).length }} items</p>
+              <p v-if="pl.description" class="text-xs text-muted truncate mt-0.5">{{ pl.description }}</p>
+            </div>
+            <UButton
+              icon="i-lucide-play"
+              size="xs"
+              variant="ghost"
+              color="primary"
+              aria-label="Play playlist"
+              :to="pl.items?.[0] ? `/player?id=${encodeURIComponent(pl.items[0].media_id)}&playlist_id=${encodeURIComponent(pl.id)}&playlist_idx=0` : undefined"
+              :disabled="!pl.items?.length"
+            />
+          </div>
+        </UCard>
+      </div>
+    </template>
   </UContainer>
 </template>

@@ -109,6 +109,9 @@ func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 			return err
 		}
 	}
+	// Sync feature toggles BEFORE validation so module-level Enabled fields
+	// reflect the new config. This matches the ordering in Load() and Update().
+	m.syncFeatureToggles()
 	if err := m.validate(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
 		return fmt.Errorf("config validation failed: %w", err)
@@ -117,7 +120,6 @@ func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
 		m.rollbackFromJSON(originalJSON, err)
 		return err
 	}
-	m.syncFeatureToggles()
 	// Notify watchers so modules (security, streaming, CORS, etc.) pick up changes
 	// made via the admin panel without requiring a server restart.
 	cfg := m.getCopy()

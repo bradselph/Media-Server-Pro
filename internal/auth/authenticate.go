@@ -67,8 +67,12 @@ func (m *Module) verifyPasswordWithCacheRefresh(ctx context.Context, user *model
 	m.log.Warn("Password matched DB but not cache for user %s — refreshing cache", c.Username)
 	m.usersMu.Lock()
 	m.users[c.Username] = dbUser
+	if dbUser.ID != "" {
+		m.usersByID[dbUser.ID] = dbUser
+	}
 	m.usersMu.Unlock()
-	*user = *dbUser
+	// Do NOT mutate *user outside the lock — the pointer may be shared with
+	// concurrent readers. The map is already updated; callers use the map.
 	return nil
 }
 

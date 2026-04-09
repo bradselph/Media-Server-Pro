@@ -24,6 +24,7 @@ type Module struct {
 	log       *logger.Logger
 	db        *gorm.DB
 	sqlDB     *sql.DB
+	dbMu      sync.RWMutex // protects db and sqlDB against concurrent access during Stop
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
@@ -244,20 +245,21 @@ func (w *gormLogWriter) Printf(format string, args ...interface{}) {
 }
 
 // Stop closes the database connection
-// Stop closes the database connection. IMPORTANT: db and sqlDB are set to nil
-// without synchronization. Callers of DB()/GORM() must not use the module after
-// Stop returns. The server's reverse-order shutdown ensures all modules that
-// depend on the database are stopped before this module.
+// Stop closes the database connection.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping database module...")
 
-	if m.sqlDB != nil {
-		if err := m.sqlDB.Close(); err != nil {
+	m.dbMu.Lock()
+	sqlDB := m.sqlDB
+	m.sqlDB = nil
+	m.db = nil
+	m.dbMu.Unlock()
+
+	if sqlDB != nil {
+		if err := sqlDB.Close(); err != nil {
 			m.log.Error("Failed to close database: %v", err)
 			return err
 		}
-		m.sqlDB = nil
-		m.db = nil
 	}
 
 	m.setHealth(false, "Stopped")
@@ -273,10 +275,13 @@ func (m *Module) Health() models.HealthStatus {
 	m.healthMu.RUnlock()
 
 	// Live-ping the database if we think we're healthy, to detect silent disconnects.
-	if healthy && m.sqlDB != nil {
+	m.dbMu.RLock()
+	sqlDB := m.sqlDB
+	m.dbMu.RUnlock()
+	if healthy && sqlDB != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		if err := m.sqlDB.PingContext(ctx); err != nil {
+		if err := sqlDB.PingContext(ctx); err != nil {
 			healthy = false
 			msg = fmt.Sprintf("Ping failed: %v", err)
 			m.setHealth(false, msg)
@@ -299,11 +304,15 @@ func (m *Module) Health() models.HealthStatus {
 // DB returns the underlying *sql.DB connection for use with database/sql callers
 // (e.g. migrations, health checks). All repository implementations now use GORM().
 func (m *Module) DB() *sql.DB {
+	m.dbMu.RLock()
+	defer m.dbMu.RUnlock()
 	return m.sqlDB
 }
 
 // GORM returns the GORM database instance
 func (m *Module) GORM() *gorm.DB {
+	m.dbMu.RLock()
+	defer m.dbMu.RUnlock()
 	return m.db
 }
 

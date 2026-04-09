@@ -52,8 +52,14 @@ func (b *Backend) resolve(rel string) (string, error) {
 		return "", fmt.Errorf("local storage: absolute path %q outside root %q", cleaned, b.root)
 	}
 	full := filepath.Join(b.root, cleaned)
-	// Verify the resolved path is still under root after cleaning.
-	if full != b.root && !strings.HasPrefix(full, b.rootWithSep()) {
+	// Resolve symlinks to prevent a symlink inside root pointing outside it.
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		// If the target doesn't exist yet (e.g. create), fall back to the logical path.
+		resolved = full
+	}
+	// Verify the resolved path is still under root after cleaning and symlink resolution.
+	if resolved != b.root && !strings.HasPrefix(resolved, b.rootWithSep()) {
 		return "", fmt.Errorf("local storage: path traversal %q", rel)
 	}
 	return full, nil

@@ -97,6 +97,15 @@ function statusColor(status: HLSJob['status']): 'neutral' | 'info' | 'success' |
   return map[status] ?? 'neutral'
 }
 
+// Pagination
+const jobsPerPage = 20
+const jobsPage = ref(1)
+const pagedJobs = computed(() => {
+  const start = (jobsPage.value - 1) * jobsPerPage
+  return jobs.value.slice(start, start + jobsPerPage)
+})
+const jobsTotalPages = computed(() => Math.ceil(jobs.value.length / jobsPerPage))
+
 onMounted(load)
 </script>
 
@@ -171,7 +180,7 @@ onMounted(load)
       </div>
       <UTable
         v-else
-        :data="jobs"
+        :data="pagedJobs"
         :columns="[
           { accessorKey: 'id', header: 'ID' },
           { accessorKey: 'status', header: 'Status' },
@@ -214,6 +223,7 @@ onMounted(load)
         <template #actions-cell="{ row }">
           <UButton
             icon="i-lucide-trash-2"
+            :aria-label="`Delete HLS job ${row.original.id}`"
             size="xs"
             variant="ghost"
             color="error"
@@ -225,6 +235,13 @@ onMounted(load)
       <p v-if="!loading && jobs.length === 0" class="text-center py-6 text-muted text-sm">
         No HLS jobs found.
       </p>
+      <div v-if="jobsTotalPages > 1" class="flex items-center justify-between pt-3 border-t border-default">
+        <p class="text-xs text-muted">{{ jobs.length }} jobs · Page {{ jobsPage }}/{{ jobsTotalPages }}</p>
+        <div class="flex gap-1">
+          <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" :disabled="jobsPage <= 1" @click="jobsPage--" />
+          <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" :disabled="jobsPage >= jobsTotalPages" @click="jobsPage++" />
+        </div>
+      </div>
     </UCard>
   </div>
 </template>

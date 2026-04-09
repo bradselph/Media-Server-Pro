@@ -205,13 +205,7 @@ func (h *Handler) ReceiverWebSocket(c *gin.Context) {
 // The slave opens this connection in response to a stream_request sent over WebSocket.
 // On success, writeSuccess is called so the slave receives a JSON body.
 func (h *Handler) ReceiverStreamPush(c *gin.Context) {
-	if !h.checkReceiverEnabled(c) {
-		return
-	}
-	if !h.requireReceiverAPIKey(c) {
-		return
-	}
-
+	// Auth is enforced by RequireReceiverWithAPIKey group middleware in routes.go.
 	token, ok := RequireParamID(c, "token")
 	if !ok {
 		return
