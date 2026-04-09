@@ -232,7 +232,8 @@ async function handleUpload() {
       </div>
 
       <!-- Upload button -->
-      <div class="flex justify-end">
+      <div class="flex items-center justify-end gap-3">
+        <p v-if="selectedFiles.length === 0" class="text-xs text-muted">Select files to upload</p>
         <UButton
           label="Upload"
           icon="i-lucide-upload"
