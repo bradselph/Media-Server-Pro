@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, APIToken, APITokenCreated, RatedItem } from '~/types/api'
+import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, APIToken, APITokenCreated, RatedItem, UserProfile } from '~/types/api'
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatRelativeDate, formatDuration } from '~/utils/format'
-import { useAPITokensApi, useRatingsApi } from '~/composables/useApiEndpoints'
+import { useAPITokensApi, useRatingsApi, useSuggestionsApi } from '~/composables/useApiEndpoints'
 
 const QUALITY_OPTIONS = [
   { label: 'Auto', value: 'auto' },
@@ -41,17 +41,47 @@ const { getUsage, getPermissions } = useStorageApi()
 
 const tokensApi = useAPITokensApi()
 const ratingsApi = useRatingsApi()
+const suggestionsApi = useSuggestionsApi()
 const toast = useToast()
 
 const storageUsage = ref<StorageUsage | null>(null)
 const permissionsInfo = ref<PermissionsInfo | null>(null)
+const myProfile = ref<UserProfile | null>(null)
+
 async function loadStorageUsage() {
   try {
-    const [u, p] = await Promise.allSettled([getUsage(), getPermissions()])
+    const [u, p, prof] = await Promise.allSettled([getUsage(), getPermissions(), suggestionsApi.getMyProfile()])
     if (u.status === 'fulfilled') storageUsage.value = u.value
     if (p.status === 'fulfilled') permissionsInfo.value = p.value
+    if (prof.status === 'fulfilled') myProfile.value = prof.value
   } catch { /* optional */ }
 }
+
+function formatWatchTime(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  if (hours === 0) return `${mins}m`
+  if (mins === 0) return `${hours}h`
+  return `${hours}h ${mins}m`
+}
+
+const topCategories = computed(() => {
+  if (!myProfile.value?.category_scores) return []
+  return Object.entries(myProfile.value.category_scores)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([name, score]) => ({ name, score }))
+})
+
+const topTypes = computed(() => {
+  if (!myProfile.value?.type_preferences) return []
+  const entries = Object.entries(myProfile.value.type_preferences)
+  const total = entries.reduce((sum, [, v]) => sum + v, 0)
+  return entries
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, count]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }))
+})
 
 // Preferences
 const prefs = ref<Partial<UserPreferences>>({})
@@ -378,6 +408,47 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
                 :variant="allowed ? 'subtle' : 'outline'"
                 size="xs"
               />
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <!-- My Stats -->
+      <UCard v-if="myProfile && (myProfile.total_views > 0 || myProfile.total_watch_time > 0)">
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-bar-chart-2" class="size-4" />
+            My Stats
+          </div>
+        </template>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-4">
+          <div class="text-center">
+            <p class="text-2xl font-bold text-primary">{{ myProfile.total_views.toLocaleString() }}</p>
+            <p class="text-xs text-muted mt-0.5">Total Views</p>
+          </div>
+          <div class="text-center">
+            <p class="text-2xl font-bold text-primary">{{ formatWatchTime(myProfile.total_watch_time) }}</p>
+            <p class="text-xs text-muted mt-0.5">Watch Time</p>
+          </div>
+          <div v-if="topTypes.length > 0" class="col-span-2 flex items-center gap-3">
+            <span v-for="t in topTypes" :key="t.name" class="flex items-center gap-1 text-sm">
+              <UBadge :label="t.name" color="primary" variant="subtle" size="xs" />
+              <span class="text-muted text-xs">{{ t.pct }}%</span>
+            </span>
+          </div>
+        </div>
+        <div v-if="topCategories.length > 0">
+          <p class="text-xs font-medium text-muted mb-2 uppercase tracking-wide">Top Genres</p>
+          <div class="space-y-1.5">
+            <div v-for="cat in topCategories" :key="cat.name" class="flex items-center gap-2">
+              <span class="text-sm w-28 truncate capitalize">{{ cat.name }}</span>
+              <div class="flex-1 bg-muted/20 rounded-full h-1.5 overflow-hidden">
+                <div
+                  class="bg-primary h-full rounded-full transition-all"
+                  :style="{ width: `${Math.min(100, (cat.score / (topCategories[0]?.score || 1)) * 100)}%` }"
+                />
+              </div>
+              <span class="text-xs text-muted w-8 text-right">{{ cat.score }}</span>
             </div>
           </div>
         </div>
