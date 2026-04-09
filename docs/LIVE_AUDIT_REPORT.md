@@ -71,11 +71,11 @@ The site is in solid working condition with all core features functional: media 
 
 | # | Page | Issue | Details | Standard |
 |---|------|-------|---------|----------|
-| H1 | Home | No `<h1>` element | Home page has 0 `<h1>` elements; heading hierarchy starts at `<h2>`. Screen readers cannot identify the page's main heading. | WCAG 1.3.1 |
-| H2 | All | No skip-to-main-content link | No skip link found as first focusable element. Screen reader / keyboard users must Tab through entire nav on every page. | WCAG 2.4.1 |
+| ✅ `f95acfbf` 2026-04-09 | No `<h1>` element | Added visually-hidden h1 "Media Library" to home page. | WCAG 1.3.1 |
+| ✅ `aebc68cd` 2026-04-09 | No skip-to-main-content link | Added skip link as first focusable element in default layout. | WCAG 2.4.1 |
 | H3 | All | No `aria-live` regions for dynamic content | Search results, toast notifications, and other dynamic updates are not inside aria-live regions. Screen readers will not announce changes. | WCAG 4.1.3 |
 | H4 | All | Multiple interactive elements below 44x44px touch target | Theme toggle (28x28), menu button (28x28), sort button (28x28), RSS link (28x28), view toggle buttons (28x28), "Play All" (84x28), "Surprise Me" (112x28), "Hide watched" (121x28). All below the 44px minimum height. | WCAG 2.5.5 |
-| H5 | Admin > Streaming | HLS job delete buttons have no accessible name | Delete buttons for each HLS job row render as empty `<button>` elements with no text or aria-label. Screen readers cannot identify their purpose. | WCAG 4.1.2 |
+| ✅ `88de5485` 2026-04-09 | HLS job delete buttons have no accessible name | Added aria-label to delete buttons in admin streaming tab. | WCAG 4.1.2 |
 | H6 | Admin > Streaming | No pagination on HLS jobs list | All 133 HLS jobs rendered in a single scrollable list with no pagination. This causes a very long page and slow rendering. | UX |
 
 ### MEDIUM (UX friction / partial feature / silent failure / touch target)

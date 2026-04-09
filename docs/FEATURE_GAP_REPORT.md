@@ -41,7 +41,9 @@ Media Server Pro 4 is a mature, feature-rich self-hosted media server. The front
 
 ## P1 — High Impact Features (medium effort)
 
-### 3. Watch History Export Button is Broken
+### ✅ `043359b8` 2026-04-09 — Watch History Export Button Fixed
+> **Resolved**: Replaced bare `<a>` link with programmatic fetch + blob download for reliable CSV export.
+> **Verified**: pending deploy
 **What's missing**: The profile page has an "Export CSV" button pointing to `/api/watch-history/export` (profile.vue line 476), and the backend registers `GET /api/watch-history/export` (routes.go line 405). However, the button uses `target="_blank" external` with an `<a>` link — this works for cookie-authenticated browser sessions but would fail for API-token users. More importantly, the endpoint requires auth, so the link will redirect to login if the session cookie is not sent (which can happen in some browsers with cross-origin link behavior).
 **Evidence**: `profile.vue` line 476: `:to="/api/watch-history/export"` with `target="_blank" external`.
 **Backend support**: YES — endpoint exists and returns CSV.
