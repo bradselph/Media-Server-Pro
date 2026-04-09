@@ -137,9 +137,6 @@ export interface MediaListResponse {
   items: MediaItem[]
   total_items: number
   total_pages: number
-  total?: number
-  page?: number
-  limit?: number
   scanning?: boolean
   initializing?: boolean
   /** Map of media_id → user's rating (1–5). Only present for authenticated users who have rated items. */
@@ -592,6 +589,7 @@ export interface PermissionsInfo {
   authenticated: boolean
   username?: string
   role?: string
+  user_type?: string
   show_mature?: boolean
   mature_preference_set?: boolean
   capabilities: {
@@ -602,6 +600,10 @@ export interface PermissionsInfo {
     canViewMature: boolean
     canDelete?: boolean
     canManage?: boolean
+  }
+  limits?: {
+    storage_quota: number
+    concurrent_streams: number
   }
 }
 
@@ -1065,6 +1067,7 @@ export interface APIToken {
   id: string
   name: string
   last_used_at: string | null
+  expires_at?: string | null
   created_at: string
 }
 

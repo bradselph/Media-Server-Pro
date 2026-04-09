@@ -266,7 +266,7 @@ async function load() {
     }
     const res = await mediaApi.list(apiParams)
     items.value = res.items ?? []
-    total.value = res.total_items ?? res.total ?? 0
+    total.value = res.total_items ?? 0
     scanning.value = res.scanning ?? false
     initializing.value = res.initializing ?? false
     userRatings.value = res.user_ratings ?? {}
