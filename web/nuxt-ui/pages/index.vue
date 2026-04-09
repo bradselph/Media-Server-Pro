@@ -484,11 +484,17 @@ onUnmounted(() => {
 
       <!-- On Deck (next episode per TV show / Anime series) -->
       <div v-if="onDeck.length > 0" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-tv-2" class="size-4 text-primary" />
-          On Deck
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+            <UIcon name="i-lucide-tv-2" class="size-4 text-primary" />
+            On Deck
+          </h2>
+          <div class="flex gap-1">
+            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          </div>
+        </div>
+        <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="ep in onDeck"
             :key="ep.media_id"
@@ -539,11 +545,17 @@ onUnmounted(() => {
       />
       <!-- New Since Last Visit -->
       <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-bell" class="size-4 text-primary" />
-          New Since Your Last Visit
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+            <UIcon name="i-lucide-bell" class="size-4 text-primary" />
+            New Since Your Last Visit
+          </h2>
+          <div class="flex gap-1">
+            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          </div>
+        </div>
+        <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="r in newSinceLastVisit.items"
             :key="r.id"
@@ -571,11 +583,17 @@ onUnmounted(() => {
       </div>
       <!-- Recently Added -->
       <div v-if="recentlyAdded.length > 0" class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-          <UIcon name="i-lucide-sparkle" class="size-4 text-primary" />
-          Recently Added
-        </h2>
-        <div class="flex gap-3 overflow-x-auto pb-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
+            <UIcon name="i-lucide-sparkle" class="size-4 text-primary" />
+            Recently Added
+          </h2>
+          <div class="flex gap-1">
+            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          </div>
+        </div>
+        <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2">
           <NuxtLink
             v-for="r in recentlyAdded"
             :key="r.id"
