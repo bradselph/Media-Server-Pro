@@ -583,12 +583,15 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
 		if err != nil {
 			h.log.Warn("Failed to look up user %s for stream limit check: %v", session.Username, err)
-		} else {
-			maxStreams := h.getUserStreamLimit(user.Type)
-			if maxStreams > 0 && !h.streaming.CanStartStream(userID, maxStreams) {
-				writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
-				return
-			}
+			// Fail closed: deny stream when user lookup fails rather than
+			// allowing unlimited streams during transient DB outages.
+			writeError(c, http.StatusServiceUnavailable, "Unable to verify stream permissions")
+			return
+		}
+		maxStreams := h.getUserStreamLimit(user.Type)
+		if maxStreams > 0 && !h.streaming.CanStartStream(userID, maxStreams) {
+			writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
+			return
 		}
 	} else {
 		// Use IP as stream key for unauthenticated (limit already checked at top)
@@ -874,7 +877,7 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 			}
 			item.Completed = item.Progress >= 0.9
 			if err := h.auth.AddToWatchHistory(c.Request.Context(), username, item); err != nil {
-				h.log.Debug("Watch history update skipped for media %s: %v", req.ID, err)
+				h.log.Warn("Watch history update failed for media %s: %v", req.ID, err)
 			}
 
 			if item.Completed && h.suggestions != nil {
