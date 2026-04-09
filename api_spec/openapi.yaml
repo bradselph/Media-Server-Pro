@@ -169,6 +169,13 @@ components:
         last_login:
           type: string
           format: date-time
+        previous_last_login:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
         watch_history:
           type: array
           items:
@@ -197,7 +204,7 @@ components:
       properties:
         theme:
           type: string
-          enum: [light, dark, auto]
+          enum: [light, dark, auto, midnight, nord, dracula, solarized-light, forest, sunset]
         default_quality:
           type: string
         show_mature:
@@ -233,6 +240,14 @@ components:
         custom_eq_presets:
           type: object
           additionalProperties: true
+        show_continue_watching:
+          type: boolean
+        show_recommended:
+          type: boolean
+        show_trending:
+          type: boolean
+        user_id:
+          type: string
 
     LoginResponse:
       type: object
@@ -264,8 +279,6 @@ components:
       properties:
         id:
           type: string
-        path:
-          type: string
         name:
           type: string
         type:
@@ -282,6 +295,7 @@ components:
           type: integer
         bitrate:
           type: integer
+          format: int64
         codec:
           type: string
         container:
@@ -309,9 +323,7 @@ components:
           type: boolean
         mature_score:
           type: number
-        is_remote:
-          type: boolean
-        remote_url:
+        blur_hash:
           type: string
         metadata:
           type: object
@@ -331,6 +343,15 @@ components:
           type: integer
         scanning:
           type: boolean
+        user_ratings:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+          description: Map of media_id to user rating
+        initializing:
+          type: boolean
+          description: True when media library is still loading
 
     MediaCategory:
       type: object
@@ -361,6 +382,10 @@ components:
         last_scan:
           type: string
           format: date-time
+        version:
+          type: integer
+          format: int64
+          description: Cache invalidation counter
 
     HLSCapabilities:
       type: object
@@ -406,8 +431,6 @@ components:
       properties:
         id:
           type: string
-        media_path:
-          type: string
         status:
           type: string
           enum: [pending, running, completed, failed, cancelled]
@@ -431,6 +454,10 @@ components:
           type: string
         fail_count:
           type: integer
+        last_accessed_at:
+          type: string
+          format: date-time
+          nullable: true
 
     Playlist:
       type: object
@@ -467,8 +494,6 @@ components:
         playlist_id:
           type: string
         media_id:
-          type: string
-        media_path:
           type: string
         title:
           type: string
@@ -537,10 +562,15 @@ components:
         today_searches:
           type: integer
           description: Library search requests with non-empty query today
+        total_watch_time:
+          type: number
+          description: Total watch time in seconds
 
     AnalyticsEvent:
       type: object
       properties:
+        id:
+          type: string
         type:
           type: string
         media_id:
@@ -576,6 +606,8 @@ components:
           format: date-time
         completed:
           type: boolean
+        media_name:
+          type: string
 
     Suggestion:
       type: object
@@ -619,6 +651,8 @@ components:
           properties:
             mobileOptimization:
               type: boolean
+            adaptive:
+              type: boolean
         analytics:
           type: object
           properties:
@@ -633,7 +667,19 @@ components:
               type: boolean
             enableAnalytics:
               type: boolean
-            analytics_tracking:
+            enablePlaylists:
+              type: boolean
+            enableUserAuth:
+              type: boolean
+            enableAdminPanel:
+              type: boolean
+            enableSuggestions:
+              type: boolean
+            enableAutoDiscovery:
+              type: boolean
+            enableDuplicateDetection:
+              type: boolean
+            enableDownloader:
               type: boolean
         uploads:
           type: object
@@ -662,6 +708,13 @@ components:
           properties:
             enabled:
               type: boolean
+        auth:
+          type: object
+          properties:
+            allow_registration:
+              type: boolean
+            allow_guests:
+              type: boolean
 
     AgeGateStatus:
       type: object
@@ -680,8 +733,7 @@ components:
         used_gb:
           type: number
         quota_gb:
-          type: integer
-          format: int64
+          type: number
         percentage:
           type: number
         user_type:
@@ -953,6 +1005,8 @@ components:
       properties:
         id:
           type: string
+        name:
+          type: string
         media_path:
           type: string
         detected_at:
@@ -970,6 +1024,7 @@ components:
         reviewed_at:
           type: string
           format: date-time
+          nullable: true
         decision:
           type: string
 
@@ -1082,8 +1137,8 @@ components:
           type: string
         database:
           type: string
-        schema_version:
-          type: integer
+        app_version:
+          type: string
         repository_type:
           type: string
         message:
@@ -1157,8 +1212,6 @@ components:
           type: string
         views:
           type: integer
-        media_path:
-          type: string
 
     EventTypeCounts:
       type: object
@@ -1269,8 +1322,6 @@ components:
         original_path:
           type: string
         suggested_name:
-          type: string
-        suggested_path:
           type: string
         type:
           type: string
@@ -2171,7 +2222,7 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
       responses:
         '200':
           description: HLS variant playlist
@@ -2194,7 +2245,7 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
         - name: segment
           in: path
           required: true
