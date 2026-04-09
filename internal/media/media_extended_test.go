@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/models"
 )
 
@@ -191,5 +192,41 @@ func TestSortItems_Default(t *testing.T) {
 	f.SortItems(items)
 	if items[0].Name != "A" {
 		t.Error("default sort should be by name")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterUploadedFileWithSize
+// ---------------------------------------------------------------------------
+
+func TestRegisterUploadedFileWithSize_IndexesRemotePath(t *testing.T) {
+	// RegisterUploadedFileWithSize must index a remote-store key (no local file).
+	// It should not call os.Stat — the path does not need to exist on disk.
+	m := &Module{
+		media:     make(map[string]*models.MediaItem),
+		mediaByID: make(map[string]*models.MediaItem),
+		metadata:  make(map[string]*Metadata),
+		log:       logger.New("media-test"),
+	}
+	path := "remote/uploads/user123/video.mp4"
+	size := int64(1024 * 1024)
+	modTime := time.Now()
+
+	err := m.RegisterUploadedFileWithSize(path, size, modTime)
+	if err != nil {
+		t.Fatalf("RegisterUploadedFileWithSize returned error: %v", err)
+	}
+
+	m.mu.RLock()
+	item, ok := m.media[path]
+	m.mu.RUnlock()
+	if !ok {
+		t.Fatal("item should be in the in-memory index after registration")
+	}
+	if item.Size != size {
+		t.Errorf("item.Size = %d, want %d", item.Size, size)
+	}
+	if item.Type != models.MediaTypeVideo {
+		t.Errorf("item.Type = %s, want video (inferred from .mp4)", item.Type)
 	}
 }
