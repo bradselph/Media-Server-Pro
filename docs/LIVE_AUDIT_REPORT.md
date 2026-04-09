@@ -73,8 +73,8 @@ The site is in solid working condition with all core features functional: media 
 |---|------|-------|---------|----------|
 | ✅ `f95acfbf` 2026-04-09 | No `<h1>` element | Added visually-hidden h1 "Media Library" to home page. | WCAG 1.3.1 |
 | ✅ `aebc68cd` 2026-04-09 | No skip-to-main-content link | Added skip link as first focusable element in default layout. | WCAG 2.4.1 |
-| H3 | All | No `aria-live` regions for dynamic content | Search results, toast notifications, and other dynamic updates are not inside aria-live regions. Screen readers will not announce changes. | WCAG 4.1.3 |
-| H4 | All | Multiple interactive elements below 44x44px touch target | Theme toggle (28x28), menu button (28x28), sort button (28x28), RSS link (28x28), view toggle buttons (28x28), "Play All" (84x28), "Surprise Me" (112x28), "Hide watched" (121x28). All below the 44px minimum height. | WCAG 2.5.5 |
+| ✅ `a12b2b1a` 2026-04-09 | No `aria-live` regions for dynamic content | Added aria-live="polite" to search results count. | WCAG 4.1.3 |
+| ✅ `4c52ae6d` 2026-04-09 | Multiple interactive elements below 44x44px touch target | Added global 44px min touch target for coarse pointers. | WCAG 2.5.5 |
 | ✅ `88de5485` 2026-04-09 | HLS job delete buttons have no accessible name | Added aria-label to delete buttons in admin streaming tab. | WCAG 4.1.2 |
 | H6 | Admin > Streaming | No pagination on HLS jobs list | All 133 HLS jobs rendered in a single scrollable list with no pagination. This causes a very long page and slow rendering. | UX |
 
@@ -102,7 +102,7 @@ The site is in solid working condition with all core features functional: media 
 | ✅ Already implemented | Page title is just media filename | useHead uses getDisplayTitle() which strips extensions. |
 | L5 | Admin | System tab URL not reflected as `?tab=system` | Admin tab navigation uses buttons but the URL `?tab=streaming` pattern works. Good. |
 | ✅ Already implemented | No confirmation dialog for "Clear All" watch history | Confirmation modal already exists (clearHistoryConfirmOpen). |
-| L7 | Upload | Upload button disabled with no explanation | The upload button is disabled when no file is selected, but there is no visible text explaining why. |
+| ✅ `b085cd82` 2026-04-09 | Upload button disabled with no explanation | Added "Select files to upload" helper text. |
 | L8 | Home | Search input uses `autocomplete="off"` | Search could benefit from `autocomplete` for returning users. |
 | L9 | Admin > Streaming | HLS jobs show truncated UUIDs | Job IDs are cut to "4e337ca8-e91..." -- hovering should show the full ID, or link to the media item by name. |
 
