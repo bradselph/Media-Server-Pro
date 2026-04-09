@@ -481,7 +481,6 @@ func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize,
 
 	// Cache headers for partial content
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
 }
 
 // streamFromReader streams content from an io.Reader (e.g., S3 ranged GET response)
