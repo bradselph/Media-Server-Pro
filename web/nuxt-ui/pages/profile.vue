@@ -144,7 +144,13 @@ async function doClearHistory() {
 }
 
 const filteredHistory = computed(() => {
-  let result = history.value
+  // Deduplicate by media_id, keeping only the latest entry per media item
+  const seen = new Set<string>()
+  let result = history.value.filter(h => {
+    if (seen.has(h.media_id)) return false
+    seen.add(h.media_id)
+    return true
+  })
   if (historyFilter.value === 'completed') result = result.filter(h => h.completed)
   else if (historyFilter.value === 'in-progress') result = result.filter(h => !h.completed)
   if (!historySearch.value) return result
