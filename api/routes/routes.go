@@ -227,13 +227,45 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	secCfg := cfg.Get().Security
 	r.Use(middleware.GinSecurityHeaders(secCfg.CSPPolicy, secCfg.HSTSMaxAge))
 
-	// CORS — only applied when explicitly configured
+	// CORS — only applied when explicitly configured.
+	// When auth is enabled and CORS origins contains only "*", replace the
+	// wildcard with the server's own public URL to prevent accidental open
+	// CORS in production.  HLS/extractor modules handle their own CORS for
+	// media player compatibility.
 	if secCfg.CORSEnabled && len(secCfg.CORSOrigins) > 0 {
-		r.Use(middleware.GinCORS(
-			secCfg.CORSOrigins,
-			[]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			[]string{"Content-Type", "Authorization", "X-Requested-With"},
-		))
+		corsOrigins := secCfg.CORSOrigins
+		authCfg := cfg.Get().Auth
+		if authCfg.Enabled && len(corsOrigins) == 1 && corsOrigins[0] == "*" {
+			serverCfg := cfg.Get().Server
+			scheme := "http"
+			if serverCfg.EnableHTTPS {
+				scheme = "https"
+			}
+			host := serverCfg.Host
+			if host == "" || host == "0.0.0.0" || host == "127.0.0.1" {
+				// Cannot determine public origin; disable CORS entirely
+				// since same-origin requests don't need it.
+				log.Warn("CORS wildcard origin (*) with auth enabled — disabling CORS. " +
+					"Set cors_origins to your frontend domain to enable cross-origin access.")
+				corsOrigins = nil
+			} else {
+				port := serverCfg.Port
+				origin := fmt.Sprintf("%s://%s", scheme, host)
+				if (scheme == "http" && port != 80) || (scheme == "https" && port != 443) {
+					origin = fmt.Sprintf("%s:%d", origin, port)
+				}
+				log.Warn("CORS wildcard origin (*) with auth enabled — restricting to %s. "+
+					"Set cors_origins explicitly to override.", origin)
+				corsOrigins = []string{origin}
+			}
+		}
+		if len(corsOrigins) > 0 {
+			r.Use(middleware.GinCORS(
+				corsOrigins,
+				[]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+				[]string{"Content-Type", "Authorization", "X-Requested-With"},
+			))
+		}
 	}
 
 	// Apply compression middleware for all responses (except media streams).
