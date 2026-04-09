@@ -76,7 +76,7 @@ The site is in solid working condition with all core features functional: media 
 | ✅ `a12b2b1a` 2026-04-09 | No `aria-live` regions for dynamic content | Added aria-live="polite" to search results count. | WCAG 4.1.3 |
 | ✅ `4c52ae6d` 2026-04-09 | Multiple interactive elements below 44x44px touch target | Added global 44px min touch target for coarse pointers. | WCAG 2.5.5 |
 | ✅ `88de5485` 2026-04-09 | HLS job delete buttons have no accessible name | Added aria-label to delete buttons in admin streaming tab. | WCAG 4.1.2 |
-| H6 | Admin > Streaming | No pagination on HLS jobs list | All 133 HLS jobs rendered in a single scrollable list with no pagination. This causes a very long page and slow rendering. | UX |
+| ✅ `a0e1bd31` 2026-04-09 | No pagination on HLS jobs list | Added client-side pagination (20 per page) with prev/next controls. | UX |
 
 ### MEDIUM (UX friction / partial feature / silent failure / touch target)
 
