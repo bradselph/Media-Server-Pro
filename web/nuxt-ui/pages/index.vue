@@ -183,12 +183,23 @@ async function loadRecommendations() {
       suggestionsApi.getNewSinceLastVisit(20),
       suggestionsApi.getOnDeck(10),
     ])
-    if (cw.status === 'fulfilled') continueWatching.value = cw.value ?? []
-    if (tr.status === 'fulfilled') trending.value = tr.value ?? []
-    if (rec.status === 'fulfilled') recommended.value = rec.value ?? []
-    if (recent.status === 'fulfilled') recentlyAdded.value = recent.value ?? []
+    // Deduplicate across rows: higher-priority rows "claim" their IDs so lower-priority
+    // rows don't show the same item twice. Priority: continueWatching > onDeck > trending > recommended > recent.
+    const seenIds = new Set<string>()
+    function dedup<T extends { id?: string; media_id?: string }>(items: T[]): T[] {
+      return items.filter(item => {
+        const id = item.id ?? item.media_id ?? ''
+        if (!id || seenIds.has(id)) return false
+        seenIds.add(id)
+        return true
+      })
+    }
+    if (cw.status === 'fulfilled') continueWatching.value = dedup(cw.value ?? [])
+    if (deck.status === 'fulfilled') onDeck.value = dedup((deck.value?.items ?? []) as Parameters<typeof dedup>[0]) as typeof onDeck.value
+    if (tr.status === 'fulfilled') trending.value = dedup(tr.value ?? [])
+    if (rec.status === 'fulfilled') recommended.value = dedup(rec.value ?? [])
+    if (recent.status === 'fulfilled') recentlyAdded.value = dedup(recent.value ?? [])
     if (newSince.status === 'fulfilled' && newSince.value?.total > 0) newSinceLastVisit.value = newSince.value
-    if (deck.status === 'fulfilled') onDeck.value = deck.value?.items ?? []
   } catch { /* non-critical */ }
 }
 
