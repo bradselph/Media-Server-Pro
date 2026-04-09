@@ -75,10 +75,14 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 		}
 		// Bearer API token (programmatic / headless clients)
 		if bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "); bearer != "" {
-			session, user, err := authModule.ValidateAPIToken(c.Request.Context(), bearer)
-			if err == nil {
+			session, user, tokenErr := authModule.ValidateAPIToken(c.Request.Context(), bearer)
+			if tokenErr == nil {
 				c.Set("session", session)
 				c.Set("user", user)
+			} else {
+				// Store the rejection reason so requireAuth can return a specific
+				// error instead of a generic 401.
+				c.Set("bearer_error", tokenErr.Error())
 			}
 		}
 		c.Next()

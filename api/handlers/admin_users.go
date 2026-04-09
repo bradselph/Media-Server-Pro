@@ -250,7 +250,12 @@ func (h *Handler) AdminChangeOwnPassword(c *gin.Context) {
 	}
 
 	if err := h.auth.ChangeAdminPassword(c.Request.Context(), req.CurrentPassword, req.NewPassword); err != nil {
-		writeError(c, http.StatusUnauthorized, "Current password is incorrect")
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			writeError(c, http.StatusUnauthorized, "Current password is incorrect")
+			return
+		}
+		h.log.Error("Admin password change failed: %v", err)
+		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 

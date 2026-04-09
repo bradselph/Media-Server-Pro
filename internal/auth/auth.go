@@ -41,11 +41,11 @@ var (
 	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-constant-time-pad"), bcrypt.DefaultCost)
 )
 
-// IsSessionError returns true for definitive session rejection errors (not-found, expired).
-// Returns false for transient errors (DB timeout, connection failure) so callers can avoid
-// clearing session cookies during outages.
+// IsSessionError returns true for definitive session rejection errors (not-found, expired,
+// disabled account). Returns false for transient errors (DB timeout, connection failure)
+// so callers can avoid clearing session cookies during outages.
 func IsSessionError(err error) bool {
-	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExpired)
+	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExpired) || errors.Is(err, ErrAccountDisabled)
 }
 
 const errHashPasswordFmt = "failed to hash password: %w"
