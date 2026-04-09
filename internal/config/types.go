@@ -126,7 +126,6 @@ type StreamingConfig struct {
 	BufferSize           int           `json:"buffer_size"`
 	KeepAliveEnabled     bool          `json:"keep_alive_enabled"`
 	KeepAliveTimeout     time.Duration `json:"keep_alive_timeout"`
-	Adaptive             bool          `json:"adaptive"`
 	MobileOptimization   bool          `json:"mobile_optimization"`
 	MobileChunkSize      int64         `json:"mobile_chunk_size"`
 	RequireAuth       bool `json:"require_auth"`        // if true, reject unauthenticated streaming (DoS mitigation)
@@ -201,9 +200,7 @@ type SecurityConfig struct {
 	AuthRateLimit     int           `json:"auth_rate_limit"`
 	AuthBurstLimit    int           `json:"auth_burst_limit"`
 	MaxFileSizeMB     int           `json:"max_file_size_mb"`
-	CSPEnabled        bool          `json:"csp_enabled"`
 	CSPPolicy         string        `json:"csp_policy"`
-	HSTSEnabled       bool          `json:"hsts_enabled"`
 	HSTSMaxAge        int           `json:"hsts_max_age"`
 	CORSEnabled       bool          `json:"cors_enabled"`
 	CORSOrigins       []string      `json:"cors_origins"`

@@ -73,15 +73,6 @@ export function formatRelativeDate(date?: string | Date | null, fallback = '—'
 }
 
 /**
- * Build a concise metadata line from media properties.
- * Returns items like "MP4 · 1080p · 4.2 MB" joined by " · ".
- * Skips null/undefined/empty values automatically.
- */
-export function formatMetaLine(...parts: (string | number | null | undefined | false)[]): string {
-  return parts.filter((p): p is string | number => p != null && p !== false && p !== '').map(String).join(' · ')
-}
-
-/**
  * Format a resolution from width/height (e.g. "1080p", "4K", "720p").
  */
 export function formatResolution(width?: number, height?: number): string {

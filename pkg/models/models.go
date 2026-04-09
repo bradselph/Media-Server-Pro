@@ -567,12 +567,6 @@ type HealthStatus struct {
 	CheckedAt time.Time `json:"checked_at"`
 }
 
-// SystemHealth represents overall system health
-type SystemHealth struct {
-	Healthy    bool           `json:"healthy"`
-	Components []HealthStatus `json:"components"`
-	CheckedAt  time.Time      `json:"checked_at"`
-}
 
 // APIResponse represents a standard API response
 type APIResponse struct {

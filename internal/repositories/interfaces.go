@@ -377,12 +377,9 @@ type ReceiverSlaveRecord struct {
 // ReceiverMediaRepository provides slave media catalog storage
 type ReceiverMediaRepository interface {
 	UpsertBatch(ctx context.Context, slaveID string, items []*ReceiverMediaRecord) error
-	Get(ctx context.Context, id string) (*ReceiverMediaRecord, error)
-	ListBySlave(ctx context.Context, slaveID string) ([]*ReceiverMediaRecord, error)
 	ListAll(ctx context.Context) ([]*ReceiverMediaRecord, error)
 	DeleteBySlave(ctx context.Context, slaveID string) error
 	DeleteByID(ctx context.Context, id string) error
-	Search(ctx context.Context, query string) ([]*ReceiverMediaRecord, error)
 }
 
 // ReceiverMediaRecord represents a media item from a slave node's catalog

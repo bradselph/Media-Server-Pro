@@ -43,7 +43,6 @@ export interface UserPreferences {
   show_continue_watching: boolean
   show_recommended: boolean
   show_trending: boolean
-  subtitle_lang?: string
 }
 
 export interface User {
@@ -424,18 +423,6 @@ export interface ScannerStats {
   pending_review: number
 }
 
-export interface FileScanResult {
-  path: string
-  is_mature: boolean
-  confidence: number
-  reasons: string[]
-  auto_flagged: boolean
-  needs_review: boolean
-  scanned_at: string
-  reviewed_by?: string
-  reviewed_at?: string
-  review_decision?: string
-}
 
 // Matches the backend models.MatureReviewItem JSON response from GET /api/admin/scanner/queue
 export interface ReviewQueueItem {
@@ -514,11 +501,10 @@ export interface ReceiverMedia {
   slave_id: string
   name: string
   path: string
-  type: string
+  media_type: string
   size: number
   duration?: number
-  fingerprint?: string
-  created_at: string
+  content_fingerprint?: string
 }
 
 export interface CrawlerTarget {
@@ -772,8 +758,6 @@ export interface CategoryBrowseResponse {
 export type RatedItem = components['schemas']['RatedItem']
 export type RecentItem = components['schemas']['RecentItem']
 export type OnDeckItem = components['schemas']['OnDeckItem']
-export type ViewHistory = components['schemas']['ViewHistory']
-
 export interface NewSinceResponse {
   items: RecentItem[]
   since: string

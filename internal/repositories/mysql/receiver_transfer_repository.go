@@ -181,25 +181,6 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 	})
 }
 
-func (r *ReceiverMediaRepository) Get(ctx context.Context, id string) (*repositories.ReceiverMediaRecord, error) {
-	var row receiverMediaRow
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get receiver media record: %w", err)
-	}
-	return r.rowToMediaRecord(&row), nil
-}
-
-func (r *ReceiverMediaRepository) ListBySlave(ctx context.Context, slaveID string) ([]*repositories.ReceiverMediaRecord, error) {
-	var rows []receiverMediaRow
-	if err := r.db.WithContext(ctx).Where("slave_id = ?", slaveID).Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("failed to list media by slave: %w", err)
-	}
-	return r.rowsToMediaRecords(rows), nil
-}
-
 func (r *ReceiverMediaRepository) ListAll(ctx context.Context) ([]*repositories.ReceiverMediaRecord, error) {
 	var rows []receiverMediaRow
 	if err := r.db.WithContext(ctx).Find(&rows).Error; err != nil {
@@ -224,15 +205,6 @@ func (r *ReceiverMediaRepository) DeleteByID(ctx context.Context, id string) err
 		return fmt.Errorf("receiver media record not found: %s", id)
 	}
 	return nil
-}
-
-func (r *ReceiverMediaRepository) Search(ctx context.Context, query string) ([]*repositories.ReceiverMediaRecord, error) {
-	var rows []receiverMediaRow
-	pattern := "%" + escapeLike(query) + "%"
-	if err := r.db.WithContext(ctx).Where("name LIKE ? ESCAPE '\\\\'", pattern).Limit(100).Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("failed to search receiver media: %w", err)
-	}
-	return r.rowsToMediaRecords(rows), nil
 }
 
 func (r *ReceiverMediaRepository) rowToMediaRecord(row *receiverMediaRow) *repositories.ReceiverMediaRecord {
