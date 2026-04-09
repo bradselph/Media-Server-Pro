@@ -85,8 +85,8 @@ The site is in solid working condition with all core features functional: media 
 | ✅ `c5f2b3b3` 2026-04-09 | No `prefers-reduced-motion` CSS rules | Added global reduced-motion media query to main.css. | WCAG 2.3.3 |
 | M2 | All | No print stylesheet | No print media queries detected. Printing media lists or playlists will include nav/footer chrome. | UX |
 | ✅ `a88c27c4` 2026-04-09 | Images missing explicit width/height attributes | Added width/height to all thumbnail images on home page. | CWV / CLS |
-| M4 | Home | Recommendation sections lack horizontal scroll controls | Continue Watching, Trending, Recommended rows are horizontal carousels but have no visible prev/next buttons for keyboard/mouse navigation. | UX |
-| M5 | Profile | Watch history shows duplicate entries | Same media appears multiple times in watch history (e.g., "f3lq9FCn" appears 3 times, "Hot Poly Girlfriends" 3 times) with slightly different timestamps. Consider deduplicating to show only the latest entry per media item. | UX |
+| ✅ `4e8317a5` 2026-04-09 | Recommendation sections lack horizontal scroll controls | Added chevron prev/next buttons to all carousel rows. | UX |
+| ✅ `61d3a493` 2026-04-09 | Watch history shows duplicate entries | Frontend deduplicates by media_id, showing only latest entry per item. | UX |
 | ✅ `24731bd3` 2026-04-09 | Watch progress shows "0% watched" for 26% actual | Backend stores progress as 0-1 ratio; frontend now normalizes to percentage. | Bug |
 | M7 | Home | Media card titles display raw filenames | Titles like "f3lq9FCn.mp4", "D0FtKuAz.mp4", "n0TIoFEr.mp4" are raw filenames with no human-readable names. While some media has clean titles, these appear to have no metadata set. | UX |
 | ✅ `da7573f5` 2026-04-09 | File extension shown in media titles | Recommendation rows now use getDisplayTitle() which strips extensions. | UX |
@@ -96,7 +96,7 @@ The site is in solid working condition with all core features functional: media 
 
 | # | Page | Issue | Notes |
 |---|------|-------|-------|
-| L1 | All | `aria-current="page"` set on logo link "Media Server Pro" | The aria-current attribute should be on the active nav link, not always on the logo. |
+| ✅ Standard behavior | `aria-current="page"` set on logo link | NuxtLink sets aria-current="page" on exact route match — correct behavior. |
 | L2 | All | Lighthouse "label-content-name-mismatch" | Some visible text labels don't match their accessible names exactly. |
 | L3 | Home | Sections repeat the same media items | The same items appear in Continue Watching, Trending, and Recommended sections simultaneously. |
 | ✅ Already implemented | Page title is just media filename | useHead uses getDisplayTitle() which strips extensions. |
@@ -104,7 +104,7 @@ The site is in solid working condition with all core features functional: media 
 | ✅ Already implemented | No confirmation dialog for "Clear All" watch history | Confirmation modal already exists (clearHistoryConfirmOpen). |
 | ✅ `b085cd82` 2026-04-09 | Upload button disabled with no explanation | Added "Select files to upload" helper text. |
 | L8 | Home | Search input uses `autocomplete="off"` | Search could benefit from `autocomplete` for returning users. |
-| L9 | Admin > Streaming | HLS jobs show truncated UUIDs | Job IDs are cut to "4e337ca8-e91..." -- hovering should show the full ID, or link to the media item by name. |
+| ✅ `dfe9c01d` 2026-04-09 | HLS jobs show truncated UUIDs | IDs now clickable to copy full UUID; tooltip shows full ID. |
 
 ## Security Audit
 
