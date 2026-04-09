@@ -82,9 +82,9 @@ The site is in solid working condition with all core features functional: media 
 
 | # | Page | Issue | Notes | Standard |
 |---|------|-------|-------|----------|
-| M1 | All | No `prefers-reduced-motion` CSS rules | No `@media (prefers-reduced-motion: reduce)` rules found. Users who prefer reduced motion will still see all animations. | WCAG 2.3.3 |
+| ✅ `c5f2b3b3` 2026-04-09 | No `prefers-reduced-motion` CSS rules | Added global reduced-motion media query to main.css. | WCAG 2.3.3 |
 | M2 | All | No print stylesheet | No print media queries detected. Printing media lists or playlists will include nav/footer chrome. | UX |
-| M3 | All | Images missing explicit width/height attributes | All 103 images on home page lack `width` and `height` attributes, which can cause Cumulative Layout Shift (CLS) as images load. | CWV / CLS |
+| ✅ `a88c27c4` 2026-04-09 | Images missing explicit width/height attributes | Added width/height to all thumbnail images on home page. | CWV / CLS |
 | M4 | Home | Recommendation sections lack horizontal scroll controls | Continue Watching, Trending, Recommended rows are horizontal carousels but have no visible prev/next buttons for keyboard/mouse navigation. | UX |
 | M5 | Profile | Watch history shows duplicate entries | Same media appears multiple times in watch history (e.g., "f3lq9FCn" appears 3 times, "Hot Poly Girlfriends" 3 times) with slightly different timestamps. Consider deduplicating to show only the latest entry per media item. | UX |
 | ✅ `24731bd3` 2026-04-09 | Watch progress shows "0% watched" for 26% actual | Backend stores progress as 0-1 ratio; frontend now normalizes to percentage. | Bug |
@@ -99,9 +99,9 @@ The site is in solid working condition with all core features functional: media 
 | L1 | All | `aria-current="page"` set on logo link "Media Server Pro" | The aria-current attribute should be on the active nav link, not always on the logo. |
 | L2 | All | Lighthouse "label-content-name-mismatch" | Some visible text labels don't match their accessible names exactly. |
 | L3 | Home | Sections repeat the same media items | The same items appear in Continue Watching, Trending, and Recommended sections simultaneously. |
-| L4 | Player | Page title is just media filename | Player page title shows "f3lq9FCn" -- should include "Player" suffix or site name for tab identification. |
+| ✅ Already implemented | Page title is just media filename | useHead uses getDisplayTitle() which strips extensions. |
 | L5 | Admin | System tab URL not reflected as `?tab=system` | Admin tab navigation uses buttons but the URL `?tab=streaming` pattern works. Good. |
-| L6 | Profile | No confirmation dialog for "Clear All" watch history | The "Clear All" button should show a confirmation before deleting all history. |
+| ✅ Already implemented | No confirmation dialog for "Clear All" watch history | Confirmation modal already exists (clearHistoryConfirmOpen). |
 | L7 | Upload | Upload button disabled with no explanation | The upload button is disabled when no file is selected, but there is no visible text explaining why. |
 | L8 | Home | Search input uses `autocomplete="off"` | Search could benefit from `autocomplete` for returning users. |
 | L9 | Admin > Streaming | HLS jobs show truncated UUIDs | Job IDs are cut to "4e337ca8-e91..." -- hovering should show the full ID, or link to the media item by name. |

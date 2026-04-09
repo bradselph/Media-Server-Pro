@@ -61,14 +61,17 @@ Media Server Pro 4 is a mature, feature-rich self-hosted media server. The front
 **User impact**: MEDIUM — public playlists are a sharing feature that is invisible to non-authenticated visitors.
 **Implementation sketch**: Either remove the auth middleware from the playlists page (with conditional UI showing only public playlists for guests) or create a separate `/playlists/public` page that does not require auth.
 
-### 5. Timestamp Deep-Link Sharing
+### ✅ `6aca3b08` 2026-04-09 — Timestamp Deep-Link Sharing
+> **Resolved**: Added "Share" button to player that copies current URL with ?t=<seconds> to clipboard.
+> **Verified**: pending deploy
 **What's missing**: The player supports `?t=N` for seeking to a specific second (player.vue line 248: `const tParam = Number(route.query.t)`), but there is no UI to copy a timestamp link. Users cannot share "watch from 2:30" links without manually constructing the URL.
 **Evidence**: `player.vue` line 248 handles `?t=N`. No "Share at current time" or "Copy link at timestamp" button exists in the player template.
 **Backend support**: YES — the backend serves the same content regardless of the `t` parameter; only the frontend needs the button.
 **User impact**: MEDIUM — shareable timestamp links are a standard feature on YouTube and streaming platforms.
 **Suggested UI**: Add a "Share" or "Copy Link" button in the player info card that copies the current URL with `?t=<currentTime>` to the clipboard.
 
-### 6. Keyboard Shortcut Reference Not Discoverable
+### ✅ Already implemented — Keyboard Shortcut Reference
+> **Resolved**: PlayerControls component already has a keyboard icon button (i-lucide-keyboard) that toggles the shortcuts overlay.
 **What's missing**: The player has a comprehensive keyboard shortcut overlay triggered by pressing `?` (player.vue lines 589-594, showShortcuts ref). However, there is no visual indicator that this exists — no "?" icon, no tooltip, no help button. The `PlayerControls` component receives `v-model:showShortcuts` but the trigger is keyboard-only.
 **Evidence**: `player.vue` line 589: `case '?': showShortcuts.value = !showShortcuts.value`. No button or visual cue in the template.
 **Backend support**: N/A — frontend-only feature.
