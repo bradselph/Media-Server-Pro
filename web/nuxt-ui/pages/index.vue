@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem, Playlist } from '~/types/api'
+import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem, Playlist, MediaStats } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi, usePlaylistApi } from '~/composables/useApiEndpoints'
 import { resolveComponent } from 'vue'
@@ -44,6 +44,10 @@ const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+
+// Library stats (public, shown to guests too)
+const libraryStats = ref<MediaStats | null>(null)
+mediaApi.getStats().then(s => { libraryStats.value = s }).catch(() => {})
 
 // Multi-select / bulk-add-to-playlist
 const selectionMode = ref(false)
@@ -680,6 +684,14 @@ onUnmounted(() => {
         @thumbnail-error="onSuggestionThumbnailError"
       />
     </template>
+
+    <!-- Library stats (public) -->
+    <div v-if="libraryStats && !authStore.isLoggedIn" class="flex items-center gap-4 text-xs text-muted">
+      <span class="flex items-center gap-1"><UIcon name="i-lucide-database" class="size-3.5" />{{ libraryStats.total_count.toLocaleString() }} items</span>
+      <span v-if="libraryStats.video_count" class="flex items-center gap-1"><UIcon name="i-lucide-film" class="size-3.5" />{{ libraryStats.video_count.toLocaleString() }} videos</span>
+      <span v-if="libraryStats.audio_count" class="flex items-center gap-1"><UIcon name="i-lucide-music" class="size-3.5" />{{ libraryStats.audio_count.toLocaleString() }} audio</span>
+      <span class="flex items-center gap-1"><UIcon name="i-lucide-hard-drive" class="size-3.5" />{{ formatBytes(libraryStats.total_size) }}</span>
+    </div>
 
     <!-- Filters -->
     <div class="flex flex-wrap gap-3 items-center">
