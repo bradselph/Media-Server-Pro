@@ -331,7 +331,7 @@ onMounted(() => {
   const prefs = authStore.user?.preferences
   if (prefs) {
     if (prefs.items_per_page && prefs.items_per_page !== params.limit) params.limit = prefs.items_per_page
-    if (prefs.view_mode) viewMode.value = prefs.view_mode === 'list' ? 'list' : 'grid'
+    if (prefs.view_mode && ['grid', 'list', 'compact'].includes(prefs.view_mode)) viewMode.value = prefs.view_mode as ViewMode
   }
   loadCategories()
   load()
@@ -341,8 +341,13 @@ onMounted(() => {
   else loadGeneralSuggestions()
 })
 
-// View mode — initialized from user preference; only 'grid' and 'list' are supported here
-const viewMode = ref<'grid' | 'list'>(authStore.user?.preferences?.view_mode === 'list' ? 'list' : 'grid')
+// View mode — initialized from user preference; supports 'grid', 'list', and 'compact'
+type ViewMode = 'grid' | 'list' | 'compact'
+const viewMode = ref<ViewMode>(
+  (['grid', 'list', 'compact'] as ViewMode[]).includes(authStore.user?.preferences?.view_mode as ViewMode)
+    ? (authStore.user?.preferences?.view_mode as ViewMode)
+    : 'grid'
+)
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
 const canViewMature = computed(() =>
@@ -746,6 +751,14 @@ onUnmounted(() => {
             size="sm"
             @click="viewMode = 'list'"
           />
+          <UButton
+            icon="i-lucide-rows-3"
+            aria-label="Compact view"
+            :variant="viewMode === 'compact' ? 'solid' : 'ghost'"
+            :color="viewMode === 'compact' ? 'primary' : 'neutral'"
+            size="sm"
+            @click="viewMode = 'compact'"
+          />
         </UButtonGroup>
       </div>
     </div>
@@ -899,6 +912,31 @@ onUnmounted(() => {
             @click.prevent.stop="setTagFilter(tag)"
           >{{ tag }}</button>
         </div>
+      </NuxtLink>
+      <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
+        No media found.
+      </p>
+    </div>
+
+    <!-- Compact view -->
+    <div
+      v-else-if="viewMode === 'compact'"
+      class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-1.5"
+    >
+      <NuxtLink
+        v-for="item in items"
+        :key="item.id"
+        :to="matureGateHref(item)"
+        class="flex items-center gap-2 px-2.5 py-1.5 rounded-md hover:bg-muted/50 transition-colors group"
+      >
+        <UIcon
+          :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'"
+          class="size-4 text-muted shrink-0"
+        />
+        <span class="text-sm truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
+          {{ getDisplayTitle(item) }}
+        </span>
+        <span v-if="item.duration" class="text-xs text-muted shrink-0 ml-auto font-mono">{{ formatDuration(item.duration) }}</span>
       </NuxtLink>
       <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
         No media found.
