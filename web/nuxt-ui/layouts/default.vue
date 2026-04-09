@@ -72,6 +72,9 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
 
 <template>
   <div class="min-h-screen bg-default text-default">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-md focus:text-sm focus:font-medium">
+      Skip to main content
+    </a>
     <!-- Full-page gate: nothing is rendered until the age-gate check resolves.
          Once resolved, if the gate is open the modal covers everything.
          Content only appears after the gate is cleared. -->
@@ -174,7 +177,7 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
     </header>
 
     <!-- Page content -->
-    <main v-if="ageGateChecked && !ageGateOpen">
+    <main id="main-content" v-if="ageGateChecked && !ageGateOpen">
       <slot />
     </main>
 
