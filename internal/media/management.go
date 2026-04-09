@@ -736,6 +736,8 @@ func validateDirectory(dir string, cfg *config.Config) (string, error) {
 // the media library immediately without waiting for the next scheduled scan.
 // It creates a MediaItem, adds it to the in-memory index, runs ffprobe for
 // metadata extraction, and persists the metadata to the database.
+// RegisterUploadedFile indexes a newly-uploaded local file by path.
+// For remote-store uploads where os.Stat would fail, use RegisterUploadedFileWithSize instead.
 func (m *Module) RegisterUploadedFile(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -753,6 +755,39 @@ func (m *Module) RegisterUploadedFile(path string) error {
 	}
 
 	item := m.createMediaItem(path, info, mediaType)
+	if item == nil {
+		return fmt.Errorf("failed to create media item for %s", path)
+	}
+	return m.finalizeRegisteredItem(path, item)
+}
+
+// RegisterUploadedFileWithSize indexes a newly-uploaded file using caller-supplied size metadata,
+// skipping os.Stat. Use this for remote-store (S3/B2) uploads where the path is a storage key.
+func (m *Module) RegisterUploadedFileWithSize(path string, size int64, modTime time.Time) error {
+	ext := strings.ToLower(filepath.Ext(path))
+	var mediaType models.MediaType
+	if videoExtensions[ext] {
+		mediaType = models.MediaTypeVideo
+	} else if helpers.IsAudioExtension(ext) {
+		mediaType = models.MediaTypeAudio
+	} else {
+		mediaType = models.MediaTypeUnknown
+	}
+
+	// Build item using the storage-oriented helper which accepts struct fields
+	// directly — no os.FileInfo required.
+	item := m.createMediaItemFromStorageInfo(path, storage.FileInfo{
+		Name:    filepath.Base(path),
+		Size:    size,
+		ModTime: modTime,
+	}, mediaType)
+	if item == nil {
+		return fmt.Errorf("failed to create media item for %s", path)
+	}
+	return m.finalizeRegisteredItem(path, item)
+}
+
+func (m *Module) finalizeRegisteredItem(path string, item *models.MediaItem) error {
 	if item == nil {
 		return fmt.Errorf("failed to create media item for %s", path)
 	}

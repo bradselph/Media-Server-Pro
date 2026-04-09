@@ -810,7 +810,7 @@ func (m *Module) TrackProxyStream(userID string) (release func()) {
 func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) error {
 	m.log.Debug("Download request for %s", path)
 
-	ctx := context.Background()
+	ctx := r.Context()
 
 	var fileSize int64
 	if m.store != nil && !m.store.IsLocal() {

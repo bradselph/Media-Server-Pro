@@ -553,7 +553,7 @@ export function useAdminApi() {
       api.post<DownloaderDetectResult>(`${base}/downloader/detect`, { url }),
     listDownloaderJobs: () => api.get<DownloaderJob[]>(`${base}/downloader/downloads`),
     createDownloaderJob: (params: { url: string; title?: string; clientId: string; isYouTube?: boolean; isYouTubeMusic?: boolean; relayId?: string }) =>
-      api.post<{ downloadId: string; status: string }>(`${base}/downloader/download`, params),
+      api.post<{ success: boolean; downloadId: string; streamUrl: string; message: string }>(`${base}/downloader/download`, params),
     cancelDownloaderJob: (id: string) =>
       api.post<void>(`${base}/downloader/cancel/${encodeURIComponent(id)}`),
     deleteDownloaderJob: (filename: string) =>

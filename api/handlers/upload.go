@@ -3,6 +3,8 @@ package handlers
 import (
 	"mime/multipart"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -67,16 +69,34 @@ func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context, cfg *config.Config)
 }
 
 // checkUploadStorageQuota returns false and writes an error if user would exceed quota. Otherwise true.
+// Re-reads storage_used from the DB to minimise the race window between concurrent uploads.
 func (h *Handler) checkUploadStorageQuota(c *gin.Context, cfg *config.Config, user *models.User, fileHeaders []*multipart.FileHeader) bool {
 	userType := h.getUserType(cfg, user)
 	if userType == nil || userType.StorageQuota <= 0 {
 		return true
 	}
+	// Sum client-reported sizes as an upper bound. The actual bytes written may be
+	// less (truncated by MaxBytesReader), but client-reported 0 is treated as the
+	// configured max file size to prevent quota bypass via a zero-sized header.
+	maxFileSize := cfg.Uploads.MaxFileSize
+	if maxFileSize <= 0 {
+		maxFileSize = 10 << 30 // 10 GB safety cap when unconfigured
+	}
 	var totalIncoming int64
 	for _, fh := range fileHeaders {
-		totalIncoming += fh.Size
+		if fh.Size > 0 {
+			totalIncoming += fh.Size
+		} else {
+			// Client sent Size=0 — assume worst case to prevent bypass.
+			totalIncoming += maxFileSize
+		}
 	}
-	if user.StorageUsed+totalIncoming <= userType.StorageQuota {
+	// Re-read authoritative storage from the auth module to narrow the concurrent-upload race.
+	freshUsed := user.StorageUsed
+	if freshUser, err := h.auth.GetUser(c.Request.Context(), user.Username); err == nil && freshUser != nil {
+		freshUsed = freshUser.StorageUsed
+	}
+	if freshUsed+totalIncoming <= userType.StorageQuota {
 		return true
 	}
 	writeError(c, http.StatusForbidden, "Storage quota exceeded")
@@ -130,9 +150,19 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		totalAdded += result.Size
 
 		// Register the file in the media index immediately so it's visible in the
-		// library without waiting for the next scheduled scan.
+		// library without waiting for the next scheduled scan. For remote-store
+		// uploads the path is a storage key (not a local path), so we use the
+		// size-aware variant to skip os.Stat which would fail on remote keys.
 		if result.Path != "" {
-			if err := h.media.RegisterUploadedFile(result.Path); err != nil {
+			var regErr error
+			if _, statErr := os.Stat(result.Path); statErr == nil {
+				// Local file — use standard path which runs os.Stat internally.
+				regErr = h.media.RegisterUploadedFile(result.Path)
+			} else {
+				// Remote-store key — provide size from upload result.
+				regErr = h.media.RegisterUploadedFileWithSize(result.Path, result.Size, time.Now())
+			}
+			if err := regErr; err != nil {
 				h.log.Warn("Failed to register uploaded file in library: %v", err)
 			}
 		}
