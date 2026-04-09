@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -301,7 +302,7 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 	writeSuccess(c, map[string]string{"message": "Media updated"})
 }
 
-// AdminDeleteMedia deletes a media file
+// AdminDeleteMedia deletes a media file and cleans up all associated data.
 func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 	id := c.Param("id")
 	path, ok := h.resolveMediaByID(c, id)
@@ -315,8 +316,51 @@ func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 		return
 	}
 
+	// Clean up associated data that DeleteMedia does not handle.
+	// These are best-effort — failures are logged but do not block the delete response.
+	h.cleanupDeletedMedia(c.Request.Context(), id, path)
+
 	h.logAdminAction(c, &adminLogActionParams{Action: "delete_media", Target: path})
 	writeSuccess(c, map[string]string{"message": "Media deleted"})
+}
+
+// cleanupDeletedMedia removes HLS cache, thumbnails, and other data associated
+// with a media item that was just deleted. All operations are best-effort.
+func (h *Handler) cleanupDeletedMedia(_ context.Context, mediaID, mediaPath string) {
+	// HLS cache and job
+	if h.hls != nil {
+		if job, err := h.hls.GetJobByMediaPath(mediaPath); err == nil && job != nil {
+			if delErr := h.hls.DeleteJob(job.ID); delErr != nil {
+				h.log.Warn("Failed to cleanup HLS job for deleted media %s: %v", mediaID, delErr)
+			}
+		}
+	}
+
+	// Thumbnails (main + previews)
+	if h.thumbnails != nil {
+		thumbID := thumbnails.MediaID(mediaID)
+		thumbPath := h.thumbnails.GetThumbnailPath(thumbID)
+		if thumbPath != "" {
+			_ = os.Remove(thumbPath)
+			// Also remove WebP variant and preview frames
+			_ = os.Remove(thumbPath[:len(thumbPath)-len(filepath.Ext(thumbPath))] + ".webp")
+			// Preview frames: <id>_preview_0.jpg, _preview_1.jpg, etc.
+			dir := filepath.Dir(thumbPath)
+			base := string(thumbID)
+			if entries, err := os.ReadDir(dir); err == nil {
+				for _, e := range entries {
+					if strings.HasPrefix(e.Name(), base+"_preview_") {
+						_ = os.Remove(filepath.Join(dir, e.Name()))
+					}
+				}
+			}
+		}
+	}
+
+	// Note: playback positions, favorites, playlist items, and watch history
+	// entries referencing this media ID are NOT cleaned here. They are orphaned
+	// but harmless — the frontend handles missing media gracefully, and the
+	// periodic thumbnail cleanup task removes orphaned thumbnails on schedule.
 }
 
 // extractStringSlice converts a []interface{} from JSON into []string, ignoring non-string elements.
@@ -372,6 +416,7 @@ func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, upd
 		if err := h.media.DeleteMedia(c.Request.Context(), path); err != nil {
 			return err
 		}
+		h.cleanupDeletedMedia(c.Request.Context(), id, path)
 		h.logAdminAction(c, &adminLogActionParams{Action: "bulk_delete_media", Target: id})
 		return nil
 	case "update":
