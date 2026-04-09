@@ -130,8 +130,11 @@ function ensureAudioGraph() {
     audioCtx = new AudioContext()
     sourceNode = audioCtx.createMediaElementSource(videoRef.value)
     analyserNode = audioCtx.createAnalyser()
-    analyserNode.fftSize = 256
-    analyserNode.smoothingTimeConstant = 0.8
+    // 2048-point FFT → 1024 bins @ ~22kHz = ~21 Hz/bin resolution.
+    // Fine enough for the EQ peaking bands (60 Hz–16 kHz) to be
+    // individually visible in the frequency display.
+    analyserNode.fftSize = 2048
+    analyserNode.smoothingTimeConstant = 0.75
     // Default chain (no EQ): source → analyser → destination
     sourceNode.connect(analyserNode)
     analyserNode.connect(audioCtx.destination)
@@ -328,11 +331,17 @@ function onVideoLoaded() {
     videoRef.value.volume = volume.value
   }
   // For audio media, pre-wire the audio graph so the visualizer works immediately.
-  // For video with EQ disabled, this is a no-op (ensureAudioGraph is guarded).
+  // Called every time loadedmetadata fires — ensureAudioGraph() is idempotent.
+  // Also handles the HLS re-load case: when HLS activates it calls attachMedia() which
+  // resets the element and fires loadedmetadata again; the AudioContext and
+  // MediaElementAudioSourceNode survive across src/srcObject changes.
   if (media.value?.type === 'audio') {
     ensureAudioGraph()
-    // Resume AudioContext if browser suspended it (requires user gesture — play does that)
-    videoRef.value?.addEventListener('play', () => audioCtx?.resume(), { once: true })
+    // Browser suspends AudioContext until a user gesture. Resume on every play event
+    // (not just the first) so HLS re-loads don't leave the context suspended.
+    videoRef.value?.addEventListener('play', () => {
+      if (audioCtx?.state === 'suspended') audioCtx.resume()
+    }, { once: false })
   }
   restorePosition()
   playbackStore.startAutoSave()
@@ -962,7 +971,7 @@ watch(mediaId, (id, oldId) => {
             </div>
             <audio
               ref="videoRef"
-              :src="mediaApi.getStreamUrl(media.id)"
+              :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
               controls
               class="w-full"
               @loadedmetadata="onVideoLoaded"

@@ -108,17 +108,39 @@ function startDraw() {
     const barWidth = Math.max(3, (width - gap * (numBars - 1)) / numBars)
     const color = getBarColor()
 
-    for (let i = 0; i < numBars; i++) {
-      // Map bars to lower 75% of frequency spectrum (more musically interesting)
-      const binIndex = Math.floor((i / numBars) * bufferLength * 0.75)
-      const value = dataArray[binIndex] ?? 0
-      const barHeight = Math.max(2, (value / 255) * height * 0.97)
+    // Logarithmic frequency mapping: human hearing is logarithmic, and EQ bands
+    // (60 Hz, 170 Hz, 310 Hz … 16 kHz) are distributed log-evenly.
+    // Map bar i → a frequency range [fLow, fHigh] on a log scale from 20 Hz to 20 kHz,
+    // then average the FFT bins that fall within that range.
+    const sampleRate = analyser.context.sampleRate
+    const nyquist = sampleRate / 2                 // max frequency (e.g. 22050 Hz)
+    const fMin = 20                                // Hz — lowest bar
+    const fMax = Math.min(20000, nyquist)          // Hz — highest bar
+    const logFMin = Math.log10(fMin)
+    const logFMax = Math.log10(fMax)
 
+    for (let i = 0; i < numBars; i++) {
+      // Frequency range for this bar
+      const freqLow  = Math.pow(10, logFMin + (i / numBars) * (logFMax - logFMin))
+      const freqHigh = Math.pow(10, logFMin + ((i + 1) / numBars) * (logFMax - logFMin))
+
+      // Convert Hz to FFT bin indices
+      const binLow  = Math.floor(freqLow  / nyquist * bufferLength)
+      const binHigh = Math.ceil(freqHigh  / nyquist * bufferLength)
+      const lo = Math.max(0, binLow)
+      const hi = Math.min(bufferLength - 1, binHigh)
+
+      // Average magnitude across the bin range
+      let sum = 0
+      const count = hi - lo + 1
+      for (let b = lo; b <= hi; b++) sum += dataArray[b] ?? 0
+      const value = count > 0 ? sum / count : 0
+
+      const barHeight = Math.max(2, (value / 255) * height * 0.97)
       const x = i * (barWidth + gap)
       const y = height - barHeight
       const radius = Math.min(barWidth / 2, 4)
 
-      // Gradient intensity based on amplitude
       const alpha = 0.45 + (value / 255) * 0.55
       ctx.fillStyle = color
       ctx.globalAlpha = alpha
