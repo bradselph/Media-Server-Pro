@@ -31,6 +31,9 @@ func (m *Manager) applyStreamingKeepAliveOverrides() {
 }
 
 func (m *Manager) applyStreamingAdaptiveOverrides() {
+	if val, ok := envGetBool("STREAMING_ADAPTIVE"); ok {
+		m.config.Streaming.Adaptive = val
+	}
 	if val, ok := envGetBool("STREAMING_MOBILE_OPTIMIZATION"); ok {
 		m.config.Streaming.MobileOptimization = val
 	}

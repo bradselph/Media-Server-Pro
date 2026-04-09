@@ -68,6 +68,12 @@ func (m *Manager) applySecurityCORSOverrides() {
 }
 
 func (m *Manager) applySecurityCSPOverrides() {
+	if val, ok := envGetBool("CSP_ENABLED"); ok {
+		m.config.Security.CSPEnabled = val
+	}
+	if val, ok := envGetBool("HSTS_ENABLED"); ok {
+		m.config.Security.HSTSEnabled = val
+	}
 	if val, ok := envGetInt("HSTS_MAX_AGE"); ok {
 		m.config.Security.HSTSMaxAge = val
 	}

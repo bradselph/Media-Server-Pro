@@ -66,6 +66,7 @@ func defaultStreamingConfig() StreamingConfig {
 		BufferSize:         32 * 1024,
 		KeepAliveEnabled:   true,
 		KeepAliveTimeout:   60 * time.Second,
+		Adaptive:           true, // auto-activate HLS when available; set false to always use direct streaming
 		MobileOptimization: true,
 		MobileChunkSize:    512 * 1024,
 		RequireAuth:        false, // allow anonymous streaming by default
@@ -138,7 +139,9 @@ func defaultSecurityConfig() SecurityConfig {
 		AuthRateLimit:     20,
 		AuthBurstLimit:    5,
 		MaxFileSizeMB:     0,
+		CSPEnabled:        true,
 		CSPPolicy:         "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob: https://api.iconify.design",
+		HSTSEnabled:       false,
 		HSTSMaxAge:        31536000,
 		CORSEnabled:       false,
 		CORSOrigins:       []string{},

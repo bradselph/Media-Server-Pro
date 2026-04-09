@@ -18,6 +18,7 @@ const subTabs = [
 // Security config toggles
 const fullConfig = ref<Record<string, unknown>>({})
 const corsEnabled = ref(false)
+const hstsEnabled = ref(false)
 const httpsEnabled = ref(false)
 const configSaving = ref(false)
 const configLoading = ref(false)
@@ -31,6 +32,7 @@ async function loadSecurityConfig() {
       const sec = asRecord(cfg.security)
       const srv = asRecord(cfg.server)
       corsEnabled.value = sec?.cors_enabled === true
+      hstsEnabled.value = sec?.hsts_enabled === true
       httpsEnabled.value = srv?.enable_https === true
     }
   } catch (e: unknown) {
@@ -402,6 +404,18 @@ watch(subTab, (v) => {
               :disabled="configSaving"
               aria-label="Enable HTTPS"
               @update:model-value="v => { httpsEnabled = v; saveSecurityToggle('server', 'enable_https', v) }"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-4 py-3">
+            <div>
+              <p class="font-medium text-sm text-highlighted">Enable HSTS</p>
+              <p class="text-xs text-muted mt-0.5">Send Strict-Transport-Security header to force HTTPS on all future requests</p>
+            </div>
+            <USwitch
+              :model-value="hstsEnabled"
+              :disabled="configSaving"
+              aria-label="Enable HSTS"
+              @update:model-value="v => { hstsEnabled = v; saveSecurityToggle('security', 'hsts_enabled', v) }"
             />
           </div>
           <div class="flex items-center justify-between gap-4 py-3 last:pb-0">

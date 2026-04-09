@@ -81,6 +81,7 @@ export function useHLS(
   mediaId: Ref<string>,
 ): UseHLSReturn {
   const hlsApi = useHlsApi()
+  const settingsApi = useSettingsApi()
 
   const hlsAvailable = ref(false)
   const hlsActivated = ref(false)
@@ -316,8 +317,13 @@ export function useHLS(
         if (status.available && status.hls_url) {
           hlsAvailable.value = true
           hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
-          // Auto-activate HLS when available — no user action needed
-          activateHLS()
+          // Auto-activate HLS only when adaptive streaming is enabled in server settings.
+          // When disabled, the player falls back to direct streaming; user can still
+          // click "Switch to HLS" if the banner is shown.
+          const settings = await settingsApi.get().catch(() => null)
+          if (settings?.streaming?.adaptive !== false) {
+            activateHLS()
+          }
         } else if (status.status === 'running') {
           jobRunning.value = true
           jobProgress.value = status.progress
@@ -346,8 +352,9 @@ export function useHLS(
                   clearInterval(pollTimer)
                   pollTimer = null
                 }
-                // Auto-activate once generation completes
-                activateHLS()
+                // Auto-activate once generation completes (if adaptive is enabled)
+                const s = await settingsApi.get().catch(() => null)
+                if (s?.streaming?.adaptive !== false) activateHLS()
               } else if (updated.status !== 'running' && updated.status !== 'pending') {
                 jobRunning.value = false
                 if (pollTimer) {

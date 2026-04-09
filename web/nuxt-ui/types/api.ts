@@ -605,6 +605,7 @@ export interface ServerSettings {
   }
   streaming: {
     mobileOptimization: boolean
+    adaptive: boolean
   }
   analytics: {
     enabled: boolean

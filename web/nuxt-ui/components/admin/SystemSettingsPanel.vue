@@ -339,8 +339,16 @@ onMounted(loadConfig)
               <span class="text-sm">IP Blacklist</span>
               <USwitch :model-value="get('security', 'enable_ip_blacklist')" @update:model-value="set('security', 'enable_ip_blacklist', $event)" />
             </div>
-            <UFormField label="HSTS Max Age (s, 0 = disabled)">
-              <UInput type="number" :model-value="get('security', 'hsts_max_age')" @update:model-value="set('security', 'hsts_max_age', Number($event))" />
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Content Security Policy</span>
+              <USwitch :model-value="get('security', 'csp_enabled')" @update:model-value="set('security', 'csp_enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">HSTS</span>
+              <USwitch :model-value="get('security', 'hsts_enabled')" @update:model-value="set('security', 'hsts_enabled', $event)" />
+            </div>
+            <UFormField label="HSTS Max Age (s)">
+              <UInput type="number" :model-value="get('security', 'hsts_max_age')" @update:model-value="set('security', 'hsts_max_age', Number($event))" :disabled="!get('security', 'hsts_enabled')" />
             </UFormField>
             <div class="flex items-center justify-between">
               <span class="text-sm">CORS</span>
@@ -375,6 +383,10 @@ onMounted(loadConfig)
             <div class="flex items-center justify-between">
               <span class="text-sm">Keep-Alive</span>
               <USwitch :model-value="get('streaming', 'keep_alive_enabled')" @update:model-value="set('streaming', 'keep_alive_enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Adaptive Bitrate (HLS)</span>
+              <USwitch :model-value="get('streaming', 'adaptive')" @update:model-value="set('streaming', 'adaptive', $event)" />
             </div>
           </div>
         </UCard>

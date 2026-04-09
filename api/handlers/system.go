@@ -232,6 +232,7 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 		},
 		"streaming": map[string]interface{}{
 			"mobileOptimization": cfg.Streaming.MobileOptimization,
+			"adaptive":           cfg.Streaming.Adaptive,
 		},
 		"analytics": map[string]interface{}{
 			"enabled": cfg.Analytics.Enabled,

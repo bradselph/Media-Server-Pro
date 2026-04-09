@@ -228,8 +228,17 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	r.Use(middleware.GinRequestID())
 
 	// Security headers (CSP, HSTS, X-Frame-Options, etc.)
+	// CSPEnabled/HSTSEnabled let admins suppress headers without clearing the policy/max-age values.
 	secCfg := cfg.Get().Security
-	r.Use(middleware.GinSecurityHeaders(secCfg.CSPPolicy, secCfg.HSTSMaxAge))
+	cspPolicy := secCfg.CSPPolicy
+	if !secCfg.CSPEnabled {
+		cspPolicy = ""
+	}
+	hstsMaxAge := secCfg.HSTSMaxAge
+	if !secCfg.HSTSEnabled {
+		hstsMaxAge = 0
+	}
+	r.Use(middleware.GinSecurityHeaders(cspPolicy, hstsMaxAge))
 
 	// CORS — only applied when explicitly configured.
 	// When auth is enabled and CORS origins contains only "*", replace the
