@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useSuggestionsApi } from '~/composables/useApiEndpoints'
+
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
@@ -6,6 +8,16 @@ const colorMode = useColorMode()
 const ageGateApi = useAgeGateApi()
 const versionApi = useVersionApi()
 const serverVersion = ref('')
+const suggestionsApi = useSuggestionsApi()
+const newCount = ref(0)
+
+async function fetchNewCount() {
+  if (!authStore.isLoggedIn) return
+  try {
+    const resp = await suggestionsApi.getNewSinceLastVisit(1)
+    newCount.value = resp.total
+  } catch { /* non-critical */ }
+}
 
 const ageGateOpen = ref(false)
 const ageGateChecked = ref(false)
@@ -32,6 +44,7 @@ async function verifyAge() {
 
 onMounted(checkAgeGate)
 onMounted(() => { versionApi.get().then(r => { serverVersion.value = r.version }).catch(() => {}) })
+onMounted(fetchNewCount)
 
 useHead({
   title: computed(() => {
@@ -93,11 +106,15 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
             v-for="link in navLinks"
             :key="link.to"
             :to="link.to"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+            class="relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
             active-class="text-default bg-muted"
           >
             <UIcon :name="link.icon" class="size-4" />
             {{ link.label }}
+            <span
+              v-if="link.to === '/' && newCount > 0"
+              class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-0.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center"
+            >{{ newCount > 99 ? '99+' : newCount }}</span>
           </NuxtLink>
         </nav>
 
