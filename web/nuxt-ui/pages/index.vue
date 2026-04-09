@@ -499,7 +499,7 @@ onUnmounted(() => {
               <img
                 v-if="ep.thumbnail_url"
                 :src="ep.thumbnail_url"
-                :alt="ep.name"
+                :alt="getDisplayTitle(ep)"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
               />
@@ -511,7 +511,7 @@ onUnmounted(() => {
               </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors leading-tight" :title="ep.show_name">{{ ep.show_name }}</p>
-            <p class="text-[10px] text-muted truncate" :title="ep.name">{{ ep.name }}</p>
+            <p class="text-[10px] text-muted truncate" :title="getDisplayTitle(ep)">{{ getDisplayTitle(ep) }}</p>
           </NuxtLink>
         </div>
       </div>
@@ -552,7 +552,7 @@ onUnmounted(() => {
               <img
                 v-if="r.thumbnail_url"
                 :src="r.thumbnail_url"
-                :alt="r.name"
+                :alt="getDisplayTitle(r)"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
               />
@@ -560,7 +560,7 @@ onUnmounted(() => {
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
               </div>
             </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="r.name">{{ r.name }}</p>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
             <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
           </NuxtLink>
         </div>
@@ -582,7 +582,7 @@ onUnmounted(() => {
               <img
                 v-if="r.thumbnail_url"
                 :src="r.thumbnail_url"
-                :alt="r.name"
+                :alt="getDisplayTitle(r)"
                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 loading="lazy"
               />
@@ -590,7 +590,7 @@ onUnmounted(() => {
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
               </div>
             </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="r.name">{{ r.name }}</p>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
             <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
           </NuxtLink>
         </div>
