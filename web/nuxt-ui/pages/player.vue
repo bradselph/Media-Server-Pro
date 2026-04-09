@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { MediaItem, Suggestion, Playlist, PlaylistItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatDuration } from '~/utils/format'
+import { formatDuration, formatBytes, formatBitrate } from '~/utils/format'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
@@ -651,11 +651,8 @@ function cycleSpeed() {
 
 // formatDuration imported from ~/utils/format
 
-function formatBandwidth(bps: number): string {
-  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`
-  if (bps >= 1_000) return `${(bps / 1_000).toFixed(0)} Kbps`
-  return `${bps} bps`
-}
+// formatBandwidth replaced by formatBitrate from ~/utils/format
+const formatBandwidth = formatBitrate
 
 const currentQualityLabel = computed(() => {
   if (currentQuality.value === -1) return 'Auto'
@@ -883,14 +880,26 @@ watch(mediaId, (id, oldId) => {
         </div>
         <div v-else class="max-md:px-4">
           <!-- Audio player -->
-          <UCard class="text-center py-8 space-y-4">
-            <UIcon name="i-lucide-music" class="size-16 text-primary mx-auto" />
-            <p class="font-semibold text-lg text-highlighted">{{ getDisplayTitle(media) }}</p>
+          <UCard class="overflow-hidden">
+            <div class="flex flex-col items-center py-8 px-4 bg-linear-to-b from-primary/8 to-transparent">
+              <AudioBars size="lg" :bars="9" :animate="isPlaying" class="mb-4" />
+              <p class="font-bold text-xl text-highlighted text-center max-w-md">{{ getDisplayTitle(media) }}</p>
+              <div class="flex items-center gap-2 mt-1.5 text-xs text-muted">
+                <span v-if="media.codec" class="uppercase font-medium">{{ media.codec }}</span>
+                <span v-if="media.codec && media.bitrate">·</span>
+                <span v-if="media.bitrate">{{ formatBitrate(media.bitrate) }}</span>
+                <span v-if="(media.codec || media.bitrate) && media.size">·</span>
+                <span v-if="media.size">{{ formatBytes(media.size) }}</span>
+              </div>
+              <div v-if="media.category" class="mt-2">
+                <UBadge :label="media.category" color="primary" variant="subtle" size="xs" />
+              </div>
+            </div>
             <audio
               ref="videoRef"
               :src="mediaApi.getStreamUrl(media.id)"
               controls
-              class="w-full mt-2"
+              class="w-full"
               @loadedmetadata="onVideoLoaded"
               @timeupdate="onTimeUpdate"
               @play="onPlayPause(); trackPlay()"
@@ -957,7 +966,7 @@ watch(mediaId, (id, oldId) => {
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
             <div v-if="media.type"><span class="text-muted">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
             <div v-if="media.duration"><span class="text-muted">Duration:</span> {{ formatDuration(media.duration) }}</div>
-            <div v-if="media.size"><span class="text-muted">Size:</span> {{ (media.size / 1048576).toFixed(1) }} MB</div>
+            <div v-if="media.size"><span class="text-muted">Size:</span> {{ formatBytes(media.size) }}</div>
             <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
             <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
             <div v-if="media.codec"><span class="text-muted">Codec:</span> {{ media.codec }}</div>
