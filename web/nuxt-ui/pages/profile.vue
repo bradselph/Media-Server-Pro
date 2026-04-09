@@ -545,7 +545,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               </div>
               <div class="flex items-center gap-2 mt-0.5">
                 <p class="text-xs text-muted">
-                  {{ item.completed ? 'Completed' : `${Math.round(item.progress)}% watched` }}
+                  {{ item.completed ? 'Completed' : `${Math.round((item.progress > 1 ? item.progress : item.progress * 100))}% watched` }}
                   <span v-if="item.watched_at"> · {{ new Date(item.watched_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
                 </p>
               </div>
