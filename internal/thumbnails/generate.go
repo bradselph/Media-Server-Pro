@@ -285,10 +285,7 @@ func (m *Module) verifyAndPostProcessAudioThumbnail(job *ThumbnailJob) error {
 
 // updateBlurHashForAudioThumbnail computes and stores BlurHash for the main audio waveform thumbnail.
 func (m *Module) updateBlurHashForAudioThumbnail(job *ThumbnailJob) {
-	if m.blurHashUpdater == nil || isPreviewThumbnail(job.OutputPath) {
-		return
-	}
-	m.updateBlurHashFromThumbnail(job.OutputPath, job.MediaPath)
+	m.tryUpdateBlurHashForThumbnail(job)
 }
 
 // generateWebPFromAudio creates waveform as WebP
