@@ -14,14 +14,14 @@ function cleanupFilenameLikeTitle(input: string): string {
     // Strip download/recording timestamp suffix, e.g. _2026-03-24T21-54-54
     const noTimestamp = noExt.replace(/_\d{4}[-_]\d{2}[-_]\d{2}T\d{2}[-_]\d{2}[-_]\d{2}$/, '')
     const normalized = noTimestamp
-        .replace(/[_\.-]+/g, ' ')
+        .replaceAll(/[_.-]+/g, ' ')
         // Split camelCase / PascalCase: insert space between a lowercase letter and an uppercase letter
         // e.g. "TwinsJoeyandSami" → "Twins Joeyand Sami" → after next step → cleaned further
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replaceAll(/([a-z])([A-Z])/g, '$1 $2')
         // Split boundary between a letter and a digit (and vice versa): "casting4way" → "casting 4 way"
-        .replace(/([a-zA-Z])(\d)/g, '$1 $2')
-        .replace(/(\d)([a-zA-Z])/g, '$1 $2')
-        .replace(/\s+/g, ' ')
+        .replaceAll(/([a-zA-Z])(\d)/g, '$1 $2')
+        .replaceAll(/(\d)([a-zA-Z])/g, '$1 $2')
+        .replaceAll(/\s+/g, ' ')
         .trim()
 
     return normalized || base
@@ -45,7 +45,7 @@ export function getDisplayTitle(item: unknown): string {
         asString(rec.media_name)
     if (direct) {
         // If this looks like a filename, normalize for UI readability.
-        if (/\.[A-Za-z0-9]{2,5}$/.test(direct) || /[_]/.test(direct)) {
+        if (/\.[A-Za-z0-9]{2,5}$/.test(direct) || /_/.test(direct)) {
             return cleanupFilenameLikeTitle(direct)
         }
         return direct
