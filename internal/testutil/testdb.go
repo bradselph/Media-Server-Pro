@@ -132,7 +132,7 @@ func NewTestEnv(t *testing.T) *TestEnv {
 
 	// Create the temp subdirectories so modules that check them don't fail.
 	for _, sub := range []string{"videos", "music", "data", "thumbnails", "hls_cache", "playlists", "uploads", "temp", "logs", "analytics"} {
-		if err := os.MkdirAll(filepath.Join(tmpDir, sub), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(tmpDir, sub), 0o750); err != nil {
 			t.Fatalf("testutil.NewTestEnv: mkdir %s: %v", sub, err)
 		}
 	}
@@ -156,8 +156,8 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	if err != nil {
 		t.Fatalf("testutil.NewTestEnv: auth new: %v", err)
 	}
-	if err := authModule.Start(ctx); err != nil {
-		t.Fatalf("testutil.NewTestEnv: auth start: %v", err)
+	if startErr := authModule.Start(ctx); startErr != nil {
+		t.Fatalf("testutil.NewTestEnv: auth start: %v", startErr)
 	}
 	t.Cleanup(func() {
 		c, cl := context.WithTimeout(context.Background(), 5*time.Second)
@@ -170,8 +170,8 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	if err != nil {
 		t.Fatalf("testutil.NewTestEnv: media new: %v", err)
 	}
-	if err := mediaModule.Start(ctx); err != nil {
-		t.Fatalf("testutil.NewTestEnv: media start: %v", err)
+	if startErr := mediaModule.Start(ctx); startErr != nil {
+		t.Fatalf("testutil.NewTestEnv: media start: %v", startErr)
 	}
 	t.Cleanup(func() {
 		c, cl := context.WithTimeout(context.Background(), 5*time.Second)
@@ -181,8 +181,8 @@ func NewTestEnv(t *testing.T) *TestEnv {
 
 	// Streaming module (no DB, no error return).
 	streamingModule := streaming.NewModule(cfg)
-	if err := streamingModule.Start(ctx); err != nil {
-		t.Fatalf("testutil.NewTestEnv: streaming start: %v", err)
+	if startErr := streamingModule.Start(ctx); startErr != nil {
+		t.Fatalf("testutil.NewTestEnv: streaming start: %v", startErr)
 	}
 	t.Cleanup(func() {
 		c, cl := context.WithTimeout(context.Background(), 5*time.Second)
@@ -192,8 +192,8 @@ func NewTestEnv(t *testing.T) *TestEnv {
 
 	// HLS module (no error return).
 	hlsModule := hls.NewModule(cfg, dbModule)
-	if err := hlsModule.Start(ctx); err != nil {
-		t.Fatalf("testutil.NewTestEnv: hls start: %v", err)
+	if startErr := hlsModule.Start(ctx); startErr != nil {
+		t.Fatalf("testutil.NewTestEnv: hls start: %v", startErr)
 	}
 	t.Cleanup(func() {
 		c, cl := context.WithTimeout(context.Background(), 5*time.Second)

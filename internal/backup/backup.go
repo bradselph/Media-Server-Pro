@@ -92,7 +92,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.repo = mysqlrepo.NewBackupManifestRepository(m.dbModule.GORM())
 
 	// Ensure backup directory exists
-	if err := os.MkdirAll(m.backupDir, 0755); err != nil {
+	if err := os.MkdirAll(m.backupDir, 0o750); err != nil {
 		m.log.Error("Failed to create backup directory: %v", err)
 		m.healthMu.Lock()
 		m.healthy = false
@@ -183,7 +183,7 @@ func (m *Module) writeBackupArchive(backupPath string, manifest *Manifest) error
 	if err != nil {
 		return fmt.Errorf("failed to create backup file: %w", err)
 	}
-	defer zipFile.Close() // safety net in case of panic between create and explicit close
+	defer func() { _ = zipFile.Close() }() // safety net in case of panic between create and explicit close
 
 	zipWriter := zip.NewWriter(zipFile)
 	filesToBackup := m.getFilesToBackup(manifest.Type)
@@ -195,7 +195,7 @@ func (m *Module) writeBackupArchive(backupPath string, manifest *Manifest) error
 	}
 
 	if err := zipWriter.Close(); err != nil {
-		zipFile.Close()
+		_ = zipFile.Close()
 		m.removeFileQuietly(removeFileOpts{Path: backupPath, Label: "corrupted backup"})
 		return fmt.Errorf("failed to finalize backup archive: %w", err)
 	}
@@ -267,8 +267,8 @@ func (m *Module) addFileToZip(zipWriter *zip.Writer, filePath string, manifest *
 		return err
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn("Failed to close file %s: %v", filePath, err)
+		if closeErr := file.Close(); closeErr != nil {
+			m.log.Warn("Failed to close file %s: %v", filePath, closeErr)
 		}
 	}()
 
@@ -342,7 +342,7 @@ func (m *Module) RestoreBackup(backupID string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(backupPath); err != nil {
+	if _, statErr := os.Stat(backupPath); statErr != nil {
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
 
@@ -425,7 +425,7 @@ func (m *Module) extractFile(file *zip.File) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o750); err != nil {
 		return err
 	}
 	return m.copyZipEntryToFile(file, destPath)
@@ -488,7 +488,7 @@ func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
 
 	srcFile, err := file.Open()
 	if err != nil {
-		destFile.Close()
+		_ = destFile.Close()
 		return err
 	}
 	defer m.closeAndWarn(srcFile.Close, "Failed to close source file: %v")

@@ -138,9 +138,9 @@ func TestSetValuesBatch_MultipleValues(t *testing.T) {
 	mgr := NewManager(cfgPath)
 
 	err := mgr.SetValuesBatch(map[string]interface{}{
-		"server.port":       8888,
-		"server.host":       "0.0.0.0",
-		"logging.level":     "debug",
+		"server.port":   8888,
+		"server.host":   "0.0.0.0",
+		"logging.level": "debug",
 	})
 	if err != nil {
 		t.Fatalf("SetValuesBatch: %v", err)

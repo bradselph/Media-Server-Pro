@@ -366,10 +366,6 @@ function progressBarColor(status: DownloaderProgress['status']) {
         </div>
       </template>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-        <div v-if="settings.maxConcurrent != null">
-          <p class="text-xs text-muted">Max Concurrent</p>
-          <p class="font-medium">{{ settings.maxConcurrent }}</p>
-        </div>
         <div v-if="settings.downloadsDir">
           <p class="text-xs text-muted">Downloads Dir</p>
           <p class="font-mono text-xs truncate" :title="settings.downloadsDir">{{ settings.downloadsDir }}</p>
@@ -378,17 +374,13 @@ function progressBarColor(status: DownloaderProgress['status']) {
           <p class="text-xs text-muted">Server Storage</p>
           <UBadge :label="settings.allowServerStorage ? 'Allowed' : 'Browser only'" :color="settings.allowServerStorage ? 'success' : 'neutral'" variant="subtle" size="xs" />
         </div>
-        <div v-if="settings.videoFormat">
-          <p class="text-xs text-muted">Video Format</p>
-          <p class="font-medium">{{ settings.videoFormat }}</p>
-        </div>
         <div v-if="settings.audioFormat">
           <p class="text-xs text-muted">Audio Format</p>
-          <p class="font-medium">{{ settings.audioFormat }} {{ settings.audioQuality ? `(${settings.audioQuality})` : '' }}</p>
+          <p class="font-medium">{{ settings.audioFormat }}</p>
         </div>
-        <div v-if="settings.proxy">
-          <p class="text-xs text-muted">Proxy</p>
-          <UBadge :label="settings.proxy.enabled ? 'Enabled' : 'Disabled'" :color="settings.proxy.enabled ? 'info' : 'neutral'" variant="subtle" size="xs" />
+        <div v-if="settings.browserRelayConfigured != null">
+          <p class="text-xs text-muted">Browser Relay</p>
+          <UBadge :label="settings.browserRelayConfigured ? 'Configured' : 'Not configured'" :color="settings.browserRelayConfigured ? 'success' : 'neutral'" variant="subtle" size="xs" />
         </div>
       </div>
       <div v-if="settings.supportedSites?.length" class="mt-3">

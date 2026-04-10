@@ -58,7 +58,7 @@ func (m *Module) getMediaDuration(path string) (float64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, m.ffprobePath,
+	cmd := exec.CommandContext(ctx, m.ffprobePath, //nolint:gosec // G204: ffprobePath validated at startup
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1",

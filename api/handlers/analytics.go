@@ -349,12 +349,12 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 
 	f, openErr := os.Open(filename)
 	if openErr != nil {
-		os.Remove(filename)
+		_ = os.Remove(filename)
 		h.log.Error("%v", openErr)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	defer func() { f.Close(); os.Remove(filename) }()
+	defer func() { _ = f.Close(); _ = os.Remove(filename) }()
 
 	fi, statErr := f.Stat()
 	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))

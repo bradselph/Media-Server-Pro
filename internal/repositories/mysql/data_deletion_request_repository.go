@@ -55,7 +55,7 @@ func (r *DataDeletionRequestRepositoryImpl) Get(ctx context.Context, id string) 
 	var row dataDeletionRequestRow
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("get data deletion request: %w", err)
 	}
@@ -88,15 +88,14 @@ func (r *DataDeletionRequestRepositoryImpl) CountPendingByUser(ctx context.Conte
 	return count, nil
 }
 
-func (r *DataDeletionRequestRepositoryImpl) UpdateStatus(ctx context.Context, id string, status, reviewedBy, adminNotes string) error {
-	now := time.Now().UTC()
+func (r *DataDeletionRequestRepositoryImpl) UpdateStatus(ctx context.Context, id, status, reviewedBy, adminNotes string) error {
 	result := r.db.WithContext(ctx).Model(&dataDeletionRequestRow{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"status":      status,
-			"reviewed_at":  &now,
-			"reviewed_by":  reviewedBy,
-			"admin_notes":  adminNotes,
+			"reviewed_at": new(time.Now().UTC()),
+			"reviewed_by": reviewedBy,
+			"admin_notes": adminNotes,
 		})
 	if result.Error != nil {
 		return fmt.Errorf("update data deletion request status: %w", result.Error)

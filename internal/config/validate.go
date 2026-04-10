@@ -18,20 +18,20 @@ func (m *Manager) Validate() []error {
 // called during Load() (which holds the write lock). This eliminates the
 // former M-04 drift where the two paths had different coverage.
 func (m *Manager) validateLocked() []error {
-	var errors []error
+	var errors []error //nolint:prealloc // capacity unknown at compile time
 	errors = append(errors, m.validateServer()...)
 	errors = append(errors, m.validateStreaming()...)
-	errors = append(errors, m.validateAdmin()...)
+	m.validateAdmin()
 	errors = append(errors, m.validateSecurity()...)
 	errors = append(errors, m.validateHLS()...)
 	errors = append(errors, m.validateDatabase()...)
 	errors = append(errors, m.validateAuth()...)
 	errors = append(errors, m.validateThumbnails()...)
 	errors = append(errors, m.validateAnalytics()...)
-	errors = append(errors, m.validateReceiver()...)
+	m.validateReceiver()
 	errors = append(errors, m.validateUploads()...)
 	errors = append(errors, m.validateBackup()...)
-	errors = append(errors, m.validateHuggingFace()...)
+	m.validateHuggingFace()
 	errors = append(errors, m.validateExtractor()...)
 	errors = append(errors, m.validateCrawler()...)
 	errors = append(errors, m.validateStorage()...)
@@ -40,7 +40,7 @@ func (m *Manager) validateLocked() []error {
 }
 
 func (m *Manager) validateServer() []error {
-	var errs []error
+	var errs []error //nolint:prealloc // capacity unknown at compile time
 	errs = append(errs, m.validateServerPort()...)
 	m.validateServerTimeouts()
 	errs = append(errs, m.validateServerHTTPS()...)
@@ -90,9 +90,9 @@ func (m *Manager) validateStreaming() []error {
 	return nil
 }
 
-func (m *Manager) validateAdmin() []error {
+func (m *Manager) validateAdmin() {
 	if !m.config.Admin.Enabled {
-		return nil
+		return
 	}
 	if m.config.Admin.Username == "" {
 		m.log.Warn("admin enabled but no username specified — admin login will fail until ADMIN_USERNAME is set")
@@ -100,7 +100,6 @@ func (m *Manager) validateAdmin() []error {
 	if m.config.Admin.PasswordHash == "" {
 		m.log.Warn("admin enabled but no password hash — admin login will fail until ADMIN_PASSWORD_HASH is set")
 	}
-	return nil
 }
 
 func (m *Manager) validateSecurity() []error {
@@ -216,14 +215,13 @@ func (m *Manager) validateAnalytics() []error {
 	return nil
 }
 
-func (m *Manager) validateReceiver() []error {
+func (m *Manager) validateReceiver() {
 	if !m.config.Receiver.Enabled {
-		return nil
+		return
 	}
 	if len(m.config.Receiver.APIKeys) == 0 {
 		m.log.Warn("receiver enabled but no api_keys configured — slave connections will be rejected")
 	}
-	return nil
 }
 
 func (m *Manager) validateUploads() []error {
@@ -243,9 +241,9 @@ func (m *Manager) validateBackup() []error {
 	return nil
 }
 
-func (m *Manager) validateHuggingFace() []error {
+func (m *Manager) validateHuggingFace() {
 	if !m.config.HuggingFace.Enabled {
-		return nil
+		return
 	}
 	if m.config.HuggingFace.APIKey == "" {
 		m.log.Warn("huggingface enabled but api_key is empty — classification requests will fail")
@@ -253,7 +251,6 @@ func (m *Manager) validateHuggingFace() []error {
 	if strings.TrimSpace(m.config.HuggingFace.Model) == "" {
 		m.log.Warn("huggingface enabled but model is empty — set HUGGINGFACE_MODEL to an image-classification or image-to-text model (e.g. Falconsai/nsfw_image_detection)")
 	}
-	return nil
 }
 
 func (m *Manager) validateExtractor() []error {

@@ -25,10 +25,10 @@ func GetDiskUsage(path string) (*DiskUsage, error) {
 	}
 
 	ret, _, err := getDiskFreeSpaceEx.Call(
-		uintptr(unsafe.Pointer(pathPtr)),
-		uintptr(unsafe.Pointer(&freeBytesAvailable)),
-		uintptr(unsafe.Pointer(&totalBytes)),
-		uintptr(unsafe.Pointer(&totalFreeBytes)),
+		uintptr(unsafe.Pointer(pathPtr)),             //nolint:gosec // G103: unsafe required for Windows syscall
+		uintptr(unsafe.Pointer(&freeBytesAvailable)), //nolint:gosec // G103: unsafe required for Windows syscall
+		uintptr(unsafe.Pointer(&totalBytes)),         //nolint:gosec // G103: unsafe required for Windows syscall
+		uintptr(unsafe.Pointer(&totalFreeBytes)),     //nolint:gosec // G103: unsafe required for Windows syscall
 	)
 	if ret == 0 {
 		return nil, err

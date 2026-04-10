@@ -26,7 +26,7 @@ func (m *Module) enqueue(job *ThumbnailJob, highPriority bool) bool {
 
 // tryEnqueueThumbnailJob claims outputPath via inFlight, increments pending, and enqueues the job.
 // Returns (queued, ok): ok is true if the item was skipped (already in-flight) or queued; ok is false when the queue is full (caller should break).
-func (m *Module) tryEnqueueThumbnailJob(job *ThumbnailJob, outputPath string, highPriority bool) (queued bool, ok bool) {
+func (m *Module) tryEnqueueThumbnailJob(job *ThumbnailJob, outputPath string, highPriority bool) (queued, ok bool) {
 	if _, loaded := m.inFlight.LoadOrStore(outputPath, time.Now()); loaded {
 		return false, true // already in flight, skip
 	}
@@ -57,7 +57,7 @@ func (m *Module) queueMainPreviewThumbnail(opts *queueMainPreviewThumbnailOpts) 
 		return
 	}
 	// Remove 0-byte corrupt file so ffmpeg can overwrite
-	os.Remove(opts.MainPath)
+	_ = os.Remove(opts.MainPath)
 	cfg := m.config.Get()
 	job := &ThumbnailJob{
 		MediaPath:  opts.MediaPath,
@@ -75,7 +75,7 @@ func (m *Module) queueMainPreviewThumbnail(opts *queueMainPreviewThumbnailOpts) 
 	}
 }
 
-// dequeue blocks until a job is available or ctx is cancelled; Stop() must Broadcast to unblock workers.
+// dequeue blocks until a job is available or ctx is canceled; Stop() must Broadcast to unblock workers.
 func (m *Module) dequeue(ctx context.Context) *ThumbnailJob {
 	m.jobMu.Lock()
 	defer m.jobMu.Unlock()
@@ -85,7 +85,7 @@ func (m *Module) dequeue(ctx context.Context) *ThumbnailJob {
 		}
 		m.jobCond.Wait()
 	}
-	pj := heap.Pop(&m.jobHeap).(*priorityJob)
+	pj := heap.Pop(&m.jobHeap).(*priorityJob) //nolint:errcheck // heap.Pop always returns *priorityJob here
 	return pj.job
 }
 

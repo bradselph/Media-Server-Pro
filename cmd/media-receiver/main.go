@@ -82,7 +82,7 @@ type slaveConfig struct {
 	MediaDirs         []string
 	ScanInterval      time.Duration
 	HeartbeatInterval time.Duration
-	MaxStreams         int           // max concurrent stream deliveries to master
+	MaxStreams        int           // max concurrent stream deliveries to master
 	ReconnectBase     time.Duration // initial WS reconnect backoff delay
 	ReconnectMax      time.Duration // maximum WS reconnect backoff delay
 	WSDeadline        time.Duration // WS read deadline (must be > master ping interval)
@@ -133,7 +133,7 @@ func pruneFpCache(keep map[string]bool) {
 	}
 }
 
-// streamSem is initialised in main() from cfg.MaxStreams and passed into the run loop.
+// streamSem is initialized in main() from cfg.MaxStreams and passed into the run loop.
 
 // streamHTTPClient is reused for stream deliveries (default TLS; no request timeout).
 var streamHTTPClient = &http.Client{
@@ -275,7 +275,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 		}
 		return fmt.Errorf("WebSocket dial failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	fmt.Println("Connected to master via WebSocket")
 
 	wsDeadline := cfg.WSDeadline
@@ -284,10 +284,10 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 	}
 
 	// Set read deadline — extended on every incoming message/ping.
-	conn.SetReadDeadline(time.Now().Add(wsDeadline))
+	_ = conn.SetReadDeadline(time.Now().Add(wsDeadline))
 	var writeMu sync.Mutex
 	conn.SetPingHandler(func(data string) error {
-		conn.SetReadDeadline(time.Now().Add(wsDeadline))
+		_ = conn.SetReadDeadline(time.Now().Add(wsDeadline))
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		return conn.WriteMessage(websocket.PongMessage, []byte(data))
@@ -305,7 +305,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 	// Initial scan and catalog push (always push on connect)
 	items := scanMediaDirs(cfg.MediaDirs)
 	fmt.Printf("Found %d media files\n", len(items))
-	if err := sendWSJSON(conn, "catalog", map[string]interface{}{
+	if err := sendWSJSON(conn, "catalog", map[string]any{
 		"slave_id": cfg.SlaveID,
 		"items":    items,
 		"full":     true,
@@ -322,9 +322,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 	var wg sync.WaitGroup
 	readErr := make(chan error, 1)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			_, raw, err := conn.ReadMessage()
 			if err != nil {
@@ -333,7 +331,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 				}
 				return
 			}
-			conn.SetReadDeadline(time.Now().Add(wsDeadline))
+			_ = conn.SetReadDeadline(time.Now().Add(wsDeadline))
 
 			var msg wsMessage
 			if err := json.Unmarshal(raw, &msg); err != nil {
@@ -347,9 +345,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 					fmt.Fprintf(os.Stderr, "Invalid stream request: %v\n", err)
 					continue
 				}
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					select {
 					case streamSem <- struct{}{}:
 						defer func() { <-streamSem }()
@@ -357,10 +353,10 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 					case <-streamCtx.Done():
 						return
 					}
-				}()
+				})
 			}
 		}
-	}()
+	})
 
 	// Heartbeat and scan tickers
 	scanTicker := time.NewTicker(cfg.ScanInterval)
@@ -378,7 +374,7 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 				continue
 			}
 			writeMu.Lock()
-			err := sendWSJSON(conn, "catalog", map[string]interface{}{
+			err := sendWSJSON(conn, "catalog", map[string]any{
 				"slave_id": cfg.SlaveID,
 				"items":    items,
 				"full":     true,
@@ -437,7 +433,7 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 		fmt.Fprintf(os.Stderr, "Failed to open file for stream %s: %v\n", req.Token, err)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	stat, err := file.Stat()
 	if err != nil {
@@ -458,13 +454,13 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 
 	// Handle Range requests — on parse or seek failure, deliver full file as 200 (explicit fallback).
 	if req.Range != "" {
-		start, end, err := parseRange(req.Range, stat.Size())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid range header %q for %s: %v; delivering full file\n", req.Range, req.Token, err)
+		start, end, parseErr := parseRange(req.Range, stat.Size())
+		if parseErr != nil {
+			fmt.Fprintf(os.Stderr, "Invalid range header %q for %s: %v; delivering full file\n", req.Range, req.Token, parseErr)
 			// body, statusCode, contentLength, extraHeaders remain full-file 200
 		} else if _, seekErr := file.Seek(start, io.SeekStart); seekErr != nil {
 			fmt.Fprintf(os.Stderr, "Seek failed for stream %s: %v; delivering full file\n", req.Token, seekErr)
-			file.Seek(0, io.SeekStart) // reset to start for full-file delivery
+			_, _ = file.Seek(0, io.SeekStart) // reset to start for full-file delivery
 			// body, statusCode, contentLength, extraHeaders remain full-file 200
 		} else {
 			length := end - start + 1
@@ -502,7 +498,7 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 		}
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		fmt.Fprintf(os.Stderr, "Stream push %s returned HTTP %d\n", req.Token, resp.StatusCode)
@@ -516,7 +512,7 @@ func isValidToken(token string) bool {
 		return false
 	}
 	for _, ch := range token {
-		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-') {
+		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '-' {
 			return false
 		}
 	}
@@ -524,7 +520,7 @@ func isValidToken(token string) bool {
 }
 
 // parseRange parses a "bytes=start-end" Range header value.
-func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
+func parseRange(rangeHeader string, fileSize int64) (start, end int64, err error) {
 	if !strings.HasPrefix(rangeHeader, "bytes=") {
 		return 0, 0, fmt.Errorf("unsupported range format")
 	}
@@ -534,29 +530,24 @@ func parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
 		return 0, 0, fmt.Errorf("invalid range")
 	}
 
-	var start, end int64
-
-	if parts[0] == "" {
+	switch {
+	case parts[0] == "":
 		// Suffix range: -500 means last 500 bytes
-		n, err := parseInt64(parts[1])
+		var n int64
+		n, err = parseInt64(parts[1])
 		if err != nil {
 			return 0, 0, fmt.Errorf("invalid suffix range: %w", err)
 		}
-		start = fileSize - n
-		if start < 0 {
-			start = 0
-		}
+		start = max(fileSize-n, 0)
 		end = fileSize - 1
-	} else if parts[1] == "" {
+	case parts[1] == "":
 		// Open-ended: 500- means from byte 500 to end
-		var err error
 		start, err = parseInt64(parts[0])
 		if err != nil {
 			return 0, 0, fmt.Errorf("invalid start: %w", err)
 		}
 		end = fileSize - 1
-	} else {
-		var err error
+	default:
 		start, err = parseInt64(parts[0])
 		if err != nil {
 			return 0, 0, fmt.Errorf("invalid start: %w", err)
@@ -580,7 +571,7 @@ func parseInt64(s string) (int64, error) {
 }
 
 // sendWSJSON sends a typed JSON message over the WebSocket (callers must serialize via writeMu where needed).
-func sendWSJSON(conn *websocket.Conn, msgType string, data interface{}) error {
+func sendWSJSON(conn *websocket.Conn, msgType string, data any) error {
 	raw, err := json.Marshal(data)
 	if err != nil {
 		return err
@@ -609,7 +600,6 @@ func buildWSURL(masterURL string) string {
 	u.RawQuery = ""
 	return u.String()
 }
-
 
 func parseFlags() (*slaveConfig, autoDiscovered) {
 	master := flag.String("master", "", "Master server URL (e.g. https://yourdomain.com)")
@@ -739,7 +729,7 @@ func loadEnvFile(path string) map[string]string {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	env := make(map[string]string)
 	scanner := bufio.NewScanner(f)
@@ -798,7 +788,7 @@ func loadConfigJSON(path string) *configJSONPartial {
 }
 
 // deriveMasterURL builds a master URL from host, port, and HTTPS flag (default HTTP port 8080).
-func deriveMasterURL(host string, port string, enableHTTPS string) string {
+func deriveMasterURL(host, port, enableHTTPS string) string {
 	if host == "" {
 		return ""
 	}
@@ -999,7 +989,8 @@ func scanMediaDirs(dirs []string) []catalogItem {
 
 		err = filepath.Walk(absDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return nil // skip errors
+				fmt.Fprintf(os.Stderr, "Warning: skipping %s: %v\n", path, err)
+				return nil
 			}
 			if info.IsDir() {
 				if strings.HasPrefix(info.Name(), ".") && path != absDir {
@@ -1075,7 +1066,7 @@ func generateFileID(path string) string {
 func hashCatalog(items []catalogItem) string {
 	h := sha256.New()
 	for _, item := range items {
-		fmt.Fprintf(h, "%s|%s|%d|%s\n", item.Path, item.Name, item.Size, item.ContentFingerprint)
+		_, _ = fmt.Fprintf(h, "%s|%s|%d|%s\n", item.Path, item.Name, item.Size, item.ContentFingerprint)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -1088,7 +1079,7 @@ func computeContentFingerprint(path string) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {
@@ -1099,7 +1090,7 @@ func computeContentFingerprint(path string) string {
 	h := sha256.New()
 
 	// Write file size into the hash
-	fmt.Fprintf(h, "size:%d\n", size)
+	_, _ = fmt.Fprintf(h, "size:%d\n", size)
 
 	// Read first 64 KB (or entire file if smaller)
 	head := make([]byte, sampleSize)

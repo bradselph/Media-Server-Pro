@@ -51,7 +51,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.1.74"
+	Version   = "1.1.93"
 	BuildDate = ""
 )
 
@@ -93,7 +93,7 @@ func main() {
 		level = logger.INFO
 	}
 
-	// Create server (initialises logger + config)
+	// Create server (initializes logger + config)
 	srv, err := server.New(server.Options{
 		ConfigPath: *configPath,
 		LogLevel:   level,
@@ -513,7 +513,7 @@ func registerTasks(
 		Name:        "Media Library Scan",
 		Description: "Scans configured directories for new and removed media files",
 		Schedule:    1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			if err := mediaModule.Scan(); err != nil {
 				return err
 			}
@@ -546,7 +546,7 @@ func registerTasks(
 		Name:        "Metadata Cleanup",
 		Description: "Removes metadata entries for media files that no longer exist on disk",
 		Schedule:    24 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			return mediaModule.Scan()
 		},
 	})
@@ -594,7 +594,7 @@ func registerTasks(
 		Name:        "Thumbnail Cleanup",
 		Description: "Removes orphaned, excess, and corrupt thumbnail files",
 		Schedule:    6 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			result, err := thumbnailsModule.Cleanup()
 			if err != nil {
 				return err
@@ -625,7 +625,7 @@ func registerTasks(
 		Name:        "Backup Cleanup",
 		Description: "Removes old backups beyond the configured retention count",
 		Schedule:    24 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			if backupModule == nil {
 				return nil
 			}
@@ -648,7 +648,7 @@ func registerTasks(
 		Name:        "Mature Content Scan",
 		Description: "Scans media directories for mature content using configured detection models",
 		Schedule:    12 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			dirs := cfg.Get().Directories
 			var allResults []*scanner.ScanResult
 
@@ -757,7 +757,7 @@ func registerTasks(
 		Name:        "Health Check",
 		Description: "Performs system diagnostics and monitors disk space",
 		Schedule:    5 * time.Minute,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			appCfg := cfg.Get()
 			dirs := appCfg.Directories
 			for name, dir := range map[string]string{"videos": dirs.Videos, "data": dirs.Data, "logs": dirs.Logs} {

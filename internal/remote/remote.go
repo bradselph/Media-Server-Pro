@@ -39,27 +39,26 @@ const (
 	userAgentValue       = "MediaServerPro/4.0"
 )
 
-
 // Module handles remote media sources
 type Module struct {
-	config     *config.Manager
-	log        *logger.Logger
-	dbModule   *database.Module
-	repo       repositories.RemoteCacheRepository
-	httpClient *http.Client
-	sources    map[string]*SourceState
-	mediaCache map[string]*CachedMedia
-	mu         sync.RWMutex
-	healthy    bool
-	healthMsg  string
-	healthMu   sync.RWMutex
-	cacheDir   string
-	syncTicker    *time.Ticker
-	syncDone      chan struct{}
-	syncDoneOnce  sync.Once // guards close(syncDone) to avoid double-close panic
-	cacheSem      chan struct{} // bounds concurrent background cache downloads
-	ctx           context.Context
-	cancel        context.CancelFunc // cancelled on Stop so CacheMedia aborts
+	config       *config.Manager
+	log          *logger.Logger
+	dbModule     *database.Module
+	repo         repositories.RemoteCacheRepository
+	httpClient   *http.Client
+	sources      map[string]*SourceState
+	mediaCache   map[string]*CachedMedia
+	mu           sync.RWMutex
+	healthy      bool
+	healthMsg    string
+	healthMu     sync.RWMutex
+	cacheDir     string
+	syncTicker   *time.Ticker
+	syncDone     chan struct{}
+	syncDoneOnce sync.Once     // guards close(syncDone) to avoid double-close panic
+	cacheSem     chan struct{} // bounds concurrent background cache downloads
+	ctx          context.Context
+	cancel       context.CancelFunc // canceled on Stop so CacheMedia aborts
 }
 
 // SourceState tracks the state of a remote source.
@@ -147,8 +146,8 @@ func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting remote media module...")
 
 	// Initialize module context so CacheMedia (and other background ops) can be
-	// cancelled when Stop() is called.
-	m.ctx, m.cancel = context.WithCancel(context.Background())
+	// canceled when Stop() is called.
+	m.ctx, m.cancel = context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 
 	m.repo = mysqlrepo.NewRemoteCacheRepository(m.dbModule.GORM())
 
@@ -164,7 +163,7 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Create cache directory
 	if cfg.RemoteMedia.CacheEnabled {
-		if err := os.MkdirAll(m.cacheDir, 0755); err != nil {
+		if err := os.MkdirAll(m.cacheDir, 0o755); err != nil { //nolint:gosec // G301: cache dir needs world-read for serving
 			m.log.Warn("Failed to create cache directory: %v", err)
 		}
 	}
@@ -311,7 +310,7 @@ func (m *Module) discoverMedia(source config.RemoteSource) ([]*MediaItem, error)
 	}
 
 	// Create request with module context so shutdown cancels in-flight HTTP requests
-	req, err := http.NewRequestWithContext(m.ctx, "GET", source.URL, nil)
+	req, err := http.NewRequestWithContext(m.ctx, "GET", source.URL, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -329,8 +328,8 @@ func (m *Module) discoverMedia(source config.RemoteSource) ([]*MediaItem, error)
 		return nil, err
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			m.log.Warn(errCloseResponseFmt, err)
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			m.log.Warn(errCloseResponseFmt, closeErr)
 		}
 	}()
 
@@ -472,7 +471,7 @@ func (m *Module) IsKnownRemoteURL(remoteURL string) bool {
 }
 
 // StreamRemote streams a remote media file
-func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL string, sourceName string) error {
+func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL, sourceName string) error {
 	// Validate URL against SSRF before streaming
 	if err := validateURL(remoteURL); err != nil {
 		return fmt.Errorf("SSRF check failed: %w", err)
@@ -501,7 +500,7 @@ func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL 
 	}
 
 	// Create request to remote
-	req, err := http.NewRequestWithContext(r.Context(), "GET", remoteURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", remoteURL, http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -523,8 +522,8 @@ func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL 
 		return fmt.Errorf("failed to connect to remote: %w", err)
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			m.log.Warn(errCloseResponseFmt, err)
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			m.log.Warn(errCloseResponseFmt, closeErr)
 		}
 	}()
 
@@ -647,7 +646,7 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 	}
 
 	// Use module ctx so downloads abort when Stop() is called.
-	req, err := http.NewRequestWithContext(m.ctx, "GET", remoteURL, nil)
+	req, err := http.NewRequestWithContext(m.ctx, "GET", remoteURL, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -663,8 +662,8 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 		return nil, err
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			m.log.Warn(errCloseResponseFmt, err)
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			m.log.Warn(errCloseResponseFmt, closeErr)
 		}
 	}()
 

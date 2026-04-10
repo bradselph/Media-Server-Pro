@@ -25,8 +25,7 @@ func (m *Module) CreateAPIToken(ctx context.Context, userID, name string, ttl ti
 		CreatedAt: time.Now(),
 	}
 	if ttl > 0 {
-		exp := time.Now().Add(ttl)
-		rec.ExpiresAt = &exp
+		rec.ExpiresAt = new(time.Now().Add(ttl))
 	}
 	if err = m.tokenRepo.Create(ctx, rec); err != nil {
 		return "", nil, fmt.Errorf("create api token: %w", err)
@@ -57,7 +56,7 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 	}
 	if rec.ExpiresAt != nil && time.Now().After(*rec.ExpiresAt) {
 		// Clean up expired token so it doesn't accumulate in the database.
-		go func() {
+		go func() { //nolint:gosec // G118: background context intentional for async cleanup goroutine
 			if delErr := m.tokenRepo.Delete(context.Background(), rec.ID, rec.UserID); delErr != nil {
 				m.log.Warn("Failed to delete expired API token %s: %v", rec.ID, delErr)
 			}
@@ -74,7 +73,7 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 	}
 
 	// Update last_used_at asynchronously — don't block the request on a non-critical write.
-	go func() {
+	go func() { //nolint:gosec // G118: background context intentional for async non-critical write
 		if err := m.tokenRepo.UpdateLastUsed(context.Background(), hash); err != nil {
 			m.log.Warn("Failed to update API token last_used_at: %v", err)
 		}

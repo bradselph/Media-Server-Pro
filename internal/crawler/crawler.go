@@ -40,9 +40,9 @@ type Module struct {
 
 	crawlMu      sync.RWMutex
 	activeCrawls map[string]bool // per-target crawl tracking; allows concurrent crawls on different targets
-	healthMu  sync.RWMutex
-	healthy   bool
-	healthMsg string
+	healthMu     sync.RWMutex
+	healthy      bool
+	healthMsg    string
 }
 
 // CrawlTarget is the public representation of a crawl target.
@@ -100,11 +100,11 @@ func NewModule(cfg *config.Manager, dbModule *database.Module, extractorModule *
 		log.Info("Browser detection disabled by config")
 	}
 	return &Module{
-		config:    cfg,
-		log:       log,
-		dbModule:  dbModule,
-		extractor: extractorModule,
-		browser:   bd,
+		config:       cfg,
+		log:          log,
+		dbModule:     dbModule,
+		extractor:    extractorModule,
+		browser:      bd,
 		activeCrawls: make(map[string]bool),
 		httpClient: &http.Client{
 			Transport: helpers.SafeHTTPTransport(),

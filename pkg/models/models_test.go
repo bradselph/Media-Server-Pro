@@ -131,13 +131,13 @@ func TestUserPreferences_Validate_ClampSpeed(t *testing.T) {
 		input float64
 		want  float64
 	}{
-		{0.1, 0.25},   // below minimum -> 0.25
-		{0.25, 0.25},  // at minimum
-		{1.0, 1.0},    // normal
-		{3.0, 3.0},    // at maximum
-		{5.0, 1.0},    // above maximum -> default 1.0
-		{-1.0, 1.0},   // negative -> default 1.0
-		{0.0, 1.0},    // zero -> default 1.0
+		{0.1, 0.25},  // below minimum -> 0.25
+		{0.25, 0.25}, // at minimum
+		{1.0, 1.0},   // normal
+		{3.0, 3.0},   // at maximum
+		{5.0, 1.0},   // above maximum -> default 1.0
+		{-1.0, 1.0},  // negative -> default 1.0
+		{0.0, 1.0},   // zero -> default 1.0
 	}
 	for _, tc := range tests {
 		p := UserPreferences{PlaybackSpeed: tc.input, Volume: 0.5, ItemsPerPage: 10}
@@ -249,15 +249,15 @@ func TestUserPreferences_Validate_SortOrder(t *testing.T) {
 func TestUserPreferences_Validate_TruncatesLongStrings(t *testing.T) {
 	long := strings.Repeat("x", 200)
 	p := UserPreferences{
-		DefaultQuality: long,
-		Language:       long,
+		DefaultQuality:  long,
+		Language:        long,
 		EqualizerPreset: long,
-		SortBy:         long,
-		FilterCategory: long,
+		SortBy:          long,
+		FilterCategory:  long,
 		FilterMediaType: long,
-		PlaybackSpeed:  1.0,
-		Volume:         0.5,
-		ItemsPerPage:   10,
+		PlaybackSpeed:   1.0,
+		Volume:          0.5,
+		ItemsPerPage:    10,
 	}
 	p.Validate()
 
@@ -480,7 +480,7 @@ func TestHLSStatusConstants(t *testing.T) {
 		HLSStatusRunning:   "running",
 		HLSStatusCompleted: "completed",
 		HLSStatusFailed:    "failed",
-		HLSStatusCancelled: "cancelled",
+		HLSStatusCanceled:  "canceled",
 	}
 	for s, want := range statuses {
 		if string(s) != want {
@@ -548,7 +548,7 @@ func TestTruncateString(t *testing.T) {
 		{"hello", 10, "hello"},
 		{"hello", 5, "hello"},
 		{"hello", 3, "hel"},
-		{"hello", 0, "hello"},  // maxLen <= 0 returns original
+		{"hello", 0, "hello"}, // maxLen <= 0 returns original
 		{"", 5, ""},
 		{"日本語テスト", 3, "日本語"}, // multi-byte: truncates by rune count
 	}
@@ -567,14 +567,14 @@ func TestTruncateString(t *testing.T) {
 func TestStringInSetOrDefault(t *testing.T) {
 	allowed := map[string]bool{"a": true, "b": true}
 	tests := []struct {
-		input    string
-		defVal   string
-		want     string
+		input  string
+		defVal string
+		want   string
 	}{
 		{"a", "x", "a"},
 		{"b", "x", "b"},
-		{"c", "x", "x"},   // not in set -> default
-		{"", "x", ""},     // empty -> empty (treated as valid)
+		{"c", "x", "x"}, // not in set -> default
+		{"", "x", ""},   // empty -> empty (treated as valid)
 	}
 	for _, tc := range tests {
 		got := stringInSetOrDefault(tc.input, allowed, tc.defVal)

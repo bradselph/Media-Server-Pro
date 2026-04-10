@@ -583,12 +583,15 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		user, err := h.auth.GetUser(c.Request.Context(), session.Username)
 		if err != nil {
 			h.log.Warn("Failed to look up user %s for stream limit check: %v", session.Username, err)
-		} else {
-			maxStreams := h.getUserStreamLimit(user.Type)
-			if maxStreams > 0 && !h.streaming.CanStartStream(userID, maxStreams) {
-				writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
-				return
-			}
+			// Fail closed: deny stream when user lookup fails rather than
+			// allowing unlimited streams during transient DB outages.
+			writeError(c, http.StatusServiceUnavailable, "Unable to verify stream permissions")
+			return
+		}
+		maxStreams := h.getUserStreamLimit(user.Type)
+		if maxStreams > 0 && !h.streaming.CanStartStream(userID, maxStreams) {
+			writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
+			return
 		}
 	} else {
 		// Use IP as stream key for unauthenticated (limit already checked at top)
@@ -718,15 +721,16 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	if err := h.streaming.Download(c.Writer, c.Request, absPath); err != nil {
 		if c.Writer.Written() || isClientDisconnect(err) {
 			if isClientDisconnect(err) {
-				h.log.Debug("Download cancelled by client: %v", err)
+				h.log.Debug("Download canceled by client: %v", err)
 			}
 			return
 		}
-		if errors.Is(err, streaming.ErrFileNotFound) {
+		switch {
+		case errors.Is(err, streaming.ErrFileNotFound):
 			writeError(c, http.StatusNotFound, errFileNotFound)
-		} else if errors.Is(err, streaming.ErrFileTooLarge) {
+		case errors.Is(err, streaming.ErrFileTooLarge):
 			writeError(c, http.StatusRequestEntityTooLarge, "File exceeds maximum download size")
-		} else {
+		default:
 			h.log.Error("Download error: %v", err)
 			writeError(c, http.StatusInternalServerError, "Download error")
 		}
@@ -874,7 +878,7 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 			}
 			item.Completed = item.Progress >= 0.9
 			if err := h.auth.AddToWatchHistory(c.Request.Context(), username, item); err != nil {
-				h.log.Debug("Watch history update skipped for media %s: %v", req.ID, err)
+				h.log.Warn("Watch history update failed for media %s: %v", req.ID, err)
 			}
 
 			if item.Completed && h.suggestions != nil {

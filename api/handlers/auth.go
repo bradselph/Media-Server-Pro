@@ -143,7 +143,7 @@ func (h *Handler) Logout(c *gin.Context) {
 		// Try regular session first; fall back to admin session
 		if logoutErr := h.auth.Logout(c.Request.Context(), cookie.Value); logoutErr != nil {
 			if adminErr := h.auth.LogoutAdmin(c.Request.Context(), cookie.Value); adminErr != nil {
-				h.log.Warn("Failed to logout session: %v", logoutErr)
+				h.log.Warn("Failed to logout session (regular: %v, admin: %v)", logoutErr, adminErr)
 			}
 		}
 	}
@@ -664,13 +664,12 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if h.auth.VerifyPassword(c.Request.Context(), user.Username, req.CurrentPassword) != nil {
-		writeError(c, http.StatusUnauthorized, "Current password is incorrect")
-		return
-	}
-
-	if err := h.auth.SetPassword(c.Request.Context(), user.Username, req.NewPassword); err != nil {
-		h.log.Error("%v", err)
+	if err := h.auth.UpdatePassword(c.Request.Context(), user.Username, req.CurrentPassword, req.NewPassword); err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			writeError(c, http.StatusUnauthorized, "Current password is incorrect")
+			return
+		}
+		h.log.Error("Password change failed for %s: %v", user.Username, err)
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
@@ -715,14 +714,10 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	// Invalidate the session only after successful deletion.
-	session := getSession(c)
-	if session != nil {
-		if err := h.auth.Logout(c.Request.Context(), session.ID); err != nil {
-			h.log.Warn("Failed to invalidate session after account deletion for %s: %v", user.Username, err)
-		}
-		clearSessionCookie(c.Writer, c.Request)
-	}
+	// Clear the session cookie. DeleteUser already evicts all sessions from cache
+	// and DB via evictSessionsForUser, so an explicit Logout call is unnecessary
+	// and would always fail with ErrSessionNotFound.
+	clearSessionCookie(c.Writer, c.Request)
 
 	h.log.Info("User %s deleted their account", user.Username)
 	writeSuccess(c, map[string]string{"status": "account_deleted", "message": "Your account has been permanently deleted"})
@@ -792,6 +787,6 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 	if _, err := c.Writer.Write(buf.Bytes()); err != nil {
 		// Headers already sent — append trailer comment so the consumer can detect truncation.
 		h.log.Error("CSV send failed for user %s: %v", user.Username, err)
-		_, _ = c.Writer.Write([]byte("\n# ERROR: export incomplete\n"))
+		_, _ = c.Writer.WriteString("\n# ERROR: export incomplete\n")
 	}
 }

@@ -34,7 +34,7 @@ type BackendFactory struct {
 // NewBackend creates a Backend for the given directory role.
 // For "local" backend, it uses localRoot as the filesystem path.
 // For "s3" backend, it uses the S3 config with the appropriate prefix.
-func (f *BackendFactory) NewBackend(ctx context.Context, role string, localRoot string) (Backend, error) {
+func (f *BackendFactory) NewBackend(ctx context.Context, role, localRoot string) (Backend, error) {
 	switch f.Config.Backend {
 	case "", "local":
 		return f.NewLocal(localRoot)

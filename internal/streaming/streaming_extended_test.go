@@ -1,6 +1,7 @@
 package streaming
 
 import (
+	"context"
 	"testing"
 )
 
@@ -119,7 +120,7 @@ func TestParseRange_OutOfBounds(t *testing.T) {
 
 func TestGenerateSessionID_Unique(t *testing.T) {
 	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := generateSessionID("stream")
 		if id == "" {
 			t.Fatal("generateSessionID returned empty")
@@ -144,8 +145,8 @@ func TestGenerateSessionID_HasPrefix(t *testing.T) {
 
 func TestSessionLifecycle_MultipleStreams(t *testing.T) {
 	m := newTestModule(t)
-	m.Start(nil)
-	defer m.Stop(nil)
+	m.Start(context.Background())
+	defer m.Stop(context.Background())
 
 	s1 := m.startSession(StreamRequest{Path: "/video1.mp4", UserID: "user1"}, 0)
 	s2 := m.startSession(StreamRequest{Path: "/video2.mp4", UserID: "user2"}, 0)
@@ -167,8 +168,8 @@ func TestSessionLifecycle_MultipleStreams(t *testing.T) {
 
 func TestEndSession_NonExistent(t *testing.T) {
 	m := newTestModule(t)
-	m.Start(nil)
-	defer m.Stop(nil)
+	m.Start(context.Background())
+	defer m.Stop(context.Background())
 	m.endSession("non-existent-id")
 }
 
@@ -178,8 +179,8 @@ func TestEndSession_NonExistent(t *testing.T) {
 
 func TestGetStats_Empty(t *testing.T) {
 	m := newTestModule(t)
-	m.Start(nil)
-	defer m.Stop(nil)
+	m.Start(context.Background())
+	defer m.Stop(context.Background())
 	stats := m.GetStats()
 	if stats.ActiveStreams != 0 {
 		t.Errorf("ActiveStreams = %d, want 0", stats.ActiveStreams)

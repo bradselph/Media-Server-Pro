@@ -126,7 +126,7 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 			m.log.Error("Failed to clean up corrupted HLS directory: %v", err)
 		}
 	}
-	if err := os.MkdirAll(p.OutputDir, 0755); err != nil {
+	if err := os.MkdirAll(p.OutputDir, 0o755); err != nil { //nolint:gosec // G301: HLS output dirs need world-read for serving
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
 	job := &models.HLSJob{
@@ -240,7 +240,7 @@ func (m *Module) CancelJob(jobID string) error {
 	}
 
 	if job.Status == models.HLSStatusRunning || job.Status == models.HLSStatusPending {
-		job.Status = models.HLSStatusCancelled
+		job.Status = models.HLSStatusCanceled
 		if cancel, ok := m.jobCancels[jobID]; ok {
 			cancel()
 			delete(m.jobCancels, jobID)

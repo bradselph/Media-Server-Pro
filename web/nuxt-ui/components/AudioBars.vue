@@ -18,9 +18,9 @@ defineProps<{
 
 <template>
   <div
-    class="audio-bars flex items-end justify-center gap-[2px]"
+    class="audio-bars flex items-end justify-center gap-0.5"
     :class="[
-      size === 'xs' ? 'h-4' : size === 'lg' ? 'h-12' : size === 'md' ? 'h-8' : 'h-6',
+      size === 'xs' ? 'h-5' : size === 'lg' ? 'h-16' : size === 'md' ? 'h-10' : 'h-8',
       color || 'text-primary',
     ]"
     aria-hidden="true"
@@ -30,7 +30,7 @@ defineProps<{
       :key="i"
       class="audio-bar inline-block rounded-full bg-current opacity-80"
       :class="[
-        size === 'xs' ? 'w-[2px]' : size === 'lg' ? 'w-1.5' : 'w-1',
+        size === 'xs' ? 'w-0.75' : size === 'lg' ? 'w-2' : 'w-1.5',
         animate !== false ? 'animate-audio-bar' : '',
       ]"
       :style="{ animationDelay: `${(i - 1) * 120}ms`, height: animate !== false ? undefined : `${20 + ((i * 37) % 60)}%` }"

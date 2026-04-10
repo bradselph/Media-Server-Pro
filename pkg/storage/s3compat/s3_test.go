@@ -245,14 +245,14 @@ func TestAbsPath_Traversal(t *testing.T) {
 // Interface compliance
 // ---------------------------------------------------------------------------
 
-func TestBackendImplementsInterface(t *testing.T) {
+func TestBackendImplementsInterface(_ *testing.T) {
 	var _ storage.Backend = (*Backend)(nil)
 }
 
-func TestBackendImplementsRangeOpener(t *testing.T) {
+func TestBackendImplementsRangeOpener(_ *testing.T) {
 	var _ storage.RangeOpener = (*Backend)(nil)
 }
 
-func TestBackendImplementsPresignURLer(t *testing.T) {
+func TestBackendImplementsPresignURLer(_ *testing.T) {
 	var _ storage.PresignURLer = (*Backend)(nil)
 }

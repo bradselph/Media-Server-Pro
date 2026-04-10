@@ -923,6 +923,7 @@ FIX DIRECTION: Add a bounded semaphore or debounce (only persist every N seconds
 #### Handler Layer Verification Summary
 
 The handler audit confirmed **all 38 handler files** are clean:
+
 - **0** missing-return-after-writeError bugs
 - **0** nil dereferences on optional modules (all properly guarded by requireModule)
 - **0** unguarded path traversal (resolvePathForAdmin, resolveMediaByID, resolveAndValidatePath)
@@ -935,24 +936,29 @@ The handler audit confirmed **all 38 handler files** are clean:
 ## Architecture Notes
 
 ### Lock Hierarchy (verified no deadlocks)
+
 - **media.Module**: single `mu` for all indexes (media, metadata, fingerprintIndex, mediaByID)
 - **auth.Module**: `sessionsMu` (sessions), `usersMu` (users), `attemptsMu` (login attempts) — no nesting
-- **receiver.Module**: `mu` (slaves/media), `wsMu` (WS connections), `pendingMu` (pending streams), `healthMu` — no nesting
+- **receiver.Module**: `mu` (slaves/media), `wsMu` (WS connections), `pendingMu` (pending streams), `healthMu` — no
+  nesting
 - **streaming.Module**: `sessionMu` (active sessions), `statsMu` (counters) — ordered: sessionMu → statsMu
 - **remote.Module**: `mu` (sources/cache), `healthMu` — no nesting
 - **security.Module**: separate locks for rate limiter, whitelist, blacklist, banned IPs
 - **hls.Module**: accessTracker.mu → jobsMu (consistent ordering)
 
 ### Entry Points
+
 - `cmd/server/main.go` — primary server entry
 - `cmd/media-receiver/main.go` — standalone receiver CLI
 - Route setup: `api/routes/routes.go` — 100+ endpoints across public, auth-required, and admin groups
 
 ### Module Lifecycle
+
 All modules implement `server.Module` interface (Name, Start, Stop, Health). Critical modules
 panic on nil in `NewHandler`. Optional modules are nil-checked via `requireModule()` before use.
 
 ### Verified Correct Patterns
+
 - Session validation returns copy-before-unlock (auth/session.go:148-162)
 - Media index consistency: RenameMedia, MoveMedia, DeleteMedia update 4 indexes atomically
 - SSRF protection: double validation at URL submission AND connection time via SafeHTTPTransport
@@ -976,79 +982,78 @@ panic on nil in `NewHandler`. Optional modules are nil-checked via `requireModul
 
 ### FIXED (committed 2026-04-08, 5 batches)
 
-| # | Tag | Fix | Commit |
-|---|-----|-----|--------|
-| #49 | SECURITY | SetPassword re-reads user under RLock before copy | batch 1 |
-| #50 | SECURITY | LastLogin mutates fields on existing pointer, not replacement | batch 1 |
-| #36 | SECURITY | sessionAuth checks IsTrustedProxy before trusting XFF | batch 1 |
-| #37 | SECURITY | Rate limiter walks XFF right-to-left skipping trusted proxies | batch 1 |
-| #1 | BROKEN | TotalWatchTime uses min(position, duration) | batch 1 |
-| #2 | GAP | rebuildStatsFromEvent adds playback case for dailyStats | batch 1 |
-| #5 | FRAGILE | PushCatalog re-reads node under write lock | batch 2 |
-| #6 | BROKEN | PushCatalog uses len(records) not len(req.Items) | batch 2 |
-| #3 | FRAGILE | Stream() uses r.Context() instead of context.Background() | batch 2 |
-| #4 | LEAK | Streaming session cleanup every 5m, evicts >30m stale | batch 2 |
-| #38 | DRIFT | Agegate IP extraction unified to right-to-left-skip-trusted | batch 2 |
-| #51 | GAP | Admin user added to usersByID index in bootstrap | batch 2 |
-| #52 | GAP | syncFeatureToggles called before validate() in Update | batch 2 |
-| #53 | GAP | CreateSessionForUser uses getOrLoadUser for cache misses | batch 2 |
-| #7 | FRAGILE | Legacy migration: upsert before delete | batch 3 |
-| #15 | SILENT FAIL | saveCacheIndex continues on error | batch 3 |
-| #18 | SILENT FAIL | loadFromDB sets descriptive health msg on media failure | batch 3 |
-| #11 | FRAGILE | WS relay SetReadLimit 1MB on both connections | batch 3 |
-| #46 | DRIFT | ClearMediaCache wraps in APIResponse envelope | batch 3 |
-| #47 | FRAGILE | Receiver stream limit uses fallback when GetUser fails | batch 3 |
-| #60 | FRAGILE | GetActiveSessions returns copies not shared pointers | batch 3 |
-| #19 | GAP | Task checks Enabled after startup delay before initial run | batch 3 |
-| #39 | GAP | HuggingFace client uses SafeHTTPTransport | batch 3 |
-| #40 | GAP | ETag hash upgraded to FNV-1a 64-bit | batch 3 |
-| #43 | GAP | Semicolons stripped in Content-Disposition filenames | batch 3 |
-| #20 | FRAGILE | Download uses os.Stat instead of double-open | batch 3 |
-| #44 | FRAGILE | S3 Rename non-atomicity documented | batch 4 |
-| #58 | FRAGILE | db/sqlDB nil-after-Stop contract documented | batch 4 |
-| #16 | FRAGILE | Presigned URL TTL increased from 2h to 12h | batch 4 |
-| #10 | FRAGILE | syncAllSources checks m.ctx in loop for prompt exit | batch 4 |
-| #17 | FRAGILE | drainPendingForSlave called synchronously (no race) | batch 4 |
-| #61 | FRAGILE | UpdateUser re-reads user inside lastAdminMu | batch 5 |
-| #8 | GAP | Extractor cleans up orphan DB row on MaxItems rejection | batch 5 |
-| #12 | LEAK | viewCooldown periodic sweep replaces per-entry AfterFunc timers | batch 6 |
-| #26 | SILENT FAIL | StreamMedia uses existing localItem for suggestions | batch 6 |
-| #48 | FRAGILE | Server-side anonymous session IDs for analytics | batch 6 |
-| #54 | GAP | Expired API tokens deleted on detection | batch 6 |
-| #55 | GAP | Rate limit BurstLimit/BurstWindow/BanDuration validated | batch 6 |
-| #56 | GAP | S3 endpoint/bucket/keys validated when backend=s3 | batch 6 |
-| #57 | GAP | DB Health() performs live Ping to detect disconnects | batch 6 |
-| #59 | FRAGILE | httpServer read/write protected with mu | batch 6 |
-| #62 | FRAGILE | createMediaItem uses single Lock for fingerprint check-and-set | batch 6 |
-| #63 | FRAGILE | ValidateSession goroutines bounded by semaphore (cap=100) | batch 6 |
-| #22 | DRIFT | Scanner loadResults log message fixed (lazy loading) | batch 6 |
-| #9 | FRAGILE | Cache file re-checked before ServeFile | batch 7 |
-| #14 | FRAGILE | Per-upload mutex replaces module-wide lock | batch 7 |
-| #28 | FRAGILE | onBan goroutines bounded by semaphore (cap=50) | batch 7 |
-| #30 | FRAGILE | defer zipFile.Close added as panic safety net | batch 7 |
-| #32 | FRAGILE | Updater initial check respects checkDone for rapid Stop | batch 7 |
+| #   | Tag         | Fix                                                             | Commit  |
+|-----|-------------|-----------------------------------------------------------------|---------|
+| #49 | SECURITY    | SetPassword re-reads user under RLock before copy               | batch 1 |
+| #50 | SECURITY    | LastLogin mutates fields on existing pointer, not replacement   | batch 1 |
+| #36 | SECURITY    | sessionAuth checks IsTrustedProxy before trusting XFF           | batch 1 |
+| #37 | SECURITY    | Rate limiter walks XFF right-to-left skipping trusted proxies   | batch 1 |
+| #1  | BROKEN      | TotalWatchTime uses min(position, duration)                     | batch 1 |
+| #2  | GAP         | rebuildStatsFromEvent adds playback case for dailyStats         | batch 1 |
+| #5  | FRAGILE     | PushCatalog re-reads node under write lock                      | batch 2 |
+| #6  | BROKEN      | PushCatalog uses len(records) not len(req.Items)                | batch 2 |
+| #3  | FRAGILE     | Stream() uses r.Context() instead of context.Background()       | batch 2 |
+| #4  | LEAK        | Streaming session cleanup every 5m, evicts >30m stale           | batch 2 |
+| #38 | DRIFT       | Agegate IP extraction unified to right-to-left-skip-trusted     | batch 2 |
+| #51 | GAP         | Admin user added to usersByID index in bootstrap                | batch 2 |
+| #52 | GAP         | syncFeatureToggles called before validate() in Update           | batch 2 |
+| #53 | GAP         | CreateSessionForUser uses getOrLoadUser for cache misses        | batch 2 |
+| #7  | FRAGILE     | Legacy migration: upsert before delete                          | batch 3 |
+| #15 | SILENT FAIL | saveCacheIndex continues on error                               | batch 3 |
+| #18 | SILENT FAIL | loadFromDB sets descriptive health msg on media failure         | batch 3 |
+| #11 | FRAGILE     | WS relay SetReadLimit 1MB on both connections                   | batch 3 |
+| #46 | DRIFT       | ClearMediaCache wraps in APIResponse envelope                   | batch 3 |
+| #47 | FRAGILE     | Receiver stream limit uses fallback when GetUser fails          | batch 3 |
+| #60 | FRAGILE     | GetActiveSessions returns copies not shared pointers            | batch 3 |
+| #19 | GAP         | Task checks Enabled after startup delay before initial run      | batch 3 |
+| #39 | GAP         | HuggingFace client uses SafeHTTPTransport                       | batch 3 |
+| #40 | GAP         | ETag hash upgraded to FNV-1a 64-bit                             | batch 3 |
+| #43 | GAP         | Semicolons stripped in Content-Disposition filenames            | batch 3 |
+| #20 | FRAGILE     | Download uses os.Stat instead of double-open                    | batch 3 |
+| #44 | FRAGILE     | S3 Rename non-atomicity documented                              | batch 4 |
+| #58 | FRAGILE     | db/sqlDB nil-after-Stop contract documented                     | batch 4 |
+| #16 | FRAGILE     | Presigned URL TTL increased from 2h to 12h                      | batch 4 |
+| #10 | FRAGILE     | syncAllSources checks m.ctx in loop for prompt exit             | batch 4 |
+| #17 | FRAGILE     | drainPendingForSlave called synchronously (no race)             | batch 4 |
+| #61 | FRAGILE     | UpdateUser re-reads user inside lastAdminMu                     | batch 5 |
+| #8  | GAP         | Extractor cleans up orphan DB row on MaxItems rejection         | batch 5 |
+| #12 | LEAK        | viewCooldown periodic sweep replaces per-entry AfterFunc timers | batch 6 |
+| #26 | SILENT FAIL | StreamMedia uses existing localItem for suggestions             | batch 6 |
+| #48 | FRAGILE     | Server-side anonymous session IDs for analytics                 | batch 6 |
+| #54 | GAP         | Expired API tokens deleted on detection                         | batch 6 |
+| #55 | GAP         | Rate limit BurstLimit/BurstWindow/BanDuration validated         | batch 6 |
+| #56 | GAP         | S3 endpoint/bucket/keys validated when backend=s3               | batch 6 |
+| #57 | GAP         | DB Health() performs live Ping to detect disconnects            | batch 6 |
+| #59 | FRAGILE     | httpServer read/write protected with mu                         | batch 6 |
+| #62 | FRAGILE     | createMediaItem uses single Lock for fingerprint check-and-set  | batch 6 |
+| #63 | FRAGILE     | ValidateSession goroutines bounded by semaphore (cap=100)       | batch 6 |
+| #22 | DRIFT       | Scanner loadResults log message fixed (lazy loading)            | batch 6 |
+| #9  | FRAGILE     | Cache file re-checked before ServeFile                          | batch 7 |
+| #14 | FRAGILE     | Per-upload mutex replaces module-wide lock                      | batch 7 |
+| #28 | FRAGILE     | onBan goroutines bounded by semaphore (cap=50)                  | batch 7 |
+| #30 | FRAGILE     | defer zipFile.Close added as panic safety net                   | batch 7 |
+| #32 | FRAGILE     | Updater initial check respects checkDone for rapid Stop         | batch 7 |
 
 **48 of 63 findings fixed** (8 commit batches, 34 files, +374/-133 lines).
 
 ### DEFERRED (not fixable with simple code changes — 15 items)
 
-| # | Tag | Item | Reason |
-|---|-----|------|--------|
-| #13 | GAP | Suggestion profile dirty tracking | Requires architectural rework of save loop |
-| #21 | DRIFT | Uncommitted ParseQueryInt refactoring | Pre-existing change; just needs `git add` |
-| #23 | REDUNDANT | isPathWithinDirs/isPathUnderDirs duplication | Remove dead code; flagged for cleanup |
-| #24 | REDUNDANT | Sentinel errors only used locally | Idiomatic Go; no action needed |
-| #25 | SILENT FAIL | CSV export truncation on error | Inherent to HTTP streaming responses |
-| #27 | FRAGILE | Extractor error-status items no error returned | Design choice; not a bug |
-| #29 | FRAGILE | Crawler serial crawling | Intentional single-threaded design |
-| #31 | LEAK | syncAllSources goroutine context | Already fixed by #10 (ctx check in loop) |
-| #33 | FRAGILE | HLS transSem fixed at construction | Go channel capacity is immutable |
-| #34 | FRAGILE | HLS lock ordering undocumented | Needs a comment, not a code fix |
-| #35 | FRAGILE | UpdateTags async save | Acceptable design; periodic scan re-persists |
-| #41 | GAP | User.Metadata size limit | No handler writes to this field |
-| #42 | LEAK | AdminNotes JSON exposure | Verified admin-only; not a user-facing leak |
-| #45 | REDUNDANT | audioExts duplicates mediaExts | Maintenance concern only |
-
+| #   | Tag         | Item                                           | Reason                                       |
+|-----|-------------|------------------------------------------------|----------------------------------------------|
+| #13 | GAP         | Suggestion profile dirty tracking              | Requires architectural rework of save loop   |
+| #21 | DRIFT       | Uncommitted ParseQueryInt refactoring          | Pre-existing change; just needs `git add`    |
+| #23 | REDUNDANT   | isPathWithinDirs/isPathUnderDirs duplication   | Remove dead code; flagged for cleanup        |
+| #24 | REDUNDANT   | Sentinel errors only used locally              | Idiomatic Go; no action needed               |
+| #25 | SILENT FAIL | CSV export truncation on error                 | Inherent to HTTP streaming responses         |
+| #27 | FRAGILE     | Extractor error-status items no error returned | Design choice; not a bug                     |
+| #29 | FRAGILE     | Crawler serial crawling                        | Intentional single-threaded design           |
+| #31 | LEAK        | syncAllSources goroutine context               | Already fixed by #10 (ctx check in loop)     |
+| #33 | FRAGILE     | HLS transSem fixed at construction             | Go channel capacity is immutable             |
+| #34 | FRAGILE     | HLS lock ordering undocumented                 | Needs a comment, not a code fix              |
+| #35 | FRAGILE     | UpdateTags async save                          | Acceptable design; periodic scan re-persists |
+| #41 | GAP         | User.Metadata size limit                       | No handler writes to this field              |
+| #42 | LEAK        | AdminNotes JSON exposure                       | Verified admin-only; not a user-facing leak  |
+| #45 | REDUNDANT   | audioExts duplicates mediaExts                 | Maintenance concern only                     |
 
 ---
 
@@ -1059,15 +1064,18 @@ in 8 commit batches (34 files, +374/-133 lines). The remaining 15 are genuinely 
 simple code changes (architectural choices, inherent limitations, or cosmetic only).
 
 **All 4 SECURITY issues are fixed:**
+
 - Auth data races on shared user pointers (#49, #50)
 - X-Forwarded-Proto trust without proxy check (#36)
 - Rate limiter XFF parsing for multi-proxy topologies (#37)
 
 **Both BROKEN issues are fixed:**
+
 - TotalWatchTime using full duration instead of watched time (#1)
 - PushCatalog MediaCount using pre-filter count (#6)
 
 **Key patterns applied in this session:**
+
 - Re-read shared pointer under lock before copy (auth #49, #50, #61)
 - Mutate fields on existing cached pointer instead of replacing entire pointer (#50)
 - Right-to-left XFF walk skipping trusted proxies (#37, #38)

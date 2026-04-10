@@ -1,6 +1,7 @@
 package thumbnails
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -39,7 +40,7 @@ func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (st
 		return outputPath, nil
 	}
 	// Remove 0-byte corrupt file so ffmpeg can overwrite
-	os.Remove(outputPath)
+	_ = os.Remove(outputPath)
 
 	// For audio, just generate one waveform.
 	// Guard against duplicate queuing: if another caller already queued this
@@ -133,7 +134,7 @@ func (m *Module) QueueThumbnailIfMissing(mediaPath, mediaID string, isAudio bool
 		IsAudio:      isAudio,
 		HighPriority: false,
 	})
-	if err != nil && err != ErrThumbnailPending {
+	if err != nil && !errors.Is(err, ErrThumbnailPending) {
 		m.log.Debug("Background thumbnail queue failed for %s: %v", mediaPath, err)
 	}
 }
@@ -152,7 +153,7 @@ func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (st
 		m.log.Debug("Thumbnail already exists: %s", outputPath)
 		return outputPath, nil
 	}
-	os.Remove(outputPath) // remove 0-byte corrupt file if present
+	_ = os.Remove(outputPath) // remove 0-byte corrupt file if present
 
 	job := &ThumbnailJob{
 		MediaPath:  req.MediaPath,

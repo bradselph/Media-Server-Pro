@@ -30,7 +30,7 @@ const maxBaseNameLen = 200
 
 // tryImageFrames returns (paths, true, nil) for valid image paths, (nil, true, err) on image stat error,
 // and (nil, false, nil) when ext is not an image (caller should continue with video path).
-func tryImageFrames(videoPath, ext string) ([]string, bool, error) {
+func tryImageFrames(videoPath, ext string) (paths []string, isImage bool, err error) {
 	if !imageExtensions[ext] {
 		return nil, false, nil
 	}
@@ -165,7 +165,7 @@ func ExtractFrames(ctx context.Context, opts ExtractFramesOptions) ([]string, er
 		return nil, fmt.Errorf("invalid duration %.2f for %s", duration, videoPath)
 	}
 	timestamps := computeTimestamps(duration, count)
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
+	if err := os.MkdirAll(tempDir, 0o755); err != nil { //nolint:gosec // G301: temp frame dir for ffmpeg extraction
 		return nil, err
 	}
 	baseName := sanitizeBaseName(videoPath)
@@ -185,7 +185,7 @@ type getDurationParams struct {
 
 func getDuration(ctx context.Context, p getDurationParams) (float64, error) {
 	// -v error -show_entries format=duration -of json
-	cmd := exec.CommandContext(ctx, p.ffprobePath,
+	cmd := exec.CommandContext(ctx, p.ffprobePath, //nolint:gosec // G204: ffprobePath is a configured binary path, not user input
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "json",
@@ -223,7 +223,7 @@ func extractOneFrame(ctx context.Context, p extractFrameParams) error {
 		"-q:v", "2",
 		p.outputPath,
 	}
-	cmd := exec.CommandContext(ctx, p.ffmpegPath, args...)
+	cmd := exec.CommandContext(ctx, p.ffmpegPath, args...) //nolint:gosec // G204: ffmpegPath is a configured binary path, not user input
 	_, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok && len(exitErr.Stderr) > 0 {

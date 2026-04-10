@@ -78,6 +78,20 @@ func TestIsSessionError_Wrapped(t *testing.T) {
 	}
 }
 
+func TestIsSessionError_AccountDisabled(t *testing.T) {
+	// ErrAccountDisabled should clear stale cookies — it must be a session error.
+	if !IsSessionError(ErrAccountDisabled) {
+		t.Error("ErrAccountDisabled should be a session error so stale cookies get cleared")
+	}
+}
+
+func TestIsSessionError_AccountLocked(t *testing.T) {
+	// ErrAccountLocked is rate-limit related, not a permanent session rejection.
+	if IsSessionError(ErrAccountLocked) {
+		t.Error("ErrAccountLocked should NOT be a session error — it is transient")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // deleteExpiredFromMap
 // ---------------------------------------------------------------------------
@@ -197,4 +211,3 @@ func TestAdminPermissions(t *testing.T) {
 		t.Error("CanCreatePlaylists should be true")
 	}
 }
-

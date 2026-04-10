@@ -115,7 +115,7 @@ type RateLimiter struct {
 	stopCleanup chan struct{}
 	stopOnce    sync.Once
 	onBan       func(ip string, duration time.Duration, reason string) // Optional callback when auto-ban is triggered
-	banSem      chan struct{} // bounds concurrent onBan goroutines
+	banSem      chan struct{}                                          // bounds concurrent onBan goroutines
 }
 
 // RateLimitConfig holds rate limiter configuration

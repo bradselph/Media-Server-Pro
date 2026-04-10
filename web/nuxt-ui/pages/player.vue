@@ -116,11 +116,43 @@ const EQ_PRESETS: Record<string, number[]> = {
 let audioCtx: AudioContext | null = null
 let eqFilters: BiquadFilterNode[] = []
 let sourceNode: MediaElementAudioSourceNode | null = null
+let analyserNode: AnalyserNode | null = null
+const visualizerAnalyser = ref<AnalyserNode | null>(null)
+
+/**
+ * Ensures the shared AudioContext and MediaElementSource are created.
+ * Safe to call multiple times — no-ops if already initialised.
+ * Chain: source → [EQ filters] → analyser → destination
+ */
+function ensureAudioGraph() {
+  if (!videoRef.value || audioCtx) return
+  try {
+    audioCtx = new AudioContext()
+    sourceNode = audioCtx.createMediaElementSource(videoRef.value)
+    analyserNode = audioCtx.createAnalyser()
+    // 2048-point FFT → 1024 bins @ ~22kHz = ~21 Hz/bin resolution.
+    // Fine enough for the EQ peaking bands (60 Hz–16 kHz) to be
+    // individually visible in the frequency display.
+    analyserNode.fftSize = 2048
+    analyserNode.smoothingTimeConstant = 0.75
+    // Default chain (no EQ): source → analyser → destination
+    sourceNode.connect(analyserNode)
+    analyserNode.connect(audioCtx.destination)
+    visualizerAnalyser.value = analyserNode
+  } catch {
+    // Web Audio unavailable
+  }
+}
 
 function initEqualizer() {
-  if (!videoRef.value || audioCtx) return
-  audioCtx = new AudioContext()
-  sourceNode = audioCtx.createMediaElementSource(videoRef.value)
+  if (!videoRef.value) return
+  ensureAudioGraph()
+  if (!audioCtx || !sourceNode || !analyserNode) return
+  if (eqFilters.length > 0) {
+    // Already have EQ filters — just ensure enabled
+    eqEnabled.value = true
+    return
+  }
   eqFilters = EQ_FREQUENCIES.map((freq, i) => {
     const filter = audioCtx!.createBiquadFilter()
     filter.type = 'peaking'
@@ -129,10 +161,13 @@ function initEqualizer() {
     filter.gain.value = eqBands.value[i]
     return filter
   })
-  // Chain: source → f0 → f1 → ... → f9 → destination
+  // Rewire: source → f0 → ... → f9 → analyser → destination
+  sourceNode.disconnect()
+  analyserNode.disconnect()
   sourceNode.connect(eqFilters[0])
   for (let i = 0; i < eqFilters.length - 1; i++) eqFilters[i].connect(eqFilters[i + 1])
-  eqFilters[eqFilters.length - 1].connect(audioCtx.destination)
+  eqFilters[eqFilters.length - 1].connect(analyserNode)
+  analyserNode.connect(audioCtx.destination)
   eqEnabled.value = true
 }
 
@@ -173,6 +208,8 @@ const {
   hlsError,
   qualities,
   currentQuality,
+  autoLevel,
+  bandwidth,
   selectQuality,
   activateHLS,
   jobProgress,
@@ -292,6 +329,19 @@ function onVideoLoaded() {
   if (videoRef.value) {
     videoRef.value.playbackRate = playbackSpeed.value
     videoRef.value.volume = volume.value
+  }
+  // For audio media, pre-wire the audio graph so the visualizer works immediately.
+  // Called every time loadedmetadata fires — ensureAudioGraph() is idempotent.
+  // Also handles the HLS re-load case: when HLS activates it calls attachMedia() which
+  // resets the element and fires loadedmetadata again; the AudioContext and
+  // MediaElementAudioSourceNode survive across src/srcObject changes.
+  if (media.value?.type === 'audio') {
+    ensureAudioGraph()
+    // Browser suspends AudioContext until a user gesture. Resume on every play event
+    // (not just the first) so HLS re-loads don't leave the context suspended.
+    videoRef.value?.addEventListener('play', () => {
+      if (audioCtx?.state === 'suspended') audioCtx.resume()
+    }, { once: false })
   }
   restorePosition()
   playbackStore.startAutoSave()
@@ -482,6 +532,7 @@ async function exitPiPForTransition() {
 
 // Keyboard shortcuts overlay
 const showShortcuts = ref(false)
+const showInfoOverlay = ref(false)
 
 function toggleMute() {
   if (!videoRef.value) return
@@ -602,8 +653,14 @@ function onKeyDown(e: KeyboardEvent) {
       e.preventDefault()
       showShortcuts.value = !showShortcuts.value
       break
+    case 'i':
+    case 'I':
+      e.preventDefault()
+      showInfoOverlay.value = !showInfoOverlay.value
+      break
     case 'Escape':
       if (showShortcuts.value) { e.preventDefault(); showShortcuts.value = false }
+      if (showInfoOverlay.value) { e.preventDefault(); showInfoOverlay.value = false }
       break
     default:
       // 0-9: seek to percentage
@@ -851,6 +908,23 @@ watch(mediaId, (id, oldId) => {
             <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
           </div>
 
+          <!-- Media info overlay (press I) -->
+          <Transition name="fade">
+            <div
+              v-if="showInfoOverlay && media"
+              class="absolute top-3 left-3 z-20 bg-black/80 text-white text-xs rounded-lg px-3 py-2.5 space-y-1 backdrop-blur-sm max-w-xs pointer-events-none"
+            >
+              <div class="font-semibold text-sm truncate">{{ getDisplayTitle(media) }}</div>
+              <div v-if="media.codec" class="flex gap-1.5"><span class="text-white/50">Codec</span><span class="uppercase font-mono">{{ media.codec }}</span></div>
+              <div v-if="media.width && media.height" class="flex gap-1.5"><span class="text-white/50">Resolution</span><span class="font-mono">{{ media.width }}×{{ media.height }}</span></div>
+              <div v-if="media.bitrate" class="flex gap-1.5"><span class="text-white/50">Bitrate</span><span class="font-mono">{{ (media.bitrate / 1000).toFixed(0) }} kbps</span></div>
+              <div v-if="hlsActivated && currentQuality >= 0 && qualities[currentQuality]" class="flex gap-1.5"><span class="text-white/50">Quality</span><span>{{ qualities[currentQuality]?.name }}</span></div>
+              <div v-if="hlsActivated && bandwidth > 0" class="flex gap-1.5"><span class="text-white/50">Bandwidth</span><span class="font-mono">{{ (bandwidth / 1_000_000).toFixed(1) }} Mbps</span></div>
+              <div v-if="media.size" class="flex gap-1.5"><span class="text-white/50">File size</span><span>{{ formatBytes(media.size) }}</span></div>
+              <div class="flex gap-1.5 text-white/40 mt-0.5"><span>Press I to close</span></div>
+            </div>
+          </Transition>
+
           <!-- Controls + keyboard shortcuts -->
           <PlayerControls
             :is-playing="isPlaying"
@@ -882,7 +956,7 @@ watch(mediaId, (id, oldId) => {
           <!-- Audio player -->
           <UCard class="overflow-hidden">
             <div class="flex flex-col items-center py-8 px-4 bg-linear-to-b from-primary/8 to-transparent">
-              <AudioBars size="lg" :bars="9" :animate="isPlaying" class="mb-4" />
+              <AudioVisualizer :analyser-node="visualizerAnalyser" :bars="48" :height="160" class="w-full max-w-md mb-4" />
               <p class="font-bold text-xl text-highlighted text-center max-w-md">{{ getDisplayTitle(media) }}</p>
               <div class="flex items-center gap-2 mt-1.5 text-xs text-muted">
                 <span v-if="media.codec" class="uppercase font-medium">{{ media.codec }}</span>
@@ -897,7 +971,7 @@ watch(mediaId, (id, oldId) => {
             </div>
             <audio
               ref="videoRef"
-              :src="mediaApi.getStreamUrl(media.id)"
+              :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
               controls
               class="w-full"
               @loadedmetadata="onVideoLoaded"

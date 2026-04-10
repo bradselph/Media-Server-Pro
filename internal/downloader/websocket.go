@@ -67,11 +67,14 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	wsDialer := &websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 	}
-	dlConn, _, err := wsDialer.Dial(dlURL, nil)
+	dlConn, httpResp, err := wsDialer.Dial(dlURL, nil)
 	if err != nil {
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
 		log.Warn("Downloader WS dial failed: %v", err)
-		adminConn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Cannot connect to downloader"}`))
-		adminConn.Close()
+		_ = adminConn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Cannot connect to downloader"}`))
+		_ = adminConn.Close()
 		return
 	}
 
@@ -83,8 +86,8 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	})
 	if err := dlConn.WriteMessage(websocket.TextMessage, registerMsg); err != nil {
 		log.Warn("Failed to register clientId with downloader: %v", err)
-		dlConn.Close()
-		adminConn.Close()
+		_ = dlConn.Close()
+		_ = adminConn.Close()
 		return
 	}
 
@@ -95,8 +98,8 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	})
 	if err := adminConn.WriteMessage(websocket.TextMessage, connectedMsg); err != nil {
 		log.Warn("Failed to send connected message to admin: %v", err)
-		dlConn.Close()
-		adminConn.Close()
+		_ = dlConn.Close()
+		_ = adminConn.Close()
 		return
 	}
 
@@ -113,8 +116,8 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	closeAll := func() {
 		once.Do(func() {
 			close(done)
-			adminConn.Close()
-			dlConn.Close()
+			_ = adminConn.Close()
+			_ = dlConn.Close()
 			log.Info("WS proxy closed (clientId: %s)", clientID)
 		})
 	}

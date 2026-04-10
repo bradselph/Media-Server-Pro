@@ -3,16 +3,16 @@ package scanner
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"crypto/sha256"
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
@@ -518,21 +518,8 @@ func scanConfigKeywords(filename string, keywords []string, boost float64, label
 		kw := strings.ToLower(keyword)
 		if strings.Contains(filename, kw) {
 			// Skip if already matched by hardcoded keywords (avoid double counting)
-			alreadyMatched := false
-			for _, m := range result.HighConfMatches {
-				if m == kw {
-					alreadyMatched = true
-					break
-				}
-			}
-			if !alreadyMatched {
-				for _, m := range result.MedConfMatches {
-					if m == kw {
-						alreadyMatched = true
-						break
-					}
-				}
-			}
+			alreadyMatched := slices.Contains(result.HighConfMatches, kw) ||
+				slices.Contains(result.MedConfMatches, kw)
 			if !alreadyMatched {
 				confidence += boost
 				result.Reasons = append(result.Reasons, label+": "+kw)
@@ -755,15 +742,16 @@ func (s *MatureScanner) applyThresholds(result *ScanResult) {
 	highThreshold := cfg.MatureScanner.HighConfidenceThreshold
 	medThreshold := cfg.MatureScanner.MediumConfidenceThreshold
 
-	if result.Confidence >= highThreshold {
+	switch {
+	case result.Confidence >= highThreshold:
 		result.IsMature = true
 		result.AutoFlagged = cfg.MatureScanner.AutoFlag
 		result.NeedsReview = cfg.MatureScanner.RequireReview
 		s.log.Debug("  Threshold: HIGH (%.2f >= %.2f)", result.Confidence, highThreshold)
-	} else if result.Confidence >= medThreshold {
+	case result.Confidence >= medThreshold:
 		result.NeedsReview = true
 		s.log.Debug("  Threshold: MEDIUM (%.2f >= %.2f)", result.Confidence, medThreshold)
-	} else {
+	default:
 		s.log.Debug("  Threshold: None (%.2f < %.2f)", result.Confidence, medThreshold)
 	}
 }
@@ -870,9 +858,8 @@ func (s *MatureScanner) ReviewItem(ctx context.Context, path, reviewerID, decisi
 	item.Decision = decision
 
 	// Ensure the scan result is in memory so callers (e.g. BatchReviewAction) can
-	// retrieve it via GetScanResult after the review.  On a fresh start loadResults
-	// is a no-op, so results may be absent even when the review queue was reloaded
-	// from the database — populate from DB in that case.
+	// retrieve it via GetScanResult after the review. Results are populated lazily
+	// from DB by GetScanResult; populate here if absent.
 	if _, inMem := s.results[path]; !inMem {
 		if s.scanRepo != nil {
 			if repoResult, err := s.scanRepo.Get(ctx, path); err == nil && repoResult != nil {
@@ -1004,14 +991,6 @@ type Stats struct {
 	MatureCount   int `json:"mature_count"`
 	AutoFlagged   int `json:"auto_flagged"`
 	PendingReview int `json:"pending_review"`
-}
-
-// loadResults intentionally does not preload from DB: the in-memory results map is a runtime
-// cache. Scan results are persisted per-file via scanRepo.Save(). GetScanResult populates the
-// cache from the DB when a path is missing, so the review queue (loaded by loadReviewQueue) and
-// per-path results stay consistent without loading all results at startup.
-func (s *MatureScanner) loadResults() error {
-	return nil
 }
 
 // loadReviewQueue populates the in-memory review queue from MySQL on startup.

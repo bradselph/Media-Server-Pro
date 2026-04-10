@@ -57,7 +57,7 @@ func TestRateLimiter_BanExpiry(t *testing.T) {
 // RateLimiter.cleanup
 // ---------------------------------------------------------------------------
 
-func TestRateLimiter_Cleanup(t *testing.T) {
+func TestRateLimiter_Cleanup(_ *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
 	// Create some client state
 	rl.CheckRequest("10.0.0.1")
@@ -88,7 +88,7 @@ func TestRateLimiter_CleanupWithIPLists(t *testing.T) {
 // RateLimiter.StartCleanup / StopCleanup
 // ---------------------------------------------------------------------------
 
-func TestRateLimiter_StartStopCleanup(t *testing.T) {
+func TestRateLimiter_StartStopCleanup(_ *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
 	whitelist := &IPList{Entries: make([]IPEntry, 0)}
 	blacklist := &IPList{Entries: make([]IPEntry, 0)}
@@ -184,7 +184,7 @@ func TestGetBannedIPs_ReturnsCopy(t *testing.T) {
 // UnbanIP — non-existent IP
 // ---------------------------------------------------------------------------
 
-func TestRateLimiter_UnbanIP_NotBanned(t *testing.T) {
+func TestRateLimiter_UnbanIP_NotBanned(_ *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
 	// Should not panic
 	rl.UnbanIP("10.0.0.99")

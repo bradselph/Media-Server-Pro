@@ -279,7 +279,7 @@ func (m *Module) Start(_ context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			m.log.Info("Initial media scan cancelled after metadata load")
+			m.log.Info("Initial media scan canceled after metadata load")
 			return
 		default:
 		}
@@ -536,39 +536,41 @@ func (m *Module) Scan() error {
 	m.mu.Lock()
 	oldMediaByID := m.mediaByID
 	for id, newItem := range newMediaByID {
-		if oldItem, existed := oldMediaByID[id]; existed {
-			// Preserve runtime playback metadata
-			if oldItem.Views > newItem.Views {
-				newItem.Views = oldItem.Views
-			}
-			if oldItem.LastPlayed != nil && (newItem.LastPlayed == nil || oldItem.LastPlayed.After(*newItem.LastPlayed)) {
-				newItem.LastPlayed = oldItem.LastPlayed
-			}
-			if newItem.ThumbnailURL == "" && oldItem.ThumbnailURL != "" {
-				newItem.ThumbnailURL = oldItem.ThumbnailURL
-			}
-			// Preserve ffprobe-extracted fields when extractMetadata skipped
-			// (unchanged file — ProbeModTime matched). Without this, Duration,
-			// dimensions, codec, etc. reset to zero on every hourly re-scan.
-			if newItem.Duration == 0 && oldItem.Duration > 0 {
-				newItem.Duration = oldItem.Duration
-			}
-			if newItem.Bitrate == 0 && oldItem.Bitrate > 0 {
-				newItem.Bitrate = oldItem.Bitrate
-			}
-			if newItem.Width == 0 && oldItem.Width > 0 {
-				newItem.Width = oldItem.Width
-				newItem.Height = oldItem.Height
-			}
-			if newItem.Codec == "" && oldItem.Codec != "" {
-				newItem.Codec = oldItem.Codec
-			}
-			if newItem.Container == "" && oldItem.Container != "" {
-				newItem.Container = oldItem.Container
-			}
-			if len(newItem.Metadata) == 0 && len(oldItem.Metadata) > 0 {
-				newItem.Metadata = oldItem.Metadata
-			}
+		oldItem, existed := oldMediaByID[id]
+		if !existed {
+			continue
+		}
+		// Preserve runtime playback metadata
+		if oldItem.Views > newItem.Views {
+			newItem.Views = oldItem.Views
+		}
+		if oldItem.LastPlayed != nil && (newItem.LastPlayed == nil || oldItem.LastPlayed.After(*newItem.LastPlayed)) {
+			newItem.LastPlayed = oldItem.LastPlayed
+		}
+		if newItem.ThumbnailURL == "" && oldItem.ThumbnailURL != "" {
+			newItem.ThumbnailURL = oldItem.ThumbnailURL
+		}
+		// Preserve ffprobe-extracted fields when extractMetadata skipped
+		// (unchanged file — ProbeModTime matched). Without this, Duration,
+		// dimensions, codec, etc. reset to zero on every hourly re-scan.
+		if newItem.Duration == 0 && oldItem.Duration > 0 {
+			newItem.Duration = oldItem.Duration
+		}
+		if newItem.Bitrate == 0 && oldItem.Bitrate > 0 {
+			newItem.Bitrate = oldItem.Bitrate
+		}
+		if newItem.Width == 0 && oldItem.Width > 0 {
+			newItem.Width = oldItem.Width
+			newItem.Height = oldItem.Height
+		}
+		if newItem.Codec == "" && oldItem.Codec != "" {
+			newItem.Codec = oldItem.Codec
+		}
+		if newItem.Container == "" && oldItem.Container != "" {
+			newItem.Container = oldItem.Container
+		}
+		if len(newItem.Metadata) == 0 && len(oldItem.Metadata) > 0 {
+			newItem.Metadata = oldItem.Metadata
 		}
 	}
 	m.media = newMedia
@@ -662,13 +664,14 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 
 		var mediaType models.MediaType
 
-		if videoExtensions[ext] {
+		switch {
+		case videoExtensions[ext]:
 			mediaType = models.MediaTypeVideo
-		} else if helpers.IsAudioExtension(ext) {
+		case helpers.IsAudioExtension(ext):
 			mediaType = models.MediaTypeAudio
-		} else if defaultType != models.MediaTypeUnknown {
+		case defaultType != models.MediaTypeUnknown:
 			mediaType = defaultType
-		} else {
+		default:
 			return nil // Not a media file
 		}
 
@@ -703,13 +706,14 @@ func (m *Module) scanRemoteStore(ctx context.Context, store storage.Backend, _ s
 		}
 
 		var mediaType models.MediaType
-		if videoExtensions[ext] {
+		switch {
+		case videoExtensions[ext]:
 			mediaType = models.MediaTypeVideo
-		} else if helpers.IsAudioExtension(ext) {
+		case helpers.IsAudioExtension(ext):
 			mediaType = models.MediaTypeAudio
-		} else if defaultType != models.MediaTypeUnknown {
+		case defaultType != models.MediaTypeUnknown:
 			mediaType = defaultType
-		} else {
+		default:
 			return nil
 		}
 
@@ -816,7 +820,8 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 				oldMeta = m.metadata[oldPath]
 			}
 
-			if oldMeta != nil {
+			switch {
+			case oldMeta != nil:
 				// Before assuming a move, verify the old path no longer exists (outside lock
 				// would be ideal, but the stat is fast for local FS and correctness > speed).
 				if _, statErr := os.Stat(oldPath); statErr != nil && os.IsNotExist(statErr) {
@@ -831,9 +836,9 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 					// Old path still exists — duplicate file, not a move.
 					m.log.Debug("Duplicate content at %s and %s (fingerprint %s…)", oldPath, path, fp[:12])
 				}
-			} else if found {
+			case found:
 				// Same file at same path — just use existing metadata normally.
-			} else {
+			default:
 				// Truly new file — record fingerprint for future move detection
 				m.log.Debug("New content fingerprint for %s: %s…", path, fp[:12])
 			}
@@ -959,7 +964,7 @@ func (m *Module) extractMetadata(item *models.MediaItem) {
 	ctx, cancel := context.WithTimeout(m.scanCtx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, m.ffprobePath,
+	cmd := exec.CommandContext(ctx, m.ffprobePath, //nolint:gosec // G204: ffprobePath is a configured binary path
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",

@@ -293,9 +293,10 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 
 	// Content negotiation: serve WebP when client accepts it
 	contentType := "image/jpeg"
-	if ext == ".png" {
+	switch ext {
+	case ".png":
 		contentType = "image/png"
-	} else if ext == ".webp" {
+	case ".webp":
 		contentType = "image/webp"
 	}
 	if acceptsWebP(c.Request) && ext != ".webp" {
@@ -335,7 +336,7 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 		return
 	}
 
-	// Block preview thumbnails for mature content when user is not authorised.
+	// Block preview thumbnails for mature content when user is not authorized.
 	if item, err := h.media.GetMedia(path); err == nil && item != nil && item.IsMature {
 		canView := false
 		if user := getUser(c); user != nil {

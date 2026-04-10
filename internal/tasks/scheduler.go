@@ -92,12 +92,12 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Apply a startup delay so that tasks don't all fire the instant the
 	// scheduler starts.  This prevents a flood of DB queries while the
-	// remaining modules (scanner, thumbnails, …) are still initialising.
+	// remaining modules (scanner, thumbnails, …) are still initializing.
 	m.startupDelay = defaultStartupDelay
 
-	// Use a background context for task goroutines so they aren't cancelled
+	// Use a background context for task goroutines so they aren't canceled
 	// when the server's module-startup context completes.
-	taskCtx, cancel := context.WithCancel(context.Background())
+	taskCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = taskCtx
 	m.cancel = cancel
 	m.done = taskCtx.Done()
@@ -190,8 +190,8 @@ func (m *Module) RegisterTask(opts TaskRegistration) {
 	}
 }
 
-// waitForStartupDelay waits for the configured startup delay unless ctx is cancelled.
-// Returns false if context was cancelled during the wait, true otherwise.
+// waitForStartupDelay waits for the configured startup delay unless ctx is canceled.
+// Returns false if context was canceled during the wait, true otherwise.
 func (m *Module) waitForStartupDelay(ctx context.Context, task *Task) bool {
 	m.mu.RLock()
 	delay := m.startupDelay
@@ -292,7 +292,7 @@ func (m *Module) recordTaskResult(task *Task, err error, start time.Time) {
 	m.mu.Unlock()
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			m.log.Info("Task %s cancelled: %v", task.Name, err)
+			m.log.Info("Task %s canceled: %v", task.Name, err)
 		} else {
 			m.log.Error("Task %s failed: %v", task.Name, err)
 		}

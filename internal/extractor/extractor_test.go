@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -290,7 +291,7 @@ func TestRemoveItem_Exists(t *testing.T) {
 func TestRemoveItem_NotFound(t *testing.T) {
 	m := &Module{items: make(map[string]*ExtractedItem)}
 	err := m.RemoveItem("nonexistent")
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }

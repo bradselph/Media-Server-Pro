@@ -116,7 +116,7 @@ func (h *Handler) GetReviewQueue(c *gin.Context) {
 }
 
 // applyReviewActionToItem runs approve or reject for one item; returns true if the item was updated.
-func (h *Handler) applyReviewActionToItem(ctx context.Context, action string, id string) bool {
+func (h *Handler) applyReviewActionToItem(ctx context.Context, action, id string) bool {
 	item, err := h.media.GetMediaByID(id)
 	if err != nil || item == nil {
 		return false

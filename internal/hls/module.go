@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	errReadCacheDirFmt = "Failed to read HLS cache directory: %v"
-	masterPlaylistName = "master.m3u8"
-	errJobNotFoundFmt  = "job not found: %s"
+	errReadCacheDirFmt    = "Failed to read HLS cache directory: %v"
+	masterPlaylistName    = "master.m3u8"
+	errJobNotFoundFmt     = "job not found: %s"
 	defaultMaxHLSFailures = 3 // fallback when HLSConfig.MaxConsecutiveFailures is unset
 )
 
@@ -61,9 +61,6 @@ type Module struct {
 	healthMsg          string
 	healthMu           sync.RWMutex
 	cacheDir           string
-	cleanupTicker      *time.Ticker
-	cleanupDone        chan struct{}
-	cleanupDoneOnce    sync.Once
 	ffmpegPath         string
 	ffprobePath        string
 	accessTracker      *AccessTracker
@@ -93,11 +90,6 @@ func (m *Module) SetMediaInputResolver(r MediaInputResolver) {
 
 // NewModule creates a new HLS module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
-	hlsCfg := cfg.Get().HLS
-	concurrentLimit := hlsCfg.ConcurrentLimit
-	if concurrentLimit <= 0 {
-		concurrentLimit = 2
-	}
 	return &Module{
 		config:        cfg,
 		log:           logger.New("hls"),
@@ -105,7 +97,6 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		jobs:          make(map[string]*models.HLSJob),
 		jobCancels:    make(map[string]context.CancelFunc),
 		cacheDir:      cfg.Get().Directories.HLSCache,
-		cleanupDone:   make(chan struct{}),
 		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time), lastSaved: make(map[string]time.Time)},
 	}
 }
@@ -212,7 +203,7 @@ func (m *Module) applyStartupHealthFFmpeg() bool {
 
 // applyStartupHealthCacheDir creates the HLS cache directory; on failure sets degraded health and returns true.
 func (m *Module) applyStartupHealthCacheDir() bool {
-	if err := os.MkdirAll(m.cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(m.cacheDir, 0o755); err != nil { //nolint:gosec // G301: HLS cache dir needs world-read for serving
 		m.log.Error("Failed to create HLS cache directory: %v", err)
 		m.healthMu.Lock()
 		m.healthy = true
@@ -324,15 +315,10 @@ func (m *Module) Stop(ctx context.Context) error {
 
 	m.stopping.Store(true)
 
-	if m.cleanupTicker != nil {
-		m.cleanupTicker.Stop()
-		m.cleanupDoneOnce.Do(func() { close(m.cleanupDone) })
-	}
-
 	m.jobsMu.Lock()
 	for _, job := range m.jobs {
 		if job.Status == models.HLSStatusRunning {
-			job.Status = models.HLSStatusCancelled
+			job.Status = models.HLSStatusCanceled
 		}
 	}
 	for id, cancel := range m.jobCancels {

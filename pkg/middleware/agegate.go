@@ -82,7 +82,7 @@ func NewAgeGate(cfg config.AgeGateConfig) *AgeGate {
 	return ag
 }
 
-// extractClientIP returns the real client IP, honouring X-Forwarded-For only
+// extractClientIP returns the real client IP, honoring X-Forwarded-For only
 // from trusted reverse proxies (private network ranges). Walks right-to-left
 // through X-Forwarded-For, skipping trusted proxy entries, to find the actual
 // client IP. This matches the strategy used by the security module's getClientIP

@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -108,7 +109,7 @@ func (m *Module) ResolveForFFmpeg(ctx context.Context, mediaPath string) (string
 	}
 	sr := m.storeFor(mediaPath)
 	if sr.store == nil || sr.store.IsLocal() {
-		return mediaPath, nil // local or unrecognised — pass through
+		return mediaPath, nil // local or unrecognized — pass through
 	}
 	presigner, ok := sr.store.(storage.PresignURLer)
 	if !ok {
@@ -126,7 +127,7 @@ func crossStoreMove(ctx context.Context, srcStore storage.Backend, srcRel string
 	if err != nil {
 		return fmt.Errorf("open source: %w", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if _, err := dstStore.Create(ctx, dstRel, r); err != nil {
 		return fmt.Errorf("write destination: %w", err)
@@ -169,7 +170,7 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 		// correct prefix) rather than a filepath.Join result which uses OS separators.
 		newPath = sr.store.AbsPath(newRelPath)
 	} else {
-		// Local filesystem (original behaviour).
+		// Local filesystem (original behavior).
 		if _, err := os.Stat(oldPath); err != nil {
 			return "", fmt.Errorf("source file not found: %w", err)
 		}
@@ -264,11 +265,11 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 		// Override newPath with the canonical S3 key so the index stays consistent.
 		newPath = dstSR.store.AbsPath(dstSR.relPath)
 	} else {
-		// Local filesystem (original behaviour).
+		// Local filesystem (original behavior).
 		if _, err := os.Stat(oldPath); err != nil {
 			return "", fmt.Errorf("source file not found: %w", err)
 		}
-		if err := os.MkdirAll(newDir, 0755); err != nil {
+		if err := os.MkdirAll(newDir, 0o755); err != nil { //nolint:gosec // G301: media directories need world-read for serving
 			return "", fmt.Errorf("failed to create directory: %w", err)
 		}
 		if _, err := os.Stat(newPath); err == nil {
@@ -325,7 +326,7 @@ func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
 			return fmt.Errorf("failed to delete: %w", err)
 		}
 	} else {
-		// Local filesystem (original behaviour).
+		// Local filesystem (original behavior).
 		if _, err := os.Stat(filePath); err != nil {
 			return fmt.Errorf("file not found: %w", err)
 		}
@@ -334,28 +335,26 @@ func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
 		}
 	}
 
-	path := filePath
-
 	// Remove from in-memory indexes (media + metadata + fingerprintIndex)
 	m.mu.Lock()
-	if meta, exists := m.metadata[path]; exists && meta.ContentFingerprint != "" {
+	if meta, exists := m.metadata[filePath]; exists && meta.ContentFingerprint != "" {
 		delete(m.fingerprintIndex, meta.ContentFingerprint)
 	}
-	if item, exists := m.media[path]; exists {
+	if item, exists := m.media[filePath]; exists {
 		delete(m.mediaByID, item.ID)
 	}
-	delete(m.media, path)
-	delete(m.metadata, path)
+	delete(m.media, filePath)
+	delete(m.metadata, filePath)
 	m.version++
 	m.mu.Unlock()
 
-	m.log.Info("Deleted media: %s", path)
+	m.log.Info("Deleted media: %s", filePath)
 	// Item was deleted — remove from DB too (not just the in-memory map)
 	if m.metadataRepo != nil {
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		if err := m.metadataRepo.Delete(ctx, path); err != nil {
-			m.log.Warn("Failed to delete metadata from DB for %s: %v", path, err)
+		if err := m.metadataRepo.Delete(dbCtx, filePath); err != nil {
+			m.log.Warn("Failed to delete metadata from DB for %s: %v", filePath, err)
 		}
 	}
 
@@ -365,32 +364,32 @@ func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
 // RemoveMedia removes a media entry from the index without deleting the file.
 // This is used for cleanup when files have already been deleted externally.
 // fingerprintIndex is updated so the fingerprint is no longer associated with this path.
-func (m *Module) RemoveMedia(path string) error {
+func (m *Module) RemoveMedia(mediaPath string) error {
 	m.mu.Lock()
-	meta := m.metadata[path]
+	meta := m.metadata[mediaPath]
 	if meta != nil && meta.ContentFingerprint != "" {
 		delete(m.fingerprintIndex, meta.ContentFingerprint)
 	}
-	delete(m.metadata, path)
-	item, exists := m.media[path]
+	delete(m.metadata, mediaPath)
+	item, exists := m.media[mediaPath]
 	if !exists {
 		m.mu.Unlock()
-		return fmt.Errorf("media not found in index: %s", path)
+		return fmt.Errorf("media not found in index: %s", mediaPath)
 	}
 	delete(m.mediaByID, item.ID)
-	delete(m.media, path)
+	delete(m.media, mediaPath)
 	m.version++
 	m.mu.Unlock()
 
-	m.log.Debug("Removed media from index: %s", path)
+	m.log.Debug("Removed media from index: %s", mediaPath)
 
 	// Remove from DB (best-effort, async)
 	if m.metadataRepo != nil {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := m.metadataRepo.Delete(ctx, path); err != nil {
-				m.log.Warn("Failed to delete metadata from DB for %s: %v", path, err)
+			if err := m.metadataRepo.Delete(ctx, mediaPath); err != nil {
+				m.log.Warn("Failed to delete metadata from DB for %s: %v", mediaPath, err)
 			}
 		}()
 	}
@@ -399,25 +398,25 @@ func (m *Module) RemoveMedia(path string) error {
 }
 
 // UpdateMetadata updates metadata for a media file.
-func (m *Module) UpdateMetadata(path string, updates map[string]interface{}) error {
+func (m *Module) UpdateMetadata(mediaPath string, updates map[string]any) error {
 	m.mu.Lock()
 
-	meta, exists := m.metadata[path]
+	meta, exists := m.metadata[mediaPath]
 	if !exists {
 		meta = &Metadata{
 			PlaybackPos: make(map[string]float64),
 			CustomMeta:  make(map[string]string),
 		}
-		m.metadata[path] = meta
+		m.metadata[mediaPath] = meta
 	}
 
 	applyMetadataUpdates(meta, updates)
-	m.syncMediaItem(path, updates)
+	m.syncMediaItem(mediaPath, updates)
 	m.mu.Unlock()
 
-	m.log.Debug("Updated metadata for: %s", path)
+	m.log.Debug("Updated metadata for: %s", mediaPath)
 
-	if err := m.saveMetadataItem(path); err != nil {
+	if err := m.saveMetadataItem(mediaPath); err != nil {
 		m.log.Error("Failed to save metadata after update: %v", err)
 		return fmt.Errorf("metadata updated in memory but DB save failed: %w", err)
 	}
@@ -426,14 +425,14 @@ func (m *Module) UpdateMetadata(path string, updates map[string]interface{}) err
 }
 
 // applyMetadataUpdates applies a set of key-value updates to a Metadata struct.
-func applyMetadataUpdates(meta *Metadata, updates map[string]interface{}) {
+func applyMetadataUpdates(meta *Metadata, updates map[string]any) {
 	for key, value := range updates {
 		applyMetadataField(meta, key, value)
 	}
 }
 
 // applyMetadataField applies a single metadata field update.
-func applyMetadataField(meta *Metadata, key string, value interface{}) {
+func applyMetadataField(meta *Metadata, key string, value any) {
 	switch key {
 	case "tags":
 		if tags, ok := value.([]string); ok {
@@ -452,9 +451,10 @@ func applyMetadataField(meta *Metadata, key string, value interface{}) {
 			meta.Category = cat
 		}
 	case "views":
-		if views, ok := value.(float64); ok {
+		switch views := value.(type) {
+		case float64:
 			meta.Views = int(views)
-		} else if views, ok := value.(int); ok {
+		case int:
 			meta.Views = views
 		}
 	default:
@@ -469,8 +469,8 @@ func applyMetadataField(meta *Metadata, key string, value interface{}) {
 
 // syncMediaItem synchronizes relevant metadata updates to the in-memory media item.
 // Must be called with m.mu held.
-func (m *Module) syncMediaItem(path string, updates map[string]interface{}) {
-	item, exists := m.media[path]
+func (m *Module) syncMediaItem(mediaPath string, updates map[string]any) {
+	item, exists := m.media[mediaPath]
 	if !exists {
 		return
 	}
@@ -486,39 +486,39 @@ func (m *Module) syncMediaItem(path string, updates map[string]interface{}) {
 	if category, ok := updates["category"].(string); ok {
 		item.Category = category
 	}
-	if views, ok := updates["views"].(float64); ok {
+	switch views := updates["views"].(type) {
+	case float64:
 		item.Views = int(views)
-	} else if views, ok := updates["views"].(int); ok {
+	case int:
 		item.Views = views
 	}
 }
 
 // SetTags sets tags for a media file
-func (m *Module) SetTags(path string, tags []string) error {
-	return m.UpdateMetadata(path, map[string]interface{}{"tags": tags})
+func (m *Module) SetTags(mediaPath string, tags []string) error {
+	return m.UpdateMetadata(mediaPath, map[string]any{"tags": tags})
 }
 
 // UpdateTags merges new tags with existing tags for a media file (deduplicated, case-insensitive).
 // The merge and write happen atomically under a single write lock to prevent lost updates.
-func (m *Module) UpdateTags(path string, tags []string) error {
+func (m *Module) UpdateTags(mediaPath string, tags []string) error {
 	m.mu.Lock()
 
-	meta, exists := m.metadata[path]
+	meta, exists := m.metadata[mediaPath]
 	if !exists {
 		meta = &Metadata{
 			PlaybackPos: make(map[string]float64),
 			CustomMeta:  make(map[string]string),
 			Tags:        []string{},
 		}
-		m.metadata[path] = meta
+		m.metadata[mediaPath] = meta
 	}
 
 	seen := make(map[string]bool)
 	for _, t := range meta.Tags {
 		seen[strings.ToLower(t)] = true
 	}
-	merged := make([]string, len(meta.Tags))
-	copy(merged, meta.Tags)
+	merged := append([]string(nil), meta.Tags...)
 	for _, t := range tags {
 		if t == "" {
 			continue
@@ -531,16 +531,16 @@ func (m *Module) UpdateTags(path string, tags []string) error {
 	}
 
 	meta.Tags = merged
-	if item, ok := m.media[path]; ok {
+	if item, ok := m.media[mediaPath]; ok {
 		tagsCopy := make([]string, len(merged))
 		copy(tagsCopy, merged)
 		item.Tags = tagsCopy
 	}
 	m.mu.Unlock()
 
-	m.log.Debug("Updated tags for: %s", path)
+	m.log.Debug("Updated tags for: %s", mediaPath)
 
-	if err := m.saveMetadataItem(path); err != nil {
+	if err := m.saveMetadataItem(mediaPath); err != nil {
 		m.log.Error("Failed to save metadata after tag update: %v", err)
 		return fmt.Errorf("tags updated in memory but DB save failed: %w", err)
 	}
@@ -549,36 +549,34 @@ func (m *Module) UpdateTags(path string, tags []string) error {
 }
 
 // AddTag adds a tag to a media file
-func (m *Module) AddTag(path, tag string) error {
+func (m *Module) AddTag(mediaPath, tag string) error {
 	m.mu.Lock()
 
-	meta, exists := m.metadata[path]
+	meta, exists := m.metadata[mediaPath]
 	if !exists {
 		meta = &Metadata{
 			PlaybackPos: make(map[string]float64),
 			CustomMeta:  make(map[string]string),
 			Tags:        []string{},
 		}
-		m.metadata[path] = meta
+		m.metadata[mediaPath] = meta
 	}
 
 	// Check if tag already exists
-	for _, t := range meta.Tags {
-		if t == tag {
-			m.mu.Unlock()
-			return nil // Already has tag
-		}
+	if slices.Contains(meta.Tags, tag) {
+		m.mu.Unlock()
+		return nil
 	}
 
 	meta.Tags = append(meta.Tags, tag)
-	if item, exists := m.media[path]; exists {
+	if item, exists := m.media[mediaPath]; exists {
 		tagsCopy := make([]string, len(meta.Tags))
 		copy(tagsCopy, meta.Tags)
 		item.Tags = tagsCopy
 	}
 	m.mu.Unlock()
 
-	if err := m.saveMetadataItem(path); err != nil {
+	if err := m.saveMetadataItem(mediaPath); err != nil {
 		m.log.Error("Failed to save metadata after adding tag: %v", err)
 		return fmt.Errorf("tag added in memory but DB save failed: %w", err)
 	}
@@ -587,10 +585,10 @@ func (m *Module) AddTag(path, tag string) error {
 }
 
 // RemoveTag removes a tag from a media file
-func (m *Module) RemoveTag(path, tag string) error {
+func (m *Module) RemoveTag(mediaPath, tag string) error {
 	m.mu.Lock()
 
-	meta, exists := m.metadata[path]
+	meta, exists := m.metadata[mediaPath]
 	if !exists {
 		m.mu.Unlock()
 		return nil
@@ -604,14 +602,14 @@ func (m *Module) RemoveTag(path, tag string) error {
 	}
 	meta.Tags = newTags
 
-	if item, exists := m.media[path]; exists {
+	if item, exists := m.media[mediaPath]; exists {
 		tagsCopy := make([]string, len(newTags))
 		copy(tagsCopy, newTags)
 		item.Tags = tagsCopy
 	}
 	m.mu.Unlock()
 
-	if err := m.saveMetadataItem(path); err != nil {
+	if err := m.saveMetadataItem(mediaPath); err != nil {
 		m.log.Error("Failed to save metadata after removing tag: %v", err)
 		return fmt.Errorf("tag removed in memory but DB save failed: %w", err)
 	}
@@ -736,25 +734,62 @@ func validateDirectory(dir string, cfg *config.Config) (string, error) {
 // the media library immediately without waiting for the next scheduled scan.
 // It creates a MediaItem, adds it to the in-memory index, runs ffprobe for
 // metadata extraction, and persists the metadata to the database.
-func (m *Module) RegisterUploadedFile(path string) error {
-	info, err := os.Stat(path)
+// RegisterUploadedFile indexes a newly-uploaded local file by path.
+// For remote-store uploads where os.Stat would fail, use RegisterUploadedFileWithSize instead.
+func (m *Module) RegisterUploadedFile(mediaPath string) error {
+	info, err := os.Stat(mediaPath)
 	if err != nil {
 		return fmt.Errorf("stat uploaded file: %w", err)
 	}
 
-	ext := strings.ToLower(filepath.Ext(path))
+	ext := strings.ToLower(filepath.Ext(mediaPath))
 	var mediaType models.MediaType
-	if videoExtensions[ext] {
+	switch {
+	case videoExtensions[ext]:
 		mediaType = models.MediaTypeVideo
-	} else if helpers.IsAudioExtension(ext) {
+	case helpers.IsAudioExtension(ext):
 		mediaType = models.MediaTypeAudio
-	} else {
+	default:
 		mediaType = models.MediaTypeUnknown
 	}
 
-	item := m.createMediaItem(path, info, mediaType)
+	item := m.createMediaItem(mediaPath, info, mediaType)
 	if item == nil {
-		return fmt.Errorf("failed to create media item for %s", path)
+		return fmt.Errorf("failed to create media item for %s", mediaPath)
+	}
+	return m.finalizeRegisteredItem(mediaPath, item)
+}
+
+// RegisterUploadedFileWithSize indexes a newly-uploaded file using caller-supplied size metadata,
+// skipping os.Stat. Use this for remote-store (S3/B2) uploads where the path is a storage key.
+func (m *Module) RegisterUploadedFileWithSize(mediaPath string, size int64, modTime time.Time) error {
+	ext := strings.ToLower(filepath.Ext(mediaPath))
+	var mediaType models.MediaType
+	switch {
+	case videoExtensions[ext]:
+		mediaType = models.MediaTypeVideo
+	case helpers.IsAudioExtension(ext):
+		mediaType = models.MediaTypeAudio
+	default:
+		mediaType = models.MediaTypeUnknown
+	}
+
+	// Build item using the storage-oriented helper which accepts struct fields
+	// directly — no os.FileInfo required.
+	item := m.createMediaItemFromStorageInfo(mediaPath, storage.FileInfo{
+		Name:    filepath.Base(mediaPath),
+		Size:    size,
+		ModTime: modTime,
+	}, mediaType)
+	if item == nil {
+		return fmt.Errorf("failed to create media item for %s", mediaPath)
+	}
+	return m.finalizeRegisteredItem(mediaPath, item)
+}
+
+func (m *Module) finalizeRegisteredItem(mediaPath string, item *models.MediaItem) error {
+	if item == nil {
+		return fmt.Errorf("failed to create media item for %s", mediaPath)
 	}
 
 	// Extract metadata (duration, codec, etc.) synchronously so the item is
@@ -764,17 +799,17 @@ func (m *Module) RegisterUploadedFile(path string) error {
 	}
 
 	m.mu.Lock()
-	m.media[path] = item
+	m.media[mediaPath] = item
 	m.mediaByID[item.ID] = item
 	m.version++
 	m.mu.Unlock()
 
 	// Persist to DB.
-	if err := m.saveMetadataItem(path); err != nil {
-		m.log.Error("Failed to persist metadata for uploaded file %s: %v", path, err)
+	if err := m.saveMetadataItem(mediaPath); err != nil {
+		m.log.Error("Failed to persist metadata for uploaded file %s: %v", mediaPath, err)
 		return fmt.Errorf("file indexed but metadata save failed: %w", err)
 	}
 
-	m.log.Info("Registered uploaded file: %s (id: %s)", path, item.ID)
+	m.log.Info("Registered uploaded file: %s (id: %s)", mediaPath, item.ID)
 	return nil
 }

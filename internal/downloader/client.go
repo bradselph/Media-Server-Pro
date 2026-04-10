@@ -35,11 +35,11 @@ func NewClient(baseURL string, timeout time.Duration) *Client {
 
 // HealthResponse holds the downloader's /api/health response.
 type HealthResponse struct {
-	ActiveDownloads int  `json:"activeDownloads"`
-	QueuedDownloads int  `json:"queuedDownloads"`
-	Uptime          float64 `json:"uptime"`
-	AllowServerStorage bool `json:"allowServerStorage"`
-	Dependencies    struct {
+	ActiveDownloads    int     `json:"activeDownloads"`
+	QueuedDownloads    int     `json:"queuedDownloads"`
+	Uptime             float64 `json:"uptime"`
+	AllowServerStorage bool    `json:"allowServerStorage"`
+	Dependencies       struct {
 		YtDlp  *DepInfo `json:"ytdlp"`
 		FFmpeg *DepInfo `json:"ffmpeg"`
 	} `json:"dependencies"`
@@ -53,15 +53,15 @@ type DepInfo struct {
 
 // DetectResponse holds the downloader's /api/detect response.
 type DetectResponse struct {
-	IsYouTube      bool           `json:"isYouTube"`
-	IsYouTubeMusic bool           `json:"isYouTubeMusic"`
-	Title          string         `json:"title"`
-	Stream         *StreamInfo    `json:"stream"`
-	AllStreams     []StreamInfo   `json:"allStreams"`
-	DetectionMethod string        `json:"detectionMethod"`
-	Previews       []string       `json:"previews"`
-	PageURL        string         `json:"pageUrl"`
-	RelayID        string         `json:"relayId"`
+	IsYouTube       bool         `json:"isYouTube"`
+	IsYouTubeMusic  bool         `json:"isYouTubeMusic"`
+	Title           string       `json:"title"`
+	Stream          *StreamInfo  `json:"stream"`
+	AllStreams      []StreamInfo `json:"allStreams"`
+	DetectionMethod string       `json:"detectionMethod"`
+	Previews        []string     `json:"previews"`
+	PageURL         string       `json:"pageUrl"`
+	RelayID         string       `json:"relayId"`
 }
 
 // StreamInfo holds info about a detected stream.
@@ -126,8 +126,8 @@ func (c *Client) Health() (*HealthResponse, error) {
 }
 
 // Detect sends a URL to the downloader for stream detection.
-func (c *Client) Detect(url string) (*DetectResponse, error) {
-	body := map[string]string{"url": url}
+func (c *Client) Detect(rawURL string) (*DetectResponse, error) {
+	body := map[string]string{"url": rawURL}
 	var resp DetectResponse
 	if err := c.post("/api/detect", body, &resp); err != nil {
 		return nil, err
@@ -177,7 +177,7 @@ func (c *Client) get(path string, result interface{}) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -190,11 +190,11 @@ func (c *Client) get(path string, result interface{}) error {
 	return nil
 }
 
-func (c *Client) post(path string, body interface{}, result interface{}) error {
+func (c *Client) post(path string, body, result interface{}) error {
 	return c.postWithSession(path, body, result, "")
 }
 
-func (c *Client) postWithSession(path string, body interface{}, result interface{}, mspSessionID string) error {
+func (c *Client) postWithSession(path string, body, result interface{}, mspSessionID string) error {
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -217,7 +217,7 @@ func (c *Client) postWithSession(path string, body interface{}, result interface
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -231,7 +231,7 @@ func (c *Client) postWithSession(path string, body interface{}, result interface
 }
 
 func (c *Client) del(path string) error {
-	req, err := http.NewRequest(http.MethodDelete, c.baseURL+path, nil)
+	req, err := http.NewRequest(http.MethodDelete, c.baseURL+path, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -240,7 +240,7 @@ func (c *Client) del(path string) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

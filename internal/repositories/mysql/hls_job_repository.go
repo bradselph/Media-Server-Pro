@@ -62,7 +62,7 @@ func (r *HLSJobRepository) Get(ctx context.Context, id string) (*models.HLSJob, 
 	var row hlsJobRow
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("failed to get HLS job: %w", err)
 	}

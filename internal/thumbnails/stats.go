@@ -10,7 +10,7 @@ func (m *Module) GetStats() Stats {
 }
 
 // scanExistingThumbnails walks the thumbnail directory on startup and
-// initialises Generated and TotalSize so the stats reflect what is
+// initializes Generated and TotalSize so the stats reflect what is
 // actually on disk, not just what was created in the current session.
 func (m *Module) scanExistingThumbnails() {
 	entries, err := os.ReadDir(m.thumbnailDir)

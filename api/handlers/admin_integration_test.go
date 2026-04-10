@@ -60,6 +60,7 @@ func TestAdminStats_WithAdminAuth(t *testing.T) {
 	sessionID := ts.Env.LoginUser(t, "admin_test", "admin_pass_123")
 
 	resp := ts.AuthRequest("GET", "/api/admin/stats", nil, sessionID)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -89,6 +90,7 @@ func TestAdminSystem_WithAdminAuth(t *testing.T) {
 	sessionID := ts.Env.LoginUser(t, "admin_sys", "admin_pass_123")
 
 	resp := ts.AuthRequest("GET", "/api/admin/system", nil, sessionID)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -112,6 +114,7 @@ func TestAdminTasks_WithAdminAuth(t *testing.T) {
 	sessionID := ts.Env.LoginUser(t, "admin_tasks", "admin_pass_123")
 
 	resp := ts.AuthRequest("GET", "/api/admin/tasks", nil, sessionID)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {

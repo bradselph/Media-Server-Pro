@@ -167,7 +167,7 @@ onMounted(loadReceiver)
         >
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium truncate">{{ m.name }}</p>
-            <p class="text-xs text-muted">{{ m.type }} · {{ formatBytes(m.size) }}</p>
+            <p class="text-xs text-muted">{{ m.media_type }} · {{ formatBytes(m.size) }}</p>
           </div>
           <span class="text-xs text-muted font-mono shrink-0">{{ m.slave_id.slice(0, 8) }}…</span>
         </button>
@@ -205,19 +205,18 @@ onMounted(loadReceiver)
         </div>
         <div v-else-if="selectedSlaveMedia" class="space-y-2 text-sm">
           <div class="grid grid-cols-2 gap-2">
-            <div><span class="text-muted">Type:</span> {{ selectedSlaveMedia.type }}</div>
+            <div><span class="text-muted">Type:</span> {{ selectedSlaveMedia.media_type }}</div>
             <div><span class="text-muted">Size:</span> {{ formatBytes(selectedSlaveMedia.size) }}</div>
             <div v-if="selectedSlaveMedia.duration"><span class="text-muted">Duration:</span> {{ selectedSlaveMedia.duration }}s</div>
             <div><span class="text-muted">Slave ID:</span> <span class="font-mono text-xs">{{ selectedSlaveMedia.slave_id }}</span></div>
-            <div v-if="selectedSlaveMedia.created_at"><span class="text-muted">Added:</span> {{ new Date(selectedSlaveMedia.created_at).toLocaleString() }}</div>
           </div>
           <div>
             <span class="text-muted">Path:</span>
             <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.path }}</p>
           </div>
-          <div v-if="selectedSlaveMedia.fingerprint">
+          <div v-if="selectedSlaveMedia.content_fingerprint">
             <span class="text-muted">Fingerprint:</span>
-            <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.fingerprint }}</p>
+            <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.content_fingerprint }}</p>
           </div>
         </div>
       </template>

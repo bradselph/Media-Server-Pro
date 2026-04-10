@@ -1,3 +1,4 @@
+// Package web serves the embedded frontend static assets.
 package web
 
 import (
@@ -116,7 +117,7 @@ func registerNuxtAssets(r *gin.Engine) {
 var (
 	indexHTMLOnce  sync.Once
 	cachedIndex    []byte
-	cachedIndexErr error
+	errCachedIndex error
 )
 
 // ginServeSPA returns a gin handler that serves the SPA's index.html.
@@ -133,10 +134,10 @@ func ginServeSPA() gin.HandlerFunc {
 </html>`
 	return func(c *gin.Context) {
 		indexHTMLOnce.Do(func() {
-			cachedIndex, cachedIndexErr = content.ReadFile("static/react/index.html")
+			cachedIndex, errCachedIndex = content.ReadFile("static/react/index.html")
 		})
-		if cachedIndexErr != nil {
-			log.Warn("React SPA not available, falling back: %v", cachedIndexErr)
+		if errCachedIndex != nil {
+			log.Warn("React SPA not available, falling back: %v", errCachedIndex)
 			c.Header("Content-Type", "text/html; charset=utf-8")
 			c.Status(http.StatusNotFound)
 			_, _ = c.Writer.WriteString(fallbackHTML)

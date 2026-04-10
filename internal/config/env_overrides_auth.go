@@ -62,6 +62,6 @@ func (m *Manager) applyAdminPasswordOverride() {
 		}
 		// Clear plaintext password from process environment to prevent leakage
 		// via /proc/PID/environ or process inspection tools.
-		os.Unsetenv("ADMIN_PASSWORD")
+		_ = os.Unsetenv("ADMIN_PASSWORD")
 	}
 }

@@ -2,6 +2,7 @@ package streaming
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -134,7 +135,7 @@ func TestParseRange_SuffixLargerThanFile(t *testing.T) {
 func TestParseRange_InvalidPrefix(t *testing.T) {
 	m := newTestModule(t)
 	_, _, err := m.parseRange("chars=0-499", 1000)
-	if err != ErrInvalidRange {
+	if !errors.Is(err, ErrInvalidRange) {
 		t.Errorf("expected ErrInvalidRange, got %v", err)
 	}
 }
@@ -142,7 +143,7 @@ func TestParseRange_InvalidPrefix(t *testing.T) {
 func TestParseRange_StartAfterEnd(t *testing.T) {
 	m := newTestModule(t)
 	_, _, err := m.parseRange("bytes=500-100", 1000)
-	if err != ErrInvalidRange {
+	if !errors.Is(err, ErrInvalidRange) {
 		t.Errorf("expected ErrInvalidRange for start>end, got %v", err)
 	}
 }
@@ -150,7 +151,7 @@ func TestParseRange_StartAfterEnd(t *testing.T) {
 func TestParseRange_EndBeyondFile(t *testing.T) {
 	m := newTestModule(t)
 	_, _, err := m.parseRange("bytes=0-1000", 1000)
-	if err != ErrInvalidRange {
+	if !errors.Is(err, ErrInvalidRange) {
 		t.Errorf("expected ErrInvalidRange for end>=fileSize, got %v", err)
 	}
 }
@@ -353,7 +354,7 @@ func TestStream_FileNotFound(t *testing.T) {
 	err := m.Stream(w, r, StreamRequest{
 		Path: "/nonexistent/file.mp4",
 	})
-	if err != ErrFileNotFound {
+	if !errors.Is(err, ErrFileNotFound) {
 		t.Errorf("expected ErrFileNotFound, got %v", err)
 	}
 }
@@ -366,7 +367,7 @@ func TestStream_FullFile(t *testing.T) {
 	dir := t.TempDir()
 	fpath := filepath.Join(dir, "test.mp4")
 	content := []byte("fake video content for testing")
-	os.WriteFile(fpath, content, 0644)
+	os.WriteFile(fpath, content, 0o600)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/stream", nil)
@@ -396,7 +397,7 @@ func TestStream_RangeRequest(t *testing.T) {
 	for i := range content {
 		content[i] = byte(i % 256)
 	}
-	os.WriteFile(fpath, content, 0644)
+	os.WriteFile(fpath, content, 0o600)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/stream", nil)
@@ -424,7 +425,7 @@ func TestDownload_FileNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/download", nil)
 	err := m.Download(w, r, "/nonexistent/file.mp4")
-	if err != ErrFileNotFound {
+	if !errors.Is(err, ErrFileNotFound) {
 		t.Errorf("expected ErrFileNotFound, got %v", err)
 	}
 }
@@ -434,7 +435,7 @@ func TestDownload_FullFile(t *testing.T) {
 	dir := t.TempDir()
 	fpath := filepath.Join(dir, "test.mp4")
 	content := []byte("download test content")
-	os.WriteFile(fpath, content, 0644)
+	os.WriteFile(fpath, content, 0o600)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/download", nil)

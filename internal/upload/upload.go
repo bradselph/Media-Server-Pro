@@ -294,7 +294,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 // uploadToRemoteStore streams the uploaded file to the configured remote backend
 // (S3/B2).  A progress-tracking reader wraps the source so that the UI sees
 // live byte counts even though we never touch the local filesystem.
-func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepared *PreparedUpload, progress *Progress) (string, int64, error) {
+func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepared *PreparedUpload, progress *Progress) (destPath string, written int64, err error) {
 	// Compute the relative key path within the upload backend.
 	// prepared.DestDir is an absolute local path like /uploads/userID[/category].
 	// Strip the upload root prefix to get the relative part.
@@ -322,7 +322,7 @@ func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepar
 	// read call (which would block concurrent GetActiveUploads/GetProgress calls
 	// for the full duration of every S3 chunk write).
 	pr := &progressReader{src: file, progress: progress}
-	written, err := m.store.Create(ctx, relPath, pr)
+	written, err = m.store.Create(ctx, relPath, pr)
 	if err != nil {
 		return "", 0, fmt.Errorf("store write: %w", err)
 	}
@@ -403,7 +403,7 @@ func (m *Module) validateAndPrepareUpload(fh *multipart.FileHeader, scope Upload
 	}
 	// MkdirAll is only needed for local backends; remote backends (S3/B2) have no real directories.
 	if m.store == nil || m.store.IsLocal() {
-		if err := os.MkdirAll(destDir, 0755); err != nil {
+		if err := os.MkdirAll(destDir, 0o755); err != nil { //nolint:gosec // G301: upload dirs need world-read for serving
 			return nil, fmt.Errorf("failed to create directory: %w", err)
 		}
 	}

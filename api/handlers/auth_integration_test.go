@@ -26,6 +26,7 @@ func TestAuthFlow_LoginLogout(t *testing.T) {
 	// --- Login ---
 	resp := ts.Request("POST", "/api/auth/login", loginPayload("testlogin", "password123"))
 	result := ts.ParseJSON(resp)
+	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("login: expected 200, got %d", resp.StatusCode)
@@ -49,6 +50,7 @@ func TestAuthFlow_LoginLogout(t *testing.T) {
 	// --- Check session (authenticated) ---
 	resp = ts.AuthRequest("GET", "/api/auth/session", nil, sessionID)
 	result = ts.ParseJSON(resp)
+	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("check session: expected 200, got %d", resp.StatusCode)
@@ -60,7 +62,8 @@ func TestAuthFlow_LoginLogout(t *testing.T) {
 
 	// --- Logout ---
 	resp = ts.AuthRequest("POST", "/api/auth/logout", nil, sessionID)
-	result = ts.ParseJSON(resp)
+	ts.ParseJSON(resp)
+	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("logout: expected 200, got %d", resp.StatusCode)
@@ -69,6 +72,7 @@ func TestAuthFlow_LoginLogout(t *testing.T) {
 	// --- Check session after logout (unauthenticated) ---
 	resp = ts.AuthRequest("GET", "/api/auth/session", nil, sessionID)
 	result = ts.ParseJSON(resp)
+	resp.Body.Close()
 
 	data, _ = result["data"].(map[string]any)
 	if data["authenticated"] != false {
@@ -83,6 +87,7 @@ func TestAuthFlow_LoginInvalidCredentials(t *testing.T) {
 	ts.Env.CreateTestUser(t, "wrongpass", "password123")
 
 	resp := ts.Request("POST", "/api/auth/login", loginPayload("wrongpass", "badpassword"))
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -98,6 +103,7 @@ func TestAuthFlow_LoginMissingBody(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("POST", "/api/auth/login", bytes.NewReader([]byte("{}")))
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnauthorized {
@@ -114,6 +120,7 @@ func TestAuthFlow_ProtectedEndpointWithoutSession(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/playlists", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -129,6 +136,7 @@ func TestAuthFlow_SessionCheckUnauthenticated(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/auth/session", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -179,6 +187,7 @@ func TestAuthFlow_ChangePassword(t *testing.T) {
 	})
 	resp := ts.AuthRequest("POST", "/api/auth/change-password", bytes.NewReader(body), sessionID)
 	result := ts.ParseJSON(resp)
+	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("change password: expected 200, got %d: %v", resp.StatusCode, result)
@@ -195,7 +204,8 @@ func TestAuthFlow_ChangePassword(t *testing.T) {
 
 	// Verify new password works.
 	resp = ts.Request("POST", "/api/auth/login", loginPayload("pwduser", "newpass456"))
-	result = ts.ParseJSON(resp)
+	ts.ParseJSON(resp)
+	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("new password should work, got %d", resp.StatusCode)
 	}

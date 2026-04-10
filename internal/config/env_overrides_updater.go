@@ -30,7 +30,7 @@ func (m *Manager) applyAgeGateEnvOverrides() {
 		m.config.AgeGate.Enabled = val
 	}
 	if val := envGetStr("AGE_GATE_BYPASS_IPS"); val != "" {
-		m.config.AgeGate.BypassIPs = splitTrimmed(val, ",")
+		m.config.AgeGate.BypassIPs = splitTrimmed(val)
 	}
 	if val, ok := envGetDuration(time.Hour, "AGE_GATE_IP_VERIFY_TTL_HOURS"); ok {
 		m.config.AgeGate.IPVerifyTTL = val

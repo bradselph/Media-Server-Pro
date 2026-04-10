@@ -1,103 +1,107 @@
-import { defineStore } from 'pinia'
-import type { User, UserPermissions, UserPreferences } from '~/types/api'
-import { normalizeUser } from '~/utils/apiCompat'
+import {defineStore} from 'pinia'
+import type {User, UserPermissions, UserPreferences} from '~/types/api'
+import {normalizeUser} from '~/utils/apiCompat'
 
 function defaultPermissions(): UserPermissions {
-  return {
-    can_stream: true,
-    can_download: false,
-    can_upload: false,
-    can_delete: false,
-    can_manage: false,
-    can_view_mature: false,
-    can_create_playlists: true,
-  }
+    return {
+        can_stream: true,
+        can_download: false,
+        can_upload: false,
+        can_delete: false,
+        can_manage: false,
+        can_view_mature: false,
+        can_create_playlists: true,
+    }
 }
 
 function defaultPreferences(): UserPreferences {
-  return {
-    theme: 'dark',
-    view_mode: 'grid',
-    default_quality: 'auto',
-    auto_play: false,
-    playback_speed: 1,
-    volume: 1,
-    show_mature: false,
-    mature_preference_set: false,
-    language: 'en',
-    equalizer_preset: '',
-    resume_playback: true,
-    show_analytics: true,
-    items_per_page: 20,
-    sort_by: 'date_added',
-    sort_order: 'desc',
-    filter_category: '',
-    filter_media_type: '',
-    show_continue_watching: true,
-    show_recommended: true,
-    show_trending: true,
-  }
+    return {
+        theme: 'dark',
+        view_mode: 'grid',
+        default_quality: 'auto',
+        auto_play: false,
+        playback_speed: 1,
+        volume: 1,
+        show_mature: false,
+        mature_preference_set: false,
+        language: 'en',
+        equalizer_preset: '',
+        resume_playback: true,
+        show_analytics: true,
+        items_per_page: 20,
+        sort_by: 'date_added',
+        sort_order: 'desc',
+        filter_category: '',
+        filter_media_type: '',
+        show_continue_watching: true,
+        show_recommended: true,
+        show_trending: true,
+    }
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref<User | null>(null)
-  const allowGuests = ref(false)
-  const isLoading = ref(true)
+    const user = ref<User | null>(null)
+    const allowGuests = ref(false)
+    const isLoading = ref(true)
 
-  const isLoggedIn = computed(() => !!user.value)
-  const isAdmin = computed(() => user.value?.role === 'admin')
-  const username = computed(() => user.value?.username ?? '')
+    const isLoggedIn = computed(() => !!user.value)
+    const isAdmin = computed(() => user.value?.role === 'admin')
+    const username = computed(() => user.value?.username ?? '')
 
-  async function fetchSession() {
-    isLoading.value = true
-    try {
-      const { getSession } = useApiEndpoints()
-      const res = await getSession()
-      allowGuests.value = res.allow_guests
-      user.value = res.authenticated ? (normalizeUser(res.user) ?? null) : null
-    } catch {
-      user.value = null
-    } finally {
-      isLoading.value = false
+    async function fetchSession() {
+        isLoading.value = true
+        try {
+            const {getSession} = useApiEndpoints()
+            const res = await getSession()
+            allowGuests.value = res.allow_guests
+            user.value = res.authenticated ? (normalizeUser(res.user) ?? null) : null
+        } catch {
+            user.value = null
+        } finally {
+            isLoading.value = false
+        }
     }
-  }
 
-  let loginInProgress = false
+    let loginInProgress = false
 
-  async function login(uname: string, password: string) {
-    if (loginInProgress) throw new Error('Login already in progress')
-    loginInProgress = true
-    try {
-      const { login: apiLogin } = useApiEndpoints()
-      const res = await apiLogin(uname, password)
-      // Set a minimal user immediately so isLoggedIn becomes true right away,
-      // then fetch the full session (id, real permissions, real preferences).
-      user.value = {
-        id: '',
-        username: res.username,
-        role: res.role,
-        type: 'standard',
-        enabled: true,
-        created_at: '',
-        storage_used: 0,
-        active_streams: 0,
-        permissions: defaultPermissions(),
-        preferences: defaultPreferences(),
-      }
-      // Overwrite with real server data (permissions, preferences, id).
-      // Errors are intentionally swallowed — the minimal user above is sufficient fallback.
-      await fetchSession().catch(() => {})
-      return res
-    } finally {
-      loginInProgress = false
+    async function login(uname: string, password: string) {
+        if (loginInProgress) throw new Error('Login already in progress')
+        loginInProgress = true
+        try {
+            const {login: apiLogin} = useApiEndpoints()
+            const res = await apiLogin(uname, password)
+            // Set a minimal user immediately so isLoggedIn becomes true right away,
+            // then fetch the full session (id, real permissions, real preferences).
+            user.value = {
+                id: '',
+                username: res.username,
+                role: res.role,
+                type: 'standard',
+                enabled: true,
+                created_at: '',
+                storage_used: 0,
+                active_streams: 0,
+                permissions: defaultPermissions(),
+                preferences: defaultPreferences(),
+            }
+            // Overwrite with real server data (permissions, preferences, id).
+            // Errors are intentionally swallowed — the minimal user above is sufficient fallback.
+            await fetchSession().catch(() => {
+            })
+            return res
+        } finally {
+            loginInProgress = false
+        }
     }
-  }
 
-  async function logout() {
-    const { logout: apiLogout } = useApiEndpoints()
-    try { await apiLogout() } catch {}
-    user.value = null
-  }
+    async function logout() {
+        const {logout: apiLogout} = useApiEndpoints()
+        try {
+            await apiLogout()
+        } catch {
+        }
+        user.value = null
+    }
 
-  return { user, allowGuests, isLoading, isLoggedIn, isAdmin, username, fetchSession, login, logout }
+    return {user, allowGuests, isLoading, isLoggedIn, isAdmin, username, fetchSession, login, logout}
 })

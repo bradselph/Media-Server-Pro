@@ -1,4 +1,5 @@
 // Admin bootstrap: default admin password and admin user record.
+
 package auth
 
 import (
@@ -33,19 +34,19 @@ func (m *Module) ensureDefaultAdmin() error {
 		}); err != nil {
 			return fmt.Errorf("failed to update admin password: %w", err)
 		}
-		// Write to file with 0600 to avoid password in systemd journal/container logs
+		// Write to file with 0o600 to avoid password in systemd journal/container logs
 		dataDir := cfg.Directories.Data
 		if dataDir == "" {
 			dataDir = "data"
 		}
-		if err := os.MkdirAll(dataDir, 0700); err != nil {
+		if err := os.MkdirAll(dataDir, 0o700); err != nil {
 			m.log.Warn("Cannot create data dir for password file: %v", err)
 		} else {
 			path := filepath.Join(dataDir, "admin-initial-password.txt")
-			if err := os.WriteFile(path, []byte(defaultPassword+"\n"), 0600); err != nil {
+			if err := os.WriteFile(path, []byte(defaultPassword+"\n"), 0o600); err != nil {
 				m.log.Warn("Cannot write admin password file: %v", err)
 			} else {
-				m.log.Warn("Default admin password written to %s (chmod 0600) - PLEASE CHANGE IMMEDIATELY", path)
+				m.log.Warn("Default admin password written to %s (chmod 0o600) - PLEASE CHANGE IMMEDIATELY", path)
 			}
 		}
 	}

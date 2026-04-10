@@ -1,6 +1,6 @@
 // Package crawler — browser-based stream detection via Chrome DevTools Protocol.
 //
-// This file adds headless-Chrome stream detection to the crawler, modelled on
+// This file adds headless-Chrome stream detection to the crawler, modeled on
 // the Puppeteer-based approach used in the companion "downloader" project.
 // Instead of fetching raw HTML (which misses JS-rendered streams), we:
 //
@@ -137,12 +137,12 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		"about:blank",
 	}
 
-	cmd := exec.CommandContext(ctx, bd.chromeBin, args...)
+	cmd := exec.CommandContext(ctx, bd.chromeBin, args...) //nolint:gosec // G204: chromeBin validated by callers
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	setChromeProcessAttrs(cmd)
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("launch chrome: %w", err)
+	if startErr := cmd.Start(); startErr != nil {
+		return nil, fmt.Errorf("launch chrome: %w", startErr)
 	}
 	defer killChromeProcessGroup(cmd)
 
@@ -159,7 +159,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		}
 		return nil, fmt.Errorf("dial CDP: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Channels for responses and events (read pump runs until conn closes).
 	responses := make(map[int]chan cdpMsg)
@@ -171,7 +171,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	go func() {
 		for {
 			var msg cdpMsg
-			if err := conn.ReadJSON(&msg); err != nil {
+			if readErr := conn.ReadJSON(&msg); readErr != nil {
 				close(events)
 				return
 			}
@@ -220,8 +220,8 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 			responsesMu.Unlock()
 		}()
 
-		if err := conn.WriteJSON(raw); err != nil {
-			return nil, err
+		if writeErr := conn.WriteJSON(raw); writeErr != nil {
+			return nil, writeErr
 		}
 
 		select {
@@ -237,8 +237,8 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 
 	// --- 4. Enable domains ---
 	for _, method := range []string{"Network.enable", "Page.enable", "Runtime.enable"} {
-		if _, err := send(method, map[string]interface{}{}); err != nil {
-			return nil, fmt.Errorf("enable %s: %w", method, err)
+		if _, sendErr := send(method, map[string]interface{}{}); sendErr != nil {
+			return nil, fmt.Errorf("enable %s: %w", method, sendErr)
 		}
 	}
 
@@ -256,9 +256,9 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		"*://[::1]/*",
 		"*://[::1]",
 	}
-	if _, err := send("Network.setBlockedURLs", map[string]interface{}{"urls": blockedURLPatterns}); err != nil {
+	if _, sendErr := send("Network.setBlockedURLs", map[string]interface{}{"urls": blockedURLPatterns}); sendErr != nil {
 		// Non-fatal: log and continue. Older Chrome builds may not support this method.
-		bd.log.Warn("CDP setBlockedURLs not supported: %v — private IP blocking limited to host-resolver-rules", err)
+		bd.log.Warn("CDP setBlockedURLs not supported: %v — private IP blocking limited to host-resolver-rules", sendErr)
 	}
 
 	// --- 5. Collect network responses ---
@@ -301,56 +301,57 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	go func() {
 		defer close(done)
 		for evt := range events {
-			if evt.Method == "Network.responseReceived" {
-				var p struct {
-					Response struct {
-						URL     string            `json:"url"`
-						Status  int               `json:"status"`
-						Headers map[string]string `json:"headers"`
-					} `json:"response"`
-				}
-				if err := json.Unmarshal(evt.Params, &p); err != nil {
-					continue
-				}
+			if evt.Method != "Network.responseReceived" {
+				continue
+			}
+			var p struct {
+				Response struct {
+					URL     string            `json:"url"`
+					Status  int               `json:"status"`
+					Headers map[string]string `json:"headers"`
+				} `json:"response"`
+			}
+			if unmarshalErr := json.Unmarshal(evt.Params, &p); unmarshalErr != nil {
+				continue
+			}
 
-				respURL := p.Response.URL
-				status := p.Response.Status
-				ct := strings.ToLower(p.Response.Headers["content-type"])
+			respURL := p.Response.URL
+			status := p.Response.Status
+			ct := strings.ToLower(p.Response.Headers["content-type"])
 
-				if status != 200 && status != 206 {
-					continue
-				}
-				if isAd(respURL) {
-					continue
-				}
+			if status != 200 && status != 206 {
+				continue
+			}
+			if isAd(respURL) {
+				continue
+			}
 
-				isM3U8 := strings.Contains(respURL, ".m3u8") ||
-					strings.Contains(ct, "mpegurl") ||
-					strings.Contains(ct, "x-mpegurl")
-				isMP4 := (strings.Contains(respURL, ".mp4") || strings.Contains(ct, "video/mp4")) &&
-					!strings.HasPrefix(respURL, "blob:") &&
-					!strings.HasPrefix(respURL, "data:")
+			isM3U8 := strings.Contains(respURL, ".m3u8") ||
+				strings.Contains(ct, "mpegurl") ||
+				strings.Contains(ct, "x-mpegurl")
+			isMP4 := (strings.Contains(respURL, ".mp4") || strings.Contains(ct, "video/mp4")) &&
+				!strings.HasPrefix(respURL, "blob:") &&
+				!strings.HasPrefix(respURL, "data:")
 
-				if isM3U8 || isMP4 {
-					streamsMu.Lock()
-					base := strings.SplitN(respURL, "?", 2)[0]
-					if !seen[base] {
-						seen[base] = true
-						st := detectedStream{
-							URL:             respURL,
-							ContentType:     ct,
-							DetectionMethod: "browser-network",
-						}
-						if isM3U8 {
-							st.Type = "m3u8"
-						} else {
-							st.Type = "mp4"
-						}
-						result.Streams = append(result.Streams, st)
-						bd.log.Info("Browser detected %s: %s", st.Type, truncURL(respURL))
+			if isM3U8 || isMP4 {
+				streamsMu.Lock()
+				base := strings.SplitN(respURL, "?", 2)[0]
+				if !seen[base] {
+					seen[base] = true
+					st := detectedStream{
+						URL:             respURL,
+						ContentType:     ct,
+						DetectionMethod: "browser-network",
 					}
-					streamsMu.Unlock()
+					if isM3U8 {
+						st.Type = "m3u8"
+					} else {
+						st.Type = "mp4"
+					}
+					result.Streams = append(result.Streams, st)
+					bd.log.Info("Browser detected %s: %s", st.Type, truncURL(respURL))
 				}
+				streamsMu.Unlock()
 			}
 		}
 	}()
@@ -358,8 +359,8 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	// --- 6. Navigate to target page ---
 	bd.log.Info("Browser navigating to: %s", pageURL)
 	navParams := map[string]interface{}{"url": pageURL}
-	if _, err := send("Page.navigate", navParams); err != nil {
-		return nil, fmt.Errorf("navigate: %w", err)
+	if _, sendErr := send("Page.navigate", navParams); sendErr != nil {
+		return nil, fmt.Errorf("navigate: %w", sendErr)
 	}
 
 	// Wait for page load
@@ -701,7 +702,7 @@ func (bd *browserDetector) extractEmbeddedURLs(
 func findChromeBinary() string {
 	// Check environment variable first
 	if p := os.Getenv("CHROME_PATH"); p != "" {
-		if _, err := os.Stat(p); err == nil {
+		if _, err := os.Stat(p); err == nil { //nolint:gosec // G703: path from trusted CHROME_PATH env var
 			return p
 		}
 	}
@@ -787,7 +788,7 @@ func httpGet(rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return io.ReadAll(io.LimitReader(resp.Body, 32768))
 }
 
@@ -796,8 +797,8 @@ func freePort() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
+	port := l.Addr().(*net.TCPAddr).Port //nolint:errcheck // net.Listener.Addr() always returns *net.TCPAddr for TCP
+	_ = l.Close()
 	return port, nil
 }
 

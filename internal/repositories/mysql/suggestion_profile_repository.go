@@ -79,7 +79,7 @@ func (r *SuggestionProfileRepository) GetProfile(ctx context.Context, userID str
 	var row suggestionProfileRow
 	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("failed to get suggestion profile: %w", err)
 	}

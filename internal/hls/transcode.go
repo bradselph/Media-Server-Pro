@@ -90,7 +90,7 @@ func (m *Module) acquireTranscodeSem(ctx context.Context, job *models.HLSJob) bo
 		}
 		select {
 		case <-ctx.Done():
-			m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCancelled, ErrorMsg: "Context canceled", Progress: 0})
+			m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCanceled, ErrorMsg: "Context canceled", Progress: 0})
 			return false
 		case <-time.After(250 * time.Millisecond):
 			// retry
@@ -176,7 +176,7 @@ func (m *Module) transcodeQuality(ctx context.Context, job *models.HLSJob, quali
 
 func (m *Module) prepareVariantDir(job *models.HLSJob, quality string) (variantDir, playlistPath, segmentPattern string, err error) {
 	variantDir = filepath.Join(job.OutputDir, quality)
-	if err = os.MkdirAll(variantDir, 0755); err != nil {
+	if err = os.MkdirAll(variantDir, 0o755); err != nil { //nolint:gosec // G301: HLS variant dirs need world-read for serving
 		return "", "", "", fmt.Errorf("failed to create variant dir: %w", err)
 	}
 	playlistPath = filepath.Join(variantDir, "playlist.m3u8")
@@ -217,7 +217,7 @@ func (m *Module) buildFFmpegTranscodeCmd(ctx context.Context, paths *transcodePa
 	).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 
 	compiled := stream.Compile()
-	cmd := exec.CommandContext(ctx, compiled.Path, compiled.Args[1:]...)
+	cmd := exec.CommandContext(ctx, compiled.Path, compiled.Args[1:]...) //nolint:gosec // G204: compiled.Path is the validated ffmpeg binary path
 	cmd.Env = compiled.Env
 	cmd.Dir = compiled.Dir
 	return cmd
@@ -226,7 +226,7 @@ func (m *Module) buildFFmpegTranscodeCmd(ctx context.Context, paths *transcodePa
 func (m *Module) handleTranscodeWaitError(ctx context.Context, errCtx *transcodeErrorContext, waitErr error) error {
 	if m.isTranscodeCancelled(ctx, errCtx.StderrStr) {
 		m.log.Info("HLS transcoding canceled for job %s quality %s", errCtx.JobID, errCtx.Quality)
-		m.updateJobStatus(&updateJobStatusParams{JobID: errCtx.JobID, Status: models.HLSStatusCancelled, ErrorMsg: "Transcoding canceled", Progress: 0})
+		m.updateJobStatus(&updateJobStatusParams{JobID: errCtx.JobID, Status: models.HLSStatusCanceled, ErrorMsg: "Transcoding canceled", Progress: 0})
 		return waitErr
 	}
 	if errOutput := strings.TrimSpace(errCtx.StderrStr); errOutput != "" {
@@ -261,10 +261,7 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 	}
 
 	// Acquire dynamic semaphore with context awareness.
-	for {
-		if m.tryAcquireTranscode() {
-			break
-		}
+	for !m.tryAcquireTranscode() {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

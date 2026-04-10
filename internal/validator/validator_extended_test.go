@@ -136,7 +136,7 @@ func TestCheckVideoCodecSupport_Unsupported(t *testing.T) {
 	}
 }
 
-func TestCheckVideoCodecSupport_Empty(t *testing.T) {
+func TestCheckVideoCodecSupport_Empty(_ *testing.T) {
 	m := &Module{log: logger.New("test")}
 	result := &ValidationResult{VideoCodec: ""}
 	m.checkVideoCodecSupport(result)
@@ -144,10 +144,9 @@ func TestCheckVideoCodecSupport_Empty(t *testing.T) {
 	// false because "" is not a key, but the implementation marks it true
 	// (empty string matches the zero-value default). Verify it doesn't panic
 	// and returns a deterministic value.
-	if !result.VideoSupported {
-		// Implementation treats empty codec as supported (vacuously true).
-		// This is acceptable — no stream means no unsupported codec.
-	}
+	// Implementation treats empty codec as supported (vacuously true).
+	// This is acceptable — no stream means no unsupported codec.
+	_ = result.VideoSupported
 }
 
 func TestCheckAudioCodecSupport_Supported(t *testing.T) {
@@ -249,7 +248,7 @@ func TestGetCachedResult_Hit(t *testing.T) {
 		mu:      sync.RWMutex{},
 	}
 	m.results["/test.mp4"] = &ValidationResult{
-		Status:    StatusValidated,
+		Status:      StatusValidated,
 		ValidatedAt: time.Now(),
 	}
 	result, ok := m.getCachedResult("/test.mp4")
@@ -335,4 +334,3 @@ func TestClearResult(t *testing.T) {
 		t.Error("ClearResult should remove the entry")
 	}
 }
-

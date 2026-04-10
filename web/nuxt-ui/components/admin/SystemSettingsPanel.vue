@@ -385,7 +385,7 @@ onMounted(loadConfig)
               <USwitch :model-value="get('streaming', 'keep_alive_enabled')" @update:model-value="set('streaming', 'keep_alive_enabled', $event)" />
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-sm">Adaptive Bitrate</span>
+              <span class="text-sm">Adaptive Bitrate (HLS)</span>
               <USwitch :model-value="get('streaming', 'adaptive')" @update:model-value="set('streaming', 'adaptive', $event)" />
             </div>
           </div>

@@ -349,7 +349,7 @@ func (s *Server) Start() error {
 // startWatchdog sends periodic WATCHDOG=1 pings to systemd so that the service
 // is killed and restarted if the process deadlocks or becomes unresponsive.
 // The interval is half the WatchdogSec value systemd passes in WATCHDOG_USEC.
-// This goroutine exits when ctx is cancelled (i.e., on graceful shutdown).
+// This goroutine exits when ctx is canceled (i.e., on graceful shutdown).
 func (s *Server) startWatchdog(ctx context.Context) {
 	watchdogUSec := os.Getenv("WATCHDOG_USEC")
 	if watchdogUSec == "" {
@@ -489,7 +489,7 @@ func restartBindDelay() time.Duration {
 	if val == "" {
 		return 0
 	}
-	os.Unsetenv("MEDIA_SERVER_RESTART_DELAY")
+	_ = os.Unsetenv("MEDIA_SERVER_RESTART_DELAY")
 	var secs int
 	if _, err := fmt.Sscanf(val, "%d", &secs); err == nil && secs > 0 {
 		return time.Duration(secs) * time.Second
@@ -584,4 +584,3 @@ func (s *Server) HandleModuleHealth(c *gin.Context) {
 	health := module.Health()
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: health})
 }
-

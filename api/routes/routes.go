@@ -73,12 +73,23 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		// Bearer API token (programmatic / headless clients)
-		if bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "); bearer != "" {
-			session, user, err := authModule.ValidateAPIToken(c.Request.Context(), bearer)
-			if err == nil {
+		// Bearer API token via Authorization header (programmatic / headless clients)
+		bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
+		// URL query token fallback — used by RSS readers and other clients that
+		// cannot set arbitrary request headers (e.g. ?token=<api-token>).
+		// Only accepted on the /api/feed route to limit the surface area.
+		if bearer == "" && c.FullPath() == "/api/feed" {
+			bearer = c.Query("token")
+		}
+		if bearer != "" {
+			session, user, tokenErr := authModule.ValidateAPIToken(c.Request.Context(), bearer)
+			if tokenErr == nil {
 				c.Set("session", session)
 				c.Set("user", user)
+			} else {
+				// Store the rejection reason so requireAuth can return a specific
+				// error instead of a generic 401.
+				c.Set("bearer_error", tokenErr.Error())
 			}
 		}
 		c.Next()
@@ -224,8 +235,17 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	r.Use(middleware.GinRequestID())
 
 	// Security headers (CSP, HSTS, X-Frame-Options, etc.)
+	// CSPEnabled/HSTSEnabled let admins suppress headers without clearing the policy/max-age values.
 	secCfg := cfg.Get().Security
-	r.Use(middleware.GinSecurityHeaders(secCfg.CSPPolicy, secCfg.HSTSMaxAge))
+	cspPolicy := secCfg.CSPPolicy
+	if !secCfg.CSPEnabled {
+		cspPolicy = ""
+	}
+	hstsMaxAge := secCfg.HSTSMaxAge
+	if !secCfg.HSTSEnabled {
+		hstsMaxAge = 0
+	}
+	r.Use(middleware.GinSecurityHeaders(cspPolicy, hstsMaxAge))
 
 	// CORS — only applied when explicitly configured.
 	// When auth is enabled and CORS origins contains only "*", replace the

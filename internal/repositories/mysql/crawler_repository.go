@@ -49,7 +49,7 @@ func (r *CrawlerTargetRepository) Get(ctx context.Context, id string) (*reposito
 	var row crawlerTargetRow
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("failed to get crawler target: %w", err)
 	}
@@ -164,7 +164,7 @@ func (r *CrawlerDiscoveryRepository) Get(ctx context.Context, id string) (*repos
 	var row crawlerDiscoveryRow
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("failed to get crawler discovery: %w", err)
 	}
@@ -221,7 +221,7 @@ func (r *CrawlerDiscoveryRepository) ListPending(ctx context.Context) ([]*reposi
 }
 
 func (r *CrawlerDiscoveryRepository) UpdateStatus(ctx context.Context, id, status, reviewedBy string) error {
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"status":      status,
 		"reviewed_by": reviewedBy,
 		"reviewed_at": time.Now().Format("2006-01-02 15:04:05"),

@@ -10,11 +10,11 @@ import (
 
 func TestErrorSentinels_NonNil(t *testing.T) {
 	errs := map[string]error{
-		"ErrInvalidCredentials":   ErrInvalidCredentials,
-		"ErrAccountDisabled":      ErrAccountDisabled,
-		"ErrAccountLocked":        ErrAccountLocked,
-		"ErrSessionExpired":       ErrSessionExpired,
-		"ErrAdminWrongPassword":   ErrAdminWrongPassword,
+		"ErrInvalidCredentials":    ErrInvalidCredentials,
+		"ErrAccountDisabled":       ErrAccountDisabled,
+		"ErrAccountLocked":         ErrAccountLocked,
+		"ErrSessionExpired":        ErrSessionExpired,
+		"ErrAdminWrongPassword":    ErrAdminWrongPassword,
 		"ErrNotAdminUsername":      ErrNotAdminUsername,
 		"ErrCannotDemoteLastAdmin": ErrCannotDemoteLastAdmin,
 	}

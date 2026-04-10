@@ -241,7 +241,7 @@ func bodySummary(body []byte, statusCode int) string {
 }
 
 // handleResponse interprets HTTP response. Returns (result, retry, retryErr, fatalErr).
-func (c *Client) handleResponse(body []byte, statusCode int, attempt int) (*ClassificationResult, bool, error, error) {
+func (c *Client) handleResponse(body []byte, statusCode, attempt int) (*ClassificationResult, bool, error, error) {
 	switch statusCode {
 	case http.StatusOK:
 		result, err := c.parseResponse(body)
@@ -343,7 +343,7 @@ func parseCaptionFormat(body []byte) (*ClassificationResult, error) {
 func parseWordsAsTags(caption string) []string {
 	lower := strings.ToLower(caption)
 	fields := strings.FieldsFunc(lower, func(r rune) bool {
-		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
 	})
 	seen := make(map[string]bool)
 	var tags []string

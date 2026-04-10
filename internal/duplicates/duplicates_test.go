@@ -169,11 +169,11 @@ func TestEnabled_NilRepo(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDuplicateItemSource(t *testing.T) {
-	local := &DuplicateItem{ID: "1", SlaveID: "", Source: sourceFor("")}
+	local := &DuplicateItem{Source: sourceFor("")}
 	if local.Source != "local" {
 		t.Errorf("local item source = %q", local.Source)
 	}
-	remote := &DuplicateItem{ID: "2", SlaveID: "s1", Source: sourceFor("s1")}
+	remote := &DuplicateItem{Source: sourceFor("s1")}
 	if remote.Source != "receiver" {
 		t.Errorf("remote item source = %q", remote.Source)
 	}
@@ -183,12 +183,12 @@ func TestDuplicateItemSource(t *testing.T) {
 // ClearForSlave / ClearPendingForSlave with nil repo (no panic)
 // ---------------------------------------------------------------------------
 
-func TestClearForSlave_NilRepo(t *testing.T) {
+func TestClearForSlave_NilRepo(_ *testing.T) {
 	m := &Module{}
 	m.ClearForSlave("slave1") // should not panic
 }
 
-func TestClearPendingForSlave_NilRepo(t *testing.T) {
+func TestClearPendingForSlave_NilRepo(_ *testing.T) {
 	m := &Module{}
 	m.ClearPendingForSlave("slave1") // should not panic
 }
@@ -236,7 +236,7 @@ func TestResolveDuplicate_NilRepo(t *testing.T) {
 // RecordDuplicatesFromSlave disabled
 // ---------------------------------------------------------------------------
 
-func TestRecordDuplicatesFromSlave_Disabled(t *testing.T) {
+func TestRecordDuplicatesFromSlave_Disabled(_ *testing.T) {
 	m := &Module{}
 	// Should not panic when disabled
 	m.RecordDuplicatesFromSlave("slave1", []ReceiverItemRef{

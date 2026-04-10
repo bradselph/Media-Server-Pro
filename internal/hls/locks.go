@@ -32,7 +32,7 @@ func (m *Module) createLock(jobID, mediaPath string) error {
 	}
 
 	lockPath := filepath.Join(m.cacheDir, jobID, ".lock")
-	return os.WriteFile(lockPath, data, 0644)
+	return os.WriteFile(lockPath, data, 0o600)
 }
 
 // removeLock removes a lock file
@@ -44,7 +44,7 @@ func (m *Module) removeLock(jobID string) {
 }
 
 // checkLock checks if a lock file exists and if it's stale
-func (m *Module) checkLock(jobID string) (exists bool, stale bool, lock *LockFile) {
+func (m *Module) checkLock(jobID string) (exists, stale bool, lock *LockFile) {
 	lockPath := filepath.Join(m.cacheDir, jobID, ".lock")
 	data, err := os.ReadFile(lockPath)
 	if err != nil {

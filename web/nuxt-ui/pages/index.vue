@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem } from '~/types/api'
+import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem, Playlist, MediaStats } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { useApiEndpoints, useFavoritesApi } from '~/composables/useApiEndpoints'
+import { useApiEndpoints, useFavoritesApi, usePlaylistApi } from '~/composables/useApiEndpoints'
+import { resolveComponent } from 'vue'
 import { formatDuration, formatBytes, formatRelativeDate, formatResolution } from '~/utils/format'
 import { blurHashToDataUrl } from '~/utils/blurhash'
 
@@ -38,10 +39,57 @@ const mediaApi = useMediaApi()
 const suggestionsApi = useSuggestionsApi()
 const playbackApi = usePlaybackApi()
 const favoritesApi = useFavoritesApi()
+const playlistApi = usePlaylistApi()
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+
+// Library stats (public, shown to guests too)
+const libraryStats = ref<MediaStats | null>(null)
+mediaApi.getStats().then(s => { libraryStats.value = s }).catch(() => {})
+
+// Multi-select / bulk-add-to-playlist
+const selectionMode = ref(false)
+const selectedIds = ref<Set<string>>(new Set())
+const myPlaylists = ref<Playlist[]>([])
+const bulkAddPlaylistId = ref<string | null>(null)
+const bulkAdding = ref(false)
+
+function toggleSelectionMode() {
+  selectionMode.value = !selectionMode.value
+  if (!selectionMode.value) selectedIds.value = new Set()
+}
+
+function toggleSelect(id: string, event: Event) {
+  event.preventDefault()
+  event.stopPropagation()
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+
+async function loadMyPlaylists() {
+  if (!authStore.isLoggedIn) return
+  try { myPlaylists.value = await playlistApi.list() } catch { /* non-critical */ }
+}
+
+async function bulkAddToPlaylist() {
+  if (!bulkAddPlaylistId.value || selectedIds.value.size === 0) return
+  bulkAdding.value = true
+  const ids = [...selectedIds.value]
+  let added = 0
+  for (const id of ids) {
+    try { await playlistApi.addItem(bulkAddPlaylistId.value, id); added++ } catch { /* skip duplicates */ }
+  }
+  bulkAdding.value = false
+  toast.add({ title: `Added ${added} of ${ids.length} items to playlist`, color: added > 0 ? 'success' : 'warning', icon: 'i-lucide-list-music' })
+  toggleSelectionMode()
+  bulkAddPlaylistId.value = null
+}
+
+watch(selectionMode, (on) => { if (on) loadMyPlaylists() })
 
 const sortOptions = computed(() =>
   authStore.isLoggedIn ? [...SORT_OPTIONS_BASE, SORT_OPTION_MY_RATING] : SORT_OPTIONS_BASE
@@ -135,12 +183,23 @@ async function loadRecommendations() {
       suggestionsApi.getNewSinceLastVisit(20),
       suggestionsApi.getOnDeck(10),
     ])
-    if (cw.status === 'fulfilled') continueWatching.value = cw.value ?? []
-    if (tr.status === 'fulfilled') trending.value = tr.value ?? []
-    if (rec.status === 'fulfilled') recommended.value = rec.value ?? []
-    if (recent.status === 'fulfilled') recentlyAdded.value = recent.value ?? []
+    // Deduplicate across rows: higher-priority rows "claim" their IDs so lower-priority
+    // rows don't show the same item twice. Priority: continueWatching > onDeck > trending > recommended > recent.
+    const seenIds = new Set<string>()
+    function dedup<T extends { id?: string; media_id?: string }>(items: T[]): T[] {
+      return items.filter(item => {
+        const id = item.id ?? item.media_id ?? ''
+        if (!id || seenIds.has(id)) return false
+        seenIds.add(id)
+        return true
+      })
+    }
+    if (cw.status === 'fulfilled') continueWatching.value = dedup(cw.value ?? [])
+    if (deck.status === 'fulfilled') onDeck.value = dedup((deck.value?.items ?? []) as Parameters<typeof dedup>[0]) as typeof onDeck.value
+    if (tr.status === 'fulfilled') trending.value = dedup(tr.value ?? [])
+    if (rec.status === 'fulfilled') recommended.value = dedup(rec.value ?? [])
+    if (recent.status === 'fulfilled') recentlyAdded.value = dedup(recent.value ?? [])
     if (newSince.status === 'fulfilled' && newSince.value?.total > 0) newSinceLastVisit.value = newSince.value
-    if (deck.status === 'fulfilled') onDeck.value = deck.value?.items ?? []
   } catch { /* non-critical */ }
 }
 
@@ -637,12 +696,22 @@ onUnmounted(() => {
       />
     </template>
 
+    <!-- Library stats (public) -->
+    <div v-if="libraryStats && !authStore.isLoggedIn" class="flex items-center gap-4 text-xs text-muted">
+      <span class="flex items-center gap-1"><UIcon name="i-lucide-database" class="size-3.5" />{{ libraryStats.total_count.toLocaleString() }} items</span>
+      <span v-if="libraryStats.video_count" class="flex items-center gap-1"><UIcon name="i-lucide-film" class="size-3.5" />{{ libraryStats.video_count.toLocaleString() }} videos</span>
+      <span v-if="libraryStats.audio_count" class="flex items-center gap-1"><UIcon name="i-lucide-music" class="size-3.5" />{{ libraryStats.audio_count.toLocaleString() }} audio</span>
+      <span class="flex items-center gap-1"><UIcon name="i-lucide-hard-drive" class="size-3.5" />{{ formatBytes(libraryStats.total_size) }}</span>
+    </div>
+
     <!-- Filters -->
     <div class="flex flex-wrap gap-3 items-center">
       <UInput
         v-model="params.search"
         icon="i-lucide-search"
         placeholder="Search media…"
+        autocomplete="on"
+        name="media-search"
         class="w-64"
         @input="onSearchInput"
       />
@@ -760,7 +829,43 @@ onUnmounted(() => {
             @click="viewMode = 'compact'"
           />
         </UButtonGroup>
+        <UButton
+          v-if="authStore.isLoggedIn"
+          :icon="selectionMode ? 'i-lucide-x' : 'i-lucide-check-square'"
+          :label="selectionMode ? 'Cancel' : 'Select'"
+          :color="selectionMode ? 'neutral' : 'neutral'"
+          variant="ghost"
+          size="sm"
+          @click="toggleSelectionMode"
+        />
       </div>
+    </div>
+
+    <!-- Bulk action bar -->
+    <div v-if="selectionMode && authStore.isLoggedIn" class="sticky top-14 z-30 bg-elevated border-b border-default py-2">
+      <UContainer class="flex items-center gap-3 flex-wrap">
+        <span class="text-sm text-muted">{{ selectedIds.size }} selected</span>
+        <template v-if="selectedIds.size > 0">
+          <USelect
+            v-model="bulkAddPlaylistId"
+            :options="myPlaylists.map(p => ({ label: p.name, value: p.id }))"
+            placeholder="Choose playlist…"
+            size="sm"
+            class="min-w-40"
+          />
+          <UButton
+            :loading="bulkAdding"
+            :disabled="!bulkAddPlaylistId || selectedIds.size === 0"
+            icon="i-lucide-list-plus"
+            label="Add to Playlist"
+            color="primary"
+            size="sm"
+            @click="bulkAddToPlaylist"
+          />
+        </template>
+        <UButton variant="ghost" color="neutral" size="sm" label="Select All" @click="selectedIds = new Set(items.map(i => i.id))" />
+        <UButton v-if="selectedIds.size > 0" variant="ghost" color="neutral" size="sm" label="Clear" @click="selectedIds = new Set()" />
+      </UContainer>
     </div>
 
     <!-- Server initializing / scanning banner -->
@@ -807,18 +912,26 @@ onUnmounted(() => {
       v-else-if="viewMode === 'grid'"
       class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4"
     >
-      <NuxtLink
+      <component
+        :is="selectionMode ? 'div' : resolveComponent('NuxtLink')"
         v-for="item in items"
         :key="item.id"
-        :to="matureGateHref(item)"
-        class="group block"
-        @mouseenter="onMediaHoverEnter(item.id, item.type === 'audio')"
-        @mouseleave="onMediaHoverLeave"
+        :to="selectionMode ? undefined : matureGateHref(item)"
+        :class="['group block cursor-pointer', selectionMode && selectedIds.has(item.id) ? 'ring-2 ring-primary rounded-lg' : '']"
+        @mouseenter="!selectionMode && onMediaHoverEnter(item.id, item.type === 'audio')"
+        @mouseleave="!selectionMode && onMediaHoverLeave()"
+        @click="selectionMode ? toggleSelect(item.id, $event) : undefined"
       >
         <div
           class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2"
           :style="item.blur_hash && item.type !== 'audio' ? { backgroundImage: `url(${blurHashToDataUrl(item.blur_hash)})`, backgroundSize: 'cover' } : {}"
         >
+          <!-- Selection checkbox -->
+          <div v-if="selectionMode" class="absolute top-1.5 left-1.5 z-10">
+            <div :class="['w-5 h-5 rounded border-2 flex items-center justify-center', selectedIds.has(item.id) ? 'bg-primary border-primary' : 'bg-black/40 border-white/70']">
+              <UIcon v-if="selectedIds.has(item.id)" name="i-lucide-check" class="size-3 text-white" />
+            </div>
+          </div>
           <img
             v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
             :src="getThumbSrc(item.id)"
@@ -923,7 +1036,7 @@ onUnmounted(() => {
             @click.prevent.stop="setTagFilter(tag)"
           >{{ tag }}</button>
         </div>
-      </NuxtLink>
+      </component>
       <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
         No media found.
       </p>

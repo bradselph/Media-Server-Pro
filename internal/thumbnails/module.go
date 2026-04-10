@@ -63,7 +63,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting thumbnail module...")
 
 	// Ensure thumbnail directory exists
-	if err := os.MkdirAll(m.thumbnailDir, 0755); err != nil {
+	if err := os.MkdirAll(m.thumbnailDir, 0o755); err != nil { //nolint:gosec // G301: thumbnail dir needs world-read for serving
 		m.log.Error("Failed to create thumbnail directory: %v", err)
 		return err
 	}
@@ -101,8 +101,8 @@ func (m *Module) Start(_ context.Context) error {
 	m.ffprobePath = ffprobePath
 
 	// Start worker pool using a background context so workers are not
-	// cancelled when the short-lived module-startup context expires.
-	workerCtx, cancel := context.WithCancel(context.Background())
+	// canceled when the short-lived module-startup context expires.
+	workerCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = workerCtx
 	m.cancel = cancel
 
@@ -152,7 +152,7 @@ func (m *Module) SetMediaIDProvider(p MediaIDProvider) {
 // evictStaleInFlight scans the inFlight map every minute and removes entries
 // that have been pending for more than 5 minutes.  Stale entries arise when a
 // worker goroutine exits unexpectedly without completing its job (e.g. context
-// cancelled during a long ffmpeg run) and the deferred Delete never ran.
+// canceled during a long ffmpeg run) and the deferred Delete never ran.
 func (m *Module) evictStaleInFlight(ctx context.Context) {
 	defer m.wg.Done()
 	cfg := m.config.Get().Thumbnails

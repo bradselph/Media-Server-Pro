@@ -33,7 +33,7 @@ func (h *Handler) AdminExportAuditLog(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	defer os.Remove(filename) // clean up temp export file after send
+	defer func() { _ = os.Remove(filename) }() // clean up temp export file after send
 
 	c.Header(headerContentDisposition, safeContentDisposition(filepath.Base(filename)))
 	c.Header(headerContentType, "text/csv")

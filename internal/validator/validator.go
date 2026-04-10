@@ -121,7 +121,7 @@ func (m *Module) Start(_ context.Context) error {
 		m.healthy = false
 		m.healthMsg = "ffprobe not found"
 		m.healthMu.Unlock()
-		return nil // Don't fail - validation is optional
+		return nil //nolint:nilerr // validation is optional; ffprobe absence is not a fatal error
 	}
 	m.ffprobePath = ffprobePath
 
@@ -186,11 +186,12 @@ func (m *Module) getCachedResult(path string) (*ValidationResult, bool) {
 
 // setFinalStatus sets result.Status based on issues and codec support.
 func setFinalStatus(result *ValidationResult) {
-	if len(result.Issues) > 0 {
+	switch {
+	case len(result.Issues) > 0:
 		result.Status = StatusNeedsFix
-	} else if result.VideoSupported && result.AudioSupported {
+	case result.VideoSupported && result.AudioSupported:
 		result.Status = StatusValidated
-	} else {
+	default:
 		result.Status = StatusUnsupported
 	}
 }
@@ -233,11 +234,11 @@ func (m *Module) probeFile(path string) (*ProbeData, error) {
 	probeJSON, probeErr := ffmpeg.Probe(path)
 	if probeErr == nil {
 		var data ProbeData
-		if parseErr := json.Unmarshal([]byte(probeJSON), &data); parseErr == nil {
+		parseErr := json.Unmarshal([]byte(probeJSON), &data)
+		if parseErr == nil {
 			return &data, nil
-		} else {
-			m.log.Debug("ffmpeg-go probe parsing failed, trying raw ffprobe: %v", parseErr)
 		}
+		m.log.Debug("ffmpeg-go probe parsing failed, trying raw ffprobe: %v", parseErr)
 	} else {
 		m.log.Debug("ffmpeg-go probe failed, trying raw ffprobe: %v", probeErr)
 	}
@@ -258,7 +259,7 @@ func (m *Module) probeFile(path string) (*ProbeData, error) {
 		path,
 	}
 
-	cmd := exec.CommandContext(ctx, m.ffprobePath, args...)
+	cmd := exec.CommandContext(ctx, m.ffprobePath, args...) //nolint:gosec // G204: ffprobePath is a configured binary path, not user input
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("ffprobe failed: %w", err)
@@ -470,7 +471,7 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
 	cmdWithContext.Env = cmd.Env
 	cmdWithContext.Dir = cmd.Dir
 

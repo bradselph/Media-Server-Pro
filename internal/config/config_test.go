@@ -195,7 +195,7 @@ func TestManager_Load_FromFile(t *testing.T) {
 	custom := DefaultConfig()
 	custom.Server.Port = 9999
 	data, _ := json.MarshalIndent(custom, "", "  ")
-	os.WriteFile(cfgPath, data, 0644)
+	os.WriteFile(cfgPath, data, 0o600)
 
 	m := NewManager(cfgPath)
 	if err := m.Load(); err != nil {
@@ -386,7 +386,7 @@ func TestSyncFeatureToggles(t *testing.T) {
 	cfg.Features.EnableAnalytics = false
 	cfg.Analytics.Enabled = true
 	data, _ := json.MarshalIndent(cfg, "", "  ")
-	os.WriteFile(cfgPath, data, 0644)
+	os.WriteFile(cfgPath, data, 0o600)
 
 	m := NewManager(cfgPath)
 	if err := m.Load(); err != nil {

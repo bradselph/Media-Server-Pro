@@ -1,6 +1,5 @@
 package config
 
-
 func (m *Manager) applyUploadsEnvOverrides() {
 	if val, ok := envGetBool("UPLOADS_ENABLED"); ok {
 		m.config.Uploads.Enabled = val
@@ -9,7 +8,7 @@ func (m *Manager) applyUploadsEnvOverrides() {
 		m.config.Uploads.MaxFileSize = val
 	}
 	if val := envGetStr("UPLOADS_ALLOWED_EXTENSIONS"); val != "" {
-		m.config.Uploads.AllowedExtensions = splitTrimmed(val, ",")
+		m.config.Uploads.AllowedExtensions = splitTrimmed(val)
 	}
 	if val, ok := envGetBool("UPLOADS_REQUIRE_AUTH"); ok {
 		m.config.Uploads.RequireAuth = val

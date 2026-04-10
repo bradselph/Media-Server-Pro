@@ -72,7 +72,7 @@ func (m *Manager) CreateDirectories() error {
 				return fmt.Errorf("failed to resolve path %s: %w", dir, err)
 			}
 		}
-		if err := os.MkdirAll(absDir, 0755); err != nil {
+		if err := os.MkdirAll(absDir, 0o755); err != nil { //nolint:gosec // world-readable directories are intentional for media serving
 			return fmt.Errorf("failed to create directory %s: %w", absDir, err)
 		}
 		info, err := os.Stat(absDir)

@@ -58,7 +58,7 @@ func TestRegisterTask(t *testing.T) {
 		Name:        "Test Task",
 		Description: "A test task",
 		Schedule:    1 * time.Hour,
-		Func:        func(ctx context.Context) error { return nil },
+		Func:        func(_ context.Context) error { return nil },
 	})
 	tasks := m.ListTasks()
 	if len(tasks) != 1 {
@@ -79,7 +79,7 @@ func TestRegisterTask_Multiple(t *testing.T) {
 			ID:       fmt.Sprintf("task-%d", i),
 			Name:     fmt.Sprintf("Task %d", i),
 			Schedule: 1 * time.Hour,
-			Func:     func(ctx context.Context) error { return nil },
+			Func:     func(_ context.Context) error { return nil },
 		})
 	}
 	tasks := m.ListTasks()
@@ -99,7 +99,7 @@ func TestGetTask(t *testing.T) {
 		Name:        "My Task",
 		Description: "Does things",
 		Schedule:    30 * time.Minute,
-		Func:        func(ctx context.Context) error { return nil },
+		Func:        func(_ context.Context) error { return nil },
 	})
 	info, err := m.GetTask("my-task")
 	if err != nil {
@@ -134,7 +134,7 @@ func TestDisableTask(t *testing.T) {
 		ID:       "disable-test",
 		Name:     "Disable Test",
 		Schedule: 1 * time.Hour,
-		Func:     func(ctx context.Context) error { return nil },
+		Func:     func(_ context.Context) error { return nil },
 	})
 	if err := m.DisableTask("disable-test"); err != nil {
 		t.Fatalf("DisableTask error: %v", err)
@@ -154,7 +154,7 @@ func TestEnableTask(t *testing.T) {
 		ID:       "enable-test",
 		Name:     "Enable Test",
 		Schedule: 1 * time.Hour,
-		Func:     func(ctx context.Context) error { return nil },
+		Func:     func(_ context.Context) error { return nil },
 	})
 	m.DisableTask("enable-test")
 	// Wait for loop to notice and stop
@@ -206,7 +206,7 @@ func TestRunNow(t *testing.T) {
 		ID:       "run-now-test",
 		Name:     "Run Now Test",
 		Schedule: 1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			atomic.AddInt32(&ran, 1)
 			return nil
 		},
@@ -246,7 +246,7 @@ func TestUpdateSchedule(t *testing.T) {
 		ID:       "schedule-test",
 		Name:     "Schedule Test",
 		Schedule: 1 * time.Hour,
-		Func:     func(ctx context.Context) error { return nil },
+		Func:     func(_ context.Context) error { return nil },
 	})
 	if err := m.UpdateSchedule("schedule-test", 5*time.Minute); err != nil {
 		t.Fatalf("UpdateSchedule error: %v", err)
@@ -322,7 +322,7 @@ func TestRecordTaskResult_Error(t *testing.T) {
 		ID:       "error-test",
 		Name:     "Error Test",
 		Schedule: 1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			return taskErr
 		},
 	})
@@ -357,7 +357,7 @@ func TestStopTask_NotRunning(t *testing.T) {
 		ID:       "stop-test",
 		Name:     "Stop Test",
 		Schedule: 1 * time.Hour,
-		Func:     func(ctx context.Context) error { return nil },
+		Func:     func(_ context.Context) error { return nil },
 	})
 	// Let the initial run finish
 	time.Sleep(100 * time.Millisecond)

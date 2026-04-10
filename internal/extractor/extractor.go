@@ -98,7 +98,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		httpClient: &http.Client{
 			Transport: helpers.SafeHTTPTransport(),
 			Timeout:   30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
 					return fmt.Errorf("too many redirects")
 				}
@@ -472,7 +472,7 @@ func (m *Module) ProxyHLSSegment(w http.ResponseWriter, r *http.Request, itemID 
 		return fmt.Errorf("segment cache not found for %s quality %d", itemID, qualityIdx)
 	}
 
-	playlist := cached.(*cachedPlaylist)
+	playlist := cached.(*cachedPlaylist) //nolint:errcheck // sync.Map value is always *cachedPlaylist
 
 	// Find the segment URL
 	var segmentURL string
@@ -527,7 +527,7 @@ func (m *Module) proxyMediaPlaylist(ctx context.Context, w http.ResponseWriter, 
 func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, contentType string) error {
 	cfg := m.config.Get()
 
-	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("failed to create proxy request: %w", err)
 	}
@@ -548,7 +548,7 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	if err != nil {
 		return fmt.Errorf("proxy request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Copy only media-relevant headers (allowlist avoids leaking CDN/server infra).
 	allowedProxyHeaders := map[string]bool{
@@ -579,8 +579,8 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	return nil
 }
 
-func (m *Module) fetchURL(ctx context.Context, rawURL string) (string, string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
+func (m *Module) fetchURL(ctx context.Context, rawURL string) (content, finalURL string, err error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, http.NoBody)
 	if err != nil {
 		return "", "", err
 	}
@@ -590,20 +590,20 @@ func (m *Module) fetchURL(ctx context.Context, rawURL string) (string, string, e
 	if err != nil {
 		return "", "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, rawURL)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB limit
-	if err != nil {
-		return "", "", err
+	rawBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB limit
+	if readErr != nil {
+		return "", "", readErr
 	}
 
 	// Use the final URL after redirects
-	finalURL := resp.Request.URL.String()
-	return string(body), finalURL, nil
+	finalURL = resp.Request.URL.String()
+	return string(rawBody), finalURL, nil
 }
 
 func (m *Module) rewriteMasterPlaylist(body, baseURL, itemID string) (string, []playlistVariant) {
@@ -633,7 +633,7 @@ func (m *Module) rewriteMasterPlaylist(body, baseURL, itemID string) (string, []
 				originalURL: variantURL,
 				info:        prevStreamInf,
 			})
-			result.WriteString(fmt.Sprintf("/extractor/hls/%s/%d/playlist.m3u8\n", itemID, qualityIdx))
+			fmt.Fprintf(&result, "/extractor/hls/%s/%d/playlist.m3u8\n", itemID, qualityIdx)
 			qualityIdx++
 			continue
 		}
@@ -684,7 +684,7 @@ func (m *Module) rewriteVariantPlaylist(body, baseURL, itemID string, qualityIdx
 			filename:    filename,
 		})
 
-		result.WriteString(fmt.Sprintf("/extractor/hls/%s/%d/%s\n", itemID, qualityIdx, url.PathEscape(filename)))
+		fmt.Fprintf(&result, "/extractor/hls/%s/%d/%s\n", itemID, qualityIdx, url.PathEscape(filename))
 	}
 
 	return result.String(), segments

@@ -16,7 +16,7 @@ func firstByUserID[T any](ctx context.Context, db *gorm.DB, userID string) (*T, 
 	var dest T
 	if err := db.WithContext(ctx).First(&dest, "user_id = ?", userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, err
 	}

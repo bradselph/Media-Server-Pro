@@ -28,12 +28,12 @@ var (
 	ErrSessionNotFound = repositories.ErrSessionNotFound
 
 	// Auth-specific errors
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrAccountDisabled    = errors.New("account disabled")
-	ErrAccountLocked      = errors.New("account locked")
-	ErrSessionExpired     = errors.New("session expired")
-	ErrAdminWrongPassword   = errors.New("admin username correct but password wrong")
-	ErrNotAdminUsername     = errors.New("username does not match admin")
+	ErrInvalidCredentials    = errors.New("invalid credentials")
+	ErrAccountDisabled       = errors.New("account disabled")
+	ErrAccountLocked         = errors.New("account locked")
+	ErrSessionExpired        = errors.New("session expired")
+	ErrAdminWrongPassword    = errors.New("admin username correct but password wrong")
+	ErrNotAdminUsername      = errors.New("username does not match admin")
 	ErrCannotDemoteLastAdmin = errors.New("cannot demote or disable the last admin account")
 
 	// dummyHash is a pre-computed bcrypt hash used for constant-time comparison
@@ -41,48 +41,48 @@ var (
 	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-constant-time-pad"), bcrypt.DefaultCost)
 )
 
-// IsSessionError returns true for definitive session rejection errors (not-found, expired).
-// Returns false for transient errors (DB timeout, connection failure) so callers can avoid
-// clearing session cookies during outages.
+// IsSessionError returns true for definitive session rejection errors (not-found, expired,
+// disabled account). Returns false for transient errors (DB timeout, connection failure)
+// so callers can avoid clearing session cookies during outages.
 func IsSessionError(err error) bool {
-	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExpired)
+	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExpired) || errors.Is(err, ErrAccountDisabled)
 }
 
-const errHashPasswordFmt = "failed to hash password: %w"
+const errHashPasswordFmt = "failed to hash password: %w" //nolint:gosec // G101 false positive: error message, not credentials
 
 // Module implements the authentication module
 type Module struct {
-	config        *config.Manager
-	log           *logger.Logger
-	dbModule      *database.Module
-	userRepo      repositories.UserRepository
-	sessionRepo   repositories.SessionRepository
-	favoriteRepo  repositories.FavoriteRepository
-	tokenRepo     repositories.APITokenRepository
-	users         map[string]*models.User    // username → user
-	usersByID     map[string]*models.User    // id → user; secondary index to avoid O(N) GetUserByID scans
-	sessions      map[string]*models.Session // Kept for backward compatibility and caching
-	adminSessions map[string]*models.AdminSession
-	loginAttempts map[string]*loginAttempt
-	usersMu       sync.RWMutex
-	sessionsMu    sync.RWMutex
-	attemptsMu    sync.RWMutex
-	lastAdminMu      sync.Mutex // serializes demote/disable admin to prevent TOCTOU
+	config           *config.Manager
+	log              *logger.Logger
+	dbModule         *database.Module
+	userRepo         repositories.UserRepository
+	sessionRepo      repositories.SessionRepository
+	favoriteRepo     repositories.FavoriteRepository
+	tokenRepo        repositories.APITokenRepository
+	users            map[string]*models.User    // username → user
+	usersByID        map[string]*models.User    // id → user; secondary index to avoid O(N) GetUserByID scans
+	sessions         map[string]*models.Session // Kept for backward compatibility and caching
+	adminSessions    map[string]*models.AdminSession
+	loginAttempts    map[string]*loginAttempt
+	usersMu          sync.RWMutex
+	sessionsMu       sync.RWMutex
+	attemptsMu       sync.RWMutex
+	lastAdminMu      sync.Mutex    // serializes demote/disable admin to prevent TOCTOU
 	sessionUpdateSem chan struct{} // bounds concurrent background session-persist goroutines
 	dataDir          string
-	healthy       bool
-	healthMsg     string
-	healthMu      sync.RWMutex
-	cleanupTicker *time.Ticker
-	cleanupDone   chan struct{}
-	stopOnce      sync.Once
+	healthy          bool
+	healthMsg        string
+	healthMu         sync.RWMutex
+	cleanupTicker    *time.Ticker
+	cleanupDone      chan struct{}
+	stopOnce         sync.Once
 }
 
 type loginAttempt struct {
-	Count      int
-	FirstTry   time.Time
-	LockedAt   *time.Time
-	Windows    int // cumulative count of lockout windows observed for this IP
+	Count    int
+	FirstTry time.Time
+	LockedAt *time.Time
+	Windows  int // cumulative count of lockout windows observed for this IP
 }
 
 // NewModule creates a new authentication module.
@@ -94,13 +94,13 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 	}
 
 	return &Module{
-		config:        cfg,
-		log:           logger.New("auth"),
-		dbModule:      dbModule,
-		users:         make(map[string]*models.User),
-		usersByID:     make(map[string]*models.User),
-		sessions:      make(map[string]*models.Session),
-		adminSessions: make(map[string]*models.AdminSession),
+		config:           cfg,
+		log:              logger.New("auth"),
+		dbModule:         dbModule,
+		users:            make(map[string]*models.User),
+		usersByID:        make(map[string]*models.User),
+		sessions:         make(map[string]*models.Session),
+		adminSessions:    make(map[string]*models.AdminSession),
 		loginAttempts:    make(map[string]*loginAttempt),
 		sessionUpdateSem: make(chan struct{}, 100), // bound concurrent session-persist goroutines
 		dataDir:          cfg.Get().Directories.Data,

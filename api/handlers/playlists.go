@@ -245,7 +245,7 @@ func (h *Handler) writeExportResponse(c *gin.Context, format string, export *pla
 		ext := format
 		c.Header(headerContentDisposition, safeContentDisposition(export.Name+"."+ext))
 		c.Header(headerContentType, "audio/x-mpegurl")
-		if _, err := c.Writer.Write([]byte(export.M3UContent)); err != nil {
+		if _, err := c.Writer.WriteString(export.M3UContent); err != nil {
 			h.log.Error("Failed to write M3U content: %v", err)
 		}
 		return

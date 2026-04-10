@@ -564,13 +564,13 @@ func (m *Module) CopyPlaylist(ctx context.Context, sourceID PlaylistID, userID U
 	newItems := make([]models.PlaylistItem, len(srcItems))
 	for i, item := range srcItems {
 		newItems[i] = models.PlaylistItem{
-			ID:        uuid.New().String(),
+			ID:         uuid.New().String(),
 			PlaylistID: newPlaylist.ID,
-			MediaID:   item.MediaID,
-			MediaPath: item.MediaPath,
-			Title:     item.Title,
-			Position:  i,
-			AddedAt:   time.Now(),
+			MediaID:    item.MediaID,
+			MediaPath:  item.MediaPath,
+			Title:      item.Title,
+			Position:   i,
+			AddedAt:    time.Now(),
 		}
 	}
 	if err := m.playlistRepo.CreateWithItems(ctx, newPlaylist, newItems); err != nil {

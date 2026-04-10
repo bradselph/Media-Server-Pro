@@ -9,13 +9,13 @@ import (
 )
 
 // FindBinary locates an executable by name. It first delegates to exec.LookPath
-// which honours the process PATH. If that fails (common under systemd, which
+// which honors the process PATH. If that fails (common under systemd, which
 // strips PATH to a minimal safe set), it falls back to the standard filesystem
 // locations where package managers place binaries on Linux/macOS.
 //
 // Returns the full path on success, or an error that lists all locations tried.
 func FindBinary(name string) (string, error) {
-	// Fast path: honour the process PATH first (works for non-systemd environments
+	// Fast path: honor the process PATH first (works for non-systemd environments
 	// and any custom PATH set in the EnvironmentFile).
 	if path, err := exec.LookPath(name); err == nil {
 		return path, nil
@@ -112,4 +112,3 @@ var AllowedProxyHeaders = map[string]bool{
 	"Etag":                true,
 	"Cache-Control":       true,
 }
-

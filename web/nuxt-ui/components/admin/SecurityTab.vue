@@ -91,6 +91,24 @@ async function loadAudit() {
   } finally { auditLoading.value = false }
 }
 
+const exportingAudit = ref(false)
+async function exportAuditLog() {
+  exportingAudit.value = true
+  try {
+    const res = await fetch(adminApi.exportAuditLogUrl(), { credentials: 'include' })
+    if (!res.ok) throw new Error(`Export failed: ${res.status}`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Export failed', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { exportingAudit.value = false }
+}
+
 // IP lists
 const whitelist = ref<IPListEntry[]>([])
 const blacklist = ref<IPListEntry[]>([])
@@ -216,7 +234,7 @@ watch(subTab, (v) => {
     <!-- Audit log -->
     <div v-if="item.value === 'audit'" class="space-y-3">
       <div class="flex gap-2 justify-end">
-        <UButton icon="i-lucide-download" label="Export CSV" size="sm" variant="outline" color="neutral" :to="adminApi.exportAuditLogUrl()" target="_blank" external />
+        <UButton icon="i-lucide-download" label="Export CSV" size="sm" variant="outline" color="neutral" :loading="exportingAudit" @click="exportAuditLog" />
         <UButton icon="i-lucide-refresh-cw" aria-label="Refresh audit log" variant="ghost" color="neutral" size="sm" @click="loadAudit" />
       </div>
       <UCard>

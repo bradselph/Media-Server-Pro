@@ -136,7 +136,7 @@ components:
           description: Response payload (type varies by endpoint)
         error:
           type: string
-      required: [success]
+      required: [ success ]
 
     User:
       type: object
@@ -147,7 +147,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, viewer]
+          enum: [ admin, viewer ]
         type:
           type: string
         email:
@@ -169,6 +169,13 @@ components:
         last_login:
           type: string
           format: date-time
+        previous_last_login:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
         watch_history:
           type: array
           items:
@@ -197,7 +204,7 @@ components:
       properties:
         theme:
           type: string
-          enum: [light, dark, auto]
+          enum: [ light, dark, auto, midnight, nord, dracula, solarized-light, forest, sunset ]
         default_quality:
           type: string
         show_mature:
@@ -233,6 +240,14 @@ components:
         custom_eq_presets:
           type: object
           additionalProperties: true
+        show_continue_watching:
+          type: boolean
+        show_recommended:
+          type: boolean
+        show_trending:
+          type: boolean
+        user_id:
+          type: string
 
     LoginResponse:
       type: object
@@ -264,13 +279,11 @@ components:
       properties:
         id:
           type: string
-        path:
-          type: string
         name:
           type: string
         type:
           type: string
-          enum: [video, audio, unknown]
+          enum: [ video, audio, unknown ]
         size:
           type: integer
           format: int64
@@ -282,6 +295,7 @@ components:
           type: integer
         bitrate:
           type: integer
+          format: int64
         codec:
           type: string
         container:
@@ -309,9 +323,7 @@ components:
           type: boolean
         mature_score:
           type: number
-        is_remote:
-          type: boolean
-        remote_url:
+        blur_hash:
           type: string
         metadata:
           type: object
@@ -331,6 +343,15 @@ components:
           type: integer
         scanning:
           type: boolean
+        user_ratings:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+          description: Map of media_id to user rating
+        initializing:
+          type: boolean
+          description: True when media library is still loading
 
     MediaCategory:
       type: object
@@ -361,6 +382,10 @@ components:
         last_scan:
           type: string
           format: date-time
+        version:
+          type: integer
+          format: int64
+          description: Cache invalidation counter
 
     HLSCapabilities:
       type: object
@@ -406,11 +431,9 @@ components:
       properties:
         id:
           type: string
-        media_path:
-          type: string
         status:
           type: string
-          enum: [pending, running, completed, failed, cancelled]
+          enum: [ pending, running, completed, failed, cancelled ]
         progress:
           type: number
         qualities:
@@ -431,6 +454,10 @@ components:
           type: string
         fail_count:
           type: integer
+        last_accessed_at:
+          type: string
+          format: date-time
+          nullable: true
 
     Playlist:
       type: object
@@ -467,8 +494,6 @@ components:
         playlist_id:
           type: string
         media_id:
-          type: string
-        media_path:
           type: string
         title:
           type: string
@@ -537,10 +562,15 @@ components:
         today_searches:
           type: integer
           description: Library search requests with non-empty query today
+        total_watch_time:
+          type: number
+          description: Total watch time in seconds
 
     AnalyticsEvent:
       type: object
       properties:
+        id:
+          type: string
         type:
           type: string
         media_id:
@@ -576,10 +606,12 @@ components:
           format: date-time
         completed:
           type: boolean
+        media_name:
+          type: string
 
     Suggestion:
       type: object
-      required: [media_id, title, category, media_type, score]
+      required: [ media_id, title, category, media_type, score ]
       properties:
         media_id:
           type: string
@@ -619,6 +651,8 @@ components:
           properties:
             mobileOptimization:
               type: boolean
+            adaptive:
+              type: boolean
         analytics:
           type: object
           properties:
@@ -633,7 +667,19 @@ components:
               type: boolean
             enableAnalytics:
               type: boolean
-            analytics_tracking:
+            enablePlaylists:
+              type: boolean
+            enableUserAuth:
+              type: boolean
+            enableAdminPanel:
+              type: boolean
+            enableSuggestions:
+              type: boolean
+            enableAutoDiscovery:
+              type: boolean
+            enableDuplicateDetection:
+              type: boolean
+            enableDownloader:
               type: boolean
         uploads:
           type: object
@@ -662,6 +708,13 @@ components:
           properties:
             enabled:
               type: boolean
+        auth:
+          type: object
+          properties:
+            allow_registration:
+              type: boolean
+            allow_guests:
+              type: boolean
 
     AgeGateStatus:
       type: object
@@ -680,8 +733,7 @@ components:
         used_gb:
           type: number
         quota_gb:
-          type: integer
-          format: int64
+          type: number
         percentage:
           type: number
         user_type:
@@ -849,7 +901,7 @@ components:
           type: string
         status:
           type: string
-          enum: [healthy, unhealthy, degraded, failed, disabled]
+          enum: [ healthy, unhealthy, degraded, failed, disabled ]
         message:
           type: string
         last_check:
@@ -953,6 +1005,8 @@ components:
       properties:
         id:
           type: string
+        name:
+          type: string
         media_path:
           type: string
         detected_at:
@@ -970,6 +1024,7 @@ components:
         reviewed_at:
           type: string
           format: date-time
+          nullable: true
         decision:
           type: string
 
@@ -1082,8 +1137,8 @@ components:
           type: string
         database:
           type: string
-        schema_version:
-          type: integer
+        app_version:
+          type: string
         repository_type:
           type: string
         message:
@@ -1103,7 +1158,7 @@ components:
           type: array
           items:
             type: array
-            items: {}
+            items: { }
         rows_affected:
           type: integer
         message:
@@ -1157,8 +1212,6 @@ components:
           type: string
         views:
           type: integer
-        media_path:
-          type: string
 
     EventTypeCounts:
       type: object
@@ -1269,8 +1322,6 @@ components:
         original_path:
           type: string
         suggested_name:
-          type: string
-        suggested_path:
           type: string
         type:
           type: string
@@ -1452,7 +1503,7 @@ components:
           type: string
         status:
           type: string
-          enum: [pending, approved, denied]
+          enum: [ pending, approved, denied ]
         created_at:
           type: string
           format: date-time
@@ -1487,7 +1538,7 @@ components:
 
     ViewHistory:
       type: object
-      required: [category, media_type, view_count, total_time, last_viewed]
+      required: [ category, media_type, view_count, total_time, last_viewed ]
       properties:
         category:
           type: string
@@ -1509,7 +1560,7 @@ components:
 
     RecentItem:
       type: object
-      required: [id, name, type, category, date_added]
+      required: [ id, name, type, category, date_added ]
       properties:
         id:
           type: string
@@ -1527,7 +1578,7 @@ components:
 
     OnDeckItem:
       type: object
-      required: [media_id, name, show_name, season, episode, category]
+      required: [ media_id, name, show_name, season, episode, category ]
       properties:
         media_id:
           type: string
@@ -1546,7 +1597,7 @@ components:
 
     RatedItem:
       type: object
-      required: [media_id, name, category, media_type, rating]
+      required: [ media_id, name, category, media_type, rating ]
       properties:
         media_id:
           type: string
@@ -1877,7 +1928,7 @@ components:
           type: number
         status:
           type: string
-          enum: [pending, resolved, ignored]
+          enum: [ pending, resolved, ignored ]
         action_taken:
           type: string
           nullable: true
@@ -1898,7 +1949,7 @@ components:
           type: string
         status:
           type: string
-          enum: [online, offline]
+          enum: [ online, offline ]
         last_heartbeat:
           type: string
           format: date-time
@@ -1965,7 +2016,7 @@ paths:
 
   /health:
     get:
-      tags: [system]
+      tags: [ system ]
       summary: Health check
       description: Returns 200 when healthy, 503 when degraded. No auth required.
       responses:
@@ -1976,10 +2027,10 @@ paths:
 
   /metrics:
     get:
-      tags: [system]
+      tags: [ system ]
       summary: Prometheus metrics
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       description: Admin-only. Returns text/plain Prometheus metrics.
       responses:
         '200':
@@ -1991,7 +2042,7 @@ paths:
 
   /media:
     get:
-      tags: [streaming]
+      tags: [ streaming ]
       summary: Stream a media file
       parameters:
         - name: id
@@ -2011,7 +2062,7 @@ paths:
 
   /download:
     get:
-      tags: [streaming]
+      tags: [ streaming ]
       summary: Download a media file
       parameters:
         - name: id
@@ -2025,7 +2076,7 @@ paths:
 
   /hls/{id}/master.m3u8:
     get:
-      tags: [hls]
+      tags: [ hls ]
       summary: Serve HLS master playlist
       parameters:
         - name: id
@@ -2043,7 +2094,7 @@ paths:
 
   /hls/{id}/{quality}/playlist.m3u8:
     get:
-      tags: [hls]
+      tags: [ hls ]
       summary: Serve HLS variant playlist
       parameters:
         - name: id
@@ -2062,7 +2113,7 @@ paths:
 
   /hls/{id}/{quality}/{segment}:
     get:
-      tags: [hls]
+      tags: [ hls ]
       summary: Serve HLS segment
       parameters:
         - name: id
@@ -2086,7 +2137,7 @@ paths:
 
   /thumbnail:
     get:
-      tags: [thumbnails]
+      tags: [ thumbnails ]
       summary: Get thumbnail for media item
       parameters:
         - name: id
@@ -2097,7 +2148,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [placeholder, audio_placeholder, censored]
+            enum: [ placeholder, audio_placeholder, censored ]
       responses:
         '200':
           description: JPEG image
@@ -2109,7 +2160,7 @@ paths:
 
   /thumbnails/{filename}:
     get:
-      tags: [thumbnails]
+      tags: [ thumbnails ]
       summary: Serve thumbnail file by name
       parameters:
         - name: filename
@@ -2123,7 +2174,7 @@ paths:
 
   /remote/stream:
     get:
-      tags: [streaming]
+      tags: [ streaming ]
       summary: Proxy remote media stream
       parameters:
         - name: url
@@ -2141,7 +2192,7 @@ paths:
 
   /extractor/hls/{id}/master.m3u8:
     get:
-      tags: [admin-extractor]
+      tags: [ admin-extractor ]
       summary: Proxy extractor HLS master playlist
       parameters:
         - name: id
@@ -2159,7 +2210,7 @@ paths:
 
   /extractor/hls/{id}/{quality}/playlist.m3u8:
     get:
-      tags: [admin-extractor]
+      tags: [ admin-extractor ]
       summary: Proxy extractor HLS variant playlist
       parameters:
         - name: id
@@ -2171,7 +2222,7 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
       responses:
         '200':
           description: HLS variant playlist
@@ -2182,7 +2233,7 @@ paths:
 
   /extractor/hls/{id}/{quality}/{segment}:
     get:
-      tags: [admin-extractor]
+      tags: [ admin-extractor ]
       summary: Proxy extractor HLS segment
       parameters:
         - name: id
@@ -2194,7 +2245,7 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
         - name: segment
           in: path
           required: true
@@ -2208,7 +2259,7 @@ paths:
 
   /api/version:
     get:
-      tags: [version]
+      tags: [ version ]
       summary: Get server version
       responses:
         '200':
@@ -2228,7 +2279,7 @@ paths:
 
   /api/auth/login:
     post:
-      tags: [auth]
+      tags: [ auth ]
       summary: Login
       requestBody:
         required: true
@@ -2236,7 +2287,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [ username, password ]
               properties:
                 username:
                   type: string
@@ -2257,7 +2308,7 @@ paths:
 
   /api/auth/logout:
     post:
-      tags: [auth]
+      tags: [ auth ]
       summary: Logout
       responses:
         '200':
@@ -2265,7 +2316,7 @@ paths:
 
   /api/auth/register:
     post:
-      tags: [auth]
+      tags: [ auth ]
       summary: Register new user
       requestBody:
         required: true
@@ -2273,7 +2324,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [ username, password ]
               properties:
                 username:
                   type: string
@@ -2299,7 +2350,7 @@ paths:
 
   /api/auth/session:
     get:
-      tags: [auth]
+      tags: [ auth ]
       summary: Check session status
       responses:
         '200':
@@ -2316,17 +2367,17 @@ paths:
 
   /api/auth/change-password:
     post:
-      tags: [auth]
+      tags: [ auth ]
       summary: Change own password
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [current_password, new_password]
+              required: [ current_password, new_password ]
               properties:
                 current_password:
                   type: string
@@ -2339,17 +2390,17 @@ paths:
 
   /api/auth/delete-account:
     post:
-      tags: [auth]
+      tags: [ auth ]
       summary: Delete own account
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [password]
+              required: [ password ]
               properties:
                 password:
                   type: string
@@ -2359,10 +2410,10 @@ paths:
 
   /api/auth/data-deletion-request:
     post:
-      tags: [auth]
+      tags: [ auth ]
       summary: Request account data deletion
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -2394,10 +2445,10 @@ paths:
 
   /api/auth/tokens:
     get:
-      tags: [tokens]
+      tags: [ tokens ]
       summary: List API tokens
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Token list
@@ -2413,17 +2464,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/APIToken'
     post:
-      tags: [tokens]
+      tags: [ tokens ]
       summary: Create API token
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [ name ]
               properties:
                 name:
                   type: string
@@ -2442,10 +2493,10 @@ paths:
 
   /api/auth/tokens/{id}:
     delete:
-      tags: [tokens]
+      tags: [ tokens ]
       summary: Delete API token
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -2458,7 +2509,7 @@ paths:
 
   /api/permissions:
     get:
-      tags: [permissions]
+      tags: [ permissions ]
       summary: Get permissions and capabilities
       responses:
         '200':
@@ -2475,10 +2526,10 @@ paths:
 
   /api/storage-usage:
     get:
-      tags: [storage]
+      tags: [ storage ]
       summary: Get storage usage
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Storage usage
@@ -2494,7 +2545,7 @@ paths:
 
   /api/server-settings:
     get:
-      tags: [settings]
+      tags: [ settings ]
       summary: Get public server settings
       responses:
         '200':
@@ -2511,10 +2562,10 @@ paths:
 
   /api/docs:
     get:
-      tags: [docs]
+      tags: [ docs ]
       summary: Get OpenAPI specification
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: OpenAPI YAML specification
@@ -2525,10 +2576,10 @@ paths:
 
   /api/feed:
     get:
-      tags: [feed]
+      tags: [ feed ]
       summary: Get Atom content feed
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: category
           in: query
@@ -2538,7 +2589,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [video, audio]
+            enum: [ video, audio ]
         - name: limit
           in: query
           schema:
@@ -2555,7 +2606,7 @@ paths:
 
   /api/age-gate/status:
     get:
-      tags: [age-gate]
+      tags: [ age-gate ]
       summary: Get age gate status
       responses:
         '200':
@@ -2572,7 +2623,7 @@ paths:
 
   /api/age-verify:
     post:
-      tags: [age-gate]
+      tags: [ age-gate ]
       summary: Verify age
       responses:
         '200':
@@ -2580,10 +2631,10 @@ paths:
 
   /api/preferences:
     get:
-      tags: [preferences]
+      tags: [ preferences ]
       summary: Get user preferences
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: User preferences
@@ -2597,10 +2648,10 @@ paths:
                       data:
                         $ref: '#/components/schemas/UserPreferences'
     post:
-      tags: [preferences]
+      tags: [ preferences ]
       summary: Update user preferences (partial merge)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -2622,7 +2673,7 @@ paths:
 
   /api/media:
     get:
-      tags: [media]
+      tags: [ media ]
       summary: List media items
       parameters:
         - name: sort
@@ -2633,7 +2684,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [asc, desc]
+            enum: [ asc, desc ]
         - name: limit
           in: query
           schema:
@@ -2665,7 +2716,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: ['true', 'false']
+            enum: [ 'true', 'false' ]
       responses:
         '200':
           description: Media list
@@ -2681,7 +2732,7 @@ paths:
 
   /api/media/stats:
     get:
-      tags: [media]
+      tags: [ media ]
       summary: Get media statistics
       responses:
         '200':
@@ -2698,7 +2749,7 @@ paths:
 
   /api/media/categories:
     get:
-      tags: [media]
+      tags: [ media ]
       summary: Get media categories
       responses:
         '200':
@@ -2717,7 +2768,7 @@ paths:
 
   /api/media/batch:
     get:
-      tags: [media]
+      tags: [ media ]
       summary: Get multiple media items by ID
       parameters:
         - name: ids
@@ -2746,7 +2797,7 @@ paths:
 
   /api/media/{id}:
     get:
-      tags: [media]
+      tags: [ media ]
       summary: Get single media item
       parameters:
         - name: id
@@ -2769,10 +2820,10 @@ paths:
 
   /api/playback:
     get:
-      tags: [playback]
+      tags: [ playback ]
       summary: Get playback position
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: query
@@ -2795,17 +2846,17 @@ paths:
                           position:
                             type: number
     post:
-      tags: [playback]
+      tags: [ playback ]
       summary: Track playback position
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id, position, duration]
+              required: [ id, position, duration ]
               properties:
                 id:
                   type: string
@@ -2819,10 +2870,10 @@ paths:
 
   /api/playback/batch:
     get:
-      tags: [playback]
+      tags: [ playback ]
       summary: Get batch playback positions
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: ids
           in: query
@@ -2850,7 +2901,7 @@ paths:
 
   /api/hls/capabilities:
     get:
-      tags: [hls]
+      tags: [ hls ]
       summary: Get HLS capabilities
       responses:
         '200':
@@ -2867,7 +2918,7 @@ paths:
 
   /api/hls/check:
     get:
-      tags: [hls]
+      tags: [ hls ]
       summary: Check HLS availability for media item
       parameters:
         - name: id
@@ -2890,7 +2941,7 @@ paths:
 
   /api/hls/generate:
     post:
-      tags: [hls]
+      tags: [ hls ]
       summary: Generate HLS for media
       requestBody:
         required: true
@@ -2898,7 +2949,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [id]
+              required: [ id ]
               properties:
                 id:
                   type: string
@@ -2923,7 +2974,7 @@ paths:
 
   /api/hls/status/{id}:
     get:
-      tags: [hls]
+      tags: [ hls ]
       summary: Get HLS job status
       parameters:
         - name: id
@@ -2946,7 +2997,7 @@ paths:
 
   /api/playlists/public:
     get:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: List public playlists
       responses:
         '200':
@@ -2965,10 +3016,10 @@ paths:
 
   /api/playlists:
     get:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: List user playlists
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Playlists
@@ -2984,17 +3035,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/Playlist'
     post:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Create playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [ name ]
               properties:
                 name:
                   type: string
@@ -3017,10 +3068,10 @@ paths:
 
   /api/playlists/{id}:
     get:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Get playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3040,10 +3091,10 @@ paths:
                       data:
                         $ref: '#/components/schemas/Playlist'
     put:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Update playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3066,10 +3117,10 @@ paths:
         '200':
           description: Updated playlist
     delete:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Delete playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3082,10 +3133,10 @@ paths:
 
   /api/playlists/{id}/export:
     get:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Export playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3096,7 +3147,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [json, m3u, m3u8]
+            enum: [ json, m3u, m3u8 ]
             default: json
       responses:
         '200':
@@ -3104,10 +3155,10 @@ paths:
 
   /api/playlists/{id}/items:
     post:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Add item to playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3135,10 +3186,10 @@ paths:
         '200':
           description: Item added
     delete:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Remove item from playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3155,17 +3206,17 @@ paths:
 
   /api/playlists/bulk-delete:
     post:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Bulk delete playlists
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ids]
+              required: [ ids ]
               properties:
                 ids:
                   type: array
@@ -3192,10 +3243,10 @@ paths:
 
   /api/playlists/{id}/reorder:
     put:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Reorder playlist items
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3208,7 +3259,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [positions]
+              required: [ positions ]
               properties:
                 positions:
                   type: array
@@ -3220,10 +3271,10 @@ paths:
 
   /api/playlists/{id}/clear:
     delete:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Clear all items from playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3236,10 +3287,10 @@ paths:
 
   /api/playlists/{id}/copy:
     post:
-      tags: [playlists]
+      tags: [ playlists ]
       summary: Copy playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -3252,7 +3303,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [ name ]
               properties:
                 name:
                   type: string
@@ -3271,10 +3322,10 @@ paths:
 
   /api/analytics:
     get:
-      tags: [analytics]
+      tags: [ analytics ]
       summary: Get analytics summary (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Analytics summary
@@ -3290,17 +3341,17 @@ paths:
 
   /api/analytics/events:
     post:
-      tags: [analytics]
+      tags: [ analytics ]
       summary: Submit analytics event
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [type, media_id]
+              required: [ type, media_id ]
               properties:
                 type:
                   type: string
@@ -3319,10 +3370,10 @@ paths:
 
   /api/analytics/daily:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Get daily statistics (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: days
           in: query
@@ -3348,10 +3399,10 @@ paths:
 
   /api/analytics/top:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Get top media (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: limit
           in: query
@@ -3377,10 +3428,10 @@ paths:
 
   /api/analytics/events/stats:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Get event statistics (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Event stats
@@ -3396,10 +3447,10 @@ paths:
 
   /api/analytics/events/by-type:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Get events by type (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: type
           in: query
@@ -3429,10 +3480,10 @@ paths:
 
   /api/analytics/events/by-media:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Get events by media (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: media_id
           in: query
@@ -3462,10 +3513,10 @@ paths:
 
   /api/analytics/events/counts:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Get event type counts (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Event counts
@@ -3481,10 +3532,10 @@ paths:
 
   /api/analytics/content:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Get content performance (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: limit
           in: query
@@ -3509,10 +3560,10 @@ paths:
 
   /api/analytics/events/by-user:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Get events by user (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: user_id
           in: query
@@ -3542,10 +3593,10 @@ paths:
 
   /api/watch-history:
     get:
-      tags: [watch-history]
+      tags: [ watch-history ]
       summary: Get watch history
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: query
@@ -3571,10 +3622,10 @@ paths:
                         items:
                           $ref: '#/components/schemas/WatchHistoryEntry'
     delete:
-      tags: [watch-history]
+      tags: [ watch-history ]
       summary: Clear watch history (or delete single item)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: query
@@ -3587,10 +3638,10 @@ paths:
 
   /api/watch-history/export:
     get:
-      tags: [watch-history]
+      tags: [ watch-history ]
       summary: Export watch history as CSV
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: CSV file download
@@ -3601,7 +3652,7 @@ paths:
 
   /api/thumbnails/previews:
     get:
-      tags: [thumbnails]
+      tags: [ thumbnails ]
       summary: Get thumbnail preview URLs
       parameters:
         - name: id
@@ -3615,7 +3666,7 @@ paths:
 
   /api/thumbnails/batch:
     get:
-      tags: [thumbnails]
+      tags: [ thumbnails ]
       summary: Get thumbnail URLs for multiple media items
       parameters:
         - name: ids
@@ -3649,7 +3700,7 @@ paths:
 
   /api/suggestions:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get content suggestions
       parameters:
         - name: limit
@@ -3675,7 +3726,7 @@ paths:
 
   /api/suggestions/trending:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get trending content
       parameters:
         - name: limit
@@ -3690,7 +3741,7 @@ paths:
 
   /api/suggestions/similar:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get similar media
       parameters:
         - name: id
@@ -3710,10 +3761,10 @@ paths:
 
   /api/suggestions/continue:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get continue watching
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: limit
           in: query
@@ -3727,10 +3778,10 @@ paths:
 
   /api/suggestions/personalized:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get personalized suggestions
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: limit
           in: query
@@ -3744,10 +3795,10 @@ paths:
 
   /api/suggestions/profile:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get user suggestion profile
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: User profile
@@ -3761,17 +3812,17 @@ paths:
                       data:
                         $ref: '#/components/schemas/UserProfile'
     delete:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Reset user suggestion profile
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Profile reset
 
   /api/suggestions/recent:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get recently added content
       parameters:
         - name: days
@@ -3803,10 +3854,10 @@ paths:
 
   /api/suggestions/new:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get content added since last visit
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: limit
           in: query
@@ -3839,10 +3890,10 @@ paths:
 
   /api/suggestions/on-deck:
     get:
-      tags: [suggestions]
+      tags: [ suggestions ]
       summary: Get on-deck content (next episodes, etc.)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: limit
           in: query
@@ -3872,10 +3923,10 @@ paths:
 
   /api/ratings:
     get:
-      tags: [ratings]
+      tags: [ ratings ]
       summary: Get user's ratings
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: User ratings
@@ -3891,17 +3942,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/RatedItem'
     post:
-      tags: [ratings]
+      tags: [ ratings ]
       summary: Record media rating
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id, rating]
+              required: [ id, rating ]
               properties:
                 id:
                   type: string
@@ -3913,10 +3964,10 @@ paths:
 
   /api/favorites:
     get:
-      tags: [favorites]
+      tags: [ favorites ]
       summary: List user favorites
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Favorites list
@@ -3932,17 +3983,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/FavoriteItem'
     post:
-      tags: [favorites]
+      tags: [ favorites ]
       summary: Add media to favorites
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [media_id]
+              required: [ media_id ]
               properties:
                 media_id:
                   type: string
@@ -3952,10 +4003,10 @@ paths:
 
   /api/favorites/{media_id}:
     get:
-      tags: [favorites]
+      tags: [ favorites ]
       summary: Check if media is in favorites
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: media_id
           in: path
@@ -3978,10 +4029,10 @@ paths:
                           is_favorite:
                             type: boolean
     delete:
-      tags: [favorites]
+      tags: [ favorites ]
       summary: Remove media from favorites
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: media_id
           in: path
@@ -3994,10 +4045,10 @@ paths:
 
   /api/browse/categories:
     get:
-      tags: [browse]
+      tags: [ browse ]
       summary: Browse media by category
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: category
           in: query
@@ -4034,10 +4085,10 @@ paths:
 
   /api/upload:
     post:
-      tags: [upload]
+      tags: [ upload ]
       summary: Upload media files
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -4067,10 +4118,10 @@ paths:
 
   /api/upload/{id}/progress:
     get:
-      tags: [upload]
+      tags: [ upload ]
       summary: Get upload progress
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -4094,10 +4145,10 @@ paths:
 
   /api/admin/stats:
     get:
-      tags: [admin-dashboard]
+      tags: [ admin-dashboard ]
       summary: Get admin dashboard stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Admin stats
@@ -4113,10 +4164,10 @@ paths:
 
   /api/admin/system:
     get:
-      tags: [admin-dashboard]
+      tags: [ admin-dashboard ]
       summary: Get system info
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: System info
@@ -4132,20 +4183,20 @@ paths:
 
   /api/admin/cache/clear:
     post:
-      tags: [admin-dashboard]
+      tags: [ admin-dashboard ]
       summary: Clear media cache and rescan
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Cache cleared
 
   /api/admin/streams:
     get:
-      tags: [admin-streams]
+      tags: [ admin-streams ]
       summary: Get active streams
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Active streams
@@ -4163,10 +4214,10 @@ paths:
 
   /api/admin/uploads/active:
     get:
-      tags: [admin-streams]
+      tags: [ admin-streams ]
       summary: Get active uploads
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Active uploads
@@ -4184,10 +4235,10 @@ paths:
 
   /api/status:
     get:
-      tags: [system]
+      tags: [ system ]
       summary: Get server status (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Server status
@@ -4203,7 +4254,7 @@ paths:
                         properties:
                           status:
                             type: string
-                            enum: [ok, degraded]
+                            enum: [ ok, degraded ]
                           version:
                             type: string
                           timestamp:
@@ -4220,10 +4271,10 @@ paths:
 
   /api/modules:
     get:
-      tags: [system]
+      tags: [ system ]
       summary: List modules (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Module list
@@ -4241,10 +4292,10 @@ paths:
 
   /api/modules/{name}/health:
     get:
-      tags: [system]
+      tags: [ system ]
       summary: Get module health (admin only)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: name
           in: path
@@ -4266,98 +4317,98 @@ paths:
 
   /api/admin/server/restart:
     post:
-      tags: [admin-dashboard]
+      tags: [ admin-dashboard ]
       summary: Restart server
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Restart initiated
 
   /api/admin/server/shutdown:
     post:
-      tags: [admin-dashboard]
+      tags: [ admin-dashboard ]
       summary: Shutdown server
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Shutdown initiated
 
   /api/admin/update/check:
     get:
-      tags: [admin-updates]
+      tags: [ admin-updates ]
       summary: Check for binary updates
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Update check result
 
   /api/admin/update/status:
     get:
-      tags: [admin-updates]
+      tags: [ admin-updates ]
       summary: Get update status
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Update status
 
   /api/admin/update/apply:
     post:
-      tags: [admin-updates]
+      tags: [ admin-updates ]
       summary: Apply binary update
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Update applied
 
   /api/admin/update/source/check:
     get:
-      tags: [admin-updates]
+      tags: [ admin-updates ]
       summary: Check for source updates
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Source update check
 
   /api/admin/update/source/apply:
     post:
-      tags: [admin-updates]
+      tags: [ admin-updates ]
       summary: Apply source update (async)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '202':
           description: Source update started
 
   /api/admin/update/source/progress:
     get:
-      tags: [admin-updates]
+      tags: [ admin-updates ]
       summary: Get source update progress
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Build progress
 
   /api/admin/update/config:
     get:
-      tags: [admin-updates]
+      tags: [ admin-updates ]
       summary: Get update config
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Update config
     put:
-      tags: [admin-updates]
+      tags: [ admin-updates ]
       summary: Set update config
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         content:
           application/json:
@@ -4366,7 +4417,7 @@ paths:
               properties:
                 update_method:
                   type: string
-                  enum: [source, binary]
+                  enum: [ source, binary ]
                 branch:
                   type: string
       responses:
@@ -4375,10 +4426,10 @@ paths:
 
   /api/admin/users:
     get:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: List all users
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Users
@@ -4394,17 +4445,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/User'
     post:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Create user
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [ username, password ]
               properties:
                 username:
                   type: string
@@ -4416,24 +4467,24 @@ paths:
                   type: string
                 role:
                   type: string
-                  enum: [admin, viewer]
+                  enum: [ admin, viewer ]
       responses:
         '200':
           description: User created
 
   /api/admin/users/bulk:
     post:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Bulk action on users
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [usernames, action]
+              required: [ usernames, action ]
               properties:
                 usernames:
                   type: array
@@ -4442,7 +4493,7 @@ paths:
                   maxItems: 200
                 action:
                   type: string
-                  enum: [delete, enable, disable]
+                  enum: [ delete, enable, disable ]
       responses:
         '200':
           description: Bulk result
@@ -4458,10 +4509,10 @@ paths:
 
   /api/admin/users/{username}:
     get:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Get user details
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: username
           in: path
@@ -4472,10 +4523,10 @@ paths:
         '200':
           description: User
     put:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Update user
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: username
           in: path
@@ -4492,10 +4543,10 @@ paths:
         '200':
           description: Updated user
     delete:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Delete user
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: username
           in: path
@@ -4508,10 +4559,10 @@ paths:
 
   /api/admin/users/{username}/password:
     post:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Change user password (admin)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: username
           in: path
@@ -4524,7 +4575,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [new_password]
+              required: [ new_password ]
               properties:
                 new_password:
                   type: string
@@ -4535,10 +4586,10 @@ paths:
 
   /api/admin/users/{username}/sessions:
     get:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Get user sessions
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: username
           in: path
@@ -4562,16 +4613,16 @@ paths:
 
   /api/admin/data-deletion-requests:
     get:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: List data deletion requests
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: status
           in: query
           schema:
             type: string
-            enum: [pending, approved, denied]
+            enum: [ pending, approved, denied ]
           description: Filter by status; omit for all
       responses:
         '200':
@@ -4590,10 +4641,10 @@ paths:
 
   /api/admin/data-deletion-requests/{id}/process:
     post:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Process data deletion request
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -4606,11 +4657,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [action]
+              required: [ action ]
               properties:
                 action:
                   type: string
-                  enum: [approve, deny]
+                  enum: [ approve, deny ]
                 admin_notes:
                   type: string
       responses:
@@ -4631,17 +4682,17 @@ paths:
 
   /api/admin/change-password:
     post:
-      tags: [admin-users]
+      tags: [ admin-users ]
       summary: Change admin password
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [current_password, new_password]
+              required: [ current_password, new_password ]
               properties:
                 current_password:
                   type: string
@@ -4654,10 +4705,10 @@ paths:
 
   /api/admin/audit-log:
     get:
-      tags: [admin-audit]
+      tags: [ admin-audit ]
       summary: Get audit log
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: limit
           in: query
@@ -4687,10 +4738,10 @@ paths:
 
   /api/admin/audit-log/export:
     get:
-      tags: [admin-audit]
+      tags: [ admin-audit ]
       summary: Export audit log as CSV
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: CSV file download
@@ -4701,10 +4752,10 @@ paths:
 
   /api/admin/logs:
     get:
-      tags: [admin-audit]
+      tags: [ admin-audit ]
       summary: Get server logs
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: limit
           in: query
@@ -4737,10 +4788,10 @@ paths:
 
   /api/admin/analytics/export:
     get:
-      tags: [admin-analytics]
+      tags: [ admin-analytics ]
       summary: Export analytics as CSV
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: start_date
           in: query
@@ -4758,18 +4809,18 @@ paths:
 
   /api/admin/config:
     get:
-      tags: [admin-config]
+      tags: [ admin-config ]
       summary: Get server configuration
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Configuration map
     put:
-      tags: [admin-config]
+      tags: [ admin-config ]
       summary: Update server configuration
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         content:
           application/json:
@@ -4782,10 +4833,10 @@ paths:
 
   /api/admin/tasks:
     get:
-      tags: [admin-tasks]
+      tags: [ admin-tasks ]
       summary: List background tasks
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Tasks
@@ -4803,10 +4854,10 @@ paths:
 
   /api/admin/tasks/{id}/run:
     post:
-      tags: [admin-tasks]
+      tags: [ admin-tasks ]
       summary: Run task immediately
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -4819,10 +4870,10 @@ paths:
 
   /api/admin/tasks/{id}/enable:
     post:
-      tags: [admin-tasks]
+      tags: [ admin-tasks ]
       summary: Enable task
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -4835,10 +4886,10 @@ paths:
 
   /api/admin/tasks/{id}/disable:
     post:
-      tags: [admin-tasks]
+      tags: [ admin-tasks ]
       summary: Disable task
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -4851,10 +4902,10 @@ paths:
 
   /api/admin/tasks/{id}/stop:
     post:
-      tags: [admin-tasks]
+      tags: [ admin-tasks ]
       summary: Stop running task
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -4867,10 +4918,10 @@ paths:
 
   /api/admin/media:
     get:
-      tags: [admin-media]
+      tags: [ admin-media ]
       summary: List media (admin)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: search
           in: query
@@ -4903,27 +4954,27 @@ paths:
 
   /api/admin/media/scan:
     post:
-      tags: [admin-media]
+      tags: [ admin-media ]
       summary: Trigger media scan
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Scan started
 
   /api/admin/media/bulk:
     post:
-      tags: [admin-media]
+      tags: [ admin-media ]
       summary: Bulk media action
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ids, action]
+              required: [ ids, action ]
               properties:
                 ids:
                   type: array
@@ -4932,7 +4983,7 @@ paths:
                   maxItems: 500
                 action:
                   type: string
-                  enum: [delete, update]
+                  enum: [ delete, update ]
                 data:
                   type: object
                   properties:
@@ -4946,10 +4997,10 @@ paths:
 
   /api/admin/media/{id}:
     put:
-      tags: [admin-media]
+      tags: [ admin-media ]
       summary: Update media item
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -4990,10 +5041,10 @@ paths:
                       data:
                         $ref: '#/components/schemas/MediaItem'
     delete:
-      tags: [admin-media]
+      tags: [ admin-media ]
       summary: Delete media item
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -5006,10 +5057,10 @@ paths:
 
   /api/admin/backups/v2:
     get:
-      tags: [admin-backups]
+      tags: [ admin-backups ]
       summary: List backups
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Backups
@@ -5025,10 +5076,10 @@ paths:
                         items:
                           $ref: '#/components/schemas/BackupEntry'
     post:
-      tags: [admin-backups]
+      tags: [ admin-backups ]
       summary: Create backup
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         content:
           application/json:
@@ -5046,10 +5097,10 @@ paths:
 
   /api/admin/backups/v2/{id}/restore:
     post:
-      tags: [admin-backups]
+      tags: [ admin-backups ]
       summary: Restore backup
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -5062,10 +5113,10 @@ paths:
 
   /api/admin/backups/v2/{id}:
     delete:
-      tags: [admin-backups]
+      tags: [ admin-backups ]
       summary: Delete backup
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -5078,10 +5129,10 @@ paths:
 
   /api/admin/scanner/scan:
     post:
-      tags: [admin-scanner]
+      tags: [ admin-scanner ]
       summary: Run content scan
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         content:
           application/json:
@@ -5098,10 +5149,10 @@ paths:
 
   /api/admin/scanner/stats:
     get:
-      tags: [admin-scanner]
+      tags: [ admin-scanner ]
       summary: Get scanner stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Scanner stats
@@ -5117,10 +5168,10 @@ paths:
 
   /api/admin/scanner/queue:
     get:
-      tags: [admin-scanner]
+      tags: [ admin-scanner ]
       summary: Get review queue
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Review queue
@@ -5136,21 +5187,21 @@ paths:
                         items:
                           $ref: '#/components/schemas/ScanResultItem'
     post:
-      tags: [admin-scanner]
+      tags: [ admin-scanner ]
       summary: Batch review action
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [action, ids]
+              required: [ action, ids ]
               properties:
                 action:
                   type: string
-                  enum: [approve, reject]
+                  enum: [ approve, reject ]
                 ids:
                   type: array
                   items:
@@ -5159,20 +5210,20 @@ paths:
         '200':
           description: Batch result
     delete:
-      tags: [admin-scanner]
+      tags: [ admin-scanner ]
       summary: Clear review queue
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Queue cleared
 
   /api/admin/scanner/approve/{id}:
     post:
-      tags: [admin-scanner]
+      tags: [ admin-scanner ]
       summary: Approve content (set mature flag)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -5185,10 +5236,10 @@ paths:
 
   /api/admin/scanner/reject/{id}:
     post:
-      tags: [admin-scanner]
+      tags: [ admin-scanner ]
       summary: Reject content (clear mature flag)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -5201,10 +5252,10 @@ paths:
 
   /api/admin/hls/stats:
     get:
-      tags: [admin-hls]
+      tags: [ admin-hls ]
       summary: Get HLS stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: HLS stats
@@ -5220,10 +5271,10 @@ paths:
 
   /api/admin/hls/jobs:
     get:
-      tags: [admin-hls]
+      tags: [ admin-hls ]
       summary: List HLS jobs
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: HLS jobs
@@ -5241,10 +5292,10 @@ paths:
 
   /api/admin/hls/jobs/{id}:
     delete:
-      tags: [admin-hls]
+      tags: [ admin-hls ]
       summary: Delete HLS job
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -5257,10 +5308,10 @@ paths:
 
   /api/admin/hls/validate/{id}:
     get:
-      tags: [admin-hls]
+      tags: [ admin-hls ]
       summary: Validate HLS job
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -5282,20 +5333,20 @@ paths:
 
   /api/admin/hls/clean/locks:
     post:
-      tags: [admin-hls]
+      tags: [ admin-hls ]
       summary: Clean stale HLS locks
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Locks removed
 
   /api/admin/hls/clean/inactive:
     post:
-      tags: [admin-hls]
+      tags: [ admin-hls ]
       summary: Clean inactive HLS content
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         content:
           application/json:
@@ -5312,17 +5363,17 @@ paths:
 
   /api/admin/thumbnails/generate:
     post:
-      tags: [admin-thumbnails]
+      tags: [ admin-thumbnails ]
       summary: Generate thumbnail
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id]
+              required: [ id ]
               properties:
                 id:
                   type: string
@@ -5334,10 +5385,10 @@ paths:
 
   /api/admin/thumbnails/cleanup:
     post:
-      tags: [admin-thumbnails]
+      tags: [ admin-thumbnails ]
       summary: Clean up orphan and corrupt thumbnails
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Cleanup result
@@ -5353,10 +5404,10 @@ paths:
 
   /api/admin/thumbnails/stats:
     get:
-      tags: [admin-thumbnails]
+      tags: [ admin-thumbnails ]
       summary: Get thumbnail stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Thumbnail stats
@@ -5372,17 +5423,17 @@ paths:
 
   /api/admin/validator/validate:
     post:
-      tags: [admin-validator]
+      tags: [ admin-validator ]
       summary: Validate media file
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id]
+              required: [ id ]
               properties:
                 id:
                   type: string
@@ -5401,17 +5452,17 @@ paths:
 
   /api/admin/validator/fix:
     post:
-      tags: [admin-validator]
+      tags: [ admin-validator ]
       summary: Fix media file
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id]
+              required: [ id ]
               properties:
                 id:
                   type: string
@@ -5421,10 +5472,10 @@ paths:
 
   /api/admin/validator/stats:
     get:
-      tags: [admin-validator]
+      tags: [ admin-validator ]
       summary: Get validator stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Validator stats
@@ -5440,10 +5491,10 @@ paths:
 
   /api/admin/database/status:
     get:
-      tags: [admin-database]
+      tags: [ admin-database ]
       summary: Get database status
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Database status
@@ -5459,17 +5510,17 @@ paths:
 
   /api/admin/database/query:
     post:
-      tags: [admin-database]
+      tags: [ admin-database ]
       summary: Execute SQL query
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [query]
+              required: [ query ]
               properties:
                 query:
                   type: string
@@ -5488,10 +5539,10 @@ paths:
 
   /api/admin/playlists:
     get:
-      tags: [admin-playlists]
+      tags: [ admin-playlists ]
       summary: List all playlists (admin)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: search
           in: query
@@ -5524,10 +5575,10 @@ paths:
 
   /api/admin/playlists/stats:
     get:
-      tags: [admin-playlists]
+      tags: [ admin-playlists ]
       summary: Get playlist stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Playlist stats
@@ -5543,17 +5594,17 @@ paths:
 
   /api/admin/playlists/bulk:
     post:
-      tags: [admin-playlists]
+      tags: [ admin-playlists ]
       summary: Bulk delete playlists
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ids]
+              required: [ ids ]
               properties:
                 ids:
                   type: array
@@ -5566,10 +5617,10 @@ paths:
 
   /api/admin/playlists/{id}:
     delete:
-      tags: [admin-playlists]
+      tags: [ admin-playlists ]
       summary: Delete playlist (admin)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -5582,10 +5633,10 @@ paths:
 
   /api/admin/security/stats:
     get:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Get security stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Security stats
@@ -5601,10 +5652,10 @@ paths:
 
   /api/admin/security/whitelist:
     get:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Get IP whitelist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Whitelist entries
@@ -5620,17 +5671,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/IPEntry'
     post:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Add IP to whitelist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ip]
+              required: [ ip ]
               properties:
                 ip:
                   type: string
@@ -5643,17 +5694,17 @@ paths:
         '200':
           description: Added
     delete:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Remove IP from whitelist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ip]
+              required: [ ip ]
               properties:
                 ip:
                   type: string
@@ -5663,25 +5714,25 @@ paths:
 
   /api/admin/security/blacklist:
     get:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Get IP blacklist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Blacklist entries
     post:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Add IP to blacklist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ip]
+              required: [ ip ]
               properties:
                 ip:
                   type: string
@@ -5694,17 +5745,17 @@ paths:
         '200':
           description: Added
     delete:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Remove IP from blacklist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ip]
+              required: [ ip ]
               properties:
                 ip:
                   type: string
@@ -5714,10 +5765,10 @@ paths:
 
   /api/admin/security/banned:
     get:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Get banned IPs
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Banned IPs
@@ -5735,17 +5786,17 @@ paths:
 
   /api/admin/security/ban:
     post:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Ban IP
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ip]
+              required: [ ip ]
               properties:
                 ip:
                   type: string
@@ -5758,17 +5809,17 @@ paths:
 
   /api/admin/security/unban:
     post:
-      tags: [admin-security]
+      tags: [ admin-security ]
       summary: Unban IP
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ip]
+              required: [ ip ]
               properties:
                 ip:
                   type: string
@@ -5778,17 +5829,17 @@ paths:
 
   /api/admin/categorizer/file:
     post:
-      tags: [admin-categorizer]
+      tags: [ admin-categorizer ]
       summary: Categorize single file
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [path]
+              required: [ path ]
               properties:
                 path:
                   type: string
@@ -5807,17 +5858,17 @@ paths:
 
   /api/admin/categorizer/directory:
     post:
-      tags: [admin-categorizer]
+      tags: [ admin-categorizer ]
       summary: Categorize directory
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [directory]
+              required: [ directory ]
               properties:
                 directory:
                   type: string
@@ -5827,10 +5878,10 @@ paths:
 
   /api/admin/categorizer/stats:
     get:
-      tags: [admin-categorizer]
+      tags: [ admin-categorizer ]
       summary: Get category stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Category stats
@@ -5846,17 +5897,17 @@ paths:
 
   /api/admin/categorizer/set:
     post:
-      tags: [admin-categorizer]
+      tags: [ admin-categorizer ]
       summary: Set media category
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [path, category]
+              required: [ path, category ]
               properties:
                 path:
                   type: string
@@ -5868,10 +5919,10 @@ paths:
 
   /api/admin/categorizer/by-category:
     get:
-      tags: [admin-categorizer]
+      tags: [ admin-categorizer ]
       summary: Get media by category
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: category
           in: query
@@ -5884,27 +5935,27 @@ paths:
 
   /api/admin/categorizer/clean:
     post:
-      tags: [admin-categorizer]
+      tags: [ admin-categorizer ]
       summary: Clean stale categories
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Stale categories removed
 
   /api/admin/discovery/scan:
     post:
-      tags: [admin-discovery]
+      tags: [ admin-discovery ]
       summary: Scan directory for discovery
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [directory]
+              required: [ directory ]
               properties:
                 directory:
                   type: string
@@ -5925,27 +5976,27 @@ paths:
 
   /api/admin/discovery/suggestions:
     get:
-      tags: [admin-discovery]
+      tags: [ admin-discovery ]
       summary: Get discovery suggestions
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Suggestions
 
   /api/admin/discovery/apply:
     post:
-      tags: [admin-discovery]
+      tags: [ admin-discovery ]
       summary: Apply discovery suggestion
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [original_path]
+              required: [ original_path ]
               properties:
                 original_path:
                   type: string
@@ -5955,10 +6006,10 @@ paths:
 
   /api/admin/suggestions/stats:
     get:
-      tags: [admin-suggestions]
+      tags: [ admin-suggestions ]
       summary: Get suggestion stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Suggestion stats
@@ -5974,10 +6025,10 @@ paths:
 
   /api/admin/remote/sources:
     get:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Get remote sources
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Remote sources
@@ -5993,17 +6044,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/RemoteSourceState'
     post:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Create remote source
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name, url]
+              required: [ name, url ]
               properties:
                 name:
                   type: string
@@ -6021,10 +6072,10 @@ paths:
 
   /api/admin/remote/sources/{source}:
     delete:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Delete remote source
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: source
           in: path
@@ -6037,10 +6088,10 @@ paths:
 
   /api/admin/remote/sources/{source}/sync:
     post:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Sync remote source
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: source
           in: path
@@ -6053,10 +6104,10 @@ paths:
 
   /api/admin/remote/sources/{source}/media:
     get:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Get media from source
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: source
           in: path
@@ -6069,10 +6120,10 @@ paths:
 
   /api/admin/remote/stats:
     get:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Get remote stats
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Remote stats
@@ -6088,27 +6139,27 @@ paths:
 
   /api/admin/remote/media:
     get:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Get all remote media
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Remote media
 
   /api/admin/remote/cache:
     post:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Cache remote media
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [url]
+              required: [ url ]
               properties:
                 url:
                   type: string
@@ -6120,10 +6171,10 @@ paths:
 
   /api/admin/remote/cache/clean:
     post:
-      tags: [admin-remote]
+      tags: [ admin-remote ]
       summary: Clean remote cache
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Cache cleaned
@@ -6132,10 +6183,10 @@ paths:
 
   /api/admin/classify/status:
     get:
-      tags: [admin-classify]
+      tags: [ admin-classify ]
       summary: Get classification service status
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Classify status
@@ -6151,10 +6202,10 @@ paths:
 
   /api/admin/classify/stats:
     get:
-      tags: [admin-classify]
+      tags: [ admin-classify ]
       summary: Get classification statistics
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Classify stats
@@ -6170,17 +6221,17 @@ paths:
 
   /api/admin/classify/file:
     post:
-      tags: [admin-classify]
+      tags: [ admin-classify ]
       summary: Classify a single file
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [path]
+              required: [ path ]
               properties:
                 path:
                   type: string
@@ -6206,17 +6257,17 @@ paths:
 
   /api/admin/classify/directory:
     post:
-      tags: [admin-classify]
+      tags: [ admin-classify ]
       summary: Classify all mature files in a directory (background)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [path]
+              required: [ path ]
               properties:
                 path:
                   type: string
@@ -6240,27 +6291,27 @@ paths:
 
   /api/admin/classify/run-task:
     post:
-      tags: [admin-classify]
+      tags: [ admin-classify ]
       summary: Trigger HF classification background task
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Task started
 
   /api/admin/classify/clear-tags:
     post:
-      tags: [admin-classify]
+      tags: [ admin-classify ]
       summary: Clear classification tags for a media item
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id]
+              required: [ id ]
               properties:
                 id:
                   type: string
@@ -6270,10 +6321,10 @@ paths:
 
   /api/admin/classify/all-pending:
     post:
-      tags: [admin-classify]
+      tags: [ admin-classify ]
       summary: Classify all pending mature items (background)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '202':
           description: Classification started
@@ -6296,10 +6347,10 @@ paths:
 
   /api/admin/extractor/items:
     get:
-      tags: [admin-extractor]
+      tags: [ admin-extractor ]
       summary: List extractor items
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Extractor items
@@ -6315,17 +6366,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/ExtractorItem'
     post:
-      tags: [admin-extractor]
+      tags: [ admin-extractor ]
       summary: Add extractor item (M3U8 stream URL)
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [url]
+              required: [ url ]
               properties:
                 url:
                   type: string
@@ -6346,10 +6397,10 @@ paths:
 
   /api/admin/extractor/items/{id}:
     delete:
-      tags: [admin-extractor]
+      tags: [ admin-extractor ]
       summary: Remove extractor item
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6362,10 +6413,10 @@ paths:
 
   /api/admin/extractor/stats:
     get:
-      tags: [admin-extractor]
+      tags: [ admin-extractor ]
       summary: Get extractor statistics
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Extractor stats
@@ -6383,10 +6434,10 @@ paths:
 
   /api/admin/crawler/targets:
     get:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: List crawler targets
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Crawler targets
@@ -6402,17 +6453,17 @@ paths:
                         items:
                           $ref: '#/components/schemas/CrawlerTarget'
     post:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: Add crawler target
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [url]
+              required: [ url ]
               properties:
                 url:
                   type: string
@@ -6433,10 +6484,10 @@ paths:
 
   /api/admin/crawler/targets/{id}:
     delete:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: Remove crawler target
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6449,10 +6500,10 @@ paths:
 
   /api/admin/crawler/targets/{id}/crawl:
     post:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: Trigger crawl on target
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6477,10 +6528,10 @@ paths:
 
   /api/admin/crawler/discoveries:
     get:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: List crawler discoveries
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: status
           in: query
@@ -6504,10 +6555,10 @@ paths:
 
   /api/admin/crawler/discoveries/{id}/approve:
     post:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: Approve crawler discovery
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6529,10 +6580,10 @@ paths:
 
   /api/admin/crawler/discoveries/{id}/ignore:
     post:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: Ignore crawler discovery
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6545,10 +6596,10 @@ paths:
 
   /api/admin/crawler/discoveries/{id}:
     delete:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: Delete crawler discovery
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6561,10 +6612,10 @@ paths:
 
   /api/admin/crawler/stats:
     get:
-      tags: [admin-crawler]
+      tags: [ admin-crawler ]
       summary: Get crawler statistics
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Crawler stats
@@ -6582,7 +6633,7 @@ paths:
 
   /api/receiver/register:
     post:
-      tags: [receiver]
+      tags: [ receiver ]
       summary: Register slave node
       parameters:
         - name: X-API-Key
@@ -6596,7 +6647,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [id, name]
+              required: [ id, name ]
               properties:
                 id:
                   type: string
@@ -6612,7 +6663,7 @@ paths:
 
   /api/receiver/catalog:
     post:
-      tags: [receiver]
+      tags: [ receiver ]
       summary: Push media catalog from slave
       parameters:
         - name: X-API-Key
@@ -6626,7 +6677,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [slave_id, items]
+              required: [ slave_id, items ]
               properties:
                 slave_id:
                   type: string
@@ -6670,7 +6721,7 @@ paths:
 
   /api/receiver/heartbeat:
     post:
-      tags: [receiver]
+      tags: [ receiver ]
       summary: Slave heartbeat
       parameters:
         - name: X-API-Key
@@ -6684,7 +6735,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [slave_id]
+              required: [ slave_id ]
               properties:
                 slave_id:
                   type: string
@@ -6694,7 +6745,7 @@ paths:
 
   /api/receiver/stream-push/{token}:
     post:
-      tags: [receiver]
+      tags: [ receiver ]
       summary: Push stream data from slave
       parameters:
         - name: token
@@ -6708,10 +6759,10 @@ paths:
 
   /api/receiver/media:
     get:
-      tags: [admin-receiver]
+      tags: [ admin-receiver ]
       summary: List receiver media
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: q
           in: query
@@ -6729,10 +6780,10 @@ paths:
 
   /api/receiver/media/{id}:
     get:
-      tags: [admin-receiver]
+      tags: [ admin-receiver ]
       summary: Get receiver media item
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6745,10 +6796,10 @@ paths:
 
   /api/admin/receiver/slaves:
     get:
-      tags: [admin-receiver]
+      tags: [ admin-receiver ]
       summary: List connected slave nodes
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Slave list
@@ -6766,10 +6817,10 @@ paths:
 
   /api/admin/receiver/stats:
     get:
-      tags: [admin-receiver]
+      tags: [ admin-receiver ]
       summary: Get receiver statistics
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Receiver stats
@@ -6785,10 +6836,10 @@ paths:
 
   /api/admin/receiver/slaves/{id}:
     delete:
-      tags: [admin-receiver]
+      tags: [ admin-receiver ]
       summary: Remove slave node
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6803,10 +6854,10 @@ paths:
 
   /api/admin/downloader/health:
     get:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: Get downloader health status
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Downloader health
@@ -6822,17 +6873,17 @@ paths:
 
   /api/admin/downloader/detect:
     post:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: Detect streams from URL
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [url]
+              required: [ url ]
               properties:
                 url:
                   type: string
@@ -6851,17 +6902,17 @@ paths:
 
   /api/admin/downloader/download:
     post:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: Start a download
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [url, clientId]
+              required: [ url, clientId ]
               properties:
                 url:
                   type: string
@@ -6899,10 +6950,10 @@ paths:
 
   /api/admin/downloader/cancel/{id}:
     post:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: Cancel a download
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -6915,10 +6966,10 @@ paths:
 
   /api/admin/downloader/downloads:
     get:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: List completed downloads
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Download list
@@ -6936,10 +6987,10 @@ paths:
 
   /api/admin/downloader/downloads/{filename}:
     delete:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: Delete a downloaded file
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: filename
           in: path
@@ -6952,10 +7003,10 @@ paths:
 
   /api/admin/downloader/settings:
     get:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: Get downloader settings
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Downloader settings
@@ -6971,10 +7022,10 @@ paths:
 
   /api/admin/downloader/importable:
     get:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: List importable downloaded files
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Importable files
@@ -6992,17 +7043,17 @@ paths:
 
   /api/admin/downloader/import:
     post:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: Import downloaded file into media library
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [filename]
+              required: [ filename ]
               properties:
                 filename:
                   type: string
@@ -7034,10 +7085,10 @@ paths:
 
   /api/admin/downloader/verify:
     get:
-      tags: [admin-downloader]
+      tags: [ admin-downloader ]
       summary: Verify downloader availability
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Downloader verified
@@ -7046,17 +7097,17 @@ paths:
 
   /api/admin/duplicates:
     get:
-      tags: [admin-duplicates]
+      tags: [ admin-duplicates ]
       summary: List duplicate media pairs
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: status
           in: query
           schema:
             type: string
             default: pending
-            enum: [pending, all]
+            enum: [ pending, all ]
       responses:
         '200':
           description: Duplicate list
@@ -7074,10 +7125,10 @@ paths:
 
   /api/admin/duplicates/{id}/resolve:
     post:
-      tags: [admin-duplicates]
+      tags: [ admin-duplicates ]
       summary: Resolve duplicate pair
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7090,11 +7141,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [action]
+              required: [ action ]
               properties:
                 action:
                   type: string
-                  enum: [remove_a, remove_b, keep_both, ignore]
+                  enum: [ remove_a, remove_b, keep_both, ignore ]
       responses:
         '200':
           description: Duplicate resolved
