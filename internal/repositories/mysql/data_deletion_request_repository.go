@@ -89,12 +89,11 @@ func (r *DataDeletionRequestRepositoryImpl) CountPendingByUser(ctx context.Conte
 }
 
 func (r *DataDeletionRequestRepositoryImpl) UpdateStatus(ctx context.Context, id, status, reviewedBy, adminNotes string) error {
-	reviewedAt := time.Now().UTC()
 	result := r.db.WithContext(ctx).Model(&dataDeletionRequestRow{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"status":      status,
-			"reviewed_at": &reviewedAt,
+			"reviewed_at": new(time.Now().UTC()),
 			"reviewed_by": reviewedBy,
 			"admin_notes": adminNotes,
 		})
