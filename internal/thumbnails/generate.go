@@ -36,7 +36,7 @@ func webpQuality(configQuality int) string {
 // generateThumbnail performs the actual thumbnail generation
 func (m *Module) generateThumbnail(job *ThumbnailJob) error {
 	// Ensure output directory exists
-	if err := os.MkdirAll(filepath.Dir(job.OutputPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(job.OutputPath), 0o755); err != nil { //nolint:gosec // G301: thumbnail dirs need world-read for serving
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 

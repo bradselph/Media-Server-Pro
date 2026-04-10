@@ -95,7 +95,7 @@ func (m *Module) Start(_ context.Context) error {
 	// remaining modules (scanner, thumbnails, …) are still initializing.
 	m.startupDelay = defaultStartupDelay
 
-	// Use a background context for task goroutines so they aren't cancelled
+	// Use a background context for task goroutines so they aren't canceled
 	// when the server's module-startup context completes.
 	taskCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = taskCtx
@@ -190,8 +190,8 @@ func (m *Module) RegisterTask(opts TaskRegistration) {
 	}
 }
 
-// waitForStartupDelay waits for the configured startup delay unless ctx is cancelled.
-// Returns false if context was cancelled during the wait, true otherwise.
+// waitForStartupDelay waits for the configured startup delay unless ctx is canceled.
+// Returns false if context was canceled during the wait, true otherwise.
 func (m *Module) waitForStartupDelay(ctx context.Context, task *Task) bool {
 	m.mu.RLock()
 	delay := m.startupDelay

@@ -45,7 +45,7 @@ func TestPadNumber_Empty(t *testing.T) {
 func TestIsPathInAllowedDirs_Inside(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "video.mp4")
-	os.WriteFile(path, []byte("test"), 0644)
+	os.WriteFile(path, []byte("test"), 0o600)
 
 	absPath, _ := filepath.Abs(path)
 	if !isPathInAllowedDirs(absPath, []string{dir}) {

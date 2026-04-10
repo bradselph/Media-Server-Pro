@@ -23,7 +23,7 @@ func TempDir(t *testing.T) string {
 func WriteTempFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := dir + "/" + name
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("testutil.WriteTempFile: %v", err)
 	}
 	return path

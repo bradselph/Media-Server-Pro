@@ -63,7 +63,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting thumbnail module...")
 
 	// Ensure thumbnail directory exists
-	if err := os.MkdirAll(m.thumbnailDir, 0755); err != nil {
+	if err := os.MkdirAll(m.thumbnailDir, 0o755); err != nil { //nolint:gosec // G301: thumbnail dir needs world-read for serving
 		m.log.Error("Failed to create thumbnail directory: %v", err)
 		return err
 	}
