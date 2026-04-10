@@ -181,7 +181,7 @@ func ginETags() gin.HandlerFunc {
 
 		etag := `"` + hashFNV1a(blw.body.Bytes()) + `"`
 		c.Header("ETag", etag)
-		if match := c.GetHeader("If-None-Match"); match == etag {
+		if c.GetHeader("If-None-Match") == etag {
 			c.Status(http.StatusNotModified)
 			return
 		}

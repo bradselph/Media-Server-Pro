@@ -541,7 +541,7 @@ func (h *Handler) ClearWatchHistory(c *gin.Context) {
 		if err != nil {
 			// Check receiver media
 			if h.receiver != nil {
-				if ri := h.receiver.GetMediaItem(mediaID); ri != nil {
+				if h.receiver.GetMediaItem(mediaID) != nil {
 					mediaPath = "receiver:" + mediaID
 				}
 			}

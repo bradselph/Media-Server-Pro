@@ -712,7 +712,7 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 	}
 
 	// Try WebSocket-based streaming first (slave pushes data).
-	if sw := m.getSlaveWS(item.SlaveID); sw != nil {
+	if m.getSlaveWS(item.SlaveID) != nil {
 		err := m.proxyViaWS(w, r, item, mediaID)
 		if err == nil {
 			return nil

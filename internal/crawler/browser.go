@@ -171,7 +171,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	go func() {
 		for {
 			var msg cdpMsg
-			if readErr := conn.ReadJSON(&msg); readErr != nil {
+			if conn.ReadJSON(&msg) != nil {
 				close(events)
 				return
 			}
@@ -311,7 +311,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 					Headers map[string]string `json:"headers"`
 				} `json:"response"`
 			}
-			if unmarshalErr := json.Unmarshal(evt.Params, &p); unmarshalErr != nil {
+			if json.Unmarshal(evt.Params, &p) != nil {
 				continue
 			}
 

@@ -157,7 +157,7 @@ func (m *Module) Start(_ context.Context) error {
 	if !isDirWritable(m.backupDir) {
 		if ep, err := os.Executable(); err == nil {
 			fallback := filepath.Join(filepath.Dir(ep), "backups")
-			if mkErr := os.MkdirAll(fallback, 0o750); mkErr == nil {
+			if os.MkdirAll(fallback, 0o750) == nil {
 				m.log.Warn("Backup dir %s not writable — using fallback: %s", m.backupDir, fallback)
 				m.backupDir = fallback
 			}

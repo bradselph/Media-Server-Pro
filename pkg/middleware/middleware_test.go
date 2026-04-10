@@ -129,7 +129,7 @@ func TestGinSecurityHeaders_NoHSTS_NotHTTPS(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test", nil)
 	r.ServeHTTP(w, req)
 
-	if got := w.Header().Get("Strict-Transport-Security"); got != "" {
+	if w.Header().Get("Strict-Transport-Security") != "" {
 		t.Error("HSTS should not be set for non-HTTPS requests")
 	}
 }
@@ -158,7 +158,7 @@ func TestGinCORS_AllowAll(t *testing.T) {
 		t.Errorf("ACAO = %q, want *", got)
 	}
 	// Credentials should NOT be set when using wildcard "*"
-	if cred := w.Header().Get("Access-Control-Allow-Credentials"); cred == "true" {
+	if w.Header().Get("Access-Control-Allow-Credentials") == "true" {
 		t.Error("Credentials should not be set with wildcard origin")
 	}
 }
@@ -195,7 +195,7 @@ func TestGinCORS_SpecificOrigin(t *testing.T) {
 	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://allowed.com" {
 		t.Errorf("allowed origin: ACAO = %q", got)
 	}
-	if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+	if w.Header().Get("Access-Control-Allow-Credentials") != "true" {
 		t.Error("credentials should be true for specific origin")
 	}
 
