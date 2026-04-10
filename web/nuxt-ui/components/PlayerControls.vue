@@ -96,7 +96,7 @@ function onSeekBarTouchEnd(e: TouchEvent) {
 
 function copyLinkAtTime() {
   const t = Math.floor(props.currentTime)
-  const url = new URL(window.location.href)
+  const url = new URL(globalThis.location.href)
   url.searchParams.set('t', String(t))
   navigator.clipboard.writeText(url.toString()).then(() => {
     toast.add({ title: `Link copied at ${formatDuration(t)}`, color: 'success', icon: 'i-lucide-link' })
