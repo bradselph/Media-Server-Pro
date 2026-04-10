@@ -132,7 +132,7 @@ func NewTestEnv(t *testing.T) *TestEnv {
 
 	// Create the temp subdirectories so modules that check them don't fail.
 	for _, sub := range []string{"videos", "music", "data", "thumbnails", "hls_cache", "playlists", "uploads", "temp", "logs", "analytics"} {
-		if err := os.MkdirAll(filepath.Join(tmpDir, sub), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(tmpDir, sub), 0o750); err != nil {
 			t.Fatalf("testutil.NewTestEnv: mkdir %s: %v", sub, err)
 		}
 	}

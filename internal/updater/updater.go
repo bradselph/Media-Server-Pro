@@ -148,7 +148,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting updater module...")
 
 	// Ensure backup directory exists
-	if err := os.MkdirAll(m.backupDir, 0755); err != nil {
+	if err := os.MkdirAll(m.backupDir, 0o750); err != nil {
 		m.log.Warn("Failed to create backup directory: %v", err)
 	}
 
@@ -157,7 +157,7 @@ func (m *Module) Start(_ context.Context) error {
 	if !isDirWritable(m.backupDir) {
 		if ep, err := os.Executable(); err == nil {
 			fallback := filepath.Join(filepath.Dir(ep), "backups")
-			if mkErr := os.MkdirAll(fallback, 0755); mkErr == nil {
+			if mkErr := os.MkdirAll(fallback, 0o750); mkErr == nil {
 				m.log.Warn("Backup dir %s not writable — using fallback: %s", m.backupDir, fallback)
 				m.backupDir = fallback
 			}

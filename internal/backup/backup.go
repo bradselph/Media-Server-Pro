@@ -425,7 +425,7 @@ func (m *Module) extractFile(file *zip.File) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o750); err != nil {
 		return err
 	}
 	return m.copyZipEntryToFile(file, destPath)
