@@ -403,7 +403,7 @@ func (m *Module) validateAndPrepareUpload(fh *multipart.FileHeader, scope Upload
 	}
 	// MkdirAll is only needed for local backends; remote backends (S3/B2) have no real directories.
 	if m.store == nil || m.store.IsLocal() {
-		if err := os.MkdirAll(destDir, 0755); err != nil {
+		if err := os.MkdirAll(destDir, 0o755); err != nil { //nolint:gosec // G301: upload dirs need world-read for serving
 			return nil, fmt.Errorf("failed to create directory: %w", err)
 		}
 	}

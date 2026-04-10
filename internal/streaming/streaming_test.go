@@ -367,7 +367,7 @@ func TestStream_FullFile(t *testing.T) {
 	dir := t.TempDir()
 	fpath := filepath.Join(dir, "test.mp4")
 	content := []byte("fake video content for testing")
-	os.WriteFile(fpath, content, 0644)
+	os.WriteFile(fpath, content, 0o600)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/stream", nil)
@@ -397,7 +397,7 @@ func TestStream_RangeRequest(t *testing.T) {
 	for i := range content {
 		content[i] = byte(i % 256)
 	}
-	os.WriteFile(fpath, content, 0644)
+	os.WriteFile(fpath, content, 0o600)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/stream", nil)
@@ -435,7 +435,7 @@ func TestDownload_FullFile(t *testing.T) {
 	dir := t.TempDir()
 	fpath := filepath.Join(dir, "test.mp4")
 	content := []byte("download test content")
-	os.WriteFile(fpath, content, 0644)
+	os.WriteFile(fpath, content, 0o600)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/download", nil)

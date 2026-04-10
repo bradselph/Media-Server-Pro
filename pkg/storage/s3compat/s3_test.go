@@ -253,6 +253,6 @@ func TestBackendImplementsRangeOpener(_ *testing.T) {
 	var _ storage.RangeOpener = (*Backend)(nil)
 }
 
-func TestBackendImplementsPresignURLer(t *testing.T) {
+func TestBackendImplementsPresignURLer(_ *testing.T) {
 	var _ storage.PresignURLer = (*Backend)(nil)
 }

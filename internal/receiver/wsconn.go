@@ -308,7 +308,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 // setSlaveWS stores a WebSocket connection for a slave.
 // If a connection already exists for this slave it is replaced: the old
 // connection is closed, its ping goroutine is stopped immediately (M-22),
-// and any pending streams that were sent over it are cancelled so that
+// and any pending streams that were sent over it are canceled so that
 // waiting proxy handlers unblock promptly (M-21).
 func (m *Module) setSlaveWS(slaveID string, sw *slaveWS) {
 	m.wsMu.Lock()

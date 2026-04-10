@@ -165,7 +165,7 @@ func ExtractFrames(ctx context.Context, opts ExtractFramesOptions) ([]string, er
 		return nil, fmt.Errorf("invalid duration %.2f for %s", duration, videoPath)
 	}
 	timestamps := computeTimestamps(duration, count)
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
+	if err := os.MkdirAll(tempDir, 0o755); err != nil { //nolint:gosec // G301: temp frame dir for ffmpeg extraction
 		return nil, err
 	}
 	baseName := sanitizeBaseName(videoPath)

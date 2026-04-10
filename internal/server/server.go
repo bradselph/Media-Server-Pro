@@ -349,7 +349,7 @@ func (s *Server) Start() error {
 // startWatchdog sends periodic WATCHDOG=1 pings to systemd so that the service
 // is killed and restarted if the process deadlocks or becomes unresponsive.
 // The interval is half the WatchdogSec value systemd passes in WATCHDOG_USEC.
-// This goroutine exits when ctx is cancelled (i.e., on graceful shutdown).
+// This goroutine exits when ctx is canceled (i.e., on graceful shutdown).
 func (s *Server) startWatchdog(ctx context.Context) {
 	watchdogUSec := os.Getenv("WATCHDOG_USEC")
 	if watchdogUSec == "" {

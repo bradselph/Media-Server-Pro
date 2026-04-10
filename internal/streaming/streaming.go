@@ -215,7 +215,7 @@ type StreamResponse struct {
 func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamRequest) error {
 	m.log.Debug("Stream request for %s from %s", req.Path, req.IPAddress)
 
-	// Use request context so S3 operations are cancelled when the client disconnects.
+	// Use request context so S3 operations are canceled when the client disconnects.
 	ctx := r.Context()
 
 	// Get file size via stat (S3 uses backend; local always uses os.Stat directly

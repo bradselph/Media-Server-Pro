@@ -485,8 +485,8 @@ func TestCheckQuota_WithinQuota(t *testing.T) {
 func TestCheckQuota_ExceedsQuota(t *testing.T) {
 	dir := t.TempDir()
 	userDir := filepath.Join(dir, "user1")
-	os.MkdirAll(userDir, 0755)
-	os.WriteFile(filepath.Join(userDir, "existing.mp4"), make([]byte, 1024), 0644)
+	os.MkdirAll(userDir, 0o750)
+	os.WriteFile(filepath.Join(userDir, "existing.mp4"), make([]byte, 1024), 0o600)
 
 	m := newTestModule(t)
 	m.uploadDir = dir
