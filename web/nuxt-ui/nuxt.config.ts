@@ -73,4 +73,21 @@ export default defineNuxtConfig({
 
     devtools: {enabled: true},
     compatibilityDate: '2024-11-01',
+
+    hooks: {
+        // nuxt-ui unconditionally emits a @theme static { --color-old-neutral-* } block
+        // in .nuxt/ui.css as a legacy backward-compat shim. Those variables are never
+        // referenced by any Tailwind utility or nuxt-ui component — strip them after
+        // every prepare/build so the file stays clean.
+        async 'prepare:types'() {
+            const { readFileSync, writeFileSync, existsSync } = await import('fs')
+            const { resolve } = await import('path')
+            const cssFile = resolve('.nuxt/ui.css')
+            if (existsSync(cssFile)) {
+                const patched = readFileSync(cssFile, 'utf-8')
+                    .replace(/@theme static \{[\s\S]*?\}\n\n/, '')
+                writeFileSync(cssFile, patched)
+            }
+        },
+    },
 })

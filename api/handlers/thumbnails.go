@@ -149,13 +149,15 @@ func (h *Handler) tryServeReceiverThumbnail(c *gin.Context, id string) bool {
 }
 
 // serveCensoredPlaceholderOrForbidden serves the censored placeholder image or writes 403 if unavailable.
+// no-store prevents the browser from caching this response under the same URL as the real thumbnail;
+// without it, a guest visit would poison the browser cache so the censored image shows for authenticated users too.
 func (h *Handler) serveCensoredPlaceholderOrForbidden(c *gin.Context) {
 	censoredPath, err := h.thumbnails.GetPlaceholderPath("censored")
 	if err != nil {
 		writeError(c, http.StatusForbidden, "Mature content")
 		return
 	}
-	c.Header("Cache-Control", "public, max-age=2592000, immutable")
+	c.Header("Cache-Control", "no-store")
 	c.Header("Content-Type", "image/jpeg")
 	http.ServeFile(c.Writer, c.Request, censoredPath)
 }
@@ -189,7 +191,8 @@ func (h *Handler) ensureThumbnailGenerated(c *gin.Context, path, id string) bool
 }
 
 // serveThumbnailFileResponse writes the thumbnail file to the response (or HEAD). Returns false if file missing (error written).
-func (h *Handler) serveThumbnailFileResponse(c *gin.Context, thumbFilePath, contentType string) bool {
+// mature controls whether to use private caching (mature content must not be shared across users by proxies or browsers).
+func (h *Handler) serveThumbnailFileResponse(c *gin.Context, thumbFilePath, contentType string, mature bool) bool {
 	if _, err := os.Stat(thumbFilePath); os.IsNotExist(err) {
 		h.log.Error("Thumbnail file does not exist: %s", thumbFilePath)
 		writeError(c, http.StatusNotFound, "Thumbnail not found")
@@ -200,7 +203,12 @@ func (h *Handler) serveThumbnailFileResponse(c *gin.Context, thumbFilePath, cont
 		c.Status(http.StatusOK)
 		return true
 	}
-	c.Header("Cache-Control", "public, max-age=604800")
+	cacheControl := "public, max-age=604800"
+	if mature {
+		// private: browser may cache for the current user only; CDNs/proxies must not share it.
+		cacheControl = "private, max-age=604800"
+	}
+	c.Header("Cache-Control", cacheControl)
 	c.Header("Content-Type", contentType)
 	http.ServeFile(c.Writer, c.Request, thumbFilePath)
 	return true
@@ -228,8 +236,13 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	if !h.ensureThumbnailGenerated(c, path, id) {
 		return
 	}
+	// Determine whether this item is mature so we can use private caching.
+	isMature := false
+	if item, err := h.media.GetMediaByID(id); err == nil && item != nil {
+		isMature = item.IsMature
+	}
 	thumbFilePath, contentType := h.getThumbnailFilePathAndType(c, id)
-	h.serveThumbnailFileResponse(c, thumbFilePath, contentType)
+	h.serveThumbnailFileResponse(c, thumbFilePath, contentType, isMature)
 }
 
 // ServeThumbnailFile serves a thumbnail image file by filename from the thumbnails directory.
@@ -274,14 +287,18 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	if idx := strings.LastIndex(mediaID, "_preview_"); idx != -1 {
 		mediaID = mediaID[:idx]
 	}
+	isMature := false
 	if item, err := h.media.GetMediaByID(mediaID); err == nil && item != nil && item.IsMature {
+		isMature = true
 		canView := false
 		if user := getUser(c); user != nil {
 			canView = user.Permissions.CanViewMature && user.Preferences.ShowMature
 		}
 		if !canView {
 			if censoredPath, cErr := h.thumbnails.GetPlaceholderPath("censored"); cErr == nil {
-				c.Header("Cache-Control", "private, max-age=300")
+				// no-store prevents browser caching the censored image under the real thumbnail URL,
+				// which would cause authenticated users to see the red placeholder after a guest visit.
+				c.Header("Cache-Control", "no-store")
 				c.Header("Content-Type", "image/jpeg")
 				http.ServeFile(c.Writer, c.Request, censoredPath)
 				return
@@ -309,7 +326,11 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 		}
 	}
 
-	c.Header("Cache-Control", "public, max-age=604800")
+	cacheControl := "public, max-age=604800"
+	if isMature {
+		cacheControl = "private, max-age=604800"
+	}
+	c.Header("Cache-Control", cacheControl)
 	c.Header("Content-Type", contentType)
 	http.ServeFile(c.Writer, c.Request, filePath)
 }

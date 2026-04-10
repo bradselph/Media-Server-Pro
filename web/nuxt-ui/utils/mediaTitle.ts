@@ -15,6 +15,12 @@ function cleanupFilenameLikeTitle(input: string): string {
     const noTimestamp = noExt.replace(/_\d{4}[-_]\d{2}[-_]\d{2}T\d{2}[-_]\d{2}[-_]\d{2}$/, '')
     const normalized = noTimestamp
         .replace(/[_\.-]+/g, ' ')
+        // Split camelCase / PascalCase: insert space between a lowercase letter and an uppercase letter
+        // e.g. "TwinsJoeyandSami" → "Twins Joeyand Sami" → after next step → cleaned further
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        // Split boundary between a letter and a digit (and vice versa): "casting4way" → "casting 4 way"
+        .replace(/([a-zA-Z])(\d)/g, '$1 $2')
+        .replace(/(\d)([a-zA-Z])/g, '$1 $2')
         .replace(/\s+/g, ' ')
         .trim()
 

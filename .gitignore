@@ -81,3 +81,4 @@ github-runner/.runner.env
 
 #Ignore cursor AI rules
 .cursor\rules\codacy.mdc
+/problems
