@@ -195,16 +195,14 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 	return job, true
 }
 
-// withResolvedHLSJob resolves the HLS job then runs serveFn. Returns false if resolution or serve failed (error already written).
-func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID, notFoundMsg string, serveFn func() error) bool {
+// withResolvedHLSJob resolves the HLS job then runs serveFn. Errors are written to c.
+func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID, notFoundMsg string, serveFn func() error) {
 	if _, ok := h.resolveHLSJobForServe(c, jobID); !ok {
-		return false
+		return
 	}
 	if err := serveFn(); err != nil {
 		writeError(c, http.StatusNotFound, notFoundMsg)
-		return false
 	}
-	return true
 }
 
 // ServeMasterPlaylist serves the HLS master playlist
