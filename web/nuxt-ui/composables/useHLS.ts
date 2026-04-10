@@ -326,7 +326,7 @@ export function useHLS(
                     // click "Switch to HLS" if the banner is shown.
                     const settings = await settingsApi.get().catch(() => null)
                     if (settings?.streaming?.adaptive !== false) {
-                        activateHLS()
+                        await activateHLS()
                     }
                 } else if (status.status === 'running') {
                     jobRunning.value = true
@@ -361,7 +361,7 @@ export function useHLS(
                                 }
                                 // Auto-activate once generation completes (if adaptive is enabled)
                                 const s = await settingsApi.get().catch(() => null)
-                                if (s?.streaming?.adaptive !== false) activateHLS()
+                                if (s?.streaming?.adaptive !== false) await activateHLS()
                             } else if (updated.status !== 'running' && updated.status !== 'pending') {
                                 jobRunning.value = false
                                 if (pollTimer) {

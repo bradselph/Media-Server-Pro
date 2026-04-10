@@ -163,7 +163,7 @@ func TestNewBackend_UnknownBackend(t *testing.T) {
 	}
 	_, err := f.NewBackend(context.Background(), "videos", "/data")
 	if err == nil {
-		t.Error("expected error for unknown backend")
+		t.Fatal("expected error for unknown backend")
 	}
 	if !strings.Contains(err.Error(), `unknown backend "gcs"`) {
 		t.Errorf("error = %q, want to contain 'unknown backend'", err.Error())

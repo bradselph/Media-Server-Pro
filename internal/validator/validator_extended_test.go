@@ -253,7 +253,7 @@ func TestGetCachedResult_Hit(t *testing.T) {
 	}
 	result, ok := m.getCachedResult("/test.mp4")
 	if !ok {
-		t.Error("cache hit should return true")
+		t.Fatal("cache hit should return true")
 	}
 	if result.Status != StatusValidated {
 		t.Errorf("status = %q, want validated", result.Status)

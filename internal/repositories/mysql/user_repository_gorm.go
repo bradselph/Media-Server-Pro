@@ -49,6 +49,26 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	})
 }
 
+// loadRelated populates Permissions and Preferences on a fetched user.
+func (r *UserRepository) loadRelated(ctx context.Context, user *models.User) error {
+	perms, err := r.permsRepo.Get(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+	if perms != nil {
+		user.Permissions = *perms
+	}
+
+	prefs, err := r.prefsRepo.Get(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+	if prefs != nil {
+		user.Preferences = *prefs
+	}
+	return nil
+}
+
 // GetByUsername retrieves a user by username with all related data.
 // Errors from permsRepo.Get and prefsRepo.Get are propagated so transient DB failures fail the request.
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
@@ -60,27 +80,13 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 		}
 		return nil, err
 	}
-
-	perms, err := r.permsRepo.Get(ctx, user.ID)
-	if err != nil {
+	if err := r.loadRelated(ctx, &user); err != nil {
 		return nil, err
 	}
-	if perms != nil {
-		user.Permissions = *perms
-	}
-
-	prefs, err := r.prefsRepo.Get(ctx, user.ID)
-	if err != nil {
-		return nil, err
-	}
-	if prefs != nil {
-		user.Preferences = *prefs
-	}
-
 	return &user, nil
 }
 
-// GetByID retrieves a user by ID with all related data
+// GetByID retrieves a user by ID with all related data.
 func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, error) {
 	var user models.User
 	err := r.db.WithContext(ctx).First(&user, "id = ?", id).Error
@@ -90,30 +96,16 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 		}
 		return nil, err
 	}
-
-	perms, err := r.permsRepo.Get(ctx, user.ID)
-	if err != nil {
+	if err := r.loadRelated(ctx, &user); err != nil {
 		return nil, err
 	}
-	if perms != nil {
-		user.Permissions = *perms
-	}
-
-	prefs, err := r.prefsRepo.Get(ctx, user.ID)
-	if err != nil {
-		return nil, err
-	}
-	if prefs != nil {
-		user.Preferences = *prefs
-	}
-
 	return &user, nil
 }
 
 // marshalJSONParam marshals a value to a JSON string for use in GORM Updates maps.
 // database/sql cannot bind complex Go types (maps, slices) directly; they must be
 // pre-serialized to JSON strings. Returns nil (SQL NULL) if v is nil.
-func marshalJSONParam(v interface{}) interface{} {
+func marshalJSONParam(v any) any {
 	if v == nil {
 		return nil
 	}
@@ -129,7 +121,7 @@ func marshalJSONParam(v interface{}) interface{} {
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// JSON fields must be pre-serialized: database/sql cannot bind map/slice types directly.
-		userUpdates := map[string]interface{}{
+		userUpdates := map[string]any{
 			"username":            user.Username,
 			"email":               user.Email,
 			"role":                user.Role,
