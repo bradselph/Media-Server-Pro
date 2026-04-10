@@ -7,6 +7,10 @@ import (
 	"media-server-pro/internal/testutil"
 )
 
+const (
+	msgExpect503Thumbnails = "expected 503 (thumbnails module not available), got %d"
+)
+
 // TestGetThumbnail_MissingID tests thumbnail request without an id parameter.
 func TestGetThumbnail_MissingID(t *testing.T) {
 	ts := testutil.NewTestServer(t)
@@ -16,7 +20,7 @@ func TestGetThumbnail_MissingID(t *testing.T) {
 
 	// Thumbnails module not wired in test server — expect 503 (module unavailable)
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("expected 503 (thumbnails module not available), got %d", resp.StatusCode)
+		t.Errorf(msgExpect503Thumbnails, resp.StatusCode)
 	}
 }
 
@@ -28,7 +32,7 @@ func TestGetThumbnailPreviews_MissingID(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("expected 503 (thumbnails module not available), got %d", resp.StatusCode)
+		t.Errorf(msgExpect503Thumbnails, resp.StatusCode)
 	}
 }
 
@@ -40,7 +44,7 @@ func TestGetThumbnailBatch_MissingIDs(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("expected 503 (thumbnails module not available), got %d", resp.StatusCode)
+		t.Errorf(msgExpect503Thumbnails, resp.StatusCode)
 	}
 }
 

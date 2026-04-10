@@ -7,6 +7,11 @@ import (
 	"media-server-pro/internal/testutil"
 )
 
+const (
+	apiAdminStats  = "/api/admin/stats"
+	apiAdminSystem = "/api/admin/system"
+)
+
 // TestAdminEndpoints_RequireAuth verifies that all admin endpoints reject unauthenticated requests.
 func TestAdminEndpoints_RequireAuth(t *testing.T) {
 	ts := testutil.NewTestServer(t)
@@ -15,8 +20,8 @@ func TestAdminEndpoints_RequireAuth(t *testing.T) {
 		method string
 		path   string
 	}{
-		{"GET", "/api/admin/stats"},
-		{"GET", "/api/admin/system"},
+		{"GET", apiAdminStats},
+		{"GET", apiAdminSystem},
 		{"GET", "/api/admin/streams"},
 		{"GET", "/api/admin/uploads/active"},
 		{"POST", "/api/admin/cache/clear"},
@@ -59,7 +64,7 @@ func TestAdminStats_WithAdminAuth(t *testing.T) {
 	ts.Env.CreateTestAdmin(t, "admin_test", "admin_pass_123")
 	sessionID := ts.Env.LoginUser(t, "admin_test", "admin_pass_123")
 
-	resp := ts.AuthRequest("GET", "/api/admin/stats", nil, sessionID)
+	resp := ts.AuthRequest("GET", apiAdminStats, nil, sessionID)
 	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
@@ -89,7 +94,7 @@ func TestAdminSystem_WithAdminAuth(t *testing.T) {
 	ts.Env.CreateTestAdmin(t, "admin_sys", "admin_pass_123")
 	sessionID := ts.Env.LoginUser(t, "admin_sys", "admin_pass_123")
 
-	resp := ts.AuthRequest("GET", "/api/admin/system", nil, sessionID)
+	resp := ts.AuthRequest("GET", apiAdminSystem, nil, sessionID)
 	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
@@ -133,8 +138,8 @@ func TestAdminEndpoints_ViewerDenied(t *testing.T) {
 	sessionID := ts.Env.LoginUser(t, "viewer_test", "viewer_pass_123")
 
 	endpoints := []string{
-		"/api/admin/stats",
-		"/api/admin/system",
+		apiAdminStats,
+		apiAdminSystem,
 		"/api/admin/users",
 		"/api/admin/config",
 	}

@@ -10,6 +10,12 @@ import (
 	"media-server-pro/internal/testutil"
 )
 
+const (
+	apiAuthLogin          = "/api/auth/login"
+	apiAuthSession        = "/api/auth/session"
+	msgExpectSuccessFalse = "expected success=false, got %v"
+)
+
 // loginPayload returns a JSON body for login requests.
 func loginPayload(username, password string) *bytes.Reader {
 	b, _ := json.Marshal(map[string]string{"username": username, "password": password})
@@ -24,7 +30,7 @@ func TestAuthFlow_LoginLogout(t *testing.T) {
 	ts.Env.CreateTestUser(t, "testlogin", "password123")
 
 	// --- Login ---
-	resp := ts.Request("POST", "/api/auth/login", loginPayload("testlogin", "password123"))
+	resp := ts.Request("POST", apiAuthLogin, loginPayload("testlogin", "password123"))
 	result := ts.ParseJSON(resp)
 	resp.Body.Close()
 
@@ -48,7 +54,7 @@ func TestAuthFlow_LoginLogout(t *testing.T) {
 	}
 
 	// --- Check session (authenticated) ---
-	resp = ts.AuthRequest("GET", "/api/auth/session", nil, sessionID)
+	resp = ts.AuthRequest("GET", apiAuthSession, nil, sessionID)
 	result = ts.ParseJSON(resp)
 	resp.Body.Close()
 
@@ -70,7 +76,7 @@ func TestAuthFlow_LoginLogout(t *testing.T) {
 	}
 
 	// --- Check session after logout (unauthenticated) ---
-	resp = ts.AuthRequest("GET", "/api/auth/session", nil, sessionID)
+	resp = ts.AuthRequest("GET", apiAuthSession, nil, sessionID)
 	result = ts.ParseJSON(resp)
 	resp.Body.Close()
 
@@ -86,7 +92,7 @@ func TestAuthFlow_LoginInvalidCredentials(t *testing.T) {
 
 	ts.Env.CreateTestUser(t, "wrongpass", "password123")
 
-	resp := ts.Request("POST", "/api/auth/login", loginPayload("wrongpass", "badpassword"))
+	resp := ts.Request("POST", apiAuthLogin, loginPayload("wrongpass", "badpassword"))
 	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
@@ -94,7 +100,7 @@ func TestAuthFlow_LoginInvalidCredentials(t *testing.T) {
 		t.Fatalf("expected 401, got %d", resp.StatusCode)
 	}
 	if result["success"] != false {
-		t.Errorf("expected success=false, got %v", result["success"])
+		t.Errorf(msgExpectSuccessFalse, result["success"])
 	}
 }
 
@@ -102,7 +108,7 @@ func TestAuthFlow_LoginInvalidCredentials(t *testing.T) {
 func TestAuthFlow_LoginMissingBody(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
-	resp := ts.Request("POST", "/api/auth/login", bytes.NewReader([]byte("{}")))
+	resp := ts.Request("POST", apiAuthLogin, bytes.NewReader([]byte("{}")))
 	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
@@ -110,7 +116,7 @@ func TestAuthFlow_LoginMissingBody(t *testing.T) {
 		t.Fatalf("expected 400 or 401, got %d", resp.StatusCode)
 	}
 	if result["success"] != false {
-		t.Errorf("expected success=false, got %v", result["success"])
+		t.Errorf(msgExpectSuccessFalse, result["success"])
 	}
 }
 
@@ -127,7 +133,7 @@ func TestAuthFlow_ProtectedEndpointWithoutSession(t *testing.T) {
 		t.Fatalf("expected 401, got %d", resp.StatusCode)
 	}
 	if result["success"] != false {
-		t.Errorf("expected success=false, got %v", result["success"])
+		t.Errorf(msgExpectSuccessFalse, result["success"])
 	}
 }
 
@@ -135,7 +141,7 @@ func TestAuthFlow_ProtectedEndpointWithoutSession(t *testing.T) {
 func TestAuthFlow_SessionCheckUnauthenticated(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
-	resp := ts.Request("GET", "/api/auth/session", nil)
+	resp := ts.Request("GET", apiAuthSession, nil)
 	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
@@ -194,7 +200,7 @@ func TestAuthFlow_ChangePassword(t *testing.T) {
 	}
 
 	// Verify old password no longer works.
-	resp = ts.Request("POST", "/api/auth/login", loginPayload("pwduser", "oldpass123"))
+	resp = ts.Request("POST", apiAuthLogin, loginPayload("pwduser", "oldpass123"))
 	if resp.StatusCode != http.StatusUnauthorized {
 		resp.Body.Close()
 		t.Error("old password should no longer work")
@@ -203,7 +209,7 @@ func TestAuthFlow_ChangePassword(t *testing.T) {
 	}
 
 	// Verify new password works.
-	resp = ts.Request("POST", "/api/auth/login", loginPayload("pwduser", "newpass456"))
+	resp = ts.Request("POST", apiAuthLogin, loginPayload("pwduser", "newpass456"))
 	ts.ParseJSON(resp)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

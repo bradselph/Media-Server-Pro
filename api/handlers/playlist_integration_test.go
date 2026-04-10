@@ -9,6 +9,11 @@ import (
 	"media-server-pro/internal/testutil"
 )
 
+const (
+	apiPlaylists      = "/api/playlists"
+	apiPlaylistsSlash = "/api/playlists/"
+)
+
 // playlistPayload returns a JSON body for playlist creation.
 func playlistPayload(name, description string) *bytes.Reader {
 	b, _ := json.Marshal(map[string]string{"name": name, "description": description})
@@ -24,7 +29,7 @@ func TestPlaylistCRUD(t *testing.T) {
 	sessionID := ts.Env.LoginUser(t, "playlistuser", "password123")
 
 	// --- Create playlist ---
-	resp := ts.AuthRequest("POST", "/api/playlists", playlistPayload("My Playlist", "A test playlist"), sessionID)
+	resp := ts.AuthRequest("POST", apiPlaylists, playlistPayload("My Playlist", "A test playlist"), sessionID)
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -48,7 +53,7 @@ func TestPlaylistCRUD(t *testing.T) {
 
 	resp.Body.Close()
 	// --- List playlists ---
-	resp = ts.AuthRequest("GET", "/api/playlists", nil, sessionID)
+	resp = ts.AuthRequest("GET", apiPlaylists, nil, sessionID)
 	result = ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -64,7 +69,7 @@ func TestPlaylistCRUD(t *testing.T) {
 
 	resp.Body.Close()
 	// --- Get playlist ---
-	resp = ts.AuthRequest("GET", "/api/playlists/"+playlistID, nil, sessionID)
+	resp = ts.AuthRequest("GET", apiPlaylistsSlash+playlistID, nil, sessionID)
 	result = ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -78,7 +83,7 @@ func TestPlaylistCRUD(t *testing.T) {
 	resp.Body.Close()
 	// --- Update playlist ---
 	updateBody, _ := json.Marshal(map[string]string{"name": "Updated Playlist"})
-	resp = ts.AuthRequest("PUT", "/api/playlists/"+playlistID, bytes.NewReader(updateBody), sessionID)
+	resp = ts.AuthRequest("PUT", apiPlaylistsSlash+playlistID, bytes.NewReader(updateBody), sessionID)
 	result = ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -87,7 +92,7 @@ func TestPlaylistCRUD(t *testing.T) {
 
 	resp.Body.Close()
 	// --- Delete playlist ---
-	resp = ts.AuthRequest("DELETE", "/api/playlists/"+playlistID, nil, sessionID)
+	resp = ts.AuthRequest("DELETE", apiPlaylistsSlash+playlistID, nil, sessionID)
 	result = ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -96,7 +101,7 @@ func TestPlaylistCRUD(t *testing.T) {
 
 	resp.Body.Close()
 	// --- Verify deletion ---
-	resp = ts.AuthRequest("GET", "/api/playlists/"+playlistID, nil, sessionID)
+	resp = ts.AuthRequest("GET", apiPlaylistsSlash+playlistID, nil, sessionID)
 	if resp.StatusCode != http.StatusNotFound {
 		resp.Body.Close()
 		t.Errorf("get after delete: expected 404, got %d", resp.StatusCode)
@@ -114,10 +119,10 @@ func TestPlaylistCRUD_Unauthenticated(t *testing.T) {
 		method string
 		path   string
 	}{
-		{"list", "GET", "/api/playlists"},
-		{"create", "POST", "/api/playlists"},
-		{"get", "GET", "/api/playlists/fake-id"},
-		{"delete", "DELETE", "/api/playlists/fake-id"},
+		{"list", "GET", apiPlaylists},
+		{"create", "POST", apiPlaylists},
+		{"get", "GET", apiPlaylistsSlash+"fake-id"},
+		{"delete", "DELETE", apiPlaylistsSlash+"fake-id"},
 	}
 
 	for _, tc := range tests {
@@ -149,7 +154,7 @@ func TestPlaylistCreate_EmptyName(t *testing.T) {
 	ts.Env.CreateTestUser(t, "emptyname", "password123")
 	sessionID := ts.Env.LoginUser(t, "emptyname", "password123")
 
-	resp := ts.AuthRequest("POST", "/api/playlists", playlistPayload("", "no name"), sessionID)
+	resp := ts.AuthRequest("POST", apiPlaylists, playlistPayload("", "no name"), sessionID)
 	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
@@ -165,7 +170,7 @@ func TestPlaylistGet_NotFound(t *testing.T) {
 	ts.Env.CreateTestUser(t, "notfound", "password123")
 	sessionID := ts.Env.LoginUser(t, "notfound", "password123")
 
-	resp := ts.AuthRequest("GET", "/api/playlists/nonexistent-id", nil, sessionID)
+	resp := ts.AuthRequest("GET", apiPlaylistsSlash+"nonexistent-id", nil, sessionID)
 
 	if resp.StatusCode != http.StatusNotFound {
 		resp.Body.Close()
@@ -182,7 +187,7 @@ func TestPlaylistDelete_NotOwner(t *testing.T) {
 	ts.Env.CreateTestUser(t, "owner", "password123")
 	ownerSession := ts.Env.LoginUser(t, "owner", "password123")
 
-	resp := ts.AuthRequest("POST", "/api/playlists", playlistPayload("Owner's Playlist", ""), ownerSession)
+	resp := ts.AuthRequest("POST", apiPlaylists, playlistPayload("Owner's Playlist", ""), ownerSession)
 	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
@@ -193,7 +198,7 @@ func TestPlaylistDelete_NotOwner(t *testing.T) {
 	ts.Env.CreateTestUser(t, "intruder", "password123")
 	intruderSession := ts.Env.LoginUser(t, "intruder", "password123")
 
-	resp = ts.AuthRequest("DELETE", "/api/playlists/"+playlistID, nil, intruderSession)
+	resp = ts.AuthRequest("DELETE", apiPlaylistsSlash+playlistID, nil, intruderSession)
 
 	if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusNotFound {
 		resp.Body.Close()

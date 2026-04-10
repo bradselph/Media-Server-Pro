@@ -8,6 +8,10 @@ import (
 	"media-server-pro/internal/testutil"
 )
 
+const (
+	msgExpect401or403 = "expected 401 or 403 without auth, got %d"
+)
+
 // TestAnalyticsSummary_RequiresAdmin tests that analytics summary requires admin auth.
 func TestAnalyticsSummary_RequiresAdmin(t *testing.T) {
 	ts := testutil.NewTestServer(t)
@@ -17,7 +21,7 @@ func TestAnalyticsSummary_RequiresAdmin(t *testing.T) {
 
 	// Without auth, should get 401 or 403
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
-		t.Errorf("expected 401 or 403 without auth, got %d", resp.StatusCode)
+		t.Errorf(msgExpect401or403, resp.StatusCode)
 	}
 }
 
@@ -29,7 +33,7 @@ func TestAnalyticsDailyStats_RequiresAdmin(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
-		t.Errorf("expected 401 or 403 without auth, got %d", resp.StatusCode)
+		t.Errorf(msgExpect401or403, resp.StatusCode)
 	}
 }
 
@@ -41,7 +45,7 @@ func TestAnalyticsTopMedia_RequiresAdmin(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
-		t.Errorf("expected 401 or 403 without auth, got %d", resp.StatusCode)
+		t.Errorf(msgExpect401or403, resp.StatusCode)
 	}
 }
 
@@ -53,7 +57,7 @@ func TestAnalyticsContentPerformance_RequiresAdmin(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
-		t.Errorf("expected 401 or 403 without auth, got %d", resp.StatusCode)
+		t.Errorf(msgExpect401or403, resp.StatusCode)
 	}
 }
 
@@ -66,7 +70,7 @@ func TestAnalyticsEventSubmit_RequiresAuth(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
-		t.Errorf("expected 401 or 403 without auth, got %d", resp.StatusCode)
+		t.Errorf(msgExpect401or403, resp.StatusCode)
 	}
 }
 
@@ -78,6 +82,6 @@ func TestAnalyticsExport_RequiresAdmin(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
-		t.Errorf("expected 401 or 403 without auth, got %d", resp.StatusCode)
+		t.Errorf(msgExpect401or403, resp.StatusCode)
 	}
 }

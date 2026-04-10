@@ -12,6 +12,11 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+const (
+	testSlug = "abc-123"
+	mimeJSON = "application/json"
+)
+
 // ---------------------------------------------------------------------------
 // ParseQueryInt
 // ---------------------------------------------------------------------------
@@ -150,14 +155,14 @@ func TestParseLimitOffset_Clamped(t *testing.T) {
 func TestRequireParamID_Present(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Params = gin.Params{{Key: "id", Value: "abc-123"}}
+	c.Params = gin.Params{{Key: "id", Value: testSlug}}
 
 	id, ok := RequireParamID(c, "id")
 	if !ok {
 		t.Error("expected ok=true for present param")
 	}
-	if id != "abc-123" {
-		t.Errorf("id = %q, want %q", id, "abc-123")
+	if id != testSlug {
+		t.Errorf("id = %q, want %q", id, testSlug)
 	}
 }
 
@@ -227,7 +232,7 @@ func TestBindJSON_Valid(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	body := `{"name":"test"}`
 	c.Request = httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set(headerContentType, mimeJSON)
 
 	var dest struct {
 		Name string `json:"name"`
@@ -245,7 +250,7 @@ func TestBindJSON_Invalid(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/", bytes.NewBufferString("not json"))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set(headerContentType, mimeJSON)
 
 	var dest struct {
 		Name string `json:"name"`
@@ -267,7 +272,7 @@ func TestBindJSON_EmptyErrMsg(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/", bytes.NewBufferString("not json"))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set(headerContentType, mimeJSON)
 
 	var dest struct{}
 	BindJSON(c, &dest, "")
