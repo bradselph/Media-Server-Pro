@@ -55,7 +55,7 @@ export function formatWatchTime(secs?: number, fallback = '—'): string {
 export function formatRelativeDate(date?: string | Date | null, fallback = '—'): string {
     if (!date) return fallback
     const d = typeof date === 'string' ? new Date(date) : date
-    if (isNaN(d.getTime())) return fallback
+    if (Number.isNaN(d.getTime())) return fallback
     const now = Date.now()
     const diff = now - d.getTime()
     if (diff < 0) return 'just now'
@@ -103,5 +103,7 @@ export function formatUptime(secs?: number, fallback = '—'): string {
     const d = Math.floor(secs / 86400)
     const h = Math.floor((secs % 86400) / 3600)
     const m = Math.floor((secs % 3600) / 60)
-    return d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`
+    if (d > 0) return `${d}d ${h}h ${m}m`
+    if (h > 0) return `${h}h ${m}m`
+    return `${m}m`
 }
