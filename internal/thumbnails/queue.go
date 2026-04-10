@@ -75,7 +75,7 @@ func (m *Module) queueMainPreviewThumbnail(opts *queueMainPreviewThumbnailOpts) 
 	}
 }
 
-// dequeue blocks until a job is available or ctx is cancelled; Stop() must Broadcast to unblock workers.
+// dequeue blocks until a job is available or ctx is canceled; Stop() must Broadcast to unblock workers.
 func (m *Module) dequeue(ctx context.Context) *ThumbnailJob {
 	m.jobMu.Lock()
 	defer m.jobMu.Unlock()

@@ -136,7 +136,7 @@ func TestCheckVideoCodecSupport_Unsupported(t *testing.T) {
 	}
 }
 
-func TestCheckVideoCodecSupport_Empty(t *testing.T) {
+func TestCheckVideoCodecSupport_Empty(_ *testing.T) {
 	m := &Module{log: logger.New("test")}
 	result := &ValidationResult{VideoCodec: ""}
 	m.checkVideoCodecSupport(result)

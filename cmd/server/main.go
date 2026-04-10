@@ -625,7 +625,7 @@ func registerTasks(
 		Name:        "Backup Cleanup",
 		Description: "Removes old backups beyond the configured retention count",
 		Schedule:    24 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			if backupModule == nil {
 				return nil
 			}
@@ -648,7 +648,7 @@ func registerTasks(
 		Name:        "Mature Content Scan",
 		Description: "Scans media directories for mature content using configured detection models",
 		Schedule:    12 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			dirs := cfg.Get().Directories
 			var allResults []*scanner.ScanResult
 
@@ -757,7 +757,7 @@ func registerTasks(
 		Name:        "Health Check",
 		Description: "Performs system diagnostics and monitors disk space",
 		Schedule:    5 * time.Minute,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			appCfg := cfg.Get()
 			dirs := appCfg.Directories
 			for name, dir := range map[string]string{"videos": dirs.Videos, "data": dirs.Data, "logs": dirs.Logs} {

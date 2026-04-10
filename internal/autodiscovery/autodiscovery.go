@@ -512,7 +512,7 @@ func applySuggestionPreconditions(pathStr, destPath, suggestedPath string) error
 		return fmt.Errorf("destination already exists, refusing to overwrite: %s", destPath)
 	}
 	if suggestedPath != "" {
-		if err := os.MkdirAll(suggestedPath, 0755); err != nil {
+		if err := os.MkdirAll(suggestedPath, 0o755); err != nil { //nolint:gosec // G301: media dirs need world-read for serving
 			return err
 		}
 	}

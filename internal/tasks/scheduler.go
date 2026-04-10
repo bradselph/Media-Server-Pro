@@ -292,7 +292,7 @@ func (m *Module) recordTaskResult(task *Task, err error, start time.Time) {
 	m.mu.Unlock()
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			m.log.Info("Task %s cancelled: %v", task.Name, err)
+			m.log.Info("Task %s canceled: %v", task.Name, err)
 		} else {
 			m.log.Error("Task %s failed: %v", task.Name, err)
 		}

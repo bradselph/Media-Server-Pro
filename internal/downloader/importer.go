@@ -128,7 +128,7 @@ func ImportFile(srcDir, destDir, filename string, deleteSource bool) (destPath s
 	}
 
 	// Ensure destination directory exists
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, 0o755); err != nil { //nolint:gosec // G301: media dest dirs need world-read for serving
 		return "", false, fmt.Errorf("create dest dir: %w", err)
 	}
 

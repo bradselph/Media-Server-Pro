@@ -101,7 +101,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.ffprobePath = ffprobePath
 
 	// Start worker pool using a background context so workers are not
-	// cancelled when the short-lived module-startup context expires.
+	// canceled when the short-lived module-startup context expires.
 	workerCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = workerCtx
 	m.cancel = cancel
@@ -152,7 +152,7 @@ func (m *Module) SetMediaIDProvider(p MediaIDProvider) {
 // evictStaleInFlight scans the inFlight map every minute and removes entries
 // that have been pending for more than 5 minutes.  Stale entries arise when a
 // worker goroutine exits unexpectedly without completing its job (e.g. context
-// cancelled during a long ffmpeg run) and the deferred Delete never ran.
+// canceled during a long ffmpeg run) and the deferred Delete never ran.
 func (m *Module) evictStaleInFlight(ctx context.Context) {
 	defer m.wg.Done()
 	cfg := m.config.Get().Thumbnails

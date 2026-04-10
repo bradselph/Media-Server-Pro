@@ -203,7 +203,7 @@ func (m *Module) applyStartupHealthFFmpeg() bool {
 
 // applyStartupHealthCacheDir creates the HLS cache directory; on failure sets degraded health and returns true.
 func (m *Module) applyStartupHealthCacheDir() bool {
-	if err := os.MkdirAll(m.cacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(m.cacheDir, 0o755); err != nil { //nolint:gosec // G301: HLS cache dir needs world-read for serving
 		m.log.Error("Failed to create HLS cache directory: %v", err)
 		m.healthMu.Lock()
 		m.healthy = true

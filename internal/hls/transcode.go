@@ -176,7 +176,7 @@ func (m *Module) transcodeQuality(ctx context.Context, job *models.HLSJob, quali
 
 func (m *Module) prepareVariantDir(job *models.HLSJob, quality string) (variantDir, playlistPath, segmentPattern string, err error) {
 	variantDir = filepath.Join(job.OutputDir, quality)
-	if err = os.MkdirAll(variantDir, 0755); err != nil {
+	if err = os.MkdirAll(variantDir, 0o755); err != nil { //nolint:gosec // G301: HLS variant dirs need world-read for serving
 		return "", "", "", fmt.Errorf("failed to create variant dir: %w", err)
 	}
 	playlistPath = filepath.Join(variantDir, "playlist.m3u8")

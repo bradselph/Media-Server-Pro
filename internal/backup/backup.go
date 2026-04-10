@@ -92,7 +92,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.repo = mysqlrepo.NewBackupManifestRepository(m.dbModule.GORM())
 
 	// Ensure backup directory exists
-	if err := os.MkdirAll(m.backupDir, 0755); err != nil {
+	if err := os.MkdirAll(m.backupDir, 0o750); err != nil {
 		m.log.Error("Failed to create backup directory: %v", err)
 		m.healthMu.Lock()
 		m.healthy = false

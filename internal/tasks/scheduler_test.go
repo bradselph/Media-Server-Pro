@@ -206,7 +206,7 @@ func TestRunNow(t *testing.T) {
 		ID:       "run-now-test",
 		Name:     "Run Now Test",
 		Schedule: 1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			atomic.AddInt32(&ran, 1)
 			return nil
 		},
@@ -322,7 +322,7 @@ func TestRecordTaskResult_Error(t *testing.T) {
 		ID:       "error-test",
 		Name:     "Error Test",
 		Schedule: 1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			return taskErr
 		},
 	})
