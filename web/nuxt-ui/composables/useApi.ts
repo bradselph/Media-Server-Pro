@@ -57,12 +57,12 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
             setTimeout(() => {
                 _redirecting = false
             }, 3000)
-            const redirect = window.location.pathname + window.location.search
+            const redirect = globalThis.location.pathname + globalThis.location.search
             const isAuthPage = ['/login', '/signup', '/admin-login'].some(p => redirect.startsWith(p))
             const target = redirect && !isAuthPage
                 ? `/login?redirect=${encodeURIComponent(redirect)}`
                 : '/login'
-            window.location.replace(target)
+            globalThis.location.replace(target)
         }
         throw new ApiError(
             envelope.message ?? envelope.error ?? `HTTP ${res.status}`,
