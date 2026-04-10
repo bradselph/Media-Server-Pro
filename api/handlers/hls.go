@@ -13,6 +13,10 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+const (
+	fmtHLSMasterURL = "/hls/%s/master.m3u8"
+)
+
 // GetHLSCapabilities returns whether HLS transcoding is available and its configuration.
 func (h *Handler) GetHLSCapabilities(c *gin.Context) {
 	if !h.requireHLS(c) {
@@ -60,7 +64,7 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 
 	if job.Status == models.HLSStatusCompleted {
 		response["available"] = true
-		response["hls_url"] = fmt.Sprintf("/hls/%s/master.m3u8", job.ID)
+		response["hls_url"] = fmt.Sprintf(fmtHLSMasterURL, job.ID)
 	} else {
 		response["available"] = false
 		response["hls_url"] = ""
@@ -109,7 +113,7 @@ func buildGenerateHLSResponse(job *models.HLSJob) map[string]interface{} {
 		"hls_url":    "",
 	}
 	if job.Status == models.HLSStatusCompleted {
-		resp["hls_url"] = fmt.Sprintf("/hls/%s/master.m3u8", job.ID)
+		resp["hls_url"] = fmt.Sprintf(fmtHLSMasterURL, job.ID)
 	}
 	if job.CompletedAt != nil {
 		resp["completed_at"] = job.CompletedAt
@@ -133,7 +137,7 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities})
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 	writeSuccess(c, buildGenerateHLSResponse(job))
@@ -172,7 +176,7 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 
 	if job.Status == models.HLSStatusCompleted {
 		response["available"] = true
-		response["hls_url"] = fmt.Sprintf("/hls/%s/master.m3u8", job.ID)
+		response["hls_url"] = fmt.Sprintf(fmtHLSMasterURL, job.ID)
 	} else {
 		response["available"] = false
 		response["hls_url"] = ""
@@ -260,7 +264,7 @@ func (h *Handler) ValidateHLS(c *gin.Context) {
 	result, err := h.hls.ValidateMasterPlaylist(jobID)
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

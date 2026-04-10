@@ -62,7 +62,7 @@ func (h *Handler) RequireReceiverWithAPIKey() gin.HandlerFunc {
 // POST /api/receiver/register
 func (h *Handler) ReceiverRegisterSlave(c *gin.Context) {
 	var req receiver.RegisterRequest
-	if !BindJSON(c, &req, "Invalid request") {
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *Handler) ReceiverPushCatalog(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCatalogBody)
 
 	var req receiver.CatalogPushRequest
-	if !BindJSON(c, &req, "Invalid request") {
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *Handler) ReceiverHeartbeat(c *gin.Context) {
 	var body struct {
 		SlaveID string `json:"slave_id"`
 	}
-	if !BindJSON(c, &body, "Invalid request") {
+	if !BindJSON(c, &body, errInvalidRequest) {
 		return
 	}
 

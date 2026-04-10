@@ -59,12 +59,26 @@ const (
 	errUserNotFound      = "User not found"
 	errMediaNotFound     = "Media not found"
 	errPathParamRequired = "path parameter required" // admin route params only
+	errInternalServer    = "Internal server error"
+	errInvalidCredentials = "Invalid credentials"
 )
 
 // HTTP header name constants to avoid duplication.
 const (
 	headerContentType        = "Content-Type"
 	headerContentDisposition = "Content-Disposition"
+	headerCacheControl       = "Cache-Control"
+	headerRetryAfter         = "Retry-After"
+)
+
+// User-facing message constants to avoid duplication.
+const (
+	msgFailedExport        = "Failed to generate export"
+	msgInitializing        = "Server is initializing — media library scan in progress, please try again shortly"
+	msgMaxStreams          = "Maximum concurrent streams limit reached"
+	msgMaxStreamsConn      = "Maximum concurrent streams limit reached for this connection"
+	msgMatureContent       = "This content is marked as mature (18+). Please log in and enable mature content to access it."
+	msgMatureAccessDenied  = "Access denied: This content is marked as mature (18+). "
 )
 
 // BuildInfo holds version and build metadata (avoids passing raw strings).
@@ -479,7 +493,7 @@ func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
 	session := getSession(c)
 	if session == nil {
 		writeError(c, http.StatusUnauthorized,
-			"Access denied: This content is marked as mature (18+). "+
+			msgMatureAccessDenied+
 				"Please log in to access mature content.")
 		return false
 	}
@@ -488,7 +502,7 @@ func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
 	if user == nil {
 		h.log.Debug("Mature content access denied for %s: user not found in context", session.Username)
 		writeError(c, http.StatusForbidden,
-			"Access denied: This content is marked as mature (18+). "+
+			msgMatureAccessDenied+
 				"Enable mature content viewing in your profile settings.")
 		return false
 	}
@@ -504,7 +518,7 @@ func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
 	if !user.Preferences.ShowMature {
 		h.log.Debug("Mature content access denied for %s: ShowMature preference is false", session.Username)
 		writeError(c, http.StatusForbidden,
-			"Access denied: This content is marked as mature (18+). "+
+			msgMatureAccessDenied+
 				"Enable mature content viewing in your profile settings.")
 		return false
 	}
@@ -688,8 +702,8 @@ func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 	item, err := h.media.GetMediaByID(string(mid))
 	if err != nil {
 		if !h.media.IsReady() {
-			c.Header("Retry-After", "3")
-			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+			c.Header(headerRetryAfter, "3")
+			writeError(c, http.StatusServiceUnavailable, msgInitializing)
 			return "", false
 		}
 		writeError(c, http.StatusNotFound, errMediaNotFound)
@@ -726,7 +740,7 @@ func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path, i
 		}
 	}
 	if !h.media.IsReady() {
-		writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+		writeError(c, http.StatusServiceUnavailable, msgInitializing)
 		return "", "", false
 	}
 	writeError(c, http.StatusNotFound, errMediaNotFound)

@@ -18,7 +18,7 @@ import (
 // is empty (server just started, initial scan still in progress).
 func (h *Handler) requireSuggestionsCatalogue(c *gin.Context) bool {
 	if !h.suggestions.IsCatalogueReady() {
-		c.Header("Retry-After", "3")
+		c.Header(headerRetryAfter, "3")
 		writeError(c, http.StatusServiceUnavailable, "Suggestions are loading — media catalog scan in progress, please try again shortly")
 		return false
 	}

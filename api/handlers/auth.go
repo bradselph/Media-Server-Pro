@@ -42,11 +42,11 @@ func (h *Handler) Login(c *gin.Context) {
 			return
 		}
 		if errors.Is(adminErr, auth.ErrAdminWrongPassword) {
-			writeError(c, http.StatusUnauthorized, "Invalid credentials")
+			writeError(c, http.StatusUnauthorized, errInvalidCredentials)
 			return
 		}
 		if !errors.Is(adminErr, auth.ErrNotAdminUsername) {
-			writeError(c, http.StatusUnauthorized, "Invalid credentials")
+			writeError(c, http.StatusUnauthorized, errInvalidCredentials)
 			return
 		}
 	} else {
@@ -104,7 +104,7 @@ func (h *Handler) Login(c *gin.Context) {
 			writeError(c, http.StatusTooManyRequests, "Too many failed login attempts. Please try again later.")
 			return
 		}
-		writeError(c, http.StatusUnauthorized, "Invalid credentials")
+		writeError(c, http.StatusUnauthorized, errInvalidCredentials)
 		return
 	}
 
@@ -239,7 +239,7 @@ func (h *Handler) Register(c *gin.Context) {
 			return
 		}
 		h.log.Error("Failed to create user %s: %v", req.Username, err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -436,7 +436,7 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 
 	if err := h.auth.UpdateUserPreferences(c.Request.Context(), session.Username, prefs); err != nil {
 		h.log.Error("Failed to update preferences for user %s: %v", session.Username, err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -565,7 +565,7 @@ func (h *Handler) ClearWatchHistory(c *gin.Context) {
 		}
 		if err := h.auth.RemoveWatchHistoryItem(c.Request.Context(), session.Username, mediaPath); err != nil {
 			h.log.Error("%v", err)
-			writeError(c, http.StatusInternalServerError, "Internal server error")
+			writeError(c, http.StatusInternalServerError, errInternalServer)
 			return
 		}
 		// Only clear local playback positions (receiver items have no server-side position store)
@@ -578,7 +578,7 @@ func (h *Handler) ClearWatchHistory(c *gin.Context) {
 
 	if err := h.auth.ClearWatchHistory(c.Request.Context(), session.Username); err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 	h.media.ClearAllPlaybackPositions(session.UserID)
@@ -670,7 +670,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 			return
 		}
 		h.log.Error("Password change failed for %s: %v", user.Username, err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -751,7 +751,7 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 	w := csv.NewWriter(&buf)
 	if err := w.Write([]string{"media_name", "media_id", "watched_at", "position_seconds", "duration_seconds", "progress_percent", "completed"}); err != nil {
 		h.log.Error("CSV header write failed: %v", err)
-		writeError(c, http.StatusInternalServerError, "Failed to generate export")
+		writeError(c, http.StatusInternalServerError, msgFailedExport)
 		return
 	}
 	for _, item := range history {
@@ -769,14 +769,14 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 			completed,
 		}); err != nil {
 			h.log.Error("CSV row write failed: %v", err)
-			writeError(c, http.StatusInternalServerError, "Failed to generate export")
+			writeError(c, http.StatusInternalServerError, msgFailedExport)
 			return
 		}
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
 		h.log.Error("CSV flush failed for user %s: %v", user.Username, err)
-		writeError(c, http.StatusInternalServerError, "Failed to generate export")
+		writeError(c, http.StatusInternalServerError, msgFailedExport)
 		return
 	}
 

@@ -7,10 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	msgTasksNotAvailable = "Tasks module not available"
+)
+
 // AdminListTasks returns scheduled tasks
 func (h *Handler) AdminListTasks(c *gin.Context) {
 	if h.tasks == nil {
-		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
 	taskList := h.tasks.ListTasks()
@@ -20,7 +24,7 @@ func (h *Handler) AdminListTasks(c *gin.Context) {
 // AdminRunTask runs a task immediately
 func (h *Handler) AdminRunTask(c *gin.Context) {
 	if h.tasks == nil {
-		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
 	taskID := c.Param("id")
@@ -40,7 +44,7 @@ func (h *Handler) AdminRunTask(c *gin.Context) {
 // AdminEnableTask enables a background task
 func (h *Handler) AdminEnableTask(c *gin.Context) {
 	if h.tasks == nil {
-		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
 	taskID := c.Param("id")
@@ -56,7 +60,7 @@ func (h *Handler) AdminEnableTask(c *gin.Context) {
 // AdminDisableTask disables a background task
 func (h *Handler) AdminDisableTask(c *gin.Context) {
 	if h.tasks == nil {
-		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
 	taskID := c.Param("id")
@@ -72,7 +76,7 @@ func (h *Handler) AdminDisableTask(c *gin.Context) {
 // AdminStopTask force-cancels a running task without disabling future runs
 func (h *Handler) AdminStopTask(c *gin.Context) {
 	if h.tasks == nil {
-		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
 	taskID := c.Param("id")

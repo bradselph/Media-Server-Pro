@@ -26,7 +26,7 @@ func (h *Handler) CheckForUpdates(c *gin.Context) {
 			return
 		}
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -140,7 +140,7 @@ func (h *Handler) CheckForSourceUpdates(c *gin.Context) {
 	hasUpdates, remoteHash, err := h.updater.CheckForSourceUpdates(c.Request.Context())
 	if err != nil {
 		h.log.Error("Source update check failed: %v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 	writeSuccess(c, map[string]interface{}{

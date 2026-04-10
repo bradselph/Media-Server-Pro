@@ -17,10 +17,15 @@ import (
 
 const batchThumbnailMaxIDs = 50
 
+const (
+	mimeWebP = "image/webp"
+	mimeJPEG = "image/jpeg"
+)
+
 // acceptsWebP returns true if the request's Accept header includes image/webp
 func acceptsWebP(r *http.Request) bool {
 	accept := r.Header.Get("Accept")
-	return strings.Contains(accept, "image/webp")
+	return strings.Contains(accept, mimeWebP)
 }
 
 // GenerateThumbnail generates a thumbnail for a media file
@@ -43,7 +48,7 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 	_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: absPath, MediaID: req.ID, IsAudio: req.IsAudio, HighPriority: true})
 	if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -70,7 +75,7 @@ func (h *Handler) getResponsiveThumbPath(c *gin.Context, id string) (path, conte
 	if fp == "" {
 		return "", "", false
 	}
-	return fp, "image/webp", true
+	return fp, mimeWebP, true
 }
 
 // getWebPThumbPath returns the WebP path when the client accepts WebP and it exists. ok is false otherwise.
@@ -82,7 +87,7 @@ func (h *Handler) getWebPThumbPath(id string, wantWebP bool) (path, contentType 
 	if webpPath == "" {
 		return "", "", false
 	}
-	return webpPath, "image/webp", true
+	return webpPath, mimeWebP, true
 }
 
 // getThumbnailFilePathAndType resolves the thumbnail file path and content type (including responsive w= and WebP).
@@ -94,7 +99,7 @@ func (h *Handler) getThumbnailFilePathAndType(c *gin.Context, id string) (thumbF
 	if fp, ct, ok := h.getWebPThumbPath(id, acceptsWebP(c.Request)); ok {
 		return fp, ct
 	}
-	return thumbFilePath, "image/jpeg"
+	return thumbFilePath, mimeJPEG
 }
 
 // tryServePlaceholderByType serves a placeholder image when type is placeholder/audio_placeholder/censored. Returns true if served.
@@ -108,12 +113,12 @@ func (h *Handler) tryServePlaceholderByType(c *gin.Context, thumbnailType string
 		return true // signal caller to return
 	}
 	if c.Request.Method == http.MethodHead {
-		c.Header(headerContentType, "image/jpeg")
+		c.Header(headerContentType, mimeJPEG)
 		c.Status(http.StatusOK)
 		return true
 	}
-	c.Header("Cache-Control", "public, max-age=2592000, immutable")
-	c.Header("Content-Type", "image/jpeg")
+	c.Header(headerCacheControl,"public, max-age=2592000, immutable")
+	c.Header(headerContentType,mimeJPEG)
 	http.ServeFile(c.Writer, c.Request, placeholderPath)
 	return true
 }
@@ -142,8 +147,8 @@ func (h *Handler) tryServeReceiverThumbnail(c *gin.Context, id string) bool {
 		writeError(c, http.StatusInternalServerError, "Failed to get placeholder")
 		return true
 	}
-	c.Header("Cache-Control", "public, max-age=86400")
-	c.Header("Content-Type", "image/jpeg")
+	c.Header(headerCacheControl,"public, max-age=86400")
+	c.Header(headerContentType,mimeJPEG)
 	http.ServeFile(c.Writer, c.Request, ph)
 	return true
 }
@@ -157,8 +162,8 @@ func (h *Handler) serveCensoredPlaceholderOrForbidden(c *gin.Context) {
 		writeError(c, http.StatusForbidden, "Mature content")
 		return
 	}
-	c.Header("Cache-Control", "no-store")
-	c.Header("Content-Type", "image/jpeg")
+	c.Header(headerCacheControl,"no-store")
+	c.Header(headerContentType,mimeJPEG)
 	http.ServeFile(c.Writer, c.Request, censoredPath)
 }
 
@@ -208,8 +213,8 @@ func (h *Handler) serveThumbnailFileResponse(c *gin.Context, thumbFilePath, cont
 		// private: browser may cache for the current user only; CDNs/proxies must not share it.
 		cacheControl = "private, max-age=604800"
 	}
-	c.Header("Cache-Control", cacheControl)
-	c.Header("Content-Type", contentType)
+	c.Header(headerCacheControl,cacheControl)
+	c.Header(headerContentType,contentType)
 	http.ServeFile(c.Writer, c.Request, thumbFilePath)
 	return true
 }
@@ -298,8 +303,8 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 			if censoredPath, cErr := h.thumbnails.GetPlaceholderPath("censored"); cErr == nil {
 				// no-store prevents browser caching the censored image under the real thumbnail URL,
 				// which would cause authenticated users to see the red placeholder after a guest visit.
-				c.Header("Cache-Control", "no-store")
-				c.Header("Content-Type", "image/jpeg")
+				c.Header(headerCacheControl,"no-store")
+				c.Header(headerContentType,mimeJPEG)
 				http.ServeFile(c.Writer, c.Request, censoredPath)
 				return
 			}
@@ -309,19 +314,19 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	}
 
 	// Content negotiation: serve WebP when client accepts it
-	contentType := "image/jpeg"
+	contentType := mimeJPEG
 	switch ext {
 	case ".png":
 		contentType = "image/png"
 	case ".webp":
-		contentType = "image/webp"
+		contentType = mimeWebP
 	}
 	if acceptsWebP(c.Request) && ext != ".webp" {
 		webpPath := strings.TrimSuffix(filePath, ext) + ".webp"
 		if webpPath != filePath {
 			if _, err := os.Stat(webpPath); err == nil {
 				filePath = webpPath
-				contentType = "image/webp"
+				contentType = mimeWebP
 			}
 		}
 	}
@@ -330,8 +335,8 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	if isMature {
 		cacheControl = "private, max-age=604800"
 	}
-	c.Header("Cache-Control", cacheControl)
-	c.Header("Content-Type", contentType)
+	c.Header(headerCacheControl,cacheControl)
+	c.Header(headerContentType,contentType)
 	http.ServeFile(c.Writer, c.Request, filePath)
 }
 

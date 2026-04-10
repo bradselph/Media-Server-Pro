@@ -343,7 +343,7 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	filename, err := h.analytics.ExportCSV(c.Request.Context(), startDate, endDate)
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -351,7 +351,7 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	if openErr != nil {
 		_ = os.Remove(filename)
 		h.log.Error("%v", openErr)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 	defer func() { _ = f.Close(); _ = os.Remove(filename) }()
@@ -364,7 +364,7 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 		data, readErr := io.ReadAll(f)
 		if readErr != nil {
 			h.log.Error("Failed to read CSV file: %v", readErr)
-			writeError(c, http.StatusInternalServerError, "Internal server error")
+			writeError(c, http.StatusInternalServerError, errInternalServer)
 			return
 		}
 		c.Writer.WriteHeader(http.StatusOK)

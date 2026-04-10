@@ -53,7 +53,7 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 	scanResults, err := h.autodiscovery.ScanDirectory(autodiscovery.FilePath(resolvedDir))
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 	writeSuccess(c, scanResults)
@@ -85,7 +85,7 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 	}
 	if err := h.autodiscovery.ApplySuggestion(autodiscovery.FilePath(absPath)); err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

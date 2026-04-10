@@ -25,7 +25,7 @@ func (h *Handler) ValidateMedia(c *gin.Context) {
 	result, err := h.validator.ValidateFile(absPath)
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -51,7 +51,7 @@ func (h *Handler) FixMedia(c *gin.Context) {
 	result, err := h.validator.FixFile(absPath)
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

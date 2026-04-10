@@ -31,7 +31,7 @@ func (h *Handler) GetFavorites(c *gin.Context) {
 			ID:        r.ID,
 			MediaID:   r.MediaID,
 			MediaPath: r.MediaPath,
-			AddedAt:   r.AddedAt.Format("2006-01-02T15:04:05Z07:00"),
+			AddedAt:   r.AddedAt.Format(timeFormatRFC3339Ext),
 		}
 	}
 	writeSuccess(c, items)

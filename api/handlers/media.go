@@ -308,8 +308,7 @@ func (h *Handler) GetMedia(c *gin.Context) {
 			if ri := h.receiver.GetMediaItem(id); ri != nil {
 				// Check mature access for receiver items via fingerprint
 				if h.isReceiverItemMature(ri.ContentFingerprint) && !h.canViewMatureContent(c) {
-					writeError(c, http.StatusForbidden,
-						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
+					writeError(c, http.StatusForbidden, msgMatureContent)
 					return
 				}
 				writeSuccess(c, &models.MediaItem{
@@ -337,8 +336,8 @@ func (h *Handler) GetMedia(c *gin.Context) {
 			}
 		}
 		if !h.media.IsReady() {
-			c.Header("Retry-After", "3")
-			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+			c.Header(headerRetryAfter, "3")
+			writeError(c, http.StatusServiceUnavailable, msgInitializing)
 			return
 		}
 		writeError(c, http.StatusNotFound, errMediaNotFound)
@@ -483,7 +482,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 			ipKey := "ip:" + c.ClientIP()
 			if !h.streaming.CanStartStream(ipKey, limit) {
-				writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached for this connection")
+				writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 				return
 			}
 		}
@@ -500,8 +499,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 				// master has scanned the same content. If the fingerprint matches a
 				// mature local item, deny access for unauthorized callers.
 				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
-					writeError(c, http.StatusForbidden,
-						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
+					writeError(c, http.StatusForbidden, msgMatureContent)
 					return
 				}
 				// Enforce per-user or per-IP stream limits for receiver-sourced media.
@@ -512,7 +510,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 						maxStreams = h.getUserStreamLimit(user.Type)
 					}
 					if maxStreams > 0 && !h.streaming.CanStartStream(streamKey, maxStreams) {
-						writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
+						writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 						return
 					}
 					// Track the proxy stream so the counter is decremented when the stream ends.
@@ -521,7 +519,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
 					if !h.streaming.CanStartStream(ipKey, limit) {
-						writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached for this connection")
+						writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 						return
 					}
 					release := h.streaming.TrackProxyStream(ipKey)
@@ -544,14 +542,14 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 					if user, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
 						maxStreams := h.getUserStreamLimit(user.Type)
 						if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
-							writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
+							writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 							return
 						}
 					}
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
 					if !h.streaming.CanStartStream(ipKey, limit) {
-						writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached for this connection")
+						writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 						return
 					}
 				}
@@ -562,8 +560,8 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		}
 		// Neither local, receiver, nor extractor — write appropriate error
 		if !h.media.IsReady() {
-			c.Header("Retry-After", "3")
-			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+			c.Header(headerRetryAfter, "3")
+			writeError(c, http.StatusServiceUnavailable, msgInitializing)
 		} else {
 			writeError(c, http.StatusNotFound, errMediaNotFound)
 		}
@@ -590,7 +588,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		}
 		maxStreams := h.getUserStreamLimit(user.Type)
 		if maxStreams > 0 && !h.streaming.CanStartStream(userID, maxStreams) {
-			writeError(c, http.StatusTooManyRequests, "Maximum concurrent streams limit reached")
+			writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 			return
 		}
 	} else {
@@ -678,8 +676,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		if h.receiver != nil {
 			if item := h.receiver.GetMediaItem(id); item != nil {
 				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
-					writeError(c, http.StatusForbidden,
-						"This content is marked as mature (18+). Please log in and enable mature content to access it.")
+					writeError(c, http.StatusForbidden, msgMatureContent)
 					return
 				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
@@ -691,8 +688,8 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 			}
 		}
 		if !h.media.IsReady() {
-			c.Header("Retry-After", "3")
-			writeError(c, http.StatusServiceUnavailable, "Server is initializing — media library scan in progress, please try again shortly")
+			c.Header(headerRetryAfter, "3")
+			writeError(c, http.StatusServiceUnavailable, msgInitializing)
 		} else {
 			writeError(c, http.StatusNotFound, errMediaNotFound)
 		}

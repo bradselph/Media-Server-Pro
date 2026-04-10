@@ -163,7 +163,7 @@ func (h *Handler) AdminDeletePlaylist(c *gin.Context) {
 		return
 	}
 	if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), playlist.PlaylistID(playlistID)); err != nil {
-		writeError(c, http.StatusNotFound, "Playlist not found")
+		writeError(c, http.StatusNotFound, msgPlaylistNotFound)
 		return
 	}
 

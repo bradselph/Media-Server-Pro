@@ -10,6 +10,10 @@ import (
 	"media-server-pro/pkg/helpers"
 )
 
+const (
+	msgDownloaderOffline = "Downloader service is offline"
+)
+
 func (h *Handler) checkDownloaderEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.downloader, "Downloader", func() bool {
 		return h.config.Get().Features.EnableDownloader
@@ -66,7 +70,7 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 		return
 	}
 	if !h.downloader.IsOnline() {
-		writeError(c, http.StatusServiceUnavailable, "Downloader service is offline")
+		writeError(c, http.StatusServiceUnavailable, msgDownloaderOffline)
 		return
 	}
 
@@ -115,7 +119,7 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 		return
 	}
 	if !h.downloader.IsOnline() {
-		writeError(c, http.StatusServiceUnavailable, "Downloader service is offline")
+		writeError(c, http.StatusServiceUnavailable, msgDownloaderOffline)
 		return
 	}
 
@@ -164,7 +168,7 @@ func (h *Handler) AdminDownloaderCancel(c *gin.Context) {
 		return
 	}
 	if !h.downloader.IsOnline() {
-		writeError(c, http.StatusServiceUnavailable, "Downloader service is offline")
+		writeError(c, http.StatusServiceUnavailable, msgDownloaderOffline)
 		return
 	}
 
@@ -187,7 +191,7 @@ func (h *Handler) AdminDownloaderListDownloads(c *gin.Context) {
 		return
 	}
 	if !h.downloader.IsOnline() {
-		writeError(c, http.StatusServiceUnavailable, "Downloader service is offline")
+		writeError(c, http.StatusServiceUnavailable, msgDownloaderOffline)
 		return
 	}
 
@@ -216,7 +220,7 @@ func (h *Handler) AdminDownloaderDeleteDownload(c *gin.Context) {
 		return
 	}
 	if !h.downloader.IsOnline() {
-		writeError(c, http.StatusServiceUnavailable, "Downloader service is offline")
+		writeError(c, http.StatusServiceUnavailable, msgDownloaderOffline)
 		return
 	}
 
@@ -245,7 +249,7 @@ func (h *Handler) AdminDownloaderSettings(c *gin.Context) {
 		return
 	}
 	if !h.downloader.IsOnline() {
-		writeError(c, http.StatusServiceUnavailable, "Downloader service is offline")
+		writeError(c, http.StatusServiceUnavailable, msgDownloaderOffline)
 		return
 	}
 
