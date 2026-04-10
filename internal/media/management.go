@@ -23,6 +23,12 @@ var (
 	dangerousPatterns = regexp.MustCompile(`[<>:"|?*\x00-\x1f]`)
 )
 
+const (
+	errSourceNotFound    = "source file not found: %w"
+	errDestExists        = "destination file already exists: %s"
+	fmtCreateMediaFailed = "failed to create media item for %s"
+)
+
 // storeResult holds the backend and relative key path for a media file.
 type storeResult struct {
 	store   storage.Backend
@@ -158,10 +164,10 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 		newRelPath := path.Join(path.Dir(sr.relPath), newName)
 
 		if _, err := sr.store.Stat(ctx, sr.relPath); err != nil {
-			return "", fmt.Errorf("source file not found: %w", err)
+			return "", fmt.Errorf(errSourceNotFound, err)
 		}
 		if _, err := sr.store.Stat(ctx, newRelPath); err == nil {
-			return "", fmt.Errorf("destination file already exists: %s", newName)
+			return "", fmt.Errorf(errDestExists, newName)
 		}
 		if err := sr.store.Rename(ctx, sr.relPath, newRelPath); err != nil {
 			return "", fmt.Errorf("failed to rename: %w", err)
@@ -172,11 +178,11 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	} else {
 		// Local filesystem (original behavior).
 		if _, err := os.Stat(oldPath); err != nil {
-			return "", fmt.Errorf("source file not found: %w", err)
+			return "", fmt.Errorf(errSourceNotFound, err)
 		}
 		newPath = filepath.Join(filepath.Dir(oldPath), newName)
 		if _, err := os.Stat(newPath); err == nil {
-			return "", fmt.Errorf("destination file already exists: %s", newName)
+			return "", fmt.Errorf(errDestExists, newName)
 		}
 		if err := os.Rename(oldPath, newPath); err != nil {
 			return "", fmt.Errorf("failed to rename: %w", err)
@@ -238,7 +244,7 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	if srcSR.store != nil && !srcSR.store.IsLocal() {
 		// Remote backend: check source exists.
 		if _, err := srcSR.store.Stat(ctx, srcSR.relPath); err != nil {
-			return "", fmt.Errorf("source file not found: %w", err)
+			return "", fmt.Errorf(errSourceNotFound, err)
 		}
 
 		// dstSR must be non-nil; the destination directory was validated against
@@ -247,7 +253,7 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 			return "", fmt.Errorf("destination directory has no configured storage backend")
 		}
 		if _, err := dstSR.store.Stat(ctx, dstSR.relPath); err == nil {
-			return "", fmt.Errorf("destination file already exists: %s", newPath)
+			return "", fmt.Errorf(errDestExists, newPath)
 		}
 
 		if srcSR.store == dstSR.store {
@@ -267,13 +273,13 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	} else {
 		// Local filesystem (original behavior).
 		if _, err := os.Stat(oldPath); err != nil {
-			return "", fmt.Errorf("source file not found: %w", err)
+			return "", fmt.Errorf(errSourceNotFound, err)
 		}
 		if err := os.MkdirAll(newDir, 0o755); err != nil { //nolint:gosec // G301: media directories need world-read for serving
 			return "", fmt.Errorf("failed to create directory: %w", err)
 		}
 		if _, err := os.Stat(newPath); err == nil {
-			return "", fmt.Errorf("destination file already exists: %s", newPath)
+			return "", fmt.Errorf(errDestExists, newPath)
 		}
 		if err := os.Rename(oldPath, newPath); err != nil {
 			return "", fmt.Errorf("failed to move: %w", err)
@@ -755,7 +761,7 @@ func (m *Module) RegisterUploadedFile(mediaPath string) error {
 
 	item := m.createMediaItem(mediaPath, info, mediaType)
 	if item == nil {
-		return fmt.Errorf("failed to create media item for %s", mediaPath)
+		return fmt.Errorf(fmtCreateMediaFailed, mediaPath)
 	}
 	return m.finalizeRegisteredItem(mediaPath, item)
 }
@@ -782,14 +788,14 @@ func (m *Module) RegisterUploadedFileWithSize(mediaPath string, size int64, modT
 		ModTime: modTime,
 	}, mediaType)
 	if item == nil {
-		return fmt.Errorf("failed to create media item for %s", mediaPath)
+		return fmt.Errorf(fmtCreateMediaFailed, mediaPath)
 	}
 	return m.finalizeRegisteredItem(mediaPath, item)
 }
 
 func (m *Module) finalizeRegisteredItem(mediaPath string, item *models.MediaItem) error {
 	if item == nil {
-		return fmt.Errorf("failed to create media item for %s", mediaPath)
+		return fmt.Errorf(fmtCreateMediaFailed, mediaPath)
 	}
 
 	// Extract metadata (duration, codec, etc.) synchronously so the item is

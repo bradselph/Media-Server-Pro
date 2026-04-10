@@ -6,6 +6,11 @@ import (
 	"regexp"
 )
 
+const (
+	sqlTimestampNullDefault  = "TIMESTAMP NULL DEFAULT NULL"
+	sqlBooleanNotNullDefault = "BOOLEAN NOT NULL DEFAULT TRUE"
+)
+
 // tableDefs holds CREATE TABLE SQL for ensureSchema. Package-level to avoid string-heavy function arguments.
 var tableDefs = []struct {
 	name string
@@ -510,19 +515,19 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 	}{
 		{"users", "watch_history", "JSON"},
 		{"users", "metadata", "JSON"},
-		{"users", "previous_last_login", "TIMESTAMP NULL DEFAULT NULL"},
+		{"users", "previous_last_login", sqlTimestampNullDefault},
 		{"user_preferences", "custom_eq_presets", "JSON"},
-		{"user_preferences", "show_continue_watching", "BOOLEAN NOT NULL DEFAULT TRUE"},
-		{"user_preferences", "show_recommended", "BOOLEAN NOT NULL DEFAULT TRUE"},
-		{"user_preferences", "show_trending", "BOOLEAN NOT NULL DEFAULT TRUE"},
+		{"user_preferences", "show_continue_watching", sqlBooleanNotNullDefault},
+		{"user_preferences", "show_recommended", sqlBooleanNotNullDefault},
+		{"user_preferences", "show_trending", sqlBooleanNotNullDefault},
 		{"analytics_events", "data", "JSON NULL"},
-		{"media_metadata", "probe_mod_time", "TIMESTAMP NULL DEFAULT NULL"},
+		{"media_metadata", "probe_mod_time", sqlTimestampNullDefault},
 		{"media_metadata", "stable_id", "VARCHAR(36) NULL"},
 		{"media_metadata", "content_fingerprint", "VARCHAR(64) NULL"},
 		{"media_metadata", "blur_hash", "VARCHAR(100) NULL"},
 		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
 		{"hls_jobs", "last_accessed_at", "TIMESTAMP NULL"},
-		{"user_api_tokens", "expires_at", "TIMESTAMP NULL DEFAULT NULL"},
+		{"user_api_tokens", "expires_at", sqlTimestampNullDefault},
 		// PlaylistItem schema alignment: GORM model expects id and media_id columns
 		{"playlist_items", "id", "VARCHAR(255) NOT NULL DEFAULT '' FIRST"},
 		{"playlist_items", "media_id", "VARCHAR(255) NOT NULL DEFAULT '' AFTER playlist_id"},

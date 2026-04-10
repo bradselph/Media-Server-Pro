@@ -12,6 +12,11 @@ import (
 	"media-server-pro/internal/logger"
 )
 
+const (
+	errRequestFailed = "request failed: %w"
+	fmtHTTPError     = "HTTP %d: %s"
+)
+
 // Client is an HTTP client for the standalone downloader service API.
 // IMPORTANT: Uses a plain http.Transport (NOT helpers.SafeHTTPTransport)
 // because the downloader runs on localhost and the SSRF guard blocks loopback.
@@ -175,13 +180,13 @@ func (c *Client) GetSettings() (*SettingsResponse, error) {
 func (c *Client) get(path string, result interface{}) error {
 	resp, err := c.httpClient.Get(c.baseURL + path)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return fmt.Errorf(errRequestFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf(fmtHTTPError, resp.StatusCode, string(body))
 	}
 
 	if result != nil {
@@ -215,13 +220,13 @@ func (c *Client) postWithSession(path string, body, result interface{}, mspSessi
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return fmt.Errorf(errRequestFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf(fmtHTTPError, resp.StatusCode, string(respBody))
 	}
 
 	if result != nil {
@@ -238,13 +243,13 @@ func (c *Client) del(path string) error {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return fmt.Errorf(errRequestFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf(fmtHTTPError, resp.StatusCode, string(body))
 	}
 	return nil
 }

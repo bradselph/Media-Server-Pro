@@ -12,6 +12,8 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+const headerCacheControl = "Cache-Control"
+
 // ensureVariantPlaylistExists ensures the variant playlist exists, performing
 // lazy transcode if enabled when the playlist is missing.
 func (m *Module) ensureVariantPlaylistExists(ctx context.Context, job *models.HLSJob, quality string) (string, error) {
@@ -105,13 +107,13 @@ func servePlaylist(w http.ResponseWriter, _ *http.Request, opts servePlaylistOpt
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Access-Control-Allow-Origin", corsOrigin)
 	if opts.cdnBase == "" {
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set(headerCacheControl, "no-cache")
 		if _, err := w.Write(data); err != nil {
 			return fmt.Errorf("failed to write playlist: %w", err)
 		}
 	} else {
 		rewritten := rewritePlaylistLines(data, opts.cdnBase+"/hls/"+opts.urlPath+"/")
-		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.Header().Set(headerCacheControl, "public, max-age=60")
 		if _, err := w.Write(rewritten); err != nil {
 			return fmt.Errorf("failed to write rewritten playlist: %w", err)
 		}
@@ -197,7 +199,7 @@ func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentP
 	}
 
 	w.Header().Set("Content-Type", "video/mp2t")
-	w.Header().Set("Cache-Control", "public, max-age=31536000")
+	w.Header().Set(headerCacheControl, "public, max-age=31536000")
 	w.Header().Set("Access-Control-Allow-Origin", m.hlsCORSOrigin(r))
 	http.ServeFile(w, r, segmentPath)
 	return nil

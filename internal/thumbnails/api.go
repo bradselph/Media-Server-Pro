@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const errFFmpegNotAvailable = "ffmpeg not available"
+
 // GenerateThumbnailRequest queues thumbnail generation (generates all preview thumbnails).
 // Use highPriority=true for user-triggered (HTTP, hover); false for background scan.
 func (m *Module) GenerateThumbnailRequest(req *ThumbnailRequest) (string, error) {
@@ -20,7 +22,7 @@ func (m *Module) GenerateThumbnailRequest(req *ThumbnailRequest) (string, error)
 
 func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (string, error) {
 	if m.ffmpegPath == "" {
-		return "", fmt.Errorf("ffmpeg not available")
+		return "", fmt.Errorf(errFFmpegNotAvailable)
 	}
 
 	cfg := m.config.Get()
@@ -87,7 +89,7 @@ func (m *Module) GeneratePreviewThumbnailsRequest(req *PreviewThumbnailsRequest)
 
 func (m *Module) generatePreviewThumbnailsFromRequest(req *generatePreviewThumbnailsRequest) (string, error) {
 	if m.ffmpegPath == "" {
-		return "", fmt.Errorf("ffmpeg not available")
+		return "", fmt.Errorf(errFFmpegNotAvailable)
 	}
 	previewCount, duration := m.getPreviewConfig(req.MediaPath)
 	if m.HasAllPreviewThumbnails(MediaID(req.MediaID)) {
@@ -142,7 +144,7 @@ func (m *Module) QueueThumbnailIfMissing(mediaPath, mediaID string, isAudio bool
 func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (string, error) {
 	if m.ffmpegPath == "" {
 		m.log.Error("Cannot generate thumbnail - FFmpeg not available")
-		return "", fmt.Errorf("ffmpeg not available")
+		return "", fmt.Errorf(errFFmpegNotAvailable)
 	}
 
 	cfg := m.config.Get()
