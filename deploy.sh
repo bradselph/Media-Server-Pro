@@ -79,8 +79,8 @@ GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 REPO_URL="${REPO_URL:-github.com/bradselph/Media-Server-Pro.git}"
 MASTER_URL="${MASTER_URL:-}"
 
-GO_VERSION="1.26.1"
-NODE_MAJOR="22"
+GO_VERSION="$(get_go_version)"
+NODE_MAJOR="$(get_node_version)"
 
 # ── Slave defaults ───────────────────────────────────────────────────────────
 SLAVE_HOST="${SLAVE_HOST:-}"
@@ -141,8 +141,8 @@ done
 
 # ── Validation ───────────────────────────────────────────────────────────────
 if $SLAVE_MODE; then
-  if ! $SLAVE_LOCAL && ! $SLAVE_STOP; then
-    [[ -z "$SLAVE_HOST" ]] && ! $SETUP || true  # SLAVE_HOST checked later for remote
+  if ! $SLAVE_LOCAL && ! $SLAVE_STOP && ! $SETUP; then
+    [[ -z "$SLAVE_HOST" ]] && die "SLAVE_HOST is not set. Export it or add to .slave.env"
   fi
 else
   [[ -z "$VPS_HOST" ]]     && die "VPS_HOST is not set. Export it or add to .deploy.env"
@@ -258,13 +258,41 @@ run_or_dry() {
 # Persist a key=value into the local .deploy.env
 save_to_deploy_env() {
   local key="$1" val="$2"
-  local file="$SCRIPT_DIR/.deploy.env"
-  local tmp="${file}.tmp.$$"
-  { grep -v "^${key}=" "$file" 2>/dev/null || true; echo "${key}=${val}"; } > "$tmp" \
-    && mv "$tmp" "$file" \
-    || { rm -f "$tmp"; echo "${key}=${val}" >> "$file"; }
+  local file="${SCRIPT_DIR}/.deploy.env"
+  touch "$file"
+  if grep -q "^${key}=" "$file"; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$file"
+  else
+    echo "${key}=${val}" >> "$file"
+  fi
 }
 
+# ── Helper: Extract Go version from go.mod ──────────────────────────────────
+get_go_version() {
+  local go_mod="${SCRIPT_DIR}/go.mod"
+  if [[ -f "$go_mod" ]]; then
+    grep -oP '(?<=^go )[0-9]+\.[0-9]+(?:\.[0-9]+)?' "$go_mod" 2>/dev/null || echo "1.26.2"
+  else
+    echo "1.26.2"
+  fi
+}
+
+# ── Helper: Extract Node.js major version ───────────────────────────────────
+get_node_version() {
+  local pkg_json="${SCRIPT_DIR}/web/nuxt-ui/package.json"
+  if [[ -f "$pkg_json" ]]; then
+    local ver=""
+    # 1. Try "engines": { "node": "..." }
+    ver=$(grep -oP '(?<="node":\s*")[^"]*' "$pkg_json" 2>/dev/null | grep -oP '\d+' | head -1)
+    # 2. Try "@types/node": "..." as fallback hint
+    [[ -z "$ver" ]] && ver=$(grep -oP '(?<="@types/node":\s*")[^"]*' "$pkg_json" 2>/dev/null | grep -oP '\d+' | head -1)
+    
+    [[ -n "$ver" ]] && echo "$ver" && return
+  fi
+
+  # Default fallback
+  echo "22"
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 #
@@ -356,8 +384,6 @@ if $SLAVE_MODE; then
   fi
 
   # ── Remote slave mode ─────────────────────────────────────────────────────
-  [[ -z "$SLAVE_HOST" ]] && die "SLAVE_HOST is not set. Export it or add to .slave.env"
-
   echo -e "\n${BOLD}=== Media Server Pro — Slave Deploy ===${RESET}\n"
   info "Slave      : $SLAVE_USER@$SLAVE_HOST:$SLAVE_PORT"
   info "Install dir: $SLAVE_DIR"
@@ -394,7 +420,9 @@ if $SLAVE_MODE; then
 
   # ── Cross-compile slave binary ────────────────────────────────────────────
   build_slave_binary() {
-    local arch="$1" goarm="" goarch="$arch"
+    local arch="$1"
+    goarm=""
+    goarch="$arch"
     if [[ "$arch" == "arm" ]]; then
       goarch="arm"; goarm="6"
     fi
@@ -549,9 +577,9 @@ HEARTBEAT_INTERVAL=$HEARTBEAT_INTERVAL
       }
       patch_or_add MASTER_URL '$MASTER_URL'
       patch_or_add RECEIVER_API_KEY '$RECEIVER_API_KEY'
-      ${MEDIA_DIRS:+patch_or_add MEDIA_DIRS '$MEDIA_DIRS'}
-      ${SLAVE_ID:+patch_or_add SLAVE_ID '$SLAVE_ID'}
-      ${SLAVE_NAME:+patch_or_add SLAVE_NAME '$SLAVE_NAME'}
+      ${MEDIA_DIRS:+patch_or_add MEDIA_DIRS "$MEDIA_DIRS"}
+      ${SLAVE_ID:+patch_or_add SLAVE_ID "$SLAVE_ID"}
+      ${SLAVE_NAME:+patch_or_add SLAVE_NAME "$SLAVE_NAME"}
       patch_or_add SCAN_INTERVAL '$SCAN_INTERVAL'
       patch_or_add HEARTBEAT_INTERVAL '$HEARTBEAT_INTERVAL'
       sudo systemctl restart '$SLAVE_SERVICE' 2>/dev/null || true
