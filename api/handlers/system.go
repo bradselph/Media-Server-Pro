@@ -213,7 +213,7 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 	c.Header(headerContentType, "text/plain; version=0.0.4")
 	c.Header("Cache-Control", "no-cache")
 	c.Status(http.StatusOK)
-	if _, err := c.Writer.Write([]byte(b.String())); err != nil {
+	if _, err := c.Writer.WriteString(b.String()); err != nil {
 		h.log.Error("Failed to write metrics output: %v", err)
 	}
 }
@@ -318,7 +318,7 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 		const maxFiles = 100000
 		if _, err := os.Stat(uploadsDir); err == nil {
 			fileCount := 0
-			if err := filepath.Walk(uploadsDir, func(path string, info os.FileInfo, err error) error {
+			if err := filepath.Walk(uploadsDir, func(_ string, info os.FileInfo, err error) error {
 				if err == nil && !info.IsDir() {
 					totalSize += info.Size()
 					fileCount++
@@ -510,8 +510,8 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		return
 	}
 	defer func() {
-		if err := rows.Close(); err != nil {
-			h.log.Warn("Failed to close rows: %v", err)
+		if closeErr := rows.Close(); closeErr != nil {
+			h.log.Warn("Failed to close rows: %v", closeErr)
 		}
 	}()
 

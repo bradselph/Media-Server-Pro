@@ -75,7 +75,6 @@ func TestSafeContentDisposition(t *testing.T) {
 	}
 }
 
-
 // ---------------------------------------------------------------------------
 // getSession / getUser
 // ---------------------------------------------------------------------------
@@ -206,9 +205,9 @@ func TestIsPathUnderDirs(t *testing.T) {
 	base := t.TempDir()
 	mediaDir := filepath.Join(base, "media")
 	etcDir := filepath.Join(base, "etc")
-	os.MkdirAll(mediaDir, 0755)
-	os.MkdirAll(filepath.Join(mediaDir, "sub"), 0755)
-	os.MkdirAll(etcDir, 0755)
+	os.MkdirAll(mediaDir, 0o750)
+	os.MkdirAll(filepath.Join(mediaDir, "sub"), 0o750)
+	os.MkdirAll(etcDir, 0o750)
 
 	tests := []struct {
 		path string
@@ -219,7 +218,7 @@ func TestIsPathUnderDirs(t *testing.T) {
 		{filepath.Join(mediaDir, "sub", "video.mp4"), []string{mediaDir}, true},
 		{filepath.Join(etcDir, "passwd"), []string{mediaDir}, false},
 		{filepath.Join(mediaDir, "video.mp4"), []string{""}, false},
-		{mediaDir, []string{mediaDir}, true},                                      // dir matches itself
+		{mediaDir, []string{mediaDir}, true},                                        // dir matches itself
 		{filepath.Join(mediaDir, "..", "etc", "passwd"), []string{mediaDir}, false}, // traversal
 	}
 	for _, tc := range tests {
@@ -237,7 +236,7 @@ func TestIsPathUnderDirs(t *testing.T) {
 func TestResolvePathToAbsoluteNoWrite_Absolute(t *testing.T) {
 	dir := t.TempDir()
 	fpath := filepath.Join(dir, "test.mp4")
-	os.WriteFile(fpath, []byte("test"), 0644)
+	os.WriteFile(fpath, []byte("test"), 0o600)
 
 	result, err := resolvePathToAbsoluteNoWrite(fpath, []string{dir})
 	if err != nil {
@@ -251,7 +250,7 @@ func TestResolvePathToAbsoluteNoWrite_Absolute(t *testing.T) {
 func TestResolvePathToAbsoluteNoWrite_Relative(t *testing.T) {
 	dir := t.TempDir()
 	fpath := filepath.Join(dir, "test.mp4")
-	os.WriteFile(fpath, []byte("test"), 0644)
+	os.WriteFile(fpath, []byte("test"), 0o600)
 
 	result, err := resolvePathToAbsoluteNoWrite("test.mp4", []string{dir})
 	if err != nil {

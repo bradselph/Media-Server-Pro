@@ -17,7 +17,7 @@ func envGetStr(keys ...string) string {
 	return ""
 }
 
-func envGetBool(keys ...string) (bool, bool) {
+func envGetBool(keys ...string) (value, found bool) {
 	if val := envGetStr(keys...); val != "" {
 		lower := strings.ToLower(val)
 		switch lower {
@@ -91,10 +91,10 @@ func envGetDurationString(keys ...string) (time.Duration, bool) {
 	return 0, false
 }
 
-// splitTrimmed splits s by sep and trims whitespace from each element.
+// splitTrimmed splits s by "," and trims whitespace from each element.
 // Empty elements after trimming are excluded from the result.
-func splitTrimmed(s, sep string) []string {
-	parts := strings.Split(s, sep)
+func splitTrimmed(s string) []string {
+	parts := strings.Split(s, ",")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		if trimmed := strings.TrimSpace(p); trimmed != "" {

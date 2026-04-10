@@ -25,7 +25,7 @@ func New(root string) (*Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("local storage: resolve root %q: %w", root, err)
 	}
-	if err := os.MkdirAll(abs, 0755); err != nil {
+	if err := os.MkdirAll(abs, 0o755); err != nil { //nolint:gosec // G301: world-readable storage directories are intentional
 		return nil, fmt.Errorf("local storage: create root %q: %w", abs, err)
 	}
 	return &Backend{root: abs}, nil
@@ -166,8 +166,8 @@ func (b *Backend) Create(_ context.Context, path string, r io.Reader) (int64, er
 	if err != nil {
 		return 0, err
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
-		return 0, fmt.Errorf("local storage: mkdir: %w", err)
+	if mkdirErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkdirErr != nil { //nolint:gosec // G301: world-readable storage dirs are intentional
+		return 0, fmt.Errorf("local storage: mkdir: %w", mkdirErr)
 	}
 	// Write to temp file + rename for atomicity
 	tmp, err := os.CreateTemp(filepath.Dir(abs), ".tmp-*")
@@ -198,7 +198,7 @@ func (b *Backend) MkdirAll(_ context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	return os.MkdirAll(abs, 0755)
+	return os.MkdirAll(abs, 0o755) //nolint:gosec // G301: world-readable storage directories are intentional
 }
 
 // Remove deletes a single file.
@@ -229,7 +229,7 @@ func (b *Backend) Rename(_ context.Context, src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(dstAbs), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dstAbs), 0o755); err != nil { //nolint:gosec // G301: world-readable storage dirs are intentional
 		return fmt.Errorf("local storage: mkdir for rename: %w", err)
 	}
 	return os.Rename(srcAbs, dstAbs)
@@ -241,8 +241,8 @@ func (b *Backend) WriteFile(_ context.Context, path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
-		return fmt.Errorf("local storage: mkdir: %w", err)
+	if mkdirErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkdirErr != nil { //nolint:gosec // G301: world-readable storage dirs are intentional
+		return fmt.Errorf("local storage: mkdir: %w", mkdirErr)
 	}
 	// Write to temp + rename for atomicity
 	tmp, err := os.CreateTemp(filepath.Dir(abs), ".tmp-*")

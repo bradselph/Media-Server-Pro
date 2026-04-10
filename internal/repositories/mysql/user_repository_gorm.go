@@ -45,11 +45,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 
 		// Create preferences
 		user.Preferences.UserID = user.ID
-		if err := tx.Create(&user.Preferences).Error; err != nil {
-			return err
-		}
-
-		return nil
+		return tx.Create(&user.Preferences).Error
 	})
 }
 
@@ -170,7 +166,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 		// Upsert preferences: same pattern. GORM's serializer:json tag handles
 		// CustomEQPresets automatically when using Create.
 		user.Preferences.UserID = user.ID
-		if err := tx.Clauses(clause.OnConflict{
+		return tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "user_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"theme", "view_mode", "default_quality", "auto_play",
@@ -180,11 +176,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 				"filter_media_type", "custom_eq_presets",
 				"show_continue_watching", "show_recommended", "show_trending",
 			}),
-		}).Create(&user.Preferences).Error; err != nil {
-			return err
-		}
-
-		return nil
+		}).Create(&user.Preferences).Error
 	})
 }
 

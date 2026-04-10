@@ -206,10 +206,7 @@ func (m *Module) generateSuggestion(path FilePath) *models.AutoDiscoverySuggesti
 	if s := m.tryMusicSuggestion(path, nameWithoutExt, filename, ext); s != nil {
 		return s
 	}
-	if s := m.tryCleanedNameSuggestion(path, nameWithoutExt, ext); s != nil {
-		return s
-	}
-	return nil
+	return m.tryCleanedNameSuggestion(path, nameWithoutExt, ext)
 }
 
 func (m *Module) tryTVSuggestion(path FilePath, nameWithoutExt string, ext fileExtension) *models.AutoDiscoverySuggestion {
@@ -377,7 +374,7 @@ func fillMusicInfoFromPath(info *musicInfo, pathStr string) {
 	parts := strings.Split(dir, string(os.PathSeparator))
 	for i := len(parts) - 1; i >= 0 && i >= len(parts)-2; i-- {
 		part := parts[i]
-		if strings.ToLower(part) == "music" || strings.ToLower(part) == "audio" {
+		if strings.EqualFold(part, "music") || strings.EqualFold(part, "audio") {
 			continue
 		}
 		if info.album == "" {
@@ -483,8 +480,8 @@ func (m *Module) applySuggestionResolveDest(pathStr string, suggestion *models.A
 		return "", "", fmt.Errorf("invalid destination path: %w", err)
 	}
 	cfg := m.config.Get()
-	allowedDirs := []string{cfg.Directories.Videos, cfg.Directories.Music}
-	allowedDirs = append(allowedDirs, filepath.Dir(pathStr))
+	allowedDirs := make([]string, 0, 3)
+	allowedDirs = append(allowedDirs, cfg.Directories.Videos, cfg.Directories.Music, filepath.Dir(pathStr))
 	if !isPathInAllowedDirs(absDestPath, allowedDirs) {
 		return "", "", fmt.Errorf("destination path %s is outside allowed media directories", absDestPath)
 	}

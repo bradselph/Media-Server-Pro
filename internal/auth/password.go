@@ -1,4 +1,5 @@
 // Password updates and verification.
+
 package auth
 
 import (
@@ -79,8 +80,9 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 		return fmt.Errorf("password must be at least 8 characters")
 	}
 
+	var exists bool
 	m.usersMu.RLock()
-	user, exists := m.users[username]
+	_, exists = m.users[username]
 	m.usersMu.RUnlock()
 	if !exists {
 		return ErrUserNotFound
@@ -94,7 +96,7 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 
 	// Re-read user under lock and copy atomically to avoid data race with concurrent mutations.
 	m.usersMu.RLock()
-	user, exists = m.users[username]
+	user, exists := m.users[username]
 	if !exists || user == nil {
 		m.usersMu.RUnlock()
 		return ErrUserNotFound

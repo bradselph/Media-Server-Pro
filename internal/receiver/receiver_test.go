@@ -146,8 +146,32 @@ func TestCatalogItem_Fields(t *testing.T) {
 	if item.ID != "item-1" {
 		t.Errorf("ID = %q", item.ID)
 	}
+	if item.Path != "/videos/movie.mp4" {
+		t.Errorf("Path = %q", item.Path)
+	}
+	if item.Name != "movie.mp4" {
+		t.Errorf("Name = %q", item.Name)
+	}
+	if item.MediaType != "video" {
+		t.Errorf("MediaType = %q", item.MediaType)
+	}
 	if item.Size != 1024*1024 {
 		t.Errorf("Size = %d", item.Size)
+	}
+	if item.Duration != 120.5 {
+		t.Errorf("Duration = %v", item.Duration)
+	}
+	if item.ContentType != "video/mp4" {
+		t.Errorf("ContentType = %q", item.ContentType)
+	}
+	if item.ContentFingerprint != "abc123" {
+		t.Errorf("ContentFingerprint = %q", item.ContentFingerprint)
+	}
+	if item.Width != 1920 {
+		t.Errorf("Width = %d", item.Width)
+	}
+	if item.Height != 1080 {
+		t.Errorf("Height = %d", item.Height)
 	}
 }
 
@@ -159,8 +183,20 @@ func TestMediaItem_Fields(t *testing.T) {
 		Path:      "/videos/movie.mp4",
 		Name:      "movie.mp4",
 	}
+	if item.ID != "opaque-id" {
+		t.Errorf("ID = %q", item.ID)
+	}
+	if item.SlaveID != "slave-1" {
+		t.Errorf("SlaveID = %q", item.SlaveID)
+	}
 	if item.SlaveName != "Node A" {
 		t.Errorf("SlaveName = %q", item.SlaveName)
+	}
+	if item.Path != "/videos/movie.mp4" {
+		t.Errorf("Path = %q", item.Path)
+	}
+	if item.Name != "movie.mp4" {
+		t.Errorf("Name = %q", item.Name)
 	}
 }
 
@@ -171,6 +207,15 @@ func TestSlaveNode_Fields(t *testing.T) {
 		BaseURL:    "https://slave.example.com",
 		Status:     "online",
 		MediaCount: 42,
+	}
+	if node.ID != "slave-1" {
+		t.Errorf("ID = %q", node.ID)
+	}
+	if node.Name != "Node A" {
+		t.Errorf("Name = %q", node.Name)
+	}
+	if node.BaseURL != "https://slave.example.com" {
+		t.Errorf("BaseURL = %q", node.BaseURL)
 	}
 	if node.Status != "online" {
 		t.Errorf("Status = %q", node.Status)

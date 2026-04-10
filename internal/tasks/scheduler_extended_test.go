@@ -24,7 +24,7 @@ func TestExecuteTask_PanicRecovery(t *testing.T) {
 		ID:       "panic-task",
 		Name:     "Panic Task",
 		Schedule: 1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			atomic.AddInt32(&ranCount, 1)
 			panic("test panic")
 		},
@@ -63,7 +63,7 @@ func TestRunNow_AfterError_StillRunnable(t *testing.T) {
 		ID:       "retry-test",
 		Name:     "Retry Test",
 		Schedule: 1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			n := atomic.AddInt32(&count, 1)
 			if n == 1 {
 				return context.DeadlineExceeded
@@ -122,7 +122,7 @@ func TestRegisterTask_AfterStart(t *testing.T) {
 		ID:       "late-register",
 		Name:     "Late Register",
 		Schedule: 1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			atomic.AddInt32(&ran, 1)
 			return nil
 		},
@@ -144,7 +144,7 @@ func TestListTasks_Fields(t *testing.T) {
 		Name:        "Field Test",
 		Description: "Tests field mapping",
 		Schedule:    2 * time.Hour,
-		Func:        func(ctx context.Context) error { return nil },
+		Func:        func(_ context.Context) error { return nil },
 	})
 	tasks := m.ListTasks()
 	if len(tasks) != 1 {

@@ -70,28 +70,28 @@ type MediaIDProvider interface {
 
 // Module handles thumbnail generation
 type Module struct {
-	log             *logger.Logger
-	config          *config.Manager
-	thumbnailDir    string
+	log                *logger.Logger
+	config             *config.Manager
+	thumbnailDir       string
 	dbModule           *database.Module   // used in Start() to wire blurHashUpdater after DB connects
 	store              storage.Backend    // optional storage backend for thumbnail I/O
 	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
-	ffmpegPath      string
-	ffprobePath     string
-	jobHeap         jobHeap
-	jobMu           sync.Mutex
-	jobCond         *sync.Cond
-	jobCap          int // max queue size
-	ctx             context.Context
-	cancel          context.CancelFunc
-	wg              sync.WaitGroup
-	stats           Stats
-	statsMu         sync.RWMutex
-	healthMu        sync.RWMutex
-	healthy         bool
-	healthMsg       string
-	blurHashUpdater BlurHashUpdater
-	mediaIDProvider MediaIDProvider
+	ffmpegPath         string
+	ffprobePath        string
+	jobHeap            jobHeap
+	jobMu              sync.Mutex
+	jobCond            *sync.Cond
+	jobCap             int // max queue size
+	ctx                context.Context
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
+	stats              Stats
+	statsMu            sync.RWMutex
+	healthMu           sync.RWMutex
+	healthy            bool
+	healthMsg          string
+	blurHashUpdater    BlurHashUpdater
+	mediaIDProvider    MediaIDProvider
 	// inFlight tracks output paths currently queued or being processed to
 	// prevent duplicate jobs when the background task and HTTP handlers both
 	// call GenerateThumbnail for the same file before it is written to disk.
@@ -203,7 +203,7 @@ type jobHeap []*priorityJob
 func (h *jobHeap) Len() int           { return len(*h) }
 func (h *jobHeap) Less(i, j int) bool { return (*h)[i].priority < (*h)[j].priority }
 func (h *jobHeap) Swap(i, j int)      { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
-func (h *jobHeap) Push(x interface{}) { *h = append(*h, x.(*priorityJob)) }
+func (h *jobHeap) Push(x interface{}) { *h = append(*h, x.(*priorityJob)) } //nolint:errcheck // heap interface contract: x is always *priorityJob
 func (h *jobHeap) Pop() interface{} {
 	old := *h
 	n := len(old)

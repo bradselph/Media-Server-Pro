@@ -92,12 +92,12 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Apply a startup delay so that tasks don't all fire the instant the
 	// scheduler starts.  This prevents a flood of DB queries while the
-	// remaining modules (scanner, thumbnails, …) are still initialising.
+	// remaining modules (scanner, thumbnails, …) are still initializing.
 	m.startupDelay = defaultStartupDelay
 
 	// Use a background context for task goroutines so they aren't cancelled
 	// when the server's module-startup context completes.
-	taskCtx, cancel := context.WithCancel(context.Background())
+	taskCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = taskCtx
 	m.cancel = cancel
 	m.done = taskCtx.Done()

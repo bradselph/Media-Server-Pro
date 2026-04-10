@@ -3,6 +3,6 @@
 package helpers
 
 // SDNotify is a no-op on Windows (systemd/notify sockets are Unix-only).
-func SDNotify(state string) error {
+func SDNotify(_ string) error {
 	return nil
 }

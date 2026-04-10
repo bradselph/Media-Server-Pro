@@ -54,7 +54,7 @@ func (h *Handler) RestartServer(c *gin.Context) {
 		// which kills all goroutines — including this one — before cmd.Start() is reached.
 		// The child inherits MEDIA_SERVER_RESTART_DELAY so it waits for the parent to
 		// exit and free the port before binding.
-		cmd := exec.Command(exe, os.Args[1:]...)
+		cmd := exec.Command(exe, os.Args[1:]...) //nolint:gosec // G204: exe is the current process binary path from os.Executable()
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Env = append(os.Environ(), "MEDIA_SERVER_RESTART_DELAY=3")

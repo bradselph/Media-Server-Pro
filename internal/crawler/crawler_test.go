@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -204,7 +205,7 @@ func TestErrDisabled(t *testing.T) {
 func TestAddTarget_Disabled(t *testing.T) {
 	m := &Module{}
 	_, err := m.AddTarget("test", "https://example.com")
-	if err != errDisabled {
+	if !errors.Is(err, errDisabled) {
 		t.Errorf("expected errDisabled, got %v", err)
 	}
 }
@@ -212,7 +213,7 @@ func TestAddTarget_Disabled(t *testing.T) {
 func TestRemoveTarget_Disabled(t *testing.T) {
 	m := &Module{}
 	err := m.RemoveTarget("id")
-	if err != errDisabled {
+	if !errors.Is(err, errDisabled) {
 		t.Errorf("expected errDisabled, got %v", err)
 	}
 }
@@ -220,7 +221,7 @@ func TestRemoveTarget_Disabled(t *testing.T) {
 func TestGetTargets_Disabled(t *testing.T) {
 	m := &Module{}
 	_, err := m.GetTargets()
-	if err != errDisabled {
+	if !errors.Is(err, errDisabled) {
 		t.Errorf("expected errDisabled, got %v", err)
 	}
 }
@@ -228,7 +229,7 @@ func TestGetTargets_Disabled(t *testing.T) {
 func TestGetDiscoveries_Disabled(t *testing.T) {
 	m := &Module{}
 	_, err := m.GetDiscoveries("pending")
-	if err != errDisabled {
+	if !errors.Is(err, errDisabled) {
 		t.Errorf("expected errDisabled, got %v", err)
 	}
 }

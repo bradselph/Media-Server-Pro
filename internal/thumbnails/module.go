@@ -102,7 +102,7 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Start worker pool using a background context so workers are not
 	// cancelled when the short-lived module-startup context expires.
-	workerCtx, cancel := context.WithCancel(context.Background())
+	workerCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = workerCtx
 	m.cancel = cancel
 

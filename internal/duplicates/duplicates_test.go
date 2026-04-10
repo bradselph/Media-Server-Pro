@@ -169,11 +169,11 @@ func TestEnabled_NilRepo(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDuplicateItemSource(t *testing.T) {
-	local := &DuplicateItem{ID: "1", SlaveID: "", Source: sourceFor("")}
+	local := &DuplicateItem{Source: sourceFor("")}
 	if local.Source != "local" {
 		t.Errorf("local item source = %q", local.Source)
 	}
-	remote := &DuplicateItem{ID: "2", SlaveID: "s1", Source: sourceFor("s1")}
+	remote := &DuplicateItem{Source: sourceFor("s1")}
 	if remote.Source != "receiver" {
 		t.Errorf("remote item source = %q", remote.Source)
 	}

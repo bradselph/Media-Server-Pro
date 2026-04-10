@@ -414,7 +414,7 @@ func (m *Module) detectMovie(ctx PathContext, info *MediaInfo) (Category, float6
 func (m *Module) extractShowName(filename string, pattern *regexp.Regexp) string {
 	// Get everything before the season/episode pattern
 	loc := pattern.FindStringIndex(filename)
-	if loc == nil || loc[0] == 0 {
+	if len(loc) == 0 || loc[0] == 0 {
 		return ""
 	}
 	name := filename[:loc[0]]

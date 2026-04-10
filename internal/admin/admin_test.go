@@ -43,6 +43,12 @@ func TestAuditLogParams_Fields(t *testing.T) {
 	if p.UserID != "user-1" {
 		t.Errorf("UserID = %q", p.UserID)
 	}
+	if p.Username != "admin" {
+		t.Errorf("Username = %q", p.Username)
+	}
+	if p.Resource != "users" {
+		t.Errorf("Resource = %q", p.Resource)
+	}
 	if !p.Success {
 		t.Error("Success should be true")
 	}

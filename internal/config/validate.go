@@ -18,7 +18,7 @@ func (m *Manager) Validate() []error {
 // called during Load() (which holds the write lock). This eliminates the
 // former M-04 drift where the two paths had different coverage.
 func (m *Manager) validateLocked() []error {
-	var errors []error
+	var errors []error //nolint:prealloc // capacity unknown at compile time
 	errors = append(errors, m.validateServer()...)
 	errors = append(errors, m.validateStreaming()...)
 	errors = append(errors, m.validateAdmin()...)
@@ -40,7 +40,7 @@ func (m *Manager) validateLocked() []error {
 }
 
 func (m *Manager) validateServer() []error {
-	var errs []error
+	var errs []error //nolint:prealloc // capacity unknown at compile time
 	errs = append(errs, m.validateServerPort()...)
 	m.validateServerTimeouts()
 	errs = append(errs, m.validateServerHTTPS()...)

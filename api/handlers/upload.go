@@ -69,7 +69,7 @@ func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context, cfg *config.Config)
 }
 
 // checkUploadStorageQuota returns false and writes an error if user would exceed quota. Otherwise true.
-// Re-reads storage_used from the DB to minimise the race window between concurrent uploads.
+// Re-reads storage_used from the DB to minimize the race window between concurrent uploads.
 func (h *Handler) checkUploadStorageQuota(c *gin.Context, cfg *config.Config, user *models.User, fileHeaders []*multipart.FileHeader) bool {
 	userType := h.getUserType(cfg, user)
 	if userType == nil || userType.StorageQuota <= 0 {

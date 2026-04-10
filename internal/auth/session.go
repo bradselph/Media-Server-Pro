@@ -1,4 +1,5 @@
 // Session lifecycle and validation.
+
 package auth
 
 import (
@@ -154,7 +155,7 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	// DB row between the lock release above and the goroutine executing.
 	select {
 	case m.sessionUpdateSem <- struct{}{}:
-		go func() {
+		go func() { //nolint:gosec // G118: background context intentional for async fire-and-forget DB write
 			defer func() { <-m.sessionUpdateSem }()
 			if err := m.sessionRepo.Update(context.Background(), &sessionCopy); err != nil && !errors.Is(err, ErrSessionNotFound) {
 				m.log.Warn("Failed to persist session LastActivity for %s: %v", sessionCopy.Username, err)

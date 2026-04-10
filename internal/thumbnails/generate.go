@@ -142,14 +142,14 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 	cmd := stream.Compile()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
 	cmdWithContext.Env = cmd.Env
 	cmdWithContext.Dir = cmd.Dir
 
 	output, err := cmdWithContext.CombinedOutput()
 	if err != nil {
 		// Clean up any partial output file left behind on failure (e.g. timeout)
-		os.Remove(job.OutputPath)
+		_ = os.Remove(job.OutputPath)
 		m.log.Error("FFmpeg failed: %v", err)
 		m.log.Error("FFmpeg output: %s", string(output))
 		return fmt.Errorf("ffmpeg failed: %w", err)
@@ -171,7 +171,7 @@ func (m *Module) computeBlurHash(jpgPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	img, err := jpeg.Decode(f)
 	if err != nil {
@@ -221,14 +221,14 @@ func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
 	cmdWithContext.Env = cmd.Env
 	cmdWithContext.Dir = cmd.Dir
 
 	output, err := cmdWithContext.CombinedOutput()
 	if err != nil {
 		// Clean up any partial output file left behind on failure
-		os.Remove(opts.outputPath)
+		_ = os.Remove(opts.outputPath)
 		m.log.Debug("FFmpeg WebP failed: %v, output: %s", err, string(output))
 		return fmt.Errorf("ffmpeg webp: %w", err)
 	}
@@ -255,7 +255,7 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
 	cmdWithContext.Env = cmd.Env
 	cmdWithContext.Dir = cmd.Dir
 
@@ -267,10 +267,7 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 	}
 
 	m.addFileSizeToStats(job.OutputPath)
-	if err := m.verifyAndPostProcessAudioThumbnail(job); err != nil {
-		return err
-	}
-	return nil
+	return m.verifyAndPostProcessAudioThumbnail(job)
 }
 
 // verifyAndPostProcessAudioThumbnail verifies the waveform file exists, generates WebP variant, and updates BlurHash.
@@ -311,7 +308,7 @@ func (m *Module) generateWebPFromAudio(opts *webPFromAudioOpts) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
 	cmdWithContext.Env = cmd.Env
 	cmdWithContext.Dir = cmd.Dir
 

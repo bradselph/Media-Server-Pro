@@ -58,7 +58,7 @@ func (r *CategorizedItemRepository) Get(ctx context.Context, path string) (*repo
 	var row categorizedItemRow
 	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("failed to get categorized item: %w", err)
 	}

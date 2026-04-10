@@ -125,7 +125,7 @@ func (m *Module) ListImportable() ([]ImportableFile, error) {
 // Import moves a file from the downloader's downloads directory to MSP's
 // import directory and optionally triggers a media library rescan.
 // Returns destination path and whether the source file was deleted.
-func (m *Module) Import(filename string, deleteSource bool, triggerScan bool) (destPath string, sourceDeleted bool, err error) {
+func (m *Module) Import(filename string, deleteSource, triggerScan bool) (destPath string, sourceDeleted bool, err error) {
 	cfg := m.config.Get()
 	if cfg.Downloader.DownloadsDir == "" {
 		return "", false, fmt.Errorf("downloads_dir not configured")

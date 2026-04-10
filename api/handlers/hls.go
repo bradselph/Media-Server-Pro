@@ -196,7 +196,7 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 }
 
 // withResolvedHLSJob resolves the HLS job then runs serveFn. Returns false if resolution or serve failed (error already written).
-func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID string, notFoundMsg string, serveFn func() error) bool {
+func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID, notFoundMsg string, serveFn func() error) bool {
 	if _, ok := h.resolveHLSJobForServe(c, jobID); !ok {
 		return false
 	}

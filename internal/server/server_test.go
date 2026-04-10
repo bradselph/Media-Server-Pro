@@ -38,9 +38,9 @@ type mockModule struct {
 	name string
 }
 
-func (m *mockModule) Name() string                         { return m.name }
-func (m *mockModule) Start(_ context.Context) error        { return nil }
-func (m *mockModule) Stop(_ context.Context) error         { return nil }
+func (m *mockModule) Name() string                  { return m.name }
+func (m *mockModule) Start(_ context.Context) error { return nil }
+func (m *mockModule) Stop(_ context.Context) error  { return nil }
 func (m *mockModule) Health() models.HealthStatus {
 	return models.HealthStatus{Name: m.name, Status: "healthy", Message: "ok"}
 }

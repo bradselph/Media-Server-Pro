@@ -151,12 +151,12 @@ func Init(cfg Config) error {
 		}
 
 		if cfg.LogToFile {
-			if err := os.MkdirAll(cfg.LogDir, 0755); err != nil {
+			if err := os.MkdirAll(cfg.LogDir, 0o755); err != nil { //nolint:gosec // world-readable log dir is intentional
 				initErr = fmt.Errorf("failed to create log directory: %w", err)
 				return
 			}
 			logFile := filepath.Join(cfg.LogDir, fmt.Sprintf("server_%s.log", time.Now().Format("2006-01-02")))
-			f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
+			f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640) //nolint:gosec // 0640 intentional: allows log group to read files
 			if err != nil {
 				initErr = fmt.Errorf("failed to open log file: %w", err)
 				return
@@ -177,12 +177,12 @@ func EnableFileLogging(logDir string, maxSize int64, maxBackups int) error {
 	globalLogger.mu.Lock()
 	defer globalLogger.mu.Unlock()
 
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0o755); err != nil { //nolint:gosec // world-readable log dir is intentional
 		return fmt.Errorf("failed to create log directory %s: %w", logDir, err)
 	}
 
 	logFile := filepath.Join(logDir, fmt.Sprintf("server_%s.log", time.Now().Format("2006-01-02")))
-	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640) //nolint:gosec // 0640 intentional: allows log group to read files
 	if err != nil {
 		return fmt.Errorf("failed to open log file %s: %w", logFile, err)
 	}
@@ -404,20 +404,14 @@ func (l *Logger) rotateIfNeeded() {
 	currentPath := l.fileOutput.Name()
 
 	// Close the current file
-	if err := l.fileOutput.Sync(); err != nil {
-		_ = err // best-effort sync
-	}
-	if err := l.fileOutput.Close(); err != nil {
-		_ = err // best-effort close
-	}
+	_ = l.fileOutput.Sync()  // best-effort sync
+	_ = l.fileOutput.Close() // best-effort close
 
 	// Rename current to a timestamped backup so that successive rotations
 	// produce distinct files (.2006-01-02T150405) rather than overwriting the
 	// single .1 backup that the old approach created.
 	rotatedPath := currentPath + "." + time.Now().Format("20060102T150405")
-	if err := os.Rename(currentPath, rotatedPath); err != nil {
-		_ = err // best-effort rename
-	}
+	_ = os.Rename(currentPath, rotatedPath) // best-effort rename
 
 	// Clean up old backups beyond maxBackups
 	if l.maxBackups > 0 {
@@ -425,7 +419,7 @@ func (l *Logger) rotateIfNeeded() {
 	}
 
 	// Open a new log file
-	f, err := os.OpenFile(currentPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
+	f, err := os.OpenFile(currentPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640) //nolint:gosec // 0640 intentional: group-readable for log aggregation
 	if err != nil {
 		// Fall back to writing without file
 		l.fileOutput = nil

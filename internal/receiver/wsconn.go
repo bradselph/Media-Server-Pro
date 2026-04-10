@@ -68,11 +68,11 @@ type PendingStream struct {
 	Ready     chan *StreamDelivery // slave posts delivery here
 	CreatedAt time.Time
 	readyOnce sync.Once          // guards close(Ready) to prevent double-close panic
-	ctx       context.Context    // cancelled when the consumer exits (any path)
+	ctx       context.Context    // canceled when the consumer exits (any path)
 	cancel    context.CancelFunc // call on all consumer exit paths
 }
 
-// ConsumerContext returns a context that is cancelled when the consumer
+// ConsumerContext returns a context that is canceled when the consumer
 // finishes (normal read, timeout, client disconnect, or cleanup). Push
 // handlers can watch this to avoid blocking indefinitely when the consumer
 // has already exited.
@@ -93,7 +93,7 @@ type slaveWS struct {
 	mu       sync.Mutex // protects writes to conn
 	log      *logger.Logger
 	done     chan struct{} // closed on disconnect to stop the ping goroutine
-	doneOnce sync.Once   // guards close(done) to prevent double-close panic
+	doneOnce sync.Once     // guards close(done) to prevent double-close panic
 }
 
 // sendJSON sends a typed JSON message to the slave.
@@ -121,7 +121,7 @@ func setReadDeadline(conn *websocket.Conn, d time.Duration, log *logger.Logger) 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin:     func(_ *http.Request) bool { return true },
 }
 
 // HandleWebSocket upgrades an HTTP connection to a WebSocket for a slave node.
@@ -195,7 +195,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		sw.doneOnce.Do(func() { close(sw.done) })
-		conn.Close()
+		_ = conn.Close()
 		if sw.slaveID != "" {
 			m.removeSlaveWS(sw.slaveID, sw)
 			m.log.Info("Slave %s WebSocket disconnected", sw.slaveID)
@@ -317,7 +317,7 @@ func (m *Module) setSlaveWS(slaveID string, sw *slaveWS) {
 		// Stop the ping goroutine immediately instead of waiting for the next
 		// failed write (up to wsPingInterval, typically 25 s).
 		old.doneOnce.Do(func() { close(old.done) })
-		old.conn.Close()
+		_ = old.conn.Close()
 	}
 	m.wsConns[slaveID] = sw
 	// Cancel pending streams for the old connection synchronously so that no
@@ -379,7 +379,7 @@ func (m *Module) RequestStream(slaveID, token, path, rangeHeader string) (*Pendi
 		return nil, fmt.Errorf("slave %s is not connected via WebSocket", slaveID)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in PendingStream.cancel, called on completion/timeout
 	ps := &PendingStream{
 		SlaveID:   slaveID,
 		Path:      path,

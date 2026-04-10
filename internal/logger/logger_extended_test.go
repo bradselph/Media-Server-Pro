@@ -89,7 +89,7 @@ func TestIsColorTerminal_XTerm(t *testing.T) {
 // SetJSONFormat (exported function)
 // ---------------------------------------------------------------------------
 
-func TestSetJSONFormat_NilLogger(t *testing.T) {
+func TestSetJSONFormat_NilLogger(_ *testing.T) {
 	old := globalLogger
 	globalLogger = nil
 	defer func() { globalLogger = old }()

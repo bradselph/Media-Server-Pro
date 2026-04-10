@@ -48,7 +48,7 @@ func IsSessionError(err error) bool {
 	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExpired) || errors.Is(err, ErrAccountDisabled)
 }
 
-const errHashPasswordFmt = "failed to hash password: %w"
+const errHashPasswordFmt = "failed to hash password: %w" //nolint:gosec // G101 false positive: error message, not credentials
 
 // Module implements the authentication module
 type Module struct {

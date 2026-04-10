@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"media-server-pro/internal/testutil"
@@ -12,6 +13,7 @@ func TestListMedia_Empty(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -48,6 +50,7 @@ func TestListMedia_WithPagination(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media?limit=10&offset=0", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -64,6 +67,7 @@ func TestListMedia_FilterByType(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media?type=video", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -79,6 +83,7 @@ func TestListMedia_FilterBySearch(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media?search=nonexistent", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -111,6 +116,7 @@ func TestListMedia_LimitClamping(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media?limit=9999", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -127,6 +133,7 @@ func TestGetMedia_NotFound(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media/nonexistent-id", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusServiceUnavailable {
@@ -139,6 +146,7 @@ func TestGetMediaStats(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media/stats", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -154,6 +162,7 @@ func TestStreamMedia_MissingID(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/media", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusBadRequest {
@@ -166,6 +175,7 @@ func TestGetCategories(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media/categories", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -181,6 +191,7 @@ func TestGetBatchMedia_EmptyIDs(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media/batch", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -201,6 +212,7 @@ func TestGetBatchMedia_WithIDs(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	resp := ts.Request("GET", "/api/media/batch?ids=fake-id-1,fake-id-2", nil)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -222,13 +234,14 @@ func TestGetBatchMedia_IDLimit(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
 	// Build 110 fake IDs
-	ids := ""
-	for i := 0; i < 110; i++ {
+	var sb strings.Builder
+	for i := range 110 {
 		if i > 0 {
-			ids += ","
+			sb.WriteByte(',')
 		}
-		ids += "fake-" + string(rune('a'+i%26))
+		sb.WriteString("fake-" + string(rune('a'+i%26)))
 	}
+	ids := sb.String()
 
 	resp := ts.Request("GET", "/api/media/batch?ids="+ids, nil)
 	if resp.StatusCode != http.StatusOK {

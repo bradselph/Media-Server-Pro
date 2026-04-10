@@ -203,7 +203,7 @@ func (m *Manager) save() error {
 	}
 	tempPath := m.configPath + ".tmp"
 	bakPath := m.configPath + ".bak"
-	if err := os.WriteFile(tempPath, data, 0600); err != nil {
+	if err := os.WriteFile(tempPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write temp config: %w", err)
 	}
 	// Rename existing config to .bak (safe — original preserved as backup)

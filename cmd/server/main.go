@@ -93,7 +93,7 @@ func main() {
 		level = logger.INFO
 	}
 
-	// Create server (initialises logger + config)
+	// Create server (initializes logger + config)
 	srv, err := server.New(server.Options{
 		ConfigPath: *configPath,
 		LogLevel:   level,
@@ -513,7 +513,7 @@ func registerTasks(
 		Name:        "Media Library Scan",
 		Description: "Scans configured directories for new and removed media files",
 		Schedule:    1 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			if err := mediaModule.Scan(); err != nil {
 				return err
 			}
@@ -546,7 +546,7 @@ func registerTasks(
 		Name:        "Metadata Cleanup",
 		Description: "Removes metadata entries for media files that no longer exist on disk",
 		Schedule:    24 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			return mediaModule.Scan()
 		},
 	})
@@ -594,7 +594,7 @@ func registerTasks(
 		Name:        "Thumbnail Cleanup",
 		Description: "Removes orphaned, excess, and corrupt thumbnail files",
 		Schedule:    6 * time.Hour,
-		Func: func(ctx context.Context) error {
+		Func: func(_ context.Context) error {
 			result, err := thumbnailsModule.Cleanup()
 			if err != nil {
 				return err

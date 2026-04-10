@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -189,7 +190,7 @@ func TestFormatMessagePlain_NoColors(t *testing.T) {
 func TestFormatMessageJSON_ValidJSON(t *testing.T) {
 	l, _ := newTestLogger("jsonmod", DEBUG)
 	msg := l.formatMessageJSON(INFO, "rid-1", "test message")
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(msg), &parsed); err != nil {
 		t.Fatalf("JSON log should be valid JSON: %v\nraw: %s", err, msg)
 	}
@@ -210,7 +211,7 @@ func TestFormatMessageJSON_ValidJSON(t *testing.T) {
 func TestFormatMessageJSON_NoRequestID(t *testing.T) {
 	l, _ := newTestLogger("jsonmod", DEBUG)
 	msg := l.formatMessageJSON(DEBUG, "", "no rid")
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(msg), &parsed); err != nil {
 		t.Fatalf("JSON log should be valid JSON: %v", err)
 	}
@@ -222,7 +223,7 @@ func TestFormatMessageJSON_NoRequestID(t *testing.T) {
 func TestFormatMessageJSON_WithArgs(t *testing.T) {
 	l, _ := newTestLogger("test", DEBUG)
 	msg := l.formatMessageJSON(INFO, "", "count=%d name=%s", 42, "foo")
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(msg), &parsed); err != nil {
 		t.Fatalf("JSON should parse: %v", err)
 	}
@@ -348,7 +349,7 @@ func TestHealthReporter_ReportUnhealthy(t *testing.T) {
 	if s.Healthy {
 		t.Error("should be unhealthy")
 	}
-	if s.LastError != testErr {
+	if !errors.Is(s.LastError, testErr) {
 		t.Errorf("LastError = %v, want %v", s.LastError, testErr)
 	}
 }
@@ -375,7 +376,7 @@ func TestCleanOldBackups(t *testing.T) {
 	// Create 5 backup files
 	for i := 1; i <= 5; i++ {
 		path := basePath + "." + string(rune('0'+i))
-		if err := os.WriteFile(path, []byte("log"), 0644); err != nil {
+		if err := os.WriteFile(path, []byte("log"), 0o600); err != nil {
 			t.Fatalf("failed to create test backup: %v", err)
 		}
 	}
@@ -392,7 +393,7 @@ func TestCleanOldBackups(t *testing.T) {
 func TestRotateIfNeeded_NoRotationBelowMax(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "test.log")
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY, 0640)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // test file, restrictive permissions fine
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,12 +414,12 @@ func TestRotateIfNeeded_NoRotationBelowMax(t *testing.T) {
 	l.fileOutput.Close()
 }
 
-func TestRotateIfNeeded_NoRotationWhenMaxSizeZero(t *testing.T) {
+func TestRotateIfNeeded_NoRotationWhenMaxSizeZero(_ *testing.T) {
 	l := &Logger{maxSize: 0}
 	l.rotateIfNeeded() // should not panic
 }
 
-func TestRotateIfNeeded_NoRotationWhenNilFile(t *testing.T) {
+func TestRotateIfNeeded_NoRotationWhenNilFile(_ *testing.T) {
 	l := &Logger{maxSize: 1024, fileOutput: nil}
 	l.rotateIfNeeded() // should not panic
 }
@@ -433,7 +434,7 @@ func TestLoggerJSONOutput(t *testing.T) {
 	l.log(INFO, "json log entry")
 	output := buf.String()
 	// Should be valid JSON
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &parsed); err != nil {
 		t.Fatalf("JSON output should be valid: %v\nraw: %s", err, output)
 	}

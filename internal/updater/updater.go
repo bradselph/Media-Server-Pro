@@ -609,7 +609,7 @@ func (m *Module) downloadWithGhCLI(version, assetName string) (string, error) {
 
 	// gh release download automatically selects matching assets by glob pattern.
 	// --clobber overwrites any pre-existing file in tmpDir.
-	cmd := exec.Command(ghPath, "release", "download", "v"+version,
+	cmd := exec.Command(ghPath, "release", "download", "v"+version, //nolint:gosec // G204: ghPath is a validated binary path from config
 		"--repo", GitHubOwner+"/"+GitHubRepo,
 		"--pattern", assetName+"*",
 		"--dir", tmpDir,
@@ -779,7 +779,7 @@ func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) err
 func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 	checksumURL := fmt.Sprintf("%s/repos/%s/%s/releases/tags/v%s",
 		GitHubAPI, GitHubOwner, GitHubRepo, version)
-	req, err := http.NewRequest(http.MethodGet, checksumURL, nil)
+	req, err := http.NewRequest(http.MethodGet, checksumURL, http.NoBody)
 	if err != nil {
 		m.log.Warn("Could not build checksum request: %v — skipping", err)
 		return "", nil
@@ -813,7 +813,7 @@ func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 }
 
 func (m *Module) downloadAndParseChecksum(checksumURL2, assetName string) (string, error) {
-	cReq, err := http.NewRequest(http.MethodGet, checksumURL2, nil)
+	cReq, err := http.NewRequest(http.MethodGet, checksumURL2, http.NoBody)
 	if err != nil {
 		return "", fmt.Errorf("build checksum download request: %w", err)
 	}
@@ -1006,7 +1006,7 @@ func (m *Module) gitAuthVars() (vars []string, cleanup func()) {
 // gitAuthEnv returns os.Environ() augmented with git authentication variables.
 // Either or both SSH deploy key and HTTPS token can be configured independently.
 // The returned cleanup function removes any temporary askpass scripts.
-func (m *Module) gitAuthEnv() ([]string, func()) {
+func (m *Module) gitAuthEnv() (env []string, cleanup func()) {
 	vars, cleanup := m.gitAuthVars()
 	return append(os.Environ(), vars...), cleanup
 }
@@ -1015,7 +1015,7 @@ func (m *Module) gitAuthEnv() ([]string, func()) {
 // When a GitHub token is configured, sets GOPRIVATE/GONOSUMDB to skip sum verification
 // and injects git auth vars so `go mod download` / `go build` can fetch private modules.
 // The returned cleanup function removes any temporary askpass scripts.
-func (m *Module) goModEnv() ([]string, func()) {
+func (m *Module) goModEnv() (env []string, cleanup func()) {
 	cfg := m.config.Get()
 	if cfg.Updater.GitHubToken == "" {
 		return nil, func() {}
@@ -1034,7 +1034,7 @@ func (m *Module) goModEnv() ([]string, func()) {
 // newGitHubRequest creates an HTTP request pre-configured with the GitHub API
 // Accept header, User-Agent, and (when configured) an Authorization header.
 func (m *Module) newGitHubRequest(method, url string) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, url, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -1063,7 +1063,7 @@ func (m *Module) appDir() (string, error) {
 // CheckForSourceUpdates fetches remote refs for the configured branch and
 // reports whether the remote has commits not yet present locally.
 // Returns (updatesAvailable, remoteShortHash, error).
-func (m *Module) CheckForSourceUpdates(ctx context.Context) (bool, string, error) {
+func (m *Module) CheckForSourceUpdates(ctx context.Context) (updatesAvailable bool, remoteShortHash string, err error) {
 	cfg := m.config.Get()
 	dir, err := m.appDir()
 	if err != nil {
@@ -1083,20 +1083,20 @@ func (m *Module) CheckForSourceUpdates(ctx context.Context) (bool, string, error
 	defer gitCleanup()
 
 	// Fetch only the configured branch
-	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "--quiet", "origin", branch)
+	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "--quiet", "origin", branch) //nolint:gosec // G204: git is a known binary; branch is from config
 	fetchCmd.Env = gitEnv
 	if fetchOut, fetchErr := fetchCmd.CombinedOutput(); fetchErr != nil {
 		return false, "", fmt.Errorf("git fetch failed: %w\n%s", fetchErr, string(fetchOut))
 	}
 
 	// Local HEAD commit
-	localOut, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
+	localOut, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output() //nolint:gosec // G204: git is a known binary
 	if err != nil {
 		return false, "", fmt.Errorf("git rev-parse HEAD failed: %w", err)
 	}
 
 	// Remote branch commit
-	remoteOut, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
+	remoteOut, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
 	if err != nil {
 		return false, "", fmt.Errorf("git rev-parse origin/%s failed: %w", branch, err)
 	}
@@ -1212,7 +1212,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	m.publishBuildStatus(status)
 	m.log.Info("Source update: fetching origin/%s in %s", branch, dir)
 
-	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "origin", branch)
+	fetchCmd := exec.CommandContext(ctx, "git", "-C", dir, "fetch", "origin", branch) //nolint:gosec // G204: git is a known binary; branch from config
 	fetchCmd.Env = gitEnv
 	fetchOut, err := fetchCmd.CombinedOutput()
 	if err != nil {
@@ -1224,11 +1224,11 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	m.log.Info("git fetch: %s", strings.TrimSpace(string(fetchOut)))
 
 	// Compare local branch tip with origin/branch; if equal, no new commits — skip build.
-	localOut, localErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output()
+	localOut, localErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
 	if localErr != nil {
 		m.log.Warn("git rev-parse %s failed (new repo?): %v — proceeding with build", branch, localErr)
 	}
-	remoteOut, remoteErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output()
+	remoteOut, remoteErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
 	if remoteErr != nil {
 		m.log.Warn("git rev-parse origin/%s failed: %v — proceeding with build", branch, remoteErr)
 	}
@@ -1242,7 +1242,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	}
 
 	// Switch to the target branch (create tracking branch if needed)
-	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, "origin/"+branch)
+	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, "origin/"+branch) //nolint:gosec // G204: git binary from PATH, args are internal
 	checkoutCmd.Env = gitEnv
 	if out, cerr := checkoutCmd.CombinedOutput(); cerr != nil {
 		status.Error = fmt.Sprintf("git checkout failed: %v\n%s", cerr, string(out))
@@ -1340,7 +1340,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		status.Stage = "downloading Go dependencies"
 		status.Progress = 60
 		m.publishBuildStatus(status)
-		goDownload := exec.CommandContext(ctx, goBin, "mod", "download")
+		goDownload := exec.CommandContext(ctx, goBin, "mod", "download") //nolint:gosec // G204: goBin resolved by FindBinary
 		goDownload.Dir = dir
 		goDownload.Env = append(os.Environ(), goModVars...)
 		if out, merr := goDownload.CombinedOutput(); merr != nil {
@@ -1362,7 +1362,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	)
 
 	m.log.Info("Source update: go build -o %s ./cmd/server", tmpBin)
-	buildCmd := exec.CommandContext(ctx, goBin, buildArgs...)
+	buildCmd := exec.CommandContext(ctx, goBin, buildArgs...) //nolint:gosec // G204: goBin resolved by FindBinary, buildArgs are internal
 	buildCmd.Dir = dir
 	buildCmd.Env = append(os.Environ(), goModVars...)
 	if out, err := buildCmd.CombinedOutput(); err != nil {
@@ -1379,7 +1379,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	status.Progress = 85
 	m.publishBuildStatus(status)
 
-	if err := os.Chmod(tmpBin, 0o755); err != nil {
+	if err := os.Chmod(tmpBin, 0o755); err != nil { //nolint:gosec // G302: 0755 on executable binary is intentional
 		_ = os.Remove(tmpBin)
 		status.Error = "failed to set binary permissions"
 		status.InProgress = false
@@ -1431,7 +1431,7 @@ func copyFile(src, dst string) (retErr error) {
 	if err != nil {
 		return err
 	}
-	defer source.Close() // read-only; close error is not meaningful
+	defer func() { _ = source.Close() }() // read-only; close error is not meaningful
 
 	dest, err := os.Create(dst)
 	if err != nil {

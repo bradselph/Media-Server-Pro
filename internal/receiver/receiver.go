@@ -96,7 +96,7 @@ type MediaItem struct {
 	Height             int     `json:"height"`
 }
 
-// Stats summarises the receiver module state.
+// Stats summarizes the receiver module state.
 type Stats struct {
 	SlaveCount     int `json:"slave_count"`
 	OnlineCount    int `json:"online_slaves"`
@@ -106,20 +106,20 @@ type Stats struct {
 
 // Module handles incoming media catalog registrations from slave nodes.
 type Module struct {
-	config       *config.Manager
-	log          *logger.Logger
-	dbModule     *database.Module
-	slaveRepo    repositories.ReceiverSlaveRepository
-	mediaRepo    repositories.ReceiverMediaRepository
-	dupModule    *duplicates.Module
-	mu           sync.RWMutex
-	slaves       map[string]*SlaveNode
-	media        map[string]*MediaItem // keyed by master-assigned ID
-	healthMu     sync.RWMutex
-	healthy      bool
-	healthMsg    string
-	healthTicker  *time.Ticker
-	healthDone    chan struct{}
+	config         *config.Manager
+	log            *logger.Logger
+	dbModule       *database.Module
+	slaveRepo      repositories.ReceiverSlaveRepository
+	mediaRepo      repositories.ReceiverMediaRepository
+	dupModule      *duplicates.Module
+	mu             sync.RWMutex
+	slaves         map[string]*SlaveNode
+	media          map[string]*MediaItem // keyed by master-assigned ID
+	healthMu       sync.RWMutex
+	healthy        bool
+	healthMsg      string
+	healthTicker   *time.Ticker
+	healthDone     chan struct{}
 	healthDoneOnce sync.Once // guards close(healthDone) to avoid double-close panic
 	// WebSocket connections from slaves (keyed by slave ID).
 	wsMu           sync.RWMutex
@@ -201,7 +201,7 @@ func (m *Module) Stop(_ context.Context) error {
 	// Close all WebSocket connections so slaves stop heartbeating and reconnect on next Start.
 	m.wsMu.Lock()
 	for _, sw := range m.wsConns {
-		sw.conn.Close()
+		_ = sw.conn.Close()
 	}
 	m.wsConns = make(map[string]*slaveWS)
 	m.wsMu.Unlock()
@@ -436,8 +436,9 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 		return 0, fmt.Errorf("catalog too large: %d items (max %d)", len(req.Items), maxCatalogItems)
 	}
 
+	var exists bool
 	m.mu.RLock()
-	node, exists := m.slaves[req.SlaveID]
+	_, exists = m.slaves[req.SlaveID]
 	m.mu.RUnlock()
 	if !exists {
 		return 0, fmt.Errorf("slave not found: %s", req.SlaveID)
@@ -492,7 +493,7 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	// Rebuild in-memory media for this slave.
 	// Re-read node under write lock to avoid TOCTOU if UnregisterSlave ran during DB I/O.
 	m.mu.Lock()
-	node, exists = m.slaves[req.SlaveID]
+	node, exists := m.slaves[req.SlaveID]
 	if !exists {
 		m.mu.Unlock()
 		return len(records), nil // slave unregistered during DB I/O; media persisted, skip cache
@@ -681,7 +682,6 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
-
 // ProxyStream streams media from a slave to the client.
 // It first attempts a WebSocket-based request (slave pushes data back via HTTP
 // POST).  If the slave has no active WebSocket connection, it falls back to a
@@ -763,7 +763,7 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 		}
 		w.WriteHeader(delivery.StatusCode)
 		_, copyErr := io.Copy(w, delivery.Body)
-		delivery.Body.Close()
+		_ = delivery.Body.Close()
 		return copyErr
 
 	case <-time.After(timeout):
@@ -773,7 +773,7 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 		select {
 		case d := <-ps.Ready:
 			if d != nil && d.Body != nil {
-				d.Body.Close()
+				_ = d.Body.Close()
 			}
 		default:
 		}
@@ -786,7 +786,7 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 		select {
 		case d := <-ps.Ready:
 			if d != nil && d.Body != nil {
-				d.Body.Close()
+				_ = d.Body.Close()
 			}
 		default:
 		}
@@ -804,7 +804,7 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 
 	// Build the upstream request to the slave's media endpoint (path is query-encoded).
 	targetURL := strings.TrimRight(baseURL, "/") + "/media?path=" + url.QueryEscape(item.Path)
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("failed to build proxy request: %w", err)
 	}
@@ -829,7 +829,7 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 	if err != nil {
 		return fmt.Errorf("HTTP proxy to slave failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Forward allowed headers only.
 	for key, values := range resp.Header {

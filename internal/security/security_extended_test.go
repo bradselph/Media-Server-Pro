@@ -57,7 +57,7 @@ func TestRateLimiter_BanExpiry(t *testing.T) {
 // RateLimiter.cleanup
 // ---------------------------------------------------------------------------
 
-func TestRateLimiter_Cleanup(t *testing.T) {
+func TestRateLimiter_Cleanup(_ *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
 	// Create some client state
 	rl.CheckRequest("10.0.0.1")

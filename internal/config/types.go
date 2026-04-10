@@ -44,13 +44,13 @@ type StorageConfig struct {
 
 // S3StorageConfig holds credentials and settings for S3-compatible storage.
 type S3StorageConfig struct {
-	Endpoint        string            `json:"endpoint"`           // e.g., "s3.us-west-004.backblazeb2.com"
-	Region          string            `json:"region"`             // e.g., "us-west-004"
-	AccessKeyID     string            `json:"access_key_id"`      // B2 application key ID
-	SecretAccessKey string            `json:"secret_access_key"`  // B2 application key
-	Bucket          string            `json:"bucket"`             // bucket name
-	UsePathStyle    bool              `json:"use_path_style"`     // true for B2 and MinIO
-	Prefixes        map[string]string `json:"prefixes"`           // per-role key prefixes
+	Endpoint        string            `json:"endpoint"`          // e.g., "s3.us-west-004.backblazeb2.com"
+	Region          string            `json:"region"`            // e.g., "us-west-004"
+	AccessKeyID     string            `json:"access_key_id"`     // B2 application key ID
+	SecretAccessKey string            `json:"secret_access_key"` // B2 application key
+	Bucket          string            `json:"bucket"`            // bucket name
+	UsePathStyle    bool              `json:"use_path_style"`    // true for B2 and MinIO
+	Prefixes        map[string]string `json:"prefixes"`          // per-role key prefixes
 }
 
 // DownloaderConfig holds settings for the external media downloader integration.
@@ -68,7 +68,7 @@ type UIConfig struct {
 	ItemsPerPage       int `json:"items_per_page"`
 	MobileItemsPerPage int `json:"mobile_items_per_page"`
 	MobileGridColumns  int `json:"mobile_grid_columns"`
-	FeedMaxItems       int `json:"feed_max_items"`    // hard cap on Atom/RSS feed entries; default 50
+	FeedMaxItems       int `json:"feed_max_items"`     // hard cap on Atom/RSS feed entries; default 50
 	FeedDefaultItems   int `json:"feed_default_items"` // default count when no limit is requested; default 20
 }
 
@@ -121,16 +121,16 @@ type DirectoriesConfig struct {
 
 // StreamingConfig holds streaming settings
 type StreamingConfig struct {
-	DefaultChunkSize     int64         `json:"default_chunk_size"`
-	MaxChunkSize         int64         `json:"max_chunk_size"`
-	BufferSize           int           `json:"buffer_size"`
-	KeepAliveEnabled     bool          `json:"keep_alive_enabled"`
-	KeepAliveTimeout     time.Duration `json:"keep_alive_timeout"`
-	Adaptive             bool          `json:"adaptive"`           // if false, disable HLS auto-activate and fall back to direct stream
-	MobileOptimization   bool          `json:"mobile_optimization"`
-	MobileChunkSize      int64         `json:"mobile_chunk_size"`
-	RequireAuth       bool `json:"require_auth"`        // if true, reject unauthenticated streaming (DoS mitigation)
-	UnauthStreamLimit int  `json:"unauth_stream_limit"` // max concurrent streams per IP when unauth; 0 = no limit
+	DefaultChunkSize   int64         `json:"default_chunk_size"`
+	MaxChunkSize       int64         `json:"max_chunk_size"`
+	BufferSize         int           `json:"buffer_size"`
+	KeepAliveEnabled   bool          `json:"keep_alive_enabled"`
+	KeepAliveTimeout   time.Duration `json:"keep_alive_timeout"`
+	Adaptive           bool          `json:"adaptive"` // if false, disable HLS auto-activate and fall back to direct stream
+	MobileOptimization bool          `json:"mobile_optimization"`
+	MobileChunkSize    int64         `json:"mobile_chunk_size"`
+	RequireAuth        bool          `json:"require_auth"`        // if true, reject unauthenticated streaming (DoS mitigation)
+	UnauthStreamLimit  int           `json:"unauth_stream_limit"` // max concurrent streams per IP when unauth; 0 = no limit
 }
 
 // DownloadConfig holds file download settings
@@ -201,9 +201,9 @@ type SecurityConfig struct {
 	AuthRateLimit     int           `json:"auth_rate_limit"`
 	AuthBurstLimit    int           `json:"auth_burst_limit"`
 	MaxFileSizeMB     int           `json:"max_file_size_mb"`
-	CSPEnabled        bool          `json:"csp_enabled"`        // if false, suppress the Content-Security-Policy header
+	CSPEnabled        bool          `json:"csp_enabled"` // if false, suppress the Content-Security-Policy header
 	CSPPolicy         string        `json:"csp_policy"`
-	HSTSEnabled       bool          `json:"hsts_enabled"`       // if false, suppress HSTS even when hsts_max_age > 0
+	HSTSEnabled       bool          `json:"hsts_enabled"` // if false, suppress HSTS even when hsts_max_age > 0
 	HSTSMaxAge        int           `json:"hsts_max_age"`
 	CORSEnabled       bool          `json:"cors_enabled"`
 	CORSOrigins       []string      `json:"cors_origins"`
@@ -244,18 +244,18 @@ type UserType struct {
 
 // HLSConfig holds HLS streaming settings
 type HLSConfig struct {
-	Enabled          bool          `json:"enabled"`
-	SegmentDuration  int           `json:"segment_duration"`
-	PlaylistLength   int           `json:"playlist_length"`
-	CleanupEnabled   bool          `json:"cleanup_enabled"`
-	CleanupInterval  time.Duration `json:"cleanup_interval"`
-	RetentionMinutes int           `json:"retention_minutes"`
-	AutoGenerate              bool          `json:"auto_generate"`
-	PreGenerateIntervalHours  int           `json:"pre_generate_interval_hours"`
-	QualityProfiles           []HLSQuality  `json:"quality_profiles"`
-	ConcurrentLimit           int           `json:"concurrent_limit"`
-	CDNBaseURL       string        `json:"cdn_base_url"`
-	LazyTranscode    bool          `json:"lazy_transcode"`
+	Enabled                  bool          `json:"enabled"`
+	SegmentDuration          int           `json:"segment_duration"`
+	PlaylistLength           int           `json:"playlist_length"`
+	CleanupEnabled           bool          `json:"cleanup_enabled"`
+	CleanupInterval          time.Duration `json:"cleanup_interval"`
+	RetentionMinutes         int           `json:"retention_minutes"`
+	AutoGenerate             bool          `json:"auto_generate"`
+	PreGenerateIntervalHours int           `json:"pre_generate_interval_hours"`
+	QualityProfiles          []HLSQuality  `json:"quality_profiles"`
+	ConcurrentLimit          int           `json:"concurrent_limit"`
+	CDNBaseURL               string        `json:"cdn_base_url"`
+	LazyTranscode            bool          `json:"lazy_transcode"`
 
 	// Reliability and probe tuning.
 	MaxConsecutiveFailures int           `json:"max_consecutive_failures"` // retries before a job is abandoned; default 3
@@ -309,11 +309,11 @@ type ReceiverConfig struct {
 	MaxProxyConns int           `json:"max_proxy_conns"`
 
 	// WebSocket protocol tuning — affects all connected slave nodes.
-	WSReadLimit         int64         `json:"ws_read_limit"`          // max WS message bytes; default 16 MB
-	WSReadDeadline      time.Duration `json:"ws_read_deadline"`       // idle read timeout; default 60s
-	WSPingInterval      time.Duration `json:"ws_ping_interval"`       // server→slave ping cadence; default 25s
-	PendingStreamTTL    time.Duration `json:"pending_stream_ttl"`     // how long to wait for a slave to deliver a stream before cleanup; default 30s
-	HeartbeatDBDebounce time.Duration `json:"heartbeat_db_debounce"`  // min interval between heartbeat DB writes; default 60s
+	WSReadLimit         int64         `json:"ws_read_limit"`         // max WS message bytes; default 16 MB
+	WSReadDeadline      time.Duration `json:"ws_read_deadline"`      // idle read timeout; default 60s
+	WSPingInterval      time.Duration `json:"ws_ping_interval"`      // server→slave ping cadence; default 25s
+	PendingStreamTTL    time.Duration `json:"pending_stream_ttl"`    // how long to wait for a slave to deliver a stream before cleanup; default 30s
+	HeartbeatDBDebounce time.Duration `json:"heartbeat_db_debounce"` // min interval between heartbeat DB writes; default 60s
 }
 
 // ExtractorConfig holds settings for the stream extractor/proxy.
@@ -393,18 +393,18 @@ type FeaturesConfig struct {
 
 // DatabaseConfig holds database connection settings
 type DatabaseConfig struct {
-	Enabled         bool          `json:"enabled"`
-	Host            string        `json:"host"`
-	Port            int           `json:"port"`
-	Name            string        `json:"name"`
-	Username        string        `json:"username,omitempty"`
-	Password        string        `json:"password,omitempty"`
-	MaxOpenConns    int           `json:"max_open_conns"`
-	MaxIdleConns    int           `json:"max_idle_conns"`
-	ConnMaxLifetime time.Duration `json:"conn_max_lifetime"`
-	Timeout         time.Duration `json:"timeout"`
-	MaxRetries      int           `json:"max_retries"`
-	RetryInterval   time.Duration `json:"retry_interval"`
-	TLSMode         string        `json:"tls_mode,omitempty"`
+	Enabled            bool          `json:"enabled"`
+	Host               string        `json:"host"`
+	Port               int           `json:"port"`
+	Name               string        `json:"name"`
+	Username           string        `json:"username,omitempty"`
+	Password           string        `json:"password,omitempty"`
+	MaxOpenConns       int           `json:"max_open_conns"`
+	MaxIdleConns       int           `json:"max_idle_conns"`
+	ConnMaxLifetime    time.Duration `json:"conn_max_lifetime"`
+	Timeout            time.Duration `json:"timeout"`
+	MaxRetries         int           `json:"max_retries"`
+	RetryInterval      time.Duration `json:"retry_interval"`
+	TLSMode            string        `json:"tls_mode,omitempty"`
 	SlowQueryThreshold time.Duration `json:"slow_query_threshold"` // GORM slow-query log threshold; 0 = disabled; default 500ms
 }

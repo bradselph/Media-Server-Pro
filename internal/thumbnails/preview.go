@@ -30,7 +30,7 @@ func (m *Module) queuePreviewThumbnailsLoop(opts *queuePreviewThumbnailsLoopOpts
 			continue
 		}
 		// Remove 0-byte corrupt file so ffmpeg can overwrite
-		os.Remove(outputPath)
+		_ = os.Remove(outputPath)
 		timestamp := previewTimestamp(opts.PreviewCount, i, opts.StartOffset, opts.UsableDuration)
 		job := m.buildPreviewJob(&buildPreviewJobOpts{MediaPath: opts.MediaPath, OutputPath: outputPath, Timestamp: timestamp})
 		queued, ok := m.tryEnqueueThumbnailJob(job, outputPath, opts.HighPriority)
@@ -155,7 +155,7 @@ func (m *Module) tryGeneratePreview(opts *tryGeneratePreviewOpts) string {
 
 // GetPreviewURLs returns preview thumbnail URLs for a media file.
 // mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
-func (m *Module) GetPreviewURLs(mediaPath string, mediaID string, count int) []string {
+func (m *Module) GetPreviewURLs(mediaPath, mediaID string, count int) []string {
 	return m.getPreviewURLsFromRequest(&getPreviewURLsRequest{
 		MediaPath: mediaPath,
 		MediaID:   mediaID,

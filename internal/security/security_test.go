@@ -302,4 +302,13 @@ func TestRateLimitConfig_Fields(t *testing.T) {
 	if cfg.BurstLimit != 20 {
 		t.Errorf("BurstLimit = %d", cfg.BurstLimit)
 	}
+	if cfg.BurstWindow != 5*time.Second {
+		t.Errorf("BurstWindow = %v", cfg.BurstWindow)
+	}
+	if cfg.BanDuration != 15*time.Minute {
+		t.Errorf("BanDuration = %v", cfg.BanDuration)
+	}
+	if cfg.ViolationsForBan != 3 {
+		t.Errorf("ViolationsForBan = %d", cfg.ViolationsForBan)
+	}
 }

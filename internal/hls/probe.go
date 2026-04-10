@@ -46,7 +46,7 @@ func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64
 	if m.ffprobePath != "" {
 		probeCtx, cancel := context.WithTimeout(ctx, m.probeTimeout())
 		defer cancel()
-		cmd := exec.CommandContext(probeCtx, m.ffprobePath,
+		cmd := exec.CommandContext(probeCtx, m.ffprobePath, //nolint:gosec // G204: ffprobePath validated at startup
 			"-v", "quiet",
 			"-print_format", "json",
 			"-show_format",
@@ -107,7 +107,7 @@ func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
 	probeCtx, cancel := context.WithTimeout(ctx, m.probeTimeout())
 	defer cancel()
 
-	cmd := exec.CommandContext(probeCtx, m.ffprobePath,
+	cmd := exec.CommandContext(probeCtx, m.ffprobePath, //nolint:gosec // G204: ffprobePath validated at startup
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",

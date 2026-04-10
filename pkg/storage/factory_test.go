@@ -16,7 +16,7 @@ func TestNewBackend_LocalDefault(t *testing.T) {
 			if root != "/data/videos" {
 				t.Errorf("NewLocal root = %q, want /data/videos", root)
 			}
-			return nil, nil
+			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
 	_, _ = f.NewBackend(context.Background(), "videos", "/data/videos")
@@ -29,9 +29,9 @@ func TestNewBackend_LocalExplicit(t *testing.T) {
 	var localCalled bool
 	f := &BackendFactory{
 		Config: StorageConfig{Backend: "local"},
-		NewLocal: func(root string) (Backend, error) {
+		NewLocal: func(_ string) (Backend, error) {
 			localCalled = true
-			return nil, nil
+			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
 	_, _ = f.NewBackend(context.Background(), "videos", "/data/videos")
@@ -53,9 +53,9 @@ func TestNewBackend_S3_DefaultPrefix(t *testing.T) {
 				Bucket:          "mybucket",
 			},
 		},
-		NewS3: func(ctx context.Context, endpoint, region, keyID, secret, bucket, prefix string, pathStyle bool) (Backend, error) {
+		NewS3: func(_ context.Context, _, _, _, _, _, prefix string, _ bool) (Backend, error) {
 			gotPrefix = prefix
-			return nil, nil
+			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
 	_, _ = f.NewBackend(context.Background(), "videos", "/ignored")
@@ -70,14 +70,14 @@ func TestNewBackend_S3_CustomPrefix(t *testing.T) {
 		Config: StorageConfig{
 			Backend: "s3",
 			S3: S3Config{
-				Endpoint:        "s3.example.com",
-				Bucket:          "mybucket",
-				Prefixes:        map[string]string{"videos": "custom-prefix"},
+				Endpoint: "s3.example.com",
+				Bucket:   "mybucket",
+				Prefixes: map[string]string{"videos": "custom-prefix"},
 			},
 		},
-		NewS3: func(ctx context.Context, endpoint, region, keyID, secret, bucket, prefix string, pathStyle bool) (Backend, error) {
+		NewS3: func(_ context.Context, _, _, _, _, _, prefix string, _ bool) (Backend, error) {
 			gotPrefix = prefix
-			return nil, nil
+			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
 	_, _ = f.NewBackend(context.Background(), "videos", "/ignored")
@@ -97,9 +97,9 @@ func TestNewBackend_S3_CustomPrefixWithTrailingSlash(t *testing.T) {
 				Prefixes: map[string]string{"videos": "already-slash/"},
 			},
 		},
-		NewS3: func(ctx context.Context, endpoint, region, keyID, secret, bucket, prefix string, pathStyle bool) (Backend, error) {
+		NewS3: func(_ context.Context, _, _, _, _, _, prefix string, _ bool) (Backend, error) {
 			gotPrefix = prefix
-			return nil, nil
+			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
 	_, _ = f.NewBackend(context.Background(), "videos", "/ignored")
@@ -125,14 +125,14 @@ func TestNewBackend_S3_PassesAllConfig(t *testing.T) {
 				UsePathStyle:    true,
 			},
 		},
-		NewS3: func(ctx context.Context, endpoint, region, keyID, secret, bucket, prefix string, pathStyle bool) (Backend, error) {
+		NewS3: func(_ context.Context, endpoint, region, keyID, secret, bucket, _ string, pathStyle bool) (Backend, error) {
 			gotEndpoint = endpoint
 			gotRegion = region
 			gotKeyID = keyID
 			gotSecret = secret
 			gotBucket = bucket
 			gotPathStyle = pathStyle
-			return nil, nil
+			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
 	_, _ = f.NewBackend(context.Background(), "uploads", "/ignored")
@@ -173,7 +173,7 @@ func TestNewBackend_UnknownBackend(t *testing.T) {
 func TestNewBackend_LocalError(t *testing.T) {
 	f := &BackendFactory{
 		Config: StorageConfig{Backend: "local"},
-		NewLocal: func(root string) (Backend, error) {
+		NewLocal: func(_ string) (Backend, error) {
 			return nil, fmt.Errorf("disk full")
 		},
 	}
@@ -189,7 +189,7 @@ func TestNewBackend_S3Error(t *testing.T) {
 			Backend: "s3",
 			S3:      S3Config{Endpoint: "s3.example.com", Bucket: "b"},
 		},
-		NewS3: func(ctx context.Context, endpoint, region, keyID, secret, bucket, prefix string, pathStyle bool) (Backend, error) {
+		NewS3: func(_ context.Context, _, _, _, _, _, _ string, _ bool) (Backend, error) {
 			return nil, fmt.Errorf("connection refused")
 		},
 	}

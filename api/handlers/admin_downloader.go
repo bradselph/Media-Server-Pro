@@ -98,12 +98,12 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 		pageURL = result.Stream.URL
 	}
 	writeSuccess(c, map[string]interface{}{
-		"url":          pageURL,
-		"title":        result.Title,
-		"isYouTube":    result.IsYouTube,
+		"url":            pageURL,
+		"title":          result.Title,
+		"isYouTube":      result.IsYouTube,
 		"isYouTubeMusic": result.IsYouTubeMusic,
-		"streams":      streams,
-		"relayId":      result.RelayID,
+		"streams":        streams,
+		"relayId":        result.RelayID,
 	})
 }
 
@@ -178,7 +178,7 @@ func (h *Handler) AdminDownloaderCancel(c *gin.Context) {
 		return
 	}
 
-	writeSuccess(c, map[string]string{"status": "cancelled"})
+	writeSuccess(c, map[string]string{"status": "canceled"})
 }
 
 // AdminDownloaderListDownloads returns completed downloads from the downloader.

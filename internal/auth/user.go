@@ -1,4 +1,5 @@
 // User CRUD and preferences.
+
 package auth
 
 import (

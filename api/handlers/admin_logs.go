@@ -81,7 +81,7 @@ func filterLogEntries(entries []map[string]interface{}, levelFilter, moduleFilte
 	for _, entry := range entries {
 		if levelFilter != "" {
 			entryLevel, _ := entry["level"].(string)
-			if strings.ToLower(entryLevel) != levelFilter {
+			if !strings.EqualFold(entryLevel, levelFilter) {
 				continue
 			}
 		}
@@ -153,7 +153,7 @@ func parseLogLine(line string) map[string]interface{} {
 			entry["timestamp"] = line[1 : idx+1]
 			rest := strings.TrimSpace(line[idx+2:])
 
-			if len(rest) > 0 && rest[0] == '[' {
+			if rest != "" && rest[0] == '[' {
 				if idx2 := strings.Index(rest[1:], "]"); idx2 > 0 {
 					level := strings.TrimSpace(rest[1 : idx2+1])
 					entry["level"] = strings.ToLower(level)
@@ -161,14 +161,14 @@ func parseLogLine(line string) map[string]interface{} {
 				}
 			}
 
-			if len(rest) > 0 && rest[0] == '[' {
+			if rest != "" && rest[0] == '[' {
 				if idx3 := strings.Index(rest[1:], "]"); idx3 > 0 {
 					entry["module"] = rest[1 : idx3+1]
 					rest = strings.TrimSpace(rest[idx3+2:])
 				}
 			}
 
-			if len(rest) > 0 && rest[0] == '[' {
+			if rest != "" && rest[0] == '[' {
 				if idx4 := strings.Index(rest[1:], "]"); idx4 > 0 {
 					rest = strings.TrimSpace(rest[idx4+2:])
 				}

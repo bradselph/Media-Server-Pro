@@ -37,10 +37,10 @@ type atomLink struct {
 }
 
 type atomEntry struct {
-	Title   string     `xml:"title"`
-	ID      string     `xml:"id"`
-	Updated string     `xml:"updated"`
-	Link    atomLink   `xml:"link"`
+	Title   string      `xml:"title"`
+	ID      string      `xml:"id"`
+	Updated string      `xml:"updated"`
+	Link    atomLink    `xml:"link"`
 	Summary atomSummary `xml:"summary"`
 }
 
@@ -85,7 +85,7 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 
 	allItems := h.media.ListMedia(filter)
 
-	// Filter out mature content for users who are not authorised to view it.
+	// Filter out mature content for users who are not authorized to view it.
 	canViewMature := h.canViewMatureContent(c)
 	items := allItems[:0]
 	for _, item := range allItems {
@@ -123,7 +123,7 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		feedTitle = fmt.Sprintf("Media Server — %s", filter.Category)
 	} else if filter.Type != "" {
 		typeStr := string(filter.Type)
-		if len(typeStr) > 0 {
+		if typeStr != "" {
 			typeStr = strings.ToUpper(typeStr[:1]) + typeStr[1:]
 		}
 		feedTitle = fmt.Sprintf("Media Server — %s", typeStr)
@@ -152,7 +152,7 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 
 	for _, item := range items {
 		typeStr := string(item.Type)
-		if len(typeStr) > 0 {
+		if typeStr != "" {
 			typeStr = strings.ToUpper(typeStr[:1]) + typeStr[1:]
 		}
 		summary := fmt.Sprintf("%s — %s", typeStr, item.Category)

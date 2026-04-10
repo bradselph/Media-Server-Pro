@@ -18,7 +18,7 @@ func TestComputeContentFingerprint_ValidFile(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
-	os.WriteFile(path, data, 0644)
+	os.WriteFile(path, data, 0o600)
 
 	fp, err := computeContentFingerprint(path)
 	if err != nil {
@@ -36,7 +36,7 @@ func TestComputeContentFingerprint_Deterministic(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
-	os.WriteFile(path, data, 0644)
+	os.WriteFile(path, data, 0o600)
 
 	fp1, _ := computeContentFingerprint(path)
 	fp2, _ := computeContentFingerprint(path)
@@ -49,10 +49,10 @@ func TestComputeContentFingerprint_DifferentFiles(t *testing.T) {
 	dir := t.TempDir()
 	p1 := filepath.Join(dir, "a.mp4")
 	p2 := filepath.Join(dir, "b.mp4")
-	os.WriteFile(p1, make([]byte, 128*1024), 0644)
+	os.WriteFile(p1, make([]byte, 128*1024), 0o600)
 	d2 := make([]byte, 128*1024)
 	d2[0] = 0xFF
-	os.WriteFile(p2, d2, 0644)
+	os.WriteFile(p2, d2, 0o600)
 
 	fp1, _ := computeContentFingerprint(p1)
 	fp2, _ := computeContentFingerprint(p2)

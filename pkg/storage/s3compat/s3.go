@@ -44,7 +44,7 @@ type Backend struct {
 // New creates an S3-compatible storage backend.
 // The endpoint may include or omit the scheme; HTTPS is used unless the endpoint
 // explicitly starts with "http://".
-func New(ctx context.Context, cfg Config) (*Backend, error) {
+func New(_ context.Context, cfg Config) (*Backend, error) {
 	if cfg.Bucket == "" {
 		return nil, fmt.Errorf("s3 storage: bucket name is required")
 	}
@@ -119,7 +119,7 @@ func (b *Backend) Open(ctx context.Context, p string) (storage.ReadSeekCloser, e
 	}
 	// Trigger the first network request so we can surface 404s immediately.
 	if _, err := obj.Stat(); err != nil {
-		obj.Close()
+		_ = obj.Close()
 		return nil, b.mapError(err)
 	}
 	return obj, nil
@@ -133,8 +133,8 @@ func (b *Backend) OpenRange(ctx context.Context, p string, start, end int64) (io
 		return nil, err
 	}
 	opts := minio.GetObjectOptions{}
-	if err := opts.SetRange(start, end); err != nil {
-		return nil, fmt.Errorf("s3 storage: set range: %w", err)
+	if rangeErr := opts.SetRange(start, end); rangeErr != nil {
+		return nil, fmt.Errorf("s3 storage: set range: %w", rangeErr)
 	}
 	obj, err := b.client.GetObject(ctx, b.bucket, k, opts)
 	if err != nil {
@@ -143,7 +143,7 @@ func (b *Backend) OpenRange(ctx context.Context, p string, start, end int64) (io
 	// Surface 404s before returning — otherwise they appear mid-stream as a
 	// truncated HTTP response body with no error status code.
 	if _, err := obj.Stat(); err != nil {
-		obj.Close()
+		_ = obj.Close()
 		return nil, b.mapError(err)
 	}
 	return obj, nil
@@ -276,7 +276,7 @@ func (b *Backend) ReadFile(ctx context.Context, p string) ([]byte, error) {
 	if err != nil {
 		return nil, b.mapError(err)
 	}
-	defer obj.Close()
+	defer func() { _ = obj.Close() }()
 	data, err := io.ReadAll(obj)
 	if err != nil {
 		return nil, b.mapError(err)
@@ -415,7 +415,7 @@ func (b *Backend) streamCopy(ctx context.Context, srcKey, dstKey string) error {
 	if err != nil {
 		return fmt.Errorf("get source: %w", err)
 	}
-	defer obj.Close()
+	defer func() { _ = obj.Close() }()
 
 	stat, err := obj.Stat()
 	if err != nil {

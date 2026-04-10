@@ -136,12 +136,12 @@ func (m *Module) Start(_ context.Context) error {
 	// Start background goroutines:
 	// - periodic save: flushes in-memory profiles to MySQL for crash resilience
 	// - profile eviction: removes stale profiles from memory (DB copy preserved)
-	bgCtx, cancel := context.WithCancel(context.Background())
+	bgCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = bgCtx
 	m.cancel = cancel
 	m.wg.Add(2)
-	go m.periodicSave(bgCtx)
-	go m.evictStaleProfiles(bgCtx)
+	go m.periodicSave(bgCtx)       //nolint:gosec // G118: bgCtx is canceled by Stop()
+	go m.evictStaleProfiles(bgCtx) //nolint:gosec // G118: bgCtx is canceled by Stop()
 
 	m.healthMu.Lock()
 	m.healthy = true
@@ -272,13 +272,14 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 	// Update or add view history entry
 	found := false
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaPath {
-			profile.ViewHistory[i].ViewCount++
-			profile.ViewHistory[i].TotalTime += duration
-			profile.ViewHistory[i].LastViewed = time.Now()
-			found = true
-			break
+		if vh.MediaPath != mediaPath {
+			continue
 		}
+		profile.ViewHistory[i].ViewCount++
+		profile.ViewHistory[i].TotalTime += duration
+		profile.ViewHistory[i].LastViewed = time.Now()
+		found = true
+		break
 	}
 
 	if !found {
@@ -350,16 +351,17 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 	}
 
 	for i, vh := range profile.ViewHistory {
-		if vh.MediaPath == mediaPath {
-			profile.ViewHistory[i].Rating = rating
-			profile.LastUpdated = time.Now()
-			profile.dirty = true
-			m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
-			snap := m.snapshotProfile(profile)
-			m.mu.Unlock()
-			m.persistRating(userID, snap)
-			return
+		if vh.MediaPath != mediaPath {
+			continue
 		}
+		profile.ViewHistory[i].Rating = rating
+		profile.LastUpdated = time.Now()
+		profile.dirty = true
+		m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
+		snap := m.snapshotProfile(profile)
+		m.mu.Unlock()
+		m.persistRating(userID, snap)
+		return
 	}
 
 	// No ViewHistory entry for this item (user rated without watching).
@@ -494,7 +496,7 @@ func (m *Module) GetSuggestions(userID string, limit int, canViewMature bool) []
 		}
 
 		// Add ±40% score jitter so results rotate meaningfully between calls
-		score *= 1.0 + (rand.Float64()*0.80 - 0.40)
+		score *= 1.0 + (rand.Float64()*0.80 - 0.40) //nolint:gosec // G404: math/rand is fine for suggestion jitter, not security
 
 		suggestions = append(suggestions, &Suggestion{
 			MediaID:   media.StableID,
@@ -577,9 +579,8 @@ func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo) (score float
 // The recency boost is intentionally small so that profile-based scoring
 // (up to ~0.50) and popularity can outweigh it.  This prevents the
 // "Recommended" section from degenerating into a "Recently Added" list.
-func scoreMediaBase(media *MediaInfo) (float64, []string) {
-	score := 0.05 // exploration baseline — every non-mature item can appear
-	var reasons []string
+func scoreMediaBase(media *MediaInfo) (score float64, reasons []string) {
+	score = 0.05 // exploration baseline — every non-mature item can appear
 
 	popularityScore := math.Log10(float64(media.Views+1)) * 0.1
 	score += popularityScore
@@ -625,10 +626,7 @@ func topShuffled(sorted []*Suggestion, n int) []*Suggestion {
 }
 
 // scoreMediaForProfile calculates the personalized score based on a user profile.
-func scoreMediaForProfile(profile *UserProfile, media *MediaInfo) (float64, []string) {
-	var score float64
-	var reasons []string
-
+func scoreMediaForProfile(profile *UserProfile, media *MediaInfo) (score float64, reasons []string) {
 	score += scoreCategoryPreference(profile, media, &reasons)
 	score += scoreTypePreference(profile, media)
 	score += scoreRecentlyViewed(profile, media, &reasons)
@@ -714,7 +712,7 @@ func (m *Module) GetTrendingSuggestions(limit int, canViewMature bool) []*Sugges
 		}
 
 		// Add ±50% jitter for variety in trending results
-		score *= 1.0 + (rand.Float64()*1.00 - 0.50)
+		score *= 1.0 + (rand.Float64()*1.00 - 0.50) //nolint:gosec // G404: math/rand is fine for suggestion jitter, not security
 
 		suggestions = append(suggestions, &Suggestion{
 			MediaID:   media.StableID,
@@ -776,7 +774,7 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int, canViewMature bool) 
 		score, reasons := computeSimilarity(sourceMedia, media)
 
 		// Add ±50% score jitter for variety in related-media results
-		score *= 1.0 + (rand.Float64()*1.00 - 0.50)
+		score *= 1.0 + (rand.Float64()*1.00 - 0.50) //nolint:gosec // G404: math/rand is fine for suggestion jitter, not security
 
 		if score > 0 {
 			suggestions = append(suggestions, &Suggestion{
@@ -832,7 +830,7 @@ func (m *Module) randomSample(excludeID string, n int, canViewMature bool) []*Su
 			Title:     media.Title,
 			Category:  media.Category,
 			MediaType: media.MediaType,
-			Score:     rand.Float64(),
+			Score:     rand.Float64(), //nolint:gosec // G404: math/rand acceptable for non-security suggestions
 			Reasons:   []string{"Discover something new"},
 		})
 	}
@@ -844,10 +842,7 @@ func (m *Module) randomSample(excludeID string, n int, canViewMature bool) []*Su
 }
 
 // computeSimilarity calculates how similar two media items are by category, type, tags, and title.
-func computeSimilarity(source, candidate *MediaInfo) (float64, []string) {
-	var score float64
-	var reasons []string
-
+func computeSimilarity(source, candidate *MediaInfo) (score float64, reasons []string) {
 	if candidate.Category == source.Category {
 		score += 0.3
 		reasons = append(reasons, "Same category")

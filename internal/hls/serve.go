@@ -51,10 +51,10 @@ func rewritePlaylistLines(data []byte, baseURL string) []byte {
 
 // servePlaylistOpts holds parameters for serving a playlist (direct or CDN-rewritten).
 type servePlaylistOpts struct {
-	path        string
-	cdnBase     string
-	urlPath     string
-	corsOrigin  string // value for Access-Control-Allow-Origin header
+	path       string
+	cdnBase    string
+	urlPath    string
+	corsOrigin string // value for Access-Control-Allow-Origin header
 }
 
 // hlsCORSOrigin computes the correct Access-Control-Allow-Origin header value for

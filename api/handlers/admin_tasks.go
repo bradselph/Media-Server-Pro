@@ -78,11 +78,12 @@ func (h *Handler) AdminStopTask(c *gin.Context) {
 	taskID := c.Param("id")
 
 	if err := h.tasks.StopTask(taskID); err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		switch {
+		case strings.Contains(err.Error(), "not found"):
 			writeError(c, http.StatusNotFound, err.Error())
-		} else if strings.Contains(err.Error(), "not currently running") {
+		case strings.Contains(err.Error(), "not currently running"):
 			writeError(c, http.StatusConflict, err.Error())
-		} else {
+		default:
 			writeError(c, http.StatusBadRequest, err.Error())
 		}
 		return

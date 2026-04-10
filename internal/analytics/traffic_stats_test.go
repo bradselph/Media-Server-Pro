@@ -36,7 +36,7 @@ func (noOpAnalyticsRepo) Count(context.Context, repositories.AnalyticsFilter) (i
 }
 
 func (noOpAnalyticsRepo) CountByType(context.Context) (map[string]int, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // test stub returns empty result with no error
 }
 
 func testAnalyticsModule(t *testing.T) *Module {

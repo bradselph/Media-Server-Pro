@@ -398,7 +398,7 @@ func TestCreateUniqueUploadFile_WithConflict(t *testing.T) {
 	m := newTestModule(t)
 
 	// Create existing temp file to cause conflict
-	os.WriteFile(filepath.Join(dir, "video.mp4.tmp"), []byte("existing"), 0644)
+	os.WriteFile(filepath.Join(dir, "video.mp4.tmp"), []byte("existing"), 0o600)
 
 	destPath, f, err := m.createUniqueUploadFile(dir, "video.mp4")
 	if err != nil {
@@ -435,9 +435,9 @@ func TestGetUserStorageUsed_EmptyDir(t *testing.T) {
 func TestGetUserStorageUsed_WithFiles(t *testing.T) {
 	dir := t.TempDir()
 	userDir := filepath.Join(dir, "user1")
-	os.MkdirAll(userDir, 0755)
-	os.WriteFile(filepath.Join(userDir, "file1.mp4"), make([]byte, 1024), 0644)
-	os.WriteFile(filepath.Join(userDir, "file2.mp4"), make([]byte, 2048), 0644)
+	os.MkdirAll(userDir, 0o750)
+	os.WriteFile(filepath.Join(userDir, "file1.mp4"), make([]byte, 1024), 0o600)
+	os.WriteFile(filepath.Join(userDir, "file2.mp4"), make([]byte, 2048), 0o600)
 
 	m := newTestModule(t)
 	m.uploadDir = dir

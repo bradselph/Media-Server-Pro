@@ -721,15 +721,16 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	if err := h.streaming.Download(c.Writer, c.Request, absPath); err != nil {
 		if c.Writer.Written() || isClientDisconnect(err) {
 			if isClientDisconnect(err) {
-				h.log.Debug("Download cancelled by client: %v", err)
+				h.log.Debug("Download canceled by client: %v", err)
 			}
 			return
 		}
-		if errors.Is(err, streaming.ErrFileNotFound) {
+		switch {
+		case errors.Is(err, streaming.ErrFileNotFound):
 			writeError(c, http.StatusNotFound, errFileNotFound)
-		} else if errors.Is(err, streaming.ErrFileTooLarge) {
+		case errors.Is(err, streaming.ErrFileTooLarge):
 			writeError(c, http.StatusRequestEntityTooLarge, "File exceeds maximum download size")
-		} else {
+		default:
 			h.log.Error("Download error: %v", err)
 			writeError(c, http.StatusInternalServerError, "Download error")
 		}

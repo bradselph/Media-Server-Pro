@@ -787,6 +787,6 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 	if _, err := c.Writer.Write(buf.Bytes()); err != nil {
 		// Headers already sent — append trailer comment so the consumer can detect truncation.
 		h.log.Error("CSV send failed for user %s: %v", user.Username, err)
-		_, _ = c.Writer.Write([]byte("\n# ERROR: export incomplete\n"))
+		_, _ = c.Writer.WriteString("\n# ERROR: export incomplete\n")
 	}
 }

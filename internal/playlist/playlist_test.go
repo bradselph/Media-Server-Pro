@@ -1,6 +1,7 @@
 package playlist
 
 import (
+	"errors"
 	"testing"
 
 	"media-server-pro/pkg/models"
@@ -21,10 +22,10 @@ func TestErrorSentinels(t *testing.T) {
 		t.Error("ErrAccessDenied should not be nil")
 	}
 	// Ensure distinct
-	if ErrPlaylistNotFound == ErrItemNotFound {
+	if errors.Is(ErrPlaylistNotFound, ErrItemNotFound) {
 		t.Error("error sentinels should be distinct")
 	}
-	if ErrPlaylistNotFound == ErrAccessDenied {
+	if errors.Is(ErrPlaylistNotFound, ErrAccessDenied) {
 		t.Error("error sentinels should be distinct")
 	}
 }

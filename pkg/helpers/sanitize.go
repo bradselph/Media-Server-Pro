@@ -91,5 +91,5 @@ func SafeContentDispositionFilename(filename string) string {
 		}
 		b.WriteRune(r)
 	}
-	return fmt.Sprintf(`attachment; filename="%s"`, b.String())
+	return fmt.Sprintf("attachment; filename=%q", b.String())
 }

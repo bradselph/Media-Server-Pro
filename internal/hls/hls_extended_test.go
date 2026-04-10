@@ -70,7 +70,7 @@ func TestRewritePlaylistLines_PreservesComments(t *testing.T) {
 	}
 }
 
-func TestRewritePlaylistLines_EmptyInput(t *testing.T) {
+func TestRewritePlaylistLines_EmptyInput(_ *testing.T) {
 	// nil input may produce empty or single newline, both OK — just verify no panic
 	_ = rewritePlaylistLines(nil, "/base/")
 }

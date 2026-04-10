@@ -489,7 +489,7 @@ func restartBindDelay() time.Duration {
 	if val == "" {
 		return 0
 	}
-	os.Unsetenv("MEDIA_SERVER_RESTART_DELAY")
+	_ = os.Unsetenv("MEDIA_SERVER_RESTART_DELAY")
 	var secs int
 	if _, err := fmt.Sscanf(val, "%d", &secs); err == nil && secs > 0 {
 		return time.Duration(secs) * time.Second
@@ -584,4 +584,3 @@ func (s *Server) HandleModuleHealth(c *gin.Context) {
 	health := module.Health()
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: health})
 }
-

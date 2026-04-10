@@ -179,8 +179,8 @@ func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 
 	succeeded := false
 	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn("Failed to close audit log file: %v", err)
+		if closeErr := file.Close(); closeErr != nil {
+			m.log.Warn("Failed to close audit log file: %v", closeErr)
 		}
 		if !succeeded {
 			if removeErr := os.Remove(filename); removeErr != nil && !os.IsNotExist(removeErr) {
@@ -192,8 +192,8 @@ func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 	writer := csv.NewWriter(file)
 
 	header := []string{"Timestamp", "Username", "Action", "Resource", "IP Address", "Success"}
-	if err := writer.Write(header); err != nil {
-		return "", err
+	if writeErr := writer.Write(header); writeErr != nil {
+		return "", writeErr
 	}
 
 	entries, err := m.auditRepo.List(ctx, repositories.AuditLogFilter{
@@ -380,14 +380,14 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]interface{} {
 		})
 	}
 	return map[string]interface{}{
-		"enabled":            cfg.HLS.Enabled,
-		"auto_generate":      cfg.HLS.AutoGenerate,
-		"concurrent_limit":   cfg.HLS.ConcurrentLimit,
-		"segment_duration":   cfg.HLS.SegmentDuration,
-		"cleanup_enabled":    cfg.HLS.CleanupEnabled,
-		"retention_minutes":  cfg.HLS.RetentionMinutes,
-		"lazy_transcode":     cfg.HLS.LazyTranscode,
-		"quality_profiles":   profiles,
+		"enabled":           cfg.HLS.Enabled,
+		"auto_generate":     cfg.HLS.AutoGenerate,
+		"concurrent_limit":  cfg.HLS.ConcurrentLimit,
+		"segment_duration":  cfg.HLS.SegmentDuration,
+		"cleanup_enabled":   cfg.HLS.CleanupEnabled,
+		"retention_minutes": cfg.HLS.RetentionMinutes,
+		"lazy_transcode":    cfg.HLS.LazyTranscode,
+		"quality_profiles":  profiles,
 	}
 }
 
@@ -424,7 +424,7 @@ func buildConfigMatureScannerMap(cfg *config.Config, _ []string) map[string]inte
 func buildConfigHuggingFaceMap(cfg *config.Config, _ []string) map[string]interface{} {
 	return map[string]interface{}{
 		"enabled":        cfg.HuggingFace.Enabled,
-		"api_key_set":    len(cfg.HuggingFace.APIKey) > 0,
+		"api_key_set":    cfg.HuggingFace.APIKey != "",
 		"model":          cfg.HuggingFace.Model,
 		"endpoint_url":   cfg.HuggingFace.EndpointURL,
 		"max_frames":     cfg.HuggingFace.MaxFrames,
@@ -485,9 +485,9 @@ func buildConfigAgeGateMap(cfg *config.Config, _ []string) map[string]interface{
 
 func buildConfigUploadsMap(cfg *config.Config, _ []string) map[string]interface{} {
 	return map[string]interface{}{
-		"max_file_size":    cfg.Uploads.MaxFileSize,
-		"allowed_types":    cfg.Uploads.AllowedExtensions,
-		"scan_for_mature":  cfg.Uploads.ScanForMature,
+		"max_file_size":   cfg.Uploads.MaxFileSize,
+		"allowed_types":   cfg.Uploads.AllowedExtensions,
+		"scan_for_mature": cfg.Uploads.ScanForMature,
 	}
 }
 
@@ -515,8 +515,8 @@ func buildConfigStorageMap(cfg *config.Config, _ []string) map[string]interface{
 			"endpoint":       cfg.Storage.S3.Endpoint,
 			"region":         cfg.Storage.S3.Region,
 			"bucket":         cfg.Storage.S3.Bucket,
-			"access_key_set": len(cfg.Storage.S3.AccessKeyID) > 0,
-			"secret_key_set": len(cfg.Storage.S3.SecretAccessKey) > 0,
+			"access_key_set": cfg.Storage.S3.AccessKeyID != "",
+			"secret_key_set": cfg.Storage.S3.SecretAccessKey != "",
 		},
 	}
 }

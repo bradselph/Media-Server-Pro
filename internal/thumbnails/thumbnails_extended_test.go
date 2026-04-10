@@ -78,4 +78,3 @@ func TestGetThumbnailPathWebp_NoJpg(t *testing.T) {
 		t.Error("should return non-empty")
 	}
 }
-

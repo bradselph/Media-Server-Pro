@@ -203,7 +203,7 @@ func (m *Module) applyStartupHealthFFmpeg() bool {
 
 // applyStartupHealthCacheDir creates the HLS cache directory; on failure sets degraded health and returns true.
 func (m *Module) applyStartupHealthCacheDir() bool {
-	if err := os.MkdirAll(m.cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(m.cacheDir, 0o755); err != nil {
 		m.log.Error("Failed to create HLS cache directory: %v", err)
 		m.healthMu.Lock()
 		m.healthy = true
@@ -318,7 +318,7 @@ func (m *Module) Stop(ctx context.Context) error {
 	m.jobsMu.Lock()
 	for _, job := range m.jobs {
 		if job.Status == models.HLSStatusRunning {
-			job.Status = models.HLSStatusCancelled
+			job.Status = models.HLSStatusCanceled
 		}
 	}
 	for id, cancel := range m.jobCancels {

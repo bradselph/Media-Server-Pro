@@ -177,7 +177,7 @@ func (h *Handler) tryRecordView(userID, mediaID string) bool {
 		cooldown = viewCooldownDuration
 	}
 	if prev, ok := h.viewCooldown.Load(key); ok {
-		if now.Sub(prev.(time.Time)) < cooldown {
+		if now.Sub(prev.(time.Time)) < cooldown { //nolint:errcheck // sync.Map always stores time.Time
 			return false
 		}
 	}
@@ -199,7 +199,7 @@ func (h *Handler) startViewCooldownSweeper() {
 			}
 			evictBefore := now.Add(-cooldown * 2)
 			h.viewCooldown.Range(func(key, value any) bool {
-				if value.(time.Time).Before(evictBefore) {
+				if value.(time.Time).Before(evictBefore) { //nolint:errcheck // sync.Map always stores time.Time
 					h.viewCooldown.Delete(key)
 				}
 				return true
@@ -355,7 +355,7 @@ func randIntn(n int) int {
 }
 
 // requireModule checks that the given module pointer is non-nil. Returns false
-// (and writes a 503 error) if the module failed to initialise or is disabled.
+// (and writes a 503 error) if the module failed to initialize or is disabled.
 // Use at the top of handlers that depend on optional modules.
 // Handles both interface nil and typed nil (e.g. (*extractor.Module)(nil)).
 func requireModule(c *gin.Context, module any, name string) bool {

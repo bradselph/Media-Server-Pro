@@ -101,11 +101,11 @@ func defaultThumbnailsConfig() ThumbnailsConfig {
 
 func defaultAnalyticsConfig() AnalyticsConfig {
 	return AnalyticsConfig{
-		Enabled:         true,
-		RetentionDays:   30,
-		SessionTimeout:  30 * time.Minute,
-		CleanupInterval: 12 * time.Hour,
-		TrackPlayback:   true,
+		Enabled:              true,
+		RetentionDays:        30,
+		SessionTimeout:       30 * time.Minute,
+		CleanupInterval:      12 * time.Hour,
+		TrackPlayback:        true,
 		TrackViews:           true,
 		ViewCooldown:         5 * time.Minute,
 		MaxReconstructEvents: 2000,
@@ -179,12 +179,12 @@ func defaultAuthConfig() AuthConfig {
 
 func defaultHLSConfig() HLSConfig {
 	return HLSConfig{
-		Enabled:          true,
-		SegmentDuration:  6,
-		PlaylistLength:   0,
-		CleanupEnabled:   true,
-		CleanupInterval:  1 * time.Hour,
-		RetentionMinutes: 60,
+		Enabled:                  true,
+		SegmentDuration:          6,
+		PlaylistLength:           0,
+		CleanupEnabled:           true,
+		CleanupInterval:          1 * time.Hour,
+		RetentionMinutes:         60,
 		AutoGenerate:             false,
 		PreGenerateIntervalHours: 1,
 		ConcurrentLimit:          2,

@@ -336,7 +336,7 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 		return
 	}
 
-	// Block preview thumbnails for mature content when user is not authorised.
+	// Block preview thumbnails for mature content when user is not authorized.
 	if item, err := h.media.GetMedia(path); err == nil && item != nil && item.IsMature {
 		canView := false
 		if user := getUser(c); user != nil {

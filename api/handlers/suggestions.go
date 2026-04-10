@@ -13,14 +13,13 @@ import (
 	"media-server-pro/internal/thumbnails"
 )
 
-
 // requireSuggestionsCatalogue checks that the suggestions module's media
-// catalogue has been seeded. Returns 503 with Retry-After if the catalogue
+// catalog has been seeded. Returns 503 with Retry-After if the catalog
 // is empty (server just started, initial scan still in progress).
 func (h *Handler) requireSuggestionsCatalogue(c *gin.Context) bool {
 	if !h.suggestions.IsCatalogueReady() {
 		c.Header("Retry-After", "3")
-		writeError(c, http.StatusServiceUnavailable, "Suggestions are loading — media catalogue scan in progress, please try again shortly")
+		writeError(c, http.StatusServiceUnavailable, "Suggestions are loading — media catalog scan in progress, please try again shortly")
 		return false
 	}
 	return true
@@ -80,7 +79,7 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 100})
 
 	// Pass the StableID directly to the suggestions module which has its own
-	// catalogue indexed by ID. No need to validate via the media module —
+	// catalog indexed by ID. No need to validate via the media module —
 	// the suggestions engine handles unknown IDs gracefully (returns random sample).
 	canViewMature := h.canViewMatureContent(c)
 	similar := h.suggestions.GetSimilarMedia(id, limit, canViewMature)
@@ -352,9 +351,9 @@ func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
 	}
 
 	writeSuccess(c, map[string]interface{}{
-		"items":  results,
-		"since":  cutoff,
-		"total":  len(results),
+		"items": results,
+		"since": cutoff,
+		"total": len(results),
 	})
 }
 

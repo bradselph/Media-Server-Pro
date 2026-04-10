@@ -39,7 +39,7 @@ func NewIPListRepository(db *gorm.DB) repositories.IPListRepository {
 	return &IPListRepository{db: db}
 }
 
-func (r *IPListRepository) SaveListConfig(ctx context.Context, listType string, name string, enabled bool) error {
+func (r *IPListRepository) SaveListConfig(ctx context.Context, listType, name string, enabled bool) error {
 	row := ipListConfigRow{
 		ListType: listType,
 		Name:     name,
@@ -54,7 +54,7 @@ func (r *IPListRepository) SaveListConfig(ctx context.Context, listType string, 
 	return nil
 }
 
-func (r *IPListRepository) GetListConfig(ctx context.Context, listType string) (string, bool, error) {
+func (r *IPListRepository) GetListConfig(ctx context.Context, listType string) (name string, enabled bool, err error) {
 	var row ipListConfigRow
 	if err := r.db.WithContext(ctx).Where("list_type = ?", listType).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -142,7 +142,7 @@ func (r *IPListRepository) AddEntry(ctx context.Context, listType string, entry 
 	return nil
 }
 
-func (r *IPListRepository) RemoveEntry(ctx context.Context, listType string, ipValue string) error {
+func (r *IPListRepository) RemoveEntry(ctx context.Context, listType, ipValue string) error {
 	if err := r.db.WithContext(ctx).Where("list_type = ? AND ip_value = ?", listType, ipValue).Delete(&ipListEntryRow{}).Error; err != nil {
 		return fmt.Errorf("failed to remove IP list entry: %w", err)
 	}

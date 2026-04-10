@@ -176,7 +176,7 @@ func TestSortItems_ByDateAdded(t *testing.T) {
 	}
 }
 
-func TestSortItems_Empty(t *testing.T) {
+func TestSortItems_Empty(_ *testing.T) {
 	var items []*models.MediaItem
 	f := Filter{SortBy: "name"}
 	f.SortItems(items) // should not panic

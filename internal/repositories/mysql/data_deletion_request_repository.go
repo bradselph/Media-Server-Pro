@@ -55,7 +55,7 @@ func (r *DataDeletionRequestRepositoryImpl) Get(ctx context.Context, id string) 
 	var row dataDeletionRequestRow
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("get data deletion request: %w", err)
 	}

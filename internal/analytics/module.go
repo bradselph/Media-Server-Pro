@@ -62,8 +62,8 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		mediaStats:           make(map[string]*models.ViewStats),
 		mediaDurationSamples: make(map[string]int),
 		mediaViewers:         make(map[string]map[string]struct{}),
-		done:      make(chan struct{}),
-		maxEvents: cfg.Get().Analytics.MaxReconstructEvents,
+		done:                 make(chan struct{}),
+		maxEvents:            cfg.Get().Analytics.MaxReconstructEvents,
 	}, nil
 }
 

@@ -46,6 +46,7 @@ func TestPlaylistCRUD(t *testing.T) {
 		t.Errorf("create: expected name=My Playlist, got %v", data["name"])
 	}
 
+	resp.Body.Close()
 	// --- List playlists ---
 	resp = ts.AuthRequest("GET", "/api/playlists", nil, sessionID)
 	result = ts.ParseJSON(resp)
@@ -61,6 +62,7 @@ func TestPlaylistCRUD(t *testing.T) {
 		t.Error("list: expected at least 1 playlist")
 	}
 
+	resp.Body.Close()
 	// --- Get playlist ---
 	resp = ts.AuthRequest("GET", "/api/playlists/"+playlistID, nil, sessionID)
 	result = ts.ParseJSON(resp)
@@ -73,6 +75,7 @@ func TestPlaylistCRUD(t *testing.T) {
 		t.Errorf("get: expected id=%s, got %v", playlistID, data["id"])
 	}
 
+	resp.Body.Close()
 	// --- Update playlist ---
 	updateBody, _ := json.Marshal(map[string]string{"name": "Updated Playlist"})
 	resp = ts.AuthRequest("PUT", "/api/playlists/"+playlistID, bytes.NewReader(updateBody), sessionID)
@@ -82,6 +85,7 @@ func TestPlaylistCRUD(t *testing.T) {
 		t.Fatalf("update: expected 200, got %d: %v", resp.StatusCode, result)
 	}
 
+	resp.Body.Close()
 	// --- Delete playlist ---
 	resp = ts.AuthRequest("DELETE", "/api/playlists/"+playlistID, nil, sessionID)
 	result = ts.ParseJSON(resp)
@@ -90,6 +94,7 @@ func TestPlaylistCRUD(t *testing.T) {
 		t.Fatalf("delete: expected 200, got %d: %v", resp.StatusCode, result)
 	}
 
+	resp.Body.Close()
 	// --- Verify deletion ---
 	resp = ts.AuthRequest("GET", "/api/playlists/"+playlistID, nil, sessionID)
 	if resp.StatusCode != http.StatusNotFound {
@@ -145,6 +150,7 @@ func TestPlaylistCreate_EmptyName(t *testing.T) {
 	sessionID := ts.Env.LoginUser(t, "emptyname", "password123")
 
 	resp := ts.AuthRequest("POST", "/api/playlists", playlistPayload("", "no name"), sessionID)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusBadRequest {
@@ -177,6 +183,7 @@ func TestPlaylistDelete_NotOwner(t *testing.T) {
 	ownerSession := ts.Env.LoginUser(t, "owner", "password123")
 
 	resp := ts.AuthRequest("POST", "/api/playlists", playlistPayload("Owner's Playlist", ""), ownerSession)
+	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 
 	data, _ := result["data"].(map[string]any)

@@ -132,7 +132,7 @@ func ensureDatabase(ctx context.Context, dbCfg config.DatabaseConfig, log *logge
 		return fmt.Errorf("build connector: %w", err)
 	}
 	rawDB := sql.OpenDB(connector)
-	defer rawDB.Close()
+	defer func() { _ = rawDB.Close() }()
 
 	ctxTimeout, cancel := context.WithTimeout(ctx, dbCfg.Timeout)
 	defer cancel()
@@ -173,12 +173,12 @@ func newGORMLogger(log *logger.Logger, slowThreshold time.Duration) gormlogger.I
 }
 
 // tryConnect opens GORM and pings once; returns (db, sqlDB, nil) on success.
-func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, timeout time.Duration) (*gorm.DB, *sql.DB, error) {
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: gormLog})
+func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, timeout time.Duration) (db *gorm.DB, sqlDB *sql.DB, err error) {
+	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: gormLog})
 	if err != nil {
 		return nil, nil, err
 	}
-	sqlDB, err := db.DB()
+	sqlDB, err = db.DB()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -186,14 +186,14 @@ func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, t
 	err = sqlDB.PingContext(ctxTimeout)
 	cancel()
 	if err != nil {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 		return nil, nil, err
 	}
 	return db, sqlDB, nil
 }
 
 // connectWithRetry opens a GORM connection with retries and ping; returns gorm.DB, sql.DB, and error.
-func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (*gorm.DB, *sql.DB, error) {
+func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (db *gorm.DB, sqlDB *sql.DB, err error) {
 	gormLog := newGORMLogger(log, dbCfg.SlowQueryThreshold)
 	maxRetries := dbCfg.MaxRetries
 	if maxRetries < 1 {

@@ -62,7 +62,7 @@ func (r *ValidationResultRepository) Get(ctx context.Context, path string) (*rep
 	var row validationResultRow
 	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("failed to get validation result: %w", err)
 	}

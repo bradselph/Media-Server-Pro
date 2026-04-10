@@ -90,7 +90,7 @@ func (r *RemoteCacheRepository) Get(ctx context.Context, remoteURL string) (*rep
 	var row remoteCacheRow
 	if err := r.db.WithContext(ctx).Where("remote_url = ?", remoteURL).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("failed to get remote cache entry: %w", err)
 	}

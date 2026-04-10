@@ -109,7 +109,7 @@ func ImportFile(srcDir, destDir, filename string, deleteSource bool) (destPath s
 
 	srcPath := filepath.Join(srcDir, filename)
 
-	// Defence-in-depth: verify resolved path is within srcDir
+	// Defense-in-depth: verify resolved path is within srcDir
 	absSrc, err := filepath.Abs(srcPath)
 	if err != nil {
 		return "", false, fmt.Errorf("resolve source path: %w", err)
@@ -170,7 +170,7 @@ func copyFile(src, dst string) (retErr error) {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	out, err := os.Create(dst)
 	if err != nil {

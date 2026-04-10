@@ -3,6 +3,7 @@ package local
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -129,7 +130,7 @@ func TestOpen(t *testing.T) {
 func TestOpen_NotFound(t *testing.T) {
 	b := newTestBackend(t)
 	_, err := b.Open(context.Background(), "nonexistent.txt")
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("Open nonexistent: got %v, want ErrNotFound", err)
 	}
 }
@@ -160,7 +161,7 @@ func TestStat(t *testing.T) {
 func TestStat_NotFound(t *testing.T) {
 	b := newTestBackend(t)
 	_, err := b.Stat(context.Background(), "nope.txt")
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("Stat nonexistent: got %v, want ErrNotFound", err)
 	}
 }
@@ -223,7 +224,7 @@ func TestReadDir(t *testing.T) {
 func TestReadDir_NotFound(t *testing.T) {
 	b := newTestBackend(t)
 	_, err := b.ReadDir(context.Background(), "nodir")
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("ReadDir nonexistent: got %v, want ErrNotFound", err)
 	}
 }
@@ -237,7 +238,7 @@ func TestRemove(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 	_, err := b.Stat(ctx, "rm.txt")
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Error("file should be gone after Remove")
 	}
 }
@@ -245,7 +246,7 @@ func TestRemove(t *testing.T) {
 func TestRemove_NotFound(t *testing.T) {
 	b := newTestBackend(t)
 	err := b.Remove(context.Background(), "nope.txt")
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("Remove nonexistent: got %v, want ErrNotFound", err)
 	}
 }
@@ -260,7 +261,7 @@ func TestRemoveAll(t *testing.T) {
 		t.Fatalf("RemoveAll: %v", err)
 	}
 	_, err := b.Stat(ctx, "tree")
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Error("tree should be gone after RemoveAll")
 	}
 }
@@ -275,7 +276,7 @@ func TestRename(t *testing.T) {
 	}
 	// Old should be gone
 	_, err := b.Stat(ctx, "old.txt")
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Error("old file should be gone after Rename")
 	}
 	// New should exist with same content
@@ -295,7 +296,7 @@ func TestWalk(t *testing.T) {
 	b.WriteFile(ctx, "walk/sub/b.txt", []byte("b"))
 
 	var paths []string
-	err := b.Walk(ctx, "walk", func(path string, info storage.FileInfo, err error) error {
+	err := b.Walk(ctx, "walk", func(path string, _ storage.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -377,7 +378,7 @@ func TestResolve_AbsolutePathSiblingPrefix(t *testing.T) {
 	// Ensures /data/media-evil doesn't match root=/data/media
 	dir := t.TempDir()
 	root := filepath.Join(dir, "media")
-	os.MkdirAll(root, 0755)
+	os.MkdirAll(root, 0o750)
 	b, _ := New(root)
 	evil := filepath.Join(dir, "media-evil", "secret.txt")
 	_, err := b.resolve(evil)
@@ -429,7 +430,7 @@ func TestCreate_OverwriteExisting(t *testing.T) {
 func TestReadFile_NotFound(t *testing.T) {
 	b := newTestBackend(t)
 	_, err := b.ReadFile(context.Background(), "missing.dat")
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("ReadFile nonexistent: got %v, want ErrNotFound", err)
 	}
 }
@@ -438,7 +439,7 @@ func TestReadFile_NotFound(t *testing.T) {
 // Interface compliance
 // ---------------------------------------------------------------------------
 
-func TestBackendImplementsInterface(t *testing.T) {
+func TestBackendImplementsInterface(_ *testing.T) {
 	var _ storage.Backend = (*Backend)(nil)
 }
 

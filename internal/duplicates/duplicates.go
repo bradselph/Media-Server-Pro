@@ -135,7 +135,7 @@ func (m *Module) setHealth(healthy bool, msg string) {
 	m.healthMu.Unlock()
 }
 
-// enabled reports whether the module is fully initialised and the feature flag is on.
+// enabled reports whether the module is fully initialized and the feature flag is on.
 func (m *Module) enabled() bool {
 	return m.dupRepo != nil && m.cfg.Get().Features.EnableDuplicateDetection
 }

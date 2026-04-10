@@ -16,7 +16,7 @@ const (
 	MediaTypeAudio MediaType = "audio"
 	// MediaTypeUnknown is used as a sentinel by internal/media/discovery.go when scanning
 	// the uploads directory (mixed content). It is never stored on a MediaItem.Type field —
-	// unmatched files are dropped during scanning, not catalogued as unknown.
+	// unmatched files are dropped during scanning, not cataloged as unknown.
 	MediaTypeUnknown MediaType = "unknown"
 )
 
@@ -64,22 +64,22 @@ type MediaCategory struct {
 // PasswordHash and Salt are excluded from default JSON serialization (json:"-")
 // to prevent accidental leakage. All persistence goes through GORM MySQL repositories.
 type User struct {
-	ID            string             `json:"id" db:"id" gorm:"primaryKey;size:255"`
-	Username      string             `json:"username" db:"username" gorm:"uniqueIndex;size:255;not null"`
-	PasswordHash  string             `json:"-" db:"password_hash" gorm:"type:text;not null"`
-	Salt          string             `json:"-" db:"salt" gorm:"size:255;not null"`
-	Email         string             `json:"email,omitempty" db:"email" gorm:"size:255"`
-	Role          UserRole           `json:"role" db:"role" gorm:"type:enum('admin','viewer');default:viewer;not null"`
-	Type          string             `json:"type" db:"type" gorm:"size:50;default:standard;not null"`
-	Enabled       bool               `json:"enabled" db:"enabled" gorm:"default:true;not null"`
-	CreatedAt     time.Time          `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
-	LastLogin           *time.Time         `json:"last_login,omitempty" db:"last_login"`
-	PreviousLastLogin   *time.Time         `json:"previous_last_login,omitempty" db:"previous_last_login" gorm:"column:previous_last_login"`
-	Permissions   UserPermissions    `json:"permissions" db:"-" gorm:"-"`
-	Preferences   UserPreferences    `json:"preferences" db:"-" gorm:"-"`
-	WatchHistory  []WatchHistoryItem `json:"watch_history,omitempty" db:"watch_history" gorm:"type:json;serializer:json"`
-	StorageUsed   int64              `json:"storage_used" db:"storage_used" gorm:"default:0;not null"`
-	ActiveStreams int                `json:"active_streams" db:"active_streams" gorm:"default:0;not null"`
+	ID                string             `json:"id" db:"id" gorm:"primaryKey;size:255"`
+	Username          string             `json:"username" db:"username" gorm:"uniqueIndex;size:255;not null"`
+	PasswordHash      string             `json:"-" db:"password_hash" gorm:"type:text;not null"`
+	Salt              string             `json:"-" db:"salt" gorm:"size:255;not null"`
+	Email             string             `json:"email,omitempty" db:"email" gorm:"size:255"`
+	Role              UserRole           `json:"role" db:"role" gorm:"type:enum('admin','viewer');default:viewer;not null"`
+	Type              string             `json:"type" db:"type" gorm:"size:50;default:standard;not null"`
+	Enabled           bool               `json:"enabled" db:"enabled" gorm:"default:true;not null"`
+	CreatedAt         time.Time          `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+	LastLogin         *time.Time         `json:"last_login,omitempty" db:"last_login"`
+	PreviousLastLogin *time.Time         `json:"previous_last_login,omitempty" db:"previous_last_login" gorm:"column:previous_last_login"`
+	Permissions       UserPermissions    `json:"permissions" db:"-" gorm:"-"`
+	Preferences       UserPreferences    `json:"preferences" db:"-" gorm:"-"`
+	WatchHistory      []WatchHistoryItem `json:"watch_history,omitempty" db:"watch_history" gorm:"type:json;serializer:json"`
+	StorageUsed       int64              `json:"storage_used" db:"storage_used" gorm:"default:0;not null"`
+	ActiveStreams     int                `json:"active_streams" db:"active_streams" gorm:"default:0;not null"`
 	// SECURITY WARNING: Metadata is arbitrary JSON that may contain malicious content.
 	// Always sanitize metadata values before rendering in HTML to prevent XSS attacks.
 	// Use textContent instead of innerHTML, or apply proper HTML escaping.
@@ -435,10 +435,10 @@ func (AnalyticsEvent) TableName() string {
 
 // ViewStats holds view statistics for a media item
 type ViewStats struct {
-	TotalViews        int       `json:"total_views"`
-	TotalPlaybacks    int       `json:"-"` // playback attempts (denominator for CompletionRate)
-	TotalCompletions  int       `json:"-"` // completions (progress >= 90%)
-	CompletionRate    float64   `json:"completion_rate"`
+	TotalViews       int       `json:"total_views"`
+	TotalPlaybacks   int       `json:"-"` // playback attempts (denominator for CompletionRate)
+	TotalCompletions int       `json:"-"` // completions (progress >= 90%)
+	CompletionRate   float64   `json:"completion_rate"`
 	LastViewed       time.Time `json:"last_viewed"`
 	UniqueViewers    int       `json:"unique_viewers"`
 	AvgWatchDuration float64   `json:"avg_watch_duration"`
@@ -455,13 +455,13 @@ type DailyStats struct {
 	TopMedia       []string `json:"top_media"`
 
 	// Traffic breakdown (server-generated events)
-	Logins       int `json:"logins"`
-	LoginsFailed int `json:"logins_failed"`
-	Logouts      int `json:"logouts"`
+	Logins        int `json:"logins"`
+	LoginsFailed  int `json:"logins_failed"`
+	Logouts       int `json:"logouts"`
 	Registrations int `json:"registrations"`
 	AgeGatePasses int `json:"age_gate_passes"`
-	Downloads    int `json:"downloads"`
-	Searches     int `json:"searches"`
+	Downloads     int `json:"downloads"`
+	Searches      int `json:"searches"`
 }
 
 // HLSJob represents an HLS transcoding job
@@ -489,7 +489,7 @@ const (
 	HLSStatusRunning   HLSStatus = "running"
 	HLSStatusCompleted HLSStatus = "completed"
 	HLSStatusFailed    HLSStatus = "failed"
-	HLSStatusCancelled HLSStatus = "cancelled"
+	HLSStatusCanceled  HLSStatus = "canceled"
 )
 
 // StreamSession represents an active media streaming session.
@@ -567,7 +567,6 @@ type HealthStatus struct {
 	CheckedAt time.Time `json:"checked_at"`
 }
 
-
 // APIResponse represents a standard API response
 type APIResponse struct {
 	Success bool        `json:"success"`
@@ -576,7 +575,7 @@ type APIResponse struct {
 	Message string      `json:"message,omitempty"`
 }
 
-// AutoDiscoverySuggestion represents a naming suggestion
+// SuggestionType represents a naming suggestion type
 // for a media file discovered by the auto-discovery module.
 // It uses dedicated types instead of raw primitives to avoid
 // scattering magic strings and loosely-typed metadata keys.

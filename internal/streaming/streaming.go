@@ -38,7 +38,6 @@ const (
 	errCloseFileFmt          = "failed to close file: %v"
 )
 
-
 // staleSessionTimeout is the maximum age of an active session's LastUpdate before
 // it is considered stale and evicted by the cleanup sweep.
 const staleSessionTimeout = 30 * time.Minute
@@ -76,7 +75,7 @@ func NewModule(cfg *config.Manager) *Module {
 		log:            logger.New("streaming"),
 		activeSessions: make(map[string]*models.StreamSession),
 		bufferPool: &sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				// Create 1MB buffers for the pool (reasonable size for streaming)
 				return make([]byte, 1024*1024)
 			},
@@ -277,22 +276,22 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 	if m.store != nil && !m.store.IsLocal() {
 		relPath := m.storeRelPath(req.Path)
 		if ro, ok := m.store.(storage.RangeOpener); ok {
-			reader, err := ro.OpenRange(ctx, relPath, start, end)
-			if err != nil {
-				return fmt.Errorf("failed to open range: %w", err)
+			reader, openErr := ro.OpenRange(ctx, relPath, start, end)
+			if openErr != nil {
+				return fmt.Errorf("failed to open range: %w", openErr)
 			}
-			defer reader.Close()
+			defer func() { _ = reader.Close() }()
 			return m.streamFromReader(w, reader, end-start+1, chunkSize, session)
 		}
 		// Fallback: open full file from storage backend
-		f, err := m.store.Open(ctx, relPath)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
+		f, openErr := m.store.Open(ctx, relPath)
+		if openErr != nil {
+			if errors.Is(openErr, storage.ErrNotFound) {
 				return ErrFileNotFound
 			}
-			return fmt.Errorf("failed to open file: %w", err)
+			return fmt.Errorf("failed to open file: %w", openErr)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		return m.streamContentSeeker(w, f, start, end, chunkSize, session)
 	}
 
@@ -406,7 +405,7 @@ func generateSessionID(prefix string) string {
 
 // parseRange parses the Range header and returns start and end positions.
 // Supports both standard byte ranges (bytes=0-499) and suffix-byte-ranges (bytes=-500).
-func (m *Module) parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
+func (m *Module) parseRange(rangeHeader string, fileSize int64) (start, end int64, err error) {
 	if rangeHeader == "" {
 		return 0, fileSize - 1, nil
 	}
@@ -423,9 +422,6 @@ func (m *Module) parseRange(rangeHeader string, fileSize int64) (int64, int64, e
 		return 0, 0, ErrInvalidRange
 	}
 
-	var start, end int64
-	var err error
-
 	if parts[0] != "" {
 		start, err = strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
@@ -433,8 +429,8 @@ func (m *Module) parseRange(rangeHeader string, fileSize int64) (int64, int64, e
 		}
 	} else if parts[1] != "" {
 		// Suffix-byte-range-spec: bytes=-500 (last 500 bytes)
-		suffixLength, err := strconv.ParseInt(parts[1], 10, 64)
-		if err != nil || suffixLength <= 0 {
+		suffixLength, parseErr := strconv.ParseInt(parts[1], 10, 64)
+		if parseErr != nil || suffixLength <= 0 {
 			return 0, 0, ErrInvalidRange
 		}
 		if suffixLength >= fileSize {
@@ -487,25 +483,19 @@ func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize,
 // to the response writer. Used when the backend supports efficient range reads.
 func (m *Module) streamFromReader(w http.ResponseWriter, reader io.Reader, totalBytes, chunkSize int64, session *models.StreamSession) error {
 	bufInterface := m.bufferPool.Get()
-	buf := bufInterface.([]byte)
+	buf := bufInterface.([]byte) //nolint:errcheck // pool invariant: only []byte stored
 	defer m.bufferPool.Put(bufInterface)
 
-	effectiveChunkSize := int64(len(buf))
-	if chunkSize < effectiveChunkSize {
-		effectiveChunkSize = chunkSize
-	}
+	effectiveChunkSize := min(int64(len(buf)), chunkSize)
 
 	remaining := totalBytes
 	var accumulatedBytes int64
 
 	for remaining > 0 {
-		toRead := effectiveChunkSize
-		if remaining < effectiveChunkSize {
-			toRead = remaining
-		}
+		toRead := min(effectiveChunkSize, remaining)
 
 		n, err := reader.Read(buf[:toRead])
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			if accumulatedBytes > 0 {
 				m.updateSessionStats(session.ID, accumulatedBytes)
 			}
@@ -551,25 +541,19 @@ func (m *Module) streamContentSeeker(w http.ResponseWriter, reader io.ReadSeeker
 	}
 
 	bufInterface := m.bufferPool.Get()
-	buf := bufInterface.([]byte)
+	buf := bufInterface.([]byte) //nolint:errcheck // pool invariant: only []byte stored
 	defer m.bufferPool.Put(bufInterface)
 
-	effectiveChunkSize := int64(len(buf))
-	if chunkSize < effectiveChunkSize {
-		effectiveChunkSize = chunkSize
-	}
+	effectiveChunkSize := min(int64(len(buf)), chunkSize)
 
 	remaining := end - start + 1
 	var accumulatedBytes int64
 
 	for remaining > 0 {
-		toRead := effectiveChunkSize
-		if remaining < effectiveChunkSize {
-			toRead = remaining
-		}
+		toRead := min(effectiveChunkSize, remaining)
 
 		n, err := reader.Read(buf[:toRead])
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			if accumulatedBytes > 0 {
 				m.updateSessionStats(session.ID, accumulatedBytes)
 			}
@@ -619,26 +603,20 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 
 	// Get buffer from pool to prevent memory exhaustion
 	bufInterface := m.bufferPool.Get()
-	buf := bufInterface.([]byte)
+	buf := bufInterface.([]byte) //nolint:errcheck // pool invariant: only []byte stored
 	defer m.bufferPool.Put(bufInterface)
 
 	// Use pool buffer size (1MB) to prevent excessive memory usage
-	effectiveChunkSize := int64(len(buf))
-	if chunkSize < effectiveChunkSize {
-		effectiveChunkSize = chunkSize
-	}
+	effectiveChunkSize := min(int64(len(buf)), chunkSize)
 
 	remaining := end - start + 1
 	var accumulatedBytes int64
 
 	for remaining > 0 {
-		toRead := effectiveChunkSize
-		if remaining < effectiveChunkSize {
-			toRead = remaining
-		}
+		toRead := min(effectiveChunkSize, remaining)
 
 		n, err := file.Read(buf[:toRead])
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			// Flush accumulated stats before returning on error
 			if accumulatedBytes > 0 {
 				m.updateSessionStats(session.ID, accumulatedBytes)
@@ -856,27 +834,27 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 	if m.store != nil && !m.store.IsLocal() {
 		relPath := m.storeRelPath(path)
 		if ro, ok := m.store.(storage.RangeOpener); ok {
-			reader, err := ro.OpenRange(ctx, relPath, start, end)
-			if err != nil {
-				return fmt.Errorf("failed to open range for download: %w", err)
+			reader, openErr := ro.OpenRange(ctx, relPath, start, end)
+			if openErr != nil {
+				return fmt.Errorf("failed to open range for download: %w", openErr)
 			}
-			defer reader.Close()
+			defer func() { _ = reader.Close() }()
 			_, copyErr := io.Copy(w, reader)
 			return copyErr
 		}
 		// Fallback: open full file from storage backend
-		f, err := m.store.Open(ctx, relPath)
-		if err != nil {
-			return fmt.Errorf("failed to open file: %w", err)
+		f, openErr := m.store.Open(ctx, relPath)
+		if openErr != nil {
+			return fmt.Errorf("failed to open file: %w", openErr)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		if start > 0 {
-			if _, err := f.Seek(start, io.SeekStart); err != nil {
-				return fmt.Errorf("failed to seek: %w", err)
+			if _, seekErr := f.Seek(start, io.SeekStart); seekErr != nil {
+				return fmt.Errorf("failed to seek: %w", seekErr)
 			}
 		}
 		_, copyErr := io.CopyN(w, f, end-start+1)
-		if copyErr != nil && copyErr != io.EOF {
+		if copyErr != nil && !errors.Is(copyErr, io.EOF) {
 			return copyErr
 		}
 		return nil
@@ -989,26 +967,20 @@ func (m *Module) getDownloadChunkSize() int {
 func (m *Module) writeChunkedData(w http.ResponseWriter, file *os.File, filename string, totalBytes int64, chunkSize int) (int64, error) {
 	// Reuse a buffer from the pool to reduce GC pressure under concurrent downloads.
 	bufInterface := m.bufferPool.Get()
-	buf := bufInterface.([]byte)
+	buf := bufInterface.([]byte) //nolint:errcheck // pool invariant: only []byte stored
 	defer m.bufferPool.Put(bufInterface)
 
 	// Use the smaller of pool buffer size and requested chunk size
-	effectiveChunkSize := len(buf)
-	if chunkSize < effectiveChunkSize {
-		effectiveChunkSize = chunkSize
-	}
+	effectiveChunkSize := min(len(buf), chunkSize)
 
 	remaining := totalBytes
 	bytesSent := int64(0)
 
 	for remaining > 0 {
-		toRead := effectiveChunkSize
-		if remaining < int64(effectiveChunkSize) {
-			toRead = int(remaining)
-		}
+		toRead := min(effectiveChunkSize, int(remaining))
 
 		n, err := file.Read(buf[:toRead])
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			m.log.Debug("Download read error for %s: %v", filename, err)
 			return bytesSent, err
 		}
@@ -1048,7 +1020,7 @@ func (m *Module) ServeStatic(w http.ResponseWriter, r *http.Request, path string
 			}
 			return err
 		}
-		defer rc.Close()
+		defer func() { _ = rc.Close() }()
 		fi, err := m.store.Stat(r.Context(), relPath)
 		if err != nil {
 			return err
@@ -1065,8 +1037,8 @@ func (m *Module) ServeStatic(w http.ResponseWriter, r *http.Request, path string
 		return err
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn(errCloseFileFmt, err)
+		if closeErr := file.Close(); closeErr != nil {
+			m.log.Warn(errCloseFileFmt, closeErr)
 		}
 	}()
 
