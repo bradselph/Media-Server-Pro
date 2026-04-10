@@ -1,4 +1,4 @@
-// Package-level helpers and small utilities.
+// Package auth provides helpers and small utilities for authentication.
 package auth
 
 import (
@@ -64,8 +64,7 @@ func (m *Module) GetActiveSessions(username string) []*models.Session {
 	var sessions []*models.Session
 	for _, session := range m.sessions {
 		if session.Username == username && !session.IsExpired() {
-			cp := *session
-			sessions = append(sessions, &cp)
+			sessions = append(sessions, new(*session))
 		}
 	}
 	return sessions

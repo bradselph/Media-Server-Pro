@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	errReadCacheDirFmt = "Failed to read HLS cache directory: %v"
-	masterPlaylistName = "master.m3u8"
-	errJobNotFoundFmt  = "job not found: %s"
+	errReadCacheDirFmt    = "Failed to read HLS cache directory: %v"
+	masterPlaylistName    = "master.m3u8"
+	errJobNotFoundFmt     = "job not found: %s"
 	defaultMaxHLSFailures = 3 // fallback when HLSConfig.MaxConsecutiveFailures is unset
 )
 
@@ -61,9 +61,6 @@ type Module struct {
 	healthMsg          string
 	healthMu           sync.RWMutex
 	cacheDir           string
-	cleanupTicker      *time.Ticker
-	cleanupDone        chan struct{}
-	cleanupDoneOnce    sync.Once
 	ffmpegPath         string
 	ffprobePath        string
 	accessTracker      *AccessTracker
@@ -93,11 +90,6 @@ func (m *Module) SetMediaInputResolver(r MediaInputResolver) {
 
 // NewModule creates a new HLS module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
-	hlsCfg := cfg.Get().HLS
-	concurrentLimit := hlsCfg.ConcurrentLimit
-	if concurrentLimit <= 0 {
-		concurrentLimit = 2
-	}
 	return &Module{
 		config:        cfg,
 		log:           logger.New("hls"),
@@ -105,7 +97,6 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		jobs:          make(map[string]*models.HLSJob),
 		jobCancels:    make(map[string]context.CancelFunc),
 		cacheDir:      cfg.Get().Directories.HLSCache,
-		cleanupDone:   make(chan struct{}),
 		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time), lastSaved: make(map[string]time.Time)},
 	}
 }
@@ -323,11 +314,6 @@ func (m *Module) Stop(ctx context.Context) error {
 	m.log.Info("Stopping HLS module...")
 
 	m.stopping.Store(true)
-
-	if m.cleanupTicker != nil {
-		m.cleanupTicker.Stop()
-		m.cleanupDoneOnce.Do(func() { close(m.cleanupDone) })
-	}
 
 	m.jobsMu.Lock()
 	for _, job := range m.jobs {

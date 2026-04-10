@@ -134,17 +134,17 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// JSON fields must be pre-serialized: database/sql cannot bind map/slice types directly.
 		userUpdates := map[string]interface{}{
-			"username":              user.Username,
-			"email":                 user.Email,
-			"role":                  user.Role,
-			"type":                  user.Type,
-			"enabled":               user.Enabled,
-			"last_login":            user.LastLogin,
-			"previous_last_login":   user.PreviousLastLogin,
-			"storage_used":          user.StorageUsed,
-			"active_streams":        user.ActiveStreams,
-			"metadata":              marshalJSONParam(user.Metadata),
-			"watch_history":         marshalJSONParam(user.WatchHistory),
+			"username":            user.Username,
+			"email":               user.Email,
+			"role":                user.Role,
+			"type":                user.Type,
+			"enabled":             user.Enabled,
+			"last_login":          user.LastLogin,
+			"previous_last_login": user.PreviousLastLogin,
+			"storage_used":        user.StorageUsed,
+			"active_streams":      user.ActiveStreams,
+			"metadata":            marshalJSONParam(user.Metadata),
+			"watch_history":       marshalJSONParam(user.WatchHistory),
 		}
 		if user.PasswordHash != "" {
 			userUpdates["password_hash"] = user.PasswordHash

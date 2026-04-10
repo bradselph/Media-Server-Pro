@@ -25,8 +25,8 @@ func (m *Module) CreateAPIToken(ctx context.Context, userID, name string, ttl ti
 		CreatedAt: time.Now(),
 	}
 	if ttl > 0 {
-		exp := time.Now().Add(ttl)
-		rec.ExpiresAt = &exp
+		t := time.Now().Add(ttl)
+		rec.ExpiresAt = &t
 	}
 	if err = m.tokenRepo.Create(ctx, rec); err != nil {
 		return "", nil, fmt.Errorf("create api token: %w", err)

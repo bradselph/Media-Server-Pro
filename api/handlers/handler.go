@@ -20,8 +20,6 @@ import (
 	"media-server-pro/internal/admin"
 	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/auth"
-	"media-server-pro/internal/repositories"
-	repoMysql "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/categorizer"
@@ -37,6 +35,8 @@ import (
 	"media-server-pro/internal/playlist"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
+	"media-server-pro/internal/repositories"
+	repoMysql "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
 	"media-server-pro/internal/streaming"
@@ -132,37 +132,37 @@ const viewCooldownDuration = 5 * time.Minute
 
 // Handler holds dependencies for HTTP handlers
 type Handler struct {
-	log           *logger.Logger
-	buildInfo     BuildInfo
-	media         *media.Module
-	streaming     *streaming.Module
-	hls           *hls.Module
-	auth          *auth.Module
-	analytics     *analytics.Module
-	playlist      *playlist.Module
-	admin         *admin.Module
-	database      *database.Module
-	tasks         *tasks.Module
-	upload        *upload.Module
-	scanner       *scanner.Module
-	thumbnails    *thumbnails.Module
-	validator     *validator.Module
-	backup        *backup.Module
-	autodiscovery *autodiscovery.Module
-	suggestions   *suggestions.Module
-	security      *security.Module
-	categorizer   *categorizer.Module
-	updater       *updater.Module
-	remote        *remote.Module
-	receiver      *receiver.Module
-	extractor     *extractor.Module
-	crawler       *crawler.Module
-	duplicates    *duplicates.Module
-	downloader        *downloader.Module
-	config            *config.Manager
-	shutdownFunc      func()
-	deletionRequests  repositories.DataDeletionRequestRepository
-	viewCooldown      sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
+	log              *logger.Logger
+	buildInfo        BuildInfo
+	media            *media.Module
+	streaming        *streaming.Module
+	hls              *hls.Module
+	auth             *auth.Module
+	analytics        *analytics.Module
+	playlist         *playlist.Module
+	admin            *admin.Module
+	database         *database.Module
+	tasks            *tasks.Module
+	upload           *upload.Module
+	scanner          *scanner.Module
+	thumbnails       *thumbnails.Module
+	validator        *validator.Module
+	backup           *backup.Module
+	autodiscovery    *autodiscovery.Module
+	suggestions      *suggestions.Module
+	security         *security.Module
+	categorizer      *categorizer.Module
+	updater          *updater.Module
+	remote           *remote.Module
+	receiver         *receiver.Module
+	extractor        *extractor.Module
+	crawler          *crawler.Module
+	duplicates       *duplicates.Module
+	downloader       *downloader.Module
+	config           *config.Manager
+	shutdownFunc     func()
+	deletionRequests repositories.DataDeletionRequestRepository
+	viewCooldown     sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
 }
 
 // tryRecordView returns true if the view should be counted (not within the
@@ -232,27 +232,27 @@ func NewHandler(deps HandlerDeps) *Handler {
 		database:         c.Database,
 		config:           c.Config,
 		deletionRequests: repoMysql.NewDataDeletionRequestRepository(c.Database.GORM()),
-		analytics:     o.Analytics,
-		playlist:      o.Playlist,
-		admin:         o.Admin,
-		tasks:         o.Tasks,
-		upload:        o.Upload,
-		scanner:       o.Scanner,
-		thumbnails:    o.Thumbnails,
-		validator:     o.Validator,
-		backup:        o.Backup,
-		autodiscovery: o.Autodiscovery,
-		suggestions:   o.Suggestions,
-		security:      o.Security,
-		categorizer:   o.Categorizer,
-		updater:       o.Updater,
-		remote:        o.Remote,
-		receiver:      o.Receiver,
-		extractor:     o.Extractor,
-		crawler:       o.Crawler,
-		duplicates:    o.Duplicates,
-		downloader:    o.Downloader,
-		shutdownFunc:  shutdownFunc,
+		analytics:        o.Analytics,
+		playlist:         o.Playlist,
+		admin:            o.Admin,
+		tasks:            o.Tasks,
+		upload:           o.Upload,
+		scanner:          o.Scanner,
+		thumbnails:       o.Thumbnails,
+		validator:        o.Validator,
+		backup:           o.Backup,
+		autodiscovery:    o.Autodiscovery,
+		suggestions:      o.Suggestions,
+		security:         o.Security,
+		categorizer:      o.Categorizer,
+		updater:          o.Updater,
+		remote:           o.Remote,
+		receiver:         o.Receiver,
+		extractor:        o.Extractor,
+		crawler:          o.Crawler,
+		duplicates:       o.Duplicates,
+		downloader:       o.Downloader,
+		shutdownFunc:     shutdownFunc,
 	}
 	h.startViewCooldownSweeper()
 	return h
@@ -364,7 +364,7 @@ func requireModule(c *gin.Context, module any, name string) bool {
 		return false
 	}
 	v := reflect.ValueOf(module)
-	if v.Kind() == reflect.Ptr && v.IsNil() {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
 		writeError(c, http.StatusServiceUnavailable, name+" is not available")
 		return false
 	}
@@ -412,7 +412,7 @@ type adminLogActionParams struct {
 	Username string
 	Action   string
 	Target   string
-	Details  map[string]interface{}
+	Details  map[string]any
 }
 
 // logAdminAction is a nil-safe wrapper around h.admin.LogAction. Audit logging
@@ -440,7 +440,7 @@ type adminLogResultParams struct {
 	Username string
 	Action   string
 	Target   string
-	Details  map[string]interface{}
+	Details  map[string]any
 	Success  bool
 }
 
@@ -458,63 +458,6 @@ func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) 
 		UserID: userID, Username: username, Action: p.Action, Resource: p.Target,
 		Details: p.Details, IPAddress: c.ClientIP(), Success: p.Success,
 	})
-}
-
-// resolveAndValidatePath resolves a file path against allowed directories, prevents path
-// traversal, and verifies the file exists. Returns the resolved path and true on success,
-// or writes an error response and returns ("", false) on failure.
-func (h *Handler) resolveAndValidatePath(c *gin.Context, path string, allowedDirs AllowedDirs) (ResolvedPath, bool) {
-	validPath := h.resolveRelativePath(path, allowedDirs)
-	if validPath == "" {
-		writeError(c, http.StatusNotFound, errFileNotFound)
-		return "", false
-	}
-
-	realPath, err := filepath.EvalSymlinks(validPath)
-	if err != nil {
-		h.log.Warn("EvalSymlinks failed for %s: %v", validPath, err)
-		writeError(c, http.StatusBadRequest, "Invalid path: cannot resolve symlinks")
-		return "", false
-	}
-	absPath, err := filepath.Abs(realPath)
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "Invalid path")
-		return "", false
-	}
-
-	if !isPathUnderDirs(absPath, allowedDirs) {
-		h.log.Warn("Path traversal attempt detected: %s", path)
-		writeError(c, http.StatusForbidden, "Access denied: path outside allowed directories")
-		return "", false
-	}
-
-	if _, err := os.Stat(absPath); err != nil {
-		if os.IsNotExist(err) {
-			writeError(c, http.StatusNotFound, errFileNotFound)
-		} else {
-			writeError(c, http.StatusInternalServerError, "Error accessing file")
-		}
-		return "", false
-	}
-
-	return ResolvedPath(absPath), true
-}
-
-// resolveRelativePath resolves a relative path against the allowed directories.
-// Absolute paths are rejected: callers should only pass filename/relative paths;
-// absolute paths must go through resolveAndValidatePath which enforces dir checks.
-func (h *Handler) resolveRelativePath(path string, allowedDirs []string) string {
-	if filepath.IsAbs(path) {
-		h.log.Warn("resolveRelativePath: rejecting absolute path input: %s", path)
-		return ""
-	}
-	for _, dir := range allowedDirs {
-		testPath := filepath.Join(dir, path)
-		if _, err := os.Stat(testPath); err == nil {
-			return testPath
-		}
-	}
-	return ""
 }
 
 // checkMatureAccess verifies the current user has permission to access mature content at
@@ -760,7 +703,7 @@ func (h *Handler) resolveMediaByID(c *gin.Context, id string) (string, bool) {
 // returns a synthetic path "receiver:<id>" and for extractor items "extractor:<id>".
 // These synthetic paths are suitable as database keys (position tracking, watch
 // history, ratings) but NOT for local file operations.
-func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path string, itemName string, ok bool) {
+func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path, itemName string, ok bool) {
 	mid := MediaID(strings.TrimSpace(id))
 	if mid == "" {
 		writeError(c, http.StatusBadRequest, errIDRequired)

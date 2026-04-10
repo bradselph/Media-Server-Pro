@@ -121,7 +121,7 @@ func (m *Module) Start(_ context.Context) error {
 		m.healthy = false
 		m.healthMsg = "ffprobe not found"
 		m.healthMu.Unlock()
-		return nil // Don't fail - validation is optional
+		return nil //nolint:nilerr // validation is optional; ffprobe absence is not a fatal error
 	}
 	m.ffprobePath = ffprobePath
 

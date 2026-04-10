@@ -9,7 +9,6 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-
 // ---------------------------------------------------------------------------
 // isSegmentLine
 // ---------------------------------------------------------------------------
@@ -72,10 +71,8 @@ func TestRewritePlaylistLines_PreservesComments(t *testing.T) {
 }
 
 func TestRewritePlaylistLines_EmptyInput(t *testing.T) {
-	got := rewritePlaylistLines(nil, "/base/")
-	if len(got) == 0 {
-		// nil input may produce empty or single newline, both OK
-	}
+	// nil input may produce empty or single newline, both OK — just verify no panic
+	_ = rewritePlaylistLines(nil, "/base/")
 }
 
 // ---------------------------------------------------------------------------
@@ -90,13 +87,12 @@ func TestCopyHLSJob_Nil(t *testing.T) {
 }
 
 func TestCopyHLSJob_DeepCopy(t *testing.T) {
-	now := time.Now()
 	original := &models.HLSJob{
-		ID:        "job-1",
-		MediaPath: "/test/media-1.mp4",
-		Status:    models.HLSStatusCompleted,
-		Qualities: []string{"720p", "1080p"},
-		CompletedAt: &now,
+		ID:          "job-1",
+		MediaPath:   "/test/media-1.mp4",
+		Status:      models.HLSStatusCompleted,
+		Qualities:   []string{"720p", "1080p"},
+		CompletedAt: new(time.Now()),
 	}
 	cp := copyHLSJob(original)
 	if cp == original {
@@ -290,4 +286,3 @@ func TestParseProbeHeight_InvalidJSON(t *testing.T) {
 		t.Errorf("invalid JSON should return 0, got %d", got)
 	}
 }
-

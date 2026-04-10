@@ -16,7 +16,7 @@ type stubUserRepo struct {
 	deletedID string
 }
 
-func (s *stubUserRepo) Create(context.Context, *models.User) error         { return nil }
+func (s *stubUserRepo) Create(context.Context, *models.User) error { return nil }
 func (s *stubUserRepo) GetByID(context.Context, string) (*models.User, error) {
 	return nil, repositories.ErrUserNotFound
 }
@@ -42,8 +42,7 @@ func testModuleWithUsers(t *testing.T, users []*models.User) (*Module, *stubUser
 		users:    make(map[string]*models.User),
 	}
 	for _, u := range users {
-		uc := *u
-		m.users[u.Username] = &uc
+		m.users[u.Username] = new(*u)
 	}
 	return m, repo
 }

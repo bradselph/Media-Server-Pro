@@ -78,14 +78,14 @@ func (h *Handler) GetHealth(c *gin.Context) {
 	// Only expose module details and version to authenticated users
 	user := getUser(c)
 	if user == nil {
-		c.JSON(httpCode, map[string]interface{}{
+		c.JSON(httpCode, map[string]any{
 			"status":    status,
 			"timestamp": time.Now().Unix(),
 		})
 		return
 	}
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"status":    status,
 		"version":   h.buildInfo.Version,
 		"timestamp": time.Now().Unix(),
@@ -222,22 +222,22 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 func (h *Handler) GetServerSettings(c *gin.Context) {
 	cfg := h.media.GetConfig()
 
-	settings := map[string]interface{}{
-		"thumbnails": map[string]interface{}{
+	settings := map[string]any{
+		"thumbnails": map[string]any{
 			"enabled":             cfg.Thumbnails.Enabled,
 			"autoGenerate":        cfg.Thumbnails.AutoGenerate,
 			"width":               cfg.Thumbnails.Width,
 			"height":              cfg.Thumbnails.Height,
 			"video_preview_count": cfg.Thumbnails.PreviewCount,
 		},
-		"streaming": map[string]interface{}{
+		"streaming": map[string]any{
 			"mobileOptimization": cfg.Streaming.MobileOptimization,
 			"adaptive":           cfg.Streaming.Adaptive,
 		},
-		"analytics": map[string]interface{}{
+		"analytics": map[string]any{
 			"enabled": cfg.Analytics.Enabled,
 		},
-		"features": map[string]interface{}{
+		"features": map[string]any{
 			"enableThumbnails":         cfg.Thumbnails.Enabled,
 			"enableHLS":                cfg.HLS.Enabled,
 			"enableAnalytics":          cfg.Analytics.Enabled,
@@ -249,22 +249,22 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enableDuplicateDetection": cfg.Features.EnableDuplicateDetection,
 			"enableDownloader":         cfg.Features.EnableDownloader,
 		},
-		"uploads": map[string]interface{}{
+		"uploads": map[string]any{
 			"enabled":     cfg.Uploads.Enabled,
 			"maxFileSize": cfg.Uploads.MaxFileSize,
 		},
-		"admin": map[string]interface{}{
+		"admin": map[string]any{
 			"enabled": cfg.Admin.Enabled,
 		},
-		"ui": map[string]interface{}{
+		"ui": map[string]any{
 			"items_per_page":        cfg.UI.ItemsPerPage,
 			"mobile_items_per_page": cfg.UI.MobileItemsPerPage,
 			"mobile_grid_columns":   cfg.UI.MobileGridColumns,
 		},
-		"age_gate": map[string]interface{}{
+		"age_gate": map[string]any{
 			"enabled": cfg.AgeGate.Enabled,
 		},
-		"auth": map[string]interface{}{
+		"auth": map[string]any{
 			"allow_registration": cfg.Auth.AllowRegistration,
 			"allow_guests":       cfg.Auth.AllowGuests,
 		},
@@ -282,13 +282,13 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 	// Anonymous callers: return empty usage — avoids a potentially expensive
 	// filepath.Walk on the uploads directory for unauthenticated requests.
 	if session == nil {
-		writeSuccess(c, map[string]interface{}{
-			"used_bytes":        int64(0),
-			"used_gb":           0,
-			"quota_gb":          float64(h.getUserStorageQuota("standard")),
-			"percentage":        0,
-			"is_authenticated":  false,
-			"user_type":         "standard",
+		writeSuccess(c, map[string]any{
+			"used_bytes":       int64(0),
+			"used_gb":          0,
+			"quota_gb":         float64(h.getUserStorageQuota("standard")),
+			"percentage":       0,
+			"is_authenticated": false,
+			"user_type":        "standard",
 		})
 		return
 	}
@@ -347,7 +347,7 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 		percentage = (usedGB / quotaGB) * 100
 	}
 
-	storageInfo := map[string]interface{}{
+	storageInfo := map[string]any{
 		"used_bytes":       totalSize,
 		"used_gb":          usedGB,
 		"quota_gb":         quotaGB,
@@ -394,7 +394,7 @@ func (h *Handler) AdminGetDatabaseStatus(c *gin.Context) {
 	}
 
 	cfg := h.media.GetConfig()
-	status := map[string]interface{}{
+	status := map[string]any{
 		"connected":       connected,
 		"app_version":     h.buildInfo.Version,
 		"repository_type": repositoryType,
@@ -476,7 +476,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		if h.admin != nil {
 			h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
 				UserID: username, Username: username, Action: "execute_query", Resource: "database",
-				Details: map[string]interface{}{"query": query}, IPAddress: c.ClientIP(), Success: false,
+				Details: map[string]any{"query": query}, IPAddress: c.ClientIP(), Success: false,
 			})
 		}
 		writeError(c, http.StatusForbidden, "Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are permitted")
@@ -492,7 +492,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		return
 	}
 	defer func() {
-		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
 			h.log.Warn("Failed to rollback read-only transaction: %v", rbErr)
 		}
 	}()
@@ -502,7 +502,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		if h.admin != nil {
 			h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
 				UserID: username, Username: username, Action: "execute_query", Resource: "database",
-				Details: map[string]interface{}{"query": query}, IPAddress: c.ClientIP(), Success: false,
+				Details: map[string]any{"query": query}, IPAddress: c.ClientIP(), Success: false,
 			})
 		}
 		h.log.Error("Query execution failed: %v", err)
@@ -526,10 +526,10 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	if maxRows <= 0 {
 		maxRows = 1000
 	}
-	var results [][]interface{}
+	var results [][]any
 	for rows.Next() && len(results) < maxRows {
-		values := make([]interface{}, len(columns))
-		valuePtrs := make([]interface{}, len(columns))
+		values := make([]any, len(columns))
+		valuePtrs := make([]any, len(columns))
 		for i := range values {
 			valuePtrs[i] = &values[i]
 		}
@@ -540,7 +540,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 			return
 		}
 
-		row := make([]interface{}, len(columns))
+		row := make([]any, len(columns))
 		for i, val := range values {
 			if b, ok := val.([]byte); ok {
 				row[i] = string(b)
@@ -560,11 +560,11 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	if h.admin != nil {
 		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
 			UserID: username, Username: username, Action: "execute_query", Resource: "database",
-			Details: map[string]interface{}{"query": query, "rows": len(results)}, IPAddress: c.ClientIP(), Success: true,
+			Details: map[string]any{"query": query, "rows": len(results)}, IPAddress: c.ClientIP(), Success: true,
 		})
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"columns":       columns,
 		"rows":          results,
 		"rows_affected": len(results),

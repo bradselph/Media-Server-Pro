@@ -493,7 +493,8 @@ func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip errors
+			m.log.Warn("CategorizeDirectory: skipping %s: %v", path, err)
+			return nil
 		}
 		if info.IsDir() {
 			return nil

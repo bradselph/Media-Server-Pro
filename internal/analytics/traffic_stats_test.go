@@ -56,8 +56,7 @@ func todayDaily(t *testing.T, m *Module) *models.DailyStats {
 	today := time.Now().Format(dateFormat)
 	for _, d := range m.GetDailyStats(1) {
 		if d.Date == today {
-			cp := *d
-			return &cp
+			return new(*d)
 		}
 	}
 	t.Fatalf("no daily stats for today %q", today)

@@ -154,7 +154,8 @@ func (m *Module) ScanDirectory(dir FilePath) ([]*models.AutoDiscoverySuggestion,
 
 	err := filepath.Walk(dirStr, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Continue on error
+			m.log.Warn("ScanDirectory: skipping %s: %v", path, err)
+			return nil
 		}
 		if info.IsDir() {
 			return nil

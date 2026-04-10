@@ -211,4 +211,3 @@ func TestAdminPermissions(t *testing.T) {
 		t.Error("CanCreatePlaylists should be true")
 	}
 }
-

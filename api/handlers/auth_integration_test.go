@@ -60,7 +60,7 @@ func TestAuthFlow_LoginLogout(t *testing.T) {
 
 	// --- Logout ---
 	resp = ts.AuthRequest("POST", "/api/auth/logout", nil, sessionID)
-	result = ts.ParseJSON(resp)
+	ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("logout: expected 200, got %d", resp.StatusCode)
@@ -195,7 +195,7 @@ func TestAuthFlow_ChangePassword(t *testing.T) {
 
 	// Verify new password works.
 	resp = ts.Request("POST", "/api/auth/login", loginPayload("pwduser", "newpass456"))
-	result = ts.ParseJSON(resp)
+	ts.ParseJSON(resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("new password should work, got %d", resp.StatusCode)
 	}

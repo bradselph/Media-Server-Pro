@@ -63,6 +63,7 @@ func (m *Module) calculateCacheSize() int64 {
 
 	if err := filepath.Walk(m.cacheDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			m.log.Warn("calculateCacheSize: skipping %s: %v", path, err)
 			return nil
 		}
 		if !info.IsDir() {

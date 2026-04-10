@@ -73,8 +73,7 @@ func TestFilter_Matches_BySearchCategory(t *testing.T) {
 }
 
 func TestFilter_Matches_ByMature(t *testing.T) {
-	mature := true
-	f := Filter{IsMature: &mature}
+	f := Filter{IsMature: new(true)}
 	matureItem := &models.MediaItem{IsMature: true}
 	cleanItem := &models.MediaItem{IsMature: false}
 	if !f.Matches(matureItem) {
