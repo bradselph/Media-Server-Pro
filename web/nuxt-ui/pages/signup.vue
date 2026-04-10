@@ -69,16 +69,16 @@ async function handleSignup() {
         <form v-else class="space-y-4" @submit.prevent="handleSignup">
           <UAlert v-if="error" :title="error" color="error" variant="soft" icon="i-lucide-x-circle" />
           <UFormField label="Username" required>
-            <UInput v-model="form.username" placeholder="username" autocomplete="username" required />
+            <UInput v-model="form.username" name="username" placeholder="username" autocomplete="username" required />
           </UFormField>
           <UFormField label="Email">
-            <UInput v-model="form.email" type="email" placeholder="user@example.com" />
+            <UInput v-model="form.email" name="email" type="email" placeholder="user@example.com" autocomplete="email" />
           </UFormField>
           <UFormField label="Password" required>
-            <UInput v-model="form.password" type="password" placeholder="••••••••" required minlength="8" />
+            <UInput v-model="form.password" name="new-password" type="password" placeholder="••••••••" autocomplete="new-password" required minlength="8" />
           </UFormField>
           <UFormField label="Confirm Password" required>
-            <UInput v-model="form.confirm" type="password" placeholder="••••••••" required />
+            <UInput v-model="form.confirm" name="confirm-password" type="password" placeholder="••••••••" autocomplete="new-password" required />
           </UFormField>
           <UButton type="submit" class="w-full justify-center" :loading="loading" label="Create Account" />
         </form>
