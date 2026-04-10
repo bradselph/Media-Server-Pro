@@ -9,14 +9,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const testRequestID = "abc-123-def"
+
 // ---------------------------------------------------------------------------
 // sanitizeRequestID
 // ---------------------------------------------------------------------------
 
 func TestSanitizeRequestID_Normal(t *testing.T) {
-	got := sanitizeRequestID("abc-123-def")
-	if got != "abc-123-def" {
-		t.Errorf("sanitizeRequestID(%q) = %q", "abc-123-def", got)
+	got := sanitizeRequestID(testRequestID)
+	if got != testRequestID {
+		t.Errorf("sanitizeRequestID(%q) = %q", testRequestID, got)
 	}
 }
 

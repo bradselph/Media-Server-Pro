@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+const (
+	testUnmarshalFmt = "Unmarshal failed: %v"
+	testMarshalFmt   = "Marshal failed: %v"
+)
+
 // ---------------------------------------------------------------------------
 // Session expiry
 // ---------------------------------------------------------------------------
@@ -51,7 +56,7 @@ func TestAdminSession_MarshalJSON_IncludesIsAdmin(t *testing.T) {
 	}
 	var m map[string]interface{}
 	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("Unmarshal failed: %v", err)
+		t.Fatalf(testUnmarshalFmt, err)
 	}
 	isAdmin, ok := m["is_admin"]
 	if !ok {
@@ -76,7 +81,7 @@ func TestUser_JSON_ExcludesSecrets(t *testing.T) {
 	}
 	data, err := json.Marshal(u)
 	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
+		t.Fatalf(testMarshalFmt, err)
 	}
 	raw := string(data)
 	if strings.Contains(raw, "secret-hash") {
@@ -100,7 +105,7 @@ func TestMediaItem_JSON_ExcludesPath(t *testing.T) {
 	}
 	data, err := json.Marshal(item)
 	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
+		t.Fatalf(testMarshalFmt, err)
 	}
 	if strings.Contains(string(data), "/secret/path") {
 		t.Error("MediaItem.Path leaked into JSON output")
@@ -289,7 +294,7 @@ func TestUserPreferences_UnmarshalJSON_Canonical(t *testing.T) {
 	data := `{"auto_play": true, "equalizer_preset": "rock"}`
 	var p UserPreferences
 	if err := json.Unmarshal([]byte(data), &p); err != nil {
-		t.Fatalf("Unmarshal failed: %v", err)
+		t.Fatalf(testUnmarshalFmt, err)
 	}
 	if !p.AutoPlay {
 		t.Error("expected AutoPlay=true")
@@ -303,7 +308,7 @@ func TestUserPreferences_UnmarshalJSON_Aliases(t *testing.T) {
 	data := `{"autoplay": true, "equalizer_bands": "jazz"}`
 	var p UserPreferences
 	if err := json.Unmarshal([]byte(data), &p); err != nil {
-		t.Fatalf("Unmarshal failed: %v", err)
+		t.Fatalf(testUnmarshalFmt, err)
 	}
 	if !p.AutoPlay {
 		t.Error("expected AutoPlay=true via autoplay alias")
@@ -339,7 +344,7 @@ func TestUserPreferences_UnmarshalJSON_CanonicalOverridesAlias(t *testing.T) {
 	data := `{"auto_play": false, "theme": "dark"}`
 	var p UserPreferences
 	if err := json.Unmarshal([]byte(data), &p); err != nil {
-		t.Fatalf("Unmarshal failed: %v", err)
+		t.Fatalf(testUnmarshalFmt, err)
 	}
 	if p.AutoPlay != false {
 		t.Error("expected AutoPlay=false")
@@ -353,7 +358,7 @@ func TestUserPreferences_MarshalJSON_NoAliases(t *testing.T) {
 	p := UserPreferences{AutoPlay: true, EqualizerPreset: "rock"}
 	data, err := json.Marshal(&p)
 	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
+		t.Fatalf(testMarshalFmt, err)
 	}
 	raw := string(data)
 	if strings.Contains(raw, "autoplay") {
@@ -378,7 +383,7 @@ func TestWatchHistoryItem_JSON_ExcludesPath(t *testing.T) {
 	}
 	data, err := json.Marshal(w)
 	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
+		t.Fatalf(testMarshalFmt, err)
 	}
 	if strings.Contains(string(data), "/secret/path") {
 		t.Error("MediaPath leaked into JSON output")
@@ -396,7 +401,7 @@ func TestPlaylistItem_JSON_ExcludesMediaPath(t *testing.T) {
 	}
 	data, err := json.Marshal(pi)
 	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
+		t.Fatalf(testMarshalFmt, err)
 	}
 	if strings.Contains(string(data), "/secret/playlist") {
 		t.Error("PlaylistItem.MediaPath leaked into JSON output")
@@ -416,7 +421,7 @@ func TestHLSJob_JSON_ExcludesPaths(t *testing.T) {
 	}
 	data, err := json.Marshal(j)
 	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
+		t.Fatalf(testMarshalFmt, err)
 	}
 	raw := string(data)
 	if strings.Contains(raw, "/secret/media") {
