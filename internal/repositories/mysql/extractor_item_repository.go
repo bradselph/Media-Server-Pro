@@ -62,7 +62,7 @@ func (r *ExtractorItemRepository) Upsert(ctx context.Context, item *repositories
 
 func (r *ExtractorItemRepository) Get(ctx context.Context, id string) (*repositories.ExtractorItemRecord, error) {
 	var row extractorItemRow
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlIDEq, id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
@@ -72,7 +72,7 @@ func (r *ExtractorItemRepository) Get(ctx context.Context, id string) (*reposito
 }
 
 func (r *ExtractorItemRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&extractorItemRow{})
+	result := r.db.WithContext(ctx).Where(sqlIDEq, id).Delete(&extractorItemRow{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete extractor item: %w", result.Error)
 	}
@@ -110,9 +110,9 @@ func (r *ExtractorItemRepository) UpdateStatus(ctx context.Context, id, status, 
 	updates := map[string]interface{}{
 		"status":        status,
 		"error_message": errorMsg,
-		"updated_at":    time.Now().Format("2006-01-02 15:04:05"),
+		"updated_at":    time.Now().Format(sqlTimeFormat),
 	}
-	if err := r.db.WithContext(ctx).Model(&extractorItemRow{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&extractorItemRow{}).Where(sqlIDEq, id).Updates(updates).Error; err != nil {
 		return fmt.Errorf("failed to update extractor item status: %w", err)
 	}
 	return nil
@@ -135,12 +135,12 @@ func (r *ExtractorItemRepository) recordToRow(rec *repositories.ExtractorItemRec
 		Status:          rec.Status,
 		ErrorMessage:    rec.ErrorMessage,
 		AddedBy:         rec.AddedBy,
-		ResolvedAt:      rec.ResolvedAt.Format("2006-01-02 15:04:05"),
-		CreatedAt:       rec.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdatedAt:       rec.UpdatedAt.Format("2006-01-02 15:04:05"),
+		ResolvedAt:      rec.ResolvedAt.Format(sqlTimeFormat),
+		CreatedAt:       rec.CreatedAt.Format(sqlTimeFormat),
+		UpdatedAt:       rec.UpdatedAt.Format(sqlTimeFormat),
 	}
 	if rec.ExpiresAt != nil {
-		row.ExpiresAt = new(rec.ExpiresAt.Format("2006-01-02 15:04:05"))
+		row.ExpiresAt = new(rec.ExpiresAt.Format(sqlTimeFormat))
 	}
 	return row
 }

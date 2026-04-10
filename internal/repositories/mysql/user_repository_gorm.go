@@ -89,7 +89,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 // GetByID retrieves a user by ID with all related data.
 func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, error) {
 	var user models.User
-	err := r.db.WithContext(ctx).First(&user, "id = ?", id).Error
+	err := r.db.WithContext(ctx).First(&user, sqlIDEq, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repositories.ErrUserNotFound
@@ -138,7 +138,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			userUpdates["password_hash"] = user.PasswordHash
 			userUpdates["salt"] = user.Salt
 		}
-		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(userUpdates).Error; err != nil {
+		if err := tx.Model(&models.User{}).Where(sqlIDEq, user.ID).Updates(userUpdates).Error; err != nil {
 			return err
 		}
 
@@ -176,7 +176,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 // are automatically removed via ON DELETE CASCADE foreign key constraints
 // defined in the database schema.
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id)
+	result := r.db.WithContext(ctx).Delete(&models.User{}, sqlIDEq, id)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -233,6 +233,6 @@ func (r *UserRepository) List(ctx context.Context) ([]*models.User, error) {
 // IncrementStorageUsed atomically adds delta to the user's storage_used.
 func (r *UserRepository) IncrementStorageUsed(ctx context.Context, userID string, delta int64) error {
 	return r.db.WithContext(ctx).Model(&models.User{}).
-		Where("id = ?", userID).
+		Where(sqlIDEq, userID).
 		Update("storage_used", gorm.Expr("GREATEST(COALESCE(storage_used, 0) + ?, 0)", delta)).Error
 }

@@ -49,7 +49,7 @@ func (r *ReceiverDuplicateRepository) Create(ctx context.Context, dup *repositor
 		ItemBSlaveID: dup.ItemBSlaveID,
 		ItemBName:    dup.ItemBName,
 		Status:       dup.Status,
-		DetectedAt:   dup.DetectedAt.Format("2006-01-02 15:04:05"),
+		DetectedAt:   dup.DetectedAt.Format(sqlTimeFormat),
 	}
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return fmt.Errorf("failed to create duplicate record: %w", err)
@@ -115,7 +115,7 @@ func (r *ReceiverDuplicateRepository) UpdateStatus(ctx context.Context, id, stat
 	updates := map[string]interface{}{
 		"status":      status,
 		"resolved_by": resolvedBy,
-		"resolved_at": time.Now().Format("2006-01-02 15:04:05"),
+		"resolved_at": time.Now().Format(sqlTimeFormat),
 	}
 	if err := r.db.WithContext(ctx).Model(&receiverDuplicateRow{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return fmt.Errorf("failed to update duplicate status: %w", err)
@@ -129,7 +129,7 @@ func (r *ReceiverDuplicateRepository) UpdateStatusForItem(ctx context.Context, i
 	updates := map[string]interface{}{
 		"status":      status,
 		"resolved_by": resolvedBy,
-		"resolved_at": time.Now().Format("2006-01-02 15:04:05"),
+		"resolved_at": time.Now().Format(sqlTimeFormat),
 	}
 	if err := r.db.WithContext(ctx).Model(&receiverDuplicateRow{}).
 		Where("(item_a_id = ? OR item_b_id = ?) AND status = 'pending'", itemID, itemID).

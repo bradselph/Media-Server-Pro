@@ -30,7 +30,7 @@ func (r *SessionRepository) Create(ctx context.Context, session *models.Session)
 // Get retrieves a session by ID
 func (r *SessionRepository) Get(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
-	err := r.db.WithContext(ctx).First(&session, "id = ?", id).Error
+	err := r.db.WithContext(ctx).First(&session, sqlIDEq, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repositories.ErrSessionNotFound
@@ -43,7 +43,7 @@ func (r *SessionRepository) Get(ctx context.Context, id string) (*models.Session
 // Update persists all updatable session fields (LastActivity, Username, Role, ExpiresAt, IPAddress, UserAgent)
 // so that role/username/expiry changes are reflected and callers do not lose updates.
 func (r *SessionRepository) Update(ctx context.Context, session *models.Session) error {
-	result := r.db.WithContext(ctx).Model(session).Where("id = ?", session.ID).Updates(map[string]interface{}{
+	result := r.db.WithContext(ctx).Model(session).Where(sqlIDEq, session.ID).Updates(map[string]interface{}{
 		"last_activity": session.LastActivity,
 		"username":      session.Username,
 		"role":          session.Role,
@@ -61,7 +61,7 @@ func (r *SessionRepository) Update(ctx context.Context, session *models.Session)
 }
 
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Delete(&models.Session{}, "id = ?", id)
+	result := r.db.WithContext(ctx).Delete(&models.Session{}, sqlIDEq, id)
 	if result.Error != nil {
 		return result.Error
 	}

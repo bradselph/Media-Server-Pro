@@ -13,6 +13,8 @@ import (
 	"media-server-pro/internal/repositories"
 )
 
+const sqlUserIDEq = "user_id = ?"
+
 type suggestionProfileRow struct {
 	UserID          string    `gorm:"column:user_id;primaryKey"`
 	CategoryScores  string    `gorm:"column:category_scores;type:json"`
@@ -77,7 +79,7 @@ func (r *SuggestionProfileRepository) SaveProfile(ctx context.Context, profile *
 
 func (r *SuggestionProfileRepository) GetProfile(ctx context.Context, userID string) (*repositories.SuggestionProfileRecord, error) {
 	var row suggestionProfileRow
-	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).First(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
@@ -109,7 +111,7 @@ func (r *SuggestionProfileRepository) GetProfile(ctx context.Context, userID str
 }
 
 func (r *SuggestionProfileRepository) DeleteProfile(ctx context.Context, userID string) error {
-	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&suggestionProfileRow{}).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Delete(&suggestionProfileRow{}).Error; err != nil {
 		return fmt.Errorf("failed to delete suggestion profile: %w", err)
 	}
 	return nil
@@ -205,7 +207,7 @@ func (r *SuggestionProfileRepository) BatchSaveViewHistory(ctx context.Context, 
 
 func (r *SuggestionProfileRepository) GetViewHistory(ctx context.Context, userID string) ([]*repositories.ViewHistoryRecord, error) {
 	var rows []viewHistoryRow
-	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("last_viewed DESC").Find(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Order("last_viewed DESC").Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to get view history: %w", err)
 	}
 	records := make([]*repositories.ViewHistoryRecord, len(rows))
@@ -226,7 +228,7 @@ func (r *SuggestionProfileRepository) GetViewHistory(ctx context.Context, userID
 }
 
 func (r *SuggestionProfileRepository) DeleteViewHistory(ctx context.Context, userID string) error {
-	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&viewHistoryRow{}).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Delete(&viewHistoryRow{}).Error; err != nil {
 		return fmt.Errorf("failed to delete view history: %w", err)
 	}
 	return nil
