@@ -23,7 +23,6 @@
 - fix(analytics): include today traffic counters in admin summary response
 - docs(contract): document analytics traffic fields on summary and daily stats
 
-
 ## [1.0.0] - 2026-04-02 (major)
 
 - fix: clarify security stats labels as session-scoped
@@ -119,10 +118,12 @@
 - docs: update gap report and improvement log — cycle 2026-03-28
 - feat(frontend): analytics event data, backup file count, scanner queue fix
 - chore: improvement cycle 2026-03-28
-- feat(frontend): multi-select bulk delete on playlists page — select mode with checkboxes, bulk delete confirmation modal
+- feat(frontend): multi-select bulk delete on playlists page — select mode with checkboxes, bulk delete confirmation
+  modal
 - feat(backend): POST /api/playlists/bulk-delete — user-owned bulk playlist delete with ownership verification
 - feat(frontend): CSS bar chart for daily views in admin analytics — horizontal bars above the table, newest day at top
-- feat(frontend): URL deep-linking for browse filters — query params take precedence over saved prefs; URL stays in sync as filters change
+- feat(frontend): URL deep-linking for browse filters — query params take precedence over saved prefs; URL stays in sync
+  as filters change
 - fix(frontend): coerce pipSupported to boolean to fix TS2322 typecheck error
 - refactor(frontend): extract PlayerControls + RecommendationRow components
 - refactor(frontend): split SystemTab into 4 focused sub-panel components
@@ -192,7 +193,6 @@
 - ci: serialize pipeline and eliminate redundant parallel runs
 - ci: fix workflow interference and self-cancellation
 
-
 ## [0.125.0] - 2026-03-29 (minor)
 
 - Merge pull request #111 from bradselph/development
@@ -200,10 +200,12 @@
 - docs: update gap report and improvement log — cycle 2026-03-28
 - feat(frontend): analytics event data, backup file count, scanner queue fix
 - chore: improvement cycle 2026-03-28
-- feat(frontend): multi-select bulk delete on playlists page — select mode with checkboxes, bulk delete confirmation modal
+- feat(frontend): multi-select bulk delete on playlists page — select mode with checkboxes, bulk delete confirmation
+  modal
 - feat(backend): POST /api/playlists/bulk-delete — user-owned bulk playlist delete with ownership verification
 - feat(frontend): CSS bar chart for daily views in admin analytics — horizontal bars above the table, newest day at top
-- feat(frontend): URL deep-linking for browse filters — query params take precedence over saved prefs; URL stays in sync as filters change
+- feat(frontend): URL deep-linking for browse filters — query params take precedence over saved prefs; URL stays in sync
+  as filters change
 - fix(frontend): coerce pipSupported to boolean to fix TS2322 typecheck error
 - refactor(frontend): extract PlayerControls + RecommendationRow components
 - refactor(frontend): split SystemTab into 4 focused sub-panel components
@@ -280,7 +282,6 @@
 - Merge branch 'main' into development
 - Merge branch 'main' into development
 
-
 ## [0.124.0] - 2026-03-27 (minor)
 
 - feat(admin): show build_date, library size and last scan in dashboard
@@ -295,7 +296,6 @@
 - fix: fetch fresh user data via getUser() before opening admin edit modal
 - feat: show popular suggestions to logged-out users on index page
 
-
 ## [0.123.0] - 2026-03-26 (minor)
 
 - perf: batch-prefetch thumbnail URLs on media grid load
@@ -303,14 +303,12 @@
 - fix: await nextTick before attaching hls.js to prevent Vue src-binding race
 - fix: repair orphaned template tag in SourcesTab, fix CategorizedItem.path and DB row indexing TS errors
 
-
 ## [0.122.0] - 2026-03-26 (minor)
 
 - fix: thumbnail hover cycling and broken image fallback on media grid
 - feat: restore detect flow, relay-based server storage, and real-time WS progress in DownloaderTab
 - feat: add slave media item detail view to receiver section in SourcesTab
 - feat: expose /api/status, /api/modules and /api/receiver/media/:id in frontend
-
 
 ## [0.121.0] - 2026-03-26 (minor)
 
@@ -336,7 +334,6 @@
 - feat(admin): add HLS capabilities status card to Content/HLS tab
 - feat(admin): add remote media browser to Sources/Remote tab
 
-
 ## [0.120.0] - 2026-03-26 (minor)
 
 - feat(admin): add Generate HLS button per media item in Media tab
@@ -351,12 +348,10 @@
 - feat(admin): add source update workflow and update config UI to Updates tab
 - feat(admin): add manual ban IP form and audit log export to Security tab
 
-
 ## [0.119.0] - 2026-03-26 (minor)
 
 - feat(admin): add cancel active downloads and import-to-library to DownloaderTab
 - feat(admin): add task Stop button and DB query executor to System tab
-
 
 ## [0.118.0] - 2026-03-26 (minor)
 
@@ -365,7 +360,6 @@
 - feat(frontend): add Recommended For You section to index, gated on show_recommended pref
 - fix(frontend): apply playback_speed pref on load; respect resume_playback pref
 
-
 ## [0.117.0] - 2026-03-26 (minor)
 
 - fix: LOAD_FILE block, Cf-Visitor cookie clearing, eliminate double load()
@@ -373,13 +367,11 @@
 - fix: add change-password and delete-account to strict auth rate limiter
 - fix: data race and cache/DB divergence in watch history mutations
 
-
 ## [0.116.0] - 2026-03-26 (minor)
 
 - feat: add missing preference toggles to profile page
 - fix: multi-word search splits terms for AND filtering
 - fix: resolve 500 crash for logged-in users on page refresh (TDZ)
-
 
 ## [0.115.0] - 2026-03-26 (minor)
 
@@ -388,7 +380,6 @@
 - fix(frontend): defer useApi() call in useApiEndpoints to fix remaining TDZ
 - fix(frontend): safelist blur-lg/blur-md/scale-110 in Tailwind v4 for mature content gate
 - fix(frontend): replace navigateTo with window.location.replace in useApi to fix TDZ bundle error
-
 
 ## [0.114.0] - 2026-03-26 (minor)
 
@@ -422,11 +413,11 @@
 - feat(frontend): add continue watching and trending recommendation rows to home page
 - feat(frontend): add duplicate detection and resolution UI to receiver tab
 - chore: merge development into main, resolve VERSION conflict
-- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification
+  UI
 - feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
 - Merge branch 'development'
 - fix(frontend): use computed ref for delete modal open state in playlists page
-
 
 ## [0.113.0] - 2026-03-25 (minor)
 
@@ -445,11 +436,11 @@
 - feat(frontend): add continue watching and trending recommendation rows to home page
 - feat(frontend): add duplicate detection and resolution UI to receiver tab
 - chore: merge development into main, resolve VERSION conflict
-- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification
+  UI
 - feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
 - Merge branch 'development'
 - fix(frontend): use computed ref for delete modal open state in playlists page
-
 
 ## [0.113.0] - 2026-03-25 (minor)
 
@@ -460,11 +451,11 @@
 - feat(frontend): add continue watching and trending recommendation rows to home page
 - feat(frontend): add duplicate detection and resolution UI to receiver tab
 - chore: merge development into main, resolve VERSION conflict
-- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification
+  UI
 - feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
 - Merge branch 'development'
 - fix(frontend): use computed ref for delete modal open state in playlists page
-
 
 ## [0.113.0] - 2026-03-25 (minor)
 
@@ -472,11 +463,11 @@
 - feat(frontend): add continue watching and trending recommendation rows to home page
 - feat(frontend): add duplicate detection and resolution UI to receiver tab
 - chore: merge development into main, resolve VERSION conflict
-- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification UI
+- feat(frontend): add Discovery admin tab with categorizer, auto-discovery, suggestions, and HuggingFace classification
+  UI
 - feat(frontend): add Sources admin tab with remote sources, crawler, extractor, and receiver/slaves UI
 - Merge branch 'development'
 - fix(frontend): use computed ref for delete modal open state in playlists page
-
 
 ## [0.113.0] - 2026-03-25 (minor)
 
@@ -486,16 +477,13 @@
 - fix(frontend): downloader created date — remove erroneous *1000 (field is already ms)
 - chore: sync development with main
 
-
 ## [0.112.0] - 2026-03-25 (minor)
 
 - fix(frontend): improve accessibility by adding aria-labels to additional buttons and enhancing touch targets
 
-
 ## [0.111.0] - 2026-03-25 (minor)
 
 - fix(frontend): add aria-label to all icon-only buttons in admin tabs and profile page
-
 
 ## [0.110.0] - 2026-03-25 (minor)
 
@@ -510,11 +498,9 @@
 - ci(synthesis): align workflow and smoke with Go, MySQL, and Nuxt
 - Merge branch 'main' into development
 
-
 ## [0.109.0] - 2026-03-25 (minor)
 
 - chore(contract): canonical OpenAPI spec under api_spec/
-
 
 ## [0.108.0] - 2026-03-25 (minor)
 
@@ -553,13 +539,11 @@
 - fix(nuxt-ui): repair HLS URL resolution and profile history actions
 - fix(nuxt-ui): bundle pagination chevrons for strict CSP
 
-
 ## [0.107.0] - 2026-03-24 (minor)
 
 - Merge pull request #108 from bradselph/development
 - Merge branch 'main' into development
 - chore(migration): finalize remaining Nuxt + handler integration fixes
-
 
 ## [0.106.0] - 2026-03-24 (minor)
 
@@ -582,12 +566,10 @@
 - fix(nuxt-ui/player): loop binding, no duplicate speed label, shortcut R
 - fix(web): correct MIME types for embedded SPA assets (nosniff-safe)
 
-
 ## [1.0.0] - 2026-03-23 (major)
 
 - Merge pull request #105 from bradselph/102
 - fix(nuxt-ui): align API response types and fix admin tab overflow
-
 
 ## [0.105.0] - 2026-03-23 (minor)
 
@@ -625,7 +607,6 @@
 - chore(gitignore): ignore web/nuxt-ui local Nuxt sandbox
 - chore: baseline commit before audit-fix loop
 
-
 ## [0.104.0] - 2026-03-20 (minor)
 
 - Merge pull request #103 from bradselph/development
@@ -637,7 +618,6 @@
 - fix: resolve medium severity audit issues + build Nuxt UI pages, bump to v0.105.0
 - feat: scaffold Nuxt UI v3 frontend project
 - fix: resolve 20 critical and high severity audit findings, bump to v0.104.0
-
 
 ## [0.103.0] - 2026-03-18 (minor)
 
@@ -661,12 +641,10 @@
 - fix: handle optional supported sites in DownloaderTab component
 - refactor: update downloader API responses and frontend types
 
-
 ## [0.102.0] - 2026-03-15 (minor)
 
 - Merge pull request #101 from bradselph/devin/1773599958-audit-improvements
 - audit: fix P0-6, P1-9, P1-36, P2-48, P3-5 security and correctness issues
-
 
 ## [0.101.0] - 2026-03-15 (minor)
 
@@ -681,7 +659,6 @@
 - fix: enhance validation and security measures across components
 - fix: enhance security and validation in various components
 - Update audit-report-2026-03-14.md
-
 
 ## [0.100.0] - 2026-03-15 (minor)
 
@@ -698,7 +675,6 @@
 - Merge branch 'main' into development
 - audit fixes batch 6: P3-6, P3-2, P2-7, P1-10
 
-
 ## [0.99.0] - 2026-03-14 (minor)
 
 - Merge pull request #98 from bradselph/development
@@ -712,7 +688,6 @@
 - refactor(scheduler): reduce default startup delay for task execution
 - feat(player): enhance HLS handling and fallback mechanism for video sources
 - fix(analytics): enhance CSV export error handling and ensure proper file cleanup
-
 
 ## [0.98.0] - 2026-03-14 (minor)
 
@@ -751,7 +726,6 @@
 - fix(feature): complete execution path for DownloadMedia IsReady check
 - fix(lint): remove unused slave variable assignment in receiver proxy
 
-
 ## [0.97.0] - 2026-03-14 (minor)
 
 - Merge pull request #96 from bradselph/development
@@ -788,7 +762,6 @@
 - fix(lint): resolve react-hooks/exhaustive-deps warnings in IndexPage mini-player
 - fix(todo): enforce http/https scheme in remote module validateURL
 
-
 ## [0.96.0] - 2026-03-14 (minor)
 
 - Merge pull request #95 from bradselph/development
@@ -806,7 +779,6 @@
 - fix(feature): complete execution path for DeleteMedia version tracking
 - fix(lint): resolve sonarjs/no-nested-functions in useHLS hook
 - fix(todo): return error for unsupported bulk action in processOneBulkMediaItem
-
 
 ## [0.95.0] - 2026-03-14 (minor)
 
@@ -839,7 +811,8 @@
 - audit(thumbnails,admin,scanner,repositories): correct TODOs to doc comments
 - audit(suggestions,analytics,validator,remote,upload): correct TODOs to doc comments
 - audit(categorizer,crawler,duplicates): correct TODOs to doc comments
-- audit(media): correct discovery TODOs to doc comments (Stop, dedup, saveMetadata, IncrementViews, ClearAllPlaybackPositions)
+- audit(media): correct discovery TODOs to doc comments (Stop, dedup, saveMetadata, IncrementViews,
+  ClearAllPlaybackPositions)
 - audit(routes): remove remaining WebSocket TODO comment
 - audit(handlers): shorten admin_config, system, lifecycle, analytics TODO comments
 - audit(handlers): shorten HLS and media TODO comments to doc-only
@@ -858,7 +831,6 @@
 - audit(handlers): atomic storage_used increment via AddStorageUsed/IncrementStorageUsed
 - audit(upload): document HandleUpload w usage
 - audit(validator): FixFile re-fetch result under write lock before modifying
-
 
 ## [0.94.0] - 2026-03-14 (minor)
 
@@ -888,7 +860,6 @@
 - Merge branch 'main' into development
 - config: resolve CustomStatic path in resolveAbsolutePaths
 
-
 ## [0.93.0] - 2026-03-14 (minor)
 
 - Merge pull request #92 from bradselph/split-development
@@ -901,7 +872,6 @@
 - feat: implement custom static file serving with optional overrides
 - refactor: remove unused ReceiverProxyStream handler and clean up streaming error handling
 
-
 ## [0.92.0] - 2026-03-13 (minor)
 
 - Merge pull request #91 from bradselph/development
@@ -911,12 +881,10 @@
 - fix: resolve timestamp collision in backup creation and enhance cleanup logic
 - feat: enhance security and session management
 
-
 ## [0.91.0] - 2026-03-13 (minor)
 
 - Merge pull request #90 from bradselph/development
 - refactor: improve mobile responsiveness and UI elements across frontend
-
 
 ## [0.90.0] - 2026-03-13 (minor)
 
@@ -929,7 +897,6 @@
 - Merge pull request #88 from bradselph/claude/fix-workflow-cycle-PDVd3
 - fix: break workflow cycle by using workflow_run trigger and path guards
 - Merge pull request #87 from bradselph/development
-
 
 ## [0.89.0] - 2026-03-13 (minor)
 
@@ -948,13 +915,11 @@
 - fix(hls): serve playlist with explicit headers when cdnBase empty; remove stale path-traversal TODO
 - chore(middleware): remove unused net/http AgeGate handlers (only Gin handlers are registered)
 
-
 ## [0.88.0] - 2026-03-13 (minor)
 
 - Merge branch 'main' into development
 - perf(web): cache SPA index.html on first request and set Cache-Control: no-cache
 - chore(api): remove stale TODOs, use typed response for CreateRemoteSource (omitempty username)
-
 
 ## [0.87.0] - 2026-03-13 (minor)
 
@@ -966,7 +931,6 @@
 - Merge pull request #85 from bradselph/development
 - Update ci.yml
 
-
 ## [0.86.0] - 2026-03-13 (minor)
 
 - Merge pull request #84 from bradselph/development
@@ -977,7 +941,6 @@
 - fix(admin): cap audit log export at 100k rows to avoid OOM
 - fix(backup): check database IsConnected before using GORM in Start
 - fix(auth): delete user evicts admin sessions and removes sessions from DB
-
 
 ## [0.85.0] - 2026-03-13 (minor)
 
@@ -1027,7 +990,6 @@
 - fix(repo): ip_list SetEnabled returns error when config row not found
 - fix(middleware): add Access-Control-Allow-Credentials for credentialed CORS
 - fix(middleware): only trust X-Forwarded-Proto from trusted proxies
-
 
 ## [0.84.0] - 2026-03-13 (minor)
 
@@ -1084,7 +1046,6 @@
 - Update main.go
 - Delete duplicate-code-consolidation.md
 
-
 ## [0.83.0] - 2026-03-12 (minor)
 
 - Merge pull request #81 from bradselph/development
@@ -1111,7 +1072,6 @@
 - Refactor admin classification handlers to improve path resolution and logging
 - Admin: Hugging Face tab — view status, run classification, edit settings
 - feat: integrate Hugging Face visual classification support
-
 
 ## [0.82.0] - 2026-03-11 (minor)
 
@@ -1180,12 +1140,10 @@
 - Create Repository-API-Structure-Report.md
 - refactor(media): replace suggestions seeding poll loop with callback-based approach
 
-
 ## [0.65.0] - 2026-03-07 (minor)
 
 - Merge pull request #68 from bradselph/development
 - fix(security): harden P0/P1 vulnerabilities from architectural review
-
 
 ## [0.64.0] - 2026-03-07 (minor)
 
@@ -1198,24 +1156,20 @@
 - fix(duplicates): prevent resolved pairs from reappearing after removal
 - fix(restart): fix server restart failing to come back after shutdown
 
-
 ## [0.63.0] - 2026-03-07 (minor)
 
 - Merge pull request #66 from bradselph/development
 - fix(admin): fix broken CSS in extractor/crawler tabs and duplicate analytics stat
-
 
 ## [0.62.0] - 2026-03-07 (minor)
 
 - Merge pull request #65 from bradselph/development
 - fix(admin): include extractor, crawler, duplicates in system health check
 
-
 ## [0.61.0] - 2026-03-07 (minor)
 
 - Merge pull request #64 from bradselph/development
 - feat(duplicates): extract duplicate detection into independent module
-
 
 ## [0.60.0] - 2026-03-07 (minor)
 
@@ -1223,18 +1177,15 @@
 - feat(receiver): add duplicate detection and fix thumbnail regeneration
 - go fmt all
 
-
 ## [0.59.0] - 2026-03-07 (minor)
 
 - Merge pull request #62 from bradselph/development
 - fix(frontend): use media ID instead of path for validator API calls
 
-
 ## [0.58.0] - 2026-03-06 (minor)
 
 - Merge pull request #61 from bradselph/development
 - refactor(deploy): consolidate scripts into setup.sh + deploy.sh
-
 
 ## [0.57.0] - 2026-03-06 (minor)
 
@@ -1244,14 +1195,12 @@
 - fix(handlers): remove dead ScanMetadata field from ScanContent request
 - fix(middleware): buffer ETag response body before flushing to client
 
-
 ## [0.56.0] - 2026-03-06 (minor)
 
 - Merge pull request #59 from bradselph/development
 - Merge branch 'main' into development
 - fix(repo): propagate error instead of silently returning empty playlists
 - Merge branch 'main' into development
-
 
 ## [0.55.0] - 2026-03-06 (minor)
 
@@ -1277,13 +1226,11 @@
 - fix(middleware): set written flag on ETag buffer overflow
 - fix(server): load TLS certificates into tlsConfig for HTTPS
 
-
 ## [0.54.0] - 2026-03-05 (minor)
 
 - Merge pull request #57 from bradselph/development
 - fix(handlers): handle edge cases across auth, media, analytics, security, playlists
 - Update backup.go
-
 
 ## [0.53.0] - 2026-03-05 (minor)
 
@@ -1295,7 +1242,6 @@
 - fix(frontend): fix stale comments, remove absent details field, improve media name fallback
 - fix(upload): return upload_id in response, keep progress accessible after completion
 
-
 ## [0.52.0] - 2026-03-05 (minor)
 
 - Merge pull request #55 from bradselph/development
@@ -1306,12 +1252,10 @@
 - fix(auth): preserve allowGuests across logout in authStore
 - fix: gate autodiscovery on feature flag, make backup retention configurable
 
-
 ## [0.51.0] - 2026-03-04 (minor)
 
 - Merge pull request #54 from bradselph/development
 - fix(download-move): scan subdirs recursively, default to move not copy
-
 
 ## [0.50.0] - 2026-03-04 (minor)
 
@@ -1320,18 +1264,15 @@
 - fix(download-move): fix cp+rm misreport, scoped chown, subdir warning
 - feat(crawler): add stream crawler module for M3U8 discovery
 
-
 ## [0.49.0] - 2026-03-04 (minor)
 
 - Merge pull request #52 from bradselph/development
 - feat(extractor): add HLS stream proxy module
 
-
 ## [0.48.0] - 2026-03-04 (minor)
 
 - Merge pull request #51 from bradselph/development
 - go fmt all
-
 
 ## [0.47.0] - 2026-03-04 (minor)
 
@@ -1346,37 +1287,31 @@
 - fix(suggestions): repair broken similar media and improve variety
 - Merge branch 'main' into development
 
-
 ## [0.46.0] - 2026-03-04 (minor)
 
 - Merge pull request #49 from bradselph/development
 - chore: annotate incomplete/wired-but-unused features with TODO comments
 - fix: prevent pagination reset when navigating pages in React Router v7
 
-
 ## [0.45.0] - 2026-03-04 (minor)
 
 - Merge pull request #48 from bradselph/development
 - Update CLAUDE.md
-
 
 ## [0.44.0] - 2026-03-04 (minor)
 
 - Merge pull request #47 from bradselph/development
 - fix: prevent pagination resetting to page 1 on async data load
 
-
 ## [0.43.0] - 2026-03-04 (minor)
 
 - Merge pull request #46 from bradselph/development
 - feat: bug fixes, CDN-ready HLS hosting, smart cleanup, lazy transcoding
 
-
 ## [0.42.0] - 2026-03-04 (minor)
 
 - Merge pull request #45 from bradselph/development
 - feat: mature content access control with full redirect flow
-
 
 ## [0.41.0] - 2026-03-04 (minor)
 
@@ -1386,13 +1321,11 @@
 - fix: show mature items blurred for guests and auto-activate HLS
 - Merge branch 'main' into development
 
-
 ## [0.40.0] - 2026-03-03 (minor)
 
 - Merge pull request #43 from bradselph/development
 - fix: deploy script reads branch from .env UPDATER_BRANCH
 - fix: non-null assertion for bandwidth in PlayerSettingsPanel
-
 
 ## [0.39.0] - 2026-03-03 (minor)
 
@@ -1400,12 +1333,10 @@
 - fix: correct broken player controls, settings panel, and missing code
 - fix: handle thumbnail pending status and typed nil interface panic
 
-
 ## [0.38.0] - 2026-03-03 (minor)
 
 - Merge pull request #41 from bradselph/development
 - fix: multiple admin handler bugs across tabs
-
 
 ## [0.37.0] - 2026-03-03 (minor)
 
@@ -1414,7 +1345,6 @@
 - fix: suppress noisy schema_migrations warning on GORM auto-migration
 - fix: persist scan results to DB in ScanDirectory for review queue
 - fix: use MySQL VALUES() syntax instead of PostgreSQL excluded.* in upsert
-
 
 ## [0.36.0] - 2026-03-03 (minor)
 
@@ -1431,25 +1361,21 @@
 - fix: apply scanner mature flags to media library in background task
 - fix: prevent media list from refreshing on navigation and filter changes
 
-
 ## [0.35.0] - 2026-03-03 (minor)
 
 - Merge pull request #38 from bradselph/development
 - feat: auto-discover slave config from local master config files
 - docs: update CLAUDE.md to reflect current project state
 
-
 ## [0.34.0] - 2026-03-03 (minor)
 
 - Merge pull request #37 from bradselph/development
 - Update deploy.sh
 
-
 ## [0.33.0] - 2026-03-03 (minor)
 
 - Merge pull request #36 from bradselph/development
 - fix: apply all filters and sort to receiver items in ListMedia
-
 
 ## [0.32.0] - 2026-03-03 (minor)
 
@@ -1459,48 +1385,40 @@
 - fix: remove filesystem path from media search matching
 - fix: distinguish duplicate files from moved files during scan
 
-
 ## [0.31.0] - 2026-03-03 (minor)
 
 - Merge pull request #34 from bradselph/development
 - fix: deduplicate local media by content fingerprint during scan
-
 
 ## [0.30.0] - 2026-03-03 (minor)
 
 - Merge pull request #33 from bradselph/development
 - fix: mature content enforcement, source transparency, slave efficiency, dedup
 
-
 ## [0.29.0] - 2026-03-03 (minor)
 
 - Merge pull request #32 from bradselph/development
 - refactor(admin): consolidate 16 tabs into 10 with sub-tabs
-
 
 ## [0.28.0] - 2026-03-02 (minor)
 
 - Merge pull request #31 from bradselph/development
 - fix: 413 stream push, URL source exposure, mature content for guests
 
-
 ## [0.27.0] - 2026-03-02 (minor)
 
 - Merge pull request #30 from bradselph/development
 - feat(receiver): content fingerprint dedup for slave media
-
 
 ## [0.26.0] - 2026-03-02 (minor)
 
 - Merge pull request #29 from bradselph/development
 - feat(receiver): WebSocket tunnel for slave-master communication
 
-
 ## [0.25.0] - 2026-03-02 (minor)
 
 - Merge pull request #28 from bradselph/development
 - fix(config): accept both FEATURE_ and FEATURES_ env var names
-
 
 ## [0.24.0] - 2026-03-02 (minor)
 
@@ -1509,32 +1427,27 @@
 - feat(deploy): auto-sync master URL and API key between deploy.sh and deploy-slave.sh
 - feat(slave): add --local mode to deploy-slave.sh for running on same machine
 
-
 ## [0.23.0] - 2026-03-02 (minor)
 
 - Merge pull request #26 from bradselph/development
 - feat(slave): add deploy-slave.sh and systemd unit for slave receiver node
 - Merge branch 'main' into development
 
-
 ## [0.22.0] - 2026-03-02 (minor)
 
 - Merge pull request #25 from bradselph/development
 - fix(security,hls,receiver): fix banned IP metadata, HLS env vars, and slave node improvements
-
 
 ## [0.21.0] - 2026-03-02 (minor)
 
 - Merge pull request #24 from bradselph/development
 - feat(frontend): implement receiver tab and wire all remote/receiver APIs
 
-
 ## [0.20.0] - 2026-03-02 (minor)
 
 - Merge pull request #23 from bradselph/development
 - feat(deploy): add remote media proxy and receiver setup to deploy.sh
 - fix(frontend): add missing UserPermissions import in endpoints.ts
-
 
 ## [0.19.0] - 2026-03-02 (minor)
 
@@ -1548,19 +1461,16 @@
 - fix: API contract fixes, mature scanner persistence, and code cleanup
 - add todos
 
-
 ## [0.18.0] - 2026-03-01 (minor)
 
 - Merge pull request #21 from bradselph/development
 - feat(receiver): add master-slave media distribution system
 - fix(admin): security hardening, bulk tags, state bugs, case-insensitive filter
 
-
 ## [0.17.0] - 2026-03-01 (minor)
 
 - Merge pull request #20 from bradselph/development
 - fix(admin): fix bulk category clearing, add missing endpoints and filters
-
 
 ## [0.16.0] - 2026-03-01 (minor)
 
@@ -1568,18 +1478,15 @@
 - feat(admin): improve media management UX and fix update bugs
 - fix(types): correct DetectedMediaInfo to match backend categorizer.MediaInfo
 
-
 ## [0.15.0] - 2026-03-01 (minor)
 
 - Merge pull request #18 from bradselph/development
 - Update AdminPage.tsx
 
-
 ## [0.14.0] - 2026-03-01 (minor)
 
 - Merge pull request #17 from bradselph/development
 - sort filter update
-
 
 ## [0.13.0] - 2026-03-01 (minor)
 
@@ -1587,12 +1494,10 @@
 - fix(updater): backup only binary instead of entire deployment directory
 - Update deploy.sh
 
-
 ## [0.12.0] - 2026-03-01 (minor)
 
 - Merge pull request #15 from bradselph/development
 - feat(media-id): Implement stable UUIDs and content fingerprinting
-
 
 ## [0.11.0] - 2026-02-28 (minor)
 
@@ -1600,13 +1505,11 @@
 - Fix vite.config.ts TS error: import defineConfig from vitest/config
 - Fix deploy: commit package-lock.json to ensure reproducible npm builds
 
-
 ## [0.10.0] - 2026-02-28 (minor)
 
 - Merge pull request #13 from bradselph/development
 - Update deploy.sh
 - Implement stable UUID-based media IDs (decouple ID from file path)
-
 
 ## [0.9.0] - 2026-02-28 (minor)
 
@@ -1627,7 +1530,6 @@
 - Fix task scheduler race: set loopRunning under write lock in Start (REC-05)
 - Add Makefile for build automation (REC-17)
 
-
 ## [0.8.0] - 2026-02-28 (minor)
 
 - Merge pull request #11 from bradselph/development
@@ -1642,13 +1544,11 @@
 - Add HLS RecordAccess calls when serving playlists and segments
 - Add missing background tasks and skip partial downloads in media scanner
 
-
 ## [0.7.0] - 2026-02-28 (minor)
 
 - Merge pull request #10 from bradselph/development
 - Fix systemd service: substitute DEPLOY_DIR at install time, move StartLimit to [Unit]
 - Fix useHLS: don't call setError/onFallback when component unmounted
-
 
 ## [0.6.0] - 2026-02-28 (minor)
 
@@ -1660,12 +1560,10 @@
 - Fix: Bug - UpdatePlaylist returns null data when post-update fetch fails
 - Fix: Bug - nil pointer panic in UpdatePreferences when GetUser returns (nil, nil)
 
-
 ## [0.5.0] - 2026-02-28 (minor)
 
 - Merge pull request #8 from bradselph/development
 - Add nil guards for all optional modules to prevent nil pointer panics
-
 
 ## [0.4.0] - 2026-02-28 (minor)
 
@@ -1674,7 +1572,6 @@
 - Fix authStore 401 detection to match ApiError class shape
 - Add nil guards for optional admin/playlist modules to prevent panics
 - Fix media-not-found on deploy, improve startup readiness, enrich watch history
-
 
 ## [0.3.0] - 2026-02-28 (minor)
 
@@ -1693,7 +1590,6 @@
 - Security and robustness hardening across codebase
 - Split auto-version into dev/release/sync workflows
 
-
 ## [0.2.0] - 2026-02-28 (minor)
 
 - Merge pull request #5 from bradselph/development
@@ -1707,11 +1603,9 @@
 - Security and robustness hardening across codebase
 - Split auto-version into dev/release/sync workflows
 
-
 ## [0.2.0] - 2026-02-28 (minor)
 
 - Generate dev build label instead of bumping patch version
-
 
 ## [0.1.0] - 2026-02-27 (minor)
 

@@ -1,24 +1,24 @@
-import { asRecord } from '~/utils/typeGuards'
+import {asRecord} from '~/utils/typeGuards'
 
 function asString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
+    return typeof value === 'string' ? value.trim() : ''
 }
 
 function cleanupFilenameLikeTitle(input: string): string {
-  const raw = input.trim()
-  if (!raw) return ''
+    const raw = input.trim()
+    if (!raw) return ''
 
-  const slash = Math.max(raw.lastIndexOf('/'), raw.lastIndexOf('\\'))
-  const base = slash >= 0 ? raw.slice(slash + 1) : raw
-  const noExt = base.replace(/\.[A-Za-z0-9]{2,5}$/, '')
-  // Strip download/recording timestamp suffix, e.g. _2026-03-24T21-54-54
-  const noTimestamp = noExt.replace(/_\d{4}[-_]\d{2}[-_]\d{2}T\d{2}[-_]\d{2}[-_]\d{2}$/, '')
-  const normalized = noTimestamp
-    .replace(/[_\.-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+    const slash = Math.max(raw.lastIndexOf('/'), raw.lastIndexOf('\\'))
+    const base = slash >= 0 ? raw.slice(slash + 1) : raw
+    const noExt = base.replace(/\.[A-Za-z0-9]{2,5}$/, '')
+    // Strip download/recording timestamp suffix, e.g. _2026-03-24T21-54-54
+    const noTimestamp = noExt.replace(/_\d{4}[-_]\d{2}[-_]\d{2}T\d{2}[-_]\d{2}[-_]\d{2}$/, '')
+    const normalized = noTimestamp
+        .replace(/[_\.-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
 
-  return normalized || base
+    return normalized || base
 }
 
 /**
@@ -30,30 +30,30 @@ function cleanupFilenameLikeTitle(input: string): string {
  * 4) media_id/id
  */
 export function getDisplayTitle(item: unknown): string {
-  const rec = asRecord(item)
-  if (!rec) return ''
+    const rec = asRecord(item)
+    if (!rec) return ''
 
-  const direct =
-    asString(rec.title) ||
-    asString(rec.name) ||
-    asString(rec.media_name)
-  if (direct) {
-    // If this looks like a filename, normalize for UI readability.
-    if (/\.[A-Za-z0-9]{2,5}$/.test(direct) || /[_]/.test(direct)) {
-      return cleanupFilenameLikeTitle(direct)
+    const direct =
+        asString(rec.title) ||
+        asString(rec.name) ||
+        asString(rec.media_name)
+    if (direct) {
+        // If this looks like a filename, normalize for UI readability.
+        if (/\.[A-Za-z0-9]{2,5}$/.test(direct) || /[_]/.test(direct)) {
+            return cleanupFilenameLikeTitle(direct)
+        }
+        return direct
     }
-    return direct
-  }
 
-  const metadata = asRecord(rec.metadata)
-  const metaTitle = metadata ? asString(metadata.title) : ''
-  if (metaTitle) return metaTitle
+    const metadata = asRecord(rec.metadata)
+    const metaTitle = metadata ? asString(metadata.title) : ''
+    if (metaTitle) return metaTitle
 
-  const filenameLike =
-    asString(rec.filename) ||
-    asString(rec.media_path) ||
-    asString(rec.path)
-  if (filenameLike) return cleanupFilenameLikeTitle(filenameLike)
+    const filenameLike =
+        asString(rec.filename) ||
+        asString(rec.media_path) ||
+        asString(rec.path)
+    if (filenameLike) return cleanupFilenameLikeTitle(filenameLike)
 
-  return asString(rec.media_id) || asString(rec.id)
+    return asString(rec.media_id) || asString(rec.id)
 }

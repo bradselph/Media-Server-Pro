@@ -6,115 +6,132 @@
 @source inline("{blur-lg,blur-md,scale-110}");
 
 :root {
-  --font-sans: 'Inter', system-ui, sans-serif;
+    --font-sans: 'Inter', system-ui, sans-serif;
 }
 
 body {
-  font-family: var(--font-sans);
+    font-family: var(--font-sans);
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+    width: 6px;
+    height: 6px;
 }
+
 ::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-border) 60%, transparent);
-  border-radius: 3px;
+    background: color-mix(in srgb, var(--ui-border) 60%, transparent);
+    border-radius: 3px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--ui-border);
+    background: var(--ui-border);
 }
 
 /* Log viewer styles */
 .log-viewer {
-  font-family: 'Fira Mono', 'Consolas', monospace;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  background: var(--ui-bg-muted);
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  max-height: 400px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
+    font-family: 'Fira Mono', 'Consolas', monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    background: var(--ui-bg-muted);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
 }
 
-.log-line { padding: 1px 0; }
-.log-line.debug { color: color-mix(in srgb, var(--ui-text-muted) 80%, transparent); }
-.log-line.info  { color: var(--ui-text); }
-.log-line.warn  { color: rgb(234 179 8); }
-.log-line.error { color: rgb(239 68 68); }
+.log-line {
+    padding: 1px 0;
+}
+
+.log-line.debug {
+    color: color-mix(in srgb, var(--ui-text-muted) 80%, transparent);
+}
+
+.log-line.info {
+    color: var(--ui-text);
+}
+
+.log-line.warn {
+    color: rgb(234 179 8);
+}
+
+.log-line.error {
+    color: rgb(239 68 68);
+}
 
 /* Ensure icon-only buttons meet 44px minimum touch target on mobile */
 @media (pointer: coarse) {
-  button:not([disabled]) {
-    min-width: 44px;
-    min-height: 44px;
-  }
+    button:not([disabled]) {
+        min-width: 44px;
+        min-height: 44px;
+    }
 }
 
 /* Respect user's motion preferences */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }
 
 /* Print styles — hide nav/footer chrome, show content cleanly */
 @media print {
-  header, footer, nav, aside,
-  .no-print, [data-no-print] {
-    display: none !important;
-  }
+    header, footer, nav, aside,
+    .no-print, [data-no-print] {
+        display: none !important;
+    }
 
-  body {
-    font-family: serif;
-    font-size: 11pt;
-    color: #000;
-    background: #fff;
-  }
+    body {
+        font-family: serif;
+        font-size: 11pt;
+        color: #000;
+        background: #fff;
+    }
 
-  a {
-    color: inherit;
-    text-decoration: underline;
-  }
+    a {
+        color: inherit;
+        text-decoration: underline;
+    }
 
-  /* Show full URL after links for reference */
-  a[href^="http"]::after {
-    content: " (" attr(href) ")";
-    font-size: 9pt;
-    color: #555;
-  }
+    /* Show full URL after links for reference */
+    a[href^="http"]::after {
+        content: " (" attr(href) ")";
+        font-size: 9pt;
+        color: #555;
+    }
 
-  img {
-    max-width: 100% !important;
-    page-break-inside: avoid;
-  }
+    img {
+        max-width: 100% !important;
+        page-break-inside: avoid;
+    }
 
-  h1, h2, h3 {
-    page-break-after: avoid;
-  }
+    h1, h2, h3 {
+        page-break-after: avoid;
+    }
 
-  p, li {
-    orphans: 3;
-    widows: 3;
-  }
+    p, li {
+        orphans: 3;
+        widows: 3;
+    }
 
-  table {
-    border-collapse: collapse;
-    width: 100%;
-  }
+    table {
+        border-collapse: collapse;
+        width: 100%;
+    }
 
-  th, td {
-    border: 1px solid #ccc;
-    padding: 4pt 6pt;
-    text-align: left;
-  }
+    th, td {
+        border: 1px solid #ccc;
+        padding: 4pt 6pt;
+        text-align: left;
+    }
 }

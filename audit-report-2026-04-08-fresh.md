@@ -65,41 +65,41 @@ FIX:  Move syncFeatureToggles before validate(), matching other code paths
 
 ### GAP (4 remaining)
 
-| Location | Issue | Risk |
-|----------|-------|------|
-| routes.go | Missing Permissions-Policy header | Low — browser features not gated |
-| local.go:44-60 | No symlink resolution in storage resolve() | Low — requires FS access to exploit |
-| ssrf.go:54-82 | ValidateURLForSSRF alone doesn't prevent DNS rebinding | Mitigated — SafeHTTPTransport blocks at connect time |
-| scanner/mature.go:826-830 | Review queue generates new UUID per scan for same path | Low — cosmetic ID instability |
+| Location                  | Issue                                                  | Risk                                                 |
+|---------------------------|--------------------------------------------------------|------------------------------------------------------|
+| routes.go                 | Missing Permissions-Policy header                      | Low — browser features not gated                     |
+| local.go:44-60            | No symlink resolution in storage resolve()             | Low — requires FS access to exploit                  |
+| ssrf.go:54-82             | ValidateURLForSSRF alone doesn't prevent DNS rebinding | Mitigated — SafeHTTPTransport blocks at connect time |
+| scanner/mature.go:826-830 | Review queue generates new UUID per scan for same path | Low — cosmetic ID instability                        |
 
 ### FRAGILE (10 remaining)
 
-| Location | Issue | Risk |
-|----------|-------|------|
-| receiver.go:302-318 | Migration goroutine has no context/cancellation | Benign — idempotent ops |
-| remote.go:596-627 | getCachedMedia RLock→Lock upgrade window | Handled by double-check under write lock |
-| hls/transcode.go:86-99 | acquireTranscodeSem spin-waits 250ms | Acceptable — could use sync.Cond |
-| discovery.go:467-502 | Dedup reads metadata under RLock during scan | Minor — stale view count in dedup winner |
-| database.go:251-265 | Stop() sets db/sqlDB to nil without sync | Safe via reverse-order shutdown |
-| logger.go:236-255 | New() reads globalLogger fields without lock | Only affects startup timing |
-| tokens.go:60-63 | Expired token cleanup fire-and-forget | Token already rejected |
-| tokens.go:77-79 | UpdateLastUsed error silently dropped | Non-critical metadata |
-| routes.go:473 | stream-push outside receiver group | Handler-level auth enforced |
-| feed.go:100-107 | baseURL trusts XFF without proxy check | Cosmetic — Atom XML self-links only |
+| Location               | Issue                                           | Risk                                     |
+|------------------------|-------------------------------------------------|------------------------------------------|
+| receiver.go:302-318    | Migration goroutine has no context/cancellation | Benign — idempotent ops                  |
+| remote.go:596-627      | getCachedMedia RLock→Lock upgrade window        | Handled by double-check under write lock |
+| hls/transcode.go:86-99 | acquireTranscodeSem spin-waits 250ms            | Acceptable — could use sync.Cond         |
+| discovery.go:467-502   | Dedup reads metadata under RLock during scan    | Minor — stale view count in dedup winner |
+| database.go:251-265    | Stop() sets db/sqlDB to nil without sync        | Safe via reverse-order shutdown          |
+| logger.go:236-255      | New() reads globalLogger fields without lock    | Only affects startup timing              |
+| tokens.go:60-63        | Expired token cleanup fire-and-forget           | Token already rejected                   |
+| tokens.go:77-79        | UpdateLastUsed error silently dropped           | Non-critical metadata                    |
+| routes.go:473          | stream-push outside receiver group              | Handler-level auth enforced              |
+| feed.go:100-107        | baseURL trusts XFF without proxy check          | Cosmetic — Atom XML self-links only      |
 
 ### SILENT FAIL (4 remaining)
 
-| Location | Issue | Risk |
-|----------|-------|------|
-| envfile.go:89-93 | os.Setenv error discarded | Rare edge case |
-| backup_manifest_repository.go:123 | JSON unmarshal error silently dropped | App-generated data |
-| autodiscovery_repository.go:115 | JSON unmarshal error silently dropped | App-generated data |
+| Location                            | Issue                                 | Risk               |
+|-------------------------------------|---------------------------------------|--------------------|
+| envfile.go:89-93                    | os.Setenv error discarded             | Rare edge case     |
+| backup_manifest_repository.go:123   | JSON unmarshal error silently dropped | App-generated data |
+| autodiscovery_repository.go:115     | JSON unmarshal error silently dropped | App-generated data |
 | validation_result_repository.go:151 | JSON unmarshal error silently dropped | App-generated data |
 
 ### LEAK (1 remaining)
 
-| Location | Issue | Risk |
-|----------|-------|------|
+| Location      | Issue                                        | Risk                |
+|---------------|----------------------------------------------|---------------------|
 | models.go:617 | AutoDiscoverySuggestion.OriginalPath in JSON | Admin-only endpoint |
 
 ## Verified Correct Patterns

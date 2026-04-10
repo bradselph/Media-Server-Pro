@@ -2,6 +2,7 @@
 
 Audit date: 2026-04-09
 Audited files:
+
 - `web/nuxt-ui/composables/useApiEndpoints.ts` (all frontend API calls)
 - `web/nuxt-ui/types/api.ts` (TypeScript response types)
 - `api/routes/routes.go` (backend route registration)
@@ -19,7 +20,8 @@ Audited files:
 
 ### 2. APIToken `last_used_at` — backend returns `null`, frontend type allows `null`
 
-- **Backend** (`auth_tokens.go:37`): `LastUsedAt *string` with `json:"last_used_at"` -- when nil, serializes to JSON `null`
+- **Backend** (`auth_tokens.go:37`): `LastUsedAt *string` with `json:"last_used_at"` -- when nil, serializes to JSON
+  `null`
 - **Frontend** (`api.ts:1063`): `last_used_at: string | null` -- correctly handles null
 - **Status**: MATCH. No issue.
 
@@ -47,7 +49,9 @@ Audited files:
 - **Severity**: LOW. Extra backend fields are harmlessly ignored.
 
 ### ✅ `ad830f94` 2026-04-09 — DownloaderSettings — backend omits several fields frontend type declares
-> **Resolved**: Backend now returns `downloadsDir`, `theme`, `browserRelayConfigured`. Frontend type removes phantom fields (`maxConcurrent`, `videoFormat`, `audioQuality`, `proxy`). Admin UI updated to reflect actual fields.
+
+> **Resolved**: Backend now returns `downloadsDir`, `theme`, `browserRelayConfigured`. Frontend type removes phantom
+> fields (`maxConcurrent`, `videoFormat`, `audioQuality`, `proxy`). Admin UI updated to reflect actual fields.
 > **Verified**: pending deploy
 
 ### 7. DownloaderHealth — backend `dependencies` is `Record<string, string>`, frontend type is `Record<string, unknown>`
@@ -58,9 +62,11 @@ Audited files:
 
 ### 8. MediaListResponse — `total` / `page` / `limit` fields
 
-- **Backend** (`media.go:285-297`): Returns `items`, `total_items`, `total_pages`, `scanning`, optionally `initializing` and `user_ratings`
+- **Backend** (`media.go:285-297`): Returns `items`, `total_items`, `total_pages`, `scanning`, optionally `initializing`
+  and `user_ratings`
 - **Frontend** (`api.ts:137-147`): Declares `total`, `page`, `limit` fields as optional
-- **Severity**: LOW. Backend never returns `total`, `page`, or `limit`. Frontend has them as optional (`?`), so they're always `undefined` at runtime. If any code reads `response.total` expecting a number, it silently gets `undefined`.
+- **Severity**: LOW. Backend never returns `total`, `page`, or `limit`. Frontend has them as optional (`?`), so they're
+  always `undefined` at runtime. If any code reads `response.total` expecting a number, it silently gets `undefined`.
 
 ### 9. WatchHistory DELETE — frontend sends `id` query param, backend also accepts path-based removal
 
@@ -74,25 +80,27 @@ Audited files:
 
 ### 10. No phantom API calls detected
 
-Every endpoint the frontend calls has a corresponding registered route in `routes.go` and a handler implementation. No frontend call targets a non-existent backend route.
+Every endpoint the frontend calls has a corresponding registered route in `routes.go` and a handler implementation. No
+frontend call targets a non-existent backend route.
 
 ---
 
 ## Low: Backend Endpoints Not Consumed by Frontend
 
-These backend routes exist but are never called from the frontend. They may be intended for external tooling, scripts, or future features.
+These backend routes exist but are never called from the frontend. They may be intended for external tooling, scripts,
+or future features.
 
-| Route | Handler | Notes |
-|---|---|---|
-| `POST /api/auth/delete-account` | `DeleteAccount` | Self-service account deletion; no frontend UI |
-| `GET /api/watch-history/export` | `ExportWatchHistory` | CSV export; no frontend trigger |
-| `GET /api/docs` | `GetOpenAPISpec` | OpenAPI spec; developer tooling |
-| `GET /api/feed` | `GetRSSFeed` | RSS/Atom feed; external readers |
-| `GET /health` | `GetHealth` | Health check; monitoring tools |
-| `GET /metrics` | `GetMetrics` | Prometheus metrics; monitoring |
-| `POST /api/admin/thumbnails/cleanup` | `CleanupThumbnails` | No frontend button |
-| `POST /api/admin/scanner/scan` | `ScanContent` | Scanner scan (distinct from media scan) |
-| `GET /api/admin/analytics/export` | `AdminExportAnalytics` | CSV export URL is generated but used as download link, not fetch |
+| Route                                | Handler                | Notes                                                            |
+|--------------------------------------|------------------------|------------------------------------------------------------------|
+| `POST /api/auth/delete-account`      | `DeleteAccount`        | Self-service account deletion; no frontend UI                    |
+| `GET /api/watch-history/export`      | `ExportWatchHistory`   | CSV export; no frontend trigger                                  |
+| `GET /api/docs`                      | `GetOpenAPISpec`       | OpenAPI spec; developer tooling                                  |
+| `GET /api/feed`                      | `GetRSSFeed`           | RSS/Atom feed; external readers                                  |
+| `GET /health`                        | `GetHealth`            | Health check; monitoring tools                                   |
+| `GET /metrics`                       | `GetMetrics`           | Prometheus metrics; monitoring                                   |
+| `POST /api/admin/thumbnails/cleanup` | `CleanupThumbnails`    | No frontend button                                               |
+| `POST /api/admin/scanner/scan`       | `ScanContent`          | Scanner scan (distinct from media scan)                          |
+| `GET /api/admin/analytics/export`    | `AdminExportAnalytics` | CSV export URL is generated but used as download link, not fetch |
 
 ---
 
@@ -101,13 +109,14 @@ These backend routes exist but are never called from the frontend. They may be i
 ### 11. HLS GenerateHLS — frontend sends `quality` (string), backend also reads `qualities` (array)
 
 - **Frontend** (`useHlsApi().generate`): `{ id, quality }` where quality is a string
-- **Backend** (`hls.go:73-77`): Struct has both `Quality string` and `Qualities []string`. Logic at line 87-89: if `Qualities` is empty and `Quality` is non-empty, wraps Quality into Qualities.
+- **Backend** (`hls.go:73-77`): Struct has both `Quality string` and `Qualities []string`. Logic at line 87-89: if
+  `Qualities` is empty and `Quality` is non-empty, wraps Quality into Qualities.
 - **Status**: COMPATIBLE. Frontend sends `quality` as a single string; backend correctly converts.
 
 ### 12. Downloader createDownloaderJob — frontend sends `clientId` camelCase, backend reads `clientId` camelCase
 
 - **Frontend** (`useAdminApi().createDownloaderJob`): `{ url, title, clientId, isYouTube, isYouTubeMusic, relayId }`
-- **Backend** (`admin_downloader.go:123-129`): `ClientID string \`json:"clientId"\`` 
+- **Backend** (`admin_downloader.go:123-129`): `ClientID string \`json:"clientId"\``
 - **Status**: MATCH. Uses `json:"clientId"` tag with camelCase.
 
 ### 13. Admin createUser — frontend sends `role`, backend struct has both `type` and `role`
@@ -134,18 +143,22 @@ These backend routes exist but are never called from the frontend. They may be i
 
 ### 16. Preferences normalization handles legacy keys
 
-- **Frontend** (`apiCompat.ts`): `normalizePreferences` handles `show_mature_content`, `collect_analytics`, `show_home_continue_watching`, `show_home_suggestions`, `show_home_recently_added` as legacy aliases
+- **Frontend** (`apiCompat.ts`): `normalizePreferences` handles `show_mature_content`, `collect_analytics`,
+  `show_home_continue_watching`, `show_home_suggestions`, `show_home_recently_added` as legacy aliases
 - **Status**: Defensive. Prevents breakage if backend ever changes key names.
 
 ---
 
 ## Summary
 
-| Severity | Count | Description |
-|---|---|---|
-| CRITICAL | 0 | No runtime-breaking mismatches found |
-| MEDIUM | 1 | DownloaderSettings: 5 fields the frontend type declares that backend never returns |
-| LOW | 4 | APIToken missing `expires_at`; extra backend fields ignored; `total`/`page`/`limit` always undefined |
-| INFO | 9+ | Backend routes with no frontend caller; correct compat layers |
+| Severity | Count | Description                                                                                          |
+|----------|-------|------------------------------------------------------------------------------------------------------|
+| CRITICAL | 0     | No runtime-breaking mismatches found                                                                 |
+| MEDIUM   | 1     | DownloaderSettings: 5 fields the frontend type declares that backend never returns                   |
+| LOW      | 4     | APIToken missing `expires_at`; extra backend fields ignored; `total`/`page`/`limit` always undefined |
+| INFO     | 9+    | Backend routes with no frontend caller; correct compat layers                                        |
 
-**Overall assessment**: The frontend-backend contract is well-maintained. The `apiCompat.ts` normalization layer and the centralized `useApiEndpoints.ts` pattern prevent most common mismatch issues. The only actionable medium-severity item is the DownloaderSettings response gap -- the backend should either return the missing fields or the frontend type should mark them all as optional to match reality.
+**Overall assessment**: The frontend-backend contract is well-maintained. The `apiCompat.ts` normalization layer and the
+centralized `useApiEndpoints.ts` pattern prevent most common mismatch issues. The only actionable medium-severity item
+is the DownloaderSettings response gap -- the backend should either return the missing fields or the frontend type
+should mark them all as optional to match reality.
