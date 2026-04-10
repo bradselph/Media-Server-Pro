@@ -219,7 +219,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 
 	shutdownFunc := deps.ShutdownFunc
 	if shutdownFunc == nil {
-		shutdownFunc = func() {} // no-op default for tests
+		shutdownFunc = func() { /* no-op default for tests */ }
 	}
 
 	h := &Handler{

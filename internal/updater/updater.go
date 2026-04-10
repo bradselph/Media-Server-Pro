@@ -1018,7 +1018,7 @@ func (m *Module) gitAuthEnv() (env []string, cleanup func()) {
 func (m *Module) goModEnv() (env []string, cleanup func()) {
 	cfg := m.config.Get()
 	if cfg.Updater.GitHubToken == "" {
-		return nil, func() {}
+		return nil, func() { /* no cleanup needed when no token is set */ }
 	}
 	// Include git auth so go build/mod can fetch private GitHub modules.
 	authVars, cleanup := m.gitAuthVars()
