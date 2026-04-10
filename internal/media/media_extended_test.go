@@ -8,6 +8,8 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+const testStarWars = "Star Wars"
+
 // ---------------------------------------------------------------------------
 // Filter.Matches
 // ---------------------------------------------------------------------------
@@ -86,9 +88,9 @@ func TestFilter_Matches_ByMature(t *testing.T) {
 
 func TestFilter_Matches_Combined(t *testing.T) {
 	f := Filter{Type: models.MediaTypeVideo, Category: "movies", Search: "star"}
-	match := &models.MediaItem{Name: "Star Wars", Type: models.MediaTypeVideo, Category: "movies"}
-	wrongType := &models.MediaItem{Name: "Star Wars", Type: models.MediaTypeAudio, Category: "movies"}
-	wrongCat := &models.MediaItem{Name: "Star Wars", Type: models.MediaTypeVideo, Category: "music"}
+	match := &models.MediaItem{Name: testStarWars, Type: models.MediaTypeVideo, Category: "movies"}
+	wrongType := &models.MediaItem{Name: testStarWars, Type: models.MediaTypeAudio, Category: "movies"}
+	wrongCat := &models.MediaItem{Name: testStarWars, Type: models.MediaTypeVideo, Category: "music"}
 	if !f.Matches(match) {
 		t.Error("should match all criteria")
 	}

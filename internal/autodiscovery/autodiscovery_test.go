@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+const testVideoFilename = "video.mp4"
+
 // ---------------------------------------------------------------------------
 // padNumber
 // ---------------------------------------------------------------------------
@@ -44,7 +46,7 @@ func TestPadNumber_Empty(t *testing.T) {
 
 func TestIsPathInAllowedDirs_Inside(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "video.mp4")
+	path := filepath.Join(dir, testVideoFilename)
 	err := os.WriteFile(path, []byte("test"), 0o600)
 	if err != nil {
 		return
@@ -59,7 +61,7 @@ func TestIsPathInAllowedDirs_Inside(t *testing.T) {
 func TestIsPathInAllowedDirs_Outside(t *testing.T) {
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
-	path := filepath.Join(dir2, "video.mp4")
+	path := filepath.Join(dir2, testVideoFilename)
 	absPath, _ := filepath.Abs(path)
 
 	if isPathInAllowedDirs(absPath, []string{dir1}) {
@@ -79,7 +81,7 @@ func TestIsPathInAllowedDirs_EmptyDirs(t *testing.T) {
 func TestIsPathInAllowedDirs_MultipleDirs(t *testing.T) {
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
-	path := filepath.Join(dir2, "video.mp4")
+	path := filepath.Join(dir2, testVideoFilename)
 	absPath, _ := filepath.Abs(path)
 
 	if !isPathInAllowedDirs(absPath, []string{dir1, dir2}) {

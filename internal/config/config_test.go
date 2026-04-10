@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+const (
+	testTmpConfigPath  = "/tmp/test-config.json"
+	testServerPortKey  = "server.port"
+)
+
 // ---------------------------------------------------------------------------
 // DefaultConfig
 // ---------------------------------------------------------------------------
@@ -175,7 +180,7 @@ func TestNewManager_DefaultConfig(t *testing.T) {
 
 func TestManager_Load_CreatesConfigIfMissing(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 
 	m := NewManager(cfgPath)
 	if err := m.Load(); err != nil {
@@ -189,7 +194,7 @@ func TestManager_Load_CreatesConfigIfMissing(t *testing.T) {
 
 func TestManager_Load_FromFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 
 	// Write a custom config
 	custom := DefaultConfig()
@@ -208,7 +213,7 @@ func TestManager_Load_FromFile(t *testing.T) {
 }
 
 func TestManager_Get_ReturnsCopy(t *testing.T) {
-	m := NewManager("/tmp/test-config.json")
+	m := NewManager(testTmpConfigPath)
 	c1 := m.Get()
 	c2 := m.Get()
 	c1.Server.Port = 1234
@@ -218,7 +223,7 @@ func TestManager_Get_ReturnsCopy(t *testing.T) {
 }
 
 func TestManager_Get_CopiesSlices(t *testing.T) {
-	m := NewManager("/tmp/test-config.json")
+	m := NewManager(testTmpConfigPath)
 	c1 := m.Get()
 	c1.Security.IPWhitelist = append(c1.Security.IPWhitelist, "10.0.0.1")
 	c2 := m.Get()
@@ -233,7 +238,7 @@ func TestManager_Get_CopiesSlices(t *testing.T) {
 
 func TestManager_Save(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	m := NewManager(cfgPath)
 	if err := m.Save(); err != nil {
 		t.Fatalf("Save() error: %v", err)
@@ -253,7 +258,7 @@ func TestManager_Save(t *testing.T) {
 
 func TestManager_Update(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	m := NewManager(cfgPath)
 
 	err := m.Update(func(c *Config) {
@@ -276,7 +281,7 @@ func TestManager_Update(t *testing.T) {
 
 func TestManager_OnChange(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	m := NewManager(cfgPath)
 
 	called := make(chan int, 1)
@@ -301,8 +306,8 @@ func TestManager_OnChange(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestManager_GetValue(t *testing.T) {
-	m := NewManager("/tmp/test-config.json")
-	v, err := m.GetValue("server.port")
+	m := NewManager(testTmpConfigPath)
+	v, err := m.GetValue(testServerPortKey)
 	if err != nil {
 		t.Fatalf("GetValue error: %v", err)
 	}
@@ -316,7 +321,7 @@ func TestManager_GetValue(t *testing.T) {
 }
 
 func TestManager_GetValue_InvalidPath(t *testing.T) {
-	m := NewManager("/tmp/test-config.json")
+	m := NewManager(testTmpConfigPath)
 	_, err := m.GetValue("nonexistent.field")
 	if err == nil {
 		t.Error("GetValue with invalid path should return error")
@@ -325,22 +330,22 @@ func TestManager_GetValue_InvalidPath(t *testing.T) {
 
 func TestManager_SetValue(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	m := NewManager(cfgPath)
-	if err := m.SetValue("server.port", 4444); err != nil {
+	if err := m.SetValue(testServerPortKey, 4444); err != nil {
 		t.Fatalf("SetValue error: %v", err)
 	}
-	v, _ := m.GetValue("server.port")
+	v, _ := m.GetValue(testServerPortKey)
 	if v.(int) != 4444 {
 		t.Errorf("after SetValue, port = %d, want 4444", v.(int))
 	}
 }
 
 func TestManager_GetValue_CaseInsensitive(t *testing.T) {
-	m := NewManager("/tmp/test-config.json")
+	m := NewManager(testTmpConfigPath)
 	// "Server.Port" and "server.port" should both work via normalizeFieldName
 	v1, err1 := m.GetValue("Server.Port")
-	v2, err2 := m.GetValue("server.port")
+	v2, err2 := m.GetValue(testServerPortKey)
 	if err1 != nil || err2 != nil {
 		t.Fatalf("errors: %v, %v", err1, err2)
 	}
@@ -377,7 +382,7 @@ func TestNormalizeFieldName(t *testing.T) {
 
 func TestSyncFeatureToggles(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 
 	// Write config with HLS feature disabled but module enabled
 	cfg := DefaultConfig()

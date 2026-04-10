@@ -10,6 +10,8 @@ import (
 	"media-server-pro/internal/logger"
 )
 
+const testMediaUUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
 // ---------------------------------------------------------------------------
 // isPreviewThumbnail
 // ---------------------------------------------------------------------------
@@ -85,11 +87,11 @@ func writeTestFile(t *testing.T, path string, size int) {
 func TestCleanup_RemovesOrphans(t *testing.T) {
 	m, dir := newTestModule(t)
 	m.mediaIDProvider = &fakeMediaIDProvider{ids: map[string]bool{
-		"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee": true,
+		testMediaUUID: true,
 	}}
 
 	// Valid file — should survive
-	writeTestFile(t, filepath.Join(dir, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg"), 100)
+	writeTestFile(t, filepath.Join(dir, testMediaUUID+".jpg"), 100)
 	// Orphan — should be removed
 	writeTestFile(t, filepath.Join(dir, "11111111-2222-3333-4444-555555555555.jpg"), 200)
 
@@ -100,7 +102,7 @@ func TestCleanup_RemovesOrphans(t *testing.T) {
 	if result.OrphansRemoved != 1 {
 		t.Errorf("OrphansRemoved = %d, want 1", result.OrphansRemoved)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, testMediaUUID+".jpg")); err != nil {
 		t.Error("valid thumbnail should still exist")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "11111111-2222-3333-4444-555555555555.jpg")); err == nil {
@@ -110,7 +112,7 @@ func TestCleanup_RemovesOrphans(t *testing.T) {
 
 func TestCleanup_RemovesExcessPreviews(t *testing.T) {
 	m, dir := newTestModule(t)
-	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	id := testMediaUUID
 	m.mediaIDProvider = &fakeMediaIDProvider{ids: map[string]bool{id: true}}
 
 	// Config has PreviewCount=3, so _preview_0..2 are valid; 3..4 are excess
@@ -129,7 +131,7 @@ func TestCleanup_RemovesExcessPreviews(t *testing.T) {
 
 func TestCleanup_RemovesCorruptFiles(t *testing.T) {
 	m, dir := newTestModule(t)
-	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	id := testMediaUUID
 	m.mediaIDProvider = &fakeMediaIDProvider{ids: map[string]bool{id: true}}
 
 	// 0-byte file (corrupt)

@@ -7,6 +7,8 @@ import (
 	"media-server-pro/internal/config"
 )
 
+const testConfigFile = "config.json"
+
 // ---------------------------------------------------------------------------
 // GitHub constants
 // ---------------------------------------------------------------------------
@@ -34,7 +36,7 @@ func TestGitHubConstants(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestModuleName(t *testing.T) {
-	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	cfg := config.NewManager(filepath.Join(t.TempDir(), testConfigFile))
 	m := NewModule(cfg, "4.0.0")
 	if m.Name() != "updater" {
 		t.Errorf("Name() = %q, want %q", m.Name(), "updater")
@@ -42,7 +44,7 @@ func TestModuleName(t *testing.T) {
 }
 
 func TestModuleHealth_Default(t *testing.T) {
-	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	cfg := config.NewManager(filepath.Join(t.TempDir(), testConfigFile))
 	m := NewModule(cfg, "4.0.0")
 	h := m.Health()
 	if h.Name != "updater" {
@@ -51,7 +53,7 @@ func TestModuleHealth_Default(t *testing.T) {
 }
 
 func TestNewModule_Version(t *testing.T) {
-	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	cfg := config.NewManager(filepath.Join(t.TempDir(), testConfigFile))
 	m := NewModule(cfg, "1.2.3")
 	if m.currentVersion != "1.2.3" {
 		t.Errorf("currentVersion = %q, want 1.2.3", m.currentVersion)

@@ -41,14 +41,14 @@ func TestRateLimiter_AutoBanAfterViolations(t *testing.T) {
 
 func TestRateLimiter_BanExpiry(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
-	rl.BanIP("10.0.0.1", 50*time.Millisecond, "short ban")
-	if !rl.IsBanned("10.0.0.1") {
+	rl.BanIP(testIP1, 50*time.Millisecond, "short ban")
+	if !rl.IsBanned(testIP1) {
 		t.Error("IP should be banned immediately")
 	}
 	time.Sleep(100 * time.Millisecond)
 	// Run cleanup to clear expired bans
 	rl.cleanup()
-	if rl.IsBanned("10.0.0.1") {
+	if rl.IsBanned(testIP1) {
 		t.Error("IP ban should have expired after cleanup")
 	}
 }
@@ -60,7 +60,7 @@ func TestRateLimiter_BanExpiry(t *testing.T) {
 func TestRateLimiter_Cleanup(_ *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
 	// Create some client state
-	rl.CheckRequest("10.0.0.1")
+	rl.CheckRequest(testIP1)
 	rl.CheckRequest("10.0.0.2")
 	// Cleanup should not panic
 	rl.cleanup()
@@ -72,7 +72,7 @@ func TestRateLimiter_CleanupWithIPLists(t *testing.T) {
 	blacklist := &IPList{Entries: make([]IPEntry, 0)}
 	// Add expired entries
 	past := time.Now().Add(-1 * time.Hour)
-	whitelist.Add("10.0.0.1", "test", "admin", &past)
+	whitelist.Add(testIP1, "test", "admin", &past)
 	blacklist.Add("10.0.0.2", "test", "admin", &past)
 	rl.cleanupWithIPLists(whitelist, blacklist)
 	// Expired entries should be cleaned
@@ -116,7 +116,7 @@ func TestGetClientIP_XRealIP(t *testing.T) {
 	}
 	// When the remote is trusted and X-Real-IP is set, the implementation
 	// should return the X-Real-IP value.
-	if ip != "203.0.113.100" && ip != "10.0.0.1" {
+	if ip != "203.0.113.100" && ip != testIP1 {
 		t.Errorf("getClientIP = %q, want 203.0.113.100 or 10.0.0.1", ip)
 	}
 }
@@ -159,7 +159,7 @@ func TestIPList_CIDR(t *testing.T) {
 
 func TestIPList_Contains_Nil(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add("10.0.0.1", "test", "admin", nil)
+	list.Add(testIP1, "test", "admin", nil)
 	if list.Contains(nil) {
 		t.Error("nil IP should not match")
 	}
@@ -171,11 +171,11 @@ func TestIPList_Contains_Nil(t *testing.T) {
 
 func TestGetBannedIPs_ReturnsCopy(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
-	rl.BanIP("10.0.0.1", 1*time.Hour, "test")
+	rl.BanIP(testIP1, 1*time.Hour, "test")
 	banned := rl.GetBannedIPs()
 	// Modifying the returned map should not affect internal state
-	delete(banned, "10.0.0.1")
-	if !rl.IsBanned("10.0.0.1") {
+	delete(banned, testIP1)
+	if !rl.IsBanned(testIP1) {
 		t.Error("modifying returned map should not affect internal state")
 	}
 }

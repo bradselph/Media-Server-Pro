@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+const (
+	testIP1 = "10.0.0.1"
+	testIP2 = "10.0.0.2"
+)
+
 // ---------------------------------------------------------------------------
 // isAuthPath
 // ---------------------------------------------------------------------------
@@ -49,7 +54,7 @@ func TestGetClientIP_RemoteAddr(t *testing.T) {
 
 func TestGetClientIP_NoPort(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "10.0.0.1"
+	req.RemoteAddr = testIP1
 	ip := getClientIP(req, nil)
 	if ip == "" {
 		t.Error("should handle RemoteAddr without port")
@@ -105,8 +110,8 @@ func TestRateLimiter_CheckRequest_MultipleIPs(t *testing.T) {
 		RequestsPerMinute: 60,
 		BurstLimit:        10,
 	})
-	allowed1, _, _ := rl.CheckRequest("10.0.0.1")
-	allowed2, _, _ := rl.CheckRequest("10.0.0.2")
+	allowed1, _, _ := rl.CheckRequest(testIP1)
+	allowed2, _, _ := rl.CheckRequest(testIP2)
 	if !allowed1 || !allowed2 {
 		t.Error("different IPs should each be allowed")
 	}
@@ -118,28 +123,28 @@ func TestRateLimiter_CheckRequest_MultipleIPs(t *testing.T) {
 
 func TestRateLimiter_BanAndUnban(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
-	rl.BanIP("10.0.0.1", 1*time.Hour, "test ban")
-	if !rl.IsBanned("10.0.0.1") {
+	rl.BanIP(testIP1, 1*time.Hour, "test ban")
+	if !rl.IsBanned(testIP1) {
 		t.Error("IP should be banned")
 	}
 
-	rl.UnbanIP("10.0.0.1")
-	if rl.IsBanned("10.0.0.1") {
+	rl.UnbanIP(testIP1)
+	if rl.IsBanned(testIP1) {
 		t.Error("IP should be unbanned")
 	}
 }
 
 func TestRateLimiter_IsBanned_NotBanned(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
-	if rl.IsBanned("10.0.0.1") {
+	if rl.IsBanned(testIP1) {
 		t.Error("should not be banned by default")
 	}
 }
 
 func TestRateLimiter_GetBannedIPs(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
-	rl.BanIP("10.0.0.1", 1*time.Hour, "reason1")
-	rl.BanIP("10.0.0.2", 1*time.Hour, "reason2")
+	rl.BanIP(testIP1, 1*time.Hour, "reason1")
+	rl.BanIP(testIP2, 1*time.Hour, "reason2")
 
 	banned := rl.GetBannedIPs()
 	if len(banned) != 2 {
@@ -164,23 +169,23 @@ func TestIPList_AddAndContains(t *testing.T) {
 
 func TestIPList_Contains_SingleIP(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add("10.0.0.1", "test", "admin", nil)
-	if !list.Contains(net.ParseIP("10.0.0.1")) {
+	list.Add(testIP1, "test", "admin", nil)
+	if !list.Contains(net.ParseIP(testIP1)) {
 		t.Error("exact IP should be found")
 	}
-	if list.Contains(net.ParseIP("10.0.0.2")) {
+	if list.Contains(net.ParseIP(testIP2)) {
 		t.Error("different IP should not be found")
 	}
 }
 
 func TestIPList_Remove(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add("10.0.0.1", "test", "admin", nil)
-	removed := list.Remove("10.0.0.1")
+	list.Add(testIP1, "test", "admin", nil)
+	removed := list.Remove(testIP1)
 	if !removed {
 		t.Error("should return true for existing entry")
 	}
-	removed = list.Remove("10.0.0.1")
+	removed = list.Remove(testIP1)
 	if removed {
 		t.Error("should return false for nonexistent entry")
 	}
@@ -188,8 +193,8 @@ func TestIPList_Remove(t *testing.T) {
 
 func TestIPList_Clear(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add("10.0.0.1", "test", "admin", nil)
-	list.Add("10.0.0.2", "test", "admin", nil)
+	list.Add(testIP1, "test", "admin", nil)
+	list.Add(testIP2, "test", "admin", nil)
 	list.Clear()
 	snapshot := list.Snapshot()
 	if len(snapshot) != 0 {
@@ -199,8 +204,8 @@ func TestIPList_Clear(t *testing.T) {
 
 func TestIPList_CleanExpired(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add("10.0.0.1", "expired", "admin", new(time.Now().Add(-1*time.Hour)))
-	list.Add("10.0.0.2", "valid", "admin", nil)
+	list.Add(testIP1, "expired", "admin", new(time.Now().Add(-1*time.Hour)))
+	list.Add(testIP2, "valid", "admin", nil)
 
 	cleaned := list.CleanExpired()
 	if cleaned != 1 {
@@ -210,8 +215,8 @@ func TestIPList_CleanExpired(t *testing.T) {
 
 func TestIPList_Snapshot(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add("10.0.0.1", "test1", "admin", nil)
-	list.Add("10.0.0.2", "test2", "admin", nil)
+	list.Add(testIP1, "test1", "admin", nil)
+	list.Add(testIP2, "test2", "admin", nil)
 	snap := list.Snapshot()
 	if len(snap) != 2 {
 		t.Errorf("snapshot should have 2 entries, got %d", len(snap))
@@ -220,8 +225,8 @@ func TestIPList_Snapshot(t *testing.T) {
 
 func TestIPList_Add_Duplicate(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add("10.0.0.1", "first", "admin", nil)
-	err := list.Add("10.0.0.1", "duplicate", "admin", nil)
+	list.Add(testIP1, "first", "admin", nil)
+	err := list.Add(testIP1, "duplicate", "admin", nil)
 	if err == nil {
 		t.Error("duplicate add should return error")
 	}
@@ -263,8 +268,8 @@ func TestRateLimiter_CheckRequest_BannedIP(t *testing.T) {
 		RequestsPerMinute: 60,
 		BurstLimit:        10,
 	})
-	rl.BanIP("10.0.0.1", 1*time.Hour, "test")
-	allowed, _, _ := rl.CheckRequest("10.0.0.1")
+	rl.BanIP(testIP1, 1*time.Hour, "test")
+	allowed, _, _ := rl.CheckRequest(testIP1)
 	if allowed {
 		t.Error("banned IP should not be allowed")
 	}

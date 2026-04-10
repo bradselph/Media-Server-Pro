@@ -9,20 +9,26 @@ import (
 	"media-server-pro/internal/repositories"
 )
 
+const (
+	testExtractorStreamURL = "https://example.com/stream.m3u8"
+	testSegmentFilename    = "segment001.ts"
+	testStreamTitle        = "Test Stream"
+)
+
 // ---------------------------------------------------------------------------
 // generateID
 // ---------------------------------------------------------------------------
 
 func TestGenerateID_Deterministic(t *testing.T) {
-	id1 := generateID("https://example.com/stream.m3u8")
-	id2 := generateID("https://example.com/stream.m3u8")
+	id1 := generateID(testExtractorStreamURL)
+	id2 := generateID(testExtractorStreamURL)
 	if id1 != id2 {
 		t.Error("same input should produce same ID")
 	}
 }
 
 func TestGenerateID_Prefix(t *testing.T) {
-	id := generateID("https://example.com/stream.m3u8")
+	id := generateID(testExtractorStreamURL)
 	if !strings.HasPrefix(id, "ext_") {
 		t.Errorf("ID should start with 'ext_': %s", id)
 	}
@@ -77,7 +83,7 @@ func TestResolveURL_AbsoluteURL(t *testing.T) {
 }
 
 func TestResolveURL_RelativeURL(t *testing.T) {
-	got := resolveURL("https://cdn.example.com/hls/stream/", "segment001.ts")
+	got := resolveURL("https://cdn.example.com/hls/stream/", testSegmentFilename)
 	if got != "https://cdn.example.com/hls/stream/segment001.ts" {
 		t.Errorf("relative URL should be resolved: %s", got)
 	}
@@ -102,16 +108,16 @@ func TestResolveURL_HTTPPrefix(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExtractSegmentFilename_Simple(t *testing.T) {
-	got := extractSegmentFilename("segment001.ts")
-	if got != "segment001.ts" {
-		t.Errorf("extractSegmentFilename = %q, want %q", got, "segment001.ts")
+	got := extractSegmentFilename(testSegmentFilename)
+	if got != testSegmentFilename {
+		t.Errorf("extractSegmentFilename = %q, want %q", got, testSegmentFilename)
 	}
 }
 
 func TestExtractSegmentFilename_WithPath(t *testing.T) {
 	got := extractSegmentFilename("https://cdn.example.com/hls/segment001.ts")
-	if got != "segment001.ts" {
-		t.Errorf("extractSegmentFilename = %q, want %q", got, "segment001.ts")
+	if got != testSegmentFilename {
+		t.Errorf("extractSegmentFilename = %q, want %q", got, testSegmentFilename)
 	}
 }
 
@@ -138,8 +144,8 @@ func TestRecordToItem(t *testing.T) {
 	now := time.Now()
 	rec := &repositories.ExtractorItemRecord{
 		ID:        "ext_abc123",
-		Title:     "Test Stream",
-		StreamURL: "https://example.com/stream.m3u8",
+		Title:     testStreamTitle,
+		StreamURL: testExtractorStreamURL,
 		Status:    "active",
 		AddedBy:   "admin",
 		CreatedAt: now,
@@ -148,7 +154,7 @@ func TestRecordToItem(t *testing.T) {
 	if item.ID != "ext_abc123" {
 		t.Errorf("ID = %q", item.ID)
 	}
-	if item.Title != "Test Stream" {
+	if item.Title != testStreamTitle {
 		t.Errorf("Title = %q", item.Title)
 	}
 	if item.Status != "active" {
@@ -160,8 +166,8 @@ func TestItemToRecord(t *testing.T) {
 	now := time.Now()
 	item := &ExtractedItem{
 		ID:        "ext_abc123",
-		Title:     "Test Stream",
-		StreamURL: "https://example.com/stream.m3u8",
+		Title:     testStreamTitle,
+		StreamURL: testExtractorStreamURL,
 		Status:    "active",
 		AddedBy:   "admin",
 		CreatedAt: now,

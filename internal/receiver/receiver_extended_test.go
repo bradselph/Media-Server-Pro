@@ -14,7 +14,7 @@ import (
 func TestSlaveRecordToNode(t *testing.T) {
 	now := time.Now()
 	rec := &repositories.ReceiverSlaveRecord{
-		ID:         "slave-1",
+		ID:         testSlaveID1,
 		Name:       "Node A",
 		BaseURL:    "http://10.0.0.1:8080",
 		Status:     "online",
@@ -23,11 +23,11 @@ func TestSlaveRecordToNode(t *testing.T) {
 		CreatedAt:  now.Add(-24 * time.Hour),
 	}
 	node := slaveRecordToNode(rec)
-	if node.ID != "slave-1" {
-		t.Errorf("ID = %q", node.ID)
+	if node.ID != testSlaveID1 {
+		t.Errorf(testFmtID, node.ID)
 	}
 	if node.Name != "Node A" {
-		t.Errorf("Name = %q", node.Name)
+		t.Errorf(testFmtName, node.Name)
 	}
 	if node.BaseURL != "http://10.0.0.1:8080" {
 		t.Errorf("BaseURL = %q", node.BaseURL)
@@ -60,10 +60,10 @@ func TestNodeToSlaveRecord(t *testing.T) {
 	}
 	rec := nodeToSlaveRecord(node)
 	if rec.ID != "slave-2" {
-		t.Errorf("ID = %q", rec.ID)
+		t.Errorf(testFmtID, rec.ID)
 	}
 	if rec.Name != "Node B" {
-		t.Errorf("Name = %q", rec.Name)
+		t.Errorf(testFmtName, rec.Name)
 	}
 	if !rec.CreatedAt.Equal(node.RegisteredAt) {
 		t.Error("CreatedAt should map from RegisteredAt")
@@ -109,7 +109,7 @@ func TestSlaveRecordRoundTrip(t *testing.T) {
 func TestMediaRecordToItem(t *testing.T) {
 	rec := &repositories.ReceiverMediaRecord{
 		ID:                 "media-1",
-		SlaveID:            "slave-1",
+		SlaveID:            testSlaveID1,
 		RemotePath:         "/remote/video.mp4",
 		Name:               "video.mp4",
 		MediaType:          "video",
@@ -122,16 +122,16 @@ func TestMediaRecordToItem(t *testing.T) {
 	}
 	item := mediaRecordToItem(rec)
 	if item.ID != "media-1" {
-		t.Errorf("ID = %q", item.ID)
+		t.Errorf(testFmtID, item.ID)
 	}
-	if item.SlaveID != "slave-1" {
+	if item.SlaveID != testSlaveID1 {
 		t.Errorf("SlaveID = %q", item.SlaveID)
 	}
 	if item.Path != "/remote/video.mp4" {
 		t.Errorf("Path = %q (should map from RemotePath)", item.Path)
 	}
 	if item.Name != "video.mp4" {
-		t.Errorf("Name = %q", item.Name)
+		t.Errorf(testFmtName, item.Name)
 	}
 	if item.Size != 1024000 {
 		t.Errorf("Size = %d", item.Size)

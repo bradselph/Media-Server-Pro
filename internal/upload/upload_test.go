@@ -10,6 +10,13 @@ import (
 	"media-server-pro/internal/config"
 )
 
+const (
+	testErrFmt          = "unexpected error: %v"
+	testVideoFile       = "video.mp4"
+	testUploadDir       = "/uploads"
+	testResolveMediaFmt = "resolveMediaType(%q) = %q, want %q"
+)
+
 // ---------------------------------------------------------------------------
 // Type constants
 // ---------------------------------------------------------------------------
@@ -46,7 +53,7 @@ func TestResolveMediaType_Video(t *testing.T) {
 	videoExts := []string{".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts"}
 	for _, ext := range videoExts {
 		if got := resolveMediaType(ext); got != MediaTypeVideo {
-			t.Errorf("resolveMediaType(%q) = %q, want %q", ext, got, MediaTypeVideo)
+			t.Errorf(testResolveMediaFmt, ext, got, MediaTypeVideo)
 		}
 	}
 }
@@ -55,7 +62,7 @@ func TestResolveMediaType_Audio(t *testing.T) {
 	audioExts := []string{".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma", ".opus"}
 	for _, ext := range audioExts {
 		if got := resolveMediaType(ext); got != MediaTypeAudio {
-			t.Errorf("resolveMediaType(%q) = %q, want %q", ext, got, MediaTypeAudio)
+			t.Errorf(testResolveMediaFmt, ext, got, MediaTypeAudio)
 		}
 	}
 }
@@ -64,7 +71,7 @@ func TestResolveMediaType_Unknown(t *testing.T) {
 	unknownExts := []string{".txt", ".pdf", ".exe", ".jpg", ""}
 	for _, ext := range unknownExts {
 		if got := resolveMediaType(ext); got != MediaTypeUnknown {
-			t.Errorf("resolveMediaType(%q) = %q, want %q", ext, got, MediaTypeUnknown)
+			t.Errorf(testResolveMediaFmt, ext, got, MediaTypeUnknown)
 		}
 	}
 }
@@ -78,7 +85,7 @@ func TestContainsPathTraversal(t *testing.T) {
 		input string
 		want  bool
 	}{
-		{"video.mp4", false},
+		{testVideoFile, false},
 		{"my_file.mkv", false},
 		{"../etc/passwd", true},
 		{"path/to/file", true},
@@ -130,11 +137,11 @@ func newTestModule(t *testing.T) *Module {
 
 func TestSanitizeFilename_Valid(t *testing.T) {
 	m := newTestModule(t)
-	got, err := m.sanitizeFilename("video.mp4")
+	got, err := m.sanitizeFilename(testVideoFile)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
-	if got != "video.mp4" {
+	if got != testVideoFile {
 		t.Errorf("sanitizeFilename(video.mp4) = %q", got)
 	}
 }
@@ -335,7 +342,7 @@ func TestRegisterAndGetProgress(t *testing.T) {
 	id := UploadID("test-upload-1")
 	m.registerUploadProgress(ProgressRegistration{
 		UploadID: id,
-		Filename: "video.mp4",
+		Filename: testVideoFile,
 		UserID:   "user1",
 		Size:     1024,
 	})
@@ -344,8 +351,8 @@ func TestRegisterAndGetProgress(t *testing.T) {
 	if !ok {
 		t.Fatal("progress should be found")
 	}
-	if p.Filename != "video.mp4" {
-		t.Errorf("filename = %q, want %q", p.Filename, "video.mp4")
+	if p.Filename != testVideoFile {
+		t.Errorf("filename = %q, want %q", p.Filename, testVideoFile)
 	}
 	if p.Status != UploadStatusUploading {
 		t.Errorf("status = %q, want %q", p.Status, UploadStatusUploading)
@@ -382,13 +389,13 @@ func TestCreateUniqueUploadFile_NoConflict(t *testing.T) {
 	dir := t.TempDir()
 	m := newTestModule(t)
 
-	destPath, f, err := m.createUniqueUploadFile(dir, "video.mp4")
+	destPath, f, err := m.createUniqueUploadFile(dir, testVideoFile)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	defer f.Close()
 
-	if !strings.HasSuffix(destPath, "video.mp4") {
+	if !strings.HasSuffix(destPath, testVideoFile) {
 		t.Errorf("destPath should end with video.mp4: %s", destPath)
 	}
 }
@@ -400,13 +407,13 @@ func TestCreateUniqueUploadFile_WithConflict(t *testing.T) {
 	// Create existing temp file to cause conflict
 	os.WriteFile(filepath.Join(dir, "video.mp4.tmp"), []byte("existing"), 0o600)
 
-	destPath, f, err := m.createUniqueUploadFile(dir, "video.mp4")
+	destPath, f, err := m.createUniqueUploadFile(dir, testVideoFile)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	defer f.Close()
 
-	if destPath == filepath.Join(dir, "video.mp4") {
+	if destPath == filepath.Join(dir, testVideoFile) {
 		t.Error("should have generated a numbered variant")
 	}
 	if !strings.Contains(destPath, "video_1.mp4") {
@@ -425,7 +432,7 @@ func TestGetUserStorageUsed_EmptyDir(t *testing.T) {
 
 	size, err := m.GetUserStorageUsed("user1")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if size != 0 {
 		t.Errorf("empty dir should have 0 bytes, got %d", size)
@@ -444,7 +451,7 @@ func TestGetUserStorageUsed_WithFiles(t *testing.T) {
 
 	size, err := m.GetUserStorageUsed("user1")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if size != 3072 {
 		t.Errorf("expected 3072 bytes, got %d", size)
@@ -461,7 +468,7 @@ func TestCheckQuota_NoLimit(t *testing.T) {
 
 	ok, err := m.CheckQuota("user1", 1024*1024, 0)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if !ok {
 		t.Error("zero quota should allow any size")
@@ -475,7 +482,7 @@ func TestCheckQuota_WithinQuota(t *testing.T) {
 
 	ok, err := m.CheckQuota("user1", 1024, 2048)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if !ok {
 		t.Error("should be within quota")
@@ -493,7 +500,7 @@ func TestCheckQuota_ExceedsQuota(t *testing.T) {
 
 	ok, err := m.CheckQuota("user1", 1024, 1500)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if ok {
 		t.Error("should exceed quota")
@@ -531,11 +538,11 @@ func TestIsAllowedExtension_Rejected(t *testing.T) {
 
 func TestBuildUploadDestDir_Valid(t *testing.T) {
 	m := newTestModule(t)
-	m.uploadDir = "/uploads"
+	m.uploadDir = testUploadDir
 
 	dir, err := m.buildUploadDestDir(UploadScope{UserID: "user1"})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if !strings.Contains(dir, "user1") {
 		t.Errorf("dir should contain user ID: %s", dir)
@@ -544,11 +551,11 @@ func TestBuildUploadDestDir_Valid(t *testing.T) {
 
 func TestBuildUploadDestDir_WithCategory(t *testing.T) {
 	m := newTestModule(t)
-	m.uploadDir = "/uploads"
+	m.uploadDir = testUploadDir
 
 	dir, err := m.buildUploadDestDir(UploadScope{UserID: "user1", Category: "movies"})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if !strings.Contains(dir, "movies") {
 		t.Errorf("dir should contain category: %s", dir)
@@ -557,7 +564,7 @@ func TestBuildUploadDestDir_WithCategory(t *testing.T) {
 
 func TestBuildUploadDestDir_InvalidUserID(t *testing.T) {
 	m := newTestModule(t)
-	m.uploadDir = "/uploads"
+	m.uploadDir = testUploadDir
 
 	_, err := m.buildUploadDestDir(UploadScope{UserID: ".."})
 	if err == nil {

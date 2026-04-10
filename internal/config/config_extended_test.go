@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+const testConfigFilename = "config.json"
+
 // ---------------------------------------------------------------------------
 // parseEnvLine
 // ---------------------------------------------------------------------------
@@ -76,7 +78,7 @@ func TestParseEnvLine_ValueWithEquals(t *testing.T) {
 
 func TestCreateDirectories(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
 	// Set directories to temp paths
@@ -117,7 +119,7 @@ func TestCreateDirectories(t *testing.T) {
 
 func TestSetValuesBatch_SingleValue(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
 	err := mgr.SetValuesBatch(map[string]interface{}{
@@ -134,7 +136,7 @@ func TestSetValuesBatch_SingleValue(t *testing.T) {
 
 func TestSetValuesBatch_MultipleValues(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
 	err := mgr.SetValuesBatch(map[string]interface{}{
@@ -156,7 +158,7 @@ func TestSetValuesBatch_MultipleValues(t *testing.T) {
 
 func TestSetValuesBatch_InvalidPath(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
 	err := mgr.SetValuesBatch(map[string]interface{}{
@@ -173,7 +175,7 @@ func TestSetValuesBatch_InvalidPath(t *testing.T) {
 
 func TestGetCopy_SliceIsolation(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
 	mgr.Update(func(c *Config) {
@@ -198,7 +200,7 @@ func TestGetCopy_SliceIsolation(t *testing.T) {
 
 func TestSyncFeatureToggles_AllEnabled(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
 	mgr.Update(func(c *Config) {
