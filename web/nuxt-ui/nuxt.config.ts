@@ -80,8 +80,8 @@ export default defineNuxtConfig({
         // referenced by any Tailwind utility or nuxt-ui component — strip them after
         // every prepare/build so the file stays clean.
         async 'prepare:types'() {
-            const { readFileSync, writeFileSync, existsSync } = await import('fs')
-            const { resolve } = await import('path')
+            const { readFileSync, writeFileSync, existsSync } = await import('node:fs')
+            const { resolve } = await import('node:path')
             const cssFile = resolve('.nuxt/ui.css')
             if (existsSync(cssFile)) {
                 const patched = readFileSync(cssFile, 'utf-8')

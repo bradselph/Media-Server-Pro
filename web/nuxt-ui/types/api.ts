@@ -2,7 +2,7 @@ import type {components} from '~/types/openapi.generated'
 
 // Re-export generated schema types — these are derived from api_spec/openapi.yaml.
 // Prefer these over hand-written duplicates when schemas match the backend exactly.
-export type {components}
+export type {components} from '~/types/openapi.generated'
 export type GeneratedSchemas = components['schemas']
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
