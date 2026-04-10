@@ -270,10 +270,14 @@ save_to_deploy_env() {
 # ── Helper: Extract Go version from go.mod ──────────────────────────────────
 get_go_version() {
   local go_mod="${SCRIPT_DIR}/go.mod"
+  local default_version="1.26.2"
+
   if [[ -f "$go_mod" ]]; then
-    grep -oP '(?<=^go )[0-9]+\.[0-9]+(?:\.[0-9]+)?' "$go_mod" 2>/dev/null || echo "1.26.2"
+    # Extract version using basic grep and cut for portability
+    # Expected line in go.mod: "go 1.26.2"
+    grep "^go [0-9]" "$go_mod" | head -n 1 | cut -d' ' -f2 || echo "$default_version"
   else
-    echo "1.26.2"
+    echo "$default_version"
   fi
 }
 
