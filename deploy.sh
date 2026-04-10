@@ -68,6 +68,37 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
 [[ -f "$SCRIPT_DIR/.slave.env" ]]  && source "$SCRIPT_DIR/.slave.env"
 
+# ── Helper: Extract Go version from go.mod ──────────────────────────────────
+get_go_version() {
+  local go_mod="${SCRIPT_DIR}/go.mod"
+  local default_version="1.26.2"
+
+  if [[ -f "$go_mod" ]]; then
+    # Extract version using basic grep and cut for portability
+    # Expected line in go.mod: "go 1.26.2"
+    grep "^go [0-9]" "$go_mod" | head -n 1 | cut -d' ' -f2 || echo "$default_version"
+  else
+    echo "$default_version"
+  fi
+}
+
+# ── Helper: Extract Node.js major version ───────────────────────────────────
+get_node_version() {
+  local pkg_json="${SCRIPT_DIR}/web/nuxt-ui/package.json"
+  if [[ -f "$pkg_json" ]]; then
+    local ver=""
+    # 1. Try "engines": { "node": "..." }
+    ver=$(grep -oP '(?<="node":\s*")[^"]*' "$pkg_json" 2>/dev/null | grep -oP '\d+' | head -1)
+    # 2. Try "@types/node": "..." as fallback hint
+    [[ -z "$ver" ]] && ver=$(grep -oP '(?<="@types/node":\s*")[^"]*' "$pkg_json" 2>/dev/null | grep -oP '\d+' | head -1)
+    
+    [[ -n "$ver" ]] && echo "$ver" && return
+  fi
+
+  # Default fallback
+  echo "22"
+}
+
 # ── Master defaults ──────────────────────────────────────────────────────────
 VPS_HOST="${VPS_HOST:-}"
 VPS_USER="${VPS_USER:-root}"
@@ -265,37 +296,6 @@ save_to_deploy_env() {
   else
     echo "${key}=${val}" >> "$file"
   fi
-}
-
-# ── Helper: Extract Go version from go.mod ──────────────────────────────────
-get_go_version() {
-  local go_mod="${SCRIPT_DIR}/go.mod"
-  local default_version="1.26.2"
-
-  if [[ -f "$go_mod" ]]; then
-    # Extract version using basic grep and cut for portability
-    # Expected line in go.mod: "go 1.26.2"
-    grep "^go [0-9]" "$go_mod" | head -n 1 | cut -d' ' -f2 || echo "$default_version"
-  else
-    echo "$default_version"
-  fi
-}
-
-# ── Helper: Extract Node.js major version ───────────────────────────────────
-get_node_version() {
-  local pkg_json="${SCRIPT_DIR}/web/nuxt-ui/package.json"
-  if [[ -f "$pkg_json" ]]; then
-    local ver=""
-    # 1. Try "engines": { "node": "..." }
-    ver=$(grep -oP '(?<="node":\s*")[^"]*' "$pkg_json" 2>/dev/null | grep -oP '\d+' | head -1)
-    # 2. Try "@types/node": "..." as fallback hint
-    [[ -z "$ver" ]] && ver=$(grep -oP '(?<="@types/node":\s*")[^"]*' "$pkg_json" 2>/dev/null | grep -oP '\d+' | head -1)
-    
-    [[ -n "$ver" ]] && echo "$ver" && return
-  fi
-
-  # Default fallback
-  echo "22"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
