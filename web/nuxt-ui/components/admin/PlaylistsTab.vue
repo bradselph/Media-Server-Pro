@@ -102,7 +102,9 @@ async function executeBulkDelete() {
   try {
     const ids = Array.from(selected.value)
     const res = await adminApi.bulkDeletePlaylists(ids)
-    toast.add({ title: `Deleted ${res.success} playlist${res.success !== 1 ? 's' : ''}${res.failed ? `, ${res.failed} failed` : ''}`, color: res.failed ? 'warning' : 'success', icon: 'i-lucide-check' })
+    const plural = res.success === 1 ? '' : 's'
+    const failedMsg = res.failed ? `, ${res.failed} failed` : ''
+    toast.add({ title: `Deleted ${res.success} playlist${plural}${failedMsg}`, color: res.failed ? 'warning' : 'success', icon: 'i-lucide-check' })
     selected.value = new Set()
     await load()
   } catch (e: unknown) {

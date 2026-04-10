@@ -37,15 +37,21 @@ const diskPct = computed(() => {
   if (!stats.value) return 0
   return Math.round(((stats.value.disk_usage ?? 0) / ((stats.value.disk_total || 1))) * 100)
 })
-const diskColor = computed(() => diskPct.value > 90 ? 'error' : diskPct.value > 70 ? 'warning' : 'success')
+const diskColor = computed(() => {
+  if (diskPct.value > 90) return 'error'
+  if (diskPct.value > 70) return 'warning'
+  return 'success'
+})
 
 const memPct = computed(() => {
   if (!system.value) return 0
   return Math.round(((system.value.memory_used ?? 0) / ((system.value.memory_total || 1))) * 100)
 })
 
-function moduleStatusColor(status: ModuleHealth['status']) {
-  return status === 'healthy' ? 'success' : status === 'degraded' ? 'warning' : 'error'
+function moduleStatusColor(status: ModuleHealth['status']): string {
+  if (status === 'healthy') return 'success'
+  if (status === 'degraded') return 'warning'
+  return 'error'
 }
 
 async function loadAll() {

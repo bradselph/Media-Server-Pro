@@ -118,8 +118,12 @@ const newComment = ref('')
 const ipLoading = ref(false)
 const ipError = ref('')
 
-// Basic IP/CIDR format validation
-const IP_CIDR_RE = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$|^([0-9a-fA-F:]+)(\/\d{1,3})?$/
+// Basic IP/CIDR format validation (split into two regexes to stay under complexity limit)
+const IP_V4_RE = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/
+const IP_V6_RE = /^[0-9a-fA-F:]+(\/\d{1,3})?$/
+function isValidIPCIDR(ip: string): boolean {
+  return IP_V4_RE.test(ip) || IP_V6_RE.test(ip)
+}
 
 async function loadWhitelist() {
   try { whitelist.value = (await adminApi.getWhitelist()) ?? [] }
@@ -136,7 +140,7 @@ async function loadBanned() {
 
 async function addToList(type: 'whitelist' | 'blacklist') {
   if (!newIP.value) return
-  if (!IP_CIDR_RE.test(newIP.value.trim())) {
+  if (!isValidIPCIDR(newIP.value.trim())) {
     ipError.value = 'Invalid IP address or CIDR format'
     return
   }
@@ -182,14 +186,14 @@ const banning = ref(false)
 
 async function banIPAddress() {
   if (!newBanIP.value) return
-  if (!IP_CIDR_RE.test(newBanIP.value.trim())) {
+  if (!isValidIPCIDR(newBanIP.value.trim())) {
     toast.add({ title: 'Invalid IP address or CIDR format', color: 'error', icon: 'i-lucide-x' })
     return
   }
   banning.value = true
   try {
-    const dur = parseInt(newBanDuration.value)
-    await adminApi.banIP(newBanIP.value, !isNaN(dur) && dur > 0 ? dur : undefined)
+    const dur = Number.parseInt(newBanDuration.value, 10)
+    await adminApi.banIP(newBanIP.value, !Number.isNaN(dur) && dur > 0 ? dur : undefined)
     toast.add({ title: 'IP banned', color: 'success', icon: 'i-lucide-check' })
     newBanIP.value = ''
     newBanDuration.value = ''
