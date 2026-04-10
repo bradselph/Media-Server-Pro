@@ -89,7 +89,7 @@ const autoNextEnabled = ref(true)
 const linkCopied = ref(false)
 function copyTimestampLink() {
   const t = Math.floor(currentTime.value)
-  const url = new URL(window.location.href)
+  const url = new URL(globalThis.location.href)
   if (t > 0) url.searchParams.set('t', String(t))
   else url.searchParams.delete('t')
   navigator.clipboard.writeText(url.toString())
@@ -185,15 +185,15 @@ function applyEqPreset(name: string) {
 }
 
 function toggleEqualizer() {
-  if (!eqEnabled.value) {
+  if (eqEnabled.value) {
+    // Bypass: set all to 0
+    eqBands.value.forEach((_v, i) => setEqBand(i, 0))
+    eqEnabled.value = false
+  } else {
     initEqualizer()
     // Restore saved preset
     const saved = userPrefs.value?.equalizer_preset
     if (saved && EQ_PRESETS[saved]) applyEqPreset(saved)
-  } else {
-    // Bypass: set all to 0
-    eqBands.value.forEach((_v, i) => setEqBand(i, 0))
-    eqEnabled.value = false
   }
 }
 
@@ -433,12 +433,12 @@ function setVolume(v: number) {
 function toggleFullscreen() {
   const el = document.querySelector('.player-wrapper') as HTMLElement
   if (!el) return
-  if (!document.fullscreenElement) {
-    el.requestFullscreen()
-    isFullscreen.value = true
-  } else {
+  if (document.fullscreenElement) {
     document.exitFullscreen()
     isFullscreen.value = false
+  } else {
+    el.requestFullscreen()
+    isFullscreen.value = true
   }
 }
 
@@ -448,8 +448,8 @@ const pipSupported: boolean = !!(import.meta.client && 'pictureInPictureEnabled'
 // Playlist context (passed from playlists page via URL query params)
 const playlistIdParam = computed(() => route.query.playlist_id as string | undefined)
 const playlistIdxParam = computed(() => {
-  const v = parseInt(route.query.playlist_idx as string ?? '')
-  return isNaN(v) ? -1 : v
+  const v = Number.parseInt(route.query.playlist_idx as string ?? '', 10)
+  return Number.isNaN(v) ? -1 : v
 })
 const playlistItems = ref<PlaylistItem[]>([])
 const nextPlaylistItem = computed(() =>
@@ -666,7 +666,7 @@ function onKeyDown(e: KeyboardEvent) {
       // 0-9: seek to percentage
       if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault()
-        seekToFraction(parseInt(e.key) / 10)
+        seekToFraction(Number.parseInt(e.key, 10) / 10)
         resetControlsTimer()
       }
       break
@@ -723,12 +723,12 @@ let volumeSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 function trackPlay() {
   if (!mediaId.value) return
-  if (!playEventSent) {
-    playEventSent = true
-    analyticsApi.submitEvent({ type: 'play', media_id: mediaId.value }).catch(() => {})
-  } else {
+  if (playEventSent) {
     // Subsequent play after pause = resume
     analyticsApi.submitEvent({ type: 'resume', media_id: mediaId.value }).catch(() => {})
+  } else {
+    playEventSent = true
+    analyticsApi.submitEvent({ type: 'play', media_id: mediaId.value }).catch(() => {})
   }
 }
 function trackPause() {
@@ -745,7 +745,7 @@ function trackSeek() {
     analyticsApi.submitEvent({
       type: 'seek',
       media_id: seekMediaId,
-      data: { position: pos !== undefined ? Math.round(pos) : 0 },
+      data: { position: pos === undefined ? 0 : Math.round(pos) },
     }).catch(() => {})
     seekTimer = null
   }, 500)
@@ -764,11 +764,10 @@ function onVideoError(e?: Event) {
     const msg = el.error.message ?? ''
     console.error(`[player] MediaError code=${code} message=${msg}`, el.error)
     // Show user-visible error with actionable info
-    const desc = code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
-      ? 'This file format may not be supported by your browser'
-      : code === MediaError.MEDIA_ERR_NETWORK
-        ? 'Network error — check your connection'
-        : 'Playback error'
+    let desc: string
+    if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) desc = 'This file format may not be supported by your browser'
+    else if (code === MediaError.MEDIA_ERR_NETWORK) desc = 'Network error — check your connection'
+    else desc = 'Playback error'
     toast.add({ title: desc, color: 'error', icon: 'i-lucide-alert-circle' })
   }
   analyticsApi.submitEvent({ type: 'error', media_id: mediaId.value }).catch(() => {})
