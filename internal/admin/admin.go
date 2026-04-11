@@ -246,7 +246,7 @@ func (m *Module) GetConfig() *config.Config {
 }
 
 // UpdateConfig updates configuration atomically (write to temp file + rename).
-func (m *Module) UpdateConfig(updates map[string]interface{}) error {
+func (m *Module) UpdateConfig(updates map[string]any) error {
 	if err := m.config.SetValuesBatch(updates); err != nil {
 		return fmt.Errorf("failed to update config: %w", err)
 	}
@@ -270,16 +270,22 @@ func readProcMeminfo() (total, used uint64) {
 	var foundTotal, foundAvail bool
 	for _, line := range bytes.Split(data, []byte{'\n'}) {
 		if bytes.HasPrefix(line, []byte("MemTotal:")) {
-			var kb uint64
-			if _, err := fmt.Sscanf(string(line), "MemTotal: %d kB", &kb); err == nil {
-				memTotal = kb * 1024
-				foundTotal = true
+			fields := bytes.Fields(line)
+			if len(fields) >= 2 {
+				var kb uint64
+				if _, err := fmt.Sscanf(string(fields[1]), "%d", &kb); err == nil {
+					memTotal = kb * 1024
+					foundTotal = true
+				}
 			}
 		} else if bytes.HasPrefix(line, []byte("MemAvailable:")) {
-			var kb uint64
-			if _, err := fmt.Sscanf(string(line), "MemAvailable: %d kB", &kb); err == nil {
-				memAvailable = kb * 1024
-				foundAvail = true
+			fields := bytes.Fields(line)
+			if len(fields) >= 2 {
+				var kb uint64
+				if _, err := fmt.Sscanf(string(fields[1]), "%d", &kb); err == nil {
+					memAvailable = kb * 1024
+					foundAvail = true
+				}
 			}
 		}
 		if foundTotal && foundAvail {
@@ -338,18 +344,18 @@ type SystemInfo struct {
 }
 
 // configMapSection builds one top-level section of the admin config map.
-type configMapSection func(cfg *config.Config, qualityNames []string) map[string]interface{}
+type configMapSection func(cfg *config.Config, qualityNames []string) map[string]any
 
-func buildConfigServerMap(cfg *config.Config, _ []string) map[string]interface{} {
-	return map[string]interface{}{
+func buildConfigServerMap(cfg *config.Config, _ []string) map[string]any {
+	return map[string]any{
 		"port":         cfg.Server.Port,
 		"host":         cfg.Server.Host,
 		"enable_https": cfg.Server.EnableHTTPS,
 	}
 }
 
-func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]interface{} {
-	return map[string]interface{}{
+func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
+	return map[string]any{
 		"enable_thumbnails":  cfg.Features.EnableThumbnails,
 		"enable_hls":         cfg.Features.EnableHLS,
 		"enable_analytics":   cfg.Features.EnableAnalytics,
@@ -358,8 +364,8 @@ func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]interface
 	}
 }
 
-func buildConfigSecurityMap(cfg *config.Config, _ []string) map[string]interface{} {
-	return map[string]interface{}{
+func buildConfigSecurityMap(cfg *config.Config, _ []string) map[string]any {
+	return map[string]any{
 		"rate_limit_enabled":  cfg.Security.RateLimitEnabled,
 		"rate_limit_requests": cfg.Security.RateLimitRequests,
 		"enable_ip_whitelist": cfg.Security.EnableIPWhitelist,

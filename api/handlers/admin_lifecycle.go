@@ -24,9 +24,11 @@ func (h *Handler) RestartServer(c *gin.Context) {
 		time.Sleep(1 * time.Second)
 
 		// systemd case: let the service manager handle the restart.
+		// Do NOT call shutdownFunc() here — it causes main() to exit cleanly (code 0)
+		// before os.Exit(1) can run, so systemd never sees a failure and skips the restart.
+		// systemd will clean up the process and restart it per the Restart=on-failure policy.
 		if os.Getenv("INVOCATION_ID") != "" {
 			h.log.Info("Running under systemd — exiting with code 1 for service manager restart")
-			h.shutdownFunc()
 			os.Exit(1)
 			return
 		}
