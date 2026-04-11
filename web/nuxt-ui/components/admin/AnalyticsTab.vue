@@ -89,12 +89,19 @@ const hourlyMax = computed(() => Math.max(1, ...(eventStats.value?.hourly_events
 // Recent activity from summary
 const recentActivity = computed(() => summary.value?.recent_activity ?? [])
 
+function periodToDays(p: string): number {
+  if (p === 'today') return 1
+  if (p === '7d') return 7
+  if (p === '30d') return 30
+  return 90
+}
+
 async function load() {
   loading.value = true
   try {
     const [s, d, t, cp, es, etc] = await Promise.allSettled([
       analyticsApi.getSummary(period.value),
-      analyticsApi.getDaily(period.value === 'today' ? 1 : period.value === '7d' ? 7 : period.value === '30d' ? 30 : 90),
+      analyticsApi.getDaily(periodToDays(period.value)),
       analyticsApi.getTopMedia(20),
       analyticsApi.getContentPerformance(20),
       analyticsApi.getEventStats(),
@@ -115,7 +122,9 @@ watch(period, load)
 onMounted(load)
 
 function formatPct(v: number): string {
-  return v >= 1 ? `${Math.round(v)}%` : v > 0 ? `${v.toFixed(1)}%` : '0%'
+  if (v >= 1) return `${Math.round(v)}%`
+  if (v > 0) return `${v.toFixed(1)}%`
+  return '0%'
 }
 
 const EVENT_COLORS: Record<string, string> = {

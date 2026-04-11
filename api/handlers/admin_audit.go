@@ -30,7 +30,7 @@ func (h *Handler) AdminExportAuditLog(c *gin.Context) {
 	filename, err := h.admin.ExportAuditLog(c.Request.Context())
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 	defer func() { _ = os.Remove(filename) }() // clean up temp export file after send

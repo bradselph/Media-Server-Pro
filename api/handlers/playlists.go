@@ -10,6 +10,10 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+const (
+	msgPlaylistNotFound = "Playlist not found"
+)
+
 // requirePlaylistIDAndSession ensures playlist module is available, path param "id" is present, and session exists.
 // Returns (id, session, true) or ("", nil, false) after writing an error.
 func (h *Handler) requirePlaylistIDAndSession(c *gin.Context) (id string, session *models.Session, ok bool) {
@@ -132,7 +136,7 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 	})
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 	writeSuccess(c, pl)
@@ -155,7 +159,7 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	userID := playlist.UserID(s.UserID)
 	pl, err := h.playlist.GetPlaylistForUser(playlist.PlaylistID(id), userID)
 	if err != nil {
-		writeError(c, http.StatusNotFound, "Playlist not found")
+		writeError(c, http.StatusNotFound, msgPlaylistNotFound)
 		return
 	}
 
@@ -175,7 +179,7 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 	}
 	if err := h.playlist.UpdatePlaylist(c.Request.Context(), playlist.PlaylistID(id), playlist.UserID(session.UserID), updates); err != nil {
 		if errors.Is(err, playlist.ErrPlaylistNotFound) {
-			writeError(c, http.StatusNotFound, "Playlist not found")
+			writeError(c, http.StatusNotFound, msgPlaylistNotFound)
 			return
 		}
 		if errors.Is(err, playlist.ErrAccessDenied) {
@@ -205,7 +209,7 @@ func (h *Handler) DeletePlaylist(c *gin.Context) {
 	}
 	if err := h.playlist.DeletePlaylist(c.Request.Context(), playlist.PlaylistID(id), playlist.UserID(session.UserID)); err != nil {
 		if errors.Is(err, playlist.ErrPlaylistNotFound) {
-			writeError(c, http.StatusNotFound, "Playlist not found")
+			writeError(c, http.StatusNotFound, msgPlaylistNotFound)
 			return
 		}
 		if errors.Is(err, playlist.ErrAccessDenied) {
@@ -355,7 +359,7 @@ func (h *Handler) CopyPlaylist(c *gin.Context) {
 	pl, err := h.playlist.CopyPlaylist(c.Request.Context(), playlist.PlaylistID(sourceID), playlist.UserID(session.UserID), req.Name)
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

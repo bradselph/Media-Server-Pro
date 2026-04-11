@@ -10,6 +10,10 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+const (
+	msgMediaNotAvailable = "Media module not available"
+)
+
 // ClassifyStatus returns the Hugging Face integration status (configured, model, rate limit)
 // plus the background task state so the admin can see whether a run is in progress.
 // GET /api/admin/classify/status
@@ -47,7 +51,7 @@ func (h *Handler) ClassifyStatus(c *gin.Context) {
 // GET /api/admin/classify/stats
 func (h *Handler) ClassifyStats(c *gin.Context) {
 	if h.media == nil {
-		writeError(c, http.StatusServiceUnavailable, "Media module not available")
+		writeError(c, http.StatusServiceUnavailable, msgMediaNotAvailable)
 		return
 	}
 	stats := h.media.GetClassifyStats(20)
@@ -58,7 +62,7 @@ func (h *Handler) ClassifyStats(c *gin.Context) {
 // POST /api/admin/classify/run-task
 func (h *Handler) ClassifyRunTask(c *gin.Context) {
 	if h.tasks == nil {
-		writeError(c, http.StatusServiceUnavailable, "Tasks module not available")
+		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
 	if err := h.tasks.RunNow("hf-classification"); err != nil {
@@ -74,7 +78,7 @@ func (h *Handler) ClassifyRunTask(c *gin.Context) {
 // POST /api/admin/classify/clear-tags — body: { "id": "media-uuid" }
 func (h *Handler) ClassifyClearTags(c *gin.Context) {
 	if h.media == nil {
-		writeError(c, http.StatusServiceUnavailable, "Media module not available")
+		writeError(c, http.StatusServiceUnavailable, msgMediaNotAvailable)
 		return
 	}
 	var req struct {
@@ -227,7 +231,7 @@ func (h *Handler) ClassifyAllPending(c *gin.Context) {
 		return
 	}
 	if h.media == nil {
-		writeError(c, http.StatusServiceUnavailable, "Media module not available")
+		writeError(c, http.StatusServiceUnavailable, msgMediaNotAvailable)
 		return
 	}
 

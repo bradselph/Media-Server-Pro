@@ -6,6 +6,8 @@ import (
 	"media-server-pro/internal/config"
 )
 
+const errFmtEnabled = "enabled = %v"
+
 // ---------------------------------------------------------------------------
 // buildConfig*Map — all remaining helpers
 // ---------------------------------------------------------------------------
@@ -71,7 +73,7 @@ func TestBuildConfigMatureScannerMap(t *testing.T) {
 	cfg.MatureScanner.HighConfidenceThreshold = 0.9
 	m := buildConfigMatureScannerMap(cfg, nil)
 	if m["enabled"] != true {
-		t.Errorf("enabled = %v", m["enabled"])
+		t.Errorf(errFmtEnabled, m["enabled"])
 	}
 	if m["auto_flag"] != true {
 		t.Errorf("auto_flag = %v", m["auto_flag"])
@@ -120,7 +122,7 @@ func TestBuildConfigDownloadMap(t *testing.T) {
 	cfg.Download.ChunkSizeKB = 512
 	m := buildConfigDownloadMap(cfg, nil)
 	if m["enabled"] != true {
-		t.Errorf("enabled = %v", m["enabled"])
+		t.Errorf(errFmtEnabled, m["enabled"])
 	}
 	if m["chunk_size_kb"] != 512 {
 		t.Errorf("chunk_size_kb = %v", m["chunk_size_kb"])
@@ -143,7 +145,7 @@ func TestBuildConfigAgeGateMap(t *testing.T) {
 	cfg.AgeGate.CookieMaxAge = 86400
 	m := buildConfigAgeGateMap(cfg, nil)
 	if m["enabled"] != true {
-		t.Errorf("enabled = %v", m["enabled"])
+		t.Errorf(errFmtEnabled, m["enabled"])
 	}
 	if m["cookie_name"] != "age_verified" {
 		t.Errorf("cookie_name = %v", m["cookie_name"])
@@ -176,7 +178,7 @@ func TestBuildConfigDownloaderMap(t *testing.T) {
 	cfg.Downloader.URL = "http://localhost:8080"
 	m := buildConfigDownloaderMap(cfg, nil)
 	if m["enabled"] != true {
-		t.Errorf("enabled = %v", m["enabled"])
+		t.Errorf(errFmtEnabled, m["enabled"])
 	}
 	if m["url"] != "http://localhost:8080" {
 		t.Errorf("url = %v", m["url"])
@@ -243,7 +245,7 @@ func TestBuildConfigRemoteMediaMap(t *testing.T) {
 	cfg.RemoteMedia.CacheEnabled = true
 	m := buildConfigRemoteMediaMap(cfg, nil)
 	if m["enabled"] != true {
-		t.Errorf("enabled = %v", m["enabled"])
+		t.Errorf(errFmtEnabled, m["enabled"])
 	}
 }
 
@@ -254,7 +256,7 @@ func TestBuildConfigCrawlerMap(t *testing.T) {
 	cfg.Crawler.MaxPages = 50
 	m := buildConfigCrawlerMap(cfg, nil)
 	if m["enabled"] != true {
-		t.Errorf("enabled = %v", m["enabled"])
+		t.Errorf(errFmtEnabled, m["enabled"])
 	}
 	if m["max_pages"] != 50 {
 		t.Errorf("max_pages = %v", m["max_pages"])
@@ -267,7 +269,7 @@ func TestBuildConfigExtractorMap(t *testing.T) {
 	cfg.Extractor.MaxItems = 100
 	m := buildConfigExtractorMap(cfg, nil)
 	if m["enabled"] != true {
-		t.Errorf("enabled = %v", m["enabled"])
+		t.Errorf(errFmtEnabled, m["enabled"])
 	}
 	if m["max_items"] != 100 {
 		t.Errorf("max_items = %v", m["max_items"])

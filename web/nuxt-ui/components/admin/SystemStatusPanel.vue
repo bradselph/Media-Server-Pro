@@ -10,8 +10,10 @@ const statusLoading = ref(false)
 const moduleDetail = ref<ModuleHealth | null>(null)
 const moduleDetailLoading = ref(false)
 
-function moduleStatusColor(status: ModuleHealth['status']) {
-  return status === 'healthy' ? 'success' : status === 'degraded' ? 'warning' : 'error'
+function moduleStatusColor(status: ModuleHealth['status']): string {
+  if (status === 'healthy') return 'success'
+  if (status === 'degraded') return 'warning'
+  return 'error'
 }
 
 async function loadStatus() {

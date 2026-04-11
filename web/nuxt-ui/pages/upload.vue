@@ -135,14 +135,14 @@ async function handleUpload() {
     const errorCount = res.errors?.length ?? 0
     if (successCount > 0) {
       toast.add({
-        title: `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully`,
+        title: `${successCount} file${successCount === 1 ? '' : 's'} uploaded successfully`,
         color: 'success',
         icon: 'i-lucide-check',
       })
     }
     if (errorCount > 0) {
       toast.add({
-        title: `${errorCount} file${errorCount !== 1 ? 's' : ''} failed to upload`,
+        title: `${errorCount} file${errorCount === 1 ? '' : 's'} failed to upload`,
         color: 'error',
         icon: 'i-lucide-x',
       })

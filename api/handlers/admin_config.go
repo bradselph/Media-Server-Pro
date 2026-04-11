@@ -93,7 +93,7 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 
 	if err := h.admin.UpdateConfig(updates); err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

@@ -12,6 +12,8 @@ import (
 	"media-server-pro/internal/repositories"
 )
 
+const sqlOrderDiscoveredAtDesc = "discovered_at DESC"
+
 // --- Crawler Target Repository ---
 
 type crawlerTargetRow struct {
@@ -47,7 +49,7 @@ func (r *CrawlerTargetRepository) Upsert(ctx context.Context, target *repositori
 
 func (r *CrawlerTargetRepository) Get(ctx context.Context, id string) (*repositories.CrawlerTargetRecord, error) {
 	var row crawlerTargetRow
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlIDEq, id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
@@ -57,7 +59,7 @@ func (r *CrawlerTargetRepository) Get(ctx context.Context, id string) (*reposito
 }
 
 func (r *CrawlerTargetRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&crawlerTargetRow{})
+	result := r.db.WithContext(ctx).Where(sqlIDEq, id).Delete(&crawlerTargetRow{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete crawler target: %w", result.Error)
 	}
@@ -80,8 +82,8 @@ func (r *CrawlerTargetRepository) List(ctx context.Context) ([]*repositories.Cra
 }
 
 func (r *CrawlerTargetRepository) UpdateLastCrawled(ctx context.Context, id string, crawledAt time.Time) error {
-	ts := crawledAt.Format("2006-01-02 15:04:05")
-	if err := r.db.WithContext(ctx).Model(&crawlerTargetRow{}).Where("id = ?", id).
+	ts := crawledAt.Format(sqlTimeFormat)
+	if err := r.db.WithContext(ctx).Model(&crawlerTargetRow{}).Where(sqlIDEq, id).
 		Update("last_crawled", ts).Error; err != nil {
 		return fmt.Errorf("failed to update last crawled: %w", err)
 	}
@@ -95,11 +97,11 @@ func (r *CrawlerTargetRepository) recordToRow(rec *repositories.CrawlerTargetRec
 		URL:       rec.URL,
 		Site:      rec.Site,
 		Enabled:   rec.Enabled,
-		CreatedAt: rec.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdatedAt: rec.UpdatedAt.Format("2006-01-02 15:04:05"),
+		CreatedAt: rec.CreatedAt.Format(sqlTimeFormat),
+		UpdatedAt: rec.UpdatedAt.Format(sqlTimeFormat),
 	}
 	if rec.LastCrawled != nil {
-		row.LastCrawled = new(rec.LastCrawled.Format("2006-01-02 15:04:05"))
+		row.LastCrawled = new(rec.LastCrawled.Format(sqlTimeFormat))
 	}
 	return row
 }
@@ -162,7 +164,7 @@ func (r *CrawlerDiscoveryRepository) Create(ctx context.Context, disc *repositor
 
 func (r *CrawlerDiscoveryRepository) Get(ctx context.Context, id string) (*repositories.CrawlerDiscoveryRecord, error) {
 	var row crawlerDiscoveryRow
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlIDEq, id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
@@ -172,7 +174,7 @@ func (r *CrawlerDiscoveryRepository) Get(ctx context.Context, id string) (*repos
 }
 
 func (r *CrawlerDiscoveryRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&crawlerDiscoveryRow{})
+	result := r.db.WithContext(ctx).Where(sqlIDEq, id).Delete(&crawlerDiscoveryRow{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete crawler discovery: %w", result.Error)
 	}
@@ -184,7 +186,7 @@ func (r *CrawlerDiscoveryRepository) Delete(ctx context.Context, id string) erro
 
 func (r *CrawlerDiscoveryRepository) List(ctx context.Context) ([]*repositories.CrawlerDiscoveryRecord, error) {
 	var rows []crawlerDiscoveryRow
-	if err := r.db.WithContext(ctx).Order("discovered_at DESC").Find(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Order(sqlOrderDiscoveredAtDesc).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list crawler discoveries: %w", err)
 	}
 	records := make([]*repositories.CrawlerDiscoveryRecord, len(rows))
@@ -197,7 +199,7 @@ func (r *CrawlerDiscoveryRepository) List(ctx context.Context) ([]*repositories.
 func (r *CrawlerDiscoveryRepository) ListByTarget(ctx context.Context, targetID string) ([]*repositories.CrawlerDiscoveryRecord, error) {
 	var rows []crawlerDiscoveryRow
 	if err := r.db.WithContext(ctx).Where("target_id = ?", targetID).
-		Order("discovered_at DESC").Find(&rows).Error; err != nil {
+		Order(sqlOrderDiscoveredAtDesc).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list crawler discoveries by target: %w", err)
 	}
 	records := make([]*repositories.CrawlerDiscoveryRecord, len(rows))
@@ -210,7 +212,7 @@ func (r *CrawlerDiscoveryRepository) ListByTarget(ctx context.Context, targetID 
 func (r *CrawlerDiscoveryRepository) ListPending(ctx context.Context) ([]*repositories.CrawlerDiscoveryRecord, error) {
 	var rows []crawlerDiscoveryRow
 	if err := r.db.WithContext(ctx).Where("status = ?", "pending").
-		Order("discovered_at DESC").Find(&rows).Error; err != nil {
+		Order(sqlOrderDiscoveredAtDesc).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list pending crawler discoveries: %w", err)
 	}
 	records := make([]*repositories.CrawlerDiscoveryRecord, len(rows))
@@ -224,9 +226,9 @@ func (r *CrawlerDiscoveryRepository) UpdateStatus(ctx context.Context, id, statu
 	updates := map[string]any{
 		"status":      status,
 		"reviewed_by": reviewedBy,
-		"reviewed_at": time.Now().Format("2006-01-02 15:04:05"),
+		"reviewed_at": time.Now().Format(sqlTimeFormat),
 	}
-	if err := r.db.WithContext(ctx).Model(&crawlerDiscoveryRow{}).Where("id = ?", id).
+	if err := r.db.WithContext(ctx).Model(&crawlerDiscoveryRow{}).Where(sqlIDEq, id).
 		Updates(updates).Error; err != nil {
 		return fmt.Errorf("failed to update crawler discovery status: %w", err)
 	}
@@ -254,10 +256,10 @@ func (r *CrawlerDiscoveryRepository) recordToRow(rec *repositories.CrawlerDiscov
 		DetectionMethod: rec.DetectionMethod,
 		Status:          rec.Status,
 		ReviewedBy:      rec.ReviewedBy,
-		DiscoveredAt:    rec.DiscoveredAt.Format("2006-01-02 15:04:05"),
+		DiscoveredAt:    rec.DiscoveredAt.Format(sqlTimeFormat),
 	}
 	if rec.ReviewedAt != nil {
-		row.ReviewedAt = new(rec.ReviewedAt.Format("2006-01-02 15:04:05"))
+		row.ReviewedAt = new(rec.ReviewedAt.Format(sqlTimeFormat))
 	}
 	return row
 }

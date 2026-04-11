@@ -165,7 +165,7 @@ const params = reactive({
   category: typeof route.query.category === 'string' ? route.query.category : (authStore.user?.preferences?.filter_category || 'all'),
   sort_by: typeof route.query.sort_by === 'string' ? route.query.sort_by : (authStore.user?.preferences?.sort_by || 'name'),
   sort_order: (typeof route.query.sort_order === 'string' ? route.query.sort_order : (authStore.user?.preferences?.sort_order ?? 'asc')) as 'asc' | 'desc',
-  min_rating: typeof route.query.min_rating === 'string' ? (parseInt(route.query.min_rating, 10) || 0) : 0,
+  min_rating: typeof route.query.min_rating === 'string' ? (Number.parseInt(route.query.min_rating, 10) || 0) : 0,
 })
 
 async function loadGeneralSuggestions() {

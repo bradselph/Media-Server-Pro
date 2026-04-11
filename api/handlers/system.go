@@ -22,10 +22,14 @@ import (
 // serverStartTime records when the server started, for uptime metrics.
 var serverStartTime = time.Now()
 
+const (
+	msgQueryFailed = "Query execution failed"
+)
+
 // GetVersion returns the server version (from build ldflags, set by deploy script from VERSION file).
 // Public, unauthenticated — used by the index page footer to display deployed version.
 func (h *Handler) GetVersion(c *gin.Context) {
-	c.Header("Cache-Control", "no-cache, no-store")
+	c.Header(headerCacheControl, "no-cache, no-store")
 	writeSuccess(c, map[string]string{"version": h.buildInfo.Version})
 }
 
@@ -73,7 +77,7 @@ func (h *Handler) GetHealth(c *gin.Context) {
 		httpCode = http.StatusServiceUnavailable
 	}
 
-	c.Header("Cache-Control", "no-cache, no-store")
+	c.Header(headerCacheControl, "no-cache, no-store")
 
 	// Only expose module details and version to authenticated users
 	user := getUser(c)
@@ -211,7 +215,7 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 	}
 
 	c.Header(headerContentType, "text/plain; version=0.0.4")
-	c.Header("Cache-Control", "no-cache")
+	c.Header(headerCacheControl, "no-cache")
 	c.Status(http.StatusOK)
 	if _, err := c.Writer.WriteString(b.String()); err != nil {
 		h.log.Error("Failed to write metrics output: %v", err)
@@ -488,7 +492,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		h.log.Error("Failed to begin read-only transaction: %v", err)
-		writeError(c, http.StatusInternalServerError, "Query execution failed")
+		writeError(c, http.StatusInternalServerError, msgQueryFailed)
 		return
 	}
 	defer func() {
@@ -506,7 +510,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 			})
 		}
 		h.log.Error("Query execution failed: %v", err)
-		writeError(c, http.StatusBadRequest, "Query execution failed")
+		writeError(c, http.StatusBadRequest, msgQueryFailed)
 		return
 	}
 	defer func() {
@@ -518,7 +522,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	columns, err := rows.Columns()
 	if err != nil {
 		h.log.Error("Failed to get columns: %v", err)
-		writeError(c, http.StatusInternalServerError, "Query execution failed")
+		writeError(c, http.StatusInternalServerError, msgQueryFailed)
 		return
 	}
 
@@ -536,7 +540,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 
 		if err := rows.Scan(valuePtrs...); err != nil {
 			h.log.Error("Failed to scan row: %v", err)
-			writeError(c, http.StatusInternalServerError, "Query execution failed")
+			writeError(c, http.StatusInternalServerError, msgQueryFailed)
 			return
 		}
 
@@ -553,7 +557,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 
 	if err := rows.Err(); err != nil {
 		h.log.Error("Error reading rows: %v", err)
-		writeError(c, http.StatusInternalServerError, "Query execution failed")
+		writeError(c, http.StatusInternalServerError, msgQueryFailed)
 		return
 	}
 
@@ -580,6 +584,6 @@ func (h *Handler) GetOpenAPISpec(c *gin.Context) {
 		writeError(c, http.StatusNotFound, "OpenAPI spec not available")
 		return
 	}
-	c.Header("Cache-Control", "public, max-age=3600")
+	c.Header(headerCacheControl, "public, max-age=3600")
 	c.Data(http.StatusOK, "application/yaml; charset=utf-8", apispec.Spec)
 }

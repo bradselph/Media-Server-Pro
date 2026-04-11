@@ -44,8 +44,8 @@ func (r *ReceiverSlaveRepository) Upsert(ctx context.Context, slave *repositorie
 		BaseURL:    slave.BaseURL,
 		Status:     slave.Status,
 		MediaCount: slave.MediaCount,
-		LastSeen:   slave.LastSeen.Format("2006-01-02 15:04:05"),
-		CreatedAt:  slave.CreatedAt.Format("2006-01-02 15:04:05"),
+		LastSeen:   slave.LastSeen.Format(sqlTimeFormat),
+		CreatedAt:  slave.CreatedAt.Format(sqlTimeFormat),
 	}
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
@@ -58,7 +58,7 @@ func (r *ReceiverSlaveRepository) Upsert(ctx context.Context, slave *repositorie
 
 func (r *ReceiverSlaveRepository) Get(ctx context.Context, slaveID string) (*repositories.ReceiverSlaveRecord, error) {
 	var row receiverSlaveRow
-	if err := r.db.WithContext(ctx).Where("id = ?", slaveID).First(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlIDEq, slaveID).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
@@ -68,7 +68,7 @@ func (r *ReceiverSlaveRepository) Get(ctx context.Context, slaveID string) (*rep
 }
 
 func (r *ReceiverSlaveRepository) Delete(ctx context.Context, slaveID string) error {
-	result := r.db.WithContext(ctx).Where("id = ?", slaveID).Delete(&receiverSlaveRow{})
+	result := r.db.WithContext(ctx).Where(sqlIDEq, slaveID).Delete(&receiverSlaveRow{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete slave record: %w", result.Error)
 	}
@@ -155,7 +155,7 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 			ContentFingerprint: item.ContentFingerprint,
 			Width:              item.Width,
 			Height:             item.Height,
-			UpdatedAt:          time.Now().Format("2006-01-02 15:04:05"),
+			UpdatedAt:          time.Now().Format(sqlTimeFormat),
 		}
 	}
 
@@ -197,7 +197,7 @@ func (r *ReceiverMediaRepository) DeleteBySlave(ctx context.Context, slaveID str
 }
 
 func (r *ReceiverMediaRepository) DeleteByID(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&receiverMediaRow{})
+	result := r.db.WithContext(ctx).Where(sqlIDEq, id).Delete(&receiverMediaRow{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete receiver media record: %w", result.Error)
 	}

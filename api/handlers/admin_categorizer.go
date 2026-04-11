@@ -8,6 +8,10 @@ import (
 	"media-server-pro/internal/categorizer"
 )
 
+const (
+	fmtCategorizerUpdateFailed = "Categorizer: failed to update media metadata for %s: %v"
+)
+
 // CategorizeFile categorizes a single file and propagates the result to the media module.
 // Path must be under allowed media directories (validated via resolvePathForAdmin).
 func (h *Handler) CategorizeFile(c *gin.Context) {
@@ -31,7 +35,7 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 		if err := h.media.UpdateMetadata(absPath, map[string]interface{}{
 			"category": string(result.Category),
 		}); err != nil {
-			h.log.Warn("Categorizer: failed to update media metadata for %s: %v", absPath, err)
+			h.log.Warn(fmtCategorizerUpdateFailed, absPath, err)
 		}
 	}
 	writeSuccess(c, result)
@@ -58,7 +62,7 @@ func (h *Handler) CategorizeDirectory(c *gin.Context) {
 	results, err := h.categorizer.CategorizeDirectory(absDir)
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -67,7 +71,7 @@ func (h *Handler) CategorizeDirectory(c *gin.Context) {
 			if updateErr := h.media.UpdateMetadata(item.Path, map[string]interface{}{
 				"category": string(item.Category),
 			}); updateErr != nil {
-				h.log.Warn("Categorizer: failed to update media metadata for %s: %v", item.Path, updateErr)
+				h.log.Warn(fmtCategorizerUpdateFailed, item.Path, updateErr)
 			}
 		}
 	}
@@ -110,7 +114,7 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 		if updateErr := h.media.UpdateMetadata(absPath, map[string]interface{}{
 			"category": string(req.Category),
 		}); updateErr != nil {
-			h.log.Warn("Categorizer: failed to update media metadata for %s: %v", absPath, updateErr)
+			h.log.Warn(fmtCategorizerUpdateFailed, absPath, updateErr)
 		}
 	}
 	writeSuccess(c, map[string]string{"message": "Category set"})

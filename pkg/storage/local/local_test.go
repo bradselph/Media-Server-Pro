@@ -13,6 +13,13 @@ import (
 	"media-server-pro/pkg/storage"
 )
 
+const (
+	testStatFile      = "stat.txt"
+	testRmFile        = "rm.txt"
+	testOldFile       = "old.txt"
+	testOverwriteFile = "overwrite.txt"
+)
+
 func TestNew(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "newroot")
@@ -139,16 +146,16 @@ func TestStat(t *testing.T) {
 	b := newTestBackend(t)
 	ctx := context.Background()
 	data := []byte("stat me")
-	if err := b.WriteFile(ctx, "stat.txt", data); err != nil {
+	if err := b.WriteFile(ctx, testStatFile, data); err != nil {
 		t.Fatal(err)
 	}
 
-	info, err := b.Stat(ctx, "stat.txt")
+	info, err := b.Stat(ctx, testStatFile)
 	if err != nil {
 		t.Fatalf("Stat: %v", err)
 	}
-	if info.Name != "stat.txt" {
-		t.Errorf("Name = %q, want %q", info.Name, "stat.txt")
+	if info.Name != testStatFile {
+		t.Errorf("Name = %q, want %q", info.Name, testStatFile)
 	}
 	if info.Size != int64(len(data)) {
 		t.Errorf("Size = %d, want %d", info.Size, len(data))
@@ -232,12 +239,12 @@ func TestReadDir_NotFound(t *testing.T) {
 func TestRemove(t *testing.T) {
 	b := newTestBackend(t)
 	ctx := context.Background()
-	b.WriteFile(ctx, "rm.txt", []byte("data"))
+	b.WriteFile(ctx, testRmFile, []byte("data"))
 
-	if err := b.Remove(ctx, "rm.txt"); err != nil {
+	if err := b.Remove(ctx, testRmFile); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	_, err := b.Stat(ctx, "rm.txt")
+	_, err := b.Stat(ctx, testRmFile)
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Error("file should be gone after Remove")
 	}
@@ -269,13 +276,13 @@ func TestRemoveAll(t *testing.T) {
 func TestRename(t *testing.T) {
 	b := newTestBackend(t)
 	ctx := context.Background()
-	b.WriteFile(ctx, "old.txt", []byte("content"))
+	b.WriteFile(ctx, testOldFile, []byte("content"))
 
-	if err := b.Rename(ctx, "old.txt", "sub/new.txt"); err != nil {
+	if err := b.Rename(ctx, testOldFile, "sub/new.txt"); err != nil {
 		t.Fatalf("Rename: %v", err)
 	}
 	// Old should be gone
-	_, err := b.Stat(ctx, "old.txt")
+	_, err := b.Stat(ctx, testOldFile)
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Error("old file should be gone after Rename")
 	}
@@ -411,13 +418,13 @@ func TestCreate_CreatesParentDirs(t *testing.T) {
 func TestCreate_OverwriteExisting(t *testing.T) {
 	b := newTestBackend(t)
 	ctx := context.Background()
-	b.WriteFile(ctx, "overwrite.txt", []byte("old"))
+	b.WriteFile(ctx, testOverwriteFile, []byte("old"))
 
-	_, err := b.Create(ctx, "overwrite.txt", bytes.NewReader([]byte("new")))
+	_, err := b.Create(ctx, testOverwriteFile, bytes.NewReader([]byte("new")))
 	if err != nil {
 		t.Fatalf("Create overwrite: %v", err)
 	}
-	got, _ := b.ReadFile(ctx, "overwrite.txt")
+	got, _ := b.ReadFile(ctx, testOverwriteFile)
 	if string(got) != "new" {
 		t.Errorf("after overwrite = %q, want %q", got, "new")
 	}

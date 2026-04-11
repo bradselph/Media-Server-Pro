@@ -48,7 +48,7 @@ func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context, cfg *config.Config)
 	}
 	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
 		writeError(c, http.StatusBadRequest, "Failed to parse upload form")
-		return nil, func() {}, false
+		return nil, func() { /* no cleanup needed after parse failure */ }, false
 	}
 	cleanup := func() {
 		if c.Request.MultipartForm != nil {

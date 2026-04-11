@@ -34,6 +34,16 @@ var ErrNotFound = errors.New("extractor item not found")
 // playlist is re-fetched so stale variant/segment URLs are refreshed.
 const playlistCacheTTL = 5 * time.Minute
 
+const (
+	errItemNotFound     = "item not found: %s"
+	hlsMasterSuffix     = ":master"
+	mimeHLS             = "application/vnd.apple.mpegurl"
+	headerContentType   = "Content-Type"
+	cacheControlNoCache = "no-cache"
+	headerCacheControl  = "Cache-Control"
+	headerCORSOrigin    = "Access-Control-Allow-Origin"
+)
+
 // Module handles HLS stream proxying for external M3U8 URLs.
 type Module struct {
 	config     *config.Manager
@@ -354,7 +364,7 @@ func (m *Module) GetStats() Stats {
 func (m *Module) ProxyHLSMaster(w http.ResponseWriter, r *http.Request, itemID string) error {
 	item := m.GetItem(itemID)
 	if item == nil {
-		return fmt.Errorf("item not found: %s", itemID)
+		return fmt.Errorf(errItemNotFound, itemID)
 	}
 	if item.Status != "active" {
 		return fmt.Errorf("item is not active: %s", item.Status)
@@ -372,16 +382,16 @@ func (m *Module) ProxyHLSMaster(w http.ResponseWriter, r *http.Request, itemID s
 	rewritten, variants := m.rewriteMasterPlaylist(playlistBody, baseURL, itemID)
 
 	// Cache the variant mapping
-	m.playlistCache.Store(itemID+":master", &cachedPlaylist{
+	m.playlistCache.Store(itemID+hlsMasterSuffix, &cachedPlaylist{
 		variants:  variants,
 		baseURL:   baseURL,
 		fetchedAt: time.Now(),
 	})
 
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set(headerContentType, mimeHLS)
+	w.Header().Set(headerCacheControl, cacheControlNoCache)
 	if origin := m.corsOrigin(r); origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set(headerCORSOrigin, origin)
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(rewritten))
@@ -393,7 +403,7 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 	// Look up the variant URL from the cached master.
 	// Treat the entry as a miss if it is older than playlistCacheTTL so that
 	// rotated CDN variant URLs are refreshed automatically.
-	cached, ok := m.playlistCache.Load(itemID + ":master")
+	cached, ok := m.playlistCache.Load(itemID + hlsMasterSuffix)
 	if ok {
 		if cp, _ := cached.(*cachedPlaylist); cp != nil && time.Since(cp.fetchedAt) > playlistCacheTTL {
 			ok = false
@@ -403,7 +413,7 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 		// Try to re-fetch the master first
 		item := m.GetItem(itemID)
 		if item == nil {
-			return fmt.Errorf("item not found: %s", itemID)
+			return fmt.Errorf(errItemNotFound, itemID)
 		}
 		playlistBody, playlistURL, err := m.fetchURL(r.Context(), item.StreamURL)
 		if err != nil {
@@ -412,7 +422,7 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 		baseURL := resolveBaseURL(playlistURL)
 		_, variants := m.rewriteMasterPlaylist(playlistBody, baseURL, itemID)
 		cp := &cachedPlaylist{variants: variants, baseURL: baseURL, fetchedAt: time.Now()}
-		m.playlistCache.Store(itemID+":master", cp)
+		m.playlistCache.Store(itemID+hlsMasterSuffix, cp)
 		cached = cp
 	}
 
@@ -445,10 +455,10 @@ func (m *Module) ProxyHLSVariant(w http.ResponseWriter, r *http.Request, itemID 
 		fetchedAt: time.Now(),
 	})
 
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set(headerContentType, mimeHLS)
+	w.Header().Set(headerCacheControl, cacheControlNoCache)
 	if origin := m.corsOrigin(r); origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set(headerCORSOrigin, origin)
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(rewritten))
@@ -497,7 +507,7 @@ func (m *Module) ProxyHLSSegment(w http.ResponseWriter, r *http.Request, itemID 
 func (m *Module) proxyMediaPlaylist(ctx context.Context, w http.ResponseWriter, r *http.Request, itemID string, qualityIdx int) error {
 	item := m.GetItem(itemID)
 	if item == nil {
-		return fmt.Errorf("item not found: %s", itemID)
+		return fmt.Errorf(errItemNotFound, itemID)
 	}
 
 	playlistBody, playlistURL, err := m.fetchURL(ctx, item.StreamURL)
@@ -514,10 +524,10 @@ func (m *Module) proxyMediaPlaylist(ctx context.Context, w http.ResponseWriter, 
 		fetchedAt: time.Now(),
 	})
 
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set(headerContentType, mimeHLS)
+	w.Header().Set(headerCacheControl, cacheControlNoCache)
 	if origin := m.corsOrigin(r); origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set(headerCORSOrigin, origin)
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(rewritten))
@@ -552,9 +562,9 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 
 	// Copy only media-relevant headers (allowlist avoids leaking CDN/server infra).
 	allowedProxyHeaders := map[string]bool{
-		"Content-Type": true, "Content-Length": true, "Content-Range": true,
+		headerContentType: true, "Content-Length": true, "Content-Range": true,
 		"Content-Disposition": true, "Accept-Ranges": true,
-		"Last-Modified": true, "Etag": true, "Cache-Control": true,
+		"Last-Modified": true, "Etag": true, headerCacheControl: true,
 	}
 	for key, values := range resp.Header {
 		if allowedProxyHeaders[http.CanonicalHeaderKey(key)] {
@@ -565,11 +575,11 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	}
 
 	// Ensure content type is set
-	if w.Header().Get("Content-Type") == "" {
-		w.Header().Set("Content-Type", contentType)
+	if w.Header().Get(headerContentType) == "" {
+		w.Header().Set(headerContentType, contentType)
 	}
 	if origin := m.corsOrigin(r); origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set(headerCORSOrigin, origin)
 	}
 
 	w.WriteHeader(resp.StatusCode)

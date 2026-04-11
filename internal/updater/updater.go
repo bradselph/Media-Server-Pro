@@ -107,6 +107,13 @@ type GitHubRelease struct {
 // DefaultVersion is the fallback when no version is supplied via ldflags; must match server default.
 const DefaultVersion = "4.0.0"
 
+const (
+	msgCloseBodyFailed = "Failed to close response body: %v"
+	authBearerPrefix   = "Bearer "
+	gitRevParse        = "rev-parse"
+	gitOriginPrefix    = "origin/"
+)
+
 // NewModule creates a new updater module. version should be the build-time version
 // string (e.g. from -ldflags), falling back to DefaultVersion if empty.
 func NewModule(cfg *config.Manager, version string) *Module {
@@ -157,7 +164,7 @@ func (m *Module) Start(_ context.Context) error {
 	if !isDirWritable(m.backupDir) {
 		if ep, err := os.Executable(); err == nil {
 			fallback := filepath.Join(filepath.Dir(ep), "backups")
-			if mkErr := os.MkdirAll(fallback, 0o750); mkErr == nil {
+			if os.MkdirAll(fallback, 0o750) == nil {
 				m.log.Warn("Backup dir %s not writable — using fallback: %s", m.backupDir, fallback)
 				m.backupDir = fallback
 			}
@@ -277,7 +284,7 @@ func (m *Module) CheckForUpdates() (*UpdateCheckResult, error) {
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			m.log.Warn("Failed to close response body: %v", err)
+			m.log.Warn(msgCloseBodyFailed, err)
 		}
 	}()
 
@@ -552,7 +559,7 @@ func (m *Module) getAssetURL(version, assetName string) (string, error) {
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			m.log.Warn("Failed to close response body: %v", err)
+			m.log.Warn(msgCloseBodyFailed, err)
 		}
 	}()
 
@@ -652,7 +659,7 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 	}
 	// GitHub private release assets require authentication to download.
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", authBearerPrefix+token)
 	}
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
@@ -660,7 +667,7 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			m.log.Warn("Failed to close response body: %v", closeErr)
+			m.log.Warn(msgCloseBodyFailed, closeErr)
 		}
 	}()
 
@@ -785,7 +792,7 @@ func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 		return "", nil
 	}
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", authBearerPrefix+token)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := m.httpClient.Do(req)
@@ -818,7 +825,7 @@ func (m *Module) downloadAndParseChecksum(checksumURL2, assetName string) (strin
 		return "", fmt.Errorf("build checksum download request: %w", err)
 	}
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
-		cReq.Header.Set("Authorization", "Bearer "+token)
+		cReq.Header.Set("Authorization", authBearerPrefix+token)
 	}
 	cResp, err := m.httpClient.Do(cReq)
 	if err != nil {
@@ -1018,7 +1025,7 @@ func (m *Module) gitAuthEnv() (env []string, cleanup func()) {
 func (m *Module) goModEnv() (env []string, cleanup func()) {
 	cfg := m.config.Get()
 	if cfg.Updater.GitHubToken == "" {
-		return nil, func() {}
+		return nil, func() { /* no cleanup needed when no token is set */ }
 	}
 	// Include git auth so go build/mod can fetch private GitHub modules.
 	authVars, cleanup := m.gitAuthVars()
@@ -1041,7 +1048,7 @@ func (m *Module) newGitHubRequest(method, url string) (*http.Request, error) {
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("User-Agent", "MediaServerPro/"+m.currentVersion)
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", authBearerPrefix+token)
 	}
 	return req, nil
 }
@@ -1090,13 +1097,13 @@ func (m *Module) CheckForSourceUpdates(ctx context.Context) (updatesAvailable bo
 	}
 
 	// Local HEAD commit
-	localOut, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output() //nolint:gosec // G204: git is a known binary
+	localOut, err := exec.CommandContext(ctx, "git", "-C", dir, gitRevParse, "HEAD").Output() //nolint:gosec // G204: git is a known binary
 	if err != nil {
 		return false, "", fmt.Errorf("git rev-parse HEAD failed: %w", err)
 	}
 
 	// Remote branch commit
-	remoteOut, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
+	remoteOut, err := exec.CommandContext(ctx, "git", "-C", dir, gitRevParse, gitOriginPrefix+branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
 	if err != nil {
 		return false, "", fmt.Errorf("git rev-parse origin/%s failed: %w", branch, err)
 	}
@@ -1224,11 +1231,11 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	m.log.Info("git fetch: %s", strings.TrimSpace(string(fetchOut)))
 
 	// Compare local branch tip with origin/branch; if equal, no new commits — skip build.
-	localOut, localErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
+	localOut, localErr := exec.CommandContext(ctx, "git", "-C", dir, gitRevParse, branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
 	if localErr != nil {
 		m.log.Warn("git rev-parse %s failed (new repo?): %v — proceeding with build", branch, localErr)
 	}
-	remoteOut, remoteErr := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "origin/"+branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
+	remoteOut, remoteErr := exec.CommandContext(ctx, "git", "-C", dir, gitRevParse, gitOriginPrefix+branch).Output() //nolint:gosec // G204: git is a known binary; branch from config
 	if remoteErr != nil {
 		m.log.Warn("git rev-parse origin/%s failed: %v — proceeding with build", branch, remoteErr)
 	}
@@ -1242,7 +1249,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	}
 
 	// Switch to the target branch (create tracking branch if needed)
-	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, "origin/"+branch) //nolint:gosec // G204: git binary from PATH, args are internal
+	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "-B", branch, gitOriginPrefix+branch) //nolint:gosec // G204: git binary from PATH, args are internal
 	checkoutCmd.Env = gitEnv
 	if out, cerr := checkoutCmd.CombinedOutput(); cerr != nil {
 		status.Error = fmt.Sprintf("git checkout failed: %v\n%s", cerr, string(out))

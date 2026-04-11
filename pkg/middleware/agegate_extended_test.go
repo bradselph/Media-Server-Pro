@@ -11,14 +11,20 @@ import (
 	"media-server-pro/internal/config"
 )
 
+const (
+	testAgeVerifyURL = "http://example.com/api/age-verify"
+	testExampleHost  = "example.com"
+	testClientIP192  = "192.168.1.1"
+)
+
 // ---------------------------------------------------------------------------
 // isSameOrigin
 // ---------------------------------------------------------------------------
 
 func TestIsSameOrigin_NoHeaders(t *testing.T) {
 	ag := newTestAgeGate(true)
-	req := httptest.NewRequest("POST", "http://example.com/api/age-verify", nil)
-	req.Host = "example.com"
+	req := httptest.NewRequest("POST", testAgeVerifyURL, nil)
+	req.Host = testExampleHost
 	if !ag.isSameOrigin(req) {
 		t.Error("absent Origin/Referer should be treated as same-origin")
 	}
@@ -26,8 +32,8 @@ func TestIsSameOrigin_NoHeaders(t *testing.T) {
 
 func TestIsSameOrigin_MatchingOrigin(t *testing.T) {
 	ag := newTestAgeGate(true)
-	req := httptest.NewRequest("POST", "http://example.com/api/age-verify", nil)
-	req.Host = "example.com"
+	req := httptest.NewRequest("POST", testAgeVerifyURL, nil)
+	req.Host = testExampleHost
 	req.Header.Set("Origin", "http://example.com")
 	if !ag.isSameOrigin(req) {
 		t.Error("matching Origin header should be same-origin")
@@ -36,8 +42,8 @@ func TestIsSameOrigin_MatchingOrigin(t *testing.T) {
 
 func TestIsSameOrigin_DifferentOrigin(t *testing.T) {
 	ag := newTestAgeGate(true)
-	req := httptest.NewRequest("POST", "http://example.com/api/age-verify", nil)
-	req.Host = "example.com"
+	req := httptest.NewRequest("POST", testAgeVerifyURL, nil)
+	req.Host = testExampleHost
 	req.Header.Set("Origin", "http://evil.com")
 	if ag.isSameOrigin(req) {
 		t.Error("different Origin header should NOT be same-origin")
@@ -46,8 +52,8 @@ func TestIsSameOrigin_DifferentOrigin(t *testing.T) {
 
 func TestIsSameOrigin_RefererFallback(t *testing.T) {
 	ag := newTestAgeGate(true)
-	req := httptest.NewRequest("POST", "http://example.com/api/age-verify", nil)
-	req.Host = "example.com"
+	req := httptest.NewRequest("POST", testAgeVerifyURL, nil)
+	req.Host = testExampleHost
 	req.Header.Set("Referer", "http://example.com/page")
 	if !ag.isSameOrigin(req) {
 		t.Error("matching Referer should be same-origin")
@@ -56,8 +62,8 @@ func TestIsSameOrigin_RefererFallback(t *testing.T) {
 
 func TestIsSameOrigin_RefererDifferent(t *testing.T) {
 	ag := newTestAgeGate(true)
-	req := httptest.NewRequest("POST", "http://example.com/api/age-verify", nil)
-	req.Host = "example.com"
+	req := httptest.NewRequest("POST", testAgeVerifyURL, nil)
+	req.Host = testExampleHost
 	req.Header.Set("Referer", "http://evil.com/page")
 	if ag.isSameOrigin(req) {
 		t.Error("different Referer should NOT be same-origin")
@@ -66,8 +72,8 @@ func TestIsSameOrigin_RefererDifferent(t *testing.T) {
 
 func TestIsSameOrigin_InvalidURL(t *testing.T) {
 	ag := newTestAgeGate(true)
-	req := httptest.NewRequest("POST", "http://example.com/api/age-verify", nil)
-	req.Host = "example.com"
+	req := httptest.NewRequest("POST", testAgeVerifyURL, nil)
+	req.Host = testExampleHost
 	req.Header.Set("Origin", "://invalid")
 	if ag.isSameOrigin(req) {
 		t.Error("invalid Origin URL should NOT be same-origin")
@@ -99,7 +105,7 @@ func TestGinVerifyHandler_CrossOrigin(t *testing.T) {
 	r.POST("/api/age-verify", ag.GinVerifyHandler())
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/age-verify", nil)
-	req.Host = "example.com"
+	req.Host = testExampleHost
 	req.Header.Set("Origin", "http://evil.com")
 	r.ServeHTTP(w, req)
 
@@ -136,18 +142,18 @@ func TestAgeGate_IPVerify_TTLExpiry(t *testing.T) {
 
 func TestExtractClientIP_WithPort(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "192.168.1.1:12345"
+	req.RemoteAddr = testClientIP192 + ":12345"
 	ip := extractClientIP(req)
-	if ip != "192.168.1.1" {
+	if ip != testClientIP192 {
 		t.Errorf("extractClientIP = %q, want 192.168.1.1", ip)
 	}
 }
 
 func TestExtractClientIP_WithoutPort(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "192.168.1.1"
+	req.RemoteAddr = testClientIP192
 	ip := extractClientIP(req)
-	if ip != "192.168.1.1" {
+	if ip != testClientIP192 {
 		t.Errorf("extractClientIP = %q, want 192.168.1.1", ip)
 	}
 }

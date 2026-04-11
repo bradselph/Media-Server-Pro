@@ -6,6 +6,8 @@ import (
 	"media-server-pro/internal/repositories"
 )
 
+const testPathA = "/path/a.mp4"
+
 // ---------------------------------------------------------------------------
 // sourceFor
 // ---------------------------------------------------------------------------
@@ -40,7 +42,7 @@ func TestBuildLocalFingerprintGroups_Empty(t *testing.T) {
 
 func TestBuildLocalFingerprintGroups_SkipsEmptyFingerprint(t *testing.T) {
 	all := map[string]*repositories.MediaMetadata{
-		"/path/a.mp4": {ContentFingerprint: "", StableID: "id-a"},
+		testPathA: {ContentFingerprint: "", StableID: "id-a"},
 	}
 	groups := buildLocalFingerprintGroups(all)
 	if len(groups) != 0 {
@@ -50,7 +52,7 @@ func TestBuildLocalFingerprintGroups_SkipsEmptyFingerprint(t *testing.T) {
 
 func TestBuildLocalFingerprintGroups_SkipsEmptyStableID(t *testing.T) {
 	all := map[string]*repositories.MediaMetadata{
-		"/path/a.mp4": {ContentFingerprint: "fp1", StableID: ""},
+		testPathA: {ContentFingerprint: "fp1", StableID: ""},
 	}
 	groups := buildLocalFingerprintGroups(all)
 	if len(groups) != 0 {
@@ -60,7 +62,7 @@ func TestBuildLocalFingerprintGroups_SkipsEmptyStableID(t *testing.T) {
 
 func TestBuildLocalFingerprintGroups_GroupsByFingerprint(t *testing.T) {
 	all := map[string]*repositories.MediaMetadata{
-		"/path/a.mp4": {ContentFingerprint: "fp1", StableID: "id-a"},
+		testPathA: {ContentFingerprint: "fp1", StableID: "id-a"},
 		"/path/b.mp4": {ContentFingerprint: "fp1", StableID: "id-b"},
 		"/path/c.mp4": {ContentFingerprint: "fp2", StableID: "id-c"},
 	}

@@ -70,6 +70,7 @@ async function handleLogin() {
           <UFormField label="Username">
             <UInput
               v-model="form.username"
+              name="username"
               placeholder="your username"
               autocomplete="username"
               required
@@ -78,6 +79,7 @@ async function handleLogin() {
           <UFormField label="Password">
             <UInput
               v-model="form.password"
+              name="password"
               type="password"
               placeholder="••••••••"
               autocomplete="current-password"

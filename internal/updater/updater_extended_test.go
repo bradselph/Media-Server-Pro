@@ -4,6 +4,8 @@ import (
 	"testing"
 )
 
+const testBinaryName = "media-server-pro-linux-amd64"
+
 // ---------------------------------------------------------------------------
 // isNewerVersion
 // ---------------------------------------------------------------------------
@@ -70,7 +72,7 @@ func TestParseExpectedHashFromChecksum_Found(t *testing.T) {
 	data := []byte(`abc123def456  artifacts/binaries-linux-amd64/media-server-pro-linux-amd64
 789xyz  artifacts/binaries-windows-amd64/media-server-pro-windows-amd64.exe
 `)
-	got := parseExpectedHashFromChecksum(data, "media-server-pro-linux-amd64")
+	got := parseExpectedHashFromChecksum(data, testBinaryName)
 	if got != "abc123def456" {
 		t.Errorf("hash = %q, want abc123def456", got)
 	}
@@ -79,7 +81,7 @@ func TestParseExpectedHashFromChecksum_Found(t *testing.T) {
 func TestParseExpectedHashFromChecksum_NotFound(t *testing.T) {
 	data := []byte(`abc123  some-other-binary
 `)
-	got := parseExpectedHashFromChecksum(data, "media-server-pro-linux-amd64")
+	got := parseExpectedHashFromChecksum(data, testBinaryName)
 	if got != "" {
 		t.Errorf("should return empty for missing asset, got %q", got)
 	}
@@ -88,7 +90,7 @@ func TestParseExpectedHashFromChecksum_NotFound(t *testing.T) {
 func TestParseExpectedHashFromChecksum_CaseInsensitive(t *testing.T) {
 	data := []byte(`ABC123  Media-Server-Pro-Linux-AMD64
 `)
-	got := parseExpectedHashFromChecksum(data, "media-server-pro-linux-amd64")
+	got := parseExpectedHashFromChecksum(data, testBinaryName)
 	if got != "abc123" {
 		t.Errorf("hash = %q, want abc123 (case-insensitive)", got)
 	}
@@ -100,7 +102,7 @@ func TestParseExpectedHashFromChecksum_CaseInsensitive(t *testing.T) {
 
 func TestFindChecksumAssetURL_Found(t *testing.T) {
 	assets := []releaseAsset{
-		{Name: "media-server-pro-linux-amd64", BrowserDownloadURL: "https://example.com/binary"},
+		{Name: testBinaryName, BrowserDownloadURL: "https://example.com/binary"},
 		{Name: "sha256sums", BrowserDownloadURL: "https://example.com/sha256sums"},
 	}
 	got := findChecksumAssetURL(assets)

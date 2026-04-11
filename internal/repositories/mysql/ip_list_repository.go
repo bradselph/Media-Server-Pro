@@ -12,6 +12,8 @@ import (
 	"media-server-pro/internal/repositories"
 )
 
+const sqlListTypeEq = "list_type = ?"
+
 type ipListConfigRow struct {
 	ListType string `gorm:"column:list_type;primaryKey"`
 	Name     string `gorm:"column:name"`
@@ -56,7 +58,7 @@ func (r *IPListRepository) SaveListConfig(ctx context.Context, listType, name st
 
 func (r *IPListRepository) GetListConfig(ctx context.Context, listType string) (name string, enabled bool, err error) {
 	var row ipListConfigRow
-	if err := r.db.WithContext(ctx).Where("list_type = ?", listType).First(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlListTypeEq, listType).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", false, nil
 		}
@@ -68,7 +70,7 @@ func (r *IPListRepository) GetListConfig(ctx context.Context, listType string) (
 func (r *IPListRepository) SaveEntries(ctx context.Context, listType string, entries []*repositories.IPEntryRecord) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Delete existing entries for this list type
-		if err := tx.Where("list_type = ?", listType).Delete(&ipListEntryRow{}).Error; err != nil {
+		if err := tx.Where(sqlListTypeEq, listType).Delete(&ipListEntryRow{}).Error; err != nil {
 			return fmt.Errorf("failed to clear IP list entries: %w", err)
 		}
 		if len(entries) == 0 {
@@ -98,7 +100,7 @@ func (r *IPListRepository) SaveEntries(ctx context.Context, listType string, ent
 
 func (r *IPListRepository) GetEntries(ctx context.Context, listType string) ([]*repositories.IPEntryRecord, error) {
 	var rows []ipListEntryRow
-	if err := r.db.WithContext(ctx).Where("list_type = ?", listType).Find(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlListTypeEq, listType).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to get IP list entries: %w", err)
 	}
 	records := make([]*repositories.IPEntryRecord, len(rows))
@@ -150,7 +152,7 @@ func (r *IPListRepository) RemoveEntry(ctx context.Context, listType, ipValue st
 }
 
 func (r *IPListRepository) SetEnabled(ctx context.Context, listType string, enabled bool) error {
-	result := r.db.WithContext(ctx).Model(&ipListConfigRow{}).Where("list_type = ?", listType).Update("enabled", enabled)
+	result := r.db.WithContext(ctx).Model(&ipListConfigRow{}).Where(sqlListTypeEq, listType).Update("enabled", enabled)
 	if result.Error != nil {
 		return fmt.Errorf("failed to set IP list enabled: %w", result.Error)
 	}

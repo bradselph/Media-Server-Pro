@@ -6,6 +6,8 @@ import (
 	"media-server-pro/internal/logger"
 )
 
+const testStatusFmt = "status = %q, want %q"
+
 // ---------------------------------------------------------------------------
 // Status constants
 // ---------------------------------------------------------------------------
@@ -116,7 +118,7 @@ func TestSetFinalStatus_WithIssues(t *testing.T) {
 	r := &ValidationResult{Issues: []string{"codec unsupported"}}
 	setFinalStatus(r)
 	if r.Status != StatusNeedsFix {
-		t.Errorf("status = %q, want %q", r.Status, StatusNeedsFix)
+		t.Errorf(testStatusFmt, r.Status, StatusNeedsFix)
 	}
 }
 
@@ -124,7 +126,7 @@ func TestSetFinalStatus_AllSupported(t *testing.T) {
 	r := &ValidationResult{VideoSupported: true, AudioSupported: true}
 	setFinalStatus(r)
 	if r.Status != StatusValidated {
-		t.Errorf("status = %q, want %q", r.Status, StatusValidated)
+		t.Errorf(testStatusFmt, r.Status, StatusValidated)
 	}
 }
 
@@ -132,7 +134,7 @@ func TestSetFinalStatus_UnsupportedCodec(t *testing.T) {
 	r := &ValidationResult{VideoSupported: false, AudioSupported: true}
 	setFinalStatus(r)
 	if r.Status != StatusUnsupported {
-		t.Errorf("status = %q, want %q", r.Status, StatusUnsupported)
+		t.Errorf(testStatusFmt, r.Status, StatusUnsupported)
 	}
 }
 

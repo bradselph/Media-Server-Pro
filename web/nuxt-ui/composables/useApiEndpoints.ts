@@ -106,55 +106,55 @@ const api = useApi()
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+async function login(username: string, password: string): Promise<LoginResponse> {
+    const raw = await api.post<unknown>('/api/auth/login', {username, password})
+    return normalizeLogin(raw)
+}
+
+function logout() {
+    return api.post<void>('/api/auth/logout')
+}
+
+function register(username: string, password: string, email?: string) {
+    return api.post<User>('/api/auth/register', {username, password, email})
+}
+
+async function getSession(): Promise<SessionCheckResponse> {
+    const raw = await api.get<unknown>('/api/auth/session')
+    return normalizeSession(raw)
+}
+
+function changePassword(currentPassword: string, newPassword: string) {
+    return api.post<void>('/api/auth/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword
+    })
+}
+
+function requestDataDeletion(reason?: string) {
+    return api.post<{
+        status: string;
+        message: string;
+        id: string
+    }>('/api/auth/data-deletion-request', {reason: reason ?? ''})
+}
+
+function deleteAccount(password: string) {
+    return api.post<{ status: string; message: string }>('/api/auth/delete-account', {password})
+}
+
+async function getPreferences(): Promise<UserPreferences> {
+    const raw = await api.get<unknown>('/api/preferences')
+    return normalizePreferences(raw)
+}
+
+async function updatePreferences(prefs: Partial<UserPreferences>): Promise<UserPreferences> {
+    // Backend only registers POST /api/preferences (partial merge), not PUT.
+    const raw = await api.post<unknown>('/api/preferences', toPreferencesPatch(prefs))
+    return normalizePreferences(raw)
+}
+
 export function useApiEndpoints() {
-    async function login(username: string, password: string): Promise<LoginResponse> {
-        const raw = await api.post<unknown>('/api/auth/login', {username, password})
-        return normalizeLogin(raw)
-    }
-
-    function logout() {
-        return api.post<void>('/api/auth/logout')
-    }
-
-    function register(username: string, password: string, email?: string) {
-        return api.post<User>('/api/auth/register', {username, password, email})
-    }
-
-    async function getSession(): Promise<SessionCheckResponse> {
-        const raw = await api.get<unknown>('/api/auth/session')
-        return normalizeSession(raw)
-    }
-
-    function changePassword(currentPassword: string, newPassword: string) {
-        return api.post<void>('/api/auth/change-password', {
-            current_password: currentPassword,
-            new_password: newPassword
-        })
-    }
-
-    function requestDataDeletion(reason?: string) {
-        return api.post<{
-            status: string;
-            message: string;
-            id: string
-        }>('/api/auth/data-deletion-request', {reason: reason ?? ''})
-    }
-
-    function deleteAccount(password: string) {
-        return api.post<{ status: string; message: string }>('/api/auth/delete-account', {password})
-    }
-
-    async function getPreferences(): Promise<UserPreferences> {
-        const raw = await api.get<unknown>('/api/preferences')
-        return normalizePreferences(raw)
-    }
-
-    async function updatePreferences(prefs: Partial<UserPreferences>): Promise<UserPreferences> {
-        // Backend only registers POST /api/preferences (partial merge), not PUT.
-        const raw = await api.post<unknown>('/api/preferences', toPreferencesPatch(prefs))
-        return normalizePreferences(raw)
-    }
-
     return {
         login, logout, register, getSession, changePassword, requestDataDeletion, deleteAccount,
         getPreferences, updatePreferences,
@@ -171,7 +171,7 @@ export function useMediaApi() {
                 // Backend reads query param "sort" (see handlers.ListMedia), not sort_by.
                 const {page, limit, sort_order, sort_by, sort, tags, hide_watched, ...rest} = params
                 Object.entries(rest).forEach(([k, v]) => {
-                    if (v !== undefined && v !== '') qs.set(k, String(v))
+                    if (v !== undefined && v !== '' && typeof v !== 'object') qs.set(k, String(v))
                 })
                 // tags is an array — serialise as comma-joined string (backend splits on comma)
                 if (tags && tags.length > 0) qs.set('tags', tags.join(','))
@@ -186,7 +186,8 @@ export function useMediaApi() {
                 if (sort_order) qs.set('sort_order', sort_order)
             }
             const q = qs.toString()
-            return api.get<MediaListResponse>(`/api/media${q ? `?${q}` : ''}`)
+            const suffix = q ? `?${q}` : ''
+            return api.get<MediaListResponse>(`/api/media${suffix}`)
         },
         getById: (id: string) => api.get<MediaItem>(`/api/media/${encodeURIComponent(id)}`),
         getBatch: (ids: string[]) =>
@@ -204,8 +205,10 @@ export function useMediaApi() {
         },
         getStreamUrl: (id: string) => `/media?id=${encodeURIComponent(id)}`,
         getDownloadUrl: (id: string) => `/download?id=${encodeURIComponent(id)}`,
-        getRemoteStreamUrl: (url: string, source?: string) =>
-            `/remote/stream?url=${encodeURIComponent(url)}${source ? `&source=${encodeURIComponent(source)}` : ''}`,
+        getRemoteStreamUrl: (url: string, source?: string) => {
+            const sourcePart = source ? `&source=${encodeURIComponent(source)}` : ''
+            return `/remote/stream?url=${encodeURIComponent(url)}${sourcePart}`
+        },
     }
 }
 
@@ -243,7 +246,8 @@ export function useWatchHistoryApi() {
             const parts: string[] = []
             if (limit) parts.push(`limit=${limit}`)
             if (completed !== undefined) parts.push(`completed=${completed}`)
-            return api.get<WatchHistoryItem[]>(`/api/watch-history${parts.length ? `?${parts.join('&')}` : ''}`)
+            const qs = parts.length ? `?${parts.join('&')}` : ''
+            return api.get<WatchHistoryItem[]>(`/api/watch-history${qs}`)
         },
         remove: (id: string) => api.delete<void>(`/api/watch-history?id=${encodeURIComponent(id)}`),
         clear: () => api.delete<void>('/api/watch-history'),
@@ -255,20 +259,27 @@ export function useWatchHistoryApi() {
 export function useSuggestionsApi() {
     return {
         get: () => api.get<Suggestion[]>('/api/suggestions'),
-        getTrending: (limit?: number) =>
-            api.get<Suggestion[]>(`/api/suggestions/trending${limit ? `?limit=${limit}` : ''}`),
+        getTrending: (limit?: number) => {
+            const qs = limit ? `?limit=${limit}` : ''
+            return api.get<Suggestion[]>(`/api/suggestions/trending${qs}`)
+        },
         getSimilar: (id: string) => api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
-        getContinueWatching: (limit?: number) =>
-            api.get<Suggestion[]>(`/api/suggestions/continue${limit ? `?limit=${limit}` : ''}`),
-        getPersonalized: (limit?: number) =>
-            api.get<Suggestion[]>(`/api/suggestions/personalized${limit ? `?limit=${limit}` : ''}`),
+        getContinueWatching: (limit?: number) => {
+            const qs = limit ? `?limit=${limit}` : ''
+            return api.get<Suggestion[]>(`/api/suggestions/continue${qs}`)
+        },
+        getPersonalized: (limit?: number) => {
+            const qs = limit ? `?limit=${limit}` : ''
+            return api.get<Suggestion[]>(`/api/suggestions/personalized${qs}`)
+        },
         getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),
         resetMyProfile: () => api.delete<void>('/api/suggestions/profile'),
         getRecent: (days?: number, limit?: number) => {
             const params: string[] = []
             if (days) params.push(`days=${days}`)
             if (limit) params.push(`limit=${limit}`)
-            return api.get<RecentItem[]>(`/api/suggestions/recent${params.length ? `?${params.join('&')}` : ''}`)
+            const qs = params.length ? `?${params.join('&')}` : ''
+            return api.get<RecentItem[]>(`/api/suggestions/recent${qs}`)
         },
         getNewSinceLastVisit: (limit?: number) => {
             const qs = limit ? `?limit=${limit}` : ''
@@ -358,8 +369,10 @@ export function useRatingsApi() {
 export function useCategoryBrowseApi() {
     return {
         getStats: () => api.get<CategoryStats>('/api/browse/categories'),
-        getByCategory: (category: string, limit?: number) =>
-            api.get<CategoryBrowseResponse>(`/api/browse/categories?category=${encodeURIComponent(category)}${limit ? `&limit=${limit}` : ''}`),
+        getByCategory: (category: string, limit?: number) => {
+            const limitPart = limit ? `&limit=${limit}` : ''
+            return api.get<CategoryBrowseResponse>(`/api/browse/categories?category=${encodeURIComponent(category)}${limitPart}`)
+        },
     }
 }
 
@@ -374,8 +387,8 @@ export function useUploadApi() {
             const res = await fetch('/api/upload', {method: 'POST', credentials: 'include', body: formData})
             // Handle 401 the same way useApi does — redirect to login
             if (res.status === 401 && import.meta.client) {
-                const redirect = window.location.pathname + window.location.search
-                window.location.replace(`/login?redirect=${encodeURIComponent(redirect)}`)
+                const redirect = globalThis.location.pathname + globalThis.location.search
+                globalThis.location.replace(`/login?redirect=${encodeURIComponent(redirect)}`)
                 throw new Error('Session expired')
             }
             const envelope = await res.json()
@@ -428,7 +441,8 @@ export function useAdminApi() {
                 })
             }
             const q = qs.toString()
-            return api.get<AdminMediaListResponse>(`${base}/media${q ? `?${q}` : ''}`)
+            const suffix = q ? `?${q}` : ''
+            return api.get<AdminMediaListResponse>(`${base}/media${suffix}`)
         },
         scanMedia: () => api.post<void>(`${base}/media/scan`),
         updateMedia: (id: string, data: Partial<MediaItem>) =>
@@ -757,7 +771,8 @@ export function useAnalyticsApi() {
                 qs.set('end_date', fmt(today))
             }
             const q = qs.toString()
-            return `/api/admin/analytics/export${q ? `?${q}` : ''}`
+            const suffix = q ? `?${q}` : ''
+            return `/api/admin/analytics/export${suffix}`
         },
     }
 }

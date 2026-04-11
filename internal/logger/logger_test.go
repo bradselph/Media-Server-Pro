@@ -11,6 +11,12 @@ import (
 	"testing"
 )
 
+const (
+	testModule  = "test-module"
+	testCtxRID  = "ctx-rid"
+	testAllGood = "all good"
+)
+
 // ---------------------------------------------------------------------------
 // Level constants
 // ---------------------------------------------------------------------------
@@ -94,9 +100,9 @@ func newTestLogger(module string, minLevel Level) (*Logger, *bytes.Buffer) {
 }
 
 func TestLoggerModule(t *testing.T) {
-	l, _ := newTestLogger("test-module", DEBUG)
-	if l.module != "test-module" {
-		t.Errorf("module = %q, want %q", l.module, "test-module")
+	l, _ := newTestLogger(testModule, DEBUG)
+	if l.module != testModule {
+		t.Errorf("module = %q, want %q", l.module, testModule)
 	}
 }
 
@@ -274,7 +280,7 @@ func TestLoggerError(t *testing.T) {
 
 func TestLoggerDebugCtx(t *testing.T) {
 	l, buf := newTestLogger("test", DEBUG)
-	ctx := ContextWithRequestID(context.Background(), "ctx-rid")
+	ctx := ContextWithRequestID(context.Background(), testCtxRID)
 	l.DebugCtx(ctx, "ctx debug")
 	if !strings.Contains(buf.String(), "ctx debug") {
 		t.Errorf("DebugCtx output missing: %s", buf.String())
@@ -283,7 +289,7 @@ func TestLoggerDebugCtx(t *testing.T) {
 
 func TestLoggerInfoCtx(t *testing.T) {
 	l, buf := newTestLogger("test", DEBUG)
-	ctx := ContextWithRequestID(context.Background(), "ctx-rid")
+	ctx := ContextWithRequestID(context.Background(), testCtxRID)
 	l.InfoCtx(ctx, "ctx info")
 	if !strings.Contains(buf.String(), "ctx info") {
 		t.Errorf("InfoCtx output missing: %s", buf.String())
@@ -292,7 +298,7 @@ func TestLoggerInfoCtx(t *testing.T) {
 
 func TestLoggerWarnCtx(t *testing.T) {
 	l, buf := newTestLogger("test", DEBUG)
-	ctx := ContextWithRequestID(context.Background(), "ctx-rid")
+	ctx := ContextWithRequestID(context.Background(), testCtxRID)
 	l.WarnCtx(ctx, "ctx warn")
 	if !strings.Contains(buf.String(), "ctx warn") {
 		t.Errorf("WarnCtx output missing: %s", buf.String())
@@ -301,7 +307,7 @@ func TestLoggerWarnCtx(t *testing.T) {
 
 func TestLoggerErrorCtx(t *testing.T) {
 	l, buf := newTestLogger("test", DEBUG)
-	ctx := ContextWithRequestID(context.Background(), "ctx-rid")
+	ctx := ContextWithRequestID(context.Background(), testCtxRID)
 	l.ErrorCtx(ctx, "ctx error")
 	if !strings.Contains(buf.String(), "ctx error") {
 		t.Errorf("ErrorCtx output missing: %s", buf.String())
@@ -324,7 +330,7 @@ func TestNewHealthReporter(t *testing.T) {
 
 func TestHealthReporter_ReportHealthy(t *testing.T) {
 	hr := NewHealthReporter()
-	hr.Report("testmod", true, nil, "all good")
+	hr.Report("testmod", true, nil, testAllGood)
 	hr.mu.RLock()
 	defer hr.mu.RUnlock()
 	s, ok := hr.statuses["testmod"]
@@ -334,8 +340,8 @@ func TestHealthReporter_ReportHealthy(t *testing.T) {
 	if !s.Healthy {
 		t.Error("should be healthy")
 	}
-	if s.Message != "all good" {
-		t.Errorf("message = %q, want %q", s.Message, "all good")
+	if s.Message != testAllGood {
+		t.Errorf("message = %q, want %q", s.Message, testAllGood)
 	}
 }
 

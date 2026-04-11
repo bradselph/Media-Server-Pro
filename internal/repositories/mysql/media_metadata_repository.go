@@ -13,6 +13,8 @@ import (
 	"media-server-pro/internal/repositories"
 )
 
+const errQueryMediaMetadata = "failed to query media metadata: %w"
+
 // escapeLike escapes SQL LIKE meta-characters (% and _) and backslash so the value
 // can be safely used in a LIKE pattern with ESCAPE '\\'.
 func escapeLike(s string) string {
@@ -126,7 +128,7 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 		}
 
 		// Replace tags: delete old, insert new
-		if err := tx.Where("path = ?", path).Delete(&mediaTagRow{}).Error; err != nil {
+		if err := tx.Where(sqlPathEq, path).Delete(&mediaTagRow{}).Error; err != nil {
 			return fmt.Errorf("failed to delete old tags: %w", err)
 		}
 
@@ -147,18 +149,18 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 // Get retrieves media metadata by path
 func (r *MediaMetadataRepository) Get(ctx context.Context, path string) (*repositories.MediaMetadata, error) {
 	var row mediaMetadataRow
-	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlPathEq, path).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("media metadata not found: %s", path)
 		}
-		return nil, fmt.Errorf("failed to query media metadata: %w", err)
+		return nil, fmt.Errorf(errQueryMediaMetadata, err)
 	}
 
 	metadata := r.rowToMetadata(&row)
 
 	// Get tags
 	var tags []mediaTagRow
-	if err := r.db.WithContext(ctx).Where("path = ?", path).Find(&tags).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlPathEq, path).Find(&tags).Error; err != nil {
 		return nil, fmt.Errorf("failed to query tags: %w", err)
 	}
 	metadata.Tags = make([]string, len(tags))
@@ -171,7 +173,7 @@ func (r *MediaMetadataRepository) Get(ctx context.Context, path string) (*reposi
 
 // Delete removes media metadata
 func (r *MediaMetadataRepository) Delete(ctx context.Context, path string) error {
-	result := r.db.WithContext(ctx).Where("path = ?", path).Delete(&mediaMetadataRow{})
+	result := r.db.WithContext(ctx).Where(sqlPathEq, path).Delete(&mediaMetadataRow{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete media metadata: %w", result.Error)
 	}
@@ -186,7 +188,7 @@ func (r *MediaMetadataRepository) Delete(ctx context.Context, path string) error
 func (r *MediaMetadataRepository) List(ctx context.Context) (map[string]*repositories.MediaMetadata, error) {
 	var rows []mediaMetadataRow
 	if err := r.db.WithContext(ctx).Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("failed to query media metadata: %w", err)
+		return nil, fmt.Errorf(errQueryMediaMetadata, err)
 	}
 
 	results := make(map[string]*repositories.MediaMetadata, len(rows))
@@ -286,7 +288,7 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 
 	var rows []mediaMetadataRow
 	if err := query.Find(&rows).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to query media metadata: %w", err)
+		return nil, 0, fmt.Errorf(errQueryMediaMetadata, err)
 	}
 
 	// Convert rows and batch-load tags
@@ -410,7 +412,7 @@ func (r *MediaMetadataRepository) UpdateBlurHash(ctx context.Context, path, blur
 		return fmt.Errorf("database not available")
 	}
 	result := r.db.WithContext(ctx).Model(&mediaMetadataRow{}).
-		Where("path = ?", path).
+		Where(sqlPathEq, path).
 		Update("blur_hash", blurHash)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update blur_hash: %w", result.Error)

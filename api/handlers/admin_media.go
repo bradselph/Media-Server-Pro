@@ -280,13 +280,13 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 	newPath, err := h.applyAdminRenameIfNeeded(path, parsed.name)
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
 	if err := h.media.UpdateMetadata(newPath, parsed.updates); err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -312,7 +312,7 @@ func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 
 	if err := h.media.DeleteMedia(c.Request.Context(), path); err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

@@ -62,7 +62,7 @@ function getQualityName(height: number): string {
 function getSavedQualityPref(): number {
     try {
         const val = localStorage.getItem(QUALITY_PREF_KEY)
-        return val ? parseInt(val, 10) : 0
+        return val ? Number.parseInt(val, 10) : 0
     } catch {
         return 0
     }
@@ -160,7 +160,7 @@ export function useHLS(
         }
 
         // Re-validate after async import — component may have unmounted
-        if (!videoRef.value || !videoRef.value.isConnected) return
+        if (!videoRef.value?.isConnected) return
 
         if (!Hls.isSupported()) {
             hlsError.value = 'HLS not supported in this browser'
@@ -302,6 +302,53 @@ export function useHLS(
         })
     }
 
+    // Extracted poll body to avoid exceeding 4 levels of function nesting (typescript:S2004)
+    const consecutiveErrors = { count: 0 }
+    async function doPollCheck(id: string) {
+        if (document.hidden) return
+        if (Date.now() - pollStartTime > MAX_POLL_DURATION) {
+            jobRunning.value = false
+            hlsError.value = 'HLS generation timed out — try again later'
+            if (pollTimer) {
+                clearInterval(pollTimer)
+                pollTimer = null
+            }
+            return
+        }
+        try {
+            const updated = await hlsApi.check(id)
+            consecutiveErrors.count = 0
+            jobProgress.value = updated.progress
+            if (updated.available && updated.hls_url) {
+                jobRunning.value = false
+                hlsAvailable.value = true
+                hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
+                if (pollTimer) {
+                    clearInterval(pollTimer)
+                    pollTimer = null
+                }
+                const settings = await settingsApi.get().catch(() => null)
+                if (settings?.streaming?.adaptive !== false) await activateHLS()
+            } else if (updated.status !== 'running' && updated.status !== 'pending') {
+                jobRunning.value = false
+                if (pollTimer) {
+                    clearInterval(pollTimer)
+                    pollTimer = null
+                }
+            }
+        } catch {
+            consecutiveErrors.count++
+            if (consecutiveErrors.count >= MAX_CONSECUTIVE_ERRORS) {
+                jobRunning.value = false
+                hlsError.value = 'Lost connection to HLS service'
+                if (pollTimer) {
+                    clearInterval(pollTimer)
+                    pollTimer = null
+                }
+            }
+        }
+    }
+
     // Check HLS availability when media ID changes (debounced to prevent burst requests)
     watch(mediaId, (id) => {
         if (checkDebounce) {
@@ -334,53 +381,8 @@ export function useHLS(
 
                     // Poll for completion — skip while tab is hidden to avoid wasteful background requests
                     pollStartTime = Date.now()
-                    let consecutiveErrors = 0
-                    pollTimer = setInterval(async () => {
-                        if (document.hidden) return
-                        // Guard against infinite polling — stop after 30 minutes
-                        if (Date.now() - pollStartTime > MAX_POLL_DURATION) {
-                            jobRunning.value = false
-                            hlsError.value = 'HLS generation timed out — try again later'
-                            if (pollTimer) {
-                                clearInterval(pollTimer);
-                                pollTimer = null
-                            }
-                            return
-                        }
-                        try {
-                            const updated = await hlsApi.check(id)
-                            consecutiveErrors = 0
-                            jobProgress.value = updated.progress
-                            if (updated.available && updated.hls_url) {
-                                jobRunning.value = false
-                                hlsAvailable.value = true
-                                hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
-                                if (pollTimer) {
-                                    clearInterval(pollTimer)
-                                    pollTimer = null
-                                }
-                                // Auto-activate once generation completes (if adaptive is enabled)
-                                const s = await settingsApi.get().catch(() => null)
-                                if (s?.streaming?.adaptive !== false) await activateHLS()
-                            } else if (updated.status !== 'running' && updated.status !== 'pending') {
-                                jobRunning.value = false
-                                if (pollTimer) {
-                                    clearInterval(pollTimer)
-                                    pollTimer = null
-                                }
-                            }
-                        } catch {
-                            consecutiveErrors++
-                            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-                                jobRunning.value = false
-                                hlsError.value = 'Lost connection to HLS service'
-                                if (pollTimer) {
-                                    clearInterval(pollTimer);
-                                    pollTimer = null
-                                }
-                            }
-                        }
-                    }, 3000)
+                    consecutiveErrors.count = 0
+                    pollTimer = setInterval(() => doPollCheck(id), 3000)
                 }
             } catch {
                 // HLS not available or check failed — that's fine, use direct streaming

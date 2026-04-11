@@ -11,6 +11,13 @@ import (
 	"media-server-pro/internal/config"
 )
 
+const (
+	errNonexistentTask = "expected error for nonexistent task"
+	taskDisableTest    = "disable-test"
+	taskEnableTest     = "enable-test"
+	taskScheduleTest   = "schedule-test"
+)
+
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 	dir := t.TempDir()
@@ -117,7 +124,7 @@ func TestGetTask_NotFound(t *testing.T) {
 	m := newTestModule(t)
 	_, err := m.GetTask("nonexistent")
 	if err == nil {
-		t.Error("expected error for nonexistent task")
+		t.Error(errNonexistentTask)
 	}
 }
 
@@ -131,15 +138,15 @@ func TestDisableTask(t *testing.T) {
 	defer m.Stop(context.Background())
 
 	m.RegisterTask(TaskRegistration{
-		ID:       "disable-test",
+		ID:       taskDisableTest,
 		Name:     "Disable Test",
 		Schedule: 1 * time.Hour,
 		Func:     func(_ context.Context) error { return nil },
 	})
-	if err := m.DisableTask("disable-test"); err != nil {
+	if err := m.DisableTask(taskDisableTest); err != nil {
 		t.Fatalf("DisableTask error: %v", err)
 	}
-	info, _ := m.GetTask("disable-test")
+	info, _ := m.GetTask(taskDisableTest)
 	if info.Enabled {
 		t.Error("task should be disabled after DisableTask")
 	}
@@ -151,19 +158,19 @@ func TestEnableTask(t *testing.T) {
 	defer m.Stop(context.Background())
 
 	m.RegisterTask(TaskRegistration{
-		ID:       "enable-test",
+		ID:       taskEnableTest,
 		Name:     "Enable Test",
 		Schedule: 1 * time.Hour,
 		Func:     func(_ context.Context) error { return nil },
 	})
-	m.DisableTask("enable-test")
+	m.DisableTask(taskEnableTest)
 	// Wait for loop to notice and stop
 	time.Sleep(50 * time.Millisecond)
 
-	if err := m.EnableTask("enable-test"); err != nil {
+	if err := m.EnableTask(taskEnableTest); err != nil {
 		t.Fatalf("EnableTask error: %v", err)
 	}
-	info, _ := m.GetTask("enable-test")
+	info, _ := m.GetTask(taskEnableTest)
 	if !info.Enabled {
 		t.Error("task should be enabled after EnableTask")
 	}
@@ -176,7 +183,7 @@ func TestDisableTask_NotFound(t *testing.T) {
 
 	err := m.DisableTask("nonexistent")
 	if err == nil {
-		t.Error("expected error for nonexistent task")
+		t.Error(errNonexistentTask)
 	}
 }
 
@@ -187,7 +194,7 @@ func TestEnableTask_NotFound(t *testing.T) {
 
 	err := m.EnableTask("nonexistent")
 	if err == nil {
-		t.Error("expected error for nonexistent task")
+		t.Error(errNonexistentTask)
 	}
 }
 
@@ -232,7 +239,7 @@ func TestRunNow_NotFound(t *testing.T) {
 
 	err := m.RunNow("nonexistent")
 	if err == nil {
-		t.Error("expected error for nonexistent task")
+		t.Error(errNonexistentTask)
 	}
 }
 
@@ -243,15 +250,15 @@ func TestRunNow_NotFound(t *testing.T) {
 func TestUpdateSchedule(t *testing.T) {
 	m := newTestModule(t)
 	m.RegisterTask(TaskRegistration{
-		ID:       "schedule-test",
+		ID:       taskScheduleTest,
 		Name:     "Schedule Test",
 		Schedule: 1 * time.Hour,
 		Func:     func(_ context.Context) error { return nil },
 	})
-	if err := m.UpdateSchedule("schedule-test", 5*time.Minute); err != nil {
+	if err := m.UpdateSchedule(taskScheduleTest, 5*time.Minute); err != nil {
 		t.Fatalf("UpdateSchedule error: %v", err)
 	}
-	info, _ := m.GetTask("schedule-test")
+	info, _ := m.GetTask(taskScheduleTest)
 	if info.Schedule != (5 * time.Minute).String() {
 		t.Errorf("schedule = %q, want 5m0s", info.Schedule)
 	}
@@ -261,7 +268,7 @@ func TestUpdateSchedule_NotFound(t *testing.T) {
 	m := newTestModule(t)
 	err := m.UpdateSchedule("nonexistent", 5*time.Minute)
 	if err == nil {
-		t.Error("expected error for nonexistent task")
+		t.Error(errNonexistentTask)
 	}
 }
 
@@ -344,7 +351,7 @@ func TestStopTask_NotFound(t *testing.T) {
 	defer m.Stop(context.Background())
 	err := m.StopTask("nonexistent")
 	if err == nil {
-		t.Error("expected error for nonexistent task")
+		t.Error(errNonexistentTask)
 	}
 }
 

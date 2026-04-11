@@ -12,6 +12,10 @@ import (
 	"media-server-pro/internal/config"
 )
 
+const (
+	msgSourceNotFound = "Source not found"
+)
+
 // GetRemoteSources returns all configured remote media sources
 func (h *Handler) GetRemoteSources(c *gin.Context) {
 	if !h.checkRemoteMediaEnabled(c) {
@@ -129,7 +133,7 @@ func (h *Handler) GetRemoteSourceMedia(c *gin.Context) {
 
 	sourceMedia, err := h.remote.GetSourceMedia(sourceName)
 	if err != nil {
-		writeError(c, http.StatusNotFound, "Source not found")
+		writeError(c, http.StatusNotFound, msgSourceNotFound)
 		return
 	}
 
@@ -153,7 +157,7 @@ func (h *Handler) SyncRemoteSource(c *gin.Context) {
 	}
 
 	if !found {
-		writeError(c, http.StatusNotFound, "Source not found")
+		writeError(c, http.StatusNotFound, msgSourceNotFound)
 		return
 	}
 
@@ -180,7 +184,7 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 	}
 
 	if err := h.remote.RemoveSource(sourceName); err != nil {
-		writeError(c, http.StatusNotFound, "Source not found")
+		writeError(c, http.StatusNotFound, msgSourceNotFound)
 		return
 	}
 
@@ -219,7 +223,7 @@ func (h *Handler) CacheRemoteMedia(c *gin.Context) {
 	cached, err := h.remote.CacheMedia(req.URL, req.SourceName)
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

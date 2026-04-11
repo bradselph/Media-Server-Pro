@@ -7,36 +7,48 @@ import (
 	"media-server-pro/internal/config"
 )
 
+const (
+	testItemID1       = "item-1"
+	testSlaveID1      = "slave-1"
+	testConfigJSON    = "config.json"
+	testSlaveURL      = "https://slave.example.com"
+	testVideoPath     = "/videos/movie.mp4"
+	testMovieFilename = "movie.mp4"
+	testFmtID         = "ID = %q"
+	testFmtName       = "Name = %q"
+	testNodeA         = "Node A"
+)
+
 // ---------------------------------------------------------------------------
 // opaqueMediaID
 // ---------------------------------------------------------------------------
 
 func TestOpaqueMediaID_Deterministic(t *testing.T) {
-	id1 := opaqueMediaID("slave-1", "item-1")
-	id2 := opaqueMediaID("slave-1", "item-1")
+	id1 := opaqueMediaID(testSlaveID1, testItemID1)
+	id2 := opaqueMediaID(testSlaveID1, testItemID1)
 	if id1 != id2 {
 		t.Error("same inputs should produce same opaque ID")
 	}
 }
 
 func TestOpaqueMediaID_Length(t *testing.T) {
-	id := opaqueMediaID("slave-1", "item-1")
+	id := opaqueMediaID(testSlaveID1, testItemID1)
 	if len(id) != 32 {
 		t.Errorf("opaque ID should be 32 hex chars, got %d", len(id))
 	}
 }
 
 func TestOpaqueMediaID_DifferentSlaves(t *testing.T) {
-	id1 := opaqueMediaID("slave-1", "item-1")
-	id2 := opaqueMediaID("slave-2", "item-1")
+	id1 := opaqueMediaID(testSlaveID1, testItemID1)
+	id2 := opaqueMediaID("slave-2", testItemID1)
 	if id1 == id2 {
 		t.Error("different slaves should produce different IDs")
 	}
 }
 
 func TestOpaqueMediaID_DifferentItems(t *testing.T) {
-	id1 := opaqueMediaID("slave-1", "item-1")
-	id2 := opaqueMediaID("slave-1", "item-2")
+	id1 := opaqueMediaID(testSlaveID1, testItemID1)
+	id2 := opaqueMediaID(testSlaveID1, "item-2")
 	if id1 == id2 {
 		t.Error("different items should produce different IDs")
 	}
@@ -78,7 +90,7 @@ func TestSetHealth(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestValidateAPIKey_Empty(t *testing.T) {
-	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	cfg := config.NewManager(filepath.Join(t.TempDir(), testConfigJSON))
 	m := &Module{config: cfg}
 	if m.ValidateAPIKey("") {
 		t.Error("empty key should be rejected")
@@ -86,7 +98,7 @@ func TestValidateAPIKey_Empty(t *testing.T) {
 }
 
 func TestValidateAPIKey_NoConfiguredKeys(t *testing.T) {
-	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	cfg := config.NewManager(filepath.Join(t.TempDir(), testConfigJSON))
 	m := &Module{config: cfg}
 	if m.ValidateAPIKey("some-key") {
 		t.Error("should reject when no keys configured")
@@ -94,7 +106,7 @@ func TestValidateAPIKey_NoConfiguredKeys(t *testing.T) {
 }
 
 func TestValidateAPIKey_ValidKey(t *testing.T) {
-	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	cfg := config.NewManager(filepath.Join(t.TempDir(), testConfigJSON))
 	cfg.Update(func(c *config.Config) {
 		c.Receiver.APIKeys = []string{"key-1", "key-2", "key-3"}
 	})
@@ -105,7 +117,7 @@ func TestValidateAPIKey_ValidKey(t *testing.T) {
 }
 
 func TestValidateAPIKey_InvalidKey(t *testing.T) {
-	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	cfg := config.NewManager(filepath.Join(t.TempDir(), testConfigJSON))
 	cfg.Update(func(c *config.Config) {
 		c.Receiver.APIKeys = []string{"key-1", "key-2"}
 	})
@@ -121,20 +133,20 @@ func TestValidateAPIKey_InvalidKey(t *testing.T) {
 
 func TestRegisterRequest_Fields(t *testing.T) {
 	req := RegisterRequest{
-		SlaveID: "slave-1",
+		SlaveID: testSlaveID1,
 		Name:    "Test Slave",
-		BaseURL: "https://slave.example.com",
+		BaseURL: testSlaveURL,
 	}
-	if req.SlaveID != "slave-1" || req.Name != "Test Slave" || req.BaseURL != "https://slave.example.com" {
+	if req.SlaveID != testSlaveID1 || req.Name != "Test Slave" || req.BaseURL != testSlaveURL {
 		t.Error("RegisterRequest fields should be set correctly")
 	}
 }
 
 func TestCatalogItem_Fields(t *testing.T) {
 	item := CatalogItem{
-		ID:                 "item-1",
-		Path:               "/videos/movie.mp4",
-		Name:               "movie.mp4",
+		ID:                 testItemID1,
+		Path:               testVideoPath,
+		Name:               testMovieFilename,
 		MediaType:          "video",
 		Size:               1024 * 1024,
 		Duration:           120.5,
@@ -143,14 +155,14 @@ func TestCatalogItem_Fields(t *testing.T) {
 		Width:              1920,
 		Height:             1080,
 	}
-	if item.ID != "item-1" {
-		t.Errorf("ID = %q", item.ID)
+	if item.ID != testItemID1 {
+		t.Errorf(testFmtID, item.ID)
 	}
-	if item.Path != "/videos/movie.mp4" {
+	if item.Path != testVideoPath {
 		t.Errorf("Path = %q", item.Path)
 	}
-	if item.Name != "movie.mp4" {
-		t.Errorf("Name = %q", item.Name)
+	if item.Name != testMovieFilename {
+		t.Errorf(testFmtName, item.Name)
 	}
 	if item.MediaType != "video" {
 		t.Errorf("MediaType = %q", item.MediaType)
@@ -178,43 +190,43 @@ func TestCatalogItem_Fields(t *testing.T) {
 func TestMediaItem_Fields(t *testing.T) {
 	item := MediaItem{
 		ID:        "opaque-id",
-		SlaveID:   "slave-1",
-		SlaveName: "Node A",
-		Path:      "/videos/movie.mp4",
-		Name:      "movie.mp4",
+		SlaveID:   testSlaveID1,
+		SlaveName: testNodeA,
+		Path:      testVideoPath,
+		Name:      testMovieFilename,
 	}
 	if item.ID != "opaque-id" {
-		t.Errorf("ID = %q", item.ID)
+		t.Errorf(testFmtID, item.ID)
 	}
-	if item.SlaveID != "slave-1" {
+	if item.SlaveID != testSlaveID1 {
 		t.Errorf("SlaveID = %q", item.SlaveID)
 	}
-	if item.SlaveName != "Node A" {
+	if item.SlaveName != testNodeA {
 		t.Errorf("SlaveName = %q", item.SlaveName)
 	}
-	if item.Path != "/videos/movie.mp4" {
+	if item.Path != testVideoPath {
 		t.Errorf("Path = %q", item.Path)
 	}
-	if item.Name != "movie.mp4" {
-		t.Errorf("Name = %q", item.Name)
+	if item.Name != testMovieFilename {
+		t.Errorf(testFmtName, item.Name)
 	}
 }
 
 func TestSlaveNode_Fields(t *testing.T) {
 	node := SlaveNode{
-		ID:         "slave-1",
-		Name:       "Node A",
-		BaseURL:    "https://slave.example.com",
+		ID:         testSlaveID1,
+		Name:       testNodeA,
+		BaseURL:    testSlaveURL,
 		Status:     "online",
 		MediaCount: 42,
 	}
-	if node.ID != "slave-1" {
-		t.Errorf("ID = %q", node.ID)
+	if node.ID != testSlaveID1 {
+		t.Errorf(testFmtID, node.ID)
 	}
-	if node.Name != "Node A" {
-		t.Errorf("Name = %q", node.Name)
+	if node.Name != testNodeA {
+		t.Errorf(testFmtName, node.Name)
 	}
-	if node.BaseURL != "https://slave.example.com" {
+	if node.BaseURL != testSlaveURL {
 		t.Errorf("BaseURL = %q", node.BaseURL)
 	}
 	if node.Status != "online" {

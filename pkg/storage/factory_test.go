@@ -7,19 +7,26 @@ import (
 	"testing"
 )
 
+const (
+	testLocalRoot      = "/data/videos"
+	testIgnoredPath    = "/ignored"
+	testS3Endpoint     = "s3.example.com"
+	testAlreadySlash   = "already-slash/"
+)
+
 func TestNewBackend_LocalDefault(t *testing.T) {
 	var localCalled bool
 	f := &BackendFactory{
 		Config: StorageConfig{Backend: ""},
 		NewLocal: func(root string) (Backend, error) {
 			localCalled = true
-			if root != "/data/videos" {
+			if root != testLocalRoot {
 				t.Errorf("NewLocal root = %q, want /data/videos", root)
 			}
 			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
-	_, _ = f.NewBackend(context.Background(), "videos", "/data/videos")
+	_, _ = f.NewBackend(context.Background(), "videos", testLocalRoot)
 	if !localCalled {
 		t.Error("NewLocal was not called for empty backend config")
 	}
@@ -34,7 +41,7 @@ func TestNewBackend_LocalExplicit(t *testing.T) {
 			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
-	_, _ = f.NewBackend(context.Background(), "videos", "/data/videos")
+	_, _ = f.NewBackend(context.Background(), "videos", testLocalRoot)
 	if !localCalled {
 		t.Error("NewLocal was not called for backend=local")
 	}
@@ -58,7 +65,7 @@ func TestNewBackend_S3_DefaultPrefix(t *testing.T) {
 			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
-	_, _ = f.NewBackend(context.Background(), "videos", "/ignored")
+	_, _ = f.NewBackend(context.Background(), "videos", testIgnoredPath)
 	if gotPrefix != "videos/" {
 		t.Errorf("default prefix = %q, want %q", gotPrefix, "videos/")
 	}
@@ -70,7 +77,7 @@ func TestNewBackend_S3_CustomPrefix(t *testing.T) {
 		Config: StorageConfig{
 			Backend: "s3",
 			S3: S3Config{
-				Endpoint: "s3.example.com",
+				Endpoint: testS3Endpoint,
 				Bucket:   "mybucket",
 				Prefixes: map[string]string{"videos": "custom-prefix"},
 			},
@@ -80,7 +87,7 @@ func TestNewBackend_S3_CustomPrefix(t *testing.T) {
 			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
-	_, _ = f.NewBackend(context.Background(), "videos", "/ignored")
+	_, _ = f.NewBackend(context.Background(), "videos", testIgnoredPath)
 	if gotPrefix != "custom-prefix/" {
 		t.Errorf("custom prefix = %q, want %q", gotPrefix, "custom-prefix/")
 	}
@@ -92,9 +99,9 @@ func TestNewBackend_S3_CustomPrefixWithTrailingSlash(t *testing.T) {
 		Config: StorageConfig{
 			Backend: "s3",
 			S3: S3Config{
-				Endpoint: "s3.example.com",
+				Endpoint: testS3Endpoint,
 				Bucket:   "mybucket",
-				Prefixes: map[string]string{"videos": "already-slash/"},
+				Prefixes: map[string]string{"videos": testAlreadySlash},
 			},
 		},
 		NewS3: func(_ context.Context, _, _, _, _, _, prefix string, _ bool) (Backend, error) {
@@ -102,9 +109,9 @@ func TestNewBackend_S3_CustomPrefixWithTrailingSlash(t *testing.T) {
 			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
-	_, _ = f.NewBackend(context.Background(), "videos", "/ignored")
-	if gotPrefix != "already-slash/" {
-		t.Errorf("prefix with trailing slash = %q, want %q", gotPrefix, "already-slash/")
+	_, _ = f.NewBackend(context.Background(), "videos", testIgnoredPath)
+	if gotPrefix != testAlreadySlash {
+		t.Errorf("prefix with trailing slash = %q, want %q", gotPrefix, testAlreadySlash)
 	}
 }
 
@@ -117,7 +124,7 @@ func TestNewBackend_S3_PassesAllConfig(t *testing.T) {
 		Config: StorageConfig{
 			Backend: "s3",
 			S3: S3Config{
-				Endpoint:        "s3.example.com",
+				Endpoint:        testS3Endpoint,
 				Region:          "us-west-2",
 				AccessKeyID:     "AKID",
 				SecretAccessKey: "SKEY",
@@ -135,9 +142,9 @@ func TestNewBackend_S3_PassesAllConfig(t *testing.T) {
 			return nil, nil //nolint:nilnil // test stub; caller ignores the returned backend
 		},
 	}
-	_, _ = f.NewBackend(context.Background(), "uploads", "/ignored")
+	_, _ = f.NewBackend(context.Background(), "uploads", testIgnoredPath)
 
-	if gotEndpoint != "s3.example.com" {
+	if gotEndpoint != testS3Endpoint {
 		t.Errorf("endpoint = %q", gotEndpoint)
 	}
 	if gotRegion != "us-west-2" {
@@ -187,7 +194,7 @@ func TestNewBackend_S3Error(t *testing.T) {
 	f := &BackendFactory{
 		Config: StorageConfig{
 			Backend: "s3",
-			S3:      S3Config{Endpoint: "s3.example.com", Bucket: "b"},
+			S3:      S3Config{Endpoint: testS3Endpoint, Bucket: "b"},
 		},
 		NewS3: func(_ context.Context, _, _, _, _, _, _ string, _ bool) (Backend, error) {
 			return nil, fmt.Errorf("connection refused")

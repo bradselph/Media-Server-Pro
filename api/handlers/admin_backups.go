@@ -21,7 +21,7 @@ func (h *Handler) ListBackupsV2(c *gin.Context) {
 	backups, err := h.backup.ListBackups()
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 	writeSuccess(c, backups)
@@ -52,7 +52,7 @@ func (h *Handler) CreateBackupV2(c *gin.Context) {
 	})
 	if err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -72,7 +72,7 @@ func (h *Handler) RestoreBackup(c *gin.Context) {
 
 	if err := h.backup.RestoreBackup(backupID); err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -92,7 +92,7 @@ func (h *Handler) DeleteBackup(c *gin.Context) {
 
 	if err := h.backup.DeleteBackup(backupID); err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

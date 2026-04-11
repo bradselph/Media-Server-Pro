@@ -12,6 +12,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	sqlPlaylistIDEq     = "playlist_id = ?"
+	sqlOrderPositionAsc = "position ASC"
+)
+
 // PlaylistRepository implements repositories.PlaylistRepository using GORM
 type PlaylistRepository struct {
 	db *gorm.DB
@@ -46,7 +51,7 @@ func (r *PlaylistRepository) CreateWithItems(ctx context.Context, playlist *mode
 // Get retrieves a playlist by ID with its items
 func (r *PlaylistRepository) Get(ctx context.Context, id string) (*models.Playlist, error) {
 	var playlist models.Playlist
-	err := r.db.WithContext(ctx).First(&playlist, "id = ?", id).Error
+	err := r.db.WithContext(ctx).First(&playlist, sqlIDEq, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repositories.ErrPlaylistNotFound
@@ -57,8 +62,8 @@ func (r *PlaylistRepository) Get(ctx context.Context, id string) (*models.Playli
 	// Load playlist items
 	var items []models.PlaylistItem
 	err = r.db.WithContext(ctx).
-		Where("playlist_id = ?", id).
-		Order("position ASC").
+		Where(sqlPlaylistIDEq, id).
+		Order(sqlOrderPositionAsc).
 		Find(&items).Error
 	if err != nil {
 		return nil, err
@@ -71,7 +76,7 @@ func (r *PlaylistRepository) Get(ctx context.Context, id string) (*models.Playli
 // Update updates playlist metadata only (name, description, is_public, cover_image, modified_at).
 // Does not cascade to Items, avoiding overwriting concurrent item changes.
 func (r *PlaylistRepository) Update(ctx context.Context, playlist *models.Playlist) error {
-	return r.db.WithContext(ctx).Model(playlist).Where("id = ?", playlist.ID).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(playlist).Where(sqlIDEq, playlist.ID).Updates(map[string]interface{}{
 		"name":        playlist.Name,
 		"description": playlist.Description,
 		"user_id":     playlist.UserID,
@@ -86,10 +91,10 @@ func (r *PlaylistRepository) Update(ctx context.Context, playlist *models.Playli
 func (r *PlaylistRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Delete playlist items first
-		if err := tx.Where("playlist_id = ?", id).Delete(&models.PlaylistItem{}).Error; err != nil {
+		if err := tx.Where(sqlPlaylistIDEq, id).Delete(&models.PlaylistItem{}).Error; err != nil {
 			return err
 		}
-		result := tx.Delete(&models.Playlist{}, "id = ?", id)
+		result := tx.Delete(&models.Playlist{}, sqlIDEq, id)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -146,7 +151,7 @@ func (r *PlaylistRepository) batchLoadItems(ctx context.Context, playlists []*mo
 	var allItems []models.PlaylistItem
 	if err := r.db.WithContext(ctx).
 		Where("playlist_id IN ?", ids).
-		Order("position ASC").
+		Order(sqlOrderPositionAsc).
 		Find(&allItems).Error; err != nil {
 		return nil, fmt.Errorf("failed to load playlist items: %w", err)
 	}
@@ -168,13 +173,13 @@ func (r *PlaylistRepository) AddItem(ctx context.Context, item *models.PlaylistI
 
 // RemoveItem removes an item from a playlist by its ID
 func (r *PlaylistRepository) RemoveItem(ctx context.Context, itemID string) error {
-	return r.db.WithContext(ctx).Delete(&models.PlaylistItem{}, "id = ?", itemID).Error
+	return r.db.WithContext(ctx).Delete(&models.PlaylistItem{}, sqlIDEq, itemID).Error
 }
 
 // UpdateItem updates an existing playlist item (e.g. its position after a reorder).
 // Uses targeted Updates() instead of Save() to avoid overwriting unrelated fields.
 func (r *PlaylistRepository) UpdateItem(ctx context.Context, item *models.PlaylistItem) error {
-	return r.db.WithContext(ctx).Model(item).Where("id = ?", item.ID).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(item).Where(sqlIDEq, item.ID).Updates(map[string]interface{}{
 		"playlist_id": item.PlaylistID,
 		"media_id":    item.MediaID,
 		"media_path":  item.MediaPath,
@@ -187,8 +192,8 @@ func (r *PlaylistRepository) UpdateItem(ctx context.Context, item *models.Playli
 func (r *PlaylistRepository) GetItems(ctx context.Context, playlistID string) ([]*models.PlaylistItem, error) {
 	var items []*models.PlaylistItem
 	err := r.db.WithContext(ctx).
-		Where("playlist_id = ?", playlistID).
-		Order("position ASC").
+		Where(sqlPlaylistIDEq, playlistID).
+		Order(sqlOrderPositionAsc).
 		Find(&items).Error
 	return items, err
 }

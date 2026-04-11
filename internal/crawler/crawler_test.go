@@ -7,20 +7,27 @@ import (
 	"testing"
 )
 
+const (
+	testExampleURL     = "https://example.com"
+	testExamplePageURL = "https://example.com/page"
+	testStreamM3U8URL  = "https://cdn.example.com/stream.m3u8"
+	errFmtErrDisabled  = "expected errDisabled, got %v"
+)
+
 // ---------------------------------------------------------------------------
 // generateTargetID
 // ---------------------------------------------------------------------------
 
 func TestGenerateTargetID_Deterministic(t *testing.T) {
-	id1 := generateTargetID("https://example.com")
-	id2 := generateTargetID("https://example.com")
+	id1 := generateTargetID(testExampleURL)
+	id2 := generateTargetID(testExampleURL)
 	if id1 != id2 {
 		t.Error("same input should produce same ID")
 	}
 }
 
 func TestGenerateTargetID_Prefix(t *testing.T) {
-	id := generateTargetID("https://example.com")
+	id := generateTargetID(testExampleURL)
 	if !strings.HasPrefix(id, "ct_") {
 		t.Errorf("target ID should start with 'ct_': %s", id)
 	}
@@ -39,15 +46,15 @@ func TestGenerateTargetID_DifferentInputs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGenerateDiscoveryID_Deterministic(t *testing.T) {
-	id1 := generateDiscoveryID("https://cdn.example.com/stream.m3u8")
-	id2 := generateDiscoveryID("https://cdn.example.com/stream.m3u8")
+	id1 := generateDiscoveryID(testStreamM3U8URL)
+	id2 := generateDiscoveryID(testStreamM3U8URL)
 	if id1 != id2 {
 		t.Error("same input should produce same ID")
 	}
 }
 
 func TestGenerateDiscoveryID_Prefix(t *testing.T) {
-	id := generateDiscoveryID("https://cdn.example.com/stream.m3u8")
+	id := generateDiscoveryID(testStreamM3U8URL)
 	if !strings.HasPrefix(id, "cd_") {
 		t.Errorf("discovery ID should start with 'cd_': %s", id)
 	}
@@ -58,7 +65,7 @@ func TestGenerateDiscoveryID_Prefix(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolveHref_AbsoluteHTTPS(t *testing.T) {
-	base, _ := url.Parse("https://example.com/page")
+	base, _ := url.Parse(testExamplePageURL)
 	got := resolveHref("https://other.com/video", base)
 	if got != "https://other.com/video" {
 		t.Errorf("absolute URL should be returned as-is: %s", got)
@@ -66,7 +73,7 @@ func TestResolveHref_AbsoluteHTTPS(t *testing.T) {
 }
 
 func TestResolveHref_AbsoluteHTTP(t *testing.T) {
-	base, _ := url.Parse("https://example.com/page")
+	base, _ := url.Parse(testExamplePageURL)
 	got := resolveHref("http://other.com/video", base)
 	if got != "http://other.com/video" {
 		t.Errorf("absolute HTTP URL should be returned as-is: %s", got)
@@ -74,7 +81,7 @@ func TestResolveHref_AbsoluteHTTP(t *testing.T) {
 }
 
 func TestResolveHref_ProtocolRelative(t *testing.T) {
-	base, _ := url.Parse("https://example.com/page")
+	base, _ := url.Parse(testExamplePageURL)
 	got := resolveHref("//cdn.example.com/video", base)
 	if got != "https://cdn.example.com/video" {
 		t.Errorf("protocol-relative should inherit scheme: %s", got)
@@ -90,7 +97,7 @@ func TestResolveHref_RootRelative(t *testing.T) {
 }
 
 func TestResolveHref_JavaScript(t *testing.T) {
-	base, _ := url.Parse("https://example.com/page")
+	base, _ := url.Parse(testExamplePageURL)
 	got := resolveHref("javascript:void(0)", base)
 	if got != "" {
 		t.Errorf("javascript: should return empty: %s", got)
@@ -98,7 +105,7 @@ func TestResolveHref_JavaScript(t *testing.T) {
 }
 
 func TestResolveHref_Mailto(t *testing.T) {
-	base, _ := url.Parse("https://example.com/page")
+	base, _ := url.Parse(testExamplePageURL)
 	got := resolveHref("mailto:test@example.com", base)
 	if got != "" {
 		t.Errorf("mailto: should return empty: %s", got)
@@ -106,7 +113,7 @@ func TestResolveHref_Mailto(t *testing.T) {
 }
 
 func TestResolveHref_Fragment(t *testing.T) {
-	base, _ := url.Parse("https://example.com/page")
+	base, _ := url.Parse(testExamplePageURL)
 	got := resolveHref("#section", base)
 	if got != "" {
 		t.Errorf("fragment should return empty: %s", got)
@@ -204,9 +211,9 @@ func TestErrDisabled(t *testing.T) {
 
 func TestAddTarget_Disabled(t *testing.T) {
 	m := &Module{}
-	_, err := m.AddTarget("test", "https://example.com")
+	_, err := m.AddTarget("test", testExampleURL)
 	if !errors.Is(err, errDisabled) {
-		t.Errorf("expected errDisabled, got %v", err)
+		t.Errorf(errFmtErrDisabled, err)
 	}
 }
 
@@ -214,7 +221,7 @@ func TestRemoveTarget_Disabled(t *testing.T) {
 	m := &Module{}
 	err := m.RemoveTarget("id")
 	if !errors.Is(err, errDisabled) {
-		t.Errorf("expected errDisabled, got %v", err)
+		t.Errorf(errFmtErrDisabled, err)
 	}
 }
 
@@ -222,7 +229,7 @@ func TestGetTargets_Disabled(t *testing.T) {
 	m := &Module{}
 	_, err := m.GetTargets()
 	if !errors.Is(err, errDisabled) {
-		t.Errorf("expected errDisabled, got %v", err)
+		t.Errorf(errFmtErrDisabled, err)
 	}
 }
 
@@ -230,7 +237,7 @@ func TestGetDiscoveries_Disabled(t *testing.T) {
 	m := &Module{}
 	_, err := m.GetDiscoveries("pending")
 	if !errors.Is(err, errDisabled) {
-		t.Errorf("expected errDisabled, got %v", err)
+		t.Errorf(errFmtErrDisabled, err)
 	}
 }
 

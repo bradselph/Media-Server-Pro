@@ -85,7 +85,7 @@ func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.Sc
 		}
 
 		// Replace reasons: delete old, insert new
-		if err := tx.Where("path = ?", result.Path).Delete(&scanReasonRow{}).Error; err != nil {
+		if err := tx.Where(sqlPathEq, result.Path).Delete(&scanReasonRow{}).Error; err != nil {
 			return fmt.Errorf("failed to delete old reasons: %w", err)
 		}
 
@@ -106,7 +106,7 @@ func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.Sc
 // Get retrieves a scan result by path. Returns (nil, ErrScanResultNotFound) when no record exists.
 func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositories.ScanResult, error) {
 	var row scanResultRow
-	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlPathEq, path).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repositories.ErrScanResultNotFound
 		}
@@ -117,7 +117,7 @@ func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositor
 
 	// Get reasons
 	var reasons []scanReasonRow
-	if err := r.db.WithContext(ctx).Where("path = ?", path).Find(&reasons).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(sqlPathEq, path).Find(&reasons).Error; err != nil {
 		return nil, fmt.Errorf("failed to query reasons: %w", err)
 	}
 	result.Reasons = make([]string, len(reasons))
@@ -175,7 +175,7 @@ func (r *ScanResultRepository) MarkReviewed(ctx context.Context, path, reviewedB
 	now := time.Now()
 	result := r.db.WithContext(ctx).
 		Model(&scanResultRow{}).
-		Where("path = ?", path).
+		Where(sqlPathEq, path).
 		Updates(map[string]interface{}{
 			"needs_review":    false,
 			"reviewed_by":     reviewedBy,

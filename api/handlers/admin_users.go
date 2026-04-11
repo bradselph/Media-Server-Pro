@@ -84,7 +84,7 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 			return
 		}
 		h.log.Error("Failed to create user %s: %v", req.Username, err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 			return
 		}
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -190,7 +190,7 @@ func (h *Handler) AdminDeleteUser(c *gin.Context) {
 			return
 		}
 		h.log.Error("Failed to delete user %s: %v", username, err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -221,7 +221,7 @@ func (h *Handler) AdminChangePassword(c *gin.Context) {
 
 	if err := h.auth.SetPassword(c.Request.Context(), username, req.NewPassword); err != nil {
 		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 
@@ -255,7 +255,7 @@ func (h *Handler) AdminChangeOwnPassword(c *gin.Context) {
 			return
 		}
 		h.log.Error("Admin password change failed: %v", err)
-		writeError(c, http.StatusInternalServerError, "Internal server error")
+		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
 

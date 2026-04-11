@@ -30,6 +30,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const cdpRuntimeEvaluate = "Runtime.evaluate"
+
 // ---------- CDP message helpers ----------
 
 type cdpMsg struct {
@@ -171,7 +173,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	go func() {
 		for {
 			var msg cdpMsg
-			if readErr := conn.ReadJSON(&msg); readErr != nil {
+			if conn.ReadJSON(&msg) != nil {
 				close(events)
 				return
 			}
@@ -311,7 +313,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 					Headers map[string]string `json:"headers"`
 				} `json:"response"`
 			}
-			if unmarshalErr := json.Unmarshal(evt.Params, &p); unmarshalErr != nil {
+			if json.Unmarshal(evt.Params, &p) != nil {
 				continue
 			}
 
@@ -374,7 +376,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	sleep(ctx, 1*time.Second)
 
 	// --- 8. Get page title ---
-	titleRes, err := send("Runtime.evaluate", map[string]interface{}{
+	titleRes, err := send(cdpRuntimeEvaluate, map[string]interface{}{
 		"expression": "document.title",
 	})
 	if err == nil {
@@ -462,7 +464,7 @@ func (bd *browserDetector) handleAgeVerification(ctx context.Context, send func(
 		return '';
 	})()`
 
-	res, err := send("Runtime.evaluate", map[string]interface{}{
+	res, err := send(cdpRuntimeEvaluate, map[string]interface{}{
 		"expression": js,
 	})
 	if err != nil {
@@ -521,7 +523,7 @@ func (bd *browserDetector) triggerVideoPlayback(send func(string, interface{}) (
 		return clicked.join(',');
 	})()`
 
-	res, err := send("Runtime.evaluate", map[string]interface{}{
+	res, err := send(cdpRuntimeEvaluate, map[string]interface{}{
 		"expression": js,
 	})
 	if err != nil {
@@ -648,7 +650,7 @@ func (bd *browserDetector) extractEmbeddedURLs(
 		return JSON.stringify(unique);
 	})()`
 
-	res, err := send("Runtime.evaluate", map[string]interface{}{
+	res, err := send(cdpRuntimeEvaluate, map[string]interface{}{
 		"expression": js,
 	})
 	if err != nil {

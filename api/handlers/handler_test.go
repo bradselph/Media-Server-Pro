@@ -12,6 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	testVideoMp4 = "video.mp4"
+	testTestMp4  = "test.mp4"
+)
+
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -61,7 +66,7 @@ func TestSafeContentDisposition(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"video.mp4", `attachment; filename="video.mp4"`},
+		{testVideoMp4, `attachment; filename="video.mp4"`},
 		{`my"file.mp4`, `attachment; filename="myfile.mp4"`},
 		{"new\nline.mp4", `attachment; filename="newline.mp4"`},
 		{"ctrl\x01char.mp4", `attachment; filename="ctrlchar.mp4"`},
@@ -214,10 +219,10 @@ func TestIsPathUnderDirs(t *testing.T) {
 		dirs []string
 		want bool
 	}{
-		{filepath.Join(mediaDir, "video.mp4"), []string{mediaDir}, true},
-		{filepath.Join(mediaDir, "sub", "video.mp4"), []string{mediaDir}, true},
+		{filepath.Join(mediaDir, testVideoMp4), []string{mediaDir}, true},
+		{filepath.Join(mediaDir, "sub", testVideoMp4), []string{mediaDir}, true},
 		{filepath.Join(etcDir, "passwd"), []string{mediaDir}, false},
-		{filepath.Join(mediaDir, "video.mp4"), []string{""}, false},
+		{filepath.Join(mediaDir, testVideoMp4), []string{""}, false},
 		{mediaDir, []string{mediaDir}, true},                                        // dir matches itself
 		{filepath.Join(mediaDir, "..", "etc", "passwd"), []string{mediaDir}, false}, // traversal
 	}
@@ -235,7 +240,7 @@ func TestIsPathUnderDirs(t *testing.T) {
 
 func TestResolvePathToAbsoluteNoWrite_Absolute(t *testing.T) {
 	dir := t.TempDir()
-	fpath := filepath.Join(dir, "test.mp4")
+	fpath := filepath.Join(dir, testTestMp4)
 	os.WriteFile(fpath, []byte("test"), 0o600)
 
 	result, err := resolvePathToAbsoluteNoWrite(fpath, []string{dir})
@@ -249,10 +254,10 @@ func TestResolvePathToAbsoluteNoWrite_Absolute(t *testing.T) {
 
 func TestResolvePathToAbsoluteNoWrite_Relative(t *testing.T) {
 	dir := t.TempDir()
-	fpath := filepath.Join(dir, "test.mp4")
+	fpath := filepath.Join(dir, testTestMp4)
 	os.WriteFile(fpath, []byte("test"), 0o600)
 
-	result, err := resolvePathToAbsoluteNoWrite("test.mp4", []string{dir})
+	result, err := resolvePathToAbsoluteNoWrite(testTestMp4, []string{dir})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -16,7 +16,10 @@ import (
 	"media-server-pro/internal/logger"
 )
 
-const maxRequestIDLen = 64
+const (
+	maxRequestIDLen = 64
+	headerRequestID = "X-Request-ID"
+)
 
 // sanitizeRequestID truncates to maxRequestIDLen and strips control/non-printable
 // characters to prevent log injection via X-Request-ID.
@@ -87,18 +90,18 @@ func IsTrustedProxy(remoteAddr string) bool {
 func GinRequestID() gin.HandlerFunc {
 	var counter uint64
 	return func(c *gin.Context) {
-		requestID := c.GetHeader("X-Request-ID")
+		requestID := c.GetHeader(headerRequestID)
 		if requestID == "" {
 			id := atomic.AddUint64(&counter, 1)
 			requestID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
-			c.Header("X-Request-ID", requestID)
+			c.Header(headerRequestID, requestID)
 		} else {
 			requestID = sanitizeRequestID(requestID)
 			if requestID == "" {
 				id := atomic.AddUint64(&counter, 1)
 				requestID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
 			}
-			c.Header("X-Request-ID", requestID)
+			c.Header(headerRequestID, requestID)
 		}
 		c.Set(string(RequestIDKey), requestID)
 		c.Request = c.Request.WithContext(logger.ContextWithRequestID(c.Request.Context(), requestID))

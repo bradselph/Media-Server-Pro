@@ -11,10 +11,17 @@ import (
 	"media-server-pro/internal/config"
 )
 
+const (
+	testBypassCIDR     = "10.0.0.0/8"
+	testRemoteAddr     = "203.0.113.1:1234"
+	testPublicIP       = "203.0.113.1"
+	testLoopbackAddr   = "127.0.0.1:1234"
+)
+
 func newTestAgeGate(enabled bool) *AgeGate {
 	return NewAgeGate(config.AgeGateConfig{
 		Enabled:      enabled,
-		BypassIPs:    []string{"10.0.0.0/8"},
+		BypassIPs:    []string{testBypassCIDR},
 		IPVerifyTTL:  24 * time.Hour,
 		CookieName:   "age_verified",
 		CookieMaxAge: 365 * 24 * 60 * 60,
@@ -38,7 +45,7 @@ func TestNewAgeGate(t *testing.T) {
 func TestNewAgeGate_InvalidCIDR(t *testing.T) {
 	ag := NewAgeGate(config.AgeGateConfig{
 		Enabled:   true,
-		BypassIPs: []string{"invalid-cidr", "10.0.0.0/8"},
+		BypassIPs: []string{"invalid-cidr", testBypassCIDR},
 	})
 	if len(ag.bypassNetworks) != 1 {
 		t.Errorf("should skip invalid CIDR, got %d networks", len(ag.bypassNetworks))
@@ -89,7 +96,7 @@ func TestIsVerified_BypassIP(t *testing.T) {
 func TestIsVerified_NonBypassIP_NoCookie(t *testing.T) {
 	ag := newTestAgeGate(true)
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "203.0.113.1:1234"
+	req.RemoteAddr = testRemoteAddr
 	if ag.IsVerified(req) {
 		t.Error("non-bypass IP without cookie should not be verified")
 	}
@@ -98,7 +105,7 @@ func TestIsVerified_NonBypassIP_NoCookie(t *testing.T) {
 func TestIsVerified_WithCookie(t *testing.T) {
 	ag := newTestAgeGate(true)
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "203.0.113.1:1234"
+	req.RemoteAddr = testRemoteAddr
 	req.AddCookie(&http.Cookie{Name: "age_verified", Value: "1"})
 	if !ag.IsVerified(req) {
 		t.Error("request with age_verified cookie should be verified")
@@ -108,7 +115,7 @@ func TestIsVerified_WithCookie(t *testing.T) {
 func TestIsVerified_WithWrongCookieValue(t *testing.T) {
 	ag := newTestAgeGate(true)
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "203.0.113.1:1234"
+	req.RemoteAddr = testRemoteAddr
 	req.AddCookie(&http.Cookie{Name: "age_verified", Value: "0"})
 	if ag.IsVerified(req) {
 		t.Error("cookie with value '0' should not verify")
@@ -156,7 +163,7 @@ func TestIsBypass(t *testing.T) {
 	if !ag.isBypass("10.0.0.1") {
 		t.Error("10.0.0.1 should be bypass")
 	}
-	if ag.isBypass("203.0.113.1") {
+	if ag.isBypass(testPublicIP) {
 		t.Error("203.0.113.1 should not be bypass")
 	}
 	if ag.isBypass("invalid") {
@@ -202,7 +209,7 @@ func TestGinStatusHandler(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/status", nil)
-	req.RemoteAddr = "203.0.113.1:1234"
+	req.RemoteAddr = testRemoteAddr
 	r.ServeHTTP(w, req)
 
 	if w.Code != 200 {
@@ -217,7 +224,7 @@ func TestGinVerifyHandler(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/verify", nil)
-	req.RemoteAddr = "203.0.113.1:1234"
+	req.RemoteAddr = testRemoteAddr
 	r.ServeHTTP(w, req)
 
 	if w.Code != 200 {
@@ -238,7 +245,7 @@ func TestGinVerifyHandler(t *testing.T) {
 
 	// Check IP was recorded
 	ag.mu.RLock()
-	_, ok := ag.verifiedIPs["203.0.113.1"]
+	_, ok := ag.verifiedIPs[testPublicIP]
 	ag.mu.RUnlock()
 	if !ok {
 		t.Error("IP should be recorded after verify")
@@ -252,14 +259,14 @@ func TestGinVerifyHandler(t *testing.T) {
 func TestExtractClientIP(t *testing.T) {
 	// Direct connection
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "203.0.113.1:1234"
-	if got := extractClientIP(req); got != "203.0.113.1" {
+	req.RemoteAddr = testRemoteAddr
+	if got := extractClientIP(req); got != testPublicIP {
 		t.Errorf("direct: got %q", got)
 	}
 
 	// Via trusted proxy with X-Forwarded-For
 	req = httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "127.0.0.1:1234"
+	req.RemoteAddr = testLoopbackAddr
 	req.Header.Set("X-Forwarded-For", "203.0.113.50, 10.0.0.1")
 	if got := extractClientIP(req); got != "203.0.113.50" {
 		t.Errorf("XFF via trusted proxy: got %q, want 203.0.113.50", got)
@@ -284,7 +291,7 @@ func TestParseBypassCIDR(t *testing.T) {
 		input string
 		ok    bool
 	}{
-		{"10.0.0.0/8", true},
+		{testBypassCIDR, true},
 		{"192.168.1.1", true},
 		{"::1", true},
 		{"", false},
@@ -312,7 +319,7 @@ func TestAgeGateSecure(t *testing.T) {
 
 	// X-Forwarded-Proto — must come from a trusted proxy IP
 	req = httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "127.0.0.1:1234"
+	req.RemoteAddr = testLoopbackAddr
 	req.Header.Set("X-Forwarded-Proto", "https")
 	if !ageGateSecure(req) {
 		t.Error("X-Forwarded-Proto: https should be secure")
@@ -320,7 +327,7 @@ func TestAgeGateSecure(t *testing.T) {
 
 	// Cloudflare — must come from a trusted proxy IP
 	req = httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "127.0.0.1:1234"
+	req.RemoteAddr = testLoopbackAddr
 	req.Header.Set("Cf-Visitor", `{"scheme":"https"}`)
 	if !ageGateSecure(req) {
 		t.Error("Cf-Visitor with https should be secure")

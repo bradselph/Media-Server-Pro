@@ -36,6 +36,11 @@ const (
 	headerContentRange       = "Content-Range"
 	headerContentDisposition = "Content-Disposition"
 	errCloseFileFmt          = "failed to close file: %v"
+	errStatFile              = "failed to stat file: %w"
+	errOpenFile              = "failed to open file: %w"
+	errReadFile              = "read error: %w"
+	errClientDisconnected    = "Client disconnected during stream: %v"
+	errSeekFile              = "failed to seek: %w"
 )
 
 // staleSessionTimeout is the maximum age of an active session's LastUpdate before
@@ -227,7 +232,7 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 			if errors.Is(err, storage.ErrNotFound) {
 				return ErrFileNotFound
 			}
-			return fmt.Errorf("failed to stat file: %w", err)
+			return fmt.Errorf(errStatFile, err)
 		}
 		fileSize = info.Size
 	} else {
@@ -236,7 +241,7 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 			if os.IsNotExist(err) {
 				return ErrFileNotFound
 			}
-			return fmt.Errorf("failed to stat file: %w", err)
+			return fmt.Errorf(errStatFile, err)
 		}
 		fileSize = fi.Size()
 	}
@@ -289,7 +294,7 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 			if errors.Is(openErr, storage.ErrNotFound) {
 				return ErrFileNotFound
 			}
-			return fmt.Errorf("failed to open file: %w", openErr)
+			return fmt.Errorf(errOpenFile, openErr)
 		}
 		defer func() { _ = f.Close() }()
 		return m.streamContentSeeker(w, f, start, end, chunkSize, session)
@@ -301,7 +306,7 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 		if os.IsNotExist(err) {
 			return ErrFileNotFound
 		}
-		return fmt.Errorf("failed to open file: %w", err)
+		return fmt.Errorf(errOpenFile, err)
 	}
 	defer func() {
 		if err := file.Close(); err != nil {
@@ -499,7 +504,7 @@ func (m *Module) streamFromReader(w http.ResponseWriter, reader io.Reader, total
 			if accumulatedBytes > 0 {
 				m.updateSessionStats(session.ID, accumulatedBytes)
 			}
-			return fmt.Errorf("read error: %w", err)
+			return fmt.Errorf(errReadFile, err)
 		}
 		if n == 0 {
 			break
@@ -513,7 +518,7 @@ func (m *Module) streamFromReader(w http.ResponseWriter, reader io.Reader, total
 				if accumulatedBytes > 0 {
 					m.updateSessionStats(session.ID, accumulatedBytes)
 				}
-				m.log.Debug("Client disconnected during stream: %v", err)
+				m.log.Debug(errClientDisconnected, err)
 				return nil
 			}
 			totalWritten += written
@@ -537,7 +542,7 @@ func (m *Module) streamFromReader(w http.ResponseWriter, reader io.Reader, total
 // Same as streamContent but accepts io.ReadSeeker instead of *os.File.
 func (m *Module) streamContentSeeker(w http.ResponseWriter, reader io.ReadSeeker, start, end, chunkSize int64, session *models.StreamSession) error {
 	if _, err := reader.Seek(start, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek: %w", err)
+		return fmt.Errorf(errSeekFile, err)
 	}
 
 	bufInterface := m.bufferPool.Get()
@@ -557,7 +562,7 @@ func (m *Module) streamContentSeeker(w http.ResponseWriter, reader io.ReadSeeker
 			if accumulatedBytes > 0 {
 				m.updateSessionStats(session.ID, accumulatedBytes)
 			}
-			return fmt.Errorf("read error: %w", err)
+			return fmt.Errorf(errReadFile, err)
 		}
 		if n == 0 {
 			break
@@ -571,7 +576,7 @@ func (m *Module) streamContentSeeker(w http.ResponseWriter, reader io.ReadSeeker
 				if accumulatedBytes > 0 {
 					m.updateSessionStats(session.ID, accumulatedBytes)
 				}
-				m.log.Debug("Client disconnected during stream: %v", err)
+				m.log.Debug(errClientDisconnected, err)
 				return nil
 			}
 			totalWritten += written
@@ -598,7 +603,7 @@ func (m *Module) streamContentSeeker(w http.ResponseWriter, reader io.ReadSeeker
 func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end, chunkSize int64, session *models.StreamSession) error {
 	// Seek to start position
 	if _, err := file.Seek(start, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek: %w", err)
+		return fmt.Errorf(errSeekFile, err)
 	}
 
 	// Get buffer from pool to prevent memory exhaustion
@@ -621,7 +626,7 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 			if accumulatedBytes > 0 {
 				m.updateSessionStats(session.ID, accumulatedBytes)
 			}
-			return fmt.Errorf("read error: %w", err)
+			return fmt.Errorf(errReadFile, err)
 		}
 		if n == 0 {
 			break
@@ -637,7 +642,7 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 				if accumulatedBytes > 0 {
 					m.updateSessionStats(session.ID, accumulatedBytes)
 				}
-				m.log.Debug("Client disconnected during stream: %v", err)
+				m.log.Debug(errClientDisconnected, err)
 				return nil
 			}
 			totalWritten += written
@@ -797,7 +802,7 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 			if errors.Is(err, storage.ErrNotFound) {
 				return ErrFileNotFound
 			}
-			return fmt.Errorf("failed to stat file: %w", err)
+			return fmt.Errorf(errStatFile, err)
 		}
 		fileSize = info.Size
 	} else {
@@ -807,7 +812,7 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 			if os.IsNotExist(err) {
 				return ErrFileNotFound
 			}
-			return fmt.Errorf("failed to stat file: %w", err)
+			return fmt.Errorf(errStatFile, err)
 		}
 		fileSize = fi.Size()
 	}
@@ -845,12 +850,12 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 		// Fallback: open full file from storage backend
 		f, openErr := m.store.Open(ctx, relPath)
 		if openErr != nil {
-			return fmt.Errorf("failed to open file: %w", openErr)
+			return fmt.Errorf(errOpenFile, openErr)
 		}
 		defer func() { _ = f.Close() }()
 		if start > 0 {
 			if _, seekErr := f.Seek(start, io.SeekStart); seekErr != nil {
-				return fmt.Errorf("failed to seek: %w", seekErr)
+				return fmt.Errorf(errSeekFile, seekErr)
 			}
 		}
 		_, copyErr := io.CopyN(w, f, end-start+1)
@@ -881,13 +886,13 @@ func (m *Module) openFileForDownload(path string) (*os.File, int64, error) {
 		if os.IsNotExist(err) {
 			return nil, 0, ErrFileNotFound
 		}
-		return nil, 0, fmt.Errorf("failed to open file: %w", err)
+		return nil, 0, fmt.Errorf(errOpenFile, err)
 	}
 	fileInfo, err := file.Stat()
 	if err != nil {
 		// Best-effort close on error
 		_ = file.Close()
-		return nil, 0, fmt.Errorf("failed to stat file: %w", err)
+		return nil, 0, fmt.Errorf(errStatFile, err)
 	}
 	return file, fileInfo.Size(), nil
 }
@@ -930,7 +935,7 @@ func (m *Module) setDownloadHeaders(w http.ResponseWriter, filename, contentType
 func (m *Module) streamFileChunked(w http.ResponseWriter, file *os.File, filename string, start, end int64) error {
 	if start > 0 {
 		if _, err := file.Seek(start, io.SeekStart); err != nil {
-			return fmt.Errorf("failed to seek: %w", err)
+			return fmt.Errorf(errSeekFile, err)
 		}
 	}
 

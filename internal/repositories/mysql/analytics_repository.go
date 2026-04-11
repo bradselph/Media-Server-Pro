@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const sqlOrderTimestampDesc = "timestamp DESC"
+
 // AnalyticsRepository implements repositories.AnalyticsRepository using GORM
 type AnalyticsRepository struct {
 	db *gorm.DB
@@ -62,7 +64,7 @@ func (r *AnalyticsRepository) List(ctx context.Context, filter repositories.Anal
 	if filter.Offset > 0 {
 		query = query.Offset(filter.Offset)
 	}
-	query = query.Order("timestamp DESC")
+	query = query.Order(sqlOrderTimestampDesc)
 	if err := query.Find(&events).Error; err != nil {
 		return nil, err
 	}
@@ -77,7 +79,7 @@ func (r *AnalyticsRepository) GetByMediaID(ctx context.Context, mediaID string) 
 	var events []*models.AnalyticsEvent
 	err := r.db.WithContext(ctx).
 		Where("media_id = ?", mediaID).
-		Order("timestamp DESC").
+		Order(sqlOrderTimestampDesc).
 		Limit(defaultAnalyticsQueryLimit).
 		Find(&events).Error
 	return events, err
@@ -88,7 +90,7 @@ func (r *AnalyticsRepository) GetByUserID(ctx context.Context, userID string) ([
 	var events []*models.AnalyticsEvent
 	err := r.db.WithContext(ctx).
 		Where("user_id = ?", userID).
-		Order("timestamp DESC").
+		Order(sqlOrderTimestampDesc).
 		Limit(defaultAnalyticsQueryLimit).
 		Find(&events).Error
 	return events, err

@@ -51,7 +51,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.1.99"
+	Version   = "1.1.103"
 	BuildDate = ""
 )
 

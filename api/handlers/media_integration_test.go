@@ -8,6 +8,11 @@ import (
 	"media-server-pro/internal/testutil"
 )
 
+const (
+	fmtExpect200       = "expected 200, got %d"
+	msgExpectSuccessTrue = "expected success=true, got %v"
+)
+
 // TestListMedia_Empty tests listing media when no files exist.
 func TestListMedia_Empty(t *testing.T) {
 	ts := testutil.NewTestServer(t)
@@ -17,10 +22,10 @@ func TestListMedia_Empty(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	if result["success"] != true {
-		t.Fatalf("expected success=true, got %v", result["success"])
+		t.Fatalf(msgExpectSuccessTrue, result["success"])
 	}
 
 	data, ok := result["data"].(map[string]any)
@@ -54,7 +59,7 @@ func TestListMedia_WithPagination(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	data, _ := result["data"].(map[string]any)
 	if data["total_pages"] == nil {
@@ -71,10 +76,10 @@ func TestListMedia_FilterByType(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	if result["success"] != true {
-		t.Errorf("expected success=true, got %v", result["success"])
+		t.Errorf(msgExpectSuccessTrue, result["success"])
 	}
 }
 
@@ -87,7 +92,7 @@ func TestListMedia_FilterBySearch(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	data, _ := result["data"].(map[string]any)
 	items, _ := data["items"].([]any)
@@ -120,11 +125,11 @@ func TestListMedia_LimitClamping(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	// Even with a large limit, response should succeed (limit clamped to 500 internally).
 	if result["success"] != true {
-		t.Errorf("expected success=true, got %v", result["success"])
+		t.Errorf(msgExpectSuccessTrue, result["success"])
 	}
 }
 
@@ -150,10 +155,10 @@ func TestGetMediaStats(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	if result["success"] != true {
-		t.Fatalf("expected success=true, got %v", result["success"])
+		t.Fatalf(msgExpectSuccessTrue, result["success"])
 	}
 }
 
@@ -179,10 +184,10 @@ func TestGetCategories(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	if result["success"] != true {
-		t.Errorf("expected success=true, got %v", result["success"])
+		t.Errorf(msgExpectSuccessTrue, result["success"])
 	}
 }
 
@@ -195,7 +200,7 @@ func TestGetBatchMedia_EmptyIDs(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	data, _ := result["data"].(map[string]any)
 	items, ok := data["items"].(map[string]any)
@@ -216,7 +221,7 @@ func TestGetBatchMedia_WithIDs(t *testing.T) {
 	result := ts.ParseJSON(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	data, _ := result["data"].(map[string]any)
 	items, ok := data["items"].(map[string]any)
@@ -245,7 +250,7 @@ func TestGetBatchMedia_IDLimit(t *testing.T) {
 
 	resp := ts.Request("GET", "/api/media/batch?ids="+ids, nil)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf(fmtExpect200, resp.StatusCode)
 	}
 	resp.Body.Close()
 }

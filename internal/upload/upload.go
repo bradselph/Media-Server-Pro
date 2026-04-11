@@ -46,6 +46,11 @@ const (
 	UploadStatusFailed    UploadStatus = "failed"
 )
 
+const (
+	fmtDeduplicateName = "%s_%d%s"
+	mimeOctetStream    = "application/octet-stream"
+)
+
 // MediaType represents the kind of media (replaces primitive string).
 type MediaType string
 
@@ -349,14 +354,14 @@ func (m *Module) uniqueRemoteKey(ctx context.Context, dir, filename string) stri
 	}
 
 	for i := 1; i < 1000; i++ {
-		relPath = try(fmt.Sprintf("%s_%d%s", base, i, ext))
+		relPath = try(fmt.Sprintf(fmtDeduplicateName, base, i, ext))
 		if _, err := m.store.Stat(ctx, relPath); err != nil {
 			return relPath
 		}
 	}
 
 	// Timestamp fallback for guaranteed uniqueness.
-	return try(fmt.Sprintf("%s_%d%s", base, time.Now().UnixNano(), ext))
+	return try(fmt.Sprintf(fmtDeduplicateName, base, time.Now().UnixNano(), ext))
 }
 
 // progressReader wraps an io.Reader and updates an upload Progress as bytes
@@ -591,16 +596,16 @@ func (m *Module) isAllowedExtension(ext string) bool {
 // isContentTypeAllowed checks that the detected MIME type is compatible with the expected media type.
 // This prevents uploading disguised files (e.g. an HTML file renamed to .mp4).
 func (m *Module) isContentTypeAllowed(detected string, expected MediaType) bool {
-	// application/octet-stream is the fallback for unknown binary — always allow since
+	// mimeOctetStream is the fallback for unknown binary — always allow since
 	// many media formats aren't recognized by http.DetectContentType.
-	if detected == "application/octet-stream" {
+	if detected == mimeOctetStream {
 		return true
 	}
 	switch expected {
 	case MediaTypeVideo:
-		return strings.HasPrefix(detected, "video/") || strings.HasPrefix(detected, "audio/") || detected == "application/octet-stream"
+		return strings.HasPrefix(detected, "video/") || strings.HasPrefix(detected, "audio/") || detected == mimeOctetStream
 	case MediaTypeAudio:
-		return strings.HasPrefix(detected, "audio/") || detected == "application/ogg" || detected == "application/octet-stream"
+		return strings.HasPrefix(detected, "audio/") || detected == "application/ogg" || detected == mimeOctetStream
 	default:
 		// Unknown media type — reject HTML/JS/XML which are the dangerous ones.
 		return !strings.HasPrefix(detected, "text/html") && !strings.HasPrefix(detected, "text/xml") &&
@@ -630,7 +635,7 @@ func (m *Module) createUniqueUploadFile(destDir, filename string) (string, *os.F
 
 	// Try numbered variants
 	for i := 1; i < 1000; i++ {
-		destPath = filepath.Join(destDir, fmt.Sprintf("%s_%d%s", base, i, ext))
+		destPath = filepath.Join(destDir, fmt.Sprintf(fmtDeduplicateName, base, i, ext))
 		tempPath = destPath + ".tmp"
 
 		file, err = os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -643,7 +648,7 @@ func (m *Module) createUniqueUploadFile(destDir, filename string) (string, *os.F
 	}
 
 	// Fallback: use nanosecond timestamp for guaranteed uniqueness
-	destPath = filepath.Join(destDir, fmt.Sprintf("%s_%d%s", base, time.Now().UnixNano(), ext))
+	destPath = filepath.Join(destDir, fmt.Sprintf(fmtDeduplicateName, base, time.Now().UnixNano(), ext))
 	tempPath = destPath + ".tmp"
 
 	file, err = os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)

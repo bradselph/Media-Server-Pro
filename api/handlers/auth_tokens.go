@@ -7,6 +7,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	timeFormatRFC3339Ext = "2006-01-02T15:04:05Z07:00"
+)
+
 // ListAPITokens returns the user's API tokens (without the raw token value).
 func (h *Handler) ListAPITokens(c *gin.Context) {
 	session := RequireSession(c)
@@ -32,13 +36,13 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 		v := tokenView{
 			ID:        t.ID,
 			Name:      t.Name,
-			CreatedAt: t.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			CreatedAt: t.CreatedAt.Format(timeFormatRFC3339Ext),
 		}
 		if t.LastUsedAt != nil {
-			v.LastUsedAt = new(t.LastUsedAt.Format("2006-01-02T15:04:05Z07:00"))
+			v.LastUsedAt = new(t.LastUsedAt.Format(timeFormatRFC3339Ext))
 		}
 		if t.ExpiresAt != nil {
-			v.ExpiresAt = new(t.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"))
+			v.ExpiresAt = new(t.ExpiresAt.Format(timeFormatRFC3339Ext))
 		}
 		views[i] = v
 	}
@@ -79,10 +83,10 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		"id":         rec.ID,
 		"name":       rec.Name,
 		"token":      raw,
-		"created_at": rec.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"created_at": rec.CreatedAt.Format(timeFormatRFC3339Ext),
 	}
 	if rec.ExpiresAt != nil {
-		resp["expires_at"] = rec.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")
+		resp["expires_at"] = rec.ExpiresAt.Format(timeFormatRFC3339Ext)
 	}
 	writeSuccess(c, resp)
 }

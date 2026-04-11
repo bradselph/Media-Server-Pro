@@ -9,6 +9,8 @@ import (
 	"media-server-pro/internal/logger"
 )
 
+const testMediaPath = "/test.mp4"
+
 // ---------------------------------------------------------------------------
 // setFinalStatus — extended cases
 // ---------------------------------------------------------------------------
@@ -247,11 +249,11 @@ func TestGetCachedResult_Hit(t *testing.T) {
 		results: make(map[string]*ValidationResult),
 		mu:      sync.RWMutex{},
 	}
-	m.results["/test.mp4"] = &ValidationResult{
+	m.results[testMediaPath] = &ValidationResult{
 		Status:      StatusValidated,
 		ValidatedAt: time.Now(),
 	}
-	result, ok := m.getCachedResult("/test.mp4")
+	result, ok := m.getCachedResult(testMediaPath)
 	if !ok {
 		t.Fatal("cache hit should return true")
 	}
@@ -286,8 +288,8 @@ func TestGetResult(t *testing.T) {
 		results: make(map[string]*ValidationResult),
 		mu:      sync.RWMutex{},
 	}
-	m.results["/test.mp4"] = &ValidationResult{Status: StatusValidated}
-	result, ok := m.GetResult("/test.mp4")
+	m.results[testMediaPath] = &ValidationResult{Status: StatusValidated}
+	result, ok := m.GetResult(testMediaPath)
 	if !ok || result.Status != StatusValidated {
 		t.Error("GetResult should find stored result")
 	}
@@ -327,9 +329,9 @@ func TestClearResult(t *testing.T) {
 		results: make(map[string]*ValidationResult),
 		mu:      sync.RWMutex{},
 	}
-	m.results["/test.mp4"] = &ValidationResult{Status: StatusValidated}
-	m.ClearResult("/test.mp4")
-	_, ok := m.GetResult("/test.mp4")
+	m.results[testMediaPath] = &ValidationResult{Status: StatusValidated}
+	m.ClearResult(testMediaPath)
+	_, ok := m.GetResult(testMediaPath)
 	if ok {
 		t.Error("ClearResult should remove the entry")
 	}

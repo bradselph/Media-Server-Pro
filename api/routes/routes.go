@@ -30,6 +30,11 @@ const (
 	pathSecurityBlacklist = "/security/blacklist"
 	pathScannerQueue      = "/scanner/queue"
 	pathStats             = "/stats"
+
+	routeMedia        = "/media"
+	routeThumbnail    = "/thumbnail"
+	routePlaylistByID = "/playlists/:id"
+	routeUserByName   = "/users/:username"
 )
 
 // sessionAuth loads session/user context from the session_id cookie (or a Bearer
@@ -181,7 +186,7 @@ func ginETags() gin.HandlerFunc {
 
 		etag := `"` + hashFNV1a(blw.body.Bytes()) + `"`
 		c.Header("ETag", etag)
-		if match := c.GetHeader("If-None-Match"); match == etag {
+		if c.GetHeader("If-None-Match") == etag {
 			c.Status(http.StatusNotModified)
 			return
 		}
@@ -291,10 +296,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Apply compression middleware for all responses (except media streams).
 	// gin-contrib/gzip skips paths that start with the excluded prefixes.
 	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{
-		"/media",
+		routeMedia,
 		"/download",
 		"/hls/",
-		"/thumbnail",
+		routeThumbnail,
 		"/thumbnails/",
 		"/remote/stream",
 		"/receiver/stream",
@@ -329,7 +334,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// - fetch('/api/media') → get list of available media
 	// - <video src="/media?path=..."> → stream the actual file
 	// /media and /download: no route-level auth; handlers use cfg.Download.RequireAuth and stream limits.
-	r.GET("/media", h.StreamMedia)
+	r.GET(routeMedia, h.StreamMedia)
 	r.GET("/download", h.DownloadMedia)
 
 	// HLS streaming (direct, high-frequency — excluded from rate limiting and gzip)
@@ -338,8 +343,8 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	r.GET("/hls/:id/:quality/:segment", h.ServeSegment)
 
 	// Thumbnail serving (direct)
-	r.GET("/thumbnail", h.GetThumbnail)
-	r.HEAD("/thumbnail", h.GetThumbnail)
+	r.GET(routeThumbnail, h.GetThumbnail)
+	r.HEAD(routeThumbnail, h.GetThumbnail)
 	r.GET("/thumbnails/:filename", h.ServeThumbnailFile)
 	r.HEAD("/thumbnails/:filename", h.ServeThumbnailFile)
 
@@ -463,15 +468,15 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET(pathPlaylists, requireAuth(), h.ListPlaylists)
 	api.POST(pathPlaylists, requireAuth(), h.CreatePlaylist)
 	api.POST("/playlists/bulk-delete", requireAuth(), h.BulkDeletePlaylists)
-	api.GET("/playlists/:id", requireAuth(), h.GetPlaylist)
-	api.DELETE("/playlists/:id", requireAuth(), h.DeletePlaylist)
-	api.PUT("/playlists/:id", requireAuth(), h.UpdatePlaylist)
-	api.GET("/playlists/:id/export", requireAuth(), h.ExportPlaylist)
-	api.POST("/playlists/:id/items", requireAuth(), h.AddPlaylistItem)
-	api.DELETE("/playlists/:id/items", requireAuth(), h.RemovePlaylistItem)
-	api.PUT("/playlists/:id/reorder", requireAuth(), h.ReorderPlaylistItems)
-	api.DELETE("/playlists/:id/clear", requireAuth(), h.ClearPlaylist)
-	api.POST("/playlists/:id/copy", requireAuth(), h.CopyPlaylist)
+	api.GET(routePlaylistByID, requireAuth(), h.GetPlaylist)
+	api.DELETE(routePlaylistByID, requireAuth(), h.DeletePlaylist)
+	api.PUT(routePlaylistByID, requireAuth(), h.UpdatePlaylist)
+	api.GET(routePlaylistByID+"/export", requireAuth(), h.ExportPlaylist)
+	api.POST(routePlaylistByID+"/items", requireAuth(), h.AddPlaylistItem)
+	api.DELETE(routePlaylistByID+"/items", requireAuth(), h.RemovePlaylistItem)
+	api.PUT(routePlaylistByID+"/reorder", requireAuth(), h.ReorderPlaylistItems)
+	api.DELETE(routePlaylistByID+"/clear", requireAuth(), h.ClearPlaylist)
+	api.POST(routePlaylistByID+"/copy", requireAuth(), h.CopyPlaylist)
 
 	// Analytics routes
 	// POST /analytics/events — user auth (users submit their own events)
@@ -561,11 +566,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/users", h.AdminListUsers)
 	adminGrp.POST("/users", h.AdminCreateUser)
 	adminGrp.POST("/users/bulk", h.AdminBulkUsers)
-	adminGrp.GET("/users/:username", h.AdminGetUser)
-	adminGrp.PUT("/users/:username", h.AdminUpdateUser)
-	adminGrp.DELETE("/users/:username", h.AdminDeleteUser)
-	adminGrp.POST("/users/:username/password", h.AdminChangePassword)
-	adminGrp.GET("/users/:username/sessions", h.AdminGetUserSessions)
+	adminGrp.GET(routeUserByName, h.AdminGetUser)
+	adminGrp.PUT(routeUserByName, h.AdminUpdateUser)
+	adminGrp.DELETE(routeUserByName, h.AdminDeleteUser)
+	adminGrp.POST(routeUserByName+"/password", h.AdminChangePassword)
+	adminGrp.GET(routeUserByName+"/sessions", h.AdminGetUserSessions)
 	adminGrp.GET("/data-deletion-requests", h.AdminListDeletionRequests)
 	adminGrp.POST("/data-deletion-requests/:id/process", h.AdminProcessDeletionRequest)
 	adminGrp.POST("/change-password", h.AdminChangeOwnPassword)
@@ -589,7 +594,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET(pathPlaylists, h.AdminListPlaylists)
 	adminGrp.GET(pathPlaylists+pathStats, h.AdminPlaylistStats)
 	adminGrp.POST(pathPlaylists+"/bulk", h.AdminBulkDeletePlaylists)
-	adminGrp.DELETE("/playlists/:id", h.AdminDeletePlaylist)
+	adminGrp.DELETE(routePlaylistByID, h.AdminDeletePlaylist)
 
 	// Admin media scan
 	adminGrp.POST("/media/scan", h.ScanMedia)

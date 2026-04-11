@@ -385,11 +385,11 @@ func (s *Server) startHTTP() error {
 	}
 	// Port is bound — signal systemd that we are ready to handle requests.
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go s.startWatchdog(ctx)
 	status := "STATUS=Serving HTTP on " + s.httpServer.Addr
 	_ = helpers.SDNotify("READY=1\n" + status)
 	defer func() {
-		cancel()
 		_ = helpers.SDNotify("STOPPING=1")
 	}()
 	if err := s.httpServer.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -417,11 +417,11 @@ func (s *Server) startHTTPS() error {
 		return fmt.Errorf("HTTPS listen error: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go s.startWatchdog(ctx)
 	status := "STATUS=Serving HTTPS on " + s.httpServer.Addr
 	_ = helpers.SDNotify("READY=1\n" + status)
 	defer func() {
-		cancel()
 		_ = helpers.SDNotify("STOPPING=1")
 	}()
 	if err := s.httpServer.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {

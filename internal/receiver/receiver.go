@@ -425,6 +425,8 @@ func (m *Module) RegisterSlave(req *RegisterRequest) (*SlaveNode, error) {
 // Prevents memory exhaustion from a misbehaving or compromised slave.
 const maxCatalogItems = 100_000
 
+const errSlaveNotFound = "slave not found: %s"
+
 // PushCatalog updates the slave's media catalog.
 // If req.Full is true, the existing catalog for this slave is replaced entirely.
 func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
@@ -441,7 +443,7 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	_, exists = m.slaves[req.SlaveID]
 	m.mu.RUnlock()
 	if !exists {
-		return 0, fmt.Errorf("slave not found: %s", req.SlaveID)
+		return 0, fmt.Errorf(errSlaveNotFound, req.SlaveID)
 	}
 
 	ctx := context.Background()
@@ -561,7 +563,7 @@ func (m *Module) Heartbeat(slaveID string) error {
 	node, exists := m.slaves[slaveID]
 	if !exists {
 		m.mu.Unlock()
-		return fmt.Errorf("slave not found: %s", slaveID)
+		return fmt.Errorf(errSlaveNotFound, slaveID)
 	}
 	prevLastSeen := node.LastSeen
 	node.Status = "online"
@@ -585,7 +587,7 @@ func (m *Module) UnregisterSlave(slaveID string) error {
 	m.mu.Lock()
 	if _, exists := m.slaves[slaveID]; !exists {
 		m.mu.Unlock()
-		return fmt.Errorf("slave not found: %s", slaveID)
+		return fmt.Errorf(errSlaveNotFound, slaveID)
 	}
 	delete(m.slaves, slaveID)
 	for id, item := range m.media {
@@ -712,7 +714,7 @@ func (m *Module) ProxyStream(w http.ResponseWriter, r *http.Request, mediaID str
 	}
 
 	// Try WebSocket-based streaming first (slave pushes data).
-	if sw := m.getSlaveWS(item.SlaveID); sw != nil {
+	if m.getSlaveWS(item.SlaveID) != nil {
 		err := m.proxyViaWS(w, r, item, mediaID)
 		if err == nil {
 			return nil

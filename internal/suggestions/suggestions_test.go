@@ -4,12 +4,14 @@ import (
 	"testing"
 )
 
+const testMediaPath = "/a.mp4"
+
 // ---------------------------------------------------------------------------
 // scoreMediaBase
 // ---------------------------------------------------------------------------
 
 func TestScoreMediaBase_NewMedia(t *testing.T) {
-	media := &MediaInfo{Path: "/a.mp4", Views: 0, Rating: 0}
+	media := &MediaInfo{Path: testMediaPath, Views: 0, Rating: 0}
 	score, reasons := scoreMediaBase(media)
 	if score <= 0 {
 		t.Error("even new media should have some base score")
@@ -18,7 +20,7 @@ func TestScoreMediaBase_NewMedia(t *testing.T) {
 }
 
 func TestScoreMediaBase_PopularMedia(t *testing.T) {
-	media := &MediaInfo{Path: "/a.mp4", Views: 100, Rating: 4.5}
+	media := &MediaInfo{Path: testMediaPath, Views: 100, Rating: 4.5}
 	score, _ := scoreMediaBase(media)
 	if score <= 0 {
 		t.Error("popular media should have positive score")
@@ -31,7 +33,7 @@ func TestScoreMediaBase_PopularMedia(t *testing.T) {
 
 func TestScoreMediaForProfile_EmptyProfile(t *testing.T) {
 	profile := &UserProfile{}
-	media := &MediaInfo{Path: "/a.mp4", Category: "movies", MediaType: "video"}
+	media := &MediaInfo{Path: testMediaPath, Category: "movies", MediaType: "video"}
 	score, _ := scoreMediaForProfile(profile, media)
 	if score < 0 {
 		t.Error("score should not be negative")
@@ -44,7 +46,7 @@ func TestScoreMediaForProfile_MatchingCategory(t *testing.T) {
 		TypePreferences: map[string]float64{"video": 0.9},
 		TotalViews:      12,
 	}
-	media := &MediaInfo{Path: "/a.mp4", Category: "movies", MediaType: "video"}
+	media := &MediaInfo{Path: testMediaPath, Category: "movies", MediaType: "video"}
 	score, _ := scoreMediaForProfile(profile, media)
 	if score <= 0 {
 		t.Error("matching category should give positive score")

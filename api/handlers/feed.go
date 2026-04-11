@@ -177,6 +177,6 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		return
 	}
 
-	c.Header("Cache-Control", "public, max-age=300")
+	c.Header(headerCacheControl, "public, max-age=300")
 	c.Data(http.StatusOK, "application/atom+xml; charset=utf-8", append([]byte(xml.Header), data...))
 }

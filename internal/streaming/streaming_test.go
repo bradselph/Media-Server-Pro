@@ -13,6 +13,14 @@ import (
 	"media-server-pro/pkg/helpers"
 )
 
+const (
+	testErrFmt = "unexpected error: %v"
+	testUser1  = "user-1"
+	testUser2  = "user-2"
+	testStream = "/stream"
+	testMp4    = "test.mp4"
+)
+
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 	dir := t.TempDir()
@@ -81,7 +89,7 @@ func TestParseRange_NoRange(t *testing.T) {
 	m := newTestModule(t)
 	start, end, err := m.parseRange("", 1000)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if start != 0 || end != 999 {
 		t.Errorf("empty range: got (%d, %d), want (0, 999)", start, end)
@@ -92,7 +100,7 @@ func TestParseRange_Standard(t *testing.T) {
 	m := newTestModule(t)
 	start, end, err := m.parseRange("bytes=0-499", 1000)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if start != 0 || end != 499 {
 		t.Errorf("got (%d, %d), want (0, 499)", start, end)
@@ -103,7 +111,7 @@ func TestParseRange_OpenEnd(t *testing.T) {
 	m := newTestModule(t)
 	start, end, err := m.parseRange("bytes=500-", 1000)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if start != 500 || end != 999 {
 		t.Errorf("got (%d, %d), want (500, 999)", start, end)
@@ -114,7 +122,7 @@ func TestParseRange_Suffix(t *testing.T) {
 	m := newTestModule(t)
 	start, end, err := m.parseRange("bytes=-200", 1000)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if start != 800 || end != 999 {
 		t.Errorf("suffix range: got (%d, %d), want (800, 999)", start, end)
@@ -125,7 +133,7 @@ func TestParseRange_SuffixLargerThanFile(t *testing.T) {
 	m := newTestModule(t)
 	start, end, err := m.parseRange("bytes=-2000", 1000)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testErrFmt, err)
 	}
 	if start != 0 || end != 999 {
 		t.Errorf("large suffix: got (%d, %d), want (0, 999)", start, end)
@@ -241,7 +249,7 @@ func TestSessionLifecycle(t *testing.T) {
 	req := StreamRequest{
 		Path:      "/test/video.mp4",
 		MediaID:   "media-1",
-		UserID:    "user-1",
+		UserID:    testUser1,
 		SessionID: "test",
 	}
 	session := m.startSession(req, 0)
@@ -263,14 +271,14 @@ func TestSessionLifecycle(t *testing.T) {
 
 func TestGetActiveStreamCount(t *testing.T) {
 	m := newTestModule(t)
-	m.startSession(StreamRequest{Path: "/a", UserID: "user-1", SessionID: "s1"}, 0)
-	m.startSession(StreamRequest{Path: "/b", UserID: "user-1", SessionID: "s2"}, 0)
-	m.startSession(StreamRequest{Path: "/c", UserID: "user-2", SessionID: "s3"}, 0)
+	m.startSession(StreamRequest{Path: "/a", UserID: testUser1, SessionID: "s1"}, 0)
+	m.startSession(StreamRequest{Path: "/b", UserID: testUser1, SessionID: "s2"}, 0)
+	m.startSession(StreamRequest{Path: "/c", UserID: testUser2, SessionID: "s3"}, 0)
 
-	if got := m.GetActiveStreamCount("user-1"); got != 2 {
+	if got := m.GetActiveStreamCount(testUser1); got != 2 {
 		t.Errorf("user-1 stream count = %d, want 2", got)
 	}
-	if got := m.GetActiveStreamCount("user-2"); got != 1 {
+	if got := m.GetActiveStreamCount(testUser2); got != 1 {
 		t.Errorf("user-2 stream count = %d, want 1", got)
 	}
 	if got := m.GetActiveStreamCount("user-3"); got != 0 {
@@ -280,19 +288,19 @@ func TestGetActiveStreamCount(t *testing.T) {
 
 func TestCanStartStream(t *testing.T) {
 	m := newTestModule(t)
-	m.startSession(StreamRequest{Path: "/a", UserID: "user-1", SessionID: "s1"}, 0)
-	m.startSession(StreamRequest{Path: "/b", UserID: "user-1", SessionID: "s2"}, 0)
+	m.startSession(StreamRequest{Path: "/a", UserID: testUser1, SessionID: "s1"}, 0)
+	m.startSession(StreamRequest{Path: "/b", UserID: testUser1, SessionID: "s2"}, 0)
 
-	if !m.CanStartStream("user-1", 0) {
+	if !m.CanStartStream(testUser1, 0) {
 		t.Error("maxStreams=0 should always allow")
 	}
-	if !m.CanStartStream("user-1", 3) {
+	if !m.CanStartStream(testUser1, 3) {
 		t.Error("2 streams < 3 max, should allow")
 	}
-	if m.CanStartStream("user-1", 2) {
+	if m.CanStartStream(testUser1, 2) {
 		t.Error("2 streams = 2 max, should not allow")
 	}
-	if !m.CanStartStream("user-2", 2) {
+	if !m.CanStartStream(testUser2, 2) {
 		t.Error("user-2 has 0 streams, should allow")
 	}
 }
@@ -350,7 +358,7 @@ func TestStream_FileNotFound(t *testing.T) {
 	defer m.Stop(context.Background())
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/stream", nil)
+	r := httptest.NewRequest("GET", testStream, nil)
 	err := m.Stream(w, r, StreamRequest{
 		Path: "/nonexistent/file.mp4",
 	})
@@ -365,12 +373,12 @@ func TestStream_FullFile(t *testing.T) {
 	defer m.Stop(context.Background())
 
 	dir := t.TempDir()
-	fpath := filepath.Join(dir, "test.mp4")
+	fpath := filepath.Join(dir, testMp4)
 	content := []byte("fake video content for testing")
 	os.WriteFile(fpath, content, 0o600)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/stream", nil)
+	r := httptest.NewRequest("GET", testStream, nil)
 	err := m.Stream(w, r, StreamRequest{
 		Path:    fpath,
 		MediaID: "test-id",
@@ -392,7 +400,7 @@ func TestStream_RangeRequest(t *testing.T) {
 	defer m.Stop(context.Background())
 
 	dir := t.TempDir()
-	fpath := filepath.Join(dir, "test.mp4")
+	fpath := filepath.Join(dir, testMp4)
 	content := make([]byte, 1000)
 	for i := range content {
 		content[i] = byte(i % 256)
@@ -400,7 +408,7 @@ func TestStream_RangeRequest(t *testing.T) {
 	os.WriteFile(fpath, content, 0o600)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/stream", nil)
+	r := httptest.NewRequest("GET", testStream, nil)
 	err := m.Stream(w, r, StreamRequest{
 		Path:        fpath,
 		RangeHeader: "bytes=0-99",
@@ -433,7 +441,7 @@ func TestDownload_FileNotFound(t *testing.T) {
 func TestDownload_FullFile(t *testing.T) {
 	m := newTestModule(t)
 	dir := t.TempDir()
-	fpath := filepath.Join(dir, "test.mp4")
+	fpath := filepath.Join(dir, testMp4)
 	content := []byte("download test content")
 	os.WriteFile(fpath, content, 0o600)
 
