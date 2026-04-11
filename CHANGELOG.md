@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.0] - 2026-04-11 (minor)
+
+
+
+
 ## [1.1.0] - 2026-04-05 (minor)
 
 - Merge pull request #124 from bradselph/cursor/documentation-automation-system-835e
