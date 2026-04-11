@@ -440,6 +440,10 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 		return
 	}
 
+	// Validate normalises the stored struct (clamping, enum defaults, etc.) so the
+	// response reflects exactly what was committed, preventing a discrepancy that
+	// would make the client think one value was saved when another was stored.
+	prefs.Validate()
 	writeSuccess(c, prefs)
 }
 
@@ -614,6 +618,19 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 		return
 	}
 
+	caps := map[string]bool{
+		"canUpload":          user.Permissions.CanUpload,
+		"canDownload":        user.Permissions.CanDownload,
+		"canCreatePlaylists": user.Permissions.CanCreatePlaylists,
+		"canViewMature":      user.Permissions.CanViewMature,
+		"canStream":          user.Permissions.CanStream,
+	}
+	// Expose admin-only capabilities only to admin users; standard users have no
+	// business knowing the internal authorization flags they cannot hold.
+	if user.Role == models.RoleAdmin {
+		caps["canDelete"] = user.Permissions.CanDelete
+		caps["canManage"] = user.Permissions.CanManage
+	}
 	writeSuccess(c, map[string]interface{}{
 		"authenticated":         true,
 		"username":              user.Username,
@@ -621,15 +638,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 		"user_type":             user.Type,
 		"show_mature":           user.Preferences.ShowMature,
 		"mature_preference_set": user.Preferences.MaturePreferenceSet,
-		"capabilities": map[string]bool{
-			"canUpload":          user.Permissions.CanUpload,
-			"canDownload":        user.Permissions.CanDownload,
-			"canCreatePlaylists": user.Permissions.CanCreatePlaylists,
-			"canViewMature":      user.Permissions.CanViewMature,
-			"canStream":          user.Permissions.CanStream,
-			"canDelete":          user.Permissions.CanDelete,
-			"canManage":          user.Permissions.CanManage,
-		},
+		"capabilities":          caps,
 		// storage_quota is in bytes; GetStorageUsage's quota_gb is in GB (already divided).
 		"limits": map[string]interface{}{
 			"storage_quota":      h.getUserStorageQuota(user.Type),
