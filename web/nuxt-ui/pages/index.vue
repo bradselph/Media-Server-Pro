@@ -155,6 +155,11 @@ const loadError = ref('')
 const scanning = ref(false)
 const initializing = ref(false)
 
+// Generation counter — incremented on every load() call so that responses
+// arriving out of order (due to network jitter or rapid filter changes) are
+// discarded rather than overwriting a more recent result.
+let loadSeq = 0
+
 // URL deep-link: query params take precedence over saved preferences so that
 // shared / bookmarked URLs open with the exact filters the sender intended.
 const params = reactive({
@@ -307,6 +312,7 @@ watch(
 )
 
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   loadError.value = ''
   try {
@@ -324,6 +330,8 @@ async function load() {
       ...(params.min_rating > 0 && authStore.isLoggedIn ? { min_rating: params.min_rating } : {}),
     }
     const res = await mediaApi.list(apiParams)
+    // Discard response if a newer load() has already been dispatched.
+    if (seq !== loadSeq) return
     items.value = res.items ?? []
     total.value = res.total_items ?? 0
     scanning.value = res.scanning ?? false
@@ -356,9 +364,12 @@ async function load() {
       }).catch(() => {})
     }
   } catch (e: unknown) {
+    if (seq !== loadSeq) return
     loadError.value = e instanceof Error ? e.message : 'Failed to load media'
     toast.add({ title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { loading.value = false }
+  } finally {
+    if (seq === loadSeq) loading.value = false
+  }
 }
 
 async function loadCategories() {

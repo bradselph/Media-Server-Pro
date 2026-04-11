@@ -89,6 +89,13 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	allItems := h.media.ListMedia(filterNoPagination)
 
+	// Global ID set — tracks every item ID already present in allItems so that
+	// receiver and extractor items are never added twice regardless of source.
+	seenIDs := make(map[string]bool, len(allItems))
+	for _, item := range allItems {
+		seenIDs[item.ID] = true
+	}
+
 	// Merge receiver (slave) media into the listing so users see one unified library.
 	// Receiver items are indistinguishable from local media to regular users.
 	// Duplicate detection: skip receiver items whose content fingerprint matches a
@@ -100,6 +107,10 @@ func (h *Handler) ListMedia(c *gin.Context) {
 			// the same file exists on two different slaves, only the first is kept.
 			seenFP := make(map[string]bool)
 			for _, ri := range h.receiver.GetAllMedia() {
+				// Skip ID duplicates (same item from multiple sources)
+				if seenIDs[ri.ID] {
+					continue
+				}
 				if ri.ContentFingerprint != "" {
 					// Skip master-vs-slave duplicates
 					if h.media.HasFingerprint(ri.ContentFingerprint) {
@@ -127,6 +138,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 					continue
 				}
 				allItems = append(allItems, item)
+				seenIDs[ri.ID] = true
 				hasReceiverItems = true
 			}
 		}
@@ -140,6 +152,10 @@ func (h *Handler) ListMedia(c *gin.Context) {
 				if ei.Status != "active" {
 					continue
 				}
+				// Skip ID duplicates (same item already present from local or receiver)
+				if seenIDs[ei.ID] {
+					continue
+				}
 				item := &models.MediaItem{
 					ID:   ei.ID,
 					Name: ei.Title,
@@ -149,6 +165,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 					continue
 				}
 				allItems = append(allItems, item)
+				seenIDs[ei.ID] = true
 				hasReceiverItems = true // reuse flag to trigger re-sort
 			}
 		}

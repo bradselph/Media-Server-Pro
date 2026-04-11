@@ -111,6 +111,8 @@ const params = reactive<AdminMediaListParams>({
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+// Generation counter — prevents stale out-of-order responses from overwriting fresh results.
+let loadSeq = 0
 
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
@@ -118,6 +120,7 @@ function onSearchInput() {
 }
 
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const apiParams = {
@@ -126,13 +129,15 @@ async function load() {
       is_mature: params.is_mature === 'all' ? '' : params.is_mature,
     }
     const res = await adminApi.listMedia(apiParams)
+    if (seq !== loadSeq) return
     items.value = res.items ?? []
     totalItems.value = res.total_items ?? 0
     totalPages.value = res.total_pages ?? 1
   } catch (e: unknown) {
+    if (seq !== loadSeq) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load media', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
@@ -214,6 +219,12 @@ watch([() => params.type, () => params.is_mature], () => {
   params.page = 1
   selectedIds.value = new Set()
   load()
+})
+
+// Clear selection when the page changes so that invisible items from previous
+// pages are never silently included in bulk operations.
+watch(() => params.page, () => {
+  selectedIds.value = new Set()
 })
 
 onMounted(() => { load(); loadThumbStats() })
