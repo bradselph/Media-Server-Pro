@@ -232,8 +232,8 @@ onMounted(() => {
         <div class="divide-y divide-default max-h-64 overflow-y-auto">
           <div v-for="d in crawlerDiscoveries.filter(d => d.status === 'pending')" :key="d.id" class="flex items-center gap-3 py-2">
             <div class="flex-1 min-w-0">
-              <p class="text-sm truncate">{{ d.title || d.url }}</p>
-              <p v-if="d.title" class="text-xs text-muted truncate">{{ d.url }}</p>
+              <p class="text-sm truncate">{{ d.title || d.page_url }}</p>
+              <p class="text-xs text-muted truncate">{{ d.page_url }}</p>
             </div>
             <div class="flex gap-1">
               <UButton icon="i-lucide-check" aria-label="Approve discovery" size="xs" variant="ghost" color="success" @click="approveDiscovery(d.id)" />
@@ -307,13 +307,13 @@ onMounted(() => {
           <template #title-cell="{ row }">
             <div class="max-w-sm">
               <p class="text-sm font-medium truncate">{{ row.original.title || '—' }}</p>
-              <p class="text-xs text-muted truncate" :title="row.original.url">{{ row.original.url }}</p>
+              <p class="text-xs text-muted truncate" :title="row.original.stream_url">{{ row.original.stream_url }}</p>
             </div>
           </template>
           <template #status-cell="{ row }">
             <div>
               <UBadge :label="row.original.status" :color="statusColor(row.original.status)" variant="subtle" size="xs" />
-              <p v-if="row.original.error" class="text-xs text-error mt-0.5 truncate">{{ row.original.error }}</p>
+              <p v-if="row.original.error_message" class="text-xs text-error mt-0.5 truncate">{{ row.original.error_message }}</p>
             </div>
           </template>
           <template #actions-cell="{ row }">

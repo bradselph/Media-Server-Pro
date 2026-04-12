@@ -514,28 +514,34 @@ export interface ReceiverMedia {
 export interface CrawlerTarget {
     id: string
     url: string
-    name?: string
-    site?: string
+    name: string
+    site: string
     last_crawled?: string
-    created_at?: string
+    created_at: string
     enabled: boolean
 }
 
 export interface CrawlerDiscovery {
     id: string
     target_id: string
-    url: string
-    title?: string
+    page_url: string
+    title: string
+    stream_url: string
+    stream_type: string
+    quality: number
     status: string
-    created_at: string
+    reviewed_by?: string
+    reviewed_at?: string | null
+    discovered_at: string
 }
 
 export interface ExtractorItem {
     id: string
-    url: string
-    title?: string
+    stream_url: string
+    title: string
+    added_by: string
     status: string
-    error?: string
+    error_message?: string
     created_at: string
 }
 
