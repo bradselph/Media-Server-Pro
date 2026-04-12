@@ -183,7 +183,7 @@ export interface HLSAvailability {
 
 export interface HLSJob {
     id: string
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'canceled'
     progress: number
     qualities: string[]
     started_at: string
@@ -443,7 +443,7 @@ export interface UpdateInfo {
     release_url?: string
     release_notes?: string
     published_at?: string
-    checked_at?: string
+    checked_at?: string | null
     error?: string
 }
 
@@ -662,6 +662,7 @@ export interface MediaStats {
     audio_count: number
     total_size: number
     last_scan: string
+    version?: number
 }
 
 // ── HLS Capabilities ─────────────────────────────────────────────────────────

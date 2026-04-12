@@ -90,10 +90,11 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		return
 	}
 	resp := gin.H{
-		"id":         rec.ID,
-		"name":       rec.Name,
-		"token":      raw,
-		"created_at": rec.CreatedAt.Format(timeFormatRFC3339Ext),
+		"id":           rec.ID,
+		"name":         rec.Name,
+		"token":        raw,
+		"created_at":   rec.CreatedAt.Format(timeFormatRFC3339Ext),
+		"last_used_at": nil, // always null on creation
 	}
 	if rec.ExpiresAt != nil {
 		resp["expires_at"] = rec.ExpiresAt.Format(timeFormatRFC3339Ext)
