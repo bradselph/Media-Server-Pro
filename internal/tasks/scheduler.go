@@ -17,6 +17,12 @@ import (
 
 const errTaskNotFoundFmt = "task not found: %s"
 
+// Sentinel errors for typed error checking by callers.
+var (
+	ErrTaskNotFound    = errors.New("task not found")
+	ErrTaskNotRunning  = errors.New("task not currently running")
+)
+
 // TaskFunc is a function that performs a task
 type TaskFunc func(ctx context.Context) error
 
@@ -369,7 +375,7 @@ func (m *Module) RunNow(taskID string) error {
 	m.mu.RUnlock()
 
 	if !exists {
-		return fmt.Errorf(errTaskNotFoundFmt, taskID)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
 	}
 
 	if ctx == nil {
@@ -402,7 +408,7 @@ func (m *Module) EnableTask(taskID string) error {
 
 	task, exists := m.tasks[taskID]
 	if !exists {
-		return fmt.Errorf(errTaskNotFoundFmt, taskID)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
 	}
 
 	// Only start a new goroutine if task is not enabled and no loop is running
@@ -427,7 +433,7 @@ func (m *Module) DisableTask(taskID string) error {
 	task, exists := m.tasks[taskID]
 	if !exists {
 		m.mu.Unlock()
-		return fmt.Errorf(errTaskNotFoundFmt, taskID)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
 	}
 	task.Enabled = false
 	m.mu.Unlock()
@@ -451,7 +457,7 @@ func (m *Module) StopTask(taskID string) error {
 	m.mu.RUnlock()
 
 	if !exists {
-		return fmt.Errorf(errTaskNotFoundFmt, taskID)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
 	}
 
 	task.stopMu.Lock()
@@ -459,7 +465,7 @@ func (m *Module) StopTask(taskID string) error {
 	task.stopMu.Unlock()
 
 	if cancel == nil {
-		return fmt.Errorf("task %s is not currently running", taskID)
+		return fmt.Errorf("%w: %s", ErrTaskNotRunning, taskID)
 	}
 
 	cancel()
@@ -514,7 +520,7 @@ func (m *Module) GetTask(taskID string) (*TaskInfo, error) {
 
 	task, exists := m.tasks[taskID]
 	if !exists {
-		return nil, fmt.Errorf(errTaskNotFoundFmt, taskID)
+		return nil, fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
 	}
 
 	var lastErr string
@@ -543,7 +549,7 @@ func (m *Module) UpdateSchedule(taskID string, schedule time.Duration) error {
 
 	task, exists := m.tasks[taskID]
 	if !exists {
-		return fmt.Errorf(errTaskNotFoundFmt, taskID)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
 	}
 
 	task.Schedule = schedule

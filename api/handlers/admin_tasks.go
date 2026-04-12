@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/tasks"
 )
 
 const (
@@ -30,7 +32,7 @@ func (h *Handler) AdminRunTask(c *gin.Context) {
 	taskID := c.Param("id")
 
 	if err := h.tasks.RunNow(taskID); err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		if errors.Is(err, tasks.ErrTaskNotFound) {
 			writeError(c, http.StatusNotFound, err.Error())
 		} else {
 			writeError(c, http.StatusServiceUnavailable, err.Error())
@@ -83,9 +85,9 @@ func (h *Handler) AdminStopTask(c *gin.Context) {
 
 	if err := h.tasks.StopTask(taskID); err != nil {
 		switch {
-		case strings.Contains(err.Error(), "not found"):
+		case errors.Is(err, tasks.ErrTaskNotFound):
 			writeError(c, http.StatusNotFound, err.Error())
-		case strings.Contains(err.Error(), "not currently running"):
+		case errors.Is(err, tasks.ErrTaskNotRunning):
 			writeError(c, http.StatusConflict, err.Error())
 		default:
 			writeError(c, http.StatusBadRequest, err.Error())

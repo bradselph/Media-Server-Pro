@@ -214,12 +214,16 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 		demoting := freshUser.Role == models.RoleAdmin && wantsDemote
 		disabling := freshUser.Role == models.RoleAdmin && freshUser.Enabled && wantsDisable
 		if demoting || disabling {
+			// Count active admins from the in-memory cache to avoid a DB query
+			// while holding lastAdminMu (which would block all concurrent admin updates).
 			count := 0
-			for _, u := range m.ListUsers(ctx) {
+			m.usersMu.RLock()
+			for _, u := range m.users {
 				if u.Role == models.RoleAdmin && u.Enabled {
 					count++
 				}
 			}
+			m.usersMu.RUnlock()
 			if count <= 1 {
 				return ErrCannotDemoteLastAdmin
 			}
