@@ -226,7 +226,16 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 	defer m.wg.Done()
 	defer func() {
 		m.mu.Lock()
-		task.loopRunning = false
+		// If the task was re-enabled while this goroutine was in its shutdown path
+		// (EnableTask saw loopRunning=true and set Enabled=true, then we arrived here
+		// committed to exiting), self-restart so the task is never stuck "enabled"
+		// without a running loop.
+		if task.Enabled && ctx.Err() == nil {
+			m.wg.Add(1)
+			go m.runTaskLoop(ctx, task)
+		} else {
+			task.loopRunning = false
+		}
 		m.mu.Unlock()
 	}()
 
