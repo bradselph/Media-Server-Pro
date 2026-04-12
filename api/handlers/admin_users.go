@@ -300,7 +300,7 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 	errs := make([]string, 0)
 
 	for _, username := range req.Usernames {
-		if username == "" || username == "admin" {
+		if username == "" {
 			continue
 		}
 		if username == currentUser && (req.Action == "delete" || req.Action == "disable") {

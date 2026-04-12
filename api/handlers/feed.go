@@ -58,6 +58,8 @@ type atomSummary struct {
 // The endpoint is accessible to all authenticated users so RSS clients that
 // pass the session cookie (same-origin tooling, Inoreader with cookie auth, etc.)
 // can subscribe to library updates.
+const feedCacheTTL = 2 * time.Minute
+
 func (h *Handler) GetRSSFeed(c *gin.Context) {
 	uiCfg := h.config.Get().UI
 	maxItems := uiCfg.FeedMaxItems
@@ -76,6 +78,23 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		limit = l
 	}
 
+	canViewMature := h.canViewMatureContent(c)
+
+	// Build a stable cache key from request parameters.
+	cacheKey := fmt.Sprintf("%s|%s|%d|%v", c.Query("category"), c.Query("type"), limit, canViewMature)
+
+	h.feedCacheMu.Lock()
+	if h.feedCache == nil {
+		h.feedCache = make(map[string]feedCacheEntry)
+	}
+	if entry, ok := h.feedCache[cacheKey]; ok && time.Now().Before(entry.expires) {
+		h.feedCacheMu.Unlock()
+		c.Header(headerCacheControl, "public, max-age=300")
+		c.Data(http.StatusOK, "application/atom+xml; charset=utf-8", entry.data)
+		return
+	}
+	h.feedCacheMu.Unlock()
+
 	filter := media.Filter{
 		Category: c.Query("category"),
 		Type:     models.MediaType(c.Query("type")),
@@ -86,7 +105,6 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 	allItems := h.media.ListMedia(filter)
 
 	// Filter out mature content for users who are not authorized to view it.
-	canViewMature := h.canViewMatureContent(c)
 	items := allItems[:0]
 	for _, item := range allItems {
 		if !item.IsMature || canViewMature {
@@ -177,6 +195,15 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		return
 	}
 
+	rendered := append([]byte(xml.Header), data...)
+
+	h.feedCacheMu.Lock()
+	if h.feedCache == nil {
+		h.feedCache = make(map[string]feedCacheEntry)
+	}
+	h.feedCache[cacheKey] = feedCacheEntry{data: rendered, updated: updated, expires: time.Now().Add(feedCacheTTL)}
+	h.feedCacheMu.Unlock()
+
 	c.Header(headerCacheControl, "public, max-age=300")
-	c.Data(http.StatusOK, "application/atom+xml; charset=utf-8", append([]byte(xml.Header), data...))
+	c.Data(http.StatusOK, "application/atom+xml; charset=utf-8", rendered)
 }

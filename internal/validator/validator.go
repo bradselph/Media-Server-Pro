@@ -451,6 +451,16 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 		outputPath = filepath.Join(dir, fmt.Sprintf("%s_fixed_%d.mp4", base, i))
 	}
 
+	// Estimate required space as 2× input size (transcode can expand file; add headroom).
+	// Skip the block if disk usage is unavailable — don't abort a valid repair for a missing metric.
+	if inStat, err := os.Stat(path); err == nil {
+		required := uint64(inStat.Size()) * 2
+		if du, err := helpers.GetDiskUsage(filepath.Dir(outputPath)); err == nil && du.Available < required {
+			return nil, fmt.Errorf("insufficient disk space: need ~%d MB, have %d MB free",
+				required/1024/1024, du.Available/1024/1024)
+		}
+	}
+
 	m.log.Info("Transcoding %s to %s", path, outputPath)
 
 	// Build ffmpeg pipeline using ffmpeg-go

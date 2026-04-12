@@ -369,6 +369,13 @@ func (m *Module) doCrawl(ctx context.Context, target *repositories.CrawlerTarget
 				DiscoveredAt:    time.Now(),
 			}
 
+			// Validate the discovered URL for SSRF before persisting so that
+			// a malicious page cannot inject internal-network URLs into the admin discoveries panel.
+			if err := helpers.ValidateURLForSSRF(streamURL); err != nil {
+				m.log.Warn("Skipping SSRF-unsafe discovery from %s: %v", link, err)
+				continue
+			}
+
 			if err := m.discoveryRepo.Create(ctx, rec); err != nil {
 				m.log.Warn("Failed to store discovery: %v", err)
 				continue
