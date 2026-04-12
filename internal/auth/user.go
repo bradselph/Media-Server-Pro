@@ -195,7 +195,9 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	// Check if this update would demote or disable an admin. Read role/enabled
 	// inside lastAdminMu to prevent two concurrent demotions from both seeing
 	// count=2 and both proceeding.
-	wantsDemote := updates["role"] == string(models.RoleViewer)
+	// Detect any role change away from admin (not just to RoleViewer) so that
+	// adding a third role in the future doesn't bypass the last-admin guard.
+	wantsDemote := updates["role"] != nil && updates["role"] != string(models.RoleAdmin)
 	wantsDisable := false
 	if v, ok := updates["enabled"].(bool); ok && !v {
 		wantsDisable = true
