@@ -2,7 +2,7 @@
 import type { CategoryStats, CategoryBrowseItem } from '~/types/api'
 import { useCategoryBrowseApi } from '~/composables/useApiEndpoints'
 
-definePageMeta({ layout: 'default', title: 'Browse by Category', middleware: 'auth' })
+definePageMeta({ layout: 'default', title: 'Browse by Category' })
 
 const browseApi = useCategoryBrowseApi()
 const route = useRoute()
