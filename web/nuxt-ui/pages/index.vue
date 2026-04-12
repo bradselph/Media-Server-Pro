@@ -511,12 +511,18 @@ function onMediaHoverLeave() {
   if (hoverCycleTimer) { clearInterval(hoverCycleTimer); hoverCycleTimer = null }
 }
 
+function getThumbnailUrl(id: string): string {
+  const base = mediaApi.getThumbnailUrl(id)
+  const nonce = authStore.thumbnailNonce
+  return nonce > 0 ? `${base}&_n=${nonce}` : base
+}
+
 function getThumbSrc(id: string): string {
   if (hoverItemId.value === id) {
     const frames = previewCache.get(id)
     if (frames?.length) return frames[hoverFrameIdx.value % frames.length]
   }
-  return mediaApi.getThumbnailUrl(id)
+  return getThumbnailUrl(id)
 }
 
 function onThumbnailError(event: Event, id: string) {
@@ -1101,7 +1107,7 @@ onUnmounted(() => {
             >
               <img
                 v-if="row.original.type !== 'audio' && !failedThumbnails.has(row.original.id)"
-                :src="mediaApi.getThumbnailUrl(row.original.id)"
+                :src="getThumbnailUrl(row.original.id)"
                 :alt="getDisplayTitle(row.original)"
                 width="64"
                 height="36"
