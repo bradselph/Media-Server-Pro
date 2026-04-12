@@ -389,15 +389,15 @@ func (m *Module) RemoveMedia(mediaPath string) error {
 
 	m.log.Debug("Removed media from index: %s", mediaPath)
 
-	// Remove from DB (best-effort, async)
+	// Remove from DB synchronously. Single-row DELETEs are fast and the
+	// goroutine-per-call pattern caused DB connection pool exhaustion during
+	// bulk cleanup (10 000 items → 10 000 concurrent goroutines).
 	if m.metadataRepo != nil {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := m.metadataRepo.Delete(ctx, mediaPath); err != nil {
-				m.log.Warn("Failed to delete metadata from DB for %s: %v", mediaPath, err)
-			}
-		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.metadataRepo.Delete(ctx, mediaPath); err != nil {
+			m.log.Warn("Failed to delete metadata from DB for %s: %v", mediaPath, err)
+		}
 	}
 
 	return nil
