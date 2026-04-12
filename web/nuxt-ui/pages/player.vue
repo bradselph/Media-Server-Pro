@@ -301,10 +301,27 @@ async function restorePosition() {
   if (userPrefs.value?.resume_playback === false) return
   try {
     const { position } = await playbackApi.getPosition(mediaId.value)
-    if (position > 5 && videoRef.value) {
+    // Skip restoring if position is 0, within the first 5 seconds (fresh start),
+    // or at/near the end (≥95% complete — media was finished, restart from beginning).
+    const dur = videoRef.value?.duration
+    const nearEnd = dur && dur > 0 && position >= dur * 0.95
+    if (position > 5 && !nearEnd && videoRef.value) {
       videoRef.value.currentTime = position
     }
   } catch {}
+}
+
+// Called when media reaches the end. Resets the stored position to 0 so that
+// returning to this item later starts from the beginning rather than immediately
+// re-triggering the ended/auto-next behaviour.
+async function onMediaEnded() {
+  if (mediaId.value) {
+    try {
+      await playbackApi.savePosition(mediaId.value, 0, videoRef.value?.duration ?? 0)
+    } catch {}
+  }
+  trackComplete()
+  if (loopMode.value === 'off') autoNextFromSuggestions()
 }
 
 async function savePosition() {
@@ -859,7 +876,7 @@ watch(mediaId, (id, oldId) => {
             @timeupdate="onTimeUpdate"
             @play="onPlayPause(); trackPlay()"
             @pause="onPlayPause(); trackPause()"
-            @ended="savePosition(); trackComplete(); if (loopMode === 'off') autoNextFromSuggestions()"
+            @ended="onMediaEnded()"
             @error="onVideoError"
             @leavepictureinpicture="onPiPChange"
             @enterpictureinpicture="onPiPChange"
@@ -979,7 +996,7 @@ watch(mediaId, (id, oldId) => {
               @timeupdate="onTimeUpdate"
               @play="onPlayPause(); trackPlay()"
               @pause="onPlayPause(); trackPause()"
-              @ended="savePosition(); trackComplete(); if (loopMode === 'off') autoNextFromSuggestions()"
+              @ended="onMediaEnded()"
               @error="onVideoError"
             />
           </UCard>
