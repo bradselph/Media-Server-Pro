@@ -188,6 +188,9 @@ func (m *Manager) validateAuth() []error {
 	if m.config.Auth.MaxLoginAttempts == 0 {
 		m.log.Warn("auth max_login_attempts is 0 — lockout will not trigger")
 	}
+	if m.config.Auth.LockoutDuration == 0 {
+		m.log.Warn("auth lockout_duration is 0 — lockout expires immediately, brute-force protection is ineffective")
+	}
 	return errs
 }
 
