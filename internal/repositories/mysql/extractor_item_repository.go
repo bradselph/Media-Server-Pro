@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -165,17 +166,25 @@ func (r *ExtractorItemRepository) rowToRecord(row *extractorItemRow) *repositori
 	}
 	if t, err := parseTime(row.ResolvedAt); err == nil {
 		rec.ResolvedAt = t
+	} else if row.ResolvedAt != "" {
+		log.Printf("[extractor_item_repository] corrupt resolved_at for %s: %v", row.ID, err)
 	}
 	if row.ExpiresAt != nil {
 		if t, err := parseTime(*row.ExpiresAt); err == nil {
 			rec.ExpiresAt = &t
+		} else {
+			log.Printf("[extractor_item_repository] corrupt expires_at for %s: %v", row.ID, err)
 		}
 	}
 	if t, err := parseTime(row.CreatedAt); err == nil {
 		rec.CreatedAt = t
+	} else if row.CreatedAt != "" {
+		log.Printf("[extractor_item_repository] corrupt created_at for %s: %v", row.ID, err)
 	}
 	if t, err := parseTime(row.UpdatedAt); err == nil {
 		rec.UpdatedAt = t
+	} else if row.UpdatedAt != "" {
+		log.Printf("[extractor_item_repository] corrupt updated_at for %s: %v", row.ID, err)
 	}
 	return rec
 }

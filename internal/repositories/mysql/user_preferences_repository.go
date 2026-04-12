@@ -10,6 +10,7 @@ import (
 	"media-server-pro/pkg/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // UserPreferencesRepository implements repositories.UserPreferencesRepository using GORM
@@ -22,9 +23,14 @@ func NewUserPreferencesRepository(db *gorm.DB) repositories.UserPreferencesRepos
 	return &UserPreferencesRepository{db: db}
 }
 
-// Upsert creates or updates user preferences
+// Upsert creates or updates user preferences.
+// Uses an explicit ON CONFLICT upsert instead of Save() so that rows deleted
+// from the DB while the in-memory object has a non-zero UserID are re-inserted
+// rather than silently no-op'd by an UPDATE that matches 0 rows.
 func (r *UserPreferencesRepository) Upsert(ctx context.Context, prefs *models.UserPreferences) error {
-	return r.db.WithContext(ctx).Save(prefs).Error
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{UpdateAll: true}).
+		Create(prefs).Error
 }
 
 // Get retrieves user preferences
