@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -176,7 +177,9 @@ type Handler struct {
 	config           *config.Manager
 	shutdownFunc     func()
 	deletionRequests repositories.DataDeletionRequestRepository
-	viewCooldown     sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
+	viewCooldown       sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
+	classifyDirRunning atomic.Bool // true while a ClassifyDirectory background job is active
+	classifyAllRunning atomic.Bool // true while a ClassifyAllPending background job is active
 }
 
 // tryRecordView returns true if the view should be counted (not within the

@@ -880,59 +880,69 @@ func (m *Module) CleanCache() int {
 	maxSize := cfg.RemoteMedia.CacheSize
 	ttl := cfg.RemoteMedia.CacheTTL
 
+	// Collect paths to evict under the lock, then remove files outside the lock
+	// to avoid blocking all cache readers while os.Remove syscalls are in flight.
+	type evictTarget struct {
+		url       string
+		localPath string
+		size      int64
+	}
+	var toEvict []evictTarget
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
-	removed := 0
-
-	// Phase 1: evict TTL-expired entries
+	// Phase 1: collect TTL-expired entries
 	if ttl > 0 {
 		now := time.Now()
 		for mediaURL, cached := range m.mediaCache {
 			if now.Sub(cached.LastAccess) > ttl {
-				if err := os.Remove(cached.LocalPath); err != nil && !os.IsNotExist(err) {
-					m.log.Warn("Failed to remove expired cache file %s: %v", cached.LocalPath, err)
-				}
-				delete(m.mediaCache, mediaURL)
-				removed++
+				toEvict = append(toEvict, evictTarget{url: mediaURL, localPath: cached.LocalPath, size: cached.Size})
 			}
 		}
 	}
 
-	// Phase 2: LRU eviction if over size limit (skip when maxSize <= 0 = no limit).
+	// Phase 2: collect LRU candidates if over size limit
 	var currentSize int64
 	for _, cached := range m.mediaCache {
 		currentSize += cached.Size
 	}
-	if maxSize <= 0 || currentSize <= maxSize {
-		if removed > 0 {
-			m.log.Info("Cleaned %d expired cache items", removed)
+	if maxSize > 0 && currentSize > maxSize {
+		entries := make([]cacheEntry, 0, len(m.mediaCache))
+		for mediaURL, cached := range m.mediaCache {
+			entries = append(entries, cacheEntry{url: mediaURL, cached: cached})
 		}
-		return removed
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].cached.LastAccess.Before(entries[j].cached.LastAccess)
+		})
+		for _, entry := range entries {
+			if currentSize <= maxSize {
+				break
+			}
+			toEvict = append(toEvict, evictTarget{url: entry.url, localPath: entry.cached.LocalPath, size: entry.cached.Size})
+			currentSize -= entry.cached.Size
+		}
 	}
 
-	// Sort remaining entries by LastAccess (oldest first)
-	entries := make([]cacheEntry, 0, len(m.mediaCache))
-	for mediaURL, cached := range m.mediaCache {
-		entries = append(entries, cacheEntry{url: mediaURL, cached: cached})
+	// Remove entries from the map before releasing the lock so new readers
+	// don't try to serve files we're about to delete.
+	for _, t := range toEvict {
+		delete(m.mediaCache, t.url)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].cached.LastAccess.Before(entries[j].cached.LastAccess)
-	})
+	m.mu.Unlock()
 
-	for _, entry := range entries {
-		if currentSize <= maxSize {
-			break
+	// Remove files outside the lock.
+	removed := 0
+	for _, t := range toEvict {
+		if err := os.Remove(t.localPath); err != nil && !os.IsNotExist(err) {
+			m.log.Warn("Failed to remove cached file %s: %v", t.localPath, err)
+		} else {
+			removed++
 		}
-		if err := os.Remove(entry.cached.LocalPath); err != nil && !os.IsNotExist(err) {
-			m.log.Warn("Failed to remove cached file %s: %v", entry.cached.LocalPath, err)
-		}
-		currentSize -= entry.cached.Size
-		delete(m.mediaCache, entry.url)
-		removed++
 	}
 
-	m.log.Info("Cleaned %d cached items (TTL + LRU)", removed)
+	if removed > 0 {
+		m.log.Info("Cleaned %d cached items (TTL + LRU)", removed)
+	}
 	return removed
 }
 

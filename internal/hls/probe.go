@@ -93,34 +93,35 @@ func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
 		return 0
 	}
 
-	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaPath, m.probeTimeout(), nil)
-	if err == nil {
-		if h := m.parseProbeHeight(probeJSON); h > 0 {
-			return h
+	// Try context-aware ffprobe first so the probe is cancellable on shutdown.
+	// Fall back to the library probe (no context) only when ffprobePath is absent.
+	if m.ffprobePath != "" {
+		probeCtx, cancel := context.WithTimeout(ctx, m.probeTimeout())
+		defer cancel()
+
+		cmd := exec.CommandContext(probeCtx, m.ffprobePath, //nolint:gosec // G204: ffprobePath validated at startup
+			"-v", "quiet",
+			"-print_format", "json",
+			"-show_streams",
+			"-select_streams", "v:0",
+			mediaPath,
+		)
+		output, err := cmd.Output()
+		if err == nil {
+			if h := m.parseProbeHeight(string(output)); h > 0 {
+				return h
+			}
+		} else {
+			m.log.Debug("ffprobe stream info failed for %s: %v", filepath.Base(mediaPath), err)
 		}
 	}
 
-	if m.ffprobePath == "" {
-		return 0
+	// ffprobePath not configured — fall back to library probe (no context).
+	probeJSON, err := ffmpeg.ProbeWithTimeout(mediaPath, m.probeTimeout(), nil)
+	if err == nil {
+		return m.parseProbeHeight(probeJSON)
 	}
-
-	probeCtx, cancel := context.WithTimeout(ctx, m.probeTimeout())
-	defer cancel()
-
-	cmd := exec.CommandContext(probeCtx, m.ffprobePath, //nolint:gosec // G204: ffprobePath validated at startup
-		"-v", "quiet",
-		"-print_format", "json",
-		"-show_streams",
-		"-select_streams", "v:0",
-		mediaPath,
-	)
-	output, err := cmd.Output()
-	if err != nil {
-		m.log.Debug("ffprobe stream info failed for %s: %v", filepath.Base(mediaPath), err)
-		return 0
-	}
-
-	return m.parseProbeHeight(string(output))
+	return 0
 }
 
 func (m *Module) parseProbeHeight(probeJSON string) int {

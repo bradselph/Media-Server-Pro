@@ -57,7 +57,7 @@ func (r *AnalyticsRepository) List(ctx context.Context, filter repositories.Anal
 	query := r.db.WithContext(ctx).Model(&models.AnalyticsEvent{})
 	query = r.applyListFilter(query, filter)
 	limit := filter.Limit
-	if limit <= 0 {
+	if limit <= 0 || limit > defaultAnalyticsQueryLimit {
 		limit = defaultAnalyticsQueryLimit
 	}
 	query = query.Limit(limit)
