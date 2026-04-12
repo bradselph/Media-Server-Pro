@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CategoryStats, CategoryBrowseItem } from '~/types/api'
 import { useCategoryBrowseApi } from '~/composables/useApiEndpoints'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Browse by Category' })
 
@@ -202,8 +203,8 @@ watch(() => authStore.user, (user) => {
                   />
                 </div>
               </div>
-              <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.detected_info?.title ?? item.name">
-                {{ item.detected_info?.title ?? item.name }}
+              <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.detected_info?.title || getDisplayTitle(item)">
+                {{ item.detected_info?.title || getDisplayTitle(item) }}
               </p>
             </NuxtLink>
           </div>
@@ -250,8 +251,8 @@ watch(() => authStore.user, (user) => {
               {{ item.detected_info.year }}
             </div>
           </div>
-          <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.name">
-            {{ item.name }}
+          <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.detected_info?.title || getDisplayTitle(item)">
+            {{ item.detected_info?.title || getDisplayTitle(item) }}
           </p>
         </NuxtLink>
       </div>
@@ -271,7 +272,16 @@ watch(() => authStore.user, (user) => {
     <div v-else-if="!loading && availableCategories.length === 0" class="text-center py-12 text-muted">
       <UIcon name="i-lucide-folder-search" class="size-10 mb-3 mx-auto opacity-40" />
       <p class="font-medium">No categories found</p>
-      <p class="text-sm mt-1">Files are categorized automatically. Try running a library scan from Admin.</p>
+      <p class="text-sm mt-1">Run the categorizer from the Admin panel to organize your library.</p>
+      <UButton
+        v-if="authStore.isAdmin"
+        to="/admin?tab=discovery"
+        label="Open Categorizer"
+        icon="i-lucide-tag"
+        size="sm"
+        variant="outline"
+        class="mt-3"
+      />
     </div>
   </UContainer>
 </template>
