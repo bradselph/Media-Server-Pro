@@ -383,6 +383,13 @@ func (m *Module) RunNow(taskID string) error {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
+		// Re-check ctx after the goroutine starts — the scheduler may have been
+		// stopped between the RLock release above and this goroutine being scheduled.
+		// Tasks that don't honour context cancellation would otherwise run to
+		// completion after shutdown.
+		if ctx.Err() != nil {
+			return
+		}
 		m.executeTask(ctx, task)
 	}()
 	return nil
