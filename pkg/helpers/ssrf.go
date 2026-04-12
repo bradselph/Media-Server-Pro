@@ -38,7 +38,12 @@ func init() {
 }
 
 // isPrivateIP reports whether ip falls within any private/reserved range.
+// IPv4-mapped IPv6 addresses (e.g. ::ffff:10.0.0.1) are unwrapped to their
+// 4-byte form before checking so that they match IPv4 CIDR ranges.
 func isPrivateIP(ip net.IP) bool {
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4
+	}
 	for _, block := range privateRanges {
 		if block.Contains(ip) {
 			return true
