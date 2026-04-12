@@ -9,7 +9,14 @@ export default defineNuxtRouteMiddleware(to => {
     const authStore = useAuthStore()
     // Block navigation while session is still resolving — do not allow through
     if (authStore.isLoading) return abortNavigation()
-    if (!authStore.isAdmin) {
+    if (!authStore.isLoggedIn) {
+        // Not logged in at all — send to admin login
         return navigateTo({path: '/admin-login', query: {redirect: to.fullPath}})
+    }
+    if (!authStore.isAdmin) {
+        // Logged in but not admin: redirecting to /admin-login causes accidental
+        // logout (admin-login page calls logout() on failed attempts). Send to
+        // home with a toast-friendly query param instead.
+        return navigateTo({path: '/', query: {error: 'admin_required'}})
     }
 })
