@@ -159,11 +159,14 @@ func (m *Module) GetUserByID(ctx context.Context, id string) (*models.User, erro
 	return m.loadUserAndCache(func() (*models.User, error) { return m.userRepo.GetByID(ctx, id) })
 }
 
-// loadUserAndCache runs the loader; on success caches the user and returns it, on error returns ErrUserNotFound.
+// loadUserAndCache runs the loader; on success caches the user and returns it.
+// Propagates the original error so callers can distinguish ErrUserNotFound (user
+// genuinely absent) from transient DB errors (timeouts, connection failures) which
+// should cause a 503 rather than silently rejecting a valid session.
 func (m *Module) loadUserAndCache(load func() (*models.User, error)) (*models.User, error) {
 	user, err := load()
 	if err != nil {
-		return nil, ErrUserNotFound
+		return nil, err
 	}
 	m.cacheUser(user)
 	return user, nil
