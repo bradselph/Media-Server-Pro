@@ -211,6 +211,8 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 	}
 	if err := h.media.SetMatureFlag(path, true, confidence, reasons); err != nil {
 		h.log.Error("Failed to update media library mature flag: %v", err)
+		writeError(c, http.StatusInternalServerError, "Approved in scanner but failed to update media library")
+		return
 	}
 
 	writeSuccess(c, nil)
@@ -234,6 +236,8 @@ func (h *Handler) RejectContent(c *gin.Context) {
 
 	if err := h.media.SetMatureFlag(path, false, 0, nil); err != nil {
 		h.log.Error("Failed to update media library mature flag: %v", err)
+		writeError(c, http.StatusInternalServerError, "Rejected in scanner but failed to update media library")
+		return
 	}
 
 	writeSuccess(c, nil)
