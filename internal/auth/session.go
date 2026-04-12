@@ -170,13 +170,21 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	return &sessionCopy, user, nil
 }
 
-// Logout invalidates a session
+// Logout invalidates a session. Checks both m.sessions and m.adminSessions so
+// that admin sessions are always revocable regardless of which map they landed in.
 func (m *Module) Logout(ctx context.Context, sessionID string) error {
+	var username string
+	var exists bool
+
 	m.sessionsMu.Lock()
-	session, exists := m.sessions[sessionID]
-	if exists {
-		m.log.Info("User logged out: %s", session.Username)
+	if session, ok := m.sessions[sessionID]; ok {
+		username = session.Username
 		delete(m.sessions, sessionID)
+		exists = true
+	} else if adminSession, ok := m.adminSessions[sessionID]; ok {
+		username = adminSession.Username
+		delete(m.adminSessions, sessionID)
+		exists = true
 	}
 	m.sessionsMu.Unlock()
 
@@ -187,15 +195,25 @@ func (m *Module) Logout(ctx context.Context, sessionID string) error {
 	if !exists {
 		return ErrSessionNotFound
 	}
+	m.log.Info("User logged out: %s", username)
 	return nil
 }
 
-// LogoutAdmin invalidates an admin session
+// LogoutAdmin invalidates an admin session. Checks both m.adminSessions and
+// m.sessions defensively so that sessions are always revocable.
 func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
+	var username string
+	var exists bool
+
 	m.sessionsMu.Lock()
-	session, exists := m.adminSessions[sessionID]
-	if exists {
+	if session, ok := m.adminSessions[sessionID]; ok {
+		username = session.Username
 		delete(m.adminSessions, sessionID)
+		exists = true
+	} else if session, ok := m.sessions[sessionID]; ok {
+		username = session.Username
+		delete(m.sessions, sessionID)
+		exists = true
 	}
 	m.sessionsMu.Unlock()
 
@@ -207,7 +225,7 @@ func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
 		m.log.Warn("Failed to delete admin session from repository: %v", err)
 	}
 
-	m.log.Info("Admin logged out: %s", session.Username)
+	m.log.Info("Admin logged out: %s", username)
 	return nil
 }
 
@@ -248,7 +266,11 @@ func (m *Module) createSession(ctx context.Context, user *models.User, req *sess
 	}
 
 	m.sessionsMu.Lock()
-	m.sessions[session.ID] = session
+	if session.Role == models.RoleAdmin {
+		m.adminSessions[session.ID] = &models.AdminSession{Session: *session}
+	} else {
+		m.sessions[session.ID] = session
+	}
 	m.sessionsMu.Unlock()
 
 	return session, nil
