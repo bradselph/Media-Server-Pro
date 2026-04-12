@@ -2,8 +2,19 @@
 const adminApi = useAdminApi()
 const toast = useToast()
 
+// Known top-level config sections — matches the Go config struct sections.
+// Adding a new section here (and in Go) keeps both sides in sync.
+type ConfigSection =
+  | 'admin' | 'age_gate' | 'analytics' | 'auth' | 'backup'
+  | 'crawler' | 'database' | 'directories' | 'download' | 'downloader'
+  | 'extractor' | 'features' | 'hls' | 'huggingface' | 'logging'
+  | 'mature_scanner' | 'receiver' | 'remote_media' | 'security'
+  | 'server' | 'storage' | 'streaming' | 'thumbnails' | 'ui'
+  | 'updater' | 'uploads'
+
 // ── State ─────────────────────────────────────────────────────────────────
-const config = ref<Record<string, any>>({})
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const config = ref<Partial<Record<ConfigSection, Record<string, any>>>>({})
 const loading = ref(false)
 const saving = ref(false)
 const dirty = ref(false)
@@ -19,17 +30,18 @@ const showRawJson = ref(false)
 const rawJsonText = ref('')
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-function get(section: string, key: string) {
+function get(section: ConfigSection, key: string) {
   return config.value[section]?.[key]
 }
 
-function set(section: string, key: string, val: any) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function set(section: ConfigSection, key: string, val: any) {
   if (!config.value[section]) config.value[section] = {}
-  config.value[section][key] = val
+  config.value[section]![key] = val
   dirty.value = true
 }
 
-function toggle(section: string, key: string) {
+function toggle(section: ConfigSection, key: string) {
   set(section, key, !get(section, key))
 }
 
