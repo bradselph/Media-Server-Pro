@@ -51,6 +51,8 @@ var configDenyList = map[string]bool{
 	"receiver":    true, // slave API keys
 	"storage":     true, // S3 access key, secret key
 	"huggingface": true, // classification API key
+	"directories": true, // media scan paths — runtime redirect to /etc etc is a security risk
+	"logging":     true, // log file paths and levels
 }
 
 // filterDeniedConfigKeys removes denied keys from the update map and returns
