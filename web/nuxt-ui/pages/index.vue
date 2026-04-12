@@ -53,7 +53,7 @@ mediaApi.getStats().then(s => { libraryStats.value = s }).catch(() => {})
 const selectionMode = ref(false)
 const selectedIds = ref<Set<string>>(new Set())
 const myPlaylists = ref<Playlist[]>([])
-const bulkAddPlaylistId = ref<string | null>(null)
+const bulkAddPlaylistId = ref<string | undefined>(undefined)
 const bulkAdding = ref(false)
 
 function toggleSelectionMode() {
@@ -86,7 +86,7 @@ async function bulkAddToPlaylist() {
   bulkAdding.value = false
   toast.add({ title: `Added ${added} of ${ids.length} items to playlist`, color: added > 0 ? 'success' : 'warning', icon: 'i-lucide-list-music' })
   toggleSelectionMode()
-  bulkAddPlaylistId.value = null
+  bulkAddPlaylistId.value = undefined
 }
 
 watch(selectionMode, (on) => { if (on) loadMyPlaylists() })
