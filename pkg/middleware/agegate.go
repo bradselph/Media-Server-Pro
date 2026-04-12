@@ -98,7 +98,10 @@ func extractClientIP(r *http.Request) string {
 			parts := strings.Split(xff, ",")
 			for i := len(parts) - 1; i >= 0; i-- {
 				candidate := strings.TrimSpace(parts[i])
-				if candidate != "" && !IsTrustedProxy(candidate) {
+				// Validate as an IP before trusting: a crafted XFF value like
+				// "not-an-ip, 1.2.3.4" would otherwise store a garbage string,
+				// breaking IP-based TTL tracking in verifiedIPs.
+				if candidate != "" && net.ParseIP(candidate) != nil && !IsTrustedProxy(candidate) {
 					return candidate
 				}
 			}
@@ -255,10 +258,19 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 			// Cap map size to prevent unbounded memory growth under high traffic.
 			const maxVerifiedIPs = 100000
 			if len(ag.verifiedIPs) >= maxVerifiedIPs {
-				// Evict oldest entries when at capacity
+				// Evict oldest entries when at capacity.
+				// Release the lock, run eviction, then re-acquire and re-check the
+				// size before inserting to close the TOCTOU window where concurrent
+				// goroutines could each see len < max and all insert, exceeding the cap.
 				ag.mu.Unlock()
 				ag.evictExpired()
 				ag.mu.Lock()
+				// Re-check size after eviction in case concurrent goroutines also
+				// passed the first check and grew the map past the limit.
+				if len(ag.verifiedIPs) >= maxVerifiedIPs {
+					ag.mu.Unlock()
+					return
+				}
 			}
 			ag.verifiedIPs[ip] = time.Now()
 			ag.mu.Unlock()
