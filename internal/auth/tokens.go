@@ -56,11 +56,18 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 	}
 	if rec.ExpiresAt != nil && time.Now().After(*rec.ExpiresAt) {
 		// Clean up expired token so it doesn't accumulate in the database.
-		go func() { //nolint:gosec // G118: background context intentional for async cleanup goroutine
-			if delErr := m.tokenRepo.Delete(context.Background(), rec.ID, rec.UserID); delErr != nil {
-				m.log.Warn("Failed to delete expired API token %s: %v", rec.ID, delErr)
-			}
-		}()
+		// Bounded by sessionUpdateSem to prevent goroutine accumulation under load.
+		select {
+		case m.sessionUpdateSem <- struct{}{}:
+			go func() { //nolint:gosec // G118: background context intentional for async cleanup goroutine
+				defer func() { <-m.sessionUpdateSem }()
+				if delErr := m.tokenRepo.Delete(context.Background(), rec.ID, rec.UserID); delErr != nil {
+					m.log.Warn("Failed to delete expired API token %s: %v", rec.ID, delErr)
+				}
+			}()
+		default:
+			// Semaphore full — skip cleanup; the token will be cleaned up on next validation.
+		}
 		return nil, nil, ErrSessionExpired
 	}
 
@@ -73,11 +80,18 @@ func (m *Module) ValidateAPIToken(ctx context.Context, rawToken string) (*models
 	}
 
 	// Update last_used_at asynchronously — don't block the request on a non-critical write.
-	go func() { //nolint:gosec // G118: background context intentional for async non-critical write
-		if err := m.tokenRepo.UpdateLastUsed(context.Background(), hash); err != nil {
-			m.log.Warn("Failed to update API token last_used_at: %v", err)
-		}
-	}()
+	// Bounded by sessionUpdateSem to prevent goroutine accumulation under sustained load.
+	select {
+	case m.sessionUpdateSem <- struct{}{}:
+		go func() { //nolint:gosec // G118: background context intentional for async non-critical write
+			defer func() { <-m.sessionUpdateSem }()
+			if err := m.tokenRepo.UpdateLastUsed(context.Background(), hash); err != nil {
+				m.log.Warn("Failed to update API token last_used_at: %v", err)
+			}
+		}()
+	default:
+		// Semaphore full — skip this update; last_used_at will be updated on the next request.
+	}
 
 	// Synthetic session — not stored in the sessions table; used only for context propagation.
 	// ExpiresAt is bounded by the token's actual TTL when set, otherwise defaults to 24h.
