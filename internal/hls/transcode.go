@@ -73,7 +73,11 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 		}
 	}
 
-	if err := m.generateMasterPlaylist(&generateMasterPlaylistParams{OutputDir: job.OutputDir, Variants: job.Qualities}); err != nil {
+	// Use qualitiesToTranscode (not job.Qualities) so the master playlist only
+	// advertises qualities that were actually transcoded. With lazy transcode
+	// enabled, job.Qualities is the full list but only the first quality exists
+	// on disk — listing all would cause 404s for any non-first quality variant.
+	if err := m.generateMasterPlaylist(&generateMasterPlaylistParams{OutputDir: job.OutputDir, Variants: qualitiesToTranscode}); err != nil {
 		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Failed to create master playlist: %v", err), Progress: 0})
 		return
 	}
