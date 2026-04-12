@@ -598,6 +598,9 @@ onUnmounted(() => {
               <div v-if="ep.season > 0 || ep.episode > 0" class="absolute bottom-1 left-1 text-[10px] font-bold text-white bg-black/60 rounded px-1">
                 {{ ep.season > 0 ? `S${String(ep.season).padStart(2,'0')}` : '' }}{{ ep.episode > 0 ? `E${String(ep.episode).padStart(2,'0')}` : '' }}
               </div>
+              <div v-if="ep.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+                {{ formatDuration(ep.duration) }}
+              </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors leading-tight" :title="ep.show_name">{{ ep.show_name }}</p>
             <p class="text-[10px] text-muted truncate" :title="getDisplayTitle(ep)">{{ getDisplayTitle(ep) }}</p>
@@ -656,6 +659,9 @@ onUnmounted(() => {
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
               </div>
+              <div v-if="r.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+                {{ formatDuration(r.duration) }}
+              </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
             <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
@@ -693,6 +699,9 @@ onUnmounted(() => {
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
+              </div>
+              <div v-if="r.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+                {{ formatDuration(r.duration) }}
               </div>
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>

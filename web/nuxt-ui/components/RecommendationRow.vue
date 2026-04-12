@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Suggestion } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { formatDuration } from '~/utils/format'
 
 defineProps<{
   title: string
@@ -60,6 +61,10 @@ function scrollBy(delta: number) {
           />
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon name="i-lucide-film" class="size-6 text-muted" />
+          </div>
+          <!-- Duration badge -->
+          <div v-if="s.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+            {{ formatDuration(s.duration) }}
           </div>
         </div>
         <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(s)">{{ getDisplayTitle(s) }}</p>

@@ -737,6 +737,7 @@ export interface CategoryBrowseItem {
     name: string
     category: string
     confidence: number
+    duration?: number
     detected_info?: {
         title?: string
         year?: number

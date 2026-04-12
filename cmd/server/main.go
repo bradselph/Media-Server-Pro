@@ -401,6 +401,7 @@ func main() {
 				MediaType: string(item.Type),
 				Tags:      item.Tags,
 				Views:     item.Views,
+				Duration:  item.Duration,
 				AddedAt:   item.DateAdded,
 				IsMature:  item.IsMature,
 			})
@@ -534,6 +535,7 @@ func registerTasks(
 						MediaType: string(item.Type),
 						Tags:      item.Tags,
 						Views:     item.Views,
+						Duration:  item.Duration,
 						AddedAt:   item.DateAdded,
 						IsMature:  item.IsMature,
 					})

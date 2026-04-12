@@ -1199,8 +1199,11 @@ watch(mediaId, (id, oldId) => {
             :to="`/player?id=${encodeURIComponent(item.media_id)}`"
             class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
           >
-            <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+            <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
               <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+              <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+                {{ formatDuration(item.duration) }}
+              </div>
             </div>
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
@@ -1219,8 +1222,11 @@ watch(mediaId, (id, oldId) => {
             :to="`/player?id=${encodeURIComponent(item.media_id)}`"
             class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
           >
-            <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+            <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
               <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+              <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+                {{ formatDuration(item.duration) }}
+              </div>
             </div>
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>

@@ -2,6 +2,7 @@
 import type { CategoryStats, CategoryBrowseItem } from '~/types/api'
 import { useCategoryBrowseApi } from '~/composables/useApiEndpoints'
 import { getDisplayTitle } from '~/utils/mediaTitle'
+import { formatDuration } from '~/utils/format'
 
 definePageMeta({ layout: 'default', title: 'Browse by Category' })
 
@@ -202,6 +203,9 @@ watch(() => authStore.user, (user) => {
                     class="bg-black/70 text-white border-0"
                   />
                 </div>
+                <div v-if="item.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+                  {{ formatDuration(item.duration) }}
+                </div>
               </div>
               <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.detected_info?.title || getDisplayTitle(item)">
                 {{ item.detected_info?.title || getDisplayTitle(item) }}
@@ -249,6 +253,9 @@ watch(() => authStore.user, (user) => {
               class="absolute top-1 left-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded"
             >
               {{ item.detected_info.year }}
+            </div>
+            <div v-if="item.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+              {{ formatDuration(item.duration) }}
             </div>
           </div>
           <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.detected_info?.title || getDisplayTitle(item)">
