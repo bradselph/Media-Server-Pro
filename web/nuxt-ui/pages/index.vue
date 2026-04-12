@@ -865,7 +865,7 @@ onUnmounted(() => {
         <template v-if="selectedIds.size > 0">
           <USelect
             v-model="bulkAddPlaylistId"
-            :options="myPlaylists.map(p => ({ label: p.name, value: p.id }))"
+            :items="myPlaylists.map(p => ({ label: p.name, value: p.id }))"
             placeholder="Choose playlist…"
             size="sm"
             class="min-w-40"
