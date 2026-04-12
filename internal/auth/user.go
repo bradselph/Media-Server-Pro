@@ -159,11 +159,14 @@ func (m *Module) GetUserByID(ctx context.Context, id string) (*models.User, erro
 	return m.loadUserAndCache(func() (*models.User, error) { return m.userRepo.GetByID(ctx, id) })
 }
 
-// loadUserAndCache runs the loader; on success caches the user and returns it, on error returns ErrUserNotFound.
+// loadUserAndCache runs the loader; on success caches the user and returns it.
+// Propagates the original error so callers can distinguish ErrUserNotFound (user
+// genuinely absent) from transient DB errors (timeouts, connection failures) which
+// should cause a 503 rather than silently rejecting a valid session.
 func (m *Module) loadUserAndCache(load func() (*models.User, error)) (*models.User, error) {
 	user, err := load()
 	if err != nil {
-		return nil, ErrUserNotFound
+		return nil, err
 	}
 	m.cacheUser(user)
 	return user, nil
@@ -192,7 +195,9 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	// Check if this update would demote or disable an admin. Read role/enabled
 	// inside lastAdminMu to prevent two concurrent demotions from both seeing
 	// count=2 and both proceeding.
-	wantsDemote := updates["role"] == string(models.RoleViewer)
+	// Detect any role change away from admin (not just to RoleViewer) so that
+	// adding a third role in the future doesn't bypass the last-admin guard.
+	wantsDemote := updates["role"] != nil && updates["role"] != string(models.RoleAdmin)
 	wantsDisable := false
 	if v, ok := updates["enabled"].(bool); ok && !v {
 		wantsDisable = true
@@ -209,26 +214,22 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 		demoting := freshUser.Role == models.RoleAdmin && wantsDemote
 		disabling := freshUser.Role == models.RoleAdmin && freshUser.Enabled && wantsDisable
 		if demoting || disabling {
+			// Count active admins from the in-memory cache to avoid a DB query
+			// while holding lastAdminMu (which would block all concurrent admin updates).
 			count := 0
-			for _, u := range m.ListUsers(ctx) {
+			m.usersMu.RLock()
+			for _, u := range m.users {
 				if u.Role == models.RoleAdmin && u.Enabled {
 					count++
 				}
 			}
+			m.usersMu.RUnlock()
 			if count <= 1 {
 				return ErrCannotDemoteLastAdmin
 			}
 		}
 		user = freshUser
 	}
-
-	// Re-read user under lock to get a consistent snapshot for the copy.
-	// The pointer from GetUser may be shared with concurrent readers/writers.
-	m.usersMu.RLock()
-	if u, ok := m.users[username]; ok {
-		user = u
-	}
-	m.usersMu.RUnlock()
 
 	wasEnabled := user.Enabled
 	oldRole := user.Role

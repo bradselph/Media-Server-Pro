@@ -51,7 +51,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.3.0"
+	Version   = "1.3.9"
 	BuildDate = ""
 )
 
@@ -138,7 +138,11 @@ func main() {
 		},
 	}
 
-	initCtx := context.Background()
+	// Use a 30-second timeout for storage backend init. Without a deadline,
+	// an unreachable S3/B2 endpoint causes the server to hang forever on startup.
+	initCtxRaw, initCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer initCtxCancel()
+	initCtx := initCtxRaw
 	dirs := cfg.Get().Directories
 
 	videoStore, err := storageFactory.NewBackend(initCtx, "videos", dirs.Videos)

@@ -104,7 +104,11 @@ async function savePrefs() {
   try {
     const toSave = { ...prefs.value }
     if (toSave.default_quality === 'auto') toSave.default_quality = ''
-    await updatePreferences(toSave)
+    const saved = await updatePreferences(toSave)
+    // Sync prefs.value from the backend response so any normalised values
+    // (enum defaults, clamped numbers) are reflected without requiring a reload.
+    if (!saved.default_quality) saved.default_quality = 'auto'
+    prefs.value = saved
     if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ThemeValue)
     toast.add({ title: 'Preferences saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
@@ -399,7 +403,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               </div>
               <UProgress :value="storageUsage.quota_gb > 0 ? storageUsage.percentage : 0" size="xs" :color="storageUsage.percentage > 90 ? 'error' : storageUsage.percentage > 70 ? 'warning' : 'success'" />
             </div>
-            <div v-if="permissionsInfo?.capabilities" class="mt-2 flex flex-wrap gap-1.5">
+            <div v-if="authStore.isAdmin && permissionsInfo?.capabilities" class="mt-2 flex flex-wrap gap-1.5">
               <UBadge
                 v-for="[cap, allowed] in Object.entries(permissionsInfo.capabilities)"
                 :key="cap"
@@ -677,7 +681,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       </UModal>
 
       <!-- API Tokens -->
-      <UCard>
+      <UCard v-if="authStore.isAdmin">
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
             <UIcon name="i-lucide-key-round" class="size-4" />

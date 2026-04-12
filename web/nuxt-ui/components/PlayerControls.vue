@@ -77,12 +77,7 @@ function onSeekBarTouch(e: TouchEvent) {
   const fraction = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
   seekBarHoverTime.value = fraction * props.duration
   seekBarHoverX.value = touch.clientX - rect.left
-  if (e.type === 'touchend') {
-    emit('seek-to-fraction', fraction)
-    seekBarHovering.value = false
-  } else {
-    seekBarHovering.value = true
-  }
+  seekBarHovering.value = true
 }
 
 function onSeekBarTouchEnd(e: TouchEvent) {

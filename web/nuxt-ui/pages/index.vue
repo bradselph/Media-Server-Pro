@@ -53,7 +53,7 @@ mediaApi.getStats().then(s => { libraryStats.value = s }).catch(() => {})
 const selectionMode = ref(false)
 const selectedIds = ref<Set<string>>(new Set())
 const myPlaylists = ref<Playlist[]>([])
-const bulkAddPlaylistId = ref<string | null>(null)
+const bulkAddPlaylistId = ref<string | undefined>(undefined)
 const bulkAdding = ref(false)
 
 function toggleSelectionMode() {
@@ -86,7 +86,7 @@ async function bulkAddToPlaylist() {
   bulkAdding.value = false
   toast.add({ title: `Added ${added} of ${ids.length} items to playlist`, color: added > 0 ? 'success' : 'warning', icon: 'i-lucide-list-music' })
   toggleSelectionMode()
-  bulkAddPlaylistId.value = null
+  bulkAddPlaylistId.value = undefined
 }
 
 watch(selectionMode, (on) => { if (on) loadMyPlaylists() })
@@ -154,6 +154,11 @@ const loading = ref(true)
 const loadError = ref('')
 const scanning = ref(false)
 const initializing = ref(false)
+
+// Generation counter — incremented on every load() call so that responses
+// arriving out of order (due to network jitter or rapid filter changes) are
+// discarded rather than overwriting a more recent result.
+let loadSeq = 0
 
 // URL deep-link: query params take precedence over saved preferences so that
 // shared / bookmarked URLs open with the exact filters the sender intended.
@@ -307,6 +312,7 @@ watch(
 )
 
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   loadError.value = ''
   try {
@@ -324,6 +330,8 @@ async function load() {
       ...(params.min_rating > 0 && authStore.isLoggedIn ? { min_rating: params.min_rating } : {}),
     }
     const res = await mediaApi.list(apiParams)
+    // Discard response if a newer load() has already been dispatched.
+    if (seq !== loadSeq) return
     items.value = res.items ?? []
     total.value = res.total_items ?? 0
     scanning.value = res.scanning ?? false
@@ -356,9 +364,12 @@ async function load() {
       }).catch(() => {})
     }
   } catch (e: unknown) {
+    if (seq !== loadSeq) return
     loadError.value = e instanceof Error ? e.message : 'Failed to load media'
     toast.add({ title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { loading.value = false }
+  } finally {
+    if (seq === loadSeq) loading.value = false
+  }
 }
 
 async function loadCategories() {
@@ -500,12 +511,18 @@ function onMediaHoverLeave() {
   if (hoverCycleTimer) { clearInterval(hoverCycleTimer); hoverCycleTimer = null }
 }
 
+function getThumbnailUrl(id: string): string {
+  const base = mediaApi.getThumbnailUrl(id)
+  const nonce = authStore.thumbnailNonce
+  return nonce > 0 ? `${base}&_n=${nonce}` : base
+}
+
 function getThumbSrc(id: string): string {
   if (hoverItemId.value === id) {
     const frames = previewCache.get(id)
     if (frames?.length) return frames[hoverFrameIdx.value % frames.length]
   }
-  return mediaApi.getThumbnailUrl(id)
+  return getThumbnailUrl(id)
 }
 
 function onThumbnailError(event: Event, id: string) {
@@ -848,7 +865,7 @@ onUnmounted(() => {
         <template v-if="selectedIds.size > 0">
           <USelect
             v-model="bulkAddPlaylistId"
-            :options="myPlaylists.map(p => ({ label: p.name, value: p.id }))"
+            :items="myPlaylists.map(p => ({ label: p.name, value: p.id }))"
             placeholder="Choose playlist…"
             size="sm"
             class="min-w-40"
@@ -1090,7 +1107,7 @@ onUnmounted(() => {
             >
               <img
                 v-if="row.original.type !== 'audio' && !failedThumbnails.has(row.original.id)"
-                :src="mediaApi.getThumbnailUrl(row.original.id)"
+                :src="getThumbnailUrl(row.original.id)"
                 :alt="getDisplayTitle(row.original)"
                 width="64"
                 height="36"

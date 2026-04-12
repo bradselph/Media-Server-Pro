@@ -899,7 +899,11 @@ func (m *Module) installUpdate(updateFile string) error {
 	// Apply executable permissions to the installed binary.
 	// copyFile uses os.Create which does not copy source permissions.
 	if err := os.Chmod(execPath, 0o755); err != nil { //nolint:gosec // executable binaries require execute permissions
-		m.log.Warn("Failed to set executable bit on installed binary: %v", err)
+		// Without the execute bit the server cannot restart — roll back.
+		if restoreErr := os.Rename(oldPath, execPath); restoreErr != nil {
+			m.log.Error("Failed to restore old executable after chmod failure: %v", restoreErr)
+		}
+		return fmt.Errorf("failed to set executable bit on installed binary: %w", err)
 	}
 
 	// Remove old version

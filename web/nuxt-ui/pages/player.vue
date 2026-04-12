@@ -255,7 +255,6 @@ function submitRating(star: number) {
 }
 
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
-let positionSaveController: AbortController | null = null
 let preMuteVolume = 1
 let _restorePiP = false
 
@@ -313,9 +312,6 @@ async function savePosition() {
   const pos = videoRef.value.currentTime
   const dur = videoRef.value.duration || 0
   if (pos > 0) {
-    // Cancel any in-flight save to prevent out-of-order writes
-    positionSaveController?.abort()
-    positionSaveController = new AbortController()
     try {
       await playbackApi.savePosition(mediaId.value, pos, dur)
     } catch {
@@ -337,12 +333,13 @@ function onVideoLoaded() {
   // MediaElementAudioSourceNode survive across src/srcObject changes.
   if (media.value?.type === 'audio') {
     ensureAudioGraph()
-    // Browser suspends AudioContext until a user gesture. Resume on every play event
-    // (not just the first) so HLS re-loads don't leave the context suspended.
-    videoRef.value?.addEventListener('play', () => {
-      if (audioCtx?.state === 'suspended') audioCtx.resume()
-    }, { once: false })
   }
+  // Resume AudioContext on play for ALL media types (audio and video).
+  // Without this, video media with EQ enabled has no path to resume the AudioContext
+  // after the browser suspends it when the tab is hidden and shown again.
+  videoRef.value?.addEventListener('play', () => {
+    if (audioCtx?.state === 'suspended') audioCtx.resume()
+  }, { once: true })
   restorePosition()
   playbackStore.startAutoSave()
   // Auto-play when preference is enabled
@@ -512,7 +509,8 @@ async function togglePiP() {
       isPiP.value = true
     }
   } catch {
-    // PiP not supported or denied — silently ignore
+    // Sync isPiP with actual browser state in case the request/exit call threw
+    isPiP.value = document.pictureInPictureElement === videoRef.value
   }
 }
 
@@ -777,7 +775,11 @@ function trackComplete() {
   const dur = videoRef.value?.duration
   analyticsApi.submitEvent({ type: 'complete', media_id: mediaId.value, duration: dur ? Math.round(dur) : undefined }).catch(() => {})
 }
-watch(mediaId, () => { playEventSent = false })
+watch(mediaId, () => {
+  playEventSent = false
+  if (seekTimer) { clearTimeout(seekTimer); seekTimer = null }
+  if (volumeSaveTimer) { clearTimeout(volumeSaveTimer); volumeSaveTimer = null }
+})
 
 // Save position on pause and unmount
 onUnmounted(() => {

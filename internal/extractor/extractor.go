@@ -549,12 +549,16 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 
 	req.Header.Set("User-Agent", "MediaServerPro/4.0")
 
+	// Apply per-request timeout via context so the module's shared httpClient
+	// (and its connection pool) is reused instead of creating a new client.
 	proxyTimeout := cfg.Extractor.ProxyTimeout
 	if proxyTimeout <= 0 {
 		proxyTimeout = 30 * time.Second
 	}
-	client := &http.Client{Transport: m.httpClient.Transport, Timeout: proxyTimeout}
-	resp, err := client.Do(req)
+	proxyCtx, proxyCancel := context.WithTimeout(req.Context(), proxyTimeout)
+	defer proxyCancel()
+	req = req.WithContext(proxyCtx)
+	resp, err := m.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("proxy request failed: %w", err)
 	}

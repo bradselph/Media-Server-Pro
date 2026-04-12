@@ -768,8 +768,12 @@ func (m *Module) migratePlaylistItemsPK(ctx context.Context) error {
 
 	m.log.Info("Migrating playlist_items PK from composite to id column")
 
-	// Wrap both UUID population and PK change in a transaction so if
-	// ALTER TABLE fails, the UUID updates are rolled back.
+	// Wrap both steps in a transaction. Note: MySQL DDL statements (ALTER TABLE)
+	// cause an implicit commit regardless of the active transaction, so the
+	// UPDATE step cannot be atomically rolled back if ALTER TABLE fails. In
+	// practice this is safe because the UUID population is idempotent — a
+	// failed or interrupted migration can be retried; rows with existing UUIDs
+	// are skipped by the WHERE clause.
 	tx, err := m.sqlDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin playlist_items PK migration tx: %w", err)

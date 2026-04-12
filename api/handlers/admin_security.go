@@ -213,6 +213,10 @@ func (h *Handler) UnbanIP(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "IP address is required")
 		return
 	}
+	if net.ParseIP(req.IP) == nil {
+		writeError(c, http.StatusBadRequest, "Invalid IP address format")
+		return
+	}
 
 	h.security.UnbanIP(req.IP)
 	writeSuccess(c, nil)

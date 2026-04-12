@@ -263,6 +263,8 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 	if err != nil {
 		m.log.Error("FFmpeg waveform failed: %v", err)
 		m.log.Error("FFmpeg output: %s", string(output))
+		// Remove any partial output file to prevent corrupt thumbnails being served.
+		_ = os.Remove(job.OutputPath)
 		return fmt.Errorf("ffmpeg waveform failed: %w", err)
 	}
 
@@ -310,5 +312,10 @@ func (m *Module) generateWebPFromAudio(opts *webPFromAudioOpts) error {
 	cmdWithContext.Dir = cmd.Dir
 
 	_, err := cmdWithContext.CombinedOutput()
-	return err
+	if err != nil {
+		// Remove partial/0-byte WebP file so corrupt output is never served.
+		_ = os.Remove(opts.OutputPath)
+		return err
+	}
+	return nil
 }

@@ -128,11 +128,10 @@ var upgrader = websocket.Upgrader{
 // The slave authenticates via X-API-Key header or api_key query parameter.
 // All registration, catalog pushes, and heartbeats flow through this connection.
 func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	// Authenticate
+	// Authenticate via X-API-Key header only. Query-string auth is intentionally
+	// not supported: WS upgrade URLs appear in access logs, so query-string keys
+	// would be written to logs in plaintext and visible to anyone with log access.
 	apiKey := r.Header.Get("X-API-Key")
-	if apiKey == "" {
-		apiKey = r.URL.Query().Get("api_key")
-	}
 	if !m.ValidateAPIKey(apiKey) {
 		http.Error(w, "Invalid API key", http.StatusForbidden)
 		return

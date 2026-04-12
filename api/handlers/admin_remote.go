@@ -88,8 +88,12 @@ func (h *Handler) CreateRemoteSource(c *gin.Context) {
 	if err := h.config.Update(func(cfg *config.Config) {
 		cfg.RemoteMedia.Sources = append(cfg.RemoteMedia.Sources, source)
 	}); err != nil {
-		h.log.Warn("Failed to persist new remote source to config: %v", err)
-		// Source is active in memory but won't survive a restart
+		h.log.Error("Failed to persist new remote source to config, rolling back: %v", err)
+		if rbErr := h.remote.RemoveSource(source.Name); rbErr != nil {
+			h.log.Error("Rollback failed for CreateRemoteSource %s: %v", source.Name, rbErr)
+		}
+		writeError(c, http.StatusInternalServerError, "Failed to persist source; creation rolled back")
+		return
 	}
 
 	type createRemoteSourceResponse struct {
@@ -183,6 +187,16 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 		return
 	}
 
+	// Capture the source before removal so we can roll back if config write fails.
+	var savedSource *config.RemoteSource
+	for _, s := range h.config.Get().RemoteMedia.Sources {
+		if s.Name == sourceName {
+			cp := s
+			savedSource = &cp
+			break
+		}
+	}
+
 	if err := h.remote.RemoveSource(sourceName); err != nil {
 		writeError(c, http.StatusNotFound, msgSourceNotFound)
 		return
@@ -197,7 +211,14 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 		}
 		cfg.RemoteMedia.Sources = filtered
 	}); err != nil {
-		h.log.Warn("Failed to persist remote source deletion to config: %v", err)
+		h.log.Error("Failed to persist remote source deletion to config, rolling back: %v", err)
+		if savedSource != nil {
+			if rbErr := h.remote.AddSource(*savedSource); rbErr != nil {
+				h.log.Error("Rollback failed for DeleteRemoteSource %s: %v", sourceName, rbErr)
+			}
+		}
+		writeError(c, http.StatusInternalServerError, "Failed to persist deletion; source restored")
+		return
 	}
 
 	writeSuccess(c, map[string]string{"message": "Source removed"})

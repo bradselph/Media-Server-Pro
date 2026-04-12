@@ -38,7 +38,12 @@ func init() {
 }
 
 // isPrivateIP reports whether ip falls within any private/reserved range.
+// IPv4-mapped IPv6 addresses (e.g. ::ffff:10.0.0.1) are unwrapped to their
+// 4-byte form before checking so that they match IPv4 CIDR ranges.
 func isPrivateIP(ip net.IP) bool {
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4
+	}
 	for _, block := range privateRanges {
 		if block.Contains(ip) {
 			return true
@@ -51,6 +56,12 @@ func isPrivateIP(ip net.IP) bool {
 // whose host resolves to private/loopback/link-local/reserved IP addresses.
 // It is intended for validating admin-supplied URLs before any server-side
 // HTTP fetching occurs.
+//
+// DNS rebinding caveat: validation resolves the hostname at call time and rejects
+// private IPs. A DNS rebinding attack could cause the hostname to resolve to a
+// different (private) IP at actual fetch time. Callers that perform the fetch
+// after this validation should use SafeHTTPTransport, which re-validates the
+// resolved IP at connection time via a custom DialContext hook.
 func ValidateURLForSSRF(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {

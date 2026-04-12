@@ -90,9 +90,10 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		return nil, ErrInvalidCredentials
 	}
 	if !user.Enabled {
-		// Record failed attempt so disabled accounts incur the same brute-force
-		// penalty as wrong passwords, preventing unlimited-rate enumeration.
-		// Return generic credentials error to avoid leaking account existence.
+		// Perform a dummy bcrypt comparison to equalise response time with the
+		// "user not found" path above, preventing timing-based username enumeration
+		// by distinguishing "disabled" (fast map lookup) from "not found" (slow bcrypt).
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
 		m.recordFailedAttempt(req.IPAddress)
 		m.log.Debug("Login failed - account disabled: %s", req.Username)
 		return nil, ErrInvalidCredentials

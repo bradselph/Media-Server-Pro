@@ -12,9 +12,14 @@ const (
 )
 
 // ListAPITokens returns the user's API tokens (without the raw token value).
+// Restricted to admin users only.
 func (h *Handler) ListAPITokens(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
+		return
+	}
+	if session.Role != "admin" {
+		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
 	tokens, err := h.auth.ListAPITokens(c.Request.Context(), session.UserID)
@@ -52,9 +57,14 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 // CreateAPIToken generates a new API token for the user.
 // Body: {"name": "My Script"}
 // The raw token value is returned once and never stored in plaintext.
+// Restricted to admin users only.
 func (h *Handler) CreateAPIToken(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
+		return
+	}
+	if session.Role != "admin" {
+		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
 	var req struct {
@@ -92,9 +102,14 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 }
 
 // DeleteAPIToken revokes an API token by ID.
+// Restricted to admin users only.
 func (h *Handler) DeleteAPIToken(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
+		return
+	}
+	if session.Role != "admin" {
+		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
 	tokenID, ok := RequireParamID(c, "id")

@@ -102,14 +102,19 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 		m.jobsMu.Unlock()
 		return false
 	}
-	delete(m.jobs, jobID)
 	m.jobsMu.Unlock()
 
+	// Remove files before touching the map so that a failed removal doesn't
+	// leave the DB with a record that has no corresponding in-memory job.
 	path := filepath.Join(m.cacheDir, jobID)
 	if err := os.RemoveAll(path); err != nil {
 		m.log.Warn("Failed to remove inactive HLS job %s: %v", jobID, err)
 		return false
 	}
+
+	m.jobsMu.Lock()
+	delete(m.jobs, jobID)
+	m.jobsMu.Unlock()
 
 	m.accessTracker.mu.Lock()
 	delete(m.accessTracker.lastAccess, jobID)

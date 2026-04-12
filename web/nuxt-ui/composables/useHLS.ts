@@ -98,6 +98,7 @@ export function useHLS(
     let hlsInstance: import('hls.js').default | null = null
     let pollTimer: ReturnType<typeof setInterval> | null = null
     let checkDebounce: ReturnType<typeof setTimeout> | null = null
+    let networkRetryTimer: ReturnType<typeof setTimeout> | null = null
     let pollStartTime = 0
     const MAX_POLL_DURATION = 30 * 60 * 1000 // 30 minutes
     const MAX_CONSECUTIVE_ERRORS = 10
@@ -110,6 +111,10 @@ export function useHLS(
         if (pollTimer) {
             clearInterval(pollTimer)
             pollTimer = null
+        }
+        if (networkRetryTimer) {
+            clearTimeout(networkRetryTimer)
+            networkRetryTimer = null
         }
         if (hlsInstance) {
             hlsInstance.destroy()
@@ -124,6 +129,7 @@ export function useHLS(
         hlsActivated.value = false
         jobProgress.value = 0
         jobRunning.value = false
+        consecutiveErrors.count = 0
     }
 
     function selectQuality(index: number) {
@@ -254,7 +260,10 @@ export function useHLS(
                 networkRetryCount++
                 if (networkRetryCount <= 3) {
                     const delay = Math.min(1000 * Math.pow(2, networkRetryCount - 1), 8000)
-                    setTimeout(() => hls.startLoad(), delay)
+                    networkRetryTimer = setTimeout(() => {
+                        networkRetryTimer = null
+                        hls.startLoad()
+                    }, delay)
                     return
                 }
             }

@@ -51,6 +51,8 @@ var configDenyList = map[string]bool{
 	"receiver":    true, // slave API keys
 	"storage":     true, // S3 access key, secret key
 	"huggingface": true, // classification API key
+	"directories": true, // media scan paths — runtime redirect to /etc etc is a security risk
+	"logging":     true, // log file paths and levels
 }
 
 // filterDeniedConfigKeys removes denied keys from the update map and returns
@@ -67,6 +69,13 @@ func filterDeniedConfigKeys(updates map[string]interface{}) []string {
 		}
 	}
 	return rejected
+}
+
+// hotReloadKeys lists the top-level config sections that are applied to
+// in-memory modules immediately after a config update. All other sections
+// are persisted but require a server restart to take effect.
+var hotReloadKeys = map[string]bool{
+	"security": true, // whitelist/blacklist enable flags
 }
 
 // AdminUpdateConfig updates the configuration (raw updates passed to admin; some changes require restart).
@@ -104,8 +113,21 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 		h.security.SetBlacklistEnabled(updatedCfg.Security.EnableIPBlacklist)
 	}
 
+	// Determine whether any updated key falls outside the hot-reload set.
+	restartRequired := false
+	for k := range updates {
+		topLevel := strings.SplitN(strings.ToLower(k), ".", 2)[0]
+		if !hotReloadKeys[topLevel] {
+			restartRequired = true
+			break
+		}
+	}
+
 	h.logAdminAction(c, &adminLogActionParams{Action: "update_config", Target: "configuration", Details: redactSensitiveConfigKeys(updates)})
-	result := map[string]interface{}{"config": h.admin.GetConfigMap()}
+	result := map[string]interface{}{
+		"config":           h.admin.GetConfigMap(),
+		"restart_required": restartRequired,
+	}
 	if len(rejected) > 0 {
 		result["rejected_keys"] = rejected
 	}

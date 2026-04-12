@@ -2,9 +2,10 @@
 // Usage: definePageMeta({ middleware: 'auth' })
 export default defineNuxtRouteMiddleware(to => {
     const authStore = useAuthStore()
-    // Block navigation while session is still resolving — do not allow through
-    if (authStore.isLoading) return abortNavigation()
-    if (!authStore.isLoggedIn) {
+    // While session is still loading, redirect to login with the intended path as
+    // the redirect target. abortNavigation() would leave users on a blank page with
+    // no recovery path; redirecting to login provides a usable fallback.
+    if (authStore.isLoading || !authStore.isLoggedIn) {
         return navigateTo({path: '/login', query: {redirect: to.fullPath}})
     }
 })

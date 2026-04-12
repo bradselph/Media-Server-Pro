@@ -33,6 +33,7 @@ let ownSource: MediaElementAudioSourceNode | null = null
 let connectedElement: HTMLMediaElement | null = null
 
 let animationFrame = 0
+let resizeObserver: ResizeObserver | null = null
 
 function getBarColor(): string {
   if (props.color) return props.color
@@ -171,7 +172,24 @@ watch(() => props.mediaElement, (el) => {
   }
 }, { immediate: true })
 
+onMounted(() => {
+  const canvas = canvasRef.value
+  if (!canvas) return
+  // Keep canvas intrinsic size in sync with CSS layout so it's never blurry
+  // after window resize or theater mode toggle.
+  resizeObserver = new ResizeObserver((entries) => {
+    const entry = entries[0]
+    if (!entry || !canvas) return
+    const { width, height } = entry.contentRect
+    canvas.width = Math.round(width)
+    canvas.height = Math.round(height)
+  })
+  resizeObserver.observe(canvas.parentElement ?? canvas)
+})
+
 onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
   disconnectOwn()
   if (animationFrame) {
     cancelAnimationFrame(animationFrame)
@@ -184,8 +202,6 @@ onUnmounted(() => {
   <div class="audio-visualizer relative overflow-hidden" :style="{ height: `${canvasHeight}px` }">
     <canvas
       ref="canvasRef"
-      :width="barCount * 12"
-      :height="canvasHeight"
       class="w-full h-full"
     />
   </div>

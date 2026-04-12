@@ -451,21 +451,29 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 
 	h.log.Info("Admin %s executing query: %s", username, query)
 
-	// Block dangerous SQL functions even in SELECT subqueries.
-	// BENCHMARK/SLEEP/GET_LOCK/RELEASE_LOCK are DoS vectors; LOAD_FILE reads arbitrary
-	// server-side files — it is a scalar function and is NOT blocked by a READ ONLY transaction.
+	// Strip SQL block comments (/* ... */) before keyword matching to prevent
+	// comment-injection bypasses such as SLE/**/EP(999) evading "SLEEP" detection.
 	queryUpper := strings.ToUpper(query)
-	for _, banned := range []string{"BENCHMARK", "SLEEP", "LOAD_FILE", "GET_LOCK", "RELEASE_LOCK"} {
-		if strings.Contains(queryUpper, banned) {
-			writeError(c, http.StatusBadRequest, banned+"() is not permitted in queries")
+	queryStripped := stripSQLBlockComments(queryUpper)
+
+	// Block file-access functions: LOAD_FILE reads arbitrary server-side files and
+	// is not neutralised by a READ ONLY transaction or execution-time limits.
+	// Block INTO OUTFILE/DUMPFILE: SELECT INTO OUTFILE passes the SELECT prefix check
+	// but writes files if the DB user has FILE privilege.
+	for _, banned := range []string{"LOAD_FILE", "INTO OUTFILE", "INTO DUMPFILE"} {
+		if strings.Contains(queryStripped, banned) {
+			writeError(c, http.StatusBadRequest, "Query contains a disallowed keyword: "+banned)
 			return
 		}
 	}
 
-	isSelect := strings.HasPrefix(queryUpper, "SELECT") ||
-		strings.HasPrefix(queryUpper, "SHOW") ||
-		strings.HasPrefix(queryUpper, "DESCRIBE") ||
-		strings.HasPrefix(queryUpper, "EXPLAIN")
+	// SLEEP and BENCHMARK are neutralised below via MAX_EXECUTION_TIME rather than
+	// fragile keyword matching that can be bypassed via SQL comment injection.
+
+	isSelect := strings.HasPrefix(queryStripped, "SELECT") ||
+		strings.HasPrefix(queryStripped, "SHOW") ||
+		strings.HasPrefix(queryStripped, "DESCRIBE") ||
+		strings.HasPrefix(queryStripped, "EXPLAIN")
 
 	queryTimeout := h.media.GetConfig().Admin.QueryTimeout
 	if queryTimeout <= 0 {
@@ -487,8 +495,16 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		return
 	}
 
+	// Cap per-query execution time at the server level so SLEEP/BENCHMARK cannot
+	// stall the DB even if the keyword check is bypassed via comment injection.
+	// Silently ignore the error: MariaDB and older MySQL versions may not support
+	// MAX_EXECUTION_TIME; the context deadline provides a fallback cap.
+	if _, execErr := db.ExecContext(ctx, "SET SESSION MAX_EXECUTION_TIME=5000"); execErr != nil {
+		h.log.Debug("MAX_EXECUTION_TIME not supported by this DB server: %v", execErr)
+	}
+
 	// Use read-only transaction to prevent DML (INSERT/UPDATE/DELETE) and SELECT INTO OUTFILE.
-	// Note: LOAD_FILE() is blocked above (it is a scalar function, not a write op).
+	// Note: LOAD_FILE() and INTO OUTFILE are also blocked by keyword check above.
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		h.log.Error("Failed to begin read-only transaction: %v", err)
@@ -586,4 +602,26 @@ func (h *Handler) GetOpenAPISpec(c *gin.Context) {
 	}
 	c.Header(headerCacheControl, "public, max-age=3600")
 	c.Data(http.StatusOK, "application/yaml; charset=utf-8", apispec.Spec)
+}
+
+// stripSQLBlockComments removes /* ... */ style block comments from s.
+// Used before keyword matching to prevent comment-injection bypasses
+// such as SLE/**/EP(999) evading a naive "SLEEP" string search.
+func stripSQLBlockComments(s string) string {
+	var out strings.Builder
+	i := 0
+	for i < len(s) {
+		if i+1 < len(s) && s[i] == '/' && s[i+1] == '*' {
+			// Skip forward until closing */
+			i += 2
+			for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+				i++
+			}
+			i += 2 // skip the closing */
+			continue
+		}
+		out.WriteByte(s[i])
+		i++
+	}
+	return out.String()
 }

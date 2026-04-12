@@ -43,6 +43,10 @@ export const useAuthStore = defineStore('auth', () => {
     const user = ref<User | null>(null)
     const allowGuests = ref(false)
     const isLoading = ref(true)
+    // Incremented each time a user logs in so that thumbnail URLs change,
+    // forcing the browser to re-request mature-gated images instead of
+    // serving the cached censored placeholder from the pre-login session.
+    const thumbnailNonce = ref(0)
 
     const isLoggedIn = computed(() => !!user.value)
     const isAdmin = computed(() => user.value?.role === 'admin')
@@ -88,6 +92,9 @@ export const useAuthStore = defineStore('auth', () => {
             // Errors are intentionally swallowed — the minimal user above is sufficient fallback.
             await fetchSession().catch(() => {
             })
+            // Bump nonce so thumbnail URLs change and the browser re-requests
+            // mature-gated images rather than serving the cached censored version.
+            thumbnailNonce.value++
             return res
         } finally {
             loginInProgress = false
@@ -103,5 +110,5 @@ export const useAuthStore = defineStore('auth', () => {
         user.value = null
     }
 
-    return {user, allowGuests, isLoading, isLoggedIn, isAdmin, username, fetchSession, login, logout}
+    return {user, allowGuests, isLoading, isLoggedIn, isAdmin, username, thumbnailNonce, fetchSession, login, logout}
 })

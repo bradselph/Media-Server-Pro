@@ -278,10 +278,14 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 		}
 	}
 
-	// Apply pagination
-	if filter.Limit > 0 {
-		query = query.Limit(filter.Limit)
+	// Apply pagination. Always enforce an upper limit: Limit=0 from a caller
+	// should not pull the entire table into memory (OOM risk on large libraries).
+	const defaultMediaMetadataLimit = 1000
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = defaultMediaMetadataLimit
 	}
+	query = query.Limit(limit)
 	if filter.Offset > 0 {
 		query = query.Offset(filter.Offset)
 	}

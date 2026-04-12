@@ -186,6 +186,7 @@ func (h *Handler) applyClassifyTags(results map[string][]string) int {
 
 // runClassifyDirectoryBackground runs classification on mature-flagged files in dirPath (in background).
 func (h *Handler) runClassifyDirectoryBackground(dirPath string) {
+	defer h.classifyDirRunning.Store(false)
 	defer func() {
 		if r := recover(); r != nil {
 			h.log.Warn("ClassifyDirectory panic for %s: %v", dirPath, r)
@@ -208,6 +209,10 @@ func (h *Handler) runClassifyDirectoryBackground(dirPath string) {
 func (h *Handler) ClassifyDirectory(c *gin.Context) {
 	dirPath, ok := h.validateClassifyDirectoryRequest(c)
 	if !ok {
+		return
+	}
+	if !h.classifyDirRunning.CompareAndSwap(false, true) {
+		writeError(c, http.StatusConflict, "A directory classification job is already running")
 		return
 	}
 	go h.runClassifyDirectoryBackground(dirPath)
@@ -251,6 +256,10 @@ func (h *Handler) ClassifyAllPending(c *gin.Context) {
 		return
 	}
 
+	if !h.classifyAllRunning.CompareAndSwap(false, true) {
+		writeError(c, http.StatusConflict, "A classify-all-pending job is already running")
+		return
+	}
 	go h.runClassifyAllPendingBackground(pending)
 
 	c.JSON(http.StatusAccepted, models.APIResponse{
@@ -264,6 +273,7 @@ func (h *Handler) ClassifyAllPending(c *gin.Context) {
 
 // runClassifyAllPendingBackground classifies a list of file paths in the background.
 func (h *Handler) runClassifyAllPendingBackground(paths []string) {
+	defer h.classifyAllRunning.Store(false)
 	defer func() {
 		if r := recover(); r != nil {
 			h.log.Warn("ClassifyAllPending panic: %v", r)

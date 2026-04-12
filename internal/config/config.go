@@ -265,13 +265,15 @@ func (m *Manager) getCopy() *Config {
 	return &cp
 }
 
-// Update updates the configuration and notifies watchers
+// Update updates the configuration and notifies watchers.
+// Watchers are called synchronously after the lock is released so that they
+// receive configs in order and can safely call m.Get() without deadlocking.
 func (m *Manager) Update(updater func(*Config)) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	originalJSON, err := json.Marshal(m.config)
 	if err != nil {
+		m.mu.Unlock()
 		return fmt.Errorf("failed to marshal original config for backup: %w", err)
 	}
 	updater(m.config)
@@ -280,18 +282,21 @@ func (m *Manager) Update(updater func(*Config)) error {
 	m.syncFeatureToggles()
 	if err := m.validate(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
+		m.mu.Unlock()
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 	if err := m.save(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
+		m.mu.Unlock()
 		return err
 	}
 	cfg := m.getCopy()
 	watchers := make([]func(*Config), len(m.watchers))
 	copy(watchers, m.watchers)
-	for _, watcher := range watchers {
-		w := watcher
-		go func() {
+	m.mu.Unlock()
+
+	for _, w := range watchers {
+		func() {
 			defer func() {
 				if r := recover(); r != nil {
 					m.log.Error("Config watcher panic recovered: %v", r)

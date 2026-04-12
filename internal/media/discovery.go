@@ -899,12 +899,15 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		}
 	}
 
-	// Assign a stable UUID if not already set (new or pre-stable-ID file)
+	// Assign a stable UUID if not already set (new or pre-stable-ID file).
+	// Lock first to prevent two concurrent workers both seeing item.ID==""
+	// and assigning different UUIDs to the same file.
 	if item.ID == "" {
-		newID := uuid.New().String()
-		item.ID = newID
 		m.mu.Lock()
-		meta.StableID = newID
+		if meta.StableID == "" {
+			meta.StableID = uuid.New().String()
+		}
+		item.ID = meta.StableID
 		m.mu.Unlock()
 	}
 
