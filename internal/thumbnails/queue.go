@@ -89,7 +89,9 @@ func (m *Module) dequeue(ctx context.Context) *ThumbnailJob {
 	return pj.job
 }
 
-// worker processes thumbnail generation jobs from the priority queue
+// worker processes thumbnail generation jobs from the priority queue.
+// A deferred recover() catches panics (nil pointer in BlurHash, image decode
+// failure, etc.) so that a single bad job cannot permanently shrink the pool.
 func (m *Module) worker(id int) {
 	defer m.wg.Done()
 	m.log.Debug("Worker %d started", id)
@@ -112,17 +114,29 @@ func (m *Module) worker(id int) {
 		m.stats.Pending--
 		m.statsMu.Unlock()
 
-		if err := m.generateThumbnail(job); err != nil {
-			m.log.Error("Worker %d: Failed to generate thumbnail for %s: %v", id, job.MediaPath, err)
-			m.statsMu.Lock()
-			m.stats.Failed++
-			m.statsMu.Unlock()
-		} else {
-			m.log.Info("Worker %d: ✓ Thumbnail generated: %s", id, job.OutputPath)
-			m.statsMu.Lock()
-			m.stats.Generated++
-			m.statsMu.Unlock()
-		}
-		m.inFlight.Delete(job.OutputPath)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.Error("Worker %d: panic generating thumbnail for %s: %v", id, job.MediaPath, r)
+					m.statsMu.Lock()
+					m.stats.Failed++
+					m.statsMu.Unlock()
+					// Always release inFlight so the job slot is never permanently blocked.
+					m.inFlight.Delete(job.OutputPath)
+				}
+			}()
+			if err := m.generateThumbnail(job); err != nil {
+				m.log.Error("Worker %d: Failed to generate thumbnail for %s: %v", id, job.MediaPath, err)
+				m.statsMu.Lock()
+				m.stats.Failed++
+				m.statsMu.Unlock()
+			} else {
+				m.log.Info("Worker %d: ✓ Thumbnail generated: %s", id, job.OutputPath)
+				m.statsMu.Lock()
+				m.stats.Generated++
+				m.statsMu.Unlock()
+			}
+			m.inFlight.Delete(job.OutputPath)
+		}()
 	}
 }
