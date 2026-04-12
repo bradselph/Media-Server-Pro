@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -28,11 +29,14 @@ type Client struct {
 
 // NewClient creates a client for the downloader API.
 func NewClient(baseURL string, timeout time.Duration) *Client {
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout:   timeout,
-			Transport: &http.Transport{},
+			Timeout: timeout,
+			Transport: &http.Transport{
+				DialContext: dialer.DialContext,
+			},
 		},
 		log: logger.New("downloader-client"),
 	}
