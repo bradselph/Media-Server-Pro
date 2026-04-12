@@ -106,7 +106,6 @@ func (h *Handler) AdminListDeletionRequests(c *gin.Context) {
 				CreatedAt:  r.CreatedAt,
 				ReviewedAt: r.ReviewedAt,
 				ReviewedBy: r.ReviewedBy,
-				AdminNotes: r.AdminNotes,
 			},
 			AdminNotes: r.AdminNotes,
 		}

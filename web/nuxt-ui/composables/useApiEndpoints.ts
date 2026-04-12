@@ -418,7 +418,7 @@ export function useAdminApi() {
         // Users
         listUsers: () => api.get<User[]>(`${base}/users`),
         getUser: (username: string) => api.get<User>(`${base}/users/${encodeURIComponent(username)}`),
-        createUser: (data: { username: string; password: string; email?: string; role: string }) =>
+        createUser: (data: { username: string; password: string; email?: string; role: string; type?: string }) =>
             api.post<User>(`${base}/users`, data),
         updateUser: (username: string, data: Partial<User>) =>
             api.put<User>(`${base}/users/${encodeURIComponent(username)}`, data),
@@ -459,8 +459,8 @@ export function useAdminApi() {
         listHLSJobs: () => api.get<HLSJob[]>(`${base}/hls/jobs`),
         deleteHLSJob: (id: string) => api.delete<void>(`${base}/hls/jobs/${encodeURIComponent(id)}`),
         validateHLS: (id: string) => api.get<HLSValidationResult>(`${base}/hls/validate/${encodeURIComponent(id)}`),
-        cleanHLSStaleLocks: () => api.post<void>(`${base}/hls/clean/locks`),
-        cleanHLSInactive: () => api.post<void>(`${base}/hls/clean/inactive`),
+        cleanHLSStaleLocks: () => api.post<{ removed: number }>(`${base}/hls/clean/locks`),
+        cleanHLSInactive: (maxAgeHours?: number) => api.post<{ removed: number; threshold: string }>(`${base}/hls/clean/inactive`, maxAgeHours ? { max_age_hours: maxAgeHours } : {}),
 
         // Validator
         validateMedia: (id: string) => api.post<ValidationResult>(`${base}/validator/validate`, {id}),
@@ -545,8 +545,8 @@ export function useAdminApi() {
         removeFromBlacklist: (ip: string) =>
             api.delete<void>(`${base}/security/blacklist`, {ip}),
         getBannedIPs: () => api.get<BannedIP[]>(`${base}/security/banned`),
-        banIP: (ip: string, durationMinutes?: number) =>
-            api.post<void>(`${base}/security/ban`, {ip, ...(durationMinutes ? {duration_minutes: durationMinutes} : {})}),
+        banIP: (ip: string, durationMinutes?: number, reason?: string) =>
+            api.post<void>(`${base}/security/ban`, {ip, ...(durationMinutes ? {duration_minutes: durationMinutes} : {}), ...(reason ? {reason} : {})}),
         unbanIP: (ip: string) => api.post<void>(`${base}/security/unban`, {ip}),
 
         // Categorizer

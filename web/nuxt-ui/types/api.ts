@@ -499,12 +499,16 @@ export interface ReceiverSlave {
 export interface ReceiverMedia {
     id: string
     slave_id: string
+    slave_name?: string
     name: string
     path: string
     media_type: string
     size: number
     duration?: number
+    content_type?: string
     content_fingerprint?: string
+    width?: number
+    height?: number
 }
 
 export interface CrawlerTarget {

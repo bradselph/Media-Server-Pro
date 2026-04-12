@@ -52,7 +52,7 @@ import (
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
 	Version   = "1.3.11"
-	BuildDate = ""
+	BuildDate = "dev"
 )
 
 // fatalExit logs an error, flushes the logger, and exits with code 1.
@@ -63,40 +63,17 @@ func fatalExit(log *logger.Logger, format string, args ...interface{}) {
 }
 
 func main() {
-	// Parse flags
-	var (
-		configPath = flag.String("config", "config.json", "Path to config file")
-		logLevel   = flag.String("log-level", "info", "Log level: debug, info, warn, error")
-		showVer    = flag.Bool("version", false, "Show version and exit")
-	)
-	flag.Parse()
+	configPath, logLevel, showVer := parseFlags()
 
-	if *showVer {
-		if BuildDate != "" {
-			fmt.Printf("Media Server Pro v%s (built %s)\n", Version, BuildDate)
-		} else {
-			fmt.Printf("Media Server Pro v%s\n", Version)
-		}
+	if showVer {
+		showVersion()
 		os.Exit(0)
-	}
-
-	// Map log level string to logger.Level constant
-	var level logger.Level
-	switch *logLevel {
-	case "debug":
-		level = logger.DEBUG
-	case "warn":
-		level = logger.WARN
-	case "error":
-		level = logger.ERROR
-	default:
-		level = logger.INFO
 	}
 
 	// Create server (initializes logger + config)
 	srv, err := server.New(server.Options{
-		ConfigPath: *configPath,
-		LogLevel:   level,
+		ConfigPath: configPath,
+		LogLevel:   mapLogLevel(logLevel),
 		Version:    Version,
 		BuildDate:  BuildDate,
 	})
@@ -108,7 +85,72 @@ func main() {
 	cfg := srv.Config()
 	log := logger.New("main")
 
-	// ── Storage backend ────────────────────────────────────────────────────
+	// ── Storage backends ───────────────────────────────────────────────────
+	stores := initStorage(cfg, log)
+
+	// ── Startup security checks ────────────────────────────────────────────
+	validateSecrets(cfg, log)
+
+	// ── Module construction ────────────────────────────────────────────────
+	mods := initModules(srv, cfg, log, stores)
+
+	// ── Age gate middleware ────────────────────────────────────────────────
+	ageGate := setupAgeGate(cfg, mods.analytics)
+
+	// ── Register background tasks ──────────────────────────────────────────
+	registerTasks(mods.tasks, mods.media, mods.scanner, mods.thumbnails,
+		mods.auth, mods.backup, mods.suggestions, mods.duplicates, mods.admin, mods.hls, cfg, log)
+
+	// ── Wire up routes ─────────────────────────────────────────────────────
+	setupRoutes(srv, cfg, mods, ageGate)
+
+	// Seed suggestions when the media module's initial scan completes
+	wireSuggestionsSeeding(mods.media, mods.suggestions, log)
+
+	// ── Start server (blocks until graceful shutdown) ──────────────────────
+	if err := srv.Start(); err != nil {
+		fatalExit(log, "Server error: %v", err)
+	}
+}
+
+func parseFlags() (string, string, bool) {
+	var (
+		configPath = flag.String("config", "config.json", "Path to config file")
+		logLevel   = flag.String("log-level", "info", "Log level: debug, info, warn, error")
+		showVer    = flag.Bool("version", false, "Show version and exit")
+	)
+	flag.Parse()
+	return *configPath, *logLevel, *showVer
+}
+
+func showVersion() {
+	versionStr := fmt.Sprintf("Media Server Pro v%s", Version)
+	versionStr += fmt.Sprintf(" (built %s)", BuildDate)
+	fmt.Println(versionStr)
+}
+
+func mapLogLevel(levelStr string) logger.Level {
+	switch levelStr {
+	case "debug":
+		return logger.DEBUG
+	case "warn":
+		return logger.WARN
+	case "error":
+		return logger.ERROR
+	default:
+		return logger.INFO
+	}
+}
+
+type storageBackends struct {
+	videos     storage.Backend
+	music      storage.Backend
+	thumbnails storage.Backend
+	uploads    storage.Backend
+	hlsCache   storage.Backend
+}
+
+func initStorage(cfg *config.Manager, log *logger.Logger) storageBackends {
 	storageFactory := &storage.BackendFactory{
 		Config: storage.StorageConfig{
 			Backend: cfg.Get().Storage.Backend,
@@ -140,9 +182,9 @@ func main() {
 
 	// Use a 30-second timeout for storage backend init. Without a deadline,
 	// an unreachable S3/B2 endpoint causes the server to hang forever on startup.
-	initCtxRaw, initCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer initCtxCancel()
-	initCtx := initCtxRaw
+	initCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	dirs := cfg.Get().Directories
 
 	videoStore, err := storageFactory.NewBackend(initCtx, "videos", dirs.Videos)
@@ -165,177 +207,217 @@ func main() {
 	if err != nil {
 		fatalExit(log, "Failed to create HLS storage backend: %v", err)
 	}
+
 	log.Info("Storage backend: %s", cfg.Get().Storage.Backend)
 
-	// ── Startup security checks ────────────────────────────────────────────
-	validateSecrets(cfg, log)
+	return storageBackends{
+		videos:     videoStore,
+		music:      musicStore,
+		thumbnails: thumbnailStore,
+		uploads:    uploadStore,
+		hlsCache:   hlsStore,
+	}
+}
 
-	// ── Module construction ────────────────────────────────────────────────
+type modules struct {
+	database      *database.Module
+	security      *security.Module
+	auth          *auth.Module
+	media         *media.Module
+	streaming     *streaming.Module
+	tasks         *tasks.Module
+	scanner       *scanner.Module
+	thumbnails    *thumbnails.Module
+	hls           *hls.Module
+	analytics     *analytics.Module
+	playlist      *playlist.Module
+	admin         *admin.Module
+	upload        *upload.Module
+	validator     *validator.Module
+	backup        *backup.Module
+	autodiscovery *autodiscovery.Module
+	suggestions   *suggestions.Module
+	categorizer   *categorizer.Module
+	updater       *updater.Module
+	remote        *remote.Module
+	duplicates    *duplicates.Module
+	receiver      *receiver.Module
+	downloader    *downloader.Module
+	extractor     *extractor.Module
+	crawler       *crawler.Module
+}
+
+func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, stores storageBackends) modules {
+	var m modules
+	var err error
 
 	// Database (critical)
-	dbModule := database.NewModule(cfg)
-	mustRegister(srv, dbModule)
+	m.database = database.NewModule(cfg)
+	mustRegister(srv, m.database)
 
 	// Security (critical — requires database for IP list persistence)
-	securityModule := security.NewModule(cfg, dbModule)
-	mustRegister(srv, securityModule)
+	m.security = security.NewModule(cfg, m.database)
+	mustRegister(srv, m.security)
 
 	// Auth (critical — requires database)
-	authModule, err := auth.NewModule(cfg, dbModule)
+	m.auth, err = auth.NewModule(cfg, m.database)
 	if err != nil {
 		fatalExit(log, "Failed to create auth module: %v", err)
 	}
-	mustRegister(srv, authModule)
+	mustRegister(srv, m.auth)
 
 	// Media (critical — requires database, uses storage backends)
-	mediaModule, err := media.NewModule(cfg, dbModule)
+	m.media, err = media.NewModule(cfg, m.database)
 	if err != nil {
 		fatalExit(log, "Failed to create media module: %v", err)
 	}
-	mediaModule.SetStores(videoStore, musicStore, uploadStore)
-	mustRegister(srv, mediaModule)
+	m.media.SetStores(stores.videos, stores.music, stores.uploads)
+	mustRegister(srv, m.media)
 
 	// Streaming (critical — uses storage backend for S3 support)
-	streamingModule := streaming.NewModule(cfg)
-	streamingModule.SetStore(videoStore)
-	mustRegister(srv, streamingModule)
+	m.streaming = streaming.NewModule(cfg)
+	m.streaming.SetStore(stores.videos)
+	mustRegister(srv, m.streaming)
 
 	// Tasks scheduler (critical)
-	tasksModule := tasks.NewModule(cfg)
-	mustRegister(srv, tasksModule)
+	m.tasks = tasks.NewModule(cfg)
+	mustRegister(srv, m.tasks)
 
 	// Scanner (critical — requires database)
-	scannerModule, err := scanner.NewModule(cfg, dbModule)
+	m.scanner, err = scanner.NewModule(cfg, m.database)
 	if err != nil {
 		fatalExit(log, "Failed to create scanner module: %v", err)
 	}
-	mustRegister(srv, scannerModule)
+	mustRegister(srv, m.scanner)
 
 	// Hugging Face client for visual classification (optional)
 	if hfCfg := cfg.Get().HuggingFace; hfCfg.Enabled && hfCfg.APIKey != "" {
-		timeout := 30 * time.Second
-		if hfCfg.TimeoutSecs > 0 {
-			timeout = time.Duration(hfCfg.TimeoutSecs) * time.Second
-		}
-		rateLimit := hfCfg.RateLimit
-		if rateLimit <= 0 {
-			rateLimit = 30
-		}
-		hfClient := huggingface.NewClient(huggingface.ClientConfig{
-			APIKey:            hfCfg.APIKey,
-			Model:             hfCfg.Model,
-			EndpointURL:       hfCfg.EndpointURL,
-			RequestsPerMinute: rateLimit,
-			MaxConcurrent:     hfCfg.MaxConcurrent,
-			Timeout:           timeout,
-			Log:               log,
-		})
-		scannerModule.SetHFClient(hfClient)
-		log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
+		setupHFClient(hfCfg, m.scanner, log)
 	}
 
 	// Thumbnails (critical — BlurHash repo is wired inside Start() after DB connects)
-	thumbnailsModule := thumbnails.NewModule(cfg, dbModule)
-	thumbnailsModule.SetMediaIDProvider(mediaModule)
-	thumbnailsModule.SetStore(thumbnailStore)
-	thumbnailsModule.SetMediaInputResolver(mediaModule)
-	mediaModule.SetThumbnailQueuer(thumbnailsModule)
-	mustRegister(srv, thumbnailsModule)
+	m.thumbnails = thumbnails.NewModule(cfg, m.database)
+	m.thumbnails.SetMediaIDProvider(m.media)
+	m.thumbnails.SetStore(stores.thumbnails)
+	m.thumbnails.SetMediaInputResolver(m.media)
+	m.media.SetThumbnailQueuer(m.thumbnails)
+	mustRegister(srv, m.thumbnails)
 
 	// ── Non-critical modules ───────────────────────────────────────────────
 
 	// HLS (non-critical — falls back gracefully if ffmpeg unavailable, uses storage backend)
-	hlsModule := hls.NewModule(cfg, dbModule)
-	hlsModule.SetStore(hlsStore)
-	hlsModule.SetMediaInputResolver(mediaModule)
-	mustRegister(srv, hlsModule)
+	m.hls = hls.NewModule(cfg, m.database)
+	m.hls.SetStore(stores.hlsCache)
+	m.hls.SetMediaInputResolver(m.media)
+	mustRegister(srv, m.hls)
 
 	// Analytics (non-critical — requires database)
-	var analyticsModule *analytics.Module
-	if am, err := analytics.NewModule(cfg, dbModule); err != nil {
+	if am, err := analytics.NewModule(cfg, m.database); err != nil {
 		log.Warn("Analytics module unavailable: %v", err)
 	} else {
-		analyticsModule = am
-		mustRegister(srv, analyticsModule)
+		m.analytics = am
+		mustRegister(srv, m.analytics)
 	}
 
 	// Playlist (non-critical — requires database)
-	var playlistModule *playlist.Module
-	if pm, err := playlist.NewModule(cfg, dbModule); err != nil {
+	if pm, err := playlist.NewModule(cfg, m.database); err != nil {
 		log.Warn("Playlist module unavailable: %v", err)
 	} else {
-		playlistModule = pm
-		mustRegister(srv, playlistModule)
+		m.playlist = pm
+		mustRegister(srv, m.playlist)
 	}
 
 	// Admin (non-critical — requires database)
-	var adminModule *admin.Module
-	if adm, err := admin.NewModule(cfg, dbModule); err != nil {
+	if adm, err := admin.NewModule(cfg, m.database); err != nil {
 		log.Warn("Admin module unavailable: %v", err)
 	} else {
-		adminModule = adm
-		mustRegister(srv, adminModule)
+		m.admin = adm
+		mustRegister(srv, m.admin)
 	}
 
 	// Upload (non-critical — uses storage backend)
-	uploadModule := upload.NewModule(cfg)
-	uploadModule.SetStore(uploadStore)
-	mustRegister(srv, uploadModule)
+	m.upload = upload.NewModule(cfg)
+	m.upload.SetStore(stores.uploads)
+	mustRegister(srv, m.upload)
 
 	// Validator (non-critical — requires database for validation results)
-	validatorModule := validator.NewModule(cfg, dbModule)
-	mustRegister(srv, validatorModule)
+	m.validator = validator.NewModule(cfg, m.database)
+	mustRegister(srv, m.validator)
 
 	// Backup (non-critical — requires database for manifest storage)
-	backupModule := backup.NewModule(cfg, dbModule)
-	mustRegister(srv, backupModule)
+	m.backup = backup.NewModule(cfg, m.database)
+	mustRegister(srv, m.backup)
 
 	// Auto-discovery (non-critical — gated by feature flag at construction; nil when disabled)
-	var autodiscoveryModule *autodiscovery.Module
 	if cfg.Get().Features.EnableAutoDiscovery {
-		autodiscoveryModule = autodiscovery.NewModule(cfg, dbModule)
-		mustRegister(srv, autodiscoveryModule)
+		m.autodiscovery = autodiscovery.NewModule(cfg, m.database)
+		mustRegister(srv, m.autodiscovery)
 	}
 
 	// Suggestions (non-critical — requires database for user profiles)
-	suggestionsModule := suggestions.NewModule(cfg, dbModule)
-	mustRegister(srv, suggestionsModule)
+	m.suggestions = suggestions.NewModule(cfg, m.database)
+	mustRegister(srv, m.suggestions)
 
 	// Categorizer (non-critical — requires database for categorization data)
-	categorizerModule := categorizer.NewModule(cfg, dbModule)
-	mustRegister(srv, categorizerModule)
+	m.categorizer = categorizer.NewModule(cfg, m.database)
+	mustRegister(srv, m.categorizer)
 
 	// Updater (non-critical — needs version string)
-	updaterModule := updater.NewModule(cfg, Version)
-	mustRegister(srv, updaterModule)
+	m.updater = updater.NewModule(cfg, Version)
+	mustRegister(srv, m.updater)
 
 	// Remote (non-critical — requires database for cache index)
-	remoteModule := remote.NewModule(cfg, dbModule)
-	mustRegister(srv, remoteModule)
+	m.remote = remote.NewModule(cfg, m.database)
+	mustRegister(srv, m.remote)
 
 	// Duplicates (non-critical — independent duplicate detection for local and receiver media)
-	duplicatesModule := duplicates.NewModule(cfg, dbModule)
-	duplicatesModule.SetMediaModule(mediaModule)
-	mustRegister(srv, duplicatesModule)
+	m.duplicates = duplicates.NewModule(cfg, m.database)
+	m.duplicates.SetMediaModule(m.media)
+	mustRegister(srv, m.duplicates)
 
 	// Receiver (non-critical — requires database for slave registry and media catalog)
-	receiverModule := receiver.NewModule(cfg, dbModule)
-	receiverModule.SetDuplicatesModule(duplicatesModule)
-	mustRegister(srv, receiverModule)
+	m.receiver = receiver.NewModule(cfg, m.database)
+	m.receiver.SetDuplicatesModule(m.duplicates)
+	mustRegister(srv, m.receiver)
 
 	// Downloader (non-critical — proxy to external downloader service, gated by feature flag)
-	downloaderModule := downloader.NewModule(cfg)
-	downloaderModule.SetMediaModule(mediaModule)
-	mustRegister(srv, downloaderModule)
+	m.downloader = downloader.NewModule(cfg)
+	m.downloader.SetMediaModule(m.media)
+	mustRegister(srv, m.downloader)
 
 	// Extractor (non-critical — requires database for item persistence)
-	extractorModule := extractor.NewModule(cfg, dbModule)
-	mustRegister(srv, extractorModule)
+	m.extractor = extractor.NewModule(cfg, m.database)
+	mustRegister(srv, m.extractor)
 
-	crawlerModule := crawler.NewModule(cfg, dbModule, extractorModule)
-	mustRegister(srv, crawlerModule)
+	m.crawler = crawler.NewModule(cfg, m.database, m.extractor)
+	mustRegister(srv, m.crawler)
 
-	// ── Age gate middleware ────────────────────────────────────────────────
+	return m
+}
+
+func setupHFClient(hfCfg config.HuggingFaceConfig, scannerModule *scanner.Module, log *logger.Logger) {
+	timeout := 30 * time.Second
+	if hfCfg.TimeoutSecs > 0 {
+		timeout = time.Duration(hfCfg.TimeoutSecs) * time.Second
+	}
+	rateLimit := hfCfg.RateLimit
+	if rateLimit <= 0 {
+		rateLimit = 30
+	}
+	hfClient := huggingface.NewClient(huggingface.ClientConfig{
+		APIKey:            hfCfg.APIKey,
+		Model:             hfCfg.Model,
+		EndpointURL:       hfCfg.EndpointURL,
+		RequestsPerMinute: rateLimit,
+		MaxConcurrent:     hfCfg.MaxConcurrent,
+		Timeout:           timeout,
+		Log:               log,
+	})
+	scannerModule.SetHFClient(hfClient)
+	log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
+}
+
+func setupAgeGate(cfg *config.Manager, analyticsModule *analytics.Module) *middleware.AgeGate {
 	appCfg := cfg.Get()
 	ageGate := middleware.NewAgeGate(appCfg.AgeGate)
 	// Wire age gate analytics callback so passage events are tracked
@@ -346,50 +428,48 @@ func main() {
 			})
 		}
 	}
+	return ageGate
+}
 
-	// ── Register background tasks ──────────────────────────────────────────
-	registerTasks(tasksModule, mediaModule, scannerModule, thumbnailsModule,
-		authModule, backupModule, suggestionsModule, duplicatesModule, adminModule, hlsModule, cfg, log)
-
-	// ── Wire up routes ─────────────────────────────────────────────────────
+func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate *middleware.AgeGate) {
 	h := handlers.NewHandler(handlers.HandlerDeps{
 		BuildInfo: handlers.BuildInfo{Version: Version, BuildDate: BuildDate},
 		Core: handlers.HandlerCoreDeps{
 			Config:    cfg,
-			Media:     mediaModule,
-			Streaming: streamingModule,
-			HLS:       hlsModule,
-			Auth:      authModule,
-			Database:  dbModule,
+			Media:     mods.media,
+			Streaming: mods.streaming,
+			HLS:       mods.hls,
+			Auth:      mods.auth,
+			Database:  mods.database,
 		},
 		Optional: handlers.HandlerOptionalDeps{
-			Admin:         adminModule,
-			Tasks:         tasksModule,
-			Upload:        uploadModule,
-			Scanner:       scannerModule,
-			Thumbnails:    thumbnailsModule,
-			Validator:     validatorModule,
-			Backup:        backupModule,
-			Autodiscovery: autodiscoveryModule,
-			Suggestions:   suggestionsModule,
-			Security:      securityModule,
-			Categorizer:   categorizerModule,
-			Updater:       updaterModule,
-			Remote:        remoteModule,
-			Receiver:      receiverModule,
-			Extractor:     extractorModule,
-			Crawler:       crawlerModule,
-			Duplicates:    duplicatesModule,
-			Analytics:     analyticsModule,
-			Playlist:      playlistModule,
-			Downloader:    downloaderModule,
+			Admin:         mods.admin,
+			Tasks:         mods.tasks,
+			Upload:        mods.upload,
+			Scanner:       mods.scanner,
+			Thumbnails:    mods.thumbnails,
+			Validator:     mods.validator,
+			Backup:        mods.backup,
+			Autodiscovery: mods.autodiscovery,
+			Suggestions:   mods.suggestions,
+			Security:      mods.security,
+			Categorizer:   mods.categorizer,
+			Updater:       mods.updater,
+			Remote:        mods.remote,
+			Receiver:      mods.receiver,
+			Extractor:     mods.extractor,
+			Crawler:       mods.crawler,
+			Duplicates:    mods.duplicates,
+			Analytics:     mods.analytics,
+			Playlist:      mods.playlist,
+			Downloader:    mods.downloader,
 		},
 		ShutdownFunc: srv.Shutdown, // P1-9: drain connections and stop modules before exit
 	})
+	routes.Setup(srv.Engine(), srv, h, mods.auth, mods.security, cfg, ageGate)
+}
 
-	routes.Setup(srv.Engine(), srv, h, authModule, securityModule, cfg, ageGate)
-
-	// Seed suggestions when the media module's initial scan completes
+func wireSuggestionsSeeding(mediaModule *media.Module, suggestionsModule *suggestions.Module, log *logger.Logger) {
 	mediaModule.SetOnInitialScanDone(func(items []*models.MediaItem) {
 		mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
 		for _, item := range items {
@@ -411,11 +491,6 @@ func main() {
 			log.Info("Seeded suggestions with %d items from initial media scan", len(mediaInfos))
 		}
 	})
-
-	// ── Start server (blocks until graceful shutdown) ──────────────────────
-	if err := srv.Start(); err != nil {
-		fatalExit(log, "Server error: %v", err)
-	}
 }
 
 // validateSecrets checks critical configuration values and logs actionable
