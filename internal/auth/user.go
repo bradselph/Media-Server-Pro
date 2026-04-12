@@ -227,14 +227,6 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 		user = freshUser
 	}
 
-	// Re-read user under lock to get a consistent snapshot for the copy.
-	// The pointer from GetUser may be shared with concurrent readers/writers.
-	m.usersMu.RLock()
-	if u, ok := m.users[username]; ok {
-		user = u
-	}
-	m.usersMu.RUnlock()
-
 	wasEnabled := user.Enabled
 	oldRole := user.Role
 
