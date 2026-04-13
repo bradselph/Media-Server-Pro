@@ -189,8 +189,7 @@ pagination and delete buttons lacking accessible names.
 
 1. **Categories page empty** -- Auto-categorizer is a feature flag but 0 categories exist. All 290 items are "
    uncategorized".
-2. **Register page returns 404** -- `/register` shows 404 page (registration may be admin-only by design, but the 404 vs
-   a "Registration disabled" message is unclear).
+2. ✅ 2026-04-12 **Register page returns 404** -- Added `pages/register.vue` that 301-redirects to `/signup`.
 
 ## Suggested Improvements
 

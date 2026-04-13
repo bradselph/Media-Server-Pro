@@ -22,6 +22,18 @@ class ApiError extends Error {
 
 let _redirecting = false
 
+export function redirectToLogin(): void {
+    if (_redirecting || !import.meta.client) return
+    _redirecting = true
+    setTimeout(() => { _redirecting = false }, 3000)
+    const redirect = globalThis.location.pathname + globalThis.location.search
+    const isAuthPage = ['/login', '/signup', '/admin-login'].some(p => redirect.startsWith(p))
+    const target = redirect && !isAuthPage
+        ? `/login?redirect=${encodeURIComponent(redirect)}`
+        : '/login'
+    globalThis.location.replace(target)
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
     const opts: RequestInit = {
         method,
@@ -47,23 +59,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
     if (!res.ok || envelope.success === false) {
         // On 401, redirect to login so stale sessions are cleared automatically.
-        // Preserve current URL as redirect param so user returns after re-auth.
         // NOTE: use window.location.replace (not navigateTo) — useApi is imported at module
         // level in useApiEndpoints.ts so it must not reference Nuxt composables which require
         // the Nuxt app context; doing so creates a TDZ error in the production bundle.
-        if (res.status === 401 && import.meta.client && !_redirecting) {
-            _redirecting = true
-            // Reset after 3s in case navigation didn't happen (e.g. already on auth page)
-            setTimeout(() => {
-                _redirecting = false
-            }, 3000)
-            const redirect = globalThis.location.pathname + globalThis.location.search
-            const isAuthPage = ['/login', '/signup', '/admin-login'].some(p => redirect.startsWith(p))
-            const target = redirect && !isAuthPage
-                ? `/login?redirect=${encodeURIComponent(redirect)}`
-                : '/login'
-            globalThis.location.replace(target)
-        }
+        if (res.status === 401) redirectToLogin()
         throw new ApiError(
             envelope.message ?? envelope.error ?? `HTTP ${res.status}`,
             res.status,

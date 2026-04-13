@@ -87,6 +87,8 @@ const autoNextEnabled = ref(true)
 
 // Share at timestamp
 const linkCopied = ref(false)
+let linkCopiedTimer: ReturnType<typeof setTimeout> | undefined
+
 function copyTimestampLink() {
   const t = Math.floor(currentTime.value)
   const url = new URL(globalThis.location.href)
@@ -94,7 +96,8 @@ function copyTimestampLink() {
   else url.searchParams.delete('t')
   navigator.clipboard.writeText(url.toString())
   linkCopied.value = true
-  setTimeout(() => { linkCopied.value = false }, 2000)
+  clearTimeout(linkCopiedTimer)
+  linkCopiedTimer = setTimeout(() => { linkCopied.value = false }, 2000)
 }
 
 // Graphic Equalizer (Web Audio API)
@@ -806,6 +809,7 @@ onUnmounted(() => {
   if (seekTimer) clearTimeout(seekTimer)
   if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
   if (upNextTimer) clearInterval(upNextTimer)
+  clearTimeout(linkCopiedTimer)
 })
 
 watch(mediaId, (id, oldId) => {
