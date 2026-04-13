@@ -94,6 +94,7 @@ import type {
     WatchHistoryItem,
 } from '~/types/api'
 import {normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch} from '~/utils/apiCompat'
+import {redirectToLogin} from '~/composables/useApi'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
 // NOT participate in the #imports circular dependency graph.
 // useApiEndpoints.ts is in composables/ and is re-exported by #imports.  Any
@@ -103,6 +104,18 @@ import {normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPat
 import {useApi} from '~/composables/useApi'
 
 const api = useApi()
+
+// Build a query string from an object, omitting undefined/null/empty-string values.
+// boolean false IS included (e.g. completed=false is meaningful to the backend).
+function buildQS(params: Record<string, string | number | boolean | undefined>): string {
+    const parts: string[] = []
+    for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined && v !== null && v !== '') {
+            parts.push(`${k}=${encodeURIComponent(String(v))}`)
+        }
+    }
+    return parts.length ? `?${parts.join('&')}` : ''
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -242,13 +255,8 @@ export function usePlaybackApi() {
 
 export function useWatchHistoryApi() {
     return {
-        list: (limit?: number, completed?: boolean) => {
-            const parts: string[] = []
-            if (limit) parts.push(`limit=${limit}`)
-            if (completed !== undefined) parts.push(`completed=${completed}`)
-            const qs = parts.length ? `?${parts.join('&')}` : ''
-            return api.get<WatchHistoryItem[]>(`/api/watch-history${qs}`)
-        },
+        list: (limit?: number, completed?: boolean) =>
+            api.get<WatchHistoryItem[]>(`/api/watch-history${buildQS({limit: limit || undefined, completed})}`),
         remove: (id: string) => api.delete<void>(`/api/watch-history?id=${encodeURIComponent(id)}`),
         clear: () => api.delete<void>('/api/watch-history'),
     }
@@ -259,36 +267,21 @@ export function useWatchHistoryApi() {
 export function useSuggestionsApi() {
     return {
         get: () => api.get<Suggestion[]>('/api/suggestions'),
-        getTrending: (limit?: number) => {
-            const qs = limit ? `?limit=${limit}` : ''
-            return api.get<Suggestion[]>(`/api/suggestions/trending${qs}`)
-        },
+        getTrending: (limit?: number) =>
+            api.get<Suggestion[]>(`/api/suggestions/trending${buildQS({limit: limit || undefined})}`),
         getSimilar: (id: string) => api.get<Suggestion[]>(`/api/suggestions/similar?id=${encodeURIComponent(id)}`),
-        getContinueWatching: (limit?: number) => {
-            const qs = limit ? `?limit=${limit}` : ''
-            return api.get<Suggestion[]>(`/api/suggestions/continue${qs}`)
-        },
-        getPersonalized: (limit?: number) => {
-            const qs = limit ? `?limit=${limit}` : ''
-            return api.get<Suggestion[]>(`/api/suggestions/personalized${qs}`)
-        },
+        getContinueWatching: (limit?: number) =>
+            api.get<Suggestion[]>(`/api/suggestions/continue${buildQS({limit: limit || undefined})}`),
+        getPersonalized: (limit?: number) =>
+            api.get<Suggestion[]>(`/api/suggestions/personalized${buildQS({limit: limit || undefined})}`),
         getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),
         resetMyProfile: () => api.delete<void>('/api/suggestions/profile'),
-        getRecent: (days?: number, limit?: number) => {
-            const params: string[] = []
-            if (days) params.push(`days=${days}`)
-            if (limit) params.push(`limit=${limit}`)
-            const qs = params.length ? `?${params.join('&')}` : ''
-            return api.get<RecentItem[]>(`/api/suggestions/recent${qs}`)
-        },
-        getNewSinceLastVisit: (limit?: number) => {
-            const qs = limit ? `?limit=${limit}` : ''
-            return api.get<NewSinceResponse>(`/api/suggestions/new${qs}`)
-        },
-        getOnDeck: (limit?: number) => {
-            const qs = limit ? `?limit=${limit}` : ''
-            return api.get<OnDeckResponse>(`/api/suggestions/on-deck${qs}`)
-        },
+        getRecent: (days?: number, limit?: number) =>
+            api.get<RecentItem[]>(`/api/suggestions/recent${buildQS({days: days || undefined, limit: limit || undefined})}`),
+        getNewSinceLastVisit: (limit?: number) =>
+            api.get<NewSinceResponse>(`/api/suggestions/new${buildQS({limit: limit || undefined})}`),
+        getOnDeck: (limit?: number) =>
+            api.get<OnDeckResponse>(`/api/suggestions/on-deck${buildQS({limit: limit || undefined})}`),
     }
 }
 
@@ -385,10 +378,8 @@ export function useUploadApi() {
             files.forEach(f => formData.append('files', f))
             if (category) formData.append('category', category)
             const res = await fetch('/api/upload', {method: 'POST', credentials: 'include', body: formData})
-            // Handle 401 the same way useApi does — redirect to login
-            if (res.status === 401 && import.meta.client) {
-                const redirect = globalThis.location.pathname + globalThis.location.search
-                globalThis.location.replace(`/login?redirect=${encodeURIComponent(redirect)}`)
+            if (res.status === 401) {
+                redirectToLogin()
                 throw new Error('Session expired')
             }
             const envelope = await res.json()
@@ -418,7 +409,7 @@ export function useAdminApi() {
         // Users
         listUsers: () => api.get<User[]>(`${base}/users`),
         getUser: (username: string) => api.get<User>(`${base}/users/${encodeURIComponent(username)}`),
-        createUser: (data: { username: string; password: string; email?: string; role: string }) =>
+        createUser: (data: { username: string; password: string; email?: string; role: string; type?: string }) =>
             api.post<User>(`${base}/users`, data),
         updateUser: (username: string, data: Partial<User>) =>
             api.put<User>(`${base}/users/${encodeURIComponent(username)}`, data),
@@ -459,8 +450,8 @@ export function useAdminApi() {
         listHLSJobs: () => api.get<HLSJob[]>(`${base}/hls/jobs`),
         deleteHLSJob: (id: string) => api.delete<void>(`${base}/hls/jobs/${encodeURIComponent(id)}`),
         validateHLS: (id: string) => api.get<HLSValidationResult>(`${base}/hls/validate/${encodeURIComponent(id)}`),
-        cleanHLSStaleLocks: () => api.post<void>(`${base}/hls/clean/locks`),
-        cleanHLSInactive: () => api.post<void>(`${base}/hls/clean/inactive`),
+        cleanHLSStaleLocks: () => api.post<{ removed: number }>(`${base}/hls/clean/locks`),
+        cleanHLSInactive: (maxAgeHours?: number) => api.post<{ removed: number; threshold: string }>(`${base}/hls/clean/inactive`, maxAgeHours ? { max_age_hours: maxAgeHours } : {}),
 
         // Validator
         validateMedia: (id: string) => api.post<ValidationResult>(`${base}/validator/validate`, {id}),
@@ -545,8 +536,8 @@ export function useAdminApi() {
         removeFromBlacklist: (ip: string) =>
             api.delete<void>(`${base}/security/blacklist`, {ip}),
         getBannedIPs: () => api.get<BannedIP[]>(`${base}/security/banned`),
-        banIP: (ip: string, durationMinutes?: number) =>
-            api.post<void>(`${base}/security/ban`, {ip, ...(durationMinutes ? {duration_minutes: durationMinutes} : {})}),
+        banIP: (ip: string, durationMinutes?: number, reason?: string) =>
+            api.post<void>(`${base}/security/ban`, {ip, ...(durationMinutes ? {duration_minutes: durationMinutes} : {}), ...(reason ? {reason} : {})}),
         unbanIP: (ip: string) => api.post<void>(`${base}/security/unban`, {ip}),
 
         // Categorizer
@@ -737,21 +728,13 @@ export function useAnalyticsApi() {
             if (limit) qs.set('limit', String(limit))
             return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-type?${qs}`)
         },
-        getEventsByMedia: (mediaId: string, limit?: number) => {
-            const qs = new URLSearchParams({media_id: mediaId})
-            if (limit) qs.set('limit', String(limit))
-            return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-media?${qs}`)
-        },
-        getEventsByUser: (userId: string, limit?: number) => {
-            const qs = new URLSearchParams({user_id: userId})
-            if (limit) qs.set('limit', String(limit))
-            return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user?${qs}`)
-        },
+        getEventsByMedia: (mediaId: string, limit?: number) =>
+            api.get<AnalyticsEvent[]>(`/api/analytics/events/by-media${buildQS({media_id: mediaId, limit: limit || undefined})}`),
+        getEventsByUser: (userId: string, limit?: number) =>
+            api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user${buildQS({user_id: userId, limit: limit || undefined})}`),
         getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
-        getContentPerformance: (limit?: number) => {
-            const qs = limit ? `?limit=${limit}` : ''
-            return api.get<ContentPerformanceItem[]>(`/api/analytics/content${qs}`)
-        },
+        getContentPerformance: (limit?: number) =>
+            api.get<ContentPerformanceItem[]>(`/api/analytics/content${buildQS({limit: limit || undefined})}`),
         exportCsv: (period?: string) => {
             const today = new Date()
             const fmt = (d: Date) => d.toISOString().slice(0, 10)

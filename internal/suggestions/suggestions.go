@@ -54,6 +54,7 @@ type Suggestion struct {
 	MediaType    string   `json:"media_type"`
 	Score        float64  `json:"score"`
 	Reasons      []string `json:"reasons"`
+	Duration     float64  `json:"duration,omitempty"`
 	ThumbnailURL string   `json:"thumbnail_url,omitempty"`
 }
 
@@ -90,6 +91,7 @@ type MediaInfo struct {
 	Tags      []string
 	Views     int
 	Rating    float64
+	Duration  float64
 	AddedAt   time.Time
 	IsMature  bool // flagged by the scanner — used to exclude from public suggestions
 }
@@ -506,6 +508,7 @@ func (m *Module) GetSuggestions(userID string, limit int, canViewMature bool) []
 			MediaType: media.MediaType,
 			Score:     score,
 			Reasons:   reasons,
+			Duration:  media.Duration,
 		})
 	}
 

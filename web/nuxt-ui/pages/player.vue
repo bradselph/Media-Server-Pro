@@ -87,6 +87,8 @@ const autoNextEnabled = ref(true)
 
 // Share at timestamp
 const linkCopied = ref(false)
+let linkCopiedTimer: ReturnType<typeof setTimeout> | undefined
+
 function copyTimestampLink() {
   const t = Math.floor(currentTime.value)
   const url = new URL(globalThis.location.href)
@@ -94,7 +96,8 @@ function copyTimestampLink() {
   else url.searchParams.delete('t')
   navigator.clipboard.writeText(url.toString())
   linkCopied.value = true
-  setTimeout(() => { linkCopied.value = false }, 2000)
+  clearTimeout(linkCopiedTimer)
+  linkCopiedTimer = setTimeout(() => { linkCopied.value = false }, 2000)
 }
 
 // Graphic Equalizer (Web Audio API)
@@ -301,10 +304,27 @@ async function restorePosition() {
   if (userPrefs.value?.resume_playback === false) return
   try {
     const { position } = await playbackApi.getPosition(mediaId.value)
-    if (position > 5 && videoRef.value) {
+    // Skip restoring if position is 0, within the first 5 seconds (fresh start),
+    // or at/near the end (≥95% complete — media was finished, restart from beginning).
+    const dur = videoRef.value?.duration
+    const nearEnd = dur && dur > 0 && position >= dur * 0.95
+    if (position > 5 && !nearEnd && videoRef.value) {
       videoRef.value.currentTime = position
     }
   } catch {}
+}
+
+// Called when media reaches the end. Resets the stored position to 0 so that
+// returning to this item later starts from the beginning rather than immediately
+// re-triggering the ended/auto-next behaviour.
+async function onMediaEnded() {
+  if (mediaId.value) {
+    try {
+      await playbackApi.savePosition(mediaId.value, 0, videoRef.value?.duration ?? 0)
+    } catch {}
+  }
+  trackComplete()
+  if (loopMode.value === 'off') autoNextFromSuggestions()
 }
 
 async function savePosition() {
@@ -789,6 +809,7 @@ onUnmounted(() => {
   if (seekTimer) clearTimeout(seekTimer)
   if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
   if (upNextTimer) clearInterval(upNextTimer)
+  clearTimeout(linkCopiedTimer)
 })
 
 watch(mediaId, (id, oldId) => {
@@ -859,7 +880,7 @@ watch(mediaId, (id, oldId) => {
             @timeupdate="onTimeUpdate"
             @play="onPlayPause(); trackPlay()"
             @pause="onPlayPause(); trackPause()"
-            @ended="savePosition(); trackComplete(); if (loopMode === 'off') autoNextFromSuggestions()"
+            @ended="onMediaEnded()"
             @error="onVideoError"
             @leavepictureinpicture="onPiPChange"
             @enterpictureinpicture="onPiPChange"
@@ -979,7 +1000,7 @@ watch(mediaId, (id, oldId) => {
               @timeupdate="onTimeUpdate"
               @play="onPlayPause(); trackPlay()"
               @pause="onPlayPause(); trackPause()"
-              @ended="savePosition(); trackComplete(); if (loopMode === 'off') autoNextFromSuggestions()"
+              @ended="onMediaEnded()"
               @error="onVideoError"
             />
           </UCard>
@@ -1199,8 +1220,11 @@ watch(mediaId, (id, oldId) => {
             :to="`/player?id=${encodeURIComponent(item.media_id)}`"
             class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
           >
-            <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+            <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
               <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+              <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+                {{ formatDuration(item.duration) }}
+              </div>
             </div>
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
@@ -1219,8 +1243,11 @@ watch(mediaId, (id, oldId) => {
             :to="`/player?id=${encodeURIComponent(item.media_id)}`"
             class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
           >
-            <div class="w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+            <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
               <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+              <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+                {{ formatDuration(item.duration) }}
+              </div>
             </div>
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>

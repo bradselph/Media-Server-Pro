@@ -183,7 +183,7 @@ export interface HLSAvailability {
 
 export interface HLSJob {
     id: string
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'canceled'
     progress: number
     qualities: string[]
     started_at: string
@@ -443,7 +443,7 @@ export interface UpdateInfo {
     release_url?: string
     release_notes?: string
     published_at?: string
-    checked_at?: string
+    checked_at?: string | null
     error?: string
 }
 
@@ -499,39 +499,49 @@ export interface ReceiverSlave {
 export interface ReceiverMedia {
     id: string
     slave_id: string
+    slave_name?: string
     name: string
     path: string
     media_type: string
     size: number
     duration?: number
+    content_type?: string
     content_fingerprint?: string
+    width?: number
+    height?: number
 }
 
 export interface CrawlerTarget {
     id: string
     url: string
-    name?: string
-    site?: string
+    name: string
+    site: string
     last_crawled?: string
-    created_at?: string
+    created_at: string
     enabled: boolean
 }
 
 export interface CrawlerDiscovery {
     id: string
     target_id: string
-    url: string
-    title?: string
+    page_url: string
+    title: string
+    stream_url: string
+    stream_type: string
+    quality: number
     status: string
-    created_at: string
+    reviewed_by?: string
+    reviewed_at?: string | null
+    discovered_at: string
 }
 
 export interface ExtractorItem {
     id: string
-    url: string
-    title?: string
+    stream_url: string
+    title: string
+    added_by: string
     status: string
-    error?: string
+    error_message?: string
     created_at: string
 }
 
@@ -658,6 +668,7 @@ export interface MediaStats {
     audio_count: number
     total_size: number
     last_scan: string
+    version?: number
 }
 
 // ── HLS Capabilities ─────────────────────────────────────────────────────────
@@ -737,6 +748,7 @@ export interface CategoryBrowseItem {
     name: string
     category: string
     confidence: number
+    duration?: number
     detected_info?: {
         title?: string
         year?: number

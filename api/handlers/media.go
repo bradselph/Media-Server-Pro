@@ -445,12 +445,13 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 
 	items := h.categorizer.GetByCategory(categorizer.Category(category))
 
-	// Enrich with thumbnail URLs from the media module
+	// Enrich with thumbnail URLs and duration from the media module
 	type browseItem struct {
 		ID           string      `json:"id"`
 		Name         string      `json:"name"`
 		Category     string      `json:"category"`
 		Confidence   float64     `json:"confidence"`
+		Duration     float64     `json:"duration,omitempty"`
 		DetectedInfo interface{} `json:"detected_info,omitempty"`
 		ThumbnailURL string      `json:"thumbnail_url,omitempty"`
 	}
@@ -462,6 +463,11 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 			Category:     string(item.Category),
 			Confidence:   item.Confidence,
 			DetectedInfo: item.DetectedInfo,
+		}
+		if h.media != nil && item.ID != "" {
+			if mi, err := h.media.GetMediaByID(item.ID); err == nil && mi != nil {
+				bi.Duration = mi.Duration
+			}
 		}
 		if h.thumbnails != nil && item.ID != "" {
 			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))

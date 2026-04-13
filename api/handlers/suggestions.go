@@ -285,6 +285,7 @@ func (h *Handler) GetRecentContent(c *gin.Context) {
 			Name:      item.Name,
 			Type:      string(item.Type),
 			Category:  item.Category,
+			Duration:  item.Duration,
 			DateAdded: item.DateAdded,
 		}
 		if h.thumbnails != nil && item.ID != "" {
@@ -305,6 +306,7 @@ type mediaRecentItem struct {
 	Name         string    `json:"name"`
 	Type         string    `json:"type"`
 	Category     string    `json:"category"`
+	Duration     float64   `json:"duration,omitempty"`
 	DateAdded    time.Time `json:"date_added"`
 	ThumbnailURL string    `json:"thumbnail_url,omitempty"`
 }
@@ -339,6 +341,7 @@ func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
 			Name:      item.Name,
 			Type:      string(item.Type),
 			Category:  item.Category,
+			Duration:  item.Duration,
 			DateAdded: item.DateAdded,
 		}
 		if h.thumbnails != nil && item.ID != "" {
@@ -359,13 +362,14 @@ func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
 
 // onDeckItem is the response shape for GetOnDeck.
 type onDeckItem struct {
-	MediaID      string `json:"media_id"`
-	Name         string `json:"name"`
-	ShowName     string `json:"show_name"`
-	Season       int    `json:"season"`
-	Episode      int    `json:"episode"`
-	Category     string `json:"category"`
-	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+	MediaID      string  `json:"media_id"`
+	Name         string  `json:"name"`
+	ShowName     string  `json:"show_name"`
+	Season       int     `json:"season"`
+	Episode      int     `json:"episode"`
+	Category     string  `json:"category"`
+	Duration     float64 `json:"duration,omitempty"`
+	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 }
 
 // episodeKey is used to sort episodes within a show.
@@ -473,10 +477,14 @@ func (h *Handler) GetOnDeck(c *gin.Context) {
 			if _, watched := watchedPaths[ep.Path]; watched {
 				continue
 			}
-			// Mature-content gate: look up the media item.
+			// Mature-content gate + duration lookup: look up the media item.
+			var epDuration float64
 			if h.media != nil && ep.Path != "" {
-				if mi, err := h.media.GetMedia(ep.Path); err == nil && mi != nil && mi.IsMature && !canViewMature {
-					continue
+				if mi, err := h.media.GetMedia(ep.Path); err == nil && mi != nil {
+					if mi.IsMature && !canViewMature {
+						continue
+					}
+					epDuration = mi.Duration
 				}
 			}
 			item := onDeckItem{
@@ -486,6 +494,7 @@ func (h *Handler) GetOnDeck(c *gin.Context) {
 				Season:   ep.Season,
 				Episode:  ep.Episode,
 				Category: ep.Cat,
+				Duration: epDuration,
 			}
 			if h.thumbnails != nil && ep.ID != "" {
 				item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(ep.ID))

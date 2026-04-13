@@ -61,7 +61,7 @@ func (m *Module) GetActiveSessions(username string) []*models.Session {
 	m.sessionsMu.RLock()
 	defer m.sessionsMu.RUnlock()
 
-	var sessions []*models.Session
+	sessions := make([]*models.Session, 0)
 	for _, session := range m.sessions {
 		if session.Username == username && !session.IsExpired() {
 			sessions = append(sessions, new(*session))
