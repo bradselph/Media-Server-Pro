@@ -58,7 +58,10 @@ const bulkAdding = ref(false)
 
 function toggleSelectionMode() {
   selectionMode.value = !selectionMode.value
-  if (!selectionMode.value) selectedIds.value = new Set()
+  if (!selectionMode.value) {
+    selectedIds.value = new Set()
+    params.page = 1
+  }
 }
 
 function toggleSelect(id: string, event: Event) {

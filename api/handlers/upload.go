@@ -133,6 +133,9 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 	uploaded := make([]uploadedEntry, 0, len(fileHeaders))
 	uploadErrors := make([]errorEntry, 0)
 	var totalAdded int64
+	// registeredPaths tracks each successfully registered file path so we can
+	// delete them if the post-upload quota check fails.
+	var registeredPaths []string
 
 	for _, fh := range fileHeaders {
 		result, err := h.upload.ProcessFileHeader(fh, upload.UploadScope{UserID: session.UserID, Category: category})
@@ -162,8 +165,10 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 				// Remote-store key — provide size from upload result.
 				regErr = h.media.RegisterUploadedFileWithSize(result.Path, result.Size, time.Now())
 			}
-			if err := regErr; err != nil {
-				h.log.Warn("Failed to register uploaded file in library: %v", err)
+			if regErr != nil {
+				h.log.Warn("Failed to register uploaded file in library: %v", regErr)
+			} else {
+				registeredPaths = append(registeredPaths, result.Path)
 			}
 		}
 
@@ -171,7 +176,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		// the index above, so GetMedia will find it.
 		if cfg.Uploads.ScanForMature && result.Path != "" && h.scanner != nil {
 			if scanResult := h.scanner.ScanFile(result.Path); scanResult != nil && scanResult.IsMature && cfg.MatureScanner.AutoFlag {
-				updates := map[string]interface{}{"is_mature": true}
+				updates := map[string]any{"is_mature": true}
 				if len(scanResult.Reasons) > 0 {
 					updates["mature_reason"] = scanResult.Reasons[0]
 				}
@@ -182,13 +187,37 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		}
 	}
 
+	// Post-upload quota check using actual bytes written.
+	// The pre-check used client-reported sizes; this re-validates with real bytes
+	// to prevent bypasses where the client underreports the file size header.
 	if totalAdded > 0 && user.ID != "admin" {
+		userType := h.getUserType(cfg, user)
+		if userType != nil && userType.StorageQuota > 0 {
+			// Re-read authoritative storage to account for concurrent uploads.
+			freshUsed := user.StorageUsed
+			if freshUser, err := h.auth.GetUser(c.Request.Context(), user.Username); err == nil && freshUser != nil {
+				freshUsed = freshUser.StorageUsed
+			}
+			if freshUsed+totalAdded > userType.StorageQuota {
+				// Roll back: delete all files that were just registered.
+				ctx := c.Request.Context()
+				for _, p := range registeredPaths {
+					if delErr := h.media.DeleteMedia(ctx, p); delErr != nil {
+						h.log.Error("Failed to delete overquota upload %s: %v", p, delErr)
+					}
+				}
+				h.log.Warn("Quota exceeded after upload for user %s: used=%d actual=%d quota=%d — files rolled back",
+					user.Username, freshUsed, totalAdded, userType.StorageQuota)
+				writeError(c, http.StatusForbidden, "Storage quota exceeded")
+				return
+			}
+		}
 		if err := h.auth.AddStorageUsed(c.Request.Context(), user.ID, totalAdded); err != nil {
 			h.log.Error("Failed to update user storage: %v", err)
 		}
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"uploaded": uploaded,
 		"errors":   uploadErrors,
 	})
