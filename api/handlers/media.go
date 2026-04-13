@@ -643,7 +643,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		}
 
 		if h.suggestions != nil && userID != "" && localItem != nil {
-			h.suggestions.RecordView(userID, absPath, localItem.Category, string(localItem.Type), 0)
+			h.suggestions.RecordView(userID, absPath, localItem.Category, string(localItem.Type), localItem.Duration)
 		}
 
 		if err := h.media.IncrementViews(c.Request.Context(), absPath); err != nil {
