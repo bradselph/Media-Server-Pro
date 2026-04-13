@@ -37,7 +37,6 @@ import (
 	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
 	"media-server-pro/internal/repositories"
-	repoMysql "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
 	"media-server-pro/internal/streaming"
@@ -175,9 +174,10 @@ type Handler struct {
 	duplicates       *duplicates.Module
 	downloader       *downloader.Module
 	config           *config.Manager
-	shutdownFunc     func()
-	deletionRequests repositories.DataDeletionRequestRepository
-	viewCooldown       sync.Map // key: "userID|mediaID" → value: time.Time of last counted view
+	shutdownFunc        func()
+	deletionRequests    repositories.DataDeletionRequestRepository
+	deletionRequestsMu  sync.Mutex // guards lazy init of deletionRequests
+	viewCooldown        sync.Map   // key: "userID|mediaID" → value: time.Time of last counted view
 	classifyDirRunning atomic.Bool // true while a ClassifyDirectory background job is active
 	classifyAllRunning atomic.Bool // true while a ClassifyAllPending background job is active
 	feedCacheMu        sync.Mutex
@@ -253,12 +253,13 @@ func NewHandler(deps HandlerDeps) *Handler {
 		buildInfo:        deps.BuildInfo,
 		media:            c.Media,
 		streaming:        c.Streaming,
-		hls:              c.HLS,
-		auth:             c.Auth,
-		database:         c.Database,
-		config:           c.Config,
-		deletionRequests: repoMysql.NewDataDeletionRequestRepository(c.Database.GORM()),
-		analytics:        o.Analytics,
+		hls:      c.HLS,
+		auth:     c.Auth,
+		database: c.Database,
+		config:   c.Config,
+		// deletionRequests is lazy-initialized on first use (see requireDeletionRepo)
+		// so that GORM() is not captured before the database module's Start() runs.
+		analytics: o.Analytics,
 		playlist:         o.Playlist,
 		admin:            o.Admin,
 		tasks:            o.Tasks,

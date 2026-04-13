@@ -1060,6 +1060,8 @@ func (m *Module) loadProfiles() error {
 }
 
 // saveProfiles persists dirty profiles only; continues on error and returns the last error.
+// IP-based guest profiles (user_id prefixed with "ip:") are intentionally skipped because
+// they have no matching row in the users table and would fail the FK constraint.
 func (m *Module) saveProfiles() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -1069,6 +1071,11 @@ func (m *Module) saveProfiles() error {
 	saved := 0
 	for _, profile := range m.profiles {
 		if !profile.dirty {
+			continue
+		}
+		// Skip transient guest profiles — they are tracked in memory for session-level
+		// recommendations but must never be written to the DB (no users row, FK violation).
+		if strings.HasPrefix(profile.UserID, "ip:") {
 			continue
 		}
 		if err := m.saveOneProfile(ctx, profile); err != nil {
