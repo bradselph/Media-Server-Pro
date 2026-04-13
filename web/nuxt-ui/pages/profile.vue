@@ -35,7 +35,7 @@ definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const router = useRouter()
-const { changePassword, getPreferences, updatePreferences, requestDataDeletion, deleteAccount } = useApiEndpoints()
+const { changePassword, adminChangePassword, getPreferences, updatePreferences, requestDataDeletion, deleteAccount } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
 const { getUsage, getPermissions } = useStorageApi()
 
@@ -216,7 +216,11 @@ async function handleChangePassword() {
   }
   pwLoading.value = true
   try {
-    await changePassword(pw.current, pw.new)
+    if (authStore.isAdmin) {
+      await adminChangePassword(pw.current, pw.new)
+    } else {
+      await changePassword(pw.current, pw.new)
+    }
     toast.add({ title: 'Password changed', color: 'success', icon: 'i-lucide-check' })
     pw.current = ''; pw.new = ''; pw.confirm = ''
   } catch (e: unknown) {

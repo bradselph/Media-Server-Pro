@@ -144,6 +144,13 @@ function changePassword(currentPassword: string, newPassword: string) {
     })
 }
 
+function adminChangePassword(currentPassword: string, newPassword: string) {
+    return api.post<void>('/api/admin/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword
+    })
+}
+
 function requestDataDeletion(reason?: string) {
     return api.post<{
         status: string;
@@ -169,7 +176,7 @@ async function updatePreferences(prefs: Partial<UserPreferences>): Promise<UserP
 
 export function useApiEndpoints() {
     return {
-        login, logout, register, getSession, changePassword, requestDataDeletion, deleteAccount,
+        login, logout, register, getSession, changePassword, adminChangePassword, requestDataDeletion, deleteAccount,
         getPreferences, updatePreferences,
     }
 }
