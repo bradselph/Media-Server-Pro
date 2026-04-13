@@ -326,7 +326,7 @@ func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 
 // cleanupDeletedMedia removes HLS cache, thumbnails, and other data associated
 // with a media item that was just deleted. All operations are best-effort.
-func (h *Handler) cleanupDeletedMedia(_ context.Context, mediaID, mediaPath string) {
+func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath string) {
 	// HLS cache and job
 	if h.hls != nil {
 		if job, err := h.hls.GetJobByMediaPath(mediaPath); err == nil && job != nil {
@@ -357,10 +357,15 @@ func (h *Handler) cleanupDeletedMedia(_ context.Context, mediaID, mediaPath stri
 		}
 	}
 
-	// Note: playback positions, favorites, playlist items, and watch history
-	// entries referencing this media ID are NOT cleaned here. They are orphaned
-	// but harmless — the frontend handles missing media gracefully, and the
-	// periodic thumbnail cleanup task removes orphaned thumbnails on schedule.
+	// Purge analytics events and playback positions that have no FK cascade.
+	// Favorites, playlist items, and watch history entries have ON DELETE CASCADE
+	// FK constraints and are cleaned automatically by the DB.
+	if h.analytics != nil {
+		h.analytics.DeleteEventsByMedia(ctx, mediaID)
+	}
+	if h.media != nil {
+		h.media.DeletePlaybackPositionsByPath(ctx, mediaPath)
+	}
 }
 
 // extractStringSlice converts a []interface{} from JSON into []string, ignoring non-string elements.
