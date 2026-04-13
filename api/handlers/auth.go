@@ -624,9 +624,11 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 		"canCreatePlaylists": user.Permissions.CanCreatePlaylists,
 		"canViewMature":      user.Permissions.CanViewMature,
 		"canStream":          user.Permissions.CanStream,
+		// Always present so frontend can read all 7 flags without nil-checking.
+		// Non-admin users always get false; admins get their actual permission value.
+		"canDelete": false,
+		"canManage": false,
 	}
-	// Expose admin-only capabilities only to admin users; standard users have no
-	// business knowing the internal authorization flags they cannot hold.
 	if user.Role == models.RoleAdmin {
 		caps["canDelete"] = user.Permissions.CanDelete
 		caps["canManage"] = user.Permissions.CanManage
