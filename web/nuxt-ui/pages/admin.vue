@@ -22,8 +22,12 @@ const TABS = [
 ]
 
 const VALID = TABS.map(t => t.value)
+// Legacy tab name aliases — redirect old bookmarks to the current tab value.
+const TAB_ALIASES: Record<string, string> = { settings: 'system' }
 const activeTab = ref(
-  VALID.includes(route.query.tab as string) ? (route.query.tab as string) : 'dashboard',
+  VALID.includes(route.query.tab as string)
+    ? (route.query.tab as string)
+    : TAB_ALIASES[route.query.tab as string] ?? 'dashboard',
 )
 
 watch(activeTab, tab => {

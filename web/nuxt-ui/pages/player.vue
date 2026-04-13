@@ -1061,7 +1061,7 @@ watch(mediaId, (id, oldId) => {
           </template>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
             <div v-if="media.type"><span class="text-muted">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
-            <div v-if="media.duration"><span class="text-muted">Duration:</span> {{ formatDuration(media.duration) }}</div>
+            <div v-if="media.duration || duration"><span class="text-muted">Duration:</span> {{ formatDuration(media.duration || duration) }}</div>
             <div v-if="media.size"><span class="text-muted">Size:</span> {{ formatBytes(media.size) }}</div>
             <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
             <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
