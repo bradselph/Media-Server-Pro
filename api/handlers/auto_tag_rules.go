@@ -14,7 +14,7 @@ import (
 // ListAutoTagRules returns all auto-tag rules ordered by priority desc.
 // GET /api/admin/auto-tag-rules
 func (h *Handler) ListAutoTagRules(c *gin.Context) {
-	db := h.database.GORM()
+	db := h.database.GORM().WithContext(c.Request.Context())
 	var rules []models.AutoTagRule
 	if err := db.Order("priority DESC, created_at ASC").Find(&rules).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to list rules: "+err.Error())
@@ -49,7 +49,7 @@ func (h *Handler) CreateAutoTagRule(c *gin.Context) {
 		Priority: body.Priority,
 		Enabled:  enabled,
 	}
-	if err := h.database.GORM().Create(&rule).Error; err != nil {
+	if err := h.database.GORM().WithContext(c.Request.Context()).Create(&rule).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to create rule: "+err.Error())
 		return
 	}
@@ -82,7 +82,7 @@ func (h *Handler) UpdateAutoTagRule(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
-	db := h.database.GORM()
+	db := h.database.GORM().WithContext(c.Request.Context())
 	var rule models.AutoTagRule
 	if err := db.First(&rule, "id = ?", id).Error; err != nil {
 		writeError(c, http.StatusNotFound, "Rule not found")
@@ -118,7 +118,7 @@ func (h *Handler) DeleteAutoTagRule(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "rule id is required")
 		return
 	}
-	if err := h.database.GORM().Delete(&models.AutoTagRule{}, "id = ?", id).Error; err != nil {
+	if err := h.database.GORM().WithContext(c.Request.Context()).Delete(&models.AutoTagRule{}, "id = ?", id).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to delete rule: "+err.Error())
 		return
 	}
@@ -136,7 +136,7 @@ func (h *Handler) DeleteAutoTagRule(c *gin.Context) {
 // Returns a count of items that had tags applied.
 // POST /api/admin/auto-tag-rules/apply
 func (h *Handler) ApplyAutoTagRules(c *gin.Context) {
-	db := h.database.GORM()
+	db := h.database.GORM().WithContext(c.Request.Context())
 	var rules []models.AutoTagRule
 	if err := db.Where("enabled = ?", true).Order("priority DESC, created_at ASC").Find(&rules).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to load rules: "+err.Error())

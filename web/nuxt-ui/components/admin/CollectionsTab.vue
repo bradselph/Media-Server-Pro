@@ -11,6 +11,7 @@ const toast = useToast()
 const collections = ref<MediaCollection[]>([])
 const loading = ref(false)
 const deletingId = ref<string | null>(null)
+const confirmDeleteId = ref<string | null>(null)
 
 // Create / Edit modal
 const formOpen = ref(false)
@@ -237,7 +238,7 @@ onMounted(load)
               variant="ghost"
               color="error"
               :loading="deletingId === col.id"
-              @click.stop="deleteCollection(col.id)"
+              @click.stop="confirmDeleteId = col.id"
             />
           </div>
         </div>
@@ -275,6 +276,21 @@ onMounted(load)
       <template #footer>
         <UButton :label="editTarget ? 'Save' : 'Create'" color="primary" :loading="saving" @click="save" />
         <UButton label="Cancel" variant="ghost" color="neutral" @click="formOpen = false" />
+      </template>
+    </UModal>
+
+    <!-- Delete confirmation -->
+    <UModal
+      :open="!!confirmDeleteId"
+      title="Delete Collection"
+      @update:open="val => { if (!val) confirmDeleteId = null }"
+    >
+      <template #body>
+        <p class="text-sm">Are you sure you want to delete <strong>{{ collections.find(c => c.id === confirmDeleteId)?.name }}</strong>? All items will be removed from the collection. This cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton color="error" label="Delete" :loading="deletingId === confirmDeleteId" @click="deleteCollection(confirmDeleteId!); confirmDeleteId = null" />
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="confirmDeleteId = null" />
       </template>
     </UModal>
 

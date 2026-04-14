@@ -24,7 +24,7 @@ type collectionItemResponse struct {
 // ListCollections returns all collections ordered by name.
 // GET /api/collections
 func (h *Handler) ListCollections(c *gin.Context) {
-	db := h.database.GORM()
+	db := h.database.GORM().WithContext(c.Request.Context())
 	var cols []models.MediaCollection
 	if err := db.Order("name ASC").Find(&cols).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to list collections: "+err.Error())
@@ -37,7 +37,7 @@ func (h *Handler) ListCollections(c *gin.Context) {
 // GET /api/collections/:id
 func (h *Handler) GetCollection(c *gin.Context) {
 	id := c.Param("id")
-	db := h.database.GORM()
+	db := h.database.GORM().WithContext(c.Request.Context())
 	var col models.MediaCollection
 	if err := db.First(&col, "id = ?", id).Error; err != nil {
 		writeError(c, http.StatusNotFound, "Collection not found")
@@ -83,7 +83,7 @@ func (h *Handler) CreateCollection(c *gin.Context) {
 		Description:  body.Description,
 		CoverMediaID: body.CoverMediaID,
 	}
-	if err := h.database.GORM().Create(&col).Error; err != nil {
+	if err := h.database.GORM().WithContext(c.Request.Context()).Create(&col).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to create collection: "+err.Error())
 		return
 	}
@@ -101,7 +101,7 @@ func (h *Handler) CreateCollection(c *gin.Context) {
 // PUT /api/admin/collections/:id
 func (h *Handler) UpdateCollection(c *gin.Context) {
 	id := c.Param("id")
-	db := h.database.GORM()
+	db := h.database.GORM().WithContext(c.Request.Context())
 	var col models.MediaCollection
 	if err := db.First(&col, "id = ?", id).Error; err != nil {
 		writeError(c, http.StatusNotFound, "Collection not found")
@@ -136,9 +136,13 @@ func (h *Handler) UpdateCollection(c *gin.Context) {
 // DELETE /api/admin/collections/:id
 func (h *Handler) DeleteCollection(c *gin.Context) {
 	id := c.Param("id")
-	db := h.database.GORM()
-	// Remove items first, then the collection
-	db.Where("collection_id = ?", id).Delete(&models.MediaCollectionItem{})
+	db := h.database.GORM().WithContext(c.Request.Context())
+	// Remove items first, then the collection; surface errors so admins know if cleanup failed.
+	if err := db.Where("collection_id = ?", id).Delete(&models.MediaCollectionItem{}).Error; err != nil {
+		h.log.Error("DeleteCollection: failed to remove items for %s: %v", id, err)
+		writeError(c, http.StatusInternalServerError, "Failed to remove collection items: "+err.Error())
+		return
+	}
 	if err := db.Delete(&models.MediaCollection{}, "id = ?", id).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to delete collection: "+err.Error())
 		return
@@ -158,7 +162,7 @@ func (h *Handler) DeleteCollection(c *gin.Context) {
 // Body: { "media_ids": ["id1","id2"], "position_start": 0 }
 func (h *Handler) AddCollectionItems(c *gin.Context) {
 	collectionID := c.Param("id")
-	db := h.database.GORM()
+	db := h.database.GORM().WithContext(c.Request.Context())
 	// Verify collection exists
 	var col models.MediaCollection
 	if err := db.First(&col, "id = ?", collectionID).Error; err != nil {
@@ -191,7 +195,7 @@ func (h *Handler) AddCollectionItems(c *gin.Context) {
 func (h *Handler) RemoveCollectionItem(c *gin.Context) {
 	collectionID := c.Param("id")
 	mediaID := c.Param("media_id")
-	if err := h.database.GORM().
+	if err := h.database.GORM().WithContext(c.Request.Context()).
 		Where("collection_id = ? AND media_id = ?", collectionID, mediaID).
 		Delete(&models.MediaCollectionItem{}).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to remove item: "+err.Error())
@@ -204,7 +208,7 @@ func (h *Handler) RemoveCollectionItem(c *gin.Context) {
 // GET /api/media/:id/collections
 func (h *Handler) GetMediaCollections(c *gin.Context) {
 	mediaID := c.Param("id")
-	db := h.database.GORM()
+	db := h.database.GORM().WithContext(c.Request.Context())
 	var rows []models.MediaCollectionItem
 	db.Where("media_id = ?", mediaID).Find(&rows)
 	if len(rows) == 0 {

@@ -539,6 +539,7 @@ function progressBarColor(status: DownloaderProgress['status']) {
             variant="outline"
             color="primary"
             :loading="importingFile === f.name"
+            :disabled="importingFile !== null"
             @click="importFile(f.name)"
           />
         </div>
