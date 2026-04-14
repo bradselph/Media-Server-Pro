@@ -69,6 +69,7 @@ const navLinks = computed(() => {
       { label: 'Categories', to: '/categories', icon: 'i-lucide-layers' },
       { label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' },
       { label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart' },
+      { label: 'History', to: '/history', icon: 'i-lucide-history' },
     )
     if (authStore.user?.permissions?.can_upload) {
       links.push({ label: 'Upload', to: '/upload', icon: 'i-lucide-upload' })
