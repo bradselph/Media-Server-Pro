@@ -163,10 +163,11 @@ async function removeItem(playlistId: string, mediaId: string, itemId?: string) 
       await playlistApi.removeItem(playlistId, mediaId)
     }
     if (activePlaylist.value) {
-      activePlaylist.value = {
-        ...activePlaylist.value,
-        items: (activePlaylist.value.items ?? []).filter(i => itemId ? i.id !== itemId : i.media_id !== mediaId),
-      }
+      const plId = activePlaylist.value.id
+      const updatedItems = (activePlaylist.value.items ?? []).filter(i => itemId ? i.id !== itemId : i.media_id !== mediaId)
+      activePlaylist.value = { ...activePlaylist.value, items: updatedItems }
+      // Keep sidebar item count in sync
+      playlists.value = playlists.value.map(p => p.id === plId ? { ...p, items: updatedItems } : p)
     }
     toast.add({ title: 'Removed from playlist', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {

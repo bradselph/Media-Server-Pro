@@ -47,6 +47,20 @@ const toast = useToast()
 const storageUsage = ref<StorageUsage | null>(null)
 const permissionsInfo = ref<PermissionsInfo | null>(null)
 const myProfile = ref<UserProfile | null>(null)
+const resetRecLoading = ref(false)
+
+async function resetRecommendations() {
+  resetRecLoading.value = true
+  try {
+    await suggestionsApi.resetMyProfile()
+    myProfile.value = null
+    toast.add({ title: 'Recommendation history cleared', color: 'success', icon: 'i-lucide-check' })
+  } catch {
+    toast.add({ title: 'Failed to reset recommendations', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    resetRecLoading.value = false
+  }
+}
 
 async function loadStorageUsage() {
   try {
@@ -460,6 +474,18 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
             </div>
           </div>
         </div>
+        <div class="mt-4 pt-3 border-t border-default">
+          <UButton
+            icon="i-lucide-rotate-ccw"
+            label="Reset Recommendations"
+            size="xs"
+            variant="outline"
+            color="neutral"
+            :loading="resetRecLoading"
+            @click="resetRecommendations"
+          />
+          <p class="text-xs text-muted mt-1.5">Clears your watch history and genre scores used to personalise recommendations.</p>
+        </div>
       </UCard>
 
       <!-- My Ratings -->
@@ -790,7 +816,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
 
         <p class="text-sm font-medium text-default mb-1">Delete Account Immediately</p>
         <p class="text-sm text-muted mb-3">Permanently delete your account and all associated data right now. This cannot be undone.</p>
-        <UButton icon="i-lucide-trash-2" label="Delete My Account" variant="outline" color="error" @click="selfDeleteOpen = true" />
+        <UButton icon="i-lucide-trash-2" label="Delete My Account" variant="outline" color="error" @click="selfDeleteOpen = true; selfDeleteError = null; selfDeletePassword = ''" />
 
         <UModal v-model:open="selfDeleteOpen" title="Delete Your Account" description="This is permanent and cannot be undone. All your data will be deleted immediately.">
           <template #body>

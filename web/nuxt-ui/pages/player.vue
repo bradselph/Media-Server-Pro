@@ -396,6 +396,7 @@ function autoNextFromSuggestions() {
   const next = similar.value.find(s => s.media_id !== mediaId.value)
     ?? personalized.value.find(s => s.media_id !== mediaId.value)
   if (next) {
+    if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
     showUpNext.value = true
     upNextCountdown.value = 8
     upNextTimer = setInterval(() => {
