@@ -88,6 +88,9 @@ func eventsToSlice(events []*models.AnalyticsEvent) []models.AnalyticsEvent {
 
 // TrackEvent records an analytics event.
 func (m *Module) TrackEvent(ctx context.Context, event models.AnalyticsEvent) {
+	if !m.config.Get().Analytics.Enabled {
+		return
+	}
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now()
 	}

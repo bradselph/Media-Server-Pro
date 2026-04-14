@@ -100,6 +100,7 @@ func filterDeniedConfigKeys(updates map[string]interface{}) []string {
 // are persisted but require a server restart to take effect.
 var hotReloadKeys = map[string]bool{
 	"security": true, // whitelist/blacklist enable flags
+	"features": true, // feature toggles enforced per-request; no restart needed
 }
 
 // AdminUpdateConfig updates the configuration (raw updates passed to admin; some changes require restart).

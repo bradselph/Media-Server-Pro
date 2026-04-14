@@ -403,11 +403,19 @@ func (h *Handler) requireAdminModule(c *gin.Context) bool {
 	return requireModule(c, h.admin, "Admin module")
 }
 func (h *Handler) requirePlaylist(c *gin.Context) bool {
-	return requireModule(c, h.playlist, "Playlist feature")
+	return checkFeatureEnabled(c, h.playlist, "Playlist feature", func() bool {
+		return h.config.Get().Features.EnablePlaylists
+	})
 }
-func (h *Handler) requireHLS(c *gin.Context) bool { return requireModule(c, h.hls, "HLS feature") }
+func (h *Handler) requireHLS(c *gin.Context) bool {
+	return checkFeatureEnabled(c, h.hls, "HLS feature", func() bool {
+		return h.config.Get().HLS.Enabled
+	})
+}
 func (h *Handler) requireSuggestions(c *gin.Context) bool {
-	return requireModule(c, h.suggestions, "Suggestions feature")
+	return checkFeatureEnabled(c, h.suggestions, "Suggestions feature", func() bool {
+		return h.config.Get().Features.EnableSuggestions
+	})
 }
 func (h *Handler) requireScanner(c *gin.Context) bool { return requireModule(c, h.scanner, "Scanner") }
 func (h *Handler) requireValidator(c *gin.Context) bool {
@@ -420,14 +428,18 @@ func (h *Handler) requireCategorizer(c *gin.Context) bool {
 	return requireModule(c, h.categorizer, "Categorizer")
 }
 func (h *Handler) requireAutodiscovery(c *gin.Context) bool {
-	return requireModule(c, h.autodiscovery, "Auto-discovery")
+	return checkFeatureEnabled(c, h.autodiscovery, "Auto-discovery", func() bool {
+		return h.config.Get().Features.EnableAutoDiscovery
+	})
 }
 func (h *Handler) requireUpdater(c *gin.Context) bool { return requireModule(c, h.updater, "Updater") }
 func (h *Handler) requireUpload(c *gin.Context) bool {
 	return requireModule(c, h.upload, "Upload feature")
 }
 func (h *Handler) requireThumbnails(c *gin.Context) bool {
-	return requireModule(c, h.thumbnails, "Thumbnails feature")
+	return checkFeatureEnabled(c, h.thumbnails, "Thumbnails feature", func() bool {
+		return h.config.Get().Thumbnails.Enabled
+	})
 }
 func (h *Handler) requireSecurity(c *gin.Context) bool {
 	return requireModule(c, h.security, "Security feature")
