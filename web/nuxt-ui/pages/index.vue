@@ -94,6 +94,26 @@ async function bulkAddToPlaylist() {
 
 watch(selectionMode, (on) => { if (on) loadMyPlaylists() })
 
+// Per-card quick "add to playlist" (does not navigate, keeps playback running)
+async function quickAddToPlaylist(itemId: string, playlistId: string) {
+  try {
+    await playlistApi.addItem(playlistId, itemId)
+    toast.add({ title: 'Added to playlist', color: 'success', icon: 'i-lucide-list-music' })
+  } catch {
+    toast.add({ title: 'Already in playlist or failed to add', color: 'warning', icon: 'i-lucide-list-x' })
+  }
+}
+
+function playlistMenuItemsFor(itemId: string) {
+  const plItems = myPlaylists.value.map(pl => ({
+    label: pl.name,
+    icon: 'i-lucide-list-music',
+    click: () => quickAddToPlaylist(itemId, pl.id),
+  }))
+  const newPl = [{ label: 'New Playlist…', icon: 'i-lucide-plus', to: '/playlists' }]
+  return plItems.length > 0 ? [plItems, newPl] : [newPl]
+}
+
 const sortOptions = computed(() =>
   authStore.isLoggedIn ? [...SORT_OPTIONS_BASE, SORT_OPTION_MY_RATING] : SORT_OPTIONS_BASE
 )
@@ -410,7 +430,7 @@ onMounted(() => {
   load()
   // Fetch recommendations for already-logged-in users (page refresh).
   // When the user logs in mid-session, the watch above handles this instead.
-  if (authStore.isLoggedIn) { loadRecommendations(); loadFavorites() }
+  if (authStore.isLoggedIn) { loadRecommendations(); loadFavorites(); loadMyPlaylists() }
   else loadGeneralSuggestions()
 })
 
@@ -1040,6 +1060,21 @@ onUnmounted(() => {
               :class="favoriteIds.has(item.id) ? 'size-4 text-red-400 [&>svg]:fill-current' : 'size-4 text-white'"
             />
           </button>
+          <!-- Quick add to playlist button (hover only, does not interrupt playback) -->
+          <div
+            v-if="authStore.isLoggedIn"
+            class="absolute bottom-6 right-7 opacity-0 group-hover:opacity-100 transition-opacity"
+            @click.prevent.stop
+          >
+            <UDropdownMenu :items="playlistMenuItemsFor(item.id)">
+              <button
+                class="p-0.5 rounded-full bg-black/50"
+                aria-label="Add to playlist"
+              >
+                <UIcon name="i-lucide-list-plus" class="size-4 text-white" />
+              </button>
+            </UDropdownMenu>
+          </div>
         </div>
         <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}

@@ -98,7 +98,7 @@ async function cleanInactive() {
 
 
 function statusColor(status: HLSJob['status']): 'neutral' | 'info' | 'success' | 'error' | 'warning' {
-  const map = { pending: 'neutral', running: 'info', completed: 'success', failed: 'error', cancelled: 'warning' } as const
+  const map = { pending: 'neutral', running: 'info', completed: 'success', failed: 'error', canceled: 'warning' } as const
   return map[status] ?? 'neutral'
 }
 

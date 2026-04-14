@@ -82,6 +82,18 @@ watch(
   { deep: true },
 )
 
+// Mobile skip tap animation state
+const mobileSkipDir = ref<'back' | 'forward' | null>(null)
+let mobileSkipTimer: ReturnType<typeof setTimeout> | null = null
+
+function mobileSkip(delta: number) {
+  seek(delta)
+  resetControlsTimer()
+  mobileSkipDir.value = delta < 0 ? 'back' : 'forward'
+  if (mobileSkipTimer) clearTimeout(mobileSkipTimer)
+  mobileSkipTimer = setTimeout(() => { mobileSkipDir.value = null }, 600)
+}
+
 // Auto-next: play next suggestion when current media ends (non-playlist context)
 const autoNextEnabled = ref(true)
 
@@ -809,6 +821,7 @@ onUnmounted(() => {
   if (seekTimer) clearTimeout(seekTimer)
   if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
   if (upNextTimer) clearInterval(upNextTimer)
+  if (mobileSkipTimer) clearTimeout(mobileSkipTimer)
   clearTimeout(linkCopiedTimer)
 })
 
@@ -904,24 +917,41 @@ watch(mediaId, (id, oldId) => {
             </div>
           </Transition>
 
-          <!-- Mobile skip buttons (visible on touch devices) -->
+          <!-- Mobile skip buttons (visible on touch devices, single tap) -->
           <div class="absolute inset-0 flex items-center justify-between pointer-events-none md:hidden z-10">
+            <!-- Skip back -->
             <button
-              class="pointer-events-auto w-1/4 h-full flex items-center justify-center active:bg-white/10 transition-colors"
+              class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
+              :class="mobileSkipDir === 'back' ? 'bg-white/15' : ''"
               aria-label="Skip back 10 seconds"
-              @dblclick.stop="seek(-10)"
-              @click.stop
+              @click.stop="mobileSkip(-10)"
             >
-              <UIcon name="i-lucide-rewind" class="size-8 text-white/50 opacity-0 active:opacity-100 transition-opacity" />
+              <Transition name="fade">
+                <div v-if="mobileSkipDir === 'back'" class="flex flex-col items-center gap-1 pointer-events-none">
+                  <UIcon name="i-lucide-rewind" class="size-8 text-white" />
+                  <span class="text-white text-xs font-semibold">-10s</span>
+                </div>
+              </Transition>
             </button>
-            <div class="w-1/2" />
+            <!-- Centre tap: toggle play/pause -->
             <button
-              class="pointer-events-auto w-1/4 h-full flex items-center justify-center active:bg-white/10 transition-colors"
+              class="pointer-events-auto w-1/2 h-full"
+              aria-label="Play or pause"
+              @click.stop="togglePlay(); resetControlsTimer()"
+            />
+            <!-- Skip forward -->
+            <button
+              class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
+              :class="mobileSkipDir === 'forward' ? 'bg-white/15' : ''"
               aria-label="Skip forward 10 seconds"
-              @dblclick.stop="seek(10)"
-              @click.stop
+              @click.stop="mobileSkip(10)"
             >
-              <UIcon name="i-lucide-fast-forward" class="size-8 text-white/50 opacity-0 active:opacity-100 transition-opacity" />
+              <Transition name="fade">
+                <div v-if="mobileSkipDir === 'forward'" class="flex flex-col items-center gap-1 pointer-events-none">
+                  <UIcon name="i-lucide-fast-forward" class="size-8 text-white" />
+                  <span class="text-white text-xs font-semibold">+10s</span>
+                </div>
+              </Transition>
             </button>
           </div>
 
@@ -958,6 +988,7 @@ watch(mediaId, (id, oldId) => {
             :is-fullscreen="isFullscreen"
             :is-pi-p="isPiP"
             :pip-supported="pipSupported"
+            :is-theater="isTheater"
             :qualities="qualities"
             :current-quality="currentQuality"
             :thumbnail-previews="thumbnailPreviews"
@@ -972,6 +1003,8 @@ watch(mediaId, (id, oldId) => {
             @toggle-fullscreen="toggleFullscreen"
             @toggle-pip="togglePiP"
             @cycle-loop="cycleLoop"
+            @toggle-mute="toggleMute"
+            @toggle-theater="toggleTheater"
           />
         </div>
         <div v-else class="max-md:px-4">

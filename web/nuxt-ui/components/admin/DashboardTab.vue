@@ -48,7 +48,7 @@ const memPct = computed(() => {
   return Math.round(((system.value.memory_used ?? 0) / ((system.value.memory_total || 1))) * 100)
 })
 
-function moduleStatusColor(status: ModuleHealth['status']): string {
+function moduleStatusColor(status: ModuleHealth['status']): 'success' | 'warning' | 'error' {
   if (status === 'healthy') return 'success'
   if (status === 'degraded') return 'warning'
   return 'error'
