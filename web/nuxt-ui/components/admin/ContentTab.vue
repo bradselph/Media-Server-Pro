@@ -144,7 +144,7 @@ async function refreshJobStatus(id: string) {
   try {
     const updated = await hlsApi.getStatus(id)
     const idx = hlsJobs.value.findIndex(j => j.id === id)
-    if (idx !== -1) hlsJobs.value[idx] = updated
+    if (idx !== -1) hlsJobs.value = hlsJobs.value.map((j, i) => i === idx ? updated : j)
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to refresh status', color: 'error', icon: 'i-lucide-x' })
   } finally { hlsRefreshing.value = null }

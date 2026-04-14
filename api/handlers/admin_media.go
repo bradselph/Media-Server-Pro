@@ -366,6 +366,17 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	if h.media != nil {
 		h.media.DeletePlaybackPositionsByPath(ctx, mediaPath)
 	}
+
+	// Remove path-keyed rows that have no FK cascade to media_metadata.
+	if h.scanner != nil {
+		h.scanner.RemoveByPath(mediaPath)
+	}
+	if h.validator != nil {
+		h.validator.ClearResult(mediaPath)
+	}
+	if h.categorizer != nil {
+		h.categorizer.RemoveByPath(mediaPath)
+	}
 }
 
 // extractStringSlice converts a []interface{} from JSON into []string, ignoring non-string elements.

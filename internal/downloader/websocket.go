@@ -80,10 +80,16 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Generate a clientId and register with the downloader
 	clientID := "msp_" + time.Now().Format("20060102150405") + "_" + randomSuffix()
-	registerMsg, _ := json.Marshal(map[string]string{
+	registerMsg, err := json.Marshal(map[string]string{
 		"type":     "register",
 		"clientId": clientID,
 	})
+	if err != nil {
+		log.Warn("Failed to marshal register message: %v", err)
+		_ = dlConn.Close()
+		_ = adminConn.Close()
+		return
+	}
 	if err := dlConn.WriteMessage(websocket.TextMessage, registerMsg); err != nil {
 		log.Warn("Failed to register clientId with downloader: %v", err)
 		_ = dlConn.Close()
@@ -92,10 +98,16 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send the clientId to the admin so they can include it in download requests
-	connectedMsg, _ := json.Marshal(map[string]string{
+	connectedMsg, err := json.Marshal(map[string]string{
 		"type":     "connected",
 		"clientId": clientID,
 	})
+	if err != nil {
+		log.Warn("Failed to marshal connected message: %v", err)
+		_ = dlConn.Close()
+		_ = adminConn.Close()
+		return
+	}
 	if err := adminConn.WriteMessage(websocket.TextMessage, connectedMsg); err != nil {
 		log.Warn("Failed to send connected message to admin: %v", err)
 		_ = dlConn.Close()

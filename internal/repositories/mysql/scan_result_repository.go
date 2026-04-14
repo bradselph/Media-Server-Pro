@@ -192,6 +192,14 @@ func (r *ScanResultRepository) MarkReviewed(ctx context.Context, path, reviewedB
 	return nil
 }
 
+// Delete removes a scan result by file path.
+func (r *ScanResultRepository) Delete(ctx context.Context, path string) error {
+	if err := r.db.WithContext(ctx).Where(sqlPathEq, path).Delete(&scanResultRow{}).Error; err != nil {
+		return fmt.Errorf("failed to delete scan result: %w", err)
+	}
+	return nil
+}
+
 // rowToResult converts a GORM row to a repository ScanResult.
 func (r *ScanResultRepository) rowToResult(row *scanResultRow) *repositories.ScanResult {
 	result := &repositories.ScanResult{

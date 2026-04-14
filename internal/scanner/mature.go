@@ -1090,6 +1090,20 @@ func (s *MatureScanner) RejectContent(ctx context.Context, path string) error {
 	return s.ReviewItem(ctx, path, "system", "reject")
 }
 
+// RemoveByPath deletes the scan result for a specific path from both the in-memory
+// cache and the database. Used by cleanupDeletedMedia when a media item is deleted.
+func (s *MatureScanner) RemoveByPath(path string) {
+	s.mu.Lock()
+	delete(s.reviewQueue, path)
+	s.mu.Unlock()
+
+	if s.scanRepo != nil {
+		if err := s.scanRepo.Delete(context.Background(), path); err != nil {
+			s.log.Debug("RemoveByPath: no scan result to delete for %s: %v", path, err)
+		}
+	}
+}
+
 // ClearReviewQueue removes all items from the in-memory review queue.
 // Individual MySQL records remain in scan_results with needs_review=true until reviewed.
 func (s *MatureScanner) ClearReviewQueue() {

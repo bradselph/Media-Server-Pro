@@ -88,6 +88,7 @@ type ScanResultRepository interface {
 	Get(ctx context.Context, path string) (*ScanResult, error)
 	GetPendingReview(ctx context.Context) ([]*ScanResult, error)
 	MarkReviewed(ctx context.Context, path, reviewedBy, decision string) error
+	Delete(ctx context.Context, path string) error
 }
 
 // MediaMetadata represents metadata stored for a media file (temporal fields as RFC3339 strings in domain).
@@ -115,6 +116,8 @@ type MediaMetadata struct {
 	ProbeModTime *time.Time
 	// BlurHash is a compact representation for LQIP placeholders (~20-30 bytes)
 	BlurHash string
+	// Duration is the media file duration in seconds, extracted by ffprobe.
+	Duration float64
 }
 
 // ScanResult holds scan metadata (ScannedAt/ReviewedAt as strings; MySQL impl parses to time).
