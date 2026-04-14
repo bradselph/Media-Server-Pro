@@ -207,6 +207,9 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
       </UContainer>
     </footer>
 
+    <!-- Mini player (appears when navigating away from player) -->
+    <MiniPlayer />
+
     <!-- Age gate modal -->
     <UModal
       :open="ageGateOpen"

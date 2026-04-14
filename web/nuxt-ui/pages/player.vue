@@ -322,7 +322,13 @@ async function loadMedia(id: string) {
   try {
     media.value = await mediaApi.getById(id)
     userRating.value = 0
-    playbackStore.setMedia(id)
+    playbackStore.setMedia(id, {
+      id,
+      name: media.value ? (media.value.metadata?.title || media.value.name) : id,
+      type: media.value?.type ?? 'unknown',
+      thumbnail_url: media.value ? mediaApi.getThumbnailUrl(id) : undefined,
+      duration: media.value?.duration ?? 0,
+    })
     loadChapters(id).catch(() => {})
     suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch(() => {})
     if (authStore.isLoggedIn) {
