@@ -20,18 +20,16 @@ func (h *Handler) GetFavorites(c *gin.Context) {
 	}
 
 	type favoriteItem struct {
-		ID        string `json:"id"`
-		MediaID   string `json:"media_id"`
-		MediaPath string `json:"media_path"`
-		AddedAt   string `json:"added_at"`
+		ID      string `json:"id"`
+		MediaID string `json:"media_id"`
+		AddedAt string `json:"added_at"`
 	}
 	items := make([]favoriteItem, len(recs))
 	for i, r := range recs {
 		items[i] = favoriteItem{
-			ID:        r.ID,
-			MediaID:   r.MediaID,
-			MediaPath: r.MediaPath,
-			AddedAt:   r.AddedAt.Format(timeFormatRFC3339Ext),
+			ID:      r.ID,
+			MediaID: r.MediaID,
+			AddedAt: r.AddedAt.Format(timeFormatRFC3339Ext),
 		}
 	}
 	writeSuccess(c, items)

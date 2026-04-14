@@ -397,6 +397,12 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]interface{} {
 	}
 }
 
+func buildConfigAdminMap(cfg *config.Config, _ []string) map[string]interface{} {
+	return map[string]interface{}{
+		"max_query_rows": cfg.Admin.MaxQueryRows,
+	}
+}
+
 func buildConfigThumbnailsMap(cfg *config.Config, _ []string) map[string]interface{} {
 	return map[string]interface{}{
 		"auto_generate":      cfg.Thumbnails.AutoGenerate,
@@ -461,6 +467,8 @@ func buildConfigStreamingMap(cfg *config.Config, _ []string) map[string]interfac
 		"require_auth":        cfg.Streaming.RequireAuth,
 		"mobile_optimization": cfg.Streaming.MobileOptimization,
 		"unauth_stream_limit": cfg.Streaming.UnauthStreamLimit,
+		"keep_alive_enabled":  cfg.Streaming.KeepAliveEnabled,
+		"adaptive":            cfg.Streaming.Adaptive,
 	}
 }
 
@@ -494,6 +502,7 @@ func buildConfigUploadsMap(cfg *config.Config, _ []string) map[string]interface{
 		"max_file_size":   cfg.Uploads.MaxFileSize,
 		"allowed_types":   cfg.Uploads.AllowedExtensions,
 		"scan_for_mature": cfg.Uploads.ScanForMature,
+		"require_auth":    cfg.Uploads.RequireAuth,
 	}
 }
 
@@ -521,6 +530,7 @@ func buildConfigStorageMap(cfg *config.Config, _ []string) map[string]interface{
 			"endpoint":       cfg.Storage.S3.Endpoint,
 			"region":         cfg.Storage.S3.Region,
 			"bucket":         cfg.Storage.S3.Bucket,
+			"use_path_style": cfg.Storage.S3.UsePathStyle,
 			"access_key_set": cfg.Storage.S3.AccessKeyID != "",
 			"secret_key_set": cfg.Storage.S3.SecretAccessKey != "",
 		},
@@ -570,6 +580,7 @@ func (m *Module) GetConfigMap() map[string]interface{} {
 		fn  configMapSection
 	}{
 		{"server", buildConfigServerMap},
+		{"admin", buildConfigAdminMap},
 		{"features", buildConfigFeaturesMap},
 		{"security", buildConfigSecurityMap},
 		{"hls", buildConfigHLSMap},

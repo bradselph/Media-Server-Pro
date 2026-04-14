@@ -37,7 +37,12 @@ export function redirectToLogin(): void {
 async function parseEnvelope<T>(res: Response): Promise<T> {
     const contentType = res.headers.get('content-type') ?? ''
     if (!contentType.includes('application/json')) {
-        if (!res.ok) throw new ApiError(`HTTP ${res.status}`, res.status)
+        if (!res.ok) {
+            // Try to capture error body for a more actionable message (e.g. nginx 502 HTML).
+            const text = await res.text().catch(() => '')
+            const detail = text.replace(/<[^>]+>/g, '').trim().slice(0, 120)
+            throw new ApiError(detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`, res.status)
+        }
         return undefined as T
     }
 

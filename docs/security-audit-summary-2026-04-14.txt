@@ -1,0 +1,114 @@
+=============================================================================
+SECURITY & API CONTRACT AUDIT REPORT — Media-Server-Pro-4 (2026-04-14)
+=============================================================================
+
+SCOPE:
+  - Go backend: api/handlers/, api/routes/routes.go, pkg/models/
+  - Nuxt 3 frontend: web/nuxt-ui/
+
+HIGH-CONFIDENCE FINDINGS: 2 CRITICAL, 1 HIGH, 1 MEDIUM
+
+=============================================================================
+CRITICAL FINDINGS
+=============================================================================
+
+1. [CRITICAL] INFORMATION DISCLOSURE: Filesystem Paths in GetFavorites
+   ─────────────────────────────────────────────────────────────────────
+   File: /d/Media-Server-Pro-4/api/handlers/favorites.go:25, 33
+   
+   Issue: The GetFavorites endpoint returns media_path (filesystem path) 
+   in the FavoriteItem response struct, violating the security design 
+   documented in pkg/models/models.go:24-26.
+   
+   Example leaked data:
+   {
+     "media_id": "uuid-456",
+     "media_path": "/mnt/videos/Library/adult-content/item.mp4"
+   }
+   
+   Fix: Remove MediaPath from the favoriteItem struct response.
+
+2. [CRITICAL] MISSING AUDIT LOGGING: API Token Operations
+   ─────────────────────────────────────────────────────────────────────
+   File: /d/Media-Server-Pro-4/api/handlers/auth_tokens.go:86, 120
+   
+   Issue: API token creation/deletion are admin-only (correctly enforced),
+   but no audit log entries are created for these operations.
+   
+   Risk: Admins cannot audit who created/deleted tokens, defeating the
+   security model for privileged operations.
+   
+   Fix: Call h.admin.LogAction() after token creation/deletion.
+
+=============================================================================
+HIGH FINDINGS
+=============================================================================
+
+1. [HIGH] OPEN REDIRECT: Login Redirect Validation Too Permissive
+   ─────────────────────────────────────────────────────────────────────
+   File: /d/Media-Server-Pro-4/web/nuxt-ui/pages/login.vue:20
+   
+   Issue: loginRedirectDest() accepts ANY path starting with '/', allowing
+   redirects to internal paths like /admin/users or /api/admin/config after
+   login, creating phishing opportunities.
+   
+   Current validation:
+   if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//')) return r
+   
+   Fix: Implement a whitelist of safe redirect destinations:
+   const allowedPaths = ['/media', '/browse', '/playlists', '/favorites']
+
+=============================================================================
+MEDIUM FINDINGS
+=============================================================================
+
+1. [MEDIUM] API CONTRACT MISMATCH: APIToken.expires_at Field Type
+   ─────────────────────────────────────────────────────────────────────
+   File: Backend: /d/Media-Server-Pro-4/api/handlers/auth_tokens.go:35
+         Frontend: /d/Media-Server-Pro-4/web/nuxt-ui/types/api.ts:1126
+   
+   Issue: Backend may omit expires_at when null, but frontend expects it
+   to always be present (though nullable). Causes runtime type mismatches.
+   
+   Fix: Always include expires_at in ListAPITokens response, even when nil.
+
+=============================================================================
+SECURITY STRENGTHS VERIFIED
+=============================================================================
+
+✓ Path traversal in ServeThumbnailFile mitigated by filepath.Base()
+✓ Session cookies use HttpOnly flag (auth.go:64-76)
+✓ Mature content access properly gated (handler.go:506-540)
+✓ SQL injection prevented: AdminExecuteQuery validates and sanitizes (system.go:441-457)
+✓ Rate limiting implemented for auth endpoints (security/security.go)
+✓ Redirect in StreamMedia is safe (id validated via extractor.GetItem)
+✓ IDOR prevention in playlist/favorites (ownership checks via userID)
+✓ Admin endpoints properly gated via adminAuth middleware (routes.go:104-128)
+✓ Session auth correctly checks enabled status (routes.go:121-124)
+
+=============================================================================
+FILES FOR REVIEW
+=============================================================================
+
+Absolute paths of changed/critical files:
+
+ISSUES TO FIX:
+  /d/Media-Server-Pro-4/api/handlers/favorites.go (remove media_path)
+  /d/Media-Server-Pro-4/api/handlers/auth_tokens.go (add audit logging)
+  /d/Media-Server-Pro-4/web/nuxt-ui/pages/login.vue (redirect whitelist)
+  /d/Media-Server-Pro-4/web/nuxt-ui/types/api.ts (fix APIToken.expires_at type)
+
+VERIFIED SECURE:
+  /d/Media-Server-Pro-4/api/routes/routes.go (auth middleware properly applied)
+  /d/Media-Server-Pro-4/api/handlers/handler.go (mature content checks)
+  /d/Media-Server-Pro-4/api/handlers/system.go (SQL injection prevention)
+  /d/Media-Server-Pro-4/api/handlers/thumbnails.go (path traversal prevented)
+
+=============================================================================
+AUDIT REPORT LOCATION
+=============================================================================
+
+Full detailed report: /d/Media-Server-Pro-4/docs/security-audit-2026-04-14.md
+
+Date: 2026-04-14
+Status: PENDING FIXES

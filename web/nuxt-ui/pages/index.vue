@@ -374,6 +374,7 @@ async function load() {
     const batchIds = items.value.slice(0, 50).map(i => i.id)
     if (batchIds.length > 0) {
       mediaApi.getThumbnailBatch(batchIds, 320).then(r => {
+        if (seq !== loadSeq) return
         for (const url of Object.values(r?.thumbnails ?? {})) {
           const img = new Image()
           img.src = url
@@ -383,6 +384,7 @@ async function load() {
     // Batch-fetch playback positions for logged-in users to show progress bars.
     if (authStore.isLoggedIn && batchIds.length > 0) {
       playbackApi.getBatchPositions(batchIds).then(r => {
+        if (seq !== loadSeq) return
         const positions = r?.positions ?? {}
         const newProgress: Record<string, number> = {}
         for (const item of items.value.slice(0, 50)) {

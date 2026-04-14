@@ -615,13 +615,13 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
     <UModal
       :open="confirmBulkDelete"
       title="Delete Selected Items"
-      @update:open="val => { if (!val) confirmBulkDelete = false }"
+      @update:open="val => { if (!val) { confirmBulkDelete = false; selectedIds = new Set() } }"
     >
       <template #body>
         <p>Are you sure you want to delete <strong>{{ selectedIds.size }}</strong> selected item{{ selectedIds.size !== 1 ? 's' : '' }}? This action cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false" />
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false; selectedIds = new Set()" />
         <UButton color="error" label="Delete" :loading="bulkRunning" @click="confirmBulkDelete = false; executeBulk('delete')" />
       </template>
     </UModal>

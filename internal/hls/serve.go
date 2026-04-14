@@ -38,11 +38,17 @@ func (m *Module) ensureVariantPlaylistExists(ctx context.Context, job *models.HL
 }
 
 // rewritePlaylistLines rewrites non-comment, non-empty lines to absolute CDN URLs.
+// Segment names containing path traversal components ("..") or newline characters
+// are skipped — they should never appear in FFmpeg-generated manifests.
 func rewritePlaylistLines(data []byte, baseURL string) []byte {
 	var buf bytes.Buffer
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			if strings.Contains(trimmed, "..") || strings.ContainsAny(trimmed, "\r\n") {
+				// Malformed segment — skip rather than forward to the player.
+				continue
+			}
 			line = baseURL + trimmed
 		}
 		buf.WriteString(line)

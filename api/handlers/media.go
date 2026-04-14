@@ -667,6 +667,10 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 // DownloadMedia downloads a media file
 func (h *Handler) DownloadMedia(c *gin.Context) {
 	cfg := h.media.GetConfig()
+	if !cfg.Download.Enabled {
+		writeError(c, http.StatusForbidden, "Downloads are disabled")
+		return
+	}
 	session := getSession(c)
 
 	if cfg.Download.RequireAuth && session == nil {

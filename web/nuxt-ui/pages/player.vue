@@ -934,6 +934,13 @@ onUnmounted(() => {
   if (upNextTimer) clearInterval(upNextTimer)
   if (mobileSkipTimer) clearTimeout(mobileSkipTimer)
   clearTimeout(linkCopiedTimer)
+  // Tear down the Web Audio graph to prevent AudioContext accumulation across navigations.
+  eqFilters.forEach(f => f.disconnect())
+  eqFilters = []
+  if (sourceNode) { sourceNode.disconnect(); sourceNode = null }
+  if (analyserNode) { analyserNode.disconnect(); analyserNode = null }
+  visualizerAnalyser.value = null
+  if (audioCtx && audioCtx.state !== 'closed') { audioCtx.close().catch(() => {}); audioCtx = null }
 })
 
 watch(mediaId, (id, oldId) => {

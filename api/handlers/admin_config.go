@@ -42,23 +42,30 @@ func (h *Handler) AdminGetConfig(c *gin.Context) {
 }
 
 // configDenyList contains top-level config sections that must not be mutated at
-// runtime via the admin API. Credentials, secrets, and password hashes must be
-// changed via env vars or direct config file edits only.
+// runtime via the admin API. Credentials, session secrets, and path controls
+// are restricted to env vars or direct config file edits only.
 var configDenyList = map[string]bool{
 	"database":    true, // DB host, user, password
 	"auth":        true, // session secrets, lockout policy
-	"admin":       true, // admin username, password_hash
 	"receiver":    true, // slave API keys
-	"storage":     true, // S3 access key, secret key
-	"huggingface": true, // classification API key
-	"directories": true, // media scan paths — runtime redirect to /etc etc is a security risk
-	"logging":     true, // log file paths and levels
+	"directories": true, // media scan paths — runtime redirect is a security risk
 }
 
-// filterDeniedConfigKeys removes denied keys from the update map and returns
-// the list of rejected keys.  A key is denied when its top-level section
-// (the part before the first ".") appears in configDenyList, so both flat keys
-// ("admin") and dot-notation keys ("admin.password_hash") are caught.
+// configFieldDenyList lists dot-notation paths of individual fields that must
+// not be mutated at runtime, even though their parent section is not fully blocked.
+// Format: "section.field" (lowercase, matching JSON tag names).
+var configFieldDenyList = map[string]bool{
+	"admin.username":      true, // use admin credential endpoints instead
+	"admin.password_hash": true, // change password via /api/admin/change-password
+}
+
+// filterDeniedConfigKeys removes denied sections/fields from the update map
+// and returns the list of rejected keys.
+//
+// A key is denied when:
+//   - its top-level section appears in configDenyList (entire section blocked), OR
+//   - the key itself (lowercased) appears in configFieldDenyList, OR
+//   - for object-valued sections, specific nested fields are stripped from the value.
 func filterDeniedConfigKeys(updates map[string]interface{}) []string {
 	var rejected []string
 	for k := range updates {
@@ -66,6 +73,23 @@ func filterDeniedConfigKeys(updates map[string]interface{}) []string {
 		if configDenyList[topLevel] {
 			rejected = append(rejected, k)
 			delete(updates, k)
+			continue
+		}
+		if configFieldDenyList[strings.ToLower(k)] {
+			rejected = append(rejected, k)
+			delete(updates, k)
+			continue
+		}
+		// Strip individual sensitive fields from object-valued section updates.
+		if obj, ok := updates[k].(map[string]interface{}); ok {
+			for _, deny := range []string{"password_hash", "username"} {
+				if topLevel == "admin" {
+					if _, exists := obj[deny]; exists {
+						delete(obj, deny)
+						rejected = append(rejected, k+"."+deny)
+					}
+				}
+			}
 		}
 	}
 	return rejected

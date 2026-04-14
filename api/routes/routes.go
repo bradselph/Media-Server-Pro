@@ -535,9 +535,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// User-facing category browse (requires auth, returns categorized items)
 	api.GET("/browse/categories", requireAuth(), h.GetCategoryBrowse)
 
-	// Upload routes (protected)
-	api.POST("/upload", requireAuth(), h.UploadMedia)
-	api.GET("/upload/:id/progress", requireAuth(), h.GetUploadProgress)
+	// Upload routes — auth enforced in handler based on cfg.Uploads.RequireAuth
+	api.POST("/upload", h.UploadMedia)
+	api.GET("/upload/:id/progress", h.GetUploadProgress)
 
 	// Receiver slave API routes (authenticated via X-API-Key; RequireReceiverWithAPIKey checks enabled + nil first).
 	receiverSlave := api.Group("/receiver", h.RequireReceiverWithAPIKey())
