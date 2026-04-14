@@ -251,6 +251,8 @@ func (m *Module) CancelJob(jobID string) error {
 }
 
 // DeleteJob cancels a running job, removes its files, and deletes the DB record.
+// The in-memory entry is only removed after the DB delete succeeds so that a
+// server restart re-loads the job rather than leaving a DB orphan.
 func (m *Module) DeleteJob(jobID string) error {
 	m.jobsMu.Lock()
 	job, ok := m.jobs[jobID]
@@ -263,18 +265,28 @@ func (m *Module) DeleteJob(jobID string) error {
 		cancel()
 		delete(m.jobCancels, jobID)
 	}
-	delete(m.jobs, jobID)
 	outputDir := job.OutputDir
 	m.jobsMu.Unlock()
 
+	// Filesystem cleanup (best-effort; warn only).
 	if err := os.RemoveAll(outputDir); err != nil {
 		m.log.Warn("Failed to remove HLS directory: %v", err)
 	}
+
+	// DB delete must succeed before we remove the in-memory entry.
+	// On failure the in-memory map still has the record, which is consistent
+	// with what loadJobs() would restore on restart.
 	if m.repo != nil {
 		if err := m.repo.Delete(context.Background(), jobID); err != nil {
 			m.log.Warn("Failed to delete HLS job %s from DB: %v", jobID, err)
+			return fmt.Errorf("failed to delete HLS job from database: %w", err)
 		}
 	}
+
+	m.jobsMu.Lock()
+	delete(m.jobs, jobID)
+	m.jobsMu.Unlock()
+
 	m.cleanQualityLocks(jobID)
 	m.log.Info("Deleted HLS job %s", jobID)
 	return nil
