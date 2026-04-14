@@ -622,6 +622,20 @@ func (m *Module) CleanStale() int {
 	return removed
 }
 
+// RemoveByPath deletes the categorization entry for a specific path from both
+// the in-memory cache and the database. Used when a media item is deleted.
+func (m *Module) RemoveByPath(path string) {
+	m.mu.Lock()
+	delete(m.items, path)
+	m.mu.Unlock()
+
+	if m.repo != nil {
+		if err := m.repo.Delete(context.Background(), path); err != nil {
+			m.log.Debug("RemoveByPath: no categorization entry to delete for %s: %v", path, err)
+		}
+	}
+}
+
 // Persistence — reads/writes via MySQL repository
 
 func (m *Module) loadItems() error {

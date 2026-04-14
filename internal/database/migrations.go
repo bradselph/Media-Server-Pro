@@ -578,6 +578,7 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"user_preferences", "show_buffer_bar", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"user_preferences", "download_prompt", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"analytics_events", "data", "JSON NULL"},
+		{"media_metadata", "duration", "DOUBLE NOT NULL DEFAULT 0"},
 		{"media_metadata", "probe_mod_time", sqlTimestampNullDefault},
 		{"media_metadata", "stable_id", "VARCHAR(36) NULL"},
 		{"media_metadata", "content_fingerprint", "VARCHAR(64) NULL"},

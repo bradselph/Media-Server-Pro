@@ -158,6 +158,8 @@ type Metadata struct {
 	ProbeModTime time.Time `json:"probe_mod_time,omitempty"`
 	// BlurHash is set by the thumbnails module after generation; used for LQIP placeholders
 	BlurHash string `json:"blur_hash,omitempty"`
+	// Duration is the media file duration in seconds, extracted by ffprobe.
+	Duration float64 `json:"duration,omitempty"`
 }
 
 // computeContentFingerprint computes a SHA-256 fingerprint of a media file.
@@ -883,6 +885,9 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		item.MatureScore = meta.MatureScore
 		item.Tags = meta.Tags
 		item.BlurHash = meta.BlurHash
+		if meta.Duration > 0 {
+			item.Duration = meta.Duration
+		}
 
 		if meta.StableID != "" {
 			item.ID = meta.StableID
@@ -994,6 +999,9 @@ func (m *Module) extractMetadata(item *models.MediaItem) {
 	m.applyProbeData(item, &probe)
 	if m.metadata[item.Path] != nil {
 		m.metadata[item.Path].ProbeModTime = item.DateModified
+		if item.Duration > 0 {
+			m.metadata[item.Path].Duration = item.Duration
+		}
 	}
 	m.mu.Unlock()
 }
@@ -1788,6 +1796,7 @@ func (m *Module) convertRepoToInternal(repoMeta *repositories.MediaMetadata) *Me
 		meta.ProbeModTime = *repoMeta.ProbeModTime
 	}
 	meta.BlurHash = repoMeta.BlurHash
+	meta.Duration = repoMeta.Duration
 
 	return meta
 }
@@ -1805,6 +1814,7 @@ func (m *Module) convertInternalToRepo(path string, meta *Metadata) *repositorie
 		Category:           meta.Category,
 		Tags:               meta.Tags,
 		BlurHash:           meta.BlurHash,
+		Duration:           meta.Duration,
 	}
 	if !meta.ProbeModTime.IsZero() {
 		repoMeta.ProbeModTime = new(meta.ProbeModTime)

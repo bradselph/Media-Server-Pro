@@ -37,6 +37,7 @@ type mediaMetadataRow struct {
 	Category           string     `gorm:"column:category"`
 	ProbeModTime       *time.Time `gorm:"column:probe_mod_time"`
 	BlurHash           string     `gorm:"column:blur_hash"`
+	Duration           float64    `gorm:"column:duration"`
 }
 
 func (mediaMetadataRow) TableName() string { return "media_metadata" }
@@ -104,6 +105,7 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 			Category:           metadata.Category,
 			ProbeModTime:       probeModTime,
 			BlurHash:           metadata.BlurHash,
+			Duration:           metadata.Duration,
 		}
 
 		// On conflict: always update operational fields but only set stable_id
@@ -118,6 +120,7 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 				"mature_score":   gorm.Expr("VALUES(mature_score)"),
 				"category":       gorm.Expr("VALUES(category)"),
 				"probe_mod_time": gorm.Expr("VALUES(probe_mod_time)"),
+				"duration":       gorm.Expr("IF(VALUES(duration) > 0, VALUES(duration), media_metadata.duration)"),
 				// Only write stable_id when it's not already set
 				"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', VALUES(stable_id), media_metadata.stable_id)"),
 				// Only write fingerprint when it's not already set
@@ -411,6 +414,7 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 		metadata.ProbeModTime = new(*row.ProbeModTime)
 	}
 	metadata.BlurHash = row.BlurHash
+	metadata.Duration = row.Duration
 
 	return metadata
 }

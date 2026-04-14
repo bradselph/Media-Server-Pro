@@ -480,23 +480,40 @@ func (m *Module) syncMediaItem(mediaPath string, updates map[string]any) {
 	if !exists {
 		return
 	}
-	if tags, ok := updates["tags"].([]string); ok {
-		item.Tags = tags
-	}
-	if isMature, ok := updates["is_mature"].(bool); ok {
-		item.IsMature = isMature
-	}
-	if score, ok := updates["mature_score"].(float64); ok {
-		item.MatureScore = score
-	}
-	if category, ok := updates["category"].(string); ok {
-		item.Category = category
-	}
-	switch views := updates["views"].(type) {
-	case float64:
-		item.Views = int(views)
-	case int:
-		item.Views = views
+	for key, value := range updates {
+		switch key {
+		case "tags":
+			if tags, ok := value.([]string); ok {
+				item.Tags = tags
+			}
+		case "is_mature":
+			if isMature, ok := value.(bool); ok {
+				item.IsMature = isMature
+			}
+		case "mature_score":
+			if score, ok := value.(float64); ok {
+				item.MatureScore = score
+			}
+		case "category":
+			if cat, ok := value.(string); ok {
+				item.Category = cat
+			}
+		case "views":
+			switch views := value.(type) {
+			case float64:
+				item.Views = int(views)
+			case int:
+				item.Views = views
+			}
+		default:
+			// Sync custom metadata keys to the MediaItem.Metadata map.
+			if strVal, ok := value.(string); ok {
+				if item.Metadata == nil {
+					item.Metadata = make(map[string]string)
+				}
+				item.Metadata[key] = strVal
+			}
+		}
 	}
 }
 
