@@ -228,6 +228,21 @@ func (m *Module) Start(_ context.Context) error {
 	m.rateLimiter.StartCleanup(m.whitelist, m.blacklist)
 	m.authRateLimiter.StartCleanup(nil, nil)
 
+	// Hot-reload rate limiter limits when security config changes.
+	m.config.OnChange(func(cfg *config.Config) {
+		secCfg := cfg.Security
+		m.rateLimiter.SetLimits(secCfg.RateLimitRequests, secCfg.BurstLimit, secCfg.ViolationsForBan)
+		authLimit := secCfg.AuthRateLimit
+		if authLimit <= 0 {
+			authLimit = 20
+		}
+		authBurst := secCfg.AuthBurstLimit
+		if authBurst <= 0 {
+			authBurst = 5
+		}
+		m.authRateLimiter.SetLimits(authLimit, authBurst, secCfg.ViolationsForBan)
+	})
+
 	m.mu.Lock()
 	m.healthy = true
 	m.healthMsg = "Running"
@@ -754,6 +769,16 @@ func (r *RateLimiter) StopCleanup() {
 		}
 		close(r.stopCleanup)
 	})
+}
+
+// SetLimits atomically updates the per-request and burst limits used by CheckRequest.
+// Safe to call from a config watcher goroutine while requests are in flight.
+func (r *RateLimiter) SetLimits(requestsPerMinute, burstLimit, violationsForBan int) {
+	r.mu.Lock()
+	r.config.RequestsPerMinute = requestsPerMinute
+	r.config.BurstLimit = burstLimit
+	r.config.ViolationsForBan = violationsForBan
+	r.mu.Unlock()
 }
 
 // CheckRequest checks if a request should be allowed

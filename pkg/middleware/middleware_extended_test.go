@@ -139,7 +139,7 @@ func TestGinSecurityHeaders_HSTS_HTTPS(t *testing.T) {
 		c.Request.TLS = &tls.ConnectionState{}
 		c.Next()
 	})
-	r.Use(GinSecurityHeaders("", 31536000))
+	r.Use(GinSecurityHeaders(func() (string, int) { return "", 31536000 }))
 	r.GET("/test", func(c *gin.Context) {
 		c.String(200, "ok")
 	})

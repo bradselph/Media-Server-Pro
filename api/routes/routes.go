@@ -240,23 +240,25 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	r.Use(middleware.GinRequestID())
 
 	// Security headers (CSP, HSTS, X-Frame-Options, etc.)
-	// CSPEnabled/HSTSEnabled let admins suppress headers without clearing the policy/max-age values.
-	secCfg := cfg.Get().Security
-	cspPolicy := secCfg.CSPPolicy
-	if !secCfg.CSPEnabled {
-		cspPolicy = ""
-	}
-	hstsMaxAge := secCfg.HSTSMaxAge
-	if !secCfg.HSTSEnabled {
-		hstsMaxAge = 0
-	}
-	r.Use(middleware.GinSecurityHeaders(cspPolicy, hstsMaxAge))
+	// getCfg is called on every request so CSPEnabled/HSTSEnabled changes take
+	// effect immediately without a server restart.
+	r.Use(middleware.GinSecurityHeaders(func() (csp string, hstsMaxAge int) {
+		sc := cfg.Get().Security
+		if sc.CSPEnabled {
+			csp = sc.CSPPolicy
+		}
+		if sc.HSTSEnabled {
+			hstsMaxAge = sc.HSTSMaxAge
+		}
+		return csp, hstsMaxAge
+	}))
 
 	// CORS — only applied when explicitly configured.
 	// When auth is enabled and CORS origins contains only "*", replace the
 	// wildcard with the server's own public URL to prevent accidental open
 	// CORS in production.  HLS/extractor modules handle their own CORS for
 	// media player compatibility.
+	secCfg := cfg.Get().Security
 	if secCfg.CORSEnabled && len(secCfg.CORSOrigins) > 0 {
 		corsOrigins := secCfg.CORSOrigins
 		authCfg := cfg.Get().Auth
