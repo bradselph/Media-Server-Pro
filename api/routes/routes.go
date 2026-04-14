@@ -484,6 +484,14 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.DELETE(routePlaylistByID+"/clear", requireAuth(), h.ClearPlaylist)
 	api.POST(routePlaylistByID+"/copy", requireAuth(), h.CopyPlaylist)
 
+	// Smart playlists routes (protected)
+	api.GET("/smart-playlists", requireAuth(), h.ListSmartPlaylists)
+	api.POST("/smart-playlists", requireAuth(), h.CreateSmartPlaylist)
+	api.GET("/smart-playlists/:id", requireAuth(), h.GetSmartPlaylist)
+	api.PUT("/smart-playlists/:id", requireAuth(), h.UpdateSmartPlaylist)
+	api.DELETE("/smart-playlists/:id", requireAuth(), h.DeleteSmartPlaylist)
+	api.GET("/smart-playlists/:id/preview", requireAuth(), h.PreviewSmartPlaylist)
+
 	// Analytics routes
 	// POST /analytics/events — user auth (users submit their own events)
 	// Aggregate analytics endpoints — admin-only (cross-user sensitive stats)

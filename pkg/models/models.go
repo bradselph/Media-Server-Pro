@@ -447,6 +447,19 @@ func (PlaylistItem) TableName() string {
 	return "playlist_items"
 }
 
+// SmartPlaylist is a rule-based auto-populating playlist.
+type SmartPlaylist struct {
+	ID          string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	Name        string    `json:"name" db:"name" gorm:"size:255;not null"`
+	Description string    `json:"description,omitempty" db:"description" gorm:"type:text"`
+	UserID      string    `json:"user_id" db:"user_id" gorm:"size:255;not null;index"`
+	Rules       string    `json:"rules" db:"rules" gorm:"type:text;not null"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
+}
+
+func (SmartPlaylist) TableName() string { return "smart_playlists" }
+
 // AnalyticsEvent represents a tracked event
 type AnalyticsEvent struct {
 	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`

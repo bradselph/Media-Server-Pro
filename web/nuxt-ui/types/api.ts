@@ -125,6 +125,30 @@ export interface MediaChapter {
     created_at: string
 }
 
+export interface SmartCondition {
+    field: string
+    op: string
+    value: string
+}
+
+export interface SmartPlaylistRules {
+    match: 'all' | 'any'
+    conditions: SmartCondition[]
+    order_by: 'date_added' | 'name' | 'duration' | 'views'
+    order_dir: 'asc' | 'desc'
+    limit: number
+}
+
+export interface SmartPlaylist {
+    id: string
+    name: string
+    description?: string
+    user_id: string
+    rules: string  // JSON string
+    created_at: string
+    updated_at: string
+}
+
 export interface MediaListParams {
     page?: number
     limit?: number

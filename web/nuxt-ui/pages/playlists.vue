@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { Playlist } from '~/types/api'
+import type { MediaItem, Playlist, SmartPlaylist, SmartPlaylistRules, SmartCondition } from '~/types/api'
 
 definePageMeta({ layout: 'default', title: 'Playlists' })
 
 const playlistApi = usePlaylistApi()
+const smartPlaylistsApi = useSmartPlaylistsApi()
 const mediaApi = useMediaApi()
 const authStore = useAuthStore()
 const toast = useToast()
@@ -280,6 +281,146 @@ watch(() => authStore.user, (user) => {
 watch(() => authStore.isLoading, (loading) => {
   if (!loading && !authStore.user && !hasFetched) { showPublic.value = true; loadPublicPlaylists() }
 })
+
+// ── Smart Playlists ──────────────────────────────────────────────────────────
+
+const smartPlaylists = ref<SmartPlaylist[]>([])
+const spLoading = ref(false)
+let spHasFetched = false
+
+async function loadSmartPlaylists() {
+  spHasFetched = true
+  spLoading.value = true
+  try {
+    smartPlaylists.value = (await smartPlaylistsApi.list()) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load smart playlists', color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally { spLoading.value = false }
+}
+
+// Create smart playlist
+const spCreateOpen = ref(false)
+const spNewName = ref('')
+const spNewDesc = ref('')
+const spNewRules = ref<SmartPlaylistRules>(defaultSmartRules())
+const spCreating = ref(false)
+
+function defaultSmartRules(): SmartPlaylistRules {
+  return {
+    match: 'all',
+    conditions: [],
+    order_by: 'date_added',
+    order_dir: 'desc',
+    limit: 50,
+  }
+}
+
+async function createSmartPlaylist() {
+  if (!spNewName.value.trim()) return
+  spCreating.value = true
+  try {
+    const pl = await smartPlaylistsApi.create({
+      name: spNewName.value.trim(),
+      description: spNewDesc.value,
+      rules: JSON.stringify(spNewRules.value),
+    })
+    smartPlaylists.value.unshift(pl)
+    spCreateOpen.value = false
+    spNewName.value = ''
+    spNewDesc.value = ''
+    spNewRules.value = defaultSmartRules()
+    toast.add({ title: 'Smart playlist created', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { spCreating.value = false }
+}
+
+// Delete smart playlist
+const spDeleteTarget = ref<SmartPlaylist | null>(null)
+const spDeleteOpen = computed({
+  get: () => !!spDeleteTarget.value,
+  set: (v: boolean) => { if (!v) spDeleteTarget.value = null },
+})
+const spDeleting = ref(false)
+
+async function confirmDeleteSmart() {
+  if (!spDeleteTarget.value) return
+  const targetId = spDeleteTarget.value.id
+  spDeleting.value = true
+  try {
+    await smartPlaylistsApi.delete(targetId)
+    smartPlaylists.value = smartPlaylists.value.filter(p => p.id !== targetId)
+    toast.add({ title: 'Smart playlist deleted', color: 'success', icon: 'i-lucide-check' })
+    spDeleteTarget.value = null
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { spDeleting.value = false }
+}
+
+// Edit smart playlist
+const spEditTarget = ref<SmartPlaylist | null>(null)
+const spEditOpen = computed({
+  get: () => !!spEditTarget.value,
+  set: (v: boolean) => { if (!v) spEditTarget.value = null },
+})
+const spEditName = ref('')
+const spEditDesc = ref('')
+const spEditRules = ref<SmartPlaylistRules>(defaultSmartRules())
+const spEditSaving = ref(false)
+
+function openEditSmart(pl: SmartPlaylist) {
+  spEditTarget.value = pl
+  spEditName.value = pl.name
+  spEditDesc.value = pl.description ?? ''
+  spEditRules.value = JSON.parse(pl.rules) ?? defaultSmartRules()
+}
+
+async function saveEditSmart() {
+  if (!spEditTarget.value || !spEditName.value.trim()) return
+  spEditSaving.value = true
+  try {
+    const updated = await smartPlaylistsApi.update(spEditTarget.value.id, {
+      name: spEditName.value.trim(),
+      description: spEditDesc.value,
+      rules: JSON.stringify(spEditRules.value),
+    })
+    smartPlaylists.value = smartPlaylists.value.map(p => p.id === updated.id ? updated : p)
+    spEditTarget.value = null
+    toast.add({ title: 'Smart playlist updated', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally { spEditSaving.value = false }
+}
+
+// Preview smart playlist
+const spPreviewTarget = ref<SmartPlaylist | null>(null)
+const spPreviewOpen = computed({
+  get: () => !!spPreviewTarget.value,
+  set: (v: boolean) => { if (!v) spPreviewTarget.value = null },
+})
+const spPreviewItems = ref<MediaItem[]>([])
+const spPreviewLoading = ref(false)
+
+async function loadSmartPreview(sp: SmartPlaylist) {
+  spPreviewTarget.value = sp
+  spPreviewLoading.value = true
+  try {
+    spPreviewItems.value = (await smartPlaylistsApi.preview(sp.id)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load preview', color: 'error', icon: 'i-lucide-x' })
+  } finally { spPreviewLoading.value = false }
+}
+
+// Load smart playlists when authenticated
+watch(() => authStore.user, (user) => {
+  if (user && !spHasFetched) loadSmartPlaylists()
+})
+
+onMounted(() => {
+  if (!authStore.isLoading && authStore.user && !spHasFetched) {
+    loadSmartPlaylists()
+  }
+})
 </script>
 
 <template>
@@ -474,6 +615,73 @@ watch(() => authStore.isLoading, (loading) => {
         </div>
       </template>
 
+      <!-- Smart Playlists Section -->
+      <div class="mt-8 pt-6 border-t border-default">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <h2 class="text-xl font-bold text-highlighted flex items-center gap-2">
+            <UIcon name="i-lucide-filter" class="size-5 text-primary" />
+            Smart Playlists
+          </h2>
+          <UButton
+            v-if="authStore.user.permissions?.can_create_playlists !== false && !selectMode"
+            icon="i-lucide-plus"
+            label="New Smart Playlist"
+            @click="spCreateOpen = true"
+          />
+        </div>
+
+        <div v-if="spLoading" class="flex justify-center py-8">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
+        </div>
+        <div v-else-if="smartPlaylists.length === 0" class="text-center py-8 text-muted">
+          <UIcon name="i-lucide-filter" class="size-10 mx-auto mb-2 opacity-30" />
+          <p class="text-sm">No smart playlists yet.</p>
+        </div>
+        <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <UCard
+            v-for="sp in smartPlaylists"
+            :key="sp.id"
+            :ui="{ body: 'p-3' }"
+          >
+            <div class="space-y-2">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0">
+                  <p class="font-semibold text-sm truncate">{{ sp.name }}</p>
+                  <p v-if="sp.description" class="text-xs text-muted truncate mt-0.5">{{ sp.description }}</p>
+                  <UBadge label="Auto" color="primary" variant="subtle" size="xs" class="mt-1" />
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                  <UButton
+                    icon="i-lucide-eye"
+                    aria-label="Preview"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    @click="loadSmartPreview(sp)"
+                  />
+                  <UButton
+                    icon="i-lucide-pencil"
+                    aria-label="Edit"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    @click="openEditSmart(sp)"
+                  />
+                  <UButton
+                    icon="i-lucide-trash-2"
+                    aria-label="Delete"
+                    size="xs"
+                    variant="ghost"
+                    color="error"
+                    @click="spDeleteTarget = sp"
+                  />
+                </div>
+              </div>
+            </div>
+          </UCard>
+        </div>
+      </div>
+
       <!-- Create modal -->
       <UModal v-model:open="createOpen" title="New Playlist">
         <template #body>
@@ -535,6 +743,249 @@ watch(() => authStore.isLoading, (loading) => {
         <template #footer>
           <UButton variant="ghost" color="neutral" label="Cancel" @click="bulkDeleteOpen = false" />
           <UButton :loading="bulkDeleting" color="error" :label="`Delete ${selectedIds.size}`" @click="confirmBulkDelete" />
+        </template>
+      </UModal>
+
+      <!-- Create smart playlist modal -->
+      <UModal v-model:open="spCreateOpen" title="New Smart Playlist" size="lg">
+        <template #body>
+          <div class="space-y-4 max-h-96 overflow-y-auto">
+            <UFormField label="Name" required>
+              <UInput v-model="spNewName" placeholder="Smart playlist name" autofocus />
+            </UFormField>
+            <UFormField label="Description">
+              <UInput v-model="spNewDesc" placeholder="Optional description" />
+            </UFormField>
+            <div>
+              <label class="text-sm font-medium">Rules</label>
+              <div class="space-y-2 mt-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-muted">Match</span>
+                  <USelect
+                    v-model="spNewRules.match"
+                    :options="['all', 'any']"
+                    size="sm"
+                  />
+                </div>
+                <div class="space-y-2 pl-2 border-l-2 border-default">
+                  <div v-for="(cond, idx) in spNewRules.conditions" :key="idx" class="flex items-end gap-2">
+                    <USelect
+                      v-model="cond.field"
+                      :options="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
+                      size="sm"
+                      class="flex-1"
+                    />
+                    <USelect
+                      v-model="cond.op"
+                      :options="['eq', 'gte', 'lte', 'includes']"
+                      size="sm"
+                      class="w-20"
+                    />
+                    <UInput
+                      v-model="cond.value"
+                      placeholder="Value"
+                      size="sm"
+                      class="flex-1"
+                    />
+                    <UButton
+                      icon="i-lucide-x"
+                      size="xs"
+                      variant="ghost"
+                      color="error"
+                      @click="spNewRules.conditions = spNewRules.conditions.filter((_, i) => i !== idx)"
+                    />
+                  </div>
+                  <UButton
+                    icon="i-lucide-plus"
+                    label="Add condition"
+                    variant="outline"
+                    color="neutral"
+                    size="sm"
+                    @click="spNewRules.conditions.push({ field: 'type', op: 'eq', value: '' })"
+                  />
+                </div>
+                <div class="flex items-center gap-2 pt-2">
+                  <span class="text-xs text-muted">Order by</span>
+                  <USelect
+                    v-model="spNewRules.order_by"
+                    :options="['date_added', 'name', 'duration', 'views']"
+                    size="sm"
+                  />
+                  <USelect
+                    v-model="spNewRules.order_dir"
+                    :options="['asc', 'desc']"
+                    size="sm"
+                    class="w-24"
+                  />
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-muted">Limit</span>
+                  <UInput
+                    v-model.number="spNewRules.limit"
+                    type="number"
+                    min="1"
+                    max="200"
+                    size="sm"
+                    class="w-20"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template #footer>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="spCreateOpen = false" />
+          <UButton :loading="spCreating" label="Create" :disabled="!spNewName.trim()" @click="createSmartPlaylist" />
+        </template>
+      </UModal>
+
+      <!-- Edit smart playlist modal -->
+      <UModal v-model:open="spEditOpen" title="Edit Smart Playlist" size="lg">
+        <template #body>
+          <div class="space-y-4 max-h-96 overflow-y-auto">
+            <UFormField label="Name" required>
+              <UInput v-model="spEditName" placeholder="Smart playlist name" autofocus />
+            </UFormField>
+            <UFormField label="Description">
+              <UInput v-model="spEditDesc" placeholder="Optional description" />
+            </UFormField>
+            <div>
+              <label class="text-sm font-medium">Rules</label>
+              <div class="space-y-2 mt-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-muted">Match</span>
+                  <USelect
+                    v-model="spEditRules.match"
+                    :options="['all', 'any']"
+                    size="sm"
+                  />
+                </div>
+                <div class="space-y-2 pl-2 border-l-2 border-default">
+                  <div v-for="(cond, idx) in spEditRules.conditions" :key="idx" class="flex items-end gap-2">
+                    <USelect
+                      v-model="cond.field"
+                      :options="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
+                      size="sm"
+                      class="flex-1"
+                    />
+                    <USelect
+                      v-model="cond.op"
+                      :options="['eq', 'gte', 'lte', 'includes']"
+                      size="sm"
+                      class="w-20"
+                    />
+                    <UInput
+                      v-model="cond.value"
+                      placeholder="Value"
+                      size="sm"
+                      class="flex-1"
+                    />
+                    <UButton
+                      icon="i-lucide-x"
+                      size="xs"
+                      variant="ghost"
+                      color="error"
+                      @click="spEditRules.conditions = spEditRules.conditions.filter((_, i) => i !== idx)"
+                    />
+                  </div>
+                  <UButton
+                    icon="i-lucide-plus"
+                    label="Add condition"
+                    variant="outline"
+                    color="neutral"
+                    size="sm"
+                    @click="spEditRules.conditions.push({ field: 'type', op: 'eq', value: '' })"
+                  />
+                </div>
+                <div class="flex items-center gap-2 pt-2">
+                  <span class="text-xs text-muted">Order by</span>
+                  <USelect
+                    v-model="spEditRules.order_by"
+                    :options="['date_added', 'name', 'duration', 'views']"
+                    size="sm"
+                  />
+                  <USelect
+                    v-model="spEditRules.order_dir"
+                    :options="['asc', 'desc']"
+                    size="sm"
+                    class="w-24"
+                  />
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-muted">Limit</span>
+                  <UInput
+                    v-model.number="spEditRules.limit"
+                    type="number"
+                    min="1"
+                    max="200"
+                    size="sm"
+                    class="w-20"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template #footer>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="spEditOpen = false" />
+          <UButton :loading="spEditSaving" label="Save" :disabled="!spEditName.trim()" @click="saveEditSmart" />
+        </template>
+      </UModal>
+
+      <!-- Delete smart playlist confirm modal -->
+      <UModal v-model:open="spDeleteOpen" title="Delete Smart Playlist" description="This smart playlist will be permanently deleted.">
+        <template #footer>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="spDeleteTarget = null" />
+          <UButton :loading="spDeleting" color="error" label="Delete" @click="confirmDeleteSmart" />
+        </template>
+      </UModal>
+
+      <!-- Preview smart playlist modal -->
+      <UModal v-model:open="spPreviewOpen" title="Smart Playlist Preview" size="lg">
+        <template #body>
+          <div class="max-h-96 overflow-y-auto">
+            <div v-if="spPreviewLoading" class="flex justify-center py-6">
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+            </div>
+            <div v-else-if="spPreviewItems.length === 0" class="text-center py-8 text-muted text-sm">
+              <p>No items match this playlist's rules.</p>
+            </div>
+            <div v-else class="divide-y divide-default">
+              <div
+                v-for="item in spPreviewItems"
+                :key="item.id"
+                class="py-2 flex items-center gap-3"
+              >
+                <div class="w-12 h-8 rounded overflow-hidden bg-muted shrink-0">
+                  <img
+                    :src="mediaApi.getThumbnailUrl(item.id)"
+                    :alt="item.name"
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium truncate">{{ item.name }}</p>
+                  <div class="flex items-center gap-2 text-xs text-muted mt-0.5">
+                    <span>{{ item.type }}</span>
+                    <span v-if="item.duration">· {{ Math.round(item.duration) }}s</span>
+                    <span v-if="item.category">· {{ item.category }}</span>
+                  </div>
+                </div>
+                <NuxtLink
+                  :to="`/player?id=${encodeURIComponent(item.id)}`"
+                  class="shrink-0"
+                >
+                  <UButton
+                    icon="i-lucide-play"
+                    size="xs"
+                    variant="ghost"
+                    color="primary"
+                  />
+                </NuxtLink>
+              </div>
+            </div>
+          </div>
         </template>
       </UModal>
 

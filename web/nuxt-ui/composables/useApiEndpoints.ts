@@ -70,6 +70,7 @@ import type {
     ScannerStats,
     ScheduledTask,
     SecurityStats,
+    SmartPlaylist,
     ServerSettings,
     ServerStatus,
     SessionCheckResponse,
@@ -330,6 +331,21 @@ export function usePlaylistApi() {
             `/api/playlists/${encodeURIComponent(id)}/export?format=${format}`,
         bulkDelete: (ids: string[]) =>
             api.post<{ deleted: number; failed: number }>('/api/playlists/bulk-delete', {ids}),
+    }
+}
+
+// ── Smart Playlists ───────────────────────────────────────────────────────────
+
+export function useSmartPlaylistsApi() {
+    return {
+        list: () => api.get<SmartPlaylist[]>('/api/smart-playlists'),
+        create: (data: { name: string; description?: string; rules: string }) =>
+            api.post<SmartPlaylist>('/api/smart-playlists', data),
+        get: (id: string) => api.get<SmartPlaylist>(`/api/smart-playlists/${encodeURIComponent(id)}`),
+        update: (id: string, data: Partial<{ name: string; description: string; rules: string }>) =>
+            api.put<SmartPlaylist>(`/api/smart-playlists/${encodeURIComponent(id)}`, data),
+        delete: (id: string) => api.delete<void>(`/api/smart-playlists/${encodeURIComponent(id)}`),
+        preview: (id: string) => api.get<MediaItem[]>(`/api/smart-playlists/${encodeURIComponent(id)}/preview`),
     }
 }
 

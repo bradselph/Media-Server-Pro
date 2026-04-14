@@ -466,7 +466,18 @@ var tableDefs = []struct {
 			INDEX idx_ddr_status   (status),
 			INDEX idx_ddr_created  (created_at)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-}
+		{"smart_playlists", `
+			CREATE TABLE IF NOT EXISTS smart_playlists (
+				id          VARCHAR(36)  PRIMARY KEY,
+				name        VARCHAR(255) NOT NULL,
+				description TEXT,
+				user_id     VARCHAR(255) NOT NULL,
+				rules       TEXT         NOT NULL,
+				created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_smart_playlist_user (user_id)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	}
 
 // ensureSchema idempotently creates all required tables and columns.
 // Safe to call on every startup:
