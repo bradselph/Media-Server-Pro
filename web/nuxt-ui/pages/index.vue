@@ -5,6 +5,7 @@ import { useApiEndpoints, useFavoritesApi, usePlaylistApi } from '~/composables/
 import { resolveComponent } from 'vue'
 import { formatDuration, formatBytes, formatRelativeDate, formatResolution } from '~/utils/format'
 import { blurHashToDataUrl } from '~/utils/blurhash'
+import { useQueueStore } from '~/stores/queue'
 
 const TYPE_OPTIONS = [
   { label: 'All Types', value: 'all' },
@@ -102,6 +103,13 @@ async function quickAddToPlaylist(itemId: string, playlistId: string) {
   } catch {
     toast.add({ title: 'Already in playlist or failed to add', color: 'warning', icon: 'i-lucide-list-x' })
   }
+}
+
+const queueStore = useQueueStore()
+
+function addToQueue(item: MediaItem) {
+  queueStore.addToQueue({ id: item.id, name: item.name, type: item.type, duration: item.duration, thumbnail_url: item.thumbnail_url })
+  toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })
 }
 
 function playlistMenuItemsFor(itemId: string) {
@@ -1059,6 +1067,15 @@ onUnmounted(() => {
               name="i-lucide-heart"
               :class="favoriteIds.has(item.id) ? 'size-4 text-red-400 [&>svg]:fill-current' : 'size-4 text-white'"
             />
+          </button>
+          <!-- Quick add to queue button (hover only) -->
+          <button
+            v-if="authStore.isLoggedIn"
+            class="absolute bottom-6 right-14 p-0.5 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label="Add to queue"
+            @click.prevent.stop="addToQueue(item)"
+          >
+            <UIcon name="i-lucide-list-ordered" class="size-4 text-white" />
           </button>
           <!-- Quick add to playlist button (hover only, does not interrupt playback) -->
           <div

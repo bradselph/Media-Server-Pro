@@ -2,6 +2,7 @@
 import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes, formatBitrate } from '~/utils/format'
+import { useQueueStore } from '~/stores/queue'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
@@ -15,6 +16,7 @@ const analyticsApi = useAnalyticsApi()
 const chaptersApi = useChaptersApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
+const queueStore = useQueueStore()
 const { updatePreferences } = useApiEndpoints()
 const toast = useToast()
 
@@ -241,6 +243,7 @@ function toggleEqualizer() {
 }
 
 const showEqualizer = ref(false)
+const showQueuePanel = ref(false)
 
 // HLS — delegate to composable
 const mediaIdRef = computed(() => mediaId.value ?? '')
@@ -435,6 +438,26 @@ function autoNextFromSuggestions() {
   if (!autoNextEnabled.value) return
   // Playlist auto-advance takes priority
   if (nextPlaylistItem.value) { startUpNextCountdown(); return }
+
+  // Queue takes priority over suggestions
+  if (queueStore.items.length > 0) {
+    const queued = queueStore.shift()
+    if (queued) {
+      if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
+      showUpNext.value = true
+      upNextCountdown.value = 5
+      upNextTimer = setInterval(() => {
+        upNextCountdown.value -= 1
+        if (upNextCountdown.value <= 0) {
+          cancelUpNext()
+          exitPiPForTransition()
+          navigateTo(`/player?id=${encodeURIComponent(queued.id)}`)
+        }
+      }, 1000)
+      return
+    }
+  }
+
   // Pick first similar item that is not the current media
   const next = similar.value.find(s => s.media_id !== mediaId.value)
     ?? personalized.value.find(s => s.media_id !== mediaId.value)
@@ -1213,6 +1236,15 @@ watch(mediaId, (id, oldId) => {
               @click="openAddToPlaylist"
             />
             <UButton
+              v-if="authStore.isLoggedIn"
+              icon="i-lucide-list-ordered"
+              :label="queueStore.items.length > 0 ? `Queue (${queueStore.items.length})` : 'Queue'"
+              :variant="showQueuePanel ? 'solid' : 'outline'"
+              :color="showQueuePanel ? 'primary' : 'neutral'"
+              size="sm"
+              @click="showQueuePanel = !showQueuePanel"
+            />
+            <UButton
               icon="i-lucide-sliders-horizontal"
               :label="eqEnabled ? 'EQ On' : 'Equalizer'"
               :variant="eqEnabled ? 'solid' : 'outline'"
@@ -1305,6 +1337,84 @@ watch(mediaId, (id, oldId) => {
           </div>
 
           <!-- Add to playlist modal -->
+          <!-- Queue panel -->
+          <div v-if="showQueuePanel && authStore.isLoggedIn" class="mt-4 border-t border-default pt-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-semibold text-highlighted flex items-center gap-1.5">
+                <UIcon name="i-lucide-list-ordered" class="size-4 text-primary" />
+                Up Next ({{ queueStore.items.length }})
+              </h4>
+              <UButton
+                v-if="queueStore.items.length > 0"
+                icon="i-lucide-trash-2"
+                label="Clear"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                @click="queueStore.clear()"
+              />
+            </div>
+            <p v-if="queueStore.items.length === 0" class="text-xs text-muted py-2">Queue is empty. Add items from the library.</p>
+            <div v-else class="space-y-1">
+              <div
+                v-for="(qi, qIdx) in queueStore.items"
+                :key="qi.id"
+                class="flex items-center gap-2 group rounded-lg px-1 py-1 hover:bg-muted/50"
+              >
+                <span class="text-xs text-muted w-5 text-right shrink-0">{{ qIdx + 1 }}</span>
+                <div class="w-14 h-8 rounded overflow-hidden bg-muted shrink-0">
+                  <img
+                    v-if="qi.thumbnail_url"
+                    :src="qi.thumbnail_url"
+                    :alt="qi.name"
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <div v-else class="w-full h-full flex items-center justify-center">
+                    <UIcon :name="qi.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-3 text-muted" />
+                  </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-medium truncate" :title="qi.name">{{ qi.name }}</p>
+                  <p v-if="qi.duration" class="text-[10px] text-muted font-mono">{{ formatDuration(qi.duration) }}</p>
+                </div>
+                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <button
+                    class="p-1 rounded hover:bg-muted"
+                    aria-label="Move up"
+                    :disabled="qIdx === 0"
+                    @click="queueStore.moveUp(qi.id)"
+                  >
+                    <UIcon name="i-lucide-chevron-up" class="size-3 text-muted" />
+                  </button>
+                  <button
+                    class="p-1 rounded hover:bg-muted"
+                    aria-label="Move down"
+                    :disabled="qIdx === queueStore.items.length - 1"
+                    @click="queueStore.moveDown(qi.id)"
+                  >
+                    <UIcon name="i-lucide-chevron-down" class="size-3 text-muted" />
+                  </button>
+                  <NuxtLink
+                    class="p-1 rounded hover:bg-muted"
+                    :to="`/player?id=${encodeURIComponent(qi.id)}`"
+                    :aria-label="`Play ${qi.name} now`"
+                    @click="queueStore.remove(qi.id)"
+                  >
+                    <UIcon name="i-lucide-play" class="size-3 text-primary" />
+                  </NuxtLink>
+                  <button
+                    class="p-1 rounded hover:bg-muted"
+                    :aria-label="`Remove ${qi.name} from queue`"
+                    @click="queueStore.remove(qi.id)"
+                  >
+                    <UIcon name="i-lucide-x" class="size-3 text-muted" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <UModal v-model:open="playlistOpen" title="Add to Playlist">
             <template #body>
               <div v-if="playlists.length === 0" class="text-center py-4 text-muted text-sm">
@@ -1338,47 +1448,64 @@ watch(mediaId, (id, oldId) => {
         <!-- Similar media -->
         <div v-if="similar.length > 0" class="space-y-3">
           <h3 class="font-semibold text-highlighted">Similar Media</h3>
-          <NuxtLink
+          <div
             v-for="item in similar"
             :key="item.media_id"
-            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
-            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
+            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
-            <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-              <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
-              <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
-                {{ formatDuration(item.duration) }}
+            <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
+              <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+                <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+                  {{ formatDuration(item.duration) }}
+                </div>
               </div>
-            </div>
-            <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
-              <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
-              <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
-            </div>
-          </NuxtLink>
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
+                <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
+              </div>
+            </NuxtLink>
+            <button
+              v-if="authStore.isLoggedIn"
+              class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+              aria-label="Add to queue"
+              @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
+            >
+              <UIcon name="i-lucide-list-ordered" class="size-4 text-muted" />
+            </button>
+          </div>
         </div>
 
         <!-- Personalized recommendations (logged-in users) -->
         <div v-if="authStore.isLoggedIn && personalized.length > 0" class="space-y-3">
           <h3 class="font-semibold text-highlighted">Recommended For You</h3>
-          <NuxtLink
+          <div
             v-for="item in personalized"
             :key="item.media_id"
-            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
-            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
+            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
-            <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-              <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
-              <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
-                {{ formatDuration(item.duration) }}
+            <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
+              <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+                <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+                  {{ formatDuration(item.duration) }}
+                </div>
               </div>
-            </div>
-            <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
-              <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
-              <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
-            </div>
-          </NuxtLink>
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
+                <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
+              </div>
+            </NuxtLink>
+            <button
+              class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+              aria-label="Add to queue"
+              @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
+            >
+              <UIcon name="i-lucide-list-ordered" class="size-4 text-muted" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
