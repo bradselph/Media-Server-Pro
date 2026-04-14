@@ -30,6 +30,15 @@ const ITEMS_PER_PAGE_OPTIONS = [
   { label: '96', value: 96 },
 ]
 
+const SKIP_INTERVAL_OPTIONS = [
+  { label: '5 seconds', value: 5 },
+  { label: '10 seconds (default)', value: 10 },
+  { label: '15 seconds', value: 15 },
+  { label: '30 seconds', value: 30 },
+  { label: '60 seconds', value: 60 },
+  { label: '90 seconds', value: 90 },
+]
+
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
 const authStore = useAuthStore()
@@ -578,6 +587,12 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               :items="ITEMS_PER_PAGE_OPTIONS"
             />
           </UFormField>
+          <UFormField label="Skip Interval" description="How far J/L and mobile tap skip">
+            <USelect
+              v-model="prefs.skip_interval"
+              :items="SKIP_INTERVAL_OPTIONS"
+            />
+          </UFormField>
           <UFormField label="View Mode">
             <UButtonGroup>
               <UButton
@@ -600,6 +615,9 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               { key: 'show_continue_watching', label: 'Continue Watching' },
               { key: 'show_recommended', label: 'Recommended' },
               { key: 'show_trending', label: 'Trending' },
+              { key: 'shuffle_enabled', label: 'Shuffle by Default' },
+              { key: 'show_buffer_bar', label: 'Buffer Bar in Player' },
+              { key: 'download_prompt', label: 'Ask Quality on Download' },
             ]" :key="toggle.key" class="flex items-center gap-2">
               <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]" @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event" />
               <span class="text-sm">{{ toggle.label }}</span>

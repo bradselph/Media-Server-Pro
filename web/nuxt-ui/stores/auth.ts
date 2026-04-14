@@ -36,6 +36,10 @@ function defaultPreferences(): UserPreferences {
         show_continue_watching: true,
         show_recommended: true,
         show_trending: true,
+        skip_interval: 10,
+        shuffle_enabled: false,
+        show_buffer_bar: true,
+        download_prompt: true,
     }
 }
 

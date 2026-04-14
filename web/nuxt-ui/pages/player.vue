@@ -82,6 +82,11 @@ watch(
   { deep: true },
 )
 
+// Skip interval from preferences (default 10s)
+const skipInterval = computed(() => userPrefs.value?.skip_interval ?? 10)
+// Half-interval for arrow keys (minimum 1s)
+const halfSkip = computed(() => Math.max(1, Math.floor(skipInterval.value / 2)))
+
 // Mobile skip tap animation state
 const mobileSkipDir = ref<'back' | 'forward' | null>(null)
 let mobileSkipTimer: ReturnType<typeof setTimeout> | null = null
@@ -96,6 +101,25 @@ function mobileSkip(delta: number) {
 
 // Auto-next: play next suggestion when current media ends (non-playlist context)
 const autoNextEnabled = ref(true)
+
+// Buffer health bar — fraction of media buffered ahead
+const bufferedFraction = computed(() => {
+  const video = videoRef.value
+  if (!video || !video.buffered.length || !video.duration) return 0
+  // Find the buffered range that contains currentTime
+  const ct = video.currentTime
+  for (let i = 0; i < video.buffered.length; i++) {
+    if (video.buffered.start(i) <= ct && ct <= video.buffered.end(i)) {
+      return video.buffered.end(i) / video.duration
+    }
+  }
+  return 0
+})
+const showBufferBar = computed(() => userPrefs.value?.show_buffer_bar ?? true)
+
+// Download quality selector
+const downloadModalOpen = ref(false)
+const downloadPrompt = computed(() => userPrefs.value?.download_prompt ?? true)
 
 // Share at timestamp
 const linkCopied = ref(false)
@@ -336,7 +360,7 @@ async function onMediaEnded() {
     } catch {}
   }
   trackComplete()
-  if (loopMode.value === 'off') autoNextFromSuggestions()
+  if (loopMode.value === 'off' || loopMode.value === 'all') autoNextFromSuggestions()
 }
 
 async function savePosition() {
@@ -508,10 +532,28 @@ function cancelUpNext() {
 function navigateToNextItem() {
   cancelUpNext()
   exitPiPForTransition()
+  const plId = playlistIdParam.value ?? ''
+  // Shuffle: pick a random item (other than current)
+  if (shuffleEnabled.value && playlistItems.value.length > 1) {
+    const others = playlistItems.value.filter((_, i) => i !== playlistIdxParam.value)
+    const pick = others[Math.floor(Math.random() * others.length)]
+    if (pick) {
+      const pickIdx = playlistItems.value.indexOf(pick)
+      navigateTo(`/player?id=${encodeURIComponent(pick.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=${pickIdx}`)
+      return
+    }
+  }
+  // Repeat-all: wrap to beginning
+  const nextIdx = playlistIdxParam.value + 1
+  const isLast = nextIdx >= playlistItems.value.length
+  if (isLast && loopMode.value === 'all') {
+    const first = playlistItems.value[0]
+    if (first) navigateTo(`/player?id=${encodeURIComponent(first.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=0`)
+    return
+  }
   const next = nextPlaylistItem.value
   if (!next) return
-  const newIdx = playlistIdxParam.value + 1
-  navigateTo(`/player?id=${encodeURIComponent(next.media_id)}&playlist_id=${encodeURIComponent(playlistIdParam.value ?? '')}&playlist_idx=${newIdx}`)
+  navigateTo(`/player?id=${encodeURIComponent(next.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=${nextIdx}`)
 }
 
 watch(playlistIdParam, async id => {
@@ -522,12 +564,25 @@ watch(playlistIdParam, async id => {
   } catch { playlistItems.value = [] }
 }, { immediate: true })
 
-// Loop mode: 'off' | 'one'
-const loopMode = ref<'off' | 'one'>('off')
+// Loop mode: 'off' | 'one' | 'all'
+const loopMode = ref<'off' | 'one' | 'all'>('off')
 
 function cycleLoop() {
-  loopMode.value = loopMode.value === 'off' ? 'one' : 'off'
+  if (loopMode.value === 'off') loopMode.value = 'one'
+  else if (loopMode.value === 'one') loopMode.value = 'all'
+  else loopMode.value = 'off'
   if (videoRef.value) videoRef.value.loop = loopMode.value === 'one'
+}
+
+// Shuffle mode — initialised from prefs, toggled by button
+const shuffleEnabled = ref(false)
+watch(userPrefs, (p) => {
+  if (p?.shuffle_enabled != null) shuffleEnabled.value = p.shuffle_enabled
+}, { immediate: true })
+
+function toggleShuffle() {
+  shuffleEnabled.value = !shuffleEnabled.value
+  if (authStore.isLoggedIn) updatePreferences({ shuffle_enabled: shuffleEnabled.value }).catch(() => {})
 }
 
 
@@ -614,23 +669,23 @@ function onKeyDown(e: KeyboardEvent) {
     case 'j':
     case 'J':
       e.preventDefault()
-      seek(-10)
+      seek(-skipInterval.value)
       resetControlsTimer()
       break
     case 'l':
     case 'L':
       e.preventDefault()
-      seek(10)
+      seek(skipInterval.value)
       resetControlsTimer()
       break
     case 'ArrowLeft':
       e.preventDefault()
-      seek(-5)
+      seek(-halfSkip.value)
       resetControlsTimer()
       break
     case 'ArrowRight':
       e.preventDefault()
-      seek(5)
+      seek(halfSkip.value)
       resetControlsTimer()
       break
     case 'ArrowUp':
@@ -924,13 +979,13 @@ watch(mediaId, (id, oldId) => {
             <button
               class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
               :class="mobileSkipDir === 'back' ? 'bg-white/15' : ''"
-              aria-label="Skip back 10 seconds"
-              @click.stop="mobileSkip(-10)"
+              :aria-label="`Skip back ${skipInterval} seconds`"
+              @click.stop="mobileSkip(-skipInterval)"
             >
               <Transition name="fade">
                 <div v-if="mobileSkipDir === 'back'" class="flex flex-col items-center gap-1 pointer-events-none">
                   <UIcon name="i-lucide-rewind" class="size-8 text-white" />
-                  <span class="text-white text-xs font-semibold">-10s</span>
+                  <span class="text-white text-xs font-semibold">-{{ skipInterval }}s</span>
                 </div>
               </Transition>
             </button>
@@ -944,13 +999,13 @@ watch(mediaId, (id, oldId) => {
             <button
               class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
               :class="mobileSkipDir === 'forward' ? 'bg-white/15' : ''"
-              aria-label="Skip forward 10 seconds"
-              @click.stop="mobileSkip(10)"
+              :aria-label="`Skip forward ${skipInterval} seconds`"
+              @click.stop="mobileSkip(skipInterval)"
             >
               <Transition name="fade">
                 <div v-if="mobileSkipDir === 'forward'" class="flex flex-col items-center gap-1 pointer-events-none">
                   <UIcon name="i-lucide-fast-forward" class="size-8 text-white" />
-                  <span class="text-white text-xs font-semibold">+10s</span>
+                  <span class="text-white text-xs font-semibold">+{{ skipInterval }}s</span>
                 </div>
               </Transition>
             </button>
@@ -986,6 +1041,7 @@ watch(mediaId, (id, oldId) => {
             :volume="volume"
             :playback-speed="playbackSpeed"
             :loop-mode="loopMode"
+            :shuffle-enabled="shuffleEnabled"
             :is-fullscreen="isFullscreen"
             :is-pi-p="isPiP"
             :pip-supported="pipSupported"
@@ -994,6 +1050,9 @@ watch(mediaId, (id, oldId) => {
             :current-quality="currentQuality"
             :thumbnail-previews="thumbnailPreviews"
             :show-controls="showControls"
+            :skip-interval="skipInterval"
+            :buffered-fraction="bufferedFraction"
+            :show-buffer-bar="showBufferBar"
             v-model:showShortcuts="showShortcuts"
             @toggle-play="togglePlay"
             @seek="seek"
@@ -1004,6 +1063,7 @@ watch(mediaId, (id, oldId) => {
             @toggle-fullscreen="toggleFullscreen"
             @toggle-pip="togglePiP"
             @cycle-loop="cycleLoop"
+            @toggle-shuffle="toggleShuffle"
             @toggle-mute="toggleMute"
             @toggle-theater="toggleTheater"
           />
@@ -1119,8 +1179,7 @@ watch(mediaId, (id, oldId) => {
               variant="outline"
               color="neutral"
               size="sm"
-              :to="mediaApi.getDownloadUrl(media.id)"
-              target="_blank"
+              @click="downloadPrompt && hlsAvailable ? (downloadModalOpen = true) : navigateTo(mediaApi.getDownloadUrl(media.id), { open: { target: '_blank' } })"
             />
             <UButton
               v-if="authStore.isLoggedIn"
@@ -1293,4 +1352,37 @@ watch(mediaId, (id, oldId) => {
       </div>
     </div>
   </div>
+
+  <!-- Download quality selector modal -->
+  <UModal v-model:open="downloadModalOpen" title="Download" description="Choose a quality to download">
+    <template #body>
+      <div class="flex flex-col gap-2 py-2">
+        <UButton
+          icon="i-lucide-file-video"
+          label="Original file"
+          variant="outline"
+          color="neutral"
+          class="justify-start"
+          :to="mediaApi.getDownloadUrl(media?.id ?? '')"
+          target="_blank"
+          @click="downloadModalOpen = false"
+        />
+        <template v-if="qualities.length > 0">
+          <p class="text-xs text-muted mt-1">HLS renditions</p>
+          <UButton
+            v-for="q in qualities"
+            :key="q.index"
+            :label="q.name"
+            icon="i-lucide-layers"
+            variant="outline"
+            color="neutral"
+            class="justify-start"
+            :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${q.index}`"
+            target="_blank"
+            @click="downloadModalOpen = false"
+          />
+        </template>
+      </div>
+    </template>
+  </UModal>
 </template>

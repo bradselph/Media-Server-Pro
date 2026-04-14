@@ -7,7 +7,8 @@ const props = defineProps<{
   duration: number
   volume: number
   playbackSpeed: number
-  loopMode: 'off' | 'one'
+  loopMode: 'off' | 'one' | 'all'
+  shuffleEnabled: boolean
   isFullscreen: boolean
   isPiP: boolean
   pipSupported: boolean
@@ -17,6 +18,9 @@ const props = defineProps<{
   thumbnailPreviews: string[]
   showControls: boolean
   showShortcuts: boolean
+  skipInterval: number
+  bufferedFraction: number
+  showBufferBar: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +33,7 @@ const emit = defineEmits<{
   'toggle-fullscreen': []
   'toggle-pip': []
   'cycle-loop': []
+  'toggle-shuffle': []
   'toggle-mute': []
   'toggle-theater': []
   'update:showShortcuts': [value: boolean]
@@ -141,8 +146,15 @@ function copyLinkAtTime() {
       </Transition>
       <!-- Visual bar: 6px tall, 12px tall on mobile for easier interaction -->
       <div class="relative w-full h-1.5 md:h-1.5 bg-white/20 rounded-full">
+        <!-- Buffer fill (behind playback) -->
         <div
-          class="h-full bg-primary rounded-full pointer-events-none"
+          v-if="showBufferBar"
+          class="absolute top-0 left-0 h-full bg-white/30 rounded-full pointer-events-none"
+          :style="{ width: `${bufferedFraction * 100}%` }"
+        />
+        <!-- Playback progress -->
+        <div
+          class="absolute top-0 left-0 h-full bg-primary rounded-full pointer-events-none"
           :style="{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }"
         />
       </div>
@@ -164,21 +176,21 @@ function copyLinkAtTime() {
       <!-- Rewind/Forward — desktop only (mobile uses tap overlay) -->
       <UButton
         icon="i-lucide-rewind"
-        aria-label="Rewind 10 seconds"
+        :aria-label="`Rewind ${skipInterval} seconds`"
         variant="ghost"
         color="neutral"
         size="sm"
         class="text-white max-md:hidden shrink-0"
-        @click="emit('seek', -10)"
+        @click="emit('seek', -skipInterval)"
       />
       <UButton
         icon="i-lucide-fast-forward"
-        aria-label="Forward 10 seconds"
+        :aria-label="`Forward ${skipInterval} seconds`"
         variant="ghost"
         color="neutral"
         size="sm"
         class="text-white max-md:hidden shrink-0"
-        @click="emit('seek', 10)"
+        @click="emit('seek', skipInterval)"
       />
 
       <!-- Time display -->
@@ -273,10 +285,21 @@ function copyLinkAtTime() {
         @click="emit('toggle-pip')"
       />
 
-      <!-- Loop -->
+      <!-- Shuffle -->
+      <UButton
+        icon="i-lucide-shuffle"
+        :aria-label="shuffleEnabled ? 'Shuffle on' : 'Shuffle off'"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        :class="shuffleEnabled ? 'text-primary shrink-0' : 'text-white shrink-0'"
+        @click="emit('toggle-shuffle')"
+      />
+
+      <!-- Loop (off → one → all) -->
       <UButton
         :icon="loopMode === 'one' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'"
-        :aria-label="loopMode === 'off' ? 'Loop off' : 'Loop one'"
+        :aria-label="loopMode === 'off' ? 'Loop off' : loopMode === 'one' ? 'Loop one' : 'Loop all'"
         variant="ghost"
         color="neutral"
         size="sm"
@@ -322,8 +345,8 @@ function copyLinkAtTime() {
         </div>
         <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Space / K</span><span class="text-muted">Play / Pause</span>
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">J / L</span><span class="text-muted">Skip ±10 seconds</span>
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">← →</span><span class="text-muted">Skip ±5 seconds</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">J / L</span><span class="text-muted">Skip ±{{ skipInterval }}s</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">← →</span><span class="text-muted">Skip ±{{ Math.max(1, Math.floor(skipInterval / 2)) }}s</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">↑ ↓</span><span class="text-muted">Volume ±5%</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">0–9</span><span class="text-muted">Seek to 0–90%</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Home / End</span><span class="text-muted">Jump to start / end</span>

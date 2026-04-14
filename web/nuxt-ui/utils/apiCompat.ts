@@ -56,6 +56,10 @@ export function normalizePreferences(input: unknown): UserPreferences {
         show_continue_watching: asBoolean(showContinue, true),
         show_recommended: asBoolean(showRecommended, true),
         show_trending: asBoolean(showTrending, true),
+        skip_interval: asNumber(src.skip_interval, 10),
+        shuffle_enabled: asBoolean(src.shuffle_enabled, false),
+        show_buffer_bar: asBoolean(src.show_buffer_bar, true),
+        download_prompt: asBoolean(src.download_prompt, true),
     }
 }
 
@@ -66,6 +70,7 @@ const PREF_PATCH_KEYS: (keyof UserPreferences)[] = [
     'show_analytics', 'items_per_page', 'sort_by', 'sort_order',
     'filter_category', 'filter_media_type', 'custom_eq_presets',
     'show_continue_watching', 'show_recommended', 'show_trending',
+    'skip_interval', 'shuffle_enabled', 'show_buffer_bar', 'download_prompt',
 ]
 
 export function toPreferencesPatch(input: Partial<UserPreferences>): Record<string, unknown> {

@@ -43,6 +43,10 @@ export interface UserPreferences {
     show_continue_watching: boolean
     show_recommended: boolean
     show_trending: boolean
+    skip_interval: number
+    shuffle_enabled: boolean
+    show_buffer_bar: boolean
+    download_prompt: boolean
 }
 
 export interface User {

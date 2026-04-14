@@ -144,6 +144,11 @@ type UserPreferences struct {
 	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"default:true"`
 	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"default:true"`
 	ShowTrending         bool `json:"show_trending" db:"show_trending" gorm:"default:true"`
+	// Player behaviour
+	SkipInterval    int  `json:"skip_interval" db:"skip_interval" gorm:"default:10"`
+	ShuffleEnabled  bool `json:"shuffle_enabled" db:"shuffle_enabled" gorm:"default:false"`
+	ShowBufferBar   bool `json:"show_buffer_bar" db:"show_buffer_bar" gorm:"default:true"`
+	DownloadPrompt  bool `json:"download_prompt" db:"download_prompt" gorm:"default:true"`
 }
 
 // TableName specifies the table name for GORM
@@ -256,6 +261,17 @@ func (MediaTag) TableName() string {
 	return "media_tags"
 }
 
+// clampSkipInterval clamps skip interval to 1–300 seconds or returns default 10 if invalid.
+func clampSkipInterval(n int) int {
+	if n <= 0 {
+		return 10
+	}
+	if n > 300 {
+		return 300
+	}
+	return n
+}
+
 // clampPlaybackSpeed clamps speed to 0.25–3.0 or returns default 1.0 if invalid.
 func clampPlaybackSpeed(v float64) float64 {
 	if v <= 0 || v > 3.0 {
@@ -317,6 +333,7 @@ func (p *UserPreferences) Validate() {
 	p.PlaybackSpeed = clampPlaybackSpeed(p.PlaybackSpeed)
 	p.Volume = clampVolume(p.Volume)
 	p.ItemsPerPage = clampItemsPerPage(p.ItemsPerPage)
+	p.SkipInterval = clampSkipInterval(p.SkipInterval)
 
 	p.Theme = stringInSetOrDefault(p.Theme, map[string]bool{
 		"light": true, "dark": true, "auto": true,
