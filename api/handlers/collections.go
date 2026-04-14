@@ -44,7 +44,10 @@ func (h *Handler) GetCollection(c *gin.Context) {
 		return
 	}
 	var rows []models.MediaCollectionItem
-	db.Where("collection_id = ?", id).Order("position ASC, added_at ASC").Find(&rows)
+	if err := db.Where("collection_id = ?", id).Order("position ASC, added_at ASC").Find(&rows).Error; err != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to fetch collection items: "+err.Error())
+		return
+	}
 
 	// Enrich with media names
 	ids := make([]string, len(rows))
@@ -210,7 +213,10 @@ func (h *Handler) GetMediaCollections(c *gin.Context) {
 	mediaID := c.Param("id")
 	db := h.database.GORM().WithContext(c.Request.Context())
 	var rows []models.MediaCollectionItem
-	db.Where("media_id = ?", mediaID).Find(&rows)
+	if err := db.Where("media_id = ?", mediaID).Find(&rows).Error; err != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to query collection memberships: "+err.Error())
+		return
+	}
 	if len(rows) == 0 {
 		writeSuccess(c, []collectionWithItems{})
 		return
@@ -222,13 +228,18 @@ func (h *Handler) GetMediaCollections(c *gin.Context) {
 		posMap[r.CollectionID] = r.Position
 	}
 	var cols []models.MediaCollection
-	db.Where("id IN ?", colIDs).Find(&cols)
+	if err := db.Where("id IN ?", colIDs).Find(&cols).Error; err != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to fetch collections: "+err.Error())
+		return
+	}
 
 	results := make([]gin.H, len(cols))
 	for i, col := range cols {
 		// Get all items for this collection (for prev/next navigation)
 		var items []models.MediaCollectionItem
-		db.Where("collection_id = ?", col.ID).Order("position ASC, added_at ASC").Find(&items)
+		if err := db.Where("collection_id = ?", col.ID).Order("position ASC, added_at ASC").Find(&items).Error; err != nil {
+			h.log.Error("GetMediaCollections: failed to fetch items for collection %s: %v", col.ID, err)
+		}
 		names := h.media.GetMediaNamesByIDs(func() []string {
 			ids := make([]string, len(items))
 			for j, it := range items {
