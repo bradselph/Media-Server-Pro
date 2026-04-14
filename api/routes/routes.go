@@ -637,6 +637,13 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.POST("/thumbnails/cleanup", h.CleanupThumbnails)
 	adminGrp.GET("/thumbnails/stats", h.GetThumbnailStats)
 
+	// Auto-tag rules
+	adminGrp.GET("/auto-tag-rules", h.ListAutoTagRules)
+	adminGrp.POST("/auto-tag-rules", h.CreateAutoTagRule)
+	adminGrp.PUT("/auto-tag-rules/:id", h.UpdateAutoTagRule)
+	adminGrp.DELETE("/auto-tag-rules/:id", h.DeleteAutoTagRule)
+	adminGrp.POST("/auto-tag-rules/apply", h.ApplyAutoTagRules)
+
 	// HLS admin routes
 	adminGrp.GET("/hls/stats", h.GetHLSStats)
 	adminGrp.GET("/hls/jobs", h.ListHLSJobs)

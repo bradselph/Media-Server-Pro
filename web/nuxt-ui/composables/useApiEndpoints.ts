@@ -70,6 +70,7 @@ import type {
     ScannerStats,
     ScheduledTask,
     SecurityStats,
+    AutoTagRule,
     SmartPlaylist,
     ServerSettings,
     ServerStatus,
@@ -473,6 +474,15 @@ export function useAdminApi() {
             form.append('thumbnail', file)
             return api.postForm<{ message: string }>(`${base}/media/${encodeURIComponent(id)}/thumbnail`, form)
         },
+
+        // Auto-tag rules
+        listAutoTagRules: () => api.get<AutoTagRule[]>(`${base}/auto-tag-rules`),
+        createAutoTagRule: (data: { name: string; pattern: string; tags: string; priority?: number; enabled?: boolean }) =>
+            api.post<AutoTagRule>(`${base}/auto-tag-rules`, data),
+        updateAutoTagRule: (id: string, data: Partial<{ name: string; pattern: string; tags: string; priority: number; enabled: boolean }>) =>
+            api.put<AutoTagRule>(`${base}/auto-tag-rules/${encodeURIComponent(id)}`, data),
+        deleteAutoTagRule: (id: string) => api.delete<void>(`${base}/auto-tag-rules/${encodeURIComponent(id)}`),
+        applyAutoTagRules: () => api.post<{ applied: number; items_affected: number }>(`${base}/auto-tag-rules/apply`),
 
         // HLS
         getHLSStats: () => api.get<HLSStats>(`${base}/hls/stats`),

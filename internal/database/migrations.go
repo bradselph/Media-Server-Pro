@@ -477,6 +477,18 @@ var tableDefs = []struct {
 				updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				INDEX idx_smart_playlist_user (user_id)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+		{"auto_tag_rules", `
+			CREATE TABLE IF NOT EXISTS auto_tag_rules (
+				id         VARCHAR(36)  PRIMARY KEY,
+				name       VARCHAR(255) NOT NULL,
+				pattern    VARCHAR(500) NOT NULL,
+				tags       TEXT         NOT NULL,
+				priority   INT          NOT NULL DEFAULT 0,
+				enabled    TINYINT(1)   NOT NULL DEFAULT 1,
+				created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_auto_tag_rules_priority (priority)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	}
 
 // ensureSchema idempotently creates all required tables and columns.

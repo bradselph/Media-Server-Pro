@@ -460,6 +460,20 @@ type SmartPlaylist struct {
 
 func (SmartPlaylist) TableName() string { return "smart_playlists" }
 
+// AutoTagRule applies a set of tags to all media whose path contains the pattern.
+type AutoTagRule struct {
+	ID        string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	Name      string    `json:"name" db:"name" gorm:"size:255;not null"`
+	Pattern   string    `json:"pattern" db:"pattern" gorm:"size:500;not null"`
+	Tags      string    `json:"tags" db:"tags" gorm:"type:text;not null"` // comma-separated
+	Priority  int       `json:"priority" db:"priority" gorm:"default:0"`
+	Enabled   bool      `json:"enabled" db:"enabled" gorm:"default:true"`
+	CreatedAt time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
+}
+
+func (AutoTagRule) TableName() string { return "auto_tag_rules" }
+
 // AnalyticsEvent represents a tracked event
 type AnalyticsEvent struct {
 	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`

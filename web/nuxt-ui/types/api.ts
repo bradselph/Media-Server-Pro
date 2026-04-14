@@ -149,6 +149,17 @@ export interface SmartPlaylist {
     updated_at: string
 }
 
+export interface AutoTagRule {
+    id: string
+    name: string
+    pattern: string
+    tags: string  // comma-separated
+    priority: number
+    enabled: boolean
+    created_at: string
+    updated_at: string
+}
+
 export interface MediaListParams {
     page?: number
     limit?: number
