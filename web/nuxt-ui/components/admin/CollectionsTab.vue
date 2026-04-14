@@ -131,6 +131,12 @@ function openAddItems(collectionId: string) {
   addItemsTarget.value = collectionId
   mediaSearch.value = ''
   mediaResults.value = []
+  // Load current items so alreadyInCollection reflects actual membership
+  if (detailCollection.value?.id !== collectionId) {
+    collectionsApi.get(collectionId).then(full => {
+      detailItems.value = full.items ?? []
+    }).catch(() => {})
+  }
   addItemsOpen.value = true
 }
 

@@ -130,7 +130,7 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
             color="neutral"
             size="sm"
             class="hidden md:flex"
-            @click="shortcutsModal?.open && (shortcutsModal.open = !shortcutsModal.open)"
+            @click="() => { if (shortcutsModal) shortcutsModal.open = !shortcutsModal.open }"
           />
           <UButton
             :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"

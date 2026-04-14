@@ -245,6 +245,8 @@ func (h *Handler) GetMediaCollections(c *gin.Context) {
 			"name":           col.Name,
 			"description":    col.Description,
 			"cover_media_id": col.CoverMediaID,
+			"created_at":     col.CreatedAt,
+			"updated_at":     col.UpdatedAt,
 			"items":          itemResp,
 		}
 	}
