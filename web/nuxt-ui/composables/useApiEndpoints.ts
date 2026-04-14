@@ -400,18 +400,11 @@ export function useCategoryBrowseApi() {
 
 export function useUploadApi() {
     return {
-        upload: async (files: File[], category?: string): Promise<UploadResult> => {
+        upload: (files: File[], category?: string): Promise<UploadResult> => {
             const formData = new FormData()
             files.forEach(f => formData.append('files', f))
             if (category) formData.append('category', category)
-            const res = await fetch('/api/upload', {method: 'POST', credentials: 'include', body: formData})
-            if (res.status === 401) {
-                redirectToLogin()
-                throw new Error('Session expired')
-            }
-            const envelope = await res.json()
-            if (!res.ok || envelope.success === false) throw new Error(envelope.message ?? envelope.error ?? `HTTP ${res.status}`)
-            return (envelope.data ?? envelope) as UploadResult
+            return api.postForm<UploadResult>('/api/upload', formData)
         },
         getProgress: (id: string) => api.get<UploadProgress>(`/api/upload/${encodeURIComponent(id)}/progress`),
     }

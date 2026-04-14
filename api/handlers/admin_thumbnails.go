@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,20 @@ func (h *Handler) UploadCustomThumbnail(c *gin.Context) {
 		return
 	}
 	defer file.Close()
+
+	// Validate file type by magic bytes to prevent SVG/HTML/script injection.
+	sniff := make([]byte, 512)
+	n, _ := file.Read(sniff)
+	detected := http.DetectContentType(sniff[:n])
+	allowed := map[string]bool{"image/jpeg": true, "image/png": true, "image/webp": true}
+	if !allowed[detected] {
+		writeError(c, http.StatusBadRequest, "file must be a JPEG, PNG, or WebP image")
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		writeError(c, http.StatusBadRequest, "failed to process uploaded file")
+		return
+	}
 
 	if err := h.thumbnails.SaveCustomThumbnail(id, file); err != nil {
 		h.log.Error("UploadCustomThumbnail: %v", err)
