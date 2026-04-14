@@ -622,6 +622,8 @@ export function useAdminApi() {
                 message: string;
                 action: string
             }>(`${base}/duplicates/${encodeURIComponent(id)}/resolve`, {action}),
+        scanDuplicates: () =>
+            api.post<{ message: string }>(`${base}/duplicates/scan`, {}),
 
         // Crawler
         listCrawlerTargets: () => api.get<CrawlerTarget[]>(`${base}/crawler/targets`),

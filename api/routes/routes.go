@@ -722,6 +722,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/receiver/stats", h.AdminReceiverGetStats)
 	adminGrp.DELETE("/receiver/slaves/:id", h.AdminReceiverRemoveSlave)
 	adminGrp.GET("/duplicates", h.AdminListDuplicates)
+	adminGrp.POST("/duplicates/scan", h.AdminScanLocalDuplicates)
 	adminGrp.POST("/duplicates/:id/resolve", h.AdminResolveDuplicate)
 
 	// Downloader routes (admin)

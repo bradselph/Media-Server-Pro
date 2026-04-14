@@ -8,6 +8,25 @@ import (
 	"media-server-pro/internal/duplicates"
 )
 
+// AdminScanLocalDuplicates triggers a fresh scan of local media for content-fingerprint duplicates.
+// POST /api/admin/duplicates/scan
+func (h *Handler) AdminScanLocalDuplicates(c *gin.Context) {
+	if !h.checkDuplicateDetectionEnabled(c) {
+		return
+	}
+	if err := h.duplicates.ScanLocalMedia(c.Request.Context()); err != nil {
+		writeError(c, http.StatusInternalServerError, "Scan failed: "+err.Error())
+		return
+	}
+	session := getSession(c)
+	if session != nil {
+		h.logAdminAction(c, &adminLogActionParams{
+			UserID: session.UserID, Username: session.Username, Action: "scan_local_duplicates",
+		})
+	}
+	writeSuccess(c, gin.H{"message": "duplicate scan complete"})
+}
+
 // AdminListDuplicates returns detected duplicate media pairs for admin review.
 // GET /api/admin/duplicates?status=pending   (default: pending only)
 // GET /api/admin/duplicates?status=all       (all records)
