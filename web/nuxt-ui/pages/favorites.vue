@@ -116,8 +116,8 @@ watch(() => authStore.user, (user) => {
               {{ formatDuration(mediaMap[fav.media_id]!.duration) }}
             </div>
           </div>
-          <p class="text-sm font-medium truncate" :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_path">
-            {{ mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_path.split('/').pop() }}
+          <p class="text-sm font-medium truncate" :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id">
+            {{ mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id }}
           </p>
           <p v-if="fav.added_at" class="text-xs text-muted" :title="new Date(fav.added_at).toLocaleString()">Saved {{ formatRelativeDate(fav.added_at) }}</p>
         </NuxtLink>

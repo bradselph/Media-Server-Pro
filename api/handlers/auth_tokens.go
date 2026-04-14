@@ -99,6 +99,7 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 	if rec.ExpiresAt != nil {
 		resp["expires_at"] = rec.ExpiresAt.Format(timeFormatRFC3339Ext)
 	}
+	h.logAdminAction(c, &adminLogActionParams{Action: "create_api_token", Target: rec.ID, Details: map[string]any{"name": rec.Name}})
 	writeSuccess(c, resp)
 }
 
@@ -122,5 +123,6 @@ func (h *Handler) DeleteAPIToken(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to delete API token")
 		return
 	}
+	h.logAdminAction(c, &adminLogActionParams{Action: "delete_api_token", Target: tokenID})
 	writeSuccess(c, nil)
 }

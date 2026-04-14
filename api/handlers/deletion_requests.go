@@ -186,13 +186,14 @@ func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
 
 	if err := h.deletionRequests.UpdateStatus(ctx, requestID, newStatus, adminSession.Username, req.AdminNotes); err != nil {
 		if req.Action == "approve" {
-			// User was already deleted; log the DB failure but don't fail the request.
+			// User was already deleted but status persistence failed — surface the inconsistency.
 			h.log.Error("Failed to mark deletion request %s approved after user deletion: %v", requestID, err)
-		} else {
-			h.log.Error("Failed to update deletion request %s: %v", requestID, err)
-			writeError(c, http.StatusInternalServerError, errDeletionRequestsUnavailable)
+			writeError(c, http.StatusInternalServerError, "User deleted but status update failed — check logs")
 			return
 		}
+		h.log.Error("Failed to update deletion request %s: %v", requestID, err)
+		writeError(c, http.StatusInternalServerError, errDeletionRequestsUnavailable)
+		return
 	}
 
 	h.log.Info("Admin %s %s data deletion request %s for user %s", adminSession.Username, req.Action+"d", requestID, dr.Username)

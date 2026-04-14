@@ -1113,7 +1113,6 @@ export interface UserSession {
 export interface FavoriteItem {
     id: string
     media_id: string
-    media_path: string
     added_at: string
 }
 
