@@ -1571,6 +1571,21 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 	}
 }
 
+// DeletePlaybackPositionsByPath removes all saved resume positions for the given media path (all users).
+// Called when a media item is permanently deleted so orphaned rows do not accumulate.
+func (m *Module) DeletePlaybackPositionsByPath(ctx context.Context, path string) {
+	if m.metadataRepo != nil {
+		if err := m.metadataRepo.DeletePlaybackPositionsByPath(ctx, path); err != nil {
+			m.log.Warn("Failed to purge playback positions for deleted media %s: %v", path, err)
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if meta, ok := m.metadata[path]; ok {
+		meta.PlaybackPos = nil
+	}
+}
+
 // ClearAllPlaybackPositions removes every saved resume position for a given user (in-memory and DB).
 func (m *Module) ClearAllPlaybackPositions(userID string) {
 	// Persist deletion to DB so positions do not reappear after restart.

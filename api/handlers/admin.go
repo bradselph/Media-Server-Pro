@@ -80,7 +80,7 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 		h.analytics, h.playlist, h.admin, h.tasks, h.upload, h.scanner,
 		h.thumbnails, h.validator, h.backup, h.autodiscovery, h.suggestions,
 		h.categorizer, h.updater, h.remote, h.receiver,
-		h.extractor, h.crawler, h.duplicates,
+		h.extractor, h.crawler, h.duplicates, h.downloader,
 	}
 	// last_check is always present (CheckedAt is always set); no omitempty so the contract is explicit.
 	type moduleHealthItem struct {

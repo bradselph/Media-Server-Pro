@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import type { MediaItem, Suggestion, Playlist, PlaylistItem } from '~/types/api'
+import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem, MediaCollection } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes, formatBitrate } from '~/utils/format'
+import { useQueueStore } from '~/stores/queue'
+import { useCollectionsApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
@@ -12,8 +14,10 @@ const suggestionsApi = useSuggestionsApi()
 const ratingsApi = useRatingsApi()
 const playlistApi = usePlaylistApi()
 const analyticsApi = useAnalyticsApi()
+const chaptersApi = useChaptersApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
+const queueStore = useQueueStore()
 const { updatePreferences } = useApiEndpoints()
 const toast = useToast()
 
@@ -52,6 +56,9 @@ const media = ref<MediaItem | null>(null)
 const loading = ref(true)
 const error = ref('')
 
+// Chapters
+const chapters = ref<MediaChapter[]>([])
+
 // Update browser tab title as soon as the media item loads
 useHead(computed(() => ({
   title: media.value ? getDisplayTitle(media.value) : 'Player',
@@ -82,8 +89,44 @@ watch(
   { deep: true },
 )
 
+// Skip interval from preferences (default 10s)
+const skipInterval = computed(() => userPrefs.value?.skip_interval ?? 10)
+// Half-interval for arrow keys (minimum 1s)
+const halfSkip = computed(() => Math.max(1, Math.floor(skipInterval.value / 2)))
+
+// Mobile skip tap animation state
+const mobileSkipDir = ref<'back' | 'forward' | null>(null)
+let mobileSkipTimer: ReturnType<typeof setTimeout> | null = null
+
+function mobileSkip(delta: number) {
+  seek(delta)
+  resetControlsTimer()
+  mobileSkipDir.value = delta < 0 ? 'back' : 'forward'
+  if (mobileSkipTimer) clearTimeout(mobileSkipTimer)
+  mobileSkipTimer = setTimeout(() => { mobileSkipDir.value = null }, 600)
+}
+
 // Auto-next: play next suggestion when current media ends (non-playlist context)
 const autoNextEnabled = ref(true)
+
+// Buffer health bar — fraction of media buffered ahead
+const bufferedFraction = computed(() => {
+  const video = videoRef.value
+  if (!video || !video.buffered.length || !video.duration) return 0
+  // Find the buffered range that contains currentTime
+  const ct = video.currentTime
+  for (let i = 0; i < video.buffered.length; i++) {
+    if (video.buffered.start(i) <= ct && ct <= video.buffered.end(i)) {
+      return video.buffered.end(i) / video.duration
+    }
+  }
+  return 0
+})
+const showBufferBar = computed(() => userPrefs.value?.show_buffer_bar ?? true)
+
+// Download quality selector
+const downloadModalOpen = ref(false)
+const downloadPrompt = computed(() => userPrefs.value?.download_prompt ?? true)
 
 // Share at timestamp
 const linkCopied = ref(false)
@@ -201,6 +244,7 @@ function toggleEqualizer() {
 }
 
 const showEqualizer = ref(false)
+const showQueuePanel = ref(false)
 
 // HLS — delegate to composable
 const mediaIdRef = computed(() => mediaId.value ?? '')
@@ -241,6 +285,10 @@ const thumbnailPreviews = ref<string[]>([])
 const similar = ref<Suggestion[]>([])
 const personalized = ref<Suggestion[]>([])
 
+// Collections this media belongs to
+const collectionsApi = useCollectionsApi()
+const mediaCollections = ref<MediaCollection[]>([])
+
 // Mature content gate
 const canViewMature = computed(() =>
   authStore.isLoggedIn &&
@@ -275,12 +323,21 @@ async function loadMedia(id: string) {
   error.value = ''
   similar.value = []
   personalized.value = []
+  mediaCollections.value = []
   thumbnailPreviews.value = []
   try {
     media.value = await mediaApi.getById(id)
     userRating.value = 0
-    playbackStore.setMedia(id)
+    playbackStore.setMedia(id, {
+      id,
+      name: media.value ? (media.value.metadata?.title || media.value.name) : id,
+      type: media.value?.type ?? 'unknown',
+      thumbnail_url: media.value ? mediaApi.getThumbnailUrl(id) : undefined,
+      duration: media.value?.duration ?? 0,
+    })
+    loadChapters(id).catch(() => {})
     suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch(() => {})
+    collectionsApi.getForMedia(id).then(r => { mediaCollections.value = r ?? [] }).catch(() => {})
     if (authStore.isLoggedIn) {
       suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch(() => {})
     }
@@ -324,7 +381,7 @@ async function onMediaEnded() {
     } catch {}
   }
   trackComplete()
-  if (loopMode.value === 'off') autoNextFromSuggestions()
+  if (loopMode.value === 'off' || loopMode.value === 'all') autoNextFromSuggestions()
 }
 
 async function savePosition() {
@@ -338,6 +395,20 @@ async function savePosition() {
       // Position save is best-effort
     }
   }
+}
+
+async function loadChapters(id: string) {
+  try {
+    chapters.value = (await chaptersApi.list(id)) ?? []
+  } catch {
+    chapters.value = []
+  }
+}
+
+function seekToChapter(startTime: number) {
+  if (!videoRef.value) return
+  videoRef.value.currentTime = startTime
+  trackSeek()
 }
 
 function onVideoLoaded() {
@@ -380,10 +451,31 @@ function autoNextFromSuggestions() {
   if (!autoNextEnabled.value) return
   // Playlist auto-advance takes priority
   if (nextPlaylistItem.value) { startUpNextCountdown(); return }
+
+  // Queue takes priority over suggestions
+  if (queueStore.items.length > 0) {
+    const queued = queueStore.shift()
+    if (queued) {
+      if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
+      showUpNext.value = true
+      upNextCountdown.value = 5
+      upNextTimer = setInterval(() => {
+        upNextCountdown.value -= 1
+        if (upNextCountdown.value <= 0) {
+          cancelUpNext()
+          exitPiPForTransition()
+          navigateTo(`/player?id=${encodeURIComponent(queued.id)}`)
+        }
+      }, 1000)
+      return
+    }
+  }
+
   // Pick first similar item that is not the current media
   const next = similar.value.find(s => s.media_id !== mediaId.value)
     ?? personalized.value.find(s => s.media_id !== mediaId.value)
   if (next) {
+    if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
     showUpNext.value = true
     upNextCountdown.value = 8
     upNextTimer = setInterval(() => {
@@ -495,10 +587,28 @@ function cancelUpNext() {
 function navigateToNextItem() {
   cancelUpNext()
   exitPiPForTransition()
+  const plId = playlistIdParam.value ?? ''
+  // Shuffle: pick a random item (other than current)
+  if (shuffleEnabled.value && playlistItems.value.length > 1) {
+    const others = playlistItems.value.filter((_, i) => i !== playlistIdxParam.value)
+    const pick = others[Math.floor(Math.random() * others.length)]
+    if (pick) {
+      const pickIdx = playlistItems.value.indexOf(pick)
+      navigateTo(`/player?id=${encodeURIComponent(pick.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=${pickIdx}`)
+      return
+    }
+  }
+  // Repeat-all: wrap to beginning
+  const nextIdx = playlistIdxParam.value + 1
+  const isLast = nextIdx >= playlistItems.value.length
+  if (isLast && loopMode.value === 'all') {
+    const first = playlistItems.value[0]
+    if (first) navigateTo(`/player?id=${encodeURIComponent(first.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=0`)
+    return
+  }
   const next = nextPlaylistItem.value
   if (!next) return
-  const newIdx = playlistIdxParam.value + 1
-  navigateTo(`/player?id=${encodeURIComponent(next.media_id)}&playlist_id=${encodeURIComponent(playlistIdParam.value ?? '')}&playlist_idx=${newIdx}`)
+  navigateTo(`/player?id=${encodeURIComponent(next.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=${nextIdx}`)
 }
 
 watch(playlistIdParam, async id => {
@@ -509,12 +619,25 @@ watch(playlistIdParam, async id => {
   } catch { playlistItems.value = [] }
 }, { immediate: true })
 
-// Loop mode: 'off' | 'one'
-const loopMode = ref<'off' | 'one'>('off')
+// Loop mode: 'off' | 'one' | 'all'
+const loopMode = ref<'off' | 'one' | 'all'>('off')
 
 function cycleLoop() {
-  loopMode.value = loopMode.value === 'off' ? 'one' : 'off'
+  if (loopMode.value === 'off') loopMode.value = 'one'
+  else if (loopMode.value === 'one') loopMode.value = 'all'
+  else loopMode.value = 'off'
   if (videoRef.value) videoRef.value.loop = loopMode.value === 'one'
+}
+
+// Shuffle mode — initialised from prefs, toggled by button
+const shuffleEnabled = ref(false)
+watch(userPrefs, (p) => {
+  if (p?.shuffle_enabled != null) shuffleEnabled.value = p.shuffle_enabled
+}, { immediate: true })
+
+function toggleShuffle() {
+  shuffleEnabled.value = !shuffleEnabled.value
+  if (authStore.isLoggedIn) updatePreferences({ shuffle_enabled: shuffleEnabled.value }).catch(() => {})
 }
 
 
@@ -601,23 +724,23 @@ function onKeyDown(e: KeyboardEvent) {
     case 'j':
     case 'J':
       e.preventDefault()
-      seek(-10)
+      seek(-skipInterval.value)
       resetControlsTimer()
       break
     case 'l':
     case 'L':
       e.preventDefault()
-      seek(10)
+      seek(skipInterval.value)
       resetControlsTimer()
       break
     case 'ArrowLeft':
       e.preventDefault()
-      seek(-5)
+      seek(-halfSkip.value)
       resetControlsTimer()
       break
     case 'ArrowRight':
       e.preventDefault()
-      seek(5)
+      seek(halfSkip.value)
       resetControlsTimer()
       break
     case 'ArrowUp':
@@ -809,6 +932,7 @@ onUnmounted(() => {
   if (seekTimer) clearTimeout(seekTimer)
   if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
   if (upNextTimer) clearInterval(upNextTimer)
+  if (mobileSkipTimer) clearTimeout(mobileSkipTimer)
   clearTimeout(linkCopiedTimer)
 })
 
@@ -904,24 +1028,41 @@ watch(mediaId, (id, oldId) => {
             </div>
           </Transition>
 
-          <!-- Mobile skip buttons (visible on touch devices) -->
+          <!-- Mobile skip buttons (visible on touch devices, single tap) -->
           <div class="absolute inset-0 flex items-center justify-between pointer-events-none md:hidden z-10">
+            <!-- Skip back -->
             <button
-              class="pointer-events-auto w-1/4 h-full flex items-center justify-center active:bg-white/10 transition-colors"
-              aria-label="Skip back 10 seconds"
-              @dblclick.stop="seek(-10)"
-              @click.stop
+              class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
+              :class="mobileSkipDir === 'back' ? 'bg-white/15' : ''"
+              :aria-label="`Skip back ${skipInterval} seconds`"
+              @click.stop="mobileSkip(-skipInterval)"
             >
-              <UIcon name="i-lucide-rewind" class="size-8 text-white/50 opacity-0 active:opacity-100 transition-opacity" />
+              <Transition name="fade">
+                <div v-if="mobileSkipDir === 'back'" class="flex flex-col items-center gap-1 pointer-events-none">
+                  <UIcon name="i-lucide-rewind" class="size-8 text-white" />
+                  <span class="text-white text-xs font-semibold">-{{ skipInterval }}s</span>
+                </div>
+              </Transition>
             </button>
-            <div class="w-1/2" />
+            <!-- Centre tap: toggle play/pause -->
             <button
-              class="pointer-events-auto w-1/4 h-full flex items-center justify-center active:bg-white/10 transition-colors"
-              aria-label="Skip forward 10 seconds"
-              @dblclick.stop="seek(10)"
-              @click.stop
+              class="pointer-events-auto w-1/2 h-full"
+              aria-label="Play or pause"
+              @click.stop="togglePlay(); resetControlsTimer()"
+            />
+            <!-- Skip forward -->
+            <button
+              class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
+              :class="mobileSkipDir === 'forward' ? 'bg-white/15' : ''"
+              :aria-label="`Skip forward ${skipInterval} seconds`"
+              @click.stop="mobileSkip(skipInterval)"
             >
-              <UIcon name="i-lucide-fast-forward" class="size-8 text-white/50 opacity-0 active:opacity-100 transition-opacity" />
+              <Transition name="fade">
+                <div v-if="mobileSkipDir === 'forward'" class="flex flex-col items-center gap-1 pointer-events-none">
+                  <UIcon name="i-lucide-fast-forward" class="size-8 text-white" />
+                  <span class="text-white text-xs font-semibold">+{{ skipInterval }}s</span>
+                </div>
+              </Transition>
             </button>
           </div>
 
@@ -955,13 +1096,19 @@ watch(mediaId, (id, oldId) => {
             :volume="volume"
             :playback-speed="playbackSpeed"
             :loop-mode="loopMode"
+            :shuffle-enabled="shuffleEnabled"
             :is-fullscreen="isFullscreen"
             :is-pi-p="isPiP"
             :pip-supported="pipSupported"
+            :is-theater="isTheater"
             :qualities="qualities"
             :current-quality="currentQuality"
             :thumbnail-previews="thumbnailPreviews"
             :show-controls="showControls"
+            :skip-interval="skipInterval"
+            :buffered-fraction="bufferedFraction"
+            :show-buffer-bar="showBufferBar"
+            :chapters="chapters"
             v-model:showShortcuts="showShortcuts"
             @toggle-play="togglePlay"
             @seek="seek"
@@ -972,6 +1119,10 @@ watch(mediaId, (id, oldId) => {
             @toggle-fullscreen="toggleFullscreen"
             @toggle-pip="togglePiP"
             @cycle-loop="cycleLoop"
+            @toggle-shuffle="toggleShuffle"
+            @toggle-mute="toggleMute"
+            @toggle-theater="toggleTheater"
+            @seek-to-chapter="seekToChapter"
           />
         </div>
         <div v-else class="max-md:px-4">
@@ -1061,7 +1212,7 @@ watch(mediaId, (id, oldId) => {
           </template>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
             <div v-if="media.type"><span class="text-muted">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
-            <div v-if="media.duration"><span class="text-muted">Duration:</span> {{ formatDuration(media.duration) }}</div>
+            <div v-if="media.duration || duration"><span class="text-muted">Duration:</span> {{ formatDuration(media.duration || duration) }}</div>
             <div v-if="media.size"><span class="text-muted">Size:</span> {{ formatBytes(media.size) }}</div>
             <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
             <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
@@ -1074,6 +1225,7 @@ watch(mediaId, (id, oldId) => {
               <span class="text-muted">Quality:</span> {{ currentQualityLabel }}
             </div>
           </div>
+          <p v-if="media.metadata?.description" class="text-sm text-muted mt-3">{{ media.metadata.description }}</p>
           <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1.5 mt-3">
             <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
           </div>
@@ -1085,8 +1237,7 @@ watch(mediaId, (id, oldId) => {
               variant="outline"
               color="neutral"
               size="sm"
-              :to="mediaApi.getDownloadUrl(media.id)"
-              target="_blank"
+              @click="downloadPrompt && hlsAvailable ? (downloadModalOpen = true) : navigateTo(mediaApi.getDownloadUrl(media.id), { open: { target: '_blank' } })"
             />
             <UButton
               v-if="authStore.isLoggedIn"
@@ -1096,6 +1247,15 @@ watch(mediaId, (id, oldId) => {
               color="neutral"
               size="sm"
               @click="openAddToPlaylist"
+            />
+            <UButton
+              v-if="authStore.isLoggedIn"
+              icon="i-lucide-list-ordered"
+              :label="queueStore.items.length > 0 ? `Queue (${queueStore.items.length})` : 'Queue'"
+              :variant="showQueuePanel ? 'solid' : 'outline'"
+              :color="showQueuePanel ? 'primary' : 'neutral'"
+              size="sm"
+              @click="showQueuePanel = !showQueuePanel"
             />
             <UButton
               icon="i-lucide-sliders-horizontal"
@@ -1120,6 +1280,15 @@ watch(mediaId, (id, oldId) => {
               :color="linkCopied ? 'success' : 'neutral'"
               size="sm"
               @click="copyTimestampLink"
+            />
+            <UButton
+              v-if="authStore.isAdmin"
+              icon="i-lucide-pencil"
+              label="Edit"
+              variant="outline"
+              color="neutral"
+              size="sm"
+              :to="`/admin?tab=media&edit=${encodeURIComponent(media.id)}`"
             />
           </div>
 
@@ -1181,6 +1350,84 @@ watch(mediaId, (id, oldId) => {
           </div>
 
           <!-- Add to playlist modal -->
+          <!-- Queue panel -->
+          <div v-if="showQueuePanel && authStore.isLoggedIn" class="mt-4 border-t border-default pt-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-semibold text-highlighted flex items-center gap-1.5">
+                <UIcon name="i-lucide-list-ordered" class="size-4 text-primary" />
+                Up Next ({{ queueStore.items.length }})
+              </h4>
+              <UButton
+                v-if="queueStore.items.length > 0"
+                icon="i-lucide-trash-2"
+                label="Clear"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                @click="queueStore.clear()"
+              />
+            </div>
+            <p v-if="queueStore.items.length === 0" class="text-xs text-muted py-2">Queue is empty. Add items from the library.</p>
+            <div v-else class="space-y-1">
+              <div
+                v-for="(qi, qIdx) in queueStore.items"
+                :key="qi.id"
+                class="flex items-center gap-2 group rounded-lg px-1 py-1 hover:bg-muted/50"
+              >
+                <span class="text-xs text-muted w-5 text-right shrink-0">{{ qIdx + 1 }}</span>
+                <div class="w-14 h-8 rounded overflow-hidden bg-muted shrink-0">
+                  <img
+                    v-if="qi.thumbnail_url"
+                    :src="qi.thumbnail_url"
+                    :alt="qi.name"
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <div v-else class="w-full h-full flex items-center justify-center">
+                    <UIcon :name="qi.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-3 text-muted" />
+                  </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-medium truncate" :title="qi.name">{{ qi.name }}</p>
+                  <p v-if="qi.duration" class="text-[10px] text-muted font-mono">{{ formatDuration(qi.duration) }}</p>
+                </div>
+                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <button
+                    class="p-1 rounded hover:bg-muted"
+                    aria-label="Move up"
+                    :disabled="qIdx === 0"
+                    @click="queueStore.moveUp(qi.id)"
+                  >
+                    <UIcon name="i-lucide-chevron-up" class="size-3 text-muted" />
+                  </button>
+                  <button
+                    class="p-1 rounded hover:bg-muted"
+                    aria-label="Move down"
+                    :disabled="qIdx === queueStore.items.length - 1"
+                    @click="queueStore.moveDown(qi.id)"
+                  >
+                    <UIcon name="i-lucide-chevron-down" class="size-3 text-muted" />
+                  </button>
+                  <NuxtLink
+                    class="p-1 rounded hover:bg-muted"
+                    :to="`/player?id=${encodeURIComponent(qi.id)}`"
+                    :aria-label="`Play ${qi.name} now`"
+                    @click="queueStore.remove(qi.id)"
+                  >
+                    <UIcon name="i-lucide-play" class="size-3 text-primary" />
+                  </NuxtLink>
+                  <button
+                    class="p-1 rounded hover:bg-muted"
+                    :aria-label="`Remove ${qi.name} from queue`"
+                    @click="queueStore.remove(qi.id)"
+                  >
+                    <UIcon name="i-lucide-x" class="size-3 text-muted" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <UModal v-model:open="playlistOpen" title="Add to Playlist">
             <template #body>
               <div v-if="playlists.length === 0" class="text-center py-4 text-muted text-sm">
@@ -1211,52 +1458,135 @@ watch(mediaId, (id, oldId) => {
 
       <!-- Sidebar: similar + personalized -->
       <div class="space-y-6 max-md:px-4 max-md:pb-6 md:pb-0">
+        <!-- Collections this media belongs to -->
+        <div v-if="mediaCollections.length > 0" class="space-y-3">
+          <h3 class="font-semibold text-highlighted">In Collection</h3>
+          <div
+            v-for="col in mediaCollections"
+            :key="col.id"
+            class="space-y-1.5"
+          >
+            <p class="text-xs font-semibold text-muted uppercase tracking-wide">{{ col.name }}</p>
+            <div class="space-y-1">
+              <NuxtLink
+                v-for="(item, idx) in (col.items ?? [])"
+                :key="item.media_id"
+                :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+                class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors text-sm"
+                :class="item.media_id === mediaId ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted hover:text-default'"
+              >
+                <span class="text-xs w-4 text-right shrink-0 opacity-60">{{ idx + 1 }}</span>
+                <div class="w-10 aspect-video rounded overflow-hidden bg-muted shrink-0">
+                  <img
+                    :src="`/thumbnail?id=${encodeURIComponent(item.media_id)}`"
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                    @error="($event.target as HTMLImageElement).style.display = 'none'"
+                  />
+                </div>
+                <span class="flex-1 truncate text-xs">{{ item.media_name || item.media_id }}</span>
+                <UIcon v-if="item.media_id === mediaId" name="i-lucide-play" class="size-3 shrink-0 text-primary" />
+              </NuxtLink>
+            </div>
+          </div>
+        </div>
+
         <!-- Similar media -->
         <div v-if="similar.length > 0" class="space-y-3">
           <h3 class="font-semibold text-highlighted">Similar Media</h3>
-          <NuxtLink
+          <div
             v-for="item in similar"
             :key="item.media_id"
-            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
-            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
+            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
-            <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-              <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
-              <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
-                {{ formatDuration(item.duration) }}
+            <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
+              <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+                <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+                  {{ formatDuration(item.duration) }}
+                </div>
               </div>
-            </div>
-            <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
-              <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
-              <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
-            </div>
-          </NuxtLink>
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
+                <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
+              </div>
+            </NuxtLink>
+            <button
+              v-if="authStore.isLoggedIn"
+              class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+              aria-label="Add to queue"
+              @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
+            >
+              <UIcon name="i-lucide-list-ordered" class="size-4 text-muted" />
+            </button>
+          </div>
         </div>
 
         <!-- Personalized recommendations (logged-in users) -->
         <div v-if="authStore.isLoggedIn && personalized.length > 0" class="space-y-3">
           <h3 class="font-semibold text-highlighted">Recommended For You</h3>
-          <NuxtLink
+          <div
             v-for="item in personalized"
             :key="item.media_id"
-            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
-            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors"
+            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
-            <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-              <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
-              <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
-                {{ formatDuration(item.duration) }}
+            <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
+              <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+                <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+                  {{ formatDuration(item.duration) }}
+                </div>
               </div>
-            </div>
-            <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
-              <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
-              <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
-            </div>
-          </NuxtLink>
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
+                <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
+              </div>
+            </NuxtLink>
+            <button
+              class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+              aria-label="Add to queue"
+              @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
+            >
+              <UIcon name="i-lucide-list-ordered" class="size-4 text-muted" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Download quality selector modal -->
+  <UModal v-model:open="downloadModalOpen" title="Download" description="Choose a quality to download">
+    <template #body>
+      <div class="flex flex-col gap-2 py-2">
+        <UButton
+          icon="i-lucide-file-video"
+          label="Original file"
+          variant="outline"
+          color="neutral"
+          class="justify-start"
+          :to="mediaApi.getDownloadUrl(media?.id ?? '')"
+          target="_blank"
+          @click="downloadModalOpen = false"
+        />
+        <template v-if="qualities.length > 0">
+          <p class="text-xs text-muted mt-1">HLS renditions</p>
+          <UButton
+            v-for="q in qualities"
+            :key="q.index"
+            :label="q.name"
+            icon="i-lucide-layers"
+            variant="outline"
+            color="neutral"
+            class="justify-start"
+            :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${q.index}`"
+            target="_blank"
+            @click="downloadModalOpen = false"
+          />
+        </template>
+      </div>
+    </template>
+  </UModal>
 </template>

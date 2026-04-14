@@ -34,29 +34,14 @@ export function redirectToLogin(): void {
     globalThis.location.replace(target)
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-    const opts: RequestInit = {
-        method,
-        credentials: 'include',
-        headers: {'Content-Type': 'application/json'},
-    }
-    if (body !== undefined) {
-        opts.body = JSON.stringify(body)
-    }
-
-    const res = await fetch(url, opts)
-
-    // Handle non-JSON responses
+async function parseEnvelope<T>(res: Response): Promise<T> {
     const contentType = res.headers.get('content-type') ?? ''
     if (!contentType.includes('application/json')) {
-        if (!res.ok) {
-            throw new ApiError(`HTTP ${res.status}`, res.status)
-        }
+        if (!res.ok) throw new ApiError(`HTTP ${res.status}`, res.status)
         return undefined as T
     }
 
     const envelope = await res.json() as GoEnvelope<T>
-
     if (!res.ok || envelope.success === false) {
         // On 401, redirect to login so stale sessions are cleared automatically.
         // NOTE: use window.location.replace (not navigateTo) — useApi is imported at module
@@ -69,14 +54,33 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
             envelope,
         )
     }
-
     return (envelope.data ?? envelope) as T
+}
+
+async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+    const opts: RequestInit = {
+        method,
+        credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+    }
+    if (body !== undefined) {
+        opts.body = JSON.stringify(body)
+    }
+    const res = await fetch(url, opts)
+    return parseEnvelope<T>(res)
+}
+
+async function requestForm<T>(method: string, url: string, form: FormData): Promise<T> {
+    // Do NOT set Content-Type — the browser must set it with the multipart boundary.
+    const res = await fetch(url, { method, credentials: 'include', body: form })
+    return parseEnvelope<T>(res)
 }
 
 export function useApi() {
     return {
         get: <T>(url: string) => request<T>('GET', url),
         post: <T>(url: string, body?: unknown) => request<T>('POST', url, body),
+        postForm: <T>(url: string, form: FormData) => requestForm<T>('POST', url, form),
         put: <T>(url: string, body?: unknown) => request<T>('PUT', url, body),
         patch: <T>(url: string, body?: unknown) => request<T>('PATCH', url, body),
         delete: <T>(url: string, body?: unknown) => request<T>('DELETE', url, body),

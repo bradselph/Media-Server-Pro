@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { MediaItem, AdminMediaListParams, ThumbnailStats } from '~/types/api'
+import type { MediaItem, AdminMediaListParams, ThumbnailStats, MediaChapter } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatBytes, formatDuration } from '~/utils/format'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
+const chaptersApi = useChaptersApi()
 const toast = useToast()
 
 const thumbStats = ref<ThumbnailStats | null>(null)
@@ -75,8 +76,14 @@ const editOpen = computed({
   get: () => !!editTarget.value,
   set: (v: boolean) => { if (!v) editTarget.value = null },
 })
-const editForm = reactive({ name: '', category: '', is_mature: false, tags: '' })
+const editForm = reactive({ name: '', category: '', is_mature: false, tags: '', description: '' })
 const editSaving = ref(false)
+
+// Thumbnail upload state
+const thumbFileInput = ref<HTMLInputElement | null>(null)
+const thumbFile = ref<File | null>(null)
+const thumbPreviewUrl = ref<string | null>(null)
+const thumbUploading = ref(false)
 
 function openEdit(item: MediaItem) {
   editTarget.value = item
@@ -84,6 +91,34 @@ function openEdit(item: MediaItem) {
   editForm.category = item.category ?? ''
   editForm.is_mature = item.is_mature ?? false
   editForm.tags = (item.tags ?? []).join(', ')
+  editForm.description = (item.metadata?.description ?? '') as string
+  // Reset thumbnail upload state when opening a new item
+  thumbFile.value = null
+  thumbPreviewUrl.value = null
+}
+
+function onThumbFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  thumbFile.value = file
+  thumbPreviewUrl.value = URL.createObjectURL(file)
+}
+
+async function uploadThumbnail() {
+  if (!editTarget.value || !thumbFile.value) return
+  thumbUploading.value = true
+  try {
+    await adminApi.uploadCustomThumbnail(editTarget.value.id, thumbFile.value)
+    toast.add({ title: 'Thumbnail updated', color: 'success', icon: 'i-lucide-check' })
+    thumbFile.value = null
+    thumbPreviewUrl.value = null
+    if (thumbFileInput.value) thumbFileInput.value.value = ''
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Upload failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    thumbUploading.value = false
+  }
 }
 
 async function saveEdit() {
@@ -95,6 +130,7 @@ async function saveEdit() {
       category: editForm.category,
       is_mature: editForm.is_mature,
       tags: editForm.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
+      metadata: { ...editTarget.value.metadata, description: editForm.description },
     })
     toast.add({ title: 'Media updated', color: 'success', icon: 'i-lucide-check' })
     editTarget.value = null
@@ -103,6 +139,74 @@ async function saveEdit() {
     toast.add({ title: e instanceof Error ? e.message : 'Update failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     editSaving.value = false
+  }
+}
+
+// Chapters editor
+const chaptersTarget = ref<MediaItem | null>(null)
+const chaptersOpen = computed({
+  get: () => !!chaptersTarget.value,
+  set: (v: boolean) => { if (!v) chaptersTarget.value = null },
+})
+const chapters = ref<MediaChapter[]>([])
+const newChapter = reactive({ start_time: 0, end_time: '', label: '' })
+const chaptersLoading = ref(false)
+const chaptersSaving = ref(false)
+
+async function openChapters(item: MediaItem) {
+  chaptersTarget.value = item
+  chapters.value = []
+  newChapter.start_time = 0
+  newChapter.end_time = ''
+  newChapter.label = ''
+  chaptersLoading.value = true
+  try {
+    chapters.value = (await chaptersApi.list(item.id)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load chapters', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    chaptersLoading.value = false
+  }
+}
+
+async function addChapter() {
+  if (!chaptersTarget.value || !newChapter.label) {
+    toast.add({ title: 'Label is required', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
+  chaptersSaving.value = true
+  try {
+    const endTime = newChapter.end_time ? parseFloat(newChapter.end_time) : undefined
+    await chaptersApi.create({
+      media_id: chaptersTarget.value.id,
+      start_time: newChapter.start_time,
+      end_time: endTime,
+      label: newChapter.label,
+    })
+    toast.add({ title: 'Chapter added', color: 'success', icon: 'i-lucide-check' })
+    newChapter.start_time = 0
+    newChapter.end_time = ''
+    newChapter.label = ''
+    await openChapters(chaptersTarget.value)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to add chapter', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    chaptersSaving.value = false
+  }
+}
+
+async function deleteChapter(id: string) {
+  chaptersSaving.value = true
+  try {
+    await chaptersApi.delete(id)
+    toast.add({ title: 'Chapter deleted', color: 'success', icon: 'i-lucide-check' })
+    if (chaptersTarget.value) {
+      await openChapters(chaptersTarget.value)
+    }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to delete chapter', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    chaptersSaving.value = false
   }
 }
 
@@ -227,7 +331,25 @@ watch(() => params.page, () => {
   selectedIds.value = new Set()
 })
 
-onMounted(() => { load(); loadThumbStats() })
+const route = useRoute()
+const mediaApi = useMediaApi()
+onMounted(async () => {
+  await load()
+  loadThumbStats()
+  // Auto-open edit modal when linked from player page (?edit=mediaId)
+  const editId = route.query.edit as string | undefined
+  if (editId) {
+    const item = items.value.find(i => i.id === editId)
+    if (item) openEdit(item)
+    else {
+      // Item may not be on page 1; fetch it directly via public media endpoint
+      try {
+        const found = await mediaApi.getById(editId)
+        if (found) openEdit(found)
+      } catch { /* best-effort */ }
+    }
+  }
+})
 onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
 </script>
 
@@ -440,6 +562,14 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
               @click="generateHLS(row.original.id)"
             />
             <UButton
+              icon="i-lucide-list-ordered"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              title="Edit chapters"
+              @click="openChapters(row.original)"
+            />
+            <UButton
               icon="i-lucide-trash-2"
               size="xs"
               variant="ghost"
@@ -509,8 +639,55 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
           <UFormField label="Tags" hint="Comma-separated (e.g. action, sci-fi)">
             <UInput v-model="editForm.tags" placeholder="e.g. action, comedy" class="w-full" />
           </UFormField>
+          <UFormField label="Description">
+            <UTextarea v-model="editForm.description" placeholder="Short description (stored in metadata)" :rows="3" class="w-full" />
+          </UFormField>
           <UFormField label="Mature content">
             <UCheckbox v-model="editForm.is_mature" label="Mark as 18+ content" />
+          </UFormField>
+          <!-- Thumbnail upload -->
+          <UFormField label="Custom Thumbnail" hint="JPEG, PNG, or WebP — replaces the existing thumbnail">
+            <div class="space-y-2">
+              <!-- Preview -->
+              <div v-if="thumbPreviewUrl" class="relative w-40 rounded-lg overflow-hidden aspect-video bg-muted">
+                <img :src="thumbPreviewUrl" alt="Thumbnail preview" class="w-full h-full object-cover" />
+                <UButton
+                  icon="i-lucide-x"
+                  size="xs"
+                  color="neutral"
+                  variant="solid"
+                  class="absolute top-1 right-1"
+                  aria-label="Remove selection"
+                  @click="thumbFile = null; thumbPreviewUrl = null; if (thumbFileInput) thumbFileInput.value = ''"
+                />
+              </div>
+              <div class="flex gap-2">
+                <input
+                  ref="thumbFileInput"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  class="hidden"
+                  @change="onThumbFileChange"
+                />
+                <UButton
+                  icon="i-lucide-image-plus"
+                  label="Choose Image"
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
+                  @click="thumbFileInput?.click()"
+                />
+                <UButton
+                  v-if="thumbFile"
+                  icon="i-lucide-upload"
+                  label="Upload"
+                  size="sm"
+                  color="primary"
+                  :loading="thumbUploading"
+                  @click="uploadThumbnail"
+                />
+              </div>
+            </div>
           </UFormField>
         </div>
       </template>
@@ -518,6 +695,67 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
         <UButton label="Save" :loading="editSaving" color="primary" @click="saveEdit" />
         <UButton label="Cancel" variant="ghost" color="neutral" @click="editOpen = false" />
       </template>
+    </UModal>
+
+    <!-- Chapters editor modal -->
+    <UModal v-model="chaptersOpen" title="Edit Chapters">
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-highlighted">Chapters: {{ chaptersTarget?.name ? getDisplayTitle(chaptersTarget) : 'Loading' }}</h3>
+            <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="chaptersOpen = false" />
+          </div>
+        </template>
+
+        <div v-if="chaptersLoading" class="flex items-center justify-center py-8">
+          <UIcon name="i-lucide-loader" class="animate-spin mr-2" />
+          <span class="text-muted">Loading chapters...</span>
+        </div>
+        <div v-else class="space-y-4">
+          <!-- Existing chapters -->
+          <div v-if="chapters.length > 0" class="space-y-2">
+            <h4 class="font-medium text-sm text-highlighted">Existing Chapters</h4>
+            <div class="space-y-1 max-h-48 overflow-y-auto">
+              <div v-for="ch in chapters" :key="ch.id" class="flex items-center justify-between bg-muted rounded p-2 text-sm">
+                <div class="flex-1">
+                  <p class="font-medium">{{ ch.label }}</p>
+                  <p class="text-xs text-muted">{{ formatDuration(Math.floor(ch.start_time)) }}{{ ch.end_time ? ` – ${formatDuration(Math.floor(ch.end_time))}` : '' }}</p>
+                </div>
+                <UButton
+                  icon="i-lucide-trash-2"
+                  size="xs"
+                  variant="ghost"
+                  color="error"
+                  :loading="chaptersSaving"
+                  @click="deleteChapter(ch.id)"
+                />
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-center py-4 text-muted text-sm">No chapters yet</div>
+
+          <!-- Add new chapter form -->
+          <div class="border-t pt-4 space-y-2">
+            <h4 class="font-medium text-sm text-highlighted">Add New Chapter</h4>
+            <UFormField label="Label" required>
+              <UInput v-model="newChapter.label" placeholder="e.g., Introduction" />
+            </UFormField>
+            <UFormField label="Start time (seconds)" required>
+              <UInput v-model.number="newChapter.start_time" type="number" min="0" step="0.1" />
+            </UFormField>
+            <UFormField label="End time (seconds, optional)">
+              <UInput v-model="newChapter.end_time" type="number" min="0" step="0.1" placeholder="Leave empty for open-ended" />
+            </UFormField>
+            <UButton
+              label="Add Chapter"
+              :loading="chaptersSaving"
+              color="primary"
+              class="w-full"
+              @click="addChapter"
+            />
+          </div>
+        </div>
+      </UCard>
     </UModal>
   </div>
 </template>

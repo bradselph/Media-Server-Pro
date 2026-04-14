@@ -8,15 +8,28 @@ import (
 
 	"media-server-pro/internal/auth"
 	"media-server-pro/internal/repositories"
+	repoMysql "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/models"
 )
 
 const errDeletionRequestsUnavailable = "Data deletion request service unavailable"
 
+// requireDeletionRepo ensures the deletion-request repository is ready.
+// Lazy-initialises on first call so that GORM() is not captured before the
+// database module's Start() runs (which would leave r.db nil and cause a panic).
 func (h *Handler) requireDeletionRepo(c *gin.Context) bool {
 	if h.deletionRequests == nil {
-		writeError(c, http.StatusServiceUnavailable, errDeletionRequestsUnavailable)
-		return false
+		h.deletionRequestsMu.Lock()
+		if h.deletionRequests == nil {
+			db := h.database.GORM()
+			if db == nil {
+				h.deletionRequestsMu.Unlock()
+				writeError(c, http.StatusServiceUnavailable, errDeletionRequestsUnavailable)
+				return false
+			}
+			h.deletionRequests = repoMysql.NewDataDeletionRequestRepository(db)
+		}
+		h.deletionRequestsMu.Unlock()
 	}
 	return true
 }

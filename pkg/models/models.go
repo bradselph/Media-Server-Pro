@@ -144,6 +144,11 @@ type UserPreferences struct {
 	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"default:true"`
 	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"default:true"`
 	ShowTrending         bool `json:"show_trending" db:"show_trending" gorm:"default:true"`
+	// Player behaviour
+	SkipInterval    int  `json:"skip_interval" db:"skip_interval" gorm:"default:10"`
+	ShuffleEnabled  bool `json:"shuffle_enabled" db:"shuffle_enabled" gorm:"default:false"`
+	ShowBufferBar   bool `json:"show_buffer_bar" db:"show_buffer_bar" gorm:"default:true"`
+	DownloadPrompt  bool `json:"download_prompt" db:"download_prompt" gorm:"default:true"`
 }
 
 // TableName specifies the table name for GORM
@@ -256,6 +261,32 @@ func (MediaTag) TableName() string {
 	return "media_tags"
 }
 
+// MediaChapter represents a named time range (scene marker / act chapter) for a media item.
+type MediaChapter struct {
+	ID        string     `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	MediaID   string     `json:"media_id" db:"media_id" gorm:"size:255;index"`
+	StartTime float64    `json:"start_time" db:"start_time"`
+	EndTime   *float64   `json:"end_time,omitempty" db:"end_time"`
+	Label     string     `json:"label" db:"label" gorm:"size:255"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+}
+
+// TableName specifies the table name for GORM
+func (MediaChapter) TableName() string {
+	return "media_chapters"
+}
+
+// clampSkipInterval clamps skip interval to 1–300 seconds or returns default 10 if invalid.
+func clampSkipInterval(n int) int {
+	if n <= 0 {
+		return 10
+	}
+	if n > 300 {
+		return 300
+	}
+	return n
+}
+
 // clampPlaybackSpeed clamps speed to 0.25–3.0 or returns default 1.0 if invalid.
 func clampPlaybackSpeed(v float64) float64 {
 	if v <= 0 || v > 3.0 {
@@ -317,6 +348,7 @@ func (p *UserPreferences) Validate() {
 	p.PlaybackSpeed = clampPlaybackSpeed(p.PlaybackSpeed)
 	p.Volume = clampVolume(p.Volume)
 	p.ItemsPerPage = clampItemsPerPage(p.ItemsPerPage)
+	p.SkipInterval = clampSkipInterval(p.SkipInterval)
 
 	p.Theme = stringInSetOrDefault(p.Theme, map[string]bool{
 		"light": true, "dark": true, "auto": true,
@@ -414,6 +446,55 @@ type PlaylistItem struct {
 func (PlaylistItem) TableName() string {
 	return "playlist_items"
 }
+
+// SmartPlaylist is a rule-based auto-populating playlist.
+type SmartPlaylist struct {
+	ID          string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	Name        string    `json:"name" db:"name" gorm:"size:255;not null"`
+	Description string    `json:"description,omitempty" db:"description" gorm:"type:text"`
+	UserID      string    `json:"user_id" db:"user_id" gorm:"size:255;not null;index"`
+	Rules       string    `json:"rules" db:"rules" gorm:"type:text;not null"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
+}
+
+func (SmartPlaylist) TableName() string { return "smart_playlists" }
+
+// AutoTagRule applies a set of tags to all media whose path contains the pattern.
+type AutoTagRule struct {
+	ID        string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	Name      string    `json:"name" db:"name" gorm:"size:255;not null"`
+	Pattern   string    `json:"pattern" db:"pattern" gorm:"size:500;not null"`
+	Tags      string    `json:"tags" db:"tags" gorm:"type:text;not null"` // comma-separated
+	Priority  int       `json:"priority" db:"priority" gorm:"default:0"`
+	Enabled   bool      `json:"enabled" db:"enabled" gorm:"default:true"`
+	CreatedAt time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
+}
+
+func (AutoTagRule) TableName() string { return "auto_tag_rules" }
+
+// MediaCollection groups related media items into a named series or collection.
+type MediaCollection struct {
+	ID           string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	Name         string    `json:"name" db:"name" gorm:"size:255;not null"`
+	Description  string    `json:"description,omitempty" db:"description" gorm:"type:text"`
+	CoverMediaID string    `json:"cover_media_id,omitempty" db:"cover_media_id" gorm:"size:36"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
+}
+
+func (MediaCollection) TableName() string { return "media_collections" }
+
+// MediaCollectionItem links a media item into a collection with an optional order.
+type MediaCollectionItem struct {
+	CollectionID string    `json:"collection_id" db:"collection_id" gorm:"primaryKey;size:36"`
+	MediaID      string    `json:"media_id" db:"media_id" gorm:"primaryKey;size:36"`
+	Position     int       `json:"position" db:"position" gorm:"default:0"`
+	AddedAt      time.Time `json:"added_at" db:"added_at" gorm:"autoCreateTime"`
+}
+
+func (MediaCollectionItem) TableName() string { return "media_collection_items" }
 
 // AnalyticsEvent represents a tracked event
 type AnalyticsEvent struct {

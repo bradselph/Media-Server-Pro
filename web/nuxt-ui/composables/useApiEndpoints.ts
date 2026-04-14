@@ -45,6 +45,7 @@ import type {
     LogEntry,
     LoginResponse,
     MediaCategory,
+    MediaChapter,
     MediaItem,
     MediaListParams,
     MediaListResponse,
@@ -69,6 +70,10 @@ import type {
     ScannerStats,
     ScheduledTask,
     SecurityStats,
+    AutoTagRule,
+    MediaCollection,
+    MediaCollectionItem,
+    SmartPlaylist,
     ServerSettings,
     ServerStatus,
     SessionCheckResponse,
@@ -144,6 +149,13 @@ function changePassword(currentPassword: string, newPassword: string) {
     })
 }
 
+function adminChangePassword(currentPassword: string, newPassword: string) {
+    return api.post<void>('/api/admin/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword
+    })
+}
+
 function requestDataDeletion(reason?: string) {
     return api.post<{
         status: string;
@@ -169,7 +181,7 @@ async function updatePreferences(prefs: Partial<UserPreferences>): Promise<UserP
 
 export function useApiEndpoints() {
     return {
-        login, logout, register, getSession, changePassword, requestDataDeletion, deleteAccount,
+        login, logout, register, getSession, changePassword, adminChangePassword, requestDataDeletion, deleteAccount,
         getPreferences, updatePreferences,
     }
 }
@@ -325,6 +337,21 @@ export function usePlaylistApi() {
     }
 }
 
+// ── Smart Playlists ───────────────────────────────────────────────────────────
+
+export function useSmartPlaylistsApi() {
+    return {
+        list: () => api.get<SmartPlaylist[]>('/api/smart-playlists'),
+        create: (data: { name: string; description?: string; rules: string }) =>
+            api.post<SmartPlaylist>('/api/smart-playlists', data),
+        get: (id: string) => api.get<SmartPlaylist>(`/api/smart-playlists/${encodeURIComponent(id)}`),
+        update: (id: string, data: Partial<{ name: string; description: string; rules: string }>) =>
+            api.put<SmartPlaylist>(`/api/smart-playlists/${encodeURIComponent(id)}`, data),
+        delete: (id: string) => api.delete<void>(`/api/smart-playlists/${encodeURIComponent(id)}`),
+        preview: (id: string) => api.get<MediaItem[]>(`/api/smart-playlists/${encodeURIComponent(id)}/preview`),
+    }
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export function useSettingsApi() {
@@ -444,6 +471,20 @@ export function useAdminApi() {
         generateThumbnail: (id: string, isAudio?: boolean) =>
             api.post<void>(`${base}/thumbnails/generate`, {id, is_audio: isAudio ?? false}),
         getThumbnailStats: () => api.get<ThumbnailStats>(`${base}/thumbnails/stats`),
+        uploadCustomThumbnail: (id: string, file: File) => {
+            const form = new FormData()
+            form.append('thumbnail', file)
+            return api.postForm<{ message: string }>(`${base}/media/${encodeURIComponent(id)}/thumbnail`, form)
+        },
+
+        // Auto-tag rules
+        listAutoTagRules: () => api.get<AutoTagRule[]>(`${base}/auto-tag-rules`),
+        createAutoTagRule: (data: { name: string; pattern: string; tags: string; priority?: number; enabled?: boolean }) =>
+            api.post<AutoTagRule>(`${base}/auto-tag-rules`, data),
+        updateAutoTagRule: (id: string, data: Partial<{ name: string; pattern: string; tags: string; priority: number; enabled: boolean }>) =>
+            api.put<AutoTagRule>(`${base}/auto-tag-rules/${encodeURIComponent(id)}`, data),
+        deleteAutoTagRule: (id: string) => api.delete<void>(`${base}/auto-tag-rules/${encodeURIComponent(id)}`),
+        applyAutoTagRules: () => api.post<{ applied: number; items_affected: number }>(`${base}/auto-tag-rules/apply`),
 
         // HLS
         getHLSStats: () => api.get<HLSStats>(`${base}/hls/stats`),
@@ -598,6 +639,8 @@ export function useAdminApi() {
                 message: string;
                 action: string
             }>(`${base}/duplicates/${encodeURIComponent(id)}/resolve`, {action}),
+        scanDuplicates: () =>
+            api.post<{ message: string }>(`${base}/duplicates/scan`, {}),
 
         // Crawler
         listCrawlerTargets: () => api.get<CrawlerTarget[]>(`${base}/crawler/targets`),
@@ -778,5 +821,42 @@ export function useAPITokensApi() {
         list: () => api.get<APIToken[]>('/api/auth/tokens'),
         create: (name: string) => api.post<APITokenCreated>('/api/auth/tokens', {name}),
         delete: (id: string) => api.delete<void>(`/api/auth/tokens/${encodeURIComponent(id)}`),
+    }
+}
+
+// ── Chapters ──────────────────────────────────────────────────────────────────
+
+export function useChaptersApi() {
+    return {
+        list: (mediaId: string) => api.get<MediaChapter[]>(`/api/chapters?media_id=${encodeURIComponent(mediaId)}`),
+        create: (data: { media_id: string; start_time: number; end_time?: number; label: string }) =>
+            api.post<MediaChapter>('/api/chapters', data),
+        update: (id: string, data: { start_time?: number; end_time?: number; label?: string }) =>
+            api.put<MediaChapter>(`/api/chapters/${encodeURIComponent(id)}`, data),
+        delete: (id: string) => api.delete<void>(`/api/chapters/${encodeURIComponent(id)}`),
+    }
+}
+
+
+// ── Collections ───────────────────────────────────────────────────────────────
+
+export function useCollectionsApi() {
+    const adminBase = '/api/admin'
+    return {
+        list: () => api.get<MediaCollection[]>('/api/collections'),
+        get: (id: string) => api.get<MediaCollection>(`/api/collections/${encodeURIComponent(id)}`),
+        getForMedia: (mediaId: string) => api.get<MediaCollection[]>(`/api/media/${encodeURIComponent(mediaId)}/collections`),
+        create: (data: { name: string; description?: string; cover_media_id?: string }) =>
+            api.post<MediaCollection>(`${adminBase}/collections`, data),
+        update: (id: string, data: Partial<{ name: string; description: string; cover_media_id: string }>) =>
+            api.put<MediaCollection>(`${adminBase}/collections/${encodeURIComponent(id)}`, data),
+        delete: (id: string) => api.delete<void>(`${adminBase}/collections/${encodeURIComponent(id)}`),
+        addItems: (collectionId: string, mediaIds: string[], positionStart = 0) =>
+            api.post<{ message: string; count: number }>(`${adminBase}/collections/${encodeURIComponent(collectionId)}/items`, {
+                media_ids: mediaIds,
+                position_start: positionStart,
+            }),
+        removeItem: (collectionId: string, mediaId: string) =>
+            api.delete<void>(`${adminBase}/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(mediaId)}`),
     }
 }

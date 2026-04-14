@@ -55,6 +55,7 @@ type MediaMetadataRepository interface {
 	GetPlaybackPosition(ctx context.Context, path, userID string) (float64, error)
 	BatchGetPlaybackPositions(ctx context.Context, paths []string, userID string) (map[string]float64, error)
 	DeleteAllPlaybackPositionsByUser(ctx context.Context, userID string) error
+	DeletePlaybackPositionsByPath(ctx context.Context, path string) error
 	// UpdateBlurHash updates the BlurHash for a metadata row by path
 	UpdateBlurHash(ctx context.Context, path string, blurHash string) error
 	// GetPathByStableID returns the file path for the given stable ID.
@@ -137,6 +138,7 @@ type AnalyticsRepository interface {
 	GetByMediaID(ctx context.Context, mediaID string) ([]*models.AnalyticsEvent, error)
 	GetByUserID(ctx context.Context, userID string) ([]*models.AnalyticsEvent, error)
 	DeleteOlderThan(ctx context.Context, before string) error
+	DeleteByMediaID(ctx context.Context, mediaID string) error
 	Count(ctx context.Context, filter AnalyticsFilter) (int64, error)
 	CountByType(ctx context.Context) (map[string]int, error)
 }

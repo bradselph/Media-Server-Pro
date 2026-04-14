@@ -1,21 +1,31 @@
 import {defineStore} from 'pinia'
 
+export interface PlaybackMediaInfo {
+    id: string
+    name: string
+    type: 'video' | 'audio' | 'unknown'
+    thumbnail_url?: string
+    duration: number
+}
+
 export const usePlaybackStore = defineStore('playback', () => {
     const currentMediaId = ref<string | null>(null)
     const position = ref(0)
     const duration = ref(0)
     const isPlaying = ref(false)
+    const mediaInfo = ref<PlaybackMediaInfo | null>(null)
 
     // Initialize composable once at store creation, not inside interval callbacks
     const playbackApi = usePlaybackApi()
 
     let saveInterval: ReturnType<typeof setInterval> | null = null
 
-    function setMedia(id: string) {
+    function setMedia(id: string, info?: PlaybackMediaInfo) {
         currentMediaId.value = id
         position.value = 0
         duration.value = 0
         isPlaying.value = false
+        if (info) mediaInfo.value = info
     }
 
     function updatePosition(pos: number, dur?: number) {
@@ -53,7 +63,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     }
 
     return {
-        currentMediaId, position, duration, isPlaying,
+        currentMediaId, position, duration, isPlaying, mediaInfo,
         setMedia, updatePosition, savePosition, loadPosition,
         startAutoSave, stopAutoSave,
     }

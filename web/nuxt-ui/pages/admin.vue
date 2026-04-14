@@ -19,11 +19,17 @@ const TABS = [
   { label: 'Content', value: 'content', icon: 'i-lucide-scan' },
   { label: 'Sources', value: 'sources', icon: 'i-lucide-server' },
   { label: 'Discovery', value: 'discovery', icon: 'i-lucide-compass' },
+  { label: 'Duplicates', value: 'duplicates', icon: 'i-lucide-copy-x' },
+  { label: 'Collections', value: 'collections', icon: 'i-lucide-layers' },
 ]
 
 const VALID = TABS.map(t => t.value)
+// Legacy tab name aliases — redirect old bookmarks to the current tab value.
+const TAB_ALIASES: Record<string, string> = { settings: 'system' }
 const activeTab = ref(
-  VALID.includes(route.query.tab as string) ? (route.query.tab as string) : 'dashboard',
+  VALID.includes(route.query.tab as string)
+    ? (route.query.tab as string)
+    : TAB_ALIASES[route.query.tab as string] ?? 'dashboard',
 )
 
 watch(activeTab, tab => {
@@ -96,6 +102,8 @@ watch(activeTab, tab => {
           <AdminContentTab v-else-if="activeTab === 'content'" />
           <AdminSourcesTab v-else-if="activeTab === 'sources'" />
           <AdminDiscoveryTab v-else-if="activeTab === 'discovery'" />
+          <AdminDuplicatesTab v-else-if="activeTab === 'duplicates'" />
+          <AdminCollectionsTab v-else-if="activeTab === 'collections'" />
         </div>
       </div>
     </div>

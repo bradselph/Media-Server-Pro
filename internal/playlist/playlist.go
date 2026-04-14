@@ -357,7 +357,8 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 			if existing.MediaPath == input.MediaPath || (input.MediaID != "" && existing.MediaID == input.MediaID) {
 				m.mu.Unlock()
 				if err := m.playlistRepo.RemoveItem(ctx, item.ID); err != nil {
-					m.log.Warn("Failed to remove duplicate playlist item %s from DB: %v", item.ID, err)
+					m.log.Error("Failed to remove duplicate playlist item %s from DB: %v", item.ID, err)
+					return fmt.Errorf("failed to clean up duplicate playlist item: %w", err)
 				}
 				return nil
 			}

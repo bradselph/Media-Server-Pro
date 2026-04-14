@@ -43,6 +43,10 @@ export interface UserPreferences {
     show_continue_watching: boolean
     show_recommended: boolean
     show_trending: boolean
+    skip_interval: number
+    shuffle_enabled: boolean
+    show_buffer_bar: boolean
+    download_prompt: boolean
 }
 
 export interface User {
@@ -110,6 +114,66 @@ export interface MediaItem {
     is_mature: boolean
     mature_score?: number
     metadata?: Record<string, string>
+}
+
+export interface MediaChapter {
+    id: string
+    media_id: string
+    start_time: number
+    end_time?: number
+    label: string
+    created_at: string
+}
+
+export interface SmartCondition {
+    field: string
+    op: string
+    value: string
+}
+
+export interface SmartPlaylistRules {
+    match: 'all' | 'any'
+    conditions: SmartCondition[]
+    order_by: 'date_added' | 'name' | 'duration' | 'views'
+    order_dir: 'asc' | 'desc'
+    limit: number
+}
+
+export interface SmartPlaylist {
+    id: string
+    name: string
+    description?: string
+    user_id: string
+    rules: string  // JSON string
+    created_at: string
+    updated_at: string
+}
+
+export interface MediaCollectionItem {
+    media_id: string
+    media_name?: string
+    position: number
+}
+
+export interface MediaCollection {
+    id: string
+    name: string
+    description?: string
+    cover_media_id?: string
+    items?: MediaCollectionItem[]
+    created_at: string
+    updated_at: string
+}
+
+export interface AutoTagRule {
+    id: string
+    name: string
+    pattern: string
+    tags: string  // comma-separated
+    priority: number
+    enabled: boolean
+    created_at: string
+    updated_at: string
 }
 
 export interface MediaListParams {

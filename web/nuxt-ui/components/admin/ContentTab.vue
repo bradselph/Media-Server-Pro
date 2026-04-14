@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ReviewQueueItem, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities } from '~/types/api'
+import type { ReviewQueueItem, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities, AutoTagRule } from '~/types/api'
 import { formatBytes } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
 
@@ -12,6 +12,7 @@ const subTabs = [
   { label: 'Scanner', value: 'scanner', icon: 'i-lucide-scan' },
   { label: 'HLS Jobs', value: 'hls', icon: 'i-lucide-video' },
   { label: 'Validator', value: 'validator', icon: 'i-lucide-shield-check' },
+  { label: 'Auto-Tags', value: 'autotags', icon: 'i-lucide-tag' },
 ]
 
 // ── Scanner ────────────────────────────────────────────────────────────────────
@@ -256,10 +257,101 @@ async function saveScannerThresholds() {
   }
 }
 
+// ── Auto-tag rules ─────────────────────────────────────────────────────────────
+const autoTagRules = ref<AutoTagRule[]>([])
+const autoTagLoading = ref(false)
+const autoTagApplying = ref(false)
+const autoTagRuleForm = reactive({ name: '', pattern: '', tags: '', priority: 0, enabled: true })
+const autoTagFormOpen = ref(false)
+const autoTagEditTarget = ref<AutoTagRule | null>(null)
+const autoTagSaving = ref(false)
+const autoTagDeletingId = ref<string | null>(null)
+
+async function loadAutoTagRules() {
+  autoTagLoading.value = true
+  try {
+    autoTagRules.value = (await adminApi.listAutoTagRules()) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load rules', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    autoTagLoading.value = false
+  }
+}
+
+function openCreateRule() {
+  autoTagEditTarget.value = null
+  autoTagRuleForm.name = ''
+  autoTagRuleForm.pattern = ''
+  autoTagRuleForm.tags = ''
+  autoTagRuleForm.priority = 0
+  autoTagRuleForm.enabled = true
+  autoTagFormOpen.value = true
+}
+
+function openEditRule(rule: AutoTagRule) {
+  autoTagEditTarget.value = rule
+  autoTagRuleForm.name = rule.name
+  autoTagRuleForm.pattern = rule.pattern
+  autoTagRuleForm.tags = rule.tags
+  autoTagRuleForm.priority = rule.priority
+  autoTagRuleForm.enabled = rule.enabled
+  autoTagFormOpen.value = true
+}
+
+async function saveAutoTagRule() {
+  if (!autoTagRuleForm.name || !autoTagRuleForm.pattern || !autoTagRuleForm.tags) {
+    toast.add({ title: 'Name, pattern, and tags are required', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
+  autoTagSaving.value = true
+  try {
+    if (autoTagEditTarget.value) {
+      await adminApi.updateAutoTagRule(autoTagEditTarget.value.id, { ...autoTagRuleForm })
+      toast.add({ title: 'Rule updated', color: 'success', icon: 'i-lucide-check' })
+    } else {
+      await adminApi.createAutoTagRule({ ...autoTagRuleForm })
+      toast.add({ title: 'Rule created', color: 'success', icon: 'i-lucide-check' })
+    }
+    autoTagFormOpen.value = false
+    await loadAutoTagRules()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Save failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    autoTagSaving.value = false
+  }
+}
+
+async function deleteAutoTagRule(id: string) {
+  if (autoTagDeletingId.value) return
+  autoTagDeletingId.value = id
+  try {
+    await adminApi.deleteAutoTagRule(id)
+    autoTagRules.value = autoTagRules.value.filter(r => r.id !== id)
+    toast.add({ title: 'Rule deleted', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    autoTagDeletingId.value = null
+  }
+}
+
+async function applyAutoTagRules() {
+  autoTagApplying.value = true
+  try {
+    const result = await adminApi.applyAutoTagRules()
+    toast.add({ title: `Applied ${result.applied} rule(s) to ${result.items_affected} item(s)`, color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Apply failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    autoTagApplying.value = false
+  }
+}
+
 watch(subTab, (v) => {
   if (v === 'scanner') { loadScanner(); loadScannerConfig() }
   else if (v === 'hls') loadHLS()
   else if (v === 'validator') loadValidator()
+  else if (v === 'autotags') loadAutoTagRules()
 }, { immediate: true })
 </script>
 
@@ -527,6 +619,129 @@ watch(subTab, (v) => {
           <pre class="text-xs bg-muted rounded p-3 overflow-auto max-h-64">{{ JSON.stringify(validateResult, null, 2) }}</pre>
         </div>
       </UCard>
+    </div>
+
+    <!-- Auto-Tags -->
+    <div v-if="item.value === 'autotags'" class="space-y-4">
+      <!-- Header actions -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="text-sm text-muted">
+            Rules are matched against the media file path (case-insensitive substring). Tags are merged into existing tags.
+            Higher priority rules are applied first; only the first matching rule runs per item.
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <UButton
+            icon="i-lucide-play"
+            label="Apply All Rules"
+            size="sm"
+            color="primary"
+            variant="outline"
+            :loading="autoTagApplying"
+            @click="applyAutoTagRules"
+          />
+          <UButton
+            icon="i-lucide-plus"
+            label="New Rule"
+            size="sm"
+            color="primary"
+            @click="openCreateRule"
+          />
+          <UButton icon="i-lucide-refresh-cw" aria-label="Refresh rules" size="sm" variant="ghost" color="neutral" :loading="autoTagLoading" @click="loadAutoTagRules" />
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="autoTagLoading" class="flex justify-center py-8">
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5 text-primary" />
+      </div>
+
+      <!-- Empty -->
+      <div v-else-if="autoTagRules.length === 0" class="text-center py-10 text-muted text-sm">
+        <UIcon name="i-lucide-tag" class="size-8 mb-2" />
+        <p>No auto-tag rules yet.</p>
+        <p class="text-xs mt-1">Create a rule to automatically tag media based on their file path.</p>
+      </div>
+
+      <!-- Rules list -->
+      <UCard v-else>
+        <div class="divide-y divide-default">
+          <div
+            v-for="rule in autoTagRules"
+            :key="rule.id"
+            class="flex items-start gap-3 py-3"
+          >
+            <div class="flex-1 min-w-0 space-y-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-medium text-sm text-highlighted">{{ rule.name }}</span>
+                <UBadge
+                  :label="rule.enabled ? 'Enabled' : 'Disabled'"
+                  :color="rule.enabled ? 'success' : 'neutral'"
+                  variant="subtle"
+                  size="xs"
+                />
+                <UBadge v-if="rule.priority !== 0" :label="`Priority ${rule.priority}`" color="info" variant="subtle" size="xs" />
+              </div>
+              <div class="flex items-center gap-1 text-xs text-muted">
+                <UIcon name="i-lucide-folder-search" class="size-3.5 shrink-0" />
+                <span class="font-mono truncate">{{ rule.pattern }}</span>
+              </div>
+              <div class="flex flex-wrap gap-1 mt-0.5">
+                <UBadge
+                  v-for="tag in rule.tags.split(',').map(t => t.trim()).filter(Boolean)"
+                  :key="tag"
+                  :label="tag"
+                  color="primary"
+                  variant="subtle"
+                  size="xs"
+                />
+              </div>
+            </div>
+            <div class="flex gap-1 shrink-0">
+              <UButton icon="i-lucide-pencil" size="xs" variant="ghost" color="neutral" @click="openEditRule(rule)" />
+              <UButton
+                icon="i-lucide-trash-2"
+                size="xs"
+                variant="ghost"
+                color="error"
+                :loading="autoTagDeletingId === rule.id"
+                @click="deleteAutoTagRule(rule.id)"
+              />
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <!-- Create / Edit modal -->
+      <UModal
+        v-model:open="autoTagFormOpen"
+        :title="autoTagEditTarget ? 'Edit Auto-Tag Rule' : 'New Auto-Tag Rule'"
+      >
+        <template #body>
+          <div class="space-y-4">
+            <UFormField label="Name" required>
+              <UInput v-model="autoTagRuleForm.name" placeholder="e.g. Jazz Music" class="w-full" />
+            </UFormField>
+            <UFormField label="Path pattern" hint="Case-insensitive substring of the file path" required>
+              <UInput v-model="autoTagRuleForm.pattern" placeholder="e.g. /music/jazz" class="w-full font-mono" />
+            </UFormField>
+            <UFormField label="Tags" hint="Comma-separated — merged into existing tags" required>
+              <UInput v-model="autoTagRuleForm.tags" placeholder="e.g. jazz, instrumental, relaxing" class="w-full" />
+            </UFormField>
+            <UFormField label="Priority" hint="Higher = applied first (0 = default)">
+              <UInput v-model.number="autoTagRuleForm.priority" type="number" class="w-28" />
+            </UFormField>
+            <UFormField label="Enabled">
+              <UCheckbox v-model="autoTagRuleForm.enabled" label="Rule is active" />
+            </UFormField>
+          </div>
+        </template>
+        <template #footer>
+          <UButton :label="autoTagEditTarget ? 'Save' : 'Create'" color="primary" :loading="autoTagSaving" @click="saveAutoTagRule" />
+          <UButton label="Cancel" variant="ghost" color="neutral" @click="autoTagFormOpen = false" />
+        </template>
+      </UModal>
     </div>
 
         </div>

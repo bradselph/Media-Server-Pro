@@ -30,12 +30,21 @@ const ITEMS_PER_PAGE_OPTIONS = [
   { label: '96', value: 96 },
 ]
 
+const SKIP_INTERVAL_OPTIONS = [
+  { label: '5 seconds', value: 5 },
+  { label: '10 seconds (default)', value: 10 },
+  { label: '15 seconds', value: 15 },
+  { label: '30 seconds', value: 30 },
+  { label: '60 seconds', value: 60 },
+  { label: '90 seconds', value: 90 },
+]
+
 definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const router = useRouter()
-const { changePassword, getPreferences, updatePreferences, requestDataDeletion, deleteAccount } = useApiEndpoints()
+const { changePassword, adminChangePassword, getPreferences, updatePreferences, requestDataDeletion, deleteAccount } = useApiEndpoints()
 const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
 const { getUsage, getPermissions } = useStorageApi()
 
@@ -47,6 +56,20 @@ const toast = useToast()
 const storageUsage = ref<StorageUsage | null>(null)
 const permissionsInfo = ref<PermissionsInfo | null>(null)
 const myProfile = ref<UserProfile | null>(null)
+const resetRecLoading = ref(false)
+
+async function resetRecommendations() {
+  resetRecLoading.value = true
+  try {
+    await suggestionsApi.resetMyProfile()
+    myProfile.value = null
+    toast.add({ title: 'Recommendation history cleared', color: 'success', icon: 'i-lucide-check' })
+  } catch {
+    toast.add({ title: 'Failed to reset recommendations', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    resetRecLoading.value = false
+  }
+}
 
 async function loadStorageUsage() {
   try {
@@ -216,7 +239,11 @@ async function handleChangePassword() {
   }
   pwLoading.value = true
   try {
-    await changePassword(pw.current, pw.new)
+    if (authStore.isAdmin) {
+      await adminChangePassword(pw.current, pw.new)
+    } else {
+      await changePassword(pw.current, pw.new)
+    }
     toast.add({ title: 'Password changed', color: 'success', icon: 'i-lucide-check' })
     pw.current = ''; pw.new = ''; pw.confirm = ''
   } catch (e: unknown) {
@@ -456,6 +483,18 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
             </div>
           </div>
         </div>
+        <div class="mt-4 pt-3 border-t border-default">
+          <UButton
+            icon="i-lucide-rotate-ccw"
+            label="Reset Recommendations"
+            size="xs"
+            variant="outline"
+            color="neutral"
+            :loading="resetRecLoading"
+            @click="resetRecommendations"
+          />
+          <p class="text-xs text-muted mt-1.5">Clears your watch history and genre scores used to personalise recommendations.</p>
+        </div>
       </UCard>
 
       <!-- My Ratings -->
@@ -548,6 +587,12 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               :items="ITEMS_PER_PAGE_OPTIONS"
             />
           </UFormField>
+          <UFormField label="Skip Interval" description="How far J/L and mobile tap skip">
+            <USelect
+              v-model="prefs.skip_interval"
+              :items="SKIP_INTERVAL_OPTIONS"
+            />
+          </UFormField>
           <UFormField label="View Mode">
             <UButtonGroup>
               <UButton
@@ -570,6 +615,9 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               { key: 'show_continue_watching', label: 'Continue Watching' },
               { key: 'show_recommended', label: 'Recommended' },
               { key: 'show_trending', label: 'Trending' },
+              { key: 'shuffle_enabled', label: 'Shuffle by Default' },
+              { key: 'show_buffer_bar', label: 'Buffer Bar in Player' },
+              { key: 'download_prompt', label: 'Ask Quality on Download' },
             ]" :key="toggle.key" class="flex items-center gap-2">
               <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]" @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event" />
               <span class="text-sm">{{ toggle.label }}</span>
@@ -786,7 +834,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
 
         <p class="text-sm font-medium text-default mb-1">Delete Account Immediately</p>
         <p class="text-sm text-muted mb-3">Permanently delete your account and all associated data right now. This cannot be undone.</p>
-        <UButton icon="i-lucide-trash-2" label="Delete My Account" variant="outline" color="error" @click="selfDeleteOpen = true" />
+        <UButton icon="i-lucide-trash-2" label="Delete My Account" variant="outline" color="error" @click="selfDeleteOpen = true; selfDeleteError = null; selfDeletePassword = ''" />
 
         <UModal v-model:open="selfDeleteOpen" title="Delete Your Account" description="This is permanent and cannot be undone. All your data will be deleted immediately.">
           <template #body>

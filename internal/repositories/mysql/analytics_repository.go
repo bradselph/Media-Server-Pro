@@ -103,6 +103,13 @@ func (r *AnalyticsRepository) DeleteOlderThan(ctx context.Context, before string
 		Delete(&models.AnalyticsEvent{}).Error
 }
 
+// DeleteByMediaID deletes all analytics events for the given media ID.
+func (r *AnalyticsRepository) DeleteByMediaID(ctx context.Context, mediaID string) error {
+	return r.db.WithContext(ctx).
+		Where("media_id = ?", mediaID).
+		Delete(&models.AnalyticsEvent{}).Error
+}
+
 // CountByType returns event counts grouped by event type using a single SQL GROUP BY query.
 // Avoids the full in-memory table scan previously used by GetEventTypeCounts and GetEventStats.
 func (r *AnalyticsRepository) CountByType(ctx context.Context) (map[string]int, error) {

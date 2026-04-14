@@ -59,6 +59,7 @@ async function handleLogout() {
 }
 
 const mobileMenuOpen = ref(false)
+const shortcutsModal = ref<{ open: boolean } | null>(null)
 
 const navLinks = computed(() => {
   const links = [
@@ -69,6 +70,7 @@ const navLinks = computed(() => {
       { label: 'Categories', to: '/categories', icon: 'i-lucide-layers' },
       { label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' },
       { label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart' },
+      { label: 'History', to: '/history', icon: 'i-lucide-history' },
     )
     if (authStore.user?.permissions?.can_upload) {
       links.push({ label: 'Upload', to: '/upload', icon: 'i-lucide-upload' })
@@ -121,6 +123,15 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
         </nav>
 
         <div class="flex items-center gap-2">
+          <UButton
+            icon="i-lucide-keyboard"
+            aria-label="Keyboard shortcuts"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            class="hidden md:flex"
+            @click="shortcutsModal?.open && (shortcutsModal.open = !shortcutsModal.open)"
+          />
           <UButton
             :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
             :aria-label="colorMode.value === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
@@ -206,6 +217,12 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
         <p class="text-xs text-muted text-center">Media Server Pro v{{ serverVersion }}</p>
       </UContainer>
     </footer>
+
+    <!-- Mini player (appears when navigating away from player) -->
+    <MiniPlayer />
+
+    <!-- Global keyboard shortcuts reference (press ? anywhere) -->
+    <KeyboardShortcutsModal ref="shortcutsModal" />
 
     <!-- Age gate modal -->
     <UModal

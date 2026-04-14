@@ -238,6 +238,14 @@ func (m *Module) GetEventsByType(ctx context.Context, eventType string, limit in
 	return m.listEvents(ctx, repositories.AnalyticsFilter{Type: eventType, Limit: limit}, "Failed to get events by type: %v")
 }
 
+// DeleteEventsByMedia removes all analytics events for the given media ID.
+// Called when a media item is permanently deleted so orphaned event rows do not accumulate.
+func (m *Module) DeleteEventsByMedia(ctx context.Context, mediaID string) {
+	if err := m.eventRepo.DeleteByMediaID(ctx, mediaID); err != nil {
+		m.log.Warn("Failed to purge analytics events for deleted media %s: %v", mediaID, err)
+	}
+}
+
 // GetEventsByMedia returns events for a specific media item.
 func (m *Module) GetEventsByMedia(ctx context.Context, mediaID string, limit int) []models.AnalyticsEvent {
 	return m.listEvents(ctx, repositories.AnalyticsFilter{MediaID: mediaID, Limit: limit}, "Failed to get events by media: %v")

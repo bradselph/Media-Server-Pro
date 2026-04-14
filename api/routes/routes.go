@@ -393,6 +393,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET(pathMedia+"/categories", h.GetCategories)
 	api.GET(pathMedia+"/batch", h.GetBatchMedia)
 	api.GET(pathMedia+"/:id", h.GetMedia)
+	api.GET(pathMedia+"/:id/collections", h.GetMediaCollections)
 
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
@@ -456,6 +457,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/favorites/:media_id", requireAuth(), h.CheckFavorite)
 	api.DELETE("/favorites/:media_id", requireAuth(), h.RemoveFavorite)
 
+	// Chapters (scene markers / act chapters) — public read, auth write
+	api.GET("/chapters", h.ListChapters)
+	api.POST("/chapters", requireAuth(), h.CreateChapter)
+	api.PUT("/chapters/:id", requireAuth(), h.UpdateChapter)
+	api.DELETE("/chapters/:id", requireAuth(), h.DeleteChapter)
+
 	// Watch history routes (protected)
 	api.GET(pathWatchHistory, requireAuth(), h.GetWatchHistory)
 	api.DELETE(pathWatchHistory, requireAuth(), h.ClearWatchHistory)
@@ -477,6 +484,18 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.PUT(routePlaylistByID+"/reorder", requireAuth(), h.ReorderPlaylistItems)
 	api.DELETE(routePlaylistByID+"/clear", requireAuth(), h.ClearPlaylist)
 	api.POST(routePlaylistByID+"/copy", requireAuth(), h.CopyPlaylist)
+
+	// Smart playlists routes (protected)
+	// Collections (public read)
+	api.GET("/collections", h.ListCollections)
+	api.GET("/collections/:id", h.GetCollection)
+
+	api.GET("/smart-playlists", requireAuth(), h.ListSmartPlaylists)
+	api.POST("/smart-playlists", requireAuth(), h.CreateSmartPlaylist)
+	api.GET("/smart-playlists/:id", requireAuth(), h.GetSmartPlaylist)
+	api.PUT("/smart-playlists/:id", requireAuth(), h.UpdateSmartPlaylist)
+	api.DELETE("/smart-playlists/:id", requireAuth(), h.DeleteSmartPlaylist)
+	api.GET("/smart-playlists/:id/preview", requireAuth(), h.PreviewSmartPlaylist)
 
 	// Analytics routes
 	// POST /analytics/events — user auth (users submit their own events)
@@ -619,8 +638,23 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 
 	// Thumbnail admin routes
 	adminGrp.POST("/thumbnails/generate", h.GenerateThumbnail)
+	adminGrp.POST("/media/:id/thumbnail", h.UploadCustomThumbnail)
 	adminGrp.POST("/thumbnails/cleanup", h.CleanupThumbnails)
 	adminGrp.GET("/thumbnails/stats", h.GetThumbnailStats)
+
+	// Auto-tag rules
+	adminGrp.GET("/auto-tag-rules", h.ListAutoTagRules)
+	adminGrp.POST("/auto-tag-rules", h.CreateAutoTagRule)
+	adminGrp.PUT("/auto-tag-rules/:id", h.UpdateAutoTagRule)
+	adminGrp.DELETE("/auto-tag-rules/:id", h.DeleteAutoTagRule)
+	adminGrp.POST("/auto-tag-rules/apply", h.ApplyAutoTagRules)
+
+	// Collections (admin management)
+	adminGrp.POST("/collections", h.CreateCollection)
+	adminGrp.PUT("/collections/:id", h.UpdateCollection)
+	adminGrp.DELETE("/collections/:id", h.DeleteCollection)
+	adminGrp.POST("/collections/:id/items", h.AddCollectionItems)
+	adminGrp.DELETE("/collections/:id/items/:media_id", h.RemoveCollectionItem)
 
 	// HLS admin routes
 	adminGrp.GET("/hls/stats", h.GetHLSStats)
@@ -708,6 +742,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/receiver/stats", h.AdminReceiverGetStats)
 	adminGrp.DELETE("/receiver/slaves/:id", h.AdminReceiverRemoveSlave)
 	adminGrp.GET("/duplicates", h.AdminListDuplicates)
+	adminGrp.POST("/duplicates/scan", h.AdminScanLocalDuplicates)
 	adminGrp.POST("/duplicates/:id/resolve", h.AdminResolveDuplicate)
 
 	// Downloader routes (admin)

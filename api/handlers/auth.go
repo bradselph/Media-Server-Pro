@@ -334,7 +334,9 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 				Email:    "",
 				UserType: "admin",
 				Role:     models.RoleAdmin,
-			}); createErr != nil {
+			}); createErr != nil && !errors.Is(createErr, auth.ErrUserExists) {
+				// ErrUserExists means a concurrent request already created the record —
+				// that's fine, proceed to read it. Any other error is a real failure.
 				h.log.Warn("Could not create admin user record for preferences: %v", createErr)
 				writeError(c, http.StatusServiceUnavailable, "User record could not be created. Please try again later.")
 				return
@@ -624,9 +626,11 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 		"canCreatePlaylists": user.Permissions.CanCreatePlaylists,
 		"canViewMature":      user.Permissions.CanViewMature,
 		"canStream":          user.Permissions.CanStream,
+		// Always present so frontend can read all 7 flags without nil-checking.
+		// Non-admin users always get false; admins get their actual permission value.
+		"canDelete": false,
+		"canManage": false,
 	}
-	// Expose admin-only capabilities only to admin users; standard users have no
-	// business knowing the internal authorization flags they cannot hold.
 	if user.Role == models.RoleAdmin {
 		caps["canDelete"] = user.Permissions.CanDelete
 		caps["canManage"] = user.Permissions.CanManage
