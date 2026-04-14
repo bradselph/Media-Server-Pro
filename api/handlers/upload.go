@@ -13,30 +13,34 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-// requireUploadSessionAndConfig ensures upload module, session, CanUpload, and uploads enabled.
+// requireUploadSessionAndConfig ensures the upload module and config allow this request.
+// When cfg.Uploads.RequireAuth is true, an authenticated session with CanUpload is required.
+// When false, anonymous uploads are permitted (subject to storage quota checks being skipped).
 // Returns (session, user, cfg, true) or (nil, nil, nil, false) after writing an error.
 func (h *Handler) requireUploadSessionAndConfig(c *gin.Context) (session *models.Session, user *models.User, cfg *config.Config, ok bool) {
 	if !h.requireUpload(c) {
-		return nil, nil, nil, false
-	}
-	session = getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return nil, nil, nil, false
-	}
-	user = getUser(c)
-	if user == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return nil, nil, nil, false
-	}
-	if !user.Permissions.CanUpload {
-		writeError(c, http.StatusForbidden, "Upload not allowed for your account")
 		return nil, nil, nil, false
 	}
 	cfg = h.media.GetConfig()
 	if !cfg.Uploads.Enabled {
 		writeError(c, http.StatusForbidden, "Uploads are disabled")
 		return nil, nil, nil, false
+	}
+	session = getSession(c)
+	if cfg.Uploads.RequireAuth && session == nil {
+		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+		return nil, nil, nil, false
+	}
+	if session != nil {
+		user = getUser(c)
+		if user == nil {
+			writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+			return nil, nil, nil, false
+		}
+		if !user.Permissions.CanUpload {
+			writeError(c, http.StatusForbidden, "Upload not allowed for your account")
+			return nil, nil, nil, false
+		}
 	}
 	return session, user, cfg, true
 }
@@ -70,7 +74,11 @@ func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context, cfg *config.Config)
 
 // checkUploadStorageQuota returns false and writes an error if user would exceed quota. Otherwise true.
 // Re-reads storage_used from the DB to minimize the race window between concurrent uploads.
+// user may be nil for anonymous uploads (RequireAuth=false), in which case no quota applies.
 func (h *Handler) checkUploadStorageQuota(c *gin.Context, cfg *config.Config, user *models.User, fileHeaders []*multipart.FileHeader) bool {
+	if user == nil {
+		return true // anonymous uploads have no quota
+	}
 	userType := h.getUserType(cfg, user)
 	if userType == nil || userType.StorageQuota <= 0 {
 		return true
@@ -138,7 +146,11 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 	var registeredPaths []string
 
 	for _, fh := range fileHeaders {
-		result, err := h.upload.ProcessFileHeader(fh, upload.UploadScope{UserID: session.UserID, Category: category})
+		userID := ""
+		if session != nil {
+			userID = session.UserID
+		}
+		result, err := h.upload.ProcessFileHeader(fh, upload.UploadScope{UserID: userID, Category: category})
 		if err != nil {
 			h.log.Error("Upload failed for %s: %v", fh.Filename, err)
 			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
@@ -188,9 +200,8 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 	}
 
 	// Post-upload quota check using actual bytes written.
-	// The pre-check used client-reported sizes; this re-validates with real bytes
-	// to prevent bypasses where the client underreports the file size header.
-	if totalAdded > 0 && user.ID != "admin" {
+	// Skipped for anonymous uploads (user == nil) and the admin account.
+	if totalAdded > 0 && user != nil && user.ID != "admin" {
 		userType := h.getUserType(cfg, user)
 		if userType != nil && userType.StorageQuota > 0 {
 			// Re-read authoritative storage to account for concurrent uploads.
