@@ -121,6 +121,7 @@ type RateLimiter struct {
 // RateLimitConfig holds rate limiter configuration
 type RateLimitConfig struct {
 	RequestsPerMinute int           `json:"requests_per_minute"`
+	RateLimitWindow   time.Duration `json:"rate_limit_window"` // sliding window duration; defaults to 1 minute
 	BurstLimit        int           `json:"burst_limit"`
 	BurstWindow       time.Duration `json:"burst_window"`
 	BanDuration       time.Duration `json:"ban_duration"`
@@ -175,6 +176,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		},
 		rateLimiter: NewRateLimiter(RateLimitConfig{
 			RequestsPerMinute: secCfg.RateLimitRequests,
+			RateLimitWindow:   secCfg.RateLimitWindow,
 			BurstLimit:        secCfg.BurstLimit,
 			BurstWindow:       secCfg.BurstWindow,
 			BanDuration:       secCfg.BanDuration,
@@ -182,6 +184,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		}),
 		authRateLimiter: NewRateLimiter(RateLimitConfig{
 			RequestsPerMinute: authLimit,
+			RateLimitWindow:   secCfg.RateLimitWindow,
 			BurstLimit:        authBurst,
 			BurstWindow:       secCfg.BurstWindow,
 			BanDuration:       secCfg.BanDuration,
@@ -759,7 +762,11 @@ func (r *RateLimiter) CheckRequest(ip string) (allowed bool, remaining int, rese
 	defer r.mu.Unlock()
 
 	now := time.Now()
-	windowStart := now.Add(-1 * time.Minute)
+	rateLimitWindow := r.config.RateLimitWindow
+	if rateLimitWindow <= 0 {
+		rateLimitWindow = time.Minute // default to 1 minute if not configured
+	}
+	windowStart := now.Add(-rateLimitWindow)
 	burstStart := now.Add(-r.config.BurstWindow)
 
 	// Check if banned
