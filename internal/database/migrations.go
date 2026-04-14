@@ -534,7 +534,31 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 	if err := m.ensureSchemaForeignKeys(ctx); err != nil {
 		return err
 	}
+	if err := m.backfillMediaDuration(ctx); err != nil {
+		// Non-fatal: backfill failure should not block startup.
+		m.log.Warn("Duration backfill from validation_results failed (non-fatal): %v", err)
+	}
 	m.log.Info("Database schema is up to date")
+	return nil
+}
+
+// backfillMediaDuration copies duration values from validation_results into media_metadata
+// for all rows where media_metadata.duration is still 0 but validation_results.duration > 0.
+// This is a one-pass operation; rows already populated are skipped by the WHERE clause.
+func (m *Module) backfillMediaDuration(ctx context.Context) error {
+	result, err := m.sqlDB.ExecContext(ctx, `
+		UPDATE media_metadata mm
+		JOIN validation_results vr ON mm.path = vr.path
+		SET mm.duration = vr.duration
+		WHERE mm.duration = 0 AND vr.duration > 0
+	`)
+	if err != nil {
+		return fmt.Errorf("backfill duration: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows > 0 {
+		m.log.Info("Backfilled duration for %d media items from validation_results", rows)
+	}
 	return nil
 }
 
