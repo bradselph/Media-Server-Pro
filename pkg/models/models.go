@@ -474,6 +474,28 @@ type AutoTagRule struct {
 
 func (AutoTagRule) TableName() string { return "auto_tag_rules" }
 
+// MediaCollection groups related media items into a named series or collection.
+type MediaCollection struct {
+	ID           string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	Name         string    `json:"name" db:"name" gorm:"size:255;not null"`
+	Description  string    `json:"description,omitempty" db:"description" gorm:"type:text"`
+	CoverMediaID string    `json:"cover_media_id,omitempty" db:"cover_media_id" gorm:"size:36"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
+}
+
+func (MediaCollection) TableName() string { return "media_collections" }
+
+// MediaCollectionItem links a media item into a collection with an optional order.
+type MediaCollectionItem struct {
+	CollectionID string    `json:"collection_id" db:"collection_id" gorm:"primaryKey;size:36"`
+	MediaID      string    `json:"media_id" db:"media_id" gorm:"primaryKey;size:36"`
+	Position     int       `json:"position" db:"position" gorm:"default:0"`
+	AddedAt      time.Time `json:"added_at" db:"added_at" gorm:"autoCreateTime"`
+}
+
+func (MediaCollectionItem) TableName() string { return "media_collection_items" }
+
 // AnalyticsEvent represents a tracked event
 type AnalyticsEvent struct {
 	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`

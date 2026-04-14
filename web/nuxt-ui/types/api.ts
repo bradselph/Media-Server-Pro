@@ -149,6 +149,22 @@ export interface SmartPlaylist {
     updated_at: string
 }
 
+export interface MediaCollectionItem {
+    media_id: string
+    media_name?: string
+    position: number
+}
+
+export interface MediaCollection {
+    id: string
+    name: string
+    description?: string
+    cover_media_id?: string
+    items?: MediaCollectionItem[]
+    created_at: string
+    updated_at: string
+}
+
 export interface AutoTagRule {
     id: string
     name: string

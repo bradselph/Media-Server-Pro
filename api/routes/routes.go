@@ -393,6 +393,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET(pathMedia+"/categories", h.GetCategories)
 	api.GET(pathMedia+"/batch", h.GetBatchMedia)
 	api.GET(pathMedia+"/:id", h.GetMedia)
+	api.GET(pathMedia+"/:id/collections", h.GetMediaCollections)
 
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
@@ -485,6 +486,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.POST(routePlaylistByID+"/copy", requireAuth(), h.CopyPlaylist)
 
 	// Smart playlists routes (protected)
+	// Collections (public read)
+	api.GET("/collections", h.ListCollections)
+	api.GET("/collections/:id", h.GetCollection)
+
 	api.GET("/smart-playlists", requireAuth(), h.ListSmartPlaylists)
 	api.POST("/smart-playlists", requireAuth(), h.CreateSmartPlaylist)
 	api.GET("/smart-playlists/:id", requireAuth(), h.GetSmartPlaylist)
@@ -643,6 +648,13 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.PUT("/auto-tag-rules/:id", h.UpdateAutoTagRule)
 	adminGrp.DELETE("/auto-tag-rules/:id", h.DeleteAutoTagRule)
 	adminGrp.POST("/auto-tag-rules/apply", h.ApplyAutoTagRules)
+
+	// Collections (admin management)
+	adminGrp.POST("/collections", h.CreateCollection)
+	adminGrp.PUT("/collections/:id", h.UpdateCollection)
+	adminGrp.DELETE("/collections/:id", h.DeleteCollection)
+	adminGrp.POST("/collections/:id/items", h.AddCollectionItems)
+	adminGrp.DELETE("/collections/:id/items/:media_id", h.RemoveCollectionItem)
 
 	// HLS admin routes
 	adminGrp.GET("/hls/stats", h.GetHLSStats)

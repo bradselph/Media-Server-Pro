@@ -20,6 +20,7 @@ const TABS = [
   { label: 'Sources', value: 'sources', icon: 'i-lucide-server' },
   { label: 'Discovery', value: 'discovery', icon: 'i-lucide-compass' },
   { label: 'Duplicates', value: 'duplicates', icon: 'i-lucide-copy-x' },
+  { label: 'Collections', value: 'collections', icon: 'i-lucide-layers' },
 ]
 
 const VALID = TABS.map(t => t.value)
@@ -102,6 +103,7 @@ watch(activeTab, tab => {
           <AdminSourcesTab v-else-if="activeTab === 'sources'" />
           <AdminDiscoveryTab v-else-if="activeTab === 'discovery'" />
           <AdminDuplicatesTab v-else-if="activeTab === 'duplicates'" />
+          <AdminCollectionsTab v-else-if="activeTab === 'collections'" />
         </div>
       </div>
     </div>

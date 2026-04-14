@@ -489,6 +489,26 @@ var tableDefs = []struct {
 				updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				INDEX idx_auto_tag_rules_priority (priority)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+		{"media_collections", `
+			CREATE TABLE IF NOT EXISTS media_collections (
+				id             VARCHAR(36)  PRIMARY KEY,
+				name           VARCHAR(255) NOT NULL,
+				description    TEXT,
+				cover_media_id VARCHAR(36),
+				created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_media_collections_name (name)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+		{"media_collection_items", `
+			CREATE TABLE IF NOT EXISTS media_collection_items (
+				collection_id VARCHAR(36) NOT NULL,
+				media_id      VARCHAR(36) NOT NULL,
+				position      INT         NOT NULL DEFAULT 0,
+				added_at      TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (collection_id, media_id),
+				INDEX idx_collection_items_media (media_id),
+				INDEX idx_collection_items_position (collection_id, position)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	}
 
 // ensureSchema idempotently creates all required tables and columns.

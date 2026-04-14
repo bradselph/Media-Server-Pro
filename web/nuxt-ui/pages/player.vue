@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem } from '~/types/api'
+import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem, MediaCollection } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes, formatBitrate } from '~/utils/format'
 import { useQueueStore } from '~/stores/queue'
+import { useCollectionsApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
@@ -284,6 +285,10 @@ const thumbnailPreviews = ref<string[]>([])
 const similar = ref<Suggestion[]>([])
 const personalized = ref<Suggestion[]>([])
 
+// Collections this media belongs to
+const collectionsApi = useCollectionsApi()
+const mediaCollections = ref<MediaCollection[]>([])
+
 // Mature content gate
 const canViewMature = computed(() =>
   authStore.isLoggedIn &&
@@ -318,6 +323,7 @@ async function loadMedia(id: string) {
   error.value = ''
   similar.value = []
   personalized.value = []
+  mediaCollections.value = []
   thumbnailPreviews.value = []
   try {
     media.value = await mediaApi.getById(id)
@@ -331,6 +337,7 @@ async function loadMedia(id: string) {
     })
     loadChapters(id).catch(() => {})
     suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch(() => {})
+    collectionsApi.getForMedia(id).then(r => { mediaCollections.value = r ?? [] }).catch(() => {})
     if (authStore.isLoggedIn) {
       suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch(() => {})
     }
@@ -1451,6 +1458,39 @@ watch(mediaId, (id, oldId) => {
 
       <!-- Sidebar: similar + personalized -->
       <div class="space-y-6 max-md:px-4 max-md:pb-6 md:pb-0">
+        <!-- Collections this media belongs to -->
+        <div v-if="mediaCollections.length > 0" class="space-y-3">
+          <h3 class="font-semibold text-highlighted">In Collection</h3>
+          <div
+            v-for="col in mediaCollections"
+            :key="col.id"
+            class="space-y-1.5"
+          >
+            <p class="text-xs font-semibold text-muted uppercase tracking-wide">{{ col.name }}</p>
+            <div class="space-y-1">
+              <NuxtLink
+                v-for="(item, idx) in (col.items ?? [])"
+                :key="item.media_id"
+                :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+                class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors text-sm"
+                :class="item.media_id === mediaId ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted hover:text-default'"
+              >
+                <span class="text-xs w-4 text-right shrink-0 opacity-60">{{ idx + 1 }}</span>
+                <div class="w-10 aspect-video rounded overflow-hidden bg-muted shrink-0">
+                  <img
+                    :src="`/thumbnail?id=${encodeURIComponent(item.media_id)}`"
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                    @error="($event.target as HTMLImageElement).style.display = 'none'"
+                  />
+                </div>
+                <span class="flex-1 truncate text-xs">{{ item.media_name || item.media_id }}</span>
+                <UIcon v-if="item.media_id === mediaId" name="i-lucide-play" class="size-3 shrink-0 text-primary" />
+              </NuxtLink>
+            </div>
+          </div>
+        </div>
+
         <!-- Similar media -->
         <div v-if="similar.length > 0" class="space-y-3">
           <h3 class="font-semibold text-highlighted">Similar Media</h3>

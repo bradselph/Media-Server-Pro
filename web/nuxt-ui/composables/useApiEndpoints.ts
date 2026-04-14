@@ -71,6 +71,8 @@ import type {
     ScheduledTask,
     SecurityStats,
     AutoTagRule,
+    MediaCollection,
+    MediaCollectionItem,
     SmartPlaylist,
     ServerSettings,
     ServerStatus,
@@ -832,5 +834,29 @@ export function useChaptersApi() {
         update: (id: string, data: { start_time?: number; end_time?: number; label?: string }) =>
             api.put<MediaChapter>(`/api/chapters/${encodeURIComponent(id)}`, data),
         delete: (id: string) => api.delete<void>(`/api/chapters/${encodeURIComponent(id)}`),
+    }
+}
+
+
+// ── Collections ───────────────────────────────────────────────────────────────
+
+export function useCollectionsApi() {
+    const adminBase = '/api/admin'
+    return {
+        list: () => api.get<MediaCollection[]>('/api/collections'),
+        get: (id: string) => api.get<MediaCollection>(`/api/collections/${encodeURIComponent(id)}`),
+        getForMedia: (mediaId: string) => api.get<MediaCollection[]>(`/api/media/${encodeURIComponent(mediaId)}/collections`),
+        create: (data: { name: string; description?: string; cover_media_id?: string }) =>
+            api.post<MediaCollection>(`${adminBase}/collections`, data),
+        update: (id: string, data: Partial<{ name: string; description: string; cover_media_id: string }>) =>
+            api.put<MediaCollection>(`${adminBase}/collections/${encodeURIComponent(id)}`, data),
+        delete: (id: string) => api.delete<void>(`${adminBase}/collections/${encodeURIComponent(id)}`),
+        addItems: (collectionId: string, mediaIds: string[], positionStart = 0) =>
+            api.post<{ message: string; count: number }>(`${adminBase}/collections/${encodeURIComponent(collectionId)}/items`, {
+                media_ids: mediaIds,
+                position_start: positionStart,
+            }),
+        removeItem: (collectionId: string, mediaId: string) =>
+            api.delete<void>(`${adminBase}/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(mediaId)}`),
     }
 }
