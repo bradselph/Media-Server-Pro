@@ -75,7 +75,7 @@ const editOpen = computed({
   get: () => !!editTarget.value,
   set: (v: boolean) => { if (!v) editTarget.value = null },
 })
-const editForm = reactive({ name: '', category: '', is_mature: false, tags: '' })
+const editForm = reactive({ name: '', category: '', is_mature: false, tags: '', description: '' })
 const editSaving = ref(false)
 
 function openEdit(item: MediaItem) {
@@ -84,6 +84,7 @@ function openEdit(item: MediaItem) {
   editForm.category = item.category ?? ''
   editForm.is_mature = item.is_mature ?? false
   editForm.tags = (item.tags ?? []).join(', ')
+  editForm.description = (item.metadata?.description ?? '') as string
 }
 
 async function saveEdit() {
@@ -95,6 +96,7 @@ async function saveEdit() {
       category: editForm.category,
       is_mature: editForm.is_mature,
       tags: editForm.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
+      metadata: { ...editTarget.value.metadata, description: editForm.description },
     })
     toast.add({ title: 'Media updated', color: 'success', icon: 'i-lucide-check' })
     editTarget.value = null
@@ -227,7 +229,25 @@ watch(() => params.page, () => {
   selectedIds.value = new Set()
 })
 
-onMounted(() => { load(); loadThumbStats() })
+const route = useRoute()
+const mediaApi = useMediaApi()
+onMounted(async () => {
+  await load()
+  loadThumbStats()
+  // Auto-open edit modal when linked from player page (?edit=mediaId)
+  const editId = route.query.edit as string | undefined
+  if (editId) {
+    const item = items.value.find(i => i.id === editId)
+    if (item) openEdit(item)
+    else {
+      // Item may not be on page 1; fetch it directly via public media endpoint
+      try {
+        const found = await mediaApi.getById(editId)
+        if (found) openEdit(found)
+      } catch { /* best-effort */ }
+    }
+  }
+})
 onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
 </script>
 
@@ -508,6 +528,9 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
           </UFormField>
           <UFormField label="Tags" hint="Comma-separated (e.g. action, sci-fi)">
             <UInput v-model="editForm.tags" placeholder="e.g. action, comedy" class="w-full" />
+          </UFormField>
+          <UFormField label="Description">
+            <UTextarea v-model="editForm.description" placeholder="Short description (stored in metadata)" :rows="3" class="w-full" />
           </UFormField>
           <UFormField label="Mature content">
             <UCheckbox v-model="editForm.is_mature" label="Mark as 18+ content" />

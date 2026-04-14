@@ -1168,6 +1168,7 @@ watch(mediaId, (id, oldId) => {
               <span class="text-muted">Quality:</span> {{ currentQualityLabel }}
             </div>
           </div>
+          <p v-if="media.metadata?.description" class="text-sm text-muted mt-3">{{ media.metadata.description }}</p>
           <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1.5 mt-3">
             <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
           </div>
@@ -1213,6 +1214,15 @@ watch(mediaId, (id, oldId) => {
               :color="linkCopied ? 'success' : 'neutral'"
               size="sm"
               @click="copyTimestampLink"
+            />
+            <UButton
+              v-if="authStore.isAdmin"
+              icon="i-lucide-pencil"
+              label="Edit"
+              variant="outline"
+              color="neutral"
+              size="sm"
+              :to="`/admin?tab=media&edit=${encodeURIComponent(media.id)}`"
             />
           </div>
 
