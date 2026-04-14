@@ -91,7 +91,7 @@ func TestGinRequestID_UniquePerRequest(t *testing.T) {
 
 func TestGinSecurityHeaders_AlwaysSet(t *testing.T) {
 	r := gin.New()
-	r.Use(GinSecurityHeaders("default-src 'self'", 0))
+	r.Use(GinSecurityHeaders(func() (string, int) { return "default-src 'self'", 0 }))
 	r.GET("/test", func(c *gin.Context) { c.String(200, "ok") })
 
 	w := httptest.NewRecorder()
@@ -115,7 +115,7 @@ func TestGinSecurityHeaders_AlwaysSet(t *testing.T) {
 
 func TestGinSecurityHeaders_NoCSP(t *testing.T) {
 	r := gin.New()
-	r.Use(GinSecurityHeaders("", 0))
+	r.Use(GinSecurityHeaders(func() (string, int) { return "", 0 }))
 	r.GET("/test", func(c *gin.Context) { c.String(200, "ok") })
 
 	w := httptest.NewRecorder()
@@ -129,7 +129,7 @@ func TestGinSecurityHeaders_NoCSP(t *testing.T) {
 
 func TestGinSecurityHeaders_NoHSTS_NotHTTPS(t *testing.T) {
 	r := gin.New()
-	r.Use(GinSecurityHeaders("", 31536000))
+	r.Use(GinSecurityHeaders(func() (string, int) { return "", 31536000 }))
 	r.GET("/test", func(c *gin.Context) { c.String(200, "ok") })
 
 	w := httptest.NewRecorder()

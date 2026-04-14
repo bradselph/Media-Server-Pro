@@ -351,16 +351,28 @@ func buildConfigServerMap(cfg *config.Config, _ []string) map[string]any {
 		"port":         cfg.Server.Port,
 		"host":         cfg.Server.Host,
 		"enable_https": cfg.Server.EnableHTTPS,
+		"cert_file":    cfg.Server.CertFile,
+		"key_file":     cfg.Server.KeyFile,
 	}
 }
 
 func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"enable_thumbnails":  cfg.Features.EnableThumbnails,
-		"enable_hls":         cfg.Features.EnableHLS,
-		"enable_analytics":   cfg.Features.EnableAnalytics,
-		"enable_uploads":     cfg.Features.EnableUploads,
-		"enable_huggingface": cfg.Features.EnableHuggingFace,
+		"enable_thumbnails":         cfg.Features.EnableThumbnails,
+		"enable_hls":                cfg.Features.EnableHLS,
+		"enable_analytics":          cfg.Features.EnableAnalytics,
+		"enable_uploads":            cfg.Features.EnableUploads,
+		"enable_huggingface":        cfg.Features.EnableHuggingFace,
+		"enable_playlists":          cfg.Features.EnablePlaylists,
+		"enable_suggestions":        cfg.Features.EnableSuggestions,
+		"enable_auto_discovery":     cfg.Features.EnableAutoDiscovery,
+		"enable_mature_scanner":     cfg.Features.EnableMatureScanner,
+		"enable_remote_media":       cfg.Features.EnableRemoteMedia,
+		"enable_receiver":           cfg.Features.EnableReceiver,
+		"enable_extractor":          cfg.Features.EnableExtractor,
+		"enable_crawler":            cfg.Features.EnableCrawler,
+		"enable_duplicate_detection": cfg.Features.EnableDuplicateDetection,
+		"enable_downloader":         cfg.Features.EnableDownloader,
 	}
 }
 
@@ -368,8 +380,18 @@ func buildConfigSecurityMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
 		"rate_limit_enabled":  cfg.Security.RateLimitEnabled,
 		"rate_limit_requests": cfg.Security.RateLimitRequests,
+		"rate_limit_window":   cfg.Security.RateLimitWindow,
+		"burst_limit":         cfg.Security.BurstLimit,
+		"auth_rate_limit":     cfg.Security.AuthRateLimit,
+		"auth_burst_limit":    cfg.Security.AuthBurstLimit,
+		"violations_for_ban":  cfg.Security.ViolationsForBan,
 		"enable_ip_whitelist": cfg.Security.EnableIPWhitelist,
 		"enable_ip_blacklist": cfg.Security.EnableIPBlacklist,
+		"csp_enabled":         cfg.Security.CSPEnabled,
+		"hsts_enabled":        cfg.Security.HSTSEnabled,
+		"hsts_max_age":        cfg.Security.HSTSMaxAge,
+		"cors_enabled":        cfg.Security.CORSEnabled,
+		"max_file_size_mb":    cfg.Security.MaxFileSizeMB,
 	}
 }
 
@@ -386,14 +408,16 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]interface{} {
 		})
 	}
 	return map[string]interface{}{
-		"enabled":           cfg.HLS.Enabled,
-		"auto_generate":     cfg.HLS.AutoGenerate,
-		"concurrent_limit":  cfg.HLS.ConcurrentLimit,
-		"segment_duration":  cfg.HLS.SegmentDuration,
-		"cleanup_enabled":   cfg.HLS.CleanupEnabled,
-		"retention_minutes": cfg.HLS.RetentionMinutes,
-		"lazy_transcode":    cfg.HLS.LazyTranscode,
-		"quality_profiles":  profiles,
+		"enabled":                    cfg.HLS.Enabled,
+		"auto_generate":              cfg.HLS.AutoGenerate,
+		"concurrent_limit":           cfg.HLS.ConcurrentLimit,
+		"segment_duration":           cfg.HLS.SegmentDuration,
+		"cleanup_enabled":            cfg.HLS.CleanupEnabled,
+		"retention_minutes":          cfg.HLS.RetentionMinutes,
+		"lazy_transcode":             cfg.HLS.LazyTranscode,
+		"cdn_base_url":               cfg.HLS.CDNBaseURL,
+		"pre_generate_interval_hours": cfg.HLS.PreGenerateIntervalHours,
+		"quality_profiles":           profiles,
 	}
 }
 
@@ -412,14 +436,16 @@ func buildConfigThumbnailsMap(cfg *config.Config, _ []string) map[string]interfa
 		"video_interval":     cfg.Thumbnails.VideoInterval,
 		"preview_count":      cfg.Thumbnails.PreviewCount,
 		"generate_on_access": cfg.Thumbnails.GenerateOnAccess,
+		"worker_count":       cfg.Thumbnails.WorkerCount,
 	}
 }
 
 func buildConfigAnalyticsMap(cfg *config.Config, _ []string) map[string]interface{} {
 	return map[string]interface{}{
-		"enabled":        cfg.Features.EnableAnalytics,
+		"enabled":        cfg.Analytics.Enabled,
 		"track_playback": cfg.Analytics.TrackPlayback,
 		"track_views":    cfg.Analytics.TrackViews,
+		"retention_days": cfg.Analytics.RetentionDays,
 	}
 }
 

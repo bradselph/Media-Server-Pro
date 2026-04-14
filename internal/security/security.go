@@ -121,6 +121,7 @@ type RateLimiter struct {
 // RateLimitConfig holds rate limiter configuration
 type RateLimitConfig struct {
 	RequestsPerMinute int           `json:"requests_per_minute"`
+	RateLimitWindow   time.Duration `json:"rate_limit_window"` // sliding window duration; defaults to 1 minute
 	BurstLimit        int           `json:"burst_limit"`
 	BurstWindow       time.Duration `json:"burst_window"`
 	BanDuration       time.Duration `json:"ban_duration"`
@@ -175,6 +176,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		},
 		rateLimiter: NewRateLimiter(RateLimitConfig{
 			RequestsPerMinute: secCfg.RateLimitRequests,
+			RateLimitWindow:   secCfg.RateLimitWindow,
 			BurstLimit:        secCfg.BurstLimit,
 			BurstWindow:       secCfg.BurstWindow,
 			BanDuration:       secCfg.BanDuration,
@@ -182,6 +184,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		}),
 		authRateLimiter: NewRateLimiter(RateLimitConfig{
 			RequestsPerMinute: authLimit,
+			RateLimitWindow:   secCfg.RateLimitWindow,
 			BurstLimit:        authBurst,
 			BurstWindow:       secCfg.BurstWindow,
 			BanDuration:       secCfg.BanDuration,
@@ -224,6 +227,21 @@ func (m *Module) Start(_ context.Context) error {
 	// Start rate limiter cleanup (also cleans expired IP list entries)
 	m.rateLimiter.StartCleanup(m.whitelist, m.blacklist)
 	m.authRateLimiter.StartCleanup(nil, nil)
+
+	// Hot-reload rate limiter limits when security config changes.
+	m.config.OnChange(func(cfg *config.Config) {
+		secCfg := cfg.Security
+		m.rateLimiter.SetLimits(secCfg.RateLimitRequests, secCfg.BurstLimit, secCfg.ViolationsForBan)
+		authLimit := secCfg.AuthRateLimit
+		if authLimit <= 0 {
+			authLimit = 20
+		}
+		authBurst := secCfg.AuthBurstLimit
+		if authBurst <= 0 {
+			authBurst = 5
+		}
+		m.authRateLimiter.SetLimits(authLimit, authBurst, secCfg.ViolationsForBan)
+	})
 
 	m.mu.Lock()
 	m.healthy = true
@@ -753,13 +771,27 @@ func (r *RateLimiter) StopCleanup() {
 	})
 }
 
+// SetLimits atomically updates the per-request and burst limits used by CheckRequest.
+// Safe to call from a config watcher goroutine while requests are in flight.
+func (r *RateLimiter) SetLimits(requestsPerMinute, burstLimit, violationsForBan int) {
+	r.mu.Lock()
+	r.config.RequestsPerMinute = requestsPerMinute
+	r.config.BurstLimit = burstLimit
+	r.config.ViolationsForBan = violationsForBan
+	r.mu.Unlock()
+}
+
 // CheckRequest checks if a request should be allowed
 func (r *RateLimiter) CheckRequest(ip string) (allowed bool, remaining int, resetAt time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	now := time.Now()
-	windowStart := now.Add(-1 * time.Minute)
+	rateLimitWindow := r.config.RateLimitWindow
+	if rateLimitWindow <= 0 {
+		rateLimitWindow = time.Minute // default to 1 minute if not configured
+	}
+	windowStart := now.Add(-rateLimitWindow)
 	burstStart := now.Add(-r.config.BurstWindow)
 
 	// Check if banned

@@ -128,7 +128,9 @@ func isHTTPS(c *gin.Context) bool {
 }
 
 // GinSecurityHeaders adds security headers (CSP, HSTS, X-Frame-Options, etc.)
-func GinSecurityHeaders(csp string, hstsMaxAge int) gin.HandlerFunc {
+// The getCfg function is called on every request so changes to CSP/HSTS config
+// take effect immediately without a server restart.
+func GinSecurityHeaders(getCfg func() (csp string, hstsMaxAge int)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
@@ -136,6 +138,7 @@ func GinSecurityHeaders(csp string, hstsMaxAge int) gin.HandlerFunc {
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
 
+		csp, hstsMaxAge := getCfg()
 		if csp != "" {
 			c.Header("Content-Security-Policy", csp)
 		}
