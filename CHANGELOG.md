@@ -1,5 +1,90 @@
 # Changelog
 
+## [1.4.0] - 2026-04-14 (minor)
+
+- fix(config): complete GetConfigMap coverage + hot-reload security/CSP/rate-limits
+- fix(features): enforce feature flags at request time for all toggleable modules
+- fix(security): enforce configured RateLimitWindow in sliding-window rate limiter
+- fix(config,admin): wire admin UI settings to backend enforcement
+- fix(collections): surface DB errors on Find() calls in collection handlers
+- fix(admin,db,ux): round 3 debug team audit fixes
+- fix(security,api): round 2 debug team audit fixes
+- fix(security,perf,memory): round 1 debug team audit fixes
+- fix(index): guard stale batch callbacks with loadSeq check
+- fix: close 3 gaps found in audit of recent wishlist features
+- feat(collections): media collection / series grouping
+- feat(ui): global keyboard shortcuts cheat-sheet modal
+- feat(frontend): watch history page with resume, progress, and filter
+- feat(admin): auto-tag rules editor (directory-based path tagging)
+- feat(admin,thumbnails): custom thumbnail upload per media item
+- feat(admin): duplicate detection + merge UI
+- feat(playlists): smart rule-based playlists
+- feat(player,layout): mini-player floating bar
+- feat(player,index): ephemeral playback queue
+- feat(chapters): scene markers / act chapters feature
+- feat(admin,player): per-item metadata editing with description field
+- feat(player,prefs): skip interval, shuffle, repeat-all, buffer bar, download quality selector
+- fix(player,playlists,profile): upNext race, sidebar count sync, modal state, reset recommendations
+- feat(player,ui): mobile player UX + per-card playlist quick-add
+- fix(upload,auth,ui): quota bypass, admin prefs race, pagination state
+- fix(profile): route admin password change to correct endpoint
+- fix(admin): add missing downloader to module health list; fix deletion-requests 500 panic; skip guest IP profiles in suggestions persist
+- fix(suggestions): pass actual media duration to RecordView instead of hardcoded 0
+- fix(cleanup): purge analytics_events and playback_positions on media delete
+- fix(player): show duration from video element when DB stores 0; fix admin tab alias
+- fix: always include canDelete/canManage in permissions response; surface playlist orphan error
+- refactor: extract redirectToLogin helper, add buildQS utility, fix timer leaks
+- Update .gitignore
+- fix(contract): fix breaking field name mismatches in Extractor and Crawler types
+- fix(contract): round-2 backend-to-frontend type alignment
+- fix(contract): align frontend types and composables with backend responses
+- fix(player): reset position on completion so rewatching starts from beginning
+- feat(media): propagate duration to all card contexts for consistent display
+- fix(categories): use getDisplayTitle() for card titles and improve empty state UX
+- fix(admin): type config section names in SystemSettingsPanel to catch typos at compile time
+- fix(misc): timestamp warnings, prefs upsert, salt comment, SSRF DNS note, canvas resize, DDL note
+- fix(tasks/auth): typed error sentinels for task ops, count admins without DB query
+- fix(misc): config restart hint, bulk user admin guard, RSS cache, disk check, crawler SSRF
+- fix(misc): extractor conn reuse, downloader dial timeout, updater chmod rollback
+- fix(misc): probe order, classify dedup, config watcher ordering, analytics cap, cache lock scope
+- fix(media): eliminate update/stable-ID races and cleanInactiveJob orphan TOCTOU
+- fix(player): remove dead touchend branch from onSeekBarTouch in PlayerControls
+- fix(agegate): validate XFF candidates as IPs; fix verifiedIPs TOCTOU size check
+- fix(media): make RemoveMedia DB delete synchronous to prevent goroutine accumulation
+- fix(tasks): check ctx.Err() inside RunNow goroutine before executing task
+- fix(tasks): self-restart runTaskLoop when task is re-enabled during shutdown race
+- fix(config): warn when LockoutDuration=0 disables brute-force protection
+- fix(auth): broaden wantsDemote check to catch any role change away from admin
+- fix(db): apply default limit of 1000 in ListFiltered when Limit=0
+- fix(thumbnails): remove partial output files on audio thumbnail ffmpeg failure
+- fix(thumbnails): add panic recovery in worker to prevent pool exhaustion
+- fix(admin): validate IP format in UnbanIP handler
+- fix(frontend): redirect non-admin logged-in users to home instead of admin-login
+- fix(player): clear stale timers on media switch; fix PiP desync; EQ resume for video; remove no-op AbortController
+- fix(admin): roll back remote source create/delete if config write fails
+- fix(admin): return 500 when SetMatureFlag fails after scanner ApproveContent/RejectContent
+- fix(frontend): change bulkAddPlaylistId type from null to undefined for USelect v-model
+- fix(frontend): store HLS network retry timer; reset consecutiveErrors on cleanup
+- fix(auth): propagate original DB error from loadUserAndCache instead of masking as ErrUserNotFound
+- fix(startup): add 30s timeout to storage backend initialization context
+- fix(auth): bound API token cleanup and last-used goroutines with sessionUpdateSem
+- fix(hls): lazy transcode master playlist only advertises transcoded qualities
+- fix(frontend): remove auth middleware from categories page to allow guest browse
+- fix(frontend): replace abortNavigation() with redirect-to-login in auth middleware
+- fix(frontend): replace deprecated :options with :items on bulk playlist USelect
+- fix(security): add directories and logging to configDenyList
+- fix(security): block INTO OUTFILE/DUMPFILE; strip SQL comments before keyword check; add MAX_EXECUTION_TIME
+- fix(security): remove api_key query-string fallback from WebSocket auth
+- fix(security): block IPv4-mapped IPv6 addresses in SSRF protection
+- fix(security): equalise response time on disabled-account login to prevent username enumeration
+- fix(auth): store admin sessions in adminSessions map; fix Logout/LogoutAdmin to check both maps
+- fix(frontend): force thumbnail reload after login to clear censored image cache
+- fix(lifecycle): prevent systemd from skipping restart after update
+- fix(auth): restrict API tokens to admins, hide permissions from standard users, sync prefs on save
+- Merge branch 'main' into development
+- fix(pagination): prevent item doubling, missing results, and stale responses
+
+
 ## [1.3.0] - 2026-04-11 (minor)
 
 
