@@ -261,6 +261,21 @@ func (MediaTag) TableName() string {
 	return "media_tags"
 }
 
+// MediaChapter represents a named time range (scene marker / act chapter) for a media item.
+type MediaChapter struct {
+	ID        string     `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	MediaID   string     `json:"media_id" db:"media_id" gorm:"size:255;index"`
+	StartTime float64    `json:"start_time" db:"start_time"`
+	EndTime   *float64   `json:"end_time,omitempty" db:"end_time"`
+	Label     string     `json:"label" db:"label" gorm:"size:255"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+}
+
+// TableName specifies the table name for GORM
+func (MediaChapter) TableName() string {
+	return "media_chapters"
+}
+
 // clampSkipInterval clamps skip interval to 1–300 seconds or returns default 10 if invalid.
 func clampSkipInterval(n int) int {
 	if n <= 0 {

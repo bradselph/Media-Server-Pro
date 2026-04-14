@@ -1,0 +1,89 @@
+{
+  "pipeline": "B-static",
+  "run_timestamp": "2026-04-13T00:00:00Z",
+  "groups_run": 6,
+  "agents_run": 21,
+  "static_checks": {
+    "go_build": "PASS",
+    "go_vet": "PASS",
+    "npx_tsc_noEmit": "PASS"
+  },
+  "confirmed": [],
+  "suspect": [
+    {
+      "id": "B-S001",
+      "pattern": "json.Unmarshal unchecked (test file)",
+      "file": "D:/Media-Server-Pro-4/internal/config/config_test.go",
+      "line": 276,
+      "symptom": "json.Unmarshal(data, &cfg) — error not checked",
+      "context": "Test file validating Config persistence",
+      "single_agent": "go-json-codec-errors",
+      "verdict": "FALSE_POSITIVE - test file, Config value is used for struct tag test only"
+    },
+    {
+      "id": "B-S002",
+      "pattern": "json.Unmarshal intentional discard (MySQL repo)",
+      "file": "D:/Media-Server-Pro-4/internal/repositories/mysql/autodiscovery_repository.go",
+      "line": 115,
+      "symptom": "_ = json.Unmarshal([]byte(row.Metadata), &rec.Metadata) — error discarded",
+      "context": "If metadata unmarshaling fails, empty map is used (design intent)",
+      "single_agent": "go-json-codec-errors",
+      "verdict": "FALSE_POSITIVE - intentional; see line 116-118 fallback to empty map"
+    },
+    {
+      "id": "B-S003",
+      "pattern": "json.Unmarshal intentional discard (MySQL backup)",
+      "file": "D:/Media-Server-Pro-4/internal/repositories/mysql/backup_manifest_repository.go",
+      "line": 123,
+      "symptom": "_ = json.Unmarshal([]byte(row.Files), &rec.Files) — error discarded",
+      "context": "If unmarshaling fails, empty slice is used (design intent)",
+      "single_agent": "go-json-codec-errors",
+      "verdict": "FALSE_POSITIVE - intentional; see line 125-129 fallback to empty slice"
+    }
+  ],
+  "false_positive": [
+    {
+      "id": "FP001",
+      "pattern": "csv.Writer.Flush() without error check (internal/analytics/export.go:56)",
+      "reason": "Writer.WriteAll() internally calls Flush() and returns its error; proper pattern"
+    },
+    {
+      "id": "FP002",
+      "pattern": "os.Create Close error not checked (multiple files)",
+      "reason": "All os.Create() locations properly check Close() error in defer blocks (admin.go:182, analytics/export.go:33, hls/generate.go:221, etc.)"
+    },
+    {
+      "id": "FP003",
+      "pattern": "Mutex.Lock() without defer unlock (admin.go:75, 86, etc.)",
+      "reason": "All Lock() calls have matching Unlock() calls on subsequent lines (proper pattern scan limitation)"
+    },
+    {
+      "id": "FP004",
+      "pattern": "Frontend timer leak in AnalyticsTab.vue (line 27)",
+      "reason": "Timer properly cleared in onUnmounted() at line 35"
+    },
+    {
+      "id": "FP005",
+      "pattern": "Frontend timer leak in useHLS.ts (lines 99-101)",
+      "reason": "All timers cleared in cleanup() function called from onUnmounted() at line 404"
+    }
+  ],
+  "summary": {
+    "total_patterns_scanned": 21,
+    "confirmed_bugs": 0,
+    "suspect_issues": 3,
+    "false_positives": 5,
+    "code_quality": "EXCELLENT",
+    "notes": [
+      "Go static analysis (go build, go vet) passes completely",
+      "TypeScript static analysis (tsc --noEmit) passes completely",
+      "All CSV/Writer operations properly check for errors",
+      "All file Close() errors properly handled or intentionally discarded",
+      "All mutex Lock/Unlock pairs properly matched",
+      "All timers properly cleaned up on component unmount",
+      "Intentional error discards in MySQL repos are documented by fallback logic",
+      "No unhandled json.Unmarshal errors found in production code",
+      "Handler error responses properly followed by return statements"
+    ]
+  }
+}

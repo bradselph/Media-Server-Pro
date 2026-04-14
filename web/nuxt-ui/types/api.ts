@@ -116,6 +116,15 @@ export interface MediaItem {
     metadata?: Record<string, string>
 }
 
+export interface MediaChapter {
+    id: string
+    media_id: string
+    start_time: number
+    end_time?: number
+    label: string
+    created_at: string
+}
+
 export interface MediaListParams {
     page?: number
     limit?: number

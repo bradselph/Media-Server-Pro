@@ -45,6 +45,7 @@ import type {
     LogEntry,
     LoginResponse,
     MediaCategory,
+    MediaChapter,
     MediaItem,
     MediaListParams,
     MediaListResponse,
@@ -785,5 +786,18 @@ export function useAPITokensApi() {
         list: () => api.get<APIToken[]>('/api/auth/tokens'),
         create: (name: string) => api.post<APITokenCreated>('/api/auth/tokens', {name}),
         delete: (id: string) => api.delete<void>(`/api/auth/tokens/${encodeURIComponent(id)}`),
+    }
+}
+
+// ── Chapters ──────────────────────────────────────────────────────────────────
+
+export function useChaptersApi() {
+    return {
+        list: (mediaId: string) => api.get<MediaChapter[]>(`/api/chapters?media_id=${encodeURIComponent(mediaId)}`),
+        create: (data: { media_id: string; start_time: number; end_time?: number; label: string }) =>
+            api.post<MediaChapter>('/api/chapters', data),
+        update: (id: string, data: { start_time?: number; end_time?: number; label?: string }) =>
+            api.put<MediaChapter>(`/api/chapters/${encodeURIComponent(id)}`, data),
+        delete: (id: string) => api.delete<void>(`/api/chapters/${encodeURIComponent(id)}`),
     }
 }

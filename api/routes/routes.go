@@ -456,6 +456,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/favorites/:media_id", requireAuth(), h.CheckFavorite)
 	api.DELETE("/favorites/:media_id", requireAuth(), h.RemoveFavorite)
 
+	// Chapters (scene markers / act chapters) — public read, auth write
+	api.GET("/chapters", h.ListChapters)
+	api.POST("/chapters", requireAuth(), h.CreateChapter)
+	api.PUT("/chapters/:id", requireAuth(), h.UpdateChapter)
+	api.DELETE("/chapters/:id", requireAuth(), h.DeleteChapter)
+
 	// Watch history routes (protected)
 	api.GET(pathWatchHistory, requireAuth(), h.GetWatchHistory)
 	api.DELETE(pathWatchHistory, requireAuth(), h.ClearWatchHistory)

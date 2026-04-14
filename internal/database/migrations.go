@@ -429,6 +429,16 @@ var tableDefs = []struct {
 			UNIQUE KEY uniq_fav_user_media (user_id, media_id),
 			INDEX idx_fav_user (user_id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"media_chapters", `
+		CREATE TABLE IF NOT EXISTS media_chapters (
+			id         VARCHAR(36)  PRIMARY KEY,
+			media_id   VARCHAR(255) NOT NULL,
+			start_time FLOAT        NOT NULL DEFAULT 0,
+			end_time   FLOAT        NULL,
+			label      VARCHAR(255) NOT NULL,
+			created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			INDEX idx_chapter_media (media_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"user_api_tokens", `
 		CREATE TABLE IF NOT EXISTS user_api_tokens (
 			id           VARCHAR(255) PRIMARY KEY,

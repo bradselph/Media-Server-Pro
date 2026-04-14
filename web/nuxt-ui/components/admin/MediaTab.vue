@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { MediaItem, AdminMediaListParams, ThumbnailStats } from '~/types/api'
+import type { MediaItem, AdminMediaListParams, ThumbnailStats, MediaChapter } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatBytes, formatDuration } from '~/utils/format'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
+const chaptersApi = useChaptersApi()
 const toast = useToast()
 
 const thumbStats = ref<ThumbnailStats | null>(null)
@@ -105,6 +106,74 @@ async function saveEdit() {
     toast.add({ title: e instanceof Error ? e.message : 'Update failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     editSaving.value = false
+  }
+}
+
+// Chapters editor
+const chaptersTarget = ref<MediaItem | null>(null)
+const chaptersOpen = computed({
+  get: () => !!chaptersTarget.value,
+  set: (v: boolean) => { if (!v) chaptersTarget.value = null },
+})
+const chapters = ref<MediaChapter[]>([])
+const newChapter = reactive({ start_time: 0, end_time: '', label: '' })
+const chaptersLoading = ref(false)
+const chaptersSaving = ref(false)
+
+async function openChapters(item: MediaItem) {
+  chaptersTarget.value = item
+  chapters.value = []
+  newChapter.start_time = 0
+  newChapter.end_time = ''
+  newChapter.label = ''
+  chaptersLoading.value = true
+  try {
+    chapters.value = (await chaptersApi.list(item.id)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load chapters', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    chaptersLoading.value = false
+  }
+}
+
+async function addChapter() {
+  if (!chaptersTarget.value || !newChapter.label) {
+    toast.add({ title: 'Label is required', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
+  chaptersSaving.value = true
+  try {
+    const endTime = newChapter.end_time ? parseFloat(newChapter.end_time) : undefined
+    await chaptersApi.create({
+      media_id: chaptersTarget.value.id,
+      start_time: newChapter.start_time,
+      end_time: endTime,
+      label: newChapter.label,
+    })
+    toast.add({ title: 'Chapter added', color: 'success', icon: 'i-lucide-check' })
+    newChapter.start_time = 0
+    newChapter.end_time = ''
+    newChapter.label = ''
+    await openChapters(chaptersTarget.value)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to add chapter', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    chaptersSaving.value = false
+  }
+}
+
+async function deleteChapter(id: string) {
+  chaptersSaving.value = true
+  try {
+    await chaptersApi.delete(id)
+    toast.add({ title: 'Chapter deleted', color: 'success', icon: 'i-lucide-check' })
+    if (chaptersTarget.value) {
+      await openChapters(chaptersTarget.value)
+    }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to delete chapter', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    chaptersSaving.value = false
   }
 }
 
@@ -460,6 +529,14 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
               @click="generateHLS(row.original.id)"
             />
             <UButton
+              icon="i-lucide-list-ordered"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              title="Edit chapters"
+              @click="openChapters(row.original)"
+            />
+            <UButton
               icon="i-lucide-trash-2"
               size="xs"
               variant="ghost"
@@ -541,6 +618,67 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
         <UButton label="Save" :loading="editSaving" color="primary" @click="saveEdit" />
         <UButton label="Cancel" variant="ghost" color="neutral" @click="editOpen = false" />
       </template>
+    </UModal>
+
+    <!-- Chapters editor modal -->
+    <UModal v-model="chaptersOpen" title="Edit Chapters">
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-highlighted">Chapters: {{ chaptersTarget?.name ? getDisplayTitle(chaptersTarget) : 'Loading' }}</h3>
+            <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="chaptersOpen = false" />
+          </div>
+        </template>
+
+        <div v-if="chaptersLoading" class="flex items-center justify-center py-8">
+          <UIcon name="i-lucide-loader" class="animate-spin mr-2" />
+          <span class="text-muted">Loading chapters...</span>
+        </div>
+        <div v-else class="space-y-4">
+          <!-- Existing chapters -->
+          <div v-if="chapters.length > 0" class="space-y-2">
+            <h4 class="font-medium text-sm text-highlighted">Existing Chapters</h4>
+            <div class="space-y-1 max-h-48 overflow-y-auto">
+              <div v-for="ch in chapters" :key="ch.id" class="flex items-center justify-between bg-muted rounded p-2 text-sm">
+                <div class="flex-1">
+                  <p class="font-medium">{{ ch.label }}</p>
+                  <p class="text-xs text-muted">{{ formatDuration(Math.floor(ch.start_time)) }}{{ ch.end_time ? ` – ${formatDuration(Math.floor(ch.end_time))}` : '' }}</p>
+                </div>
+                <UButton
+                  icon="i-lucide-trash-2"
+                  size="xs"
+                  variant="ghost"
+                  color="error"
+                  :loading="chaptersSaving"
+                  @click="deleteChapter(ch.id)"
+                />
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-center py-4 text-muted text-sm">No chapters yet</div>
+
+          <!-- Add new chapter form -->
+          <div class="border-t pt-4 space-y-2">
+            <h4 class="font-medium text-sm text-highlighted">Add New Chapter</h4>
+            <UFormField label="Label" required>
+              <UInput v-model="newChapter.label" placeholder="e.g., Introduction" />
+            </UFormField>
+            <UFormField label="Start time (seconds)" required>
+              <UInput v-model.number="newChapter.start_time" type="number" min="0" step="0.1" />
+            </UFormField>
+            <UFormField label="End time (seconds, optional)">
+              <UInput v-model="newChapter.end_time" type="number" min="0" step="0.1" placeholder="Leave empty for open-ended" />
+            </UFormField>
+            <UButton
+              label="Add Chapter"
+              :loading="chaptersSaving"
+              color="primary"
+              class="w-full"
+              @click="addChapter"
+            />
+          </div>
+        </div>
+      </UCard>
     </UModal>
   </div>
 </template>

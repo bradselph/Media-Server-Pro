@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, Suggestion, Playlist, PlaylistItem } from '~/types/api'
+import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes, formatBitrate } from '~/utils/format'
 
@@ -12,6 +12,7 @@ const suggestionsApi = useSuggestionsApi()
 const ratingsApi = useRatingsApi()
 const playlistApi = usePlaylistApi()
 const analyticsApi = useAnalyticsApi()
+const chaptersApi = useChaptersApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
 const { updatePreferences } = useApiEndpoints()
@@ -51,6 +52,9 @@ const mediaId = computed(() => route.query.id as string | undefined)
 const media = ref<MediaItem | null>(null)
 const loading = ref(true)
 const error = ref('')
+
+// Chapters
+const chapters = ref<MediaChapter[]>([])
 
 // Update browser tab title as soon as the media item loads
 useHead(computed(() => ({
@@ -316,6 +320,7 @@ async function loadMedia(id: string) {
     media.value = await mediaApi.getById(id)
     userRating.value = 0
     playbackStore.setMedia(id)
+    loadChapters(id).catch(() => {})
     suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch(() => {})
     if (authStore.isLoggedIn) {
       suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch(() => {})
@@ -374,6 +379,20 @@ async function savePosition() {
       // Position save is best-effort
     }
   }
+}
+
+async function loadChapters(id: string) {
+  try {
+    chapters.value = (await chaptersApi.list(id)) ?? []
+  } catch {
+    chapters.value = []
+  }
+}
+
+function seekToChapter(startTime: number) {
+  if (!videoRef.value) return
+  videoRef.value.currentTime = startTime
+  trackSeek()
 }
 
 function onVideoLoaded() {
@@ -1053,6 +1072,7 @@ watch(mediaId, (id, oldId) => {
             :skip-interval="skipInterval"
             :buffered-fraction="bufferedFraction"
             :show-buffer-bar="showBufferBar"
+            :chapters="chapters"
             v-model:showShortcuts="showShortcuts"
             @toggle-play="togglePlay"
             @seek="seek"
@@ -1066,6 +1086,7 @@ watch(mediaId, (id, oldId) => {
             @toggle-shuffle="toggleShuffle"
             @toggle-mute="toggleMute"
             @toggle-theater="toggleTheater"
+            @seek-to-chapter="seekToChapter"
           />
         </div>
         <div v-else class="max-md:px-4">

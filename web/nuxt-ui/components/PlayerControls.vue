@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { MediaChapter } from '~/types/api'
 import { formatDuration } from '~/utils/format'
 
 const props = defineProps<{
@@ -21,6 +22,7 @@ const props = defineProps<{
   skipInterval: number
   bufferedFraction: number
   showBufferBar: boolean
+  chapters: Array<{ id: string; start_time: number; end_time?: number; label: string }>
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +38,7 @@ const emit = defineEmits<{
   'toggle-shuffle': []
   'toggle-mute': []
   'toggle-theater': []
+  'seek-to-chapter': [startTime: number]
   'update:showShortcuts': [value: boolean]
 }>()
 
@@ -58,6 +61,13 @@ const seekBarPreviewUrl = computed(() => {
 const qualityMenuItems = computed(() => [[
   { label: 'Auto', click: () => emit('quality-select', -1) },
   ...props.qualities.map(q => ({ label: q.name, click: () => emit('quality-select', q.index) })),
+]])
+
+const chapterMenuItems = computed(() => [[
+  ...props.chapters.map(ch => ({
+    label: ch.label,
+    click: () => emit('seek-to-chapter', ch.start_time),
+  })),
 ]])
 
 const currentQualityLabel = computed(() => {
@@ -157,6 +167,17 @@ function copyLinkAtTime() {
           class="absolute top-0 left-0 h-full bg-primary rounded-full pointer-events-none"
           :style="{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }"
         />
+        <!-- Chapter pins on seek bar -->
+        <template v-if="chapters.length > 0 && duration > 0">
+          <div
+            v-for="ch in chapters"
+            :key="ch.id"
+            class="absolute top-1/2 -translate-y-1/2 w-1 h-3 bg-white/70 rounded-full cursor-pointer hover:bg-white hover:h-4 transition-all pointer-events-auto"
+            :style="{ left: `${(ch.start_time / duration) * 100}%` }"
+            :title="ch.label"
+            @click.stop="emit('seek-to-chapter', ch.start_time)"
+          />
+        </template>
       </div>
     </div>
 
@@ -306,6 +327,19 @@ function copyLinkAtTime() {
         :class="loopMode !== 'off' ? 'text-primary shrink-0' : 'text-white shrink-0'"
         @click="emit('cycle-loop')"
       />
+
+      <!-- Chapters dropdown — desktop only -->
+      <UDropdownMenu v-if="chapters.length > 0" :items="chapterMenuItems" class="max-md:hidden">
+        <UButton
+          icon="i-lucide-list-ordered"
+          aria-label="Chapters"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white"
+          @click.stop
+        />
+      </UDropdownMenu>
 
       <!-- Keyboard shortcuts — desktop only -->
       <UButton
