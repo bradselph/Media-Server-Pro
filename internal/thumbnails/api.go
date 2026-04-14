@@ -3,6 +3,7 @@ package thumbnails
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 )
@@ -139,6 +140,48 @@ func (m *Module) QueueThumbnailIfMissing(mediaPath, mediaID string, isAudio bool
 	if err != nil && !errors.Is(err, ErrThumbnailPending) {
 		m.log.Debug("Background thumbnail queue failed for %s: %v", mediaPath, err)
 	}
+}
+
+// SaveCustomThumbnail replaces the thumbnail for mediaID with the image data from r.
+// Any existing WebP variant and preview frames are deleted so they don't serve stale data.
+// The image is saved as a JPEG regardless of source format; callers are responsible for
+// ensuring r contains valid image data (JPEG, PNG, or WebP).
+func (m *Module) SaveCustomThumbnail(mediaID string, r io.Reader) error {
+	destPath := m.getThumbnailPath(MediaID(mediaID))
+	if err := os.MkdirAll(m.thumbnailDir, 0o755); err != nil { //nolint:gosec // G301
+		return fmt.Errorf("creating thumbnail dir: %w", err)
+	}
+	tmp := destPath + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	if _, err := io.Copy(f, r); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("writing thumbnail data: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	// Atomic replace
+	if err := os.Rename(tmp, destPath); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("replacing thumbnail: %w", err)
+	}
+	// Remove stale WebP and preview frames so browser gets fresh content
+	_ = os.Remove(m.getThumbnailPathWebp(destPath))
+	for i := 1; i <= 20; i++ {
+		p := m.getThumbnailPathByIndex(MediaID(mediaID), i)
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			break
+		}
+		_ = os.Remove(p)
+		_ = os.Remove(m.getThumbnailPathWebp(p))
+	}
+	m.log.Info("Custom thumbnail saved for media %s → %s", mediaID, destPath)
+	return nil
 }
 
 func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (string, error) {

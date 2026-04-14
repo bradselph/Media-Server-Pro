@@ -633,6 +633,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 
 	// Thumbnail admin routes
 	adminGrp.POST("/thumbnails/generate", h.GenerateThumbnail)
+	adminGrp.POST("/media/:id/thumbnail", h.UploadCustomThumbnail)
 	adminGrp.POST("/thumbnails/cleanup", h.CleanupThumbnails)
 	adminGrp.GET("/thumbnails/stats", h.GetThumbnailStats)
 

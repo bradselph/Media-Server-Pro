@@ -468,6 +468,11 @@ export function useAdminApi() {
         generateThumbnail: (id: string, isAudio?: boolean) =>
             api.post<void>(`${base}/thumbnails/generate`, {id, is_audio: isAudio ?? false}),
         getThumbnailStats: () => api.get<ThumbnailStats>(`${base}/thumbnails/stats`),
+        uploadCustomThumbnail: (id: string, file: File) => {
+            const form = new FormData()
+            form.append('thumbnail', file)
+            return api.postForm<{ message: string }>(`${base}/media/${encodeURIComponent(id)}/thumbnail`, form)
+        },
 
         // HLS
         getHLSStats: () => api.get<HLSStats>(`${base}/hls/stats`),

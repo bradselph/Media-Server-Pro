@@ -79,6 +79,12 @@ const editOpen = computed({
 const editForm = reactive({ name: '', category: '', is_mature: false, tags: '', description: '' })
 const editSaving = ref(false)
 
+// Thumbnail upload state
+const thumbFileInput = ref<HTMLInputElement | null>(null)
+const thumbFile = ref<File | null>(null)
+const thumbPreviewUrl = ref<string | null>(null)
+const thumbUploading = ref(false)
+
 function openEdit(item: MediaItem) {
   editTarget.value = item
   editForm.name = item.name
@@ -86,6 +92,33 @@ function openEdit(item: MediaItem) {
   editForm.is_mature = item.is_mature ?? false
   editForm.tags = (item.tags ?? []).join(', ')
   editForm.description = (item.metadata?.description ?? '') as string
+  // Reset thumbnail upload state when opening a new item
+  thumbFile.value = null
+  thumbPreviewUrl.value = null
+}
+
+function onThumbFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  thumbFile.value = file
+  thumbPreviewUrl.value = URL.createObjectURL(file)
+}
+
+async function uploadThumbnail() {
+  if (!editTarget.value || !thumbFile.value) return
+  thumbUploading.value = true
+  try {
+    await adminApi.uploadCustomThumbnail(editTarget.value.id, thumbFile.value)
+    toast.add({ title: 'Thumbnail updated', color: 'success', icon: 'i-lucide-check' })
+    thumbFile.value = null
+    thumbPreviewUrl.value = null
+    if (thumbFileInput.value) thumbFileInput.value.value = ''
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Upload failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    thumbUploading.value = false
+  }
 }
 
 async function saveEdit() {
@@ -611,6 +644,50 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
           </UFormField>
           <UFormField label="Mature content">
             <UCheckbox v-model="editForm.is_mature" label="Mark as 18+ content" />
+          </UFormField>
+          <!-- Thumbnail upload -->
+          <UFormField label="Custom Thumbnail" hint="JPEG, PNG, or WebP — replaces the existing thumbnail">
+            <div class="space-y-2">
+              <!-- Preview -->
+              <div v-if="thumbPreviewUrl" class="relative w-40 rounded-lg overflow-hidden aspect-video bg-muted">
+                <img :src="thumbPreviewUrl" alt="Thumbnail preview" class="w-full h-full object-cover" />
+                <UButton
+                  icon="i-lucide-x"
+                  size="xs"
+                  color="neutral"
+                  variant="solid"
+                  class="absolute top-1 right-1"
+                  aria-label="Remove selection"
+                  @click="thumbFile = null; thumbPreviewUrl = null; if (thumbFileInput) thumbFileInput.value = ''"
+                />
+              </div>
+              <div class="flex gap-2">
+                <input
+                  ref="thumbFileInput"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  class="hidden"
+                  @change="onThumbFileChange"
+                />
+                <UButton
+                  icon="i-lucide-image-plus"
+                  label="Choose Image"
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
+                  @click="thumbFileInput?.click()"
+                />
+                <UButton
+                  v-if="thumbFile"
+                  icon="i-lucide-upload"
+                  label="Upload"
+                  size="sm"
+                  color="primary"
+                  :loading="thumbUploading"
+                  @click="uploadThumbnail"
+                />
+              </div>
+            </div>
           </UFormField>
         </div>
       </template>
