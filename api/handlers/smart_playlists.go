@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -70,9 +71,11 @@ func buildSmartQuery(db *gorm.DB, rules *SmartPlaylistRules) *gorm.DB {
 				args = append(args, cond.Value)
 			}
 		case "tags":
-			if cond.Value != "" {
+			// Normalize needle to match REPLACE(tags, ' ', '') applied to the haystack.
+			needle := strings.ReplaceAll(cond.Value, " ", "")
+			if needle != "" && !strings.Contains(needle, ",") {
 				clauses = append(clauses, "FIND_IN_SET(?, REPLACE(tags, ' ', ''))")
-				args = append(args, cond.Value)
+				args = append(args, needle)
 			}
 		case "duration":
 			if durVal, err := strconv.ParseFloat(cond.Value, 64); err == nil && durVal >= 0 {
