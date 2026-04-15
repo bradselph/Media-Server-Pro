@@ -141,6 +141,10 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 	uploaded := make([]uploadedEntry, 0, len(fileHeaders))
 	uploadErrors := make([]errorEntry, 0)
 	var totalAdded int64
+	// uploadedPaths tracks every path that was physically written (local or remote)
+	// so the quota rollback can delete them all, including files that uploaded
+	// successfully but then failed media-index registration.
+	var uploadedPaths []string
 	// registeredPaths tracks each successfully registered file path so we can
 	// delete them if the post-upload quota check fails.
 	var registeredPaths []string
@@ -163,6 +167,14 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		}
 		uploaded = append(uploaded, uploadedEntry{UploadID: string(result.UploadID), Filename: result.Filename, Size: result.Size})
 		totalAdded += result.Size
+
+		// Track every successfully written path for rollback — even those that
+		// fail the registration step below. Without this, a file that uploads to
+		// disk but then fails index registration would be orphaned if the
+		// post-upload quota check rolls back the batch.
+		if result.Path != "" {
+			uploadedPaths = append(uploadedPaths, result.Path)
+		}
 
 		// Register the file in the media index immediately so it's visible in the
 		// library without waiting for the next scheduled scan. For remote-store
@@ -210,9 +222,12 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 				freshUsed = freshUser.StorageUsed
 			}
 			if freshUsed+totalAdded > userType.StorageQuota {
-				// Roll back: delete all files that were just registered.
+				// Roll back: delete every file that was physically written, not just
+				// those that made it into the media index. Using uploadedPaths (not
+				// registeredPaths) ensures that files uploaded successfully but
+				// failed index registration are not left as orphans on disk/remote.
 				ctx := c.Request.Context()
-				for _, p := range registeredPaths {
+				for _, p := range uploadedPaths {
 					if delErr := h.media.DeleteMedia(ctx, p); delErr != nil {
 						h.log.Error("Failed to delete overquota upload %s: %v", p, delErr)
 					}
