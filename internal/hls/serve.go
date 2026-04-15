@@ -23,6 +23,12 @@ var ErrNotReady = errors.New("HLS job not yet ready")
 // ensureVariantPlaylistExists ensures the variant playlist exists, performing
 // lazy transcode if enabled when the playlist is missing.
 func (m *Module) ensureVariantPlaylistExists(ctx context.Context, job *models.HLSJob, quality string) (string, error) {
+	// Reject quality values that contain path traversal components. The router
+	// splits on '/' so a literal slash cannot appear, but a single ".." is
+	// enough to escape the job directory. This mirrors the guard in ServeSegment.
+	if strings.Contains(quality, "..") || strings.ContainsAny(quality, "/\\") {
+		return "", fmt.Errorf("invalid quality value: %q", quality)
+	}
 	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
 	if _, err := os.Stat(playlistPath); err == nil {
 		return playlistPath, nil
