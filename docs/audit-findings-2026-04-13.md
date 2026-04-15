@@ -210,7 +210,7 @@ async function copyToken() {
 
 ---
 
-#### BUG #7: CSV export can fail after headers sent
+#### ✅ `93491db5` 2026-04-15 — BUG #7: CSV export can fail after headers sent
 - **File:** `api/handlers/auth.go:737-803` (ExportWatchHistory)
 - **Severity:** MEDIUM — File corruption risk
 - **Root Cause:** Response writer is partially written before all CSV rows are buffered. If a row write fails partway through, headers are already sent and error response can't be written.
@@ -231,6 +231,10 @@ if _, err := c.Writer.Write(buf.Bytes()); err != nil {
   // The file was already partially sent
 }
 ```
+
+
+> **Resolution**: Removed the `WriteString("\n# ERROR...")` trailer call. `Content-Length` header is set before the send, so HTTP clients detect truncation via a content-length mismatch. The failed write is now just logged.
+> **Verified**: pending deploy
 
 ---
 
