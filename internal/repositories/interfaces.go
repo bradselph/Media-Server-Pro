@@ -382,6 +382,10 @@ type ReceiverSlaveRecord struct {
 // ReceiverMediaRepository provides slave media catalog storage
 type ReceiverMediaRepository interface {
 	UpsertBatch(ctx context.Context, slaveID string, items []*ReceiverMediaRecord) error
+	// ReplaceSlaveMedia atomically deletes all existing records for slaveID then
+	// inserts records in a single transaction, preventing data loss if the server
+	// crashes between the two operations.
+	ReplaceSlaveMedia(ctx context.Context, slaveID string, items []*ReceiverMediaRecord) error
 	ListAll(ctx context.Context) ([]*ReceiverMediaRecord, error)
 	DeleteBySlave(ctx context.Context, slaveID string) error
 	DeleteByID(ctx context.Context, id string) error

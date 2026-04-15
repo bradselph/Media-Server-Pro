@@ -475,18 +475,18 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	}
 
 	if req.Full {
-		// Full replacement: delete existing catalog then insert.
-		// Also clear pending duplicate records for this slave so the fresh catalog
-		// is re-evaluated — resolved admin decisions are preserved.
-		if err := m.mediaRepo.DeleteBySlave(ctx, req.SlaveID); err != nil {
-			return 0, fmt.Errorf("failed to clear old catalog: %w", err)
+		// Full replacement: atomically delete existing catalog and insert the new one
+		// inside a single transaction so a crash between the two operations cannot
+		// permanently empty the slave's catalog.
+		if err := m.mediaRepo.ReplaceSlaveMedia(ctx, req.SlaveID, records); err != nil {
+			return 0, fmt.Errorf("failed to replace catalog: %w", err)
 		}
+		// Clear pending duplicate records for this slave so the fresh catalog
+		// is re-evaluated — resolved admin decisions are preserved.
 		if m.dupModule != nil {
 			m.dupModule.ClearPendingForSlave(req.SlaveID)
 		}
-	}
-
-	if len(records) > 0 {
+	} else if len(records) > 0 {
 		if err := m.mediaRepo.UpsertBatch(ctx, req.SlaveID, records); err != nil {
 			return 0, fmt.Errorf("failed to persist catalog: %w", err)
 		}
