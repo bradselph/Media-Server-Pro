@@ -793,13 +793,14 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 		return
 	}
 
-	// Buffer is complete — send it
+	// Buffer is complete — send it.
+	// Content-Length is set so HTTP clients detect short reads if the connection drops.
+	// Do not append a trailer on write failure — the Content-Length mismatch is
+	// the reliable signal, and appending text to a partially-written CSV corrupts it.
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="watch_history_%s.csv"`, user.Username))
 	c.Header("Content-Length", strconv.Itoa(buf.Len()))
 	if _, err := c.Writer.Write(buf.Bytes()); err != nil {
-		// Headers already sent — append trailer comment so the consumer can detect truncation.
 		h.log.Error("CSV send failed for user %s: %v", user.Username, err)
-		_, _ = c.Writer.WriteString("\n# ERROR: export incomplete\n")
 	}
 }
