@@ -97,7 +97,7 @@ function bulkDelete() {
   confirmBulkDelete.value = true
 }
 async function executeBulkDelete() {
-  if (!selected.value.size) return
+  if (!selected.value.size || bulkDeleting.value) return
   bulkDeleting.value = true
   try {
     const ids = Array.from(selected.value)
@@ -106,6 +106,7 @@ async function executeBulkDelete() {
     const failedMsg = res.failed ? `, ${res.failed} failed` : ''
     toast.add({ title: `Deleted ${res.success} playlist${plural}${failedMsg}`, color: res.failed ? 'warning' : 'success', icon: 'i-lucide-check' })
     selected.value = new Set()
+    confirmBulkDelete.value = false
     await load()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Bulk delete failed', color: 'error', icon: 'i-lucide-x' })
@@ -295,7 +296,7 @@ onMounted(load)
       </template>
       <template #footer>
         <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false" />
-        <UButton :loading="bulkDeleting" color="error" label="Delete" @click="confirmBulkDelete = false; executeBulkDelete()" />
+        <UButton :loading="bulkDeleting" color="error" label="Delete" @click="executeBulkDelete()" />
       </template>
     </UModal>
 
