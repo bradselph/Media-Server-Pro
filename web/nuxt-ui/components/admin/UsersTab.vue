@@ -473,13 +473,13 @@ onMounted(load)
     <UModal
       :open="confirmBulkDelete"
       title="Delete Selected Users"
-      @update:open="val => { if (!val) confirmBulkDelete = false }"
+      @update:open="val => { if (!val) { confirmBulkDelete = false; selectedUsernames = [] } }"
     >
       <template #body>
         <p>Are you sure you want to delete <strong>{{ selectedUsernames.length }}</strong> selected user{{ selectedUsernames.length !== 1 ? 's' : '' }}? This action cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false" />
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false; selectedUsernames = []" />
         <UButton :loading="bulkLoading" color="error" label="Delete" @click="confirmBulkDelete = false; executeBulkAction('delete')" />
       </template>
     </UModal>
