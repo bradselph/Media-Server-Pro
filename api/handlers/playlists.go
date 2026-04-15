@@ -115,7 +115,12 @@ func (h *Handler) ListPublicPlaylists(c *gin.Context) {
 	// IDs and titles of mature items by inspecting public playlist responses.
 	if h.media != nil && !h.canViewMatureContent(c) {
 		for _, pl := range playlists {
-			kept := pl.Items[:0]
+			// Allocate a new slice to avoid mutating the shared backing array of
+			// pl.Items. Using pl.Items[:0] would overwrite the original elements
+			// in-place because append reuses the same underlying array, silently
+			// stripping mature items from the in-memory playlist object for all
+			// subsequent callers (including admin users who can view mature content).
+			kept := make([]models.PlaylistItem, 0, len(pl.Items))
 			for _, item := range pl.Items {
 				media, err := h.media.GetMediaByID(item.MediaID)
 				if err != nil || media == nil || !media.IsMature {
