@@ -327,11 +327,12 @@ const tokensLoading = ref(false)
 const newTokenName = ref('')
 const newTokenCreating = ref(false)
 const revealedToken = ref<string | null>(null)
+const revealedTokenId = ref<string | null>(null)
 let revealedTokenTimer: ReturnType<typeof setTimeout> | null = null
 
 function startTokenAutoDismiss() {
   if (revealedTokenTimer) clearTimeout(revealedTokenTimer)
-  revealedTokenTimer = setTimeout(() => { revealedToken.value = null }, 60000)
+  revealedTokenTimer = setTimeout(() => { revealedToken.value = null; revealedTokenId.value = null }, 60000)
 }
 
 watch(revealedToken, (val) => {
@@ -342,6 +343,7 @@ watch(revealedToken, (val) => {
 onUnmounted(() => {
   if (revealedTokenTimer) clearTimeout(revealedTokenTimer)
   revealedToken.value = null
+  revealedTokenId.value = null
 })
 
 async function copyToken() {
@@ -367,6 +369,7 @@ async function createToken() {
   try {
     const created = await tokensApi.create(newTokenName.value.trim()) as APITokenCreated
     revealedToken.value = created.token
+    revealedTokenId.value = created.id
     tokens.value = [{ id: created.id, name: created.name, last_used_at: created.last_used_at, expires_at: created.expires_at, created_at: created.created_at }, ...tokens.value]
     newTokenName.value = ''
   } catch (e: unknown) {
@@ -380,7 +383,7 @@ async function revokeToken(id: string) {
   try {
     await tokensApi.delete(id)
     tokens.value = tokens.value.filter(t => t.id !== id)
-    if (revealedToken.value) revealedToken.value = null
+    if (revealedTokenId.value === id) { revealedToken.value = null; revealedTokenId.value = null }
     toast.add({ title: 'Token revoked', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
@@ -751,7 +754,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
             <div class="flex items-center gap-2 mt-1 flex-wrap">
               <code class="text-xs break-all select-all">{{ revealedToken }}</code>
               <UButton size="xs" icon="i-lucide-copy" variant="ghost" color="neutral" aria-label="Copy to clipboard" @click="copyToken" />
-              <UButton size="xs" icon="i-lucide-x" variant="ghost" color="neutral" aria-label="Dismiss" @click="revealedToken = null" />
+              <UButton size="xs" icon="i-lucide-x" variant="ghost" color="neutral" aria-label="Dismiss" @click="revealedToken = null; revealedTokenId = null" />
             </div>
           </template>
         </UAlert>
