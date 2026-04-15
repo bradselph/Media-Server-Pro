@@ -335,13 +335,13 @@ async function loadMedia(id: string) {
       thumbnail_url: media.value ? mediaApi.getThumbnailUrl(id) : undefined,
       duration: media.value?.duration ?? 0,
     })
-    loadChapters(id).catch(() => {})
-    suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch(() => {})
-    collectionsApi.getForMedia(id).then(r => { mediaCollections.value = r ?? [] }).catch(() => {})
+    loadChapters(id).catch((e: unknown) => { console.warn('[player] chapters load failed:', e) })
+    suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] similar load failed:', e) })
+    collectionsApi.getForMedia(id).then(r => { mediaCollections.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] collections load failed:', e) })
     if (authStore.isLoggedIn) {
-      suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch(() => {})
+      suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] personalized load failed:', e) })
     }
-    mediaApi.getThumbnailPreviews(id).then(r => { thumbnailPreviews.value = r?.previews ?? [] }).catch(() => {})
+    mediaApi.getThumbnailPreviews(id).then(r => { thumbnailPreviews.value = r?.previews ?? [] }).catch((e: unknown) => { console.warn('[player] thumbnail previews load failed:', e) })
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load media'
   } finally {
