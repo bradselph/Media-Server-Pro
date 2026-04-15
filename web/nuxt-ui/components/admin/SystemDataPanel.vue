@@ -108,8 +108,8 @@ function requestRestore(id: string) {
 async function executeRestore() {
   const id = confirmRestoreId.value
   if (!id) return
-  confirmRestoreId.value = null
   await restoreBackup(id)
+  confirmRestoreId.value = null
 }
 async function restoreBackup(id: string) {
   if (backupBusy.value.has(`restore-${id}`)) return
