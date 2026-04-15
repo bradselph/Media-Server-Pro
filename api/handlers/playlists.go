@@ -92,7 +92,7 @@ func (h *Handler) ListPlaylists(c *gin.Context) {
 	if session == nil {
 		return
 	}
-	playlists := h.playlist.ListPlaylists(playlist.UserID(session.UserID), true)
+	playlists := h.playlist.ListPlaylists(playlist.UserID(session.UserID), false)
 	if playlists == nil {
 		playlists = []*models.Playlist{}
 	}

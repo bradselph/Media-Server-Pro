@@ -31,8 +31,16 @@ func (m *Module) AddToWatchHistory(ctx context.Context, username string, item mo
 		if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 			m.log.Error("Failed to save user after watch history update: %v", err)
 			m.usersMu.Lock()
-			if u, ok := m.users[username]; ok && i < len(u.WatchHistory) {
-				u.WatchHistory[i] = oldItem
+			if u, ok := m.users[username]; ok {
+				// Search by MediaPath rather than index i: the slice may have been
+				// modified by a concurrent call while the lock was released for the
+				// DB write, so the captured index i is no longer reliable.
+				for j := range u.WatchHistory {
+					if u.WatchHistory[j].MediaPath == oldItem.MediaPath {
+						u.WatchHistory[j] = oldItem
+						break
+					}
+				}
 			}
 			m.usersMu.Unlock()
 			return err
