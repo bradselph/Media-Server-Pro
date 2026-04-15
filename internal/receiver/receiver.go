@@ -343,19 +343,25 @@ func (m *Module) markStaleSlaves() {
 		threshold = 90 * time.Second
 	}
 
-	ctx := context.Background()
-
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	var toUpdate []*repositories.ReceiverSlaveRecord
 	for _, node := range m.slaves {
 		if node.Status == "online" && time.Since(node.LastSeen) > threshold {
 			node.Status = "offline"
-			rec := nodeToSlaveRecord(node)
-			if err := m.slaveRepo.Upsert(ctx, rec); err != nil {
-				m.log.Warn("Health check: failed to update slave %s: %v", node.ID, err)
-			}
+			toUpdate = append(toUpdate, nodeToSlaveRecord(node))
 		}
+	}
+	m.mu.Unlock()
+
+	// Perform DB writes outside the global lock. Holding m.mu while calling
+	// slaveRepo.Upsert blocks all media serving (GetAllMedia, ProxyStream,
+	// Heartbeat) for the duration of each DB round-trip, with no timeout.
+	for _, rec := range toUpdate {
+		dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := m.slaveRepo.Upsert(dbCtx, rec); err != nil {
+			m.log.Warn("Health check: failed to update slave %s: %v", rec.ID, err)
+		}
+		cancel()
 	}
 }
 
@@ -528,10 +534,14 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	}
 	node.Status = "online"
 	node.LastSeen = time.Now()
+	// Snapshot the record while holding the lock. nodeToSlaveRecord must not be
+	// called after Unlock because Heartbeat may concurrently mutate node.Status
+	// and node.LastSeen under m.mu, causing a data race on the same struct fields.
+	slaveRecord := nodeToSlaveRecord(node)
 	m.mu.Unlock()
 
-	// Update slave record in DB
-	if err := m.slaveRepo.Upsert(ctx, nodeToSlaveRecord(node)); err != nil {
+	// Update slave record in DB (outside the lock — no shared state accessed here)
+	if err := m.slaveRepo.Upsert(ctx, slaveRecord); err != nil {
 		m.log.Warn("Failed to update slave count after catalog push: %v", err)
 	}
 

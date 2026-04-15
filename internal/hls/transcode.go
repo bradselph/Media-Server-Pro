@@ -118,7 +118,13 @@ func (m *Module) finalizeJobCompleted(job *models.HLSJob) {
 	job.Progress = 100
 	job.CompletedAt = new(time.Now())
 	delete(m.jobCancels, job.ID)
-	delete(m.jobDone, job.ID)
+	// Do NOT delete from jobDone here. finalizeJobCompleted runs inside transcode(),
+	// which is called from the goroutine body. The goroutine's "defer close(doneCh)"
+	// hasn't fired yet at this point. Deleting jobDone[id] before close(doneCh)
+	// creates a window where DeleteJob sees no doneCh, skips its wait, and races
+	// os.RemoveAll against the goroutine's own deferred cleanup (e.g. removeLock).
+	// The entry is cleaned up by DeleteJob (when explicitly deleted) or by
+	// cleanInactiveJob (when evicted by the inactive-jobs cleanup pass).
 	m.jobsMu.Unlock()
 	if err := m.saveJobs(); err != nil {
 		m.log.Warn("Failed to save job state after completion: %v", err)

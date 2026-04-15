@@ -107,6 +107,7 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 		return false
 	}
 	delete(m.jobs, jobID)
+	delete(m.jobDone, jobID) // clean up closed done channel for completed jobs
 	m.jobsMu.Unlock()
 
 	// Files and DB cleanup happen after the map entry is removed. If RemoveAll
