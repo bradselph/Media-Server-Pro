@@ -8,7 +8,9 @@
 
 ## Critical Findings
 
-### [CRITICAL] Information Disclosure: Filesystem Paths Leaked in Favorites Response
+### ✅ Already fixed — [CRITICAL] Information Disclosure: Filesystem Paths Leaked in Favorites Response
+
+> **Resolution**: `favoriteItem` struct in `api/handlers/favorites.go` already omits `MediaPath` — only `id`, `media_id`, and `added_at` are serialized. Audit was written against an older version of the code. Verified clean as of 2026-04-15.
 
 - **File:** `/d/Media-Server-Pro-4/api/handlers/favorites.go:25, 33`
 - **Category:** Information Disclosure
