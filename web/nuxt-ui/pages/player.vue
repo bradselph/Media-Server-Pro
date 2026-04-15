@@ -456,8 +456,11 @@ function onVideoLoaded() {
 // Auto-next: navigate to next similar item when video ends (non-playlist context)
 function autoNextFromSuggestions() {
   if (!autoNextEnabled.value) return
-  // Playlist auto-advance takes priority
-  if (nextPlaylistItem.value) { startUpNextCountdown(); return }
+  // Playlist auto-advance takes priority (including loop-all wrap from last item).
+  // navigateToNextItem handles the wrap-to-index-0 logic for loop-all.
+  if (nextPlaylistItem.value || (playlistIdParam.value && loopMode.value === 'all')) {
+    startUpNextCountdown(); return
+  }
 
   // Queue takes priority over suggestions
   if (queueStore.items.length > 0) {
@@ -583,7 +586,9 @@ const showUpNext = ref(false)
 const upNextCountdown = ref(5)
 
 function startUpNextCountdown() {
-  if (!nextPlaylistItem.value) return
+  // Guard: only fire in a playlist context (next item OR loop-all wrap from last item)
+  if (!nextPlaylistItem.value && !(playlistIdParam.value && loopMode.value === 'all')) return
+  if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
   showUpNext.value = true
   upNextCountdown.value = 5
   upNextTimer = setInterval(() => {
