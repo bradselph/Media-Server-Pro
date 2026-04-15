@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -205,6 +206,14 @@ func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID, notFoundMsg string, 
 		return
 	}
 	if err := serveFn(); err != nil {
+		if c.Writer.Written() {
+			// Headers/body already flushed; cannot change status code.
+			return
+		}
+		if errors.Is(err, hls.ErrNotReady) {
+			writeError(c, http.StatusServiceUnavailable, "HLS transcoding in progress, retry shortly")
+			return
+		}
 		writeError(c, http.StatusNotFound, notFoundMsg)
 	}
 }
