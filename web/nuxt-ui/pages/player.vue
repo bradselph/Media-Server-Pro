@@ -308,6 +308,7 @@ function submitRating(star: number) {
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
 let preMuteVolume = 1
 let _restorePiP = false
+let positionRestored = false
 
 function resetControlsTimer() {
   showControls.value = true
@@ -318,6 +319,7 @@ function resetControlsTimer() {
 async function loadMedia(id: string) {
   // Only show loading spinner on initial load — switching media keeps the video element
   // alive in the DOM so PiP continues working across auto-next transitions.
+  positionRestored = false
   const isSwitch = !!media.value
   if (!isSwitch) loading.value = true
   // Tear down the Web Audio graph on every media switch so ensureAudioGraph() can
@@ -364,6 +366,7 @@ async function loadMedia(id: string) {
 
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
+  positionRestored = true
   // Honour ?t=N deep-link: seek to the given second, skipping the stored position.
   const tParam = Number(route.query.t)
   if (tParam > 0) {
@@ -438,7 +441,7 @@ function onVideoLoaded() {
   if (media.value?.type === 'audio') {
     ensureAudioGraph()
   }
-  restorePosition()
+  if (!positionRestored) restorePosition()
   playbackStore.startAutoSave()
   // Auto-play when preference is enabled
   if (autoPlay.value && videoRef.value && videoRef.value.paused) {
