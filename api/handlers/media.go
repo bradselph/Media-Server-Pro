@@ -560,14 +560,21 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		if h.extractor != nil {
 			if ei := h.extractor.GetItem(id); ei != nil && ei.Status == "active" {
 				// Enforce per-user stream limits before redirecting.
+				// Note: extractor streams are redirect-based so slots are not held open;
+				// CanStartStream counts only sessions from other stream types (local/receiver),
+				// which still provides partial enforcement of the global limit.
 				// Extractor items have no IsMature flag so mature content filtering is not applicable here.
 				if session != nil {
-					if user, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
-						maxStreams := h.getUserStreamLimit(user.Type)
-						if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
-							writeError(c, http.StatusTooManyRequests, msgMaxStreams)
-							return
-						}
+					user, err := h.auth.GetUser(c.Request.Context(), session.Username)
+					if err != nil {
+						h.log.Warn("Failed to look up user %s for extractor stream limit check: %v", session.Username, err)
+						writeError(c, http.StatusServiceUnavailable, "Unable to verify stream permissions")
+						return
+					}
+					maxStreams := h.getUserStreamLimit(user.Type)
+					if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
+						writeError(c, http.StatusTooManyRequests, msgMaxStreams)
+						return
 					}
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
