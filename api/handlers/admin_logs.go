@@ -24,7 +24,7 @@ func (h *Handler) GetServerLogs(c *gin.Context) {
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			writeSuccess(c, []interface{}{})
+			writeSuccess(c, []any{})
 			return
 		}
 		h.log.Warn("Failed to read logs directory %s: %v", logsDir, err)
@@ -36,7 +36,7 @@ func (h *Handler) GetServerLogs(c *gin.Context) {
 		return entries[i].Name() > entries[j].Name()
 	})
 
-	var logLines []map[string]interface{}
+	var logLines []map[string]any
 
 	const maxLogFiles = 50
 	filesProcessed := 0
@@ -73,11 +73,11 @@ func (h *Handler) GetServerLogs(c *gin.Context) {
 }
 
 // filterLogEntries returns entries matching level and/or module filters; pass "" to skip that filter.
-func filterLogEntries(entries []map[string]interface{}, levelFilter, moduleFilter string) []map[string]interface{} {
+func filterLogEntries(entries []map[string]any, levelFilter, moduleFilter string) []map[string]any {
 	if levelFilter == "" && moduleFilter == "" {
 		return entries
 	}
-	filtered := make([]map[string]interface{}, 0, len(entries))
+	filtered := make([]map[string]any, 0, len(entries))
 	for _, entry := range entries {
 		if levelFilter != "" {
 			entryLevel, _ := entry["level"].(string)
@@ -139,8 +139,8 @@ func readLastNLines(filePath string, n int) ([]string, error) {
 }
 
 // parseLogLine parses a server log line into a structured entry
-func parseLogLine(line string) map[string]interface{} {
-	entry := map[string]interface{}{
+func parseLogLine(line string) map[string]any {
+	entry := map[string]any{
 		"raw":       line,
 		"timestamp": "",
 		"level":     "info",

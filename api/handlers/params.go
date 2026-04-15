@@ -12,7 +12,7 @@ import (
 )
 
 // BindJSON binds the request body to dest. On error writes 400 with errMsg and returns false.
-func BindJSON(c *gin.Context, dest interface{}, errMsg string) bool {
+func BindJSON(c *gin.Context, dest any, errMsg string) bool {
 	if err := c.ShouldBindJSON(dest); err != nil {
 		if errMsg == "" {
 			errMsg = errInvalidRequest

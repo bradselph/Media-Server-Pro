@@ -48,7 +48,7 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 	if checkQualities == nil {
 		checkQualities = []string{}
 	}
-	response := map[string]interface{}{
+	response := map[string]any{
 		"id":         job.ID,
 		"job_id":     job.ID,
 		"status":     job.Status,
@@ -95,12 +95,12 @@ func (h *Handler) parseGenerateHLSRequest(c *gin.Context) (id string, qualities 
 }
 
 // buildGenerateHLSResponse builds the JSON response map for a GenerateHLS job (fail_count always present).
-func buildGenerateHLSResponse(job *models.HLSJob) map[string]interface{} {
+func buildGenerateHLSResponse(job *models.HLSJob) map[string]any {
 	qualities := job.Qualities
 	if qualities == nil {
 		qualities = []string{}
 	}
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"job_id":     job.ID,
 		"id":         job.ID,
 		"status":     job.Status,
@@ -160,7 +160,7 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 	if statusQualities == nil {
 		statusQualities = []string{}
 	}
-	response := map[string]interface{}{
+	response := map[string]any{
 		"id":         job.ID,
 		"status":     job.Status,
 		"progress":   job.Progress,
@@ -330,7 +330,7 @@ func (h *Handler) CleanHLSInactive(c *gin.Context) {
 	}
 	threshold := parseCleanHLSInactiveThreshold(c)
 	removed := h.hls.CleanInactiveJobs(threshold)
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"removed":   removed,
 		"threshold": threshold.String(),
 	})

@@ -97,7 +97,7 @@ type slaveWS struct {
 }
 
 // sendJSON sends a typed JSON message to the slave.
-func (s *slaveWS) sendJSON(msgType string, data interface{}) error {
+func (s *slaveWS) sendJSON(msgType string, data any) error {
 	raw, err := json.Marshal(data)
 	if err != nil {
 		return err

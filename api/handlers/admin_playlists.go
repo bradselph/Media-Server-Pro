@@ -78,7 +78,7 @@ func (h *Handler) AdminListPlaylists(c *gin.Context) {
 		}
 	}
 	items := paginatePlaylists(filtered, page, limit)
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
@@ -111,7 +111,7 @@ func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
 		Action: "bulk_delete_playlists",
 		Target: fmt.Sprintf("%d playlists", successCount), Success: failedCount == 0,
 	})
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"success": successCount,
 		"failed":  failedCount,
 		"errors":  errs,

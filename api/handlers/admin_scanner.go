@@ -76,7 +76,7 @@ func (h *Handler) ScanContent(c *gin.Context) {
 	allResults := h.scanConfiguredDirectories(cfg)
 	autoFlagged, reviewNeeded, clean := h.processScanResults(allResults, req.AutoApply)
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"stats":              h.scanner.GetStats(),
 		"scanned":            len(allResults),
 		"auto_flagged_count": autoFlagged,
@@ -170,7 +170,7 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 		}
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"updated": updated,
 		"total":   len(req.IDs),
 	})
@@ -182,7 +182,7 @@ func (h *Handler) ClearReviewQueue(c *gin.Context) {
 		return
 	}
 	h.scanner.ClearReviewQueue()
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"message": "Review queue cleared",
 	})
 }

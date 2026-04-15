@@ -273,7 +273,7 @@ func SetJSONFormat(enabled bool) {
 }
 
 // formatMessageJSON creates a JSON-structured log line.
-func (l *Logger) formatMessageJSON(level Level, requestID, msg string, args ...interface{}) string {
+func (l *Logger) formatMessageJSON(level Level, requestID, msg string, args ...any) string {
 	formattedMsg := msg
 	if len(args) > 0 {
 		formattedMsg = fmt.Sprintf(msg, args...)
@@ -285,7 +285,7 @@ func (l *Logger) formatMessageJSON(level Level, requestID, msg string, args ...i
 		caller = fmt.Sprintf("%s:%d", filepath.Base(file), line)
 	}
 
-	entry := map[string]interface{}{
+	entry := map[string]any{
 		"time":   time.Now().Format(time.RFC3339Nano),
 		"level":  levelNames[level],
 		"module": l.module,
@@ -304,7 +304,7 @@ func (l *Logger) formatMessageJSON(level Level, requestID, msg string, args ...i
 }
 
 // formatMessage creates a formatted log message with metadata
-func (l *Logger) formatMessage(level Level, requestID, msg string, args ...interface{}) string {
+func (l *Logger) formatMessage(level Level, requestID, msg string, args ...any) string {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMsg := msg
 	if len(args) > 0 {
@@ -344,12 +344,12 @@ func (l *Logger) formatMessage(level Level, requestID, msg string, args ...inter
 }
 
 // log writes a log message at the specified level
-func (l *Logger) log(level Level, msg string, args ...interface{}) {
+func (l *Logger) log(level Level, msg string, args ...any) {
 	l.logWithRID(level, "", msg, args...)
 }
 
 // logWithRID writes a log message at the specified level with an optional request ID.
-func (l *Logger) logWithRID(level Level, requestID, msg string, args ...interface{}) {
+func (l *Logger) logWithRID(level Level, requestID, msg string, args ...any) {
 	if level < l.minLevel {
 		return
 	}
@@ -461,7 +461,7 @@ func (l *Logger) cleanOldBackups(basePath string) {
 }
 
 // formatMessagePlain creates a formatted log message without colors
-func (l *Logger) formatMessagePlain(level Level, requestID, msg string, args ...interface{}) string {
+func (l *Logger) formatMessagePlain(level Level, requestID, msg string, args ...any) string {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMsg := msg
 	if len(args) > 0 {
@@ -495,22 +495,22 @@ func (l *Logger) formatMessagePlain(level Level, requestID, msg string, args ...
 }
 
 // Debug logs a debug message
-func (l *Logger) Debug(msg string, args ...interface{}) {
+func (l *Logger) Debug(msg string, args ...any) {
 	l.log(DEBUG, msg, args...)
 }
 
 // Info logs an informational message
-func (l *Logger) Info(msg string, args ...interface{}) {
+func (l *Logger) Info(msg string, args ...any) {
 	l.log(INFO, msg, args...)
 }
 
 // Warn logs a warning message
-func (l *Logger) Warn(msg string, args ...interface{}) {
+func (l *Logger) Warn(msg string, args ...any) {
 	l.log(WARN, msg, args...)
 }
 
 // Error logs an error message
-func (l *Logger) Error(msg string, args ...interface{}) {
+func (l *Logger) Error(msg string, args ...any) {
 	l.log(ERROR, msg, args...)
 }
 
@@ -519,29 +519,29 @@ func (l *Logger) Error(msg string, args ...interface{}) {
 // Use this only for unrecoverable errors during initialization.
 // For recoverable errors in running services, prefer returning errors and using
 // coordinated shutdown mechanisms that allow proper cleanup.
-func (l *Logger) Fatal(msg string, args ...interface{}) {
+func (l *Logger) Fatal(msg string, args ...any) {
 	l.log(FATAL, msg, args...)
 	Shutdown() // Flush logger's file buffer
 	os.Exit(1) // Immediate termination - no defers run, other goroutines interrupted
 }
 
 // DebugCtx logs a debug message with request ID extracted from context.
-func (l *Logger) DebugCtx(ctx context.Context, msg string, args ...interface{}) {
+func (l *Logger) DebugCtx(ctx context.Context, msg string, args ...any) {
 	l.logWithRID(DEBUG, RequestIDFromContext(ctx), msg, args...)
 }
 
 // InfoCtx logs an informational message with request ID extracted from context.
-func (l *Logger) InfoCtx(ctx context.Context, msg string, args ...interface{}) {
+func (l *Logger) InfoCtx(ctx context.Context, msg string, args ...any) {
 	l.logWithRID(INFO, RequestIDFromContext(ctx), msg, args...)
 }
 
 // WarnCtx logs a warning message with request ID extracted from context.
-func (l *Logger) WarnCtx(ctx context.Context, msg string, args ...interface{}) {
+func (l *Logger) WarnCtx(ctx context.Context, msg string, args ...any) {
 	l.logWithRID(WARN, RequestIDFromContext(ctx), msg, args...)
 }
 
 // ErrorCtx logs an error message with request ID extracted from context.
-func (l *Logger) ErrorCtx(ctx context.Context, msg string, args ...interface{}) {
+func (l *Logger) ErrorCtx(ctx context.Context, msg string, args ...any) {
 	l.logWithRID(ERROR, RequestIDFromContext(ctx), msg, args...)
 }
 

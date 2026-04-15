@@ -60,7 +60,7 @@ type ClientEventInput struct {
 	SessionID string
 	IPAddress string
 	UserAgent string
-	Data      map[string]interface{}
+	Data      map[string]any
 }
 
 // EventStats holds event statistics.
@@ -124,7 +124,7 @@ func (m *Module) TrackView(ctx context.Context, params ViewParams) {
 		SessionID: params.SessionID,
 		IPAddress: params.IPAddress,
 		UserAgent: params.UserAgent,
-		Data:      map[string]interface{}{"timestamp": time.Now()},
+		Data:      map[string]any{"timestamp": time.Now()},
 	})
 }
 
@@ -143,7 +143,7 @@ func (m *Module) TrackPlayback(ctx context.Context, params PlaybackParams) {
 		MediaID:   params.MediaID,
 		UserID:    params.UserID,
 		SessionID: params.SessionID,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"position": params.Position,
 			"duration": params.Duration,
 			"progress": progress,
@@ -158,14 +158,14 @@ type TrafficEventParams struct {
 	SessionID string
 	IPAddress string
 	UserAgent string
-	Data      map[string]interface{}
+	Data      map[string]any
 }
 
 // TrackTrafficEvent records a server-generated traffic event (login, register, age gate, etc.).
 func (m *Module) TrackTrafficEvent(ctx context.Context, params TrafficEventParams) {
 	data := params.Data
 	if data == nil {
-		data = make(map[string]interface{})
+		data = make(map[string]any)
 	}
 	m.TrackEvent(ctx, models.AnalyticsEvent{
 		Type:      params.Type,
@@ -186,7 +186,7 @@ func (m *Module) TrackDownload(ctx context.Context, params ViewParams) {
 		SessionID: params.SessionID,
 		IPAddress: params.IPAddress,
 		UserAgent: params.UserAgent,
-		Data:      map[string]interface{}{"timestamp": time.Now()},
+		Data:      map[string]any{"timestamp": time.Now()},
 	})
 }
 

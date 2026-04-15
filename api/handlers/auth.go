@@ -74,10 +74,10 @@ func (h *Handler) Login(c *gin.Context) {
 			h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 				Type: analytics.EventLogin, UserID: session.UserID, SessionID: session.ID,
 				IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-				Data: map[string]interface{}{"username": session.Username, "role": string(session.Role)},
+				Data: map[string]any{"username": session.Username, "role": string(session.Role)},
 			})
 		}
-		writeSuccess(c, map[string]interface{}{
+		writeSuccess(c, map[string]any{
 			"session_id": session.ID,
 			"username":   session.Username,
 			"role":       session.Role,
@@ -97,7 +97,7 @@ func (h *Handler) Login(c *gin.Context) {
 			}
 			h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 				Type: analytics.EventLoginFailed, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-				Data: map[string]interface{}{"username": req.Username, "reason": reason},
+				Data: map[string]any{"username": req.Username, "reason": reason},
 			})
 		}
 		if errors.Is(err, auth.ErrAccountLocked) {
@@ -123,11 +123,11 @@ func (h *Handler) Login(c *gin.Context) {
 		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 			Type: analytics.EventLogin, UserID: session.UserID, SessionID: session.ID,
 			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-			Data: map[string]interface{}{"username": session.Username, "role": string(session.Role)},
+			Data: map[string]any{"username": session.Username, "role": string(session.Role)},
 		})
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"session_id": session.ID,
 		"username":   session.Username,
 		"role":       session.Role,
@@ -173,14 +173,14 @@ func (h *Handler) CheckSession(c *gin.Context) {
 
 	user := getUser(c)
 	if user == nil {
-		writeSuccess(c, map[string]interface{}{
+		writeSuccess(c, map[string]any{
 			"authenticated": false,
 			"allow_guests":  allowGuests,
 		})
 		return
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"authenticated": true,
 		"allow_guests":  allowGuests,
 		"user":          user,
@@ -269,7 +269,7 @@ func (h *Handler) Register(c *gin.Context) {
 		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 			Type: analytics.EventRegister, UserID: session.UserID, SessionID: session.ID,
 			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-			Data: map[string]interface{}{"username": req.Username},
+			Data: map[string]any{"username": req.Username},
 		})
 	}
 
@@ -314,7 +314,7 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 		return
 	}
 
-	var incoming map[string]interface{}
+	var incoming map[string]any
 	if err := json.NewDecoder(c.Request.Body).Decode(&incoming); err != nil {
 		h.log.Error("Failed to decode preferences JSON for user %s: %v", session.Username, err)
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
@@ -421,7 +421,7 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 	if v, ok := incoming["filter_media_type"].(string); ok {
 		prefs.FilterMediaType = v
 	}
-	if v, ok := incoming["custom_eq_presets"].(map[string]interface{}); ok {
+	if v, ok := incoming["custom_eq_presets"].(map[string]any); ok {
 		prefs.CustomEQPresets = v
 	}
 	if v, ok := incoming["show_continue_watching"].(bool); ok {
@@ -597,7 +597,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 	session := getSession(c)
 
 	if session == nil {
-		writeSuccess(c, map[string]interface{}{
+		writeSuccess(c, map[string]any{
 			"authenticated":         false,
 			"show_mature":           false,
 			"mature_preference_set": false,
@@ -635,7 +635,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 		caps["canDelete"] = user.Permissions.CanDelete
 		caps["canManage"] = user.Permissions.CanManage
 	}
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"authenticated":         true,
 		"username":              user.Username,
 		"role":                  user.Role,
@@ -644,7 +644,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 		"mature_preference_set": user.Preferences.MaturePreferenceSet,
 		"capabilities":          caps,
 		// storage_quota is in bytes; GetStorageUsage's quota_gb is in GB (already divided).
-		"limits": map[string]interface{}{
+		"limits": map[string]any{
 			"storage_quota":      h.getUserStorageQuota(user.Type),
 			"concurrent_streams": h.getUserStreamLimit(user.Type),
 		},

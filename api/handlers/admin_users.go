@@ -119,7 +119,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		Enabled     *bool                  `json:"enabled"`
 		Email       string                 `json:"email"`
 		Type        string                 `json:"type"`
-		Permissions map[string]interface{} `json:"permissions"`
+		Permissions map[string]any `json:"permissions"`
 	}
 	if !BindJSON(c, &req, "") {
 		return
@@ -128,7 +128,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		req.Role = string(models.RoleViewer)
 	}
 
-	updates := map[string]interface{}{}
+	updates := map[string]any{}
 	if req.Role != "" {
 		updates["role"] = req.Role
 	}
@@ -316,12 +316,12 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_delete_user", Target: username})
 			}
 		case "enable":
-			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": true})
+			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]any{"enabled": true})
 			if opErr == nil {
 				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_enable_user", Target: username})
 			}
 		case "disable":
-			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]interface{}{"enabled": false})
+			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]any{"enabled": false})
 			if opErr == nil {
 				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_disable_user", Target: username})
 			}
@@ -335,7 +335,7 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		}
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"success": successCount,
 		"failed":  failedCount,
 		"errors":  errs,

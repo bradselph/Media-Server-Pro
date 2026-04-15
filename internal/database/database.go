@@ -240,7 +240,7 @@ type gormLogWriter struct {
 	log *logger.Logger
 }
 
-func (w *gormLogWriter) Printf(format string, args ...interface{}) {
+func (w *gormLogWriter) Printf(format string, args ...any) {
 	w.log.Info(format, args...)
 }
 

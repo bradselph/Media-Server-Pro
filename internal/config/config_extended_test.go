@@ -122,7 +122,7 @@ func TestSetValuesBatch_SingleValue(t *testing.T) {
 	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
-	err := mgr.SetValuesBatch(map[string]interface{}{
+	err := mgr.SetValuesBatch(map[string]any{
 		"server.port": 9090,
 	})
 	if err != nil {
@@ -139,7 +139,7 @@ func TestSetValuesBatch_MultipleValues(t *testing.T) {
 	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
-	err := mgr.SetValuesBatch(map[string]interface{}{
+	err := mgr.SetValuesBatch(map[string]any{
 		"server.port":   8888,
 		"server.host":   "0.0.0.0",
 		"logging.level": "debug",
@@ -161,7 +161,7 @@ func TestSetValuesBatch_InvalidPath(t *testing.T) {
 	cfgPath := filepath.Join(dir, testConfigFilename)
 	mgr := NewManager(cfgPath)
 
-	err := mgr.SetValuesBatch(map[string]interface{}{
+	err := mgr.SetValuesBatch(map[string]any{
 		"nonexistent.field.path": "value",
 	})
 	if err == nil {

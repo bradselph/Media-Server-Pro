@@ -142,7 +142,7 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 	totalPages := computeAdminListTotalPages(totalItems, params.limit)
 	h.enrichAdminListThumbnails(items)
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
@@ -151,12 +151,12 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 
 // adminUpdateRequest holds parsed fields from the update JSON body.
 type adminUpdateRequest struct {
-	updates map[string]interface{}
+	updates map[string]any
 	name    string
 }
 
 // decodeAdminUpdateField unmarshals one optional JSON field. Returns "" on success or when key is absent, or an error message on decode failure.
-func decodeAdminUpdateField(rawBody map[string]json.RawMessage, key string, dest interface{}, invalidMsg string) string {
+func decodeAdminUpdateField(rawBody map[string]json.RawMessage, key string, dest any, invalidMsg string) string {
 	raw, ok := rawBody[key]
 	if !ok {
 		return ""
@@ -210,7 +210,7 @@ func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRe
 		}
 	}
 
-	updates := make(map[string]interface{})
+	updates := make(map[string]any)
 	if reqTags != nil {
 		updates["tags"] = reqTags
 	}
@@ -379,9 +379,9 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	}
 }
 
-// extractStringSlice converts a []interface{} from JSON into []string, ignoring non-string elements.
-func extractStringSlice(tagsRaw interface{}) ([]string, bool) {
-	tv, ok := tagsRaw.([]interface{})
+// extractStringSlice converts a []any from JSON into []string, ignoring non-string elements.
+func extractStringSlice(tagsRaw any) ([]string, bool) {
+	tv, ok := tagsRaw.([]any)
 	if !ok {
 		return nil, false
 	}
@@ -396,8 +396,8 @@ func extractStringSlice(tagsRaw interface{}) ([]string, bool) {
 
 // buildBulkUpdateFields builds an updates map from request data for bulk update.
 // Returns the map and true if at least one valid field was present.
-func buildBulkUpdateFields(data map[string]interface{}) (map[string]interface{}, bool) {
-	updates := make(map[string]interface{})
+func buildBulkUpdateFields(data map[string]any) (map[string]any, bool) {
+	updates := make(map[string]any)
 	hasValid := false
 	if cat, ok := data["category"].(string); ok {
 		updates["category"] = cat
@@ -418,7 +418,7 @@ func buildBulkUpdateFields(data map[string]interface{}) (map[string]interface{},
 
 // processOneBulkMediaItem runs delete or update for a single media ID.
 // Returns nil on success, or an error message string on failure.
-func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, updates map[string]interface{}) error {
+func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, updates map[string]any) error {
 	if id == "" {
 		return nil
 	}
@@ -451,7 +451,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 	var req struct {
 		IDs    []string               `json:"ids"`
 		Action string                 `json:"action"`
-		Data   map[string]interface{} `json:"data"`
+		Data   map[string]any `json:"data"`
 	}
 	if !BindJSON(c, &req, "") {
 		return
@@ -469,7 +469,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		return
 	}
 
-	var updates map[string]interface{}
+	var updates map[string]any
 	if req.Action == "update" {
 		var hasValid bool
 		updates, hasValid = buildBulkUpdateFields(req.Data)
@@ -492,7 +492,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		}
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"success": successCount,
 		"failed":  failedCount,
 		"errors":  errs,

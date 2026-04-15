@@ -59,10 +59,10 @@ type browserDetector struct {
 
 // loggerI is satisfied by *logger.Logger.
 type loggerI interface {
-	Info(format string, args ...interface{})
-	Debug(format string, args ...interface{})
-	Warn(format string, args ...interface{})
-	Error(format string, args ...interface{})
+	Info(format string, args ...any)
+	Debug(format string, args ...any)
+	Warn(format string, args ...any)
+	Error(format string, args ...any)
 }
 
 // detectedStream represents a single stream found by the browser detector.
@@ -199,14 +199,14 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		}
 	}()
 
-	send := func(method string, params interface{}) (json.RawMessage, error) {
+	send := func(method string, params any) (json.RawMessage, error) {
 		bd.mu.Lock()
 		bd.nextID++
 		id := bd.nextID
 		bd.mu.Unlock()
 
 		p, _ := json.Marshal(params)
-		raw := map[string]interface{}{
+		raw := map[string]any{
 			"id":     id,
 			"method": method,
 			"params": json.RawMessage(p),
@@ -239,7 +239,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 
 	// --- 4. Enable domains ---
 	for _, method := range []string{"Network.enable", "Page.enable", "Runtime.enable"} {
-		if _, sendErr := send(method, map[string]interface{}{}); sendErr != nil {
+		if _, sendErr := send(method, map[string]any{}); sendErr != nil {
 			return nil, fmt.Errorf("enable %s: %w", method, sendErr)
 		}
 	}
@@ -258,7 +258,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		"*://[::1]/*",
 		"*://[::1]",
 	}
-	if _, sendErr := send("Network.setBlockedURLs", map[string]interface{}{"urls": blockedURLPatterns}); sendErr != nil {
+	if _, sendErr := send("Network.setBlockedURLs", map[string]any{"urls": blockedURLPatterns}); sendErr != nil {
 		// Non-fatal: log and continue. Older Chrome builds may not support this method.
 		bd.log.Warn("CDP setBlockedURLs not supported: %v — private IP blocking limited to host-resolver-rules", sendErr)
 	}
@@ -360,7 +360,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 
 	// --- 6. Navigate to target page ---
 	bd.log.Info("Browser navigating to: %s", pageURL)
-	navParams := map[string]interface{}{"url": pageURL}
+	navParams := map[string]any{"url": pageURL}
 	if _, sendErr := send("Page.navigate", navParams); sendErr != nil {
 		return nil, fmt.Errorf("navigate: %w", sendErr)
 	}
@@ -376,7 +376,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	sleep(ctx, 1*time.Second)
 
 	// --- 8. Get page title ---
-	titleRes, err := send(cdpRuntimeEvaluate, map[string]interface{}{
+	titleRes, err := send(cdpRuntimeEvaluate, map[string]any{
 		"expression": "document.title",
 	})
 	if err == nil {
@@ -410,7 +410,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 
 // handleAgeVerification clicks through common age gates.
 // Mirrors the downloader's handleAgeVerification logic.
-func (bd *browserDetector) handleAgeVerification(ctx context.Context, send func(string, interface{}) (json.RawMessage, error)) {
+func (bd *browserDetector) handleAgeVerification(ctx context.Context, send func(string, any) (json.RawMessage, error)) {
 	bd.log.Debug("Checking for age verification popups...")
 
 	// JavaScript to find and click age-verification / cookie-consent buttons.
@@ -464,7 +464,7 @@ func (bd *browserDetector) handleAgeVerification(ctx context.Context, send func(
 		return '';
 	})()`
 
-	res, err := send(cdpRuntimeEvaluate, map[string]interface{}{
+	res, err := send(cdpRuntimeEvaluate, map[string]any{
 		"expression": js,
 	})
 	if err != nil {
@@ -483,7 +483,7 @@ func (bd *browserDetector) handleAgeVerification(ctx context.Context, send func(
 
 // triggerVideoPlayback finds and clicks play buttons and video elements.
 // Mirrors the downloader's triggerVideoPlayback logic.
-func (bd *browserDetector) triggerVideoPlayback(send func(string, interface{}) (json.RawMessage, error)) {
+func (bd *browserDetector) triggerVideoPlayback(send func(string, any) (json.RawMessage, error)) {
 	// JavaScript to mute videos and click play buttons.
 	// Selector list mirrors the downloader's videoDetector.js triggerVideoPlayback.
 	js := `(function() {
@@ -523,7 +523,7 @@ func (bd *browserDetector) triggerVideoPlayback(send func(string, interface{}) (
 		return clicked.join(',');
 	})()`
 
-	res, err := send(cdpRuntimeEvaluate, map[string]interface{}{
+	res, err := send(cdpRuntimeEvaluate, map[string]any{
 		"expression": js,
 	})
 	if err != nil {
@@ -545,7 +545,7 @@ func (bd *browserDetector) triggerVideoPlayback(send func(string, interface{}) (
 // extractors (PornHub flashvars, XVideos setVideoHLS, etc.) plus a generic
 // fallback that scans all <script> contents.
 func (bd *browserDetector) extractEmbeddedURLs(
-	send func(string, interface{}) (json.RawMessage, error),
+	send func(string, any) (json.RawMessage, error),
 	result *browserProbeResult,
 	mu *sync.Mutex,
 	seen map[string]bool,
@@ -650,7 +650,7 @@ func (bd *browserDetector) extractEmbeddedURLs(
 		return JSON.stringify(unique);
 	})()`
 
-	res, err := send(cdpRuntimeEvaluate, map[string]interface{}{
+	res, err := send(cdpRuntimeEvaluate, map[string]any{
 		"expression": js,
 	})
 	if err != nil {

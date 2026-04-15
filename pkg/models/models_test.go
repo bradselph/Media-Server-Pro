@@ -54,7 +54,7 @@ func TestAdminSession_MarshalJSON_IncludesIsAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalJSON failed: %v", err)
 	}
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf(testUnmarshalFmt, err)
 	}

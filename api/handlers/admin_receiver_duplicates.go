@@ -88,7 +88,7 @@ func (h *Handler) AdminResolveDuplicate(c *gin.Context) {
 
 	h.logAdminAction(c, &adminLogActionParams{
 		UserID: userID, Username: resolvedBy, Action: "resolve_duplicate",
-		Target: id, Details: map[string]interface{}{"action": body.Action},
+		Target: id, Details: map[string]any{"action": body.Action},
 	})
 
 	writeSuccess(c, gin.H{"message": "duplicate resolved", "action": body.Action})

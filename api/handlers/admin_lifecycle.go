@@ -15,7 +15,7 @@ func (h *Handler) RestartServer(c *gin.Context) {
 	h.log.Warn("Server restart requested by admin")
 	h.logAdminAction(c, &adminLogActionParams{Action: "restart_server", Target: "initiated"})
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"message": "Server restart initiated. The server will restart in a few seconds.",
 		"status":  "restarting",
 	})
@@ -84,7 +84,7 @@ func (h *Handler) ShutdownServer(c *gin.Context) {
 	h.log.Warn("Server shutdown requested by admin")
 	h.logAdminAction(c, &adminLogActionParams{Action: "shutdown_server", Target: "initiated"})
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"message": "Server shutdown initiated. The server will shut down in a few seconds.",
 		"status":  "shutting_down",
 	})

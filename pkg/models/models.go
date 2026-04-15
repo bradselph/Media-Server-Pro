@@ -83,7 +83,7 @@ type User struct {
 	// SECURITY WARNING: Metadata is arbitrary JSON that may contain malicious content.
 	// Always sanitize metadata values before rendering in HTML to prevent XSS attacks.
 	// Use textContent instead of innerHTML, or apply proper HTML escaping.
-	Metadata map[string]interface{} `json:"metadata,omitempty" db:"metadata" gorm:"type:json;serializer:json"`
+	Metadata map[string]any `json:"metadata,omitempty" db:"metadata" gorm:"type:json;serializer:json"`
 }
 
 // TableName specifies the table name for GORM
@@ -139,7 +139,7 @@ type UserPreferences struct {
 	SortOrder           string                 `json:"sort_order" db:"sort_order" gorm:"size:10;default:desc"`
 	FilterCategory      string                 `json:"filter_category" db:"filter_category" gorm:"size:100"`
 	FilterMediaType     string                 `json:"filter_media_type" db:"filter_media_type" gorm:"size:50"`
-	CustomEQPresets     map[string]interface{} `json:"custom_eq_presets,omitempty" db:"custom_eq_presets" gorm:"type:json;serializer:json"`
+	CustomEQPresets     map[string]any `json:"custom_eq_presets,omitempty" db:"custom_eq_presets" gorm:"type:json;serializer:json"`
 	// Home section visibility — default true (show all sections)
 	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"default:true"`
 	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"default:true"`
@@ -165,13 +165,13 @@ func (p *UserPreferences) MarshalJSON() ([]byte, error) {
 }
 
 // userPrefsHasKey returns whether the key exists in the raw JSON map.
-func userPrefsHasKey(m map[string]interface{}, key string) bool {
+func userPrefsHasKey(m map[string]any, key string) bool {
 	_, ok := m[key]
 	return ok
 }
 
 // userPrefsCheckAmbiguous returns an error if both canonical and alias keys are present.
-func userPrefsCheckAmbiguous(rawMap map[string]interface{}) error {
+func userPrefsCheckAmbiguous(rawMap map[string]any) error {
 	if userPrefsHasKey(rawMap, "auto_play") && userPrefsHasKey(rawMap, "autoplay") {
 		return fmt.Errorf("ambiguous fields: both 'auto_play' and 'autoplay' provided; use only one")
 	}
@@ -188,7 +188,7 @@ type userPrefsAliasAux struct {
 }
 
 // userPrefsApplyAliasOverrides applies alias field values when the canonical key was not present.
-func userPrefsApplyAliasOverrides(p *UserPreferences, aux *userPrefsAliasAux, rawMap map[string]interface{}) {
+func userPrefsApplyAliasOverrides(p *UserPreferences, aux *userPrefsAliasAux, rawMap map[string]any) {
 	if aux.Autoplay != nil && !userPrefsHasKey(rawMap, "auto_play") {
 		p.AutoPlay = *aux.Autoplay
 	}
@@ -202,7 +202,7 @@ func userPrefsApplyAliasOverrides(p *UserPreferences, aux *userPrefsAliasAux, ra
 func (p *UserPreferences) UnmarshalJSON(data []byte) error {
 	type Alias UserPreferences
 
-	var rawMap map[string]interface{}
+	var rawMap map[string]any
 	if err := json.Unmarshal(data, &rawMap); err != nil {
 		return err
 	}
@@ -506,7 +506,7 @@ type AnalyticsEvent struct {
 	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
 	UserAgent string                 `json:"user_agent" db:"user_agent" gorm:"type:text"`
 	Timestamp time.Time              `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
-	Data      map[string]interface{} `json:"data,omitempty" db:"data" gorm:"type:json;serializer:json"`
+	Data      map[string]any `json:"data,omitempty" db:"data" gorm:"type:json;serializer:json"`
 }
 
 // TableName specifies the table name for GORM
@@ -609,7 +609,7 @@ type AuditLogEntry struct {
 	Username  string                 `json:"username" db:"username" gorm:"size:255"`
 	Action    string                 `json:"action" db:"action" gorm:"size:255;not null;index"`
 	Resource  string                 `json:"resource" db:"resource" gorm:"size:1024;index"`
-	Details   map[string]interface{} `json:"details,omitempty" db:"details" gorm:"type:json;serializer:json"`
+	Details   map[string]any `json:"details,omitempty" db:"details" gorm:"type:json;serializer:json"`
 	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
 	Success   bool                   `json:"success" db:"success" gorm:"index"`
 }
@@ -651,7 +651,7 @@ type HealthStatus struct {
 // APIResponse represents a standard API response
 type APIResponse struct {
 	Success bool        `json:"success"`
-	Data    interface{} `json:"data,omitempty"`
+	Data    any `json:"data,omitempty"`
 	Error   string      `json:"error,omitempty"`
 	Message string      `json:"message,omitempty"`
 }

@@ -21,9 +21,9 @@ func TestBuildConfigHLSMap(t *testing.T) {
 	if m == nil {
 		t.Fatal("nil map")
 	}
-	profiles, ok := m["quality_profiles"].([]map[string]interface{})
+	profiles, ok := m["quality_profiles"].([]map[string]any)
 	if !ok {
-		t.Fatal("quality_profiles should be []map[string]interface{}")
+		t.Fatal("quality_profiles should be []map[string]any")
 	}
 	if len(profiles) != 1 {
 		t.Errorf("expected 1 profile, got %d", len(profiles))
@@ -195,7 +195,7 @@ func TestBuildConfigStorageMap(t *testing.T) {
 	if m["backend"] != "s3" {
 		t.Errorf("backend = %v", m["backend"])
 	}
-	s3map, ok := m["s3"].(map[string]interface{})
+	s3map, ok := m["s3"].(map[string]any)
 	if !ok {
 		t.Fatal("s3 should be a map")
 	}
@@ -211,7 +211,7 @@ func TestBuildConfigStorageMap_NoKeys(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Storage.Backend = "local"
 	m := buildConfigStorageMap(cfg, nil)
-	s3map := m["s3"].(map[string]interface{})
+	s3map := m["s3"].(map[string]any)
 	if s3map["access_key_set"] != false {
 		t.Error("access_key_set should be false")
 	}

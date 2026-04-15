@@ -181,7 +181,7 @@ func (c *Client) GetSettings() (*SettingsResponse, error) {
 	return &resp, nil
 }
 
-func (c *Client) get(path string, result interface{}) error {
+func (c *Client) get(path string, result any) error {
 	resp, err := c.httpClient.Get(c.baseURL + path)
 	if err != nil {
 		return fmt.Errorf(errRequestFailed, err)
@@ -199,11 +199,11 @@ func (c *Client) get(path string, result interface{}) error {
 	return nil
 }
 
-func (c *Client) post(path string, body, result interface{}) error {
+func (c *Client) post(path string, body, result any) error {
 	return c.postWithSession(path, body, result, "")
 }
 
-func (c *Client) postWithSession(path string, body, result interface{}, mspSessionID string) error {
+func (c *Client) postWithSession(path string, body, result any, mspSessionID string) error {
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)

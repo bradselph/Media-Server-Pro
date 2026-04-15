@@ -173,7 +173,7 @@ func (h *Handler) UpdatePlaylist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var updates map[string]interface{}
+	var updates map[string]any
 	if !BindJSON(c, &updates, errInvalidRequest) {
 		return
 	}

@@ -46,7 +46,7 @@ func (h *Handler) AdminGetStats(c *gin.Context) {
 		diskUsed = diskTotal - diskFree
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"total_videos":       mediaStats.VideoCount,
 		"total_audio":        mediaStats.AudioCount,
 		"active_sessions":    streamStats.ActiveStreams,
@@ -103,7 +103,7 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 		})
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"version":      h.buildInfo.Version,
 		"build_date":   h.buildInfo.BuildDate,
 		"os":           runtime.GOOS,

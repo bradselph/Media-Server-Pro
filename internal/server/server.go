@@ -543,7 +543,7 @@ func (s *Server) HandleStatus(c *gin.Context) {
 	moduleCount := len(s.modules)
 	s.mu.RUnlock()
 
-	c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, map[string]any{
 		"running":      running,
 		"uptime":       time.Since(startTime).String(),
 		"start_time":   startTime,
@@ -558,10 +558,10 @@ func (s *Server) HandleModules(c *gin.Context) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	modules := make([]map[string]interface{}, 0, len(s.modules))
+	modules := make([]map[string]any, 0, len(s.modules))
 	for _, m := range s.modules {
 		health := m.Health()
-		modules = append(modules, map[string]interface{}{
+		modules = append(modules, map[string]any{
 			"name":    m.Name(),
 			"status":  health.Status,
 			"message": health.Message,

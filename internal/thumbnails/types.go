@@ -203,8 +203,8 @@ type jobHeap []*priorityJob
 func (h *jobHeap) Len() int           { return len(*h) }
 func (h *jobHeap) Less(i, j int) bool { return (*h)[i].priority < (*h)[j].priority }
 func (h *jobHeap) Swap(i, j int)      { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
-func (h *jobHeap) Push(x interface{}) { *h = append(*h, x.(*priorityJob)) } //nolint:errcheck // heap interface contract: x is always *priorityJob
-func (h *jobHeap) Pop() interface{} {
+func (h *jobHeap) Push(x any) { *h = append(*h, x.(*priorityJob)) } //nolint:errcheck // heap interface contract: x is always *priorityJob
+func (h *jobHeap) Pop() any {
 	old := *h
 	n := len(old)
 	item := old[n-1]

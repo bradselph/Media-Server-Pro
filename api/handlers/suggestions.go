@@ -167,7 +167,7 @@ func (h *Handler) GetMyProfile(c *gin.Context) {
 	profile := h.suggestions.GetUserProfile(session.UserID)
 	if profile == nil {
 		// Return an empty profile so the frontend always gets a valid object.
-		writeSuccess(c, map[string]interface{}{
+		writeSuccess(c, map[string]any{
 			"user_id":          session.UserID,
 			"total_views":      0,
 			"total_watch_time": 0.0,
@@ -219,7 +219,7 @@ func (h *Handler) GetMyRatings(c *gin.Context) {
 
 	profile := h.suggestions.GetUserProfile(session.UserID)
 	if profile == nil {
-		writeSuccess(c, []interface{}{})
+		writeSuccess(c, []any{})
 		return
 	}
 
@@ -353,7 +353,7 @@ func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
 		}
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"items": results,
 		"since": cutoff,
 		"total": len(results),
@@ -517,7 +517,7 @@ func (h *Handler) GetOnDeck(c *gin.Context) {
 		items = append(items, candidates[i].item)
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"items": items,
 		"total": len(items),
 	})
