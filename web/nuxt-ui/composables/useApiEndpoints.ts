@@ -319,7 +319,7 @@ export function usePlaylistApi() {
             api.put<Playlist>(`/api/playlists/${encodeURIComponent(id)}`, data),
         delete: (id: string) => api.delete<void>(`/api/playlists/${encodeURIComponent(id)}`),
         addItem: (id: string, mediaId: string) =>
-            api.post<PlaylistItem>(`/api/playlists/${encodeURIComponent(id)}/items`, {media_id: mediaId}),
+            api.post<void>(`/api/playlists/${encodeURIComponent(id)}/items`, {media_id: mediaId}),
         // DELETE is /playlists/:id/items?media_id= or ?item_id= (no path segment).
         removeItem: (playlistId: string, mediaId: string) =>
             api.delete<void>(`/api/playlists/${encodeURIComponent(playlistId)}/items?media_id=${encodeURIComponent(mediaId)}`),

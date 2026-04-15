@@ -287,7 +287,10 @@ export function useHLS(
     }
 
     async function activateHLS() {
-        if (!hlsUrl.value) return
+        // Capture URL immediately — cleanup() can null hlsUrl.value during the
+        // async retry loop below (e.g. when the user navigates to another item).
+        const capturedUrl = hlsUrl.value
+        if (!capturedUrl) return
         hlsActivated.value = true
 
         // Wait for Vue to patch the DOM (removes :src binding) before hls.js
@@ -306,7 +309,7 @@ export function useHLS(
             return
         }
 
-        attachHLS(hlsUrl.value).catch(() => {
+        attachHLS(capturedUrl).catch(() => {
             hlsActivated.value = false
         })
     }
