@@ -171,7 +171,7 @@
 
 ## Medium-Confidence Findings
 
-### [MEDIUM] API Contract Field Presence Mismatch: APIToken.expires_at
+### ✅ `849fee67` / `65fddf5a` 2026-04-15 — [MEDIUM] API Contract Field Presence Mismatch: APIToken.expires_at
 
 - **File:** Backend: `/d/Media-Server-Pro-4/api/handlers/auth_tokens.go:35`; Frontend: `/d/Media-Server-Pro-4/web/nuxt-ui/types/api.ts:1126`
 - **Category:** API Contract Mismatch
@@ -213,6 +213,10 @@
     created_at: string
   }
   ```
+
+
+> **Resolution**: Backend `CreateAPIToken` now always sets `expires_at: null` in the `gin.H{}` map before conditionally overwriting it. Frontend `APIToken` type changed from `expires_at?: string | null` to `expires_at: string | null`. `profile.vue` `createToken()` spreads `expires_at` into the local token list.
+> **Verified**: pending deploy
 
 ---
 
