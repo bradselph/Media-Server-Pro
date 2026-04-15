@@ -104,7 +104,7 @@
 
 ## High-Confidence Findings
 
-### [HIGH] Overly Permissive Redirect in Login Page
+### ✅ `6c9f918f` 2026-04-15 — [HIGH] Overly Permissive Redirect in Login Page
 
 - **File:** `/d/Media-Server-Pro-4/web/nuxt-ui/pages/login.vue:20`
 - **Category:** Open Redirect
@@ -162,6 +162,10 @@
     return '/'
   }
   ```
+
+
+> **Resolution**: Added checks to block `/api/` and `/extractor/` prefixes in `loginRedirectDest()` in `web/nuxt-ui/pages/login.vue`. The existing `//` prefix block is retained. App routes continue to work.
+> **Verified**: pending deploy
 
 ---
 
