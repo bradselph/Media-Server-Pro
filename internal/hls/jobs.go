@@ -139,10 +139,13 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 		StartedAt: time.Now(),
 	}
 	jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
+	doneCh := make(chan struct{})
 	m.jobs[p.JobID] = job
 	m.jobCancels[p.JobID] = jobCancel
+	m.jobDone[p.JobID] = doneCh
 	m.activeJobs.Add(1)
 	go func() {
+		defer close(doneCh)
 		defer m.activeJobs.Done()
 		defer func() {
 			if r := recover(); r != nil {
@@ -251,6 +254,8 @@ func (m *Module) CancelJob(jobID string) error {
 }
 
 // DeleteJob cancels a running job, removes its files, and deletes the DB record.
+// The in-memory entry is only removed after the DB delete succeeds so that a
+// server restart re-loads the job rather than leaving a DB orphan.
 func (m *Module) DeleteJob(jobID string) error {
 	m.jobsMu.Lock()
 	job, ok := m.jobs[jobID]
@@ -259,22 +264,44 @@ func (m *Module) DeleteJob(jobID string) error {
 		return fmt.Errorf(errJobNotFoundFmt, jobID)
 	}
 	// Cancel running transcode so ffmpeg stops before we remove OutputDir.
+	// Grab the done channel while holding the lock, then release before waiting.
+	var doneCh chan struct{}
 	if cancel, ok := m.jobCancels[jobID]; ok {
 		cancel()
 		delete(m.jobCancels, jobID)
 	}
-	delete(m.jobs, jobID)
+	if ch, ok := m.jobDone[jobID]; ok {
+		doneCh = ch
+		delete(m.jobDone, jobID)
+	}
 	outputDir := job.OutputDir
 	m.jobsMu.Unlock()
 
+	// Wait for the transcode goroutine to exit so it is no longer writing segment
+	// files before we remove the output directory.
+	if doneCh != nil {
+		<-doneCh
+	}
+
+	// Filesystem cleanup (best-effort; warn only).
 	if err := os.RemoveAll(outputDir); err != nil {
 		m.log.Warn("Failed to remove HLS directory: %v", err)
 	}
+
+	// DB delete must succeed before we remove the in-memory entry.
+	// On failure the in-memory map still has the record, which is consistent
+	// with what loadJobs() would restore on restart.
 	if m.repo != nil {
 		if err := m.repo.Delete(context.Background(), jobID); err != nil {
 			m.log.Warn("Failed to delete HLS job %s from DB: %v", jobID, err)
+			return fmt.Errorf("failed to delete HLS job from database: %w", err)
 		}
 	}
+
+	m.jobsMu.Lock()
+	delete(m.jobs, jobID)
+	m.jobsMu.Unlock()
+
 	m.cleanQualityLocks(jobID)
 	m.log.Info("Deleted HLS job %s", jobID)
 	return nil
@@ -290,6 +317,15 @@ func (m *Module) loadJobs() error {
 	defer m.jobsMu.Unlock()
 
 	for _, job := range jobs {
+		// Reset stale Running → Pending so that jobs beyond the resume concurrency
+		// limit (resumeInterruptedJobs honours cfg.HLS.ConcurrentLimit) are left in
+		// a retryable Pending state rather than permanently stuck as "Running". On
+		// shutdown, saveJobs serialises the in-memory state: if a Running job was
+		// never resumed its goroutine never started, so it would be reloaded as
+		// Running on every restart without ever making progress.
+		if job.Status == models.HLSStatusRunning {
+			job.Status = models.HLSStatusPending
+		}
 		m.jobs[job.ID] = job
 	}
 	return nil

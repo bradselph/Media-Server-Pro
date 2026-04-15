@@ -11,7 +11,7 @@ import (
 )
 
 // writeSuccess writes a successful JSON response.
-func writeSuccess(c *gin.Context, data interface{}) {
+func writeSuccess(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: data})
 }
 

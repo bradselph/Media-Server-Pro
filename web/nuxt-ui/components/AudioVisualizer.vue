@@ -185,6 +185,10 @@ onMounted(() => {
     canvas.height = Math.round(height)
   })
   resizeObserver.observe(canvas.parentElement ?? canvas)
+  // The watch({ immediate: true }) above runs before mount so canvasRef is null
+  // and startDraw() returns early. If an analyser is already wired by mount
+  // time, kick off the draw loop now that the canvas is available.
+  if (getActiveAnalyser()) startDraw()
 })
 
 onUnmounted(() => {

@@ -351,7 +351,7 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 	if id != "" {
 		if _, err := h.media.GetMediaByID(id); err != nil && h.receiver != nil {
 			if h.receiver.GetMediaItem(id) != nil {
-				writeSuccess(c, map[string]interface{}{"previews": []string{}})
+				writeSuccess(c, map[string]any{"previews": []string{}})
 				return
 			}
 		}
@@ -369,7 +369,7 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 			canView = user.Permissions.CanViewMature && user.Preferences.ShowMature
 		}
 		if !canView {
-			writeSuccess(c, map[string]interface{}{"previews": []string{}})
+			writeSuccess(c, map[string]any{"previews": []string{}})
 			return
 		}
 	}
@@ -381,7 +381,7 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 	}
 
 	urls := h.thumbnails.GetPreviewURLs(path, id, count)
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"previews": urls,
 	})
 }
@@ -426,7 +426,7 @@ func (h *Handler) GetThumbnailBatch(c *gin.Context) {
 		}
 		thumbnailsMap[id] = url
 	}
-	writeSuccess(c, map[string]interface{}{"thumbnails": thumbnailsMap})
+	writeSuccess(c, map[string]any{"thumbnails": thumbnailsMap})
 }
 
 // GetThumbnailStats returns thumbnail generation stats
@@ -435,7 +435,7 @@ func (h *Handler) GetThumbnailStats(c *gin.Context) {
 		return
 	}
 	stats := h.thumbnails.GetStats()
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"total_thumbnails":   stats.Generated,
 		"total_size_mb":      float64(stats.TotalSize) / (1024 * 1024),
 		"pending_generation": stats.Pending,

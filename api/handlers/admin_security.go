@@ -16,7 +16,7 @@ func (h *Handler) GetSecurityStats(c *gin.Context) {
 		return
 	}
 	stats := h.security.GetStats()
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"banned_ips":         stats.BannedIPs,
 		"whitelisted_ips":    stats.WhitelistCount,
 		"blacklisted_ips":    stats.BlacklistCount,

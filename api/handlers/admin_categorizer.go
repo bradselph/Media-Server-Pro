@@ -32,7 +32,7 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 
 	result := h.categorizer.CategorizeFile(absPath)
 	if result != nil && string(result.Category) != "" {
-		if err := h.media.UpdateMetadata(absPath, map[string]interface{}{
+		if err := h.media.UpdateMetadata(absPath, map[string]any{
 			"category": string(result.Category),
 		}); err != nil {
 			h.log.Warn(fmtCategorizerUpdateFailed, absPath, err)
@@ -68,7 +68,7 @@ func (h *Handler) CategorizeDirectory(c *gin.Context) {
 
 	for _, item := range results {
 		if item != nil && string(item.Category) != "" {
-			if updateErr := h.media.UpdateMetadata(item.Path, map[string]interface{}{
+			if updateErr := h.media.UpdateMetadata(item.Path, map[string]any{
 				"category": string(item.Category),
 			}); updateErr != nil {
 				h.log.Warn(fmtCategorizerUpdateFailed, item.Path, updateErr)
@@ -111,7 +111,7 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 	// Propagate the new category to the in-memory media catalog immediately so
 	// ListMedia/GetMedia reflect the change without waiting for the next scan.
 	if string(req.Category) != "" {
-		if updateErr := h.media.UpdateMetadata(absPath, map[string]interface{}{
+		if updateErr := h.media.UpdateMetadata(absPath, map[string]any{
 			"category": string(req.Category),
 		}); updateErr != nil {
 			h.log.Warn(fmtCategorizerUpdateFailed, absPath, updateErr)

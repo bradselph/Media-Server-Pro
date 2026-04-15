@@ -67,14 +67,16 @@ async function createBackup() {
 
 // ── Database ───────────────────────────────────────────────────────────────────
 const dbStatus = ref<DatabaseStatus | null>(null)
+const dbStatusError = ref(false)
 const dbQuery = ref('')
 const dbQueryResult = ref<QueryResult | null>(null)
 const dbQueryRunning = ref(false)
 const dbQueryError = ref('')
 
 async function loadDbStatus() {
+  dbStatusError.value = false
   try { dbStatus.value = await adminApi.getDatabaseStatus() }
-  catch { /* non-critical; DB status card shows empty state */ }
+  catch { dbStatusError.value = true }
 }
 
 const SQL_ALLOWED_RE = /^\s*(SELECT|SHOW|DESCRIBE|EXPLAIN|PRAGMA)\b/i
@@ -108,8 +110,8 @@ function requestRestore(id: string) {
 async function executeRestore() {
   const id = confirmRestoreId.value
   if (!id) return
-  confirmRestoreId.value = null
   await restoreBackup(id)
+  confirmRestoreId.value = null
 }
 async function restoreBackup(id: string) {
   if (backupBusy.value.has(`restore-${id}`)) return
@@ -276,7 +278,12 @@ onMounted(() => {
 
       <!-- Connection status -->
       <UCard>
-        <div v-if="!dbStatus" class="flex justify-center py-4">
+        <div v-if="dbStatusError" class="flex items-center gap-2 py-2 text-sm text-error">
+          <UIcon name="i-lucide-alert-circle" class="size-4 shrink-0" />
+          <span>Could not load database status.</span>
+          <UButton variant="ghost" size="xs" label="Retry" @click="loadDbStatus" />
+        </div>
+        <div v-else-if="!dbStatus" class="flex justify-center py-4">
           <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
         </div>
         <div v-else class="space-y-3 text-sm">

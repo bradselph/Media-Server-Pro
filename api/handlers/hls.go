@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -48,7 +49,7 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 	if checkQualities == nil {
 		checkQualities = []string{}
 	}
-	response := map[string]interface{}{
+	response := map[string]any{
 		"id":         job.ID,
 		"job_id":     job.ID,
 		"status":     job.Status,
@@ -95,12 +96,12 @@ func (h *Handler) parseGenerateHLSRequest(c *gin.Context) (id string, qualities 
 }
 
 // buildGenerateHLSResponse builds the JSON response map for a GenerateHLS job (fail_count always present).
-func buildGenerateHLSResponse(job *models.HLSJob) map[string]interface{} {
+func buildGenerateHLSResponse(job *models.HLSJob) map[string]any {
 	qualities := job.Qualities
 	if qualities == nil {
 		qualities = []string{}
 	}
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"job_id":     job.ID,
 		"id":         job.ID,
 		"status":     job.Status,
@@ -160,7 +161,7 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 	if statusQualities == nil {
 		statusQualities = []string{}
 	}
-	response := map[string]interface{}{
+	response := map[string]any{
 		"id":         job.ID,
 		"status":     job.Status,
 		"progress":   job.Progress,
@@ -192,10 +193,22 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 		writeError(c, http.StatusNotFound, "HLS job not found")
 		return nil, false
 	}
-	if !h.checkMatureAccess(c, job.MediaPath) {
+	// Resolve IsMature from the in-memory index. If the item isn't in the index yet
+	// (e.g. scan still running), it can't have been flagged mature, so allow.
+	var isMature bool
+	if item, lookupErr := h.media.GetMedia(job.MediaPath); lookupErr == nil && item != nil {
+		isMature = item.IsMature
+	}
+	if !h.checkMatureAccess(c, isMature) {
 		return nil, false
 	}
-	h.hls.RecordAccess(jobID)
+	// Only refresh the access timestamp for jobs that are still usable.
+	// Failed and cancelled jobs must not be kept alive by access timestamps —
+	// CleanInactiveJobs uses LastAccess as the sole gate for removal, so
+	// recording access on a failed job prevents it from ever being cleaned up.
+	if job.Status == models.HLSStatusRunning || job.Status == models.HLSStatusPending || job.Status == models.HLSStatusCompleted {
+		h.hls.RecordAccess(jobID)
+	}
 	return job, true
 }
 
@@ -205,6 +218,14 @@ func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID, notFoundMsg string, 
 		return
 	}
 	if err := serveFn(); err != nil {
+		if c.Writer.Written() {
+			// Headers/body already flushed; cannot change status code.
+			return
+		}
+		if errors.Is(err, hls.ErrNotReady) {
+			writeError(c, http.StatusServiceUnavailable, "HLS transcoding in progress, retry shortly")
+			return
+		}
 		writeError(c, http.StatusNotFound, notFoundMsg)
 	}
 }
@@ -330,7 +351,7 @@ func (h *Handler) CleanHLSInactive(c *gin.Context) {
 	}
 	threshold := parseCleanHLSInactiveThreshold(c)
 	removed := h.hls.CleanInactiveJobs(threshold)
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"removed":   removed,
 		"threshold": threshold.String(),
 	})

@@ -70,7 +70,7 @@ func (h *Handler) CleanupThumbnails(c *gin.Context) {
 		return
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"orphans_removed": result.OrphansRemoved,
 		"excess_removed":  result.ExcessRemoved,
 		"corrupt_removed": result.CorruptRemoved,

@@ -178,7 +178,7 @@ func (m *Module) Start(_ context.Context) error {
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping extractor module...")
 	// Clear playlist cache so stale entries do not hold references to upstream URLs.
-	m.playlistCache.Range(func(key, _ interface{}) bool {
+	m.playlistCache.Range(func(key, _ any) bool {
 		m.playlistCache.Delete(key)
 		return true
 	})
@@ -307,7 +307,7 @@ func (m *Module) RemoveItem(id string) error {
 
 	// Clear any cached playlists for this item (master + all variant qualities)
 	prefix := id + ":"
-	m.playlistCache.Range(func(key, _ interface{}) bool {
+	m.playlistCache.Range(func(key, _ any) bool {
 		if k, ok := key.(string); ok && len(k) >= len(prefix) && k[:len(prefix)] == prefix {
 			m.playlistCache.Delete(key)
 		}

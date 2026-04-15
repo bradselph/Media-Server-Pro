@@ -177,7 +177,8 @@ type Handler struct {
 	shutdownFunc        func()
 	deletionRequests    repositories.DataDeletionRequestRepository
 	deletionRequestsMu  sync.Mutex // guards lazy init of deletionRequests
-	viewCooldown        sync.Map   // key: "userID|mediaID" → value: time.Time of last counted view
+	viewCooldown        sync.Map      // key: "userID|mediaID" → value: time.Time of last counted view
+	viewCooldownStop    chan struct{}  // closed to stop the background sweeper goroutine
 	classifyDirRunning atomic.Bool // true while a ClassifyDirectory background job is active
 	classifyAllRunning atomic.Bool // true while a ClassifyAllPending background job is active
 	feedCacheMu        sync.Mutex
@@ -215,23 +216,42 @@ func (h *Handler) tryRecordView(userID, mediaID string) bool {
 // the viewCooldown map. This replaces per-entry time.AfterFunc timers which
 // create one goroutine per view under high traffic.
 func (h *Handler) startViewCooldownSweeper() {
+	h.viewCooldownStop = make(chan struct{})
 	ticker := time.NewTicker(viewCooldownDuration)
 	go func() {
-		for range ticker.C {
-			now := time.Now()
-			cooldown := h.config.Get().Analytics.ViewCooldown
-			if cooldown <= 0 {
-				cooldown = viewCooldownDuration
-			}
-			evictBefore := now.Add(-cooldown * 2)
-			h.viewCooldown.Range(func(key, value any) bool {
-				if value.(time.Time).Before(evictBefore) { //nolint:errcheck // sync.Map always stores time.Time
-					h.viewCooldown.Delete(key)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-h.viewCooldownStop:
+				return
+			case <-ticker.C:
+				now := time.Now()
+				cooldown := h.config.Get().Analytics.ViewCooldown
+				if cooldown <= 0 {
+					cooldown = viewCooldownDuration
 				}
-				return true
-			})
+				evictBefore := now.Add(-cooldown * 2)
+				h.viewCooldown.Range(func(key, value any) bool {
+					if value.(time.Time).Before(evictBefore) { //nolint:errcheck // sync.Map always stores time.Time
+						h.viewCooldown.Delete(key)
+					}
+					return true
+				})
+			}
 		}
 	}()
+}
+
+// stopViewCooldownSweeper signals the background eviction goroutine to exit and
+// releases the underlying ticker. Safe to call multiple times.
+func (h *Handler) stopViewCooldownSweeper() {
+	if h.viewCooldownStop != nil {
+		select {
+		case <-h.viewCooldownStop: // already closed
+		default:
+			close(h.viewCooldownStop)
+		}
+	}
 }
 
 // NewHandler creates a new handler with dependencies.
@@ -243,9 +263,9 @@ func NewHandler(deps HandlerDeps) *Handler {
 		panic("NewHandler: critical core dependency is nil (Config, Database, Media, Auth, or Streaming)")
 	}
 
-	shutdownFunc := deps.ShutdownFunc
-	if shutdownFunc == nil {
-		shutdownFunc = func() { /* no-op default for tests */ }
+	outerShutdown := deps.ShutdownFunc
+	if outerShutdown == nil {
+		outerShutdown = func() { /* no-op default for tests */ }
 	}
 
 	h := &Handler{
@@ -279,7 +299,12 @@ func NewHandler(deps HandlerDeps) *Handler {
 		crawler:          o.Crawler,
 		duplicates:       o.Duplicates,
 		downloader:       o.Downloader,
-		shutdownFunc:     shutdownFunc,
+	}
+	// shutdownFunc wraps the outer shutdown to also stop the view-cooldown sweeper.
+	// Assigned after h is constructed so the closure can safely reference h.
+	h.shutdownFunc = func() {
+		h.stopViewCooldownSweeper()
+		outerShutdown()
 	}
 	h.startViewCooldownSweeper()
 	return h
@@ -499,19 +524,11 @@ func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) 
 	})
 }
 
-// checkMatureAccess verifies the current user has permission to access mature content at
-// the given path. Returns true if access is allowed or irrelevant, false if denied.
-func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
-	item, err := h.media.GetMedia(absPath)
-	if err != nil {
-		// Log a warning so DB outages or scan gaps don't silently bypass mature protection.
-		h.log.Warn("checkMatureAccess: media lookup failed for %s: %v — allowing access (item may not be in library)", absPath, err)
-		return true
-	}
-	if item == nil {
-		return true
-	}
-	if !item.IsMature {
+// checkMatureAccess verifies the current user has permission to access mature content.
+// isMature must be sourced from the caller's already-resolved MediaItem to avoid a
+// secondary lookup and its fail-open failure mode. Returns true if access is allowed.
+func (h *Handler) checkMatureAccess(c *gin.Context, isMature bool) bool {
+	if !isMature {
 		return true
 	}
 

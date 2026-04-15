@@ -85,7 +85,7 @@ func (h *Handler) CrawlTarget(c *gin.Context) {
 		return
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"new_discoveries": newCount,
 	})
 }

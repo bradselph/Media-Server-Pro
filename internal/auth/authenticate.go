@@ -142,9 +142,9 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 		req.Username == cfg.Admin.Username
 	if !adminLoginAllowed {
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
-		// Record the failed attempt so wrong-username attempts accrue lockout penalty,
-		// preventing username enumeration without incurring lockout.
-		m.recordFailedAttempt(req.IPAddress)
+		// Do NOT record a failed attempt here. The Login handler falls through to
+		// Authenticate for regular users, which records its own failure. Double-counting
+		// would halve the effective lockout threshold for every standard user login.
 		return nil, ErrNotAdminUsername
 	}
 

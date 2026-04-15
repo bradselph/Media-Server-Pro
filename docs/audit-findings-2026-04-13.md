@@ -17,7 +17,7 @@
 
 ### 🔴 CRITICAL
 
-#### BUG #1: Missing `resolveMediaPathOrReceiver()` handler function
+#### ✅ 2026-04-15 — BUG #1: Missing `resolveMediaPathOrReceiver()` handler function
 - **File:** `api/handlers/media.go:825, 864, 1438` (invocations without implementation)
 - **Severity:** CRITICAL — Runtime panic on first playback position call
 - **Root Cause:** Function is called but never defined in handlers package
@@ -43,7 +43,7 @@ func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, mediaID string) (pa
 
 ---
 
-#### BUG #2: Storage quota bypass via client-reported zero size
+#### ✅ 2026-04-15 — BUG #2: Storage quota bypass via client-reported zero size
 - **File:** `api/handlers/upload.go:73-104` (checkUploadStorageQuota)
 - **Severity:** CRITICAL — Security vulnerability
 - **Root Cause:** Quota check trusts client `Size` header; when `Size=0`, assumes worst-case (`maxFileSize`). Actual written bytes via `MaxBytesReader` (line 47) truncate silently.
@@ -72,7 +72,7 @@ for _, result := range results {
 
 ---
 
-#### BUG #3: Race condition: Admin user creation during preference update
+#### ✅ 2026-04-15 — BUG #3: Race condition: Admin user creation during preference update
 - **File:** `api/handlers/auth.go:324-342` (UpdatePreferences)
 - **Severity:** HIGH — State corruption
 - **Root Cause:** Double-check locking not implemented. Two concurrent requests both call `GetUser()`, both miss cache, both call `CreateUser()`. Second fails silently.
@@ -112,7 +112,7 @@ if session.Role == models.RoleAdmin {
 
 ### 🟠 HIGH
 
-#### BUG #4: Pagination state not cleared on selection mode toggle
+#### ✅ 2026-04-15 — BUG #4: Pagination state not cleared on selection mode toggle
 - **File:** `web/nuxt-ui/pages/index.vue:59-71` (toggleSelectionMode)
 - **Severity:** HIGH — Silent state divergence
 - **Root Cause:** `toggleSelectionMode()` clears `selectedIds` but doesn't reset `params.page` to 1
@@ -137,7 +137,7 @@ function toggleSelectionMode() {
 
 ---
 
-#### BUG #5: Concurrent upload quota race — ordering violation
+#### ✅ 2026-04-15 — BUG #5: Concurrent upload quota race — ordering violation
 - **File:** `api/handlers/upload.go:107-195` (UploadMedia)
 - **Severity:** HIGH — Resource exhaustion
 - **Root Cause:** File is registered in media index (line 160) before quota is deducted (line 186). Between these two operations, the file is visible in the library but quota hasn't been charged yet.
@@ -184,7 +184,7 @@ if totalAdded > 0 && user.ID != "admin" {
 
 ### 🟡 MEDIUM
 
-#### BUG #6: Silent clipboard copy failure in profile.vue
+#### ✅ 2026-04-15 — BUG #6: Silent clipboard copy failure in profile.vue
 - **File:** `web/nuxt-ui/pages/profile.vue:320-328` (copyToken)
 - **Severity:** MEDIUM — UX bug, data loss risk
 - **Root Cause:** Empty catch block; clipboard write failure is silently ignored
@@ -210,7 +210,7 @@ async function copyToken() {
 
 ---
 
-#### BUG #7: CSV export can fail after headers sent
+#### ✅ `93491db5` 2026-04-15 — BUG #7: CSV export can fail after headers sent
 - **File:** `api/handlers/auth.go:737-803` (ExportWatchHistory)
 - **Severity:** MEDIUM — File corruption risk
 - **Root Cause:** Response writer is partially written before all CSV rows are buffered. If a row write fails partway through, headers are already sent and error response can't be written.
@@ -231,6 +231,10 @@ if _, err := c.Writer.Write(buf.Bytes()); err != nil {
   // The file was already partially sent
 }
 ```
+
+
+> **Resolution**: Removed the `WriteString("\n# ERROR...")` trailer call. `Content-Length` header is set before the send, so HTTP clients detect truncation via a content-length mismatch. The failed write is now just logged.
+> **Verified**: pending deploy
 
 ---
 

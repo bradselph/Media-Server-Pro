@@ -277,7 +277,7 @@ func TestBindJSON_EmptyErrMsg(t *testing.T) {
 	var dest struct{}
 	BindJSON(c, &dest, "")
 	// Should use the default error constant
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}

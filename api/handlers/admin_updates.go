@@ -42,7 +42,7 @@ func (h *Handler) GetUpdateStatus(c *gin.Context) {
 	if result == nil {
 		version := h.updater.GetVersion()
 		currentVersion, _ := version["version"].(string)
-		writeSuccess(c, map[string]interface{}{
+		writeSuccess(c, map[string]any{
 			"current_version":  currentVersion,
 			"latest_version":   "",
 			"update_available": false,
@@ -122,7 +122,7 @@ func (h *Handler) GetSourceUpdateProgress(c *gin.Context) {
 	}
 	status := h.updater.GetActiveBuildStatus()
 	if status == nil {
-		writeSuccess(c, map[string]interface{}{
+		writeSuccess(c, map[string]any{
 			"in_progress": false,
 			"stage":       "",
 			"progress":    0,
@@ -143,7 +143,7 @@ func (h *Handler) CheckForSourceUpdates(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"updates_available": hasUpdates,
 		"remote_commit":     remoteHash,
 	})
@@ -160,7 +160,7 @@ func (h *Handler) GetUpdateConfig(c *gin.Context) {
 	if branch == "" {
 		branch = "main"
 	}
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"update_method": method,
 		"branch":        branch,
 	})
@@ -205,10 +205,10 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 	}
 
 	h.logAdminAction(c, &adminLogActionParams{Action: "update_updater_config", Target: "updater_settings",
-		Details: map[string]interface{}{"update_method": req.UpdateMethod, "branch": req.Branch}})
+		Details: map[string]any{"update_method": req.UpdateMethod, "branch": req.Branch}})
 
 	cfg := h.config.Get()
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"update_method": cfg.Updater.UpdateMethod,
 		"branch":        cfg.Updater.Branch,
 	})

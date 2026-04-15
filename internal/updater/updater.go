@@ -1427,8 +1427,8 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 }
 
 // GetVersion returns the current version info
-func (m *Module) GetVersion() map[string]interface{} {
-	return map[string]interface{}{
+func (m *Module) GetVersion() map[string]any {
+	return map[string]any{
 		"version":    m.currentVersion,
 		"go_version": runtime.Version(),
 		"os":         runtime.GOOS,

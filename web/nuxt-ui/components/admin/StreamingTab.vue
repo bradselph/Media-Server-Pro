@@ -135,6 +135,7 @@ onMounted(load)
           <USelect
             v-model="pregenIntervalHours"
             :items="INTERVAL_OPTIONS"
+            value-key="value"
             :disabled="configSaving || loading"
             class="w-36"
             size="sm"

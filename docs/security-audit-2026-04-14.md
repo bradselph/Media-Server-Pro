@@ -8,7 +8,9 @@
 
 ## Critical Findings
 
-### [CRITICAL] Information Disclosure: Filesystem Paths Leaked in Favorites Response
+### ✅ Already fixed — [CRITICAL] Information Disclosure: Filesystem Paths Leaked in Favorites Response
+
+> **Resolution**: `favoriteItem` struct in `api/handlers/favorites.go` already omits `MediaPath` — only `id`, `media_id`, and `added_at` are serialized. Audit was written against an older version of the code. Verified clean as of 2026-04-15.
 
 - **File:** `/d/Media-Server-Pro-4/api/handlers/favorites.go:25, 33`
 - **Category:** Information Disclosure
@@ -63,7 +65,7 @@
 
 ---
 
-### [CRITICAL] API Token Admin-Only Restriction Not Enforced in API Spec Docs
+### ✅ `7146d48c` 2026-04-15 — [CRITICAL] API Token Admin-Only Restriction Not Enforced in API Spec Docs
 
 - **File:** `/d/Media-Server-Pro-4/api/handlers/auth_tokens.go:16-126`
 - **Category:** Missing Authorization Check / Authorization Bypass Risk
@@ -97,11 +99,14 @@
      }
      ```
 
+> **Resolution**: Replaced all three `session.Role != "admin"` string comparisons with `models.RoleAdmin` constant in `api/handlers/auth_tokens.go`. Audit logging was already in place via `h.logAdminAction()` on Create and Delete (pre-existing, not part of audit finding).
+> **Verified**: pending deploy
+
 ---
 
 ## High-Confidence Findings
 
-### [HIGH] Overly Permissive Redirect in Login Page
+### ✅ `6c9f918f` 2026-04-15 — [HIGH] Overly Permissive Redirect in Login Page
 
 - **File:** `/d/Media-Server-Pro-4/web/nuxt-ui/pages/login.vue:20`
 - **Category:** Open Redirect
@@ -160,11 +165,15 @@
   }
   ```
 
+
+> **Resolution**: Added checks to block `/api/` and `/extractor/` prefixes in `loginRedirectDest()` in `web/nuxt-ui/pages/login.vue`. The existing `//` prefix block is retained. App routes continue to work.
+> **Verified**: pending deploy
+
 ---
 
 ## Medium-Confidence Findings
 
-### [MEDIUM] API Contract Field Presence Mismatch: APIToken.expires_at
+### ✅ `849fee67` / `65fddf5a` 2026-04-15 — [MEDIUM] API Contract Field Presence Mismatch: APIToken.expires_at
 
 - **File:** Backend: `/d/Media-Server-Pro-4/api/handlers/auth_tokens.go:35`; Frontend: `/d/Media-Server-Pro-4/web/nuxt-ui/types/api.ts:1126`
 - **Category:** API Contract Mismatch
@@ -206,6 +215,10 @@
     created_at: string
   }
   ```
+
+
+> **Resolution**: Backend `CreateAPIToken` now always sets `expires_at: null` in the `gin.H{}` map before conditionally overwriting it. Frontend `APIToken` type changed from `expires_at?: string | null` to `expires_at: string | null`. `profile.vue` `createToken()` spreads `expires_at` into the local token list.
+> **Verified**: pending deploy
 
 ---
 

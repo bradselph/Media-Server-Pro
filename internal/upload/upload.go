@@ -245,12 +245,13 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 	defer m.scheduleUnregisterUpload(uploadID, 5*time.Minute)
 
 	var destPath string
+	var remoteRelKey string // relative key used only for remote oversized cleanup
 	var written int64
 
 	if m.store != nil && !m.store.IsLocal() {
 		// Remote backend (S3/B2): stream directly via the storage backend.
 		// No temp-file/rename needed — object writes in S3 are atomic.
-		destPath, written, err = m.uploadToRemoteStore(context.Background(), reader, prepared, progress)
+		destPath, remoteRelKey, written, err = m.uploadToRemoteStore(context.Background(), reader, prepared, progress)
 	} else {
 		// Local filesystem: use the existing temp-file-then-rename pattern.
 		var destFile *os.File
@@ -273,7 +274,12 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 	// LimitReader stops at maxFileSize+1, so hitting that exact count means the
 	// actual file is larger. Clean up and reject.
 	if maxFileSize > 0 && written > maxFileSize {
-		if destPath != "" {
+		if m.store != nil && !m.store.IsLocal() {
+			// Remote backend: os.Remove cannot delete S3 objects; use the store API.
+			if remoteRelKey != "" {
+				_ = m.store.Remove(context.Background(), remoteRelKey)
+			}
+		} else if destPath != "" {
 			_ = os.Remove(destPath)
 		}
 		progress.Status = UploadStatusFailed
@@ -299,23 +305,23 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 // uploadToRemoteStore streams the uploaded file to the configured remote backend
 // (S3/B2).  A progress-tracking reader wraps the source so that the UI sees
 // live byte counts even though we never touch the local filesystem.
-func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepared *PreparedUpload, progress *Progress) (destPath string, written int64, err error) {
+func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepared *PreparedUpload, progress *Progress) (destPath string, relKey string, written int64, err error) {
 	// Compute the relative key path within the upload backend.
 	// prepared.DestDir is an absolute local path like /uploads/userID[/category].
 	// Strip the upload root prefix to get the relative part.
 	absRoot, err := filepath.Abs(m.uploadDir)
 	if err != nil {
-		return "", 0, fmt.Errorf("resolve upload root: %w", err)
+		return "", "", 0, fmt.Errorf("resolve upload root: %w", err)
 	}
 	relDir, err := filepath.Rel(absRoot, prepared.DestDir)
 	if err != nil {
-		return "", 0, fmt.Errorf("compute relative dest dir: %w", err)
+		return "", "", 0, fmt.Errorf("compute relative dest dir: %w", err)
 	}
 	relDir = filepath.ToSlash(relDir)
 	// Guard against ".." segments that could escape the upload prefix (e.g. if
 	// the config is reloaded and uploadDir becomes stale relative to DestDir).
 	if strings.HasPrefix(relDir, "..") {
-		return "", 0, fmt.Errorf("upload destination escapes upload root (got %q)", relDir)
+		return "", "", 0, fmt.Errorf("upload destination escapes upload root (got %q)", relDir)
 	}
 
 	// Find a unique key within the backend.
@@ -329,10 +335,12 @@ func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepar
 	pr := &progressReader{src: file, progress: progress}
 	written, err = m.store.Create(ctx, relPath, pr)
 	if err != nil {
-		return "", 0, fmt.Errorf("store write: %w", err)
+		return "", "", 0, fmt.Errorf("store write: %w", err)
 	}
 
-	return m.store.AbsPath(relPath), written, nil
+	// Return both the absolute path (for Result.Path) and the relative key
+	// (for oversized-file cleanup — os.Remove cannot delete remote objects).
+	return m.store.AbsPath(relPath), relPath, written, nil
 }
 
 // uniqueRemoteKey finds an available object key within the remote backend,
@@ -440,7 +448,13 @@ func resolveMediaType(ext string) MediaType {
 
 // buildUploadDestDir validates scope and returns the destination directory path for the upload.
 func (m *Module) buildUploadDestDir(scope UploadScope) (string, error) {
-	safeUserID := filepath.Base(scope.UserID)
+	// Anonymous uploads (RequireAuth=false, empty UserID) go into a dedicated sub-directory
+	// so that filepath.Base("") does not resolve to "." (the upload root).
+	rawUserID := scope.UserID
+	if rawUserID == "" {
+		rawUserID = "anonymous"
+	}
+	safeUserID := filepath.Base(rawUserID)
 	if isEmptyOrSpecialFilename(safeUserID) {
 		return "", fmt.Errorf("invalid user ID")
 	}

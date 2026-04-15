@@ -28,7 +28,7 @@ func (h *Handler) AdminDownloaderHealth(c *gin.Context) {
 	}
 
 	online := h.downloader.IsOnline()
-	result := map[string]interface{}{
+	result := map[string]any{
 		"online": online,
 	}
 
@@ -101,7 +101,7 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 	if pageURL == "" && result.Stream != nil {
 		pageURL = result.Stream.URL
 	}
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"url":            pageURL,
 		"title":          result.Title,
 		"isYouTube":      result.IsYouTube,
@@ -202,9 +202,9 @@ func (h *Handler) AdminDownloaderListDownloads(c *gin.Context) {
 	}
 
 	// Map to frontend shape: filename, size, created (unix), url
-	files := make([]map[string]interface{}, 0, len(resp.Downloads))
+	files := make([]map[string]any, 0, len(resp.Downloads))
 	for _, f := range resp.Downloads {
-		files = append(files, map[string]interface{}{
+		files = append(files, map[string]any{
 			"filename": f.File,
 			"size":     f.Size,
 			"created":  f.Timestamp,
@@ -263,7 +263,7 @@ func (h *Handler) AdminDownloaderSettings(c *gin.Context) {
 	if sites == nil {
 		sites = []string{}
 	}
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"allowServerStorage":     resp.AllowServerStorage,
 		"audioFormat":            resp.AudioFormat,
 		"supportedSites":         sites,
@@ -309,7 +309,7 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 		return
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"source":        req.Filename,
 		"destination":   destPath,
 		"scanTriggered": req.TriggerScan,

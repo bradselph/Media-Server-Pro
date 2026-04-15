@@ -197,7 +197,7 @@ onMounted(loadReceiver)
       v-if="selectedSlaveMedia || slaveMediaDetailLoading"
       :open="!!(selectedSlaveMedia || slaveMediaDetailLoading)"
       :title="selectedSlaveMedia ? selectedSlaveMedia.name : 'Loading…'"
-      @update:open="val => { if (!val) selectedSlaveMedia = null }"
+      @update:open="val => { if (!val) { selectedSlaveMedia = null; slaveMediaDetailLoading = false } }"
     >
       <template #body>
         <div v-if="slaveMediaDetailLoading" class="flex justify-center py-4">

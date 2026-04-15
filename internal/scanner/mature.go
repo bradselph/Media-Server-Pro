@@ -1095,6 +1095,7 @@ func (s *MatureScanner) RejectContent(ctx context.Context, path string) error {
 func (s *MatureScanner) RemoveByPath(path string) {
 	s.mu.Lock()
 	delete(s.reviewQueue, path)
+	delete(s.results, path)
 	s.mu.Unlock()
 
 	if s.scanRepo != nil {

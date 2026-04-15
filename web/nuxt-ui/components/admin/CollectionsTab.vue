@@ -34,6 +34,8 @@ const mediaResults = ref<MediaItem[]>([])
 const mediaSearching = ref(false)
 const addingIds = ref(new Set<string>())
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+// Nonce to discard stale background fetches from openAddItems (incremented by addItem on success)
+let addItemsFetchNonce = 0
 
 async function load() {
   loading.value = true
@@ -132,10 +134,15 @@ function openAddItems(collectionId: string) {
   addItemsTarget.value = collectionId
   mediaSearch.value = ''
   mediaResults.value = []
-  // Load current items so alreadyInCollection reflects actual membership
+  // Load current items so alreadyInCollection reflects actual membership.
+  // Capture nonce so a stale response that arrives after addItem's own refresh
+  // doesn't overwrite the fresher detailItems state.
   if (detailCollection.value?.id !== collectionId) {
+    const nonce = ++addItemsFetchNonce
     collectionsApi.get(collectionId).then(full => {
-      detailItems.value = full.items ?? []
+      if (addItemsFetchNonce === nonce) {
+        detailItems.value = full.items ?? []
+      }
     }).catch(() => {})
   }
   addItemsOpen.value = true
@@ -165,8 +172,10 @@ async function addItem(mediaId: string) {
     const pos = detailItems.value.length
     await collectionsApi.addItems(addItemsTarget.value, [mediaId], pos)
     toast.add({ title: 'Added to collection', color: 'success', icon: 'i-lucide-check' })
-    // Refresh detail if open for same collection
+    // Refresh detail if open for same collection. Bump nonce so any concurrent
+    // background fetch from openAddItems doesn't clobber this fresher result.
     if (detailCollection.value?.id === addItemsTarget.value) {
+      addItemsFetchNonce++
       const full = await collectionsApi.get(addItemsTarget.value)
       detailItems.value = full.items ?? []
     }

@@ -187,8 +187,12 @@ func (h *Handler) AddCollectionItems(c *gin.Context) {
 			Position:     body.PositionStart + i,
 		}
 		// INSERT IGNORE equivalent — skip if already a member
-		db.Where(models.MediaCollectionItem{CollectionID: collectionID, MediaID: mediaID}).
-			FirstOrCreate(&item)
+		if err := db.Where(models.MediaCollectionItem{CollectionID: collectionID, MediaID: mediaID}).
+			FirstOrCreate(&item).Error; err != nil {
+			h.log.Error("AddCollectionItems: failed to insert %s into %s: %v", mediaID, collectionID, err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+			return
+		}
 	}
 	writeSuccess(c, gin.H{"message": "Items added", "count": len(body.MediaIDs)})
 }

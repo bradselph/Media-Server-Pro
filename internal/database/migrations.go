@@ -534,7 +534,31 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 	if err := m.ensureSchemaForeignKeys(ctx); err != nil {
 		return err
 	}
+	if err := m.backfillMediaDuration(ctx); err != nil {
+		// Non-fatal: backfill failure should not block startup.
+		m.log.Warn("Duration backfill from validation_results failed (non-fatal): %v", err)
+	}
 	m.log.Info("Database schema is up to date")
+	return nil
+}
+
+// backfillMediaDuration copies duration values from validation_results into media_metadata
+// for all rows where media_metadata.duration is still 0 but validation_results.duration > 0.
+// This is a one-pass operation; rows already populated are skipped by the WHERE clause.
+func (m *Module) backfillMediaDuration(ctx context.Context) error {
+	result, err := m.sqlDB.ExecContext(ctx, `
+		UPDATE media_metadata mm
+		JOIN validation_results vr ON mm.path = vr.path
+		SET mm.duration = vr.duration
+		WHERE mm.duration = 0 AND vr.duration > 0
+	`)
+	if err != nil {
+		return fmt.Errorf("backfill duration: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows > 0 {
+		m.log.Info("Backfilled duration for %d media items from validation_results", rows)
+	}
 	return nil
 }
 
@@ -631,7 +655,7 @@ type schemaObjectSpec struct {
 	table       string
 	name        string
 	checkQuery  string
-	checkArgs   []interface{}
+	checkArgs   []any
 	apply       func() error
 	logMsg      string
 	errCheckFmt string
@@ -655,7 +679,7 @@ func (m *Module) ensureSchemaObject(ctx context.Context, spec schemaObjectSpec) 
 }
 
 // ensureSchemaObjectWithKind builds a schemaObjectSpec with standard error formats and runs ensureSchemaObject.
-func (m *Module) ensureSchemaObjectWithKind(ctx context.Context, kind, table, name, checkQuery string, checkArgs []interface{}, apply func() error, logMsg string) error {
+func (m *Module) ensureSchemaObjectWithKind(ctx context.Context, kind, table, name, checkQuery string, checkArgs []any, apply func() error, logMsg string) error {
 	return m.ensureSchemaObject(ctx, schemaObjectSpec{
 		table:       table,
 		name:        name,
@@ -679,7 +703,7 @@ func (m *Module) ensureColumn(ctx context.Context, table, column, def string) er
 	}
 	return m.ensureSchemaObjectWithKind(ctx, "column", table, column,
 		`SELECT COUNT(*) > 0 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-		[]interface{}{table, column},
+		[]any{table, column},
 		func() error {
 			_, err := m.sqlDB.ExecContext(ctx, fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN `%s` %s", table, column, def))
 			return err
@@ -695,7 +719,7 @@ func (m *Module) ensureIndex(ctx context.Context, table, index, alterSQL string)
 	}
 	return m.ensureSchemaObjectWithKind(ctx, "index", table, index,
 		`SELECT COUNT(*) > 0 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
-		[]interface{}{table, index},
+		[]any{table, index},
 		func() error {
 			_, err := m.sqlDB.ExecContext(ctx, alterSQL)
 			return err

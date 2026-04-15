@@ -40,11 +40,15 @@ func (h *Handler) ListChapters(c *gin.Context) {
 }
 
 // CreateChapter creates a new chapter for a media item.
-// Requires auth.
+// Requires admin role — chapters are metadata managed from the admin panel.
 // Body: { media_id, start_time, end_time?, label }
 func (h *Handler) CreateChapter(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
+		return
+	}
+	if session.Role != models.RoleAdmin {
+		writeError(c, http.StatusForbidden, "Chapter management requires admin privileges")
 		return
 	}
 
@@ -101,12 +105,16 @@ func (h *Handler) CreateChapter(c *gin.Context) {
 }
 
 // UpdateChapter updates an existing chapter.
-// Requires auth.
+// Requires admin role.
 // URL param: id
 // Body: { start_time?, end_time?, label? }
 func (h *Handler) UpdateChapter(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
+		return
+	}
+	if session.Role != models.RoleAdmin {
+		writeError(c, http.StatusForbidden, "Chapter management requires admin privileges")
 		return
 	}
 
@@ -185,11 +193,15 @@ func (h *Handler) UpdateChapter(c *gin.Context) {
 }
 
 // DeleteChapter deletes a chapter.
-// Requires auth.
+// Requires admin role.
 // URL param: id
 func (h *Handler) DeleteChapter(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
+		return
+	}
+	if session.Role != models.RoleAdmin {
+		writeError(c, http.StatusForbidden, "Chapter management requires admin privileges")
 		return
 	}
 

@@ -8,7 +8,8 @@
  * @param fallback  String to return when bytes is falsy (default '—')
  */
 export function formatBytes(bytes?: number, fallback = '—'): string {
-    if (!bytes) return fallback
+    if (bytes == null || bytes < 0) return fallback
+    if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))

@@ -166,7 +166,10 @@ export function useHLS(
         }
 
         // Re-validate after async import — component may have unmounted
-        if (!videoRef.value?.isConnected) return
+        if (!videoRef.value?.isConnected) {
+            hlsActivated.value = false
+            return
+        }
 
         if (!Hls.isSupported()) {
             hlsError.value = 'HLS not supported in this browser'
@@ -260,6 +263,13 @@ export function useHLS(
                 networkRetryCount++
                 if (networkRetryCount <= 3) {
                     const delay = Math.min(1000 * Math.pow(2, networkRetryCount - 1), 8000)
+                    // Clear any pending retry before scheduling a new one. Rapid
+                    // successive NETWORK_ERROR events would otherwise leave multiple
+                    // live timers all calling hls.startLoad() on the same instance.
+                    if (networkRetryTimer !== null) {
+                        clearTimeout(networkRetryTimer)
+                        networkRetryTimer = null
+                    }
                     networkRetryTimer = setTimeout(() => {
                         networkRetryTimer = null
                         hls.startLoad()
@@ -277,6 +287,7 @@ export function useHLS(
                 }
             }
 
+            hlsLoading.value = false
             hlsError.value = 'HLS playback failed'
             hls.destroy()
             hlsInstance = null
@@ -287,7 +298,10 @@ export function useHLS(
     }
 
     async function activateHLS() {
-        if (!hlsUrl.value) return
+        // Capture URL immediately — cleanup() can null hlsUrl.value during the
+        // async retry loop below (e.g. when the user navigates to another item).
+        const capturedUrl = hlsUrl.value
+        if (!capturedUrl) return
         hlsActivated.value = true
 
         // Wait for Vue to patch the DOM (removes :src binding) before hls.js
@@ -306,7 +320,7 @@ export function useHLS(
             return
         }
 
-        attachHLS(hlsUrl.value).catch(() => {
+        attachHLS(capturedUrl).catch(() => {
             hlsActivated.value = false
         })
     }

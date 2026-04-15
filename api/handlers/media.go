@@ -83,7 +83,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 			Type: analytics.EventSearch, UserID: uid,
 			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-			Data: map[string]interface{}{"query": filterNoPagination.Search},
+			Data: map[string]any{"query": filterNoPagination.Search},
 		})
 	}
 
@@ -299,7 +299,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		}
 	}
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
@@ -452,7 +452,7 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 		Category     string      `json:"category"`
 		Confidence   float64     `json:"confidence"`
 		Duration     float64     `json:"duration,omitempty"`
-		DetectedInfo interface{} `json:"detected_info,omitempty"`
+		DetectedInfo any `json:"detected_info,omitempty"`
 		ThumbnailURL string      `json:"thumbnail_url,omitempty"`
 	}
 	results := make([]browseItem, 0, len(items))
@@ -479,7 +479,7 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 		results = results[:limit]
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"category": category,
 		"items":    results,
 		"total":    len(results),
@@ -560,14 +560,21 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		if h.extractor != nil {
 			if ei := h.extractor.GetItem(id); ei != nil && ei.Status == "active" {
 				// Enforce per-user stream limits before redirecting.
+				// Note: extractor streams are redirect-based so slots are not held open;
+				// CanStartStream counts only sessions from other stream types (local/receiver),
+				// which still provides partial enforcement of the global limit.
 				// Extractor items have no IsMature flag so mature content filtering is not applicable here.
 				if session != nil {
-					if user, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
-						maxStreams := h.getUserStreamLimit(user.Type)
-						if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
-							writeError(c, http.StatusTooManyRequests, msgMaxStreams)
-							return
-						}
+					user, err := h.auth.GetUser(c.Request.Context(), session.Username)
+					if err != nil {
+						h.log.Warn("Failed to look up user %s for extractor stream limit check: %v", session.Username, err)
+						writeError(c, http.StatusServiceUnavailable, "Unable to verify stream permissions")
+						return
+					}
+					maxStreams := h.getUserStreamLimit(user.Type)
+					if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
+						writeError(c, http.StatusTooManyRequests, msgMaxStreams)
+						return
 					}
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
@@ -592,7 +599,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 	absPath := localItem.Path
 
-	if !h.checkMatureAccess(c, absPath) {
+	if !h.checkMatureAccess(c, localItem.IsMature) {
 		return
 	}
 
@@ -724,7 +731,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	}
 	absPath := localItem.Path
 
-	if !h.checkMatureAccess(c, absPath) {
+	if !h.checkMatureAccess(c, localItem.IsMature) {
 		return
 	}
 
@@ -772,7 +779,7 @@ func (h *Handler) GetBatchPlaybackPositions(c *gin.Context) {
 
 	raw := c.Query("ids")
 	if raw == "" {
-		writeSuccess(c, map[string]interface{}{"positions": map[string]float64{}})
+		writeSuccess(c, map[string]any{"positions": map[string]float64{}})
 		return
 	}
 
@@ -786,7 +793,7 @@ func (h *Handler) GetBatchPlaybackPositions(c *gin.Context) {
 	}
 
 	positions := h.media.BatchGetPlaybackPositions(c.Request.Context(), ids, session.UserID)
-	writeSuccess(c, map[string]interface{}{"positions": positions})
+	writeSuccess(c, map[string]any{"positions": positions})
 }
 
 // GetBatchMedia returns media items for multiple IDs in a single request.
@@ -794,7 +801,7 @@ func (h *Handler) GetBatchPlaybackPositions(c *gin.Context) {
 func (h *Handler) GetBatchMedia(c *gin.Context) {
 	raw := c.Query("ids")
 	if raw == "" {
-		writeSuccess(c, map[string]interface{}{"items": map[string]*models.MediaItem{}})
+		writeSuccess(c, map[string]any{"items": map[string]*models.MediaItem{}})
 		return
 	}
 
@@ -820,7 +827,7 @@ func (h *Handler) GetBatchMedia(c *gin.Context) {
 		items[id] = item
 	}
 
-	writeSuccess(c, map[string]interface{}{"items": items})
+	writeSuccess(c, map[string]any{"items": items})
 }
 
 // GetPlaybackPosition returns the saved playback position for the current user.

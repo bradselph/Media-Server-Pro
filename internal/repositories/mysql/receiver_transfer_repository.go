@@ -196,6 +196,52 @@ func (r *ReceiverMediaRepository) DeleteBySlave(ctx context.Context, slaveID str
 	return nil
 }
 
+// ReplaceSlaveMedia atomically deletes all existing records for slaveID and inserts
+// the new records inside a single transaction so a crash between the two operations
+// cannot leave the slave with an empty catalog.
+func (r *ReceiverMediaRepository) ReplaceSlaveMedia(ctx context.Context, slaveID string, items []*repositories.ReceiverMediaRecord) error {
+	rows := make([]receiverMediaRow, len(items))
+	for i, item := range items {
+		rows[i] = receiverMediaRow{
+			ID:                 item.ID,
+			SlaveID:            slaveID,
+			RemotePath:         item.RemotePath,
+			Name:               item.Name,
+			MediaType:          item.MediaType,
+			Size:               item.Size,
+			Duration:           item.Duration,
+			ContentType:        item.ContentType,
+			ContentFingerprint: item.ContentFingerprint,
+			Width:              item.Width,
+			Height:             item.Height,
+			UpdatedAt:          time.Now().Format(sqlTimeFormat),
+		}
+	}
+
+	const batchSize = 100
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("slave_id = ?", slaveID).Delete(&receiverMediaRow{}).Error; err != nil {
+			return fmt.Errorf("failed to delete existing media for slave: %w", err)
+		}
+		for start := 0; start < len(rows); start += batchSize {
+			end := start + batchSize
+			if end > len(rows) {
+				end = len(rows)
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"remote_path", "name", "media_type", "file_size", "duration",
+					"content_type", "content_fingerprint", "width", "height", "updated_at",
+				}),
+			}).Create(new(rows[start:end])).Error; err != nil {
+				return fmt.Errorf("failed to insert media batch: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
 func (r *ReceiverMediaRepository) DeleteByID(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).Where(sqlIDEq, id).Delete(&receiverMediaRow{})
 	if result.Error != nil {

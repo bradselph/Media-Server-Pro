@@ -14,10 +14,20 @@ const error = ref('')
 const allowRegistration = ref(true) // optimistic default until settings load
 const allowGuests = computed(() => authStore.allowGuests)
 
-// Redirect if already logged in
+// Redirect if already logged in.
+// Only allow same-origin app routes — reject external URLs, protocol-relative
+// paths, and API/raw-resource paths to prevent open redirect abuse.
 function loginRedirectDest() {
   const r = route.query.redirect
-  if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//')) return r
+  if (
+    typeof r === 'string' &&
+    r.startsWith('/') &&
+    !r.startsWith('//') &&
+    !r.startsWith('/api/') &&
+    !r.startsWith('/extractor/')
+  ) {
+    return r
+  }
   return '/'
 }
 

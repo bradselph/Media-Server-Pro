@@ -23,7 +23,7 @@ func (h *Handler) ClassifyStatus(c *gin.Context) {
 	}
 	cfg := h.config.Get().HuggingFace
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"configured":     h.scanner.HasHuggingFace(),
 		"enabled":        cfg.Enabled,
 		"model":          cfg.Model,
@@ -69,7 +69,7 @@ func (h *Handler) ClassifyRunTask(c *gin.Context) {
 		writeError(c, http.StatusConflict, err.Error())
 		return
 	}
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"message": "HF classification task started.",
 	})
 }
@@ -100,7 +100,7 @@ func (h *Handler) ClassifyClearTags(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to clear tags: "+err.Error())
 		return
 	}
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"message": "Tags cleared.",
 		"id":      req.ID,
 	})
@@ -139,7 +139,7 @@ func (h *Handler) ClassifyFile(c *gin.Context) {
 			return
 		}
 	}
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"path": absPath,
 		"tags": tags,
 	})
@@ -218,7 +218,7 @@ func (h *Handler) ClassifyDirectory(c *gin.Context) {
 	go h.runClassifyDirectoryBackground(dirPath)
 	c.JSON(http.StatusAccepted, models.APIResponse{
 		Success: true,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"message":   "Classification started in background. This may take several minutes.",
 			"directory": dirPath,
 		},
@@ -249,7 +249,7 @@ func (h *Handler) ClassifyAllPending(c *gin.Context) {
 	}
 
 	if len(pending) == 0 {
-		writeSuccess(c, map[string]interface{}{
+		writeSuccess(c, map[string]any{
 			"message": "No pending items to classify.",
 			"count":   0,
 		})
@@ -264,7 +264,7 @@ func (h *Handler) ClassifyAllPending(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, models.APIResponse{
 		Success: true,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"message": "Classification started for all pending items.",
 			"count":   len(pending),
 		},

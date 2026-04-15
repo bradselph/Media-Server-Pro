@@ -39,7 +39,10 @@ const checking = ref(false)
 const applying = ref(false)
 const confirmOpen = ref(false)
 
+// Separate intervals per update type so one stopPolling() call can't leave the
+// other type's applying flag stuck true.
 const pollInterval = ref<ReturnType<typeof setInterval> | null>(null)
+const sourcePollInterval = ref<ReturnType<typeof setInterval> | null>(null)
 
 function stopPolling() {
   if (pollInterval.value !== null) {
@@ -47,9 +50,15 @@ function stopPolling() {
     pollInterval.value = null
   }
 }
+function stopSourcePolling() {
+  if (sourcePollInterval.value !== null) {
+    clearInterval(sourcePollInterval.value)
+    sourcePollInterval.value = null
+  }
+}
 
 let destroyed = false
-onUnmounted(() => { destroyed = true; stopPolling() })
+onUnmounted(() => { destroyed = true; stopPolling(); stopSourcePolling() })
 
 async function checkForUpdates() {
   checking.value = true
@@ -111,14 +120,14 @@ async function applySourceUpdate() {
     status.value = res ?? { in_progress: true, stage: 'pulling', progress: 0 }
     toast.add({ title: 'Source update started — server will restart', color: 'info', icon: 'i-lucide-info' })
     if (status.value?.in_progress) {
-      stopPolling()
-      pollInterval.value = setInterval(async () => {
-        if (destroyed) { stopPolling(); return }
+      stopSourcePolling()
+      sourcePollInterval.value = setInterval(async () => {
+        if (destroyed) { stopSourcePolling(); return }
         try {
           const s = await adminApi.getSourceUpdateProgress()
           status.value = s
-          if (!s.in_progress) { stopPolling(); sourceApplying.value = false }
-        } catch { stopPolling(); sourceApplying.value = false }
+          if (!s.in_progress) { stopSourcePolling(); sourceApplying.value = false }
+        } catch { stopSourcePolling(); sourceApplying.value = false }
       }, 3000)
     } else {
       sourceApplying.value = false

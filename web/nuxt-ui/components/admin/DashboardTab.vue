@@ -92,10 +92,14 @@ async function handleAction(fn: () => Promise<unknown>, successMsg: string, acti
   }
 }
 
-onMounted(loadAll)
-// Auto-refresh every 30s — skip when tab is hidden to avoid wasteful background requests
-const interval = setInterval(() => { if (!document.hidden) loadAll() }, 30_000)
-onUnmounted(() => clearInterval(interval))
+onMounted(() => {
+  loadAll()
+  // Auto-refresh every 30s — skip when tab is hidden to avoid wasteful background requests.
+  // Kept inside onMounted so it only runs in the browser and the interval is guaranteed
+  // to be registered before onUnmounted can fire.
+  const interval = setInterval(() => { if (!document.hidden) loadAll() }, 30_000)
+  onUnmounted(() => clearInterval(interval))
+})
 </script>
 
 <template>

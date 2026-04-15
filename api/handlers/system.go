@@ -289,7 +289,7 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 		writeSuccess(c, map[string]any{
 			"used_bytes":       int64(0),
 			"used_gb":          0,
-			"quota_gb":         float64(h.getUserStorageQuota("standard")),
+			"quota_gb":         float64(h.getUserStorageQuota("standard")) / (1024 * 1024 * 1024),
 			"percentage":       0,
 			"is_authenticated": false,
 			"user_type":        "standard",

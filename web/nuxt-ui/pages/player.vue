@@ -79,6 +79,9 @@ const playbackSpeed = ref(userPrefs.value?.playback_speed ?? 1)
 const autoPlay = computed(() => userPrefs.value?.auto_play ?? false)
 
 // Keep volume / speed in sync when session or preferences load or update after mount.
+// immediate: true ensures that if prefs are already loaded (e.g. cached session)
+// the values are applied synchronously before first playback, so a user with a
+// non-default volume (e.g. 0/muted) does not hear audio on the initial tick.
 watch(
   userPrefs,
   (p) => {
@@ -86,7 +89,7 @@ watch(
     if (typeof p.volume === 'number') volume.value = p.volume
     if (typeof p.playback_speed === 'number') playbackSpeed.value = p.playback_speed
   },
-  { deep: true },
+  { deep: true, immediate: true },
 )
 
 // Skip interval from preferences (default 10s)
@@ -308,6 +311,7 @@ function submitRating(star: number) {
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
 let preMuteVolume = 1
 let _restorePiP = false
+let positionRestored = false
 
 function resetControlsTimer() {
   showControls.value = true
@@ -318,8 +322,22 @@ function resetControlsTimer() {
 async function loadMedia(id: string) {
   // Only show loading spinner on initial load — switching media keeps the video element
   // alive in the DOM so PiP continues working across auto-next transitions.
+  positionRestored = false
   const isSwitch = !!media.value
   if (!isSwitch) loading.value = true
+  // Tear down the Web Audio graph on every media switch so ensureAudioGraph() can
+  // re-attach to the correct element (which may change between <video> and <audio>
+  // since both use the same videoRef template ref — Vue unmounts one and mounts the
+  // other, leaving sourceNode bound to the now-detached element if we don't reset).
+  if (isSwitch) {
+    eqFilters.forEach(f => f.disconnect())
+    eqFilters = []
+    eqEnabled.value = false
+    if (sourceNode) { sourceNode.disconnect(); sourceNode = null }
+    if (analyserNode) { analyserNode.disconnect(); analyserNode = null }
+    visualizerAnalyser.value = null
+    if (audioCtx && audioCtx.state !== 'closed') { audioCtx.close().catch(() => {}); audioCtx = null }
+  }
   error.value = ''
   similar.value = []
   personalized.value = []
@@ -335,13 +353,13 @@ async function loadMedia(id: string) {
       thumbnail_url: media.value ? mediaApi.getThumbnailUrl(id) : undefined,
       duration: media.value?.duration ?? 0,
     })
-    loadChapters(id).catch(() => {})
-    suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch(() => {})
-    collectionsApi.getForMedia(id).then(r => { mediaCollections.value = r ?? [] }).catch(() => {})
+    loadChapters(id).catch((e: unknown) => { console.warn('[player] chapters load failed:', e) })
+    suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] similar load failed:', e) })
+    collectionsApi.getForMedia(id).then(r => { mediaCollections.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] collections load failed:', e) })
     if (authStore.isLoggedIn) {
-      suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch(() => {})
+      suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] personalized load failed:', e) })
     }
-    mediaApi.getThumbnailPreviews(id).then(r => { thumbnailPreviews.value = r?.previews ?? [] }).catch(() => {})
+    mediaApi.getThumbnailPreviews(id).then(r => { thumbnailPreviews.value = r?.previews ?? [] }).catch((e: unknown) => { console.warn('[player] thumbnail previews load failed:', e) })
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load media'
   } finally {
@@ -351,6 +369,7 @@ async function loadMedia(id: string) {
 
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
+  positionRestored = true
   // Honour ?t=N deep-link: seek to the given second, skipping the stored position.
   const tParam = Number(route.query.t)
   if (tParam > 0) {
@@ -375,6 +394,10 @@ async function restorePosition() {
 // returning to this item later starts from the beginning rather than immediately
 // re-triggering the ended/auto-next behaviour.
 async function onMediaEnded() {
+  // In loop-one mode the video element has loop=true and fires 'ended' on every
+  // iteration. Resetting the resume position and recording a completion event on
+  // each loop cycle would corrupt progress tracking. Only act on a real end.
+  if (loopMode.value === 'one') return
   if (mediaId.value) {
     try {
       await playbackApi.savePosition(mediaId.value, 0, videoRef.value?.duration ?? 0)
@@ -425,13 +448,7 @@ function onVideoLoaded() {
   if (media.value?.type === 'audio') {
     ensureAudioGraph()
   }
-  // Resume AudioContext on play for ALL media types (audio and video).
-  // Without this, video media with EQ enabled has no path to resume the AudioContext
-  // after the browser suspends it when the tab is hidden and shown again.
-  videoRef.value?.addEventListener('play', () => {
-    if (audioCtx?.state === 'suspended') audioCtx.resume()
-  }, { once: true })
-  restorePosition()
+  if (!positionRestored) restorePosition()
   playbackStore.startAutoSave()
   // Auto-play when preference is enabled
   if (autoPlay.value && videoRef.value && videoRef.value.paused) {
@@ -449,8 +466,11 @@ function onVideoLoaded() {
 // Auto-next: navigate to next similar item when video ends (non-playlist context)
 function autoNextFromSuggestions() {
   if (!autoNextEnabled.value) return
-  // Playlist auto-advance takes priority
-  if (nextPlaylistItem.value) { startUpNextCountdown(); return }
+  // Playlist auto-advance takes priority (including loop-all wrap from last item).
+  // navigateToNextItem handles the wrap-to-index-0 logic for loop-all.
+  if (nextPlaylistItem.value || (playlistIdParam.value && loopMode.value === 'all')) {
+    startUpNextCountdown(); return
+  }
 
   // Queue takes priority over suggestions
   if (queueStore.items.length > 0) {
@@ -502,6 +522,12 @@ function onTimeUpdate() {
 
 function onPlayPause() {
   isPlaying.value = !videoRef.value?.paused
+  // Resume AudioContext on play for ALL media types (audio and video).
+  // Moved here from onVideoLoaded to avoid accumulating listeners on every
+  // loadedmetadata event (HLS quality switches, auto-next transitions).
+  if (!videoRef.value?.paused && audioCtx?.state === 'suspended') {
+    audioCtx.resume()
+  }
 }
 
 function togglePlay() {
@@ -570,7 +596,9 @@ const showUpNext = ref(false)
 const upNextCountdown = ref(5)
 
 function startUpNextCountdown() {
-  if (!nextPlaylistItem.value) return
+  // Guard: only fire in a playlist context (next item OR loop-all wrap from last item)
+  if (!nextPlaylistItem.value && !(playlistIdParam.value && loopMode.value === 'all')) return
+  if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
   showUpNext.value = true
   upNextCountdown.value = 5
   upNextTimer = setInterval(() => {
@@ -926,7 +954,13 @@ watch(mediaId, () => {
 
 // Save position on pause and unmount
 onUnmounted(() => {
-  savePosition()
+  // Vue 3 clears template refs before onUnmounted runs, so videoRef.value is null
+  // here. savePosition() guards on videoRef and always no-ops from onUnmounted.
+  // Use the store's savePosition() instead — it reads from position.value which
+  // is kept current by updatePosition() calls and remains valid after unmount.
+  // This ensures SPA navigation away from the player (back button, nav link)
+  // saves the user's progress, not just browser close / refresh.
+  playbackStore.savePosition()
   playbackStore.stopAutoSave()
   if (controlsTimer) clearTimeout(controlsTimer)
   if (seekTimer) clearTimeout(seekTimer)

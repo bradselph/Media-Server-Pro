@@ -10,7 +10,7 @@ import (
 // GetValue gets a configuration value by dot-notation path.
 // Uses the same normalizeFieldName logic as SetValue (lowercase, strip underscores)
 // so paths like "hls.cdn_base_url" work consistently for both get and set.
-func (m *Manager) GetValue(path string) (interface{}, error) {
+func (m *Manager) GetValue(path string) (any, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -43,7 +43,7 @@ func navigateToField(root reflect.Value, parts []string, path string) (reflect.V
 	return v, nil
 }
 
-func setReflectField(field reflect.Value, value interface{}, path string) error {
+func setReflectField(field reflect.Value, value any, path string) error {
 	if !field.CanSet() {
 		return fmt.Errorf("cannot set config value: %s", path)
 	}
@@ -53,7 +53,7 @@ func setReflectField(field reflect.Value, value interface{}, path string) error 
 		return nil
 	}
 	// For complex types (slices of structs, nested structs, etc.) that arrive
-	// from JSON as []interface{} or map[string]interface{}, round-trip through
+	// from JSON as []any or map[string]any, round-trip through
 	// JSON so the standard decoder handles nested field mapping and coercion.
 	return setReflectFieldViaJSON(field, value, path)
 }
@@ -61,7 +61,7 @@ func setReflectField(field reflect.Value, value interface{}, path string) error 
 // setReflectFieldViaJSON merges the incoming value into the existing field
 // value. For structs this preserves fields absent from the update; for slices
 // and primitives it replaces outright (which is the correct behavior).
-func setReflectFieldViaJSON(field reflect.Value, value interface{}, path string) error {
+func setReflectFieldViaJSON(field reflect.Value, value any, path string) error {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("type mismatch for config value: %s (marshal: %w)", path, err)
@@ -82,14 +82,14 @@ func setReflectFieldViaJSON(field reflect.Value, value interface{}, path string)
 
 // SetValue sets a configuration value by dot-notation path. It persists to disk
 // on every call. For multiple updates, use SetValuesBatch to avoid partial writes on failure.
-func (m *Manager) SetValue(path string, value interface{}) error {
-	return m.SetValuesBatch(map[string]interface{}{path: value})
+func (m *Manager) SetValue(path string, value any) error {
+	return m.SetValuesBatch(map[string]any{path: value})
 }
 
 // SetValuesBatch applies multiple configuration updates and persists once atomically.
 // On save failure, in-memory changes are rolled back so the config stays consistent with disk.
 // After saving, feature toggles are synced so runtime module enable/disable matches config.
-func (m *Manager) SetValuesBatch(updates map[string]interface{}) error {
+func (m *Manager) SetValuesBatch(updates map[string]any) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

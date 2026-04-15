@@ -372,7 +372,11 @@ function openEditSmart(pl: SmartPlaylist) {
   spEditTarget.value = pl
   spEditName.value = pl.name
   spEditDesc.value = pl.description ?? ''
-  spEditRules.value = JSON.parse(pl.rules) ?? defaultSmartRules()
+  try {
+    spEditRules.value = JSON.parse(pl.rules) ?? defaultSmartRules()
+  } catch {
+    spEditRules.value = defaultSmartRules()
+  }
 }
 
 async function saveEditSmart() {
@@ -403,6 +407,7 @@ const spPreviewLoading = ref(false)
 
 async function loadSmartPreview(sp: SmartPlaylist) {
   spPreviewTarget.value = sp
+  spPreviewItems.value = []
   spPreviewLoading.value = true
   try {
     spPreviewItems.value = (await smartPlaylistsApi.preview(sp.id)) ?? []

@@ -90,7 +90,7 @@ function onFileInput(e: Event) {
   input.value = ''
 }
 
-const EXTENSION_ALLOWLIST = new Set(['.mkv', '.avi', '.flac', '.ogg', '.webm', '.m4a', '.aac', '.wav', '.wmv', '.mov', '.ts', '.m4v', '.mpg', '.mpeg', '.3gp', '.opus', '.wma'])
+const EXTENSION_ALLOWLIST = new Set(['.mp4', '.mkv', '.avi', '.flac', '.ogg', '.webm', '.m4a', '.aac', '.wav', '.wmv', '.mov', '.ts', '.m4v', '.mpg', '.mpeg', '.3gp', '.opus', '.wma', '.vob', '.ogv'])
 
 function getExtension(name: string): string {
   const idx = name.lastIndexOf('.')

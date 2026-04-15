@@ -10,11 +10,11 @@ import (
 
 // redactSensitiveConfigKeys returns a copy of m with sensitive values replaced by "[REDACTED]".
 // Prevents database credentials, API keys, tokens, etc. from being stored in the audit log.
-func redactSensitiveConfigKeys(m map[string]interface{}) map[string]interface{} {
+func redactSensitiveConfigKeys(m map[string]any) map[string]any {
 	if m == nil {
 		return nil
 	}
-	redacted := make(map[string]interface{}, len(m))
+	redacted := make(map[string]any, len(m))
 	for k, v := range m {
 		keyLower := strings.ToLower(k)
 		if strings.Contains(keyLower, "password") || strings.Contains(keyLower, "token") ||
@@ -23,7 +23,7 @@ func redactSensitiveConfigKeys(m map[string]interface{}) map[string]interface{} 
 			redacted[k] = "[REDACTED]"
 			continue
 		}
-		if nested, ok := v.(map[string]interface{}); ok {
+		if nested, ok := v.(map[string]any); ok {
 			redacted[k] = redactSensitiveConfigKeys(nested)
 		} else {
 			redacted[k] = v
@@ -66,7 +66,7 @@ var configFieldDenyList = map[string]bool{
 //   - its top-level section appears in configDenyList (entire section blocked), OR
 //   - the key itself (lowercased) appears in configFieldDenyList, OR
 //   - for object-valued sections, specific nested fields are stripped from the value.
-func filterDeniedConfigKeys(updates map[string]interface{}) []string {
+func filterDeniedConfigKeys(updates map[string]any) []string {
 	var rejected []string
 	for k := range updates {
 		topLevel := strings.SplitN(strings.ToLower(k), ".", 2)[0]
@@ -81,7 +81,7 @@ func filterDeniedConfigKeys(updates map[string]interface{}) []string {
 			continue
 		}
 		// Strip individual sensitive fields from object-valued section updates.
-		if obj, ok := updates[k].(map[string]interface{}); ok {
+		if obj, ok := updates[k].(map[string]any); ok {
 			for _, deny := range []string{"password_hash", "username"} {
 				if topLevel == "admin" {
 					if _, exists := obj[deny]; exists {
@@ -108,7 +108,7 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	if !h.requireAdminModule(c) {
 		return
 	}
-	var updates map[string]interface{}
+	var updates map[string]any
 	if json.NewDecoder(c.Request.Body).Decode(&updates) != nil {
 		writeError(c, http.StatusBadRequest, errInvalidRequest)
 		return
@@ -149,7 +149,7 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	}
 
 	h.logAdminAction(c, &adminLogActionParams{Action: "update_config", Target: "configuration", Details: redactSensitiveConfigKeys(updates)})
-	result := map[string]interface{}{
+	result := map[string]any{
 		"config":           h.admin.GetConfigMap(),
 		"restart_required": restartRequired,
 	}

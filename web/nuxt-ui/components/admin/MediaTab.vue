@@ -698,7 +698,7 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
     </UModal>
 
     <!-- Chapters editor modal -->
-    <UModal v-model="chaptersOpen" title="Edit Chapters">
+    <UModal v-model:open="chaptersOpen" title="Edit Chapters">
       <UCard>
         <template #header>
           <div class="flex items-center justify-between">

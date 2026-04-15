@@ -127,17 +127,29 @@ func (h *Handler) ReceiverListMedia(c *gin.Context) {
 
 	query := c.Query("q")
 	if query != "" {
-		writeSuccess(c, h.receiver.SearchMedia(query))
+		items := h.receiver.SearchMedia(query)
+		if items == nil {
+			items = []*receiver.MediaItem{}
+		}
+		writeSuccess(c, items)
 		return
 	}
 
 	slaveID := c.Query("slave_id")
 	if slaveID != "" {
-		writeSuccess(c, h.receiver.GetSlaveMedia(slaveID))
+		items := h.receiver.GetSlaveMedia(slaveID)
+		if items == nil {
+			items = []*receiver.MediaItem{}
+		}
+		writeSuccess(c, items)
 		return
 	}
 
-	writeSuccess(c, h.receiver.GetAllMedia())
+	items := h.receiver.GetAllMedia()
+	if items == nil {
+		items = []*receiver.MediaItem{}
+	}
+	writeSuccess(c, items)
 }
 
 // ReceiverGetMedia returns a single media item by ID.

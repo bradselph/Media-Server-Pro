@@ -25,28 +25,34 @@ Audited files:
 - **Frontend** (`api.ts:1063`): `last_used_at: string | null` -- correctly handles null
 - **Status**: MATCH. No issue.
 
-### 3. APIToken response — backend returns `expires_at` field, frontend type omits it
+### ✅ 2026-04-15 — 3. APIToken response — backend returns `expires_at` field, frontend type omits it
 
 - **Backend** (`auth_tokens.go:28-29`): ListAPITokens returns `expires_at` field (nullable)
 - **Frontend** (`api.ts:1060-1065`): `APIToken` interface has no `expires_at` field
 - **Severity**: LOW. Frontend ignores the field; no runtime error, but data is silently discarded.
 - **Impact**: If the UI ever needs to show token expiry, it would read `undefined`.
 
-### 4. CreateAPIToken response — backend returns `expires_at`, frontend type omits it
+> **Resolution**: `APIToken.expires_at` changed from `expires_at?: string | null` to `expires_at: string | null` in `types/api.ts`. `ListAPITokens` always sets the field via `ExpiresAt *string` (null when no expiry). `CreateAPIToken` now always includes `expires_at: null` in its response, overwritten when a TTL is set. `profile.vue` `createToken()` spreads `expires_at` into the local token list.
+
+### ✅ 2026-04-15 — 4. CreateAPIToken response — backend returns `expires_at`, frontend type omits it
 
 - **Backend** (`auth_tokens.go:84-87`): Returns `expires_at` when token has TTL
 - **Frontend** (`api.ts:1067-1069`): `APITokenCreated extends APIToken` -- no `expires_at`
 - **Severity**: LOW. Same as above.
 
+> **Resolution**: Fixed with item 3 above.
+
 ---
 
 ## Medium: Response Shape Gaps (frontend reads field backend may not return)
 
-### 5. GetPermissions — backend returns extra `limits` and `user_type` fields
+### ✅ 2026-04-15 — 5. GetPermissions — backend returns extra `limits` and `user_type` fields
 
 - **Backend** (`auth.go:617-638`): Returns `user_type`, `limits.storage_quota`, `limits.concurrent_streams`
 - **Frontend** (`api.ts:591-606`): `PermissionsInfo` has no `user_type` or `limits` fields
 - **Severity**: LOW. Extra backend fields are harmlessly ignored.
+
+> **Resolution**: `PermissionsInfo` in `api.ts` now includes `user_type?: string` and `limits?: { storage_quota, concurrent_streams }`. Fields are already consumed by the permissions UI.
 
 ### ✅ `ad830f94` 2026-04-09 — DownloaderSettings — backend omits several fields frontend type declares
 
@@ -60,13 +66,15 @@ Audited files:
 - **Frontend** (`api.ts:914`): `dependencies?: Record<string, unknown>`
 - **Severity**: NONE. Frontend type is a supertype; no mismatch.
 
-### 8. MediaListResponse — `total` / `page` / `limit` fields
+### ✅ 2026-04-15 — 8. MediaListResponse — `total` / `page` / `limit` fields
 
 - **Backend** (`media.go:285-297`): Returns `items`, `total_items`, `total_pages`, `scanning`, optionally `initializing`
   and `user_ratings`
 - **Frontend** (`api.ts:137-147`): Declares `total`, `page`, `limit` fields as optional
 - **Severity**: LOW. Backend never returns `total`, `page`, or `limit`. Frontend has them as optional (`?`), so they're
   always `undefined` at runtime. If any code reads `response.total` expecting a number, it silently gets `undefined`.
+
+> **Resolution**: Phantom fields `total`, `page`, `limit` are no longer present in the current `MediaListResponse` interface. `MediaListResponse` now only declares fields the backend actually returns: `items`, `total_items`, `total_pages`, `scanning?`, `initializing?`, `user_ratings?`.
 
 ### 9. WatchHistory DELETE — frontend sends `id` query param, backend also accepts path-based removal
 

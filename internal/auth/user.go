@@ -186,7 +186,7 @@ func (m *Module) getUserFromCacheByID(id string) *models.User {
 
 // UpdateUser updates a user's information.
 // When demoting or disabling an admin, holds lastAdminMu to prevent TOCTOU (concurrent requests disabling all admins).
-func (m *Module) UpdateUser(ctx context.Context, username string, updates map[string]interface{}) error {
+func (m *Module) UpdateUser(ctx context.Context, username string, updates map[string]any) error {
 	user, err := m.GetUser(ctx, username)
 	if err != nil {
 		return err
@@ -282,7 +282,7 @@ func (m *Module) evictSessionsAfterUpdate(ctx context.Context, p evictSessionUpd
 // maxUserMetadataSize is the maximum JSON-encoded size for User.Metadata (64 KB).
 const maxUserMetadataSize = 64 * 1024
 
-func (m *Module) applyUserUpdates(user *models.User, updates map[string]interface{}) error {
+func (m *Module) applyUserUpdates(user *models.User, updates map[string]any) error {
 	m.applyBasicUserUpdates(user, updates)
 	if err := m.applyPasswordUpdateFromMap(user, updates["password"]); err != nil {
 		return err
@@ -301,11 +301,11 @@ func (m *Module) applyUserUpdates(user *models.User, updates map[string]interfac
 
 // applyMetadataUpdate validates and sets User.Metadata if present in the update.
 // Rejects payloads exceeding maxUserMetadataSize to prevent DB bloat.
-func applyMetadataUpdate(user *models.User, metadataVal interface{}) error {
+func applyMetadataUpdate(user *models.User, metadataVal any) error {
 	if metadataVal == nil {
 		return nil
 	}
-	meta, ok := metadataVal.(map[string]interface{})
+	meta, ok := metadataVal.(map[string]any)
 	if !ok {
 		return fmt.Errorf("metadata must be a JSON object")
 	}
@@ -321,7 +321,7 @@ func applyMetadataUpdate(user *models.User, metadataVal interface{}) error {
 }
 
 // applyBasicUserUpdates sets email, enabled, type, role, and admin permissions from updates.
-func (m *Module) applyBasicUserUpdates(user *models.User, updates map[string]interface{}) {
+func (m *Module) applyBasicUserUpdates(user *models.User, updates map[string]any) {
 	if email, ok := updates["email"].(string); ok {
 		user.Email = email
 	}
@@ -341,7 +341,7 @@ func (m *Module) applyBasicUserUpdates(user *models.User, updates map[string]int
 }
 
 // applyPasswordUpdateFromMap updates user password hash and salt if a non-empty password is present.
-func (m *Module) applyPasswordUpdateFromMap(user *models.User, passwordVal interface{}) error {
+func (m *Module) applyPasswordUpdateFromMap(user *models.User, passwordVal any) error {
 	password, ok := passwordVal.(string)
 	if !ok || password == "" {
 		return nil
@@ -365,8 +365,8 @@ type permissionField struct {
 	dest *bool
 }
 
-func (m *Module) applyPermissionsFromMap(user *models.User, perms interface{}) {
-	permsMap, ok := perms.(map[string]interface{})
+func (m *Module) applyPermissionsFromMap(user *models.User, perms any) {
+	permsMap, ok := perms.(map[string]any)
 	if !ok {
 		return
 	}

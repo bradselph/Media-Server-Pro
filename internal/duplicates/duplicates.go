@@ -512,11 +512,17 @@ func (m *Module) findLocalPathByStableID(ctx context.Context, itemID string) (st
 // deleteLocalFileAndMetadata removes the metadata row, the file on disk, and the
 // in-memory media-module indexes for the given path.
 func (m *Module) deleteLocalFileAndMetadata(ctx context.Context, path string) error {
-	if err := m.metaRepo.Delete(ctx, path); err != nil {
-		return fmt.Errorf("failed to delete local metadata for %s: %w", path, err)
-	}
+	// Delete the file before the metadata row so that a partial failure leaves
+	// a recoverable state. If os.Remove fails, the metadata row still exists and
+	// the item remains visible/retry-able. If metaRepo.Delete fails after a
+	// successful file removal, a ghost metadata row remains but can be swept on
+	// the next scan. The reverse order (metadata first) would leave the file
+	// permanently orphaned on disk with no metadata row to find it again.
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete local file %s: %w", path, err)
+	}
+	if err := m.metaRepo.Delete(ctx, path); err != nil {
+		return fmt.Errorf("failed to delete local metadata for %s: %w", path, err)
 	}
 	// Evict the item from the media module's in-memory indexes so it is not
 	// served as a ghost after the DB row and disk file are gone.  Non-fatal:

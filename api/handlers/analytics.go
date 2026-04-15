@@ -18,21 +18,21 @@ import (
 // GetAnalyticsSummary returns analytics summary with top viewed and recent activity
 func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, map[string]interface{}{"analytics_disabled": true})
+		writeSuccess(c, map[string]any{"analytics_disabled": true})
 		return
 	}
 	summary := h.analytics.GetSummary(c.Request.Context())
 	globalStats := h.analytics.GetStats()
 
 	topMedia := h.analytics.GetTopMedia(10)
-	topViewed := make([]map[string]interface{}, 0, len(topMedia))
+	topViewed := make([]map[string]any, 0, len(topMedia))
 	for _, item := range topMedia {
 		filename := item.MediaID
 		// Analytics keys are stable UUIDs — resolve to human-readable names.
 		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
 			filename = mediaItem.Name
 		}
-		topViewed = append(topViewed, map[string]interface{}{
+		topViewed = append(topViewed, map[string]any{
 			"media_id": item.MediaID,
 			"filename": filename,
 			"views":    item.Views,
@@ -40,14 +40,14 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	}
 
 	recentEvents := h.analytics.GetRecentEvents(c.Request.Context(), 20)
-	recentActivity := make([]map[string]interface{}, 0, len(recentEvents))
+	recentActivity := make([]map[string]any, 0, len(recentEvents))
 	for _, event := range recentEvents {
 		filename := event.MediaID
 		// Analytics keys are stable UUIDs — resolve to human-readable names.
 		if mediaItem, err := h.media.GetMediaByID(event.MediaID); err == nil && mediaItem != nil {
 			filename = mediaItem.Name
 		}
-		recentActivity = append(recentActivity, map[string]interface{}{
+		recentActivity = append(recentActivity, map[string]any{
 			"type":      event.Type,
 			"media_id":  event.MediaID,
 			"filename":  filename,
@@ -55,7 +55,7 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 		})
 	}
 
-	writeSuccess(c, map[string]interface{}{
+	writeSuccess(c, map[string]any{
 		"total_events":          summary.TotalEvents,
 		"active_sessions":       summary.ActiveSessions,
 		"today_views":           summary.TodayViews,
@@ -77,7 +77,7 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 // GetDailyStats returns daily statistics
 func (h *Handler) GetDailyStats(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, []interface{}{})
+		writeSuccess(c, []any{})
 		return
 	}
 	days := 30
@@ -100,7 +100,7 @@ func (h *Handler) GetDailyStats(c *gin.Context) {
 // GetTopMedia returns top viewed media
 func (h *Handler) GetTopMedia(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, []interface{}{})
+		writeSuccess(c, []any{})
 		return
 	}
 	limit := 10
@@ -109,14 +109,14 @@ func (h *Handler) GetTopMedia(c *gin.Context) {
 	}
 
 	top := h.analytics.GetTopMedia(limit)
-	enriched := make([]map[string]interface{}, 0, len(top))
+	enriched := make([]map[string]any, 0, len(top))
 	for _, item := range top {
 		filename := item.MediaID
 		// Analytics keys are stable UUIDs — resolve to human-readable names.
 		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
 			filename = mediaItem.Name
 		}
-		entry := map[string]interface{}{
+		entry := map[string]any{
 			"media_id": item.MediaID,
 			"filename": filename,
 			"views":    item.Views,
@@ -130,7 +130,7 @@ func (h *Handler) GetTopMedia(c *gin.Context) {
 // (completion rate, avg watch duration, unique viewers).
 func (h *Handler) GetContentPerformance(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, []interface{}{})
+		writeSuccess(c, []any{})
 		return
 	}
 	limit := 20
@@ -139,13 +139,13 @@ func (h *Handler) GetContentPerformance(c *gin.Context) {
 	}
 
 	items := h.analytics.GetContentPerformance(limit)
-	enriched := make([]map[string]interface{}, 0, len(items))
+	enriched := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		filename := item.MediaID
 		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
 			filename = mediaItem.Name
 		}
-		enriched = append(enriched, map[string]interface{}{
+		enriched = append(enriched, map[string]any{
 			"media_id":           item.MediaID,
 			"filename":           filename,
 			"total_views":        item.TotalViews,
@@ -166,7 +166,7 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 		MediaID   string                 `json:"media_id"`
 		SessionID string                 `json:"session_id"`
 		Duration  float64                `json:"duration"`
-		Data      map[string]interface{} `json:"data"`
+		Data      map[string]any `json:"data"`
 	}
 	if !BindJSON(c, &req, "") {
 		return
@@ -181,7 +181,7 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 	}
 	if req.Duration > 0 {
 		if req.Data == nil {
-			req.Data = make(map[string]interface{})
+			req.Data = make(map[string]any)
 		}
 		if _, exists := req.Data["duration"]; !exists {
 			req.Data["duration"] = req.Duration
@@ -229,9 +229,9 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 // GetEventStats returns detailed event statistics. When analytics is disabled, returns zero-value EventStats.
 func (h *Handler) GetEventStats(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, map[string]interface{}{
+		writeSuccess(c, map[string]any{
 			"total_events":  0,
-			"event_counts":  map[string]interface{}{},
+			"event_counts":  map[string]any{},
 			"hourly_events": []int{},
 		})
 		return
@@ -253,7 +253,7 @@ func (h *Handler) GetEventsByType(c *gin.Context) {
 	}
 
 	if h.analytics == nil {
-		writeSuccess(c, []interface{}{})
+		writeSuccess(c, []any{})
 		return
 	}
 	events := h.analytics.GetEventsByType(c.Request.Context(), eventType, limit)
@@ -263,7 +263,7 @@ func (h *Handler) GetEventsByType(c *gin.Context) {
 // GetEventsByMedia returns events for a specific media item
 func (h *Handler) GetEventsByMedia(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, []interface{}{})
+		writeSuccess(c, []any{})
 		return
 	}
 	mediaID := c.Query("media_id")
@@ -283,7 +283,7 @@ func (h *Handler) GetEventsByMedia(c *gin.Context) {
 // GetEventsByUser returns events for a specific user (user_id query param required)
 func (h *Handler) GetEventsByUser(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, []interface{}{})
+		writeSuccess(c, []any{})
 		return
 	}
 	userID := c.Query("user_id")
@@ -302,7 +302,7 @@ func (h *Handler) GetEventsByUser(c *gin.Context) {
 // GetEventTypeCounts returns counts of each event type
 func (h *Handler) GetEventTypeCounts(c *gin.Context) {
 	if h.analytics == nil {
-		writeSuccess(c, map[string]interface{}{})
+		writeSuccess(c, map[string]any{})
 		return
 	}
 	counts := h.analytics.GetEventTypeCounts(c.Request.Context())
