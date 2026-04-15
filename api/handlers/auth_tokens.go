@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"media-server-pro/pkg/models"
 )
 
 const (
@@ -18,7 +19,7 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 	if session == nil {
 		return
 	}
-	if session.Role != "admin" {
+	if session.Role != models.RoleAdmin {
 		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
@@ -63,7 +64,7 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 	if session == nil {
 		return
 	}
-	if session.Role != "admin" {
+	if session.Role != models.RoleAdmin {
 		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
@@ -110,7 +111,7 @@ func (h *Handler) DeleteAPIToken(c *gin.Context) {
 	if session == nil {
 		return
 	}
-	if session.Role != "admin" {
+	if session.Role != models.RoleAdmin {
 		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
