@@ -878,23 +878,33 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	}
 
 	if hasMeta {
+		// Re-acquire read lock to copy volatile fields safely: concurrent goroutines
+		// (e.g. IncrementViews, SetLastPlayed) can modify the same *Metadata pointer.
+		m.mu.RLock()
 		item.Views = meta.Views
-		item.LastPlayed = meta.LastPlayed
+		if meta.LastPlayed != nil {
+			t := *meta.LastPlayed
+			item.LastPlayed = &t
+		}
 		item.DateAdded = meta.DateAdded
 		item.IsMature = meta.IsMature
 		item.MatureScore = meta.MatureScore
-		item.Tags = meta.Tags
+		if meta.Tags != nil {
+			item.Tags = make([]string, len(meta.Tags))
+			copy(item.Tags, meta.Tags)
+		}
 		item.BlurHash = meta.BlurHash
 		if meta.Duration > 0 {
 			item.Duration = meta.Duration
 		}
-
 		if meta.StableID != "" {
 			item.ID = meta.StableID
 		}
+		needsFingerprint := meta.ContentFingerprint == ""
+		m.mu.RUnlock()
 
 		// Compute fingerprint for existing files that predate fingerprint support
-		if meta.ContentFingerprint == "" {
+		if needsFingerprint {
 			if fp, err := computeContentFingerprint(path); err == nil && fp != "" {
 				m.mu.Lock()
 				meta.ContentFingerprint = fp
