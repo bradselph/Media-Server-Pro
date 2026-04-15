@@ -371,7 +371,11 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		}
 		user := getUser(c)
 		if user == nil {
-			writeError(c, http.StatusForbidden, "This content is marked as mature (18+). Enable mature content in your preferences to access it.")
+			// Valid session but user record unavailable — likely a transient DB error
+			// in the auth middleware, not a preference mismatch. Return 503 so the
+			// client retries rather than telling the user to go change a preference.
+			h.log.Error("GetMedia: valid session for mature item %s but getUser returned nil (auth DB failure?)", id)
+			writeError(c, http.StatusServiceUnavailable, "Unable to verify your account — please try again")
 			return
 		}
 		if !user.Permissions.CanViewMature {
@@ -496,20 +500,16 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 
 	session := getSession(c)
 	streamCfg := h.media.GetConfig().Streaming
-	if session == nil {
-		if streamCfg.RequireAuth {
-			writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
-			return
-		}
-		// IP-based stream limit for unauthenticated users (DoS mitigation)
-		if limit := streamCfg.UnauthStreamLimit; limit > 0 {
-			ipKey := "ip:" + c.ClientIP()
-			if !h.streaming.CanStartStream(ipKey, limit) {
-				writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
-				return
-			}
-		}
+	if session == nil && streamCfg.RequireAuth {
+		writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
+		return
 	}
+	// NOTE: unauthenticated IP-based stream limiting is enforced later, at the
+	// point where TrackProxyStream is called (receiver proxy branch below). A
+	// pre-flight CanStartStream check here without a matching TrackProxyStream
+	// is a TOCTOU: two concurrent requests both pass the untracked check, then
+	// both pass the second untracked check, allowing 2× the limit. The
+	// authoritative check+track pair in the receiver branch is sufficient.
 
 	// Try local media first
 	localItem, localErr := h.media.GetMediaByID(id)
