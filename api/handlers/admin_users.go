@@ -220,7 +220,11 @@ func (h *Handler) AdminChangePassword(c *gin.Context) {
 	}
 
 	if err := h.auth.SetPassword(c.Request.Context(), username, req.NewPassword); err != nil {
-		h.log.Error("%v", err)
+		if errors.Is(err, auth.ErrUserNotFound) {
+			writeError(c, http.StatusNotFound, "User not found")
+			return
+		}
+		h.log.Error("Failed to set password for user %s: %v", username, err)
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
