@@ -202,7 +202,13 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 	if !h.checkMatureAccess(c, isMature) {
 		return nil, false
 	}
-	h.hls.RecordAccess(jobID)
+	// Only refresh the access timestamp for jobs that are still usable.
+	// Failed and cancelled jobs must not be kept alive by access timestamps —
+	// CleanInactiveJobs uses LastAccess as the sole gate for removal, so
+	// recording access on a failed job prevents it from ever being cleaned up.
+	if job.Status == models.HLSStatusRunning || job.Status == models.HLSStatusPending || job.Status == models.HLSStatusCompleted {
+		h.hls.RecordAccess(jobID)
+	}
 	return job, true
 }
 
