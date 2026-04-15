@@ -320,6 +320,19 @@ async function loadMedia(id: string) {
   // alive in the DOM so PiP continues working across auto-next transitions.
   const isSwitch = !!media.value
   if (!isSwitch) loading.value = true
+  // Tear down the Web Audio graph on every media switch so ensureAudioGraph() can
+  // re-attach to the correct element (which may change between <video> and <audio>
+  // since both use the same videoRef template ref — Vue unmounts one and mounts the
+  // other, leaving sourceNode bound to the now-detached element if we don't reset).
+  if (isSwitch) {
+    eqFilters.forEach(f => f.disconnect())
+    eqFilters = []
+    eqEnabled.value = false
+    if (sourceNode) { sourceNode.disconnect(); sourceNode = null }
+    if (analyserNode) { analyserNode.disconnect(); analyserNode = null }
+    visualizerAnalyser.value = null
+    if (audioCtx && audioCtx.state !== 'closed') { audioCtx.close().catch(() => {}); audioCtx = null }
+  }
   error.value = ''
   similar.value = []
   personalized.value = []
