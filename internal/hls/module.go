@@ -54,6 +54,7 @@ type Module struct {
 	repo               repositories.HLSJobRepository
 	jobs               map[string]*models.HLSJob
 	jobCancels         map[string]context.CancelFunc
+	jobDone            map[string]chan struct{} // closed when transcode goroutine exits
 	jobsMu             sync.RWMutex
 	transMu            sync.Mutex // guards transActive for dynamic concurrency limit
 	transActive        int        // current number of active transcodes
@@ -96,6 +97,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		dbModule:      dbModule,
 		jobs:          make(map[string]*models.HLSJob),
 		jobCancels:    make(map[string]context.CancelFunc),
+		jobDone:       make(map[string]chan struct{}),
 		cacheDir:      cfg.Get().Directories.HLSCache,
 		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time), lastSaved: make(map[string]time.Time)},
 	}
@@ -269,12 +271,15 @@ func (m *Module) resumeInterruptedJobs() int {
 		}
 		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)
 		jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
+		doneCh := make(chan struct{})
 		m.jobCancels[job.ID] = jobCancel
+		m.jobDone[job.ID] = doneCh
 		job.Status = models.HLSStatusPending
 		job.Error = ""
 		capturedJob := job
 		m.activeJobs.Add(1)
 		go func() {
+			defer close(doneCh)
 			defer m.activeJobs.Done()
 			defer func() {
 				if r := recover(); r != nil {

@@ -139,10 +139,13 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 		StartedAt: time.Now(),
 	}
 	jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
+	doneCh := make(chan struct{})
 	m.jobs[p.JobID] = job
 	m.jobCancels[p.JobID] = jobCancel
+	m.jobDone[p.JobID] = doneCh
 	m.activeJobs.Add(1)
 	go func() {
+		defer close(doneCh)
 		defer m.activeJobs.Done()
 		defer func() {
 			if r := recover(); r != nil {
@@ -261,12 +264,24 @@ func (m *Module) DeleteJob(jobID string) error {
 		return fmt.Errorf(errJobNotFoundFmt, jobID)
 	}
 	// Cancel running transcode so ffmpeg stops before we remove OutputDir.
+	// Grab the done channel while holding the lock, then release before waiting.
+	var doneCh chan struct{}
 	if cancel, ok := m.jobCancels[jobID]; ok {
 		cancel()
 		delete(m.jobCancels, jobID)
 	}
+	if ch, ok := m.jobDone[jobID]; ok {
+		doneCh = ch
+		delete(m.jobDone, jobID)
+	}
 	outputDir := job.OutputDir
 	m.jobsMu.Unlock()
+
+	// Wait for the transcode goroutine to exit so it is no longer writing segment
+	// files before we remove the output directory.
+	if doneCh != nil {
+		<-doneCh
+	}
 
 	// Filesystem cleanup (best-effort; warn only).
 	if err := os.RemoveAll(outputDir); err != nil {
