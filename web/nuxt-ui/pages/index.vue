@@ -61,7 +61,8 @@ function toggleSelectionMode() {
   selectionMode.value = !selectionMode.value
   if (!selectionMode.value) {
     selectedIds.value = new Set()
-    params.page = 1
+    // Do NOT reset params.page here — without a matching load() call the pagination
+    // component would show page 1 while the grid still shows the previous page's items.
   }
 }
 

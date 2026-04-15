@@ -425,12 +425,6 @@ function onVideoLoaded() {
   if (media.value?.type === 'audio') {
     ensureAudioGraph()
   }
-  // Resume AudioContext on play for ALL media types (audio and video).
-  // Without this, video media with EQ enabled has no path to resume the AudioContext
-  // after the browser suspends it when the tab is hidden and shown again.
-  videoRef.value?.addEventListener('play', () => {
-    if (audioCtx?.state === 'suspended') audioCtx.resume()
-  }, { once: true })
   restorePosition()
   playbackStore.startAutoSave()
   // Auto-play when preference is enabled
@@ -502,6 +496,12 @@ function onTimeUpdate() {
 
 function onPlayPause() {
   isPlaying.value = !videoRef.value?.paused
+  // Resume AudioContext on play for ALL media types (audio and video).
+  // Moved here from onVideoLoaded to avoid accumulating listeners on every
+  // loadedmetadata event (HLS quality switches, auto-next transitions).
+  if (!videoRef.value?.paused && audioCtx?.state === 'suspended') {
+    audioCtx.resume()
+  }
 }
 
 function togglePlay() {
