@@ -440,7 +440,13 @@ func resolveMediaType(ext string) MediaType {
 
 // buildUploadDestDir validates scope and returns the destination directory path for the upload.
 func (m *Module) buildUploadDestDir(scope UploadScope) (string, error) {
-	safeUserID := filepath.Base(scope.UserID)
+	// Anonymous uploads (RequireAuth=false, empty UserID) go into a dedicated sub-directory
+	// so that filepath.Base("") does not resolve to "." (the upload root).
+	rawUserID := scope.UserID
+	if rawUserID == "" {
+		rawUserID = "anonymous"
+	}
+	safeUserID := filepath.Base(rawUserID)
 	if isEmptyOrSpecialFilename(safeUserID) {
 		return "", fmt.Errorf("invalid user ID")
 	}
