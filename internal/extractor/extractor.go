@@ -477,6 +477,11 @@ func (m *Module) ProxyHLSSegment(w http.ResponseWriter, r *http.Request, itemID 
 		// would result in a 502 from the handler, which HLS clients treat
 		// as a fatal stream error rather than a recoverable playlist re-fetch.
 		if cp, _ := cached.(*cachedPlaylist); cp != nil && time.Since(cp.fetchedAt) > playlistCacheTTL {
+			// Evict the stale entry so ProxyHLSVariant can repopulate it on the
+			// next variant-playlist request. Without deletion the stale entry
+			// stays in the cache indefinitely and every subsequent segment
+			// request returns 404, permanently breaking playback for this item.
+			m.playlistCache.Delete(cacheKey)
 			http.NotFound(w, r)
 			return nil
 		}
