@@ -120,6 +120,10 @@ func (h *Handler) UpdateCollection(c *gin.Context) {
 		return
 	}
 	if body.Name != nil {
+		if *body.Name == "" {
+			writeError(c, http.StatusBadRequest, "name cannot be empty")
+			return
+		}
 		col.Name = *body.Name
 	}
 	if body.Description != nil {
@@ -202,10 +206,15 @@ func (h *Handler) AddCollectionItems(c *gin.Context) {
 func (h *Handler) RemoveCollectionItem(c *gin.Context) {
 	collectionID := c.Param("id")
 	mediaID := c.Param("media_id")
-	if err := h.database.GORM().WithContext(c.Request.Context()).
+	result := h.database.GORM().WithContext(c.Request.Context()).
 		Where("collection_id = ? AND media_id = ?", collectionID, mediaID).
-		Delete(&models.MediaCollectionItem{}).Error; err != nil {
-		writeError(c, http.StatusInternalServerError, "Failed to remove item: "+err.Error())
+		Delete(&models.MediaCollectionItem{})
+	if result.Error != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to remove item: "+result.Error.Error())
+		return
+	}
+	if result.RowsAffected == 0 {
+		writeError(c, http.StatusNotFound, "Item not found in collection")
 		return
 	}
 	writeSuccess(c, gin.H{"message": "Item removed"})
