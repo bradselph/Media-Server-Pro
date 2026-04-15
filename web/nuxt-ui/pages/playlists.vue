@@ -407,6 +407,7 @@ const spPreviewLoading = ref(false)
 
 async function loadSmartPreview(sp: SmartPlaylist) {
   spPreviewTarget.value = sp
+  spPreviewItems.value = []
   spPreviewLoading.value = true
   try {
     spPreviewItems.value = (await smartPlaylistsApi.preview(sp.id)) ?? []
