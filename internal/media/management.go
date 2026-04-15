@@ -288,15 +288,27 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 
 	// Update in-memory indexes (media + metadata share mu); keep fingerprintIndex in sync
 	m.mu.Lock()
+	var newCategory string
+	var categoryUpdated bool
 	if item, exists := m.media[oldPath]; exists {
 		item.Path = newPath
 		delete(m.media, oldPath)
 		m.media[newPath] = item
 		item.Category = m.detectCategory(newPath)
+		newCategory = item.Category
+		categoryUpdated = true
 	}
 	if meta, exists := m.metadata[oldPath]; exists {
 		delete(m.metadata, oldPath)
 		m.metadata[newPath] = meta
+		if categoryUpdated {
+			// Keep Metadata.Category in sync with the re-detected category so that
+			// saveMetadataItem (which reads m.metadata, not m.media) persists the
+			// correct category to the DB. Without this, moving a file into a
+			// directory with a different category pattern would leave the DB row
+			// with the old category until the next full scan.
+			meta.Category = newCategory
+		}
 		if meta.ContentFingerprint != "" {
 			m.fingerprintIndex[meta.ContentFingerprint] = newPath
 		}

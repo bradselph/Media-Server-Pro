@@ -317,6 +317,15 @@ func (m *Module) loadJobs() error {
 	defer m.jobsMu.Unlock()
 
 	for _, job := range jobs {
+		// Reset stale Running → Pending so that jobs beyond the resume concurrency
+		// limit (resumeInterruptedJobs honours cfg.HLS.ConcurrentLimit) are left in
+		// a retryable Pending state rather than permanently stuck as "Running". On
+		// shutdown, saveJobs serialises the in-memory state: if a Running job was
+		// never resumed its goroutine never started, so it would be reloaded as
+		// Running on every restart without ever making progress.
+		if job.Status == models.HLSStatusRunning {
+			job.Status = models.HLSStatusPending
+		}
 		m.jobs[job.ID] = job
 	}
 	return nil
