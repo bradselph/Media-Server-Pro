@@ -112,9 +112,9 @@ func (m *Module) tryReuseExistingHLSOnDiskLocked(p *createOrReuseHLSJobParams) (
 		CompletedAt: &now,
 	}
 	m.jobs[p.JobID] = job
-	if err := m.saveJobs(); err != nil {
-		m.log.Warn("Failed to save job state after discovering existing HLS: %v", err)
-	}
+	// Use saveJob (single-row, no mutex) instead of saveJobs (acquires jobsMu.RLock).
+	// saveJobs would deadlock here because the caller already holds jobsMu as a write lock.
+	m.saveJob(job)
 	return job, true
 }
 
