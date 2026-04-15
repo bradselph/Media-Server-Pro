@@ -592,7 +592,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 	absPath := localItem.Path
 
-	if !h.checkMatureAccess(c, absPath) {
+	if !h.checkMatureAccess(c, localItem.IsMature) {
 		return
 	}
 
@@ -724,7 +724,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	}
 	absPath := localItem.Path
 
-	if !h.checkMatureAccess(c, absPath) {
+	if !h.checkMatureAccess(c, localItem.IsMature) {
 		return
 	}
 

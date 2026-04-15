@@ -193,7 +193,13 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 		writeError(c, http.StatusNotFound, "HLS job not found")
 		return nil, false
 	}
-	if !h.checkMatureAccess(c, job.MediaPath) {
+	// Resolve IsMature from the in-memory index. If the item isn't in the index yet
+	// (e.g. scan still running), it can't have been flagged mature, so allow.
+	var isMature bool
+	if item, lookupErr := h.media.GetMedia(job.MediaPath); lookupErr == nil && item != nil {
+		isMature = item.IsMature
+	}
+	if !h.checkMatureAccess(c, isMature) {
 		return nil, false
 	}
 	h.hls.RecordAccess(jobID)

@@ -524,19 +524,11 @@ func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) 
 	})
 }
 
-// checkMatureAccess verifies the current user has permission to access mature content at
-// the given path. Returns true if access is allowed or irrelevant, false if denied.
-func (h *Handler) checkMatureAccess(c *gin.Context, absPath string) bool {
-	item, err := h.media.GetMedia(absPath)
-	if err != nil {
-		// Log a warning so DB outages or scan gaps don't silently bypass mature protection.
-		h.log.Warn("checkMatureAccess: media lookup failed for %s: %v — allowing access (item may not be in library)", absPath, err)
-		return true
-	}
-	if item == nil {
-		return true
-	}
-	if !item.IsMature {
+// checkMatureAccess verifies the current user has permission to access mature content.
+// isMature must be sourced from the caller's already-resolved MediaItem to avoid a
+// secondary lookup and its fail-open failure mode. Returns true if access is allowed.
+func (h *Handler) checkMatureAccess(c *gin.Context, isMature bool) bool {
+	if !isMature {
 		return true
 	}
 
