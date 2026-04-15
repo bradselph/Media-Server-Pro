@@ -63,7 +63,7 @@
 
 ---
 
-### [CRITICAL] API Token Admin-Only Restriction Not Enforced in API Spec Docs
+### ✅ `7146d48c` 2026-04-15 — [CRITICAL] API Token Admin-Only Restriction Not Enforced in API Spec Docs
 
 - **File:** `/d/Media-Server-Pro-4/api/handlers/auth_tokens.go:16-126`
 - **Category:** Missing Authorization Check / Authorization Bypass Risk
@@ -96,6 +96,9 @@
        })
      }
      ```
+
+> **Resolution**: Replaced all three `session.Role != "admin"` string comparisons with `models.RoleAdmin` constant in `api/handlers/auth_tokens.go`. Audit logging was already in place via `h.logAdminAction()` on Create and Delete (pre-existing, not part of audit finding).
+> **Verified**: pending deploy
 
 ---
 
