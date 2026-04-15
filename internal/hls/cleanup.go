@@ -90,6 +90,10 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 	}
 
 	// Re-check under write lock to avoid TOCTOU: job could have started between RLock and removal.
+	// Delete the map entry while still holding the lock so GetJobStatus cannot return
+	// a job whose files have already been removed (the previous pattern released the lock,
+	// removed files, then reacquired — leaving a window where the entry was in the map
+	// but the directory was gone).
 	m.jobsMu.Lock()
 	job, exists = m.jobs[jobID]
 	if isJobRunningOrPending(job, exists) {
@@ -102,19 +106,18 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 		m.jobsMu.Unlock()
 		return false
 	}
+	delete(m.jobs, jobID)
 	m.jobsMu.Unlock()
 
-	// Remove files before touching the map so that a failed removal doesn't
-	// leave the DB with a record that has no corresponding in-memory job.
+	// Files and DB cleanup happen after the map entry is removed. If RemoveAll
+	// fails we log and return false, but the in-memory entry is already gone —
+	// on restart loadJobs will reload from DB and validateExistingHLS will handle
+	// the missing files.
 	path := filepath.Join(m.cacheDir, jobID)
 	if err := os.RemoveAll(path); err != nil {
 		m.log.Warn("Failed to remove inactive HLS job %s: %v", jobID, err)
 		return false
 	}
-
-	m.jobsMu.Lock()
-	delete(m.jobs, jobID)
-	m.jobsMu.Unlock()
 
 	m.accessTracker.mu.Lock()
 	delete(m.accessTracker.lastAccess, jobID)
