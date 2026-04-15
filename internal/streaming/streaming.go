@@ -685,14 +685,19 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 	m.sessionMu.Lock()
 	m.activeSessions[session.ID] = session
 	activeCount := len(m.activeSessions)
-	m.sessionMu.Unlock()
-
+	// Acquire statsMu while still holding sessionMu so that activeCount is still
+	// accurate when we compare it to PeakConcurrent. Releasing sessionMu first
+	// creates a TOCTOU window where another goroutine can insert its own session
+	// and read the same activeCount, causing both to record the same peak and
+	// miss the true concurrent maximum. Consistent with sessionMu→statsMu order
+	// established in GetStats and updateSessionStats.
 	m.statsMu.Lock()
 	m.stats.TotalStreams++
 	if activeCount > m.stats.PeakConcurrent {
 		m.stats.PeakConcurrent = activeCount
 	}
 	m.statsMu.Unlock()
+	m.sessionMu.Unlock()
 
 	m.log.Debug("Started stream session %s for %s", session.ID, req.Path)
 	return session
