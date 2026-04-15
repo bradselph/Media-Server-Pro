@@ -70,12 +70,17 @@ func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (st
 		m.log.Debug("Queued thumbnail generation for: %s (priority=%v)", req.MediaPath, req.HighPriority)
 		return outputPath, ErrThumbnailPending
 	}
-	m.inFlight.Delete(outputPath)
+	// Queue is full — generate synchronously. Keep inFlight set through the
+	// entire synchronous generation so a concurrent request for the same path
+	// cannot enqueue a duplicate job in the gap between the delete and the
+	// actual generation. Release inFlight only after generateThumbnail returns.
 	m.statsMu.Lock()
 	m.stats.Pending--
 	m.statsMu.Unlock()
 	m.log.Warn("Job queue full, generating thumbnail synchronously: %s", req.MediaPath)
-	return outputPath, m.generateThumbnail(job)
+	err := m.generateThumbnail(job)
+	m.inFlight.Delete(outputPath)
+	return outputPath, err
 }
 
 // GeneratePreviewThumbnailsRequest generates multiple thumbnails at different timestamps for hover preview.
