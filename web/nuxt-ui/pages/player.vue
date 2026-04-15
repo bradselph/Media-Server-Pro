@@ -79,6 +79,9 @@ const playbackSpeed = ref(userPrefs.value?.playback_speed ?? 1)
 const autoPlay = computed(() => userPrefs.value?.auto_play ?? false)
 
 // Keep volume / speed in sync when session or preferences load or update after mount.
+// immediate: true ensures that if prefs are already loaded (e.g. cached session)
+// the values are applied synchronously before first playback, so a user with a
+// non-default volume (e.g. 0/muted) does not hear audio on the initial tick.
 watch(
   userPrefs,
   (p) => {
@@ -86,7 +89,7 @@ watch(
     if (typeof p.volume === 'number') volume.value = p.volume
     if (typeof p.playback_speed === 'number') playbackSpeed.value = p.playback_speed
   },
-  { deep: true },
+  { deep: true, immediate: true },
 )
 
 // Skip interval from preferences (default 10s)
@@ -391,6 +394,10 @@ async function restorePosition() {
 // returning to this item later starts from the beginning rather than immediately
 // re-triggering the ended/auto-next behaviour.
 async function onMediaEnded() {
+  // In loop-one mode the video element has loop=true and fires 'ended' on every
+  // iteration. Resetting the resume position and recording a completion event on
+  // each loop cycle would corrupt progress tracking. Only act on a real end.
+  if (loopMode.value === 'one') return
   if (mediaId.value) {
     try {
       await playbackApi.savePosition(mediaId.value, 0, videoRef.value?.duration ?? 0)
@@ -947,7 +954,13 @@ watch(mediaId, () => {
 
 // Save position on pause and unmount
 onUnmounted(() => {
-  savePosition()
+  // Vue 3 clears template refs before onUnmounted runs, so videoRef.value is null
+  // here. savePosition() guards on videoRef and always no-ops from onUnmounted.
+  // Use the store's savePosition() instead — it reads from position.value which
+  // is kept current by updatePosition() calls and remains valid after unmount.
+  // This ensures SPA navigation away from the player (back button, nav link)
+  // saves the user's progress, not just browser close / refresh.
+  playbackStore.savePosition()
   playbackStore.stopAutoSave()
   if (controlsTimer) clearTimeout(controlsTimer)
   if (seekTimer) clearTimeout(seekTimer)

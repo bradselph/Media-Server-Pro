@@ -263,6 +263,13 @@ export function useHLS(
                 networkRetryCount++
                 if (networkRetryCount <= 3) {
                     const delay = Math.min(1000 * Math.pow(2, networkRetryCount - 1), 8000)
+                    // Clear any pending retry before scheduling a new one. Rapid
+                    // successive NETWORK_ERROR events would otherwise leave multiple
+                    // live timers all calling hls.startLoad() on the same instance.
+                    if (networkRetryTimer !== null) {
+                        clearTimeout(networkRetryTimer)
+                        networkRetryTimer = null
+                    }
                     networkRetryTimer = setTimeout(() => {
                         networkRetryTimer = null
                         hls.startLoad()
