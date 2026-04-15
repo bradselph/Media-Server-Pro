@@ -110,6 +110,21 @@ func (h *Handler) ListPublicPlaylists(c *gin.Context) {
 		playlists = []*models.Playlist{}
 	}
 	h.hydratePlaylistTitles(playlists...)
+	// Strip mature-flagged items from public playlists when the caller cannot view
+	// mature content. Without this, unauthenticated callers can enumerate the media
+	// IDs and titles of mature items by inspecting public playlist responses.
+	if h.media != nil && !h.canViewMatureContent(c) {
+		for _, pl := range playlists {
+			kept := pl.Items[:0]
+			for _, item := range pl.Items {
+				media, err := h.media.GetMediaByID(item.MediaID)
+				if err != nil || media == nil || !media.IsMature {
+					kept = append(kept, item)
+				}
+			}
+			pl.Items = kept
+		}
+	}
 	writeSuccess(c, playlists)
 }
 
