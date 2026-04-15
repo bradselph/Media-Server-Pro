@@ -42,11 +42,13 @@ Audited files:
 
 ## Medium: Response Shape Gaps (frontend reads field backend may not return)
 
-### 5. GetPermissions — backend returns extra `limits` and `user_type` fields
+### ✅ 2026-04-15 — 5. GetPermissions — backend returns extra `limits` and `user_type` fields
 
 - **Backend** (`auth.go:617-638`): Returns `user_type`, `limits.storage_quota`, `limits.concurrent_streams`
 - **Frontend** (`api.ts:591-606`): `PermissionsInfo` has no `user_type` or `limits` fields
 - **Severity**: LOW. Extra backend fields are harmlessly ignored.
+
+> **Resolution**: `PermissionsInfo` in `api.ts` now includes `user_type?: string` and `limits?: { storage_quota, concurrent_streams }`. Fields are already consumed by the permissions UI.
 
 ### ✅ `ad830f94` 2026-04-09 — DownloaderSettings — backend omits several fields frontend type declares
 
@@ -60,13 +62,15 @@ Audited files:
 - **Frontend** (`api.ts:914`): `dependencies?: Record<string, unknown>`
 - **Severity**: NONE. Frontend type is a supertype; no mismatch.
 
-### 8. MediaListResponse — `total` / `page` / `limit` fields
+### ✅ 2026-04-15 — 8. MediaListResponse — `total` / `page` / `limit` fields
 
 - **Backend** (`media.go:285-297`): Returns `items`, `total_items`, `total_pages`, `scanning`, optionally `initializing`
   and `user_ratings`
 - **Frontend** (`api.ts:137-147`): Declares `total`, `page`, `limit` fields as optional
 - **Severity**: LOW. Backend never returns `total`, `page`, or `limit`. Frontend has them as optional (`?`), so they're
   always `undefined` at runtime. If any code reads `response.total` expecting a number, it silently gets `undefined`.
+
+> **Resolution**: Phantom fields `total`, `page`, `limit` are no longer present in the current `MediaListResponse` interface. `MediaListResponse` now only declares fields the backend actually returns: `items`, `total_items`, `total_pages`, `scanning?`, `initializing?`, `user_ratings?`.
 
 ### 9. WatchHistory DELETE — frontend sends `id` query param, backend also accepts path-based removal
 
