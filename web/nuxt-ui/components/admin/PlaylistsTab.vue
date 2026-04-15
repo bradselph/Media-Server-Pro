@@ -117,7 +117,7 @@ async function load() {
   loading.value = true
   try {
     const [res, s] = await Promise.allSettled([
-      adminApi.listAllPlaylists(),
+      adminApi.listAllPlaylists({ limit: 10000 }),
       adminApi.getPlaylistStats(),
     ])
     if (res.status === 'fulfilled') {
