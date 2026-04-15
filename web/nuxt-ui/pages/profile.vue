@@ -367,7 +367,7 @@ async function createToken() {
   try {
     const created = await tokensApi.create(newTokenName.value.trim()) as APITokenCreated
     revealedToken.value = created.token
-    tokens.value = [{ id: created.id, name: created.name, last_used_at: created.last_used_at, created_at: created.created_at }, ...tokens.value]
+    tokens.value = [{ id: created.id, name: created.name, last_used_at: created.last_used_at, expires_at: created.expires_at, created_at: created.created_at }, ...tokens.value]
     newTokenName.value = ''
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to create token', color: 'error', icon: 'i-lucide-x' })

@@ -1122,7 +1122,7 @@ export interface APIToken {
     id: string
     name: string
     last_used_at: string | null
-    expires_at?: string | null
+    expires_at: string | null
     created_at: string
 }
 
