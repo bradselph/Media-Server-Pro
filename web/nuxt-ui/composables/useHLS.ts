@@ -166,7 +166,10 @@ export function useHLS(
         }
 
         // Re-validate after async import — component may have unmounted
-        if (!videoRef.value?.isConnected) return
+        if (!videoRef.value?.isConnected) {
+            hlsActivated.value = false
+            return
+        }
 
         if (!Hls.isSupported()) {
             hlsError.value = 'HLS not supported in this browser'
@@ -277,6 +280,7 @@ export function useHLS(
                 }
             }
 
+            hlsLoading.value = false
             hlsError.value = 'HLS playback failed'
             hls.destroy()
             hlsInstance = null
