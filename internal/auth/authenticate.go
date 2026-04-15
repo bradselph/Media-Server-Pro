@@ -47,6 +47,13 @@ func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.Us
 		return existing, nil
 	}
 	m.users[username] = user
+	// Keep usersByID in sync so ValidateSession → GetUserByID hits the cache
+	// instead of the DB after every login. Without this, GetUserByID always
+	// misses and hits the DB; a transient DB error at that moment rejects
+	// a freshly-created session even though the user just authenticated.
+	if user.ID != "" {
+		m.usersByID[user.ID] = user
+	}
 	m.usersMu.Unlock()
 	return user, nil
 }
