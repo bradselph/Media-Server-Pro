@@ -120,7 +120,7 @@ async function load() {
       adminApi.getPlaylistStats(),
     ])
     if (res.status === 'fulfilled') {
-      playlists.value = Array.isArray(res.value) ? res.value : (res.value?.items ?? [])
+      playlists.value = res.value?.items ?? []
     }
     if (s.status === 'fulfilled') stats.value = s.value
   } catch (e: unknown) {
