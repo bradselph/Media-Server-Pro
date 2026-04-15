@@ -95,8 +95,15 @@ async function saveEdit() {
       description: editDesc.value,
       is_public: editPublic.value,
     })
-    playlists.value = playlists.value.map(p => p.id === updated.id ? updated : p)
-    if (activePlaylist.value?.id === updated.id) activePlaylist.value = updated
+    // The backend may return a partial fallback shape without an `id` if it
+    // could not re-fetch the updated playlist (rare race condition). In that
+    // case reload all playlists so the local state stays consistent.
+    if (!updated?.id) {
+      await load()
+    } else {
+      playlists.value = playlists.value.map(p => p.id === updated.id ? updated : p)
+      if (activePlaylist.value?.id === updated.id) activePlaylist.value = updated
+    }
     editTarget.value = null
     toast.add({ title: 'Playlist updated', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
