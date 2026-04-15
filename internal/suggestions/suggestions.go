@@ -959,7 +959,10 @@ func (m *Module) GetContinueWatching(userID string, limit int, canViewMature boo
 	return suggestions
 }
 
-// GetUserProfile returns a copy of the user's suggestion profile, or nil if not found.
+// GetUserProfile returns a deep copy of the user's suggestion profile, or nil if not found.
+// A deep copy is required because CategoryScores and TypePreferences are maps; a shallow
+// copy would share the underlying map with the internal profile, allowing callers to
+// mutate module state without holding the lock.
 func (m *Module) GetUserProfile(userID string) *UserProfile {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -968,8 +971,7 @@ func (m *Module) GetUserProfile(userID string) *UserProfile {
 	if !ok {
 		return nil
 	}
-	// Return a shallow copy to avoid exposing internal mutable state.
-	return new(*profile)
+	return m.snapshotProfile(profile)
 }
 
 // ResetUserProfile clears the in-memory profile and deletes persisted data (profile
@@ -1062,13 +1064,19 @@ func (m *Module) loadProfiles() error {
 // saveProfiles persists dirty profiles only; continues on error and returns the last error.
 // IP-based guest profiles (user_id prefixed with "ip:") are intentionally skipped because
 // they have no matching row in the users table and would fail the FK constraint.
+//
+// Design: the lock is held only for the snapshot phase (RLock) and the dirty-clear phase
+// (Lock). DB writes happen without the lock so that long saves do not block RecordView /
+// RecordRating callers. dirty is cleared only after a successful save so failed writes are
+// retried on the next periodic tick.
 func (m *Module) saveProfiles() error {
+	// Phase 1 — snapshot all dirty profiles under RLock (safe: read-only on fields).
+	type snapEntry struct {
+		userID string
+		snap   *UserProfile
+	}
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	ctx := context.Background()
-	var lastErr error
-	saved := 0
+	var snaps []snapEntry
 	for _, profile := range m.profiles {
 		if !profile.dirty {
 			continue
@@ -1078,11 +1086,28 @@ func (m *Module) saveProfiles() error {
 		if strings.HasPrefix(profile.UserID, "ip:") {
 			continue
 		}
-		if err := m.saveOneProfile(ctx, profile); err != nil {
-			m.log.Warn("Failed to save suggestion profile for %s: %v", profile.UserID, err)
+		snaps = append(snaps, snapEntry{
+			userID: profile.UserID,
+			snap:   m.snapshotProfile(profile),
+		})
+	}
+	m.mu.RUnlock()
+
+	// Phase 2 — save each snapshot to DB without holding the lock.
+	ctx := context.Background()
+	var lastErr error
+	saved := 0
+	for _, entry := range snaps {
+		if err := m.saveOneProfile(ctx, entry.snap); err != nil {
+			m.log.Warn("Failed to save suggestion profile for %s: %v", entry.userID, err)
 			lastErr = err
 		} else {
-			profile.dirty = false
+			// Phase 3 — clear dirty flag under Lock now that the save succeeded.
+			m.mu.Lock()
+			if p, ok := m.profiles[entry.userID]; ok {
+				p.dirty = false
+			}
+			m.mu.Unlock()
 			saved++
 		}
 	}
