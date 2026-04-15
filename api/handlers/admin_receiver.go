@@ -275,11 +275,16 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	// If the consumer gave up (timeout / client disconnect) after we sent the
 	// delivery but before it started reading, nobody will drain pr. Watch the
 	// consumer context and close pw so io.Copy below returns promptly instead
-	// of leaking this goroutine until the slave's connection eventually drops.
+	// of blocking forever. The watcher is also released on normal completion
+	// via the done channel so it does not leak for the duration of the slave's
+	// keep-alive connection.
+	done := make(chan struct{})
 	go func() {
 		select {
 		case <-ps.ConsumerContext().Done():
 		case <-c.Request.Context().Done():
+		case <-done:
+			return // normal completion — nothing to do
 		}
 		pw.CloseWithError(fmt.Errorf("stream consumer exited"))
 	}()
@@ -287,6 +292,7 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	// Copy the slave's request body into the pipe. This blocks until
 	// ProxyStream (the consumer) finishes reading or the pipe is closed.
 	_, copyErr := io.Copy(pw, c.Request.Body)
+	close(done)                // unblock the watcher goroutine on normal path
 	pw.CloseWithError(copyErr) // signals EOF (or error) to the reader
 	writeSuccess(c, gin.H{"status": "ok"})
 }
