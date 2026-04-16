@@ -48,8 +48,11 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 		return ErrUserNotFound
 	}
 	if user.PasswordHash != currentHash {
+		// Hash changed between the two reads — another goroutine updated the
+		// password concurrently. Return ErrInvalidCredentials (not ErrUserNotFound)
+		// so the handler returns HTTP 401 rather than HTTP 500.
 		m.usersMu.RUnlock()
-		return ErrUserNotFound
+		return ErrInvalidCredentials
 	}
 	userCopy := *user
 	m.usersMu.RUnlock()

@@ -1025,9 +1025,12 @@ func (m *Module) loadProfiles() error {
 		return err
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	// Build complete profile structs (including per-user view history) before
+	// acquiring the lock. The original code held m.mu.Lock() across N DB calls
+	// (one GetViewHistory per profile), blocking all concurrent callers for the
+	// entire startup load. Doing all IO outside the lock mirrors the saveProfiles
+	// design and keeps the critical section to a simple map bulk-insert.
+	built := make([]*UserProfile, 0, len(profiles))
 	for _, rec := range profiles {
 		profile := &UserProfile{
 			UserID:          rec.UserID,
@@ -1037,7 +1040,6 @@ func (m *Module) loadProfiles() error {
 			TotalWatchTime:  rec.TotalWatchTime,
 			LastUpdated:     rec.LastUpdated,
 		}
-		// Load view history for this user
 		history, err := m.repo.GetViewHistory(context.Background(), rec.UserID)
 		if err != nil {
 			m.log.Warn("Failed to load view history for suggestion profile %s: %v", rec.UserID, err)
@@ -1056,8 +1058,15 @@ func (m *Module) loadProfiles() error {
 				profile.ViewHistory = append(profile.ViewHistory, vh)
 			}
 		}
-		m.profiles[rec.UserID] = profile
+		built = append(built, profile)
 	}
+
+	// Single critical section: bulk-insert the pre-built profiles.
+	m.mu.Lock()
+	for _, profile := range built {
+		m.profiles[profile.UserID] = profile
+	}
+	m.mu.Unlock()
 	return nil
 }
 
