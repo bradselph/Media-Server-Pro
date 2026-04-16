@@ -376,6 +376,10 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	if h.media != nil {
 		h.media.DeletePlaybackPositionsByPath(ctx, mediaPath)
 	}
+	// Purge suggestion view history rows keyed by media path (no FK cascade on that column).
+	if h.suggestions != nil {
+		h.suggestions.PurgeMediaPath(mediaPath)
+	}
 
 	// Remove path-keyed rows that have no FK cascade to media_metadata.
 	if h.scanner != nil {

@@ -276,6 +276,7 @@ type SuggestionProfileRepository interface {
 	BatchSaveViewHistory(ctx context.Context, userID string, entries []*ViewHistoryRecord) error
 	GetViewHistory(ctx context.Context, userID string) ([]*ViewHistoryRecord, error)
 	DeleteViewHistory(ctx context.Context, userID string) error
+	DeleteViewHistoryByMediaPath(ctx context.Context, mediaPath string) error
 }
 
 // SuggestionProfileRecord represents a user's suggestion profile

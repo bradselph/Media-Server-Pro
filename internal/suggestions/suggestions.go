@@ -974,6 +974,31 @@ func (m *Module) GetUserProfile(userID string) *UserProfile {
 	return m.snapshotProfile(profile)
 }
 
+// PurgeMediaPath removes all view history entries for the given media path from every
+// in-memory profile and deletes the corresponding rows from the database. Called when
+// a media item is deleted so that orphaned view-history rows do not skew suggestions.
+func (m *Module) PurgeMediaPath(mediaPath string) {
+	m.mu.Lock()
+	for _, profile := range m.profiles {
+		filtered := profile.ViewHistory[:0]
+		for _, vh := range profile.ViewHistory {
+			if vh.MediaPath != mediaPath {
+				filtered = append(filtered, vh)
+			}
+		}
+		if len(filtered) != len(profile.ViewHistory) {
+			profile.ViewHistory = filtered
+			profile.dirty = true
+		}
+	}
+	m.mu.Unlock()
+
+	ctx := context.Background()
+	if err := m.repo.DeleteViewHistoryByMediaPath(ctx, mediaPath); err != nil {
+		m.log.Error("failed to purge view history for deleted media %q: %v", mediaPath, err)
+	}
+}
+
 // ResetUserProfile clears the in-memory profile and deletes persisted data (profile
 // row + view history) from the database for the given user.  After the reset the
 // user starts accumulating a fresh profile from their next viewing session.
