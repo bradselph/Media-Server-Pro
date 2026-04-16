@@ -467,10 +467,11 @@ func (h *Handler) GetWatchHistory(c *gin.Context) {
 		}
 	}
 
-	history := user.WatchHistory
-	if history == nil {
-		history = []models.WatchHistoryItem{}
-	}
+	// Copy the slice before enriching — user is the raw cached *models.User pointer
+	// and mutating history[i].MediaName on the shared backing array races with
+	// AddToWatchHistory (writes to user.WatchHistory[i] under usersMu.Lock).
+	history := make([]models.WatchHistoryItem, len(user.WatchHistory))
+	copy(history, user.WatchHistory)
 
 	// Enrich entries that have a missing media name with a single batch lookup
 	// instead of one lock acquisition per item. TrackPlayback populates MediaName
@@ -753,10 +754,10 @@ func (h *Handler) ExportWatchHistory(c *gin.Context) {
 		return
 	}
 
-	history := user.WatchHistory
-	if history == nil {
-		history = []models.WatchHistoryItem{}
-	}
+	// Copy the slice — user is the raw cached pointer; concurrent writes to
+	// user.WatchHistory via AddToWatchHistory race with reads here.
+	history := make([]models.WatchHistoryItem, len(user.WatchHistory))
+	copy(history, user.WatchHistory)
 
 	// Buffer the entire CSV so we can return 500 on generation errors
 	// instead of sending a truncated file.
