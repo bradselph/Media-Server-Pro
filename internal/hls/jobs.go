@@ -270,6 +270,9 @@ func (m *Module) DeleteJob(jobID string) error {
 	}
 	// Cancel running transcode so ffmpeg stops before we remove OutputDir.
 	// Grab the done channel while holding the lock, then release before waiting.
+	// Do NOT delete m.jobDone[jobID] yet — a concurrent DeleteJob call arriving
+	// between this Unlock and the <-doneCh wait would observe jobDone absent,
+	// skip the wait, and race os.RemoveAll with the still-running goroutine.
 	var doneCh chan struct{}
 	if cancel, ok := m.jobCancels[jobID]; ok {
 		cancel()
@@ -277,7 +280,7 @@ func (m *Module) DeleteJob(jobID string) error {
 	}
 	if ch, ok := m.jobDone[jobID]; ok {
 		doneCh = ch
-		delete(m.jobDone, jobID)
+		// deletion happens after wait — see below
 	}
 	outputDir := job.OutputDir
 	m.jobsMu.Unlock()
@@ -286,6 +289,10 @@ func (m *Module) DeleteJob(jobID string) error {
 	// files before we remove the output directory.
 	if doneCh != nil {
 		<-doneCh
+		// Now safe to remove from the map — the goroutine has exited.
+		m.jobsMu.Lock()
+		delete(m.jobDone, jobID)
+		m.jobsMu.Unlock()
 	}
 
 	// Filesystem cleanup (best-effort; warn only).
