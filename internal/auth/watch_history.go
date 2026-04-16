@@ -129,8 +129,10 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 		return ErrUserNotFound
 	}
 
-	// Snapshot old history for rollback.
-	oldHistory := user.WatchHistory
+	// Snapshot old history for rollback as a deep copy so that a subsequent
+	// append (e.g. from AddToWatchHistory) to the new slice cannot write
+	// through the shared backing array into oldHistory, corrupting the rollback.
+	oldHistory := append([]models.WatchHistoryItem(nil), user.WatchHistory...)
 
 	updated := make([]models.WatchHistoryItem, 0, len(user.WatchHistory))
 	for _, item := range user.WatchHistory {
