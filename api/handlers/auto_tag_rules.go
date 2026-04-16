@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"media-server-pro/internal/media"
 	"media-server-pro/pkg/models"
@@ -85,7 +87,11 @@ func (h *Handler) UpdateAutoTagRule(c *gin.Context) {
 	db := h.database.GORM().WithContext(c.Request.Context())
 	var rule models.AutoTagRule
 	if err := db.First(&rule, "id = ?", id).Error; err != nil {
-		writeError(c, http.StatusNotFound, "Rule not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "Rule not found")
+		} else {
+			writeError(c, http.StatusInternalServerError, "Failed to fetch rule: "+err.Error())
+		}
 		return
 	}
 	if body.Name != nil {

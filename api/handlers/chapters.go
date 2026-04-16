@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -142,7 +143,7 @@ func (h *Handler) UpdateChapter(c *gin.Context) {
 	// Fetch the existing chapter
 	var chapter models.MediaChapter
 	if err := db.First(&chapter, "id = ?", id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			writeError(c, http.StatusNotFound, "Chapter not found")
 			return
 		}

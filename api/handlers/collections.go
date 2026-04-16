@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"media-server-pro/pkg/models"
 )
@@ -40,7 +42,12 @@ func (h *Handler) GetCollection(c *gin.Context) {
 	db := h.database.GORM().WithContext(c.Request.Context())
 	var col models.MediaCollection
 	if err := db.First(&col, "id = ?", id).Error; err != nil {
-		writeError(c, http.StatusNotFound, "Collection not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "Collection not found")
+		} else {
+			h.log.Error("GetCollection fetch: %v", err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 	var rows []models.MediaCollectionItem
@@ -107,7 +114,12 @@ func (h *Handler) UpdateCollection(c *gin.Context) {
 	db := h.database.GORM().WithContext(c.Request.Context())
 	var col models.MediaCollection
 	if err := db.First(&col, "id = ?", id).Error; err != nil {
-		writeError(c, http.StatusNotFound, "Collection not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "Collection not found")
+		} else {
+			h.log.Error("UpdateCollection fetch: %v", err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 	var body struct {
@@ -144,14 +156,21 @@ func (h *Handler) UpdateCollection(c *gin.Context) {
 func (h *Handler) DeleteCollection(c *gin.Context) {
 	id := c.Param("id")
 	db := h.database.GORM().WithContext(c.Request.Context())
-	// Remove items first, then the collection; surface errors so admins know if cleanup failed.
-	if err := db.Where("collection_id = ?", id).Delete(&models.MediaCollectionItem{}).Error; err != nil {
-		h.log.Error("DeleteCollection: failed to remove items for %s: %v", id, err)
-		writeError(c, http.StatusInternalServerError, "Failed to remove collection items: "+err.Error())
+	var rowsAffected int64
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("collection_id = ?", id).Delete(&models.MediaCollectionItem{}).Error; err != nil {
+			return err
+		}
+		result := tx.Delete(&models.MediaCollection{}, "id = ?", id)
+		rowsAffected = result.RowsAffected
+		return result.Error
+	}); err != nil {
+		h.log.Error("DeleteCollection: %v", err)
+		writeError(c, http.StatusInternalServerError, "Failed to delete collection: "+err.Error())
 		return
 	}
-	if err := db.Delete(&models.MediaCollection{}, "id = ?", id).Error; err != nil {
-		writeError(c, http.StatusInternalServerError, "Failed to delete collection: "+err.Error())
+	if rowsAffected == 0 {
+		writeError(c, http.StatusNotFound, "Collection not found")
 		return
 	}
 	session := getSession(c)
@@ -173,7 +192,12 @@ func (h *Handler) AddCollectionItems(c *gin.Context) {
 	// Verify collection exists
 	var col models.MediaCollection
 	if err := db.First(&col, "id = ?", collectionID).Error; err != nil {
-		writeError(c, http.StatusNotFound, "Collection not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "Collection not found")
+		} else {
+			h.log.Error("AddCollectionItems fetch: %v", err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 	var body struct {

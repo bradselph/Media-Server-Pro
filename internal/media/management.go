@@ -543,6 +543,9 @@ func (m *Module) syncMediaItem(mediaPath string, updates map[string]any) {
 			if score, ok := value.(float64); ok {
 				item.MatureScore = score
 			}
+		case "mature_reason":
+			// Suppress default fallthrough: mature_reason is tracked in Metadata.MatureReasons
+			// (not CustomMeta), so it must not bleed into the MediaItem.Metadata custom-key map.
 		case "category":
 			if cat, ok := value.(string); ok {
 				item.Category = cat

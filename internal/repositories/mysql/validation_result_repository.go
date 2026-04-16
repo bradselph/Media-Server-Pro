@@ -156,8 +156,10 @@ func (r *ValidationResultRepository) rowToRecord(row *validationResultRow) (*rep
 	if row.Error != nil {
 		rec.Error = *row.Error
 	}
-	if err := json.Unmarshal([]byte(row.Issues), &rec.Issues); err != nil {
-		return nil, err
+	if row.Issues != "" {
+		if err := json.Unmarshal([]byte(row.Issues), &rec.Issues); err != nil {
+			return nil, fmt.Errorf("failed to decode issues JSON for %q: %w", row.Path, err)
+		}
 	}
 	if rec.Issues == nil {
 		rec.Issues = []string{}

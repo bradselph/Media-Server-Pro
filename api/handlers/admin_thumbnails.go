@@ -28,7 +28,12 @@ func (h *Handler) UploadCustomThumbnail(c *gin.Context) {
 
 	// Validate file type by magic bytes to prevent SVG/HTML/script injection.
 	sniff := make([]byte, 512)
-	n, _ := file.Read(sniff)
+	n, readErr := file.Read(sniff)
+	if readErr != nil && readErr != io.EOF {
+		h.log.Warn("UploadCustomThumbnail: failed to read magic bytes: %v", readErr)
+		writeError(c, http.StatusBadRequest, "failed to process uploaded file")
+		return
+	}
 	detected := http.DetectContentType(sniff[:n])
 	allowed := map[string]bool{"image/jpeg": true, "image/png": true, "image/webp": true}
 	if !allowed[detected] {
