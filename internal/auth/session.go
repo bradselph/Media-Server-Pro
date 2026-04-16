@@ -217,12 +217,16 @@ func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
 	}
 	m.sessionsMu.Unlock()
 
-	if !exists {
-		return ErrSessionNotFound
-	}
-
+	// Always attempt DB delete before checking exists — mirrors Logout's pattern.
+	// Without this, a session present in DB but absent from the in-memory cache
+	// (e.g. after a server restart) would never be revoked and remain valid until
+	// natural expiry.
 	if err := m.sessionRepo.Delete(ctx, sessionID); err != nil {
 		m.log.Warn("Failed to delete admin session from repository: %v", err)
+	}
+
+	if !exists {
+		return ErrSessionNotFound
 	}
 
 	m.log.Info("Admin logged out: %s", username)

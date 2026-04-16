@@ -232,8 +232,18 @@ func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRe
 			updates["is_mature"] = reqMatureContent
 		}
 	}
+	// Reserved keys are handled as typed values above; silently skip any
+	// collision from the custom metadata map so a key like "is_mature" in the
+	// metadata object cannot overwrite the explicitly-decoded bool and cause
+	// applyMetadataField to receive the wrong type (string instead of bool).
+	reservedMetadataKeys := map[string]bool{
+		"tags": true, "is_mature": true, "mature_content": true,
+		"mature_score": true, "category": true, "views": true,
+	}
 	for k, v := range reqMetadata {
-		updates[k] = v
+		if !reservedMetadataKeys[k] {
+			updates[k] = v
+		}
 	}
 
 	return adminUpdateRequest{updates: updates, name: strings.TrimSpace(reqName)}, ""
