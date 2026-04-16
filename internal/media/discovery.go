@@ -755,23 +755,36 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 		}
 		if meta.Category != "" {
 			item.Category = meta.Category
-		} else {
-			item.Category = string(mediaType)
 		}
 		if meta.LastPlayed != nil {
 			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 		m.mu.Unlock()
+		// Auto-detect category from path when none is stored (mirrors createMediaItem).
+		if item.Category == "" {
+			item.Category = m.detectCategory(absKey)
+			m.mu.Lock()
+			if m.metadata[absKey] != nil {
+				m.metadata[absKey].Category = item.Category
+			}
+			m.mu.Unlock()
+		}
 	} else {
 		item.ID = uuid.New().String()
-		item.Category = string(mediaType)
 		item.DateAdded = time.Now()
 		m.metadata[absKey] = &Metadata{
 			StableID:    item.ID,
 			DateAdded:   item.DateAdded,
 			PlaybackPos: make(map[string]float64),
 			CustomMeta:  make(map[string]string),
+		}
+		m.mu.Unlock()
+		// Auto-detect category (no stored metadata yet).
+		item.Category = m.detectCategory(absKey)
+		m.mu.Lock()
+		if m.metadata[absKey] != nil {
+			m.metadata[absKey].Category = item.Category
 		}
 		m.mu.Unlock()
 	}
