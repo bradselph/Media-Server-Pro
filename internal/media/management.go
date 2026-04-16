@@ -390,11 +390,15 @@ func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
 	m.log.Info("Deleted media: %s", filePath)
 	// Item was deleted — remove from DB too (not just the in-memory map)
 	if m.metadataRepo != nil {
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
+		// Use explicit cancel (not defer) so the timer goroutine is released
+		// immediately after the DB call instead of at DeleteMedia's return.
+		// defer cancel() would leak one timer goroutine per item when called
+		// in a loop (e.g. the quota rollback in upload.go).
+		dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
 		if err := m.metadataRepo.Delete(dbCtx, filePath); err != nil {
 			m.log.Warn("Failed to delete metadata from DB for %s: %v", filePath, err)
 		}
+		dbCancel()
 	}
 
 	return nil
@@ -426,11 +430,11 @@ func (m *Module) RemoveMedia(mediaPath string) error {
 	// goroutine-per-call pattern caused DB connection pool exhaustion during
 	// bulk cleanup (10 000 items → 10 000 concurrent goroutines).
 	if m.metadataRepo != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := m.metadataRepo.Delete(ctx, mediaPath); err != nil {
+		removeCtx, removeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := m.metadataRepo.Delete(removeCtx, mediaPath); err != nil {
 			m.log.Warn("Failed to delete metadata from DB for %s: %v", mediaPath, err)
 		}
+		removeCancel()
 	}
 
 	return nil
