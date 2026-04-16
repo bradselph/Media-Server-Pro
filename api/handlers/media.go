@@ -895,7 +895,11 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 	}
 
 	if userID != "" {
-		if err := h.media.UpdatePlaybackPosition(c.Request.Context(), mediaPath, userID, req.Position); err != nil {
+		var progress float64
+		if req.Duration > 0 {
+			progress = req.Position / req.Duration
+		}
+		if err := h.media.UpdatePlaybackPosition(c.Request.Context(), mediaPath, userID, req.Position, req.Duration, progress); err != nil {
 			h.log.Warn("Failed to update playback position for media %s: %v", req.ID, err)
 		}
 

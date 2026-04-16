@@ -1494,12 +1494,13 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	return nil
 }
 
-// UpdatePlaybackPosition updates playback position for a user
-func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error {
+// UpdatePlaybackPosition updates playback position, total duration, and progress
+// fraction for a user. duration and progress may be 0 when the values are unknown.
+func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position, duration, progress float64) error {
 	// Update DB first; only mirror to in-memory on success so the cache does not
 	// diverge from the persistent store.
 	if m.metadataRepo != nil {
-		if err := m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, position); err != nil {
+		if err := m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, position, duration, progress); err != nil {
 			m.log.Error("Failed to update playback position via repository: %v", err)
 			return err
 		}
@@ -1606,7 +1607,7 @@ func (m *Module) BatchGetPlaybackPositions(ctx context.Context, ids []string, us
 func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string) {
 	// Reset to 0 in the repository (avoids adding a new Delete method to the interface)
 	if m.metadataRepo != nil {
-		_ = m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, 0)
+		_ = m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, 0, 0, 0)
 	}
 
 	// Remove from in-memory cache so the fallback path also returns 0

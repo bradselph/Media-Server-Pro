@@ -55,6 +55,8 @@ type playbackPositionRow struct {
 	Path      string    `gorm:"column:path;primaryKey"`
 	UserID    string    `gorm:"column:user_id;primaryKey"`
 	Position  float64   `gorm:"column:position"`
+	Duration  float64   `gorm:"column:duration"`
+	Progress  float64   `gorm:"column:progress"`
 	UpdatedAt time.Time `gorm:"column:updated_at"`
 }
 
@@ -340,13 +342,20 @@ func (r *MediaMetadataRepository) IncrementViews(ctx context.Context, path strin
 	return nil
 }
 
-// UpdatePlaybackPosition updates the playback position for a user
-func (r *MediaMetadataRepository) UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error {
+// UpdatePlaybackPosition updates the playback position, total duration, and
+// progress fraction for a user. All three values must be supplied together so
+// the row stays internally consistent; pass 0 for duration and progress when
+// clearing the position.
+func (r *MediaMetadataRepository) UpdatePlaybackPosition(ctx context.Context, path, userID string, position, duration, progress float64) error {
 	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO playback_positions (path, user_id, position, updated_at)
-		VALUES (?, ?, ?, NOW())
-		ON DUPLICATE KEY UPDATE position = VALUES(position), updated_at = VALUES(updated_at)
-	`, path, userID, position).Error
+		INSERT INTO playback_positions (path, user_id, position, duration, progress, updated_at)
+		VALUES (?, ?, ?, ?, ?, NOW())
+		ON DUPLICATE KEY UPDATE
+			position  = VALUES(position),
+			duration  = VALUES(duration),
+			progress  = VALUES(progress),
+			updated_at = VALUES(updated_at)
+	`, path, userID, position, duration, progress).Error
 }
 
 // DeleteAllPlaybackPositionsByUser removes all playback positions for a user.
