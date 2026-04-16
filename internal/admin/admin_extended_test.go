@@ -55,7 +55,7 @@ func TestBuildConfigThumbnailsMap(t *testing.T) {
 
 func TestBuildConfigAnalyticsMap(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.Features.EnableAnalytics = true
+	cfg.Analytics.Enabled = true
 	cfg.Analytics.TrackPlayback = true
 	m := buildConfigAnalyticsMap(cfg, nil)
 	if m["enabled"] != true {

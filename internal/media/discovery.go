@@ -1111,6 +1111,9 @@ func (m *Module) detectCategory(path string) string {
 	// Default based on type
 	// Use filepath.Rel to check if path is contained within music directory
 	// This prevents false matches like "/media/music" matching "/media/musicvideos"
+	if m.config == nil {
+		return "uncategorized"
+	}
 	musicDir := m.config.Get().Directories.Music
 	if musicDir != "" {
 		rel, err := filepath.Rel(musicDir, path)
