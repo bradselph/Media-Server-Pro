@@ -89,13 +89,16 @@ func (m *Manager) SetValue(path string, value any) error {
 // SetValuesBatch applies multiple configuration updates and persists once atomically.
 // On save failure, in-memory changes are rolled back so the config stays consistent with disk.
 // After saving, feature toggles are synced so runtime module enable/disable matches config.
+// Watchers are called synchronously after the lock is released, matching Update()'s behaviour
+// so that module side-effects (rate-limiter reconfiguration, security headers, etc.) are
+// applied before the handler returns and cannot accumulate as unbounded goroutines.
 func (m *Manager) SetValuesBatch(updates map[string]any) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// Snapshot for rollback on save failure
 	originalJSON, snapErr := json.Marshal(m.config)
 	if snapErr != nil {
+		m.mu.Unlock()
 		return fmt.Errorf("failed to snapshot config: %w", snapErr)
 	}
 
@@ -103,9 +106,11 @@ func (m *Manager) SetValuesBatch(updates map[string]any) error {
 		parts := strings.Split(path, ".")
 		field, err := navigateToField(reflect.ValueOf(m.config).Elem(), parts, path)
 		if err != nil {
+			m.mu.Unlock()
 			return err
 		}
 		if err := setReflectField(field, value, path); err != nil {
+			m.mu.Unlock()
 			return err
 		}
 	}
@@ -114,20 +119,26 @@ func (m *Manager) SetValuesBatch(updates map[string]any) error {
 	m.syncFeatureToggles()
 	if err := m.validate(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
+		m.mu.Unlock()
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 	if err := m.save(); err != nil {
 		m.rollbackFromJSON(originalJSON, err)
+		m.mu.Unlock()
 		return err
 	}
-	// Notify watchers so modules (security, streaming, CORS, etc.) pick up changes
-	// made via the admin panel without requiring a server restart.
+	// Snapshot watchers and config copy under the lock, then release before
+	// calling them — consistent with Update() so watchers can safely call
+	// m.Get() without deadlocking on m.mu.
 	cfg := m.getCopy()
 	watchers := make([]func(*Config), len(m.watchers))
 	copy(watchers, m.watchers)
-	for _, watcher := range watchers {
-		w := watcher
-		go func() {
+	m.mu.Unlock()
+
+	// Notify watchers synchronously so modules (security, streaming, CORS, etc.)
+	// pick up changes before the handler returns, not in a background goroutine.
+	for _, w := range watchers {
+		func() {
 			defer func() {
 				if r := recover(); r != nil {
 					m.log.Error("Config watcher panic recovered: %v", r)
