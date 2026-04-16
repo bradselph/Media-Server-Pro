@@ -59,7 +59,6 @@ var tableDefs = []struct {
 			show_mature           BOOLEAN      DEFAULT FALSE,
 			mature_preference_set BOOLEAN      DEFAULT FALSE,
 			language              VARCHAR(10)  DEFAULT 'en',
-			subtitle_lang         VARCHAR(10)  DEFAULT 'en',
 			equalizer_preset      VARCHAR(100),
 			resume_playback       BOOLEAN      DEFAULT TRUE,
 			show_analytics        BOOLEAN      DEFAULT TRUE,
