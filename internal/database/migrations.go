@@ -644,6 +644,14 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 		// composite (playlist_id, media_path) to single-column (id).
 		{"playlist_items", "uniq_playlist_media",
 			"ALTER TABLE playlist_items ADD UNIQUE INDEX uniq_playlist_media (playlist_id, media_id)"},
+		// playback_positions composite PK is (path, user_id): MySQL can use it for
+		// path-first lookups but NOT for user-first queries. A dedicated index lets
+		// "get all positions for user X" avoid a full table scan.
+		{"playback_positions", "idx_positions_user",
+			"ALTER TABLE playback_positions ADD INDEX idx_positions_user (user_id)"},
+		// validation_results is filtered by status in health-check and backfill queries.
+		{"validation_results", "idx_validation_status",
+			"ALTER TABLE validation_results ADD INDEX idx_validation_status (status)"},
 	}
 	for _, idx := range indexes {
 		if err := m.ensureIndex(ctx, idx.table, idx.index, idx.sql); err != nil {
