@@ -685,14 +685,19 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 	m.sessionMu.Lock()
 	m.activeSessions[session.ID] = session
 	activeCount := len(m.activeSessions)
-	m.sessionMu.Unlock()
-
+	// Acquire statsMu while still holding sessionMu so that activeCount is still
+	// accurate when we compare it to PeakConcurrent. Releasing sessionMu first
+	// creates a TOCTOU window where another goroutine can insert its own session
+	// and read the same activeCount, causing both to record the same peak and
+	// miss the true concurrent maximum. Consistent with sessionMu→statsMu order
+	// established in GetStats and updateSessionStats.
 	m.statsMu.Lock()
 	m.stats.TotalStreams++
 	if activeCount > m.stats.PeakConcurrent {
 		m.stats.PeakConcurrent = activeCount
 	}
 	m.statsMu.Unlock()
+	m.sessionMu.Unlock()
 
 	m.log.Debug("Started stream session %s for %s", session.ID, req.Path)
 	return session
@@ -723,14 +728,16 @@ func (m *Module) updateSessionStats(sessionID string, bytes int64) {
 	m.statsMu.Unlock()
 }
 
-// GetActiveSessions returns all active streaming sessions
+// GetActiveSessions returns snapshots of all active streaming sessions.
+// Copies each struct before returning so callers cannot race with
+// updateSessionStats, which mutates BytesSent/LastUpdate under sessionMu.Lock.
 func (m *Module) GetActiveSessions() []*models.StreamSession {
 	m.sessionMu.RLock()
 	defer m.sessionMu.RUnlock()
 
 	sessions := make([]*models.StreamSession, 0, len(m.activeSessions))
 	for _, session := range m.activeSessions {
-		sessions = append(sessions, session)
+		sessions = append(sessions, new(*session))
 	}
 	return sessions
 }

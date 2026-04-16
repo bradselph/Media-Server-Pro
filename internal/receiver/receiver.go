@@ -134,6 +134,10 @@ type Module struct {
 
 // NewModule creates a new receiver module.
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
+	// Initialize proxySem with a safe default capacity so that hot-reload
+	// enabling the receiver after a disabled startup does not leave it nil
+	// (which would silently bypass the MaxProxyConns limit forever).
+	// Start() re-makes the channel with the configured capacity when it runs.
 	return &Module{
 		config:         cfg,
 		log:            logger.New("receiver"),
@@ -143,6 +147,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		healthDone:     make(chan struct{}),
 		wsConns:        make(map[string]*slaveWS),
 		pendingStreams: make(map[string]*PendingStream),
+		proxySem:       make(chan struct{}, 50), // default; overridden by Start() with configured value
 	}
 }
 

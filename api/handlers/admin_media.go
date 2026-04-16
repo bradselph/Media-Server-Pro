@@ -232,8 +232,18 @@ func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRe
 			updates["is_mature"] = reqMatureContent
 		}
 	}
+	// Reserved keys are handled as typed values above; silently skip any
+	// collision from the custom metadata map so a key like "is_mature" in the
+	// metadata object cannot overwrite the explicitly-decoded bool and cause
+	// applyMetadataField to receive the wrong type (string instead of bool).
+	reservedMetadataKeys := map[string]bool{
+		"tags": true, "is_mature": true, "mature_content": true,
+		"mature_score": true, "category": true, "views": true,
+	}
 	for k, v := range reqMetadata {
-		updates[k] = v
+		if !reservedMetadataKeys[k] {
+			updates[k] = v
+		}
 	}
 
 	return adminUpdateRequest{updates: updates, name: strings.TrimSpace(reqName)}, ""
@@ -365,6 +375,10 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	}
 	if h.media != nil {
 		h.media.DeletePlaybackPositionsByPath(ctx, mediaPath)
+	}
+	// Purge suggestion view history rows keyed by media path (no FK cascade on that column).
+	if h.suggestions != nil {
+		h.suggestions.PurgeMediaPath(mediaPath)
 	}
 
 	// Remove path-keyed rows that have no FK cascade to media_metadata.

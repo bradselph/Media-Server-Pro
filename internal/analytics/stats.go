@@ -163,8 +163,13 @@ func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, st
 	}
 	if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
 		stats.TotalCompletions++
-		stats.CompletionRate = completionRateFromCounts(stats.TotalCompletions, stats.TotalPlaybacks)
 	}
+	// Always recalculate CompletionRate after any change to TotalPlaybacks or
+	// TotalCompletions. Previously this was inside the progress>=90 block, which
+	// meant partial-play events incremented TotalPlaybacks without updating the
+	// rate — causing the live stats to diverge (overstated) from reconstructStats,
+	// which always recalculates unconditionally.
+	stats.CompletionRate = completionRateFromCounts(stats.TotalCompletions, stats.TotalPlaybacks)
 }
 
 // updateAvgWatchDurationLocked updates the running average using playback-event count as denominator.

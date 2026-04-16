@@ -59,7 +59,6 @@ var tableDefs = []struct {
 			show_mature           BOOLEAN      DEFAULT FALSE,
 			mature_preference_set BOOLEAN      DEFAULT FALSE,
 			language              VARCHAR(10)  DEFAULT 'en',
-			subtitle_lang         VARCHAR(10)  DEFAULT 'en',
 			equalizer_preset      VARCHAR(100),
 			resume_playback       BOOLEAN      DEFAULT TRUE,
 			show_analytics        BOOLEAN      DEFAULT TRUE,
@@ -111,7 +110,9 @@ var tableDefs = []struct {
 		CREATE TABLE IF NOT EXISTS playback_positions (
 			path       VARCHAR(500),
 			user_id    VARCHAR(255),
-			position   FLOAT     NOT NULL,
+			position   FLOAT   NOT NULL,
+			duration   DOUBLE  NOT NULL DEFAULT 0,
+			progress   FLOAT   NOT NULL DEFAULT 0,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			PRIMARY KEY (path, user_id),
 			FOREIGN KEY (path)    REFERENCES media_metadata(path) ON DELETE CASCADE,
@@ -601,6 +602,8 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"user_preferences", "shuffle_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"user_preferences", "show_buffer_bar", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"user_preferences", "download_prompt", "BOOLEAN NOT NULL DEFAULT TRUE"},
+		{"playback_positions", "duration", "DOUBLE NOT NULL DEFAULT 0"},
+		{"playback_positions", "progress", "FLOAT NOT NULL DEFAULT 0"},
 		{"analytics_events", "data", "JSON NULL"},
 		{"media_metadata", "duration", "DOUBLE NOT NULL DEFAULT 0"},
 		{"media_metadata", "probe_mod_time", sqlTimestampNullDefault},
@@ -641,6 +644,14 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 		// composite (playlist_id, media_path) to single-column (id).
 		{"playlist_items", "uniq_playlist_media",
 			"ALTER TABLE playlist_items ADD UNIQUE INDEX uniq_playlist_media (playlist_id, media_id)"},
+		// playback_positions composite PK is (path, user_id): MySQL can use it for
+		// path-first lookups but NOT for user-first queries. A dedicated index lets
+		// "get all positions for user X" avoid a full table scan.
+		{"playback_positions", "idx_positions_user",
+			"ALTER TABLE playback_positions ADD INDEX idx_positions_user (user_id)"},
+		// validation_results is filtered by status in health-check and backfill queries.
+		{"validation_results", "idx_validation_status",
+			"ALTER TABLE validation_results ADD INDEX idx_validation_status (status)"},
 	}
 	for _, idx := range indexes {
 		if err := m.ensureIndex(ctx, idx.table, idx.index, idx.sql); err != nil {
@@ -755,6 +766,12 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			alterSQL:   "ALTER TABLE receiver_media ADD CONSTRAINT fk_receiver_media_slave FOREIGN KEY (slave_id) REFERENCES receiver_slaves(id) ON DELETE CASCADE",
 		},
 		{
+			table:      "smart_playlists",
+			constraint: "fk_smart_playlists_user",
+			cleanupSQL: "DELETE FROM smart_playlists WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE smart_playlists ADD CONSTRAINT fk_smart_playlists_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+		{
 			table:      "user_favorites",
 			constraint: "fk_user_favorites_user",
 			cleanupSQL: "DELETE FROM user_favorites WHERE user_id NOT IN (SELECT id FROM users)",
@@ -771,6 +788,18 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			constraint: "fk_hls_jobs_media",
 			cleanupSQL: "DELETE FROM hls_jobs WHERE media_path NOT IN (SELECT path FROM media_metadata)",
 			alterSQL:   "ALTER TABLE hls_jobs ADD CONSTRAINT fk_hls_jobs_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
+		},
+		{
+			table:      "scan_results",
+			constraint: "fk_scan_results_media",
+			cleanupSQL: "DELETE FROM scan_results WHERE path NOT IN (SELECT path FROM media_metadata)",
+			alterSQL:   "ALTER TABLE scan_results ADD CONSTRAINT fk_scan_results_media FOREIGN KEY (path) REFERENCES media_metadata(path) ON DELETE CASCADE",
+		},
+		{
+			table:      "sessions",
+			constraint: "fk_sessions_user",
+			cleanupSQL: "DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE sessions ADD CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
 		},
 		{
 			table:      "playlist_items",

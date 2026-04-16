@@ -627,6 +627,8 @@ components:
           type: array
           items:
             type: string
+        duration:
+          type: number
         thumbnail_url:
           type: string
 
@@ -1573,6 +1575,8 @@ components:
         date_added:
           type: string
           format: date-time
+        duration:
+          type: number
         thumbnail_url:
           type: string
 
@@ -1592,6 +1596,8 @@ components:
           type: integer
         category:
           type: string
+        duration:
+          type: number
         thumbnail_url:
           type: string
 

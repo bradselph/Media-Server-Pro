@@ -139,7 +139,13 @@ func crossStoreMove(ctx context.Context, srcStore storage.Backend, srcRel string
 		return fmt.Errorf("write destination: %w", err)
 	}
 
-	return srcStore.Remove(ctx, srcRel)
+	if err := srcStore.Remove(ctx, srcRel); err != nil {
+		// Roll back the destination copy so it does not become an orphaned
+		// object that leaks remote storage and is never indexed.
+		_ = dstStore.Remove(ctx, dstRel)
+		return fmt.Errorf("remove source after copy: %w", err)
+	}
+	return nil
 }
 
 // RenameMedia renames a media file. Validates oldPath is within allowed directories.
@@ -210,10 +216,20 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 
 	m.log.Info("Renamed media: %s -> %s", oldPath, newPath)
 
-	// Save only the renamed item (not all 261) to avoid long blocking writes
+	// Delete the old DB row so the ghost does not re-appear after a restart.
+	// Best-effort: a failure leaves a stale row but does not affect in-memory state.
+	if m.metadataRepo != nil {
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
+		if err := m.metadataRepo.Delete(dbCtx, oldPath); err != nil {
+			m.log.Warn("Failed to delete old metadata row after rename of %s: %v", oldPath, err)
+		}
+		dbCancel()
+	}
+
+	// Upsert the new path row. Non-fatal: the file is at newPath and the
+	// in-memory index is correct. The DB will be reconciled on next scan.
 	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after rename: %v", err)
-		return newPath, fmt.Errorf("file renamed but metadata save failed: %w", err)
+		m.log.Error("Failed to save metadata after rename of %s to %s: %v", oldPath, newPath, err)
 	}
 
 	return newPath, nil
@@ -317,9 +333,20 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 
 	m.log.Info("Moved media: %s -> %s", oldPath, newPath)
 
+	// Delete the old DB row so the ghost does not re-appear after a restart.
+	// Best-effort: a failure leaves a stale row but does not affect in-memory state.
+	if m.metadataRepo != nil {
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
+		if err := m.metadataRepo.Delete(dbCtx, oldPath); err != nil {
+			m.log.Warn("Failed to delete old metadata row after move of %s: %v", oldPath, err)
+		}
+		dbCancel()
+	}
+
+	// Upsert the new path row. Non-fatal: the file is at newPath and the
+	// in-memory index is correct. The DB will be reconciled on next scan.
 	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after move: %v", err)
-		return newPath, fmt.Errorf("file moved but metadata save failed: %w", err)
+		m.log.Error("Failed to save metadata after move of %s to %s: %v", oldPath, newPath, err)
 	}
 
 	return newPath, nil
@@ -369,11 +396,15 @@ func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
 	m.log.Info("Deleted media: %s", filePath)
 	// Item was deleted — remove from DB too (not just the in-memory map)
 	if m.metadataRepo != nil {
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
+		// Use explicit cancel (not defer) so the timer goroutine is released
+		// immediately after the DB call instead of at DeleteMedia's return.
+		// defer cancel() would leak one timer goroutine per item when called
+		// in a loop (e.g. the quota rollback in upload.go).
+		dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
 		if err := m.metadataRepo.Delete(dbCtx, filePath); err != nil {
 			m.log.Warn("Failed to delete metadata from DB for %s: %v", filePath, err)
 		}
+		dbCancel()
 	}
 
 	return nil
@@ -405,11 +436,11 @@ func (m *Module) RemoveMedia(mediaPath string) error {
 	// goroutine-per-call pattern caused DB connection pool exhaustion during
 	// bulk cleanup (10 000 items → 10 000 concurrent goroutines).
 	if m.metadataRepo != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := m.metadataRepo.Delete(ctx, mediaPath); err != nil {
+		removeCtx, removeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := m.metadataRepo.Delete(removeCtx, mediaPath); err != nil {
 			m.log.Warn("Failed to delete metadata from DB for %s: %v", mediaPath, err)
 		}
+		removeCancel()
 	}
 
 	return nil
@@ -463,6 +494,12 @@ func applyMetadataField(meta *Metadata, key string, value any) {
 	case "mature_score":
 		if score, ok := value.(float64); ok {
 			meta.MatureScore = score
+		}
+	case "mature_reason":
+		// Written by the post-upload mature scanner; routes the reason string
+		// to the structured MatureReasons field rather than CustomMeta.
+		if s, ok := value.(string); ok && s != "" {
+			meta.MatureReasons = append(meta.MatureReasons, s)
 		}
 	case "category":
 		if cat, ok := value.(string); ok {

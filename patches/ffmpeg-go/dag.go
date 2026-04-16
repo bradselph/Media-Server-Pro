@@ -4,14 +4,14 @@ import (
 	"errors"
 )
 
-// Node in a directed-acyclic graph (DAG).
+// DagNode Node in a directed-acyclic graph (DAG).
 //
 // Edges:
 // DagNodes are connected by edges.  An edge connects two nodes with a label for each side:
-// - ``upstream_node``: upstream/parent node
-// - ``upstream_label``: label on the outgoing side of the upstream node
-// - ``downstream_node``: downstream/child node
-// - ``downstream_label``: label on the incoming side of the downstream node
+// - “upstream_node“: upstream/parent node
+// - “upstream_label“: label on the outgoing side of the upstream node
+// - “downstream_node“: downstream/child node
+// - “downstream_label“: label on the incoming side of the downstream node
 //
 // For example, DagNode A may be connected to DagNode B with an edge labelled "foo" on A's side, and "bar" on B's
 // side:
@@ -35,7 +35,7 @@ import (
 //
 // String representation:
 // In order for graph visualization tools to show useful information, nodes must be representable as strings.  The
-// ``String`` operator should provide a more or less "full" representation of the node, and the ``ShortRepr``
+// “String“ operator should provide a more or less "full" representation of the node, and the “ShortRepr“
 // property should be a shortened, concise representation.
 //
 // Again, because nodes are immutable, the string representations should remain constant.

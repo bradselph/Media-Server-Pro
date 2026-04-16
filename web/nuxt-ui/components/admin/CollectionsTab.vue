@@ -163,6 +163,13 @@ function onSearchInput() {
   searchTimer = setTimeout(searchMedia, 300)
 }
 
+onUnmounted(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+})
+
 async function addItem(mediaId: string) {
   if (!addItemsTarget.value || addingIds.value.has(mediaId)) return
   const next = new Set(addingIds.value)

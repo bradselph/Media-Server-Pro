@@ -128,7 +128,7 @@ func (s *Stream) Hue(kwargs ...KwArgs) *Stream {
 	return NewFilterNode("hue", []*Stream{s}, 1, nil, MergeKwArgs(kwargs)).Stream("", "")
 }
 
-// todo fix this
+// ColorChannelMixer todo fix this
 func (s *Stream) ColorChannelMixer(kwargs ...KwArgs) *Stream {
 	AssertType(s.Type, "FilterableStream", "colorchannelmixer")
 	return NewFilterNode("colorchannelmixer", []*Stream{s}, 1, nil, MergeKwArgs(kwargs)).Stream("", "")

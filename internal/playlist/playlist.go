@@ -357,8 +357,10 @@ func (m *Module) AddItem(ctx context.Context, input AddItemInput) error {
 			if existing.MediaPath == input.MediaPath || (input.MediaID != "" && existing.MediaID == input.MediaID) {
 				m.mu.Unlock()
 				if err := m.playlistRepo.RemoveItem(ctx, item.ID); err != nil {
-					m.log.Error("Failed to remove duplicate playlist item %s from DB: %v", item.ID, err)
-					return fmt.Errorf("failed to clean up duplicate playlist item: %w", err)
+					// Non-fatal: log the failure but still return nil. The in-memory state
+					// is correct (no duplicate visible to callers). The orphaned DB row will
+					// be deduplicated by loadPlaylists on next startup.
+					m.log.Error("Failed to remove duplicate playlist item %s from DB (will be cleaned on restart): %v", item.ID, err)
 				}
 				return nil
 			}
@@ -736,6 +738,25 @@ func (m *Module) loadPlaylists() error {
 	for _, playlist := range playlists {
 		if playlist.Items == nil {
 			playlist.Items = make([]models.PlaylistItem, 0)
+		}
+		// Deduplicate items by MediaPath (or item ID as fallback) to handle
+		// orphaned DB rows left by AddItem duplicate-cleanup failures. Without
+		// this, a transient RemoveItem failure would cause a playlist to show
+		// the same media twice after a server restart.
+		if len(playlist.Items) > 1 {
+			seen := make(map[string]struct{}, len(playlist.Items))
+			deduped := playlist.Items[:0]
+			for _, item := range playlist.Items {
+				key := item.MediaPath
+				if key == "" {
+					key = item.ID
+				}
+				if _, dup := seen[key]; !dup {
+					seen[key] = struct{}{}
+					deduped = append(deduped, item)
+				}
+			}
+			playlist.Items = deduped
 		}
 		m.playlists[PlaylistID(playlist.ID)] = playlist
 	}

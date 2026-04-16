@@ -781,6 +781,15 @@ func (r *RateLimiter) SetLimits(requestsPerMinute, burstLimit, violationsForBan 
 	r.mu.Unlock()
 }
 
+// Limit returns the current requests-per-minute limit under the lock.
+// Use this instead of accessing config.RequestsPerMinute directly to avoid
+// data races with concurrent SetLimits calls from the config watcher.
+func (r *RateLimiter) Limit() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.config.RequestsPerMinute
+}
+
 // CheckRequest checks if a request should be allowed
 func (r *RateLimiter) CheckRequest(ip string) (allowed bool, remaining int, resetAt time.Time) {
 	r.mu.Lock()
@@ -1027,8 +1036,9 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 		// Check rate limit
 		allowed, remaining, resetAt := limiter.CheckRequest(ip)
 
-		// Set rate limit headers
-		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.config.RequestsPerMinute))
+		// Set rate limit headers — use Limit() to avoid a data race with
+		// concurrent SetLimits calls from the config watcher goroutine.
+		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.Limit()))
 		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
 		c.Header("X-RateLimit-Reset", fmt.Sprintf("%d", resetAt.Unix()))
 

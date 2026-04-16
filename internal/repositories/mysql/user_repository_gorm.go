@@ -167,6 +167,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 				"items_per_page", "sort_by", "sort_order", "filter_category",
 				"filter_media_type", "custom_eq_presets",
 				"show_continue_watching", "show_recommended", "show_trending",
+				"skip_interval", "shuffle_enabled", "show_buffer_bar", "download_prompt",
 			}),
 		}).Create(&user.Preferences).Error
 	})

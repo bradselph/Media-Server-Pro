@@ -471,15 +471,24 @@ func (m *Module) ProxyHLSSegment(w http.ResponseWriter, r *http.Request, itemID 
 	cached, ok := m.playlistCache.Load(cacheKey)
 	if ok {
 		// A stale segment cache means the variant playlist has not been
-		// re-fetched recently.  Return 404 so the HLS client re-requests
-		// the variant playlist (which will refresh the segment list) before
-		// asking for segments again.
+		// re-fetched recently. Write a 404 directly so the HLS client
+		// re-requests the variant playlist (which will refresh the segment
+		// list) before asking for segments again. Returning an error here
+		// would result in a 502 from the handler, which HLS clients treat
+		// as a fatal stream error rather than a recoverable playlist re-fetch.
 		if cp, _ := cached.(*cachedPlaylist); cp != nil && time.Since(cp.fetchedAt) > playlistCacheTTL {
-			ok = false
+			// Evict the stale entry so ProxyHLSVariant can repopulate it on the
+			// next variant-playlist request. Without deletion the stale entry
+			// stays in the cache indefinitely and every subsequent segment
+			// request returns 404, permanently breaking playback for this item.
+			m.playlistCache.Delete(cacheKey)
+			http.NotFound(w, r)
+			return nil
 		}
 	}
 	if !ok {
-		return fmt.Errorf("segment cache not found for %s quality %d", itemID, qualityIdx)
+		http.NotFound(w, r)
+		return nil
 	}
 
 	playlist := cached.(*cachedPlaylist) //nolint:errcheck // sync.Map value is always *cachedPlaylist

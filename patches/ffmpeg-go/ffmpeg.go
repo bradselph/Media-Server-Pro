@@ -35,7 +35,7 @@ func (s *Stream) GlobalArgs(args ...string) *Stream {
 	return NewGlobalNode("global_args", []*Stream{s}, args, nil).Stream("", "")
 }
 
-// Overwrite output files without asking (ffmpeg "-y" option)
+// OverwriteOutput Overwrite output files without asking (ffmpeg "-y" option)
 //
 // Official documentation: `Main options <https://ffmpeg.org/ffmpeg.html#Main-options>`_
 func (s *Stream) OverwriteOutput(stream *Stream) *Stream {
@@ -45,7 +45,7 @@ func (s *Stream) OverwriteOutput(stream *Stream) *Stream {
 	return NewGlobalNode("overwrite_output", []*Stream{stream}, []string{"-y"}, nil).Stream("", "")
 }
 
-// Include all given outputs in one ffmpeg command line
+// MergeOutputs Include all given outputs in one ffmpeg command line
 func MergeOutputs(streams ...*Stream) *Stream {
 	return NewMergeOutputsNode("merge_output", streams).Stream("", "")
 }

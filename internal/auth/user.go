@@ -175,13 +175,21 @@ func (m *Module) loadUserAndCache(load func() (*models.User, error)) (*models.Us
 func (m *Module) getUserFromCacheByUsername(username string) *models.User {
 	m.usersMu.RLock()
 	defer m.usersMu.RUnlock()
-	return m.users[username]
+	u := m.users[username]
+	if u == nil {
+		return nil
+	}
+	return new(*u)
 }
 
 func (m *Module) getUserFromCacheByID(id string) *models.User {
 	m.usersMu.RLock()
 	defer m.usersMu.RUnlock()
-	return m.usersByID[id]
+	u := m.usersByID[id]
+	if u == nil {
+		return nil
+	}
+	return new(*u)
 }
 
 // UpdateUser updates a user's information.
@@ -436,12 +444,18 @@ func (m *Module) DeleteUser(ctx context.Context, username string) error {
 			return err
 		}
 		if user.Role == models.RoleAdmin && user.Enabled {
+			// Use the in-memory cache (same as UpdateUser) rather than ListUsers
+			// (which issues a DB query) to avoid holding lastAdminMu for the
+			// duration of a DB round-trip, which would block all concurrent
+			// UpdateUser and DeleteUser calls.
 			count := 0
-			for _, u := range m.ListUsers(ctx) {
+			m.usersMu.RLock()
+			for _, u := range m.users {
 				if u.Role == models.RoleAdmin && u.Enabled {
 					count++
 				}
 			}
+			m.usersMu.RUnlock()
 			if count <= 1 {
 				return ErrCannotDemoteLastAdmin
 			}

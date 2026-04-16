@@ -89,8 +89,12 @@ func (m *Module) ClearWatchHistory(ctx context.Context, username string) error {
 		return ErrUserNotFound
 	}
 
-	// Snapshot old history so we can roll back on DB failure.
-	oldHistory := user.WatchHistory
+	// Deep-copy old history for rollback. A plain slice-header copy shares the
+	// backing array; if any concurrent writer (e.g. AddToWatchHistory) appended
+	// to the old slice in-place before the rollback, the restored slice header
+	// would point into a partially-overwritten array. Matches the defensive
+	// pattern used in RemoveWatchHistoryItem.
+	oldHistory := append([]models.WatchHistoryItem(nil), user.WatchHistory...)
 
 	// Update cache optimistically.
 	user.WatchHistory = make([]models.WatchHistoryItem, 0)
@@ -125,8 +129,10 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 		return ErrUserNotFound
 	}
 
-	// Snapshot old history for rollback.
-	oldHistory := user.WatchHistory
+	// Snapshot old history for rollback as a deep copy so that a subsequent
+	// append (e.g. from AddToWatchHistory) to the new slice cannot write
+	// through the shared backing array into oldHistory, corrupting the rollback.
+	oldHistory := append([]models.WatchHistoryItem(nil), user.WatchHistory...)
 
 	updated := make([]models.WatchHistoryItem, 0, len(user.WatchHistory))
 	for _, item := range user.WatchHistory {

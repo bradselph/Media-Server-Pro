@@ -177,6 +177,13 @@ func (h *Handler) UpdateChapter(c *gin.Context) {
 		}
 		newLabel = *req.Label
 	}
+	// Cross-field validation: if only start_time was provided, check it against
+	// the (unchanged) end_time. Without this a caller can silently invert a
+	// range by pushing start_time past the existing end_time.
+	if newEndTime != nil && *newEndTime <= newStartTime {
+		writeError(c, http.StatusBadRequest, "end_time must be > start_time")
+		return
+	}
 
 	// Update the chapter
 	chapter.StartTime = newStartTime

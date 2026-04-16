@@ -114,7 +114,10 @@ func buildSmartQuery(db *gorm.DB, rules *SmartPlaylistRules) *gorm.DB {
 		}
 	}
 	if len(clauses) == 0 {
-		return q
+		// No valid conditions — return a query that matches nothing rather than
+		// the unrestricted query, which would return all media items and expose
+		// the entire library as a "smart" playlist result.
+		return q.Where("1 = 0")
 	}
 	sep := " AND "
 	if rules.Match == "any" {

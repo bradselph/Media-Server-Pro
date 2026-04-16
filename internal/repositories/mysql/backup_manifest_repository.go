@@ -78,7 +78,11 @@ func (r *BackupManifestRepository) Get(ctx context.Context, id string) (*reposit
 		}
 		return nil, fmt.Errorf("failed to get backup manifest: %w", err)
 	}
-	return r.rowToRecord(&row), nil
+	rec, err := r.rowToRecord(&row)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode backup manifest %q JSON payload: %w", id, err)
+	}
+	return rec, nil
 }
 
 func (r *BackupManifestRepository) Delete(ctx context.Context, id string) error {
@@ -99,12 +103,16 @@ func (r *BackupManifestRepository) List(ctx context.Context) ([]*repositories.Ba
 	}
 	records := make([]*repositories.BackupManifestRecord, len(rows))
 	for i := range rows {
-		records[i] = r.rowToRecord(&rows[i])
+		rec, err := r.rowToRecord(&rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode backup manifest %q JSON payload: %w", rows[i].ID, err)
+		}
+		records[i] = rec
 	}
 	return records, nil
 }
 
-func (r *BackupManifestRepository) rowToRecord(row *backupManifestRow) *repositories.BackupManifestRecord {
+func (r *BackupManifestRepository) rowToRecord(row *backupManifestRow) (*repositories.BackupManifestRecord, error) {
 	rec := &repositories.BackupManifestRecord{
 		ID:        row.ID,
 		Filename:  row.Filename,
@@ -120,13 +128,17 @@ func (r *BackupManifestRepository) rowToRecord(row *backupManifestRow) *reposito
 	if row.Version != nil {
 		rec.Version = *row.Version
 	}
-	_ = json.Unmarshal([]byte(row.Files), &rec.Files)
-	_ = json.Unmarshal([]byte(row.Errors), &rec.Errors)
+	if err := json.Unmarshal([]byte(row.Files), &rec.Files); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(row.Errors), &rec.Errors); err != nil {
+		return nil, err
+	}
 	if rec.Files == nil {
 		rec.Files = []string{}
 	}
 	if rec.Errors == nil {
 		rec.Errors = []string{}
 	}
-	return rec
+	return rec, nil
 }

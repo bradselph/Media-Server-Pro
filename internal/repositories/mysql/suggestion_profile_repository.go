@@ -233,3 +233,10 @@ func (r *SuggestionProfileRepository) DeleteViewHistory(ctx context.Context, use
 	}
 	return nil
 }
+
+func (r *SuggestionProfileRepository) DeleteViewHistoryByMediaPath(ctx context.Context, mediaPath string) error {
+	if err := r.db.WithContext(ctx).Where("media_path = ?", mediaPath).Delete(&viewHistoryRow{}).Error; err != nil {
+		return fmt.Errorf("failed to delete view history by media path: %w", err)
+	}
+	return nil
+}

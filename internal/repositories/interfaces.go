@@ -51,7 +51,9 @@ type MediaMetadataRepository interface {
 	// (before LIMIT/OFFSET) for pagination controls.
 	ListFiltered(ctx context.Context, filter MediaFilter) ([]*MediaMetadata, int64, error)
 	IncrementViews(ctx context.Context, path string) error
-	UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error
+	// UpdatePlaybackPosition persists the playback position, total duration, and
+	// progress fraction for a user. Pass 0 for duration and progress when clearing.
+	UpdatePlaybackPosition(ctx context.Context, path, userID string, position, duration, progress float64) error
 	GetPlaybackPosition(ctx context.Context, path, userID string) (float64, error)
 	BatchGetPlaybackPositions(ctx context.Context, paths []string, userID string) (map[string]float64, error)
 	DeleteAllPlaybackPositionsByUser(ctx context.Context, userID string) error
@@ -276,6 +278,7 @@ type SuggestionProfileRepository interface {
 	BatchSaveViewHistory(ctx context.Context, userID string, entries []*ViewHistoryRecord) error
 	GetViewHistory(ctx context.Context, userID string) ([]*ViewHistoryRecord, error)
 	DeleteViewHistory(ctx context.Context, userID string) error
+	DeleteViewHistoryByMediaPath(ctx context.Context, mediaPath string) error
 }
 
 // SuggestionProfileRecord represents a user's suggestion profile

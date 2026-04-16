@@ -755,23 +755,36 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 		}
 		if meta.Category != "" {
 			item.Category = meta.Category
-		} else {
-			item.Category = string(mediaType)
 		}
 		if meta.LastPlayed != nil {
 			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 		m.mu.Unlock()
+		// Auto-detect category from path when none is stored (mirrors createMediaItem).
+		if item.Category == "" {
+			item.Category = m.detectCategory(absKey)
+			m.mu.Lock()
+			if m.metadata[absKey] != nil {
+				m.metadata[absKey].Category = item.Category
+			}
+			m.mu.Unlock()
+		}
 	} else {
 		item.ID = uuid.New().String()
-		item.Category = string(mediaType)
 		item.DateAdded = time.Now()
 		m.metadata[absKey] = &Metadata{
 			StableID:    item.ID,
 			DateAdded:   item.DateAdded,
 			PlaybackPos: make(map[string]float64),
 			CustomMeta:  make(map[string]string),
+		}
+		m.mu.Unlock()
+		// Auto-detect category (no stored metadata yet).
+		item.Category = m.detectCategory(absKey)
+		m.mu.Lock()
+		if m.metadata[absKey] != nil {
+			m.metadata[absKey].Category = item.Category
 		}
 		m.mu.Unlock()
 	}
@@ -883,8 +896,7 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.RLock()
 		item.Views = meta.Views
 		if meta.LastPlayed != nil {
-			t := *meta.LastPlayed
-			item.LastPlayed = &t
+			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 		item.IsMature = meta.IsMature
@@ -915,14 +927,22 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	}
 
 	// Assign a stable UUID if not already set (new or pre-stable-ID file).
-	// Lock first to prevent two concurrent workers both seeing item.ID==""
-	// and assigning different UUIDs to the same file.
+	// Re-fetch from the map after acquiring the write lock: a concurrent
+	// DeleteMedia call may have removed m.metadata[path] between the RUnlock
+	// above (line 917) and here, making the local `meta` pointer orphaned.
+	// Writing to an orphaned struct would lose the ID with no DB row backing it.
 	if item.ID == "" {
 		m.mu.Lock()
-		if meta.StableID == "" {
-			meta.StableID = uuid.New().String()
+		if liveMeta, ok := m.metadata[path]; ok {
+			if liveMeta.StableID == "" {
+				liveMeta.StableID = uuid.New().String()
+			}
+			item.ID = liveMeta.StableID
+		} else {
+			// Entry was removed by a concurrent delete; assign a transient ID.
+			// The item will not persist past this request.
+			item.ID = uuid.New().String()
 		}
-		item.ID = meta.StableID
 		m.mu.Unlock()
 	}
 
@@ -1091,6 +1111,9 @@ func (m *Module) detectCategory(path string) string {
 	// Default based on type
 	// Use filepath.Rel to check if path is contained within music directory
 	// This prevents false matches like "/media/music" matching "/media/musicvideos"
+	if m.config == nil {
+		return "uncategorized"
+	}
 	musicDir := m.config.Get().Directories.Music
 	if musicDir != "" {
 		rel, err := filepath.Rel(musicDir, path)
@@ -1123,7 +1146,11 @@ func (m *Module) updateCategories() {
 	}
 }
 
-// GetMedia returns a media item by path
+// GetMedia returns a copy of a media item by path.
+// A copy is returned (not a raw pointer from the internal map) to prevent callers
+// from racing with IncrementViews, SetMatureFlag, and similar functions that mutate
+// the stored item's fields under m.mu.Lock while the caller has already released
+// the read lock.
 func (m *Module) GetMedia(path string) (*models.MediaItem, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -1132,16 +1159,17 @@ func (m *Module) GetMedia(path string) (*models.MediaItem, error) {
 	if !exists {
 		return nil, fmt.Errorf("media not found: %s", path)
 	}
-	return item, nil
+	return new(*item), nil
 }
 
-// GetMediaByID returns a media item by ID using the secondary index for O(1) lookups.
+// GetMediaByID returns a copy of a media item by ID using the secondary index for O(1) lookups.
+// A copy is returned for the same reason as GetMedia — see that function's comment.
 func (m *Module) GetMediaByID(id string) (*models.MediaItem, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	if item, exists := m.mediaByID[id]; exists {
-		return item, nil
+		return new(*item), nil
 	}
 	return nil, fmt.Errorf("media not found with ID: %s", id)
 }
@@ -1182,7 +1210,9 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 	var items []*models.MediaItem
 	for _, item := range m.media {
 		if filter.Matches(item) {
-			items = append(items, item)
+			// Copy each item so callers do not race with IncrementViews /
+			// SetMatureFlag, which mutate the stored pointer's fields under Lock.
+			items = append(items, new(*item))
 		}
 	}
 
@@ -1232,7 +1262,8 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 			continue // path no longer in catalog (e.g. file deleted)
 		}
 		if filter.Matches(item) {
-			items = append(items, item)
+			// Copy — same reasoning as ListMedia: prevent race with concurrent mutators.
+			items = append(items, new(*item))
 		}
 	}
 
@@ -1466,12 +1497,13 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	return nil
 }
 
-// UpdatePlaybackPosition updates playback position for a user
-func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position float64) error {
+// UpdatePlaybackPosition updates playback position, total duration, and progress
+// fraction for a user. duration and progress may be 0 when the values are unknown.
+func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position, duration, progress float64) error {
 	// Update DB first; only mirror to in-memory on success so the cache does not
 	// diverge from the persistent store.
 	if m.metadataRepo != nil {
-		if err := m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, position); err != nil {
+		if err := m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, position, duration, progress); err != nil {
 			m.log.Error("Failed to update playback position via repository: %v", err)
 			return err
 		}
@@ -1578,7 +1610,7 @@ func (m *Module) BatchGetPlaybackPositions(ctx context.Context, ids []string, us
 func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string) {
 	// Reset to 0 in the repository (avoids adding a new Delete method to the interface)
 	if m.metadataRepo != nil {
-		_ = m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, 0)
+		_ = m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, 0, 0, 0)
 	}
 
 	// Remove from in-memory cache so the fallback path also returns 0

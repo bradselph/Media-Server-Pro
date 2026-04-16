@@ -86,6 +86,11 @@ func (m *Module) existingJobOrRetryErrorLocked(p *createOrReuseHLSJobParams) (*m
 	switch existing.Status {
 	case models.HLSStatusCompleted, models.HLSStatusRunning:
 		return existing, true, nil
+	case models.HLSStatusPending:
+		// Job is already queued with an active goroutine. Return it directly to
+		// avoid spawning a second goroutine that would overwrite jobCancels/jobDone
+		// and race against the original transcoding to the same output directory.
+		return existing, true, nil
 	case models.HLSStatusFailed:
 		if existing.FailCount >= m.maxFailures() {
 			return existing, true, fmt.Errorf("HLS generation for %s has failed %d times and will not be retried automatically", p.MediaPath, existing.FailCount)
@@ -112,9 +117,9 @@ func (m *Module) tryReuseExistingHLSOnDiskLocked(p *createOrReuseHLSJobParams) (
 		CompletedAt: &now,
 	}
 	m.jobs[p.JobID] = job
-	if err := m.saveJobs(); err != nil {
-		m.log.Warn("Failed to save job state after discovering existing HLS: %v", err)
-	}
+	// Use saveJob (single-row, no mutex) instead of saveJobs (acquires jobsMu.RLock).
+	// saveJobs would deadlock here because the caller already holds jobsMu as a write lock.
+	m.saveJob(job)
 	return job, true
 }
 
@@ -265,6 +270,9 @@ func (m *Module) DeleteJob(jobID string) error {
 	}
 	// Cancel running transcode so ffmpeg stops before we remove OutputDir.
 	// Grab the done channel while holding the lock, then release before waiting.
+	// Do NOT delete m.jobDone[jobID] yet — a concurrent DeleteJob call arriving
+	// between this Unlock and the <-doneCh wait would observe jobDone absent,
+	// skip the wait, and race os.RemoveAll with the still-running goroutine.
 	var doneCh chan struct{}
 	if cancel, ok := m.jobCancels[jobID]; ok {
 		cancel()
@@ -272,7 +280,7 @@ func (m *Module) DeleteJob(jobID string) error {
 	}
 	if ch, ok := m.jobDone[jobID]; ok {
 		doneCh = ch
-		delete(m.jobDone, jobID)
+		// deletion happens after wait — see below
 	}
 	outputDir := job.OutputDir
 	m.jobsMu.Unlock()
@@ -281,6 +289,10 @@ func (m *Module) DeleteJob(jobID string) error {
 	// files before we remove the output directory.
 	if doneCh != nil {
 		<-doneCh
+		// Now safe to remove from the map — the goroutine has exited.
+		m.jobsMu.Lock()
+		delete(m.jobDone, jobID)
+		m.jobsMu.Unlock()
 	}
 
 	// Filesystem cleanup (best-effort; warn only).
