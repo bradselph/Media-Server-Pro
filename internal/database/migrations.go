@@ -776,6 +776,12 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			alterSQL:   "ALTER TABLE hls_jobs ADD CONSTRAINT fk_hls_jobs_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
 		},
 		{
+			table:      "sessions",
+			constraint: "fk_sessions_user",
+			cleanupSQL: "DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE sessions ADD CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+		{
 			table:      "playlist_items",
 			constraint: "fk_playlist_items_media",
 			cleanupSQL: "DELETE FROM playlist_items WHERE media_path != '' AND media_path NOT IN (SELECT path FROM media_metadata)",
