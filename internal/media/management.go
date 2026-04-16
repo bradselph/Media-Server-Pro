@@ -139,7 +139,13 @@ func crossStoreMove(ctx context.Context, srcStore storage.Backend, srcRel string
 		return fmt.Errorf("write destination: %w", err)
 	}
 
-	return srcStore.Remove(ctx, srcRel)
+	if err := srcStore.Remove(ctx, srcRel); err != nil {
+		// Roll back the destination copy so it does not become an orphaned
+		// object that leaks remote storage and is never indexed.
+		_ = dstStore.Remove(ctx, dstRel)
+		return fmt.Errorf("remove source after copy: %w", err)
+	}
+	return nil
 }
 
 // RenameMedia renames a media file. Validates oldPath is within allowed directories.
@@ -488,6 +494,12 @@ func applyMetadataField(meta *Metadata, key string, value any) {
 	case "mature_score":
 		if score, ok := value.(float64); ok {
 			meta.MatureScore = score
+		}
+	case "mature_reason":
+		// Written by the post-upload mature scanner; routes the reason string
+		// to the structured MatureReasons field rather than CustomMeta.
+		if s, ok := value.(string); ok && s != "" {
+			meta.MatureReasons = append(meta.MatureReasons, s)
 		}
 	case "category":
 		if cat, ok := value.(string); ok {
