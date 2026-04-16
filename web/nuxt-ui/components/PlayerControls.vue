@@ -23,6 +23,8 @@ const props = defineProps<{
   bufferedFraction: number
   showBufferBar: boolean
   chapters: Array<{ id: string; start_time: number; end_time?: number; label: string }>
+  hasPrev: boolean
+  hasNext: boolean
 }>()
 
 const emit = defineEmits<{
@@ -40,6 +42,8 @@ const emit = defineEmits<{
   'toggle-theater': []
   'seek-to-chapter': [startTime: number]
   'update:showShortcuts': [value: boolean]
+  'skip-prev': []
+  'skip-next': []
 }>()
 
 const toast = useToast()
@@ -126,9 +130,9 @@ function copyLinkAtTime() {
 </script>
 
 <template>
-  <!-- Controls overlay -->
+  <!-- Controls overlay — z-20 ensures it sits above mobile tap zones (z-10) -->
   <div
-    class="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent transition-opacity"
+    class="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent transition-opacity z-20"
     :class="showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'"
     @click.stop
   >
@@ -183,6 +187,18 @@ function copyLinkAtTime() {
 
     <!-- Controls row -->
     <div class="flex items-center gap-1.5 sm:gap-2 px-3 pb-3">
+      <!-- Prev track (playlist context only) -->
+      <UButton
+        v-if="hasPrev"
+        icon="i-lucide-skip-back"
+        aria-label="Previous track"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        class="text-white hover:text-white shrink-0"
+        @click="emit('skip-prev')"
+      />
+
       <!-- Play/Pause -->
       <UButton
         :icon="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
@@ -192,6 +208,18 @@ function copyLinkAtTime() {
         size="sm"
         class="text-white hover:text-white shrink-0"
         @click="emit('toggle-play')"
+      />
+
+      <!-- Next track (playlist context only) -->
+      <UButton
+        v-if="hasNext"
+        icon="i-lucide-skip-forward"
+        aria-label="Next track"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        class="text-white hover:text-white shrink-0"
+        @click="emit('skip-next')"
       />
 
       <!-- Rewind/Forward — desktop only (mobile uses tap overlay) -->
@@ -223,14 +251,14 @@ function copyLinkAtTime() {
       <div class="flex-1" />
 
       <!-- Right-side controls -->
-      <!-- Speed -->
+      <!-- Speed — desktop only (mobile row is too tight with skip buttons) -->
       <UButton
         :label="`${playbackSpeed}x`"
         :aria-label="`Playback speed: ${playbackSpeed}x`"
         variant="ghost"
         color="neutral"
         size="sm"
-        class="text-white text-xs shrink-0"
+        class="text-white text-xs max-md:hidden shrink-0"
         @click="emit('cycle-speed')"
       />
 

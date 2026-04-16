@@ -590,6 +590,8 @@ const playlistItems = ref<PlaylistItem[]>([])
 const nextPlaylistItem = computed(() =>
   playlistIdxParam.value >= 0 ? (playlistItems.value[playlistIdxParam.value + 1] ?? null) : null,
 )
+const hasPrevItem = computed(() => playlistIdxParam.value > 0)
+const hasNextItem = computed(() => nextPlaylistItem.value != null)
 
 let upNextTimer: ReturnType<typeof setInterval> | null = null
 const showUpNext = ref(false)
@@ -638,6 +640,19 @@ function navigateToNextItem() {
   if (!next) return
   navigateTo(`/player?id=${encodeURIComponent(next.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=${nextIdx}`)
 }
+
+function navigateToPrevItem() {
+  const prevIdx = playlistIdxParam.value - 1
+  if (prevIdx < 0) return
+  const prev = playlistItems.value[prevIdx]
+  if (!prev) return
+  exitPiPForTransition()
+  const plId = playlistIdParam.value ?? ''
+  navigateTo(`/player?id=${encodeURIComponent(prev.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=${prevIdx}`)
+}
+
+function skipPrevItem() { navigateToPrevItem() }
+function skipNextItem() { navigateToNextItem() }
 
 watch(playlistIdParam, async id => {
   if (!id) { playlistItems.value = []; return }
@@ -1150,6 +1165,8 @@ watch(mediaId, (id, oldId) => {
             :buffered-fraction="bufferedFraction"
             :show-buffer-bar="showBufferBar"
             :chapters="chapters"
+            :has-prev="hasPrevItem"
+            :has-next="hasNextItem"
             v-model:showShortcuts="showShortcuts"
             @toggle-play="togglePlay"
             @seek="seek"
@@ -1164,6 +1181,8 @@ watch(mediaId, (id, oldId) => {
             @toggle-mute="toggleMute"
             @toggle-theater="toggleTheater"
             @seek-to-chapter="seekToChapter"
+            @skip-prev="skipPrevItem"
+            @skip-next="skipNextItem"
           />
         </div>
         <div v-else class="max-md:px-4">
