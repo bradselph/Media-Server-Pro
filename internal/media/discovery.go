@@ -928,14 +928,22 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	}
 
 	// Assign a stable UUID if not already set (new or pre-stable-ID file).
-	// Lock first to prevent two concurrent workers both seeing item.ID==""
-	// and assigning different UUIDs to the same file.
+	// Re-fetch from the map after acquiring the write lock: a concurrent
+	// DeleteMedia call may have removed m.metadata[path] between the RUnlock
+	// above (line 917) and here, making the local `meta` pointer orphaned.
+	// Writing to an orphaned struct would lose the ID with no DB row backing it.
 	if item.ID == "" {
 		m.mu.Lock()
-		if meta.StableID == "" {
-			meta.StableID = uuid.New().String()
+		if liveMeta, ok := m.metadata[path]; ok {
+			if liveMeta.StableID == "" {
+				liveMeta.StableID = uuid.New().String()
+			}
+			item.ID = liveMeta.StableID
+		} else {
+			// Entry was removed by a concurrent delete; assign a transient ID.
+			// The item will not persist past this request.
+			item.ID = uuid.New().String()
 		}
-		item.ID = meta.StableID
 		m.mu.Unlock()
 	}
 
