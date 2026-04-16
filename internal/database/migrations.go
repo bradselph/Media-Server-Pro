@@ -758,6 +758,12 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			alterSQL:   "ALTER TABLE receiver_media ADD CONSTRAINT fk_receiver_media_slave FOREIGN KEY (slave_id) REFERENCES receiver_slaves(id) ON DELETE CASCADE",
 		},
 		{
+			table:      "smart_playlists",
+			constraint: "fk_smart_playlists_user",
+			cleanupSQL: "DELETE FROM smart_playlists WHERE user_id NOT IN (SELECT id FROM users)",
+			alterSQL:   "ALTER TABLE smart_playlists ADD CONSTRAINT fk_smart_playlists_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+		},
+		{
 			table:      "user_favorites",
 			constraint: "fk_user_favorites_user",
 			cleanupSQL: "DELETE FROM user_favorites WHERE user_id NOT IN (SELECT id FROM users)",
