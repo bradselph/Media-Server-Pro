@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
+	"media-server-pro/internal/media"
 	"media-server-pro/pkg/models"
 )
 
@@ -52,87 +53,109 @@ func parseSmartRules(raw string) (*SmartPlaylistRules, error) {
 	return &r, nil
 }
 
-// buildSmartQuery applies rules to a GORM query against the media table.
-// Returns nil if no conditions are valid.
-func buildSmartQuery(db *gorm.DB, rules *SmartPlaylistRules) *gorm.DB {
-	q := db.Table("media")
-	var clauses []string
-	var args []any
-	for _, cond := range rules.Conditions {
-		switch cond.Field {
-		case "type":
-			if cond.Op == "eq" && cond.Value != "" {
-				clauses = append(clauses, "type = ?")
-				args = append(args, cond.Value)
-			}
-		case "category":
-			if cond.Op == "eq" && cond.Value != "" {
-				clauses = append(clauses, "category = ?")
-				args = append(args, cond.Value)
-			}
-		case "tags":
-			// Normalize needle to match REPLACE(tags, ' ', '') applied to the haystack.
-			needle := strings.ReplaceAll(cond.Value, " ", "")
-			if needle != "" && !strings.Contains(needle, ",") {
-				clauses = append(clauses, "FIND_IN_SET(?, REPLACE(tags, ' ', ''))")
-				args = append(args, needle)
-			}
+// applySmartRules filters and sorts the media library using the parsed smart playlist rules.
+// Filtering runs in-memory against the live media module — this is consistent with how all
+// other media endpoints operate and avoids any dependency on the DB having a separate
+// denormalised "media" table (which does not exist; media metadata lives in media_metadata).
+func applySmartRules(all []*models.MediaItem, rules *SmartPlaylistRules) []*models.MediaItem {
+	if len(rules.Conditions) == 0 {
+		return []*models.MediaItem{}
+	}
+	matchAll := rules.Match != "any"
+	var out []*models.MediaItem
+	for _, item := range all {
+		if matchesSmartRules(item, rules.Conditions, matchAll) {
+			out = append(out, item)
+		}
+	}
+	col := rules.OrderBy
+	desc := rules.OrderDir == "desc"
+	sort.SliceStable(out, func(i, j int) bool {
+		var less bool
+		switch col {
+		case "name":
+			less = out[i].Name < out[j].Name
 		case "duration":
-			if durVal, err := strconv.ParseFloat(cond.Value, 64); err == nil && durVal >= 0 {
-				switch cond.Op {
-				case "gte":
-					clauses = append(clauses, "duration >= ?")
-					args = append(args, durVal)
-				case "lte":
-					clauses = append(clauses, "duration <= ?")
-					args = append(args, durVal)
-				}
-			}
-		case "date_added_days":
-			if cond.Op == "lte" && cond.Value != "" {
-				cutoff := time.Now().AddDate(0, 0, -int(parseInt(cond.Value)))
-				clauses = append(clauses, "date_added >= ?")
-				args = append(args, cutoff)
-			}
+			less = out[i].Duration < out[j].Duration
 		case "views":
-			if viewVal, err := strconv.ParseInt(cond.Value, 10, 64); err == nil && viewVal >= 0 {
-				switch cond.Op {
-				case "gte":
-					clauses = append(clauses, "views >= ?")
-					args = append(args, viewVal)
-				case "lte":
-					clauses = append(clauses, "views <= ?")
-					args = append(args, viewVal)
-				}
-			}
-		case "is_mature":
-			if cond.Op == "eq" {
-				val := cond.Value == "true" || cond.Value == "1"
-				clauses = append(clauses, "is_mature = ?")
-				args = append(args, val)
-			}
+			less = out[i].Views < out[j].Views
+		default: // date_added
+			less = out[i].DateAdded.Before(out[j].DateAdded)
+		}
+		if desc {
+			return !less
+		}
+		return less
+	})
+	if rules.Limit > 0 && len(out) > rules.Limit {
+		out = out[:rules.Limit]
+	}
+	return out
+}
+
+func matchesSmartRules(item *models.MediaItem, conds []SmartCondition, matchAll bool) bool {
+	for _, cond := range conds {
+		matched := matchSmartCondition(item, cond)
+		if matchAll && !matched {
+			return false
+		}
+		if !matchAll && matched {
+			return true
 		}
 	}
-	if len(clauses) == 0 {
-		// No valid conditions — return a query that matches nothing rather than
-		// the unrestricted query, which would return all media items and expose
-		// the entire library as a "smart" playlist result.
-		return q.Where("1 = 0")
-	}
-	sep := " AND "
-	if rules.Match == "any" {
-		sep = " OR "
-	}
-	combined := ""
-	for i, cl := range clauses {
-		if i > 0 {
-			combined += sep
+	return matchAll
+}
+
+func matchSmartCondition(item *models.MediaItem, cond SmartCondition) bool {
+	switch cond.Field {
+	case "type":
+		return cond.Op == "eq" && string(item.Type) == cond.Value
+	case "category":
+		return cond.Op == "eq" && item.Category == cond.Value
+	case "tags":
+		needle := strings.ToLower(strings.ReplaceAll(cond.Value, " ", ""))
+		if needle == "" {
+			return false
 		}
-		combined += cl
+		for _, t := range item.Tags {
+			if strings.ToLower(strings.ReplaceAll(t, " ", "")) == needle {
+				return true
+			}
+		}
+		return false
+	case "duration":
+		durVal, err := strconv.ParseFloat(cond.Value, 64)
+		if err != nil || durVal < 0 {
+			return false
+		}
+		switch cond.Op {
+		case "gte":
+			return item.Duration >= durVal
+		case "lte":
+			return item.Duration <= durVal
+		}
+	case "date_added_days":
+		if cond.Op != "lte" || cond.Value == "" {
+			return false
+		}
+		cutoff := time.Now().AddDate(0, 0, -int(parseInt(cond.Value)))
+		return !item.DateAdded.Before(cutoff)
+	case "views":
+		viewVal, err := strconv.ParseInt(cond.Value, 10, 64)
+		if err != nil || viewVal < 0 {
+			return false
+		}
+		switch cond.Op {
+		case "gte":
+			return int64(item.Views) >= viewVal
+		case "lte":
+			return int64(item.Views) <= viewVal
+		}
+	case "is_mature":
+		val := cond.Value == "true" || cond.Value == "1"
+		return cond.Op == "eq" && item.IsMature == val
 	}
-	combined = "(" + combined + ")"
-	q = q.Where(combined, args...)
-	return q
+	return false
 }
 
 func parseInt(s string) int64 {
@@ -314,6 +337,8 @@ func (h *Handler) DeleteSmartPlaylist(c *gin.Context) {
 }
 
 // PreviewSmartPlaylist executes the smart playlist rules and returns matching media items.
+// Filtering runs against the in-memory media module so results include all filesystem
+// metadata (type, tags, duration) that are not persisted to the DB as queryable columns.
 func (h *Handler) PreviewSmartPlaylist(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
@@ -338,25 +363,10 @@ func (h *Handler) PreviewSmartPlaylist(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Invalid rules stored in playlist")
 		return
 	}
-	q := buildSmartQuery(db, rules)
-	col := "date_added"
-	switch rules.OrderBy {
-	case "name", "duration", "views":
-		col = rules.OrderBy
-	}
-	dir := "DESC"
-	if rules.OrderDir == "asc" {
-		dir = "ASC"
-	}
-	q = q.Order(col + " " + dir).Limit(rules.Limit)
-	var items []models.MediaItem
-	if err := q.Find(&items).Error; err != nil {
-		h.log.Error("PreviewSmartPlaylist: %v", err)
-		writeError(c, http.StatusInternalServerError, errInternalServer)
-		return
-	}
+	all := h.media.ListMedia(media.Filter{})
+	items := applySmartRules(all, rules)
 	if items == nil {
-		items = []models.MediaItem{}
+		items = []*models.MediaItem{}
 	}
 	writeSuccess(c, items)
 }
