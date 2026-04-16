@@ -175,13 +175,23 @@ func (m *Module) loadUserAndCache(load func() (*models.User, error)) (*models.Us
 func (m *Module) getUserFromCacheByUsername(username string) *models.User {
 	m.usersMu.RLock()
 	defer m.usersMu.RUnlock()
-	return m.users[username]
+	u := m.users[username]
+	if u == nil {
+		return nil
+	}
+	cp := *u
+	return &cp
 }
 
 func (m *Module) getUserFromCacheByID(id string) *models.User {
 	m.usersMu.RLock()
 	defer m.usersMu.RUnlock()
-	return m.usersByID[id]
+	u := m.usersByID[id]
+	if u == nil {
+		return nil
+	}
+	cp := *u
+	return &cp
 }
 
 // UpdateUser updates a user's information.
