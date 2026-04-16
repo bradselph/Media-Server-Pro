@@ -896,8 +896,7 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.RLock()
 		item.Views = meta.Views
 		if meta.LastPlayed != nil {
-			t := *meta.LastPlayed
-			item.LastPlayed = &t
+			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 		item.IsMature = meta.IsMature
@@ -1157,8 +1156,7 @@ func (m *Module) GetMedia(path string) (*models.MediaItem, error) {
 	if !exists {
 		return nil, fmt.Errorf("media not found: %s", path)
 	}
-	copy := *item
-	return &copy, nil
+	return new(*item), nil
 }
 
 // GetMediaByID returns a copy of a media item by ID using the secondary index for O(1) lookups.
@@ -1168,8 +1166,7 @@ func (m *Module) GetMediaByID(id string) (*models.MediaItem, error) {
 	defer m.mu.RUnlock()
 
 	if item, exists := m.mediaByID[id]; exists {
-		copy := *item
-		return &copy, nil
+		return new(*item), nil
 	}
 	return nil, fmt.Errorf("media not found with ID: %s", id)
 }
@@ -1212,8 +1209,7 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 		if filter.Matches(item) {
 			// Copy each item so callers do not race with IncrementViews /
 			// SetMatureFlag, which mutate the stored pointer's fields under Lock.
-			c := *item
-			items = append(items, &c)
+			items = append(items, new(*item))
 		}
 	}
 
@@ -1264,8 +1260,7 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 		}
 		if filter.Matches(item) {
 			// Copy — same reasoning as ListMedia: prevent race with concurrent mutators.
-			c := *item
-			items = append(items, &c)
+			items = append(items, new(*item))
 		}
 	}
 

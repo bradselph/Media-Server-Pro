@@ -191,8 +191,7 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 	var savedSource *config.RemoteSource
 	for _, s := range h.config.Get().RemoteMedia.Sources {
 		if s.Name == sourceName {
-			cp := s
-			savedSource = &cp
+			savedSource = new(s)
 			break
 		}
 	}

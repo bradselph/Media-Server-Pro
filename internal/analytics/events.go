@@ -42,7 +42,7 @@ const (
 	EventVolumeChange  = "volume_change"
 	EventFullscreen    = "fullscreen"
 
-	// Traffic / auth events (server-generated, not client-submitted)
+	// EventLogin Traffic / auth events (server-generated, not client-submitted)
 	EventLogin       = "login"
 	EventLoginFailed = "login_failed"
 	EventLogout      = "logout"

@@ -179,8 +179,7 @@ func (m *Module) getUserFromCacheByUsername(username string) *models.User {
 	if u == nil {
 		return nil
 	}
-	cp := *u
-	return &cp
+	return new(*u)
 }
 
 func (m *Module) getUserFromCacheByID(id string) *models.User {
@@ -190,8 +189,7 @@ func (m *Module) getUserFromCacheByID(id string) *models.User {
 	if u == nil {
 		return nil
 	}
-	cp := *u
-	return &cp
+	return new(*u)
 }
 
 // UpdateUser updates a user's information.

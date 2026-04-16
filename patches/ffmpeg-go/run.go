@@ -247,7 +247,7 @@ func (s *Stream) SetFfmpegPath(path string) *Stream {
 	return s
 }
 
-var LogCompiledCommand bool = true
+var LogCompiledCommand = true
 
 func (s *Stream) Silent(isSilent bool) *Stream {
 	LogCompiledCommand = !isSilent
@@ -268,7 +268,7 @@ func (s *Stream) Compile(options ...CompilationOption) *exec.Cmd {
 	for _, option := range GlobalCommandOptions {
 		option(cmd)
 	}
-  if LogCompiledCommand {
+	if LogCompiledCommand {
 		log.Printf("compiled command: ffmpeg %s\n", strings.Join(args, " "))
 	}
 	return cmd

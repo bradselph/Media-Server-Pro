@@ -22,12 +22,12 @@ import (
 )
 
 var (
-	// Re-export repository errors for backward compatibility
+	// ErrUserNotFound Re-export repository errors for backward compatibility
 	ErrUserNotFound    = repositories.ErrUserNotFound
 	ErrUserExists      = repositories.ErrUserExists
 	ErrSessionNotFound = repositories.ErrSessionNotFound
 
-	// Auth-specific errors
+	// ErrInvalidCredentials Auth-specific errors
 	ErrInvalidCredentials    = errors.New("invalid credentials")
 	ErrAccountDisabled       = errors.New("account disabled")
 	ErrAccountLocked         = errors.New("account locked")

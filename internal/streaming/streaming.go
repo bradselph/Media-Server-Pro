@@ -737,8 +737,7 @@ func (m *Module) GetActiveSessions() []*models.StreamSession {
 
 	sessions := make([]*models.StreamSession, 0, len(m.activeSessions))
 	for _, session := range m.activeSessions {
-		snap := *session
-		sessions = append(sessions, &snap)
+		sessions = append(sessions, new(*session))
 	}
 	return sessions
 }
