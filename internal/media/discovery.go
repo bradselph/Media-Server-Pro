@@ -1144,7 +1144,11 @@ func (m *Module) updateCategories() {
 	}
 }
 
-// GetMedia returns a media item by path
+// GetMedia returns a copy of a media item by path.
+// A copy is returned (not a raw pointer from the internal map) to prevent callers
+// from racing with IncrementViews, SetMatureFlag, and similar functions that mutate
+// the stored item's fields under m.mu.Lock while the caller has already released
+// the read lock.
 func (m *Module) GetMedia(path string) (*models.MediaItem, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -1153,16 +1157,19 @@ func (m *Module) GetMedia(path string) (*models.MediaItem, error) {
 	if !exists {
 		return nil, fmt.Errorf("media not found: %s", path)
 	}
-	return item, nil
+	copy := *item
+	return &copy, nil
 }
 
-// GetMediaByID returns a media item by ID using the secondary index for O(1) lookups.
+// GetMediaByID returns a copy of a media item by ID using the secondary index for O(1) lookups.
+// A copy is returned for the same reason as GetMedia — see that function's comment.
 func (m *Module) GetMediaByID(id string) (*models.MediaItem, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	if item, exists := m.mediaByID[id]; exists {
-		return item, nil
+		copy := *item
+		return &copy, nil
 	}
 	return nil, fmt.Errorf("media not found with ID: %s", id)
 }
@@ -1203,7 +1210,10 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 	var items []*models.MediaItem
 	for _, item := range m.media {
 		if filter.Matches(item) {
-			items = append(items, item)
+			// Copy each item so callers do not race with IncrementViews /
+			// SetMatureFlag, which mutate the stored pointer's fields under Lock.
+			c := *item
+			items = append(items, &c)
 		}
 	}
 
@@ -1253,7 +1263,9 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 			continue // path no longer in catalog (e.g. file deleted)
 		}
 		if filter.Matches(item) {
-			items = append(items, item)
+			// Copy — same reasoning as ListMedia: prevent race with concurrent mutators.
+			c := *item
+			items = append(items, &c)
 		}
 	}
 
