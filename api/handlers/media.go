@@ -622,8 +622,17 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 			return
 		}
 	} else {
-		// Use IP as stream key for unauthenticated (limit already checked at top)
+		// Unauthenticated local-media stream: enforce per-IP limit before serving.
+		// The proxy and extractor branches each perform their own CanStartStream
+		// check above; the local path needs its own because no pre-flight guard
+		// was in place and streaming.Stream() does not check the limit internally.
 		userID = "ip:" + c.ClientIP()
+		if limit := streamCfg.UnauthStreamLimit; limit > 0 {
+			if !h.streaming.CanStartStream(userID, limit) {
+				writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
+				return
+			}
+		}
 	}
 
 	req := streaming.StreamRequest{
