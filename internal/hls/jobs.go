@@ -86,6 +86,11 @@ func (m *Module) existingJobOrRetryErrorLocked(p *createOrReuseHLSJobParams) (*m
 	switch existing.Status {
 	case models.HLSStatusCompleted, models.HLSStatusRunning:
 		return existing, true, nil
+	case models.HLSStatusPending:
+		// Job is already queued with an active goroutine. Return it directly to
+		// avoid spawning a second goroutine that would overwrite jobCancels/jobDone
+		// and race against the original transcoding to the same output directory.
+		return existing, true, nil
 	case models.HLSStatusFailed:
 		if existing.FailCount >= m.maxFailures() {
 			return existing, true, fmt.Errorf("HLS generation for %s has failed %d times and will not be retried automatically", p.MediaPath, existing.FailCount)
