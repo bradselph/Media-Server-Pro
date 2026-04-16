@@ -728,14 +728,17 @@ func (m *Module) updateSessionStats(sessionID string, bytes int64) {
 	m.statsMu.Unlock()
 }
 
-// GetActiveSessions returns all active streaming sessions
+// GetActiveSessions returns snapshots of all active streaming sessions.
+// Copies each struct before returning so callers cannot race with
+// updateSessionStats, which mutates BytesSent/LastUpdate under sessionMu.Lock.
 func (m *Module) GetActiveSessions() []*models.StreamSession {
 	m.sessionMu.RLock()
 	defer m.sessionMu.RUnlock()
 
 	sessions := make([]*models.StreamSession, 0, len(m.activeSessions))
 	for _, session := range m.activeSessions {
-		sessions = append(sessions, session)
+		snap := *session
+		sessions = append(sessions, &snap)
 	}
 	return sessions
 }
