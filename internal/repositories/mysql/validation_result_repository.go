@@ -66,7 +66,11 @@ func (r *ValidationResultRepository) Get(ctx context.Context, path string) (*rep
 		}
 		return nil, fmt.Errorf("failed to get validation result: %w", err)
 	}
-	return r.rowToRecord(&row), nil
+	rec, err := r.rowToRecord(&row)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode validation result %q issues JSON: %w", path, err)
+	}
+	return rec, nil
 }
 
 func (r *ValidationResultRepository) Delete(ctx context.Context, path string) error {
@@ -87,7 +91,11 @@ func (r *ValidationResultRepository) List(ctx context.Context) ([]*repositories.
 	}
 	records := make([]*repositories.ValidationResultRecord, len(rows))
 	for i := range rows {
-		records[i] = r.rowToRecord(&rows[i])
+		rec, err := r.rowToRecord(&rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode validation result %q issues JSON: %w", rows[i].Path, err)
+		}
+		records[i] = rec
 	}
 	return records, nil
 }
@@ -124,7 +132,7 @@ func (r *ValidationResultRepository) recordToRow(rec *repositories.ValidationRes
 	return row, nil
 }
 
-func (r *ValidationResultRepository) rowToRecord(row *validationResultRow) *repositories.ValidationResultRecord {
+func (r *ValidationResultRepository) rowToRecord(row *validationResultRow) (*repositories.ValidationResultRecord, error) {
 	rec := &repositories.ValidationResultRecord{
 		Path:           row.Path,
 		Status:         row.Status,
@@ -148,9 +156,11 @@ func (r *ValidationResultRepository) rowToRecord(row *validationResultRow) *repo
 	if row.Error != nil {
 		rec.Error = *row.Error
 	}
-	_ = json.Unmarshal([]byte(row.Issues), &rec.Issues)
+	if err := json.Unmarshal([]byte(row.Issues), &rec.Issues); err != nil {
+		return nil, err
+	}
 	if rec.Issues == nil {
 		rec.Issues = []string{}
 	}
-	return rec
+	return rec, nil
 }

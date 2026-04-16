@@ -67,7 +67,11 @@ func (r *AutoDiscoverySuggestionRepository) Get(ctx context.Context, originalPat
 		}
 		return nil, fmt.Errorf("failed to get autodiscovery suggestion: %w", err)
 	}
-	return r.rowToRecord(&row), nil
+	rec, err := r.rowToRecord(&row)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode autodiscovery suggestion %q metadata: %w", originalPath, err)
+	}
+	return rec, nil
 }
 
 func (r *AutoDiscoverySuggestionRepository) Delete(ctx context.Context, originalPath string) error {
@@ -88,7 +92,11 @@ func (r *AutoDiscoverySuggestionRepository) List(ctx context.Context) ([]*reposi
 	}
 	records := make([]*repositories.AutoDiscoveryRecord, len(rows))
 	for i := range rows {
-		records[i] = r.rowToRecord(&rows[i])
+		rec, err := r.rowToRecord(&rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode autodiscovery suggestion %q metadata: %w", rows[i].OriginalPath, err)
+		}
+		records[i] = rec
 	}
 	return records, nil
 }
@@ -100,7 +108,7 @@ func (r *AutoDiscoverySuggestionRepository) DeleteAll(ctx context.Context) error
 	return nil
 }
 
-func (r *AutoDiscoverySuggestionRepository) rowToRecord(row *autodiscoveryRow) *repositories.AutoDiscoveryRecord {
+func (r *AutoDiscoverySuggestionRepository) rowToRecord(row *autodiscoveryRow) (*repositories.AutoDiscoveryRecord, error) {
 	rec := &repositories.AutoDiscoveryRecord{
 		OriginalPath: row.OriginalPath,
 		Type:         row.Type,
@@ -112,9 +120,11 @@ func (r *AutoDiscoverySuggestionRepository) rowToRecord(row *autodiscoveryRow) *
 	if row.SuggestedPath != nil {
 		rec.SuggestedPath = *row.SuggestedPath
 	}
-	_ = json.Unmarshal([]byte(row.Metadata), &rec.Metadata)
+	if err := json.Unmarshal([]byte(row.Metadata), &rec.Metadata); err != nil {
+		return nil, err
+	}
 	if rec.Metadata == nil {
 		rec.Metadata = make(map[string]string)
 	}
-	return rec
+	return rec, nil
 }

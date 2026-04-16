@@ -432,7 +432,7 @@ export function useAdminApi() {
         createUser: (data: { username: string; password: string; email?: string; role: string; type?: string }) =>
             api.post<User>(`${base}/users`, data),
         updateUser: (username: string, data: Partial<User>) =>
-            api.put<User>(`${base}/users/${encodeURIComponent(username)}`, data),
+            api.put<User | { message: string }>(`${base}/users/${encodeURIComponent(username)}`, data),
         deleteUser: (username: string) => api.delete<void>(`${base}/users/${encodeURIComponent(username)}`),
         bulkUsers: (usernames: string[], action: 'delete' | 'enable' | 'disable') =>
             api.post<{ success: number; failed: number; errors: string[] }>(`${base}/users/bulk`, {usernames, action}),
@@ -457,7 +457,7 @@ export function useAdminApi() {
         },
         scanMedia: () => api.post<void>(`${base}/media/scan`),
         updateMedia: (id: string, data: Partial<MediaItem>) =>
-            api.put<MediaItem>(`${base}/media/${encodeURIComponent(id)}`, data),
+            api.put<MediaItem | { message: string }>(`${base}/media/${encodeURIComponent(id)}`, data),
         deleteMedia: (id: string) => api.delete<void>(`${base}/media/${encodeURIComponent(id)}`),
         bulkMedia: (ids: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
             api.post<{ success: number; failed: number; errors: string[] }>(`${base}/media/bulk`, {ids, action, data}),
