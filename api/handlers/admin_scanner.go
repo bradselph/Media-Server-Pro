@@ -134,6 +134,7 @@ func (h *Handler) applyReviewActionToItem(ctx context.Context, action, id string
 		}
 		if setErr := h.media.SetMatureFlag(path, true, confidence, reasons); setErr != nil {
 			h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
+			return false
 		}
 		return true
 	}
@@ -142,6 +143,7 @@ func (h *Handler) applyReviewActionToItem(ctx context.Context, action, id string
 	}
 	if setErr := h.media.SetMatureFlag(path, false, 0, nil); setErr != nil {
 		h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
+		return false
 	}
 	return true
 }
