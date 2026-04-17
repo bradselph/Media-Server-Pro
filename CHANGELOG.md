@@ -1,5 +1,114 @@
 # Changelog
 
+## [1.5.0] - 2026-04-17 (minor)
+
+- feat(admin): add Claude-powered admin assistant module
+- fix(backend): cache-diverge — reject UpdateMetadata for unknown paths
+- fix(backend): delete-cleanup — purge media_chapters on media delete
+- chore(docs): clean up completed audit reports and screenshots
+- fix: improve error handling in admin handlers and media management
+- fix: correct GORM error checks, atomic collection delete, and broken smart playlist preview query
+- fix: guard nil config in detectCategory, fix analytics test field mismatch
+- fix: log close error in copyZipEntryToFile error path
+- fix: add 4 missing columns to user_preferences ON CONFLICT upsert
+- fix: persist duration and progress in playback_positions
+- fix: add missing indexes for playback_positions and validation_results
+- fix: add FK smart_playlists.user_id -> users(id) ON DELETE CASCADE
+- fix: add FK scan_results.path -> media_metadata(path) ON DELETE CASCADE
+- fix: add FK sessions.user_id -> users(id) ON DELETE CASCADE
+- fix: remove orphaned subtitle_lang column from user_preferences
+- fix: add duration and progress columns to playback_positions schema
+- fix: purge suggestion_view_history rows when media is deleted
+- fix: use struct copy pattern for cache getters to resolve shared-pointer races
+- fix: propagate JSON decode errors in mysql repos; add duration to OpenAPI schemas
+- fix: call config watchers synchronously in SetValuesBatch to match Update()
+- fix: deep-copy oldHistory rollback slice in RemoveWatchHistoryItem
+- fix: return user copies from cache getters to eliminate shared-pointer races
+- fix: rollback orphaned destination in crossStoreMove; route mature_reason to MatureReasons
+- fix: LogoutAdmin unconditionally revokes DB session; guard reserved metadata keys
+- fix: wrong error sentinel in UpdatePassword and lock held across DB calls in loadProfiles
+- fix: use explicit cancel() in DeleteMedia/RemoveMedia and deep-copy rollback slice
+- fix: return copies from GetMedia, GetMediaByID, ListMedia, ListMediaPaginated
+- fix: defer m.jobDone deletion until after wait in DeleteJob to prevent TOCTOU
+- fix: copy WatchHistory slice before enrichment in GetWatchHistory and ExportWatchHistory
+- fix: use in-memory cache for admin count in DeleteUser instead of ListUsers
+- fix: re-fetch metadata from map after lock re-acquisition in createMediaItem
+- fix: enforce UnauthStreamLimit for unauthenticated local media streams
+- fix: auto-detect category for remote-store media items like local items
+- fix: prevent duplicate HLS goroutine when job is still Pending
+- fix: copy StreamSession structs in GetActiveSessions to prevent data race
+- feat: fix mobile tap zone z-index and add prev/next track controls
+- fix: record PeakConcurrent atomically with session insertion
+- fix: prevent in-place mutation of playlist items when filtering mature content
+- fix: evict stale extractor segment cache entry on TTL expiry
+- fix: prevent deadlock in tryReuseExistingHLSOnDiskLocked
+- fix: populate usersByID cache in getOrLoadUser after login
+- fix: cross-validate chapter times and fix suggestions data races
+- fix: data race on rate limit header; goroutine leak in receiver stream push
+- fix: analytics completion rate stale on partial plays; TOCTOU stream limit; mature-item auth error
+- fix: smart playlist empty conditions returns all media; collection name/item validation gaps
+- fix: thumbnail duplicate job race, extractor stale-cache 404, receiver proxySem hot-reload
+- fix: delete stale DB rows on rename/move and make metadata save non-fatal (BUG-36); fix playlist dedup on load (BUG-35)
+- fix: handle fallback response shape in saveEdit for playlist update
+- fix: three backend correctness bugs in watch history, playlists, and duplicates
+- fix(upload): orphaned files on quota rollback + missing mp4/vob in allowlist
+- fix(player): four frontend correctness bugs
+- fix: two correctness bugs in HLS load and media move
+- fix(concurrency): three goroutine/lock safety fixes
+- fix(admin): fetch all playlists in admin tab; return empty arrays from receiver list endpoints
+- fix(hls): skip RecordAccess for failed/cancelled jobs to allow cleanup
+- fix(receiver): wrap PushCatalog full-replace delete+insert in a single DB transaction
+- fix(hls): eliminate TOCTOU in cleanInactiveJob between file removal and map entry deletion
+- fix(hls): wait for transcode goroutine to exit before removing output dir in DeleteJob
+- fix(player): skip restorePosition on HLS quality-switch loadedmetadata re-fires
+- fix(admin): bulk delete re-entrancy guard and loading state stays visible
+- fix(security): filter mature items from public playlists for unauthorized callers
+- fix(admin): show error state instead of infinite spinner when DB status fails to load
+- fix(player): guard startUpNextCountdown from duplicate timers and fix loop-all wrap
+- fix(player): tear down audio graph on media switch to avoid detached element binding
+- fix(security): fail-close extractor stream limit check when user lookup fails
+- fix(admin): separate poll intervals for binary vs source update to prevent stuck applying state
+- fix(admin): prevent stale background fetch from overwriting collection items
+- fix(security): eliminate checkMatureAccess fail-open on media lookup error
+- fix(admin): restore button loading indicator stays visible during restore
+- fix: tag filter normalization and formatBytes(0) returning fallback
+- fix: remote upload cleanup and audio visualizer draw loop
+- fix(hls): clear hlsLoading on fatal error, clear hlsActivated on mid-import disconnect
+- fix: three correctness bugs — preview stale data, modal re-open loop, silent DB failure
+- fix(media): hold RLock when copying metadata fields in createMediaItem
+- fix(profile): only clear revealed token banner when that token is revoked
+- fix(admin): add value-key to USelect in StreamingTab to emit number not object
+- fix(smart-playlists): parse duration/views conditions as numbers before binding
+- fix(admin): three bug fixes in admin panel components
+- fix(frontend): three bug fixes in player, playlists, and index pages
+- fix(scanner): RemoveByPath now deletes from results map as well as reviewQueue
+- security(hls): reject path traversal components in quality parameter
+- fix(upload): anonymous uploads fail with 'invalid user ID' when RequireAuth=false
+- security: restrict chapter write operations to admin role
+- fix(admin): remove unreachable Array.isArray branch in PlaylistsTab load()
+- fix(auth): stop double-counting failed login attempts for standard users
+- fix(frontend): correct addItem return type and capture hlsUrl before async awaits
+- fix(hls): return 503 (not 404) when master playlist requested before transcoding completes
+- fix: return 404 instead of 500 when AdminChangePassword target user not found
+- fix: correct quota_gb unit in GetStorageUsage anonymous response
+- refactor: replace interface{} with any across Go codebase (Go 1.18+)
+- fix: log silent failures in player secondary data loads
+- fix: stop view-cooldown sweeper ticker on handler shutdown
+- docs: mark all resolved/skipped issues across audit files (2026-04-15)
+- docs: mark SEC-004 resolved in security-audit-2026-04-14.md
+- fix: make APIToken.expires_at non-optional in TypeScript type
+- fix: always include expires_at in CreateAPIToken response
+- docs: mark BUG-007 resolved in audit-findings-2026-04-13.md
+- fix: remove unreliable CSV trailer write on send failure
+- docs: mark SEC-003 resolved in security-audit-2026-04-14.md
+- security: block /api/ and /extractor/ redirect targets in login page
+- docs: mark SEC-002 resolved in security-audit-2026-04-14.md
+- security: use models.RoleAdmin constant in API token handlers
+- fix(hls): delete DB record before removing in-memory job entry
+- fix(duration): backfill media_metadata.duration from validation_results on startup
+- fix(audit): 10 bugs from master audit — duration persistence, orphan cleanup, error handling, reactivity
+
+
 ## [1.4.0] - 2026-04-14 (minor)
 
 - fix(config): complete GetConfigMap coverage + hot-reload security/CSP/rate-limits
