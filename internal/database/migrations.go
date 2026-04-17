@@ -510,6 +510,32 @@ var tableDefs = []struct {
 				INDEX idx_collection_items_media (media_id),
 				INDEX idx_collection_items_position (collection_id, position)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+		{"claude_conversations", `
+			CREATE TABLE IF NOT EXISTS claude_conversations (
+				id          VARCHAR(64)  PRIMARY KEY,
+				user_id     VARCHAR(255) NOT NULL,
+				username    VARCHAR(255) NOT NULL,
+				title       VARCHAR(255) NOT NULL DEFAULT '',
+				mode        VARCHAR(32)  NOT NULL DEFAULT 'interactive',
+				model       VARCHAR(128) NOT NULL DEFAULT '',
+				created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_claude_conv_user (user_id),
+				INDEX idx_claude_conv_updated (updated_at)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+		{"claude_messages", `
+			CREATE TABLE IF NOT EXISTS claude_messages (
+				id              VARCHAR(64)  PRIMARY KEY,
+				conversation_id VARCHAR(64)  NOT NULL,
+				role            VARCHAR(32)  NOT NULL,
+				content         MEDIUMTEXT,
+				tool_calls      JSON,
+				tool_result     JSON,
+				created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				INDEX idx_claude_msg_conv (conversation_id),
+				INDEX idx_claude_msg_created (created_at),
+				FOREIGN KEY (conversation_id) REFERENCES claude_conversations(id) ON DELETE CASCADE
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	}
 
 // ensureSchema idempotently creates all required tables and columns.

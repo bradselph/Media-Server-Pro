@@ -30,6 +30,71 @@ type Config struct {
 	UI            UIConfig            `json:"ui"`
 	Downloader    DownloaderConfig    `json:"downloader"`
 	Storage       StorageConfig       `json:"storage"`
+	Claude        ClaudeConfig        `json:"claude"`
+}
+
+// ClaudeConfig holds settings for the Claude-powered admin assistant module.
+// The module gives authorized admins a live, tool-equipped assistant that can
+// read logs and config, run allowlisted shell commands, edit files in
+// configured paths, and (in Autonomous mode) act without per-step approval.
+type ClaudeConfig struct {
+	Enabled bool `json:"enabled"`
+
+	// APIKey is the Anthropic API key. Set via env (CLAUDE_API_KEY) or
+	// config.json; never echoed back to clients.
+	APIKey string `json:"api_key"`
+
+	// Model selects the Claude model (e.g. "claude-opus-4-7",
+	// "claude-sonnet-4-6", "claude-haiku-4-5-20251001"). Defaults to
+	// the latest Sonnet when empty.
+	Model string `json:"model"`
+
+	// Mode controls execution behavior: "advisory", "interactive", or
+	// "autonomous".
+	Mode string `json:"mode"`
+
+	// MaxTokens caps output tokens per turn.
+	MaxTokens int `json:"max_tokens"`
+
+	// SystemPrompt is appended to the built-in operational system prompt.
+	SystemPrompt string `json:"system_prompt"`
+
+	// AllowedTools is the explicit allowlist of Claude tool names. Empty = all
+	// registered tools are available.
+	AllowedTools []string `json:"allowed_tools"`
+
+	// AllowedShellCommands is the exact-match allowlist of program names the
+	// shell tool may invoke. Non-empty required for shell tool to function.
+	AllowedShellCommands []string `json:"allowed_shell_commands"`
+
+	// AllowedPaths restricts file reads/writes to absolute path prefixes
+	// (or paths under the server working directory). Empty disables file tools.
+	AllowedPaths []string `json:"allowed_paths"`
+
+	// AllowedServices lists systemd/service names the service-restart tool
+	// may target. Empty disables service restart.
+	AllowedServices []string `json:"allowed_services"`
+
+	// RequireConfirmForWrites forces admin confirmation for write-type tools
+	// (file_write, shell_exec, service_restart) regardless of mode. Highly
+	// recommended to leave enabled in production.
+	RequireConfirmForWrites bool `json:"require_confirm_for_writes"`
+
+	// MaxToolCallsPerTurn caps how many tools Claude can invoke before the
+	// server forces a stop. Defaults to 16.
+	MaxToolCallsPerTurn int `json:"max_tool_calls_per_turn"`
+
+	// RateLimitPerMinute limits how many chat turns any admin can send; 0 = no limit.
+	RateLimitPerMinute int `json:"rate_limit_per_minute"`
+
+	// KillSwitch disables all chat + tool execution when true, regardless of Enabled.
+	KillSwitch bool `json:"kill_switch"`
+
+	// RequestTimeout bounds each API call. Default 120s.
+	RequestTimeout time.Duration `json:"request_timeout"`
+
+	// HistoryRetentionDays prunes conversations older than this. 0 = keep forever.
+	HistoryRetentionDays int `json:"history_retention_days"`
 }
 
 // StorageConfig selects and configures the file storage backend.

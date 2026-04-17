@@ -43,6 +43,21 @@ func DefaultConfig() *Config {
 		UI:            UIConfig{ItemsPerPage: 48, MobileItemsPerPage: 24, MobileGridColumns: 2, FeedMaxItems: 50, FeedDefaultItems: 20},
 		Downloader:    defaultDownloaderConfig(),
 		Storage:       StorageConfig{Backend: "local"},
+		Claude:        defaultClaudeConfig(),
+	}
+}
+
+func defaultClaudeConfig() ClaudeConfig {
+	return ClaudeConfig{
+		Enabled:                 false,
+		Model:                   "claude-sonnet-4-6",
+		Mode:                    "interactive",
+		MaxTokens:               4096,
+		MaxToolCallsPerTurn:     16,
+		RequireConfirmForWrites: true,
+		RateLimitPerMinute:      30,
+		RequestTimeout:          120 * time.Second,
+		HistoryRetentionDays:    30,
 	}
 }
 
