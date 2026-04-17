@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { ClaudePublicConfig, ClaudeConfigUpdate } from '~/composables/useApiEndpoints'
 
+const emit = defineEmits<{ (e: 'config-changed'): void }>()
+
 const adminApi = useAdminApi()
 const toast = useToast()
 
@@ -64,6 +66,7 @@ async function save() {
     toast.add({ title: 'Claude settings saved', color: 'success', icon: 'i-lucide-check' })
     draft.value.api_key = ''
     draft.value.web_login_token = ''
+    emit('config-changed')
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
   } finally {
