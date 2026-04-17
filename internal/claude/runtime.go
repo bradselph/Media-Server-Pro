@@ -276,6 +276,12 @@ func (m *Module) invokeTool(ctx context.Context, tc ToolCall, rc *RunContext, mo
 
 	// Interactive mode OR (autonomous + RequireConfirmForWrites): gate writes.
 	needConfirm := tool.IsWrite() && (mode == ModeInteractive || rc.Cfg.RequireConfirmForWrites)
+	// Destructive actions (e.g. service stop/restart) always require confirmation.
+	if !needConfirm {
+		if dc, ok := tool.(DestructiveChecker); ok && dc.IsDestructiveInvocation(tc.Input) {
+			needConfirm = true
+		}
+	}
 	if needConfirm {
 		if _, ok := approved[tc.ID]; !ok {
 			return "", true, nil
@@ -295,10 +301,16 @@ func (m *Module) invokeTool(ctx context.Context, tc ToolCall, rc *RunContext, mo
 
 // auditToolCall records a tool execution in the admin audit log.
 func (m *Module) auditToolCall(ctx context.Context, rc *RunContext, tc *ToolCall, success bool) {
+	const auditOutputCap = 2048
+	outputPreview := tc.Output
+	if len(outputPreview) > auditOutputCap {
+		outputPreview = outputPreview[:auditOutputCap] + "…[truncated]"
+	}
 	details := map[string]any{
-		"tool":        tc.Name,
-		"input":       redact(string(tc.Input)),
-		"output_size": len(tc.Output),
+		"tool":           tc.Name,
+		"input":          redact(string(tc.Input)),
+		"output_size":    len(tc.Output),
+		"output_preview": redact(outputPreview),
 	}
 	if tc.Error != "" {
 		details["error"] = tc.Error

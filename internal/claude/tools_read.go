@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -365,6 +366,9 @@ func (t *readFileTool) Execute(_ context.Context, input json.RawMessage, rc *Run
 	}
 	if p.MaxBytes <= 0 || p.MaxBytes > 1<<20 {
 		p.MaxBytes = 64 * 1024
+	}
+	if info, err := os.Lstat(p.Path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("refusing to read through a symlink")
 	}
 	f, err := os.Open(p.Path) //nolint:gosec // path validated against allowlist
 	if err != nil {

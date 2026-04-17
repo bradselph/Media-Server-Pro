@@ -22,6 +22,13 @@ type Tool interface {
 	Execute(ctx context.Context, input json.RawMessage, rc *RunContext) (string, error)
 }
 
+// DestructiveChecker is an optional interface a Tool can implement to signal
+// that a specific invocation is destructive and must be confirmed regardless
+// of the operational mode (advisory/interactive/autonomous).
+type DestructiveChecker interface {
+	IsDestructiveInvocation(input json.RawMessage) bool
+}
+
 // RunContext is passed to every tool execution. It carries the slice of config
 // and identity bits a tool needs without handing over the whole Module.
 type RunContext struct {

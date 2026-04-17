@@ -166,6 +166,17 @@ func (t *serviceRestartTool) InputSchema() map[string]any {
 
 func (t *serviceRestartTool) IsWrite() bool { return true }
 
+// IsDestructiveInvocation gates stop and restart actions regardless of mode.
+func (t *serviceRestartTool) IsDestructiveInvocation(input json.RawMessage) bool {
+	var p struct {
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal(input, &p); err != nil {
+		return false
+	}
+	return p.Action == "stop" || p.Action == "restart"
+}
+
 func (t *serviceRestartTool) Execute(ctx context.Context, input json.RawMessage, rc *RunContext) (string, error) {
 	var p struct {
 		Service string `json:"service"`

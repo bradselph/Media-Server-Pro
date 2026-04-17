@@ -737,7 +737,106 @@ export function useAdminApi() {
                 action,
                 admin_notes: adminNotes ?? ''
             }),
+
+        // Claude admin assistant
+        getClaudeConfig: () => api.get<ClaudePublicConfig>(`${base}/claude/config`),
+        updateClaudeConfig: (data: Partial<ClaudeConfigUpdate>) =>
+            api.put<ClaudePublicConfig>(`${base}/claude/config`, data),
+        setClaudeKillSwitch: (on: boolean) =>
+            api.post<{ kill_switch: boolean }>(`${base}/claude/kill-switch`, { on }),
+        listClaudeConversations: (limit = 50) =>
+            api.get<ClaudeConversation[]>(`${base}/claude/conversations?limit=${limit}`),
+        getClaudeConversation: (id: string) =>
+            api.get<{ conversation: ClaudeConversation; messages: ClaudeMessage[] }>(`${base}/claude/conversations/${encodeURIComponent(id)}`),
+        deleteClaudeConversation: (id: string) =>
+            api.delete<{ deleted: string }>(`${base}/claude/conversations/${encodeURIComponent(id)}`),
     }
+}
+
+// ── Claude types ──────────────────────────────────────────────────────────────
+
+export interface ClaudePublicConfig {
+    enabled: boolean
+    api_key_set: boolean
+    model: string
+    mode: string
+    max_tokens: number
+    system_prompt: string
+    allowed_tools: string[]
+    allowed_shell_commands: string[]
+    allowed_paths: string[]
+    allowed_services: string[]
+    require_confirm_for_writes: boolean
+    max_tool_calls_per_turn: number
+    rate_limit_per_minute: number
+    kill_switch: boolean
+    history_retention_days: number
+    available_tools: string[]
+}
+
+export interface ClaudeConfigUpdate {
+    enabled?: boolean
+    api_key?: string
+    model?: string
+    mode?: string
+    max_tokens?: number
+    system_prompt?: string
+    allowed_tools?: string[]
+    allowed_shell_commands?: string[]
+    allowed_paths?: string[]
+    allowed_services?: string[]
+    require_confirm_for_writes?: boolean
+    max_tool_calls_per_turn?: number
+    rate_limit_per_minute?: number
+    kill_switch?: boolean
+    history_retention_days?: number
+}
+
+export interface ClaudeConversation {
+    id: string
+    user_id: string
+    username: string
+    title: string
+    mode: string
+    model: string
+    created_at: string
+    updated_at: string
+}
+
+export interface ClaudeToolCall {
+    id: string
+    name: string
+    input: unknown
+    output?: string
+    error?: string
+    requires_confirm?: boolean
+}
+
+export interface ClaudeMessage {
+    id: string
+    conversation_id: string
+    role: 'user' | 'assistant' | 'tool'
+    content: string
+    tool_calls?: ClaudeToolCall[]
+    tool_result?: ClaudeToolCall
+    created_at: string
+}
+
+export interface ClaudeEvent {
+    type: 'delta' | 'tool_call' | 'tool_result' | 'tool_pending' | 'final' | 'error' | 'info'
+    text?: string
+    tool_call?: ClaudeToolCall
+    conversation_id?: string
+    mode?: string
+    stop_reason?: string
+    error?: string
+}
+
+export interface ClaudeChatRequest {
+    conversation_id?: string
+    message: string
+    mode_override?: string
+    approved_tool_calls?: string[]
 }
 
 // ── Analytics (admin) ─────────────────────────────────────────────────────────
