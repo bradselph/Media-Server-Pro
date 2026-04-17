@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.0] - 2026-04-17 (minor)
+
+- fix(claude): detach chat turn from SSE request context
+- fix(claude): stable message ordering via seq column — fix tool_result/tool_use mismatch
+- feat(claude): autonomous VPS admin — remove permission gates, expand system prompt
+- feat(claude): wire FEATURE_CLAUDE env toggle and fix enable precedence
+- feat(admin): add Claude module feature toggle integration
+- feat(claude): integrate Claude module with feature toggle system
+- feat(claude): expose Claude config in admin GetConfigMap
+- feat(claude): add web login token support and improve config handling
+- refactor(claude): organize imports and improve documentation
+- fix(claude): improve error handling and mutex safety
+- feat(admin): add Claude AI integration module
+
+
 ## [1.5.0] - 2026-04-17 (minor)
 
 - feat(admin): add Claude-powered admin assistant module
