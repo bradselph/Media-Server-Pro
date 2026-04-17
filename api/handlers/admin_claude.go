@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -213,11 +214,18 @@ func (h *Handler) AdminClaudeChat(c *gin.Context) {
 		}
 	}
 
-	convID, _, err := h.claude.ChatTurn(c.Request.Context(), session.UserID, session.Username, c.ClientIP(), req, writeEvent)
+	// Use a context that is NOT canceled when the SSE client disconnects.
+	// If the request context cancels mid-turn, in-flight DB writes (appendMessage,
+	// audit log) would fail, corrupting the conversation history. The turn runs to
+	// completion regardless of client state; the emitter simply stops writing if
+	// the connection has gone away.
+	turnCtx := context.WithoutCancel(c.Request.Context())
+
+	convID, _, err := h.claude.ChatTurn(turnCtx, session.UserID, session.Username, c.ClientIP(), req, writeEvent)
 
 	// Audit the turn itself (not each tool — tools audit independently).
 	if h.admin != nil {
-		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+		h.admin.LogAction(turnCtx, &admin.AuditLogParams{
 			UserID:    session.UserID,
 			Username:  session.Username,
 			Action:    "claude.chat",
