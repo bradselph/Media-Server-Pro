@@ -26,6 +26,11 @@ func (Conversation) TableName() string { return "claude_conversations" }
 type Message struct {
 	ID             string          `json:"id" gorm:"primaryKey;size:64"`
 	ConversationID string          `json:"conversation_id" gorm:"size:64;index;column:conversation_id"`
+	// Seq is a per-conversation monotonic counter used for stable ordering.
+	// created_at has second-level granularity in MySQL which is not fine enough
+	// when multiple messages land in the same second (e.g. assistant + tool
+	// results). Never rely on created_at for ordering.
+	Seq            int64           `json:"seq" gorm:"index"`
 	Role           string          `json:"role" gorm:"size:32"`
 	Content        string          `json:"content" gorm:"type:mediumtext"`
 	ToolCalls      json.RawMessage `json:"tool_calls,omitempty" gorm:"type:json"`
@@ -62,10 +67,11 @@ type ChatRequest struct {
 }
 
 // PublicConfig is the client-safe view of ClaudeConfig returned to the admin UI.
-// The raw API key is never serialized; only APIKeySet is returned.
+// Raw credentials are never serialized; only the *Set booleans are returned.
 type PublicConfig struct {
 	Enabled                 bool     `json:"enabled"`
 	APIKeySet               bool     `json:"api_key_set"`
+	WebLoginTokenSet        bool     `json:"web_login_token_set"`
 	Model                   string   `json:"model"`
 	Mode                    string   `json:"mode"`
 	MaxTokens               int      `json:"max_tokens"`

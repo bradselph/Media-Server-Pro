@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -44,9 +45,10 @@ type Module struct {
 	db       *database.Module
 	adminMod *adminLogger
 
-	clientMu sync.RWMutex
-	client   *anthropic.Client
-	apiKey   string // last used API key; compared to detect rotation
+	clientMu      sync.RWMutex
+	client        *anthropic.Client
+	apiKey        string // last used API key; compared to detect rotation
+	webLoginToken string // last used web login token; compared to detect rotation
 
 	toolsMu sync.RWMutex
 	tools   map[string]Tool
@@ -144,25 +146,32 @@ func (m *Module) Health() models.HealthStatus {
 
 func (m *Module) setHealth(ok bool, msg string) {
 	m.healthMu.Lock()
+	defer m.healthMu.Unlock()
 	m.healthy = ok
 	m.healthMsg = msg
-	m.healthMu.Unlock()
 }
 
 // ensureClient lazy-initializes the Anthropic SDK client. Re-creates the
-// client when the API key changes so rotations take effect immediately.
+// client when credentials change so rotations take effect immediately.
+// APIKey (x-api-key header) takes precedence over WebLoginToken (Bearer).
 func (m *Module) ensureClient(c config.ClaudeConfig) error {
-	if c.APIKey == "" {
-		return errors.New("CLAUDE_API_KEY is not set")
+	if c.APIKey == "" && c.WebLoginToken == "" {
+		return errors.New("no API key or web login token configured")
 	}
 	m.clientMu.Lock()
 	defer m.clientMu.Unlock()
-	if m.client != nil && m.apiKey == c.APIKey {
+	if m.client != nil && m.apiKey == c.APIKey && m.webLoginToken == c.WebLoginToken {
 		return nil
 	}
-	cli := anthropic.NewClient(option.WithAPIKey(c.APIKey))
+	var cli anthropic.Client
+	if c.APIKey != "" {
+		cli = anthropic.NewClient(option.WithAPIKey(c.APIKey))
+	} else {
+		cli = anthropic.NewClient(option.WithAuthToken(c.WebLoginToken))
+	}
 	m.client = &cli
 	m.apiKey = c.APIKey
+	m.webLoginToken = c.WebLoginToken
 	return nil
 }
 
@@ -197,12 +206,7 @@ func (m *Module) toolEnabledForConfig(name string, c config.ClaudeConfig) bool {
 	if len(c.AllowedTools) == 0 {
 		return true
 	}
-	for _, a := range c.AllowedTools {
-		if a == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.AllowedTools, name)
 }
 
 // PublicConfig returns the client-safe config view.
@@ -211,6 +215,7 @@ func (m *Module) PublicConfig() PublicConfig {
 	return PublicConfig{
 		Enabled:                 c.Enabled,
 		APIKeySet:               strings.TrimSpace(c.APIKey) != "",
+		WebLoginTokenSet:        strings.TrimSpace(c.WebLoginToken) != "",
 		Model:                   c.Model,
 		Mode:                    c.Mode,
 		MaxTokens:               c.MaxTokens,
@@ -237,11 +242,18 @@ func (m *Module) UpdateSettings(updates map[string]any) error {
 		switch k {
 		case "enabled":
 			if b, ok := v.(bool); ok {
-				batch["claude.enabled"] = b
+				// Drive through the feature-toggle master so it is consistent with
+				// all other modules. syncFeatureToggles will propagate the value to
+				// claude.enabled automatically after SetValuesBatch returns.
+				batch["features.enable_claude"] = b
 			}
 		case "api_key":
 			if s, ok := v.(string); ok {
 				batch["claude.api_key"] = s
+			}
+		case "web_login_token":
+			if s, ok := v.(string); ok {
+				batch["claude.web_login_token"] = s
 			}
 		case "model":
 			if s, ok := v.(string); ok {
@@ -379,7 +391,7 @@ func (m *Module) GetConversation(ctx context.Context, userID, id string) (*Conve
 	var msgs []Message
 	if err := m.db.GORM().WithContext(ctx).
 		Where("conversation_id = ?", id).
-		Order("created_at ASC").
+		Order("seq ASC, created_at ASC").
 		Find(&msgs).Error; err != nil {
 		return nil, nil, err
 	}
@@ -429,11 +441,35 @@ func (m *Module) createConversation(ctx context.Context, userID, username, title
 	return c, nil
 }
 
+// updateToolResult patches the tool_result column of an existing message. Used
+// when an admin approves a previously-gated tool call so the stored record
+// reflects the actual execution result rather than the pending placeholder.
+func (m *Module) updateToolResult(ctx context.Context, msgID string, tc *ToolCall) error {
+	b, err := json.Marshal(tc)
+	if err != nil {
+		return err
+	}
+	return m.db.GORM().WithContext(ctx).
+		Model(&Message{}).
+		Where("id = ?", msgID).
+		Update("tool_result", b).Error
+}
+
 // appendMessage persists a single conversation message.
+// Seq is assigned here by reading MAX(seq) for the conversation so that messages
+// retain insertion order regardless of created_at clock resolution.
 func (m *Module) appendMessage(ctx context.Context, convID, role, content string, toolCalls, toolResult json.RawMessage) error {
+	var maxSeq int64
+	m.db.GORM().WithContext(ctx).
+		Model(&Message{}).
+		Where("conversation_id = ?", convID).
+		Select("COALESCE(MAX(seq), 0)").
+		Scan(&maxSeq)
+
 	msg := &Message{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
+		Seq:            maxSeq + 1,
 		Role:           role,
 		Content:        content,
 		ToolCalls:      toolCalls,
@@ -460,30 +496,44 @@ func hostIdentity() string {
 }
 
 // buildSystemPrompt produces the system prompt that frames the assistant's
-// role and operational boundaries. Appended to the admin's custom prompt.
+// role and operational boundaries.
 func (m *Module) buildSystemPrompt(c config.ClaudeConfig, mode string) string {
 	var b strings.Builder
-	b.WriteString("You are an operations assistant embedded in Media Server Pro 4, running on host ")
+	b.WriteString("You are the autonomous self-repairing systems administrator for Media Server Pro 4, deployed on host ")
 	b.WriteString(hostIdentity())
-	b.WriteString(".\n\nYour job is to help the signed-in administrator observe, diagnose, and fix issues in the live deployment. ")
-	b.WriteString("You have direct, read-level access to logs, running config, system info, and files in an allowlisted set of paths. ")
-	b.WriteString("You can also execute allowlisted shell commands and restart allowlisted services.\n\n")
-	fmt.Fprintf(&b, "Current operational mode: %s.\n", mode)
+	b.WriteString(".\n\n")
+	b.WriteString("## Your role\n")
+	b.WriteString("You have full, unrestricted access to this VPS. Your purpose is to keep the server healthy, self-heal failures, ")
+	b.WriteString("apply fixes, manage deployments, and perform any administrative task the operator asks — without hand-holding. ")
+	b.WriteString("You are the root-level operator of this machine. Act with that authority and responsibility.\n\n")
+	b.WriteString("## Deployment context\n")
+	b.WriteString("- Stack: Go backend (media-server-pro binary), Nuxt/Vue 3 frontend (nuxt-ui), MySQL 8, systemd services\n")
+	b.WriteString("- App dir: /home/deployment/media-server-pro (or UPDATER_APP_DIR if set)\n")
+	b.WriteString("- Deploy script: bash deploy.sh --dev (always use this, never raw rsync/ssh shortcuts)\n")
+	b.WriteString("- Live domain: xmodsxtreme.com\n")
+	b.WriteString("- Config: .env file in app dir; hot-reload via admin API\n")
+	b.WriteString("- Logs: LOGS_DIR (default ./logs); also journalctl -u media-server-pro\n")
+	b.WriteString("- Downloader sidecar: http://localhost:4000 (DOWNLOADER_URL)\n")
+	b.WriteString("- Key binaries: ffmpeg, mysql, systemctl, git, go, node, npm\n\n")
+	fmt.Fprintf(&b, "## Operational mode: %s\n", mode)
 	switch mode {
 	case ModeAdvisory:
-		b.WriteString("- Advisory mode: propose diagnoses and fixes as text; DO NOT invoke any tools that modify state (file_write, shell_exec, service_restart). Read tools are permitted.\n")
+		b.WriteString("Advisory: diagnose and propose fixes in text only. Do not invoke write/exec tools.\n")
 	case ModeAutonomous:
-		b.WriteString("- Autonomous mode: you may execute allowlisted tools directly. Still prefer read-only investigation first, then smallest reversible change. Narrate every action.\n")
+		b.WriteString("Autonomous: execute tools directly without waiting for confirmation. Investigate first, then act. ")
+		b.WriteString("Narrate each action briefly. Proceed through multi-step repairs end-to-end.\n")
 	default:
-		b.WriteString("- Interactive mode: you may call read tools directly; for any tool that modifies state the server will gate execution behind admin approval. Explain what you intend before each write.\n")
+		b.WriteString("Interactive: read tools run freely; write/exec tools are gated for admin approval. ")
+		b.WriteString("State intent clearly before each write.\n")
 	}
-	b.WriteString("\nOperational rules:\n")
-	b.WriteString("- Never print secrets (API keys, passwords, session tokens). Assume redaction is imperfect.\n")
-	b.WriteString("- Prefer the smallest, reversible change. State your hypothesis before acting.\n")
-	b.WriteString("- When a tool returns an error, read it carefully; don't retry the same failing call.\n")
-	b.WriteString("- If an action would affect running streams or user data, call it out explicitly and ask for confirmation.\n")
+	b.WriteString("\n## Core rules\n")
+	b.WriteString("- Never print secrets, API keys, passwords, or session tokens in plain text.\n")
+	b.WriteString("- When a tool returns an error, diagnose before retrying — don't repeat a failing call unchanged.\n")
+	b.WriteString("- For database operations prefer SELECT before UPDATE/DELETE; show a plan for destructive queries.\n")
+	b.WriteString("- systemctl restart media-server-pro will briefly drop active streams — only do this if necessary.\n")
+	b.WriteString("- You have full shell and file access. Use it confidently to get the job done.\n")
 	if s := strings.TrimSpace(c.SystemPrompt); s != "" {
-		b.WriteString("\nOperator-provided guidance:\n")
+		b.WriteString("\n## Operator notes\n")
 		b.WriteString(s)
 		b.WriteString("\n")
 	}

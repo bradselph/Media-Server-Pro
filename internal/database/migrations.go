@@ -527,12 +527,14 @@ var tableDefs = []struct {
 			CREATE TABLE IF NOT EXISTS claude_messages (
 				id              VARCHAR(64)  PRIMARY KEY,
 				conversation_id VARCHAR(64)  NOT NULL,
+				seq             BIGINT       NOT NULL DEFAULT 0,
 				role            VARCHAR(32)  NOT NULL,
 				content         MEDIUMTEXT,
 				tool_calls      JSON,
 				tool_result     JSON,
 				created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
 				INDEX idx_claude_msg_conv (conversation_id),
+				INDEX idx_claude_msg_seq (conversation_id, seq),
 				INDEX idx_claude_msg_created (created_at),
 				FOREIGN KEY (conversation_id) REFERENCES claude_conversations(id) ON DELETE CASCADE
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
@@ -642,6 +644,9 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		// PlaylistItem schema alignment: GORM model expects id and media_id columns
 		{"playlist_items", "id", "VARCHAR(255) NOT NULL DEFAULT '' FIRST"},
 		{"playlist_items", "media_id", "VARCHAR(255) NOT NULL DEFAULT '' AFTER playlist_id"},
+		// claude_messages: seq column for stable insertion-order sorting
+		// (created_at has second-level granularity which is too coarse)
+		{"claude_messages", "seq", "BIGINT NOT NULL DEFAULT 0 AFTER conversation_id"},
 	}
 	for _, col := range columns {
 		if err := m.ensureColumn(ctx, col.table, col.column, col.def); err != nil {
@@ -675,6 +680,9 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 		// "get all positions for user X" avoid a full table scan.
 		{"playback_positions", "idx_positions_user",
 			"ALTER TABLE playback_positions ADD INDEX idx_positions_user (user_id)"},
+		// claude_messages: compound index for efficient ORDER BY seq ASC per conversation
+		{"claude_messages", "idx_claude_msg_seq",
+			"ALTER TABLE claude_messages ADD INDEX idx_claude_msg_seq (conversation_id, seq)"},
 		// validation_results is filtered by status in health-check and backfill queries.
 		{"validation_results", "idx_validation_status",
 			"ALTER TABLE validation_results ADD INDEX idx_validation_status (status)"},

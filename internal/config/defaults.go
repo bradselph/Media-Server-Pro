@@ -51,10 +51,10 @@ func defaultClaudeConfig() ClaudeConfig {
 	return ClaudeConfig{
 		Enabled:                 false,
 		Model:                   "claude-sonnet-4-6",
-		Mode:                    "interactive",
+		Mode:                    "autonomous",
 		MaxTokens:               4096,
 		MaxToolCallsPerTurn:     16,
-		RequireConfirmForWrites: true,
+		RequireConfirmForWrites: false,
 		RateLimitPerMinute:      30,
 		RequestTimeout:          120 * time.Second,
 		HistoryRetentionDays:    30,
@@ -316,6 +316,7 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableDuplicateDetection: true,
 		EnableHuggingFace:        false,
 		EnableDownloader:         false,
+		EnableClaude:             false,
 	}
 }
 

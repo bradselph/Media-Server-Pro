@@ -22,6 +22,13 @@ type Tool interface {
 	Execute(ctx context.Context, input json.RawMessage, rc *RunContext) (string, error)
 }
 
+// DestructiveChecker is an optional interface a Tool can implement to signal
+// that a specific invocation is destructive and must be confirmed regardless
+// of the operational mode (advisory/interactive/autonomous).
+type DestructiveChecker interface {
+	IsDestructiveInvocation(input json.RawMessage) bool
+}
+
 // RunContext is passed to every tool execution. It carries the slice of config
 // and identity bits a tool needs without handing over the whole Module.
 type RunContext struct {
@@ -67,25 +74,22 @@ func (r *rateLimiter) allow(userID string, limit int) bool {
 	return true
 }
 
-// validateAllowedPath returns an error if target is not contained within one
-// of the configured AllowedPaths prefixes. An empty AllowedPaths list denies
-// all paths.
+// validateAllowedPath returns an error if target is not within AllowedPaths.
+// An empty list means allow all paths (unrestricted). A non-empty list acts as
+// a prefix allowlist — target must be under at least one listed prefix.
 func validateAllowedPath(target string, allowed []string) error {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return errors.New("path is empty")
 	}
 	if len(allowed) == 0 {
-		return errors.New("no allowed paths are configured")
+		return nil // empty = allow all
 	}
 	for _, p := range allowed {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		// Prefix match — operators are expected to write absolute paths or
-		// explicit relative prefixes (e.g. "./logs"). We intentionally do NOT
-		// resolve symlinks here; the OS will enforce final permission.
 		if target == p || strings.HasPrefix(target, strings.TrimRight(p, "/")+"/") {
 			return nil
 		}
@@ -93,14 +97,15 @@ func validateAllowedPath(target string, allowed []string) error {
 	return errors.New("path is outside allowed paths")
 }
 
-// validateAllowedCommand returns an error if cmd is not exactly in allowed.
+// validateAllowedCommand returns an error if cmd is not in the allowlist.
+// An empty list means allow all commands (unrestricted).
 func validateAllowedCommand(cmd string, allowed []string) error {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
 		return errors.New("command is empty")
 	}
 	if len(allowed) == 0 {
-		return errors.New("no allowed shell commands are configured")
+		return nil // empty = allow all
 	}
 	for _, a := range allowed {
 		if strings.TrimSpace(a) == cmd {
@@ -110,14 +115,15 @@ func validateAllowedCommand(cmd string, allowed []string) error {
 	return errors.New("command is not in the allowlist")
 }
 
-// validateAllowedService returns an error if svc is not in allowed.
+// validateAllowedService returns an error if svc is not in the allowlist.
+// An empty list means allow all services (unrestricted).
 func validateAllowedService(svc string, allowed []string) error {
 	svc = strings.TrimSpace(svc)
 	if svc == "" {
 		return errors.New("service is empty")
 	}
 	if len(allowed) == 0 {
-		return errors.New("no allowed services are configured")
+		return nil // empty = allow all
 	}
 	for _, a := range allowed {
 		if strings.TrimSpace(a) == svc {
