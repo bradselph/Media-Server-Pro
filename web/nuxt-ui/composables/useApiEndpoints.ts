@@ -744,6 +744,7 @@ export function useAdminApi() {
             api.put<ClaudePublicConfig>(`${base}/claude/config`, data),
         setClaudeKillSwitch: (on: boolean) =>
             api.post<{ kill_switch: boolean }>(`${base}/claude/kill-switch`, { on }),
+        getClaudeAuthStatus: () => api.get<ClaudeAuthStatus>(`${base}/claude/auth-status`),
         listClaudeConversations: (limit = 50) =>
             api.get<ClaudeConversation[]>(`${base}/claude/conversations?limit=${limit}`),
         getClaudeConversation: (id: string) =>
@@ -757,41 +758,40 @@ export function useAdminApi() {
 
 export interface ClaudePublicConfig {
     enabled: boolean
-    api_key_set: boolean
-    web_login_token_set: boolean
+    binary_path: string
+    workdir: string
     model: string
     mode: string
     max_tokens: number
     system_prompt: string
-    allowed_tools: string[]
-    allowed_shell_commands: string[]
-    allowed_paths: string[]
-    allowed_services: string[]
     require_confirm_for_writes: boolean
     max_tool_calls_per_turn: number
     rate_limit_per_minute: number
     kill_switch: boolean
     history_retention_days: number
-    available_tools: string[]
 }
 
 export interface ClaudeConfigUpdate {
     enabled?: boolean
-    api_key?: string
-    web_login_token?: string
+    binary_path?: string
+    workdir?: string
     model?: string
     mode?: string
     max_tokens?: number
     system_prompt?: string
-    allowed_tools?: string[]
-    allowed_shell_commands?: string[]
-    allowed_paths?: string[]
-    allowed_services?: string[]
     require_confirm_for_writes?: boolean
     max_tool_calls_per_turn?: number
     rate_limit_per_minute?: number
     kill_switch?: boolean
     history_retention_days?: number
+}
+
+export interface ClaudeAuthStatus {
+    installed: boolean
+    binary_path?: string
+    version?: string
+    authenticated: boolean
+    message?: string
 }
 
 export interface ClaudeConversation {
