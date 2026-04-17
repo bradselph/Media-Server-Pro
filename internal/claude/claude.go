@@ -242,7 +242,10 @@ func (m *Module) UpdateSettings(updates map[string]any) error {
 		switch k {
 		case "enabled":
 			if b, ok := v.(bool); ok {
-				batch["claude.enabled"] = b
+				// Drive through the feature-toggle master so it is consistent with
+				// all other modules. syncFeatureToggles will propagate the value to
+				// claude.enabled automatically after SetValuesBatch returns.
+				batch["features.enable_claude"] = b
 			}
 		case "api_key":
 			if s, ok := v.(string); ok {

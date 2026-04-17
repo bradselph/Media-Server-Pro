@@ -316,6 +316,7 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableDuplicateDetection: true,
 		EnableHuggingFace:        false,
 		EnableDownloader:         false,
+		EnableClaude:             false,
 	}
 }
 

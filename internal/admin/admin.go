@@ -373,6 +373,7 @@ func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
 		"enable_crawler":            cfg.Features.EnableCrawler,
 		"enable_duplicate_detection": cfg.Features.EnableDuplicateDetection,
 		"enable_downloader":         cfg.Features.EnableDownloader,
+		"enable_claude":             cfg.Features.EnableClaude,
 	}
 }
 
