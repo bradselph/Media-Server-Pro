@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ClaudePublicConfig } from '~/composables/useApiEndpoints'
+import type { ClaudePublicConfig, ClaudeAuthStatus } from '~/composables/useApiEndpoints'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -12,12 +12,18 @@ const subTabs = [
 ]
 
 const config = ref<ClaudePublicConfig | null>(null)
+const authStatus = ref<ClaudeAuthStatus | null>(null)
 const loading = ref(true)
 const enabling = ref(false)
 
 async function loadConfig() {
   try {
-    config.value = await adminApi.getClaudeConfig()
+    const [cfg, auth] = await Promise.all([
+      adminApi.getClaudeConfig(),
+      adminApi.getClaudeAuthStatus().catch(() => null),
+    ])
+    config.value = cfg
+    authStatus.value = auth
   } catch {
     // non-fatal — tab still renders
   } finally {
@@ -49,8 +55,8 @@ async function disable() {
   }
 }
 
-const hasCredentials = computed(() =>
-  config.value ? (config.value.api_key_set || config.value.web_login_token_set) : false
+const cliReady = computed(() =>
+  Boolean(authStatus.value?.installed && authStatus.value?.authenticated)
 )
 
 onMounted(loadConfig)
