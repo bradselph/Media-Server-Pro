@@ -17,6 +17,9 @@ func (m *Manager) applyClaudeEnvOverrides() {
 	if val := envGetStr("CLAUDE_API_KEY", "ANTHROPIC_API_KEY"); val != "" {
 		c.APIKey = val
 	}
+	if val := envGetStr("CLAUDE_WEB_LOGIN_TOKEN"); val != "" {
+		c.WebLoginToken = val
+	}
 	if val := envGetStr("CLAUDE_MODEL"); val != "" {
 		c.Model = val
 	}

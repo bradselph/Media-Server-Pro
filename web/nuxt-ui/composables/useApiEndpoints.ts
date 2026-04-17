@@ -758,6 +758,7 @@ export function useAdminApi() {
 export interface ClaudePublicConfig {
     enabled: boolean
     api_key_set: boolean
+    web_login_token_set: boolean
     model: string
     mode: string
     max_tokens: number
@@ -777,6 +778,7 @@ export interface ClaudePublicConfig {
 export interface ClaudeConfigUpdate {
     enabled?: boolean
     api_key?: string
+    web_login_token?: string
     model?: string
     mode?: string
     max_tokens?: number

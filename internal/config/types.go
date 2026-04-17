@@ -44,6 +44,12 @@ type ClaudeConfig struct {
 	// config.json; never echoed back to clients.
 	APIKey string `json:"api_key"`
 
+	// WebLoginToken is an Anthropic OAuth / user-access token (Authorization:
+	// Bearer). Useful for admins who authenticate via claude.ai rather than
+	// holding a direct API key. Mutually exclusive with APIKey; APIKey takes
+	// precedence when both are set. Never echoed back to clients.
+	WebLoginToken string `json:"web_login_token"`
+
 	// Model selects the Claude model (e.g. "claude-opus-4-7",
 	// "claude-sonnet-4-6", "claude-haiku-4-5-20251001"). Defaults to
 	// the latest Sonnet when empty.

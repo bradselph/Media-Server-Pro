@@ -62,10 +62,11 @@ type ChatRequest struct {
 }
 
 // PublicConfig is the client-safe view of ClaudeConfig returned to the admin UI.
-// The raw API key is never serialized; only APIKeySet is returned.
+// Raw credentials are never serialized; only the *Set booleans are returned.
 type PublicConfig struct {
 	Enabled                 bool     `json:"enabled"`
 	APIKeySet               bool     `json:"api_key_set"`
+	WebLoginTokenSet        bool     `json:"web_login_token_set"`
 	Model                   string   `json:"model"`
 	Mode                    string   `json:"mode"`
 	MaxTokens               int      `json:"max_tokens"`

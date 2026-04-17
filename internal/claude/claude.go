@@ -45,9 +45,10 @@ type Module struct {
 	db       *database.Module
 	adminMod *adminLogger
 
-	clientMu sync.RWMutex
-	client   *anthropic.Client
-	apiKey   string // last used API key; compared to detect rotation
+	clientMu      sync.RWMutex
+	client        *anthropic.Client
+	apiKey        string // last used API key; compared to detect rotation
+	webLoginToken string // last used web login token; compared to detect rotation
 
 	toolsMu sync.RWMutex
 	tools   map[string]Tool
@@ -151,19 +152,26 @@ func (m *Module) setHealth(ok bool, msg string) {
 }
 
 // ensureClient lazy-initializes the Anthropic SDK client. Re-creates the
-// client when the API key changes so rotations take effect immediately.
+// client when credentials change so rotations take effect immediately.
+// APIKey (x-api-key header) takes precedence over WebLoginToken (Bearer).
 func (m *Module) ensureClient(c config.ClaudeConfig) error {
-	if c.APIKey == "" {
-		return errors.New("CLAUDE_API_KEY is not set")
+	if c.APIKey == "" && c.WebLoginToken == "" {
+		return errors.New("no API key or web login token configured")
 	}
 	m.clientMu.Lock()
 	defer m.clientMu.Unlock()
-	if m.client != nil && m.apiKey == c.APIKey {
+	if m.client != nil && m.apiKey == c.APIKey && m.webLoginToken == c.WebLoginToken {
 		return nil
 	}
-	cli := anthropic.NewClient(option.WithAPIKey(c.APIKey))
+	var cli anthropic.Client
+	if c.APIKey != "" {
+		cli = anthropic.NewClient(option.WithAPIKey(c.APIKey))
+	} else {
+		cli = anthropic.NewClient(option.WithAuthToken(c.WebLoginToken))
+	}
 	m.client = &cli
 	m.apiKey = c.APIKey
+	m.webLoginToken = c.WebLoginToken
 	return nil
 }
 
@@ -207,6 +215,7 @@ func (m *Module) PublicConfig() PublicConfig {
 	return PublicConfig{
 		Enabled:                 c.Enabled,
 		APIKeySet:               strings.TrimSpace(c.APIKey) != "",
+		WebLoginTokenSet:        strings.TrimSpace(c.WebLoginToken) != "",
 		Model:                   c.Model,
 		Mode:                    c.Mode,
 		MaxTokens:               c.MaxTokens,
@@ -238,6 +247,10 @@ func (m *Module) UpdateSettings(updates map[string]any) error {
 		case "api_key":
 			if s, ok := v.(string); ok {
 				batch["claude.api_key"] = s
+			}
+		case "web_login_token":
+			if s, ok := v.(string); ok {
+				batch["claude.web_login_token"] = s
 			}
 		case "model":
 			if s, ok := v.(string); ok {

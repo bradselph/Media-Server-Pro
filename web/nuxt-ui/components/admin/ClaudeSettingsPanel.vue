@@ -10,7 +10,7 @@ const saving = ref(false)
 const killSwitchBusy = ref(false)
 
 // Draft fields bound to form inputs
-const draft = ref<ClaudeConfigUpdate & { api_key?: string }>({})
+const draft = ref<ClaudeConfigUpdate & { api_key?: string; web_login_token?: string }>({})
 
 const MODELS = [
   { label: 'Claude Sonnet 4.6 (recommended)', value: 'claude-sonnet-4-6' },
@@ -56,12 +56,14 @@ async function load() {
 async function save() {
   saving.value = true
   try {
-    const update: ClaudeConfigUpdate & { api_key?: string } = { ...draft.value }
-    // Only send api_key if user typed something
+    const update: ClaudeConfigUpdate & { api_key?: string; web_login_token?: string } = { ...draft.value }
+    // Only send credentials if the user typed something
     if (!update.api_key) delete update.api_key
+    if (!update.web_login_token) delete update.web_login_token
     config.value = await adminApi.updateClaudeConfig(update)
     toast.add({ title: 'Claude settings saved', color: 'success', icon: 'i-lucide-check' })
     draft.value.api_key = ''
+    draft.value.web_login_token = ''
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
   } finally {
@@ -126,7 +128,8 @@ onMounted(load)
             </div>
             <div class="flex items-center gap-2">
               <UBadge v-if="config.api_key_set" color="success" variant="subtle" icon="i-lucide-key">API Key Set</UBadge>
-              <UBadge v-else color="warning" variant="subtle" icon="i-lucide-key">No API Key</UBadge>
+              <UBadge v-else-if="config.web_login_token_set" color="success" variant="subtle" icon="i-lucide-key">Web Token Set</UBadge>
+              <UBadge v-else color="warning" variant="subtle" icon="i-lucide-key">No Credentials</UBadge>
               <UButton
                 size="xs"
                 :color="config.kill_switch ? 'success' : 'error'"
@@ -150,12 +153,20 @@ onMounted(load)
             <UToggle v-model="draft.enabled" />
           </div>
 
-          <!-- API Key -->
-          <UFormField label="Anthropic API Key" help="Write-only. Leave blank to keep the existing key.">
+          <!-- Credentials: API Key or Web Login Token -->
+          <UFormField label="Anthropic API Key" help="Write-only. Leave blank to keep the existing value. Takes precedence over web login token.">
             <UInput
               v-model="draft.api_key"
               type="password"
               :placeholder="config.api_key_set ? '••••••••••••  (key already set)' : 'sk-ant-...'"
+              class="font-mono"
+            />
+          </UFormField>
+          <UFormField label="Web Login Token" help="OAuth / user-access token from claude.ai. Write-only. Used when no API key is set.">
+            <UInput
+              v-model="draft.web_login_token"
+              type="password"
+              :placeholder="config.web_login_token_set ? '••••••••••••  (token already set)' : 'Paste token...'"
               class="font-mono"
             />
           </UFormField>

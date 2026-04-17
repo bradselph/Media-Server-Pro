@@ -55,10 +55,10 @@ func (h *Handler) AdminClaudeUpdateConfig(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Redact api_key before writing the audit entry.
+	// Redact sensitive credential fields before writing the audit entry.
 	safe := make(map[string]any, len(body))
 	for k, v := range body {
-		if k == "api_key" {
+		if k == "api_key" || k == "web_login_token" {
 			if s, ok := v.(string); ok && s != "" {
 				safe[k] = fmt.Sprintf("[set len=%d]", len(s))
 				continue
