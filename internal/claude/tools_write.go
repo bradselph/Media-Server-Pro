@@ -22,7 +22,7 @@ func NewWriteFileTool() Tool { return &writeFileTool{} }
 func (t *writeFileTool) Name() string { return "write_file" }
 
 func (t *writeFileTool) Description() string {
-	return "Create or overwrite a UTF-8 text file. Path must be within configured AllowedPaths. Writes are gated for admin approval in interactive mode."
+	return "Create or overwrite a UTF-8 text file. Path must be within AllowedPaths (empty = unrestricted). Writes are gated for admin approval in interactive mode."
 }
 
 func (t *writeFileTool) InputSchema() map[string]any {
@@ -84,7 +84,7 @@ func NewShellExecTool() Tool { return &shellExecTool{} }
 func (t *shellExecTool) Name() string { return "shell_exec" }
 
 func (t *shellExecTool) Description() string {
-	return "Run an allowlisted program with arguments. Program name must be in AllowedShellCommands exactly. No shell interpolation. Combined stdout+stderr is returned, truncated to 32KB."
+	return "Run a shell command with arguments. Program name is checked against AllowedShellCommands (empty = unrestricted). No shell interpolation. Combined stdout+stderr returned, truncated to 32KB."
 }
 
 func (t *shellExecTool) InputSchema() map[string]any {
