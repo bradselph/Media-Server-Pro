@@ -26,6 +26,11 @@ func (Conversation) TableName() string { return "claude_conversations" }
 type Message struct {
 	ID             string          `json:"id" gorm:"primaryKey;size:64"`
 	ConversationID string          `json:"conversation_id" gorm:"size:64;index;column:conversation_id"`
+	// Seq is a per-conversation monotonic counter used for stable ordering.
+	// created_at has second-level granularity in MySQL which is not fine enough
+	// when multiple messages land in the same second (e.g. assistant + tool
+	// results). Never rely on created_at for ordering.
+	Seq            int64           `json:"seq" gorm:"index"`
 	Role           string          `json:"role" gorm:"size:32"`
 	Content        string          `json:"content" gorm:"type:mediumtext"`
 	ToolCalls      json.RawMessage `json:"tool_calls,omitempty" gorm:"type:json"`

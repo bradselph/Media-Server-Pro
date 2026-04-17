@@ -391,7 +391,7 @@ func (m *Module) GetConversation(ctx context.Context, userID, id string) (*Conve
 	var msgs []Message
 	if err := m.db.GORM().WithContext(ctx).
 		Where("conversation_id = ?", id).
-		Order("created_at ASC").
+		Order("seq ASC, created_at ASC").
 		Find(&msgs).Error; err != nil {
 		return nil, nil, err
 	}
@@ -456,10 +456,20 @@ func (m *Module) updateToolResult(ctx context.Context, msgID string, tc *ToolCal
 }
 
 // appendMessage persists a single conversation message.
+// Seq is assigned here by reading MAX(seq) for the conversation so that messages
+// retain insertion order regardless of created_at clock resolution.
 func (m *Module) appendMessage(ctx context.Context, convID, role, content string, toolCalls, toolResult json.RawMessage) error {
+	var maxSeq int64
+	m.db.GORM().WithContext(ctx).
+		Model(&Message{}).
+		Where("conversation_id = ?", convID).
+		Select("COALESCE(MAX(seq), 0)").
+		Scan(&maxSeq)
+
 	msg := &Message{
 		ID:             uuid.New().String(),
 		ConversationID: convID,
+		Seq:            maxSeq + 1,
 		Role:           role,
 		Content:        content,
 		ToolCalls:      toolCalls,
