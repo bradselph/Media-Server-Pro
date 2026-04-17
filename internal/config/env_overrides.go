@@ -26,4 +26,5 @@ func (m *Manager) applyEnvOverrides() {
 	m.applyDownloaderEnvOverrides()
 	m.applyStorageEnvOverrides()
 	m.applyUIEnvOverrides()
+	m.applyClaudeEnvOverrides()
 }

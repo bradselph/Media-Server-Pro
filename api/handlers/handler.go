@@ -24,6 +24,7 @@ import (
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/categorizer"
+	"media-server-pro/internal/claude"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
@@ -128,6 +129,7 @@ type HandlerOptionalDeps struct {
 	Analytics     *analytics.Module
 	Playlist      *playlist.Module
 	Downloader    *downloader.Module
+	Claude        *claude.Module
 }
 
 // HandlerDeps holds all module dependencies needed to create a Handler.
@@ -173,6 +175,7 @@ type Handler struct {
 	crawler          *crawler.Module
 	duplicates       *duplicates.Module
 	downloader       *downloader.Module
+	claude           *claude.Module
 	config           *config.Manager
 	shutdownFunc        func()
 	deletionRequests    repositories.DataDeletionRequestRepository
@@ -299,6 +302,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		crawler:          o.Crawler,
 		duplicates:       o.Duplicates,
 		downloader:       o.Downloader,
+		claude:           o.Claude,
 	}
 	// shutdownFunc wraps the outer shutdown to also stop the view-cooldown sweeper.
 	// Assigned after h is constructed so the closure can safely reference h.
@@ -468,6 +472,11 @@ func (h *Handler) requireThumbnails(c *gin.Context) bool {
 }
 func (h *Handler) requireSecurity(c *gin.Context) bool {
 	return requireModule(c, h.security, "Security feature")
+}
+func (h *Handler) requireClaude(c *gin.Context) bool {
+	return checkFeatureEnabled(c, h.claude, "Claude assistant", func() bool {
+		return h.config.Get().Claude.Enabled
+	})
 }
 
 // adminLogActionParams groups arguments for logAdminAction to avoid excess parameters.

@@ -450,6 +450,15 @@ func (m *Module) RemoveMedia(mediaPath string) error {
 func (m *Module) UpdateMetadata(mediaPath string, updates map[string]any) error {
 	m.mu.Lock()
 
+	// Refuse to create a metadata row for a path that isn't in the media index.
+	// Without this check a call against a since-deleted or never-indexed path
+	// would persist an orphan metadata row that no GetMedia/ListMedia consumer
+	// can ever return.
+	if _, ok := m.media[mediaPath]; !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("media not found: %s", mediaPath)
+	}
+
 	meta, exists := m.metadata[mediaPath]
 	if !exists {
 		meta = &Metadata{

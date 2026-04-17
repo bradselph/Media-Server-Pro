@@ -16,6 +16,7 @@ import (
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/categorizer"
+	"media-server-pro/internal/claude"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
@@ -51,7 +52,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.4.62"
+	Version   = "1.4.64"
 	BuildDate = "dev"
 )
 
@@ -245,6 +246,7 @@ type modules struct {
 	downloader    *downloader.Module
 	extractor     *extractor.Module
 	crawler       *crawler.Module
+	claude        *claude.Module
 }
 
 func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, stores storageBackends) modules {
@@ -392,6 +394,15 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	m.crawler = crawler.NewModule(cfg, m.database, m.extractor)
 	mustRegister(srv, m.crawler)
 
+	// Claude admin assistant (non-critical — gated by config; requires admin module for audit).
+	if cm, err := claude.NewModule(claude.Deps{Config: cfg, DB: m.database, Admin: m.admin}); err != nil {
+		log.Warn("Claude admin assistant unavailable: %v", err)
+	} else {
+		m.claude = cm
+		claude.RegisterDefaultTools(m.claude)
+		mustRegister(srv, m.claude)
+	}
+
 	return m
 }
 
@@ -463,6 +474,7 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 			Analytics:     mods.analytics,
 			Playlist:      mods.playlist,
 			Downloader:    mods.downloader,
+			Claude:        mods.claude,
 		},
 		ShutdownFunc: srv.Shutdown, // P1-9: drain connections and stop modules before exit
 	})

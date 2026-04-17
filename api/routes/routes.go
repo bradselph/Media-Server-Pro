@@ -758,6 +758,16 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/downloader/importable", h.AdminDownloaderImportable)
 	adminGrp.POST("/downloader/import", h.AdminDownloaderImport)
 
+	// Claude admin assistant routes
+	adminGrp.GET("/claude/config", h.AdminClaudeGetConfig)
+	adminGrp.PUT("/claude/config", h.AdminClaudeUpdateConfig)
+	adminGrp.POST("/claude/kill-switch", h.AdminClaudeKillSwitch)
+	adminGrp.GET("/claude/tools", h.AdminClaudeListTools)
+	adminGrp.GET("/claude/conversations", h.AdminClaudeListConversations)
+	adminGrp.GET("/claude/conversations/:id", h.AdminClaudeGetConversation)
+	adminGrp.DELETE("/claude/conversations/:id", h.AdminClaudeDeleteConversation)
+	adminGrp.POST("/claude/chat", h.AdminClaudeChat)
+
 	// Admin media management routes
 	adminGrp.GET(pathMedia, h.AdminListMedia)
 	adminGrp.POST(pathMedia+"/bulk", h.AdminBulkMedia)

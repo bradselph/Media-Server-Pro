@@ -376,6 +376,15 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	if h.media != nil {
 		h.media.DeletePlaybackPositionsByPath(ctx, mediaPath)
 	}
+	// media_chapters has no FK on media_id, so rows must be purged explicitly
+	// to avoid orphans that still appear in ListChapters after the media is gone.
+	if h.database != nil {
+		if gdb := h.database.GORM(); gdb != nil {
+			if err := gdb.WithContext(ctx).Exec("DELETE FROM media_chapters WHERE media_id = ?", mediaID).Error; err != nil {
+				h.log.Warn("Failed to cleanup chapters for deleted media %s: %v", mediaID, err)
+			}
+		}
+	}
 	// Purge suggestion view history rows keyed by media path (no FK cascade on that column).
 	if h.suggestions != nil {
 		h.suggestions.PurgeMediaPath(mediaPath)
