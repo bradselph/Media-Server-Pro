@@ -762,7 +762,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/claude/config", h.AdminClaudeGetConfig)
 	adminGrp.PUT("/claude/config", h.AdminClaudeUpdateConfig)
 	adminGrp.POST("/claude/kill-switch", h.AdminClaudeKillSwitch)
-	adminGrp.GET("/claude/tools", h.AdminClaudeListTools)
+	adminGrp.GET("/claude/auth-status", h.AdminClaudeAuthStatus)
 	adminGrp.GET("/claude/conversations", h.AdminClaudeListConversations)
 	adminGrp.GET("/claude/conversations/:id", h.AdminClaudeGetConversation)
 	adminGrp.DELETE("/claude/conversations/:id", h.AdminClaudeDeleteConversation)

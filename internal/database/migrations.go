@@ -512,14 +512,15 @@ var tableDefs = []struct {
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 		{"claude_conversations", `
 			CREATE TABLE IF NOT EXISTS claude_conversations (
-				id          VARCHAR(64)  PRIMARY KEY,
-				user_id     VARCHAR(255) NOT NULL,
-				username    VARCHAR(255) NOT NULL,
-				title       VARCHAR(255) NOT NULL DEFAULT '',
-				mode        VARCHAR(32)  NOT NULL DEFAULT 'interactive',
-				model       VARCHAR(128) NOT NULL DEFAULT '',
-				created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				id              VARCHAR(64)  PRIMARY KEY,
+				user_id         VARCHAR(255) NOT NULL,
+				username        VARCHAR(255) NOT NULL,
+				title           VARCHAR(255) NOT NULL DEFAULT '',
+				mode            VARCHAR(32)  NOT NULL DEFAULT 'autonomous',
+				model           VARCHAR(128) NOT NULL DEFAULT '',
+				cli_session_id  VARCHAR(64)  NOT NULL DEFAULT '',
+				created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+				updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				INDEX idx_claude_conv_user (user_id),
 				INDEX idx_claude_conv_updated (updated_at)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
@@ -647,6 +648,9 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		// claude_messages: seq column for stable insertion-order sorting
 		// (created_at has second-level granularity which is too coarse)
 		{"claude_messages", "seq", "BIGINT NOT NULL DEFAULT 0 AFTER conversation_id"},
+		// claude_conversations: cli_session_id is captured from the `claude`
+		// CLI init event so subsequent turns can resume with --resume.
+		{"claude_conversations", "cli_session_id", "VARCHAR(64) NOT NULL DEFAULT '' AFTER model"},
 	}
 	for _, col := range columns {
 		if err := m.ensureColumn(ctx, col.table, col.column, col.def); err != nil {

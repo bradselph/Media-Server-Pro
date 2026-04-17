@@ -399,7 +399,6 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 		log.Warn("Claude admin assistant unavailable: %v", err)
 	} else {
 		m.claude = cm
-		claude.RegisterDefaultTools(m.claude)
 		mustRegister(srv, m.claude)
 	}
 

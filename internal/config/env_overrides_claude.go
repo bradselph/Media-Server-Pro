@@ -9,14 +9,18 @@ import (
 // Enable/disable is driven by FEATURE_CLAUDE (handled in applyFeatureEnvOverrides),
 // which is the authoritative toggle and propagated to Claude.Enabled via
 // syncFeatureToggles. CLAUDE_ENABLED is accepted as an alias there.
+//
+// Authentication is NOT handled here — the `claude` CLI reads its own
+// credentials from ~/.claude/.credentials.json (set up via `claude login` on
+// the VPS) or from ANTHROPIC_API_KEY in the process environment as a fallback.
 func (m *Manager) applyClaudeEnvOverrides() {
 	c := &m.config.Claude
 
-	if val := envGetStr("CLAUDE_API_KEY", "ANTHROPIC_API_KEY"); val != "" {
-		c.APIKey = val
+	if val := envGetStr("CLAUDE_BINARY_PATH"); val != "" {
+		c.BinaryPath = val
 	}
-	if val := envGetStr("CLAUDE_WEB_LOGIN_TOKEN"); val != "" {
-		c.WebLoginToken = val
+	if val := envGetStr("CLAUDE_WORKDIR"); val != "" {
+		c.Workdir = val
 	}
 	if val := envGetStr("CLAUDE_MODEL"); val != "" {
 		c.Model = val
@@ -32,18 +36,6 @@ func (m *Manager) applyClaudeEnvOverrides() {
 	}
 	if val := envGetStr("CLAUDE_SYSTEM_PROMPT"); val != "" {
 		c.SystemPrompt = val
-	}
-	if val := envGetStr("CLAUDE_ALLOWED_TOOLS"); val != "" {
-		c.AllowedTools = splitTrimmed(val)
-	}
-	if val := envGetStr("CLAUDE_ALLOWED_SHELL_COMMANDS"); val != "" {
-		c.AllowedShellCommands = splitTrimmed(val)
-	}
-	if val := envGetStr("CLAUDE_ALLOWED_PATHS"); val != "" {
-		c.AllowedPaths = splitTrimmed(val)
-	}
-	if val := envGetStr("CLAUDE_ALLOWED_SERVICES"); val != "" {
-		c.AllowedServices = splitTrimmed(val)
 	}
 	if val, ok := envGetBool("CLAUDE_REQUIRE_CONFIRM_FOR_WRITES"); ok {
 		c.RequireConfirmForWrites = val

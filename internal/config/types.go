@@ -33,61 +33,49 @@ type Config struct {
 	Claude        ClaudeConfig        `json:"claude"`
 }
 
-// ClaudeConfig holds settings for the Claude-powered admin assistant module.
-// The module gives authorized admins a live, tool-equipped assistant that can
-// read logs and config, run allowlisted shell commands, edit files in
-// configured paths, and (in Autonomous mode) act without per-step approval.
+// ClaudeConfig holds settings for the Claude Code–powered admin assistant.
+//
+// The module shells out to the `claude` CLI installed on the host, which
+// provides the tool layer (Read/Edit/Bash/etc.) and manages its own session
+// state and OAuth credentials (~/.claude/.credentials.json, established via a
+// one-time `claude login` on the VPS). Raw API keys are NOT stored in config;
+// if ANTHROPIC_API_KEY is present in the process environment the CLI picks it
+// up automatically as a fallback.
 type ClaudeConfig struct {
 	Enabled bool `json:"enabled"`
 
-	// APIKey is the Anthropic API key. Set via env (CLAUDE_API_KEY) or
-	// config.json; never echoed back to clients.
-	APIKey string `json:"api_key"`
+	// BinaryPath is the absolute path to the `claude` executable. Empty means
+	// resolve via $PATH.
+	BinaryPath string `json:"binary_path"`
 
-	// WebLoginToken is an Anthropic OAuth / user-access token (Authorization:
-	// Bearer). Useful for admins who authenticate via claude.ai rather than
-	// holding a direct API key. Mutually exclusive with APIKey; APIKey takes
-	// precedence when both are set. Never echoed back to clients.
-	WebLoginToken string `json:"web_login_token"`
+	// Workdir is the working directory the CLI is invoked from (the repo root
+	// it operates on). Empty means inherit the server process cwd.
+	Workdir string `json:"workdir"`
 
 	// Model selects the Claude model (e.g. "claude-opus-4-7",
 	// "claude-sonnet-4-6", "claude-haiku-4-5-20251001"). Defaults to
 	// the latest Sonnet when empty.
 	Model string `json:"model"`
 
-	// Mode controls execution behavior: "advisory", "interactive", or
-	// "autonomous".
+	// Mode controls execution behavior: "advisory" (plan mode, no writes),
+	// "interactive" (tools require approval — currently falls back to
+	// autonomous until the approval bridge is wired), or "autonomous"
+	// (bypassPermissions, full access).
 	Mode string `json:"mode"`
 
 	// MaxTokens caps output tokens per turn.
 	MaxTokens int `json:"max_tokens"`
 
-	// SystemPrompt is appended to the built-in operational system prompt.
+	// SystemPrompt is appended to the built-in operational system prompt via
+	// --append-system-prompt.
 	SystemPrompt string `json:"system_prompt"`
 
-	// AllowedTools is the explicit allowlist of Claude tool names. Empty = all
-	// registered tools are available.
-	AllowedTools []string `json:"allowed_tools"`
-
-	// AllowedShellCommands is the exact-match allowlist of program names the
-	// shell tool may invoke. Non-empty required for shell tool to function.
-	AllowedShellCommands []string `json:"allowed_shell_commands"`
-
-	// AllowedPaths restricts file reads/writes to absolute path prefixes
-	// (or paths under the server working directory). Empty disables file tools.
-	AllowedPaths []string `json:"allowed_paths"`
-
-	// AllowedServices lists systemd/service names the service-restart tool
-	// may target. Empty disables service restart.
-	AllowedServices []string `json:"allowed_services"`
-
-	// RequireConfirmForWrites forces admin confirmation for write-type tools
-	// (file_write, shell_exec, service_restart) regardless of mode. Highly
-	// recommended to leave enabled in production.
+	// RequireConfirmForWrites reserved for future use — gates writes regardless
+	// of mode once the interactive approval bridge is implemented.
 	RequireConfirmForWrites bool `json:"require_confirm_for_writes"`
 
 	// MaxToolCallsPerTurn caps how many tools Claude can invoke before the
-	// server forces a stop. Defaults to 16.
+	// server forces a stop. Maps to --max-turns.
 	MaxToolCallsPerTurn int `json:"max_tool_calls_per_turn"`
 
 	// RateLimitPerMinute limits how many chat turns any admin can send; 0 = no limit.
@@ -96,7 +84,8 @@ type ClaudeConfig struct {
 	// KillSwitch disables all chat + tool execution when true, regardless of Enabled.
 	KillSwitch bool `json:"kill_switch"`
 
-	// RequestTimeout bounds each API call. Default 120s.
+	// RequestTimeout bounds each CLI invocation. Default 600s (autonomous runs
+	// can take minutes).
 	RequestTimeout time.Duration `json:"request_timeout"`
 
 	// HistoryRetentionDays prunes conversations older than this. 0 = keep forever.

@@ -50,13 +50,15 @@ func DefaultConfig() *Config {
 func defaultClaudeConfig() ClaudeConfig {
 	return ClaudeConfig{
 		Enabled:                 false,
+		BinaryPath:              "",
+		Workdir:                 "",
 		Model:                   "claude-sonnet-4-6",
 		Mode:                    "autonomous",
 		MaxTokens:               4096,
-		MaxToolCallsPerTurn:     16,
+		MaxToolCallsPerTurn:     32,
 		RequireConfirmForWrites: false,
 		RateLimitPerMinute:      30,
-		RequestTimeout:          120 * time.Second,
+		RequestTimeout:          600 * time.Second,
 		HistoryRetentionDays:    30,
 	}
 }
