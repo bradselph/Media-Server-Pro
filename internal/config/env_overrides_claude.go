@@ -6,14 +6,12 @@ import (
 )
 
 // applyClaudeEnvOverrides maps CLAUDE_* environment variables onto ClaudeConfig.
-// The API key is only accepted via env (CLAUDE_API_KEY) or config.json to avoid
-// accidentally exposing it via the admin UI's set-config endpoint.
+// Enable/disable is driven by FEATURE_CLAUDE (handled in applyFeatureEnvOverrides),
+// which is the authoritative toggle and propagated to Claude.Enabled via
+// syncFeatureToggles. CLAUDE_ENABLED is accepted as an alias there.
 func (m *Manager) applyClaudeEnvOverrides() {
 	c := &m.config.Claude
 
-	if val, ok := envGetBool("CLAUDE_ENABLED"); ok {
-		c.Enabled = val
-	}
 	if val := envGetStr("CLAUDE_API_KEY", "ANTHROPIC_API_KEY"); val != "" {
 		c.APIKey = val
 	}
