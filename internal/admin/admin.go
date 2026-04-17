@@ -598,6 +598,23 @@ func buildConfigExtractorMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
+func buildConfigClaudeMap(cfg *config.Config, _ []string) map[string]any {
+	c := cfg.Claude
+	return map[string]any{
+		"enabled":                   c.Enabled,
+		"api_key_set":               c.APIKey != "",
+		"web_login_token_set":       c.WebLoginToken != "",
+		"model":                     c.Model,
+		"mode":                      c.Mode,
+		"max_tokens":                c.MaxTokens,
+		"require_confirm_for_writes": c.RequireConfirmForWrites,
+		"max_tool_calls_per_turn":   c.MaxToolCallsPerTurn,
+		"rate_limit_per_minute":     c.RateLimitPerMinute,
+		"kill_switch":               c.KillSwitch,
+		"history_retention_days":    c.HistoryRetentionDays,
+	}
+}
+
 // GetConfigMap returns config as a map for JSON serialization
 func (m *Module) GetConfigMap() map[string]any {
 	cfg := m.config.Get()
@@ -628,6 +645,7 @@ func (m *Module) GetConfigMap() map[string]any {
 		{"remote_media", buildConfigRemoteMediaMap},
 		{"crawler", buildConfigCrawlerMap},
 		{"extractor", buildConfigExtractorMap},
+		{"claude", buildConfigClaudeMap},
 	}
 	out := make(map[string]any, len(sections)+1)
 	out["directories"] = map[string]any{"configured": true}
