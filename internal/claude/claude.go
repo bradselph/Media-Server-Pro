@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -197,12 +198,7 @@ func (m *Module) toolEnabledForConfig(name string, c config.ClaudeConfig) bool {
 	if len(c.AllowedTools) == 0 {
 		return true
 	}
-	for _, a := range c.AllowedTools {
-		if a == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.AllowedTools, name)
 }
 
 // PublicConfig returns the client-safe config view.
@@ -427,6 +423,20 @@ func (m *Module) createConversation(ctx context.Context, userID, username, title
 		return nil, err
 	}
 	return c, nil
+}
+
+// updateToolResult patches the tool_result column of an existing message. Used
+// when an admin approves a previously-gated tool call so the stored record
+// reflects the actual execution result rather than the pending placeholder.
+func (m *Module) updateToolResult(ctx context.Context, msgID string, tc *ToolCall) error {
+	b, err := json.Marshal(tc)
+	if err != nil {
+		return err
+	}
+	return m.db.GORM().WithContext(ctx).
+		Model(&Message{}).
+		Where("id = ?", msgID).
+		Update("tool_result", b).Error
 }
 
 // appendMessage persists a single conversation message.
