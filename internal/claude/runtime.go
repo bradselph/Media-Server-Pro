@@ -183,8 +183,11 @@ func (m *Module) ChatTurn(ctx context.Context, userID, username, ip string, req 
 		// Persist the assistant turn (text + tool calls).
 		var toolCallsJSON json.RawMessage
 		if len(iterToolCalls) > 0 {
-			b, _ := json.Marshal(iterToolCalls)
-			toolCallsJSON = b
+			if b, err := json.Marshal(iterToolCalls); err != nil {
+				m.log.Warn("marshal tool calls for persistence: %v", err)
+			} else {
+				toolCallsJSON = b
+			}
 		}
 		if err := m.appendMessage(ctx, conv.ID, "assistant", iterText.String(), toolCallsJSON, nil); err != nil {
 			m.log.Warn("persist assistant message: %v", err)
@@ -214,8 +217,11 @@ func (m *Module) ChatTurn(ctx context.Context, userID, username, ip string, req 
 				pendingHit = true
 				emit(Event{Type: "tool_pending", ToolCall: &completed})
 				// Persist the gate so the UI sees it in the transcript.
-				b, _ := json.Marshal(completed)
-				_ = m.appendMessage(ctx, conv.ID, "tool", "", nil, b)
+				if b, err := json.Marshal(completed); err != nil {
+					m.log.Warn("marshal pending tool call: %v", err)
+				} else {
+					_ = m.appendMessage(ctx, conv.ID, "tool", "", nil, b)
+				}
 				// Provide the model with a synthetic tool_result so it can
 				// continue reasoning while it waits for approval.
 				msg := "Tool execution paused pending admin approval. Do not retry automatically."
@@ -225,8 +231,11 @@ func (m *Module) ChatTurn(ctx context.Context, userID, username, ip string, req 
 				m.auditToolCall(ctx, rc, &completed, execErr == nil)
 
 				emit(Event{Type: "tool_result", ToolCall: &completed})
-				b, _ := json.Marshal(completed)
-				_ = m.appendMessage(ctx, conv.ID, "tool", "", nil, b)
+				if b, err := json.Marshal(completed); err != nil {
+					m.log.Warn("marshal tool result: %v", err)
+				} else {
+					_ = m.appendMessage(ctx, conv.ID, "tool", "", nil, b)
+				}
 
 				content := outText
 				isErr := execErr != nil

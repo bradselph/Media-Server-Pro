@@ -144,9 +144,9 @@ func (m *Module) Health() models.HealthStatus {
 
 func (m *Module) setHealth(ok bool, msg string) {
 	m.healthMu.Lock()
+	defer m.healthMu.Unlock()
 	m.healthy = ok
 	m.healthMsg = msg
-	m.healthMu.Unlock()
 }
 
 // ensureClient lazy-initializes the Anthropic SDK client. Re-creates the
