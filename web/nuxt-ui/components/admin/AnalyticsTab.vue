@@ -4,7 +4,7 @@ import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime } from '~/utils/format'
 
 const analyticsApi = useAnalyticsApi()
-const toast = useToast()
+const { notifyError } = useAdminFeedback()
 
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
@@ -49,7 +49,7 @@ async function drillByType() {
   try {
     drillEvents.value = (await analyticsApi.getEventsByType(drillType.value.trim(), 50)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 
@@ -59,7 +59,7 @@ async function drillByMedia() {
   try {
     drillEvents.value = (await analyticsApi.getEventsByMedia(drillMediaId.value.trim(), 50)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 
@@ -69,7 +69,7 @@ async function drillByUser() {
   try {
     drillEvents.value = (await analyticsApi.getEventsByUser(drillUserId.value.trim(), 50)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 

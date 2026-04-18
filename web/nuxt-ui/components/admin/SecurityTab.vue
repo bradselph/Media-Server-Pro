@@ -3,7 +3,7 @@ import type { AuditLogEntry, IPListEntry, BannedIP, SecurityStats } from '~/type
 import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const subTab = ref('audit')
 const subTabs = [
@@ -36,7 +36,7 @@ async function loadSecurityConfig() {
       httpsEnabled.value = srv?.enable_https === true
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load config')
   } finally {
     configLoading.value = false
   }
@@ -57,9 +57,9 @@ async function saveSecurityToggle(
     }
     await adminApi.updateConfig(updated)
     fullConfig.value = updated
-    toast.add({ title: 'Security settings saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Security settings saved')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to save')
     // reload to revert UI state
     await loadSecurityConfig()
   } finally {
