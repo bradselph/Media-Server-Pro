@@ -2,7 +2,6 @@
 import type { Playlist, AdminPlaylistStats } from '~/types/api'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
 const toast = useToast()
 
 const playlists = ref<Playlist[]>([])
@@ -110,7 +109,7 @@ async function executeBulkDelete() {
     confirmBulkDelete.value = false
     await load()
   } catch (e: unknown) {
-    notifyError(e, 'Bulk delete failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Bulk delete failed', color: 'error', icon: 'i-lucide-x' })
   } finally { bulkDeleting.value = false }
 }
 
@@ -126,7 +125,7 @@ async function load() {
     }
     if (s.status === 'fulfilled') stats.value = s.value
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load playlists')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { loading.value = false }
 }
 
@@ -135,11 +134,11 @@ async function handleDelete() {
   deleting.value = true
   try {
     await adminApi.deletePlaylist(deleteTarget.value.id)
-    notifySuccess('Playlist deleted')
+    toast.add({ title: 'Playlist deleted', color: 'success', icon: 'i-lucide-check' })
     deleteTarget.value = null
     await load()
   } catch (e: unknown) {
-    notifyError(e, 'Failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     deleting.value = false
   }

@@ -53,7 +53,7 @@ func NewTestServer(t *testing.T) *TestServer {
 	})
 
 	engine := gin.New()
-	routes.Setup(engine, nil, handler, env.Auth, env.Security, env.Config, nil)
+	routes.Setup(engine, nil, handler, env.Auth, env.Security, env.Config, nil, nil)
 
 	srv := httptest.NewServer(engine)
 	t.Cleanup(func() { srv.Close() })

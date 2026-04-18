@@ -98,12 +98,15 @@ func main() {
 	// ── Age gate middleware ────────────────────────────────────────────────
 	ageGate := setupAgeGate(cfg, mods.analytics)
 
+	// ── Cookie consent middleware ──────────────────────────────────────────
+	cookieConsent := middleware.NewCookieConsent(cfg.Get().CookieConsent)
+
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(mods.tasks, mods.media, mods.scanner, mods.thumbnails,
 		mods.auth, mods.backup, mods.suggestions, mods.duplicates, mods.admin, mods.hls, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
-	setupRoutes(srv, cfg, mods, ageGate)
+	setupRoutes(srv, cfg, mods, ageGate, cookieConsent)
 
 	// Seed suggestions when the media module's initial scan completes
 	wireSuggestionsSeeding(mods.media, mods.suggestions, log)
@@ -441,7 +444,7 @@ func setupAgeGate(cfg *config.Manager, analyticsModule *analytics.Module) *middl
 	return ageGate
 }
 
-func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate *middleware.AgeGate) {
+func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate *middleware.AgeGate, cookieConsent *middleware.CookieConsent) {
 	h := handlers.NewHandler(handlers.HandlerDeps{
 		BuildInfo: handlers.BuildInfo{Version: Version, BuildDate: BuildDate},
 		Core: handlers.HandlerCoreDeps{
@@ -477,7 +480,7 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 		},
 		ShutdownFunc: srv.Shutdown, // P1-9: drain connections and stop modules before exit
 	})
-	routes.Setup(srv.Engine(), srv, h, mods.auth, mods.security, cfg, ageGate)
+	routes.Setup(srv.Engine(), srv, h, mods.auth, mods.security, cfg, ageGate, cookieConsent)
 }
 
 func wireSuggestionsSeeding(mediaModule *media.Module, suggestionsModule *suggestions.Module, log *logger.Logger) {

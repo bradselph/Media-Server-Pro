@@ -4,7 +4,7 @@ import { formatBytes } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
+const toast = useToast()
 
 // ── Backups ────────────────────────────────────────────────────────────────────
 const backups = ref<BackupEntry[]>([])
@@ -40,9 +40,9 @@ async function saveBackupRetention() {
     }
     await adminApi.updateConfig(updated)
     backupFullConfig.value = updated
-    notifySuccess('Backup settings saved')
+    toast.add({ title: 'Backup settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    notifyError(e, 'Failed to save')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
   } finally { backupConfigSaving.value = false }
 }
 
@@ -50,7 +50,7 @@ async function loadBackups() {
   backupsLoading.value = true
   try { backups.value = (await adminApi.listBackups()) ?? [] }
   catch (e: unknown) {
-    notifyError(e, 'Failed to load backups')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load backups', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { backupsLoading.value = false }
 }
 
@@ -58,10 +58,10 @@ async function createBackup() {
   creatingBackup.value = true
   try {
     await adminApi.createBackup(undefined, backupType.value)
-    notifySuccess(`${backupType.value === 'full' ? 'Full' : 'Incremental'} backup created`)
+    toast.add({ title: `${backupType.value === 'full' ? 'Full' : 'Incremental'} backup created`, color: 'success', icon: 'i-lucide-check' })
     await loadBackups()
   } catch (e: unknown) {
-    notifyError(e, 'Backup failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Backup failed', color: 'error', icon: 'i-lucide-x' })
   } finally { creatingBackup.value = false }
 }
 
@@ -118,9 +118,9 @@ async function restoreBackup(id: string) {
   const next = new Set(backupBusy.value); next.add(`restore-${id}`); backupBusy.value = next
   try {
     await adminApi.restoreBackup(id)
-    notifyInfo('Restore started')
+    toast.add({ title: 'Restore started', color: 'info', icon: 'i-lucide-info' })
   } catch (e: unknown) {
-    notifyError(e, 'Restore failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Restore failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     const cleared = new Set(backupBusy.value); cleared.delete(`restore-${id}`); backupBusy.value = cleared
   }
@@ -133,7 +133,7 @@ async function deleteBackup(id: string) {
     await adminApi.deleteBackup(id)
     await loadBackups()
   } catch (e: unknown) {
-    notifyError(e, 'Delete failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     const cleared = new Set(backupBusy.value); cleared.delete(`delete-${id}`); backupBusy.value = cleared
   }

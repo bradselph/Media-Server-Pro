@@ -6,7 +6,7 @@ import { formatBytes, formatDuration } from '~/utils/format'
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
 const chaptersApi = useChaptersApi()
-const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
+const toast = useToast()
 
 const thumbStats = ref<ThumbnailStats | null>(null)
 async function loadThumbStats() {
@@ -60,11 +60,11 @@ async function executeBulk(action: 'delete' | 'update', data?: { category?: stri
   try {
     const res = await adminApi.bulkMedia(ids, action, data)
     const msg = action === 'delete' ? `Deleted ${res?.success ?? ids.length} items` : `Updated ${res?.success ?? ids.length} items`
-    notifySuccess(msg)
+    toast.add({ title: msg, color: 'success', icon: 'i-lucide-check' })
     selectedIds.value = new Set()
     load()
   } catch (e: unknown) {
-    notifyError(e, 'Bulk action failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Bulk action failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     bulkRunning.value = false
   }
@@ -110,12 +110,12 @@ async function uploadThumbnail() {
   thumbUploading.value = true
   try {
     await adminApi.uploadCustomThumbnail(editTarget.value.id, thumbFile.value)
-    notifySuccess('Thumbnail updated')
+    toast.add({ title: 'Thumbnail updated', color: 'success', icon: 'i-lucide-check' })
     thumbFile.value = null
     thumbPreviewUrl.value = null
     if (thumbFileInput.value) thumbFileInput.value.value = ''
   } catch (e: unknown) {
-    notifyError(e, 'Upload failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Upload failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     thumbUploading.value = false
   }
@@ -132,11 +132,11 @@ async function saveEdit() {
       tags: editForm.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
       metadata: { ...editTarget.value.metadata, description: editForm.description },
     })
-    notifySuccess('Media updated')
+    toast.add({ title: 'Media updated', color: 'success', icon: 'i-lucide-check' })
     editTarget.value = null
     load()
   } catch (e: unknown) {
-    notifyError(e, 'Update failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Update failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     editSaving.value = false
   }
@@ -163,7 +163,7 @@ async function openChapters(item: MediaItem) {
   try {
     chapters.value = (await chaptersApi.list(item.id)) ?? []
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load chapters')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load chapters', color: 'error', icon: 'i-lucide-x' })
   } finally {
     chaptersLoading.value = false
   }
@@ -171,7 +171,7 @@ async function openChapters(item: MediaItem) {
 
 async function addChapter() {
   if (!chaptersTarget.value || !newChapter.label) {
-    notifyError('Label is required')
+    toast.add({ title: 'Label is required', color: 'error', icon: 'i-lucide-x' })
     return
   }
   chaptersSaving.value = true
@@ -183,13 +183,13 @@ async function addChapter() {
       end_time: endTime,
       label: newChapter.label,
     })
-    notifySuccess('Chapter added')
+    toast.add({ title: 'Chapter added', color: 'success', icon: 'i-lucide-check' })
     newChapter.start_time = 0
     newChapter.end_time = ''
     newChapter.label = ''
     await openChapters(chaptersTarget.value)
   } catch (e: unknown) {
-    notifyError(e, 'Failed to add chapter')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to add chapter', color: 'error', icon: 'i-lucide-x' })
   } finally {
     chaptersSaving.value = false
   }
@@ -199,12 +199,12 @@ async function deleteChapter(id: string) {
   chaptersSaving.value = true
   try {
     await chaptersApi.delete(id)
-    notifySuccess('Chapter deleted')
+    toast.add({ title: 'Chapter deleted', color: 'success', icon: 'i-lucide-check' })
     if (chaptersTarget.value) {
       await openChapters(chaptersTarget.value)
     }
   } catch (e: unknown) {
-    notifyError(e, 'Failed to delete chapter')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to delete chapter', color: 'error', icon: 'i-lucide-x' })
   } finally {
     chaptersSaving.value = false
   }
@@ -239,7 +239,7 @@ async function load() {
     totalPages.value = res.total_pages ?? 1
   } catch (e: unknown) {
     if (seq !== loadSeq) return
-    notifyError(e, 'Failed to load media')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load media', color: 'error', icon: 'i-lucide-x' })
   } finally {
     if (seq === loadSeq) loading.value = false
   }
@@ -249,9 +249,9 @@ async function handleScan() {
   scanning.value = true
   try {
     await adminApi.scanMedia()
-    notifySuccess('Media scan triggered')
+    toast.add({ title: 'Media scan triggered', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    notifyError(e, 'Scan failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Scan failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     scanning.value = false
   }
@@ -265,9 +265,9 @@ async function generateThumbnail(id: string) {
   const next = new Set(rowBusy.value); next.add(`thumb-${id}`); rowBusy.value = next
   try {
     await adminApi.generateThumbnail(id)
-    notifySuccess('Thumbnail queued')
+    toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    notifyError(e, 'Thumbnail failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     const cleared = new Set(rowBusy.value); cleared.delete(`thumb-${id}`); rowBusy.value = cleared
   }
@@ -278,9 +278,9 @@ async function generateHLS(id: string) {
   const next = new Set(rowBusy.value); next.add(`hls-${id}`); rowBusy.value = next
   try {
     await hlsApi.generate(id)
-    notifyInfo('HLS generation started')
+    toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })
   } catch (e: unknown) {
-    notifyError(e, 'HLS generation failed')
+    toast.add({ title: e instanceof Error ? e.message : 'HLS generation failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     const cleared = new Set(rowBusy.value); cleared.delete(`hls-${id}`); rowBusy.value = cleared
   }
@@ -302,7 +302,7 @@ async function deleteMediaItem(id: string) {
     await adminApi.deleteMedia(id)
     await load()
   } catch (e: unknown) {
-    notifyError(e, 'Delete failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     const cleared = new Set(rowBusy.value); cleared.delete(`del-${id}`); rowBusy.value = cleared
   }

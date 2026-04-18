@@ -4,7 +4,7 @@ import { formatBytes } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const toast = useToast()
 
 const jobs = ref<HLSJob[]>([])
 const stats = ref<HLSStats | null>(null)
@@ -61,9 +61,9 @@ async function saveHLSConfig() {
     }
     await adminApi.updateConfig(updated)
     fullConfig.value = updated
-    notifySuccess('HLS settings saved')
+    toast.add({ title: 'HLS settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    notifyError(e, 'Failed to save')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
     // Reload config from server to revert UI to actual state
     load()
   } finally {
@@ -73,26 +73,26 @@ async function saveHLSConfig() {
 
 function copyJobId(id: string) {
   navigator.clipboard.writeText(id)
-  notifySuccess('ID copied')
+  toast.add({ title: 'ID copied', color: 'success', icon: 'i-lucide-check' })
 }
 
 async function deleteJob(id: string) {
   try {
     await adminApi.deleteHLSJob(id)
-    notifySuccess('Job deleted')
+    toast.add({ title: 'Job deleted', color: 'success', icon: 'i-lucide-check' })
     await load()
   } catch (e: unknown) {
-    notifyError(e, 'Failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
 }
 
 async function cleanInactive() {
   try {
     await adminApi.cleanHLSInactive()
-    notifySuccess('Cleaned inactive HLS jobs')
+    toast.add({ title: 'Cleaned inactive HLS jobs', color: 'success', icon: 'i-lucide-check' })
     await load()
   } catch (e: unknown) {
-    notifyError(e, 'Failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
 }
 

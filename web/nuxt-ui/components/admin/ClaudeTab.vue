@@ -3,7 +3,6 @@ import type { ClaudePublicConfig, ClaudeAuthStatus } from '~/composables/useApiE
 
 const adminApi = useAdminApi()
 const toast = useToast()
-const { notifyError, notifySuccess } = useAdminFeedback()
 
 const subTab = ref('chat')
 const subTabs = [
@@ -36,9 +35,9 @@ async function enable() {
   enabling.value = true
   try {
     config.value = await adminApi.updateClaudeConfig({ enabled: true })
-    notifySuccess('Claude enabled')
+    toast.add({ title: 'Claude enabled', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    notifyError(e, 'Failed to enable')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to enable', color: 'error', icon: 'i-lucide-x' })
   } finally {
     enabling.value = false
   }
@@ -50,7 +49,7 @@ async function disable() {
     config.value = await adminApi.updateClaudeConfig({ enabled: false })
     toast.add({ title: 'Claude disabled', color: 'neutral', icon: 'i-lucide-power-off' })
   } catch (e: unknown) {
-    notifyError(e, 'Failed to disable')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to disable', color: 'error', icon: 'i-lucide-x' })
   } finally {
     enabling.value = false
   }

@@ -6,7 +6,7 @@ import { getDisplayTitle } from '~/utils/mediaTitle'
 const collectionsApi = useCollectionsApi()
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const toast = useToast()
 
 const collections = ref<MediaCollection[]>([])
 const loading = ref(false)
@@ -42,7 +42,7 @@ async function load() {
   try {
     collections.value = (await collectionsApi.list()) ?? []
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load collections')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load collections', color: 'error', icon: 'i-lucide-x' })
   } finally {
     loading.value = false
   }
@@ -66,7 +66,7 @@ function openEdit(col: MediaCollection) {
 
 async function save() {
   if (!form.name.trim()) {
-    notifyError('Name is required')
+    toast.add({ title: 'Name is required', color: 'error', icon: 'i-lucide-x' })
     return
   }
   saving.value = true
@@ -74,15 +74,15 @@ async function save() {
     const data = { name: form.name, description: form.description, cover_media_id: form.cover_media_id || undefined }
     if (editTarget.value) {
       await collectionsApi.update(editTarget.value.id, data)
-      notifySuccess('Collection updated')
+      toast.add({ title: 'Collection updated', color: 'success', icon: 'i-lucide-check' })
     } else {
       await collectionsApi.create(data)
-      notifySuccess('Collection created')
+      toast.add({ title: 'Collection created', color: 'success', icon: 'i-lucide-check' })
     }
     formOpen.value = false
     await load()
   } catch (e: unknown) {
-    notifyError(e, 'Save failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Save failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     saving.value = false
   }
@@ -94,9 +94,9 @@ async function deleteCollection(id: string) {
   try {
     await collectionsApi.delete(id)
     collections.value = collections.value.filter(c => c.id !== id)
-    notifySuccess('Collection deleted')
+    toast.add({ title: 'Collection deleted', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    notifyError(e, 'Delete failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     deletingId.value = null
   }
@@ -110,7 +110,7 @@ async function openDetail(col: MediaCollection) {
     const full = await collectionsApi.get(col.id)
     detailItems.value = full.items ?? []
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load items')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load items', color: 'error', icon: 'i-lucide-x' })
   } finally {
     detailLoading.value = false
   }
@@ -122,9 +122,9 @@ async function removeItem(mediaId: string) {
   try {
     await collectionsApi.removeItem(detailCollection.value.id, mediaId)
     detailItems.value = detailItems.value.filter(i => i.media_id !== mediaId)
-    notifySuccess('Item removed')
+    toast.add({ title: 'Item removed', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    notifyError(e, 'Failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     removingItemId.value = null
   }
@@ -178,7 +178,7 @@ async function addItem(mediaId: string) {
   try {
     const pos = detailItems.value.length
     await collectionsApi.addItems(addItemsTarget.value, [mediaId], pos)
-    notifySuccess('Added to collection')
+    toast.add({ title: 'Added to collection', color: 'success', icon: 'i-lucide-check' })
     // Refresh detail if open for same collection. Bump nonce so any concurrent
     // background fetch from openAddItems doesn't clobber this fresher result.
     if (detailCollection.value?.id === addItemsTarget.value) {
@@ -187,7 +187,7 @@ async function addItem(mediaId: string) {
       detailItems.value = full.items ?? []
     }
   } catch (e: unknown) {
-    notifyError(e, 'Failed to add')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to add', color: 'error', icon: 'i-lucide-x' })
   } finally {
     const cleared = new Set(addingIds.value)
     cleared.delete(mediaId)

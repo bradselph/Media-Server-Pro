@@ -724,6 +724,14 @@ export interface AgeGateStatus {
     verified: boolean
 }
 
+// ── Cookie Consent ────────────────────────────────────────────────────────────
+
+export interface CookieConsentStatus {
+    required: boolean
+    given: boolean
+    analytics_accepted: boolean
+}
+
 // ── Media Stats ───────────────────────────────────────────────────────────────
 
 export interface MediaStats {

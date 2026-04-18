@@ -5,7 +5,6 @@ const emit = defineEmits<{ (e: 'config-changed'): void }>()
 
 const adminApi = useAdminApi()
 const toast = useToast()
-const { notifyError, notifySuccess } = useAdminFeedback()
 
 const config = ref<ClaudePublicConfig | null>(null)
 const authStatus = ref<ClaudeAuthStatus | null>(null)
@@ -49,7 +48,7 @@ async function load() {
       }
     }
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load Claude config')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load Claude config', color: 'error', icon: 'i-lucide-x' })
   } finally {
     loading.value = false
   }
@@ -75,11 +74,11 @@ async function save() {
   saving.value = true
   try {
     config.value = await adminApi.updateClaudeConfig(draft.value)
-    notifySuccess('Claude settings saved')
+    toast.add({ title: 'Claude settings saved', color: 'success', icon: 'i-lucide-check' })
     emit('config-changed')
     void refreshAuth()
   } catch (e: unknown) {
-    notifyError(e, 'Failed to save')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
   } finally {
     saving.value = false
   }
@@ -99,7 +98,7 @@ async function toggleKillSwitch() {
       icon: on ? 'i-lucide-shield-off' : 'i-lucide-shield-check',
     })
   } catch (e: unknown) {
-    notifyError(e, 'Failed')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     killSwitchBusy.value = false
   }

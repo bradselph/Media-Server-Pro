@@ -5,6 +5,7 @@ import type {
     AdminPlaylistStats,
     AdminStats,
     AgeGateStatus,
+    CookieConsentStatus,
     AnalyticsEvent,
     AnalyticsSummary,
     APIToken,
@@ -374,6 +375,15 @@ export function useAgeGateApi() {
     return {
         getStatus: () => api.get<AgeGateStatus>('/api/age-gate/status'),
         verify: () => api.post<void>('/api/age-verify'),
+    }
+}
+
+// ── Cookie Consent ────────────────────────────────────────────────────────────
+
+export function useCookieConsentApi() {
+    return {
+        getStatus: () => api.get<CookieConsentStatus>('/api/cookie-consent/status'),
+        accept: (analytics: boolean) => api.post<{ analytics_accepted: boolean }>('/api/cookie-consent', {analytics}),
     }
 }
 

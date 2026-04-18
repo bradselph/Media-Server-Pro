@@ -232,7 +232,7 @@ func hashFNV1a(data []byte) string {
 
 // Setup configures all routes on the gin engine.
 // securityModule.GinMiddleware() is defined in internal/security/security.go.
-func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *auth.Module, securityModule *security.Module, cfg *config.Manager, ageGate *middleware.AgeGate) {
+func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *auth.Module, securityModule *security.Module, cfg *config.Manager, ageGate *middleware.AgeGate, cookieConsent *middleware.CookieConsent) {
 	// srv may be nil in tests; status/modules routes are skipped when nil
 	log := logger.New("routes")
 
@@ -434,6 +434,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Age gate — public, no auth required (must be accessible before user logs in)
 	api.GET("/age-gate/status", ageGate.GinStatusHandler())
 	api.POST("/age-verify", ageGate.GinVerifyHandler())
+
+	// Cookie consent — public, no auth required (must be accessible to all visitors)
+	if cookieConsent != nil {
+		api.GET("/cookie-consent/status", cookieConsent.GinStatusHandler())
+		api.POST("/cookie-consent", cookieConsent.GinAcceptHandler())
+	}
 
 	// User preferences routes (protected)
 	api.GET("/preferences", requireAuth(), h.GetPreferences)

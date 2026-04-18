@@ -27,6 +27,7 @@ type Config struct {
 	Database      DatabaseConfig      `json:"database"`
 	Updater       UpdaterConfig       `json:"updater"`
 	AgeGate       AgeGateConfig       `json:"age_gate"`
+	CookieConsent CookieConsentConfig `json:"cookie_consent"`
 	UI            UIConfig            `json:"ui"`
 	Downloader    DownloaderConfig    `json:"downloader"`
 	Storage       StorageConfig       `json:"storage"`
@@ -139,6 +140,13 @@ type AgeGateConfig struct {
 	IPVerifyTTL  time.Duration `json:"ip_verify_ttl"`
 	CookieName   string        `json:"cookie_name"`
 	CookieMaxAge int           `json:"cookie_max_age"`
+}
+
+// CookieConsentConfig holds GDPR/CCPA cookie consent banner settings.
+type CookieConsentConfig struct {
+	Enabled      bool   `json:"enabled"`
+	CookieName   string `json:"cookie_name"`
+	CookieMaxAge int    `json:"cookie_max_age"`
 }
 
 // UpdaterConfig holds settings for the source-based updater.

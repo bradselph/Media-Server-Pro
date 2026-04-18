@@ -2,7 +2,7 @@
 import type { ClaudeConversation, ClaudeMessage, ClaudeEvent, ClaudeToolCall, ClaudeChatRequest } from '~/composables/useApiEndpoints'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const toast = useToast()
 
 // ── Conversations sidebar ──────────────────────────────────────────────────
 const conversations = ref<ClaudeConversation[]>([])
@@ -30,7 +30,7 @@ async function openConversation(id: string) {
     // Reconstruct display messages from stored history
     chatMessages.value = data.messages.map(m => storedMessageToDisplay(m))
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load conversation')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load conversation', color: 'error', icon: 'i-lucide-x' })
   }
 }
 
@@ -43,9 +43,9 @@ async function deleteConversation(id: string) {
       chatMessages.value = []
       pendingToolIds.value = []
     }
-    notifySuccess('Conversation deleted')
+    toast.add({ title: 'Conversation deleted', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
-    notifyError(e, 'Failed to delete')
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to delete', color: 'error', icon: 'i-lucide-x' })
   }
 }
 
