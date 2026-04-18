@@ -186,6 +186,7 @@ type Handler struct {
 	classifyAllRunning atomic.Bool // true while a ClassifyAllPending background job is active
 	feedCacheMu        sync.Mutex
 	feedCache          map[string]feedCacheEntry // key: "cacheKey" → cached XML + expiry
+	feedCacheStop      chan struct{}              // closed to stop the feed cache sweeper goroutine
 }
 
 // feedCacheEntry holds a pre-rendered RSS feed and its expiry time.
@@ -257,6 +258,42 @@ func (h *Handler) stopViewCooldownSweeper() {
 	}
 }
 
+// startFeedCacheSweeper runs a periodic sweep to evict expired entries from the
+// feedCache map. Without this, expired entries accumulate indefinitely.
+func (h *Handler) startFeedCacheSweeper() {
+	h.feedCacheStop = make(chan struct{})
+	ticker := time.NewTicker(feedCacheTTL)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-h.feedCacheStop:
+				return
+			case <-ticker.C:
+				now := time.Now()
+				h.feedCacheMu.Lock()
+				for k, e := range h.feedCache {
+					if now.After(e.expires) {
+						delete(h.feedCache, k)
+					}
+				}
+				h.feedCacheMu.Unlock()
+			}
+		}
+	}()
+}
+
+// stopFeedCacheSweeper signals the feed cache sweeper to exit. Safe to call multiple times.
+func (h *Handler) stopFeedCacheSweeper() {
+	if h.feedCacheStop != nil {
+		select {
+		case <-h.feedCacheStop:
+		default:
+			close(h.feedCacheStop)
+		}
+	}
+}
+
 // NewHandler creates a new handler with dependencies.
 // Panics if critical modules (Media, Auth, Streaming) are nil.
 func NewHandler(deps HandlerDeps) *Handler {
@@ -308,9 +345,11 @@ func NewHandler(deps HandlerDeps) *Handler {
 	// Assigned after h is constructed so the closure can safely reference h.
 	h.shutdownFunc = func() {
 		h.stopViewCooldownSweeper()
+		h.stopFeedCacheSweeper()
 		outerShutdown()
 	}
 	h.startViewCooldownSweeper()
+	h.startFeedCacheSweeper()
 	return h
 }
 

@@ -454,10 +454,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Self-service account deletion (requires password confirmation)
 	api.POST("/auth/delete-account", requireAuth(), h.DeleteAccount)
 
-	// User API tokens — programmatic access for scripts and tools
-	api.GET("/auth/tokens", requireAuth(), h.ListAPITokens)
-	api.POST("/auth/tokens", requireAuth(), h.CreateAPIToken)
-	api.DELETE("/auth/tokens/:id", requireAuth(), h.DeleteAPIToken)
+	// User API tokens — admin-only; adminAuth enforces this at middleware level
+	api.GET("/auth/tokens", adminAuth(authModule), h.ListAPITokens)
+	api.POST("/auth/tokens", adminAuth(authModule), h.CreateAPIToken)
+	api.DELETE("/auth/tokens/:id", adminAuth(authModule), h.DeleteAPIToken)
 
 	// Favorites (Watch Later)
 	api.GET("/favorites", requireAuth(), h.GetFavorites)
