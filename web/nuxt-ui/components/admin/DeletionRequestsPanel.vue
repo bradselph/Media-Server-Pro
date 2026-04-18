@@ -2,7 +2,7 @@
 import type { DataDeletionRequest } from '~/types/api'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const requests = ref<DataDeletionRequest[]>([])
 const loading = ref(true)
@@ -18,7 +18,7 @@ async function load() {
   try {
     requests.value = (await adminApi.listDeletionRequests(statusFilter.value || undefined)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load requests', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load requests')
   } finally {
     loading.value = false
   }
@@ -37,11 +37,11 @@ async function confirmProcess() {
   try {
     await adminApi.processDeletionRequest(selected.value.id, processAction.value, adminNotes.value)
     const label = processAction.value === 'approve' ? 'approved (user deleted)' : 'denied'
-    toast.add({ title: `Request ${label}`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Request ${label}`)
     processOpen.value = false
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     processing.value = false
   }

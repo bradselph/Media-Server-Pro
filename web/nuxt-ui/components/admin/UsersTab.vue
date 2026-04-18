@@ -2,7 +2,7 @@
 import type { User, UserSession } from '~/types/api'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess, notifyBulkResult } = useAdminFeedback()
 
 const users = ref<User[]>([])
 const loading = ref(true)
@@ -24,7 +24,7 @@ async function openSessions(user: User) {
   try {
     sessions.value = (await adminApi.getUserSessions(user.username)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load sessions', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load sessions')
   } finally {
     sessionsLoading.value = false
   }
@@ -127,11 +127,11 @@ async function executeBulkAction(action: 'delete' | 'enable' | 'disable') {
   bulkLoading.value = true
   try {
     const res = await adminApi.bulkUsers(selectedUsernames.value, action)
-    toast.add({ title: `${action}: ${res.success} succeeded, ${res.failed} failed`, color: res.failed > 0 ? 'warning' : 'success', icon: 'i-lucide-check' })
+    notifyBulkResult(res, action)
     selectedUsernames.value = []
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Bulk action failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Bulk action failed')
   } finally {
     bulkLoading.value = false
   }
@@ -140,7 +140,7 @@ async function executeBulkAction(action: 'delete' | 'enable' | 'disable') {
 async function load() {
   loading.value = true
   try { users.value = (await adminApi.listUsers()) ?? [] }
-  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' }) }
+  catch (e: unknown) { notifyError(e, 'Failed') }
   finally { loading.value = false }
 }
 
@@ -158,7 +158,7 @@ async function handleCreate() {
   createError.value = ''
   try {
     await adminApi.createUser(createForm)
-    toast.add({ title: `User ${createForm.username} created`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`User ${createForm.username} created`)
     createOpen.value = false
     Object.assign(createForm, { username: '', password: '', email: '', role: 'viewer' })
     await load()
@@ -222,7 +222,7 @@ async function handleSave() {
       return
     }
   }
-  toast.add({ title: 'User updated', color: 'success', icon: 'i-lucide-check' })
+  notifySuccess('User updated')
   editUser.value = null
   editLoading.value = false
   await load()
@@ -233,11 +233,11 @@ async function handleDelete() {
   deleting.value = true
   try {
     await adminApi.deleteUser(deleteUser.value.username)
-    toast.add({ title: `Deleted ${deleteUser.value.username}`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Deleted ${deleteUser.value.username}`)
     deleteUser.value = null
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     deleting.value = false
   }

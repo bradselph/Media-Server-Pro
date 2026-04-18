@@ -2,7 +2,7 @@
 import type { AuditLogEntry } from '~/types/api'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError } = useAdminFeedback()
 
 const entries = ref<AuditLogEntry[]>([])
 const loading = ref(false)
@@ -24,7 +24,7 @@ async function load(reset = false) {
       entries.value = [...entries.value, ...(data ?? [])]
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load audit log', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load audit log')
   } finally {
     loading.value = false
   }

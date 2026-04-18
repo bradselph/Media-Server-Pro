@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ModuleHealth, ServerSettings, MediaStats } from '~/types/api'
+import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ServerSettings, MediaStats } from '~/types/api'
 import { formatBytes, formatUptime } from '~/utils/format'
+import { moduleStatusColor } from '~/composables/useAdminFeedback'
 
 const STREAM_COLUMNS = [
   { accessorKey: 'user_id', header: 'User' },
@@ -21,7 +22,7 @@ const UPLOAD_COLUMNS = [
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
 const settingsApi = useSettingsApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const settings = ref<ServerSettings | null>(null)
 
@@ -47,12 +48,6 @@ const memPct = computed(() => {
   if (!system.value) return 0
   return Math.round(((system.value.memory_used ?? 0) / ((system.value.memory_total || 1))) * 100)
 })
-
-function moduleStatusColor(status: ModuleHealth['status']): 'success' | 'warning' | 'error' {
-  if (status === 'healthy') return 'success'
-  if (status === 'degraded') return 'warning'
-  return 'error'
-}
 
 async function loadAll() {
   statsLoading.value = true
@@ -84,9 +79,9 @@ async function handleAction(fn: () => Promise<unknown>, successMsg: string, acti
   const next = new Set(actionBusy.value); next.add(key); actionBusy.value = next
   try {
     await fn()
-    toast.add({ title: successMsg, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(successMsg)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Action failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Action failed')
   } finally {
     const cleared = new Set(actionBusy.value); cleared.delete(key); actionBusy.value = cleared
   }
