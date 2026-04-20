@@ -1,12 +1,21 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* Self-hosted Barlow — matches the design-handoff type spec. Barlow is loaded
+   from node_modules so it's bundled with the SPA (no external CDN → no CSP
+   exception needed). Weights 400/500/600/700/800 cover body, labels, and H1s. */
+@import "@fontsource/barlow/400.css";
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/600.css";
+@import "@fontsource/barlow/700.css";
+@import "@fontsource/barlow/800.css";
+
 /* Tailwind v4 safelist: ensure these classes are always emitted for the
    mature-content blur gate (dynamically applied via ternary, scanner may miss them) */
 @source inline("{blur-lg,blur-md,scale-110}");
 
 :root {
-    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-sans: 'Barlow', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 body {
@@ -87,11 +96,59 @@ body {
 /* ── Design token system ──────────────────────────────────────────────── */
 :root {
     --accent-hue: 220;
-    --accent: oklch(62% 0.13 var(--accent-hue));
-    --accent-soft: oklch(72% 0.13 var(--accent-hue));
-    --accent-bg-weak: oklch(62% 0.13 var(--accent-hue) / 0.15);
-    --accent-bg-med: oklch(62% 0.13 var(--accent-hue) / 0.22);
-    --accent-border: oklch(62% 0.13 var(--accent-hue) / 0.38);
+    --accent-chroma: 0.13;
+    --accent: oklch(62% var(--accent-chroma) var(--accent-hue));
+    --accent-soft: oklch(72% var(--accent-chroma) var(--accent-hue));
+    --accent-bg-weak: oklch(62% var(--accent-chroma) var(--accent-hue) / 0.15);
+    --accent-bg-med: oklch(62% var(--accent-chroma) var(--accent-hue) / 0.22);
+    --accent-border: oklch(62% var(--accent-chroma) var(--accent-hue) / 0.38);
+
+    /* Neutral palette — from design handoff §3. Hard-coded (do not replace
+       with theme colors) because the dark surface stack is brand-critical. */
+    --surface-page: #0d0d12;
+    --surface-card: #13131e;
+    --surface-elev: rgba(0, 0, 0, 0.25);
+    --hairline: rgba(255, 255, 255, 0.06);
+    --hairline-strong: rgba(255, 255, 255, 0.08);
+    --text-strong: #eeeef5;
+    --text-med: #c0c0d0;
+    --text-muted: #60609a;
+    --text-dim: #888;
+    --text-faint: #555;
+    --rating-star: #fbbf24;
+
+    /* Motion — from design handoff §8. */
+    --motion-hover: 150ms linear;
+    --motion-frame-fade: 450ms ease;
+    --motion-controls-fade: 200ms linear;
+}
+
+/* Section title — 13px uppercase muted header used above ABOUT, CHAPTERS,
+   UP NEXT, and similar subsection titles per handoff §3 (Typography). */
+.section-title {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* Pulsing dot used by the LIVE badge on the player top bar. */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+.live-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: pulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .live-dot { animation: none; }
 }
 
 /* Scanline texture for media thumbnails */
