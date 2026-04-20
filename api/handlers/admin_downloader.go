@@ -92,17 +92,14 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 		return
 	}
 
-	// Map to frontend shape: url (page or stream), streams (allStreams or single stream)
+	// Map to frontend shape: url (original page URL for best-quality downloads),
+	// streams (all detected streams for user to pick from)
 	streams := result.AllStreams
 	if len(streams) == 0 && result.Stream != nil {
 		streams = []downloader.StreamInfo{*result.Stream}
 	}
-	pageURL := result.PageURL
-	if pageURL == "" && result.Stream != nil {
-		pageURL = result.Stream.URL
-	}
 	writeSuccess(c, map[string]any{
-		"url":            pageURL,
+		"url":            req.URL,
 		"title":          result.Title,
 		"isYouTube":      result.IsYouTube,
 		"isYouTubeMusic": result.IsYouTubeMusic,

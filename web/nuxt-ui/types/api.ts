@@ -1007,7 +1007,7 @@ export interface DownloaderDetectResult {
 
 export interface DownloaderProgress {
     downloadId: string
-    status: 'queued' | 'downloading' | 'processing' | 'complete' | 'error' | 'cancelled'
+    status: 'queued' | 'detecting' | 'downloading' | 'processing' | 'completed' | 'complete' | 'error' | 'cancelled'
     progress?: number
     speed?: string
     eta?: string
