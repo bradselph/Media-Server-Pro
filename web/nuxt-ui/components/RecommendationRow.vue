@@ -40,12 +40,12 @@ function getGradientStyle(id: string): string {
 <template>
   <div v-if="items.length > 0" class="space-y-3">
     <div class="flex items-center justify-between">
-      <h2 class="text-base font-semibold text-default flex items-center gap-2">
-        <UIcon :name="icon" class="size-4 text-primary" />
+      <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+        <UIcon :name="icon" class="size-4 text-[var(--accent)]" />
         {{ title }}
       </h2>
       <div class="flex items-center gap-2">
-        <NuxtLink v-if="to" :to="to" class="text-xs font-medium text-primary hover:underline">See all →</NuxtLink>
+        <NuxtLink v-if="to" :to="to" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
         <div class="flex gap-1">
           <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="scrollBy(-320)" />
           <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="scrollBy(320)" />

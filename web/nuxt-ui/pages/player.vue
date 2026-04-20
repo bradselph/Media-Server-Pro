@@ -1564,7 +1564,7 @@ watch(mediaId, (id, oldId) => {
       <div class="space-y-6 max-md:px-4 max-md:pb-6 md:pb-0">
         <!-- Collections this media belongs to -->
         <div v-if="mediaCollections.length > 0" class="space-y-3">
-          <h3 class="font-semibold text-highlighted">In Collection</h3>
+          <h3 class="section-title">In Collection</h3>
           <div
             v-for="col in mediaCollections"
             :key="col.id"
@@ -1597,7 +1597,7 @@ watch(mediaId, (id, oldId) => {
 
         <!-- Similar media -->
         <div v-if="similar.length > 0" class="space-y-3">
-          <h3 class="font-semibold text-highlighted">Similar Media</h3>
+          <h3 class="section-title">Up Next</h3>
           <div
             v-for="item in similar"
             :key="item.media_id"
@@ -1629,7 +1629,7 @@ watch(mediaId, (id, oldId) => {
 
         <!-- Personalized recommendations (logged-in users) -->
         <div v-if="authStore.isLoggedIn && personalized.length > 0" class="space-y-3">
-          <h3 class="font-semibold text-highlighted">Recommended For You</h3>
+          <h3 class="section-title">Recommended</h3>
           <div
             v-for="item in personalized"
             :key="item.media_id"

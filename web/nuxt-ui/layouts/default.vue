@@ -114,8 +114,8 @@ function handleNavSearch() {
     <div v-if="!ageGateChecked || ageGateOpen" class="fixed inset-0 z-40 bg-default" />
 
     <!-- Nav -->
-    <header v-if="ageGateChecked && !ageGateOpen" class="border-b border-default bg-elevated sticky top-0 z-40">
-      <UContainer class="flex items-center justify-between h-14 gap-4">
+    <header v-if="ageGateChecked && !ageGateOpen" class="border-b border-[var(--hairline)] bg-[var(--surface-page)] sticky top-0 z-40">
+      <UContainer class="flex items-center justify-between h-[60px] gap-4">
         <NuxtLink to="/" class="font-bold text-lg text-highlighted flex items-center gap-2">
           <UIcon name="i-lucide-film" class="size-5 text-primary" />
           Media Server Pro
@@ -143,7 +143,7 @@ function handleNavSearch() {
           <UInput
             v-model="navSearch"
             icon="i-lucide-search"
-            placeholder="Search…"
+            placeholder="Search titles, tags..."
             size="sm"
             class="w-full"
             type="search"

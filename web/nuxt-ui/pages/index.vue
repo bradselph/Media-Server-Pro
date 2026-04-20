@@ -607,10 +607,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Hero section — shown when there's at least one featured item -->
+  <!-- Hero — compact banner per design handoff §6.2 -->
   <template v-if="authStore.isLoggedIn ? trending.length > 0 : general.length > 0">
     <div
-      class="relative overflow-hidden min-h-[360px] sm:min-h-[420px] flex items-end"
+      class="relative overflow-hidden min-h-[240px] flex items-end"
       :style="{ background: getItemGradient((authStore.isLoggedIn ? trending[0] : general[0]).media_id) }"
     >
       <!-- Actual media thumbnail as background -->
@@ -621,46 +621,26 @@ onUnmounted(() => {
         @error="($event.target as HTMLImageElement).style.display='none'"
       />
       <!-- Scanline texture -->
-      <div class="absolute inset-0 pointer-events-none" style="background: repeating-linear-gradient(0deg, transparent 3px, rgba(0,0,0,0.07) 4px);" />
-      <!-- Dark gradient overlay so text is readable over thumbnail -->
-      <div class="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/90 via-black/50 to-black/15" />
-      <!-- Subtle palette tint overlay -->
-      <div class="absolute inset-0 opacity-25 pointer-events-none" :style="{ background: getItemGradient((authStore.isLoggedIn ? trending[0] : general[0]).media_id) }" />
-      <!-- Bottom fade to page bg -->
-      <div class="absolute bottom-0 inset-x-0 h-20 pointer-events-none bg-gradient-to-t from-[var(--ui-bg)] to-transparent" />
-      <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 w-full">
-        <div class="max-w-xl">
-          <UBadge label="Featured" color="primary" variant="subtle" size="sm" class="mb-4 backdrop-blur-sm" />
-          <h1 class="text-3xl sm:text-4xl font-extrabold text-white leading-tight mb-3 line-clamp-2">
+      <div class="absolute inset-0 pointer-events-none scanline-thumb" />
+      <!-- Bottom gradient fade to page bg -->
+      <div class="absolute bottom-0 inset-x-0 h-[70%] pointer-events-none bg-gradient-to-t from-[var(--surface-page)] to-transparent" />
+      <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
+        <div class="flex items-center gap-3.5 flex-wrap">
+          <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">Featured</span>
+          <h1 class="text-[clamp(20px,3vw,28px)] font-bold text-white leading-tight line-clamp-1" style="text-wrap: pretty;">
             {{ getDisplayTitle(authStore.isLoggedIn ? trending[0] : general[0]) }}
           </h1>
-          <p
-            v-if="(authStore.isLoggedIn ? trending[0] : general[0]).category"
-            class="text-white/70 text-sm sm:text-base mb-2"
-          >
-            {{ (authStore.isLoggedIn ? trending[0] : general[0]).category }}
-          </p>
-          <div v-if="(authStore.isLoggedIn ? trending[0] : general[0]).duration" class="flex items-center gap-2 text-white/60 text-sm mb-4">
-            <UIcon name="i-lucide-clock" class="size-3.5" />
-            <span>{{ formatDuration((authStore.isLoggedIn ? trending[0] : general[0]).duration ?? 0) }}</span>
-            <span v-if="(authStore.isLoggedIn ? trending[0] : general[0]).media_type" class="uppercase text-xs">· {{ (authStore.isLoggedIn ? trending[0] : general[0]).media_type }}</span>
-          </div>
-          <div class="flex gap-3 flex-wrap">
-            <UButton
+          <div class="flex gap-2 flex-wrap ml-auto">
+            <NuxtLink
               :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
-              icon="i-lucide-play"
-              label="Watch Now"
-              color="primary"
-              size="lg"
-            />
-            <UButton
+              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-[18px] py-2 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
+            >
+              <UIcon name="i-lucide-play" class="size-3.5" />Watch Now
+            </NuxtLink>
+            <NuxtLink
               to="/categories"
-              label="Browse Library"
-              variant="ghost"
-              color="neutral"
-              size="lg"
-              class="text-white border-white/25 hover:bg-white/10 backdrop-blur-sm"
-            />
+              class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
+            >Browse</NuxtLink>
           </div>
         </div>
       </div>
@@ -852,7 +832,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Filters -->
-    <div class="rounded-xl border border-white/7 bg-elevated p-4 space-y-3">
+    <div class="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface-card)] p-4 space-y-3">
       <!-- Type chips (desktop) + search row -->
       <div class="flex flex-wrap gap-2 items-center">
         <button
