@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'default', title: 'Sign Up' })
 
-const { register } = useApiEndpoints()
+const { register, getRegistrationToken } = useApiEndpoints()
 const settingsApi = useSettingsApi()
 const authStore = useAuthStore()
 const router = useRouter()
@@ -10,13 +10,23 @@ const form = reactive({ username: '', password: '', confirm: '', email: '' })
 const loading = ref(false)
 const error = ref('')
 const registrationClosed = ref(false)
+const regToken = ref('')
 
 onMounted(async () => {
   if (authStore.isLoggedIn) { router.replace('/'); return }
   try {
     const settings = await settingsApi.get()
-    if (settings?.auth?.allow_registration === false) registrationClosed.value = true
+    if (settings?.auth?.allow_registration === false) {
+      registrationClosed.value = true
+      return
+    }
   } catch {}
+  try {
+    const res = await getRegistrationToken()
+    regToken.value = res.token
+  } catch {
+    error.value = 'Unable to load registration form. Please refresh and try again.'
+  }
 })
 
 async function handleSignup() {
@@ -39,13 +49,19 @@ async function handleSignup() {
   }
   loading.value = true
   try {
-    await register(form.username, form.password, form.email || undefined)
+    await register(form.username, form.password, regToken.value, form.email || undefined)
     // Fetch the full session instead of using the raw register response,
     // which may have null permissions/preferences on a freshly-created account.
     await authStore.fetchSession()
     router.replace('/')
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Registration failed'
+    // Token is consumed on any attempt (success or server-side failure after validation).
+    // Fetch a fresh one so the user can retry without reloading.
+    try {
+      const res = await getRegistrationToken()
+      regToken.value = res.token
+    } catch {}
   } finally {
     loading.value = false
   }
@@ -80,7 +96,7 @@ async function handleSignup() {
           <UFormField label="Confirm Password" required>
             <UInput v-model="form.confirm" name="confirm-password" type="password" placeholder="••••••••" autocomplete="new-password" required />
           </UFormField>
-          <UButton type="submit" class="w-full justify-center" :loading="loading" label="Create Account" />
+          <UButton type="submit" class="w-full justify-center" :loading="loading" :disabled="!regToken" label="Create Account" />
         </form>
       </UCard>
 

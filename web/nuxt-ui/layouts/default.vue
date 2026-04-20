@@ -22,6 +22,7 @@ async function fetchNewCount() {
 const ageGateOpen = ref(false)
 const ageGateChecked = ref(false)
 const ageGateVerifying = ref(false)
+const ageGateTermsAccepted = ref(false)
 
 async function checkAgeGate() {
   try {
@@ -34,6 +35,7 @@ async function checkAgeGate() {
 }
 
 async function verifyAge() {
+  if (!ageGateTermsAccepted.value) return
   ageGateVerifying.value = true
   try {
     await ageGateApi.verify()
@@ -212,9 +214,16 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
     </main>
 
     <!-- Footer -->
-    <footer v-if="serverVersion && ageGateChecked && !ageGateOpen" class="border-t border-default py-3">
+    <footer v-if="ageGateChecked && !ageGateOpen" class="border-t border-default py-3">
       <UContainer>
-        <p class="text-xs text-muted text-center">Media Server Pro v{{ serverVersion }}</p>
+        <div class="flex flex-col items-center gap-1">
+          <p v-if="serverVersion" class="text-xs text-muted">Media Server Pro v{{ serverVersion }}</p>
+          <div class="flex items-center gap-3 text-xs text-muted">
+            <NuxtLink to="/privacy" class="hover:text-default underline">Privacy Policy</NuxtLink>
+            <span aria-hidden="true">·</span>
+            <NuxtLink to="/terms" class="hover:text-default underline">Terms of Service</NuxtLink>
+          </div>
+        </div>
       </UContainer>
     </footer>
 
@@ -224,6 +233,9 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
     <!-- Global keyboard shortcuts reference (press ? anywhere) -->
     <KeyboardShortcutsModal ref="shortcutsModal" />
 
+    <!-- Cookie consent banner -->
+    <CookieConsentBanner />
+
     <!-- Age gate modal -->
     <UModal
       :open="ageGateOpen"
@@ -231,9 +243,30 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
       title="Age Verification Required"
       description="This site contains mature content. You must be 18 or older to continue."
     >
+      <template #body>
+        <div class="px-4 pb-2 space-y-4">
+          <p class="text-sm text-muted">
+            By continuing you confirm that you are at least 18 years old, that viewing adult content
+            is permitted in your jurisdiction, and that you agree to our
+            <NuxtLink to="/terms" class="underline hover:text-default" target="_blank">Terms of Service</NuxtLink>
+            and
+            <NuxtLink to="/privacy" class="underline hover:text-default" target="_blank">Privacy Policy</NuxtLink>.
+          </p>
+          <label class="flex items-start gap-3 cursor-pointer select-none">
+            <UCheckbox
+              v-model="ageGateTermsAccepted"
+              aria-label="I confirm I am 18 or older and agree to the Terms of Service and Privacy Policy"
+            />
+            <span class="text-sm text-default leading-snug">
+              I confirm I am 18 or older and agree to the Terms of Service and Privacy Policy.
+            </span>
+          </label>
+        </div>
+      </template>
       <template #footer>
         <UButton
           :loading="ageGateVerifying"
+          :disabled="!ageGateTermsAccepted"
           icon="i-lucide-check"
           label="I confirm I am 18 or older"
           color="primary"

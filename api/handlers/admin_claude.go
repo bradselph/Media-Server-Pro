@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -14,31 +13,46 @@ import (
 	"media-server-pro/internal/claude"
 )
 
-// AdminClaudeGetConfig returns the client-safe Claude settings and the set of
-// registered tool names. The raw API key is never exposed.
+// AdminClaudeGetConfig returns the client-safe Claude settings. Credentials
+// live in the CLI (~/.claude/.credentials.json) and are never serialized.
 func (h *Handler) AdminClaudeGetConfig(c *gin.Context) {
 	if !h.requireAdminModule(c) {
 		return
 	}
 	if h.claude == nil {
-		// Module disabled — still return stub settings so the Settings tab can
-		// render "enable" UI.
+		cfg := h.config.Get().Claude
 		writeSuccess(c, map[string]any{
-			"enabled":         h.config.Get().Claude.Enabled,
-			"api_key_set":     h.config.Get().Claude.APIKey != "",
-			"mode":            h.config.Get().Claude.Mode,
-			"model":           h.config.Get().Claude.Model,
-			"available_tools": []string{},
-			"module_loaded":   false,
+			"enabled":       cfg.Enabled,
+			"binary_path":   cfg.BinaryPath,
+			"workdir":       cfg.Workdir,
+			"mode":          cfg.Mode,
+			"model":         cfg.Model,
+			"module_loaded": false,
 		})
 		return
 	}
-	pub := h.claude.PublicConfig()
-	writeSuccess(c, pub)
+	writeSuccess(c, h.claude.PublicConfig())
+}
+
+// AdminClaudeAuthStatus reports whether the `claude` CLI is installed and
+// authenticated on the host so the admin UI can prompt for `claude login`.
+func (h *Handler) AdminClaudeAuthStatus(c *gin.Context) {
+	if !h.requireAdminModule(c) {
+		return
+	}
+	if h.claude == nil {
+		writeSuccess(c, map[string]any{
+			"installed":     false,
+			"authenticated": false,
+			"message":       "Claude module is not loaded",
+		})
+		return
+	}
+	writeSuccess(c, h.claude.GetAuthStatus(c.Request.Context()))
 }
 
 // AdminClaudeUpdateConfig applies a partial settings update. Allowed fields
-// mirror PublicConfig plus "api_key" (write-only).
+// mirror PublicConfig.
 func (h *Handler) AdminClaudeUpdateConfig(c *gin.Context) {
 	if !h.requireAdminModule(c) {
 		return
@@ -56,19 +70,8 @@ func (h *Handler) AdminClaudeUpdateConfig(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Redact sensitive credential fields before writing the audit entry.
-	safe := make(map[string]any, len(body))
-	for k, v := range body {
-		if k == "api_key" || k == "web_login_token" {
-			if s, ok := v.(string); ok && s != "" {
-				safe[k] = fmt.Sprintf("[set len=%d]", len(s))
-				continue
-			}
-		}
-		safe[k] = v
-	}
 	h.logAdminAction(c, &adminLogActionParams{
-		Action: "claude.settings.update", Target: "claude", Details: safe,
+		Action: "claude.settings.update", Target: "claude", Details: body,
 	})
 	writeSuccess(c, h.claude.PublicConfig())
 }
@@ -237,15 +240,3 @@ func (h *Handler) AdminClaudeChat(c *gin.Context) {
 	}
 }
 
-// AdminClaudeListTools returns the names + descriptions of the registered tools.
-// Handy for the Settings tab's allowlist editor.
-func (h *Handler) AdminClaudeListTools(c *gin.Context) {
-	if !h.requireAdminModule(c) {
-		return
-	}
-	if h.claude == nil {
-		writeSuccess(c, []any{})
-		return
-	}
-	writeSuccess(c, h.claude.PublicConfig().AvailableTools)
-}

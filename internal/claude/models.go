@@ -7,14 +7,18 @@ import (
 
 // Conversation represents a persisted Claude chat session owned by an admin.
 type Conversation struct {
-	ID        string    `json:"id" gorm:"primaryKey;size:64"`
-	UserID    string    `json:"user_id" gorm:"size:255;index;column:user_id"`
-	Username  string    `json:"username" gorm:"size:255"`
-	Title     string    `json:"title" gorm:"size:255"`
-	Mode      string    `json:"mode" gorm:"size:32"`
-	Model     string    `json:"model" gorm:"size:128"`
-	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	ID       string `json:"id" gorm:"primaryKey;size:64"`
+	UserID   string `json:"user_id" gorm:"size:255;index;column:user_id"`
+	Username string `json:"username" gorm:"size:255"`
+	Title    string `json:"title" gorm:"size:255"`
+	Mode     string `json:"mode" gorm:"size:32"`
+	Model    string `json:"model" gorm:"size:128"`
+	// CLISessionID is the session id reported by the `claude` CLI after the
+	// first turn. Subsequent turns resume via --resume <CLISessionID> so the
+	// CLI can reuse its own transcript + tool state.
+	CLISessionID string    `json:"cli_session_id,omitempty" gorm:"size:64;column:cli_session_id"`
+	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 // TableName maps Conversation to the claude_conversations table.
@@ -67,23 +71,19 @@ type ChatRequest struct {
 }
 
 // PublicConfig is the client-safe view of ClaudeConfig returned to the admin UI.
-// Raw credentials are never serialized; only the *Set booleans are returned.
+// Credentials live entirely inside the CLI (~/.claude/.credentials.json) — the
+// backend only surfaces the binary path and working directory.
 type PublicConfig struct {
-	Enabled                 bool     `json:"enabled"`
-	APIKeySet               bool     `json:"api_key_set"`
-	WebLoginTokenSet        bool     `json:"web_login_token_set"`
-	Model                   string   `json:"model"`
-	Mode                    string   `json:"mode"`
-	MaxTokens               int      `json:"max_tokens"`
-	SystemPrompt            string   `json:"system_prompt"`
-	AllowedTools            []string `json:"allowed_tools"`
-	AllowedShellCommands    []string `json:"allowed_shell_commands"`
-	AllowedPaths            []string `json:"allowed_paths"`
-	AllowedServices         []string `json:"allowed_services"`
-	RequireConfirmForWrites bool     `json:"require_confirm_for_writes"`
-	MaxToolCallsPerTurn     int      `json:"max_tool_calls_per_turn"`
-	RateLimitPerMinute      int      `json:"rate_limit_per_minute"`
-	KillSwitch              bool     `json:"kill_switch"`
-	HistoryRetentionDays    int      `json:"history_retention_days"`
-	AvailableTools          []string `json:"available_tools"`
+	Enabled                 bool   `json:"enabled"`
+	BinaryPath              string `json:"binary_path"`
+	Workdir                 string `json:"workdir"`
+	Model                   string `json:"model"`
+	Mode                    string `json:"mode"`
+	MaxTokens               int    `json:"max_tokens"`
+	SystemPrompt            string `json:"system_prompt"`
+	RequireConfirmForWrites bool   `json:"require_confirm_for_writes"`
+	MaxToolCallsPerTurn     int    `json:"max_tool_calls_per_turn"`
+	RateLimitPerMinute      int    `json:"rate_limit_per_minute"`
+	KillSwitch              bool   `json:"kill_switch"`
+	HistoryRetentionDays    int    `json:"history_retention_days"`
 }

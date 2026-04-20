@@ -724,6 +724,14 @@ export interface AgeGateStatus {
     verified: boolean
 }
 
+// ── Cookie Consent ────────────────────────────────────────────────────────────
+
+export interface CookieConsentStatus {
+    required: boolean
+    given: boolean
+    analytics_accepted: boolean
+}
+
 // ── Media Stats ───────────────────────────────────────────────────────────────
 
 export interface MediaStats {
@@ -999,7 +1007,7 @@ export interface DownloaderDetectResult {
 
 export interface DownloaderProgress {
     downloadId: string
-    status: 'queued' | 'downloading' | 'processing' | 'complete' | 'error' | 'cancelled'
+    status: 'queued' | 'detecting' | 'downloading' | 'processing' | 'completed' | 'complete' | 'error' | 'cancelled'
     progress?: number
     speed?: string
     eta?: string

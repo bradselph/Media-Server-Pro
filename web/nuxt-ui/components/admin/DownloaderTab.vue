@@ -76,7 +76,7 @@ function connectWS() {
         const next = new Map(activeProgress.value)
         next.set(msg.downloadId, msg as DownloaderProgress)
         activeProgress.value = next
-        if (msg.status === 'complete' || msg.status === 'error' || msg.status === 'cancelled') {
+        if (msg.status === 'complete' || msg.status === 'completed' || msg.status === 'error' || msg.status === 'cancelled') {
           setTimeout(() => {
             if (destroyed) return
             const m = new Map(activeProgress.value)
@@ -278,7 +278,7 @@ async function importFile(filename: string) {
 
 function progressBarColor(status: DownloaderProgress['status']) {
   if (status === 'error') return 'error'
-  if (status === 'complete') return 'success'
+  if (status === 'complete' || status === 'completed') return 'success'
   return 'primary'
 }
 </script>

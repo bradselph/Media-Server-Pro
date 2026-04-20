@@ -5,6 +5,7 @@ import type {
     AdminPlaylistStats,
     AdminStats,
     AgeGateStatus,
+    CookieConsentStatus,
     AnalyticsEvent,
     AnalyticsSummary,
     APIToken,
@@ -133,8 +134,12 @@ function logout() {
     return api.post<void>('/api/auth/logout')
 }
 
-function register(username: string, password: string, email?: string) {
-    return api.post<User>('/api/auth/register', {username, password, email})
+function getRegistrationToken() {
+    return api.get<{ token: string }>('/api/auth/register-token')
+}
+
+function register(username: string, password: string, token: string, email?: string) {
+    return api.post<User>('/api/auth/register', {username, password, email, token})
 }
 
 async function getSession(): Promise<SessionCheckResponse> {
@@ -181,7 +186,7 @@ async function updatePreferences(prefs: Partial<UserPreferences>): Promise<UserP
 
 export function useApiEndpoints() {
     return {
-        login, logout, register, getSession, changePassword, adminChangePassword, requestDataDeletion, deleteAccount,
+        login, logout, register, getRegistrationToken, getSession, changePassword, adminChangePassword, requestDataDeletion, deleteAccount,
         getPreferences, updatePreferences,
     }
 }
@@ -374,6 +379,15 @@ export function useAgeGateApi() {
     return {
         getStatus: () => api.get<AgeGateStatus>('/api/age-gate/status'),
         verify: () => api.post<void>('/api/age-verify'),
+    }
+}
+
+// ── Cookie Consent ────────────────────────────────────────────────────────────
+
+export function useCookieConsentApi() {
+    return {
+        getStatus: () => api.get<CookieConsentStatus>('/api/cookie-consent/status'),
+        accept: (analytics: boolean) => api.post<{ analytics_accepted: boolean }>('/api/cookie-consent', {analytics}),
     }
 }
 
@@ -744,6 +758,7 @@ export function useAdminApi() {
             api.put<ClaudePublicConfig>(`${base}/claude/config`, data),
         setClaudeKillSwitch: (on: boolean) =>
             api.post<{ kill_switch: boolean }>(`${base}/claude/kill-switch`, { on }),
+        getClaudeAuthStatus: () => api.get<ClaudeAuthStatus>(`${base}/claude/auth-status`),
         listClaudeConversations: (limit = 50) =>
             api.get<ClaudeConversation[]>(`${base}/claude/conversations?limit=${limit}`),
         getClaudeConversation: (id: string) =>
@@ -757,41 +772,40 @@ export function useAdminApi() {
 
 export interface ClaudePublicConfig {
     enabled: boolean
-    api_key_set: boolean
-    web_login_token_set: boolean
+    binary_path: string
+    workdir: string
     model: string
     mode: string
     max_tokens: number
     system_prompt: string
-    allowed_tools: string[]
-    allowed_shell_commands: string[]
-    allowed_paths: string[]
-    allowed_services: string[]
     require_confirm_for_writes: boolean
     max_tool_calls_per_turn: number
     rate_limit_per_minute: number
     kill_switch: boolean
     history_retention_days: number
-    available_tools: string[]
 }
 
 export interface ClaudeConfigUpdate {
     enabled?: boolean
-    api_key?: string
-    web_login_token?: string
+    binary_path?: string
+    workdir?: string
     model?: string
     mode?: string
     max_tokens?: number
     system_prompt?: string
-    allowed_tools?: string[]
-    allowed_shell_commands?: string[]
-    allowed_paths?: string[]
-    allowed_services?: string[]
     require_confirm_for_writes?: boolean
     max_tool_calls_per_turn?: number
     rate_limit_per_minute?: number
     kill_switch?: boolean
     history_retention_days?: number
+}
+
+export interface ClaudeAuthStatus {
+    installed: boolean
+    binary_path?: string
+    version?: string
+    authenticated: boolean
+    message?: string
 }
 
 export interface ClaudeConversation {

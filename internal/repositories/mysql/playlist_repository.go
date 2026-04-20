@@ -171,9 +171,17 @@ func (r *PlaylistRepository) AddItem(ctx context.Context, item *models.PlaylistI
 	return r.db.WithContext(ctx).Create(item).Error
 }
 
-// RemoveItem removes an item from a playlist by its ID
+// RemoveItem removes an item from a playlist by its ID.
+// Returns ErrPlaylistNotFound when no row matches itemID.
 func (r *PlaylistRepository) RemoveItem(ctx context.Context, itemID string) error {
-	return r.db.WithContext(ctx).Delete(&models.PlaylistItem{}, sqlIDEq, itemID).Error
+	result := r.db.WithContext(ctx).Delete(&models.PlaylistItem{}, sqlIDEq, itemID)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrPlaylistNotFound
+	}
+	return nil
 }
 
 // UpdateItem updates an existing playlist item (e.g. its position after a reorder).

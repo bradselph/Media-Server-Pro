@@ -342,7 +342,9 @@ func (m *Module) RestoreBackup(backupID string) error {
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
 
-	m.createPreRestoreBackup()
+	if err := m.createPreRestoreBackup(); err != nil {
+		return fmt.Errorf("aborted: pre-restore backup failed: %w", err)
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -372,14 +374,15 @@ func (m *Module) RestoreBackup(backupID string) error {
 }
 
 // createPreRestoreBackup creates an automatic backup before restore as a safety measure.
-func (m *Module) createPreRestoreBackup() {
+// Returns an error if the backup cannot be created; callers must abort the restore on failure.
+func (m *Module) createPreRestoreBackup() error {
 	m.log.Info("Creating pre-restore backup...")
 	preRestore, err := m.CreateBackup(CreateBackupOptions{Description: "pre-restore automatic backup", Type: "full"})
 	if err != nil {
-		m.log.Warn("Failed to create pre-restore backup: %v", err)
-		return
+		return fmt.Errorf("failed to create pre-restore backup: %w", err)
 	}
 	m.log.Info("Pre-restore backup created: %s", preRestore.ID)
+	return nil
 }
 
 const maxTotalExtractSize = 500 * 1024 * 1024 // 500 MB (zip bomb guard)

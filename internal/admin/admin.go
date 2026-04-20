@@ -602,17 +602,17 @@ func buildConfigExtractorMap(cfg *config.Config, _ []string) map[string]any {
 func buildConfigClaudeMap(cfg *config.Config, _ []string) map[string]any {
 	c := cfg.Claude
 	return map[string]any{
-		"enabled":                   c.Enabled,
-		"api_key_set":               c.APIKey != "",
-		"web_login_token_set":       c.WebLoginToken != "",
-		"model":                     c.Model,
-		"mode":                      c.Mode,
-		"max_tokens":                c.MaxTokens,
+		"enabled":                    c.Enabled,
+		"binary_path":                c.BinaryPath,
+		"workdir":                    c.Workdir,
+		"model":                      c.Model,
+		"mode":                       c.Mode,
+		"max_tokens":                 c.MaxTokens,
 		"require_confirm_for_writes": c.RequireConfirmForWrites,
-		"max_tool_calls_per_turn":   c.MaxToolCallsPerTurn,
-		"rate_limit_per_minute":     c.RateLimitPerMinute,
-		"kill_switch":               c.KillSwitch,
-		"history_retention_days":    c.HistoryRetentionDays,
+		"max_tool_calls_per_turn":    c.MaxToolCallsPerTurn,
+		"rate_limit_per_minute":      c.RateLimitPerMinute,
+		"kill_switch":                c.KillSwitch,
+		"history_retention_days":     c.HistoryRetentionDays,
 	}
 }
 

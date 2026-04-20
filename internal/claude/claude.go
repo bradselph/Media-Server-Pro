@@ -1,9 +1,10 @@
-// Package claude implements the Claude-powered admin assistant module.
-// It wraps the Anthropic Go SDK, exposes a typed tool-calling layer over the
-// running server (logs, config, processes, shell, services), persists
-// conversations to MySQL via GORM, and feeds every action through the existing
-// admin audit log. Authorization is handled at the route layer — this package
-// assumes the caller is an authenticated admin.
+// Package claude wraps the `claude` CLI (Claude Code) so authorized admins
+// can drive it from the web UI. The CLI is executed as a subprocess on each
+// turn; it owns the tool layer (Read/Edit/Bash/etc.) and its own OAuth
+// credentials stored at ~/.claude/.credentials.json (authenticate with
+// `claude login` on the VPS). Conversations are persisted to MySQL for
+// transcript replay; the CLI's own session id is stored per-row so resuming a
+// conversation simply passes --resume <session-id>.
 package claude
 
 import (
@@ -12,14 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
@@ -44,14 +41,6 @@ type Module struct {
 	log      *logger.Logger
 	db       *database.Module
 	adminMod *adminLogger
-
-	clientMu      sync.RWMutex
-	client        *anthropic.Client
-	apiKey        string // last used API key; compared to detect rotation
-	webLoginToken string // last used web login token; compared to detect rotation
-
-	toolsMu sync.RWMutex
-	tools   map[string]Tool
 
 	limiter *rateLimiter
 
@@ -81,8 +70,7 @@ type Deps struct {
 	Admin  *admin.Module
 }
 
-// NewModule creates the module. Tools must be registered by callers (typically
-// in cmd/server/main.go via RegisterDefaultTools) before Start().
+// NewModule creates the module.
 func NewModule(d Deps) (*Module, error) {
 	if d.Config == nil {
 		return nil, errors.New("claude: config manager required")
@@ -95,7 +83,6 @@ func NewModule(d Deps) (*Module, error) {
 		log:      logger.New("claude"),
 		db:       d.DB,
 		adminMod: &adminLogger{a: d.Admin},
-		tools:    make(map[string]Tool),
 		limiter:  newRateLimiter(),
 	}, nil
 }
@@ -103,9 +90,10 @@ func NewModule(d Deps) (*Module, error) {
 // Name satisfies server.Module.
 func (m *Module) Name() string { return "claude" }
 
-// Start satisfies server.Module. It validates config, initializes the SDK
-// client if an API key is configured, and schedules a retention sweep.
-func (m *Module) Start(_ context.Context) error {
+// Start validates config and probes the CLI. A missing or unauthenticated CLI
+// is logged as a warning but does not fail startup — the admin can resolve it
+// from the Settings tab.
+func (m *Module) Start(ctx context.Context) error {
 	m.startTime = time.Now()
 	c := m.cfg.Get().Claude
 	if !c.Enabled {
@@ -116,10 +104,10 @@ func (m *Module) Start(_ context.Context) error {
 	if !m.db.IsConnected() {
 		return errors.New("claude: database not connected")
 	}
-	if err := m.ensureClient(c); err != nil {
-		// Not fatal — admin can configure API key later via UI; module stays
-		// healthy-but-idle so the tab remains reachable.
-		m.log.Warn("Claude SDK client init deferred: %v", err)
+	if path, ver, err := CheckCLIAvailable(ctx, c); err != nil {
+		m.log.Warn("Claude CLI not ready: %v", err)
+	} else {
+		m.log.Info("Claude CLI ready: %s (%s)", path, ver)
 	}
 	m.setHealth(true, "Running")
 	m.log.Info("Claude admin assistant started (model=%s, mode=%s)", c.Model, c.Mode)
@@ -151,91 +139,53 @@ func (m *Module) setHealth(ok bool, msg string) {
 	m.healthMsg = msg
 }
 
-// ensureClient lazy-initializes the Anthropic SDK client. Re-creates the
-// client when credentials change so rotations take effect immediately.
-// APIKey (x-api-key header) takes precedence over WebLoginToken (Bearer).
-func (m *Module) ensureClient(c config.ClaudeConfig) error {
-	if c.APIKey == "" && c.WebLoginToken == "" {
-		return errors.New("no API key or web login token configured")
-	}
-	m.clientMu.Lock()
-	defer m.clientMu.Unlock()
-	if m.client != nil && m.apiKey == c.APIKey && m.webLoginToken == c.WebLoginToken {
-		return nil
-	}
-	var cli anthropic.Client
-	if c.APIKey != "" {
-		cli = anthropic.NewClient(option.WithAPIKey(c.APIKey))
-	} else {
-		cli = anthropic.NewClient(option.WithAuthToken(c.WebLoginToken))
-	}
-	m.client = &cli
-	m.apiKey = c.APIKey
-	m.webLoginToken = c.WebLoginToken
-	return nil
-}
-
-// RegisterTool adds a tool to the registry. Tool registration happens once at
-// startup; handlers should not register tools per-request.
-func (m *Module) RegisterTool(t Tool) {
-	if t == nil || t.Name() == "" {
-		return
-	}
-	m.toolsMu.Lock()
-	defer m.toolsMu.Unlock()
-	m.tools[t.Name()] = t
-}
-
-// listAvailableTools returns tool names currently enabled by config.
-func (m *Module) listAvailableTools() []string {
-	c := m.cfg.Get().Claude
-	m.toolsMu.RLock()
-	defer m.toolsMu.RUnlock()
-	names := make([]string, 0, len(m.tools))
-	for name := range m.tools {
-		if !m.toolEnabledForConfig(name, c) {
-			continue
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-func (m *Module) toolEnabledForConfig(name string, c config.ClaudeConfig) bool {
-	if len(c.AllowedTools) == 0 {
-		return true
-	}
-	return slices.Contains(c.AllowedTools, name)
-}
-
 // PublicConfig returns the client-safe config view.
 func (m *Module) PublicConfig() PublicConfig {
 	c := m.cfg.Get().Claude
 	return PublicConfig{
 		Enabled:                 c.Enabled,
-		APIKeySet:               strings.TrimSpace(c.APIKey) != "",
-		WebLoginTokenSet:        strings.TrimSpace(c.WebLoginToken) != "",
+		BinaryPath:              c.BinaryPath,
+		Workdir:                 c.Workdir,
 		Model:                   c.Model,
 		Mode:                    c.Mode,
 		MaxTokens:               c.MaxTokens,
 		SystemPrompt:            c.SystemPrompt,
-		AllowedTools:            append([]string(nil), c.AllowedTools...),
-		AllowedShellCommands:    append([]string(nil), c.AllowedShellCommands...),
-		AllowedPaths:            append([]string(nil), c.AllowedPaths...),
-		AllowedServices:         append([]string(nil), c.AllowedServices...),
 		RequireConfirmForWrites: c.RequireConfirmForWrites,
 		MaxToolCallsPerTurn:     c.MaxToolCallsPerTurn,
 		RateLimitPerMinute:      c.RateLimitPerMinute,
 		KillSwitch:              c.KillSwitch,
 		HistoryRetentionDays:    c.HistoryRetentionDays,
-		AvailableTools:          m.listAvailableTools(),
 	}
 }
 
+// AuthStatus reports whether the `claude` CLI is installed and authenticated
+// on the host. Returned directly to the admin UI so the operator knows when
+// to run `claude login` on the VPS.
+type AuthStatus struct {
+	Installed     bool   `json:"installed"`
+	BinaryPath    string `json:"binary_path,omitempty"`
+	Version       string `json:"version,omitempty"`
+	Authenticated bool   `json:"authenticated"`
+	Message       string `json:"message,omitempty"`
+}
+
+// GetAuthStatus runs a fast probe against the CLI and summarizes the result.
+func (m *Module) GetAuthStatus(ctx context.Context) AuthStatus {
+	c := m.cfg.Get().Claude
+	path, ver, err := CheckCLIAvailable(ctx, c)
+	if err != nil {
+		return AuthStatus{Installed: false, Message: err.Error()}
+	}
+	status := AuthStatus{Installed: true, BinaryPath: path, Version: ver, Authenticated: true}
+	if probeErr := ProbeAuth(ctx, c); probeErr != nil {
+		status.Authenticated = false
+		status.Message = probeErr.Error()
+	}
+	return status
+}
+
 // UpdateSettings applies a partial settings update. Keys are validated and
-// missing/invalid ones are silently skipped. The raw API key can only be set
-// via the dedicated "api_key" field; it is never returned.
+// missing/invalid ones are silently skipped.
 func (m *Module) UpdateSettings(updates map[string]any) error {
 	batch := map[string]any{}
 	for k, v := range updates {
@@ -243,17 +193,17 @@ func (m *Module) UpdateSettings(updates map[string]any) error {
 		case "enabled":
 			if b, ok := v.(bool); ok {
 				// Drive through the feature-toggle master so it is consistent with
-				// all other modules. syncFeatureToggles will propagate the value to
+				// all other modules. syncFeatureToggles propagates this to
 				// claude.enabled automatically after SetValuesBatch returns.
 				batch["features.enable_claude"] = b
 			}
-		case "api_key":
+		case "binary_path":
 			if s, ok := v.(string); ok {
-				batch["claude.api_key"] = s
+				batch["claude.binary_path"] = strings.TrimSpace(s)
 			}
-		case "web_login_token":
+		case "workdir":
 			if s, ok := v.(string); ok {
-				batch["claude.web_login_token"] = s
+				batch["claude.workdir"] = strings.TrimSpace(s)
 			}
 		case "model":
 			if s, ok := v.(string); ok {
@@ -275,14 +225,6 @@ func (m *Module) UpdateSettings(updates map[string]any) error {
 			if s, ok := v.(string); ok {
 				batch["claude.system_prompt"] = s
 			}
-		case "allowed_tools":
-			batch["claude.allowed_tools"] = toStringSlice(v)
-		case "allowed_shell_commands":
-			batch["claude.allowed_shell_commands"] = toStringSlice(v)
-		case "allowed_paths":
-			batch["claude.allowed_paths"] = toStringSlice(v)
-		case "allowed_services":
-			batch["claude.allowed_services"] = toStringSlice(v)
 		case "require_confirm_for_writes":
 			if b, ok := v.(bool); ok {
 				batch["claude.require_confirm_for_writes"] = b
@@ -308,12 +250,7 @@ func (m *Module) UpdateSettings(updates map[string]any) error {
 	if len(batch) == 0 {
 		return nil
 	}
-	if err := m.cfg.SetValuesBatch(batch); err != nil {
-		return err
-	}
-	// Rotate client if API key changed.
-	_ = m.ensureClient(m.cfg.Get().Claude)
-	return nil
+	return m.cfg.SetValuesBatch(batch)
 }
 
 // SetKillSwitch is a focused helper exposed to the handler layer so an admin
@@ -336,31 +273,6 @@ func toInt(v any) (int, bool) {
 		return n, err == nil
 	}
 	return 0, false
-}
-
-func toStringSlice(v any) []string {
-	switch x := v.(type) {
-	case []string:
-		return append([]string(nil), x...)
-	case []any:
-		out := make([]string, 0, len(x))
-		for _, it := range x {
-			if s, ok := it.(string); ok && strings.TrimSpace(s) != "" {
-				out = append(out, strings.TrimSpace(s))
-			}
-		}
-		return out
-	case string:
-		parts := strings.Split(x, ",")
-		out := make([]string, 0, len(parts))
-		for _, p := range parts {
-			if s := strings.TrimSpace(p); s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	}
-	return nil
 }
 
 // ListConversations returns conversations for the given admin user.
@@ -441,20 +353,6 @@ func (m *Module) createConversation(ctx context.Context, userID, username, title
 	return c, nil
 }
 
-// updateToolResult patches the tool_result column of an existing message. Used
-// when an admin approves a previously-gated tool call so the stored record
-// reflects the actual execution result rather than the pending placeholder.
-func (m *Module) updateToolResult(ctx context.Context, msgID string, tc *ToolCall) error {
-	b, err := json.Marshal(tc)
-	if err != nil {
-		return err
-	}
-	return m.db.GORM().WithContext(ctx).
-		Model(&Message{}).
-		Where("id = ?", msgID).
-		Update("tool_result", b).Error
-}
-
 // appendMessage persists a single conversation message.
 // Seq is assigned here by reading MAX(seq) for the conversation so that messages
 // retain insertion order regardless of created_at clock resolution.
@@ -496,16 +394,14 @@ func hostIdentity() string {
 }
 
 // buildSystemPrompt produces the system prompt that frames the assistant's
-// role and operational boundaries.
+// role and operational boundaries. This is passed to the CLI via
+// --append-system-prompt, so it layers on top of Claude Code's own system
+// prompt rather than replacing it.
 func (m *Module) buildSystemPrompt(c config.ClaudeConfig, mode string) string {
 	var b strings.Builder
-	b.WriteString("You are the autonomous self-repairing systems administrator for Media Server Pro 4, deployed on host ")
+	b.WriteString("You are acting as the autonomous self-repairing systems administrator for Media Server Pro 4, deployed on host ")
 	b.WriteString(hostIdentity())
 	b.WriteString(".\n\n")
-	b.WriteString("## Your role\n")
-	b.WriteString("You have full, unrestricted access to this VPS. Your purpose is to keep the server healthy, self-heal failures, ")
-	b.WriteString("apply fixes, manage deployments, and perform any administrative task the operator asks — without hand-holding. ")
-	b.WriteString("You are the root-level operator of this machine. Act with that authority and responsibility.\n\n")
 	b.WriteString("## Deployment context\n")
 	b.WriteString("- Stack: Go backend (media-server-pro binary), Nuxt/Vue 3 frontend (nuxt-ui), MySQL 8, systemd services\n")
 	b.WriteString("- App dir: /home/deployment/media-server-pro (or UPDATER_APP_DIR if set)\n")
@@ -518,20 +414,17 @@ func (m *Module) buildSystemPrompt(c config.ClaudeConfig, mode string) string {
 	fmt.Fprintf(&b, "## Operational mode: %s\n", mode)
 	switch mode {
 	case ModeAdvisory:
-		b.WriteString("Advisory: diagnose and propose fixes in text only. Do not invoke write/exec tools.\n")
+		b.WriteString("Advisory (plan mode): diagnose and propose fixes. Tools are restricted to planning.\n")
 	case ModeAutonomous:
-		b.WriteString("Autonomous: execute tools directly without waiting for confirmation. Investigate first, then act. ")
-		b.WriteString("Narrate each action briefly. Proceed through multi-step repairs end-to-end.\n")
+		b.WriteString("Autonomous: execute tools directly, investigate first, then act. Narrate each action briefly. Proceed through multi-step repairs end-to-end.\n")
 	default:
-		b.WriteString("Interactive: read tools run freely; write/exec tools are gated for admin approval. ")
-		b.WriteString("State intent clearly before each write.\n")
+		b.WriteString("Interactive: state intent clearly before each write.\n")
 	}
 	b.WriteString("\n## Core rules\n")
 	b.WriteString("- Never print secrets, API keys, passwords, or session tokens in plain text.\n")
 	b.WriteString("- When a tool returns an error, diagnose before retrying — don't repeat a failing call unchanged.\n")
 	b.WriteString("- For database operations prefer SELECT before UPDATE/DELETE; show a plan for destructive queries.\n")
 	b.WriteString("- systemctl restart media-server-pro will briefly drop active streams — only do this if necessary.\n")
-	b.WriteString("- You have full shell and file access. Use it confidently to get the job done.\n")
 	if s := strings.TrimSpace(c.SystemPrompt); s != "" {
 		b.WriteString("\n## Operator notes\n")
 		b.WriteString(s)
@@ -549,7 +442,7 @@ func selectMode(cfgMode, override string) string {
 	}
 	m = strings.ToLower(strings.TrimSpace(cfgMode))
 	if m != ModeAdvisory && m != ModeInteractive && m != ModeAutonomous {
-		m = ModeInteractive
+		m = ModeAutonomous
 	}
 	return m
 }

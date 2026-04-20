@@ -40,6 +40,7 @@ func DefaultConfig() *Config {
 		Database:      defaultDatabaseConfig(),
 		Updater:       UpdaterConfig{Branch: "main", UpdateMethod: "source"},
 		AgeGate:       defaultAgeGateConfig(),
+		CookieConsent: defaultCookieConsentConfig(),
 		UI:            UIConfig{ItemsPerPage: 48, MobileItemsPerPage: 24, MobileGridColumns: 2, FeedMaxItems: 50, FeedDefaultItems: 20},
 		Downloader:    defaultDownloaderConfig(),
 		Storage:       StorageConfig{Backend: "local"},
@@ -50,13 +51,15 @@ func DefaultConfig() *Config {
 func defaultClaudeConfig() ClaudeConfig {
 	return ClaudeConfig{
 		Enabled:                 false,
+		BinaryPath:              "",
+		Workdir:                 "",
 		Model:                   "claude-sonnet-4-6",
 		Mode:                    "autonomous",
 		MaxTokens:               4096,
-		MaxToolCallsPerTurn:     16,
+		MaxToolCallsPerTurn:     32,
 		RequireConfirmForWrites: false,
 		RateLimitPerMinute:      30,
-		RequestTimeout:          120 * time.Second,
+		RequestTimeout:          600 * time.Second,
 		HistoryRetentionDays:    30,
 	}
 }
@@ -354,6 +357,14 @@ func defaultAgeGateConfig() AgeGateConfig {
 		Enabled:      false,
 		IPVerifyTTL:  24 * time.Hour,
 		CookieName:   "age_verified",
+		CookieMaxAge: 365 * 24 * 60 * 60,
+	}
+}
+
+func defaultCookieConsentConfig() CookieConsentConfig {
+	return CookieConsentConfig{
+		Enabled:      true,
+		CookieName:   "cookie_consent",
 		CookieMaxAge: 365 * 24 * 60 * 60,
 	}
 }

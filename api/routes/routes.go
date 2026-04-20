@@ -232,7 +232,7 @@ func hashFNV1a(data []byte) string {
 
 // Setup configures all routes on the gin engine.
 // securityModule.GinMiddleware() is defined in internal/security/security.go.
-func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *auth.Module, securityModule *security.Module, cfg *config.Manager, ageGate *middleware.AgeGate) {
+func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *auth.Module, securityModule *security.Module, cfg *config.Manager, ageGate *middleware.AgeGate, cookieConsent *middleware.CookieConsent) {
 	// srv may be nil in tests; status/modules routes are skipped when nil
 	log := logger.New("routes")
 
@@ -411,6 +411,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Auth routes (public)
 	api.POST("/auth/login", h.Login)
 	api.POST("/auth/logout", h.Logout)
+	api.GET("/auth/register-token", h.GetRegistrationToken)
 	api.POST("/auth/register", h.Register)
 	api.GET("/auth/session", h.CheckSession)
 
@@ -435,6 +436,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/age-gate/status", ageGate.GinStatusHandler())
 	api.POST("/age-verify", ageGate.GinVerifyHandler())
 
+	// Cookie consent — public, no auth required (must be accessible to all visitors)
+	if cookieConsent != nil {
+		api.GET("/cookie-consent/status", cookieConsent.GinStatusHandler())
+		api.POST("/cookie-consent", cookieConsent.GinAcceptHandler())
+	}
+
 	// User preferences routes (protected)
 	api.GET("/preferences", requireAuth(), h.GetPreferences)
 	api.POST("/preferences", requireAuth(), h.UpdatePreferences)
@@ -448,10 +455,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Self-service account deletion (requires password confirmation)
 	api.POST("/auth/delete-account", requireAuth(), h.DeleteAccount)
 
-	// User API tokens — programmatic access for scripts and tools
-	api.GET("/auth/tokens", requireAuth(), h.ListAPITokens)
-	api.POST("/auth/tokens", requireAuth(), h.CreateAPIToken)
-	api.DELETE("/auth/tokens/:id", requireAuth(), h.DeleteAPIToken)
+	// User API tokens — admin-only; adminAuth enforces this at middleware level
+	api.GET("/auth/tokens", adminAuth(authModule), h.ListAPITokens)
+	api.POST("/auth/tokens", adminAuth(authModule), h.CreateAPIToken)
+	api.DELETE("/auth/tokens/:id", adminAuth(authModule), h.DeleteAPIToken)
 
 	// Favorites (Watch Later)
 	api.GET("/favorites", requireAuth(), h.GetFavorites)
@@ -762,7 +769,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/claude/config", h.AdminClaudeGetConfig)
 	adminGrp.PUT("/claude/config", h.AdminClaudeUpdateConfig)
 	adminGrp.POST("/claude/kill-switch", h.AdminClaudeKillSwitch)
-	adminGrp.GET("/claude/tools", h.AdminClaudeListTools)
+	adminGrp.GET("/claude/auth-status", h.AdminClaudeAuthStatus)
 	adminGrp.GET("/claude/conversations", h.AdminClaudeListConversations)
 	adminGrp.GET("/claude/conversations/:id", h.AdminClaudeGetConversation)
 	adminGrp.DELETE("/claude/conversations/:id", h.AdminClaudeDeleteConversation)
