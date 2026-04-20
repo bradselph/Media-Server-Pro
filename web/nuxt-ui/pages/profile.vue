@@ -5,6 +5,31 @@ import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatRelativeDate, formatDuration } from '~/utils/format'
 import { useAPITokensApi, useRatingsApi, useSuggestionsApi } from '~/composables/useApiEndpoints'
 
+const ACCENT_HUE_KEY = 'msp-accent-hue'
+const ACCENT_PRESETS = [
+  { hue: 220, label: 'Blue' },
+  { hue: 280, label: 'Purple' },
+  { hue: 340, label: 'Pink' },
+  { hue: 20, label: 'Orange' },
+  { hue: 80, label: 'Lime' },
+  { hue: 160, label: 'Teal' },
+]
+const accentHue = ref(220)
+
+function applyAccentHue(hue: number) {
+  if (import.meta.client) {
+    document.documentElement.style.setProperty('--accent-hue', String(hue))
+    localStorage.setItem(ACCENT_HUE_KEY, String(hue))
+  }
+}
+
+onMounted(() => {
+  if (import.meta.client) {
+    const saved = localStorage.getItem(ACCENT_HUE_KEY)
+    if (saved) accentHue.value = Number(saved)
+  }
+})
+
 const QUALITY_OPTIONS = [
   { label: 'Auto', value: 'auto' },
   { label: '1080p', value: '1080p' },
@@ -589,6 +614,39 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               v-model="prefs.items_per_page"
               :items="ITEMS_PER_PAGE_OPTIONS"
             />
+          </UFormField>
+          <UFormField label="Accent Color" description="Sets the primary highlight color across the site">
+            <div class="space-y-3">
+              <div class="flex items-center gap-3">
+                <input
+                  v-model.number="accentHue"
+                  type="range"
+                  min="0"
+                  max="360"
+                  step="1"
+                  class="flex-1 accent-[var(--accent)]"
+                  @input="applyAccentHue(accentHue)"
+                />
+                <div
+                  class="size-7 rounded-full border-2 border-white/20 shrink-0"
+                  :style="{ background: `oklch(62% 0.13 ${accentHue}deg)` }"
+                />
+              </div>
+              <div class="flex gap-2 flex-wrap">
+                <button
+                  v-for="preset in ACCENT_PRESETS"
+                  :key="preset.hue"
+                  class="size-7 rounded-full border-2 transition-all hover:scale-110"
+                  :style="{
+                    background: `oklch(62% 0.13 ${preset.hue}deg)`,
+                    borderColor: accentHue === preset.hue ? 'white' : 'transparent',
+                  }"
+                  :title="preset.label"
+                  :aria-label="`Set accent to ${preset.label}`"
+                  @click="accentHue = preset.hue; applyAccentHue(preset.hue)"
+                />
+              </div>
+            </div>
           </UFormField>
           <UFormField label="Skip Interval" description="How far J/L and mobile tap skip">
             <USelect

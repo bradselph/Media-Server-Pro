@@ -7,6 +7,20 @@ import { useCollectionsApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Player' })
 
+const PALETTES: [string, string][] = [
+  ['#1a0835','#9333ea'],['#081530','#2563eb'],['#1a0808','#dc2626'],
+  ['#081508','#16a34a'],['#1a1208','#d97706'],['#081515','#0891b2'],
+  ['#150815','#db2777'],['#0a0815','#6366f1'],['#150a0a','#ea580c'],
+  ['#0a1515','#059669'],['#0f0a20','#a855f7'],['#1a1000','#ca8a04'],
+]
+
+function getItemGradient(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff
+  const [c1, c2] = PALETTES[hash % PALETTES.length]
+  return `linear-gradient(135deg, ${c1}, ${c2})`
+}
+
 const route = useRoute()
 const mediaApi = useMediaApi()
 const playbackApi = usePlaybackApi()
@@ -1560,8 +1574,8 @@ watch(mediaId, (id, oldId) => {
             class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
             <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
-              <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+              <div class="relative w-20 h-12 rounded overflow-hidden shrink-0" :style="{ background: getItemGradient(item.media_id) }">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="absolute inset-0 w-full h-full object-cover" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
                 <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
                 </div>
@@ -1592,8 +1606,8 @@ watch(mediaId, (id, oldId) => {
             class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
             <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
-              <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+              <div class="relative w-20 h-12 rounded overflow-hidden shrink-0" :style="{ background: getItemGradient(item.media_id) }">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="absolute inset-0 w-full h-full object-cover" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
                 <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
                 </div>

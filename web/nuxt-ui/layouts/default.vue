@@ -47,6 +47,10 @@ async function verifyAge() {
 onMounted(checkAgeGate)
 onMounted(() => { versionApi.get().then(r => { serverVersion.value = r.version }).catch(() => {}) })
 onMounted(fetchNewCount)
+onMounted(() => {
+  const saved = localStorage.getItem('msp-accent-hue')
+  if (saved) document.documentElement.style.setProperty('--accent-hue', saved)
+})
 
 useHead({
   title: computed(() => {
@@ -87,6 +91,16 @@ const navLinks = computed(() => {
 
 // Close the mobile menu when the route changes (user tapped a link)
 watch(() => route.path, () => { mobileMenuOpen.value = false })
+
+const navSearch = ref('')
+
+function handleNavSearch() {
+  const q = navSearch.value.trim()
+  if (!q) return
+  router.push({ path: '/', query: { search: q } })
+  navSearch.value = ''
+  mobileMenuOpen.value = false
+}
 </script>
 
 <template>
@@ -123,6 +137,18 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
             >{{ newCount > 99 ? '99+' : newCount }}</span>
           </NuxtLink>
         </nav>
+
+        <!-- Nav search (desktop) -->
+        <form class="hidden md:flex items-center flex-1 max-w-xs" @submit.prevent="handleNavSearch">
+          <UInput
+            v-model="navSearch"
+            icon="i-lucide-search"
+            placeholder="Search…"
+            size="sm"
+            class="w-full"
+            type="search"
+          />
+        </form>
 
         <div class="flex items-center gap-2">
           <UButton
@@ -184,6 +210,16 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
             <UIcon :name="link.icon" class="size-4 shrink-0" />
             {{ link.label }}
           </NuxtLink>
+          <!-- Mobile search -->
+          <form class="px-1 py-2" @submit.prevent="handleNavSearch">
+            <UInput
+              v-model="navSearch"
+              icon="i-lucide-search"
+              placeholder="Search media…"
+              size="sm"
+              type="search"
+            />
+          </form>
           <div class="border-t border-default mt-1 pt-1">
             <template v-if="authStore.isLoggedIn">
               <button

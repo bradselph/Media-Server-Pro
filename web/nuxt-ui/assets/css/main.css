@@ -84,6 +84,34 @@ body {
     }
 }
 
+/* ── Design token system ──────────────────────────────────────────────── */
+:root {
+    --accent-hue: 220;
+    --accent: oklch(62% 0.13 var(--accent-hue));
+    --accent-soft: oklch(72% 0.13 var(--accent-hue));
+    --accent-bg-weak: oklch(62% 0.13 var(--accent-hue) / 0.15);
+    --accent-bg-med: oklch(62% 0.13 var(--accent-hue) / 0.22);
+    --accent-border: oklch(62% 0.13 var(--accent-hue) / 0.38);
+}
+
+/* Scanline texture for media thumbnails */
+.scanline-thumb::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, transparent 3px, rgba(0,0,0,0.06) 4px);
+}
+
+/* Hover-lift on media cards */
+.media-card-lift {
+    transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.media-card-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 44px rgba(0,0,0,0.55), 0 0 0 1px var(--accent-border);
+}
+
 /* Print styles — hide nav/footer chrome, show content cleanly */
 @media print {
     header, footer, nav, aside,

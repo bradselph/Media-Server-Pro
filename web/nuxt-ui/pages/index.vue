@@ -7,6 +7,20 @@ import { formatDuration, formatBytes, formatRelativeDate, formatResolution } fro
 import { blurHashToDataUrl } from '~/utils/blurhash'
 import { useQueueStore } from '~/stores/queue'
 
+const PALETTES: [string, string][] = [
+  ['#1a0835','#9333ea'],['#081530','#2563eb'],['#1a0808','#dc2626'],
+  ['#081508','#16a34a'],['#1a1208','#d97706'],['#081515','#0891b2'],
+  ['#150815','#db2777'],['#0a0815','#6366f1'],['#150a0a','#ea580c'],
+  ['#0a1515','#059669'],['#0f0a20','#a855f7'],['#1a1000','#ca8a04'],
+]
+
+function getItemGradient(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff
+  const [c1, c2] = PALETTES[hash % PALETTES.length]
+  return `linear-gradient(135deg, ${c1}, ${c2})`
+}
+
 const TYPE_OPTIONS = [
   { label: 'All Types', value: 'all' },
   { label: 'Video', value: 'video' },
@@ -322,6 +336,16 @@ function clearTagFilter() {
 watch(hideWatched, () => { params.page = 1; load() })
 watch(() => params.min_rating, () => { params.page = 1; load() })
 
+// Sync nav-bar search into params when the route query is updated while on this page
+watch(() => route.query.search, (q) => {
+  const s = typeof q === 'string' ? q : ''
+  if (s !== params.search) {
+    params.search = s
+    params.page = 1
+    load()
+  }
+})
+
 // Keep URL in sync with current filter state for deep-linking / bookmarking.
 // Uses router.replace so the browser back button is not polluted.
 let urlSyncTimer: ReturnType<typeof setTimeout> | null = null
@@ -583,6 +607,50 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- Hero section — shown when there's at least one featured item -->
+  <template v-if="authStore.isLoggedIn ? trending.length > 0 : general.length > 0">
+    <div
+      class="relative overflow-hidden"
+      :style="{ background: getItemGradient((authStore.isLoggedIn ? trending[0] : general[0]).media_id) }"
+    >
+      <!-- Scanline texture -->
+      <div class="absolute inset-0 pointer-events-none" style="background: repeating-linear-gradient(0deg, transparent 3px, rgba(0,0,0,0.07) 4px);" />
+      <!-- Bottom fade to page bg -->
+      <div class="absolute bottom-0 inset-x-0 h-24 pointer-events-none bg-gradient-to-t from-[var(--ui-bg)] to-transparent" />
+      <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20">
+        <div class="max-w-xl">
+          <UBadge label="Featured" color="primary" variant="subtle" size="sm" class="mb-4 backdrop-blur-sm" />
+          <h1 class="text-3xl sm:text-4xl font-extrabold text-white leading-tight mb-3 line-clamp-2">
+            {{ getDisplayTitle(authStore.isLoggedIn ? trending[0] : general[0]) }}
+          </h1>
+          <p
+            v-if="(authStore.isLoggedIn ? trending[0] : general[0]).category"
+            class="text-white/70 text-sm sm:text-base mb-6"
+          >
+            {{ (authStore.isLoggedIn ? trending[0] : general[0]).category }}
+          </p>
+          <div class="flex gap-3 flex-wrap">
+            <UButton
+              :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
+              icon="i-lucide-play"
+              label="Watch Now"
+              color="primary"
+              size="lg"
+            />
+            <UButton
+              to="/categories"
+              label="Browse Library"
+              variant="ghost"
+              color="neutral"
+              size="lg"
+              class="text-white border-white/25 hover:bg-white/10 backdrop-blur-sm"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
   <UContainer class="py-6 space-y-6">
     <h1 class="sr-only">Media Library</h1>
     <!-- Recommendations (logged-in only) -->
@@ -765,20 +833,37 @@ onUnmounted(() => {
     </div>
 
     <!-- Filters -->
-    <div class="flex flex-wrap gap-3 items-center">
-      <UInput
-        v-model="params.search"
-        icon="i-lucide-search"
-        placeholder="Search media…"
-        autocomplete="on"
-        name="media-search"
-        class="w-64"
-        @input="onSearchInput"
-      />
+    <div class="rounded-xl border border-white/7 bg-elevated p-4 space-y-3">
+      <!-- Type chips (desktop) + search row -->
+      <div class="flex flex-wrap gap-2 items-center">
+        <button
+          v-for="opt in TYPE_OPTIONS"
+          :key="opt.value"
+          :class="[
+            'hidden md:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
+            params.type === opt.value
+              ? 'bg-primary text-white border-primary'
+              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+          ]"
+          @click="params.type = opt.value"
+        >{{ opt.label }}</button>
+        <UInput
+          v-model="params.search"
+          icon="i-lucide-search"
+          placeholder="Search media…"
+          autocomplete="on"
+          name="media-search"
+          class="w-64"
+          @input="onSearchInput"
+        />
+      </div>
+      <!-- Secondary filters row -->
+      <div class="flex flex-wrap gap-3 items-center">
+      <!-- Type select (mobile only) -->
       <USelect
         v-model="params.type"
         :items="TYPE_OPTIONS"
-        class="w-36"
+        class="w-36 md:hidden"
       />
       <USelect
         v-if="categories.length > 0"
@@ -899,7 +984,8 @@ onUnmounted(() => {
           @click="toggleSelectionMode"
         />
       </div>
-    </div>
+      </div><!-- end secondary filters row -->
+    </div><!-- end filter card -->
 
     <!-- Bulk action bar -->
     <div v-if="selectionMode && authStore.isLoggedIn" class="sticky top-14 z-30 bg-elevated border-b border-default py-2">
@@ -983,9 +1069,15 @@ onUnmounted(() => {
         @click="selectionMode ? toggleSelect(item.id, $event) : undefined"
       >
         <div
-          class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2"
+          class="relative aspect-video rounded-lg overflow-hidden mb-2 media-card-lift scanline-thumb"
           :style="item.blur_hash && item.type !== 'audio' ? { backgroundImage: `url(${blurHashToDataUrl(item.blur_hash)})`, backgroundSize: 'cover' } : {}"
         >
+          <!-- Gradient fallback layer (always present for video/image, sits beneath thumbnail) -->
+          <div
+            v-if="item.type !== 'audio'"
+            class="absolute inset-0"
+            :style="{ background: getItemGradient(item.id) }"
+          />
           <!-- Selection checkbox -->
           <div v-if="selectionMode" class="absolute top-1.5 left-1.5 z-10">
             <div :class="['w-5 h-5 rounded border-2 flex items-center justify-center', selectedIds.has(item.id) ? 'bg-primary border-primary' : 'bg-black/40 border-white/70']">
@@ -998,13 +1090,17 @@ onUnmounted(() => {
             :alt="getDisplayTitle(item)"
             width="320"
             height="180"
-            :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
+            :class="['absolute inset-0 w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
             loading="lazy"
             @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, item.id)"
           />
-          <div v-else-if="item.type === 'audio'" class="w-full h-full flex flex-col items-center justify-center bg-linear-to-br from-primary/10 to-primary/5 gap-2">
+          <div
+            v-else-if="item.type === 'audio'"
+            class="w-full h-full flex flex-col items-center justify-center gap-2"
+            :style="{ background: getItemGradient(item.id) }"
+          >
             <AudioBars size="lg" :bars="7" class="opacity-70 group-hover:opacity-100 transition-opacity" />
-            <span class="text-[10px] font-medium text-muted uppercase tracking-wider">{{ item.codec || 'Audio' }}</span>
+            <span class="text-[10px] font-medium text-white/60 uppercase tracking-wider">{{ item.codec || 'Audio' }}</span>
           </div>
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon name="i-lucide-film" class="size-8 text-muted" />
@@ -1018,6 +1114,15 @@ onUnmounted(() => {
             <p class="text-white text-xs font-semibold leading-tight">
               {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign in to view' }}
             </p>
+          </div>
+          <!-- Hover play button overlay (not shown in selection mode or when gated) -->
+          <div
+            v-if="!selectionMode && !(item.is_mature && !canViewMature)"
+            class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+          >
+            <div class="w-10 h-10 rounded-full bg-white/18 backdrop-blur-sm border-2 border-white/45 flex items-center justify-center">
+              <UIcon name="i-lucide-play" class="size-4 text-white ml-0.5" />
+            </div>
           </div>
           <!-- Playback progress bar (logged-in, partially watched, not gated) -->
           <div
