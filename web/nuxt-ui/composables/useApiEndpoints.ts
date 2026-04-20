@@ -134,8 +134,12 @@ function logout() {
     return api.post<void>('/api/auth/logout')
 }
 
-function register(username: string, password: string, email?: string) {
-    return api.post<User>('/api/auth/register', {username, password, email})
+function getRegistrationToken() {
+    return api.get<{ token: string }>('/api/auth/register-token')
+}
+
+function register(username: string, password: string, token: string, email?: string) {
+    return api.post<User>('/api/auth/register', {username, password, email, token})
 }
 
 async function getSession(): Promise<SessionCheckResponse> {
@@ -182,7 +186,7 @@ async function updatePreferences(prefs: Partial<UserPreferences>): Promise<UserP
 
 export function useApiEndpoints() {
     return {
-        login, logout, register, getSession, changePassword, adminChangePassword, requestDataDeletion, deleteAccount,
+        login, logout, register, getRegistrationToken, getSession, changePassword, adminChangePassword, requestDataDeletion, deleteAccount,
         getPreferences, updatePreferences,
     }
 }

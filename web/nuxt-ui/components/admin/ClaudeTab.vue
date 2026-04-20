@@ -92,7 +92,7 @@ onMounted(loadConfig)
           <div class="flex items-center gap-3 shrink-0">
             <!-- Credential status -->
             <UBadge
-              v-if="hasCredentials"
+              v-if="cliReady"
               color="success"
               variant="subtle"
               icon="i-lucide-key"
@@ -112,7 +112,7 @@ onMounted(loadConfig)
               color="primary"
               size="sm"
               :loading="enabling"
-              :disabled="!hasCredentials"
+              :disabled="!cliReady"
               @click="enable"
             />
             <UButton
@@ -129,8 +129,8 @@ onMounted(loadConfig)
         </div>
 
         <!-- No-credentials nudge -->
-        <div v-if="!hasCredentials && !config?.enabled" class="mt-3 text-xs text-muted border-t border-default pt-3">
-          Go to <UButton variant="link" size="xs" label="Settings" class="px-0" @click="subTab = 'settings'" /> to add an API key or web login token, then come back here to enable Claude.
+        <div v-if="!cliReady && !config?.enabled" class="mt-3 text-xs text-muted border-t border-default pt-3">
+          Run <code class="font-mono">claude login</code> on the server to authenticate the CLI, then configure the binary path in <UButton variant="link" size="xs" label="Settings" class="px-0" @click="subTab = 'settings'" /> and enable Claude.
         </div>
       </UCard>
 

@@ -411,6 +411,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Auth routes (public)
 	api.POST("/auth/login", h.Login)
 	api.POST("/auth/logout", h.Logout)
+	api.GET("/auth/register-token", h.GetRegistrationToken)
 	api.POST("/auth/register", h.Register)
 	api.GET("/auth/session", h.CheckSession)
 

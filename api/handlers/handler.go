@@ -182,6 +182,7 @@ type Handler struct {
 	deletionRequestsMu  sync.Mutex // guards lazy init of deletionRequests
 	viewCooldown        sync.Map      // key: "userID|mediaID" → value: time.Time of last counted view
 	viewCooldownStop    chan struct{}  // closed to stop the background sweeper goroutine
+	regTokens           sync.Map      // key: token string → value: time.Time issued; single-use, 15-min TTL
 	classifyDirRunning atomic.Bool // true while a ClassifyDirectory background job is active
 	classifyAllRunning atomic.Bool // true while a ClassifyAllPending background job is active
 	feedCacheMu        sync.Mutex

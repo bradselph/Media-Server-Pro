@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"bytes"
+	cryptorand "crypto/rand"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -17,6 +20,8 @@ import (
 	"media-server-pro/internal/auth"
 	"media-server-pro/pkg/models"
 )
+
+const regTokenTTL = 15 * time.Minute
 
 // Login authenticates a user or admin using the same endpoint
 func (h *Handler) Login(c *gin.Context) {
@@ -187,7 +192,25 @@ func (h *Handler) CheckSession(c *gin.Context) {
 	})
 }
 
-// Register creates a new user account
+// GetRegistrationToken issues a single-use server-signed token required to call Register.
+// The frontend fetches this when the signup page loads; curl scripts without it are rejected.
+func (h *Handler) GetRegistrationToken(c *gin.Context) {
+	if !h.config.Get().Auth.AllowRegistration {
+		writeError(c, http.StatusForbidden, "Registration is disabled")
+		return
+	}
+	raw := make([]byte, 32)
+	if _, err := cryptorand.Read(raw); err != nil {
+		writeError(c, http.StatusInternalServerError, errInternalServer)
+		return
+	}
+	token := hex.EncodeToString(raw)
+	h.regTokens.Store(token, time.Now())
+	writeSuccess(c, map[string]string{"token": token})
+}
+
+// Register creates a new user account.
+// A valid registration token (obtained from GetRegistrationToken) is required.
 func (h *Handler) Register(c *gin.Context) {
 	cfg := h.config.Get()
 	if !cfg.Auth.AllowRegistration {
@@ -198,8 +221,16 @@ func (h *Handler) Register(c *gin.Context) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 		Email    string `json:"email"`
+		Token    string `json:"token"`
 	}
 	if !BindJSON(c, &req, "") {
+		return
+	}
+
+	// Validate the server-issued registration token (single-use, 15-min TTL).
+	issued, ok := h.regTokens.LoadAndDelete(req.Token)
+	if !ok || req.Token == "" || time.Since(issued.(time.Time)) > regTokenTTL {
+		writeError(c, http.StatusForbidden, "Invalid or expired registration token")
 		return
 	}
 
