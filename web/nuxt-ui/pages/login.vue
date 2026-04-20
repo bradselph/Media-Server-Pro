@@ -60,67 +60,76 @@ async function handleLogin() {
 </script>
 
 <template>
-  <div class="min-h-[80vh] flex items-center justify-center px-4">
-    <div class="w-full max-w-sm space-y-6">
-      <div class="text-center space-y-2">
-        <UIcon name="i-lucide-film" class="size-10 text-primary mx-auto" />
-        <h1 class="text-2xl font-bold text-highlighted">Media Server Pro</h1>
-        <p class="text-muted text-sm">Sign in to your account</p>
+  <div class="min-h-[80vh] flex items-center justify-center px-4 py-12">
+    <div class="w-full max-w-sm">
+      <!-- Header -->
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center size-16 rounded-full mb-4"
+             style="background: var(--accent-bg-weak); border: 1px solid var(--accent-border);">
+          <UIcon name="i-lucide-film" class="size-8" style="color: var(--accent-soft);" />
+        </div>
+        <h1 class="text-2xl font-extrabold text-highlighted">Sign In</h1>
+        <p class="text-muted text-sm mt-1">Media Server Pro</p>
       </div>
 
-      <UCard>
+      <!-- Card -->
+      <div class="rounded-xl border border-white/10 bg-elevated p-7 space-y-5">
+        <UAlert
+          v-if="error"
+          :title="error"
+          color="error"
+          variant="soft"
+          icon="i-lucide-x-circle"
+        />
         <form class="space-y-4" @submit.prevent="handleLogin">
-          <UAlert
-            v-if="error"
-            :title="error"
-            color="error"
-            variant="soft"
-            icon="i-lucide-x-circle"
-          />
-          <UFormField label="Username">
+          <div>
+            <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Username</label>
             <UInput
               v-model="form.username"
               name="username"
               placeholder="your username"
               autocomplete="username"
+              class="w-full"
               required
+              autofocus
             />
-          </UFormField>
-          <UFormField label="Password">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Password</label>
             <UInput
               v-model="form.password"
               name="password"
               type="password"
               placeholder="••••••••"
               autocomplete="current-password"
+              class="w-full"
               required
             />
-          </UFormField>
+          </div>
           <UButton
             type="submit"
-            class="w-full justify-center"
+            class="w-full justify-center mt-1"
             :loading="loading"
             label="Sign In"
+            color="primary"
           />
         </form>
-      </UCard>
+        <UButton
+          v-if="allowGuests"
+          class="w-full justify-center"
+          variant="outline"
+          color="neutral"
+          icon="i-lucide-eye"
+          label="Browse as Guest"
+          @click="router.replace('/')"
+        />
+      </div>
 
-      <!-- Registration link — hidden when server has disabled new accounts -->
-      <UButton
-        v-if="allowGuests"
-        class="w-full justify-center"
-        variant="outline"
-        color="neutral"
-        icon="i-lucide-eye"
-        label="Browse as Guest"
-        @click="router.replace('/')"
-      />
-
-      <p v-if="allowRegistration" class="text-center text-sm text-muted">
+      <p v-if="allowRegistration" class="text-center text-sm text-muted mt-5">
         Don't have an account?
-        <NuxtLink to="/signup" class="text-primary hover:underline">Sign up</NuxtLink>
+        <NuxtLink to="/signup" class="font-semibold hover:underline" style="color: var(--accent-soft);">Create one</NuxtLink>
       </p>
-      <p v-else class="text-center text-sm text-muted">
+      <p v-else class="text-center text-sm text-muted mt-5">
         <UIcon name="i-lucide-lock" class="size-3.5 inline-block mr-1 -mt-0.5" />
         Registration is currently closed.
       </p>

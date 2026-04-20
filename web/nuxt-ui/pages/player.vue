@@ -1281,27 +1281,57 @@ watch(mediaId, (id, oldId) => {
 
         <!-- Media info -->
         <UCard>
-          <template #header>
-            <h2 class="font-bold text-lg text-highlighted">{{ getDisplayTitle(media) }}</h2>
-          </template>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-            <div v-if="media.type"><span class="text-muted">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
-            <div v-if="media.duration || duration"><span class="text-muted">Duration:</span> {{ formatDuration(media.duration || duration) }}</div>
-            <div v-if="media.size"><span class="text-muted">Size:</span> {{ formatBytes(media.size) }}</div>
-            <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
-            <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
-            <div v-if="media.codec"><span class="text-muted">Codec:</span> {{ media.codec }}</div>
-            <div v-if="media.container"><span class="text-muted">Format:</span> {{ media.container.toUpperCase() }}</div>
-            <div v-if="media.bitrate"><span class="text-muted">Bitrate:</span> {{ formatBandwidth(media.bitrate) }}</div>
-            <div v-if="media.category"><span class="text-muted">Category:</span> {{ media.category }}</div>
-            <div v-if="media.date_added"><span class="text-muted">Added:</span> {{ new Date(media.date_added).toLocaleDateString() }}</div>
-            <div v-if="hlsActivated && qualities.length > 0">
-              <span class="text-muted">Quality:</span> {{ currentQualityLabel }}
-            </div>
+          <!-- Badge row: type, category, mature -->
+          <div class="flex flex-wrap gap-1.5 mb-3">
+            <span v-if="media.type"
+              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+              style="background: var(--accent-bg-weak); border: 1px solid var(--accent-border); color: var(--accent-soft);"
+            >{{ media.type }}</span>
+            <span v-if="media.category"
+              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-muted"
+              style="background: rgba(255,255,255,0.07);"
+            >{{ media.category }}</span>
+            <span v-if="media.is_mature"
+              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold"
+              style="background: rgba(220,38,38,0.12); color: #f87171;"
+            >18+</span>
           </div>
-          <p v-if="media.metadata?.description" class="text-sm text-muted mt-3">{{ media.metadata.description }}</p>
-          <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1.5 mt-3">
+          <!-- Title -->
+          <h2 class="text-xl sm:text-2xl font-extrabold text-highlighted leading-tight mb-2">{{ getDisplayTitle(media) }}</h2>
+          <!-- Inline metadata row -->
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted mb-3">
+            <span v-if="media.date_added">{{ new Date(media.date_added).getFullYear() }}</span>
+            <template v-if="media.duration || duration">
+              <span class="opacity-30" aria-hidden="true">·</span>
+              <span>{{ formatDuration(media.duration || duration) }}</span>
+            </template>
+            <template v-if="userRating">
+              <span class="opacity-30" aria-hidden="true">·</span>
+              <span class="text-yellow-400">★ {{ userRating }}</span>
+            </template>
+            <template v-if="media.views != null">
+              <span class="opacity-30" aria-hidden="true">·</span>
+              <span>{{ media.views.toLocaleString() }} views</span>
+            </template>
+            <template v-if="media.width && media.height">
+              <span class="opacity-30" aria-hidden="true">·</span>
+              <span>{{ media.width }}×{{ media.height }}</span>
+            </template>
+          </div>
+          <!-- Description -->
+          <p v-if="media.metadata?.description" class="text-sm text-muted leading-relaxed mb-3">{{ media.metadata.description }}</p>
+          <!-- Tags -->
+          <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1.5 mb-3">
             <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
+          </div>
+          <!-- Technical details (compact secondary row) -->
+          <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mb-4">
+            <span v-if="media.size">{{ formatBytes(media.size) }}</span>
+            <span v-if="media.codec">{{ media.codec.toUpperCase() }}</span>
+            <span v-if="media.container">{{ media.container.toUpperCase() }}</span>
+            <span v-if="media.bitrate">{{ formatBandwidth(media.bitrate) }}</span>
+            <span v-if="hlsActivated && qualities.length > 0" class="text-primary">{{ currentQualityLabel }}</span>
+            <span v-if="media.date_added">Added {{ new Date(media.date_added).toLocaleDateString() }}</span>
           </div>
           <div class="flex gap-2 mt-4 flex-wrap">
             <UButton

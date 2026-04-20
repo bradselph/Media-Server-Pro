@@ -8,6 +8,7 @@ defineProps<{
   icon: string
   items: Suggestion[]
   failedIds?: Set<string>
+  to?: string
 }>()
 
 const emit = defineEmits<{
@@ -43,9 +44,12 @@ function getGradientStyle(id: string): string {
         <UIcon :name="icon" class="size-4 text-primary" />
         {{ title }}
       </h2>
-      <div class="flex gap-1">
-        <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="scrollBy(-320)" />
-        <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="scrollBy(320)" />
+      <div class="flex items-center gap-2">
+        <NuxtLink v-if="to" :to="to" class="text-xs font-medium text-primary hover:underline">See all →</NuxtLink>
+        <div class="flex gap-1">
+          <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="scrollBy(-320)" />
+          <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="scrollBy(320)" />
+        </div>
       </div>
     </div>
     <div ref="scrollContainer" class="flex gap-3 overflow-x-auto pb-3 scroll-smooth">

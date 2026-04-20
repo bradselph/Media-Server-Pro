@@ -610,14 +610,25 @@ onUnmounted(() => {
   <!-- Hero section — shown when there's at least one featured item -->
   <template v-if="authStore.isLoggedIn ? trending.length > 0 : general.length > 0">
     <div
-      class="relative overflow-hidden"
+      class="relative overflow-hidden min-h-[360px] sm:min-h-[420px] flex items-end"
       :style="{ background: getItemGradient((authStore.isLoggedIn ? trending[0] : general[0]).media_id) }"
     >
+      <!-- Actual media thumbnail as background -->
+      <img
+        :src="mediaApi.getThumbnailUrl((authStore.isLoggedIn ? trending[0] : general[0]).media_id)"
+        class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+        aria-hidden="true"
+        @error="($event.target as HTMLImageElement).style.display='none'"
+      />
       <!-- Scanline texture -->
       <div class="absolute inset-0 pointer-events-none" style="background: repeating-linear-gradient(0deg, transparent 3px, rgba(0,0,0,0.07) 4px);" />
+      <!-- Dark gradient overlay so text is readable over thumbnail -->
+      <div class="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/90 via-black/50 to-black/15" />
+      <!-- Subtle palette tint overlay -->
+      <div class="absolute inset-0 opacity-25 pointer-events-none" :style="{ background: getItemGradient((authStore.isLoggedIn ? trending[0] : general[0]).media_id) }" />
       <!-- Bottom fade to page bg -->
-      <div class="absolute bottom-0 inset-x-0 h-24 pointer-events-none bg-gradient-to-t from-[var(--ui-bg)] to-transparent" />
-      <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20">
+      <div class="absolute bottom-0 inset-x-0 h-20 pointer-events-none bg-gradient-to-t from-[var(--ui-bg)] to-transparent" />
+      <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 w-full">
         <div class="max-w-xl">
           <UBadge label="Featured" color="primary" variant="subtle" size="sm" class="mb-4 backdrop-blur-sm" />
           <h1 class="text-3xl sm:text-4xl font-extrabold text-white leading-tight mb-3 line-clamp-2">
@@ -625,10 +636,15 @@ onUnmounted(() => {
           </h1>
           <p
             v-if="(authStore.isLoggedIn ? trending[0] : general[0]).category"
-            class="text-white/70 text-sm sm:text-base mb-6"
+            class="text-white/70 text-sm sm:text-base mb-2"
           >
             {{ (authStore.isLoggedIn ? trending[0] : general[0]).category }}
           </p>
+          <div v-if="(authStore.isLoggedIn ? trending[0] : general[0]).duration" class="flex items-center gap-2 text-white/60 text-sm mb-4">
+            <UIcon name="i-lucide-clock" class="size-3.5" />
+            <span>{{ formatDuration((authStore.isLoggedIn ? trending[0] : general[0]).duration ?? 0) }}</span>
+            <span v-if="(authStore.isLoggedIn ? trending[0] : general[0]).media_type" class="uppercase text-xs">· {{ (authStore.isLoggedIn ? trending[0] : general[0]).media_type }}</span>
+          </div>
           <div class="flex gap-3 flex-wrap">
             <UButton
               :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
@@ -717,6 +733,7 @@ onUnmounted(() => {
         icon="i-lucide-trending-up"
         :items="trending"
         :failed-ids="failedSuggestions"
+        to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
 
@@ -727,6 +744,7 @@ onUnmounted(() => {
         icon="i-lucide-sparkles"
         :items="recommended"
         :failed-ids="failedSuggestions"
+        to="/"
         @thumbnail-error="onSuggestionThumbnailError"
       />
       <!-- New Since Last Visit -->
@@ -820,6 +838,7 @@ onUnmounted(() => {
         icon="i-lucide-star"
         :items="general"
         :failed-ids="failedSuggestions"
+        to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
     </template>
@@ -1204,12 +1223,13 @@ onUnmounted(() => {
         <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
-        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size)" class="text-xs text-muted truncate">
+        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size || item.views)" class="text-xs text-muted truncate">
           {{ [
             item.category,
             item.type === 'audio' && item.codec ? item.codec.toUpperCase() : null,
             item.type === 'video' && item.height ? formatResolution(item.width, item.height) : null,
             !item.category && !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
+            item.views > 0 ? item.views.toLocaleString() + ' views' : null,
           ].filter(Boolean).join(' · ') }}
         </p>
         <!-- Tag chips — click to filter by tag (hidden for gated items) -->
