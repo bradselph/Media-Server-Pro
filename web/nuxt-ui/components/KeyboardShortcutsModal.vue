@@ -45,7 +45,7 @@ const GLOBAL_SHORTCUTS = [
       <div class="space-y-5">
         <!-- Player shortcuts -->
         <div>
-          <p class="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Player</p>
+          <p class="section-title mb-2">Player</p>
           <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
             <template v-for="s in PLAYER_SHORTCUTS" :key="s.key">
               <kbd class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center whitespace-nowrap self-center">{{ s.key }}</kbd>
@@ -56,7 +56,7 @@ const GLOBAL_SHORTCUTS = [
 
         <!-- Global shortcuts -->
         <div>
-          <p class="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Global</p>
+          <p class="section-title mb-2">Global</p>
           <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
             <template v-for="s in GLOBAL_SHORTCUTS" :key="s.key">
               <kbd class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center whitespace-nowrap self-center">{{ s.key }}</kbd>

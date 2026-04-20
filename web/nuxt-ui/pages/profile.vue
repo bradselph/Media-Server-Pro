@@ -497,7 +497,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
           </div>
         </div>
         <div v-if="topCategories.length > 0">
-          <p class="text-xs font-medium text-muted mb-2 uppercase tracking-wide">Top Genres</p>
+          <p class="section-title mb-2">Top Genres</p>
           <div class="space-y-1.5">
             <div v-for="cat in topCategories" :key="cat.name" class="flex items-center gap-2">
               <span class="text-sm w-28 truncate capitalize">{{ cat.name }}</span>

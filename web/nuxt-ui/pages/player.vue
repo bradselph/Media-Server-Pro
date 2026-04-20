@@ -1570,7 +1570,7 @@ watch(mediaId, (id, oldId) => {
             :key="col.id"
             class="space-y-1.5"
           >
-            <p class="text-xs font-semibold text-muted uppercase tracking-wide">{{ col.name }}</p>
+            <p class="section-title">{{ col.name }}</p>
             <div class="space-y-1">
               <NuxtLink
                 v-for="(item, idx) in (col.items ?? [])"
