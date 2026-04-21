@@ -1319,11 +1319,17 @@ watch(mediaId, (id, oldId) => {
             </template>
           </div>
           <!-- Description -->
-          <p v-if="media.metadata?.description" class="text-sm text-muted leading-relaxed mb-3">{{ media.metadata.description }}</p>
+          <template v-if="media.metadata?.description">
+            <h3 class="section-title mb-1.5">About</h3>
+            <p class="text-sm text-[var(--text-med)] leading-[1.75] mb-3" style="text-wrap: pretty;">{{ media.metadata.description }}</p>
+          </template>
           <!-- Tags -->
-          <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1.5 mb-3">
-            <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
-          </div>
+          <template v-if="media.tags && media.tags.length > 0">
+            <h3 class="section-title mb-1.5">Tags</h3>
+            <div class="flex flex-wrap gap-1.5 mb-3">
+              <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
+            </div>
+          </template>
           <!-- Technical details (compact secondary row) -->
           <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mb-4">
             <span v-if="media.size">{{ formatBytes(media.size) }}</span>
