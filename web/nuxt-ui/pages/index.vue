@@ -680,7 +680,7 @@ onUnmounted(() => {
             :to="`/player?id=${encodeURIComponent(ep.media_id)}`"
             class="group shrink-0 w-40"
           >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
               <img
                 v-if="ep.thumbnail_url"
                 :src="ep.thumbnail_url"
@@ -746,7 +746,7 @@ onUnmounted(() => {
             :to="`/player?id=${encodeURIComponent(r.id)}`"
             class="group shrink-0 w-40"
           >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
               <img
                 v-if="r.thumbnail_url"
                 :src="r.thumbnail_url"
@@ -787,7 +787,7 @@ onUnmounted(() => {
             :to="`/player?id=${encodeURIComponent(r.id)}`"
             class="group shrink-0 w-40"
           >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
               <img
                 v-if="r.thumbnail_url"
                 :src="r.thumbnail_url"
