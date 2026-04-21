@@ -172,7 +172,7 @@ watch(() => authStore.user, (user) => {
             {{ group }}
             <span class="text-xs font-normal normal-case tracking-normal">({{ groupItems.length }})</span>
           </h3>
-          <div class="flex gap-3 overflow-x-auto pb-2">
+          <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
             <NuxtLink
               v-for="item in groupItems"
               :key="item.id"

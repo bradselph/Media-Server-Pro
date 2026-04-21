@@ -722,7 +722,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2">
+        <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
             v-for="ep in onDeck"
             :key="ep.media_id"
@@ -791,7 +791,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2">
+        <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
             v-for="r in newSinceLastVisit.items"
             :key="r.id"
@@ -835,7 +835,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2">
+        <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
             v-for="r in recentlyAdded"
             :key="r.id"
@@ -1211,7 +1211,8 @@ onUnmounted(() => {
             v-if="!selectionMode && !(item.is_mature && !canViewMature)"
             class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
           >
-            <div class="w-10 h-10 rounded-full bg-white/18 backdrop-blur-sm border-2 border-white/45 flex items-center justify-center">
+            <!-- 42px glass circle per handoff §6.5 hover play overlay. -->
+            <div class="w-[42px] h-[42px] rounded-full bg-white/18 backdrop-blur-sm border-2 border-white/45 flex items-center justify-center">
               <UIcon name="i-lucide-play" class="size-4 text-white ml-0.5" />
             </div>
           </div>

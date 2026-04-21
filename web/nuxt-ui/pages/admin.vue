@@ -58,7 +58,7 @@ watch(activeTab, tab => {
       <!-- Sidebar layout -->
       <div class="flex gap-4 items-start">
         <!-- Mobile: horizontal scrollable pill nav -->
-        <div class="md:hidden w-full flex gap-1 overflow-x-auto pb-1">
+        <div class="md:hidden w-full flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
           <UButton
             v-for="tab in TABS"
             :key="tab.value"
@@ -72,8 +72,8 @@ watch(activeTab, tab => {
           />
         </div>
 
-        <!-- Desktop: vertical sidebar -->
-        <nav class="hidden md:flex flex-col gap-0.5 w-44 shrink-0 sticky top-4">
+        <!-- Desktop: vertical sidebar — 196px width per handoff §6.7. -->
+        <nav class="hidden md:flex flex-col gap-0.5 w-[196px] shrink-0 sticky top-4">
           <button
             v-for="tab in TABS"
             :key="tab.value"
