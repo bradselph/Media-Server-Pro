@@ -138,7 +138,14 @@ function copyLinkAtTime() {
   >
     <!-- Seek bar: expanded touch area (py-2) without visual change -->
     <div
-      class="relative w-full cursor-pointer px-3 py-2 touch-manipulation"
+      role="slider"
+      tabindex="0"
+      :aria-label="`Seek bar: ${formatDuration(currentTime)} of ${formatDuration(duration)}`"
+      :aria-valuemin="0"
+      :aria-valuemax="Math.floor(duration)"
+      :aria-valuenow="Math.floor(currentTime)"
+      :aria-valuetext="`${formatDuration(currentTime)} of ${formatDuration(duration)}`"
+      class="relative w-full cursor-pointer px-3 py-2 touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       @click="onSeekBarClick"
       @mousemove="onSeekBarMouseMove"
       @mouseenter="seekBarHovering = true"
@@ -146,6 +153,8 @@ function copyLinkAtTime() {
       @touchstart.prevent="onSeekBarTouch"
       @touchmove.prevent="onSeekBarTouch"
       @touchend.prevent="onSeekBarTouchEnd"
+      @keydown.left.prevent="emit('seek', -5)"
+      @keydown.right.prevent="emit('seek', 5)"
     >
       <!-- Thumbnail preview tooltip -->
       <Transition name="fade">
