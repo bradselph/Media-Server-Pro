@@ -7,6 +7,20 @@ import { formatDuration, formatBytes, formatRelativeDate, formatResolution } fro
 import { blurHashToDataUrl } from '~/utils/blurhash'
 import { useQueueStore } from '~/stores/queue'
 
+const PALETTES: [string, string][] = [
+  ['#1a0835','#9333ea'],['#081530','#2563eb'],['#1a0808','#dc2626'],
+  ['#081508','#16a34a'],['#1a1208','#d97706'],['#081515','#0891b2'],
+  ['#150815','#db2777'],['#0a0815','#6366f1'],['#150a0a','#ea580c'],
+  ['#0a1515','#059669'],['#0f0a20','#a855f7'],['#1a1000','#ca8a04'],
+]
+
+function getItemGradient(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff
+  const [c1, c2] = PALETTES[hash % PALETTES.length]
+  return `linear-gradient(135deg, ${c1}, ${c2})`
+}
+
 const TYPE_OPTIONS = [
   { label: 'All Types', value: 'all' },
   { label: 'Video', value: 'video' },
@@ -319,8 +333,64 @@ function clearTagFilter() {
   load()
 }
 
+// Filter presets — design handoff §6.3. Chip strip above the grid that toggles
+// common curation modes (Trending → most-viewed, New → recently added).
+type Preset = 'trending' | 'new' | null
+const activePreset = computed<Preset>(() => {
+  if (params.sort_by === 'views' && params.sort_order === 'desc') return 'trending'
+  if (params.sort_by === 'date_added' && params.sort_order === 'desc') return 'new'
+  return null
+})
+
+function togglePreset(preset: 'trending' | 'new') {
+  if (activePreset.value === preset) {
+    params.sort_by = 'name'
+    params.sort_order = 'asc'
+  } else if (preset === 'trending') {
+    params.sort_by = 'views'
+    params.sort_order = 'desc'
+  } else {
+    params.sort_by = 'date_added'
+    params.sort_order = 'desc'
+  }
+  params.page = 1
+}
+
+const hasActiveFilters = computed(() =>
+  params.type !== 'all' ||
+  params.category !== 'all' ||
+  params.sort_by !== 'name' ||
+  params.sort_order !== 'asc' ||
+  params.min_rating > 0 ||
+  !!params.search ||
+  !!filterTag.value ||
+  hideWatched.value,
+)
+
+function clearAllFilters() {
+  params.type = 'all'
+  params.category = 'all'
+  params.sort_by = 'name'
+  params.sort_order = 'asc'
+  params.min_rating = 0
+  params.search = ''
+  filterTag.value = ''
+  hideWatched.value = false
+  params.page = 1
+}
+
 watch(hideWatched, () => { params.page = 1; load() })
 watch(() => params.min_rating, () => { params.page = 1; load() })
+
+// Sync nav-bar search into params when the route query is updated while on this page
+watch(() => route.query.search, (q) => {
+  const s = typeof q === 'string' ? q : ''
+  if (s !== params.search) {
+    params.search = s
+    params.page = 1
+    load()
+  }
+})
 
 // Keep URL in sync with current filter state for deep-linking / bookmarking.
 // Uses router.replace so the browser back button is not polluted.
@@ -583,6 +653,46 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- Hero — compact banner per design handoff §6.2 -->
+  <template v-if="authStore.isLoggedIn ? trending.length > 0 : general.length > 0">
+    <div
+      class="relative overflow-hidden min-h-[240px] flex items-end"
+      :style="{ background: getItemGradient((authStore.isLoggedIn ? trending[0] : general[0]).media_id) }"
+    >
+      <!-- Actual media thumbnail as background -->
+      <img
+        :src="mediaApi.getThumbnailUrl((authStore.isLoggedIn ? trending[0] : general[0]).media_id)"
+        class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+        aria-hidden="true"
+        @error="($event.target as HTMLImageElement).style.display='none'"
+      />
+      <!-- Scanline texture -->
+      <div class="absolute inset-0 pointer-events-none scanline-thumb" />
+      <!-- Bottom gradient fade to page bg -->
+      <div class="absolute bottom-0 inset-x-0 h-[70%] pointer-events-none bg-gradient-to-t from-[var(--surface-page)] to-transparent" />
+      <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
+        <div class="flex items-center gap-3.5 flex-wrap">
+          <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">Featured</span>
+          <h1 class="text-[clamp(20px,3vw,28px)] font-bold text-white leading-tight line-clamp-1" style="text-wrap: pretty;">
+            {{ getDisplayTitle(authStore.isLoggedIn ? trending[0] : general[0]) }}
+          </h1>
+          <div class="flex gap-2 flex-wrap ml-auto">
+            <NuxtLink
+              :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
+              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-[18px] py-2 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
+            >
+              <UIcon name="i-lucide-play" class="size-3.5" />Watch Now
+            </NuxtLink>
+            <NuxtLink
+              to="/categories"
+              class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
+            >Browse</NuxtLink>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
   <UContainer class="py-6 space-y-6">
     <h1 class="sr-only">Media Library</h1>
     <!-- Recommendations (logged-in only) -->
@@ -598,15 +708,18 @@ onUnmounted(() => {
       />
 
       <!-- On Deck (next episode per TV show / Anime series) -->
-      <div v-if="onDeck.length > 0" class="space-y-2">
+      <div v-if="onDeck.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-            <UIcon name="i-lucide-tv-2" class="size-4 text-primary" />
+          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+            <UIcon name="i-lucide-tv-2" class="size-4 text-[var(--accent)]" />
             On Deck
           </h2>
-          <div class="flex gap-1">
-            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          <div class="flex items-center gap-2">
+            <NuxtLink to="/history" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
+            <div class="flex gap-1">
+              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+            </div>
           </div>
         </div>
         <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2">
@@ -616,7 +729,7 @@ onUnmounted(() => {
             :to="`/player?id=${encodeURIComponent(ep.media_id)}`"
             class="group shrink-0 w-40"
           >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
               <img
                 v-if="ep.thumbnail_url"
                 :src="ep.thumbnail_url"
@@ -646,9 +759,10 @@ onUnmounted(() => {
       <RecommendationRow
         v-if="authStore.user?.preferences?.show_trending !== false"
         title="Trending"
-        icon="i-lucide-trending-up"
+        icon="i-lucide-flame"
         :items="trending"
         :failed-ids="failedSuggestions"
+        to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
 
@@ -656,21 +770,25 @@ onUnmounted(() => {
       <RecommendationRow
         v-if="authStore.user?.preferences?.show_recommended !== false"
         title="Recommended For You"
-        icon="i-lucide-sparkles"
+        icon="i-lucide-thumbs-up"
         :items="recommended"
         :failed-ids="failedSuggestions"
+        to="/"
         @thumbnail-error="onSuggestionThumbnailError"
       />
       <!-- New Since Last Visit -->
-      <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-2">
+      <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-            <UIcon name="i-lucide-bell" class="size-4 text-primary" />
+          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+            <UIcon name="i-lucide-bell" class="size-4 text-[var(--accent)]" />
             New Since Your Last Visit
           </h2>
-          <div class="flex gap-1">
-            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          <div class="flex items-center gap-2">
+            <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
+            <div class="flex gap-1">
+              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+            </div>
           </div>
         </div>
         <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2">
@@ -680,7 +798,7 @@ onUnmounted(() => {
             :to="`/player?id=${encodeURIComponent(r.id)}`"
             class="group shrink-0 w-40"
           >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
               <img
                 v-if="r.thumbnail_url"
                 :src="r.thumbnail_url"
@@ -703,15 +821,18 @@ onUnmounted(() => {
         </div>
       </div>
       <!-- Recently Added -->
-      <div v-if="recentlyAdded.length > 0" class="space-y-2">
+      <div v-if="recentlyAdded.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-            <UIcon name="i-lucide-sparkle" class="size-4 text-primary" />
+          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+            <UIcon name="i-lucide-sparkle" class="size-4 text-[var(--accent)]" />
             Recently Added
           </h2>
-          <div class="flex gap-1">
-            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          <div class="flex items-center gap-2">
+            <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
+            <div class="flex gap-1">
+              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+            </div>
           </div>
         </div>
         <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2">
@@ -721,7 +842,7 @@ onUnmounted(() => {
             :to="`/player?id=${encodeURIComponent(r.id)}`"
             class="group shrink-0 w-40"
           >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5">
+            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
               <img
                 v-if="r.thumbnail_url"
                 :src="r.thumbnail_url"
@@ -752,6 +873,7 @@ onUnmounted(() => {
         icon="i-lucide-star"
         :items="general"
         :failed-ids="failedSuggestions"
+        to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
     </template>
@@ -765,20 +887,74 @@ onUnmounted(() => {
     </div>
 
     <!-- Filters -->
-    <div class="flex flex-wrap gap-3 items-center">
-      <UInput
-        v-model="params.search"
-        icon="i-lucide-search"
-        placeholder="Search media…"
-        autocomplete="on"
-        name="media-search"
-        class="w-64"
-        @input="onSearchInput"
-      />
+    <div class="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface-card)] p-4 space-y-3">
+      <!-- Type chips (desktop) + search row -->
+      <div class="flex flex-wrap gap-2 items-center">
+        <button
+          v-for="opt in TYPE_OPTIONS"
+          :key="opt.value"
+          :class="[
+            'hidden md:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
+            params.type === opt.value
+              ? 'bg-primary text-white border-primary'
+              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+          ]"
+          @click="params.type = opt.value"
+        >{{ opt.label }}</button>
+        <!-- Preset chips — design handoff §6.3 chip strip of curation presets -->
+        <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true" />
+        <button
+          :class="[
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
+            activePreset === 'trending'
+              ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
+              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+          ]"
+          aria-label="Filter by trending (most viewed)"
+          :aria-pressed="activePreset === 'trending'"
+          @click="togglePreset('trending')"
+        >
+          <UIcon name="i-lucide-flame" class="size-3.5" />Trending
+        </button>
+        <button
+          :class="[
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
+            activePreset === 'new'
+              ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
+              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+          ]"
+          aria-label="Filter by new (recently added)"
+          :aria-pressed="activePreset === 'new'"
+          @click="togglePreset('new')"
+        >
+          <UIcon name="i-lucide-sparkle" class="size-3.5" />New
+        </button>
+        <!-- Clear all filters (shown only when anything is active) -->
+        <button
+          v-if="hasActiveFilters"
+          class="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-muted hover:text-default transition-colors"
+          aria-label="Clear all filters"
+          @click="clearAllFilters"
+        >
+          <UIcon name="i-lucide-x" class="size-3.5" />Clear
+        </button>
+        <UInput
+          v-model="params.search"
+          icon="i-lucide-search"
+          placeholder="Search media…"
+          autocomplete="on"
+          name="media-search"
+          class="w-64 ml-auto"
+          @input="onSearchInput"
+        />
+      </div>
+      <!-- Secondary filters row -->
+      <div class="flex flex-wrap gap-3 items-center">
+      <!-- Type select (mobile only) -->
       <USelect
         v-model="params.type"
         :items="TYPE_OPTIONS"
-        class="w-36"
+        class="w-36 md:hidden"
       />
       <USelect
         v-if="categories.length > 0"
@@ -899,7 +1075,8 @@ onUnmounted(() => {
           @click="toggleSelectionMode"
         />
       </div>
-    </div>
+      </div><!-- end secondary filters row -->
+    </div><!-- end filter card -->
 
     <!-- Bulk action bar -->
     <div v-if="selectionMode && authStore.isLoggedIn" class="sticky top-14 z-30 bg-elevated border-b border-default py-2">
@@ -983,9 +1160,15 @@ onUnmounted(() => {
         @click="selectionMode ? toggleSelect(item.id, $event) : undefined"
       >
         <div
-          class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-2"
+          class="relative aspect-video rounded-lg overflow-hidden mb-2 media-card-lift scanline-thumb"
           :style="item.blur_hash && item.type !== 'audio' ? { backgroundImage: `url(${blurHashToDataUrl(item.blur_hash)})`, backgroundSize: 'cover' } : {}"
         >
+          <!-- Gradient fallback layer (always present for video/image, sits beneath thumbnail) -->
+          <div
+            v-if="item.type !== 'audio'"
+            class="absolute inset-0"
+            :style="{ background: getItemGradient(item.id) }"
+          />
           <!-- Selection checkbox -->
           <div v-if="selectionMode" class="absolute top-1.5 left-1.5 z-10">
             <div :class="['w-5 h-5 rounded border-2 flex items-center justify-center', selectedIds.has(item.id) ? 'bg-primary border-primary' : 'bg-black/40 border-white/70']">
@@ -998,13 +1181,17 @@ onUnmounted(() => {
             :alt="getDisplayTitle(item)"
             width="320"
             height="180"
-            :class="['w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
+            :class="['absolute inset-0 w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
             loading="lazy"
             @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, item.id)"
           />
-          <div v-else-if="item.type === 'audio'" class="w-full h-full flex flex-col items-center justify-center bg-linear-to-br from-primary/10 to-primary/5 gap-2">
+          <div
+            v-else-if="item.type === 'audio'"
+            class="w-full h-full flex flex-col items-center justify-center gap-2"
+            :style="{ background: getItemGradient(item.id) }"
+          >
             <AudioBars size="lg" :bars="7" class="opacity-70 group-hover:opacity-100 transition-opacity" />
-            <span class="text-[10px] font-medium text-muted uppercase tracking-wider">{{ item.codec || 'Audio' }}</span>
+            <span class="text-[10px] font-medium text-white/60 uppercase tracking-wider">{{ item.codec || 'Audio' }}</span>
           </div>
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon name="i-lucide-film" class="size-8 text-muted" />
@@ -1018,6 +1205,15 @@ onUnmounted(() => {
             <p class="text-white text-xs font-semibold leading-tight">
               {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign in to view' }}
             </p>
+          </div>
+          <!-- Hover play button overlay (not shown in selection mode or when gated) -->
+          <div
+            v-if="!selectionMode && !(item.is_mature && !canViewMature)"
+            class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+          >
+            <div class="w-10 h-10 rounded-full bg-white/18 backdrop-blur-sm border-2 border-white/45 flex items-center justify-center">
+              <UIcon name="i-lucide-play" class="size-4 text-white ml-0.5" />
+            </div>
           </div>
           <!-- Playback progress bar (logged-in, partially watched, not gated) -->
           <div
@@ -1054,7 +1250,7 @@ onUnmounted(() => {
           <!-- User star rating badge (hidden when mature badge occupies the same corner) -->
           <div
             v-if="userRatings[item.id] && !(item.is_mature && canViewMature)"
-            class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-yellow-400 text-xs px-1 rounded"
+            class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-xs px-1 rounded"
           >
             <UIcon name="i-lucide-star" class="size-3 fill-current" />
             <span>{{ userRatings[item.id] }}</span>
@@ -1096,15 +1292,16 @@ onUnmounted(() => {
             </UDropdownMenu>
           </div>
         </div>
-        <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
+        <p class="text-sm font-semibold text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
-        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size)" class="text-xs text-muted truncate">
+        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size || item.views)" class="text-xs text-muted truncate">
           {{ [
             item.category,
             item.type === 'audio' && item.codec ? item.codec.toUpperCase() : null,
             item.type === 'video' && item.height ? formatResolution(item.width, item.height) : null,
             !item.category && !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
+            item.views > 0 ? item.views.toLocaleString() + ' views' : null,
           ].filter(Boolean).join(' · ') }}
         </p>
         <!-- Tag chips — click to filter by tag (hidden for gated items) -->

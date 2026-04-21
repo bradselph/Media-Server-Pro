@@ -47,6 +47,10 @@ async function verifyAge() {
 onMounted(checkAgeGate)
 onMounted(() => { versionApi.get().then(r => { serverVersion.value = r.version }).catch(() => {}) })
 onMounted(fetchNewCount)
+onMounted(() => {
+  const saved = localStorage.getItem('msp-accent-hue')
+  if (saved) document.documentElement.style.setProperty('--accent-hue', saved)
+})
 
 useHead({
   title: computed(() => {
@@ -63,7 +67,28 @@ async function handleLogout() {
 const mobileMenuOpen = ref(false)
 const shortcutsModal = ref<{ open: boolean } | null>(null)
 
+// Main desktop nav — content discovery only. Per handoff §6.1 the main nav
+// is deliberately compact ("Home, Browse, Admin" in the spec). Personal items
+// (Profile, Favorites, History, Admin) now live in the avatar dropdown to
+// reduce nav density and make the library pages the primary tabs.
 const navLinks = computed(() => {
+  const links = [
+    { label: 'Home', to: '/', icon: 'i-lucide-house' },
+  ]
+  if (authStore.isLoggedIn) {
+    links.push(
+      { label: 'Categories', to: '/categories', icon: 'i-lucide-layers' },
+      { label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' },
+    )
+    if (authStore.user?.permissions?.can_upload) {
+      links.push({ label: 'Upload', to: '/upload', icon: 'i-lucide-upload' })
+    }
+  }
+  return links
+})
+
+// Mobile menu still shows everything (single-column vertical list is not dense).
+const mobileNavLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
   ]
@@ -87,6 +112,34 @@ const navLinks = computed(() => {
 
 // Close the mobile menu when the route changes (user tapped a link)
 watch(() => route.path, () => { mobileMenuOpen.value = false })
+
+// Avatar dropdown menu items — per handoff §6.1: Profile, Admin (if admin),
+// Logout. Nuxt UI's UDropdownMenu expects a 2D array of groups; each group
+// renders as a section with a separator between.
+const avatarMenuItems = computed(() => {
+  const primary: Array<{ label: string; icon: string; to?: string; onSelect?: () => void }> = [
+    { label: 'Profile', icon: 'i-lucide-user', to: '/profile' },
+    { label: 'Favorites', icon: 'i-lucide-heart', to: '/favorites' },
+    { label: 'History', icon: 'i-lucide-history', to: '/history' },
+  ]
+  if (authStore.isAdmin) {
+    primary.push({ label: 'Admin', icon: 'i-lucide-shield', to: '/admin' })
+  }
+  return [
+    primary,
+    [{ label: 'Log out', icon: 'i-lucide-log-out', onSelect: handleLogout }],
+  ]
+})
+
+const navSearch = ref('')
+
+function handleNavSearch() {
+  const q = navSearch.value.trim()
+  if (!q) return
+  router.push({ path: '/', query: { search: q } })
+  navSearch.value = ''
+  mobileMenuOpen.value = false
+}
 </script>
 
 <template>
@@ -100,20 +153,37 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
     <div v-if="!ageGateChecked || ageGateOpen" class="fixed inset-0 z-40 bg-default" />
 
     <!-- Nav -->
-    <header v-if="ageGateChecked && !ageGateOpen" class="border-b border-default bg-elevated sticky top-0 z-40">
-      <UContainer class="flex items-center justify-between h-14 gap-4">
-        <NuxtLink to="/" class="font-bold text-lg text-highlighted flex items-center gap-2">
-          <UIcon name="i-lucide-film" class="size-5 text-primary" />
-          Media Server Pro
+    <header v-if="ageGateChecked && !ageGateOpen" class="border-b border-[var(--hairline)] bg-[var(--surface-page)] sticky top-0 z-40">
+      <UContainer class="flex items-center justify-between h-[60px] gap-4">
+        <!-- Brand — per handoff §6.1: 28×28 gradient-filled square logo (rounded 6px),
+             brand name 17px/800, tagline 10px/500 uppercase muted. Gradient can be
+             overridden at deploy-time via CSS custom property --brand-gradient. -->
+        <NuxtLink to="/" class="flex items-center gap-2.5 no-underline shrink-0" aria-label="Media Server Pro — Home">
+          <span
+            class="inline-flex items-center justify-center size-7 rounded-md text-white shadow-sm"
+            style="background: var(--brand-gradient, linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40))));"
+            aria-hidden="true"
+          >
+            <UIcon name="i-lucide-film" class="size-4" />
+          </span>
+          <span class="flex flex-col leading-tight">
+            <span class="text-[17px] font-extrabold text-highlighted">Media Server Pro</span>
+            <span class="text-[10px] font-medium text-muted uppercase tracking-[0.1em]">Your Library</span>
+          </span>
         </NuxtLink>
 
+        <!-- Desktop nav — per handoff §6.1: underline-on-active pattern, text #888
+             default / #eee active / --accent underline. The `exact-active-class`
+             prop ensures only the exact-match route renders the underline (so
+             Home doesn't stay lit when on a sub-page). -->
         <nav class="hidden md:flex items-center gap-1">
           <NuxtLink
             v-for="link in navLinks"
             :key="link.to"
             :to="link.to"
-            class="relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
-            active-class="text-default bg-muted"
+            class="nav-link relative flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted hover:text-default transition-colors"
+            active-class="nav-link--active text-default"
+            :exact-active-class="link.to === '/' ? 'nav-link--active text-default' : ''"
           >
             <UIcon :name="link.icon" class="size-4" />
             {{ link.label }}
@@ -123,6 +193,18 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
             >{{ newCount > 99 ? '99+' : newCount }}</span>
           </NuxtLink>
         </nav>
+
+        <!-- Nav search (desktop) -->
+        <form class="hidden md:flex items-center flex-1 max-w-xs" @submit.prevent="handleNavSearch">
+          <UInput
+            v-model="navSearch"
+            icon="i-lucide-search"
+            placeholder="Search titles, tags..."
+            size="sm"
+            class="w-full"
+            type="search"
+          />
+        </form>
 
         <div class="flex items-center gap-2">
           <UButton
@@ -143,19 +225,27 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
             @click="colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'"
           />
 
+          <!-- Avatar dropdown (logged-in) — per handoff §6.1: circle w/ initial
+               letter on an accent gradient, opens popover with Profile, Admin,
+               Logout. Closes on outside-click and Escape via UDropdownMenu. -->
           <template v-if="authStore.isLoggedIn">
-            <UButton
-              variant="ghost"
-              color="neutral"
-              size="sm"
-              icon="i-lucide-log-out"
-              aria-label="Log out"
-              class="hidden md:flex"
-              @click="handleLogout"
-            />
+            <UDropdownMenu
+              :items="avatarMenuItems"
+              :content="{ align: 'end' }"
+              class="hidden md:block"
+            >
+              <button
+                class="inline-flex items-center justify-center size-8 rounded-full text-white text-sm font-bold cursor-pointer hover:brightness-110 transition-[filter] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-page)]"
+                style="background: linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40)));"
+                :aria-label="`Account menu for ${authStore.username}`"
+              >
+                {{ (authStore.username || '?').charAt(0).toUpperCase() }}
+              </button>
+            </UDropdownMenu>
           </template>
           <template v-else>
-            <UButton to="/login" variant="ghost" color="neutral" size="sm" label="Login" class="hidden md:flex" />
+            <UButton to="/login" variant="ghost" color="neutral" size="sm" label="Sign in" class="hidden md:flex" />
+            <UButton to="/signup" color="primary" size="sm" label="Sign up" class="hidden md:flex" />
           </template>
 
           <!-- Hamburger — mobile only -->
@@ -175,7 +265,7 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
       <div v-if="mobileMenuOpen" class="md:hidden border-t border-default bg-elevated">
         <UContainer class="py-2 flex flex-col gap-1">
           <NuxtLink
-            v-for="link in navLinks"
+            v-for="link in mobileNavLinks"
             :key="link.to"
             :to="link.to"
             class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
@@ -184,6 +274,16 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
             <UIcon :name="link.icon" class="size-4 shrink-0" />
             {{ link.label }}
           </NuxtLink>
+          <!-- Mobile search -->
+          <form class="px-1 py-2" @submit.prevent="handleNavSearch">
+            <UInput
+              v-model="navSearch"
+              icon="i-lucide-search"
+              placeholder="Search media…"
+              size="sm"
+              type="search"
+            />
+          </form>
           <div class="border-t border-default mt-1 pt-1">
             <template v-if="authStore.isLoggedIn">
               <button

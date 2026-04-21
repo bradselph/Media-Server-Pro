@@ -148,12 +148,12 @@ watch(() => authStore.user, (user) => {
       >
         <NuxtLink :to="resumeUrl(item)" class="block">
           <!-- Thumbnail -->
-          <div class="aspect-video relative rounded overflow-hidden bg-muted mb-1.5">
+          <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
             <img
               v-if="!failedThumbs.has(item.media_id)"
               :src="thumbUrl(item.media_id)"
               :alt="item.media_name"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               loading="lazy"
               @error="failedThumbs.add(item.media_id)"
             />
@@ -190,7 +190,7 @@ watch(() => authStore.user, (user) => {
 
           <!-- Title -->
           <p
-            class="text-sm font-medium truncate"
+            class="text-sm font-semibold truncate"
             :title="mediaMap[item.media_id] ? getDisplayTitle(mediaMap[item.media_id]) : item.media_name"
           >
             {{ mediaMap[item.media_id] ? getDisplayTitle(mediaMap[item.media_id]) : (item.media_name || '—') }}

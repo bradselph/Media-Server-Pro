@@ -93,12 +93,12 @@ watch(() => authStore.user, (user) => {
         class="group relative"
       >
         <NuxtLink :to="`/player?id=${encodeURIComponent(fav.media_id)}`" class="block">
-          <div class="aspect-video relative rounded overflow-hidden bg-muted mb-1.5">
+          <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
             <img
               v-if="mediaMap[fav.media_id] && !failedThumbnails.has(fav.media_id)"
               :src="getThumbnailUrl(mediaMap[fav.media_id])!"
               :alt="getDisplayTitle(mediaMap[fav.media_id])"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               loading="lazy"
               @error="failedThumbnails.add(fav.media_id)"
             />
@@ -116,7 +116,7 @@ watch(() => authStore.user, (user) => {
               {{ formatDuration(mediaMap[fav.media_id]!.duration) }}
             </div>
           </div>
-          <p class="text-sm font-medium truncate" :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id">
+          <p class="text-sm font-semibold truncate" :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id">
             {{ mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id }}
           </p>
           <p v-if="fav.added_at" class="text-xs text-muted" :title="new Date(fav.added_at).toLocaleString()">Saved {{ formatRelativeDate(fav.added_at) }}</p>

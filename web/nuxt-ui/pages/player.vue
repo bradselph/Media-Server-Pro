@@ -1,11 +1,25 @@
 <script setup lang="ts">
 import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem, MediaCollection } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatDuration, formatBytes, formatBitrate } from '~/utils/format'
+import { formatDuration, formatBytes, formatBitrate, formatRelativeDate } from '~/utils/format'
 import { useQueueStore } from '~/stores/queue'
 import { useCollectionsApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Player' })
+
+const PALETTES: [string, string][] = [
+  ['#1a0835','#9333ea'],['#081530','#2563eb'],['#1a0808','#dc2626'],
+  ['#081508','#16a34a'],['#1a1208','#d97706'],['#081515','#0891b2'],
+  ['#150815','#db2777'],['#0a0815','#6366f1'],['#150a0a','#ea580c'],
+  ['#0a1515','#059669'],['#0f0a20','#a855f7'],['#1a1000','#ca8a04'],
+]
+
+function getItemGradient(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff
+  const [c1, c2] = PALETTES[hash % PALETTES.length]
+  return `linear-gradient(135deg, ${c1}, ${c2})`
+}
 
 const route = useRoute()
 const mediaApi = useMediaApi()
@@ -432,6 +446,20 @@ function seekToChapter(startTime: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = startTime
   trackSeek()
+}
+
+// A chapter is "active" when the current playback position falls within its
+// [start_time, end_time) range. If end_time is not set on a given chapter,
+// use the next chapter's start_time as an implicit end; if it's the last
+// chapter, extend to the media's duration. Per handoff §6.4.6 this drives
+// the accent-bg-weak + accent-soft highlight in the chapters grid.
+function isActiveChapter(ch: MediaChapter, i: number): boolean {
+  const t = currentTime.value
+  const start = ch.start_time
+  const explicitEnd = ch.end_time
+  const nextStart = i + 1 < chapters.value.length ? chapters.value[i + 1]!.start_time : undefined
+  const end = explicitEnd ?? nextStart ?? duration.value ?? Number.POSITIVE_INFINITY
+  return t >= start && t < end
 }
 
 function onVideoLoaded() {
@@ -1267,27 +1295,85 @@ watch(mediaId, (id, oldId) => {
 
         <!-- Media info -->
         <UCard>
-          <template #header>
-            <h2 class="font-bold text-lg text-highlighted">{{ getDisplayTitle(media) }}</h2>
-          </template>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-            <div v-if="media.type"><span class="text-muted">Type:</span> <UBadge :label="media.type" color="neutral" variant="subtle" size="xs" /></div>
-            <div v-if="media.duration || duration"><span class="text-muted">Duration:</span> {{ formatDuration(media.duration || duration) }}</div>
-            <div v-if="media.size"><span class="text-muted">Size:</span> {{ formatBytes(media.size) }}</div>
-            <div v-if="media.views != null"><span class="text-muted">Views:</span> {{ media.views.toLocaleString() }}</div>
-            <div v-if="media.width && media.height"><span class="text-muted">Resolution:</span> {{ media.width }}x{{ media.height }}</div>
-            <div v-if="media.codec"><span class="text-muted">Codec:</span> {{ media.codec }}</div>
-            <div v-if="media.container"><span class="text-muted">Format:</span> {{ media.container.toUpperCase() }}</div>
-            <div v-if="media.bitrate"><span class="text-muted">Bitrate:</span> {{ formatBandwidth(media.bitrate) }}</div>
-            <div v-if="media.category"><span class="text-muted">Category:</span> {{ media.category }}</div>
-            <div v-if="media.date_added"><span class="text-muted">Added:</span> {{ new Date(media.date_added).toLocaleDateString() }}</div>
-            <div v-if="hlsActivated && qualities.length > 0">
-              <span class="text-muted">Quality:</span> {{ currentQualityLabel }}
-            </div>
+          <!-- Badge row: type, category, mature -->
+          <div class="flex flex-wrap gap-1.5 mb-3">
+            <span v-if="media.type"
+              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+              style="background: var(--accent-bg-weak); border: 1px solid var(--accent-border); color: var(--accent-soft);"
+            >{{ media.type }}</span>
+            <span v-if="media.category"
+              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-muted"
+              style="background: rgba(255,255,255,0.07);"
+            >{{ media.category }}</span>
+            <span v-if="media.is_mature"
+              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold"
+              style="background: rgba(220,38,38,0.12); color: #f87171;"
+            >18+</span>
           </div>
-          <p v-if="media.metadata?.description" class="text-sm text-muted mt-3">{{ media.metadata.description }}</p>
-          <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1.5 mt-3">
-            <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
+          <!-- Title -->
+          <h2 class="font-extrabold text-[var(--text-strong)] leading-tight mb-2" style="font-size: clamp(22px, 3.4vw, 32px); text-wrap: pretty;">{{ getDisplayTitle(media) }}</h2>
+          <!-- Inline metadata row -->
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted mb-3">
+            <span v-if="media.date_added">{{ new Date(media.date_added).getFullYear() }}</span>
+            <template v-if="media.duration || duration">
+              <span class="opacity-30" aria-hidden="true">·</span>
+              <span>{{ formatDuration(media.duration || duration) }}</span>
+            </template>
+            <template v-if="userRating">
+              <span class="opacity-30" aria-hidden="true">·</span>
+              <span class="text-[var(--rating-star)]">★ {{ userRating }}</span>
+            </template>
+            <template v-if="media.views != null">
+              <span class="opacity-30" aria-hidden="true">·</span>
+              <span>{{ media.views.toLocaleString() }} views</span>
+            </template>
+            <template v-if="media.width && media.height">
+              <span class="opacity-30" aria-hidden="true">·</span>
+              <span>{{ media.width }}×{{ media.height }}</span>
+            </template>
+          </div>
+          <!-- Description -->
+          <template v-if="media.metadata?.description">
+            <h3 class="section-title mb-1.5">About</h3>
+            <p class="text-sm text-[var(--text-med)] leading-[1.75] mb-3" style="text-wrap: pretty;">{{ media.metadata.description }}</p>
+          </template>
+          <!-- Tags -->
+          <template v-if="media.tags && media.tags.length > 0">
+            <h3 class="section-title mb-1.5">Tags</h3>
+            <div class="flex flex-wrap gap-1.5 mb-3">
+              <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
+            </div>
+          </template>
+          <!-- Chapters grid — per handoff §6.4.6. Each chapter is a click-to-seek
+               button with a monospace timestamp (44px min) + index + label. The
+               active chapter (whose range contains the current playback position)
+               is highlighted with --accent-bg-weak + --accent-soft. -->
+          <template v-if="chapters.length > 0">
+            <h3 class="section-title mb-1.5">Chapters</h3>
+            <div class="grid gap-2 mb-3" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+              <button
+                v-for="(ch, i) in chapters"
+                :key="ch.id"
+                class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors text-sm border border-transparent hover:border-[var(--hairline-strong)]"
+                :class="isActiveChapter(ch, i) ? 'bg-[var(--accent-bg-weak)] text-[var(--accent-soft)]' : 'text-[var(--text-med)] hover:bg-[var(--surface-elev)]'"
+                :aria-current="isActiveChapter(ch, i) ? 'true' : undefined"
+                @click="seekToChapter(ch.start_time)"
+              >
+                <span class="font-mono text-xs tabular-nums min-w-[44px] shrink-0" :class="isActiveChapter(ch, i) ? 'text-[var(--accent-soft)]' : 'text-muted'">{{ formatDuration(ch.start_time) }}</span>
+                <span class="truncate"><span class="text-muted">{{ i + 1 }}.</span> {{ ch.label || `Chapter ${i + 1}` }}</span>
+              </button>
+            </div>
+          </template>
+          <!-- Technical details (compact secondary row) -->
+          <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mb-4">
+            <span v-if="media.size">{{ formatBytes(media.size) }}</span>
+            <span v-if="media.codec">{{ media.codec.toUpperCase() }}</span>
+            <span v-if="media.container">{{ media.container.toUpperCase() }}</span>
+            <span v-if="media.bitrate">{{ formatBandwidth(media.bitrate) }}</span>
+            <span v-if="hlsActivated && qualities.length > 0" class="text-primary">{{ currentQualityLabel }}</span>
+            <!-- Relative date per handoff §6.4.2 ("Added 3 days ago"). Tooltip
+                 shows the absolute date for anyone who wants precision. -->
+            <span v-if="media.date_added" :title="new Date(media.date_added).toLocaleString()">Added {{ formatRelativeDate(media.date_added) }}</span>
           </div>
           <div class="flex gap-2 mt-4 flex-wrap">
             <UButton
@@ -1355,7 +1441,7 @@ watch(mediaId, (id, oldId) => {
           <!-- Graphic Equalizer -->
           <div v-if="showEqualizer" class="mt-4 p-4 rounded-lg bg-muted/50 space-y-3">
             <div class="flex items-center justify-between">
-              <h4 class="text-sm font-semibold text-highlighted">Equalizer</h4>
+              <h4 class="section-title">Equalizer</h4>
               <div class="flex gap-1.5">
                 <UButton
                   v-for="(_, name) in EQ_PRESETS"
@@ -1403,7 +1489,7 @@ watch(mediaId, (id, oldId) => {
               v-for="star in 5"
               :key="star"
               class="text-2xl leading-none transition-colors focus:outline-none"
-              :class="star <= userRating ? 'text-yellow-400' : 'text-muted hover:text-yellow-300'"
+              :class="star <= userRating ? 'text-[var(--rating-star)]' : 'text-muted hover:text-[var(--rating-star)]/70'"
               :aria-label="`Rate ${star} star${star > 1 ? 's' : ''}`"
               @click="submitRating(star)"
             >★</button>
@@ -1413,8 +1499,8 @@ watch(mediaId, (id, oldId) => {
           <!-- Queue panel -->
           <div v-if="showQueuePanel && authStore.isLoggedIn" class="mt-4 border-t border-default pt-4 space-y-2">
             <div class="flex items-center justify-between">
-              <h4 class="text-sm font-semibold text-highlighted flex items-center gap-1.5">
-                <UIcon name="i-lucide-list-ordered" class="size-4 text-primary" />
+              <h4 class="section-title flex items-center gap-1.5">
+                <UIcon name="i-lucide-list-ordered" class="size-4 text-[var(--accent)]" />
                 Up Next ({{ queueStore.items.length }})
               </h4>
               <UButton
@@ -1520,13 +1606,13 @@ watch(mediaId, (id, oldId) => {
       <div class="space-y-6 max-md:px-4 max-md:pb-6 md:pb-0">
         <!-- Collections this media belongs to -->
         <div v-if="mediaCollections.length > 0" class="space-y-3">
-          <h3 class="font-semibold text-highlighted">In Collection</h3>
+          <h3 class="section-title">In Collection</h3>
           <div
             v-for="col in mediaCollections"
             :key="col.id"
             class="space-y-1.5"
           >
-            <p class="text-xs font-semibold text-muted uppercase tracking-wide">{{ col.name }}</p>
+            <p class="section-title">{{ col.name }}</p>
             <div class="space-y-1">
               <NuxtLink
                 v-for="(item, idx) in (col.items ?? [])"
@@ -1553,21 +1639,21 @@ watch(mediaId, (id, oldId) => {
 
         <!-- Similar media -->
         <div v-if="similar.length > 0" class="space-y-3">
-          <h3 class="font-semibold text-highlighted">Similar Media</h3>
+          <h3 class="section-title">Up Next</h3>
           <div
             v-for="item in similar"
             :key="item.media_id"
             class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
             <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
-              <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+              <div class="relative w-20 h-12 rounded overflow-hidden shrink-0" :style="{ background: getItemGradient(item.media_id) }">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="absolute inset-0 w-full h-full object-cover" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
                 <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
                 </div>
               </div>
               <div class="min-w-0">
-                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
                 <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
                 <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>
@@ -1585,21 +1671,21 @@ watch(mediaId, (id, oldId) => {
 
         <!-- Personalized recommendations (logged-in users) -->
         <div v-if="authStore.isLoggedIn && personalized.length > 0" class="space-y-3">
-          <h3 class="font-semibold text-highlighted">Recommended For You</h3>
+          <h3 class="section-title">Recommended</h3>
           <div
             v-for="item in personalized"
             :key="item.media_id"
             class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
             <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
-              <div class="relative w-20 h-12 rounded overflow-hidden bg-muted shrink-0">
-                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="w-full h-full object-cover" loading="lazy" />
+              <div class="relative w-20 h-12 rounded overflow-hidden shrink-0" :style="{ background: getItemGradient(item.media_id) }">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="absolute inset-0 w-full h-full object-cover" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
                 <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
                 </div>
               </div>
               <div class="min-w-0">
-                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
                 <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
                 <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>
