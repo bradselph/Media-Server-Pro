@@ -44,6 +44,22 @@ async function verifyAge() {
   finally { ageGateVerifying.value = false }
 }
 
+// AgeGate "Leave" action per handoff §6.9. Users who aren't 18+ or don't
+// want to confirm need an explicit escape route rather than being forced
+// to close the browser tab. Prefer history.back() if there's a prior page
+// in the session; otherwise redirect to an unauthenticated safe page.
+function leaveAgeGate() {
+  if (typeof window === 'undefined') return
+  // If the user arrived via a link and has history, go back one step.
+  // Otherwise, navigate to a generic external placeholder (about:blank is
+  // the safest stub that doesn't send the user anywhere unexpected).
+  if (window.history.length > 1) {
+    window.history.back()
+  } else {
+    window.location.href = 'about:blank'
+  }
+}
+
 onMounted(checkAgeGate)
 onMounted(() => { versionApi.get().then(r => { serverVersion.value = r.version }).catch(() => {}) })
 onMounted(fetchNewCount)
@@ -364,14 +380,26 @@ function handleNavSearch() {
         </div>
       </template>
       <template #footer>
-        <UButton
-          :loading="ageGateVerifying"
-          :disabled="!ageGateTermsAccepted"
-          icon="i-lucide-check"
-          label="I confirm I am 18 or older"
-          color="primary"
-          @click="verifyAge"
-        />
+        <div class="flex flex-wrap items-center justify-end gap-2 w-full">
+          <!-- Leave button per handoff §6.9 — gives users who aren't 18+ or
+               don't want to confirm an explicit escape route. -->
+          <UButton
+            icon="i-lucide-log-out"
+            label="Leave"
+            variant="ghost"
+            color="neutral"
+            :disabled="ageGateVerifying"
+            @click="leaveAgeGate"
+          />
+          <UButton
+            :loading="ageGateVerifying"
+            :disabled="!ageGateTermsAccepted"
+            icon="i-lucide-check"
+            label="I confirm I am 18 or older"
+            color="primary"
+            @click="verifyAge"
+          />
+        </div>
       </template>
     </UModal>
   </div>
