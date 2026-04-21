@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.7.0] - 2026-04-21 (minor)
+
+- feat(player): chapters grid section + relative date metadata
+- feat(ui): nav brand, avatar menu, motion token wiring, row icon fixes
+- feat(ui): align row/section/card headers with design handoff spec
+- feat(ui): add preset filter chip strip and section-title treatments
+- feat(ui): apply media-card-lift+scanline-thumb to remaining card grids
+- refactor(ui): use --surface-card and --hairline tokens on auth cards
+- a11y(player): add ARIA slider semantics to seek bar
+- refactor(ui): use design tokens for ratings and player title
+- feat(ui): add media-card-lift and scanline-thumb to all card grids
+- feat(ui): compact hero, token-aligned surfaces, and section-title headers
+- refactor(ui): apply .section-title utility to existing subsection headers
+- feat(ui): adopt Barlow font and expand design tokens per handoff
+- feat(ui): implement design handoff — hero thumbnail, player info card, auth pages, recommendation rows
+- feat(ui): implement design handoff — visual overhaul across home, player, and profile
+- security(auth): add server-issued registration tokens to prevent bot registrations
+- fix(downloader): correct URL passthrough and status string misalignment
+- fix(backup,api,repo): improve error handling and view tracking
+- refactor(admin): replace useAdminFeedback with useToast
+- refactor(admin): replace useToast with useAdminFeedback
+- refactor(admin): centralize feedback notifications with useAdminFeedback
+- feat(admin): enhance Claude module with auth status and logging
+- refactor(claude): replace SDK with CLI subprocess integration
+- refactor(claude): replace SDK with CLI subprocess integration
+- Update release-version.yml
+
+
 ## [1.6.0] - 2026-04-17 (minor)
 
 - fix(claude): detach chat turn from SSE request context
