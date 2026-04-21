@@ -10,6 +10,9 @@ const versionApi = useVersionApi()
 const serverVersion = ref('')
 const suggestionsApi = useSuggestionsApi()
 const newCount = ref(0)
+// Resolves brand config at runtime — prefers window.APP_CONFIG (deploy-time
+// injection), falls back to Nuxt app.config, then hard-coded defaults.
+const brand = useBrandConfig()
 
 async function fetchNewCount() {
   if (!authStore.isLoggedIn) return
@@ -71,7 +74,7 @@ onMounted(() => {
 useHead({
   title: computed(() => {
     const pageTitle = route.meta.title as string | undefined
-    return pageTitle ? `${pageTitle} — Media Server Pro` : 'Media Server Pro'
+    return pageTitle ? `${pageTitle} — ${brand.value.name}` : brand.value.name
   }),
 })
 
@@ -172,19 +175,22 @@ function handleNavSearch() {
     <header v-if="ageGateChecked && !ageGateOpen" class="border-b border-[var(--hairline)] bg-[var(--surface-page)] sticky top-0 z-40">
       <UContainer class="flex items-center justify-between h-[60px] gap-4">
         <!-- Brand — per handoff §6.1: 28×28 gradient-filled square logo (rounded 6px),
-             brand name 17px/800, tagline 10px/500 uppercase muted. Gradient can be
-             overridden at deploy-time via CSS custom property --brand-gradient. -->
-        <NuxtLink to="/" class="flex items-center gap-2.5 no-underline shrink-0" aria-label="Media Server Pro — Home">
+             brand name 17px/800, tagline 10px/500 uppercase muted. Name/tagline/
+             gradient are resolved via useBrandConfig (window.APP_CONFIG at deploy
+             → app.config.ts at build → hard-coded fallbacks). When brand.gradient
+             is empty, the logo uses the accent-hue-derived OKLCH gradient so a
+             rebrand can skip the gradient and still look cohesive. -->
+        <NuxtLink to="/" class="flex items-center gap-2.5 no-underline shrink-0" :aria-label="`${brand.name} — Home`">
           <span
             class="inline-flex items-center justify-center size-7 rounded-md text-white shadow-sm"
-            style="background: var(--brand-gradient, linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40))));"
+            :style="{ background: brand.gradient || 'linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40)))' }"
             aria-hidden="true"
           >
             <UIcon name="i-lucide-film" class="size-4" />
           </span>
           <span class="flex flex-col leading-tight">
-            <span class="text-[17px] font-extrabold text-highlighted">Media Server Pro</span>
-            <span class="text-[10px] font-medium text-muted uppercase tracking-[0.1em]">Your Library</span>
+            <span class="text-[17px] font-extrabold text-highlighted">{{ brand.name }}</span>
+            <span class="text-[10px] font-medium text-muted uppercase tracking-[0.1em]">{{ brand.tagline }}</span>
           </span>
         </NuxtLink>
 
@@ -333,7 +339,7 @@ function handleNavSearch() {
     <footer v-if="ageGateChecked && !ageGateOpen" class="border-t border-default py-3">
       <UContainer>
         <div class="flex flex-col items-center gap-1">
-          <p v-if="serverVersion" class="text-xs text-muted">Media Server Pro v{{ serverVersion }}</p>
+          <p v-if="serverVersion" class="text-xs text-muted">{{ brand.name }} v{{ serverVersion }}</p>
           <div class="flex items-center gap-3 text-xs text-muted">
             <NuxtLink to="/privacy" class="hover:text-default underline">Privacy Policy</NuxtLink>
             <span aria-hidden="true">·</span>
