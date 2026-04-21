@@ -333,6 +333,52 @@ function clearTagFilter() {
   load()
 }
 
+// Filter presets — design handoff §6.3. Chip strip above the grid that toggles
+// common curation modes (Trending → most-viewed, New → recently added).
+type Preset = 'trending' | 'new' | null
+const activePreset = computed<Preset>(() => {
+  if (params.sort_by === 'views' && params.sort_order === 'desc') return 'trending'
+  if (params.sort_by === 'date_added' && params.sort_order === 'desc') return 'new'
+  return null
+})
+
+function togglePreset(preset: 'trending' | 'new') {
+  if (activePreset.value === preset) {
+    params.sort_by = 'name'
+    params.sort_order = 'asc'
+  } else if (preset === 'trending') {
+    params.sort_by = 'views'
+    params.sort_order = 'desc'
+  } else {
+    params.sort_by = 'date_added'
+    params.sort_order = 'desc'
+  }
+  params.page = 1
+}
+
+const hasActiveFilters = computed(() =>
+  params.type !== 'all' ||
+  params.category !== 'all' ||
+  params.sort_by !== 'name' ||
+  params.sort_order !== 'asc' ||
+  params.min_rating > 0 ||
+  !!params.search ||
+  !!filterTag.value ||
+  hideWatched.value,
+)
+
+function clearAllFilters() {
+  params.type = 'all'
+  params.category = 'all'
+  params.sort_by = 'name'
+  params.sort_order = 'asc'
+  params.min_rating = 0
+  params.search = ''
+  filterTag.value = ''
+  hideWatched.value = false
+  params.page = 1
+}
+
 watch(hideWatched, () => { params.page = 1; load() })
 watch(() => params.min_rating, () => { params.page = 1; load() })
 
@@ -846,13 +892,50 @@ onUnmounted(() => {
           ]"
           @click="params.type = opt.value"
         >{{ opt.label }}</button>
+        <!-- Preset chips — design handoff §6.3 chip strip of curation presets -->
+        <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true" />
+        <button
+          :class="[
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
+            activePreset === 'trending'
+              ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
+              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+          ]"
+          aria-label="Filter by trending (most viewed)"
+          :aria-pressed="activePreset === 'trending'"
+          @click="togglePreset('trending')"
+        >
+          <UIcon name="i-lucide-flame" class="size-3.5" />Trending
+        </button>
+        <button
+          :class="[
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
+            activePreset === 'new'
+              ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
+              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+          ]"
+          aria-label="Filter by new (recently added)"
+          :aria-pressed="activePreset === 'new'"
+          @click="togglePreset('new')"
+        >
+          <UIcon name="i-lucide-sparkle" class="size-3.5" />New
+        </button>
+        <!-- Clear all filters (shown only when anything is active) -->
+        <button
+          v-if="hasActiveFilters"
+          class="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-muted hover:text-default transition-colors"
+          aria-label="Clear all filters"
+          @click="clearAllFilters"
+        >
+          <UIcon name="i-lucide-x" class="size-3.5" />Clear
+        </button>
         <UInput
           v-model="params.search"
           icon="i-lucide-search"
           placeholder="Search media…"
           autocomplete="on"
           name="media-search"
-          class="w-64"
+          class="w-64 ml-auto"
           @input="onSearchInput"
         />
       </div>
