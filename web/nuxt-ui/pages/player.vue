@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem, MediaCollection } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatDuration, formatBytes, formatBitrate } from '~/utils/format'
+import { formatDuration, formatBytes, formatBitrate, formatRelativeDate } from '~/utils/format'
 import { useQueueStore } from '~/stores/queue'
 import { useCollectionsApi } from '~/composables/useApiEndpoints'
 
@@ -446,6 +446,20 @@ function seekToChapter(startTime: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = startTime
   trackSeek()
+}
+
+// A chapter is "active" when the current playback position falls within its
+// [start_time, end_time) range. If end_time is not set on a given chapter,
+// use the next chapter's start_time as an implicit end; if it's the last
+// chapter, extend to the media's duration. Per handoff §6.4.6 this drives
+// the accent-bg-weak + accent-soft highlight in the chapters grid.
+function isActiveChapter(ch: MediaChapter, i: number): boolean {
+  const t = currentTime.value
+  const start = ch.start_time
+  const explicitEnd = ch.end_time
+  const nextStart = i + 1 < chapters.value.length ? chapters.value[i + 1]!.start_time : undefined
+  const end = explicitEnd ?? nextStart ?? duration.value ?? Number.POSITIVE_INFINITY
+  return t >= start && t < end
 }
 
 function onVideoLoaded() {
@@ -1330,6 +1344,26 @@ watch(mediaId, (id, oldId) => {
               <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
             </div>
           </template>
+          <!-- Chapters grid — per handoff §6.4.6. Each chapter is a click-to-seek
+               button with a monospace timestamp (44px min) + index + label. The
+               active chapter (whose range contains the current playback position)
+               is highlighted with --accent-bg-weak + --accent-soft. -->
+          <template v-if="chapters.length > 0">
+            <h3 class="section-title mb-1.5">Chapters</h3>
+            <div class="grid gap-2 mb-3" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+              <button
+                v-for="(ch, i) in chapters"
+                :key="ch.id"
+                class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors text-sm border border-transparent hover:border-[var(--hairline-strong)]"
+                :class="isActiveChapter(ch, i) ? 'bg-[var(--accent-bg-weak)] text-[var(--accent-soft)]' : 'text-[var(--text-med)] hover:bg-[var(--surface-elev)]'"
+                :aria-current="isActiveChapter(ch, i) ? 'true' : undefined"
+                @click="seekToChapter(ch.start_time)"
+              >
+                <span class="font-mono text-xs tabular-nums min-w-[44px] shrink-0" :class="isActiveChapter(ch, i) ? 'text-[var(--accent-soft)]' : 'text-muted'">{{ formatDuration(ch.start_time) }}</span>
+                <span class="truncate"><span class="text-muted">{{ i + 1 }}.</span> {{ ch.label || `Chapter ${i + 1}` }}</span>
+              </button>
+            </div>
+          </template>
           <!-- Technical details (compact secondary row) -->
           <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mb-4">
             <span v-if="media.size">{{ formatBytes(media.size) }}</span>
@@ -1337,7 +1371,9 @@ watch(mediaId, (id, oldId) => {
             <span v-if="media.container">{{ media.container.toUpperCase() }}</span>
             <span v-if="media.bitrate">{{ formatBandwidth(media.bitrate) }}</span>
             <span v-if="hlsActivated && qualities.length > 0" class="text-primary">{{ currentQualityLabel }}</span>
-            <span v-if="media.date_added">Added {{ new Date(media.date_added).toLocaleDateString() }}</span>
+            <!-- Relative date per handoff §6.4.2 ("Added 3 days ago"). Tooltip
+                 shows the absolute date for anyone who wants precision. -->
+            <span v-if="media.date_added" :title="new Date(media.date_added).toLocaleString()">Added {{ formatRelativeDate(media.date_added) }}</span>
           </div>
           <div class="flex gap-2 mt-4 flex-wrap">
             <UButton
