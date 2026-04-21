@@ -117,9 +117,13 @@ body {
     --text-faint: #555;
     --rating-star: #fbbf24;
 
-    /* Motion — from design handoff §8. */
+    /* Motion — from design handoff §8. The handoff also specifies a 450ms
+       "frame cross-fade" for media-card thumbnail hover, but the real app
+       cycles real preview frames via JS src-swap (see onMediaHoverEnter in
+       pages/index.vue) rather than a CSS opacity fade — so no --motion-frame-fade
+       token is declared. --motion-hover wires into .media-card-lift below;
+       --motion-controls-fade wires into PlayerControls overlay opacity. */
     --motion-hover: 150ms linear;
-    --motion-frame-fade: 450ms ease;
     --motion-controls-fade: 200ms linear;
 }
 
@@ -160,9 +164,39 @@ body {
     background: repeating-linear-gradient(0deg, transparent 3px, rgba(0,0,0,0.06) 4px);
 }
 
-/* Hover-lift on media cards */
+/* Nav link underline-on-active pattern — per handoff §6.1. The underline
+   is a 2px accent-colored bar that slides up from below on active/hover so
+   nav items read as tabs rather than buttons. */
+.nav-link {
+    padding-bottom: calc(0.375rem + 2px);
+}
+.nav-link::after {
+    content: '';
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform var(--motion-hover);
+}
+.nav-link:hover::after {
+    transform: scaleX(0.4);
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.nav-link--active::after {
+    transform: scaleX(1);
+    background: var(--accent);
+}
+
+/* Hover-lift on media cards. Uses --motion-hover (150ms linear) per
+   handoff §8 "Button hover / active" — the closest motion token for a
+   hover state. The translate/shadow pair still feels snappy at 150ms. */
 .media-card-lift {
-    transition: transform 0.22s ease, box-shadow 0.22s ease;
+    transition: transform var(--motion-hover), box-shadow var(--motion-hover);
 }
 .media-card-lift:hover {
     transform: translateY(-4px);

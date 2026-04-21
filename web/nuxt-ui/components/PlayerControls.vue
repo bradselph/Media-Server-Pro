@@ -130,10 +130,12 @@ function copyLinkAtTime() {
 </script>
 
 <template>
-  <!-- Controls overlay — z-20 ensures it sits above mobile tap zones (z-10) -->
+  <!-- Controls overlay — z-20 ensures it sits above mobile tap zones (z-10).
+       Fade timing uses --motion-controls-fade (200ms linear) per handoff §8. -->
   <div
-    class="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent transition-opacity z-20"
+    class="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent z-20"
     :class="showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'"
+    :style="{ transition: `opacity var(--motion-controls-fade)` }"
     @click.stop
   >
     <!-- Seek bar: expanded touch area (py-2) without visual change -->

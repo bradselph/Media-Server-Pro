@@ -759,7 +759,7 @@ onUnmounted(() => {
       <RecommendationRow
         v-if="authStore.user?.preferences?.show_trending !== false"
         title="Trending"
-        icon="i-lucide-trending-up"
+        icon="i-lucide-flame"
         :items="trending"
         :failed-ids="failedSuggestions"
         to="/categories"
@@ -770,7 +770,7 @@ onUnmounted(() => {
       <RecommendationRow
         v-if="authStore.user?.preferences?.show_recommended !== false"
         title="Recommended For You"
-        icon="i-lucide-sparkles"
+        icon="i-lucide-thumbs-up"
         :items="recommended"
         :failed-ids="failedSuggestions"
         to="/"
