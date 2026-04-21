@@ -1297,7 +1297,7 @@ watch(mediaId, (id, oldId) => {
             >18+</span>
           </div>
           <!-- Title -->
-          <h2 class="text-xl sm:text-2xl font-extrabold text-highlighted leading-tight mb-2">{{ getDisplayTitle(media) }}</h2>
+          <h2 class="font-extrabold text-[var(--text-strong)] leading-tight mb-2" style="font-size: clamp(22px, 3.4vw, 32px); text-wrap: pretty;">{{ getDisplayTitle(media) }}</h2>
           <!-- Inline metadata row -->
           <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted mb-3">
             <span v-if="media.date_added">{{ new Date(media.date_added).getFullYear() }}</span>
@@ -1307,7 +1307,7 @@ watch(mediaId, (id, oldId) => {
             </template>
             <template v-if="userRating">
               <span class="opacity-30" aria-hidden="true">·</span>
-              <span class="text-yellow-400">★ {{ userRating }}</span>
+              <span class="text-[var(--rating-star)]">★ {{ userRating }}</span>
             </template>
             <template v-if="media.views != null">
               <span class="opacity-30" aria-hidden="true">·</span>
@@ -1447,7 +1447,7 @@ watch(mediaId, (id, oldId) => {
               v-for="star in 5"
               :key="star"
               class="text-2xl leading-none transition-colors focus:outline-none"
-              :class="star <= userRating ? 'text-yellow-400' : 'text-muted hover:text-yellow-300'"
+              :class="star <= userRating ? 'text-[var(--rating-star)]' : 'text-muted hover:text-[var(--rating-star)]/70'"
               :aria-label="`Rate ${star} star${star > 1 ? 's' : ''}`"
               @click="submitRating(star)"
             >★</button>

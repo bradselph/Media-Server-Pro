@@ -1158,7 +1158,7 @@ onUnmounted(() => {
           <!-- User star rating badge (hidden when mature badge occupies the same corner) -->
           <div
             v-if="userRatings[item.id] && !(item.is_mature && canViewMature)"
-            class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-yellow-400 text-xs px-1 rounded"
+            class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-xs px-1 rounded"
           >
             <UIcon name="i-lucide-star" class="size-3 fill-current" />
             <span>{{ userRatings[item.id] }}</span>

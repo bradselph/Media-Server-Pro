@@ -566,7 +566,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
               </div>
               <!-- Rating badge -->
-              <div class="absolute bottom-1 right-1 bg-black/70 text-yellow-400 text-xs px-1.5 py-0.5 rounded flex items-center gap-0.5">
+              <div class="absolute bottom-1 right-1 bg-black/70 text-[var(--rating-star)] text-xs px-1.5 py-0.5 rounded flex items-center gap-0.5">
                 <UIcon name="i-lucide-star" class="size-3" />
                 {{ item.rating.toFixed(1) }}
               </div>
