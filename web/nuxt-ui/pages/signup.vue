@@ -82,7 +82,7 @@ async function handleSignup() {
       </div>
 
       <!-- Card -->
-      <div class="rounded-xl border border-white/10 bg-elevated p-7">
+      <div class="rounded-xl border border-[var(--hairline)] bg-[var(--surface-card)] p-7">
         <div v-if="registrationClosed" class="text-center py-6 space-y-4">
           <UIcon name="i-lucide-user-x" class="size-10 text-muted mx-auto" />
           <p class="text-muted">Registration is currently closed.</p>

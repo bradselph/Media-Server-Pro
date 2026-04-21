@@ -73,7 +73,7 @@ async function handleLogin() {
       </div>
 
       <!-- Card -->
-      <div class="rounded-xl border border-white/10 bg-elevated p-7 space-y-5">
+      <div class="rounded-xl border border-[var(--hairline)] bg-[var(--surface-card)] p-7 space-y-5">
         <UAlert
           v-if="error"
           :title="error"
