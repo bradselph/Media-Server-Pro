@@ -708,15 +708,18 @@ onUnmounted(() => {
       />
 
       <!-- On Deck (next episode per TV show / Anime series) -->
-      <div v-if="onDeck.length > 0" class="space-y-2">
+      <div v-if="onDeck.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-            <UIcon name="i-lucide-tv-2" class="size-4 text-primary" />
+          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+            <UIcon name="i-lucide-tv-2" class="size-4 text-[var(--accent)]" />
             On Deck
           </h2>
-          <div class="flex gap-1">
-            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          <div class="flex items-center gap-2">
+            <NuxtLink to="/history" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
+            <div class="flex gap-1">
+              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+            </div>
           </div>
         </div>
         <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2">
@@ -774,15 +777,18 @@ onUnmounted(() => {
         @thumbnail-error="onSuggestionThumbnailError"
       />
       <!-- New Since Last Visit -->
-      <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-2">
+      <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-            <UIcon name="i-lucide-bell" class="size-4 text-primary" />
+          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+            <UIcon name="i-lucide-bell" class="size-4 text-[var(--accent)]" />
             New Since Your Last Visit
           </h2>
-          <div class="flex gap-1">
-            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          <div class="flex items-center gap-2">
+            <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
+            <div class="flex gap-1">
+              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+            </div>
           </div>
         </div>
         <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2">
@@ -815,15 +821,18 @@ onUnmounted(() => {
         </div>
       </div>
       <!-- Recently Added -->
-      <div v-if="recentlyAdded.length > 0" class="space-y-2">
+      <div v-if="recentlyAdded.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-muted flex items-center gap-2">
-            <UIcon name="i-lucide-sparkle" class="size-4 text-primary" />
+          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+            <UIcon name="i-lucide-sparkle" class="size-4 text-[var(--accent)]" />
             Recently Added
           </h2>
-          <div class="flex gap-1">
-            <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-            <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+          <div class="flex items-center gap-2">
+            <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
+            <div class="flex gap-1">
+              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
+              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+            </div>
           </div>
         </div>
         <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2">
@@ -1283,7 +1292,7 @@ onUnmounted(() => {
             </UDropdownMenu>
           </div>
         </div>
-        <p class="text-sm font-medium text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
+        <p class="text-sm font-semibold text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
         <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size || item.views)" class="text-xs text-muted truncate">

@@ -164,13 +164,13 @@ watch(() => authStore.user, (user) => {
       <!-- Grouped view (TV Shows / Music) -->
       <template v-else-if="grouped">
         <div v-for="[group, groupItems] in grouped" :key="group" class="mb-8">
-          <h3 class="text-sm font-semibold text-muted mb-2 flex items-center gap-1.5">
+          <h3 class="section-title mb-2 flex items-center gap-1.5">
             <UIcon
               :name="selectedCategory === 'Music' ? 'i-lucide-music-2' : 'i-lucide-clapperboard'"
               class="size-3.5"
             />
             {{ group }}
-            <span class="text-xs font-normal">({{ groupItems.length }})</span>
+            <span class="text-xs font-normal normal-case tracking-normal">({{ groupItems.length }})</span>
           </h3>
           <div class="flex gap-3 overflow-x-auto pb-2">
             <NuxtLink

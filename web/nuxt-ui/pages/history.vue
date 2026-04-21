@@ -190,7 +190,7 @@ watch(() => authStore.user, (user) => {
 
           <!-- Title -->
           <p
-            class="text-sm font-medium truncate"
+            class="text-sm font-semibold truncate"
             :title="mediaMap[item.media_id] ? getDisplayTitle(mediaMap[item.media_id]) : item.media_name"
           >
             {{ mediaMap[item.media_id] ? getDisplayTitle(mediaMap[item.media_id]) : (item.media_name || '—') }}

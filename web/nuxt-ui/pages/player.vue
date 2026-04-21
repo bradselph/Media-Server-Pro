@@ -1405,7 +1405,7 @@ watch(mediaId, (id, oldId) => {
           <!-- Graphic Equalizer -->
           <div v-if="showEqualizer" class="mt-4 p-4 rounded-lg bg-muted/50 space-y-3">
             <div class="flex items-center justify-between">
-              <h4 class="text-sm font-semibold text-highlighted">Equalizer</h4>
+              <h4 class="section-title">Equalizer</h4>
               <div class="flex gap-1.5">
                 <UButton
                   v-for="(_, name) in EQ_PRESETS"
@@ -1463,8 +1463,8 @@ watch(mediaId, (id, oldId) => {
           <!-- Queue panel -->
           <div v-if="showQueuePanel && authStore.isLoggedIn" class="mt-4 border-t border-default pt-4 space-y-2">
             <div class="flex items-center justify-between">
-              <h4 class="text-sm font-semibold text-highlighted flex items-center gap-1.5">
-                <UIcon name="i-lucide-list-ordered" class="size-4 text-primary" />
+              <h4 class="section-title flex items-center gap-1.5">
+                <UIcon name="i-lucide-list-ordered" class="size-4 text-[var(--accent)]" />
                 Up Next ({{ queueStore.items.length }})
               </h4>
               <UButton
@@ -1617,7 +1617,7 @@ watch(mediaId, (id, oldId) => {
                 </div>
               </div>
               <div class="min-w-0">
-                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
                 <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
                 <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>
@@ -1649,7 +1649,7 @@ watch(mediaId, (id, oldId) => {
                 </div>
               </div>
               <div class="min-w-0">
-                <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
+                <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
                 <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
                 <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>
