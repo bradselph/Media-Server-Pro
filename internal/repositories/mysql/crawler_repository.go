@@ -38,6 +38,9 @@ func NewCrawlerTargetRepository(db *gorm.DB) repositories.CrawlerTargetRepositor
 }
 
 func (r *CrawlerTargetRepository) Upsert(ctx context.Context, target *repositories.CrawlerTargetRecord) error {
+	if target == nil {
+		return fmt.Errorf("crawler target cannot be nil")
+	}
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"name", "url", "site", "enabled", "updated_at"}),
@@ -91,6 +94,9 @@ func (r *CrawlerTargetRepository) UpdateLastCrawled(ctx context.Context, id stri
 }
 
 func (r *CrawlerTargetRepository) recordToRow(rec *repositories.CrawlerTargetRecord) crawlerTargetRow {
+	if rec == nil {
+		return crawlerTargetRow{}
+	}
 	row := crawlerTargetRow{
 		ID:        rec.ID,
 		Name:      rec.Name,
@@ -107,6 +113,9 @@ func (r *CrawlerTargetRepository) recordToRow(rec *repositories.CrawlerTargetRec
 }
 
 func (r *CrawlerTargetRepository) rowToRecord(row *crawlerTargetRow) *repositories.CrawlerTargetRecord {
+	if row == nil {
+		return nil
+	}
 	rec := &repositories.CrawlerTargetRecord{
 		ID:      row.ID,
 		Name:    row.Name,
@@ -156,6 +165,9 @@ func NewCrawlerDiscoveryRepository(db *gorm.DB) repositories.CrawlerDiscoveryRep
 }
 
 func (r *CrawlerDiscoveryRepository) Create(ctx context.Context, disc *repositories.CrawlerDiscoveryRecord) error {
+	if disc == nil {
+		return fmt.Errorf("crawler discovery cannot be nil")
+	}
 	if err := r.db.WithContext(ctx).Create(new(r.recordToRow(disc))).Error; err != nil {
 		return fmt.Errorf("failed to create crawler discovery: %w", err)
 	}
@@ -223,6 +235,16 @@ func (r *CrawlerDiscoveryRepository) ListPending(ctx context.Context) ([]*reposi
 }
 
 func (r *CrawlerDiscoveryRepository) UpdateStatus(ctx context.Context, id, status, reviewedBy string) error {
+	// Validate status is one of the allowed values
+	allowedStatuses := map[string]bool{
+		"pending":  true,
+		"approved": true,
+		"rejected": true,
+	}
+	if !allowedStatuses[status] {
+		return fmt.Errorf("invalid crawler discovery status: %s", status)
+	}
+
 	updates := map[string]any{
 		"status":      status,
 		"reviewed_by": reviewedBy,
@@ -245,6 +267,9 @@ func (r *CrawlerDiscoveryRepository) ExistsByStreamURL(ctx context.Context, stre
 }
 
 func (r *CrawlerDiscoveryRepository) recordToRow(rec *repositories.CrawlerDiscoveryRecord) crawlerDiscoveryRow {
+	if rec == nil {
+		return crawlerDiscoveryRow{}
+	}
 	row := crawlerDiscoveryRow{
 		ID:              rec.ID,
 		TargetID:        rec.TargetID,
@@ -265,6 +290,9 @@ func (r *CrawlerDiscoveryRepository) recordToRow(rec *repositories.CrawlerDiscov
 }
 
 func (r *CrawlerDiscoveryRepository) rowToRecord(row *crawlerDiscoveryRow) *repositories.CrawlerDiscoveryRecord {
+	if row == nil {
+		return nil
+	}
 	rec := &repositories.CrawlerDiscoveryRecord{
 		ID:              row.ID,
 		TargetID:        row.TargetID,
