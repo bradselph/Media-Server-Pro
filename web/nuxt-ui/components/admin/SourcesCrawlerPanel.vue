@@ -15,6 +15,7 @@ const crawlerLoading = ref(false)
 const newCrawlUrl = ref('')
 const newCrawlName = ref('')
 const addingCrawl = ref(false)
+const inFlightIds = ref(new Set<string>())
 
 async function loadCrawler() {
   crawlerLoading.value = true
@@ -46,42 +47,58 @@ async function addCrawlTarget() {
 }
 
 async function startCrawl(targetId: string) {
+  if (inFlightIds.value.has(targetId)) return
+  inFlightIds.value.add(targetId)
   try {
     await adminApi.startCrawl(targetId)
     toast.add({ title: 'Crawl started', color: 'success', icon: 'i-lucide-check' })
     await loadCrawler()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    inFlightIds.value.delete(targetId)
   }
 }
 
 async function deleteCrawlTarget(id: string) {
+  if (inFlightIds.value.has(id)) return
+  inFlightIds.value.add(id)
   try {
     await adminApi.deleteCrawlerTarget(id)
     toast.add({ title: 'Target deleted', color: 'success', icon: 'i-lucide-check' })
     await loadCrawler()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    inFlightIds.value.delete(id)
   }
 }
 
 async function approveDiscovery(id: string) {
+  if (inFlightIds.value.has(id)) return
+  inFlightIds.value.add(id)
   try {
     await adminApi.approveCrawlerDiscovery(id)
     toast.add({ title: 'Discovery approved', color: 'success', icon: 'i-lucide-check' })
     await loadCrawler()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    inFlightIds.value.delete(id)
   }
 }
 
 async function ignoreDiscovery(id: string) {
+  if (inFlightIds.value.has(id)) return
+  inFlightIds.value.add(id)
   try {
     await adminApi.ignoreCrawlerDiscovery(id)
     toast.add({ title: 'Discovery ignored', color: 'success', icon: 'i-lucide-check' })
     await loadCrawler()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    inFlightIds.value.delete(id)
   }
 }
 
@@ -129,12 +146,16 @@ async function addExtractorUrl() {
 }
 
 async function deleteExtractorItem(id: string) {
+  if (inFlightIds.value.has(id)) return
+  inFlightIds.value.add(id)
   try {
     await adminApi.deleteExtractorItem(id)
     toast.add({ title: 'Item removed', color: 'success', icon: 'i-lucide-check' })
     await loadExtractor()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    inFlightIds.value.delete(id)
   }
 }
 
@@ -146,7 +167,9 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
 }
 
 onMounted(() => {
-  Promise.all([loadCrawler(), loadExtractor()])
+  Promise.all([loadCrawler(), loadExtractor()]).catch(err => {
+    toast.add({ title: err instanceof Error ? err.message : 'Failed to load panel', color: 'error', icon: 'i-lucide-alert-circle' })
+  })
 })
 </script>
 
