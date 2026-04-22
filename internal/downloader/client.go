@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"media-server-pro/internal/logger"
@@ -29,6 +30,10 @@ type Client struct {
 
 // NewClient creates a client for the downloader API.
 func NewClient(baseURL string, timeout time.Duration) *Client {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	return &Client{
 		baseURL: baseURL,
@@ -127,6 +132,9 @@ type SettingsResponse struct {
 
 // Health checks the downloader's health endpoint.
 func (c *Client) Health() (*HealthResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("downloader client not initialized")
+	}
 	var resp HealthResponse
 	if err := c.get("/api/health", &resp); err != nil {
 		return nil, err
@@ -136,6 +144,9 @@ func (c *Client) Health() (*HealthResponse, error) {
 
 // Detect sends a URL to the downloader for stream detection.
 func (c *Client) Detect(rawURL string) (*DetectResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("downloader client not initialized")
+	}
 	body := map[string]string{"url": rawURL}
 	var resp DetectResponse
 	if err := c.post("/api/detect", body, &resp); err != nil {
@@ -146,6 +157,9 @@ func (c *Client) Detect(rawURL string) (*DetectResponse, error) {
 
 // Download starts a download on the downloader service.
 func (c *Client) Download(params DownloadParams, mspSessionID string) (*DownloadResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("downloader client not initialized")
+	}
 	var resp DownloadResponse
 	if err := c.postWithSession("/api/download", params, &resp, mspSessionID); err != nil {
 		return nil, err
@@ -155,11 +169,17 @@ func (c *Client) Download(params DownloadParams, mspSessionID string) (*Download
 
 // CancelDownload cancels an active download.
 func (c *Client) CancelDownload(downloadID string) error {
-	return c.post("/api/cancel/"+downloadID, nil, nil)
+	if c == nil {
+		return fmt.Errorf("downloader client not initialized")
+	}
+	return c.post("/api/cancel/"+url.PathEscape(downloadID), nil, nil)
 }
 
 // ListDownloads returns completed downloads on the server.
 func (c *Client) ListDownloads() (*DownloadsListResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("downloader client not initialized")
+	}
 	var resp DownloadsListResponse
 	if err := c.get("/api/downloads", &resp); err != nil {
 		return nil, err
@@ -169,11 +189,17 @@ func (c *Client) ListDownloads() (*DownloadsListResponse, error) {
 
 // DeleteDownload removes a downloaded file.
 func (c *Client) DeleteDownload(filename string) error {
+	if c == nil {
+		return fmt.Errorf("downloader client not initialized")
+	}
 	return c.del("/api/download/" + url.PathEscape(filename))
 }
 
 // GetSettings returns the downloader's settings.
 func (c *Client) GetSettings() (*SettingsResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("downloader client not initialized")
+	}
 	var resp SettingsResponse
 	if err := c.get("/api/settings", &resp); err != nil {
 		return nil, err
