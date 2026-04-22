@@ -134,10 +134,8 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			"metadata":            marshalJSONParam(user.Metadata),
 			"watch_history":       marshalJSONParam(user.WatchHistory),
 		}
-		if user.PasswordHash != "" {
-			userUpdates["password_hash"] = user.PasswordHash
-			userUpdates["salt"] = user.Salt
-		}
+		// password_hash and salt are intentionally excluded here.
+		// Use UpdatePasswordHash for password changes to avoid snapshot races.
 		if err := tx.Model(&models.User{}).Where(sqlIDEq, user.ID).Updates(userUpdates).Error; err != nil {
 			return err
 		}
