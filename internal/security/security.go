@@ -25,6 +25,21 @@ import (
 
 const errSaveIPListsFmt = "failed to save IP lists: %v"
 
+// ContextClientIPKey is the gin.Context key under which GinMiddleware stores the
+// real client IP extracted by getClientIP. Use ClientIPFromContext to retrieve it.
+const ContextClientIPKey = "security.client_ip"
+
+// ClientIPFromContext returns the real client IP stored by GinMiddleware, falling
+// back to gin's built-in c.ClientIP() when the key is absent.
+func ClientIPFromContext(c *gin.Context) string {
+	if ip, ok := c.Get(ContextClientIPKey); ok {
+		if s, ok := ip.(string); ok && s != "" {
+			return s
+		}
+	}
+	return c.ClientIP()
+}
+
 // privateCIDRs are common private network ranges trusted for reverse proxy usage.
 // Parsed once at package init to avoid per-request overhead.
 var privateCIDRs []*net.IPNet
@@ -212,7 +227,7 @@ func (m *Module) Start(_ context.Context) error {
 			Comment:   reason,
 			AddedAt:   time.Now(),
 			AddedBy:   "rate-limiter",
-			ExpiresAt: new(time.Now().Add(duration)),
+			ExpiresAt: func() *time.Time { t := time.Now().Add(duration); return &t }(),
 		}
 		if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 			m.log.Warn("Failed to persist auto-ban for %s: %v", ip, err)
@@ -340,7 +355,7 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 		Comment:   reason,
 		AddedAt:   time.Now(),
 		AddedBy:   "system",
-		ExpiresAt: new(time.Now().Add(duration)),
+		ExpiresAt: func() *time.Time { t := time.Now().Add(duration); return &t }(),
 	}
 	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 		m.log.Warn("Failed to persist ban for %s: %v", ip, err)
@@ -987,6 +1002,7 @@ func isAuthPath(path string) bool {
 func (m *Module) GinMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := getClientIP(c.Request, m.parsedTrustedCIDRs())
+		c.Set(ContextClientIPKey, ip)
 
 		// Check IP access
 		allowed, reason := m.CheckAccess(ip)

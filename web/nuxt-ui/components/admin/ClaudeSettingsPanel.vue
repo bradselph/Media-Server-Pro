@@ -74,6 +74,20 @@ async function save() {
   saving.value = true
   try {
     config.value = await adminApi.updateClaudeConfig(draft.value)
+    draft.value = {
+      enabled: config.value.enabled,
+      binary_path: config.value.binary_path || '',
+      workdir: config.value.workdir || '',
+      model: config.value.model || 'claude-sonnet-4-6',
+      mode: config.value.mode || 'autonomous',
+      max_tokens: config.value.max_tokens || 4096,
+      system_prompt: config.value.system_prompt || '',
+      require_confirm_for_writes: config.value.require_confirm_for_writes,
+      max_tool_calls_per_turn: config.value.max_tool_calls_per_turn || 32,
+      rate_limit_per_minute: config.value.rate_limit_per_minute || 30,
+      kill_switch: config.value.kill_switch,
+      history_retention_days: config.value.history_retention_days || 30,
+    }
     toast.add({ title: 'Claude settings saved', color: 'success', icon: 'i-lucide-check' })
     emit('config-changed')
     void refreshAuth()

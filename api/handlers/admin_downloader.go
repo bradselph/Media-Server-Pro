@@ -137,8 +137,15 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 		return
 	}
 
-	// Extract admin's MSP session ID to forward to the downloader
-	sessionID, _ := c.Cookie("session_id")
+	// Extract admin's MSP session ID to forward to the downloader.
+	// When authenticated via bearer token, there is no session_id cookie;
+	// in that case, we pass an empty string and the downloader cannot verify
+	// server-side storage admin identity, so the download must use client storage.
+	var sessionID string
+	session := getSession(c)
+	if session != nil {
+		sessionID = session.ID
+	}
 
 	params := downloader.DownloadParams{
 		URL:            req.URL,

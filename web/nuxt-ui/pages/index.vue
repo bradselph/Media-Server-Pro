@@ -722,7 +722,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2">
+        <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
             v-for="ep in onDeck"
             :key="ep.media_id"
@@ -791,7 +791,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2">
+        <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
             v-for="r in newSinceLastVisit.items"
             :key="r.id"
@@ -835,7 +835,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2">
+        <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
             v-for="r in recentlyAdded"
             :key="r.id"
@@ -1206,14 +1206,29 @@ onUnmounted(() => {
               {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign in to view' }}
             </p>
           </div>
-          <!-- Hover play button overlay (not shown in selection mode or when gated) -->
+          <!-- Hover play button overlay (desktop hover) — hidden on touch
+               devices since hover never fires there; a persistent mobile chip
+               (below) provides the affordance instead. -->
           <div
             v-if="!selectionMode && !(item.is_mature && !canViewMature)"
-            class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+            class="absolute inset-0 hidden items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none [@media(hover:hover)]:flex"
           >
-            <div class="w-10 h-10 rounded-full bg-white/18 backdrop-blur-sm border-2 border-white/45 flex items-center justify-center">
+            <!-- 42px glass circle per handoff §6.5 hover play overlay. -->
+            <div class="w-[42px] h-[42px] rounded-full bg-white/18 backdrop-blur-sm border-2 border-white/45 flex items-center justify-center">
               <UIcon name="i-lucide-play" class="size-4 text-white ml-0.5" />
             </div>
+          </div>
+          <!-- Mobile play hint per handoff §6.5 — small always-on chip in the
+               bottom-right corner on touch devices (where hover doesn't fire).
+               Uses @media (pointer: coarse) via the [@media(pointer:coarse)]
+               Tailwind variant. Sits above the duration badge (bottom-1 right-1
+               is reserved for duration, so we offset to bottom-7). -->
+          <div
+            v-if="!selectionMode && !(item.is_mature && !canViewMature)"
+            class="absolute bottom-7 left-1 hidden [@media(pointer:coarse)]:flex items-center justify-center w-6 h-6 rounded-full bg-black/60 backdrop-blur-sm border border-white/30 pointer-events-none"
+            aria-hidden="true"
+          >
+            <UIcon name="i-lucide-play" class="size-3 text-white ml-0.5" />
           </div>
           <!-- Playback progress bar (logged-in, partially watched, not gated) -->
           <div

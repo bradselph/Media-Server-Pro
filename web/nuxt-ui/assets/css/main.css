@@ -112,7 +112,10 @@ body {
     --hairline-strong: rgba(255, 255, 255, 0.08);
     --text-strong: #eeeef5;
     --text-med: #c0c0d0;
-    --text-muted: #60609a;
+    /* Design handoff §9 flagged #60609a as borderline on #0d0d12 (contrast
+       ratio ~3.4:1 — below WCAG AA 4.5:1 for normal text). Bumped to #7878a8
+       per the spec's own recommendation ("bump to #7878a8 if it fails"). */
+    --text-muted: #7878a8;
     --text-dim: #888;
     --text-faint: #555;
     --rating-star: #fbbf24;
@@ -138,21 +141,16 @@ body {
     color: var(--text-muted);
 }
 
-/* Pulsing dot used by the LIVE badge on the player top bar. */
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.35; }
+/* Scrollbar-hide utility — horizontal-scroll carousels per handoff §6.5.
+   Hides the scrollbar on both WebKit (Chrome/Safari/Edge) and Firefox while
+   keeping the container scrollable. Applied to recommendation rows, on-deck
+   strips, and admin mobile tab strip. */
+.scrollbar-hide {
+    scrollbar-width: none;           /* Firefox */
+    -ms-overflow-style: none;        /* legacy IE/Edge */
 }
-.live-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #ef4444;
-    animation: pulse 2s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-    .live-dot { animation: none; }
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;                   /* WebKit — overrides the 6px global scrollbar */
 }
 
 /* Scanline texture for media thumbnails */

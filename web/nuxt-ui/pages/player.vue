@@ -1214,11 +1214,15 @@ watch(mediaId, (id, oldId) => {
           />
         </div>
         <div v-else class="max-md:px-4">
-          <!-- Audio player -->
+          <!-- Audio player — per handoff §6.4.1 the music variant uses a
+               compact 21/9-ish letterbox silhouette with max-height 260px on
+               desktop. We cap the visualizer/branding section to that height
+               (the native <audio controls> below flows naturally and isn't
+               included in the cap). Mobile keeps the spacious stacked layout. -->
           <UCard class="overflow-hidden">
-            <div class="flex flex-col items-center py-8 px-4 bg-linear-to-b from-primary/8 to-transparent">
-              <AudioVisualizer :analyser-node="visualizerAnalyser" :bars="48" :height="160" class="w-full max-w-md mb-4" />
-              <p class="font-bold text-xl text-highlighted text-center max-w-md">{{ getDisplayTitle(media) }}</p>
+            <div class="flex flex-col items-center justify-center px-4 bg-linear-to-b from-primary/8 to-transparent py-8 md:py-3 md:max-h-[260px]">
+              <AudioVisualizer :analyser-node="visualizerAnalyser" :bars="48" :height="160" class="w-full max-w-md mb-4 md:h-[100px] md:mb-2" />
+              <p class="font-bold text-xl md:text-base text-highlighted text-center max-w-md">{{ getDisplayTitle(media) }}</p>
               <div class="flex items-center gap-2 mt-1.5 text-xs text-muted">
                 <span v-if="media.codec" class="uppercase font-medium">{{ media.codec }}</span>
                 <span v-if="media.codec && media.bitrate">·</span>

@@ -64,7 +64,8 @@ func (m *Module) GetActiveSessions(username string) []*models.Session {
 	sessions := make([]*models.Session, 0)
 	for _, session := range m.sessions {
 		if session.Username == username && !session.IsExpired() {
-			sessions = append(sessions, new(*session))
+			tmp := *session
+			sessions = append(sessions, &tmp)
 		}
 	}
 	return sessions

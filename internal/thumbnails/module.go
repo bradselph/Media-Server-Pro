@@ -59,7 +59,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 }
 
 // Start initializes the thumbnail module
-func (m *Module) Start(_ context.Context) error {
+func (m *Module) Start(ctx context.Context) error {
 	m.log.Info("Starting thumbnail module...")
 
 	// Ensure thumbnail directory exists
@@ -100,9 +100,9 @@ func (m *Module) Start(_ context.Context) error {
 	}
 	m.ffprobePath = ffprobePath
 
-	// Start worker pool using a background context so workers are not
-	// canceled when the short-lived module-startup context expires.
-	workerCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
+	// Start worker pool using the passed context so workers are properly
+	// integrated into the server's context tree for lifecycle management.
+	workerCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = workerCtx
 	m.cancel = cancel
 

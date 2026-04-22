@@ -6,6 +6,9 @@ const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
 const toast = useToast()
 
+let destroyed = false
+onUnmounted(() => { destroyed = true })
+
 const remoteStats = ref<RemoteStats | null>(null)
 const remoteSources = ref<RemoteSourceState[]>([])
 const remoteLoading = ref(false)
@@ -34,6 +37,7 @@ async function loadRemote() {
       adminApi.getRemoteStats(),
       adminApi.getRemoteSources(),
     ])
+    if (destroyed) return
     remoteStats.value = stats
     remoteSources.value = sources ?? []
   } catch (e: unknown) {
@@ -51,6 +55,7 @@ async function addRemoteSource() {
       username: newRemoteUser.value || undefined,
       password: newRemotePass.value || undefined,
     })
+    if (destroyed) return
     newRemoteName.value = ''; newRemoteUrl.value = ''; newRemoteUser.value = ''; newRemotePass.value = ''
     toast.add({ title: 'Remote source added', color: 'success', icon: 'i-lucide-check' })
     await loadRemote()
@@ -94,7 +99,9 @@ async function loadAllRemoteMedia() {
   showRemoteMedia.value = true
   remoteMediaSource.value = null
   try {
-    remoteMedia.value = (await adminApi.getRemoteMedia()) ?? []
+    const media = await adminApi.getRemoteMedia()
+    if (destroyed) return
+    remoteMedia.value = media ?? []
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load remote media', color: 'error', icon: 'i-lucide-x' })
   } finally { remoteMediaLoading.value = false }
@@ -105,7 +112,9 @@ async function loadSourceMedia(name: string) {
   showRemoteMedia.value = true
   remoteMediaSource.value = name
   try {
-    remoteMedia.value = (await adminApi.getRemoteSourceMedia(name)) ?? []
+    const media = await adminApi.getRemoteSourceMedia(name)
+    if (destroyed) return
+    remoteMedia.value = media ?? []
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load source media', color: 'error', icon: 'i-lucide-x' })
   } finally { remoteMediaLoading.value = false }

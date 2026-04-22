@@ -52,7 +52,7 @@ function getGradientStyle(id: string): string {
         </div>
       </div>
     </div>
-    <div ref="scrollContainer" class="flex gap-3 overflow-x-auto pb-3 scroll-smooth">
+    <div ref="scrollContainer" class="flex gap-3 overflow-x-auto pb-3 scroll-smooth scrollbar-hide">
       <NuxtLink
         v-for="s in items"
         :key="s.media_id"

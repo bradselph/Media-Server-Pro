@@ -222,7 +222,7 @@ func (h *Handler) ReceiverStreamPush(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// Validate token format: must be a UUID (8-4-4-4-12 hex with hyphens).
+	// Validate token length (UUID tokens are 36 characters with hyphens).
 	if len(token) != 36 {
 		writeError(c, http.StatusBadRequest, "invalid token format")
 		return

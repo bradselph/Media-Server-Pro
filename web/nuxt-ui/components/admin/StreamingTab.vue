@@ -15,6 +15,9 @@ const autoGenerate = ref(false)
 const pregenIntervalHours = ref(1)
 const configSaving = ref(false)
 
+let destroyed = false
+let loadSeq = 0
+
 const INTERVAL_OPTIONS = [
   { label: '15 minutes', value: 0 },
   { label: '1 hour', value: 1 },
@@ -26,6 +29,7 @@ const INTERVAL_OPTIONS = [
 ]
 
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const [j, s, cfg] = await Promise.allSettled([
@@ -33,18 +37,21 @@ async function load() {
       adminApi.getHLSStats(),
       adminApi.getConfig(),
     ])
+    if (destroyed || seq !== loadSeq) return
     if (j.status === 'fulfilled') jobs.value = j.value ?? []
     if (s.status === 'fulfilled') stats.value = s.value
     if (cfg.status === 'fulfilled' && cfg.value) {
       fullConfig.value = cfg.value
       const hls = asRecord(cfg.value.hls)
       autoGenerate.value = hls?.auto_generate === true
-      pregenIntervalHours.value = typeof hls?.pre_generate_interval_hours === 'number'
+      const intervalValue = typeof hls?.pre_generate_interval_hours === 'number'
         ? hls.pre_generate_interval_hours
         : 1
+      const validValues = INTERVAL_OPTIONS.map(o => o.value)
+      pregenIntervalHours.value = validValues.includes(intervalValue) ? intervalValue : 1
     }
   } finally {
-    loading.value = false
+    if (!destroyed) loading.value = false
   }
 }
 
@@ -60,28 +67,40 @@ async function saveHLSConfig() {
       },
     }
     await adminApi.updateConfig(updated)
+    if (destroyed) return
     fullConfig.value = updated
     toast.add({ title: 'HLS settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
+    if (destroyed) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
     // Reload config from server to revert UI to actual state
-    load()
+    await load()
   } finally {
-    configSaving.value = false
+    if (!destroyed) configSaving.value = false
   }
 }
 
-function copyJobId(id: string) {
-  navigator.clipboard.writeText(id)
-  toast.add({ title: 'ID copied', color: 'success', icon: 'i-lucide-check' })
+async function copyJobId(id: string) {
+  if (!id) {
+    toast.add({ title: 'ID not available', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(id)
+    toast.add({ title: 'ID copied', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed to copy ID', color: 'error', icon: 'i-lucide-x' })
+  }
 }
 
 async function deleteJob(id: string) {
   try {
     await adminApi.deleteHLSJob(id)
+    if (destroyed) return
     toast.add({ title: 'Job deleted', color: 'success', icon: 'i-lucide-check' })
     await load()
   } catch (e: unknown) {
+    if (destroyed) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
 }
@@ -89,9 +108,11 @@ async function deleteJob(id: string) {
 async function cleanInactive() {
   try {
     await adminApi.cleanHLSInactive()
+    if (destroyed) return
     toast.add({ title: 'Cleaned inactive HLS jobs', color: 'success', icon: 'i-lucide-check' })
     await load()
   } catch (e: unknown) {
+    if (destroyed) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
 }
@@ -111,7 +132,14 @@ const pagedJobs = computed(() => {
 })
 const jobsTotalPages = computed(() => Math.ceil(jobs.value.length / jobsPerPage))
 
-onMounted(load)
+onMounted(() => {
+  destroyed = false
+  load()
+})
+
+onUnmounted(() => {
+  destroyed = true
+})
 </script>
 
 <template>
@@ -200,7 +228,8 @@ onMounted(load)
           <button
             class="font-mono text-xs hover:text-primary cursor-pointer"
             :title="`${row.original.id} (click to copy)`"
-            @click="copyJobId(row.original.id ?? '')"
+            :disabled="!row.original.id"
+            @click="row.original.id && copyJobId(row.original.id)"
           >{{ row.original.id?.slice(0, 12) }}…</button>
         </template>
         <template #status-cell="{ row }">

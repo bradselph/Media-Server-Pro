@@ -77,6 +77,9 @@ func (r *APITokenRepositoryImpl) Delete(ctx context.Context, id, userID string) 
 	if result.Error != nil {
 		return fmt.Errorf("delete api token: %w", result.Error)
 	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrAPITokenNotFound
+	}
 	return nil
 }
 

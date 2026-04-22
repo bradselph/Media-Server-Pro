@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"gorm.io/gorm"
@@ -100,6 +101,8 @@ func (r *ReceiverSlaveRepository) rowToSlaveRecord(row *receiverSlaveRow) *repos
 	}
 	if t, err := parseTime(row.LastSeen); err == nil {
 		rec.LastSeen = t
+	} else {
+		fmt.Fprintf(os.Stderr, "Warning: rowToSlaveRecord: invalid last_seen for slave %s: %v\n", row.ID, err)
 	}
 	if t, err := parseTime(row.CreatedAt); err == nil {
 		rec.CreatedAt = t
@@ -141,6 +144,7 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 		return nil
 	}
 
+	now := time.Now().Format(sqlTimeFormat)
 	rows := make([]receiverMediaRow, len(items))
 	for i, item := range items {
 		rows[i] = receiverMediaRow{
@@ -155,7 +159,7 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 			ContentFingerprint: item.ContentFingerprint,
 			Width:              item.Width,
 			Height:             item.Height,
-			UpdatedAt:          time.Now().Format(sqlTimeFormat),
+			UpdatedAt:          now,
 		}
 	}
 
@@ -173,7 +177,7 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 					"remote_path", "name", "media_type", "file_size", "duration",
 					"content_type", "content_fingerprint", "width", "height", "updated_at",
 				}),
-			}).Create(new(rows[start:end])).Error; err != nil {
+			}).Create(rows[start:end]).Error; err != nil {
 				return fmt.Errorf("failed to upsert media batch: %w", err)
 			}
 		}
@@ -190,8 +194,11 @@ func (r *ReceiverMediaRepository) ListAll(ctx context.Context) ([]*repositories.
 }
 
 func (r *ReceiverMediaRepository) DeleteBySlave(ctx context.Context, slaveID string) error {
-	if err := r.db.WithContext(ctx).Where("slave_id = ?", slaveID).Delete(&receiverMediaRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete media by slave: %w", err)
+	// Note: DeleteBySlave is a no-op if the slave ID has no media; this is expected behavior
+	// and not an error (a slave may be replaced before any media is indexed).
+	result := r.db.WithContext(ctx).Where("slave_id = ?", slaveID).Delete(&receiverMediaRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete media by slave: %w", result.Error)
 	}
 	return nil
 }
@@ -200,6 +207,7 @@ func (r *ReceiverMediaRepository) DeleteBySlave(ctx context.Context, slaveID str
 // the new records inside a single transaction so a crash between the two operations
 // cannot leave the slave with an empty catalog.
 func (r *ReceiverMediaRepository) ReplaceSlaveMedia(ctx context.Context, slaveID string, items []*repositories.ReceiverMediaRecord) error {
+	now := time.Now().Format(sqlTimeFormat)
 	rows := make([]receiverMediaRow, len(items))
 	for i, item := range items {
 		rows[i] = receiverMediaRow{
@@ -214,7 +222,7 @@ func (r *ReceiverMediaRepository) ReplaceSlaveMedia(ctx context.Context, slaveID
 			ContentFingerprint: item.ContentFingerprint,
 			Width:              item.Width,
 			Height:             item.Height,
-			UpdatedAt:          time.Now().Format(sqlTimeFormat),
+			UpdatedAt:          now,
 		}
 	}
 
@@ -234,7 +242,7 @@ func (r *ReceiverMediaRepository) ReplaceSlaveMedia(ctx context.Context, slaveID
 					"remote_path", "name", "media_type", "file_size", "duration",
 					"content_type", "content_fingerprint", "width", "height", "updated_at",
 				}),
-			}).Create(new(rows[start:end])).Error; err != nil {
+			}).Create(rows[start:end]).Error; err != nil {
 				return fmt.Errorf("failed to insert media batch: %w", err)
 			}
 		}
@@ -269,6 +277,8 @@ func (r *ReceiverMediaRepository) rowToMediaRecord(row *receiverMediaRow) *repos
 	}
 	if t, err := parseTime(row.UpdatedAt); err == nil {
 		rec.UpdatedAt = t
+	} else {
+		fmt.Fprintf(os.Stderr, "Warning: rowToMediaRecord: invalid updated_at for media %s: %v\n", row.ID, err)
 	}
 	return rec
 }

@@ -395,6 +395,9 @@ func (m *Module) storeResult(result *ValidationResult) {
 	m.results[result.Path] = result
 	m.mu.Unlock()
 
+	if m.repo == nil {
+		return
+	}
 	// Persist immediately to prevent data loss on crash
 	rec := m.resultToRecord(result)
 	if err := m.repo.Upsert(context.Background(), rec); err != nil {
@@ -575,6 +578,9 @@ func (m *Module) ClearResult(path string) {
 // Persistence — reads/writes via MySQL repository
 
 func (m *Module) loadResults() error {
+	if m.repo == nil {
+		return nil
+	}
 	records, err := m.repo.List(context.Background())
 	if err != nil {
 		return err
@@ -606,6 +612,9 @@ func (m *Module) loadResults() error {
 }
 
 func (m *Module) saveResults() error {
+	if m.repo == nil {
+		return nil
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

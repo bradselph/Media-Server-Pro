@@ -20,6 +20,9 @@ type GenerateHLSParams struct {
 // GenerateHLS starts HLS transcoding for a media file.
 // The mediaID (stable UUID) is used as the job ID so that HLS cache survives file moves/renames.
 func (m *Module) GenerateHLS(ctx context.Context, params *GenerateHLSParams) (*models.HLSJob, error) {
+	if params == nil {
+		return nil, fmt.Errorf("GenerateHLSParams cannot be nil")
+	}
 	if err := m.checkGenerateHLSPrereqs(params.MediaPath); err != nil {
 		return nil, err
 	}
@@ -80,6 +83,9 @@ func (m *Module) defaultQualitiesFromConfig(qualities []string) []string {
 
 // filterQualitiesBySourceHeight keeps only qualities that do not exceed source height; logs when some are skipped.
 func (m *Module) filterQualitiesBySourceHeight(ctx context.Context, p *resolveQualitiesParams) []string {
+	if p == nil {
+		return nil
+	}
 	sourceHeight := m.getSourceHeight(ctx, p.MediaPath)
 	if sourceHeight <= 0 {
 		return p.Qualities
@@ -103,6 +109,9 @@ func (m *Module) filterQualitiesBySourceHeight(ctx context.Context, p *resolveQu
 
 // resolveHLSQualities returns default qualities if none specified, filtered by source height.
 func (m *Module) resolveHLSQualities(ctx context.Context, p *resolveQualitiesParams) []string {
+	if p == nil {
+		return nil
+	}
 	p.Qualities = m.defaultQualitiesFromConfig(p.Qualities)
 	return m.filterQualitiesBySourceHeight(ctx, p)
 }
@@ -137,6 +146,9 @@ type CheckOrGenerateHLSParams struct {
 
 // CheckOrGenerateHLS checks if HLS exists for media path, auto-generates if configured.
 func (m *Module) CheckOrGenerateHLS(ctx context.Context, params *CheckOrGenerateHLSParams) (*models.HLSJob, error) {
+	if params == nil {
+		return nil, fmt.Errorf("CheckOrGenerateHLSParams cannot be nil")
+	}
 	if job, ok := m.tryResolveExistingJob(params.MediaID); ok {
 		return job, nil
 	}
@@ -171,6 +183,9 @@ type writePlaylistLineOpts struct {
 
 // writePlaylistLine runs writeFn(); on error removes masterPath and returns a wrapped error.
 func (m *Module) writePlaylistLine(opts *writePlaylistLineOpts, writeFn func() error) error {
+	if opts == nil {
+		return fmt.Errorf("writePlaylistLineOpts cannot be nil")
+	}
 	if err := writeFn(); err != nil {
 		if removeErr := os.Remove(opts.MasterPath); removeErr != nil {
 			m.log.Warn("Failed to remove corrupted playlist %s: %v", opts.MasterPath, removeErr)
@@ -188,6 +203,12 @@ type writeVariantEntryOpts struct {
 
 // writeVariantEntry writes one variant's stream info and playlist path to the master playlist file.
 func (m *Module) writeVariantEntry(file *os.File, opts *writeVariantEntryOpts, profile *config.HLSQuality) error {
+	if opts == nil {
+		return fmt.Errorf("writeVariantEntryOpts cannot be nil")
+	}
+	if profile == nil {
+		return fmt.Errorf("HLSQuality profile cannot be nil")
+	}
 	if err := m.writePlaylistLine(&writePlaylistLineOpts{MasterPath: opts.MasterPath, WrapMsg: "failed to write stream info"}, func() error {
 		_, err := fmt.Fprintf(file, "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
 			profile.Bitrate+profile.AudioBitrate, profile.Width, profile.Height, opts.Variant)
@@ -209,6 +230,9 @@ type generateMasterPlaylistParams struct {
 
 // generateMasterPlaylist creates the master HLS playlist in outputDir for the given variants.
 func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) error {
+	if p == nil {
+		return fmt.Errorf("generateMasterPlaylistParams cannot be nil")
+	}
 	masterPath := filepath.Join(p.OutputDir, masterPlaylistName)
 	file, err := os.Create(masterPath)
 	if err != nil {

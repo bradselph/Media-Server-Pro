@@ -134,10 +134,8 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			"metadata":            marshalJSONParam(user.Metadata),
 			"watch_history":       marshalJSONParam(user.WatchHistory),
 		}
-		if user.PasswordHash != "" {
-			userUpdates["password_hash"] = user.PasswordHash
-			userUpdates["salt"] = user.Salt
-		}
+		// password_hash and salt are intentionally excluded here.
+		// Use UpdatePasswordHash for password changes to avoid snapshot races.
 		if err := tx.Model(&models.User{}).Where(sqlIDEq, user.ID).Updates(userUpdates).Error; err != nil {
 			return err
 		}
@@ -171,6 +169,24 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			}),
 		}).Create(&user.Preferences).Error
 	})
+}
+
+// UpdatePasswordHash writes only password_hash and salt for the named user,
+// eliminating the full-snapshot race present in Update.
+func (r *UserRepository) UpdatePasswordHash(ctx context.Context, username, passwordHash, salt string) error {
+	result := r.db.WithContext(ctx).Model(&models.User{}).
+		Where("username = ?", username).
+		Updates(map[string]any{
+			"password_hash": passwordHash,
+			"salt":          salt,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrUserNotFound
+	}
+	return nil
 }
 
 // Delete removes a user. Related records (permissions, preferences, sessions)

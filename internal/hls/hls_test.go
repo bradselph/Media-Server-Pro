@@ -1,7 +1,12 @@
 package hls
 
 import (
+	"context"
+	"os"
 	"testing"
+
+	"media-server-pro/internal/config"
+	"media-server-pro/internal/logger"
 )
 
 // ---------------------------------------------------------------------------
@@ -87,5 +92,140 @@ func TestModuleName(t *testing.T) {
 	m := &Module{}
 	if m.Name() != "hls" {
 		t.Errorf("Name() = %q, want %q", m.Name(), "hls")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Nil guard regression tests (FND-0511 through FND-0517)
+// ---------------------------------------------------------------------------
+// These tests verify that functions gracefully handle nil parameters instead of panicking.
+
+func TestGenerateHLS_NilParams_ReturnsError(t *testing.T) {
+	// FND-0511: GenerateHLS should return an error (not panic) when params is nil
+	m := &Module{log: logger.New("test")}
+	ctx := context.Background()
+
+	job, err := m.GenerateHLS(ctx, nil)
+
+	if job != nil {
+		t.Errorf("GenerateHLS with nil params should return nil job, got %v", job)
+	}
+	if err == nil {
+		t.Error("GenerateHLS with nil params should return an error, got nil")
+	}
+	if err.Error() != "GenerateHLSParams cannot be nil" {
+		t.Errorf("GenerateHLS error message = %q, want %q", err.Error(), "GenerateHLSParams cannot be nil")
+	}
+}
+
+func TestCheckOrGenerateHLS_NilParams_ReturnsError(t *testing.T) {
+	// FND-0512: CheckOrGenerateHLS should return an error (not panic) when params is nil
+	m := &Module{log: logger.New("test")}
+	ctx := context.Background()
+
+	job, err := m.CheckOrGenerateHLS(ctx, nil)
+
+	if job != nil {
+		t.Errorf("CheckOrGenerateHLS with nil params should return nil job, got %v", job)
+	}
+	if err == nil {
+		t.Error("CheckOrGenerateHLS with nil params should return an error, got nil")
+	}
+	if err.Error() != "CheckOrGenerateHLSParams cannot be nil" {
+		t.Errorf("CheckOrGenerateHLS error message = %q, want %q", err.Error(), "CheckOrGenerateHLSParams cannot be nil")
+	}
+}
+
+func TestFilterQualitiesBySourceHeight_NilParams_ReturnsNil(t *testing.T) {
+	// FND-0513: filterQualitiesBySourceHeight should return nil (not panic) when p is nil
+	m := &Module{log: logger.New("test")}
+	ctx := context.Background()
+
+	result := m.filterQualitiesBySourceHeight(ctx, nil)
+
+	if result != nil {
+		t.Errorf("filterQualitiesBySourceHeight with nil params should return nil, got %v", result)
+	}
+}
+
+func TestResolveHLSQualities_NilParams_ReturnsNil(t *testing.T) {
+	// FND-0514: resolveHLSQualities should return nil (not panic) when p is nil
+	m := &Module{log: logger.New("test")}
+	ctx := context.Background()
+
+	result := m.resolveHLSQualities(ctx, nil)
+
+	if result != nil {
+		t.Errorf("resolveHLSQualities with nil params should return nil, got %v", result)
+	}
+}
+
+func TestWritePlaylistLine_NilOpts_ReturnsError(t *testing.T) {
+	// FND-0515: writePlaylistLine should return an error (not panic) when opts is nil
+	m := &Module{log: logger.New("test")}
+
+	err := m.writePlaylistLine(nil, func() error { return nil })
+
+	if err == nil {
+		t.Error("writePlaylistLine with nil opts should return an error, got nil")
+	}
+	if err.Error() != "writePlaylistLineOpts cannot be nil" {
+		t.Errorf("writePlaylistLine error message = %q, want %q", err.Error(), "writePlaylistLineOpts cannot be nil")
+	}
+}
+
+func TestWriteVariantEntry_NilOpts_ReturnsError(t *testing.T) {
+	// FND-0516 (part 1): writeVariantEntry should return an error (not panic) when opts is nil
+	m := &Module{log: logger.New("test")}
+	profile := &config.HLSQuality{Name: "720p"}
+	tmpFile, err := os.CreateTemp("", "test-*.m3u8")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	result := m.writeVariantEntry(tmpFile, nil, profile)
+
+	if result == nil {
+		t.Error("writeVariantEntry with nil opts should return an error, got nil")
+	}
+	if result.Error() != "writeVariantEntryOpts cannot be nil" {
+		t.Errorf("writeVariantEntry error message = %q, want %q", result.Error(), "writeVariantEntryOpts cannot be nil")
+	}
+}
+
+func TestWriteVariantEntry_NilProfile_ReturnsError(t *testing.T) {
+	// FND-0516 (part 2): writeVariantEntry should return an error (not panic) when profile is nil
+	m := &Module{log: logger.New("test")}
+	opts := &writeVariantEntryOpts{MasterPath: "/tmp/master.m3u8", Variant: "720p"}
+	tmpFile, err := os.CreateTemp("", "test-*.m3u8")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	result := m.writeVariantEntry(tmpFile, opts, nil)
+
+	if result == nil {
+		t.Error("writeVariantEntry with nil profile should return an error, got nil")
+	}
+	if result.Error() != "HLSQuality profile cannot be nil" {
+		t.Errorf("writeVariantEntry error message = %q, want %q", result.Error(), "HLSQuality profile cannot be nil")
+	}
+}
+
+func TestGenerateMasterPlaylist_NilParams_ReturnsError(t *testing.T) {
+	// FND-0517: generateMasterPlaylist should return an error (not panic) when p is nil
+	m := &Module{log: logger.New("test")}
+
+	err := m.generateMasterPlaylist(nil)
+
+	if err == nil {
+		t.Error("generateMasterPlaylist with nil params should return an error, got nil")
+	}
+	if err.Error() != "generateMasterPlaylistParams cannot be nil" {
+		t.Errorf("generateMasterPlaylist error message = %q, want %q", err.Error(), "generateMasterPlaylistParams cannot be nil")
 	}
 }

@@ -16,6 +16,7 @@ var (
 	ErrSessionNotFound    = errors.New("session not found")
 	ErrPlaylistNotFound   = errors.New("playlist not found")
 	ErrScanResultNotFound = errors.New("scan result not found")
+	ErrAPITokenNotFound   = errors.New("api token not found")
 )
 
 // UserRepository provides user data access methods
@@ -24,6 +25,9 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id string) (*models.User, error)
 	GetByUsername(ctx context.Context, username string) (*models.User, error)
 	Update(ctx context.Context, user *models.User) error
+	// UpdatePasswordHash writes only password_hash and salt for the given username,
+	// avoiding the full-snapshot race where a concurrent Update could overwrite the new hash.
+	UpdatePasswordHash(ctx context.Context, username, passwordHash, salt string) error
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context) ([]*models.User, error)
 	IncrementStorageUsed(ctx context.Context, userID string, delta int64) error

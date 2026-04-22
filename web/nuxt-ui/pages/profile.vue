@@ -547,7 +547,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               <span class="text-xs text-muted w-4 text-right shrink-0">{{ row.count }}</span>
             </div>
           </div>
-        <div class="flex gap-3 overflow-x-auto pb-2">
+        <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
             v-for="item in myRatings"
             :key="item.media_id"

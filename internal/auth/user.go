@@ -251,6 +251,13 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	if err := m.userRepo.Update(ctx, user); err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
 	}
+	// Update() intentionally excludes password_hash/salt to prevent snapshot races.
+	// If the caller included a password update, persist it via the targeted method.
+	if pwStr, ok := updates["password"].(string); ok && pwStr != "" {
+		if err := m.userRepo.UpdatePasswordHash(ctx, username, user.PasswordHash, user.Salt); err != nil {
+			return fmt.Errorf("failed to update password: %w", err)
+		}
+	}
 
 	m.cacheUser(user)
 	m.evictSessionsAfterUpdate(ctx, evictSessionUpdateParams{
