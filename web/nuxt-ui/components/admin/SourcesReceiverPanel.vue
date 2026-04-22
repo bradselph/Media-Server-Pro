@@ -14,6 +14,10 @@ const slaveMediaLoading = ref(false)
 const showSlaveMedia = ref(false)
 const selectedSlaveMedia = ref<ReceiverMedia | null>(null)
 const slaveMediaDetailLoading = ref(false)
+const activeDetailRequestId = ref(0)
+
+let destroyed = false
+onUnmounted(() => { destroyed = true })
 
 function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral' {
   if (status === 'online' || status === 'active' || status === 'completed') return 'success'
@@ -23,13 +27,23 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
 }
 
 async function openSlaveMediaDetail(id: string) {
+  const myId = ++activeDetailRequestId.value
   slaveMediaDetailLoading.value = true
   selectedSlaveMedia.value = null
   try {
-    selectedSlaveMedia.value = await adminApi.getSlaveMediaItem(id)
+    const result = await adminApi.getSlaveMediaItem(id)
+    if (!destroyed && activeDetailRequestId.value === myId) {
+      selectedSlaveMedia.value = result
+    }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load media detail', color: 'error', icon: 'i-lucide-x' })
-  } finally { slaveMediaDetailLoading.value = false }
+    if (!destroyed && activeDetailRequestId.value === myId) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed to load media detail', color: 'error', icon: 'i-lucide-x' })
+    }
+  } finally {
+    if (!destroyed && activeDetailRequestId.value === myId) {
+      slaveMediaDetailLoading.value = false
+    }
+  }
 }
 
 async function loadReceiver() {
@@ -40,41 +54,63 @@ async function loadReceiver() {
       adminApi.listSlaves(),
       adminApi.listDuplicates('pending'),
     ])
-    receiverStats.value = stats
-    slaves.value = slaveList ?? []
-    duplicates.value = dups ?? []
+    if (!destroyed) {
+      receiverStats.value = stats
+      slaves.value = slaveList ?? []
+      duplicates.value = dups ?? []
+    }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load receiver', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { receiverLoading.value = false }
+    if (!destroyed) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed to load receiver', color: 'error', icon: 'i-lucide-alert-circle' })
+    }
+  } finally {
+    if (!destroyed) receiverLoading.value = false
+  }
 }
 
 async function loadSlaveMedia() {
+  if (slaveMediaLoading.value) return
   slaveMediaLoading.value = true
   try {
-    slaveMedia.value = (await adminApi.getSlaveMedia()) ?? []
-    showSlaveMedia.value = true
+    const media = (await adminApi.getSlaveMedia()) ?? []
+    if (!destroyed) {
+      slaveMedia.value = media
+      showSlaveMedia.value = true
+    }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load slave media', color: 'error', icon: 'i-lucide-x' })
-  } finally { slaveMediaLoading.value = false }
+    if (!destroyed) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed to load slave media', color: 'error', icon: 'i-lucide-x' })
+    }
+  } finally {
+    if (!destroyed) slaveMediaLoading.value = false
+  }
 }
 
 async function removeSlave(id: string) {
   try {
     await adminApi.removeReceiverSlave(id)
-    toast.add({ title: 'Slave removed', color: 'success', icon: 'i-lucide-check' })
-    await loadReceiver()
+    if (!destroyed) {
+      toast.add({ title: 'Slave removed', color: 'success', icon: 'i-lucide-check' })
+      await loadReceiver()
+    }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    if (!destroyed) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    }
   }
 }
 
 async function resolveDuplicate(id: string, action: string) {
   try {
     await adminApi.resolveDuplicate(id, action)
-    duplicates.value = duplicates.value.filter(d => d.id !== id)
-    toast.add({ title: `Duplicate ${action}d`, color: 'success', icon: 'i-lucide-check' })
+    if (!destroyed) {
+      duplicates.value = duplicates.value.filter(d => d.id !== id)
+      toast.add({ title: `Duplicate ${action}d`, color: 'success', icon: 'i-lucide-check' })
+    }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    if (!destroyed) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    }
   }
 }
 
