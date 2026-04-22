@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 
@@ -99,6 +99,12 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 		status, err := h.updater.SourceUpdate(ctx)
 		if err != nil {
 			h.log.Error("Source update failed: %v", err)
+			if h.admin != nil {
+				h.admin.LogAction(context.Background(), &admin.AuditLogParams{
+					UserID: actorID, Username: actorName, Action: "apply_source_update",
+					Details: map[string]any{"error": err.Error()}, IPAddress: clientIP, Success: false,
+				})
+			}
 			return
 		}
 		if h.admin != nil {
@@ -181,10 +187,10 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 		return
 	}
 
-	// Validate branch name against git ref naming rules to prevent command injection
+	// Validate branch name using whitelist: only alphanumerics, -, _, /, .
 	if req.Branch != "" {
-		for _, bad := range []string{"..", " ", "~", "^", ":", "\\", "*", "?", "[", "@{"} {
-			if strings.Contains(req.Branch, bad) {
+		for _, ch := range req.Branch {
+			if !unicode.IsLetter(ch) && !unicode.IsDigit(ch) && ch != '-' && ch != '_' && ch != '/' && ch != '.' {
 				writeError(c, http.StatusBadRequest, "Invalid branch name")
 				return
 			}
