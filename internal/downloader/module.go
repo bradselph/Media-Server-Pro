@@ -53,6 +53,9 @@ func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting downloader module...")
 
 	cfg := m.config.Get()
+	if cfg == nil {
+		return fmt.Errorf("config not available")
+	}
 	if !cfg.Downloader.Enabled {
 		m.log.Info("Downloader integration is disabled")
 		m.setHealth(true, "Disabled")
@@ -64,7 +67,11 @@ func (m *Module) Start(_ context.Context) error {
 		return nil
 	}
 
-	m.client = NewClient(cfg.Downloader.URL, cfg.Downloader.RequestTimeout)
+	timeout := cfg.Downloader.RequestTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	m.client = NewClient(cfg.Downloader.URL, timeout)
 
 	if cfg.Downloader.DownloadsDir == "" {
 		m.log.Warn("Downloader downloads_dir not configured — file import will be unavailable")
@@ -116,6 +123,9 @@ func (m *Module) GetClient() *Client {
 // that are completed and ready to import.
 func (m *Module) ListImportable() ([]ImportableFile, error) {
 	cfg := m.config.Get()
+	if cfg == nil {
+		return nil, fmt.Errorf("config not available")
+	}
 	if cfg.Downloader.DownloadsDir == "" {
 		return nil, fmt.Errorf("downloads_dir not configured")
 	}
@@ -127,6 +137,9 @@ func (m *Module) ListImportable() ([]ImportableFile, error) {
 // Returns destination path and whether the source file was deleted.
 func (m *Module) Import(filename string, deleteSource, triggerScan bool) (destPath string, sourceDeleted bool, err error) {
 	cfg := m.config.Get()
+	if cfg == nil {
+		return "", false, fmt.Errorf("config not available")
+	}
 	if cfg.Downloader.DownloadsDir == "" {
 		return "", false, fmt.Errorf("downloads_dir not configured")
 	}
