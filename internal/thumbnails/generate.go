@@ -35,6 +35,9 @@ func webpQuality(configQuality int) string {
 
 // generateThumbnail performs the actual thumbnail generation
 func (m *Module) generateThumbnail(job *ThumbnailJob) error {
+	if job == nil {
+		return fmt.Errorf("nil job")
+	}
 	// Ensure output directory exists
 	if err := os.MkdirAll(filepath.Dir(job.OutputPath), 0o755); err != nil { //nolint:gosec // G301: thumbnail dirs need world-read for serving
 		return fmt.Errorf("failed to create output directory: %w", err)
@@ -91,6 +94,9 @@ func (m *Module) addFileSizeToStats(path string) {
 
 // tryGenerateWebPVariant generates a WebP variant for the main JPEG and updates stats on success.
 func (m *Module) tryGenerateWebPVariant(job *ThumbnailJob, timestamp float64) {
+	if job == nil {
+		return
+	}
 	webpPath := m.getThumbnailPathWebp(job.OutputPath)
 	if err := m.generateWebPFromVideo(&webPFromVideoOpts{job.FFmpegInput, webpPath, job.Width, job.Height, timestamp}); err != nil {
 		m.log.Warn("WebP thumbnail generation failed (JPEG served): %v", err)
@@ -101,6 +107,9 @@ func (m *Module) tryGenerateWebPVariant(job *ThumbnailJob, timestamp float64) {
 
 // generateResponsiveThumbnailsIfMain generates 160/320/640 WebP variants for srcset; no-op for _preview_ thumbnails.
 func (m *Module) generateResponsiveThumbnailsIfMain(job *ThumbnailJob, timestamp float64) {
+	if job == nil {
+		return
+	}
 	if isPreviewThumbnail(job.OutputPath) {
 		return
 	}
@@ -116,6 +125,9 @@ func (m *Module) generateResponsiveThumbnailsIfMain(job *ThumbnailJob, timestamp
 
 // tryUpdateBlurHashForThumbnail computes and stores BlurHash for the main thumbnail (LQIP); no-op if no updater or _preview_.
 func (m *Module) tryUpdateBlurHashForThumbnail(job *ThumbnailJob) {
+	if job == nil {
+		return
+	}
 	if m.blurHashUpdater == nil || isPreviewThumbnail(job.OutputPath) {
 		return
 	}
@@ -140,7 +152,7 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 			"q:v":     jpegQuality(cfg.Thumbnails.Quality),
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 	cmd := stream.Compile()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
 	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
 	cmdWithContext.Env = cmd.Env
@@ -185,6 +197,9 @@ func (m *Module) computeBlurHash(jpgPath string) (string, error) {
 func (m *Module) updateBlurHashFromThumbnail(outputPath, mediaPath string) {
 	hash, err := m.computeBlurHash(outputPath)
 	if err != nil || hash == "" {
+		if err != nil {
+			m.log.Warn("computeBlurHash %s: %v", outputPath, err)
+		}
 		return
 	}
 	bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -218,7 +233,7 @@ func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 
 	cmd := stream.Compile()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
 
 	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
@@ -237,6 +252,9 @@ func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
 
 // generateAudioThumbnail creates waveform for audio using ffmpeg-go
 func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
+	if job == nil {
+		return fmt.Errorf("nil job")
+	}
 	m.log.Info("Generating audio waveform for: %s", job.MediaPath)
 
 	// Build ffmpeg pipeline using ffmpeg-go
@@ -252,7 +270,7 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 	cmd := stream.Compile()
 
 	// Apply context for timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
 
 	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
@@ -304,7 +322,7 @@ func (m *Module) generateWebPFromAudio(opts *webPFromAudioOpts) error {
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 
 	cmd := stream.Compile()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
 
 	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
