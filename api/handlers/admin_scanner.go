@@ -123,9 +123,6 @@ func (h *Handler) applyReviewActionToItem(ctx context.Context, action, id string
 	}
 	path := item.Path
 	if action == "approve" {
-		if err := h.scanner.ApproveContent(ctx, path); err != nil {
-			return false
-		}
 		confidence := 0.0
 		var reasons []string
 		if result, ok := h.scanner.GetScanResult(path); ok {
@@ -136,13 +133,16 @@ func (h *Handler) applyReviewActionToItem(ctx context.Context, action, id string
 			h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
 			return false
 		}
+		if err := h.scanner.ApproveContent(ctx, path); err != nil {
+			return false
+		}
 		return true
-	}
-	if err := h.scanner.RejectContent(ctx, path); err != nil {
-		return false
 	}
 	if setErr := h.media.SetMatureFlag(path, false, 0, nil); setErr != nil {
 		h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
+		return false
+	}
+	if err := h.scanner.RejectContent(ctx, path); err != nil {
 		return false
 	}
 	return true
@@ -200,11 +200,6 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 		return
 	}
 
-	if err := h.scanner.ApproveContent(c.Request.Context(), path); err != nil {
-		writeError(c, http.StatusNotFound, "Item not found in review queue")
-		return
-	}
-
 	confidence := 0.0
 	var reasons []string
 	if result, ok := h.scanner.GetScanResult(path); ok {
@@ -213,7 +208,12 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 	}
 	if err := h.media.SetMatureFlag(path, true, confidence, reasons); err != nil {
 		h.log.Error("Failed to update media library mature flag: %v", err)
-		writeError(c, http.StatusInternalServerError, "Approved in scanner but failed to update media library")
+		writeError(c, http.StatusInternalServerError, "Failed to update media library")
+		return
+	}
+
+	if err := h.scanner.ApproveContent(c.Request.Context(), path); err != nil {
+		writeError(c, http.StatusNotFound, "Item not found in review queue")
 		return
 	}
 
@@ -231,14 +231,14 @@ func (h *Handler) RejectContent(c *gin.Context) {
 		return
 	}
 
-	if err := h.scanner.RejectContent(c.Request.Context(), path); err != nil {
-		writeError(c, http.StatusNotFound, "Item not found in review queue")
+	if err := h.media.SetMatureFlag(path, false, 0, nil); err != nil {
+		h.log.Error("Failed to update media library mature flag: %v", err)
+		writeError(c, http.StatusInternalServerError, "Failed to update media library")
 		return
 	}
 
-	if err := h.media.SetMatureFlag(path, false, 0, nil); err != nil {
-		h.log.Error("Failed to update media library mature flag: %v", err)
-		writeError(c, http.StatusInternalServerError, "Rejected in scanner but failed to update media library")
+	if err := h.scanner.RejectContent(c.Request.Context(), path); err != nil {
+		writeError(c, http.StatusNotFound, "Item not found in review queue")
 		return
 	}
 
