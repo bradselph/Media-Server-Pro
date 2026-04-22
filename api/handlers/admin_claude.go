@@ -99,7 +99,7 @@ func (h *Handler) AdminClaudeKillSwitch(c *gin.Context) {
 	h.logAdminAction(c, &adminLogActionParams{
 		Action: "claude.kill_switch", Target: "claude", Details: map[string]any{"on": body.On},
 	})
-	writeSuccess(c, map[string]any{"kill_switch": body.On})
+	writeSuccess(c, map[string]any{"kill_switch": h.claude.PublicConfig().KillSwitch})
 }
 
 // AdminClaudeListConversations returns conversations owned by the signed-in admin.
@@ -204,9 +204,15 @@ func (h *Handler) AdminClaudeChat(c *gin.Context) {
 		flusher.Flush()
 	}
 
-	writeEvent := func(ev claude.Event) {
-		b, err := json.Marshal(ev)
-		if err != nil {
+	var writeEvent func(ev claude.Event)
+	writeEvent = func(ev claude.Event) {
+		b, marshalErr := json.Marshal(ev)
+		if marshalErr != nil {
+			errJSON := `data: {"type":"error","error":"internal marshal error"}` + "\n\n"
+			_, _ = io.WriteString(c.Writer, errJSON)
+			if flusher != nil {
+				flusher.Flush()
+			}
 			return
 		}
 		_, _ = io.WriteString(c.Writer, "data: ")
@@ -225,6 +231,12 @@ func (h *Handler) AdminClaudeChat(c *gin.Context) {
 	turnCtx := context.WithoutCancel(c.Request.Context())
 
 	convID, _, err := h.claude.ChatTurn(turnCtx, session.UserID, session.Username, c.ClientIP(), req, writeEvent)
+
+	if err != nil {
+		writeEvent(claude.Event{Type: "error", Error: err.Error()})
+	} else {
+		writeEvent(claude.Event{Type: "done"})
+	}
 
 	// Audit the turn itself (not each tool — tools audit independently).
 	if h.admin != nil {
