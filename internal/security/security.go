@@ -25,6 +25,21 @@ import (
 
 const errSaveIPListsFmt = "failed to save IP lists: %v"
 
+// ContextClientIPKey is the gin.Context key under which GinMiddleware stores the
+// real client IP extracted by getClientIP. Use ClientIPFromContext to retrieve it.
+const ContextClientIPKey = "security.client_ip"
+
+// ClientIPFromContext returns the real client IP stored by GinMiddleware, falling
+// back to gin's built-in c.ClientIP() when the key is absent.
+func ClientIPFromContext(c *gin.Context) string {
+	if ip, ok := c.Get(ContextClientIPKey); ok {
+		if s, ok := ip.(string); ok && s != "" {
+			return s
+		}
+	}
+	return c.ClientIP()
+}
+
 // privateCIDRs are common private network ranges trusted for reverse proxy usage.
 // Parsed once at package init to avoid per-request overhead.
 var privateCIDRs []*net.IPNet
@@ -987,6 +1002,7 @@ func isAuthPath(path string) bool {
 func (m *Module) GinMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := getClientIP(c.Request, m.parsedTrustedCIDRs())
+		c.Set(ContextClientIPKey, ip)
 
 		// Check IP access
 		allowed, reason := m.CheckAccess(ip)

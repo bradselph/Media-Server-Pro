@@ -178,7 +178,7 @@ func (h *Handler) BanIP(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Invalid IP address format")
 		return
 	}
-	if req.IP == c.ClientIP() {
+	if req.IP == security.ClientIPFromContext(c) {
 		writeError(c, http.StatusBadRequest, "Cannot ban your own IP address")
 		return
 	}
