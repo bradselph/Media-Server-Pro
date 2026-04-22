@@ -408,6 +408,9 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 			writeMu.Lock()
 			_ = conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "shutdown"))
+			// Close the connection so any blocked conn.ReadMessage() in the reader
+			// goroutine returns immediately, preventing wg.Wait() from blocking forever.
+			_ = conn.Close()
 			writeMu.Unlock()
 			wg.Wait()
 			return nil
