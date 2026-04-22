@@ -381,101 +381,7 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 		return
 	}
 	prefs := user.Preferences
-
-	if v, ok := incoming["theme"].(string); ok {
-		prefs.Theme = v
-	}
-	if v, ok := incoming["view_mode"].(string); ok {
-		prefs.ViewMode = v
-	}
-	if v, ok := incoming["default_quality"].(string); ok {
-		prefs.DefaultQuality = v
-	}
-	if v, ok := incoming["auto_play"].(bool); ok {
-		prefs.AutoPlay = v
-	}
-	if v, ok := incoming["autoplay"].(bool); ok {
-		prefs.AutoPlay = v
-	}
-	if v, ok := incoming["playback_speed"].(float64); ok {
-		if v < 0.25 {
-			v = 0.25
-		} else if v > 4.0 {
-			v = 4.0
-		}
-		prefs.PlaybackSpeed = v
-	}
-	if v, ok := incoming["volume"].(float64); ok {
-		if v < 0 {
-			v = 0
-		} else if v > 1.0 {
-			v = 1.0
-		}
-		prefs.Volume = v
-	}
-	if showMature, ok := incoming["show_mature"].(bool); ok {
-		prefs.ShowMature = showMature
-		prefs.MaturePreferenceSet = true
-	}
-	if v, ok := incoming["language"].(string); ok {
-		prefs.Language = v
-	}
-	if v, ok := incoming["equalizer_preset"].(string); ok {
-		prefs.EqualizerPreset = v
-	} else if v, ok := incoming["equalizer_bands"].(string); ok {
-		prefs.EqualizerPreset = v
-	}
-	if v, ok := incoming["resume_playback"].(bool); ok {
-		prefs.ResumePlayback = v
-	}
-	if v, ok := incoming["show_analytics"].(bool); ok {
-		prefs.ShowAnalytics = v
-	}
-	if v, ok := incoming["items_per_page"].(float64); ok {
-		n := int(v)
-		if n < 1 {
-			n = 1
-		} else if n > 200 {
-			n = 200
-		}
-		prefs.ItemsPerPage = n
-	}
-	if v, ok := incoming["sort_by"].(string); ok {
-		prefs.SortBy = v
-	}
-	if v, ok := incoming["sort_order"].(string); ok {
-		prefs.SortOrder = v
-	}
-	if v, ok := incoming["filter_category"].(string); ok {
-		prefs.FilterCategory = v
-	}
-	if v, ok := incoming["filter_media_type"].(string); ok {
-		prefs.FilterMediaType = v
-	}
-	if v, ok := incoming["custom_eq_presets"].(map[string]any); ok {
-		prefs.CustomEQPresets = v
-	}
-	if v, ok := incoming["show_continue_watching"].(bool); ok {
-		prefs.ShowContinueWatching = v
-	}
-	if v, ok := incoming["show_recommended"].(bool); ok {
-		prefs.ShowRecommended = v
-	}
-	if v, ok := incoming["show_trending"].(bool); ok {
-		prefs.ShowTrending = v
-	}
-	if v, ok := incoming["skip_interval"].(float64); ok {
-		prefs.SkipInterval = int(v)
-	}
-	if v, ok := incoming["shuffle_enabled"].(bool); ok {
-		prefs.ShuffleEnabled = v
-	}
-	if v, ok := incoming["show_buffer_bar"].(bool); ok {
-		prefs.ShowBufferBar = v
-	}
-	if v, ok := incoming["download_prompt"].(bool); ok {
-		prefs.DownloadPrompt = v
-	}
+	applyPreferencesPatch(&prefs, incoming)
 
 	h.log.Debug("Updating preferences for user %s: show_mature=%v, mature_preference_set=%v", session.Username, prefs.ShowMature, prefs.MaturePreferenceSet)
 
@@ -490,6 +396,85 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 	// would make the client think one value was saved when another was stored.
 	prefs.Validate()
 	writeSuccess(c, prefs)
+}
+
+func setStringPref(m map[string]any, key string, dst *string) {
+	if v, ok := m[key].(string); ok {
+		*dst = v
+	}
+}
+
+func setBoolPref(m map[string]any, key string, dst *bool) {
+	if v, ok := m[key].(bool); ok {
+		*dst = v
+	}
+}
+
+func setClampedFloatPref(m map[string]any, key string, dst *float64, lo, hi float64) {
+	v, ok := m[key].(float64)
+	if !ok {
+		return
+	}
+	if v < lo {
+		v = lo
+	} else if v > hi {
+		v = hi
+	}
+	*dst = v
+}
+
+func setClampedIntPref(m map[string]any, key string, dst *int, lo, hi int) {
+	v, ok := m[key].(float64)
+	if !ok {
+		return
+	}
+	n := int(v)
+	if n < lo {
+		n = lo
+	} else if n > hi {
+		n = hi
+	}
+	*dst = n
+}
+
+// applyPreferencesPatch overlays caller-supplied fields onto prefs. Unknown
+// keys or type mismatches are ignored; numeric fields are clamped to their
+// accepted ranges before the call returns.
+func applyPreferencesPatch(prefs *models.UserPreferences, m map[string]any) {
+	setStringPref(m, "theme", &prefs.Theme)
+	setStringPref(m, "view_mode", &prefs.ViewMode)
+	setStringPref(m, "default_quality", &prefs.DefaultQuality)
+	setBoolPref(m, "auto_play", &prefs.AutoPlay)
+	setBoolPref(m, "autoplay", &prefs.AutoPlay)
+	setClampedFloatPref(m, "playback_speed", &prefs.PlaybackSpeed, 0.25, 4.0)
+	setClampedFloatPref(m, "volume", &prefs.Volume, 0, 1.0)
+	if v, ok := m["show_mature"].(bool); ok {
+		prefs.ShowMature = v
+		prefs.MaturePreferenceSet = true
+	}
+	setStringPref(m, "language", &prefs.Language)
+	if v, ok := m["equalizer_preset"].(string); ok {
+		prefs.EqualizerPreset = v
+	} else if v, ok := m["equalizer_bands"].(string); ok {
+		prefs.EqualizerPreset = v
+	}
+	setBoolPref(m, "resume_playback", &prefs.ResumePlayback)
+	setBoolPref(m, "show_analytics", &prefs.ShowAnalytics)
+	setClampedIntPref(m, "items_per_page", &prefs.ItemsPerPage, 1, 200)
+	setStringPref(m, "sort_by", &prefs.SortBy)
+	setStringPref(m, "sort_order", &prefs.SortOrder)
+	setStringPref(m, "filter_category", &prefs.FilterCategory)
+	setStringPref(m, "filter_media_type", &prefs.FilterMediaType)
+	if v, ok := m["custom_eq_presets"].(map[string]any); ok {
+		prefs.CustomEQPresets = v
+	}
+	setBoolPref(m, "show_continue_watching", &prefs.ShowContinueWatching)
+	setBoolPref(m, "show_recommended", &prefs.ShowRecommended)
+	setBoolPref(m, "show_trending", &prefs.ShowTrending)
+	setClampedIntPref(m, "skip_interval", &prefs.SkipInterval, 1, 300)
+	setBoolPref(m, "shuffle_enabled", &prefs.ShuffleEnabled)
+	setBoolPref(m, "show_buffer_bar", &prefs.ShowBufferBar)
+	setBoolPref(m, "download_prompt", &prefs.DownloadPrompt)
 }
 
 // GetWatchHistory returns the current user's watch history
