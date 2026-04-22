@@ -24,6 +24,9 @@ func (s *stubUserRepo) GetByUsername(context.Context, string) (*models.User, err
 	return nil, repositories.ErrUserNotFound
 }
 func (s *stubUserRepo) Update(context.Context, *models.User) error { return nil }
+func (s *stubUserRepo) UpdatePasswordHash(context.Context, string, string, string) error {
+	return nil
+}
 func (s *stubUserRepo) Delete(_ context.Context, id string) error {
 	s.deletedID = id
 	return nil

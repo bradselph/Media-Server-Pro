@@ -54,22 +54,20 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 		m.usersMu.RUnlock()
 		return ErrInvalidCredentials
 	}
-	userCopy := *user
 	m.usersMu.RUnlock()
 
-	userCopy.PasswordHash = string(hash)
-	userCopy.Salt = salt
+	newHash := string(hash)
 
 	m.log.Info("Password updated for user: %s", username)
 
-	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
+	if err := m.userRepo.UpdatePasswordHash(ctx, username, newHash, salt); err != nil {
 		m.log.Error("Failed to save user after password update: %v", err)
 		return fmt.Errorf("password update failed to persist: %w", err)
 	}
 	m.usersMu.Lock()
 	if u, ok := m.users[username]; ok && u.PasswordHash == currentHash {
-		u.PasswordHash = userCopy.PasswordHash
-		u.Salt = userCopy.Salt
+		u.PasswordHash = newHash
+		u.Salt = salt
 	}
 	m.usersMu.Unlock()
 
@@ -107,23 +105,21 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 		return ErrUserNotFound
 	}
 	currentHash := user.PasswordHash
-	userCopy := *user
 	m.usersMu.RUnlock()
 
-	userCopy.PasswordHash = string(hash)
-	userCopy.Salt = salt
+	newHash := string(hash)
 
 	m.log.Info("Password set for user: %s (admin action)", username)
 
-	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
+	if err := m.userRepo.UpdatePasswordHash(ctx, username, newHash, salt); err != nil {
 		m.log.Error("Failed to save user after password set: %v", err)
 		return fmt.Errorf("password set failed to persist: %w", err)
 	}
 	// Only update cache fields if the hash hasn't changed since our read (CAS pattern).
 	m.usersMu.Lock()
 	if u, ok := m.users[username]; ok && u.PasswordHash == currentHash {
-		u.PasswordHash = userCopy.PasswordHash
-		u.Salt = userCopy.Salt
+		u.PasswordHash = newHash
+		u.Salt = salt
 	}
 	m.usersMu.Unlock()
 

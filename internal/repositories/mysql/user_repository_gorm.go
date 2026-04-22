@@ -173,6 +173,24 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	})
 }
 
+// UpdatePasswordHash writes only password_hash and salt for the named user,
+// eliminating the full-snapshot race present in Update.
+func (r *UserRepository) UpdatePasswordHash(ctx context.Context, username, passwordHash, salt string) error {
+	result := r.db.WithContext(ctx).Model(&models.User{}).
+		Where("username = ?", username).
+		Updates(map[string]any{
+			"password_hash": passwordHash,
+			"salt":          salt,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrUserNotFound
+	}
+	return nil
+}
+
 // Delete removes a user. Related records (permissions, preferences, sessions)
 // are automatically removed via ON DELETE CASCADE foreign key constraints
 // defined in the database schema.
