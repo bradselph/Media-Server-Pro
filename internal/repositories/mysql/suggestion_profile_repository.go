@@ -49,6 +49,9 @@ func NewSuggestionProfileRepository(db *gorm.DB) repositories.SuggestionProfileR
 }
 
 func (r *SuggestionProfileRepository) SaveProfile(ctx context.Context, profile *repositories.SuggestionProfileRecord) error {
+	if profile == nil {
+		return fmt.Errorf("profile cannot be nil")
+	}
 	catJSON, err := json.Marshal(profile.CategoryScores)
 	if err != nil {
 		return fmt.Errorf("failed to marshal category_scores: %w", err)
@@ -111,8 +114,12 @@ func (r *SuggestionProfileRepository) GetProfile(ctx context.Context, userID str
 }
 
 func (r *SuggestionProfileRepository) DeleteProfile(ctx context.Context, userID string) error {
-	if err := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Delete(&suggestionProfileRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete suggestion profile: %w", err)
+	result := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Delete(&suggestionProfileRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete suggestion profile: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrSuggestionProfileNotFound
 	}
 	return nil
 }
@@ -152,6 +159,9 @@ func (r *SuggestionProfileRepository) ListProfiles(ctx context.Context) ([]*repo
 }
 
 func (r *SuggestionProfileRepository) SaveViewHistory(ctx context.Context, userID string, entry *repositories.ViewHistoryRecord) error {
+	if entry == nil {
+		return fmt.Errorf("entry cannot be nil")
+	}
 	row := viewHistoryRow{
 		UserID:      userID,
 		MediaPath:   entry.MediaPath,
@@ -181,6 +191,9 @@ func (r *SuggestionProfileRepository) BatchSaveViewHistory(ctx context.Context, 
 	}
 	rows := make([]viewHistoryRow, len(entries))
 	for i, e := range entries {
+		if e == nil {
+			return fmt.Errorf("nil entry at index %d", i)
+		}
 		rows[i] = viewHistoryRow{
 			UserID:      userID,
 			MediaPath:   e.MediaPath,
@@ -228,15 +241,23 @@ func (r *SuggestionProfileRepository) GetViewHistory(ctx context.Context, userID
 }
 
 func (r *SuggestionProfileRepository) DeleteViewHistory(ctx context.Context, userID string) error {
-	if err := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Delete(&viewHistoryRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete view history: %w", err)
+	result := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Delete(&viewHistoryRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete view history: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrViewHistoryNotFound
 	}
 	return nil
 }
 
 func (r *SuggestionProfileRepository) DeleteViewHistoryByMediaPath(ctx context.Context, mediaPath string) error {
-	if err := r.db.WithContext(ctx).Where("media_path = ?", mediaPath).Delete(&viewHistoryRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete view history by media path: %w", err)
+	result := r.db.WithContext(ctx).Where("media_path = ?", mediaPath).Delete(&viewHistoryRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete view history by media path: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrViewHistoryNotFound
 	}
 	return nil
 }
