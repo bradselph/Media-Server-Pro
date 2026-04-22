@@ -157,6 +157,10 @@ async function savePrefs() {
     // (enum defaults, clamped numbers) are reflected without requiring a reload.
     if (!saved.default_quality) saved.default_quality = 'auto'
     prefs.value = saved
+    // Push the updated preferences into the auth store so that the player,
+    // index page, and any other component reading authStore.user.preferences
+    // picks up the new values immediately without needing a page reload.
+    if (authStore.user) authStore.user.preferences = { ...saved }
     if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ThemeValue)
     toast.add({ title: 'Preferences saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
