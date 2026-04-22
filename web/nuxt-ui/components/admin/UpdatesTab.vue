@@ -16,7 +16,9 @@ async function loadUpdateConfig() {
     const cfg = await adminApi.getUpdateConfig()
     updateMethod.value = cfg.update_method
     updateBranch.value = cfg.branch
-  } catch { /* silently ignore — default to binary */ }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-x' })
+  }
   finally { configLoading.value = false }
 }
 
@@ -76,17 +78,25 @@ async function applyUpdate() {
   applying.value = true
   try {
     const res = await adminApi.applyUpdate()
+    if (!res) {
+      toast.add({ title: 'Update request failed (no response)', color: 'error', icon: 'i-lucide-x' })
+      applying.value = false
+      return
+    }
     toast.add({ title: 'Update applying — server will restart shortly', color: 'info', icon: 'i-lucide-info' })
-    status.value = res ?? { in_progress: true, stage: 'applying', progress: 0 }
+    status.value = res
     if (status.value?.in_progress) {
       stopPolling()
       pollInterval.value = setInterval(async () => {
-        if (destroyed) { stopPolling(); return }
+        if (destroyed) { stopPolling(); applying.value = false; return }
         try {
           const s = await adminApi.getUpdateStatus()
           status.value = s
           if (!s.in_progress) { stopPolling(); applying.value = false }
-        } catch { stopPolling(); applying.value = false }
+        } catch (e: unknown) {
+          toast.add({ title: e instanceof Error ? e.message : 'Status polling failed', color: 'error', icon: 'i-lucide-x' })
+          stopPolling(); applying.value = false
+        }
       }, 3000)
     } else {
       applying.value = false
@@ -117,17 +127,25 @@ async function applySourceUpdate() {
   sourceApplying.value = true
   try {
     const res = await adminApi.applySourceUpdate()
-    status.value = res ?? { in_progress: true, stage: 'pulling', progress: 0 }
+    if (!res) {
+      toast.add({ title: 'Source update request failed (no response)', color: 'error', icon: 'i-lucide-x' })
+      sourceApplying.value = false
+      return
+    }
     toast.add({ title: 'Source update started — server will restart', color: 'info', icon: 'i-lucide-info' })
+    status.value = res
     if (status.value?.in_progress) {
       stopSourcePolling()
       sourcePollInterval.value = setInterval(async () => {
-        if (destroyed) { stopSourcePolling(); return }
+        if (destroyed) { stopSourcePolling(); sourceApplying.value = false; return }
         try {
           const s = await adminApi.getSourceUpdateProgress()
           status.value = s
           if (!s.in_progress) { stopSourcePolling(); sourceApplying.value = false }
-        } catch { stopSourcePolling(); sourceApplying.value = false }
+        } catch (e: unknown) {
+          toast.add({ title: e instanceof Error ? e.message : 'Progress polling failed', color: 'error', icon: 'i-lucide-x' })
+          stopSourcePolling(); sourceApplying.value = false
+        }
       }, 3000)
     } else {
       sourceApplying.value = false
