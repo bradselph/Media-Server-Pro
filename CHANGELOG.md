@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.8.0] - 2026-04-22 (minor)
+
+- fix(thumbnails): module Start() now uses passed context for worker lifecycle (FND-0521)
+- fix(hls): nil pointer guards in generate functions (FND-0511–0517)
+- fix(admin): async guards, race protection, and validation in StreamingTab
+- fix(downloader): path escape, nil guards, timeout validation, URL normalization
+- fix(admin): add destroyed-flag guard to SourcesRemotePanel async functions
+- fix(admin): error handling, flag resets, and destroyed guard in UpdatesTab
+- fix(repositories): error logging, timestamp consistency, and slice syntax in receiver transfer repo
+- fix: add nil checks and validation to crawler repository (FND-0455-0461)
+- fix: clarify token validation comment in ReceiverStreamPush (FND-0425)
+- fix(admin): re-sync draft from server response after Claude settings save
+- fix(thumbnails): nil guards, shutdown context, and blurHash error logging
+- fix: extract sessionID from context instead of cookie in AdminDownloaderDownload (FND-0365)
+- fix(admin): add error catch and in-flight guards to SourcesCrawlerPanel
+- fix(claude): log tool persistence errors and redact error field in audit log
+- fix(auth): replace invalid new(*session) with copy-and-address in GetActiveSessions
+- fix(api-tokens): return ErrAPITokenNotFound when Delete() affects zero rows
+- fix(media-receiver): close connection before wg.Wait to prevent goroutine leak
+- fix(media-receiver): eliminate data races on lastCatalogHash and initial catalog push
+- fix(security): BanIP self-ban check now uses consistent IP extraction
+- fix(auth): eliminate password_hash snapshot race in UpdatePassword/SetPassword
+- fix(auth): correct pointer creation for time fields
+- fix(validator): nil repo guard in storeResult/loadResults/saveResults
+- Merge branch 'main' into development
+- feat(ui): deploy-time brand config via window.APP_CONFIG
+- feat(ui): AgeGate Leave, mobile play chip, audio 21/9 silhouette
+- fix(ui): AA contrast, hidden carousel scrollbars, remove dead LIVE badge CSS
+- Update main.css
+
+
 ## [1.7.0] - 2026-04-21 (minor)
 
 - feat(player): chapters grid section + relative date metadata
