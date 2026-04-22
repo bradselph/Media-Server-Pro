@@ -464,6 +464,18 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 	if v, ok := incoming["show_trending"].(bool); ok {
 		prefs.ShowTrending = v
 	}
+	if v, ok := incoming["skip_interval"].(float64); ok {
+		prefs.SkipInterval = int(v)
+	}
+	if v, ok := incoming["shuffle_enabled"].(bool); ok {
+		prefs.ShuffleEnabled = v
+	}
+	if v, ok := incoming["show_buffer_bar"].(bool); ok {
+		prefs.ShowBufferBar = v
+	}
+	if v, ok := incoming["download_prompt"].(bool); ok {
+		prefs.DownloadPrompt = v
+	}
 
 	h.log.Debug("Updating preferences for user %s: show_mature=%v, mature_preference_set=%v", session.Username, prefs.ShowMature, prefs.MaturePreferenceSet)
 
