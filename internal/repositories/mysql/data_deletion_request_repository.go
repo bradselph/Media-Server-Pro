@@ -93,7 +93,7 @@ func (r *DataDeletionRequestRepositoryImpl) UpdateStatus(ctx context.Context, id
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"status":      status,
-			"reviewed_at": new(time.Now().UTC()),
+			"reviewed_at": func() *time.Time { t := time.Now().UTC(); return &t }(),
 			"reviewed_by": reviewedBy,
 			"admin_notes": adminNotes,
 		})
