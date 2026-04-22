@@ -235,7 +235,9 @@ func (a *turnAggregator) handle(ev Event) {
 			}
 		}
 		if b, err := json.Marshal(tc); err == nil {
-			_ = a.m.appendMessage(a.ctx, a.convID, "tool", "", nil, b)
+			if err := a.m.appendMessage(a.ctx, a.convID, "tool", "", nil, b); err != nil {
+				a.m.log.Warn("persist tool message: %v", err)
+			}
 		}
 		a.m.auditToolCall(a.ctx, a.rc, &tc, tc.Error == "")
 	}
@@ -286,7 +288,7 @@ func (m *Module) auditToolCall(ctx context.Context, rc *runContext, tc *ToolCall
 		"output_preview": redact(outputPreview),
 	}
 	if tc.Error != "" {
-		details["error"] = tc.Error
+		details["error"] = redact(tc.Error)
 	}
 	m.adminMod.log(ctx, &admin.AuditLogParams{
 		UserID:    rc.UserID,
