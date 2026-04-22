@@ -16,6 +16,7 @@ var (
 	ErrSessionNotFound    = errors.New("session not found")
 	ErrPlaylistNotFound   = errors.New("playlist not found")
 	ErrScanResultNotFound = errors.New("scan result not found")
+	ErrAPITokenNotFound   = errors.New("api token not found")
 )
 
 // UserRepository provides user data access methods
