@@ -145,8 +145,6 @@ var streamHTTPClient = &http.Client{
 	},
 }
 
-// lastCatalogHash stores a SHA-256 of the last pushed catalog to skip redundant pushes.
-var lastCatalogHash string
 
 func main() {
 	cfg, disc := parseFlags()
@@ -302,17 +300,21 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 	}
 	fmt.Println("Registered with master")
 
-	// Initial scan and catalog push (always push on connect)
+	// Initial scan and catalog push (always push on connect).
+	// lastCatalogHash is local to this connection lifetime; no global state needed.
 	items := scanMediaDirs(cfg.MediaDirs)
 	fmt.Printf("Found %d media files\n", len(items))
-	if err := sendWSJSON(conn, "catalog", map[string]any{
+	writeMu.Lock()
+	initialErr := sendWSJSON(conn, "catalog", map[string]any{
 		"slave_id": cfg.SlaveID,
 		"items":    items,
 		"full":     true,
-	}); err != nil {
-		return fmt.Errorf("catalog push failed: %w", err)
+	})
+	writeMu.Unlock()
+	if initialErr != nil {
+		return fmt.Errorf("catalog push failed: %w", initialErr)
 	}
-	lastCatalogHash = hashCatalog(items)
+	lastCatalogHash := hashCatalog(items)
 	fmt.Printf("Pushed %d items to master\n", len(items))
 
 	// Start reading stream requests from master in a goroutine
