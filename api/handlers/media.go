@@ -299,11 +299,19 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		}
 	}
 
+	typeCounts := make(map[string]int, 3)
+	for _, item := range allItems {
+		if item.Type != "" {
+			typeCounts[string(item.Type)]++
+		}
+	}
+
 	resp := map[string]any{
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
 		"scanning":    h.media.IsScanning(),
+		"type_counts": typeCounts,
 	}
 	if userRatingsByID != nil {
 		resp["user_ratings"] = userRatingsByID

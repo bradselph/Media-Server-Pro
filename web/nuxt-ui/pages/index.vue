@@ -215,6 +215,7 @@ const loading = ref(true)
 const loadError = ref('')
 const scanning = ref(false)
 const initializing = ref(false)
+const typeCounts = ref<Record<string, number>>({})
 
 // Generation counter — incremented on every load() call so that responses
 // arriving out of order (due to network jitter or rapid filter changes) are
@@ -457,6 +458,7 @@ async function load() {
     total.value = res.total_items ?? 0
     scanning.value = res.scanning ?? false
     initializing.value = res.initializing ?? false
+    if (res.type_counts && params.type === 'all') typeCounts.value = res.type_counts
     userRatings.value = res.user_ratings ?? {}
     // Pre-warm the browser image cache for visible thumbnails in this page.
     // The batch endpoint returns the same /thumbnail?id=X URLs so the browser
@@ -913,6 +915,7 @@ onUnmounted(() => {
       <div class="flex flex-wrap gap-2 items-center">
         <button
           v-for="opt in TYPE_OPTIONS"
+          v-show="opt.value === 'all' || params.type === opt.value || !typeCounts || typeCounts[opt.value] > 0"
           :key="opt.value"
           :class="[
             'hidden md:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
@@ -974,7 +977,7 @@ onUnmounted(() => {
       <!-- Type select (mobile only) -->
       <USelect
         v-model="params.type"
-        :items="TYPE_OPTIONS"
+        :items="TYPE_OPTIONS.filter(opt => opt.value === 'all' || params.type === opt.value || !typeCounts[opt.value] || typeCounts[opt.value] > 0)"
         class="w-36 md:hidden"
       />
       <USelect
@@ -1337,7 +1340,7 @@ onUnmounted(() => {
             item.type === 'audio' && item.codec ? item.codec.toUpperCase() : null,
             item.type === 'video' && item.height ? formatResolution(item.width, item.height) : null,
             !item.category && !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
-            item.views > 0 ? item.views.toLocaleString() + ' views' : null,
+            item.views > 0 ? item.views.toLocaleString() + (item.views === 1 ? ' view' : ' views') : null,
           ].filter(Boolean).join(' · ') }}
         </p>
         <!-- Tag chips — click to filter by tag (hidden for gated items) -->

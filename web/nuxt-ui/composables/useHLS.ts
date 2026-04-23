@@ -29,6 +29,8 @@ export interface UseHLSReturn {
     hlsLoading: Ref<boolean>
     /** HLS error message, if any. */
     hlsError: Ref<string | null>
+    /** Whether HLS is currently reconnecting after a network failure. */
+    hlsReconnecting: Ref<boolean>
     /** Available quality levels. */
     qualities: Ref<HLSQuality[]>
     /** Current quality index (-1 = auto). */
@@ -88,6 +90,7 @@ export function useHLS(
     const hlsUrl = ref<string | null>(null)
     const hlsLoading = ref(false)
     const hlsError = ref<string | null>(null)
+    const hlsReconnecting = ref(false)
     const qualities = ref<HLSQuality[]>([])
     const currentQuality = ref(-1)
     const autoLevel = ref(-1)
@@ -127,6 +130,7 @@ export function useHLS(
         bandwidth.value = 0
         hlsLoading.value = false
         hlsError.value = null
+        hlsReconnecting.value = false
         hlsActivated.value = false
         jobProgress.value = 0
         jobRunning.value = false
@@ -206,8 +210,9 @@ export function useHLS(
             levelLoadingMaxRetry: 4,
             levelLoadingRetryDelay: 1000,
             fragLoadingTimeOut: 30000,
-            fragLoadingMaxRetry: 6,
+            fragLoadingMaxRetry: 8,
             fragLoadingRetryDelay: 1000,
+            fragLoadingMaxRetryTimeout: 16000,
             startFragPrefetch: true,
             testBandwidth: true,
         })
@@ -255,6 +260,11 @@ export function useHLS(
             if (loadTime <= 0) return
             const bw = (stats.loaded * 8) / (loadTime / 1000)
             bandwidth.value = bw
+            // Connectivity restored — reset counters so future outages get a full retry budget
+            if (networkRetryCount > 0 || hlsReconnecting.value) {
+                networkRetryCount = 0
+                hlsReconnecting.value = false
+            }
         })
 
         hls.on(Hls.Events.ERROR, (_event: unknown, data: import('hls.js').ErrorData) => {
@@ -262,8 +272,12 @@ export function useHLS(
 
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                 networkRetryCount++
-                if (networkRetryCount <= 3) {
-                    const delay = Math.min(1000 * Math.pow(2, networkRetryCount - 1), 8000)
+                // Allow up to 8 reconnect attempts with exponential backoff capped at 30s.
+                // We do NOT destroy the hls.js instance — the MediaSource stays attached so
+                // the already-buffered content continues to play while we wait for the server.
+                if (networkRetryCount <= 8) {
+                    const delay = Math.min(1000 * Math.pow(1.5, networkRetryCount - 1), 30000)
+                    hlsReconnecting.value = true
                     // Clear any pending retry before scheduling a new one. Rapid
                     // successive NETWORK_ERROR events would otherwise leave multiple
                     // live timers all calling hls.startLoad() on the same instance.
@@ -277,6 +291,8 @@ export function useHLS(
                     }, delay)
                     return
                 }
+                // All retries exhausted — fall through to fatal handling below
+                hlsReconnecting.value = false
             }
 
             if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
@@ -445,6 +461,7 @@ export function useHLS(
         hlsUrl,
         hlsLoading,
         hlsError,
+        hlsReconnecting,
         qualities,
         currentQuality,
         autoLevel,
