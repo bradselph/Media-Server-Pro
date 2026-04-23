@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	ffmpeg "github.com/u2takey/ffmpeg-go"
@@ -30,6 +31,9 @@ func (m *Module) resolveMediaInputPath(mediaPath string) string {
 
 // getMediaDuration uses ffmpeg-go Probe to get duration
 func (m *Module) getMediaDuration(path string) (float64, error) {
+	if strings.TrimSpace(path) == "" {
+		return 0, fmt.Errorf("media path cannot be empty")
+	}
 	path = m.resolveMediaInputPath(path)
 	// Try ffmpeg-go Probe first, using the explicit ffprobe path when available
 	// so this works under systemd (which strips PATH to a minimal set).
