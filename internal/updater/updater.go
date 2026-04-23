@@ -973,7 +973,7 @@ func (m *Module) gitAuthVars() (vars []string, cleanup func()) {
 	// SSH deploy key — for git@github.com: remote URLs
 	if cfg.Updater.DeployKeyPath != "" {
 		if _, err := os.Stat(cfg.Updater.DeployKeyPath); err == nil {
-			sshCmd := fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes",
+			sshCmd := fmt.Sprintf("ssh -i %q -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes",
 				cfg.Updater.DeployKeyPath)
 			vars = append(vars, "GIT_SSH_COMMAND="+sshCmd)
 		} else {
