@@ -9,7 +9,7 @@ type AnyRecord = Record<string, unknown>
  * Returns null for primitives, arrays, null, and undefined.
  */
 export function asRecord(value: unknown): AnyRecord | null {
-    return value !== null && typeof value === 'object' && !Array.isArray(value)
-        ? (value as AnyRecord)
-        : null
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
+    const proto = Object.getPrototypeOf(value)
+    return proto === Object.prototype || proto === null ? (value as AnyRecord) : null
 }

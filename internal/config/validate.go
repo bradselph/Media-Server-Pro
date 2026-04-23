@@ -150,6 +150,9 @@ func (m *Manager) validateDatabase() []error {
 	if m.config.Database.Name == "" {
 		errs = append(errs, fmt.Errorf("database name is required"))
 	}
+	if m.config.Database.Username == "" {
+		errs = append(errs, fmt.Errorf("database username is required"))
+	}
 	return errs
 }
 

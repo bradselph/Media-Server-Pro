@@ -26,8 +26,12 @@ func (m *Manager) applyServerEnvOverrides() {
 		m.log.Debug("Applied env override: Server.Host = %s", val)
 	}
 	if val, ok := envGetInt("SERVER_PORT", "MEDIA_SERVER_PORT"); ok {
-		m.config.Server.Port = val
-		m.log.Debug("Applied env override: Server.Port = %d", val)
+		if val < 1 || val > 65535 {
+			m.log.Warn("SERVER_PORT value %d is out of range [1, 65535], ignoring", val)
+		} else {
+			m.config.Server.Port = val
+			m.log.Debug("Applied env override: Server.Port = %d", val)
+		}
 	}
 	if val, ok := envGetBool("SERVER_ENABLE_HTTPS", "MEDIA_SERVER_ENABLE_HTTPS"); ok {
 		m.config.Server.EnableHTTPS = val
