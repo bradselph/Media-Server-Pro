@@ -34,7 +34,8 @@ func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.Us
 	user, exists := m.users[username]
 	if exists {
 		m.usersMu.RUnlock()
-		return new(*user), nil
+		userCopy := *user
+		return &userCopy, nil
 	}
 	m.usersMu.RUnlock()
 	user, err := m.userRepo.GetByUsername(ctx, username)
@@ -45,7 +46,8 @@ func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.Us
 	// Re-check: another goroutine may have populated the cache while we were loading from DB.
 	if existing, ok := m.users[username]; ok {
 		m.usersMu.Unlock()
-		return new(*existing), nil
+		existingCopy := *existing
+		return &existingCopy, nil
 	}
 	m.users[username] = user
 	// Keep usersByID in sync so ValidateSession → GetUserByID hits the cache
