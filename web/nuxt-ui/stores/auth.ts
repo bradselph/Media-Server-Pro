@@ -109,7 +109,8 @@ export const useAuthStore = defineStore('auth', () => {
         const {logout: apiLogout} = useApiEndpoints()
         try {
             await apiLogout()
-        } catch {
+        } catch (e) {
+            console.error('[auth] server-side logout failed (session may still be active):', e)
         }
         user.value = null
     }
