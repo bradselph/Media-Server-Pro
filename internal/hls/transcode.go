@@ -315,6 +315,9 @@ func (m *Module) monitorProgress(jobID string, stderr io.Reader, run *qualityRun
 			m.handleProgressUpdate(jobID, line[idx+5:], run)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		m.log.Warn("Progress monitoring error for job %s: %v", jobID, err)
+	}
 }
 
 // handleProgressUpdate processes a single ffmpeg progress line and updates job progress.
