@@ -92,8 +92,13 @@ func (m *Module) parseProbeDuration(probeJSON string) float64 {
 		m.log.Debug("Failed to parse ffprobe JSON output: %v", err)
 		return 0
 	}
+	if probe.Format.Duration == "" {
+		m.log.Warn("ffprobe returned empty duration field")
+		return 0
+	}
 	duration, err := strconv.ParseFloat(probe.Format.Duration, 64)
 	if err != nil {
+		m.log.Warn("ffprobe duration unparseable: %q: %v", probe.Format.Duration, err)
 		return 0
 	}
 	return duration

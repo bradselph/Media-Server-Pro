@@ -72,7 +72,8 @@ func (m *Module) writePlaceholderImage(outputPath string, img image.Image) error
 
 	if err := jpeg.Encode(file, img, &jpeg.Options{Quality: 80}); err != nil {
 		if removeErr := os.Remove(outputPath); removeErr != nil {
-			m.log.Warn("Failed to remove corrupted thumbnail %s: %v", outputPath, removeErr)
+			m.log.Error("Failed to remove corrupted placeholder %s: %v (corrupted file will persist)", outputPath, removeErr)
+			return fmt.Errorf("failed to encode thumbnail: %w; also failed to remove partial file: %v", err, removeErr)
 		}
 		return fmt.Errorf("failed to encode thumbnail: %w", err)
 	}
