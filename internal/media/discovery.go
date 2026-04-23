@@ -127,6 +127,23 @@ func (m *Module) SetThumbnailQueuer(q ThumbnailQueuer) {
 	m.thumbnailQueuer = q
 }
 
+// deepCopyItem returns a deep copy of a MediaItem so callers cannot mutate the cached Tags slice
+// or Metadata map without holding the mutex.
+func deepCopyItem(item *models.MediaItem) *models.MediaItem {
+	cp := *item
+	if item.Tags != nil {
+		cp.Tags = make([]string, len(item.Tags))
+		copy(cp.Tags, item.Tags)
+	}
+	if item.Metadata != nil {
+		cp.Metadata = make(map[string]string, len(item.Metadata))
+		for k, v := range item.Metadata {
+			cp.Metadata[k] = v
+		}
+	}
+	return &cp
+}
+
 // SetStores sets the storage backends for media file operations.
 func (m *Module) SetStores(video, music, upload storage.Backend) {
 	m.videoStore = video
@@ -1161,8 +1178,7 @@ func (m *Module) GetMedia(path string) (*models.MediaItem, error) {
 	if !exists {
 		return nil, fmt.Errorf("media not found: %s", path)
 	}
-	cp := *item
-	return &cp, nil
+	return deepCopyItem(item), nil
 }
 
 // GetMediaByID returns a copy of a media item by ID using the secondary index for O(1) lookups.
@@ -1172,8 +1188,7 @@ func (m *Module) GetMediaByID(id string) (*models.MediaItem, error) {
 	defer m.mu.RUnlock()
 
 	if item, exists := m.mediaByID[id]; exists {
-		cp := *item
-		return &cp, nil
+		return deepCopyItem(item), nil
 	}
 	return nil, fmt.Errorf("media not found with ID: %s", id)
 }
@@ -1216,7 +1231,7 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 		if filter.Matches(item) {
 			// Copy each item so callers do not race with IncrementViews /
 			// SetMatureFlag, which mutate the stored pointer's fields under Lock.
-			cp := *item; items = append(items, &cp)
+			items = append(items, deepCopyItem(item))
 		}
 	}
 
@@ -1267,7 +1282,7 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 		}
 		if filter.Matches(item) {
 			// Copy — same reasoning as ListMedia: prevent race with concurrent mutators.
-			cp := *item; items = append(items, &cp)
+			items = append(items, deepCopyItem(item))
 		}
 	}
 
