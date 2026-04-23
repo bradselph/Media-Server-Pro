@@ -96,6 +96,9 @@ const MODES = [
   { label: 'Autonomous', value: 'autonomous' },
 ]
 
+const chatAbortCtrl = new AbortController()
+onBeforeUnmount(() => chatAbortCtrl.abort())
+
 const messagesEl = ref<HTMLElement | null>(null)
 function scrollBottom() {
   nextTick(() => {
@@ -138,6 +141,7 @@ async function sendMessage(approved?: string[]) {
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
+      signal: chatAbortCtrl.signal,
     })
 
     if (!response.ok) {
