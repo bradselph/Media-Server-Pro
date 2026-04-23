@@ -242,12 +242,12 @@ async function sendMessage(approved?: string[]) {
   }
 }
 
-function approveAll() {
+async function approveAll() {
   const ids = [...pendingToolIds.value]
+  await sendMessage(ids)
+  // Clear state only after sendMessage resolves (success or failure handled inside sendMessage)
   pendingToolIds.value = []
-  // Remove pending messages and send approval
   chatMessages.value = chatMessages.value.filter(m => m.role !== 'tool_pending')
-  sendMessage(ids)
 }
 
 function rejectAll() {
