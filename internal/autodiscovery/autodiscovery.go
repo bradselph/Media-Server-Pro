@@ -539,7 +539,7 @@ func (m *Module) ApplySuggestion(originalPath FilePath) error {
 	}
 
 	if err := os.Rename(pathStr, destPath); err != nil {
-		return err
+		return fmt.Errorf("failed to rename %q to %q: %w", pathStr, destPath, err)
 	}
 
 	m.log.Info("Applied suggestion: %s -> %s", pathStr, destPath)
@@ -601,15 +601,18 @@ func (m *Module) GetSuggestions() []*models.AutoDiscoverySuggestion {
 }
 
 // ClearSuggestion removes a suggestion from memory and persists the deletion.
+// DB deletion happens first; the in-memory entry is only removed on success so
+// that a DB failure does not cause the suggestion to ghost-reappear on restart.
 func (m *Module) ClearSuggestion(path FilePath) {
-	m.mu.Lock()
-	delete(m.suggestions, SuggestionKey(path))
-	m.mu.Unlock()
-
 	ctx := context.Background()
 	if err := m.repo.Delete(ctx, string(path)); err != nil {
 		m.log.Warn("Failed to persist suggestion deletion for %q: %v", path, err)
+		return
 	}
+
+	m.mu.Lock()
+	delete(m.suggestions, SuggestionKey(path))
+	m.mu.Unlock()
 }
 
 // ClearAllSuggestions removes all suggestions from memory and persists the deletion.
