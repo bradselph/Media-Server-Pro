@@ -17,6 +17,9 @@ type AuditLogRepository struct {
 
 // NewAuditLogRepository creates a new GORM-based audit log repository
 func NewAuditLogRepository(db *gorm.DB) repositories.AuditLogRepository {
+	if db == nil {
+		panic("NewAuditLogRepository: db is nil")
+	}
 	return &AuditLogRepository{db: db}
 }
 
@@ -73,7 +76,7 @@ const getByUserMaxLimit = 1000
 // GetByUser retrieves audit log entries for a specific user
 func (r *AuditLogRepository) GetByUser(ctx context.Context, userID string, limit int) ([]*models.AuditLogEntry, error) {
 	var entries []*models.AuditLogEntry
-	if limit <= 0 {
+	if limit <= 0 || limit > getByUserMaxLimit {
 		limit = getByUserMaxLimit
 	}
 	err := r.db.WithContext(ctx).

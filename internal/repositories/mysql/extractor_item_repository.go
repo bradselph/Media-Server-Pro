@@ -44,6 +44,9 @@ type ExtractorItemRepository struct {
 
 // NewExtractorItemRepository creates a new ExtractorItemRepository.
 func NewExtractorItemRepository(db *gorm.DB) repositories.ExtractorItemRepository {
+	if db == nil {
+		panic("NewExtractorItemRepository: db is nil")
+	}
 	return &ExtractorItemRepository{db: db}
 }
 

@@ -38,6 +38,9 @@ type IPListRepository struct {
 }
 
 func NewIPListRepository(db *gorm.DB) repositories.IPListRepository {
+	if db == nil {
+		panic("NewIPListRepository: db is nil")
+	}
 	return &IPListRepository{db: db}
 }
 
@@ -123,6 +126,9 @@ func (r *IPListRepository) GetEntries(ctx context.Context, listType string) ([]*
 }
 
 func (r *IPListRepository) AddEntry(ctx context.Context, listType string, entry *repositories.IPEntryRecord) error {
+	if entry == nil {
+		return fmt.Errorf("entry must not be nil")
+	}
 	row := ipListEntryRow{
 		ListType:  listType,
 		IPValue:   entry.Value,

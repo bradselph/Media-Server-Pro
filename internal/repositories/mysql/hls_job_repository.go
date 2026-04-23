@@ -38,10 +38,16 @@ type HLSJobRepository struct {
 }
 
 func NewHLSJobRepository(db *gorm.DB) repositories.HLSJobRepository {
+	if db == nil {
+		panic("NewHLSJobRepository: db is nil")
+	}
 	return &HLSJobRepository{db: db}
 }
 
 func (r *HLSJobRepository) Save(ctx context.Context, job *models.HLSJob) error {
+	if job == nil {
+		return fmt.Errorf("job must not be nil")
+	}
 	row, err := r.jobToRow(job)
 	if err != nil {
 		return fmt.Errorf("failed to serialize HLS job: %w", err)

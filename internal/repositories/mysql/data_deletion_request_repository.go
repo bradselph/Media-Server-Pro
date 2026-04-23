@@ -33,6 +33,9 @@ type DataDeletionRequestRepositoryImpl struct {
 
 // NewDataDeletionRequestRepository creates a new GORM-based data deletion request repository.
 func NewDataDeletionRequestRepository(db *gorm.DB) repositories.DataDeletionRequestRepository {
+	if db == nil {
+		panic("NewDataDeletionRequestRepository: db is nil")
+	}
 	return &DataDeletionRequestRepositoryImpl{db: db}
 }
 
@@ -107,6 +110,9 @@ func (r *DataDeletionRequestRepositoryImpl) UpdateStatus(ctx context.Context, id
 }
 
 func rowToDataDeletionRequestRecord(row *dataDeletionRequestRow) *repositories.DataDeletionRequestRecord {
+	if row == nil {
+		return nil
+	}
 	return &repositories.DataDeletionRequestRecord{
 		ID:         row.ID,
 		UserID:     row.UserID,
