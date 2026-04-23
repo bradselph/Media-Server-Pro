@@ -74,11 +74,11 @@ func (m *Module) handleStaleLock(jobID string, lock *LockFile) {
 	m.log.Warn("Found stale lock for job %s (started: %v)", jobID, lock.StartedAt)
 	m.removeLock(jobID)
 	m.jobsMu.Lock()
+	defer m.jobsMu.Unlock()
 	if job, ok := m.jobs[jobID]; ok && job.Status == models.HLSStatusRunning {
 		job.Status = models.HLSStatusFailed
 		job.Error = "Job timed out (stale lock)"
 	}
-	m.jobsMu.Unlock()
 }
 
 // processEntryForStaleLocks checks one cache dir entry for a stale lock and cleans it if found. Returns true if a lock was removed.
@@ -136,11 +136,11 @@ func (m *Module) removeStartupLockForEntry(entry os.DirEntry) bool {
 		return false
 	}
 	m.jobsMu.Lock()
+	defer m.jobsMu.Unlock()
 	if job, ok := m.jobs[jobID]; ok && job.Status == models.HLSStatusRunning {
 		job.Status = models.HLSStatusPending
 		job.Error = ""
 	}
-	m.jobsMu.Unlock()
 	return true
 }
 

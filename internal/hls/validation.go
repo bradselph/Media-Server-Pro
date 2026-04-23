@@ -80,6 +80,9 @@ func (m *Module) validateVariant(outputDir, variant string) (segmentCount int, e
 
 // validateVariants checks each variant playlist and its segments, updating result in place
 func (m *Module) validateVariants(result *ValidationResult, outputDir string, variants []string) {
+	if result == nil {
+		return
+	}
 	for _, variant := range variants {
 		segmentCount, errs := m.validateVariant(outputDir, variant)
 		if len(errs) > 0 {

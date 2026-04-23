@@ -22,6 +22,7 @@ type Stats struct {
 // the job lock so filepath.Walk does not block job mutations.
 func (m *Module) GetStats() Stats {
 	m.jobsMu.RLock()
+	defer m.jobsMu.RUnlock()
 	stats := Stats{
 		TotalJobs: len(m.jobs),
 		CacheDir:  m.cacheDir,
@@ -38,7 +39,6 @@ func (m *Module) GetStats() Stats {
 			stats.PendingJobs++
 		}
 	}
-	m.jobsMu.RUnlock()
 
 	stats.CacheSize = m.calculateCacheSize()
 	return stats

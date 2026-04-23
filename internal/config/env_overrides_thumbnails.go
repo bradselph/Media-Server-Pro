@@ -22,22 +22,22 @@ func (m *Manager) applyThumbnailsFeatureOverrides() {
 }
 
 func (m *Manager) applyThumbnailsDimensionOverrides() {
-	if val, ok := envGetInt("THUMBNAILS_WIDTH"); ok {
+	if val, ok := envGetInt("THUMBNAILS_WIDTH"); ok && val >= 1 {
 		m.config.Thumbnails.Width = val
 	}
-	if val, ok := envGetInt("THUMBNAILS_HEIGHT"); ok {
+	if val, ok := envGetInt("THUMBNAILS_HEIGHT"); ok && val >= 1 {
 		m.config.Thumbnails.Height = val
 	}
-	if val, ok := envGetInt("THUMBNAILS_QUALITY"); ok {
+	if val, ok := envGetInt("THUMBNAILS_QUALITY"); ok && val >= 1 && val <= 100 {
 		m.config.Thumbnails.Quality = val
 	}
 }
 
 func (m *Manager) applyThumbnailsIntervalOverrides() {
-	if val, ok := envGetInt("THUMBNAILS_VIDEO_INTERVAL"); ok {
+	if val, ok := envGetInt("THUMBNAILS_VIDEO_INTERVAL"); ok && val >= 1 {
 		m.config.Thumbnails.VideoInterval = val
 	}
-	if val, ok := envGetInt("THUMBNAILS_PREVIEW_COUNT"); ok {
+	if val, ok := envGetInt("THUMBNAILS_PREVIEW_COUNT"); ok && val >= 1 {
 		m.config.Thumbnails.PreviewCount = val
 	}
 }
@@ -49,10 +49,10 @@ func (m *Manager) applyThumbnailsWorkerOverrides() {
 	if val, ok := envGetInt("THUMBNAILS_WORKER_COUNT"); ok {
 		m.config.Thumbnails.WorkerCount = val
 	}
-	if val, ok := envGetDuration(time.Minute, "THUMBNAILS_INFLIGHT_EVICTION_TIMEOUT_MINUTES"); ok {
+	if val, ok := envGetDuration(time.Minute, "THUMBNAILS_INFLIGHT_EVICTION_TIMEOUT_MINUTES"); ok && val >= time.Minute {
 		m.config.Thumbnails.InFlightEvictionTimeout = val
 	}
-	if val, ok := envGetDuration(time.Second, "THUMBNAILS_INFLIGHT_SCAN_INTERVAL_SECONDS"); ok {
+	if val, ok := envGetDuration(time.Second, "THUMBNAILS_INFLIGHT_SCAN_INTERVAL_SECONDS"); ok && val >= time.Second {
 		m.config.Thumbnails.InFlightScanInterval = val
 	}
 }

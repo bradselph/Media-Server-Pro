@@ -30,7 +30,7 @@ var wsUpgrader = websocket.Upgrader{
 		// Strip scheme from origin to compare with host
 		origin = strings.TrimPrefix(origin, "https://")
 		origin = strings.TrimPrefix(origin, "http://")
-		return origin == host
+		return strings.EqualFold(origin, host)
 	},
 }
 
