@@ -184,9 +184,7 @@ func (m *Module) updateJobStatus(params *updateJobStatusParams) {
 	if params.ErrorMsg != "" {
 		job.Error = params.ErrorMsg
 	}
-	if params.Progress > 0 {
-		job.Progress = params.Progress
-	}
+	job.Progress = params.Progress
 }
 
 // GetJobStatus returns a copy of the job status to avoid data races with the transcode goroutine.
@@ -255,6 +253,7 @@ func (m *Module) CancelJob(jobID string) error {
 			cancel()
 			delete(m.jobCancels, jobID)
 		}
+		m.saveJob(job)
 	}
 
 	return nil
