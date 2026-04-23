@@ -265,6 +265,9 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		"*://169.254.*",
 		"*://[::1]/*",
 		"*://[::1]",
+		"*://[fe80:*",
+		"*://[fc00:*",
+		"*://[fd00:*",
 	}
 	if _, sendErr := send("Network.setBlockedURLs", map[string]any{"urls": blockedURLPatterns}); sendErr != nil {
 		// Non-fatal: log and continue. Older Chrome builds may not support this method.
