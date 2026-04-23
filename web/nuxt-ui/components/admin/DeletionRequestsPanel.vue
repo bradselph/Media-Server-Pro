@@ -17,6 +17,7 @@ const adminNotes = ref('')
 const processing = ref(false)
 
 async function load() {
+  if (loading.value) return
   loading.value = true
   try {
     const data = await adminApi.listDeletionRequests(statusFilter.value || undefined)
@@ -146,7 +147,7 @@ watch(statusFilter, load)
     >
       <template #body>
         <UFormField label="Admin notes (optional)">
-          <UTextarea v-model="adminNotes" placeholder="Reason for your decision…" :rows="2" />
+          <UTextarea v-model="adminNotes" placeholder="Reason for your decision…" :rows="2" :maxlength="2000" />
         </UFormField>
       </template>
       <template #footer>

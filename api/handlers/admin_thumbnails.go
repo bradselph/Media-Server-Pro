@@ -47,7 +47,7 @@ func (h *Handler) UploadCustomThumbnail(c *gin.Context) {
 
 	if err := h.thumbnails.SaveCustomThumbnail(id, file); err != nil {
 		h.log.Error("UploadCustomThumbnail: %v", err)
-		writeError(c, http.StatusInternalServerError, "Failed to save thumbnail: "+err.Error())
+		writeError(c, http.StatusInternalServerError, "Failed to save thumbnail")
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *Handler) CleanupThumbnails(c *gin.Context) {
 	result, err := h.thumbnails.Cleanup()
 	if err != nil {
 		h.log.Error("Thumbnail cleanup failed: %v", err)
-		writeError(c, http.StatusInternalServerError, "Cleanup failed: "+err.Error())
+		writeError(c, http.StatusInternalServerError, "Cleanup failed")
 		return
 	}
 

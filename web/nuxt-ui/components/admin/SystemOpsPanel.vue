@@ -7,6 +7,7 @@ const toast = useToast()
 // ── Tasks ──────────────────────────────────────────────────────────────────────
 const tasks = ref<ScheduledTask[]>([])
 const tasksLoading = ref(false)
+const togglingTasks = ref(new Set<string>())
 let taskRefreshTimeout: ReturnType<typeof setTimeout> | null = null
 
 async function loadTasks() {
@@ -27,12 +28,16 @@ async function runTask(id: string) {
 }
 
 async function toggleTask(task: ScheduledTask) {
+  if (togglingTasks.value.has(task.id)) return
+  togglingTasks.value.add(task.id)
   try {
     if (task.enabled) await adminApi.disableTask(task.id)
     else await adminApi.enableTask(task.id)
     await loadTasks()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    togglingTasks.value.delete(task.id)
   }
 }
 
@@ -146,6 +151,7 @@ onUnmounted(() => {
                 color="neutral"
                 :title="task.enabled ? 'Disable' : 'Enable'"
                 :aria-label="task.enabled ? 'Disable task' : 'Enable task'"
+                :disabled="togglingTasks.has(task.id)"
                 @click="toggleTask(task)"
               />
             </div>

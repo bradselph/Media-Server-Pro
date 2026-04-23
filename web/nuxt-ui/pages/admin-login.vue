@@ -14,7 +14,8 @@ onBeforeUnmount(() => { mounted.value = false })
 
 const adminDest = () => {
   const r = route.query.redirect
-  if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//')) return r
+  if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') &&
+      !r.startsWith('/api/') && !r.startsWith('/extractor/')) return r
   return '/admin'
 }
 

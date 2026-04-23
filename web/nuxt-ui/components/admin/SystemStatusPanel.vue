@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ServerStatus, ModuleHealth } from '~/types/api'
+import { moduleStatusColor } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -13,11 +14,6 @@ const moduleDetailLoading = ref(false)
 let mounted = true
 onUnmounted(() => { mounted = false })
 
-function moduleStatusColor(status: ModuleHealth['status']): 'success' | 'warning' | 'error' {
-  if (status === 'healthy') return 'success'
-  if (status === 'degraded') return 'warning'
-  return 'error'
-}
 
 async function loadStatus() {
   statusLoading.value = true
