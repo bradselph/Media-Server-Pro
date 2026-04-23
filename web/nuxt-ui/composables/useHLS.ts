@@ -273,7 +273,7 @@ export function useHLS(
                     }
                     networkRetryTimer = setTimeout(() => {
                         networkRetryTimer = null
-                        hls.startLoad()
+                        if (hlsInstance === hls) hls.startLoad()
                     }, delay)
                     return
                 }
@@ -297,6 +297,14 @@ export function useHLS(
             hls.destroy()
             hlsInstance = null
         })
+
+        // Re-validate before attaching — component may have unmounted during event listener setup
+        if (!el.isConnected) {
+            hls.destroy()
+            hlsInstance = null
+            hlsActivated.value = false
+            return
+        }
 
         hls.loadSource(url)
         hls.attachMedia(el)
@@ -328,8 +336,12 @@ export function useHLS(
 
         if (thisGen !== activationGen) return
 
-        attachHLS(capturedUrl).catch(() => {
-            if (thisGen === activationGen) hlsActivated.value = false
+        attachHLS(capturedUrl).catch((err: unknown) => {
+            if (thisGen === activationGen) {
+                hlsActivated.value = false
+                hlsError.value = 'HLS activation failed'
+                console.error('[hls] activation error:', err)
+            }
         })
     }
 
@@ -359,7 +371,7 @@ export function useHLS(
                     pollTimer = null
                 }
                 const settings = await settingsApi.get().catch(() => null)
-                if (settings?.streaming?.adaptive !== false) await activateHLS()
+                if (settings && settings.streaming?.adaptive !== false) await activateHLS()
             } else if (updated.status !== 'running' && updated.status !== 'pending') {
                 jobRunning.value = false
                 if (pollTimer) {
@@ -403,7 +415,7 @@ export function useHLS(
                     // When disabled, the player falls back to direct streaming; user can still
                     // click "Switch to HLS" if the banner is shown.
                     const settings = await settingsApi.get().catch(() => null)
-                    if (settings?.streaming?.adaptive !== false) {
+                    if (settings && settings.streaming?.adaptive !== false) {
                         await activateHLS()
                     }
                 } else if (status.status === 'running') {
@@ -415,8 +427,9 @@ export function useHLS(
                     consecutiveErrors.count = 0
                     pollTimer = setInterval(() => doPollCheck(id), 3000)
                 }
-            } catch {
-                // HLS not available or check failed — that's fine, use direct streaming
+            } catch (err) {
+                // HLS not available or check failed — fall back to direct streaming
+                console.warn('[hls] check failed:', err)
             }
         }, 50)
     }, {immediate: true})
