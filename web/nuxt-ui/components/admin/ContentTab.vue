@@ -38,9 +38,14 @@ async function loadScanner() {
 }
 
 async function startScan() {
+  const path = scanPath.value.trim()
+  if (path && (path.includes('..') || /^[a-zA-Z]:/.test(path) || path.startsWith('/'))) {
+    toast.add({ title: 'Invalid scan path', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
   scanning.value = true
   try {
-    await adminApi.runScan(scanPath.value || undefined)
+    await adminApi.runScan(path || undefined)
     toast.add({ title: 'Scan started', color: 'success', icon: 'i-lucide-check' })
     setTimeout(loadScanner, 2000)
   } catch (e: unknown) {
@@ -193,7 +198,7 @@ const validateResult = ref<unknown>(null)
 async function loadValidator() {
   validatorLoading.value = true
   try { validatorStats.value = await adminApi.getValidatorStats() }
-  catch {}
+  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load validator stats', color: 'error', icon: 'i-lucide-x' }) }
   finally { validatorLoading.value = false }
 }
 
