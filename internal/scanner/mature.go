@@ -511,22 +511,22 @@ func (s *MatureScanner) computeConfidence(filename, dirPath string, result *Scan
 	return confidence
 }
 
-// scanConfigKeywords checks the filename against user-configured keywords (substring match; no word boundaries).
+// scanConfigKeywords checks the filename against user-configured keywords using
+// word-boundary regex patterns to avoid false positives from substring matches.
 func scanConfigKeywords(filename string, keywords []string, boost float64, label string, result *ScanResult) float64 {
 	var confidence float64
 	for _, keyword := range keywords {
 		kw := strings.ToLower(keyword)
-		if strings.Contains(filename, kw) {
-			// Skip if already matched by hardcoded keywords (avoid double counting)
-			alreadyMatched := slices.Contains(result.HighConfMatches, kw) ||
-				slices.Contains(result.MedConfMatches, kw)
-			if !alreadyMatched {
-				confidence += boost
-				result.Reasons = append(result.Reasons, label+": "+kw)
-				// Log custom keyword matches for debugging
-				// Note: Uncomment for debugging if needed
-				// s.log.Debug("Custom keyword match: %s (boost: %.2f)", kw, boost)
-			}
+		pattern, err := regexp.Compile(`(?i)\b` + regexp.QuoteMeta(kw) + `\b`)
+		if err != nil || !pattern.MatchString(filename) {
+			continue
+		}
+		// Skip if already matched by hardcoded keywords (avoid double counting)
+		alreadyMatched := slices.Contains(result.HighConfMatches, kw) ||
+			slices.Contains(result.MedConfMatches, kw)
+		if !alreadyMatched {
+			confidence += boost
+			result.Reasons = append(result.Reasons, label+": "+kw)
 		}
 	}
 	return confidence
