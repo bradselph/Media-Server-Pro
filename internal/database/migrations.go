@@ -881,9 +881,11 @@ func (m *Module) ensureForeignKey(ctx context.Context, table, constraint, cleanu
 	}
 	// Purge orphaned rows so the FK addition cannot fail with a constraint violation.
 	if cleanupSQL != "" {
-		if result, err := m.sqlDB.ExecContext(ctx, cleanupSQL); err != nil {
-			m.log.Warn("FK pre-cleanup failed for %s.%s: %v", table, constraint, err)
-		} else if n, _ := result.RowsAffected(); n > 0 {
+		result, err := m.sqlDB.ExecContext(ctx, cleanupSQL)
+		if err != nil {
+			return fmt.Errorf("FK pre-cleanup for %s.%s: %w", table, constraint, err)
+		}
+		if n, _ := result.RowsAffected(); n > 0 {
 			m.log.Info("Removed %d orphaned rows from %s before adding FK %s", n, table, constraint)
 		}
 	}
