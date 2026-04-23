@@ -28,10 +28,16 @@ async function loadBackupConfig() {
       const bk = asRecord(cfg.backup)
       backupRetentionCount.value = typeof bk?.retention_count === 'number' ? bk.retention_count : 5
     }
-  } catch { /* non-critical */ }
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load backup config', color: 'error', icon: 'i-lucide-alert-circle' })
+  }
 }
 
 async function saveBackupRetention() {
+  if (!backupFullConfig.value || !backupFullConfig.value.backup) {
+    toast.add({ title: 'Config not loaded — cannot save backup settings', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    return
+  }
   backupConfigSaving.value = true
   try {
     const updated = {
