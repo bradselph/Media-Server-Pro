@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"media-server-pro/internal/media"
 	"media-server-pro/pkg/models"
@@ -249,7 +251,12 @@ func (h *Handler) GetSmartPlaylist(c *gin.Context) {
 	}
 	var sp models.SmartPlaylist
 	if err := db.First(&sp, "id = ? AND user_id = ?", id, session.UserID).Error; err != nil {
-		writeError(c, http.StatusNotFound, "Smart playlist not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "Smart playlist not found")
+		} else {
+			h.log.Error("GetSmartPlaylist: db error: %v", err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 	writeSuccess(c, sp)
