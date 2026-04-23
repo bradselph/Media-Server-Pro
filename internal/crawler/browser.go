@@ -262,6 +262,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		"*://172.24.*", "*://172.25.*", "*://172.26.*", "*://172.27.*",
 		"*://172.28.*", "*://172.29.*", "*://172.30.*", "*://172.31.*",
 		"*://192.168.*",
+		"*://127.*",
 		"*://169.254.*",
 		"*://[::1]/*",
 		"*://[::1]",
@@ -310,9 +311,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 	}
 
 	// Background goroutine to process network events
-	done := make(chan struct{})
 	go func() {
-		defer close(done)
 		for evt := range events {
 			if evt.Method != "Network.responseReceived" {
 				continue
@@ -362,7 +361,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 						st.Type = "mp4"
 					}
 					result.Streams = append(result.Streams, st)
-					bd.log.Info("Browser detected %s: %s", st.Type, truncURL(respURL))
+					bd.log.Info("Browser detected %s: %s", st.Type, logSafeURL(respURL))
 				}
 				streamsMu.Unlock()
 			}
@@ -695,6 +694,11 @@ func (bd *browserDetector) extractEmbeddedURLs(
 		u = strings.ReplaceAll(u, "\\u0026", "&")
 		u = strings.ReplaceAll(u, "\\/", "/")
 
+		// Reject dangerous schemes that must never reach the stream list.
+		if lc := strings.ToLower(u); strings.HasPrefix(lc, "javascript:") || strings.HasPrefix(lc, "vbscript:") || strings.HasPrefix(lc, "data:") || strings.HasPrefix(lc, "blob:") {
+			continue
+		}
+
 		base := strings.SplitN(u, "?", 2)[0]
 		if seen[base] {
 			continue
@@ -706,7 +710,7 @@ func (bd *browserDetector) extractEmbeddedURLs(
 			Type:            e.Type,
 			DetectionMethod: "browser-dom",
 		})
-		bd.log.Info("Browser DOM extracted %s: %s", e.Type, truncURL(u))
+		bd.log.Info("Browser DOM extracted %s: %s", e.Type, logSafeURL(u))
 	}
 }
 
@@ -856,4 +860,12 @@ func truncURL(u string) string {
 		return u[:120] + "..."
 	}
 	return u
+}
+
+// logSafeURL strips the query string before truncating to prevent token leakage in logs.
+func logSafeURL(u string) string {
+	if idx := strings.IndexByte(u, '?'); idx != -1 {
+		u = u[:idx]
+	}
+	return truncURL(u)
 }
