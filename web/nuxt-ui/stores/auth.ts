@@ -40,6 +40,7 @@ function defaultPreferences(): UserPreferences {
         shuffle_enabled: false,
         show_buffer_bar: true,
         download_prompt: true,
+        custom_eq_presets: undefined,
     }
 }
 
@@ -63,7 +64,8 @@ export const useAuthStore = defineStore('auth', () => {
             const res = await getSession()
             allowGuests.value = res.allow_guests
             user.value = res.authenticated ? (normalizeUser(res.user) ?? null) : null
-        } catch {
+        } catch (e) {
+            console.warn('[auth] fetchSession failed:', e)
             user.value = null
         } finally {
             isLoading.value = false
