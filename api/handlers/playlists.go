@@ -14,6 +14,19 @@ const (
 	msgPlaylistNotFound = "Playlist not found"
 )
 
+// writePlaylistError writes the appropriate HTTP status for playlist operation errors.
+func writePlaylistError(c *gin.Context, err error, fallbackMsg string) {
+	if errors.Is(err, playlist.ErrPlaylistNotFound) {
+		writeError(c, http.StatusNotFound, msgPlaylistNotFound)
+	} else if errors.Is(err, playlist.ErrAccessDenied) {
+		writeError(c, http.StatusForbidden, fallbackMsg)
+	} else if errors.Is(err, playlist.ErrItemNotFound) {
+		writeError(c, http.StatusNotFound, "Playlist item not found")
+	} else {
+		writeError(c, http.StatusInternalServerError, errInternalServer)
+	}
+}
+
 // requirePlaylistIDAndSession ensures playlist module is available, path param "id" is present, and session exists.
 // Returns (id, session, true) or ("", nil, false) after writing an error.
 func (h *Handler) requirePlaylistIDAndSession(c *gin.Context) (id string, session *models.Session, ok bool) {
@@ -151,6 +164,10 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Playlist name required")
 		return
 	}
+	if len(req.Name) > 255 {
+		writeError(c, http.StatusBadRequest, "Playlist name too long (max 255 characters)")
+		return
+	}
 	pl, err := h.playlist.CreatePlaylist(c.Request.Context(), playlist.CreatePlaylistInput{
 		Name: req.Name, Description: req.Description, UserID: playlist.UserID(session.UserID), IsPublic: req.IsPublic,
 	})
@@ -179,7 +196,7 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	userID := playlist.UserID(s.UserID)
 	pl, err := h.playlist.GetPlaylistForUser(playlist.PlaylistID(id), userID)
 	if err != nil {
-		writeError(c, http.StatusNotFound, msgPlaylistNotFound)
+		writePlaylistError(c, err, "Cannot access playlist")
 		return
 	}
 
@@ -256,7 +273,7 @@ func (h *Handler) ExportPlaylist(c *gin.Context) {
 	}
 	export, err := h.playlist.ExportPlaylist(playlist.PlaylistID(id), playlist.UserID(session.UserID), format)
 	if err != nil {
-		writeError(c, http.StatusForbidden, "Cannot export playlist")
+		writePlaylistError(c, err, "Cannot export playlist")
 		return
 	}
 	h.writeExportResponse(c, format, export)
@@ -318,7 +335,7 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 		MediaPath:  mediaPath,
 		Title:      title,
 	}); err != nil {
-		writeError(c, http.StatusForbidden, "Cannot add item to playlist")
+		writePlaylistError(c, err, "Cannot add item to playlist")
 		return
 	}
 
@@ -338,7 +355,7 @@ func (h *Handler) ReorderPlaylistItems(c *gin.Context) {
 		return
 	}
 	if err := h.playlist.ReorderItems(c.Request.Context(), playlist.PlaylistID(playlistID), playlist.UserID(session.UserID), req.Positions); err != nil {
-		writeError(c, http.StatusForbidden, "Cannot reorder playlist items")
+		writePlaylistError(c, err, "Cannot reorder playlist items")
 		return
 	}
 
@@ -352,7 +369,7 @@ func (h *Handler) ClearPlaylist(c *gin.Context) {
 		return
 	}
 	if err := h.playlist.ClearPlaylist(c.Request.Context(), playlist.PlaylistID(playlistID), playlist.UserID(session.UserID)); err != nil {
-		writeError(c, http.StatusForbidden, "Cannot clear playlist")
+		writePlaylistError(c, err, "Cannot clear playlist")
 		return
 	}
 
@@ -375,11 +392,15 @@ func (h *Handler) CopyPlaylist(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Playlist name required")
 		return
 	}
+	if len(req.Name) > 255 {
+		writeError(c, http.StatusBadRequest, "Playlist name too long (max 255 characters)")
+		return
+	}
 
 	pl, err := h.playlist.CopyPlaylist(c.Request.Context(), playlist.PlaylistID(sourceID), playlist.UserID(session.UserID), req.Name)
 	if err != nil {
-		h.log.Error("%v", err)
-		writeError(c, http.StatusInternalServerError, errInternalServer)
+		h.log.Error("CopyPlaylist: %v", err)
+		writePlaylistError(c, err, "Cannot copy playlist")
 		return
 	}
 
@@ -402,7 +423,7 @@ func (h *Handler) RemovePlaylistItem(c *gin.Context) {
 	}
 
 	if err := h.playlist.RemoveItem(c.Request.Context(), playlist.PlaylistID(playlistID), playlist.UserID(session.UserID), removeKey); err != nil {
-		writeError(c, http.StatusForbidden, "Cannot remove item from playlist")
+		writePlaylistError(c, err, "Cannot remove item from playlist")
 		return
 	}
 
