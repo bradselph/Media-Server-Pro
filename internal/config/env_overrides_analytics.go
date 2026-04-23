@@ -9,10 +9,10 @@ func (m *Manager) applyAnalyticsEnvOverrides() {
 	if val, ok := envGetInt("ANALYTICS_RETENTION_DAYS"); ok {
 		m.config.Analytics.RetentionDays = val
 	}
-	if val, ok := envGetDuration(time.Minute, "ANALYTICS_SESSION_TIMEOUT_MINUTES"); ok {
+	if val, ok := envGetDuration(time.Minute, "ANALYTICS_SESSION_TIMEOUT_MINUTES"); ok && val > 0 {
 		m.config.Analytics.SessionTimeout = val
 	}
-	if val, ok := envGetDuration(time.Minute, "ANALYTICS_CLEANUP_INTERVAL_MINUTES"); ok {
+	if val, ok := envGetDuration(time.Minute, "ANALYTICS_CLEANUP_INTERVAL_MINUTES"); ok && val > 0 {
 		m.config.Analytics.CleanupInterval = val
 	}
 	if val, ok := envGetBool("ANALYTICS_TRACK_PLAYBACK"); ok {
@@ -24,7 +24,7 @@ func (m *Manager) applyAnalyticsEnvOverrides() {
 	if val, ok := envGetDuration(time.Minute, "ANALYTICS_VIEW_COOLDOWN_MINUTES"); ok {
 		m.config.Analytics.ViewCooldown = val
 	}
-	if val, ok := envGetInt("ANALYTICS_MAX_RECONSTRUCT_EVENTS"); ok {
+	if val, ok := envGetInt("ANALYTICS_MAX_RECONSTRUCT_EVENTS"); ok && val > 0 {
 		m.config.Analytics.MaxReconstructEvents = val
 	}
 }
