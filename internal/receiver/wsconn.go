@@ -356,8 +356,16 @@ func (m *Module) removeSlaveWS(slaveID string, sw *slaveWS) {
 		return
 	}
 	m.mu.Lock()
-	if node, ok2 := m.slaves[slaveID]; ok2 {
-		node.Status = "offline"
+	// Re-check wsConns: a reconnect may have registered a new connection in the
+	// window between our wsMu.Unlock() above and this mu.Lock(). If so, leave
+	// the slave online — the new connection is healthy.
+	m.wsMu.RLock()
+	newConn := m.wsConns[slaveID]
+	m.wsMu.RUnlock()
+	if newConn == nil {
+		if node, ok2 := m.slaves[slaveID]; ok2 {
+			node.Status = "offline"
+		}
 	}
 	m.mu.Unlock()
 }
