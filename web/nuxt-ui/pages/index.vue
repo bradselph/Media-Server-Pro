@@ -91,7 +91,10 @@ function toggleSelect(id: string, event: Event) {
 
 async function loadMyPlaylists() {
   if (!authStore.isLoggedIn) return
-  try { myPlaylists.value = await playlistApi.list() } catch { /* non-critical */ }
+  try {
+    const result = await playlistApi.list()
+    if (indexMounted) myPlaylists.value = result
+  } catch { /* non-critical */ }
 }
 
 async function bulkAddToPlaylist() {
@@ -144,11 +147,17 @@ const { updatePreferences } = useApiEndpoints()
 
 // Favorite media IDs for the current user
 const favoriteIds = ref<Set<string>>(new Set())
+const togglingIds = ref(new Set<string>())
+
+let indexMounted = false
+onMounted(() => { indexMounted = true })
+onUnmounted(() => { indexMounted = false })
 
 async function loadFavorites() {
   if (!authStore.isLoggedIn) return
   try {
     const recs = await favoritesApi.list()
+    if (!indexMounted) return
     favoriteIds.value = new Set((recs ?? []).map(r => r.media_id))
   } catch { /* non-critical */ }
 }
@@ -157,19 +166,25 @@ async function toggleFavorite(e: Event, item: MediaItem) {
   e.preventDefault()
   e.stopPropagation()
   if (!authStore.isLoggedIn) { router.push('/login'); return }
+  if (togglingIds.value.has(item.id)) return
   const wasFav = favoriteIds.value.has(item.id)
   // Optimistic update
   const next = new Set(favoriteIds.value)
   if (wasFav) { next.delete(item.id) } else { next.add(item.id) }
   favoriteIds.value = next
+  togglingIds.value.add(item.id)
   try {
     if (wasFav) { await favoritesApi.remove(item.id) }
     else { await favoritesApi.add(item.id) }
+    if (!indexMounted) return
   } catch {
+    if (!indexMounted) return
     // Revert on error
     const reverted = new Set(favoriteIds.value)
     if (wasFav) { reverted.add(item.id) } else { reverted.delete(item.id) }
     favoriteIds.value = reverted
+  } finally {
+    togglingIds.value.delete(item.id)
   }
 }
 
@@ -220,7 +235,10 @@ const params = reactive({
 })
 
 async function loadGeneralSuggestions() {
-  try { general.value = (await suggestionsApi.get()) ?? [] } catch { /* non-critical */ }
+  try {
+    const result = await suggestionsApi.get()
+    if (indexMounted) general.value = result ?? []
+  } catch { /* non-critical */ }
 }
 
 async function loadRecommendations() {
@@ -234,6 +252,7 @@ async function loadRecommendations() {
       suggestionsApi.getNewSinceLastVisit(20),
       suggestionsApi.getOnDeck(10),
     ])
+    if (!indexMounted) return
     // Deduplicate across rows: higher-priority rows "claim" their IDs so lower-priority
     // rows don't show the same item twice. Priority: continueWatching > onDeck > trending > recommended > recent.
     const seenIds = new Set<string>()
@@ -477,8 +496,10 @@ async function load() {
 }
 
 async function loadCategories() {
-  try { categories.value = (await mediaApi.getCategories()) ?? [] }
-  catch { /* categories are non-critical; silently skip */ }
+  try {
+    const result = await mediaApi.getCategories()
+    if (indexMounted) categories.value = result ?? []
+  } catch { /* categories are non-critical; silently skip */ }
 }
 
 watch([() => params.type, () => params.category, () => params.sort_by, () => params.sort_order], () => {
