@@ -361,7 +361,13 @@ func (m *Module) checkCodecSupport(result *ValidationResult) {
 
 func (m *Module) checkVideoCodecSupport(result *ValidationResult) {
 	if result.VideoCodec == "" {
-		result.VideoSupported = true // No video is fine for audio files
+		if result.Width == 0 && result.Height == 0 {
+			// No video stream detected (audio-only file) — supported.
+			result.VideoSupported = true
+		} else {
+			// Video stream present but codec unidentifiable — treat as unsupported.
+			result.Issues = append(result.Issues, "Video stream detected but codec is unidentifiable")
+		}
 		return
 	}
 	result.VideoSupported = supportedVideoCodecs[strings.ToLower(result.VideoCodec)]

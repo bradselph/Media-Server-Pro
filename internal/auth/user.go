@@ -298,7 +298,9 @@ func (m *Module) evictSessionsAfterUpdate(ctx context.Context, p evictSessionUpd
 const maxUserMetadataSize = 64 * 1024
 
 func (m *Module) applyUserUpdates(user *models.User, updates map[string]any) error {
-	m.applyBasicUserUpdates(user, updates)
+	if err := m.applyBasicUserUpdates(user, updates); err != nil {
+		return err
+	}
 	if err := m.applyPasswordUpdateFromMap(user, updates["password"]); err != nil {
 		return err
 	}
@@ -336,7 +338,7 @@ func applyMetadataUpdate(user *models.User, metadataVal any) error {
 }
 
 // applyBasicUserUpdates sets email, enabled, type, role, and admin permissions from updates.
-func (m *Module) applyBasicUserUpdates(user *models.User, updates map[string]any) {
+func (m *Module) applyBasicUserUpdates(user *models.User, updates map[string]any) error {
 	if email, ok := updates["email"].(string); ok {
 		user.Email = email
 	}
@@ -348,11 +350,15 @@ func (m *Module) applyBasicUserUpdates(user *models.User, updates map[string]any
 		user.Permissions = m.getDefaultPermissions(userType)
 	}
 	if role, ok := updates["role"].(string); ok {
+		if role != string(models.RoleAdmin) && role != string(models.RoleViewer) {
+			return fmt.Errorf("invalid role: %s", role)
+		}
 		user.Role = models.UserRole(role)
 	}
 	if user.Role == models.RoleAdmin {
 		user.Permissions = adminPermissions()
 	}
+	return nil
 }
 
 // applyPasswordUpdateFromMap updates user password hash and salt if a non-empty password is present.
