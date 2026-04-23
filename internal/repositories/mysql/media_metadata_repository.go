@@ -454,7 +454,7 @@ func (r *MediaMetadataRepository) GetPathByStableID(ctx context.Context, stableI
 		Where("stable_id = ?", stableID).
 		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", nil
+		return "", repositories.ErrPathNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("failed to get path by stable_id: %w", err)

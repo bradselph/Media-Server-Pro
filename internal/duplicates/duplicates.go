@@ -5,6 +5,7 @@ package duplicates
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -506,6 +507,9 @@ func (m *Module) removeLocalItem(ctx context.Context, itemID string) error {
 // findLocalPathByStableID returns the file path for the given stable ID.
 func (m *Module) findLocalPathByStableID(ctx context.Context, itemID string) (string, error) {
 	path, err := m.metaRepo.GetPathByStableID(ctx, itemID)
+	if errors.Is(err, repositories.ErrPathNotFound) {
+		return "", nil
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to look up stable ID %s: %w", itemID, err)
 	}

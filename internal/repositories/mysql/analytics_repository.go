@@ -115,10 +115,10 @@ func (r *AnalyticsRepository) DeleteByMediaID(ctx context.Context, mediaID strin
 
 // CountByType returns event counts grouped by event type using a single SQL GROUP BY query.
 // Avoids the full in-memory table scan previously used by GetEventTypeCounts and GetEventStats.
-func (r *AnalyticsRepository) CountByType(ctx context.Context) (map[string]int, error) {
+func (r *AnalyticsRepository) CountByType(ctx context.Context) (map[string]int64, error) {
 	type row struct {
 		Type  string `gorm:"column:type"`
-		Count int    `gorm:"column:cnt"`
+		Count int64  `gorm:"column:cnt"`
 	}
 	var rows []row
 	if err := r.db.WithContext(ctx).
@@ -128,7 +128,7 @@ func (r *AnalyticsRepository) CountByType(ctx context.Context) (map[string]int, 
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	result := make(map[string]int, len(rows))
+	result := make(map[string]int64, len(rows))
 	for _, row := range rows {
 		result[row.Type] = row.Count
 	}
