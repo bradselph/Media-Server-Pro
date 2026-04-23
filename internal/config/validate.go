@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -77,9 +78,13 @@ func (m *Manager) validateServerHTTPS() []error {
 	var errs []error
 	if m.config.Server.CertFile == "" {
 		errs = append(errs, fmt.Errorf("HTTPS enabled but no cert_file specified"))
+	} else if _, err := os.Stat(m.config.Server.CertFile); err != nil {
+		errs = append(errs, fmt.Errorf("cert_file not readable: %w", err))
 	}
 	if m.config.Server.KeyFile == "" {
 		errs = append(errs, fmt.Errorf("HTTPS enabled but no key_file specified"))
+	} else if _, err := os.Stat(m.config.Server.KeyFile); err != nil {
+		errs = append(errs, fmt.Errorf("key_file not readable: %w", err))
 	}
 	return errs
 }
@@ -123,6 +128,11 @@ func (m *Manager) validateSecurity() []error {
 	}
 	if sec.ViolationsForBan < 1 {
 		errs = append(errs, fmt.Errorf("violations_for_ban must be positive when rate limiting is enabled"))
+	}
+	for _, dangerous := range []string{"default-src *", "script-src *", "unsafe-eval"} {
+		if strings.Contains(sec.CSPPolicy, dangerous) {
+			m.log.Warn("SECURITY: CSP policy contains dangerous directive %q — browser XSS protections may be weakened", dangerous)
+		}
 	}
 	return errs
 }
