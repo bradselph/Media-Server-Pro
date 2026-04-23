@@ -1,5 +1,126 @@
 # Changelog
 
+## [1.9.0] - 2026-04-23 (minor)
+
+- fix(logger): runtime.Caller depth off-by-one — log source annotations now show actual caller (FND-1551)
+- fix(config): cert/key file existence check, CSP dangerous-directive warning (FND-0792, FND-0793)
+- fix(config): add validateClaude() enforcing mode/tokens/timeout bounds (FND-0791)
+- fix(thumbnails): log warnings on failed thumbnail removal in Cleanup (FND-0942)
+- fix(thumbnails/hls): empty path guards, probe warning logs, nil checks, placeholder error escalation (FND-0861,0892,0893,0963,1053,1121,1122,1151)
+- fix(frontend): toggleTask guard, deletion race, adminDest guards, moduleStatusColor dedup, bulk icon (FND-0672,0813,0814,1181,1183,1202)
+- fix(repos): nil guards on constructors/params, row nil checks, backup JSON empty check, audit limit cap (FND-0704,0705,0751,0761,0762,0771,0772,0851,0853,0922,0923,0982,0983,1081,1083)
+- fix(handlers): lifecycle concurrency guard, task ID trim, disk error log, claude redact arrays (FND-0791,1001,1032,1033,1041,1042,1092)
+- fix(misc): mutex defer, HLS/thumbnail env bounds, CLAUDE_MODE trim, WS case-fold (FND-0781,0782,0871,1071,1072,1161,1221,1231,1234,1235,0722)
+- fix(downloader): replace local mediaExtensions map with helpers.IsMediaExtension (FND-0681)
+- fix(misc): FND-0008/0013-0015/0020/0286-0287/0296-0298/0941/1201
+- fix(hls): FND-0257–0261 stale closure, error visibility, and safety guards
+- fix(collections-tab): FND-0247–0250 error handling and state correctness
+- fix(receiver): ping write deadline + async catalog push (FND-0238, FND-0240)
+- fix(misc): FND-1598–1606 multi-file correctness and security fixes
+- fix(security-tab): await load calls after mutations, add watcher loading guards
+- fix(claude-chat): restore state on load failure, scope-targeted cleanup, log warn
+- fix(discovery-tab): per-path processing lock, safe type narrowing, and load guard
+- fix(hls): always update progress field and persist cancel to DB
+- fix(crawler): SSRF and security hardening for browser-based stream detection
+- fix(auth-store): log fetchSession errors and add custom_eq_presets to default prefs
+- fix(order-161): propagate errors, fix new() anti-patterns, and validate role strings
+- fix(scheduler): correct UpdateSchedule comment about goroutine exit race
+- docs(openapi): add 31 missing endpoint definitions, add auth requirement to HLS capability endpoints
+- fix(admin-users): 404/500 for GetUser errors, self-demote guard, permission/type whitelists, username boundary chars, bulk username validation
+- fix(admin): surface backup config load errors, guard saveBackupRetention against unloaded config
+- fix(hls): check scanner.Err() after progress monitoring loop
+- fix(playlists): distinguish 404/403/500 errors, add playlist name length validation
+- fix(analytics): discard stale load on period change, toast on partial API failure
+- fix(metadata): fix new() misuse for ProbeModTime, ErrMetadataNotFound sentinel, RowsAffected check in delete
+- fix(admin): clear password on failure, validate email/password in create/edit forms, filter self from bulk actions
+- fix(admin): fix new() misuse in is_mature filter, redact internal errors from bulk response
+- fix(admin): narrow WS try/catch, validate downloadId+status fields, URL scheme validation in detect()
+- fix(repos): ErrPathNotFound sentinel for GetPathByStableID, CountByType int64 consistency, DeleteAll doc comment
+- fix(admin,backup): initialize startTime before concurrent access; remove orphaned file on zip open error
+- fix(categorizer): release mu before DB writes, propagate saveItem errors to callers
+- fix(admin): surface loadValidator errors via toast, validate scanPath before API call
+- fix(admin): NaN guard on chapter end_time, clear selection on load, type-safe description coercion, await load() in bulk/edit flows
+- fix(playlist): propagate RemoveItem error when duplicate cleanup fails in AddItem
+- fix(media): guard UpdateTags/AddTag against orphan metadata for non-indexed paths
+- fix(media): return 401 instead of 403 for unauthenticated mature content access
+- fix(remote): remove orphaned cache file before overwriting in CacheMedia
+- fix(scanner): use word-boundary regex for custom keyword matching to prevent false positives
+- fix(media): deep-copy Tags/Metadata in GetMedia/GetMediaByID/ListMedia to prevent cache mutation
+- fix(media): replace new(value) compile errors with copy patterns; fix new(time.Now()) in IncrementViews
+- fix(config,auth): validate bcrypt prefix on ADMIN_PASSWORD_HASH; warn on ADMIN_PASSWORD plaintext; FND-0057 is safe (Go map deletion during range is allowed)
+- fix(config): guard rate-limit window against zero; validate CORS origins to http/https with host
+- fix(receiver): re-check wsConns in removeSlaveWS to close race window with concurrent reconnect
+- fix(main): call logger.Shutdown() before os.Exit on --version flag
+- fix(thumbnails): guard empty mediaPath in getMediaDuration to prevent ffprobe hang
+- fix(audit-log-repo): cap List() limit at 100000 to prevent OOM on unbounded requests
+- fix(analytics): audit-log admin GetEventsByUser access for traceability
+- fix(smart-playlists): distinguish 404 vs 500 in GetSmartPlaylist DB error handling
+- fix(auth,analytics): log server-side logout failures; use event.Timestamp for session activity times
+- fix(repos): nil guards for Save() in backup-manifest and remote-cache repositories
+- fix(claude-chat): await sendMessage before clearing pendingToolIds in approveAll to allow retry on failure
+- fix(security-tab): remove optimistic mutations from HTTPS/HSTS/CORS toggles; update refs after API success
+- fix(admin-panels): track and clear task refresh timeout on unmount; add destroyed guard to DeletionRequestsPanel
+- fix(claude-chat): add AbortController to SSE fetch and abort on unmount to prevent stream leak
+- fix(wsconn,downloader): cancel PendingStream context on DeliverStream; add read deadlines to WS relay
+- fix(hls-repo): skip corrupt Qualities JSON rows in List() instead of failing entire result
+- fix(hls): clear networkRetryTimer before destroy; guard activateHLS concurrent invocations with generation counter
+- fix(repos): RowsAffected checks for UpdateStatus/RemoveEntry; nil db guard for NewFavoritesRepository
+- fix(thumbnails): guard empty MediaID/MediaPath to prevent path collisions and inFlight key races
+- fix(crawler): block IPv6 link-local and ULA ranges in setBlockedURLs to prevent SSRF
+- fix(hls): replace new(time.Now()) with local variable in finalizeJobCompleted
+- fix(extractor-item-repo): replace new(value) compile errors with local variable patterns
+- fix(scheduler,duplicates): guard nil Func and zero schedule in RegisterTask/UpdateSchedule; check ExistsResolvedRemoval error
+- fix(system): TrimSpace stripped SQL to fix false rejection of SELECT with leading block comments
+- fix(autodiscovery): delete from DB before map in ClearSuggestion; wrap Rename error with context
+- fix(upload): propagate file.Read error in magic-byte sniff
+- fix(profile): add mounted guards to all 6 async functions to prevent post-unmount state writes
+- fix(migrations): return error on FK pre-cleanup failure to prevent misleading constraint-violation error
+- fix(streaming): replace new(*session) with proper struct copy in GetActiveSessions
+- fix(suggestions): fix new(time.Now()) zero-time bug and add nil repo guards in PurgeMediaPath/ResetUserProfile
+- fix(index): add mounted guards and per-item toggling dedup to prevent post-unmount/concurrent writes
+- fix(updater): quote DeployKeyPath in GIT_SSH_COMMAND to handle paths with spaces
+- fix(player): add generation counter and mounted guard to loadMedia to prevent stale/post-unmount writes
+- fix(playlists): split copyingId, add preview gen counter, add unmount guards to all async functions
+- fix(auth): replace new(*user) with copy-before-return in getOrLoadUser to prevent zeroed user bypass
+- fix(system-settings-panel): add unmount guards to saveConfig and changeAdminPassword
+- fix(receiver): PushCatalog log/return/dup-refs use accepted record count, not raw request item count
+- fix(analytics-repo): add nil db guard to NewAnalyticsRepository constructor
+- fix(hls): validate jobID to prevent path traversal; return I/O errors from ValidateMasterPlaylist
+- fix(crawler): add nil guard to setChromeProcessAttrs consistent with killChromeProcessGroup
+- fix(config): guard downloader env overrides against zero values to prevent ticker panic and infinite timeout
+- fix(user-scoped-helpers): check RowsAffected in deleteByUserID to detect silent no-ops
+- fix(config): guard analytics env overrides against zero/negative values to prevent ticker panic and broken state
+- fix(user-permissions-repo): use ON CONFLICT upsert to prevent silent no-op on deleted rows
+- fix(claude-audit-panel): add unmount guard to prevent post-unmount state writes
+- fix(repos,vue): new() copy bug, unmount guards, empty metadata unmarshal (FND-0821, FND-0831–0833, FND-0931–0932, FND-0951)
+- fix(analytics,claude,hls): copy semantics, seq transaction, lock-free stat (FND-0188, FND-0189, FND-0225, FND-0265)
+- fix(crawler): reject non-HTTP(S) schemes in probe() to prevent SSRF (FND-0085)
+- fix(auth): TTL overflow, stale config, and bootstrap TOCTOU (FND-0039, FND-0040, FND-0041)
+- fix(auth): dummyHash panic on init failure and cleanupTicker race (FND-0028, FND-0029)
+- fix(validator,auth): video codec detection and role validation (FND-0025, FND-0026, FND-0027)
+- fix(routes,security): bearer_error surfaced, suggestions/recent auth, GetWhitelist TOCTOU (FND-0011, FND-0012, FND-0019)
+- fix(media-receiver): interval validation, semaphore ordering, fpCache cap (FND-0004, FND-0005, FND-0007)
+- fix(media,playlist,categorizer): TOCTOU and lock-scope races (FND-0084, FND-0096, FND-0115)
+- fix(security): log and skip malformed IP/CIDR entries instead of silently ignoring (FND-0018)
+- fix(main): add nil guards for critical module constructors (FND-0009)
+- fix(auth,validator): extend lock through DB write to prevent ordering race (FND-0035, FND-0024)
+- fix(preferences): sync authStore after save and apply server theme on session load
+- fix(deletion-requests): reviewed_at pointer idiom and input length validation (FND-0661–0663)
+- fix(receiver-duplicate-repo): UpdateStatus RowsAffected check and rowToRecord error propagation (FND-0651–0656)
+- fix(playlist-repo): nil guards and RowsAffected checks (FND-0641–0644)
+- fix(admin-updates): audit error path and branch name whitelist (FND-0631/0633)
+- fix(downloader): nil config guards and zero timeout default (FND-0621–0623/0625)
+- fix(hls): quality-anchored segment path guard and copyHLSJob timestamp copy (FND-0611/0612)
+- fix(thumbnails): input validation in generate/save/queue functions (FND-0601–0608)
+- fix(receiver-panel): destroyed-flag guards and in-flight dedup (FND-0591–0597)
+- Update auth.go
+- Merge branch 'main' into development
+- fix(repositories): add RowsAffected check to ScanResultRepository.Delete
+- fix(suggestion-profile-repo): nil guards and RowsAffected checks (FND-0551–0556)
+- fix(admin-claude): SSE terminal event, marshal error notification, kill-switch readback (FND-0542/0547/0548)
+- fix(admin-scanner): media-first ordering in approve/reject handlers (FND-0531–0533)
+
+
 ## [1.8.0] - 2026-04-22 (minor)
 
 - fix(thumbnails): module Start() now uses passed context for worker lifecycle (FND-0521)
