@@ -19,6 +19,9 @@ type AnalyticsRepository struct {
 
 // NewAnalyticsRepository creates a new GORM-based analytics repository
 func NewAnalyticsRepository(db *gorm.DB) repositories.AnalyticsRepository {
+	if db == nil {
+		panic("analytics repository: db is nil")
+	}
 	return &AnalyticsRepository{db: db}
 }
 
