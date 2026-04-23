@@ -270,6 +270,7 @@ const {
   hlsActivated,
   hlsLoading,
   hlsError,
+  hlsReconnecting,
   qualities,
   currentQuality,
   autoLevel,
@@ -1093,6 +1094,7 @@ watch(mediaId, (id, oldId) => {
             ref="videoRef"
             class="max-md:absolute max-md:inset-0 max-md:h-full max-md:w-full max-md:object-contain md:relative md:inset-auto md:h-auto md:w-full md:aspect-video"
             :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
+            preload="auto"
             @loadedmetadata="onVideoLoaded"
             @timeupdate="onTimeUpdate"
             @play="onPlayPause(); trackPlay()"
@@ -1246,6 +1248,7 @@ watch(mediaId, (id, oldId) => {
             <audio
               ref="videoRef"
               :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
+              preload="auto"
               controls
               class="w-full"
               @loadedmetadata="onVideoLoaded"
@@ -1282,6 +1285,16 @@ watch(mediaId, (id, oldId) => {
             <UButton label="Enable HLS" size="xs" :loading="hlsLoading" @click="activateHLS" />
           </template>
         </UAlert>
+
+        <!-- HLS reconnecting -->
+        <UAlert
+          v-else-if="hlsReconnecting"
+          title="Stream interrupted — reconnecting…"
+          description="Playback continues from buffer. The player will resume automatically when the server responds."
+          color="warning"
+          variant="soft"
+          icon="i-lucide-wifi-off"
+        />
 
         <!-- HLS error -->
         <UAlert
