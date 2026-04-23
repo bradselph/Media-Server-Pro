@@ -173,7 +173,7 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// getCachedResult returns a recent validation result for path if one exists (within 7 days).
+// getCachedResult returns a copy of a recent validation result for path if one exists (within 7 days).
 func (m *Module) getCachedResult(path string) (*ValidationResult, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -181,7 +181,8 @@ func (m *Module) getCachedResult(path string) (*ValidationResult, bool) {
 	if !ok || time.Since(result.ValidatedAt) >= 7*24*time.Hour {
 		return nil, false
 	}
-	return result, true
+	copy := *result
+	return &copy, true
 }
 
 // setFinalStatus sets result.Status based on issues and codec support.
@@ -520,12 +521,17 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	return result, nil
 }
 
-// GetResult returns the validation result for a file
+// GetResult returns a copy of the validation result for a file.
+// Returns a copy so callers cannot observe concurrent mutations from FixFile.
 func (m *Module) GetResult(path string) (*ValidationResult, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	result, ok := m.results[path]
-	return result, ok
+	if !ok {
+		return nil, false
+	}
+	copy := *result
+	return &copy, true
 }
 
 // GetStats returns validation statistics

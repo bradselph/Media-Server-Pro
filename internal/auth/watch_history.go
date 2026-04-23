@@ -9,12 +9,16 @@ import (
 )
 
 // AddToWatchHistory adds or updates an item in the user's watch history.
+// The lock is held through the DB write to prevent two concurrent callers from
+// committing out-of-order: without this, caller A could update the cache first
+// (correct ordering) but have its DB write arrive after caller B's, leaving the
+// DB with a stale snapshot while the cache holds the newer one.
 func (m *Module) AddToWatchHistory(ctx context.Context, username string, item models.WatchHistoryItem) error {
 	m.usersMu.Lock()
+	defer m.usersMu.Unlock()
 
 	user, exists := m.users[username]
 	if !exists {
-		m.usersMu.Unlock()
 		return ErrUserNotFound
 	}
 
@@ -22,27 +26,13 @@ func (m *Module) AddToWatchHistory(ctx context.Context, username string, item mo
 		if existing.MediaPath != item.MediaPath {
 			continue
 		}
-		oldItem := user.WatchHistory[i]
 		user.WatchHistory[i] = item
 		userCopy := *user
 		userCopy.WatchHistory = make([]models.WatchHistoryItem, len(user.WatchHistory))
 		copy(userCopy.WatchHistory, user.WatchHistory)
-		m.usersMu.Unlock()
 		if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 			m.log.Error("Failed to save user after watch history update: %v", err)
-			m.usersMu.Lock()
-			if u, ok := m.users[username]; ok {
-				// Search by MediaPath rather than index i: the slice may have been
-				// modified by a concurrent call while the lock was released for the
-				// DB write, so the captured index i is no longer reliable.
-				for j := range u.WatchHistory {
-					if u.WatchHistory[j].MediaPath == oldItem.MediaPath {
-						u.WatchHistory[j] = oldItem
-						break
-					}
-				}
-			}
-			m.usersMu.Unlock()
+			user.WatchHistory[i] = existing
 			return err
 		}
 		return nil
@@ -61,15 +51,10 @@ func (m *Module) AddToWatchHistory(ctx context.Context, username string, item mo
 	userCopy := *user
 	userCopy.WatchHistory = make([]models.WatchHistoryItem, len(user.WatchHistory))
 	copy(userCopy.WatchHistory, user.WatchHistory)
-	m.usersMu.Unlock()
 
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after watch history update: %v", err)
-		m.usersMu.Lock()
-		if u, ok := m.users[username]; ok {
-			u.WatchHistory = oldHistory
-		}
-		m.usersMu.Unlock()
+		user.WatchHistory = oldHistory
 		return err
 	}
 	return nil
@@ -119,19 +104,16 @@ func (m *Module) ClearWatchHistory(ctx context.Context, username string) error {
 }
 
 // RemoveWatchHistoryItem removes a single item from a user's watch history by media path.
-// Uses a copy-before-unlock pattern (same rationale as ClearWatchHistory).
+// The lock is held through the DB write for the same ordering-race reason as AddToWatchHistory.
 func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath string) error {
 	m.usersMu.Lock()
+	defer m.usersMu.Unlock()
 
 	user, exists := m.users[username]
 	if !exists {
-		m.usersMu.Unlock()
 		return ErrUserNotFound
 	}
 
-	// Snapshot old history for rollback as a deep copy so that a subsequent
-	// append (e.g. from AddToWatchHistory) to the new slice cannot write
-	// through the shared backing array into oldHistory, corrupting the rollback.
 	oldHistory := append([]models.WatchHistoryItem(nil), user.WatchHistory...)
 
 	updated := make([]models.WatchHistoryItem, 0, len(user.WatchHistory))
@@ -141,24 +123,15 @@ func (m *Module) RemoveWatchHistoryItem(ctx context.Context, username, mediaPath
 		}
 	}
 
-	// Update cache optimistically.
 	user.WatchHistory = updated
 
-	// Build a safe copy for the DB write.
 	userCopy := *user
 	userCopy.WatchHistory = make([]models.WatchHistoryItem, len(updated))
 	copy(userCopy.WatchHistory, updated)
 
-	m.usersMu.Unlock()
-
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after removing watch history item: %v", err)
-		// Roll back cache to avoid divergence.
-		m.usersMu.Lock()
-		if u, ok := m.users[username]; ok {
-			u.WatchHistory = oldHistory
-		}
-		m.usersMu.Unlock()
+		user.WatchHistory = oldHistory
 		return err
 	}
 	return nil
