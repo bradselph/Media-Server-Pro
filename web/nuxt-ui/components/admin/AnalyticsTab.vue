@@ -98,6 +98,7 @@ function periodToDays(p: string): number {
 
 async function load() {
   loading.value = true
+  const capturedPeriod = period.value
   try {
     const [s, d, t, cp, es, etc] = await Promise.allSettled([
       analyticsApi.getSummary(period.value),
@@ -107,12 +108,15 @@ async function load() {
       analyticsApi.getEventStats(),
       analyticsApi.getEventTypeCounts(),
     ])
+    if (period.value !== capturedPeriod) return
     if (s.status === 'fulfilled') summary.value = s.value
     if (d.status === 'fulfilled') daily.value = d.value ?? []
     if (t.status === 'fulfilled') topMedia.value = t.value ?? []
     if (cp.status === 'fulfilled') contentPerf.value = cp.value ?? []
     if (es.status === 'fulfilled') eventStats.value = es.value
     if (etc.status === 'fulfilled') eventTypeCounts.value = etc.value
+    const failed = [s, d, t, cp, es, etc].filter(r => r.status === 'rejected')
+    if (failed.length) toast.add({ title: 'Some analytics data failed to load', color: 'warning', icon: 'i-lucide-alert-triangle' })
   } finally {
     loading.value = false
   }
