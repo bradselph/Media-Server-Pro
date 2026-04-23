@@ -8,6 +8,7 @@ const hlsApi = useHlsApi()
 const toast = useToast()
 
 const subTab = ref('scanner')
+let scanRefreshTimer: ReturnType<typeof setTimeout> | null = null
 const subTabs = [
   { label: 'Scanner', value: 'scanner', icon: 'i-lucide-scan' },
   { label: 'HLS Jobs', value: 'hls', icon: 'i-lucide-video' },
@@ -47,7 +48,8 @@ async function startScan() {
   try {
     await adminApi.runScan(path || undefined)
     toast.add({ title: 'Scan started', color: 'success', icon: 'i-lucide-check' })
-    setTimeout(loadScanner, 2000)
+    if (scanRefreshTimer) clearTimeout(scanRefreshTimer)
+    scanRefreshTimer = setTimeout(loadScanner, 2000)
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Scan failed', color: 'error', icon: 'i-lucide-x' })
   } finally { scanning.value = false }
@@ -358,6 +360,10 @@ watch(subTab, (v) => {
   else if (v === 'validator') loadValidator()
   else if (v === 'autotags') loadAutoTagRules()
 }, { immediate: true })
+
+onUnmounted(() => {
+  if (scanRefreshTimer) { clearTimeout(scanRefreshTimer); scanRefreshTimer = null }
+})
 </script>
 
 <template>

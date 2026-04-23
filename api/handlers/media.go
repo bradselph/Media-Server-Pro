@@ -66,7 +66,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	filterNoPagination := media.Filter{
 		Type:     models.MediaType(c.Query("type")),
 		Category: c.Query("category"),
-		Search:   c.Query("search"),
+		Search:   truncateQuery(c.Query("search"), 200),
 		Tags:     tags,
 		IsMature: isMature,
 		SortBy:   sortBy,
