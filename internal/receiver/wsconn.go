@@ -174,6 +174,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Start ping ticker — stopped when done channel is closed on disconnect
+	const wsPingWriteTimeout = 10 * time.Second
 	go func() {
 		ticker := time.NewTicker(wsPingInterval)
 		defer ticker.Stop()
@@ -181,7 +182,9 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-ticker.C:
 				sw.mu.Lock()
+				_ = conn.SetWriteDeadline(time.Now().Add(wsPingWriteTimeout))
 				err := conn.WriteMessage(websocket.PingMessage, nil)
+				_ = conn.SetWriteDeadline(time.Time{})
 				sw.mu.Unlock()
 				if err != nil {
 					return
@@ -261,19 +264,21 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				m.log.Warn("Catalog push SlaveID mismatch: connection=%s message=%s", sw.slaveID, data.SlaveID)
 				continue
 			}
-			count, err := m.PushCatalog(&CatalogPushRequest{
-				SlaveID: data.SlaveID,
-				Items:   data.Items,
-				Full:    data.Full,
-			})
-			if err != nil {
-				m.log.Warn("WS catalog push failed for %s: %v", data.SlaveID, err)
-			} else {
-				m.log.Info("Slave %s pushed %d items via WS", data.SlaveID, count)
-			}
-
-			// Reset read deadline
+			// Reset read deadline before offloading so heartbeats continue during catalog push.
 			setReadDeadline(conn, wsReadDeadline, m.log)
+			catalogSlaveID, catalogItems, catalogFull := data.SlaveID, data.Items, data.Full
+			go func() {
+				count, err := m.PushCatalog(&CatalogPushRequest{
+					SlaveID: catalogSlaveID,
+					Items:   catalogItems,
+					Full:    catalogFull,
+				})
+				if err != nil {
+					m.log.Warn("WS catalog push failed for %s: %v", catalogSlaveID, err)
+				} else {
+					m.log.Info("Slave %s pushed %d items via WS", catalogSlaveID, count)
+				}
+			}()
 
 		case msgTypeHeartbeat:
 			var data wsHeartbeatData
