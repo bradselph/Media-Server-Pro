@@ -19,6 +19,9 @@ const loading = ref(false)
 const saving = ref(false)
 const dirty = ref(false)
 
+let mounted = true
+onUnmounted(() => { mounted = false })
+
 // Password change
 const pwCurrent = ref('')
 const pwNew = ref('')
@@ -87,6 +90,7 @@ async function saveConfig() {
   try {
     const payload = showRawJson.value ? JSON.parse(rawJsonText.value) : config.value
     await adminApi.updateConfig(payload)
+    if (!mounted) return
     toast.add({ title: 'Configuration saved', color: 'success', icon: 'i-lucide-check' })
     dirty.value = false
     if (showRawJson.value) {
@@ -94,9 +98,10 @@ async function saveConfig() {
       await loadConfig()
     }
   } catch (e: unknown) {
+    if (!mounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Save failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    saving.value = false
+    if (mounted) saving.value = false
   }
 }
 
@@ -116,12 +121,14 @@ async function changeAdminPassword() {
   pwLoading.value = true
   try {
     await adminApi.changeOwnPassword(pwCurrent.value, pwNew.value)
+    if (!mounted) return
     toast.add({ title: 'Password changed', color: 'success', icon: 'i-lucide-check' })
     pwCurrent.value = ''; pwNew.value = ''; pwConfirm.value = ''
   } catch (e: unknown) {
+    if (!mounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    pwLoading.value = false
+    if (mounted) pwLoading.value = false
   }
 }
 
