@@ -10,6 +10,7 @@ import (
 	"media-server-pro/pkg/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // UserPermissionsRepository implements repositories.UserPermissionsRepository using GORM
@@ -24,7 +25,10 @@ func NewUserPermissionsRepository(db *gorm.DB) repositories.UserPermissionsRepos
 
 // Upsert creates or updates user permissions
 func (r *UserPermissionsRepository) Upsert(ctx context.Context, perms *models.UserPermissions) error {
-	return r.db.WithContext(ctx).Save(perms).Error
+	// Uses an explicit ON CONFLICT upsert instead of Save() so that rows deleted
+	// from the DB while the in-memory object has a non-zero UserID are re-inserted
+	// rather than silently no-op'd by an UPDATE that matches 0 rows.
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{UpdateAll: true}).Create(perms).Error
 }
 
 // Get retrieves user permissions
