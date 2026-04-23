@@ -38,8 +38,17 @@ var (
 
 	// dummyHash is a pre-computed bcrypt hash used for constant-time comparison
 	// when a user/admin username doesn't exist, preventing timing-based username enumeration.
-	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-constant-time-pad"), bcrypt.DefaultCost)
+	// Initialized in init() to panic on failure rather than silently leaving nil.
+	dummyHash []byte
 )
+
+func init() {
+	var err error
+	dummyHash, err = bcrypt.GenerateFromPassword([]byte("dummy-constant-time-pad"), bcrypt.DefaultCost)
+	if err != nil {
+		panic("auth: failed to generate dummyHash: " + err.Error())
+	}
+}
 
 // IsSessionError returns true for definitive session rejection errors (not-found, expired,
 // disabled account). Returns false for transient errors (DB timeout, connection failure)
@@ -74,6 +83,7 @@ type Module struct {
 	healthMsg        string
 	healthMu         sync.RWMutex
 	cleanupTicker    *time.Ticker
+	cleanupTickerMu  sync.Mutex
 	cleanupDone      chan struct{}
 	stopOnce         sync.Once
 }
@@ -211,7 +221,9 @@ func (m *Module) ensureDefaultAdminWithHealth(_ context.Context) error {
 
 // startCleanupLoop starts the background session cleanup ticker and goroutine.
 func (m *Module) startCleanupLoop() {
+	m.cleanupTickerMu.Lock()
 	m.cleanupTicker = time.NewTicker(5 * time.Minute)
+	m.cleanupTickerMu.Unlock()
 	go m.cleanupLoop()
 }
 
@@ -220,8 +232,11 @@ func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping authentication module...")
 
 	m.stopOnce.Do(func() {
-		if m.cleanupTicker != nil {
-			m.cleanupTicker.Stop()
+		m.cleanupTickerMu.Lock()
+		ticker := m.cleanupTicker
+		m.cleanupTickerMu.Unlock()
+		if ticker != nil {
+			ticker.Stop()
 			close(m.cleanupDone)
 		}
 	})
