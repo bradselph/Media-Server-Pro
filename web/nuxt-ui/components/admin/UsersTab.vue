@@ -3,6 +3,7 @@ import type { User, UserSession } from '~/types/api'
 
 const adminApi = useAdminApi()
 const toast = useToast()
+const { user: currentUser } = useAuthStore()
 
 const users = ref<User[]>([])
 const loading = ref(true)
@@ -126,7 +127,8 @@ async function executeBulkAction(action: 'delete' | 'enable' | 'disable') {
   if (selectedUsernames.value.length === 0) return
   bulkLoading.value = true
   try {
-    const res = await adminApi.bulkUsers(selectedUsernames.value, action)
+    const safeIds = selectedUsernames.value.filter(u => u !== currentUser?.username)
+    const res = await adminApi.bulkUsers(safeIds, action)
     toast.add({ title: `${action}: ${res.success} succeeded, ${res.failed} failed`, color: res.failed > 0 ? 'warning' : 'success', icon: 'i-lucide-check' })
     selectedUsernames.value = []
     await load()
@@ -152,6 +154,14 @@ async function handleCreate() {
   }
   if (createForm.username.trim().length < 3) {
     createError.value = 'Username must be at least 3 characters'
+    return
+  }
+  if (createForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createForm.email)) {
+    createError.value = 'Email address is not valid'
+    return
+  }
+  if (createForm.password && createForm.password.length < 8) {
+    createError.value = 'Password must be at least 8 characters'
     return
   }
   createLoading.value = true
@@ -195,6 +205,14 @@ async function openEdit(user: User) {
 
 async function handleSave() {
   if (!editUser.value) return
+  if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) {
+    editError.value = 'Email address is not valid'
+    return
+  }
+  if (editForm.newPassword && editForm.newPassword.length < 8) {
+    editError.value = 'Password must be at least 8 characters'
+    return
+  }
   editLoading.value = true
   editError.value = ''
   try {
@@ -216,6 +234,7 @@ async function handleSave() {
     try {
       await adminApi.changeUserPassword(editUser.value.username, editForm.newPassword)
     } catch (e: unknown) {
+      editForm.newPassword = ''
       editError.value = (e instanceof Error ? e.message : 'Password change failed') +
         ' (profile changes were saved)'
       editLoading.value = false
