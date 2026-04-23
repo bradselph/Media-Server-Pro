@@ -68,6 +68,9 @@ func NewRemoteCacheRepository(db *gorm.DB) repositories.RemoteCacheRepository {
 }
 
 func (r *RemoteCacheRepository) Save(ctx context.Context, entry *repositories.RemoteCacheRecord) error {
+	if entry == nil {
+		return fmt.Errorf("entry cannot be nil")
+	}
 	row := remoteCacheRow{
 		RemoteURL:   entry.RemoteURL,
 		LocalPath:   entry.LocalPath,

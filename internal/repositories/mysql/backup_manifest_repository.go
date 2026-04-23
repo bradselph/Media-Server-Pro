@@ -36,6 +36,9 @@ func NewBackupManifestRepository(db *gorm.DB) repositories.BackupManifestReposit
 }
 
 func (r *BackupManifestRepository) Save(ctx context.Context, manifest *repositories.BackupManifestRecord) error {
+	if manifest == nil {
+		return fmt.Errorf("manifest must not be nil")
+	}
 	filesJSON, err := json.Marshal(manifest.Files)
 	if err != nil {
 		return fmt.Errorf("failed to marshal backup manifest files: %w", err)
