@@ -204,6 +204,8 @@ export interface MediaListResponse {
     initializing?: boolean
     /** Map of media_id → user's rating (1–5). Only present for authenticated users who have rated items. */
     user_ratings?: Record<string, number>
+    /** Item count per media type (video/audio/image) across the full unfiltered library. Only present on unfiltered (type=all) requests. */
+    type_counts?: Record<string, number>
 }
 
 export interface MediaCategory {

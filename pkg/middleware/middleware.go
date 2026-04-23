@@ -132,10 +132,16 @@ func isHTTPS(c *gin.Context) bool {
 // take effect immediately without a server restart.
 func GinSecurityHeaders(getCfg func() (csp string, hstsMaxAge int)) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "DENY")
-		c.Header("X-XSS-Protection", "1; mode=block")
-		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		// When behind Cloudflare (CF-Ray present), skip the headers CF adds
+		// automatically to avoid duplicate/conflicting values in the response.
+		// On direct connections (no CF-Ray) we set them ourselves.
+		behindCloudflare := c.GetHeader("CF-Ray") != ""
+		if !behindCloudflare {
+			c.Header("X-Content-Type-Options", "nosniff")
+			c.Header("X-Frame-Options", "DENY")
+			c.Header("X-XSS-Protection", "1; mode=block")
+			c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		}
 		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
 
 		csp, hstsMaxAge := getCfg()

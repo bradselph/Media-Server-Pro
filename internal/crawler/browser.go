@@ -213,7 +213,10 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		id := bd.nextID
 		bd.mu.Unlock()
 
-		p, _ := json.Marshal(params)
+		p, err := json.Marshal(params)
+		if err != nil {
+			return nil, fmt.Errorf("marshal params: %w", err)
+		}
 		raw := map[string]any{
 			"id":     id,
 			"method": method,

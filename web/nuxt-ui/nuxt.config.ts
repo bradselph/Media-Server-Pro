@@ -31,7 +31,10 @@ export default defineNuxtConfig({
         head: {
             htmlAttrs: {lang: 'en'},
             title: 'Media Server Pro',
-            meta: [
+            link: [
+                {rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg'},
+            ],
+        meta: [
                 {charset: 'utf-8'},
                 {
                     name: 'viewport',

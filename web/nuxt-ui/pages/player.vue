@@ -1351,7 +1351,7 @@ watch(mediaId, (id, oldId) => {
             </template>
             <template v-if="media.views != null">
               <span class="opacity-30" aria-hidden="true">·</span>
-              <span>{{ media.views.toLocaleString() }} views</span>
+              <span>{{ media.views.toLocaleString() }} {{ media.views === 1 ? 'view' : 'views' }}</span>
             </template>
             <template v-if="media.width && media.height">
               <span class="opacity-30" aria-hidden="true">·</span>
