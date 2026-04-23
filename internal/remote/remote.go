@@ -715,6 +715,9 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 	}
 
 	m.mu.Lock()
+	if old, exists := m.mediaCache[remoteURL]; exists && old.LocalPath != localPath {
+		_ = os.Remove(old.LocalPath)
+	}
 	m.mediaCache[remoteURL] = cached
 	m.mu.Unlock()
 
