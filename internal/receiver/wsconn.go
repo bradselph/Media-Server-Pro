@@ -417,6 +417,9 @@ func (m *Module) DeliverStream(token string) (*PendingStream, bool) {
 		delete(m.pendingStreams, token)
 	}
 	m.pendingMu.Unlock()
+	if ok {
+		ps.cancel()
+	}
 	return ps, ok
 }
 

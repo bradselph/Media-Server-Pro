@@ -117,8 +117,18 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Limit incoming message size on both connections to prevent memory exhaustion.
 	const wsRelayReadLimit = 1 * 1024 * 1024 // 1 MB
+	const wsRelayReadDeadline = 60 * time.Second
 	adminConn.SetReadLimit(wsRelayReadLimit)
 	dlConn.SetReadLimit(wsRelayReadLimit)
+	// Set initial read deadlines; pong handlers extend them to prevent stalled-client goroutine leaks.
+	_ = adminConn.SetReadDeadline(time.Now().Add(wsRelayReadDeadline))
+	_ = dlConn.SetReadDeadline(time.Now().Add(wsRelayReadDeadline))
+	adminConn.SetPongHandler(func(string) error {
+		return adminConn.SetReadDeadline(time.Now().Add(wsRelayReadDeadline))
+	})
+	dlConn.SetPongHandler(func(string) error {
+		return dlConn.SetReadDeadline(time.Now().Add(wsRelayReadDeadline))
+	})
 
 	log.Info("WS proxy established (clientId: %s)", clientID)
 
