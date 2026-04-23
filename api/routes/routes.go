@@ -472,7 +472,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/favorites/:media_id", requireAuth(), h.CheckFavorite)
 	api.DELETE("/favorites/:media_id", requireAuth(), h.RemoveFavorite)
 
-	// Chapters (scene markers / act chapters) — public read, auth write
+	// Chapters (scene markers / act chapters) — public read, admin write
 	api.GET("/chapters", h.ListChapters)
 	api.POST("/chapters", requireAuth(), h.CreateChapter)
 	api.PUT("/chapters/:id", requireAuth(), h.UpdateChapter)

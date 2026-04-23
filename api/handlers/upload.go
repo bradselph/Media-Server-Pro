@@ -240,6 +240,8 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		}
 		if err := h.auth.AddStorageUsed(c.Request.Context(), user.ID, totalAdded); err != nil {
 			h.log.Error("Failed to update user storage: %v", err)
+			writeError(c, http.StatusInternalServerError, "Upload succeeded but storage quota could not be updated")
+			return
 		}
 	}
 

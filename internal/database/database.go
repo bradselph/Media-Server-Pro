@@ -72,9 +72,11 @@ func (m *Module) Start(ctx context.Context) error {
 		return fmt.Errorf("database connection failed: %w", err)
 	}
 
+	m.dbMu.Lock()
 	m.db = db
 	m.sqlDB = sqlDB
-	configurePool(m.sqlDB, cfg.Database)
+	m.dbMu.Unlock()
+	configurePool(sqlDB, cfg.Database)
 
 	m.log.Info("Database connected: %s:%d/%s", cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
 
