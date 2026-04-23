@@ -366,6 +366,8 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 						deliverStream(streamCtx, cfg, req)
 					}
 				})
+			} else {
+				fmt.Fprintf(os.Stderr, "Unmapped message type from master: %q\n", msg.Type)
 			}
 		}
 	})

@@ -9,6 +9,8 @@ const route = useRoute()
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
+const mounted = ref(true)
+onBeforeUnmount(() => { mounted.value = false })
 
 const adminDest = () => {
   const r = route.query.redirect
@@ -34,7 +36,7 @@ async function handleLogin() {
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Invalid credentials'
   } finally {
-    loading.value = false
+    if (mounted.value) loading.value = false
   }
 }
 </script>

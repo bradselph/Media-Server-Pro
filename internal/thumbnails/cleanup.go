@@ -108,11 +108,11 @@ func (m *Module) Cleanup() (*CleanupResult, error) {
 
 	// Update cumulative stats
 	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
 	m.stats.OrphansRemoved += int64(result.OrphansRemoved)
 	m.stats.ExcessRemoved += int64(result.ExcessRemoved)
 	m.stats.CorruptRemoved += int64(result.CorruptRemoved)
 	m.stats.LastCleanup = time.Now()
-	m.statsMu.Unlock()
 
 	return result, nil
 }

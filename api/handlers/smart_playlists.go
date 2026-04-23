@@ -38,6 +38,9 @@ func parseSmartRules(raw string) (*SmartPlaylistRules, error) {
 	if err := json.Unmarshal([]byte(raw), &r); err != nil {
 		return nil, err
 	}
+	if len(r.Conditions) > 100 {
+		return nil, fmt.Errorf("too many conditions (max 100)")
+	}
 	if r.Match != "any" {
 		r.Match = "all"
 	}
@@ -161,8 +164,10 @@ func matchSmartCondition(item *models.MediaItem, cond SmartCondition) bool {
 }
 
 func parseInt(s string) int64 {
-	var v int64
-	fmt.Sscanf(s, "%d", &v)
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || v < 0 {
+		return 0
+	}
 	return v
 }
 
@@ -205,6 +210,10 @@ func (h *Handler) CreateSmartPlaylist(c *gin.Context) {
 	}
 	if req.Name == "" {
 		writeError(c, http.StatusBadRequest, "name is required")
+		return
+	}
+	if len(req.Name) > 255 {
+		writeError(c, http.StatusBadRequest, "name too long (max 255)")
 		return
 	}
 	if req.Rules == "" {

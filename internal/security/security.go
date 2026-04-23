@@ -887,7 +887,7 @@ func (r *RateLimiter) CheckRequest(ip string) (allowed bool, remaining int, rese
 	client.Requests = append(client.Requests, now)
 	client.BurstRequests = append(client.BurstRequests, now)
 
-	return true, remaining - 1, resetAt
+	return true, max(remaining-1, 0), resetAt
 }
 
 func (r *RateLimiter) recordViolation(client *ClientState, ip string, now time.Time) {
