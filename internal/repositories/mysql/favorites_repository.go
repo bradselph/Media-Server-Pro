@@ -29,6 +29,9 @@ type FavoritesRepository struct {
 
 // NewFavoritesRepository creates a new GORM-based favorites repository.
 func NewFavoritesRepository(db *gorm.DB) repositories.FavoriteRepository {
+	if db == nil {
+		panic("NewFavoritesRepository: db is nil")
+	}
 	return &FavoritesRepository{db: db}
 }
 

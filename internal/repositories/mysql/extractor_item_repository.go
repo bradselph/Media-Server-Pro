@@ -114,8 +114,12 @@ func (r *ExtractorItemRepository) UpdateStatus(ctx context.Context, id, status, 
 		"error_message": errorMsg,
 		"updated_at":    time.Now().Format(sqlTimeFormat),
 	}
-	if err := r.db.WithContext(ctx).Model(&extractorItemRow{}).Where(sqlIDEq, id).Updates(updates).Error; err != nil {
-		return fmt.Errorf("failed to update extractor item status: %w", err)
+	result := r.db.WithContext(ctx).Model(&extractorItemRow{}).Where(sqlIDEq, id).Updates(updates)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update extractor item status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("extractor item not found: %s", id)
 	}
 	return nil
 }

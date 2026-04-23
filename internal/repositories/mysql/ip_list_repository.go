@@ -145,8 +145,12 @@ func (r *IPListRepository) AddEntry(ctx context.Context, listType string, entry 
 }
 
 func (r *IPListRepository) RemoveEntry(ctx context.Context, listType, ipValue string) error {
-	if err := r.db.WithContext(ctx).Where("list_type = ? AND ip_value = ?", listType, ipValue).Delete(&ipListEntryRow{}).Error; err != nil {
-		return fmt.Errorf("failed to remove IP list entry: %w", err)
+	result := r.db.WithContext(ctx).Where("list_type = ? AND ip_value = ?", listType, ipValue).Delete(&ipListEntryRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to remove IP list entry: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("ip entry not found: %s/%s", listType, ipValue)
 	}
 	return nil
 }
