@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0] - 2026-04-23 (minor)
+
+- fix(ui): plural views, image tab visibility, favicon, header dedup, marshal error
+- fix(player): restore buffer resilience for both direct and HLS streaming
+- Update models.go
+
+
 ## [1.9.0] - 2026-04-23 (minor)
 
 - fix(logger): runtime.Caller depth off-by-one — log source annotations now show actual caller (FND-1551)
