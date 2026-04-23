@@ -571,18 +571,20 @@ func (m *Module) SetBlacklistEnabled(enabled bool) {
 
 // GetWhitelist returns a copy of the whitelist so callers cannot mutate internal state.
 func (m *Module) GetWhitelist() *IPList {
-	entries := m.whitelist.Snapshot()
 	m.whitelist.mu.RLock()
 	name, enabled := m.whitelist.Name, m.whitelist.Enabled
+	entries := make([]IPEntry, len(m.whitelist.Entries))
+	copy(entries, m.whitelist.Entries)
 	m.whitelist.mu.RUnlock()
 	return &IPList{Name: name, Enabled: enabled, Entries: entries}
 }
 
 // GetBlacklist returns a copy of the blacklist so callers cannot mutate internal state.
 func (m *Module) GetBlacklist() *IPList {
-	entries := m.blacklist.Snapshot()
 	m.blacklist.mu.RLock()
 	name, enabled := m.blacklist.Name, m.blacklist.Enabled
+	entries := make([]IPEntry, len(m.blacklist.Entries))
+	copy(entries, m.blacklist.Entries)
 	m.blacklist.mu.RUnlock()
 	return &IPList{Name: name, Enabled: enabled, Entries: entries}
 }

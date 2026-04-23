@@ -132,7 +132,13 @@ func requireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionVal, exists := c.Get("session")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Unauthorized"})
+			errMsg := "Unauthorized"
+			if bearerErr, ok := c.Get("bearer_error"); ok {
+				if s, ok := bearerErr.(string); ok && s != "" {
+					errMsg = s
+				}
+			}
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": errMsg})
 			c.Abort()
 			return
 		}
@@ -535,7 +541,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/suggestions/personalized", requireAuth(), h.GetPersonalizedSuggestions)
 	api.GET("/suggestions/profile", requireAuth(), h.GetMyProfile)
 	api.DELETE("/suggestions/profile", requireAuth(), h.ResetMyProfile)
-	api.GET("/suggestions/recent", h.GetRecentContent)
+	api.GET("/suggestions/recent", requireAuth(), h.GetRecentContent)
 	api.GET("/suggestions/new", requireAuth(), h.GetNewSinceLastVisit)
 	api.GET("/suggestions/on-deck", requireAuth(), h.GetOnDeck)
 	api.POST("/ratings", requireAuth(), h.RecordRating)
