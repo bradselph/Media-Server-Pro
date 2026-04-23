@@ -68,6 +68,7 @@ func main() {
 
 	if showVer {
 		showVersion()
+		logger.Shutdown()
 		os.Exit(0)
 	}
 
