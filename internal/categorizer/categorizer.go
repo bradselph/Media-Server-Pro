@@ -6,6 +6,7 @@ package categorizer
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -212,13 +213,13 @@ func (m *Module) Health() models.HealthStatus {
 }
 
 // CategorizeFile categorizes a single file
-func (m *Module) CategorizeFile(path string) *CategorizedItem {
+func (m *Module) CategorizeFile(path string) (*CategorizedItem, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// Check if already categorized with manual override
 	if existing, ok := m.items[path]; ok && existing.ManualOverride {
-		return existing
+		m.mu.Unlock()
+		return copyItem(existing), nil
 	}
 
 	item := &CategorizedItem{
@@ -238,9 +239,13 @@ func (m *Module) CategorizeFile(path string) *CategorizedItem {
 	item.DetectedInfo = info
 
 	m.items[path] = item
-	m.saveItem(path, item)
-	// Return a copy to prevent caller from mutating the stored item
-	return copyItem(item)
+	itemCopy := copyItem(item)
+	m.mu.Unlock()
+
+	if err := m.saveItem(path, item); err != nil {
+		return itemCopy, err
+	}
+	return itemCopy, nil
 }
 
 // copyItem creates a deep copy of a CategorizedItem
@@ -508,7 +513,10 @@ func (m *Module) CategorizeDirectory(dir string) ([]*CategorizedItem, error) {
 			return nil
 		}
 
-		item := m.CategorizeFile(path)
+		item, err := m.CategorizeFile(path)
+		if err != nil {
+			m.log.Warn("CategorizeDirectory: failed to persist %s: %v", path, err)
+		}
 		results = append(results, item)
 		return nil
 	})
@@ -533,9 +541,8 @@ func (m *Module) GetCategory(path string) (Category, bool) {
 }
 
 // SetCategory manually sets a category (with override)
-func (m *Module) SetCategory(path string, category Category) {
+func (m *Module) SetCategory(path string, category Category) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	item, ok := m.items[path]
 	if !ok {
@@ -551,9 +558,10 @@ func (m *Module) SetCategory(path string, category Category) {
 	item.Category = category
 	item.ManualOverride = true
 	item.Confidence = 1.0
-	m.saveItem(path, item)
+	m.mu.Unlock()
 
 	m.log.Info("Manually set category for %s: %s", path, category)
+	return m.saveItem(path, item)
 }
 
 // GetByCategory returns all items in a category
@@ -601,20 +609,23 @@ type CategoryStats struct {
 // CleanStale removes entries for deleted files
 func (m *Module) CleanStale() int {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	removed := 0
-	ctx := context.Background()
+	var stalePaths []string
 	for path := range m.items {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			delete(m.items, path)
-			if err := m.repo.Delete(ctx, path); err != nil {
-				m.log.Warn("Failed to delete stale categorization entry from DB: %v", err)
-			}
-			removed++
+			stalePaths = append(stalePaths, path)
+		}
+	}
+	m.mu.Unlock()
+
+	ctx := context.Background()
+	for _, path := range stalePaths {
+		if err := m.repo.Delete(ctx, path); err != nil {
+			m.log.Warn("Failed to delete stale categorization entry from DB: %v", err)
 		}
 	}
 
+	removed := len(stalePaths)
 	if removed > 0 {
 		m.log.Info("Cleaned %d stale categorization entries", removed)
 	}
@@ -701,10 +712,12 @@ func (m *Module) saveItemsLocked(ctx context.Context) error {
 }
 
 // saveItem persists a single item to the database.
-func (m *Module) saveItem(path string, item *CategorizedItem) {
+func (m *Module) saveItem(path string, item *CategorizedItem) error {
 	if err := m.repo.Upsert(context.Background(), m.itemToRecord(path, item)); err != nil {
 		m.log.Error("Failed to persist categorized item %s: %v", item.ID, err)
+		return fmt.Errorf("persist failed: %w", err)
 	}
+	return nil
 }
 
 func (m *Module) itemToRecord(path string, item *CategorizedItem) *repositories.CategorizedItemRecord {

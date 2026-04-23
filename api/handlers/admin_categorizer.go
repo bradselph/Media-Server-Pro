@@ -30,7 +30,10 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 		return
 	}
 
-	result := h.categorizer.CategorizeFile(absPath)
+	result, saveErr := h.categorizer.CategorizeFile(absPath)
+	if saveErr != nil {
+		h.log.Warn("CategorizeFile: DB persist failed for %s: %v", absPath, saveErr)
+	}
 	if result != nil && string(result.Category) != "" {
 		if err := h.media.UpdateMetadata(absPath, map[string]any{
 			"category": string(result.Category),
@@ -107,7 +110,9 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 		return
 	}
 
-	h.categorizer.SetCategory(absPath, req.Category)
+	if err := h.categorizer.SetCategory(absPath, req.Category); err != nil {
+		h.log.Warn("SetCategory: DB persist failed for %s: %v", absPath, err)
+	}
 	// Propagate the new category to the in-memory media catalog immediately so
 	// ListMedia/GetMedia reflect the change without waiting for the next scan.
 	if string(req.Category) != "" {
