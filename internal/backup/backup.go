@@ -488,6 +488,7 @@ func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
 	srcFile, err := file.Open()
 	if err != nil {
 		m.closeAndWarn(destFile.Close, "Failed to close dest file after src open error: %v")
+		m.removeFileQuietly(removeFileOpts{Path: destPath, Label: "failed zip entry"})
 		return err
 	}
 	defer m.closeAndWarn(srcFile.Close, "Failed to close source file: %v")
