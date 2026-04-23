@@ -757,7 +757,8 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			item.Category = meta.Category
 		}
 		if meta.LastPlayed != nil {
-			item.LastPlayed = new(*meta.LastPlayed)
+			t := *meta.LastPlayed
+			item.LastPlayed = &t
 		}
 		item.DateAdded = meta.DateAdded
 		m.mu.Unlock()
@@ -896,7 +897,8 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.RLock()
 		item.Views = meta.Views
 		if meta.LastPlayed != nil {
-			item.LastPlayed = new(*meta.LastPlayed)
+			t := *meta.LastPlayed
+			item.LastPlayed = &t
 		}
 		item.DateAdded = meta.DateAdded
 		item.IsMature = meta.IsMature
@@ -1159,7 +1161,8 @@ func (m *Module) GetMedia(path string) (*models.MediaItem, error) {
 	if !exists {
 		return nil, fmt.Errorf("media not found: %s", path)
 	}
-	return new(*item), nil
+	cp := *item
+	return &cp, nil
 }
 
 // GetMediaByID returns a copy of a media item by ID using the secondary index for O(1) lookups.
@@ -1169,7 +1172,8 @@ func (m *Module) GetMediaByID(id string) (*models.MediaItem, error) {
 	defer m.mu.RUnlock()
 
 	if item, exists := m.mediaByID[id]; exists {
-		return new(*item), nil
+		cp := *item
+		return &cp, nil
 	}
 	return nil, fmt.Errorf("media not found with ID: %s", id)
 }
@@ -1212,7 +1216,7 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 		if filter.Matches(item) {
 			// Copy each item so callers do not race with IncrementViews /
 			// SetMatureFlag, which mutate the stored pointer's fields under Lock.
-			items = append(items, new(*item))
+			cp := *item; items = append(items, &cp)
 		}
 	}
 
@@ -1263,7 +1267,7 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 		}
 		if filter.Matches(item) {
 			// Copy — same reasoning as ListMedia: prevent race with concurrent mutators.
-			items = append(items, new(*item))
+			cp := *item; items = append(items, &cp)
 		}
 	}
 
@@ -1487,7 +1491,8 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 		m.metadata[path] = meta
 	}
 	meta.Views++
-	meta.LastPlayed = new(time.Now())
+	now := time.Now()
+	meta.LastPlayed = &now
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views
 		item.LastPlayed = meta.LastPlayed
