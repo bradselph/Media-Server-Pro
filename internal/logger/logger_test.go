@@ -161,7 +161,7 @@ func TestLevelFiltering_ErrorAlwaysLogged(t *testing.T) {
 func TestFormatMessage_WithoutRequestID(t *testing.T) {
 	l, _ := newTestLogger("mymod", DEBUG)
 	l.useColors = false
-	msg := l.formatMessage(INFO, "", "hello %s", "world")
+	msg := l.formatMessage(INFO, "", "hello %s", 0, "world")
 	if !strings.Contains(msg, "[INFO]") {
 		t.Errorf("message should contain [INFO]: %s", msg)
 	}
@@ -176,7 +176,7 @@ func TestFormatMessage_WithoutRequestID(t *testing.T) {
 func TestFormatMessage_WithRequestID(t *testing.T) {
 	l, _ := newTestLogger("mymod", DEBUG)
 	l.useColors = false
-	msg := l.formatMessage(INFO, "req-123", "hello")
+	msg := l.formatMessage(INFO, "req-123", "hello", 0)
 	if !strings.Contains(msg, "[req-123]") {
 		t.Errorf("message should contain request ID: %s", msg)
 	}
@@ -184,7 +184,7 @@ func TestFormatMessage_WithRequestID(t *testing.T) {
 
 func TestFormatMessagePlain_NoColors(t *testing.T) {
 	l, _ := newTestLogger("plain", DEBUG)
-	msg := l.formatMessagePlain(ERROR, "", "test error")
+	msg := l.formatMessagePlain(ERROR, "", "test error", 0)
 	if strings.Contains(msg, "\033[") {
 		t.Error("plain message should not contain ANSI codes")
 	}
@@ -195,7 +195,7 @@ func TestFormatMessagePlain_NoColors(t *testing.T) {
 
 func TestFormatMessageJSON_ValidJSON(t *testing.T) {
 	l, _ := newTestLogger("jsonmod", DEBUG)
-	msg := l.formatMessageJSON(INFO, "rid-1", "test message")
+	msg := l.formatMessageJSON(INFO, "rid-1", "test message", 0)
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(msg), &parsed); err != nil {
 		t.Fatalf("JSON log should be valid JSON: %v\nraw: %s", err, msg)
@@ -216,7 +216,7 @@ func TestFormatMessageJSON_ValidJSON(t *testing.T) {
 
 func TestFormatMessageJSON_NoRequestID(t *testing.T) {
 	l, _ := newTestLogger("jsonmod", DEBUG)
-	msg := l.formatMessageJSON(DEBUG, "", "no rid")
+	msg := l.formatMessageJSON(DEBUG, "", "no rid", 0)
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(msg), &parsed); err != nil {
 		t.Fatalf("JSON log should be valid JSON: %v", err)
@@ -228,7 +228,7 @@ func TestFormatMessageJSON_NoRequestID(t *testing.T) {
 
 func TestFormatMessageJSON_WithArgs(t *testing.T) {
 	l, _ := newTestLogger("test", DEBUG)
-	msg := l.formatMessageJSON(INFO, "", "count=%d name=%s", 42, "foo")
+	msg := l.formatMessageJSON(INFO, "", "count=%d name=%s", 0, 42, "foo")
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(msg), &parsed); err != nil {
 		t.Fatalf("JSON should parse: %v", err)
@@ -453,7 +453,7 @@ func TestLoggerJSONOutput(t *testing.T) {
 func TestFormatMessage_WithColors(t *testing.T) {
 	l, _ := newTestLogger("test", DEBUG)
 	l.useColors = true
-	msg := l.formatMessage(ERROR, "", "colored")
+	msg := l.formatMessage(ERROR, "", "colored", 0)
 	if !strings.Contains(msg, "\033[") {
 		t.Error("colored message should contain ANSI codes")
 	}
@@ -462,7 +462,7 @@ func TestFormatMessage_WithColors(t *testing.T) {
 func TestFormatMessage_WithoutColors(t *testing.T) {
 	l, _ := newTestLogger("test", DEBUG)
 	l.useColors = false
-	msg := l.formatMessage(ERROR, "", "plain")
+	msg := l.formatMessage(ERROR, "", "plain", 0)
 	if strings.Contains(msg, "\033[") {
 		t.Error("non-colored message should not contain ANSI codes")
 	}

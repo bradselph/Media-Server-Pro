@@ -132,7 +132,7 @@ func TestNew_Module(t *testing.T) {
 
 func TestFormatMessage_ContainsModule(t *testing.T) {
 	log := New("mymod")
-	msg := log.formatMessage(INFO, "", "hello %s", "world")
+	msg := log.formatMessage(INFO, "", "hello %s", 0, "world")
 	if msg == "" {
 		t.Error("formatted message should not be empty")
 	}
@@ -140,7 +140,7 @@ func TestFormatMessage_ContainsModule(t *testing.T) {
 
 func TestFormatMessageJSON_Structure(t *testing.T) {
 	log := New("mymod")
-	msg := log.formatMessageJSON(INFO, "", "hello")
+	msg := log.formatMessageJSON(INFO, "", "hello", 0)
 	if msg == "" {
 		t.Error("JSON message should not be empty")
 	}
@@ -151,7 +151,7 @@ func TestFormatMessageJSON_Structure(t *testing.T) {
 
 func TestFormatMessagePlain(t *testing.T) {
 	log := New("mymod")
-	msg := log.formatMessagePlain(WARN, "", "warning: %d", 42)
+	msg := log.formatMessagePlain(WARN, "", "warning: %d", 0, 42)
 	if msg == "" {
 		t.Error("plain message should not be empty")
 	}
@@ -159,7 +159,7 @@ func TestFormatMessagePlain(t *testing.T) {
 
 func TestFormatMessage_WithRequestID_Extended(t *testing.T) {
 	log := New("mymod")
-	msg := log.formatMessage(INFO, "req-123", "test %d", 42)
+	msg := log.formatMessage(INFO, "req-123", "test %d", 0, 42)
 	if msg == "" {
 		t.Error("message with request ID should not be empty")
 	}

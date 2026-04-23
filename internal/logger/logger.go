@@ -273,13 +273,13 @@ func SetJSONFormat(enabled bool) {
 }
 
 // formatMessageJSON creates a JSON-structured log line.
-func (l *Logger) formatMessageJSON(level Level, requestID, msg string, args ...any) string {
+func (l *Logger) formatMessageJSON(level Level, requestID, msg string, extraSkip int, args ...any) string {
 	formattedMsg := msg
 	if len(args) > 0 {
 		formattedMsg = fmt.Sprintf(msg, args...)
 	}
 
-	_, file, line, ok := runtime.Caller(3)
+	_, file, line, ok := runtime.Caller(3 + extraSkip)
 	caller := "unknown"
 	if ok {
 		caller = fmt.Sprintf("%s:%d", filepath.Base(file), line)
@@ -304,7 +304,7 @@ func (l *Logger) formatMessageJSON(level Level, requestID, msg string, args ...a
 }
 
 // formatMessage creates a formatted log message with metadata
-func (l *Logger) formatMessage(level Level, requestID, msg string, args ...any) string {
+func (l *Logger) formatMessage(level Level, requestID, msg string, extraSkip int, args ...any) string {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMsg := msg
 	if len(args) > 0 {
@@ -312,7 +312,7 @@ func (l *Logger) formatMessage(level Level, requestID, msg string, args ...any) 
 	}
 
 	// Get caller information
-	_, file, line, ok := runtime.Caller(3)
+	_, file, line, ok := runtime.Caller(3 + extraSkip)
 	caller := "unknown"
 	if ok {
 		caller = fmt.Sprintf("%s:%d", filepath.Base(file), line)
@@ -343,13 +343,24 @@ func (l *Logger) formatMessage(level Level, requestID, msg string, args ...any) 
 	)
 }
 
-// log writes a log message at the specified level
+// log writes a log message at the specified level.
+// It adds 1 extra skip to account for the log() wrapper frame.
 func (l *Logger) log(level Level, msg string, args ...any) {
-	l.logWithRID(level, "", msg, args...)
+	l.logWithRIDSkip(level, "", 1, msg, args...)
 }
 
 // logWithRID writes a log message at the specified level with an optional request ID.
+// Called directly from Ctx variants — no extra skip needed.
 func (l *Logger) logWithRID(level Level, requestID, msg string, args ...any) {
+	l.logWithRIDSkip(level, requestID, 0, msg, args...)
+}
+
+// logWithRIDSkip is the actual implementation; extraSkip is added to runtime.Caller depth.
+// Frame depths from runtime.Caller's perspective inside the format functions:
+//   0 = format function, 1 = logWithRIDSkip, 2 = logWithRID/log, 3 = public method or user code.
+// For Info/Debug/Warn/Error: public method (3) → log (2, +1 skip) → logWithRIDSkip → format → Caller(3+1)=user.
+// For InfoCtx/DebugCtx/WarnCtx/ErrorCtx: public method=user (3) → logWithRID (2) → logWithRIDSkip → format → Caller(3+0)=user.
+func (l *Logger) logWithRIDSkip(level Level, requestID string, extraSkip int, msg string, args ...any) {
 	if level < l.minLevel {
 		return
 	}
@@ -357,9 +368,9 @@ func (l *Logger) logWithRID(level Level, requestID, msg string, args ...any) {
 	l.mu.Lock()
 	var formatted string
 	if l.jsonFormat {
-		formatted = l.formatMessageJSON(level, requestID, msg, args...)
+		formatted = l.formatMessageJSON(level, requestID, msg, extraSkip, args...)
 	} else {
-		formatted = l.formatMessage(level, requestID, msg, args...)
+		formatted = l.formatMessage(level, requestID, msg, extraSkip, args...)
 	}
 
 	// Write to stdout
@@ -376,9 +387,9 @@ func (l *Logger) logWithRID(level Level, requestID, msg string, args ...any) {
 			globalLogger.rotateIfNeeded()
 			var fileFormatted string
 			if globalLogger.jsonFormat {
-				fileFormatted = l.formatMessageJSON(level, requestID, msg, args...)
+				fileFormatted = l.formatMessageJSON(level, requestID, msg, extraSkip, args...)
 			} else {
-				fileFormatted = l.formatMessagePlain(level, requestID, msg, args...)
+				fileFormatted = l.formatMessagePlain(level, requestID, msg, extraSkip, args...)
 			}
 			_, _ = fmt.Fprintln(globalLogger.fileOutput, fileFormatted)
 		}
@@ -461,14 +472,14 @@ func (l *Logger) cleanOldBackups(basePath string) {
 }
 
 // formatMessagePlain creates a formatted log message without colors
-func (l *Logger) formatMessagePlain(level Level, requestID, msg string, args ...any) string {
+func (l *Logger) formatMessagePlain(level Level, requestID, msg string, extraSkip int, args ...any) string {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMsg := msg
 	if len(args) > 0 {
 		formattedMsg = fmt.Sprintf(msg, args...)
 	}
 
-	_, file, line, ok := runtime.Caller(4)
+	_, file, line, ok := runtime.Caller(3 + extraSkip)
 	caller := "unknown"
 	if ok {
 		caller = fmt.Sprintf("%s:%d", filepath.Base(file), line)
