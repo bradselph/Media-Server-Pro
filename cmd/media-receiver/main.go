@@ -96,6 +96,8 @@ type fpCacheEntry struct {
 	fingerprint string
 }
 
+const fpCacheMaxEntries = 100_000
+
 var (
 	fpCache   = make(map[string]fpCacheEntry)
 	fpCacheMu sync.Mutex
@@ -114,6 +116,14 @@ func getCachedFingerprint(path string, info os.FileInfo) string {
 	}
 
 	fp := computeContentFingerprint(path)
+	// Drop the oldest entry when the cache is full to prevent unbounded growth.
+	// The next pruneFpCache call will clean up deleted-file entries normally.
+	if len(fpCache) >= fpCacheMaxEntries {
+		for k := range fpCache {
+			delete(fpCache, k)
+			break
+		}
+	}
 	fpCache[path] = fpCacheEntry{
 		modTime:     info.ModTime(),
 		size:        info.Size(),
@@ -349,11 +359,11 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 				}
 				wg.Go(func() {
 					select {
+					case <-streamCtx.Done():
+						return
 					case streamSem <- struct{}{}:
 						defer func() { <-streamSem }()
 						deliverStream(streamCtx, cfg, req)
-					case <-streamCtx.Done():
-						return
 					}
 				})
 			}
@@ -654,12 +664,12 @@ func parseFlags() (*slaveConfig, autoDiscovered) {
 		cfg.MediaDirs = strings.Split(v, ",")
 	}
 	if v := os.Getenv("SCAN_INTERVAL"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.ScanInterval = d
 		}
 	}
 	if v := os.Getenv("HEARTBEAT_INTERVAL"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.HeartbeatInterval = d
 		}
 	}
