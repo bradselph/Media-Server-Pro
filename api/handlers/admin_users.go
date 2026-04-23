@@ -19,10 +19,17 @@ func (h *Handler) AdminListUsers(c *gin.Context) {
 	writeSuccess(c, users)
 }
 
-// validUsername checks that name is 3–64 chars of [a-zA-Z0-9_-].
+// validUsername checks that name is 3–64 chars of [a-zA-Z0-9_-], not starting/ending with a hyphen or underscore.
 func validUsername(name string) error {
 	if len(name) < 3 || len(name) > 64 {
 		return fmt.Errorf("username must be between 3 and 64 characters")
+	}
+	first, last := rune(name[0]), rune(name[len(name)-1])
+	if first == '-' || first == '_' {
+		return fmt.Errorf("username must start with a letter or digit")
+	}
+	if last == '-' || last == '_' {
+		return fmt.Errorf("username must end with a letter or digit")
 	}
 	for _, ch := range name {
 		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_' && ch != '-' {
@@ -48,7 +55,10 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 		return
 	}
 
-	req.Username = strings.TrimSpace(req.Username)
+	if req.Username != strings.TrimSpace(req.Username) {
+		writeError(c, http.StatusBadRequest, "Username must not have leading or trailing whitespace")
+		return
+	}
 	if err := validUsername(req.Username); err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
@@ -99,7 +109,12 @@ func (h *Handler) AdminGetUser(c *gin.Context) {
 
 	user, err := h.auth.GetUser(c.Request.Context(), username)
 	if err != nil {
-		writeError(c, http.StatusNotFound, errUserNotFound)
+		if errors.Is(err, auth.ErrUserNotFound) {
+			writeError(c, http.StatusNotFound, errUserNotFound)
+		} else {
+			h.log.Error("Failed to fetch user %s: %v", username, err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 
@@ -128,6 +143,14 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		req.Role = string(models.RoleViewer)
 	}
 
+	// Prevent admin from demoting or disabling their own account
+	if sess := getSession(c); sess != nil && sess.Username == username {
+		if req.Role == string(models.RoleViewer) || (req.Enabled != nil && !*req.Enabled) {
+			writeError(c, http.StatusForbidden, "Cannot demote or disable your own account")
+			return
+		}
+	}
+
 	updates := map[string]any{}
 	if req.Role != "" {
 		updates["role"] = req.Role
@@ -143,9 +166,27 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		updates["email"] = req.Email
 	}
 	if req.Type != "" {
+		if req.Type != "standard" && req.Type != "guest" {
+			writeError(c, http.StatusBadRequest, `type must be "standard" or "guest"`)
+			return
+		}
 		updates["type"] = req.Type
 	}
 	if req.Permissions != nil {
+		validPermKeys := map[string]bool{
+			"can_view_mature": true, "can_download": true, "can_upload": true,
+			"can_create_playlists": true, "can_view_analytics": true,
+		}
+		for k, v := range req.Permissions {
+			if !validPermKeys[k] {
+				writeError(c, http.StatusBadRequest, fmt.Sprintf("unknown permission key: %s", k))
+				return
+			}
+			if _, ok := v.(bool); !ok {
+				writeError(c, http.StatusBadRequest, fmt.Sprintf("permission %s must be a boolean", k))
+				return
+			}
+		}
 		updates["permissions"] = req.Permissions
 	}
 
@@ -164,7 +205,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 	user, err := h.auth.GetUser(c.Request.Context(), username)
 	if err != nil {
 		h.log.Error("Failed to fetch updated user %s: %v", username, err)
-		writeSuccess(c, map[string]string{"message": "User updated"})
+		writeError(c, http.StatusInternalServerError, "Update succeeded but user state could not be retrieved")
 		return
 	}
 	writeSuccess(c, user)
@@ -305,6 +346,11 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 
 	for _, username := range req.Usernames {
 		if username == "" {
+			continue
+		}
+		if err := validUsername(username); err != nil {
+			failedCount++
+			errs = append(errs, fmt.Sprintf("%s: invalid username format", username))
 			continue
 		}
 		if username == currentUser && (req.Action == "delete" || req.Action == "disable") {
