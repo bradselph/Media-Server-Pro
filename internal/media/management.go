@@ -610,6 +610,11 @@ func (m *Module) SetTags(mediaPath string, tags []string) error {
 func (m *Module) UpdateTags(mediaPath string, tags []string) error {
 	m.mu.Lock()
 
+	if _, inMedia := m.media[mediaPath]; !inMedia {
+		m.mu.Unlock()
+		return fmt.Errorf("media not found: %s", mediaPath)
+	}
+
 	meta, exists := m.metadata[mediaPath]
 	if !exists {
 		meta = &Metadata{
@@ -657,6 +662,11 @@ func (m *Module) UpdateTags(mediaPath string, tags []string) error {
 // AddTag adds a tag to a media file
 func (m *Module) AddTag(mediaPath, tag string) error {
 	m.mu.Lock()
+
+	if _, inMedia := m.media[mediaPath]; !inMedia {
+		m.mu.Unlock()
+		return fmt.Errorf("media not found: %s", mediaPath)
+	}
 
 	meta, exists := m.metadata[mediaPath]
 	if !exists {
