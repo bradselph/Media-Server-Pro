@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+var validJobIDRe = regexp.MustCompile(`^[0-9a-fA-F-]+$`)
 
 // ValidationResult holds HLS validation results
 type ValidationResult struct {
@@ -18,6 +21,9 @@ type ValidationResult struct {
 
 // ValidateMasterPlaylist validates a master playlist and its variants
 func (m *Module) ValidateMasterPlaylist(jobID string) (*ValidationResult, error) {
+	if !validJobIDRe.MatchString(jobID) {
+		return nil, fmt.Errorf("invalid job ID: %q", jobID)
+	}
 	result := &ValidationResult{
 		JobID:  jobID,
 		Valid:  true,
@@ -27,9 +33,7 @@ func (m *Module) ValidateMasterPlaylist(jobID string) (*ValidationResult, error)
 
 	masterData, err := m.readMasterPlaylist(outputDir)
 	if err != nil {
-		result.Valid = false
-		result.Errors = append(result.Errors, err.Error())
-		return result, nil
+		return nil, err
 	}
 
 	variants := m.parseVariantStreams(string(masterData))
