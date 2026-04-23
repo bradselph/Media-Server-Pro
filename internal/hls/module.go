@@ -247,27 +247,50 @@ func (m *Module) resumeInterruptedJobs() int {
 		limit = 2
 	}
 
-	m.jobsMu.Lock()
-	defer m.jobsMu.Unlock()
-
-	resumed := 0
+	// Collect candidates under the lock, then stat paths outside the lock to
+	// avoid blocking all job accessors during slow filesystem calls on startup.
+	m.jobsMu.RLock()
+	var candidates []*models.HLSJob
 	for _, job := range m.jobs {
-		if resumed >= limit {
+		if len(candidates) >= limit {
 			break
 		}
-		if !m.shouldResumeJob(job) {
-			continue
+		if m.shouldResumeJob(job) {
+			candidates = append(candidates, job)
 		}
+	}
+	m.jobsMu.RUnlock()
+
+	// Stat local paths without holding any lock.
+	type statResult struct {
+		job    *models.HLSJob
+		exists bool
+	}
+	results := make([]statResult, 0, len(candidates))
+	for _, job := range candidates {
+		exists := true
 		// Only verify existence for absolute local paths. S3 object keys
 		// (e.g. "videos/foo.mp4") are not absolute and cannot be checked
 		// with os.Stat; they will be validated by ffmpeg at transcode time.
 		if filepath.IsAbs(job.MediaPath) {
 			if _, err := os.Stat(job.MediaPath); err != nil {
-				m.log.Warn("Skipping resume of HLS job %s: media file no longer exists at %s", job.ID, job.MediaPath)
-				job.Status = models.HLSStatusFailed
-				job.Error = "Media file not found on startup resume"
-				continue
+				exists = false
 			}
+		}
+		results = append(results, statResult{job: job, exists: exists})
+	}
+
+	m.jobsMu.Lock()
+	defer m.jobsMu.Unlock()
+
+	resumed := 0
+	for _, r := range results {
+		job := r.job
+		if !r.exists {
+			m.log.Warn("Skipping resume of HLS job %s: media file no longer exists at %s", job.ID, job.MediaPath)
+			job.Status = models.HLSStatusFailed
+			job.Error = "Media file not found on startup resume"
+			continue
 		}
 		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)
 		jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
