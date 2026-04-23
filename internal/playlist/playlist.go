@@ -445,9 +445,18 @@ func (m *Module) ReorderItems(ctx context.Context, playlistID PlaylistID, userID
 		}
 	}
 
+	// Build an ID→position map from the reordered snapshot.
+	positionByID := make(map[string]int, len(newItems))
+	for _, ni := range newItems {
+		positionByID[ni.ID] = ni.Position
+	}
 	m.mu.Lock()
-	if p, ok := m.playlists[playlistID]; ok && p.UserID == string(userID) && len(p.Items) == len(newItems) {
-		p.Items = newItems
+	if p, ok := m.playlists[playlistID]; ok && p.UserID == string(userID) {
+		for i := range p.Items {
+			if pos, updated := positionByID[p.Items[i].ID]; updated {
+				p.Items[i].Position = pos
+			}
+		}
 		p.ModifiedAt = time.Now()
 	}
 	m.mu.Unlock()

@@ -675,8 +675,18 @@ func (m *Module) loadItems() error {
 
 func (m *Module) saveItems(ctx context.Context) error {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.saveItemsLocked(ctx)
+	snapshot := make(map[string]*CategorizedItem, len(m.items))
+	for k, v := range m.items {
+		cp := *v
+		snapshot[k] = &cp
+	}
+	m.mu.RUnlock()
+	for path, item := range snapshot {
+		if err := m.repo.Upsert(ctx, m.itemToRecord(path, item)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // saveItemsLocked persists all in-memory items to the database.
