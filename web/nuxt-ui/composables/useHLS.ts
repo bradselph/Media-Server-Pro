@@ -99,6 +99,7 @@ export function useHLS(
     let pollTimer: ReturnType<typeof setInterval> | null = null
     let checkDebounce: ReturnType<typeof setTimeout> | null = null
     let networkRetryTimer: ReturnType<typeof setTimeout> | null = null
+    let activationGen = 0
     let pollStartTime = 0
     const MAX_POLL_DURATION = 30 * 60 * 1000 // 30 minutes
     const MAX_CONSECUTIVE_ERRORS = 10
@@ -289,6 +290,10 @@ export function useHLS(
 
             hlsLoading.value = false
             hlsError.value = 'HLS playback failed'
+            if (networkRetryTimer !== null) {
+                clearTimeout(networkRetryTimer)
+                networkRetryTimer = null
+            }
             hls.destroy()
             hlsInstance = null
         })
@@ -303,6 +308,7 @@ export function useHLS(
         const capturedUrl = hlsUrl.value
         if (!capturedUrl) return
         hlsActivated.value = true
+        const thisGen = ++activationGen
 
         // Wait for Vue to patch the DOM (removes :src binding) before hls.js
         // takes control of the video element — prevents a race where Vue's
@@ -320,8 +326,10 @@ export function useHLS(
             return
         }
 
+        if (thisGen !== activationGen) return
+
         attachHLS(capturedUrl).catch(() => {
-            hlsActivated.value = false
+            if (thisGen === activationGen) hlsActivated.value = false
         })
     }
 
