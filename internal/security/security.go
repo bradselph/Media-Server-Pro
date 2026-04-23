@@ -643,7 +643,10 @@ func (m *Module) loadIPLists() {
 				AddedBy:   rec.AddedBy,
 				ExpiresAt: rec.ExpiresAt,
 			}
-			m.parseIPEntry(&entry)
+			if err := m.parseIPEntry(&entry); err != nil {
+				m.log.Warn("Skipping malformed whitelist entry %q: %v", entry.Value, err)
+				continue
+			}
 			m.whitelist.Entries = append(m.whitelist.Entries, entry)
 		}
 	}
@@ -664,7 +667,10 @@ func (m *Module) loadIPLists() {
 				AddedBy:   rec.AddedBy,
 				ExpiresAt: rec.ExpiresAt,
 			}
-			m.parseIPEntry(&entry)
+			if err := m.parseIPEntry(&entry); err != nil {
+				m.log.Warn("Skipping malformed blacklist entry %q: %v", entry.Value, err)
+				continue
+			}
 			m.blacklist.Entries = append(m.blacklist.Entries, entry)
 		}
 	}
@@ -694,15 +700,21 @@ func (m *Module) loadIPLists() {
 	}
 }
 
-func (m *Module) parseIPEntry(entry *IPEntry) {
+func (m *Module) parseIPEntry(entry *IPEntry) error {
 	if strings.Contains(entry.Value, "/") {
 		_, cidr, err := net.ParseCIDR(entry.Value)
-		if err == nil {
-			entry.CIDR = cidr
+		if err != nil {
+			return fmt.Errorf("invalid CIDR %q: %w", entry.Value, err)
 		}
+		entry.CIDR = cidr
 	} else {
-		entry.IP = net.ParseIP(entry.Value)
+		ip := net.ParseIP(entry.Value)
+		if ip == nil {
+			return fmt.Errorf("invalid IP %q", entry.Value)
+		}
+		entry.IP = ip
 	}
+	return nil
 }
 
 // saveIPLists persists whitelist and blacklist to the database
