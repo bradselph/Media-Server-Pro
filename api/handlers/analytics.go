@@ -295,6 +295,9 @@ func (h *Handler) GetEventsByUser(c *gin.Context) {
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 1000 {
 		limit = l
 	}
+	if session := getSession(c); session != nil {
+		h.log.Info("admin %s queried analytics events for user %s", session.Username, userID)
+	}
 	events := h.analytics.GetEventsByUser(c.Request.Context(), userID, limit)
 	writeSuccess(c, events)
 }
