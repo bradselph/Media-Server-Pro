@@ -183,8 +183,9 @@ type Handler struct {
 	viewCooldown        sync.Map      // key: "userID|mediaID" → value: time.Time of last counted view
 	viewCooldownStop    chan struct{}  // closed to stop the background sweeper goroutine
 	regTokens           sync.Map      // key: token string → value: time.Time issued; single-use, 15-min TTL
-	classifyDirRunning atomic.Bool // true while a ClassifyDirectory background job is active
-	classifyAllRunning atomic.Bool // true while a ClassifyAllPending background job is active
+	classifyDirRunning  atomic.Bool // true while a ClassifyDirectory background job is active
+	classifyAllRunning  atomic.Bool // true while a ClassifyAllPending background job is active
+	lifecycleInProgress atomic.Bool // true once a shutdown/restart has been initiated
 	feedCacheMu        sync.Mutex
 	feedCache          map[string]feedCacheEntry // key: "cacheKey" → cached XML + expiry
 	feedCacheStop      chan struct{}              // closed to stop the feed cache sweeper goroutine
