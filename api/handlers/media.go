@@ -366,7 +366,7 @@ func (h *Handler) GetMedia(c *gin.Context) {
 	if item.IsMature {
 		session := getSession(c)
 		if session == nil {
-			writeError(c, http.StatusForbidden, "This content is marked as mature (18+). Please log in to access it.")
+			writeError(c, http.StatusUnauthorized, "This content is marked as mature (18+). Please log in to access it.")
 			return
 		}
 		user := getUser(c)
