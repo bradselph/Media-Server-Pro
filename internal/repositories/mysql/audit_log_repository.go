@@ -50,7 +50,7 @@ func (r *AuditLogRepository) List(ctx context.Context, filter repositories.Audit
 	}
 
 	limit := filter.Limit
-	if limit <= 0 {
+	if limit <= 0 || limit > 100000 {
 		limit = 100000 // cap to avoid OOM; ExportAuditLog uses same ceiling
 	}
 	query = query.Limit(limit)
