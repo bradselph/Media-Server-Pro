@@ -172,6 +172,15 @@ func (m *Module) Health() models.HealthStatus {
 // RegisterTask registers a new scheduled task. If the scheduler has already been
 // started (m.ctx set), the task's runTaskLoop is started immediately so it is not idle.
 func (m *Module) RegisterTask(opts TaskRegistration) {
+	if opts.Func == nil {
+		m.log.Error("cannot register task %s: Func is nil", opts.ID)
+		return
+	}
+	if opts.Schedule <= 0 {
+		m.log.Error("cannot register task %s: schedule must be positive, got %v", opts.ID, opts.Schedule)
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -550,6 +559,9 @@ func (m *Module) UpdateSchedule(taskID string, schedule time.Duration) error {
 	task, exists := m.tasks[taskID]
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
+	}
+	if schedule <= 0 {
+		return fmt.Errorf("schedule must be positive, got %v", schedule)
 	}
 
 	task.Schedule = schedule

@@ -201,7 +201,10 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 	if exists {
 		return false
 	}
-	if resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); resolved {
+	if resolved, err := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); err != nil {
+		m.log.Warn("RecordDuplicatesFromSlave: resolved-removal check failed: %v", err)
+		return false
+	} else if resolved {
 		return false
 	}
 	rec := &repositories.ReceiverDuplicateRecord{
