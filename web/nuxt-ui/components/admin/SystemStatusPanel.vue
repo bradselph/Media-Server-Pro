@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ServerStatus, ModuleHealth } from '~/types/api'
+import { moduleStatusColor } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -10,11 +11,9 @@ const statusLoading = ref(false)
 const moduleDetail = ref<ModuleHealth | null>(null)
 const moduleDetailLoading = ref(false)
 
-function moduleStatusColor(status: ModuleHealth['status']): 'success' | 'warning' | 'error' {
-  if (status === 'healthy') return 'success'
-  if (status === 'degraded') return 'warning'
-  return 'error'
-}
+let mounted = true
+onUnmounted(() => { mounted = false })
+
 
 async function loadStatus() {
   statusLoading.value = true
@@ -23,21 +22,24 @@ async function loadStatus() {
       adminApi.getServerStatus(),
       adminApi.listModuleStatuses(),
     ])
+    if (!mounted) return
     if (srv.status === 'fulfilled') serverStatus.value = srv.value
     if (mods.status === 'fulfilled') moduleStatuses.value = mods.value ?? []
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load server status', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { statusLoading.value = false }
+  } finally { if (mounted) statusLoading.value = false }
 }
 
 async function showModuleDetail(name: string) {
   moduleDetailLoading.value = true
   moduleDetail.value = null
   try {
-    moduleDetail.value = await adminApi.getModuleHealth(name)
+    const detail = await adminApi.getModuleHealth(name)
+    if (!mounted) return
+    moduleDetail.value = detail
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load module health', color: 'error', icon: 'i-lucide-x' })
-  } finally { moduleDetailLoading.value = false }
+  } finally { if (mounted) moduleDetailLoading.value = false }
 }
 
 onMounted(loadStatus)

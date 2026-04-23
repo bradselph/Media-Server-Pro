@@ -4,6 +4,7 @@ import type {
   SuggestionStats, ClassifyStatus, ClassifyStats,
 } from '~/types/api'
 import { formatWatchTime } from '~/utils/format'
+import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
 const toast = useToast()
@@ -91,7 +92,8 @@ async function cleanStaleCategories() {
   cleaningStale.value = true
   try {
     const res = await adminApi.cleanStaleCategories()
-    toast.add({ title: `Cleaned ${(res as { removed: number }).removed ?? 0} stale entries`, color: 'success', icon: 'i-lucide-check' })
+    const removed = asRecord(res)?.removed
+    toast.add({ title: `Cleaned ${typeof removed === 'number' ? removed : 0} stale entries`, color: 'success', icon: 'i-lucide-check' })
     await loadCategorizer()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
@@ -127,11 +129,11 @@ async function runDiscoveryScan() {
   } finally { scanning.value = false }
 }
 
-const processingPath = ref<string | null>(null)
+const processingPaths = ref<Set<string>>(new Set())
 
 async function applyDiscovery(path: string) {
-  if (processingPath.value) return
-  processingPath.value = path
+  if (processingPaths.value.has(path)) return
+  const next = new Set(processingPaths.value); next.add(path); processingPaths.value = next
   try {
     await adminApi.applyDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
@@ -139,13 +141,13 @@ async function applyDiscovery(path: string) {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    processingPath.value = null
+    const cleared = new Set(processingPaths.value); cleared.delete(path); processingPaths.value = cleared
   }
 }
 
 async function dismissDiscovery(path: string) {
-  if (processingPath.value) return
-  processingPath.value = path
+  if (processingPaths.value.has(path)) return
+  const next = new Set(processingPaths.value); next.add(path); processingPaths.value = next
   try {
     await adminApi.dismissDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
@@ -153,7 +155,7 @@ async function dismissDiscovery(path: string) {
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    processingPath.value = null
+    const cleared = new Set(processingPaths.value); cleared.delete(path); processingPaths.value = cleared
   }
 }
 
@@ -224,7 +226,8 @@ async function classifyAllPending() {
   classifying.value = true
   try {
     const res = await adminApi.classifyAllPending()
-    toast.add({ title: `Queued ${(res as { count: number }).count ?? 0} items for classification`, color: 'success', icon: 'i-lucide-check' })
+    const count = asRecord(res)?.count
+    toast.add({ title: `Queued ${typeof count === 'number' ? count : 0} items for classification`, color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally { classifying.value = false }
@@ -254,10 +257,10 @@ async function clearClassificationTags() {
 
 // Tab-switching lazy load
 watch(subTab, (tab) => {
-  if (tab === 'categorizer' && !categoryStats.value) loadCategorizer()
-  else if (tab === 'discovery' && discoverySuggestions.value.length === 0) loadDiscovery()
-  else if (tab === 'suggestions' && !suggestionStats.value) loadSuggestions()
-  else if (tab === 'classify' && !classifyStatus.value) loadClassify()
+  if (tab === 'categorizer' && !categoryStats.value && !categorizerLoading.value) loadCategorizer()
+  else if (tab === 'discovery' && discoverySuggestions.value.length === 0 && !discoveryLoading.value) loadDiscovery()
+  else if (tab === 'suggestions' && !suggestionStats.value && !suggestionsLoading.value) loadSuggestions()
+  else if (tab === 'classify' && !classifyStatus.value && !classifyLoading.value) loadClassify()
 }, { immediate: true })
 </script>
 
@@ -373,8 +376,8 @@ watch(subTab, (tab) => {
                     </div>
                   </div>
                   <div class="flex gap-1">
-                    <UButton icon="i-lucide-check" aria-label="Apply suggestion" size="xs" variant="ghost" color="success" :loading="processingPath === s.original_path" @click="applyDiscovery(s.original_path)" />
-                    <UButton icon="i-lucide-x" aria-label="Dismiss suggestion" size="xs" variant="ghost" color="error" :loading="processingPath === s.original_path" @click="dismissDiscovery(s.original_path)" />
+                    <UButton icon="i-lucide-check" aria-label="Apply suggestion" size="xs" variant="ghost" color="success" :loading="processingPaths.has(s.original_path)" @click="applyDiscovery(s.original_path)" />
+                    <UButton icon="i-lucide-x" aria-label="Dismiss suggestion" size="xs" variant="ghost" color="error" :loading="processingPaths.has(s.original_path)" @click="dismissDiscovery(s.original_path)" />
                   </div>
                 </div>
               </div>

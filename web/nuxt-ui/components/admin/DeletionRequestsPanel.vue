@@ -4,6 +4,9 @@ import type { DataDeletionRequest } from '~/types/api'
 const adminApi = useAdminApi()
 const toast = useToast()
 
+let destroyed = false
+onUnmounted(() => { destroyed = true })
+
 const requests = ref<DataDeletionRequest[]>([])
 const loading = ref(true)
 const statusFilter = ref<'' | 'pending' | 'approved' | 'denied'>('')
@@ -14,13 +17,15 @@ const adminNotes = ref('')
 const processing = ref(false)
 
 async function load() {
+  if (loading.value) return
   loading.value = true
   try {
-    requests.value = (await adminApi.listDeletionRequests(statusFilter.value || undefined)) ?? []
+    const data = await adminApi.listDeletionRequests(statusFilter.value || undefined)
+    if (!destroyed) requests.value = data ?? []
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load requests', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    loading.value = false
+    if (!destroyed) loading.value = false
   }
 }
 
@@ -38,12 +43,12 @@ async function confirmProcess() {
     await adminApi.processDeletionRequest(selected.value.id, processAction.value, adminNotes.value)
     const label = processAction.value === 'approve' ? 'approved (user deleted)' : 'denied'
     toast.add({ title: `Request ${label}`, color: 'success', icon: 'i-lucide-check' })
-    processOpen.value = false
+    if (!destroyed) processOpen.value = false
     await load()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    processing.value = false
+    if (!destroyed) processing.value = false
   }
 }
 
@@ -142,7 +147,7 @@ watch(statusFilter, load)
     >
       <template #body>
         <UFormField label="Admin notes (optional)">
-          <UTextarea v-model="adminNotes" placeholder="Reason for your decision…" :rows="2" />
+          <UTextarea v-model="adminNotes" placeholder="Reason for your decision…" :rows="2" :maxlength="2000" />
         </UFormField>
       </template>
       <template #footer>

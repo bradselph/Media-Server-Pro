@@ -39,6 +39,8 @@ func (h *Handler) AdminGetStats(c *gin.Context) {
 		if du, err := helpers.GetDiskUsage(cfg.Directories.Videos); err == nil {
 			diskTotal = du.Total
 			diskFree = du.Available
+		} else {
+			h.log.Warn("GetDiskUsage failed for %s: %v", cfg.Directories.Videos, err)
 		}
 	}
 	var diskUsed uint64

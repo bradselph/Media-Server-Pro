@@ -324,7 +324,8 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 
 	for i, vh := range profile.ViewHistory {
 		if vh.MediaPath == mediaPath {
-			profile.ViewHistory[i].CompletedAt = new(time.Now())
+			t := time.Now()
+			profile.ViewHistory[i].CompletedAt = &t
 			profile.dirty = true
 			break
 		}
@@ -978,6 +979,9 @@ func (m *Module) GetUserProfile(userID string) *UserProfile {
 // in-memory profile and deletes the corresponding rows from the database. Called when
 // a media item is deleted so that orphaned view-history rows do not skew suggestions.
 func (m *Module) PurgeMediaPath(mediaPath string) {
+	if m.repo == nil {
+		return
+	}
 	m.mu.Lock()
 	for _, profile := range m.profiles {
 		filtered := profile.ViewHistory[:0]
@@ -1003,6 +1007,9 @@ func (m *Module) PurgeMediaPath(mediaPath string) {
 // row + view history) from the database for the given user.  After the reset the
 // user starts accumulating a fresh profile from their next viewing session.
 func (m *Module) ResetUserProfile(userID string) error {
+	if m.repo == nil {
+		return nil
+	}
 	m.mu.Lock()
 	delete(m.profiles, userID)
 	m.mu.Unlock()

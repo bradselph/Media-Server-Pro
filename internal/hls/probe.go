@@ -38,6 +38,9 @@ func (m *Module) probeTimeout() time.Duration {
 // getMediaDuration uses ffprobe to get media duration in seconds. Prefers the context-aware
 // exec path when ffprobePath is set so ctx cancellation (e.g. shutdown) is honored.
 func (m *Module) getMediaDuration(ctx context.Context, mediaPath string) float64 {
+	if mediaPath == "" {
+		return 0
+	}
 	mediaPath = m.resolveMediaInputPath(ctx, mediaPath)
 	if m.ffprobePath == "" && m.ffmpegPath == "" {
 		return 0

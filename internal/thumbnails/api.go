@@ -25,6 +25,12 @@ func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (st
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf(errFFmpegNotAvailable)
 	}
+	if req.MediaID == "" {
+		return "", fmt.Errorf("mediaID cannot be empty")
+	}
+	if req.MediaPath == "" {
+		return "", fmt.Errorf("mediaPath cannot be empty")
+	}
 
 	cfg := m.config.Get()
 	outputPath := m.getThumbnailPath(MediaID(req.MediaID))
@@ -97,6 +103,12 @@ func (m *Module) generatePreviewThumbnailsFromRequest(req *generatePreviewThumbn
 	if m.ffmpegPath == "" {
 		return "", fmt.Errorf(errFFmpegNotAvailable)
 	}
+	if req.MediaID == "" {
+		return "", fmt.Errorf("mediaID cannot be empty")
+	}
+	if req.MediaPath == "" {
+		return "", fmt.Errorf("mediaPath cannot be empty")
+	}
 	previewCount, duration := m.getPreviewConfig(req.MediaPath)
 	if m.HasAllPreviewThumbnails(MediaID(req.MediaID)) {
 		m.log.Debug("All preview thumbnails already exist for: %s", req.MediaPath)
@@ -133,6 +145,9 @@ func (m *Module) GenerateThumbnailSyncRequest(req *ThumbnailSyncRequest) (string
 // QueueThumbnailIfMissing implements media.ThumbnailQueuer.
 // It queues a low-priority background thumbnail job if one doesn't already exist.
 func (m *Module) QueueThumbnailIfMissing(mediaPath, mediaID string, isAudio bool) {
+	if mediaID == "" || mediaPath == "" {
+		return
+	}
 	if m.HasThumbnail(MediaID(mediaID)) {
 		return
 	}
@@ -152,6 +167,12 @@ func (m *Module) QueueThumbnailIfMissing(mediaPath, mediaID string, isAudio bool
 // The image is saved as a JPEG regardless of source format; callers are responsible for
 // ensuring r contains valid image data (JPEG, PNG, or WebP).
 func (m *Module) SaveCustomThumbnail(mediaID string, r io.Reader) error {
+	if mediaID == "" {
+		return fmt.Errorf("mediaID cannot be empty")
+	}
+	if r == nil {
+		return fmt.Errorf("reader cannot be nil")
+	}
 	destPath := m.getThumbnailPath(MediaID(mediaID))
 	if err := os.MkdirAll(m.thumbnailDir, 0o755); err != nil { //nolint:gosec // G301
 		return fmt.Errorf("creating thumbnail dir: %w", err)
@@ -193,6 +214,12 @@ func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (st
 	if m.ffmpegPath == "" {
 		m.log.Error("Cannot generate thumbnail - FFmpeg not available")
 		return "", fmt.Errorf(errFFmpegNotAvailable)
+	}
+	if req.MediaID == "" {
+		return "", fmt.Errorf("mediaID cannot be empty")
+	}
+	if req.MediaPath == "" {
+		return "", fmt.Errorf("mediaPath cannot be empty")
 	}
 
 	cfg := m.config.Get()

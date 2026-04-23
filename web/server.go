@@ -85,6 +85,7 @@ func RegisterStaticRoutes(r *gin.Engine) {
 func registerNuxtAssets(r *gin.Engine) {
 	staticFS, err := fs.Sub(content, "static")
 	if err != nil {
+		log.Warn("Nuxt assets not available: %v", err)
 		return
 	}
 
@@ -139,6 +140,7 @@ func ginServeSPA() gin.HandlerFunc {
 		if errCachedIndex != nil {
 			log.Warn("React SPA not available, falling back: %v", errCachedIndex)
 			c.Header("Content-Type", "text/html; charset=utf-8")
+			c.Header("Cache-Control", "no-cache")
 			c.Status(http.StatusNotFound)
 			_, _ = c.Writer.WriteString(fallbackHTML)
 			return

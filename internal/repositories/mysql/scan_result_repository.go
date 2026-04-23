@@ -194,8 +194,12 @@ func (r *ScanResultRepository) MarkReviewed(ctx context.Context, path, reviewedB
 
 // Delete removes a scan result by file path.
 func (r *ScanResultRepository) Delete(ctx context.Context, path string) error {
-	if err := r.db.WithContext(ctx).Where(sqlPathEq, path).Delete(&scanResultRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete scan result: %w", err)
+	result := r.db.WithContext(ctx).Where(sqlPathEq, path).Delete(&scanResultRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete scan result: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("scan result not found: %s", path)
 	}
 	return nil
 }

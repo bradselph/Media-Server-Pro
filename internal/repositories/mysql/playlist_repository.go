@@ -24,11 +24,17 @@ type PlaylistRepository struct {
 
 // NewPlaylistRepository creates a new GORM-based playlist repository
 func NewPlaylistRepository(db *gorm.DB) repositories.PlaylistRepository {
+	if db == nil {
+		panic("PlaylistRepository: db cannot be nil")
+	}
 	return &PlaylistRepository{db: db}
 }
 
 // Create stores a new playlist
 func (r *PlaylistRepository) Create(ctx context.Context, playlist *models.Playlist) error {
+	if playlist == nil {
+		return fmt.Errorf("playlist cannot be nil")
+	}
 	return r.db.WithContext(ctx).Create(playlist).Error
 }
 
@@ -76,14 +82,24 @@ func (r *PlaylistRepository) Get(ctx context.Context, id string) (*models.Playli
 // Update updates playlist metadata only (name, description, is_public, cover_image, modified_at).
 // Does not cascade to Items, avoiding overwriting concurrent item changes.
 func (r *PlaylistRepository) Update(ctx context.Context, playlist *models.Playlist) error {
-	return r.db.WithContext(ctx).Model(playlist).Where(sqlIDEq, playlist.ID).Updates(map[string]interface{}{
+	if playlist == nil {
+		return fmt.Errorf("playlist cannot be nil")
+	}
+	result := r.db.WithContext(ctx).Model(playlist).Where(sqlIDEq, playlist.ID).Updates(map[string]interface{}{
 		"name":        playlist.Name,
 		"description": playlist.Description,
 		"user_id":     playlist.UserID,
 		"modified_at": playlist.ModifiedAt,
 		"is_public":   playlist.IsPublic,
 		"cover_image": playlist.CoverImage,
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrPlaylistNotFound
+	}
+	return nil
 }
 
 // Delete removes a playlist and its items (cascade).
@@ -168,6 +184,9 @@ func (r *PlaylistRepository) batchLoadItems(ctx context.Context, playlists []*mo
 
 // AddItem adds an item to a playlist
 func (r *PlaylistRepository) AddItem(ctx context.Context, item *models.PlaylistItem) error {
+	if item == nil {
+		return fmt.Errorf("item cannot be nil")
+	}
 	return r.db.WithContext(ctx).Create(item).Error
 }
 
@@ -187,13 +206,23 @@ func (r *PlaylistRepository) RemoveItem(ctx context.Context, itemID string) erro
 // UpdateItem updates an existing playlist item (e.g. its position after a reorder).
 // Uses targeted Updates() instead of Save() to avoid overwriting unrelated fields.
 func (r *PlaylistRepository) UpdateItem(ctx context.Context, item *models.PlaylistItem) error {
-	return r.db.WithContext(ctx).Model(item).Where(sqlIDEq, item.ID).Updates(map[string]interface{}{
+	if item == nil {
+		return fmt.Errorf("item cannot be nil")
+	}
+	result := r.db.WithContext(ctx).Model(item).Where(sqlIDEq, item.ID).Updates(map[string]interface{}{
 		"playlist_id": item.PlaylistID,
 		"media_id":    item.MediaID,
 		"media_path":  item.MediaPath,
 		"title":       item.Title,
 		"position":    item.Position,
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrPlaylistNotFound
+	}
+	return nil
 }
 
 // GetItems retrieves all items for a playlist

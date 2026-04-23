@@ -44,10 +44,14 @@ type ExtractorItemRepository struct {
 
 // NewExtractorItemRepository creates a new ExtractorItemRepository.
 func NewExtractorItemRepository(db *gorm.DB) repositories.ExtractorItemRepository {
+	if db == nil {
+		panic("NewExtractorItemRepository: db is nil")
+	}
 	return &ExtractorItemRepository{db: db}
 }
 
 func (r *ExtractorItemRepository) Upsert(ctx context.Context, item *repositories.ExtractorItemRecord) error {
+	row := r.recordToRow(item)
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -55,7 +59,7 @@ func (r *ExtractorItemRepository) Upsert(ctx context.Context, item *repositories
 			"quality", "width", "height", "duration", "site", "detection_method",
 			"status", "error_message", "resolved_at", "expires_at", "updated_at",
 		}),
-	}).Create(new(r.recordToRow(item))).Error; err != nil {
+	}).Create(&row).Error; err != nil {
 		return fmt.Errorf("failed to upsert extractor item: %w", err)
 	}
 	return nil
@@ -113,8 +117,12 @@ func (r *ExtractorItemRepository) UpdateStatus(ctx context.Context, id, status, 
 		"error_message": errorMsg,
 		"updated_at":    time.Now().Format(sqlTimeFormat),
 	}
-	if err := r.db.WithContext(ctx).Model(&extractorItemRow{}).Where(sqlIDEq, id).Updates(updates).Error; err != nil {
-		return fmt.Errorf("failed to update extractor item status: %w", err)
+	result := r.db.WithContext(ctx).Model(&extractorItemRow{}).Where(sqlIDEq, id).Updates(updates)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update extractor item status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("extractor item not found: %s", id)
 	}
 	return nil
 }
@@ -141,7 +149,8 @@ func (r *ExtractorItemRepository) recordToRow(rec *repositories.ExtractorItemRec
 		UpdatedAt:       rec.UpdatedAt.Format(sqlTimeFormat),
 	}
 	if rec.ExpiresAt != nil {
-		row.ExpiresAt = new(rec.ExpiresAt.Format(sqlTimeFormat))
+		s := rec.ExpiresAt.Format(sqlTimeFormat)
+		row.ExpiresAt = &s
 	}
 	return row
 }

@@ -65,6 +65,23 @@ var secretKeys = map[string]struct{}{
 	"authorization":     {},
 }
 
+func redactSlice(in []any) []any {
+	out := make([]any, len(in))
+	for i, v := range in {
+		switch child := v.(type) {
+		case map[string]any:
+			out[i] = redactMap(child)
+		case []any:
+			out[i] = redactSlice(child)
+		case string:
+			out[i] = redact(child)
+		default:
+			out[i] = v
+		}
+	}
+	return out
+}
+
 func redactMap(in map[string]any) map[string]any {
 	if in == nil {
 		return nil
@@ -81,6 +98,8 @@ func redactMap(in map[string]any) map[string]any {
 		switch child := v.(type) {
 		case map[string]any:
 			out[k] = redactMap(child)
+		case []any:
+			out[k] = redactSlice(child)
 		case string:
 			out[k] = redact(child)
 		default:

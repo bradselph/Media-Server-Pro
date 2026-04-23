@@ -37,6 +37,9 @@ type ValidationResultRepository struct {
 }
 
 func NewValidationResultRepository(db *gorm.DB) repositories.ValidationResultRepository {
+	if db == nil {
+		panic("NewValidationResultRepository: db is nil")
+	}
 	return &ValidationResultRepository{db: db}
 }
 

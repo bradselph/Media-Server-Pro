@@ -333,9 +333,15 @@ function resetControlsTimer() {
   controlsTimer = setTimeout(() => { if (isPlaying.value) showControls.value = false }, 3000)
 }
 
+let loadGeneration = 0
+let playerMounted = false
+onMounted(() => { playerMounted = true })
+onUnmounted(() => { playerMounted = false })
+
 async function loadMedia(id: string) {
   // Only show loading spinner on initial load — switching media keeps the video element
   // alive in the DOM so PiP continues working across auto-next transitions.
+  const gen = ++loadGeneration
   positionRestored = false
   const isSwitch = !!media.value
   if (!isSwitch) loading.value = true
@@ -358,7 +364,9 @@ async function loadMedia(id: string) {
   mediaCollections.value = []
   thumbnailPreviews.value = []
   try {
-    media.value = await mediaApi.getById(id)
+    const fetched = await mediaApi.getById(id)
+    if (!playerMounted || gen !== loadGeneration) return
+    media.value = fetched
     userRating.value = 0
     playbackStore.setMedia(id, {
       id,
@@ -368,16 +376,17 @@ async function loadMedia(id: string) {
       duration: media.value?.duration ?? 0,
     })
     loadChapters(id).catch((e: unknown) => { console.warn('[player] chapters load failed:', e) })
-    suggestionsApi.getSimilar(id).then(r => { similar.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] similar load failed:', e) })
-    collectionsApi.getForMedia(id).then(r => { mediaCollections.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] collections load failed:', e) })
+    suggestionsApi.getSimilar(id).then(r => { if (playerMounted && gen === loadGeneration) similar.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] similar load failed:', e) })
+    collectionsApi.getForMedia(id).then(r => { if (playerMounted && gen === loadGeneration) mediaCollections.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] collections load failed:', e) })
     if (authStore.isLoggedIn) {
-      suggestionsApi.getPersonalized(8).then(r => { personalized.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] personalized load failed:', e) })
+      suggestionsApi.getPersonalized(8).then(r => { if (playerMounted && gen === loadGeneration) personalized.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] personalized load failed:', e) })
     }
-    mediaApi.getThumbnailPreviews(id).then(r => { thumbnailPreviews.value = r?.previews ?? [] }).catch((e: unknown) => { console.warn('[player] thumbnail previews load failed:', e) })
+    mediaApi.getThumbnailPreviews(id).then(r => { if (playerMounted && gen === loadGeneration) thumbnailPreviews.value = r?.previews ?? [] }).catch((e: unknown) => { console.warn('[player] thumbnail previews load failed:', e) })
   } catch (e: unknown) {
+    if (!playerMounted || gen !== loadGeneration) return
     error.value = e instanceof Error ? e.message : 'Failed to load media'
   } finally {
-    loading.value = false
+    if (playerMounted && gen === loadGeneration) loading.value = false
   }
 }
 

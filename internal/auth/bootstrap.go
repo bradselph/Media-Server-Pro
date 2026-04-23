@@ -34,6 +34,8 @@ func (m *Module) ensureDefaultAdmin() error {
 		}); err != nil {
 			return fmt.Errorf("failed to update admin password: %w", err)
 		}
+		// Re-fetch config after Update so dataDir reflects the post-update snapshot.
+		cfg = m.config.Get()
 		// Write to file with 0o600 to avoid password in systemd journal/container logs
 		dataDir := cfg.Directories.Data
 		if dataDir == "" {
@@ -116,6 +118,15 @@ func (m *Module) ensureAdminUserRecord() error {
 	}
 
 	if err := m.userRepo.Create(ctx, adminUser); err != nil {
+		// A concurrent ensureAdminUserRecord call may have already created the record.
+		// Try to fetch it; if that succeeds, load it into cache and return cleanly.
+		if u, fetchErr := m.userRepo.GetByUsername(ctx, adminUsername); fetchErr == nil && u != nil {
+			m.usersMu.Lock()
+			m.users[adminUsername] = u
+			m.usersByID[u.ID] = u
+			m.usersMu.Unlock()
+			return nil
+		}
 		return fmt.Errorf("failed to create admin user record: %w", err)
 	}
 

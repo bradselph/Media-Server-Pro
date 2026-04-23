@@ -36,7 +36,7 @@ func (noOpAnalyticsRepo) Count(context.Context, repositories.AnalyticsFilter) (i
 	return 0, nil
 }
 
-func (noOpAnalyticsRepo) CountByType(context.Context) (map[string]int, error) {
+func (noOpAnalyticsRepo) CountByType(context.Context) (map[string]int64, error) {
 	return nil, nil //nolint:nilnil // test stub returns empty result with no error
 }
 

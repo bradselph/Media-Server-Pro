@@ -69,6 +69,10 @@ async function save() {
     toast.add({ title: 'Name is required', color: 'error', icon: 'i-lucide-x' })
     return
   }
+  if (form.name.length > 255) {
+    toast.add({ title: 'Name too long (max 255 characters)', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
   saving.value = true
   try {
     const data = { name: form.name, description: form.description, cover_media_id: form.cover_media_id || undefined }
@@ -79,8 +83,11 @@ async function save() {
       await collectionsApi.create(data)
       toast.add({ title: 'Collection created', color: 'success', icon: 'i-lucide-check' })
     }
-    formOpen.value = false
     await load()
+    formOpen.value = false
+    form.name = ''
+    form.description = ''
+    form.cover_media_id = ''
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Save failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
@@ -143,7 +150,9 @@ function openAddItems(collectionId: string) {
       if (addItemsFetchNonce === nonce) {
         detailItems.value = full.items ?? []
       }
-    }).catch(() => {})
+    }).catch((err: unknown) => {
+      console.warn('[collections] Failed to pre-load collection items:', err)
+    })
   }
   addItemsOpen.value = true
 }
@@ -179,9 +188,9 @@ async function addItem(mediaId: string) {
     const pos = detailItems.value.length
     await collectionsApi.addItems(addItemsTarget.value, [mediaId], pos)
     toast.add({ title: 'Added to collection', color: 'success', icon: 'i-lucide-check' })
-    // Refresh detail if open for same collection. Bump nonce so any concurrent
-    // background fetch from openAddItems doesn't clobber this fresher result.
-    if (detailCollection.value?.id === addItemsTarget.value) {
+    // Always refresh detailItems for the current add target. Bump nonce so any
+    // concurrent background fetch from openAddItems doesn't clobber this result.
+    if (addItemsTarget.value) {
       addItemsFetchNonce++
       const full = await collectionsApi.get(addItemsTarget.value)
       detailItems.value = full.items ?? []
@@ -279,10 +288,10 @@ onMounted(load)
       <template #body>
         <div class="space-y-4">
           <UFormField label="Name" required>
-            <UInput v-model="form.name" placeholder="e.g. Marvel Cinematic Universe" class="w-full" />
+            <UInput v-model="form.name" placeholder="e.g. Marvel Cinematic Universe" class="w-full" maxlength="255" />
           </UFormField>
           <UFormField label="Description">
-            <UTextarea v-model="form.description" placeholder="Optional description" :rows="2" class="w-full" />
+            <UTextarea v-model="form.description" placeholder="Optional description" :rows="2" class="w-full" maxlength="2000" />
           </UFormField>
           <UFormField label="Cover Media ID" hint="Optional: media ID whose thumbnail is used as the collection cover">
             <UInput v-model="form.cover_media_id" placeholder="Media UUID" class="w-full font-mono text-xs" />

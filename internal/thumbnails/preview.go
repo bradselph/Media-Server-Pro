@@ -24,6 +24,9 @@ func (m *Module) getPreviewConfig(mediaPath string) (previewCount int, duration 
 
 // queuePreviewThumbnailsLoop queues per-index preview thumbnail jobs; logs and stops if queue is full.
 func (m *Module) queuePreviewThumbnailsLoop(opts *queuePreviewThumbnailsLoopOpts) {
+	if opts.MediaID == "" {
+		return
+	}
 	for i := 0; i < opts.PreviewCount; i++ {
 		outputPath := filepath.Join(m.thumbnailDir, fmt.Sprintf("%s_preview_%d.jpg", opts.MediaID, i))
 		if isValidThumbnailFile(outputPath) {
@@ -120,6 +123,9 @@ func (m *Module) buildPreviewURLList(opts *buildPreviewURLListOpts) []string {
 
 // tryGeneratePreview queues or runs preview generation and returns the URL if the preview is/will be available.
 func (m *Module) tryGeneratePreview(opts *tryGeneratePreviewOpts) string {
+	if opts.PreviewPath == "" {
+		return ""
+	}
 	if _, loaded := m.inFlight.LoadOrStore(opts.PreviewPath, time.Now()); loaded {
 		return opts.PreviewURL
 	}
@@ -165,6 +171,9 @@ func (m *Module) GetPreviewURLs(mediaPath, mediaID string, count int) []string {
 
 func (m *Module) getPreviewURLsFromRequest(req *getPreviewURLsRequest) []string {
 	if m.ffmpegPath == "" {
+		return []string{}
+	}
+	if req.MediaPath == "" || req.MediaID == "" {
 		return []string{}
 	}
 	cfg := m.config.Get()

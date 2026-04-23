@@ -92,7 +92,7 @@ export function normalizeUser(input: unknown): User | null {
         id: asString(src.id),
         username,
         email: asString(src.email) || undefined,
-        role: (asString(src.role, 'viewer') as User['role']),
+        role: (['admin', 'viewer'].includes(asString(src.role)) ? asString(src.role) : 'viewer') as User['role'],
         type: asString(src.type, 'standard'),
         enabled: asBoolean(src.enabled, true),
         created_at: asString(src.created_at),
@@ -121,7 +121,7 @@ export function normalizeLogin(input: unknown): LoginResponse {
     return {
         session_id: asString(src.session_id),
         username: asString(src.username),
-        role: (asString(src.role, 'viewer') as LoginResponse['role']),
+        role: (['admin', 'viewer'].includes(asString(src.role)) ? asString(src.role) : 'viewer') as LoginResponse['role'],
         is_admin: asBoolean(src.is_admin, asString(src.role) === 'admin'),
         expires_at: asString(src.expires_at),
     }

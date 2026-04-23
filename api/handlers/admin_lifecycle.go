@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,10 @@ import (
 // RestartServer initiates a server restart via self-exec.
 // Calls the graceful shutdown callback first to drain in-flight requests and stop modules (P1-9).
 func (h *Handler) RestartServer(c *gin.Context) {
+	if !h.lifecycleInProgress.CompareAndSwap(false, true) {
+		writeError(c, http.StatusConflict, "Shutdown or restart already in progress")
+		return
+	}
 	h.log.Warn("Server restart requested by admin")
 	h.logAdminAction(c, &adminLogActionParams{Action: "restart_server", Target: "initiated"})
 
@@ -81,6 +86,10 @@ func (h *Handler) RestartServer(c *gin.Context) {
 // ShutdownServer initiates a graceful server shutdown.
 // Calls the shutdown callback to drain in-flight requests and stop modules before exiting (P1-9).
 func (h *Handler) ShutdownServer(c *gin.Context) {
+	if !h.lifecycleInProgress.CompareAndSwap(false, true) {
+		writeError(c, http.StatusConflict, "Shutdown or restart already in progress")
+		return
+	}
 	h.log.Warn("Server shutdown requested by admin")
 	h.logAdminAction(c, &adminLogActionParams{Action: "shutdown_server", Target: "initiated"})
 

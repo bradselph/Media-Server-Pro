@@ -10,6 +10,9 @@ import (
 // enqueue adds a job to the priority queue. highPriority=true for user-triggered requests.
 // Returns true if queued, false if queue full.
 func (m *Module) enqueue(job *ThumbnailJob, highPriority bool) bool {
+	if job == nil {
+		return false
+	}
 	m.jobMu.Lock()
 	defer m.jobMu.Unlock()
 	if len(m.jobHeap) >= m.jobCap {
@@ -53,6 +56,13 @@ func previewTimeRange(duration float64) (startOffset, endOffset, usableDuration 
 
 // queueMainPreviewThumbnail queues the main (index 0) preview thumbnail if it does not exist or is corrupt.
 func (m *Module) queueMainPreviewThumbnail(opts *queueMainPreviewThumbnailOpts) {
+	if opts == nil {
+		return
+	}
+	if opts.MediaPath == "" {
+		m.log.Warn("queueMainPreviewThumbnail: empty MediaPath, skipping")
+		return
+	}
 	if isValidThumbnailFile(opts.MainPath) {
 		return
 	}

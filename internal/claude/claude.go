@@ -354,33 +354,35 @@ func (m *Module) createConversation(ctx context.Context, userID, username, title
 }
 
 // appendMessage persists a single conversation message.
-// Seq is assigned here by reading MAX(seq) for the conversation so that messages
-// retain insertion order regardless of created_at clock resolution.
+// Seq is assigned inside a transaction to prevent two concurrent callers from
+// computing the same MAX(seq) and inserting duplicate sequence numbers.
 func (m *Module) appendMessage(ctx context.Context, convID, role, content string, toolCalls, toolResult json.RawMessage) error {
-	var maxSeq int64
-	m.db.GORM().WithContext(ctx).
-		Model(&Message{}).
-		Where("conversation_id = ?", convID).
-		Select("COALESCE(MAX(seq), 0)").
-		Scan(&maxSeq)
+	return m.db.GORM().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var maxSeq int64
+		if err := tx.Model(&Message{}).
+			Where("conversation_id = ?", convID).
+			Select("COALESCE(MAX(seq), 0)").
+			Scan(&maxSeq).Error; err != nil {
+			return err
+		}
 
-	msg := &Message{
-		ID:             uuid.New().String(),
-		ConversationID: convID,
-		Seq:            maxSeq + 1,
-		Role:           role,
-		Content:        content,
-		ToolCalls:      toolCalls,
-		ToolResult:     toolResult,
-	}
-	if err := m.db.GORM().WithContext(ctx).Create(msg).Error; err != nil {
-		return err
-	}
-	// Bump conversation updated_at so the sidebar sort order stays fresh.
-	return m.db.GORM().WithContext(ctx).
-		Model(&Conversation{}).
-		Where("id = ?", convID).
-		Update("updated_at", time.Now()).Error
+		msg := &Message{
+			ID:             uuid.New().String(),
+			ConversationID: convID,
+			Seq:            maxSeq + 1,
+			Role:           role,
+			Content:        content,
+			ToolCalls:      toolCalls,
+			ToolResult:     toolResult,
+		}
+		if err := tx.Create(msg).Error; err != nil {
+			return err
+		}
+		// Bump conversation updated_at so the sidebar sort order stays fresh.
+		return tx.Model(&Conversation{}).
+			Where("id = ?", convID).
+			Update("updated_at", time.Now()).Error
+	})
 }
 
 // hostIdentity reports who/where the process is running so the system prompt

@@ -81,8 +81,13 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "name is required")
 		return
 	}
+	const maxTTLSeconds = 10 * 365 * 24 * 3600 // 10 years
 	var ttl time.Duration
 	if req.TTLSeconds > 0 {
+		if req.TTLSeconds > maxTTLSeconds {
+			writeError(c, http.StatusBadRequest, "ttl_seconds must not exceed 10 years")
+			return
+		}
 		ttl = time.Duration(req.TTLSeconds) * time.Second
 	}
 

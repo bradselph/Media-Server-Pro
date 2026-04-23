@@ -45,17 +45,17 @@ func (m *Module) updateSession(event models.AnalyticsEvent) {
 			UserID:      event.UserID,
 			IPAddress:   event.IPAddress,
 			UserAgent:   event.UserAgent,
-			StartedAt:   time.Now(),
+			StartedAt:   event.Timestamp,
 			MediaViewed: make(map[string]time.Time),
 		}
 		m.sessions[event.SessionID] = session
 	}
 
-	session.LastActivity = time.Now()
+	session.LastActivity = event.Timestamp
 	session.EventCount++
 
 	if event.MediaID != "" {
-		session.MediaViewed[event.MediaID] = time.Now()
+		session.MediaViewed[event.MediaID] = event.Timestamp
 	}
 }
 

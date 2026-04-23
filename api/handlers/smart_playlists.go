@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"media-server-pro/internal/media"
 	"media-server-pro/pkg/models"
@@ -35,6 +37,9 @@ func parseSmartRules(raw string) (*SmartPlaylistRules, error) {
 	var r SmartPlaylistRules
 	if err := json.Unmarshal([]byte(raw), &r); err != nil {
 		return nil, err
+	}
+	if len(r.Conditions) > 100 {
+		return nil, fmt.Errorf("too many conditions (max 100)")
 	}
 	if r.Match != "any" {
 		r.Match = "all"
@@ -159,8 +164,10 @@ func matchSmartCondition(item *models.MediaItem, cond SmartCondition) bool {
 }
 
 func parseInt(s string) int64 {
-	var v int64
-	fmt.Sscanf(s, "%d", &v)
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || v < 0 {
+		return 0
+	}
 	return v
 }
 
@@ -203,6 +210,10 @@ func (h *Handler) CreateSmartPlaylist(c *gin.Context) {
 	}
 	if req.Name == "" {
 		writeError(c, http.StatusBadRequest, "name is required")
+		return
+	}
+	if len(req.Name) > 255 {
+		writeError(c, http.StatusBadRequest, "name too long (max 255)")
 		return
 	}
 	if req.Rules == "" {
@@ -249,7 +260,12 @@ func (h *Handler) GetSmartPlaylist(c *gin.Context) {
 	}
 	var sp models.SmartPlaylist
 	if err := db.First(&sp, "id = ? AND user_id = ?", id, session.UserID).Error; err != nil {
-		writeError(c, http.StatusNotFound, "Smart playlist not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "Smart playlist not found")
+		} else {
+			h.log.Error("GetSmartPlaylist: db error: %v", err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 	writeSuccess(c, sp)

@@ -56,6 +56,10 @@ func (h *Handler) RequestDataDeletion(c *gin.Context) {
 	if !BindJSON(c, &req, "") {
 		return
 	}
+	if len(req.Reason) > 1000 {
+		writeError(c, http.StatusBadRequest, "Reason must not exceed 1000 characters")
+		return
+	}
 
 	ctx := c.Request.Context()
 
@@ -146,6 +150,10 @@ func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
 	}
 	if req.Action != "approve" && req.Action != "deny" {
 		writeError(c, http.StatusBadRequest, `action must be "approve" or "deny"`)
+		return
+	}
+	if len(req.AdminNotes) > 2000 {
+		writeError(c, http.StatusBadRequest, "Admin notes must not exceed 2000 characters")
 		return
 	}
 

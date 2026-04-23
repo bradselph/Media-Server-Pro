@@ -48,7 +48,7 @@ func (r *CategorizedItemRepository) Upsert(ctx context.Context, item *repositori
 			"detected_show", "detected_artist", "detected_album",
 			"categorized_at", "manual_override",
 		}),
-	}).Create(new(r.recordToRow(item))).Error; err != nil {
+	}).Create(func() *categorizedItemRow { row := r.recordToRow(item); return &row }()).Error; err != nil {
 		return fmt.Errorf("failed to upsert categorized item: %w", err)
 	}
 	return nil

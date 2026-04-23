@@ -46,7 +46,8 @@ func parseAdminListIsMature(c *gin.Context) *bool {
 	if im == "" {
 		return nil
 	}
-	return new(im == "true" || im == "1")
+	val := im == "true" || im == "1"
+	return &val
 }
 
 func parseAdminListLimit(c *gin.Context) int {
@@ -509,7 +510,7 @@ func (h *Handler) AdminBulkMedia(c *gin.Context) {
 		if opErr != nil {
 			h.log.Error("bulk %s %s: %v", req.Action, id, opErr)
 			failedCount++
-			errs = append(errs, opErr.Error())
+			errs = append(errs, fmt.Sprintf("operation failed for ID %s", id))
 		} else if id != "" {
 			successCount++
 		}

@@ -21,10 +21,10 @@ func (m *Manager) applyHLSBaseOverridesCore() {
 	if val, ok := envGetBool("HLS_ENABLED"); ok {
 		m.config.HLS.Enabled = val
 	}
-	if val, ok := envGetInt("HLS_SEGMENT_DURATION"); ok {
+	if val, ok := envGetInt("HLS_SEGMENT_DURATION"); ok && val >= 1 {
 		m.config.HLS.SegmentDuration = val
 	}
-	if val, ok := envGetInt("HLS_PLAYLIST_LENGTH"); ok {
+	if val, ok := envGetInt("HLS_PLAYLIST_LENGTH"); ok && val >= 1 {
 		m.config.HLS.PlaylistLength = val
 	}
 	if val, ok := envGetBool("HLS_AUTO_GENERATE"); ok {
@@ -36,16 +36,16 @@ func (m *Manager) applyHLSCleanupOverrides() {
 	if val, ok := envGetBool("HLS_CLEANUP_ENABLED"); ok {
 		m.config.HLS.CleanupEnabled = val
 	}
-	if val, ok := envGetDuration(time.Minute, "HLS_CLEANUP_INTERVAL_MINUTES"); ok {
+	if val, ok := envGetDuration(time.Minute, "HLS_CLEANUP_INTERVAL_MINUTES"); ok && val >= time.Minute {
 		m.config.HLS.CleanupInterval = val
 	}
-	if val, ok := envGetInt("HLS_RETENTION_MINUTES"); ok {
+	if val, ok := envGetInt("HLS_RETENTION_MINUTES"); ok && val >= 1 {
 		m.config.HLS.RetentionMinutes = val
 	}
 }
 
 func (m *Manager) applyHLSConcurrencyOverrides() {
-	if val, ok := envGetInt("HLS_CONCURRENT_LIMIT", "HLS_MAX_CONCURRENT_JOBS"); ok {
+	if val, ok := envGetInt("HLS_CONCURRENT_LIMIT", "HLS_MAX_CONCURRENT_JOBS"); ok && val >= 1 {
 		m.config.HLS.ConcurrentLimit = val
 	}
 }

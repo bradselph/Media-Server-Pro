@@ -276,6 +276,8 @@ func (h *Handler) GetMediaCollections(c *gin.Context) {
 		var items []models.MediaCollectionItem
 		if err := db.Where("collection_id = ?", col.ID).Order("position ASC, added_at ASC").Find(&items).Error; err != nil {
 			h.log.Error("GetMediaCollections: failed to fetch items for collection %s: %v", col.ID, err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+			return
 		}
 		names := h.media.GetMediaNamesByIDs(func() []string {
 			ids := make([]string, len(items))

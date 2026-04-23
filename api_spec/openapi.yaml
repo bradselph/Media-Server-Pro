@@ -2909,6 +2909,8 @@ paths:
     get:
       tags: [ hls ]
       summary: Get HLS capabilities
+      security:
+        - sessionCookie: [ ]
       responses:
         '200':
           description: HLS capabilities
@@ -2926,6 +2928,8 @@ paths:
     get:
       tags: [ hls ]
       summary: Check HLS availability for media item
+      security:
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: query
@@ -7155,3 +7159,473 @@ paths:
       responses:
         '200':
           description: Duplicate resolved
+
+  /api/auth/register-token:
+    get:
+      tags: [ auth ]
+      summary: Get registration token status
+      responses:
+        '200':
+          description: Registration token info
+
+  /api/chapters:
+    get:
+      tags: [ media ]
+      summary: List chapters for media
+      parameters:
+        - name: media_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of chapters
+    post:
+      tags: [ media ]
+      summary: Create chapter
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ media_id, label, start_time ]
+              properties:
+                media_id:
+                  type: string
+                label:
+                  type: string
+                start_time:
+                  type: number
+                end_time:
+                  type: number
+      responses:
+        '200':
+          description: Chapter created
+
+  /api/chapters/{id}:
+    put:
+      tags: [ media ]
+      summary: Update chapter
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                start_time:
+                  type: number
+                end_time:
+                  type: number
+      responses:
+        '200':
+          description: Chapter updated
+    delete:
+      tags: [ media ]
+      summary: Delete chapter
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Chapter deleted
+
+  /api/media/{id}/collections:
+    get:
+      tags: [ media ]
+      summary: Get collections for media item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Collections list
+
+  /api/collections:
+    get:
+      tags: [ media ]
+      summary: List collections
+      responses:
+        '200':
+          description: Collections list
+    post:
+      tags: [ media ]
+      summary: Create collection
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ name ]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Collection created
+
+  /api/collections/{id}:
+    put:
+      tags: [ media ]
+      summary: Update collection
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Collection updated
+    delete:
+      tags: [ media ]
+      summary: Delete collection
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Collection deleted
+
+  /api/smart-playlists:
+    get:
+      tags: [ playlists ]
+      summary: List smart playlists
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Smart playlists list
+    post:
+      tags: [ playlists ]
+      summary: Create smart playlist
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ name ]
+              properties:
+                name:
+                  type: string
+                rules:
+                  type: object
+      responses:
+        '200':
+          description: Smart playlist created
+
+  /api/smart-playlists/{id}:
+    put:
+      tags: [ playlists ]
+      summary: Update smart playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Smart playlist updated
+    delete:
+      tags: [ playlists ]
+      summary: Delete smart playlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Smart playlist deleted
+
+  /api/smart-playlists/{id}/preview:
+    post:
+      tags: [ playlists ]
+      summary: Preview smart playlist results
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Preview results
+
+  /api/cookie-consent:
+    get:
+      tags: [ auth ]
+      summary: Get cookie consent status
+      responses:
+        '200':
+          description: Cookie consent status
+    post:
+      tags: [ auth ]
+      summary: Set cookie consent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accepted:
+                  type: boolean
+      responses:
+        '200':
+          description: Consent recorded
+
+  /api/admin/auto-tag-rules:
+    get:
+      tags: [ admin ]
+      summary: List auto-tag rules
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Auto-tag rules list
+    post:
+      tags: [ admin ]
+      summary: Create auto-tag rule
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Rule created
+
+  /api/admin/auto-tag-rules/{id}:
+    put:
+      tags: [ admin ]
+      summary: Update auto-tag rule
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Rule updated
+    delete:
+      tags: [ admin ]
+      summary: Delete auto-tag rule
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rule deleted
+
+  /api/admin/auto-tag-rules/{id}/apply:
+    post:
+      tags: [ admin ]
+      summary: Apply auto-tag rule immediately
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rule applied
+
+  /api/admin/claude/config:
+    get:
+      tags: [ admin-claude ]
+      summary: Get Claude module configuration
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Claude configuration
+    put:
+      tags: [ admin-claude ]
+      summary: Update Claude module configuration
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Configuration updated
+
+  /api/admin/claude/audit-log:
+    get:
+      tags: [ admin-claude ]
+      summary: Get Claude module audit log
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Audit log entries
+
+  /api/admin/claude/chat:
+    post:
+      tags: [ admin-claude ]
+      summary: Send message to Claude (SSE stream)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ message ]
+              properties:
+                message:
+                  type: string
+      responses:
+        '200':
+          description: Claude response stream
+
+  /api/admin/claude/pending:
+    get:
+      tags: [ admin-claude ]
+      summary: Get pending Claude tool approvals
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Pending approvals
+
+  /api/admin/claude/approve/{id}:
+    post:
+      tags: [ admin-claude ]
+      summary: Approve pending Claude tool call
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tool call approved
+
+  /api/admin/claude/reject/{id}:
+    post:
+      tags: [ admin-claude ]
+      summary: Reject pending Claude tool call
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tool call rejected
+
+  /api/admin/media/{id}/thumbnail:
+    post:
+      tags: [ admin-media ]
+      summary: Regenerate thumbnail for media item
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Thumbnail regeneration started
+
+  /api/admin/duplicates/scan:
+    post:
+      tags: [ admin-duplicates ]
+      summary: Trigger duplicate scan
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Scan started

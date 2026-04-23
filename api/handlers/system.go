@@ -454,7 +454,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	// Strip SQL block comments (/* ... */) before keyword matching to prevent
 	// comment-injection bypasses such as SLE/**/EP(999) evading "SLEEP" detection.
 	queryUpper := strings.ToUpper(query)
-	queryStripped := stripSQLBlockComments(queryUpper)
+	queryStripped := strings.TrimSpace(stripSQLBlockComments(queryUpper))
 
 	// Block file-access functions: LOAD_FILE reads arbitrary server-side files and
 	// is not neutralised by a READ ONLY transaction or execution-time limits.

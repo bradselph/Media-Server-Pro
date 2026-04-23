@@ -57,6 +57,11 @@ async function saveSecurityToggle(
     }
     await adminApi.updateConfig(updated)
     fullConfig.value = updated
+    const sec = asRecord(updated.security)
+    const srv = asRecord(updated.server)
+    corsEnabled.value = sec?.cors_enabled === true
+    hstsEnabled.value = sec?.hsts_enabled === true
+    httpsEnabled.value = srv?.enable_https === true
     toast.add({ title: 'Security settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
@@ -164,7 +169,7 @@ async function removeFromList(type: 'whitelist' | 'blacklist', ip: string) {
     if (type === 'whitelist') await adminApi.removeFromWhitelist(ip)
     else await adminApi.removeFromBlacklist(ip)
     toast.add({ title: 'IP removed', color: 'success', icon: 'i-lucide-check' })
-    if (type === 'whitelist') loadWhitelist(); else loadBlacklist()
+    if (type === 'whitelist') await loadWhitelist(); else await loadBlacklist()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
@@ -174,7 +179,7 @@ async function unban(ip: string) {
   try {
     await adminApi.unbanIP(ip)
     toast.add({ title: 'IP unbanned', color: 'success', icon: 'i-lucide-check' })
-    loadBanned()
+    await loadBanned()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
@@ -197,7 +202,7 @@ async function banIPAddress() {
     toast.add({ title: 'IP banned', color: 'success', icon: 'i-lucide-check' })
     newBanIP.value = ''
     newBanDuration.value = ''
-    loadBanned()
+    await loadBanned()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
@@ -220,12 +225,12 @@ async function loadStats() {
 }
 
 watch(subTab, (v) => {
-  if (v === 'audit') loadAudit()
+  if (v === 'audit' && !auditLoading.value) loadAudit()
   else if (v === 'whitelist') loadWhitelist()
   else if (v === 'blacklist') loadBlacklist()
   else if (v === 'banned') loadBanned()
   else if (v === 'stats') loadStats()
-  else if (v === 'settings') loadSecurityConfig()
+  else if (v === 'settings' && !configLoading.value) loadSecurityConfig()
 }, { immediate: true })
 </script>
 
@@ -407,7 +412,7 @@ watch(subTab, (v) => {
               :model-value="httpsEnabled"
               :disabled="configSaving"
               aria-label="Enable HTTPS"
-              @update:model-value="v => { httpsEnabled = v; saveSecurityToggle('server', 'enable_https', v) }"
+              @update:model-value="v => saveSecurityToggle('server', 'enable_https', v)"
             />
           </div>
           <div class="flex items-center justify-between gap-4 py-3">
@@ -419,7 +424,7 @@ watch(subTab, (v) => {
               :model-value="hstsEnabled"
               :disabled="configSaving"
               aria-label="Enable HSTS"
-              @update:model-value="v => { hstsEnabled = v; saveSecurityToggle('security', 'hsts_enabled', v) }"
+              @update:model-value="v => saveSecurityToggle('security', 'hsts_enabled', v)"
             />
           </div>
           <div class="flex items-center justify-between gap-4 py-3 last:pb-0">
@@ -431,7 +436,7 @@ watch(subTab, (v) => {
               :model-value="corsEnabled"
               :disabled="configSaving"
               aria-label="Enable CORS"
-              @update:model-value="v => { corsEnabled = v; saveSecurityToggle('security', 'cors_enabled', v) }"
+              @update:model-value="v => saveSecurityToggle('security', 'cors_enabled', v)"
             />
           </div>
         </div>

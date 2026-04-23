@@ -83,22 +83,28 @@ const permissionsInfo = ref<PermissionsInfo | null>(null)
 const myProfile = ref<UserProfile | null>(null)
 const resetRecLoading = ref(false)
 
+let profileMounted = false
+onMounted(() => { profileMounted = true })
+
 async function resetRecommendations() {
   resetRecLoading.value = true
   try {
     await suggestionsApi.resetMyProfile()
+    if (!profileMounted) return
     myProfile.value = null
     toast.add({ title: 'Recommendation history cleared', color: 'success', icon: 'i-lucide-check' })
   } catch {
+    if (!profileMounted) return
     toast.add({ title: 'Failed to reset recommendations', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    resetRecLoading.value = false
+    if (profileMounted) resetRecLoading.value = false
   }
 }
 
 async function loadStorageUsage() {
   try {
     const [u, p, prof] = await Promise.allSettled([getUsage(), getPermissions(), suggestionsApi.getMyProfile()])
+    if (!profileMounted) return
     if (u.status === 'fulfilled') storageUsage.value = u.value
     if (p.status === 'fulfilled') permissionsInfo.value = p.value
     if (prof.status === 'fulfilled') myProfile.value = prof.value
@@ -139,11 +145,13 @@ const prefsSaving = ref(false)
 async function loadPrefs() {
   try {
     const p = (await getPreferences()) ?? {}
+    if (!profileMounted) return
     if (!p.default_quality) p.default_quality = 'auto'
     prefs.value = p
   } catch (e: unknown) {
+    if (!profileMounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load preferences', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { prefsLoading.value = false }
+  } finally { if (profileMounted) prefsLoading.value = false }
 }
 
 async function savePrefs() {
@@ -157,6 +165,10 @@ async function savePrefs() {
     // (enum defaults, clamped numbers) are reflected without requiring a reload.
     if (!saved.default_quality) saved.default_quality = 'auto'
     prefs.value = saved
+    // Push the updated preferences into the auth store so that the player,
+    // index page, and any other component reading authStore.user.preferences
+    // picks up the new values immediately without needing a page reload.
+    if (authStore.user) authStore.user.preferences = { ...saved }
     if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ThemeValue)
     toast.add({ title: 'Preferences saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
@@ -176,10 +188,14 @@ const historyPerPage = 20
 
 async function loadHistory() {
   historyLoading.value = true
-  try { history.value = (await listHistory(200)) ?? [] }
-  catch (e: unknown) {
+  try {
+    const result = await listHistory(200)
+    if (!profileMounted) return
+    history.value = result ?? []
+  } catch (e: unknown) {
+    if (!profileMounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load watch history', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { historyLoading.value = false }
+  } finally { if (profileMounted) historyLoading.value = false }
 }
 
 async function removeItem(id: string) {
@@ -341,9 +357,11 @@ const ratingsDistribution = computed(() => {
 
 async function loadMyRatings() {
   ratingsLoading.value = true
-  try { myRatings.value = (await ratingsApi.getMyRatings()) ?? [] }
-  catch { /* non-critical */ }
-  finally { ratingsLoading.value = false }
+  try {
+    const result = await ratingsApi.getMyRatings()
+    if (profileMounted) myRatings.value = result ?? []
+  } catch { /* non-critical */ }
+  finally { if (profileMounted) ratingsLoading.value = false }
 }
 
 // API Tokens
@@ -366,6 +384,7 @@ watch(revealedToken, (val) => {
 })
 
 onUnmounted(() => {
+  profileMounted = false
   if (revealedTokenTimer) clearTimeout(revealedTokenTimer)
   revealedToken.value = null
   revealedTokenId.value = null
@@ -383,9 +402,11 @@ async function copyToken() {
 
 async function loadTokens() {
   tokensLoading.value = true
-  try { tokens.value = (await tokensApi.list()) ?? [] }
-  catch { /* non-critical */ }
-  finally { tokensLoading.value = false }
+  try {
+    const result = await tokensApi.list()
+    if (profileMounted) tokens.value = result ?? []
+  } catch { /* non-critical */ }
+  finally { if (profileMounted) tokensLoading.value = false }
 }
 
 async function createToken() {

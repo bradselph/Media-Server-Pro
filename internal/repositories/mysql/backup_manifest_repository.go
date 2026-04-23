@@ -32,10 +32,16 @@ type BackupManifestRepository struct {
 }
 
 func NewBackupManifestRepository(db *gorm.DB) repositories.BackupManifestRepository {
+	if db == nil {
+		panic("NewBackupManifestRepository: db is nil")
+	}
 	return &BackupManifestRepository{db: db}
 }
 
 func (r *BackupManifestRepository) Save(ctx context.Context, manifest *repositories.BackupManifestRecord) error {
+	if manifest == nil {
+		return fmt.Errorf("manifest must not be nil")
+	}
 	filesJSON, err := json.Marshal(manifest.Files)
 	if err != nil {
 		return fmt.Errorf("failed to marshal backup manifest files: %w", err)
@@ -128,11 +134,15 @@ func (r *BackupManifestRepository) rowToRecord(row *backupManifestRow) (*reposit
 	if row.Version != nil {
 		rec.Version = *row.Version
 	}
-	if err := json.Unmarshal([]byte(row.Files), &rec.Files); err != nil {
-		return nil, err
+	if row.Files != "" {
+		if err := json.Unmarshal([]byte(row.Files), &rec.Files); err != nil {
+			return nil, err
+		}
 	}
-	if err := json.Unmarshal([]byte(row.Errors), &rec.Errors); err != nil {
-		return nil, err
+	if row.Errors != "" {
+		if err := json.Unmarshal([]byte(row.Errors), &rec.Errors); err != nil {
+			return nil, err
+		}
 	}
 	if rec.Files == nil {
 		rec.Files = []string{}

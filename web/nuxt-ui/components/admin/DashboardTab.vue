@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AdminStats, SystemInfo, StreamSession, UploadProgress, ModuleHealth, ServerSettings, MediaStats } from '~/types/api'
 import { formatBytes, formatUptime } from '~/utils/format'
+import { moduleStatusColor } from '~/composables/useAdminFeedback'
 
 const STREAM_COLUMNS = [
   { accessorKey: 'user_id', header: 'User' },
@@ -48,11 +49,6 @@ const memPct = computed(() => {
   return Math.round(((system.value.memory_used ?? 0) / ((system.value.memory_total || 1))) * 100)
 })
 
-function moduleStatusColor(status: ModuleHealth['status']): 'success' | 'warning' | 'error' {
-  if (status === 'healthy') return 'success'
-  if (status === 'degraded') return 'warning'
-  return 'error'
-}
 
 async function loadAll() {
   statsLoading.value = true

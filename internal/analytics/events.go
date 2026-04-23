@@ -65,9 +65,9 @@ type ClientEventInput struct {
 
 // EventStats holds event statistics.
 type EventStats struct {
-	TotalEvents  int            `json:"total_events"`
-	EventCounts  map[string]int `json:"event_counts"`
-	HourlyEvents []int          `json:"hourly_events"`
+	TotalEvents  int64            `json:"total_events"`
+	EventCounts  map[string]int64 `json:"event_counts"`
+	HourlyEvents []int            `json:"hourly_events"`
 }
 
 func generateEventID() string {
@@ -260,11 +260,11 @@ func (m *Module) GetEventsByUser(ctx context.Context, userID string, limit int) 
 }
 
 // GetEventTypeCounts returns counts of each event type.
-func (m *Module) GetEventTypeCounts(ctx context.Context) map[string]int {
+func (m *Module) GetEventTypeCounts(ctx context.Context) map[string]int64 {
 	counts, err := m.eventRepo.CountByType(ctx)
 	if err != nil {
 		m.log.Error("Failed to get event type counts: %v", err)
-		return make(map[string]int)
+		return make(map[string]int64)
 	}
 	return counts
 }
@@ -273,7 +273,7 @@ func (m *Module) GetEventTypeCounts(ctx context.Context) map[string]int {
 func (m *Module) GetEventStats(ctx context.Context) EventStats {
 	eventCounts := m.GetEventTypeCounts(ctx)
 
-	totalEvents := 0
+	var totalEvents int64
 	for _, c := range eventCounts {
 		totalEvents += c
 	}

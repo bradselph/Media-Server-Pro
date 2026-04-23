@@ -362,36 +362,58 @@ func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
 
 	sr := m.storeFor(filePath)
 
-	if sr.store != nil && !sr.store.IsLocal() {
-		// Remote backend (S3/B2).
-		if _, err := sr.store.Stat(ctx, sr.relPath); err != nil {
-			return fmt.Errorf("file not found: %w", err)
-		}
-		if err := sr.store.Remove(ctx, sr.relPath); err != nil {
-			return fmt.Errorf("failed to delete: %w", err)
-		}
-	} else {
-		// Local filesystem (original behavior).
-		if _, err := os.Stat(filePath); err != nil {
-			return fmt.Errorf("file not found: %w", err)
-		}
-		if err := os.Remove(filePath); err != nil {
-			return fmt.Errorf("failed to delete: %w", err)
-		}
-	}
-
-	// Remove from in-memory indexes (media + metadata + fingerprintIndex)
+	// Remove from in-memory indexes BEFORE touching storage to prevent a
+	// concurrent upload at the same path from having its index entry deleted
+	// by this call after the file has been replaced on disk.
 	m.mu.Lock()
-	if meta, exists := m.metadata[filePath]; exists && meta.ContentFingerprint != "" {
-		delete(m.fingerprintIndex, meta.ContentFingerprint)
+	savedMeta := m.metadata[filePath]
+	savedItem := m.media[filePath]
+	if savedMeta != nil && savedMeta.ContentFingerprint != "" {
+		delete(m.fingerprintIndex, savedMeta.ContentFingerprint)
 	}
-	if item, exists := m.media[filePath]; exists {
-		delete(m.mediaByID, item.ID)
+	if savedItem != nil {
+		delete(m.mediaByID, savedItem.ID)
 	}
 	delete(m.media, filePath)
 	delete(m.metadata, filePath)
 	m.version++
 	m.mu.Unlock()
+
+	var deleteErr error
+	if sr.store != nil && !sr.store.IsLocal() {
+		// Remote backend (S3/B2).
+		if _, err := sr.store.Stat(ctx, sr.relPath); err != nil {
+			deleteErr = fmt.Errorf("file not found: %w", err)
+		} else if err := sr.store.Remove(ctx, sr.relPath); err != nil {
+			deleteErr = fmt.Errorf("failed to delete: %w", err)
+		}
+	} else {
+		// Local filesystem (original behavior).
+		if _, err := os.Stat(filePath); err != nil {
+			deleteErr = fmt.Errorf("file not found: %w", err)
+		} else if err := os.Remove(filePath); err != nil {
+			deleteErr = fmt.Errorf("failed to delete: %w", err)
+		}
+	}
+
+	if deleteErr != nil {
+		// Roll back index to avoid leaving a ghost entry in the API while the
+		// file still exists on disk.
+		m.mu.Lock()
+		if savedItem != nil {
+			m.media[filePath] = savedItem
+			m.mediaByID[savedItem.ID] = savedItem
+		}
+		if savedMeta != nil {
+			m.metadata[filePath] = savedMeta
+			if savedMeta.ContentFingerprint != "" {
+				m.fingerprintIndex[savedMeta.ContentFingerprint] = filePath
+			}
+		}
+		m.version++
+		m.mu.Unlock()
+		return deleteErr
+	}
 
 	m.log.Info("Deleted media: %s", filePath)
 	// Item was deleted — remove from DB too (not just the in-memory map)
@@ -588,6 +610,11 @@ func (m *Module) SetTags(mediaPath string, tags []string) error {
 func (m *Module) UpdateTags(mediaPath string, tags []string) error {
 	m.mu.Lock()
 
+	if _, inMedia := m.media[mediaPath]; !inMedia {
+		m.mu.Unlock()
+		return fmt.Errorf("media not found: %s", mediaPath)
+	}
+
 	meta, exists := m.metadata[mediaPath]
 	if !exists {
 		meta = &Metadata{
@@ -635,6 +662,11 @@ func (m *Module) UpdateTags(mediaPath string, tags []string) error {
 // AddTag adds a tag to a media file
 func (m *Module) AddTag(mediaPath, tag string) error {
 	m.mu.Lock()
+
+	if _, inMedia := m.media[mediaPath]; !inMedia {
+		m.mu.Unlock()
+		return fmt.Errorf("media not found: %s", mediaPath)
+	}
 
 	meta, exists := m.metadata[mediaPath]
 	if !exists {

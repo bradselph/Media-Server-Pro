@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -29,7 +30,11 @@ func (h *Handler) AdminRunTask(c *gin.Context) {
 		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
-	taskID := c.Param("id")
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		writeError(c, http.StatusBadRequest, "Task ID is required")
+		return
+	}
 
 	if err := h.tasks.RunNow(taskID); err != nil {
 		if errors.Is(err, tasks.ErrTaskNotFound) {
@@ -49,10 +54,18 @@ func (h *Handler) AdminEnableTask(c *gin.Context) {
 		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
-	taskID := c.Param("id")
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		writeError(c, http.StatusBadRequest, "Task ID is required")
+		return
+	}
 
 	if err := h.tasks.EnableTask(taskID); err != nil {
-		writeError(c, http.StatusNotFound, "Task not found")
+		if errors.Is(err, tasks.ErrTaskNotFound) {
+			writeError(c, http.StatusNotFound, "Task not found")
+		} else {
+			writeError(c, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -65,10 +78,18 @@ func (h *Handler) AdminDisableTask(c *gin.Context) {
 		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
-	taskID := c.Param("id")
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		writeError(c, http.StatusBadRequest, "Task ID is required")
+		return
+	}
 
 	if err := h.tasks.DisableTask(taskID); err != nil {
-		writeError(c, http.StatusNotFound, "Task not found")
+		if errors.Is(err, tasks.ErrTaskNotFound) {
+			writeError(c, http.StatusNotFound, "Task not found")
+		} else {
+			writeError(c, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -81,7 +102,11 @@ func (h *Handler) AdminStopTask(c *gin.Context) {
 		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
 	}
-	taskID := c.Param("id")
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		writeError(c, http.StatusBadRequest, "Task ID is required")
+		return
+	}
 
 	if err := h.tasks.StopTask(taskID); err != nil {
 		switch {

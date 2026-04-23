@@ -21,6 +21,9 @@ func (m *Module) getThumbnailPathWebp(jpgPath string) string {
 // getThumbnailPathByIndex generates the output path for a specific thumbnail index.
 // mediaID is the stable UUID; the on-disk filename is {uuid}.jpg or {uuid}_preview_N.jpg.
 func (m *Module) getThumbnailPathByIndex(mediaID MediaID, index int) string {
+	if mediaID == "" {
+		return ""
+	}
 	s := string(mediaID)
 	if index == 0 {
 		return filepath.Join(m.thumbnailDir, s+".jpg")
@@ -41,11 +44,17 @@ func (m *Module) GetThumbnailFilePath(mediaID MediaID) string {
 
 // HasThumbnail checks if a valid (non-empty) thumbnail exists for a media ID
 func (m *Module) HasThumbnail(mediaID MediaID) bool {
+	if mediaID == "" {
+		return false
+	}
 	return isValidThumbnailFile(m.getThumbnailPath(mediaID))
 }
 
 // HasWebPThumbnail checks if a WebP thumbnail exists for a media ID
 func (m *Module) HasWebPThumbnail(mediaID MediaID) bool {
+	if mediaID == "" {
+		return false
+	}
 	jpgPath := m.getThumbnailPath(mediaID)
 	webpPath := m.getThumbnailPathWebp(jpgPath)
 	_, err := os.Stat(webpPath)
@@ -54,6 +63,9 @@ func (m *Module) HasWebPThumbnail(mediaID MediaID) bool {
 
 // GetThumbnailFilePathWebp returns the absolute file path for WebP variant, or empty if not found
 func (m *Module) GetThumbnailFilePathWebp(mediaID MediaID) string {
+	if mediaID == "" {
+		return ""
+	}
 	jpgPath := m.getThumbnailPath(mediaID)
 	webpPath := m.getThumbnailPathWebp(jpgPath)
 	if _, err := os.Stat(webpPath); err == nil {
@@ -66,6 +78,9 @@ func (m *Module) GetThumbnailFilePathWebp(mediaID MediaID) string {
 // Responsive sizes are stored as WebP only (-sm.webp, -md.webp, -lg.webp).
 // Returns empty if width not in (160, 320, 640) or file does not exist.
 func (m *Module) GetThumbnailFilePathForSize(mediaID MediaID, width int) string {
+	if mediaID == "" {
+		return ""
+	}
 	var suffix string
 	for _, v := range responsiveVariants {
 		if v.Width == width {
@@ -87,6 +102,9 @@ func (m *Module) GetThumbnailFilePathForSize(mediaID MediaID, width int) string 
 // HasAllPreviewThumbnails checks if all preview thumbnails exist for a media ID.
 // Files must be non-empty (0-byte files from failed generation are treated as missing).
 func (m *Module) HasAllPreviewThumbnails(mediaID MediaID) bool {
+	if mediaID == "" {
+		return false
+	}
 	cfg := m.config.Get()
 	s := string(mediaID)
 

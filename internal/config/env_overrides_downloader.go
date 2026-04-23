@@ -15,10 +15,10 @@ func (m *Manager) applyDownloaderEnvOverrides() {
 	if val := envGetStr("DOWNLOADER_IMPORT_DIR"); val != "" {
 		m.config.Downloader.ImportDir = val
 	}
-	if val, ok := envGetDuration(time.Second, "DOWNLOADER_HEALTH_INTERVAL_SECONDS"); ok {
+	if val, ok := envGetDuration(time.Second, "DOWNLOADER_HEALTH_INTERVAL_SECONDS"); ok && val > 0 {
 		m.config.Downloader.HealthInterval = val
 	}
-	if val, ok := envGetDuration(time.Second, "DOWNLOADER_REQUEST_TIMEOUT_SECONDS"); ok {
+	if val, ok := envGetDuration(time.Second, "DOWNLOADER_REQUEST_TIMEOUT_SECONDS"); ok && val > 0 {
 		m.config.Downloader.RequestTimeout = val
 	}
 }

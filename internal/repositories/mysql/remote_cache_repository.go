@@ -64,10 +64,16 @@ type RemoteCacheRepository struct {
 }
 
 func NewRemoteCacheRepository(db *gorm.DB) repositories.RemoteCacheRepository {
+	if db == nil {
+		panic("NewRemoteCacheRepository: db is nil")
+	}
 	return &RemoteCacheRepository{db: db}
 }
 
 func (r *RemoteCacheRepository) Save(ctx context.Context, entry *repositories.RemoteCacheRecord) error {
+	if entry == nil {
+		return fmt.Errorf("entry cannot be nil")
+	}
 	row := remoteCacheRow{
 		RemoteURL:   entry.RemoteURL,
 		LocalPath:   entry.LocalPath,
@@ -121,6 +127,9 @@ func (r *RemoteCacheRepository) List(ctx context.Context) ([]*repositories.Remot
 }
 
 func (r *RemoteCacheRepository) rowToRecord(row *remoteCacheRow) *repositories.RemoteCacheRecord {
+	if row == nil {
+		return nil
+	}
 	return &repositories.RemoteCacheRecord{
 		RemoteURL:   row.RemoteURL,
 		LocalPath:   row.LocalPath,

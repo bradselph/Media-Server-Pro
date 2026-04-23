@@ -12,6 +12,7 @@ func (s *Server) handleSignals() {
 	sigCh := make(chan os.Signal, 1)
 	// Windows only supports os.Interrupt (Ctrl+C)
 	signal.Notify(sigCh, os.Interrupt)
+	defer signal.Stop(sigCh)
 
 	sig := <-sigCh
 	s.log.Info("Received signal: %v", sig)

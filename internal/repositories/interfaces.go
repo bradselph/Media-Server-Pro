@@ -16,7 +16,12 @@ var (
 	ErrSessionNotFound    = errors.New("session not found")
 	ErrPlaylistNotFound   = errors.New("playlist not found")
 	ErrScanResultNotFound = errors.New("scan result not found")
-	ErrAPITokenNotFound   = errors.New("api token not found")
+	ErrAPITokenNotFound          = errors.New("api token not found")
+	ErrSuggestionProfileNotFound    = errors.New("suggestion profile not found")
+	ErrViewHistoryNotFound          = errors.New("view history not found")
+	ErrReceiverDuplicateNotFound    = errors.New("receiver duplicate not found")
+	ErrPathNotFound                 = errors.New("path not found")
+	ErrMetadataNotFound             = errors.New("media metadata not found")
 )
 
 // UserRepository provides user data access methods
@@ -149,7 +154,7 @@ type AnalyticsRepository interface {
 	DeleteOlderThan(ctx context.Context, before string) error
 	DeleteByMediaID(ctx context.Context, mediaID string) error
 	Count(ctx context.Context, filter AnalyticsFilter) (int64, error)
-	CountByType(ctx context.Context) (map[string]int, error)
+	CountByType(ctx context.Context) (map[string]int64, error)
 }
 
 // AnalyticsFilter defines filtering options for analytics queries
@@ -314,6 +319,7 @@ type AutoDiscoverySuggestionRepository interface {
 	Get(ctx context.Context, originalPath string) (*AutoDiscoveryRecord, error)
 	Delete(ctx context.Context, originalPath string) error
 	List(ctx context.Context) ([]*AutoDiscoveryRecord, error)
+	// DeleteAll removes ALL suggestion records. Use with caution.
 	DeleteAll(ctx context.Context) error
 }
 

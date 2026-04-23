@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"time"
 )
 
@@ -26,7 +27,7 @@ func (m *Manager) applySecurityRateLimitCoreOverrides() {
 	if val, ok := envGetInt("RATE_LIMIT_REQUESTS"); ok {
 		m.config.Security.RateLimitRequests = val
 	}
-	if val, ok := envGetDuration(time.Second, "RATE_LIMIT_WINDOW_SECONDS"); ok {
+	if val, ok := envGetDuration(time.Second, "RATE_LIMIT_WINDOW_SECONDS"); ok && val > 0 {
 		m.config.Security.RateLimitWindow = val
 	}
 }
@@ -63,7 +64,16 @@ func (m *Manager) applySecurityCORSOverrides() {
 		m.config.Security.CORSEnabled = val
 	}
 	if val := envGetStr("CORS_ORIGINS"); val != "" {
-		m.config.Security.CORSOrigins = splitTrimmed(val)
+		origins := splitTrimmed(val)
+		var valid []string
+		for _, o := range origins {
+			if u, err := url.Parse(o); err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
+				valid = append(valid, o)
+			}
+		}
+		if len(valid) > 0 {
+			m.config.Security.CORSOrigins = valid
+		}
 	}
 }
 

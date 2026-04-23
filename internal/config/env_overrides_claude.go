@@ -25,7 +25,7 @@ func (m *Manager) applyClaudeEnvOverrides() {
 	if val := envGetStr("CLAUDE_MODEL"); val != "" {
 		c.Model = val
 	}
-	if val := envGetStr("CLAUDE_MODE"); val != "" {
+	if val := strings.TrimSpace(envGetStr("CLAUDE_MODE")); val != "" {
 		switch strings.ToLower(val) {
 		case "advisory", "interactive", "autonomous":
 			c.Mode = strings.ToLower(val)

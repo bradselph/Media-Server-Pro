@@ -5,6 +5,7 @@ package duplicates
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -201,7 +202,10 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 	if exists {
 		return false
 	}
-	if resolved, _ := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); resolved {
+	if resolved, err := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); err != nil {
+		m.log.Warn("RecordDuplicatesFromSlave: resolved-removal check failed: %v", err)
+		return false
+	} else if resolved {
 		return false
 	}
 	rec := &repositories.ReceiverDuplicateRecord{
@@ -503,6 +507,9 @@ func (m *Module) removeLocalItem(ctx context.Context, itemID string) error {
 // findLocalPathByStableID returns the file path for the given stable ID.
 func (m *Module) findLocalPathByStableID(ctx context.Context, itemID string) (string, error) {
 	path, err := m.metaRepo.GetPathByStableID(ctx, itemID)
+	if errors.Is(err, repositories.ErrPathNotFound) {
+		return "", nil
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to look up stable ID %s: %w", itemID, err)
 	}

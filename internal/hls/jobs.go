@@ -21,10 +21,12 @@ func copyHLSJob(j *models.HLSJob) *models.HLSJob {
 	c := *j
 	c.Qualities = append([]string(nil), j.Qualities...)
 	if j.CompletedAt != nil {
-		c.CompletedAt = new(*j.CompletedAt)
+		t := *j.CompletedAt
+		c.CompletedAt = &t
 	}
 	if j.LastAccessedAt != nil {
-		c.LastAccessedAt = new(*j.LastAccessedAt)
+		t := *j.LastAccessedAt
+		c.LastAccessedAt = &t
 	}
 	return &c
 }
@@ -182,9 +184,7 @@ func (m *Module) updateJobStatus(params *updateJobStatusParams) {
 	if params.ErrorMsg != "" {
 		job.Error = params.ErrorMsg
 	}
-	if params.Progress > 0 {
-		job.Progress = params.Progress
-	}
+	job.Progress = params.Progress
 }
 
 // GetJobStatus returns a copy of the job status to avoid data races with the transcode goroutine.
@@ -253,6 +253,7 @@ func (m *Module) CancelJob(jobID string) error {
 			cancel()
 			delete(m.jobCancels, jobID)
 		}
+		m.saveJob(job)
 	}
 
 	return nil

@@ -550,22 +550,23 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 		m.log.Warn("Failed to update slave count after catalog push: %v", err)
 	}
 
-	m.log.Info("Catalog updated: %d items from slave %s", len(req.Items), req.SlaveID)
+	m.log.Info("Catalog updated: %d items from slave %s", len(records), req.SlaveID)
 
 	// Report to the duplicates module in the background — non-critical.
+	// Use records (accepted items only) to avoid indexing rejected/suspicious paths.
 	if m.dupModule != nil {
-		refs := make([]duplicates.ReceiverItemRef, len(req.Items))
-		for i, item := range req.Items {
+		refs := make([]duplicates.ReceiverItemRef, len(records))
+		for i, rec := range records {
 			refs[i] = duplicates.ReceiverItemRef{
-				OpaqueID:           opaqueMediaID(req.SlaveID, item.ID),
-				Name:               item.Name,
-				ContentFingerprint: item.ContentFingerprint,
+				OpaqueID:           rec.ID,
+				Name:               rec.Name,
+				ContentFingerprint: rec.ContentFingerprint,
 			}
 		}
 		go m.dupModule.RecordDuplicatesFromSlave(req.SlaveID, refs)
 	}
 
-	return len(req.Items), nil
+	return len(records), nil
 }
 
 // Heartbeat updates the slave's last-seen timestamp.

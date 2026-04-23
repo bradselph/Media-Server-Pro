@@ -208,9 +208,9 @@ func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentP
 	segmentPath := filepath.Join(job.OutputDir, p.Quality, p.Segment)
 	cleanOut := filepath.Clean(job.OutputDir)
 	cleanSeg := filepath.Clean(segmentPath)
-	rel, relErr := filepath.Rel(cleanOut, cleanSeg)
-	if relErr != nil || strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("segment path outside job directory")
+	qualityDir := filepath.Join(cleanOut, filepath.Clean(p.Quality))
+	if !strings.HasPrefix(cleanSeg, qualityDir+string(filepath.Separator)) {
+		return fmt.Errorf("segment path outside quality directory")
 	}
 	if _, err := os.Stat(segmentPath); err != nil {
 		return fmt.Errorf("segment not found: %s", p.Segment)

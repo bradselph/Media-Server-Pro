@@ -156,7 +156,7 @@ func (r *MediaMetadataRepository) Get(ctx context.Context, path string) (*reposi
 	var row mediaMetadataRow
 	if err := r.db.WithContext(ctx).Where(sqlPathEq, path).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("media metadata not found: %s", path)
+			return nil, repositories.ErrMetadataNotFound
 		}
 		return nil, fmt.Errorf(errQueryMediaMetadata, err)
 	}
@@ -183,7 +183,7 @@ func (r *MediaMetadataRepository) Delete(ctx context.Context, path string) error
 		return fmt.Errorf("failed to delete media metadata: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("media metadata not found: %s", path)
+		return repositories.ErrMetadataNotFound
 	}
 	return nil
 }
@@ -360,12 +360,20 @@ func (r *MediaMetadataRepository) UpdatePlaybackPosition(ctx context.Context, pa
 
 // DeleteAllPlaybackPositionsByUser removes all playback positions for a user.
 func (r *MediaMetadataRepository) DeleteAllPlaybackPositionsByUser(ctx context.Context, userID string) error {
-	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&playbackPositionRow{}).Error
+	result := r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&playbackPositionRow{})
+	return result.Error
 }
 
 // DeletePlaybackPositionsByPath deletes all playback positions for a given media path.
 func (r *MediaMetadataRepository) DeletePlaybackPositionsByPath(ctx context.Context, path string) error {
-	return r.db.WithContext(ctx).Where("path = ?", path).Delete(&playbackPositionRow{}).Error
+	result := r.db.WithContext(ctx).Where("path = ?", path).Delete(&playbackPositionRow{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrMetadataNotFound
+	}
+	return nil
 }
 
 // BatchGetPlaybackPositions retrieves playback positions for multiple paths for a user.
@@ -420,7 +428,8 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 		metadata.LastPlayed = new(row.LastPlayed.Format(time.RFC3339))
 	}
 	if row.ProbeModTime != nil {
-		metadata.ProbeModTime = new(*row.ProbeModTime)
+		t := *row.ProbeModTime
+		metadata.ProbeModTime = &t
 	}
 	metadata.BlurHash = row.BlurHash
 	metadata.Duration = row.Duration
@@ -454,7 +463,7 @@ func (r *MediaMetadataRepository) GetPathByStableID(ctx context.Context, stableI
 		Where("stable_id = ?", stableID).
 		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", nil
+		return "", repositories.ErrPathNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("failed to get path by stable_id: %w", err)

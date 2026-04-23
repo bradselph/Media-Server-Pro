@@ -571,18 +571,20 @@ func (m *Module) SetBlacklistEnabled(enabled bool) {
 
 // GetWhitelist returns a copy of the whitelist so callers cannot mutate internal state.
 func (m *Module) GetWhitelist() *IPList {
-	entries := m.whitelist.Snapshot()
 	m.whitelist.mu.RLock()
 	name, enabled := m.whitelist.Name, m.whitelist.Enabled
+	entries := make([]IPEntry, len(m.whitelist.Entries))
+	copy(entries, m.whitelist.Entries)
 	m.whitelist.mu.RUnlock()
 	return &IPList{Name: name, Enabled: enabled, Entries: entries}
 }
 
 // GetBlacklist returns a copy of the blacklist so callers cannot mutate internal state.
 func (m *Module) GetBlacklist() *IPList {
-	entries := m.blacklist.Snapshot()
 	m.blacklist.mu.RLock()
 	name, enabled := m.blacklist.Name, m.blacklist.Enabled
+	entries := make([]IPEntry, len(m.blacklist.Entries))
+	copy(entries, m.blacklist.Entries)
 	m.blacklist.mu.RUnlock()
 	return &IPList{Name: name, Enabled: enabled, Entries: entries}
 }
@@ -643,7 +645,10 @@ func (m *Module) loadIPLists() {
 				AddedBy:   rec.AddedBy,
 				ExpiresAt: rec.ExpiresAt,
 			}
-			m.parseIPEntry(&entry)
+			if err := m.parseIPEntry(&entry); err != nil {
+				m.log.Warn("Skipping malformed whitelist entry %q: %v", entry.Value, err)
+				continue
+			}
 			m.whitelist.Entries = append(m.whitelist.Entries, entry)
 		}
 	}
@@ -664,7 +669,10 @@ func (m *Module) loadIPLists() {
 				AddedBy:   rec.AddedBy,
 				ExpiresAt: rec.ExpiresAt,
 			}
-			m.parseIPEntry(&entry)
+			if err := m.parseIPEntry(&entry); err != nil {
+				m.log.Warn("Skipping malformed blacklist entry %q: %v", entry.Value, err)
+				continue
+			}
 			m.blacklist.Entries = append(m.blacklist.Entries, entry)
 		}
 	}
@@ -694,15 +702,21 @@ func (m *Module) loadIPLists() {
 	}
 }
 
-func (m *Module) parseIPEntry(entry *IPEntry) {
+func (m *Module) parseIPEntry(entry *IPEntry) error {
 	if strings.Contains(entry.Value, "/") {
 		_, cidr, err := net.ParseCIDR(entry.Value)
-		if err == nil {
-			entry.CIDR = cidr
+		if err != nil {
+			return fmt.Errorf("invalid CIDR %q: %w", entry.Value, err)
 		}
+		entry.CIDR = cidr
 	} else {
-		entry.IP = net.ParseIP(entry.Value)
+		ip := net.ParseIP(entry.Value)
+		if ip == nil {
+			return fmt.Errorf("invalid IP %q", entry.Value)
+		}
+		entry.IP = ip
 	}
+	return nil
 }
 
 // saveIPLists persists whitelist and blacklist to the database
@@ -873,7 +887,7 @@ func (r *RateLimiter) CheckRequest(ip string) (allowed bool, remaining int, rese
 	client.Requests = append(client.Requests, now)
 	client.BurstRequests = append(client.BurstRequests, now)
 
-	return true, remaining - 1, resetAt
+	return true, max(remaining-1, 0), resetAt
 }
 
 func (r *RateLimiter) recordViolation(client *ClientState, ip string, now time.Time) {

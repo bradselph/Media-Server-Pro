@@ -52,7 +52,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.8.0"
+	Version   = "1.8.13"
 	BuildDate = "dev"
 )
 
@@ -68,6 +68,7 @@ func main() {
 
 	if showVer {
 		showVersion()
+		logger.Shutdown()
 		os.Exit(0)
 	}
 
@@ -258,10 +259,16 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 
 	// Database (critical)
 	m.database = database.NewModule(cfg)
+	if m.database == nil {
+		fatalExit(log, "Failed to create database module")
+	}
 	mustRegister(srv, m.database)
 
 	// Security (critical — requires database for IP list persistence)
 	m.security = security.NewModule(cfg, m.database)
+	if m.security == nil {
+		fatalExit(log, "Failed to create security module")
+	}
 	mustRegister(srv, m.security)
 
 	// Auth (critical — requires database)
@@ -281,11 +288,17 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 
 	// Streaming (critical — uses storage backend for S3 support)
 	m.streaming = streaming.NewModule(cfg)
+	if m.streaming == nil {
+		fatalExit(log, "Failed to create streaming module")
+	}
 	m.streaming.SetStore(stores.videos)
 	mustRegister(srv, m.streaming)
 
 	// Tasks scheduler (critical)
 	m.tasks = tasks.NewModule(cfg)
+	if m.tasks == nil {
+		fatalExit(log, "Failed to create tasks module")
+	}
 	mustRegister(srv, m.tasks)
 
 	// Scanner (critical — requires database)
@@ -302,6 +315,9 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 
 	// Thumbnails (critical — BlurHash repo is wired inside Start() after DB connects)
 	m.thumbnails = thumbnails.NewModule(cfg, m.database)
+	if m.thumbnails == nil {
+		fatalExit(log, "Failed to create thumbnails module")
+	}
 	m.thumbnails.SetMediaIDProvider(m.media)
 	m.thumbnails.SetStore(stores.thumbnails)
 	m.thumbnails.SetMediaInputResolver(m.media)

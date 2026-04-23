@@ -9,10 +9,13 @@ const route = useRoute()
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
+const mounted = ref(true)
+onBeforeUnmount(() => { mounted.value = false })
 
 const adminDest = () => {
   const r = route.query.redirect
-  if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//')) return r
+  if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') &&
+      !r.startsWith('/api/') && !r.startsWith('/extractor/')) return r
   return '/admin'
 }
 
@@ -34,7 +37,7 @@ async function handleLogin() {
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Invalid credentials'
   } finally {
-    loading.value = false
+    if (mounted.value) loading.value = false
   }
 }
 </script>

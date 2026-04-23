@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -37,10 +38,16 @@ type HLSJobRepository struct {
 }
 
 func NewHLSJobRepository(db *gorm.DB) repositories.HLSJobRepository {
+	if db == nil {
+		panic("NewHLSJobRepository: db is nil")
+	}
 	return &HLSJobRepository{db: db}
 }
 
 func (r *HLSJobRepository) Save(ctx context.Context, job *models.HLSJob) error {
+	if job == nil {
+		return fmt.Errorf("job must not be nil")
+	}
 	row, err := r.jobToRow(job)
 	if err != nil {
 		return fmt.Errorf("failed to serialize HLS job: %w", err)
@@ -93,7 +100,8 @@ func (r *HLSJobRepository) List(ctx context.Context) ([]*models.HLSJob, error) {
 	for i := range rows {
 		job, err := r.rowToJob(&rows[i])
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert HLS job row %s: %w", rows[i].ID, err)
+			log.Printf("[hls_job_repository] skipping corrupt HLS job row %s: %v", rows[i].ID, err)
+			continue
 		}
 		jobs = append(jobs, job)
 	}

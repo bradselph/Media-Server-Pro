@@ -47,7 +47,7 @@ export function useAdminFeedback() {
         toast.add({
             title: `${verb}: ${res.success} succeeded, ${res.failed} failed`,
             color: res.failed > 0 ? 'warning' : 'success',
-            icon: 'i-lucide-check',
+            icon: res.failed > 0 ? 'i-lucide-alert-triangle' : 'i-lucide-check',
         })
     }
 
@@ -55,8 +55,7 @@ export function useAdminFeedback() {
 }
 
 /**
- * Map a ModuleHealth status to a badge color. Extracted from duplicate
- * definitions in DashboardTab and SystemStatusPanel.
+ * Map a ModuleHealth status to a badge color. Shared by DashboardTab and SystemStatusPanel.
  */
 export function moduleStatusColor(status: ModuleHealth['status']): 'success' | 'warning' | 'error' {
     if (status === 'healthy') return 'success'

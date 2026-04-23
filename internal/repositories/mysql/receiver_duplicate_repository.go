@@ -65,7 +65,11 @@ func (r *ReceiverDuplicateRepository) Get(ctx context.Context, id string) (*repo
 		}
 		return nil, fmt.Errorf("failed to get duplicate record: %w", err)
 	}
-	return r.rowToRecord(&row), nil
+	rec, err := r.rowToRecord(&row)
+	if err != nil {
+		return nil, err
+	}
+	return rec, nil
 }
 
 func (r *ReceiverDuplicateRepository) List(ctx context.Context) ([]*repositories.ReceiverDuplicateRecord, error) {
@@ -73,7 +77,7 @@ func (r *ReceiverDuplicateRepository) List(ctx context.Context) ([]*repositories
 	if err := r.db.WithContext(ctx).Order("detected_at DESC").Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list duplicates: %w", err)
 	}
-	return r.rowsToRecords(rows), nil
+	return r.rowsToRecords(rows)
 }
 
 func (r *ReceiverDuplicateRepository) ListPending(ctx context.Context) ([]*repositories.ReceiverDuplicateRecord, error) {
@@ -81,7 +85,7 @@ func (r *ReceiverDuplicateRepository) ListPending(ctx context.Context) ([]*repos
 	if err := r.db.WithContext(ctx).Where("status = ?", "pending").Order("detected_at DESC").Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list pending duplicates: %w", err)
 	}
-	return r.rowsToRecords(rows), nil
+	return r.rowsToRecords(rows)
 }
 
 // ExistsByPair checks whether a duplicate record already exists for the given pair (either ordering).
@@ -117,14 +121,19 @@ func (r *ReceiverDuplicateRepository) UpdateStatus(ctx context.Context, id, stat
 		"resolved_by": resolvedBy,
 		"resolved_at": time.Now().Format(sqlTimeFormat),
 	}
-	if err := r.db.WithContext(ctx).Model(&receiverDuplicateRow{}).Where("id = ?", id).Updates(updates).Error; err != nil {
-		return fmt.Errorf("failed to update duplicate status: %w", err)
+	result := r.db.WithContext(ctx).Model(&receiverDuplicateRow{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update duplicate status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrReceiverDuplicateNotFound
 	}
 	return nil
 }
 
 // UpdateStatusForItem marks all pending duplicate records that reference the given item ID
 // (on either side) with the given status.  Used to cascade resolution when an item is removed.
+// Zero rows affected is not an error — the item may have had no pending duplicates.
 func (r *ReceiverDuplicateRepository) UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error {
 	updates := map[string]interface{}{
 		"status":      status,
@@ -149,6 +158,7 @@ func (r *ReceiverDuplicateRepository) CountPending(ctx context.Context) (int64, 
 
 // DeleteBySlave removes all duplicate records where either side belongs to slaveID.
 // Used when a slave is permanently unregistered so its resolved history is also purged.
+// Zero rows affected is not an error — the slave may have had no duplicate records.
 func (r *ReceiverDuplicateRepository) DeleteBySlave(ctx context.Context, slaveID string) error {
 	if err := r.db.WithContext(ctx).
 		Where("item_a_slave_id = ? OR item_b_slave_id = ?", slaveID, slaveID).
@@ -161,6 +171,7 @@ func (r *ReceiverDuplicateRepository) DeleteBySlave(ctx context.Context, slaveID
 // DeletePendingBySlave removes only pending duplicate records for slaveID.
 // Used on full catalog replacement so the fresh catalog is re-evaluated while
 // preserving resolved (keep_both / ignore) admin decisions.
+// Zero rows affected is not an error — the slave may have had no pending duplicates.
 func (r *ReceiverDuplicateRepository) DeletePendingBySlave(ctx context.Context, slaveID string) error {
 	if err := r.db.WithContext(ctx).
 		Where("(item_a_slave_id = ? OR item_b_slave_id = ?) AND status = 'pending'", slaveID, slaveID).
@@ -171,6 +182,7 @@ func (r *ReceiverDuplicateRepository) DeletePendingBySlave(ctx context.Context, 
 }
 
 // DeleteForItem removes all duplicate records that reference the given item ID (either side).
+// Zero rows affected is not an error — the item may have had no associated duplicates.
 func (r *ReceiverDuplicateRepository) DeleteForItem(ctx context.Context, itemID string) error {
 	if err := r.db.WithContext(ctx).
 		Where("item_a_id = ? OR item_b_id = ?", itemID, itemID).
@@ -180,8 +192,12 @@ func (r *ReceiverDuplicateRepository) DeleteForItem(ctx context.Context, itemID 
 	return nil
 }
 
-func (r *ReceiverDuplicateRepository) rowToRecord(row *receiverDuplicateRow) *repositories.ReceiverDuplicateRecord {
-	rec := &repositories.ReceiverDuplicateRecord{
+func (r *ReceiverDuplicateRepository) rowToRecord(row *receiverDuplicateRow) (*repositories.ReceiverDuplicateRecord, error) {
+	detectedAt, err := parseTime(row.DetectedAt)
+	if err != nil {
+		return nil, fmt.Errorf("malformed detected_at for duplicate %s: %w", row.ID, err)
+	}
+	return &repositories.ReceiverDuplicateRecord{
 		ID:           row.ID,
 		Fingerprint:  row.Fingerprint,
 		ItemAID:      row.ItemAID,
@@ -192,16 +208,19 @@ func (r *ReceiverDuplicateRepository) rowToRecord(row *receiverDuplicateRow) *re
 		ItemBName:    row.ItemBName,
 		Status:       row.Status,
 		ResolvedBy:   row.ResolvedBy,
-		DetectedAt:   parseTimeDefault(row.DetectedAt),
+		DetectedAt:   detectedAt,
 		ResolvedAt:   parseOptionalTime(row.ResolvedAt),
-	}
-	return rec
+	}, nil
 }
 
-func (r *ReceiverDuplicateRepository) rowsToRecords(rows []receiverDuplicateRow) []*repositories.ReceiverDuplicateRecord {
-	records := make([]*repositories.ReceiverDuplicateRecord, len(rows))
+func (r *ReceiverDuplicateRepository) rowsToRecords(rows []receiverDuplicateRow) ([]*repositories.ReceiverDuplicateRecord, error) {
+	records := make([]*repositories.ReceiverDuplicateRecord, 0, len(rows))
 	for i := range rows {
-		records[i] = r.rowToRecord(&rows[i])
+		rec, err := r.rowToRecord(&rows[i])
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, rec)
 	}
-	return records
+	return records, nil
 }

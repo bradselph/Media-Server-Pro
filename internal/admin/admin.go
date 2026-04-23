@@ -48,10 +48,11 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 	}
 
 	return &Module{
-		config:   cfg,
-		log:      logger.New("admin"),
-		dbModule: dbModule,
-		dataDir:  cfg.Get().Directories.Data,
+		config:    cfg,
+		log:       logger.New("admin"),
+		dbModule:  dbModule,
+		dataDir:   cfg.Get().Directories.Data,
+		startTime: time.Now(),
 	}, nil
 }
 

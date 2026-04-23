@@ -136,7 +136,7 @@ func (c *Client) ClassifyImage(ctx context.Context, imageData ImageData) (*Class
 	}
 
 	if err := c.rateLimiter.Wait(ctx); err != nil {
-		return empty, nil
+		return empty, err
 	}
 	url := c.endpointURL + "/models/" + c.model
 	return c.runWithRetry(ctx, url, imageData)

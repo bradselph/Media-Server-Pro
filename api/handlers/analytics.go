@@ -295,6 +295,9 @@ func (h *Handler) GetEventsByUser(c *gin.Context) {
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 1000 {
 		limit = l
 	}
+	if session := getSession(c); session != nil {
+		h.log.Info("admin %s queried analytics events for user %s", session.Username, userID)
+	}
 	events := h.analytics.GetEventsByUser(c.Request.Context(), userID, limit)
 	writeSuccess(c, events)
 }
@@ -339,6 +342,10 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "start_date must be before end_date")
 		return
 	}
+	if endDate.Sub(startDate) > 365*24*time.Hour {
+		writeError(c, http.StatusBadRequest, "date range cannot exceed 365 days")
+		return
+	}
 
 	filename, err := h.analytics.ExportCSV(c.Request.Context(), startDate, endDate)
 	if err != nil {
@@ -360,15 +367,11 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))
 	c.Header(headerContentType, "text/csv")
 	if statErr != nil || fi == nil {
-		// Fallback: write raw bytes if stat unavailable (no range support but content is served)
-		data, readErr := io.ReadAll(f)
-		if readErr != nil {
-			h.log.Error("Failed to read CSV file: %v", readErr)
-			writeError(c, http.StatusInternalServerError, errInternalServer)
-			return
-		}
+		// Fallback: stream with size cap when stat unavailable (no range support but content is served)
 		c.Writer.WriteHeader(http.StatusOK)
-		_, _ = c.Writer.Write(data)
+		if _, err := io.Copy(c.Writer, io.LimitReader(f, 64*1024*1024)); err != nil {
+			h.log.Error("Failed to stream CSV file: %v", err)
+		}
 		return
 	}
 	http.ServeContent(c.Writer, c.Request, fi.Name(), fi.ModTime(), f)

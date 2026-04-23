@@ -12,14 +12,6 @@ import (
 	"media-server-pro/pkg/helpers"
 )
 
-// mediaExtensions matches the download-move.sh script's supported media types.
-var mediaExtensions = map[string]bool{
-	".mp4": true, ".mkv": true, ".webm": true, ".mov": true, ".avi": true,
-	".flv": true, ".wmv": true, ".m4v": true, ".mpg": true, ".mpeg": true,
-	".mp3": true, ".m4a": true, ".opus": true, ".ogg": true, ".flac": true,
-	".wav": true, ".aac": true,
-}
-
 // ImportableFile represents a completed download ready for import.
 type ImportableFile struct {
 	Name     string `json:"name"`
@@ -66,7 +58,7 @@ func ListImportableFiles(downloadsDir string) ([]ImportableFile, error) {
 
 		// 4. Skip non-media extensions
 		ext := strings.ToLower(filepath.Ext(name))
-		if !mediaExtensions[ext] {
+		if !helpers.IsMediaExtension(ext) {
 			continue
 		}
 

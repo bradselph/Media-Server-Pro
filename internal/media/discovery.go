@@ -127,6 +127,23 @@ func (m *Module) SetThumbnailQueuer(q ThumbnailQueuer) {
 	m.thumbnailQueuer = q
 }
 
+// deepCopyItem returns a deep copy of a MediaItem so callers cannot mutate the cached Tags slice
+// or Metadata map without holding the mutex.
+func deepCopyItem(item *models.MediaItem) *models.MediaItem {
+	cp := *item
+	if item.Tags != nil {
+		cp.Tags = make([]string, len(item.Tags))
+		copy(cp.Tags, item.Tags)
+	}
+	if item.Metadata != nil {
+		cp.Metadata = make(map[string]string, len(item.Metadata))
+		for k, v := range item.Metadata {
+			cp.Metadata[k] = v
+		}
+	}
+	return &cp
+}
+
 // SetStores sets the storage backends for media file operations.
 func (m *Module) SetStores(video, music, upload storage.Backend) {
 	m.videoStore = video
@@ -757,7 +774,8 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			item.Category = meta.Category
 		}
 		if meta.LastPlayed != nil {
-			item.LastPlayed = new(*meta.LastPlayed)
+			t := *meta.LastPlayed
+			item.LastPlayed = &t
 		}
 		item.DateAdded = meta.DateAdded
 		m.mu.Unlock()
@@ -896,7 +914,8 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.RLock()
 		item.Views = meta.Views
 		if meta.LastPlayed != nil {
-			item.LastPlayed = new(*meta.LastPlayed)
+			t := *meta.LastPlayed
+			item.LastPlayed = &t
 		}
 		item.DateAdded = meta.DateAdded
 		item.IsMature = meta.IsMature
@@ -1159,7 +1178,7 @@ func (m *Module) GetMedia(path string) (*models.MediaItem, error) {
 	if !exists {
 		return nil, fmt.Errorf("media not found: %s", path)
 	}
-	return new(*item), nil
+	return deepCopyItem(item), nil
 }
 
 // GetMediaByID returns a copy of a media item by ID using the secondary index for O(1) lookups.
@@ -1169,7 +1188,7 @@ func (m *Module) GetMediaByID(id string) (*models.MediaItem, error) {
 	defer m.mu.RUnlock()
 
 	if item, exists := m.mediaByID[id]; exists {
-		return new(*item), nil
+		return deepCopyItem(item), nil
 	}
 	return nil, fmt.Errorf("media not found with ID: %s", id)
 }
@@ -1212,7 +1231,7 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 		if filter.Matches(item) {
 			// Copy each item so callers do not race with IncrementViews /
 			// SetMatureFlag, which mutate the stored pointer's fields under Lock.
-			items = append(items, new(*item))
+			items = append(items, deepCopyItem(item))
 		}
 	}
 
@@ -1263,7 +1282,7 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 		}
 		if filter.Matches(item) {
 			// Copy — same reasoning as ListMedia: prevent race with concurrent mutators.
-			items = append(items, new(*item))
+			items = append(items, deepCopyItem(item))
 		}
 	}
 
@@ -1487,7 +1506,8 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 		m.metadata[path] = meta
 	}
 	meta.Views++
-	meta.LastPlayed = new(time.Now())
+	now := time.Now()
+	meta.LastPlayed = &now
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views
 		item.LastPlayed = meta.LastPlayed

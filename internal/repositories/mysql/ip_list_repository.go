@@ -38,6 +38,9 @@ type IPListRepository struct {
 }
 
 func NewIPListRepository(db *gorm.DB) repositories.IPListRepository {
+	if db == nil {
+		panic("NewIPListRepository: db is nil")
+	}
 	return &IPListRepository{db: db}
 }
 
@@ -123,6 +126,9 @@ func (r *IPListRepository) GetEntries(ctx context.Context, listType string) ([]*
 }
 
 func (r *IPListRepository) AddEntry(ctx context.Context, listType string, entry *repositories.IPEntryRecord) error {
+	if entry == nil {
+		return fmt.Errorf("entry must not be nil")
+	}
 	row := ipListEntryRow{
 		ListType:  listType,
 		IPValue:   entry.Value,
@@ -145,8 +151,12 @@ func (r *IPListRepository) AddEntry(ctx context.Context, listType string, entry 
 }
 
 func (r *IPListRepository) RemoveEntry(ctx context.Context, listType, ipValue string) error {
-	if err := r.db.WithContext(ctx).Where("list_type = ? AND ip_value = ?", listType, ipValue).Delete(&ipListEntryRow{}).Error; err != nil {
-		return fmt.Errorf("failed to remove IP list entry: %w", err)
+	result := r.db.WithContext(ctx).Where("list_type = ? AND ip_value = ?", listType, ipValue).Delete(&ipListEntryRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to remove IP list entry: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("ip entry not found: %s/%s", listType, ipValue)
 	}
 	return nil
 }

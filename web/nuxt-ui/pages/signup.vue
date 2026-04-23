@@ -23,7 +23,7 @@ onMounted(async () => {
   } catch {}
   try {
     const res = await getRegistrationToken()
-    regToken.value = res.token
+    regToken.value = res.token ?? ''
   } catch {
     error.value = 'Unable to load registration form. Please refresh and try again.'
   }
@@ -60,7 +60,7 @@ async function handleSignup() {
     // Fetch a fresh one so the user can retry without reloading.
     try {
       const res = await getRegistrationToken()
-      regToken.value = res.token
+      regToken.value = res.token ?? ''
     } catch {}
   } finally {
     loading.value = false
