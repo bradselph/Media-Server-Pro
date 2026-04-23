@@ -62,7 +62,7 @@ async function executeBulk(action: 'delete' | 'update', data?: { category?: stri
     const msg = action === 'delete' ? `Deleted ${res?.success ?? ids.length} items` : `Updated ${res?.success ?? ids.length} items`
     toast.add({ title: msg, color: 'success', icon: 'i-lucide-check' })
     selectedIds.value = new Set()
-    load()
+    await load()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Bulk action failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
@@ -91,7 +91,7 @@ function openEdit(item: MediaItem) {
   editForm.category = item.category ?? ''
   editForm.is_mature = item.is_mature ?? false
   editForm.tags = (item.tags ?? []).join(', ')
-  editForm.description = (item.metadata?.description ?? '') as string
+  editForm.description = String(item.metadata?.description ?? '')
   // Reset thumbnail upload state when opening a new item
   thumbFile.value = null
   thumbPreviewUrl.value = null
@@ -134,7 +134,7 @@ async function saveEdit() {
     })
     toast.add({ title: 'Media updated', color: 'success', icon: 'i-lucide-check' })
     editTarget.value = null
-    load()
+    await load()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Update failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
@@ -176,7 +176,12 @@ async function addChapter() {
   }
   chaptersSaving.value = true
   try {
-    const endTime = newChapter.end_time ? parseFloat(newChapter.end_time) : undefined
+    const endTimeParsed = newChapter.end_time ? parseFloat(newChapter.end_time) : undefined
+    if (endTimeParsed !== undefined && isNaN(endTimeParsed)) {
+      toast.add({ title: 'End time must be a valid number', color: 'error', icon: 'i-lucide-x' })
+      return
+    }
+    const endTime = endTimeParsed
     await chaptersApi.create({
       media_id: chaptersTarget.value.id,
       start_time: newChapter.start_time,
@@ -225,6 +230,7 @@ function onSearchInput() {
 
 async function load() {
   const seq = ++loadSeq
+  selectedIds.value = new Set()
   loading.value = true
   try {
     const apiParams = {
