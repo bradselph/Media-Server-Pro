@@ -9,6 +9,9 @@ const mediaApi = useMediaApi()
 const authStore = useAuthStore()
 const toast = useToast()
 
+let mounted = true
+onUnmounted(() => { mounted = false })
+
 // List
 const playlists = ref<Playlist[]>([])
 const loading = ref(true)
@@ -19,10 +22,14 @@ let hasFetched = false
 async function load() {
   hasFetched = true
   loading.value = true
-  try { playlists.value = (await playlistApi.list()) ?? [] }
-  catch (e: unknown) {
+  try {
+    const result = await playlistApi.list()
+    if (!mounted) return
+    playlists.value = result ?? []
+  } catch (e: unknown) {
+    if (!mounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { loading.value = false }
+  } finally { if (mounted) loading.value = false }
 }
 
 // Create
@@ -113,19 +120,22 @@ async function saveEdit() {
   }
 }
 
-// Copy playlist
-const copyingId = ref<string | null>(null)
+// Copy playlist — separate loading refs to avoid racing between personal and public copies
+const copyingPersonalId = ref<string | null>(null)
+const copyingPublicId = ref<string | null>(null)
 
 async function copyPlaylist(pl: Playlist) {
-  copyingId.value = pl.id
+  copyingPersonalId.value = pl.id
   try {
     const copy = await playlistApi.copy(pl.id, `${pl.name} (copy)`)
+    if (!mounted) return
     playlists.value.unshift(copy)
     toast.add({ title: 'Playlist duplicated', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
+    if (!mounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    copyingId.value = null
+    if (mounted) copyingPersonalId.value = null
   }
 }
 
@@ -225,15 +235,17 @@ async function loadPublicPlaylists(force = false) {
 }
 
 async function copyPublicPlaylist(pl: Playlist) {
-  copyingId.value = pl.id
+  copyingPublicId.value = pl.id
   try {
     const copy = await playlistApi.copy(pl.id, `${pl.name} (copy)`)
+    if (!mounted) return
     playlists.value.unshift(copy)
     toast.add({ title: 'Playlist saved to your library', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
+    if (!mounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to copy playlist', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    copyingId.value = null
+    if (mounted) copyingPublicId.value = null
   }
 }
 
@@ -411,16 +423,21 @@ const spPreviewOpen = computed({
 })
 const spPreviewItems = ref<MediaItem[]>([])
 const spPreviewLoading = ref(false)
+let spPreviewGen = 0
 
 async function loadSmartPreview(sp: SmartPlaylist) {
+  const thisGen = ++spPreviewGen
   spPreviewTarget.value = sp
   spPreviewItems.value = []
   spPreviewLoading.value = true
   try {
-    spPreviewItems.value = (await smartPlaylistsApi.preview(sp.id)) ?? []
+    const items = await smartPlaylistsApi.preview(sp.id)
+    if (!mounted || thisGen !== spPreviewGen) return
+    spPreviewItems.value = items ?? []
   } catch (e: unknown) {
+    if (!mounted || thisGen !== spPreviewGen) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load preview', color: 'error', icon: 'i-lucide-x' })
-  } finally { spPreviewLoading.value = false }
+  } finally { if (mounted && thisGen === spPreviewGen) spPreviewLoading.value = false }
 }
 
 // Load smart playlists when authenticated
@@ -506,7 +523,7 @@ onMounted(() => {
               <div class="flex items-center gap-2 flex-wrap">
                 <UBadge :label="activePlaylist.is_public ? 'Public' : 'Private'" :color="activePlaylist.is_public ? 'success' : 'neutral'" variant="subtle" size="xs" />
                 <UButton icon="i-lucide-pencil" label="Edit" size="xs" variant="outline" color="neutral" @click="openEdit(activePlaylist)" />
-                <UButton icon="i-lucide-copy" label="Duplicate" size="xs" variant="outline" color="neutral" :loading="copyingId === activePlaylist.id" @click="copyPlaylist(activePlaylist)" />
+                <UButton icon="i-lucide-copy" label="Duplicate" size="xs" variant="outline" color="neutral" :loading="copyingPersonalId === activePlaylist.id" @click="copyPlaylist(activePlaylist)" />
                 <UButton icon="i-lucide-trash-2" label="Clear Items" size="xs" variant="outline" color="warning" :loading="clearingId === activePlaylist.id" @click="clearPlaylist(activePlaylist)" />
                 <UDropdownMenu :items="[[
                   { label: 'Export M3U8', icon: 'i-lucide-file-music', to: playlistApi.exportPlaylist(activePlaylist.id, 'm3u8'), target: '_blank' },
@@ -619,7 +636,7 @@ onMounted(() => {
               </div>
               <div v-if="!selectMode" class="flex items-center gap-1">
                 <UButton icon="i-lucide-pencil" aria-label="Edit playlist" size="xs" variant="ghost" color="neutral" @click.stop="openEdit(pl)" />
-                <UButton icon="i-lucide-copy" aria-label="Duplicate playlist" size="xs" variant="ghost" color="neutral" :loading="copyingId === pl.id" @click.stop="copyPlaylist(pl)" />
+                <UButton icon="i-lucide-copy" aria-label="Duplicate playlist" size="xs" variant="ghost" color="neutral" :loading="copyingPersonalId === pl.id" @click.stop="copyPlaylist(pl)" />
                 <UButton icon="i-lucide-trash-2" aria-label="Delete playlist" size="xs" variant="ghost" color="error" @click.stop="deleteTarget = pl" />
               </div>
             </div>
@@ -1048,7 +1065,7 @@ onMounted(() => {
                     variant="ghost"
                     color="neutral"
                     aria-label="Copy to my playlists"
-                    :loading="copyingId === pl.id"
+                    :loading="copyingPublicId === pl.id"
                     @click="copyPublicPlaylist(pl)"
                   />
                 </div>
