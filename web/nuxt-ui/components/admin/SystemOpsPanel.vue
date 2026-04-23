@@ -7,6 +7,7 @@ const toast = useToast()
 // ── Tasks ──────────────────────────────────────────────────────────────────────
 const tasks = ref<ScheduledTask[]>([])
 const tasksLoading = ref(false)
+let taskRefreshTimeout: ReturnType<typeof setTimeout> | null = null
 
 async function loadTasks() {
   tasksLoading.value = true
@@ -39,7 +40,7 @@ async function stopTask(id: string) {
   try {
     await adminApi.stopTask(id)
     toast.add({ title: 'Task stop requested', color: 'info', icon: 'i-lucide-info' })
-    setTimeout(loadTasks, 1000)
+    taskRefreshTimeout = setTimeout(loadTasks, 1000)
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   }
@@ -79,6 +80,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (logRefreshInterval) clearInterval(logRefreshInterval)
+  if (taskRefreshTimeout) clearTimeout(taskRefreshTimeout)
 })
 </script>
 
