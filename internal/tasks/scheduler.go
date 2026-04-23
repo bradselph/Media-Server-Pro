@@ -571,7 +571,8 @@ func (m *Module) UpdateSchedule(taskID string, schedule time.Duration) error {
 	select {
 	case task.reschedule <- schedule:
 	default:
-		// Channel full; goroutine will pick up the new schedule on next receive
+		// Channel full or goroutine has exited; schedule is persisted in task.Schedule
+		// so any future goroutine restart will use the updated value.
 	}
 
 	m.log.Info("Updated schedule for task %s: %v", task.Name, schedule)
