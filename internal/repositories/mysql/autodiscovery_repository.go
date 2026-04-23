@@ -120,7 +120,9 @@ func (r *AutoDiscoverySuggestionRepository) rowToRecord(row *autodiscoveryRow) (
 	if row.SuggestedPath != nil {
 		rec.SuggestedPath = *row.SuggestedPath
 	}
-	if err := json.Unmarshal([]byte(row.Metadata), &rec.Metadata); err != nil {
+	if row.Metadata == "" {
+		rec.Metadata = make(map[string]string)
+	} else if err := json.Unmarshal([]byte(row.Metadata), &rec.Metadata); err != nil {
 		return nil, err
 	}
 	if rec.Metadata == nil {

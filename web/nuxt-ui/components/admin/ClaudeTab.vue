@@ -16,42 +16,50 @@ const authStatus = ref<ClaudeAuthStatus | null>(null)
 const loading = ref(true)
 const enabling = ref(false)
 
+let mounted = true
+onUnmounted(() => { mounted = false })
+
 async function loadConfig() {
   try {
     const [cfg, auth] = await Promise.all([
       adminApi.getClaudeConfig(),
       adminApi.getClaudeAuthStatus().catch(() => null),
     ])
+    if (!mounted) return
     config.value = cfg
     authStatus.value = auth
   } catch {
     // non-fatal — tab still renders
   } finally {
-    loading.value = false
+    if (mounted) loading.value = false
   }
 }
 
 async function enable() {
   enabling.value = true
   try {
-    config.value = await adminApi.updateClaudeConfig({ enabled: true })
+    const result = await adminApi.updateClaudeConfig({ enabled: true })
+    if (!mounted) return
+    config.value = result
     toast.add({ title: 'Claude enabled', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to enable', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    enabling.value = false
+    if (mounted) enabling.value = false
   }
 }
 
 async function disable() {
   enabling.value = true
   try {
-    config.value = await adminApi.updateClaudeConfig({ enabled: false })
+    const result = await adminApi.updateClaudeConfig({ enabled: false })
+    if (!mounted) return
+    config.value = result
     toast.add({ title: 'Claude disabled', color: 'neutral', icon: 'i-lucide-power-off' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to disable', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    enabling.value = false
+    if (mounted) enabling.value = false
   }
 }
 
