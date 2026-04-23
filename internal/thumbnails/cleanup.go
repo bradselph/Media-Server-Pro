@@ -79,6 +79,8 @@ func (m *Module) Cleanup() (*CleanupResult, error) {
 			if err := os.Remove(fullPath); err == nil {
 				result.CorruptRemoved++
 				m.log.Debug("Removed corrupt 0-byte thumbnail: %s", name)
+			} else {
+				m.log.Warn("Failed to remove corrupt thumbnail %s: %v", name, err)
 			}
 			continue
 		}
@@ -89,6 +91,8 @@ func (m *Module) Cleanup() (*CleanupResult, error) {
 				result.OrphansRemoved++
 				result.BytesFreed += info.Size()
 				m.log.Debug("Removed orphan thumbnail: %s", name)
+			} else {
+				m.log.Warn("Failed to remove orphan thumbnail %s: %v", name, err)
 			}
 			continue
 		}
@@ -101,6 +105,8 @@ func (m *Module) Cleanup() (*CleanupResult, error) {
 					result.ExcessRemoved++
 					result.BytesFreed += info.Size()
 					m.log.Debug("Removed excess preview thumbnail: %s (index %d >= configured %d)", name, idx, previewCount)
+				} else {
+					m.log.Warn("Failed to remove excess preview thumbnail %s: %v", name, err)
 				}
 			}
 		}
