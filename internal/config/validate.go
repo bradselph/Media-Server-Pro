@@ -35,6 +35,7 @@ func (m *Manager) validateLocked() []error {
 	errors = append(errors, m.validateExtractor()...)
 	errors = append(errors, m.validateCrawler()...)
 	errors = append(errors, m.validateStorage()...)
+	errors = append(errors, m.validateClaude()...)
 	m.warnCORS()
 	return errors
 }
@@ -283,6 +284,32 @@ func (m *Manager) validateCrawler() []error {
 	}
 	if m.config.Crawler.CrawlTimeout < 0 {
 		errs = append(errs, fmt.Errorf("crawler crawl_timeout cannot be negative"))
+	}
+	return errs
+}
+
+func (m *Manager) validateClaude() []error {
+	if !m.config.Claude.Enabled {
+		return nil
+	}
+	var errs []error
+	switch m.config.Claude.Mode {
+	case "advisory", "interactive", "autonomous":
+		// valid
+	default:
+		errs = append(errs, fmt.Errorf("claude.mode must be one of advisory/interactive/autonomous, got: %q", m.config.Claude.Mode))
+	}
+	if m.config.Claude.MaxTokens < 1 {
+		errs = append(errs, fmt.Errorf("claude.max_tokens must be positive"))
+	}
+	if m.config.Claude.RequestTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("claude.request_timeout must be positive"))
+	}
+	if m.config.Claude.MaxToolCallsPerTurn < 1 {
+		errs = append(errs, fmt.Errorf("claude.max_tool_calls_per_turn must be positive"))
+	}
+	if m.config.Claude.HistoryRetentionDays < 0 {
+		errs = append(errs, fmt.Errorf("claude.history_retention_days cannot be negative"))
 	}
 	return errs
 }
