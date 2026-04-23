@@ -10,6 +10,9 @@ import (
 // setChromeProcessAttrs puts Chrome in its own process group so we can kill
 // the entire tree (Chrome + renderer, GPU, etc.) on cleanup.
 func setChromeProcessAttrs(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
