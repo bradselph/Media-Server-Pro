@@ -9,6 +9,9 @@ const loading = ref(false)
 const offset = ref(0)
 const PAGE = 100
 
+let mounted = true
+onUnmounted(() => { mounted = false })
+
 const filtered = computed(() =>
   entries.value.filter(e => e.action.startsWith('claude.'))
 )
@@ -18,15 +21,17 @@ async function load(reset = false) {
   loading.value = true
   try {
     const data = await adminApi.getAuditLog({ offset: offset.value, limit: PAGE })
+    if (!mounted) return
     if (reset) {
       entries.value = data ?? []
     } else {
       entries.value = [...entries.value, ...(data ?? [])]
     }
   } catch (e: unknown) {
+    if (!mounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load audit log', color: 'error', icon: 'i-lucide-x' })
   } finally {
-    loading.value = false
+    if (mounted) loading.value = false
   }
 }
 
