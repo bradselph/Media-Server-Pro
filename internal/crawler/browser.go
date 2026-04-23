@@ -20,6 +20,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -101,6 +102,13 @@ func (bd *browserDetector) available() bool {
 func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserProbeResult, error) {
 	if bd.chromeBin == "" {
 		return nil, fmt.Errorf("no Chrome/Chromium binary found")
+	}
+
+	// Reject non-HTTP(S) schemes before launching Chrome. file:// and data: URLs
+	// bypass the host-resolver-rules SSRF mitigations entirely since those rules
+	// only apply to network requests.
+	if u, err := url.Parse(pageURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return nil, fmt.Errorf("probe: only http and https URLs are permitted, got %q", pageURL)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, bd.timeout)
