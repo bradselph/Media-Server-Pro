@@ -21,6 +21,9 @@ func (m *Module) getThumbnailPathWebp(jpgPath string) string {
 // getThumbnailPathByIndex generates the output path for a specific thumbnail index.
 // mediaID is the stable UUID; the on-disk filename is {uuid}.jpg or {uuid}_preview_N.jpg.
 func (m *Module) getThumbnailPathByIndex(mediaID MediaID, index int) string {
+	if mediaID == "" {
+		return ""
+	}
 	s := string(mediaID)
 	if index == 0 {
 		return filepath.Join(m.thumbnailDir, s+".jpg")
@@ -66,6 +69,9 @@ func (m *Module) GetThumbnailFilePathWebp(mediaID MediaID) string {
 // Responsive sizes are stored as WebP only (-sm.webp, -md.webp, -lg.webp).
 // Returns empty if width not in (160, 320, 640) or file does not exist.
 func (m *Module) GetThumbnailFilePathForSize(mediaID MediaID, width int) string {
+	if mediaID == "" {
+		return ""
+	}
 	var suffix string
 	for _, v := range responsiveVariants {
 		if v.Width == width {

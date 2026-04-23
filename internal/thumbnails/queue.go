@@ -53,6 +53,10 @@ func previewTimeRange(duration float64) (startOffset, endOffset, usableDuration 
 
 // queueMainPreviewThumbnail queues the main (index 0) preview thumbnail if it does not exist or is corrupt.
 func (m *Module) queueMainPreviewThumbnail(opts *queueMainPreviewThumbnailOpts) {
+	if opts.MediaPath == "" {
+		m.log.Warn("queueMainPreviewThumbnail: empty MediaPath, skipping")
+		return
+	}
 	if isValidThumbnailFile(opts.MainPath) {
 		return
 	}
