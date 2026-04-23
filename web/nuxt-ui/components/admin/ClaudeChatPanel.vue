@@ -13,8 +13,8 @@ async function loadConversations() {
   convsLoading.value = true
   try {
     conversations.value = await adminApi.listClaudeConversations(50)
-  } catch {
-    // Non-fatal; sidebar just stays empty
+  } catch (e: unknown) {
+    console.warn('[claude] loadConversations failed:', e)
   } finally {
     convsLoading.value = false
   }
@@ -22,6 +22,9 @@ async function loadConversations() {
 
 async function openConversation(id: string) {
   if (streaming.value) return
+  const prevId = activeConvId.value
+  const prevMessages = chatMessages.value
+  const prevPending = pendingToolIds.value
   activeConvId.value = id
   chatMessages.value = []
   pendingToolIds.value = []
@@ -30,6 +33,9 @@ async function openConversation(id: string) {
     // Reconstruct display messages from stored history
     chatMessages.value = data.messages.map(m => storedMessageToDisplay(m))
   } catch (e: unknown) {
+    activeConvId.value = prevId
+    chatMessages.value = prevMessages
+    pendingToolIds.value = prevPending
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load conversation', color: 'error', icon: 'i-lucide-x' })
   }
 }
@@ -68,7 +74,7 @@ interface DisplayMessage {
 }
 
 const chatMessages = ref<DisplayMessage[]>([])
-let msgSeq = 0
+let msgSeq = 0 // scoped to this component instance
 function newMsg(role: DisplayRole, text = '', toolCall?: ClaudeToolCall): DisplayMessage {
   return { id: String(++msgSeq), role, text, toolCall, timestamp: new Date() }
 }
@@ -243,11 +249,11 @@ async function sendMessage(approved?: string[]) {
 }
 
 async function approveAll() {
-  const ids = [...pendingToolIds.value]
-  await sendMessage(ids)
-  // Clear state only after sendMessage resolves (success or failure handled inside sendMessage)
-  pendingToolIds.value = []
-  chatMessages.value = chatMessages.value.filter(m => m.role !== 'tool_pending')
+  const approvedIds = new Set(pendingToolIds.value)
+  await sendMessage([...approvedIds])
+  // Only remove the IDs that were approved; new tool_pending events during the stream must be preserved
+  pendingToolIds.value = pendingToolIds.value.filter(id => !approvedIds.has(id))
+  chatMessages.value = chatMessages.value.filter(m => !(m.role === 'tool_pending' && approvedIds.has(m.toolCall?.id ?? '')))
 }
 
 function rejectAll() {
