@@ -66,28 +66,27 @@ function connectWS() {
   ws.onopen = () => { wsConnected.value = true; wsBackoff = 1000 }
 
   ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data)
-      if (msg.type === 'connected' && msg.clientId) {
-        wsClientId.value = msg.clientId
-        return
+    let msg: Record<string, unknown>
+    try { msg = JSON.parse(event.data) } catch { return }
+    if (msg.type === 'connected' && msg.clientId) {
+      wsClientId.value = msg.clientId as string
+      return
+    }
+    if (msg.downloadId && typeof msg.status === 'string') {
+      const next = new Map(activeProgress.value)
+      next.set(msg.downloadId as string, msg as unknown as DownloaderProgress)
+      activeProgress.value = next
+      if (msg.status === 'complete' || msg.status === 'completed' || msg.status === 'error' || msg.status === 'cancelled') {
+        setTimeout(() => {
+          if (destroyed) return
+          const m = new Map(activeProgress.value)
+          m.delete(msg.downloadId as string)
+          activeProgress.value = m
+          load()
+          loadImportable()
+        }, 8000)
       }
-      if (msg.downloadId) {
-        const next = new Map(activeProgress.value)
-        next.set(msg.downloadId, msg as DownloaderProgress)
-        activeProgress.value = next
-        if (msg.status === 'complete' || msg.status === 'completed' || msg.status === 'error' || msg.status === 'cancelled') {
-          setTimeout(() => {
-            if (destroyed) return
-            const m = new Map(activeProgress.value)
-            m.delete(msg.downloadId)
-            activeProgress.value = m
-            load()
-            loadImportable()
-          }, 8000)
-        }
-      }
-    } catch { /* ignore non-JSON */ }
+    }
   }
 
   ws.onclose = () => {
@@ -206,11 +205,22 @@ function streamLabel(s: DownloaderStreamInfo): string {
 }
 
 async function detect() {
-  if (!newUrl.value.trim()) return
+  const urlStr = newUrl.value.trim()
+  if (!urlStr) return
+  try {
+    const u = new URL(urlStr)
+    if (!['http:', 'https:'].includes(u.protocol)) {
+      toast.add({ title: 'URL must use http or https', color: 'error', icon: 'i-lucide-x' })
+      return
+    }
+  } catch {
+    toast.add({ title: 'Invalid URL', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
   detecting.value = true
   detected.value = null
   try {
-    detected.value = await adminApi.detectDownload(newUrl.value.trim())
+    detected.value = await adminApi.detectDownload(urlStr)
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Detection failed', color: 'error', icon: 'i-lucide-x' })
   } finally { detecting.value = false }
