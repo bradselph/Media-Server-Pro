@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -93,7 +94,8 @@ func (r *HLSJobRepository) List(ctx context.Context) ([]*models.HLSJob, error) {
 	for i := range rows {
 		job, err := r.rowToJob(&rows[i])
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert HLS job row %s: %w", rows[i].ID, err)
+			log.Printf("[hls_job_repository] skipping corrupt HLS job row %s: %v", rows[i].ID, err)
+			continue
 		}
 		jobs = append(jobs, job)
 	}
