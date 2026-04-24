@@ -102,13 +102,13 @@ const (
 // UserPermissions defines what a user is allowed to do
 type UserPermissions struct {
 	UserID             string `json:"user_id,omitempty" db:"user_id" gorm:"primaryKey;size:255"`
-	CanStream          bool   `json:"can_stream" db:"can_stream" gorm:"default:true;not null"`
+	CanStream          bool   `json:"can_stream" db:"can_stream" gorm:"not null"`
 	CanDownload        bool   `json:"can_download" db:"can_download" gorm:"default:false;not null"`
 	CanUpload          bool   `json:"can_upload" db:"can_upload" gorm:"default:false;not null"`
 	CanDelete          bool   `json:"can_delete" db:"can_delete" gorm:"default:false;not null"`
 	CanManage          bool   `json:"can_manage" db:"can_manage" gorm:"default:false;not null"`
 	CanViewMature      bool   `json:"can_view_mature" db:"can_view_mature" gorm:"default:false;not null"`
-	CanCreatePlaylists bool   `json:"can_create_playlists" db:"can_create_playlists" gorm:"default:true;not null"`
+	CanCreatePlaylists bool   `json:"can_create_playlists" db:"can_create_playlists" gorm:"not null"`
 }
 
 // TableName specifies the table name for GORM
@@ -132,8 +132,8 @@ type UserPreferences struct {
 	MaturePreferenceSet bool                   `json:"mature_preference_set" db:"mature_preference_set" gorm:"default:false"`
 	Language            string                 `json:"language" db:"language" gorm:"size:10;default:en"`
 	EqualizerPreset     string                 `json:"equalizer_preset" db:"equalizer_preset" gorm:"size:100"`
-	ResumePlayback      bool                   `json:"resume_playback" db:"resume_playback" gorm:"default:true;not null"`
-	ShowAnalytics       bool                   `json:"show_analytics" db:"show_analytics" gorm:"default:true;not null"`
+	ResumePlayback      bool                   `json:"resume_playback" db:"resume_playback" gorm:"not null"`
+	ShowAnalytics       bool                   `json:"show_analytics" db:"show_analytics" gorm:"not null"`
 	ItemsPerPage        int                    `json:"items_per_page" db:"items_per_page" gorm:"default:20"`
 	SortBy              string                 `json:"sort_by" db:"sort_by" gorm:"size:50;default:date_added"`
 	SortOrder           string                 `json:"sort_order" db:"sort_order" gorm:"size:10;default:desc"`
@@ -141,14 +141,14 @@ type UserPreferences struct {
 	FilterMediaType     string                 `json:"filter_media_type" db:"filter_media_type" gorm:"size:50"`
 	CustomEQPresets     map[string]any `json:"custom_eq_presets,omitempty" db:"custom_eq_presets" gorm:"type:json;serializer:json"`
 	// Home section visibility — default true (show all sections)
-	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"default:true;not null"`
-	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"default:true;not null"`
-	ShowTrending         bool `json:"show_trending" db:"show_trending" gorm:"default:true;not null"`
+	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"not null"`
+	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"not null"`
+	ShowTrending         bool `json:"show_trending" db:"show_trending" gorm:"not null"`
 	// Player behaviour
 	SkipInterval    int  `json:"skip_interval" db:"skip_interval" gorm:"default:10"`
 	ShuffleEnabled  bool `json:"shuffle_enabled" db:"shuffle_enabled" gorm:"default:false"`
-	ShowBufferBar   bool `json:"show_buffer_bar" db:"show_buffer_bar" gorm:"default:true;not null"`
-	DownloadPrompt  bool `json:"download_prompt" db:"download_prompt" gorm:"default:true;not null"`
+	ShowBufferBar   bool `json:"show_buffer_bar" db:"show_buffer_bar" gorm:"not null"`
+	DownloadPrompt  bool `json:"download_prompt" db:"download_prompt" gorm:"not null"`
 }
 
 // TableName specifies the table name for GORM
