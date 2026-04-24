@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.10.1] - 2026-04-24 (patch)
+
+
+
+
 ## [1.10.0] - 2026-04-23 (minor)
 
 - fix(ui): plural views, image tab visibility, favicon, header dedup, marshal error
