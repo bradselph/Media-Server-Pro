@@ -915,7 +915,7 @@ onUnmounted(() => {
       <div class="flex flex-wrap gap-2 items-center">
         <button
           v-for="opt in TYPE_OPTIONS"
-          v-show="opt.value === 'all' || params.type === opt.value || !typeCounts || typeCounts[opt.value] > 0"
+          v-show="opt.value === 'all' || params.type === opt.value || typeCounts[opt.value] === undefined || typeCounts[opt.value] > 0"
           :key="opt.value"
           :class="[
             'hidden md:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',

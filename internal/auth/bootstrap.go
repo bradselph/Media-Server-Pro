@@ -113,6 +113,8 @@ func (m *Module) ensureAdminUserRecord() error {
 			ShowContinueWatching: true,
 			ShowRecommended:      true,
 			ShowTrending:         true,
+			ShowBufferBar:        true,
+			DownloadPrompt:       true,
 		},
 		WatchHistory: make([]models.WatchHistoryItem, 0),
 	}
