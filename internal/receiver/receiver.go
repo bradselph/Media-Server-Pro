@@ -30,6 +30,8 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+const defaultProxyTimeout = 30 * time.Second
+
 // opaqueMediaID produces a deterministic, opaque 32-char hex identifier from
 // a slave ID and item ID.  This hides internal topology (which slave hosts
 // what) from the public API so that clients never see raw slave identifiers
@@ -763,7 +765,7 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 	cfg := m.config.Get()
 	timeout := cfg.Receiver.ProxyTimeout
 	if timeout == 0 {
-		timeout = 30 * time.Second
+		timeout = defaultProxyTimeout
 	}
 
 	select {
@@ -836,7 +838,7 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 	cfg := m.config.Get()
 	timeout := cfg.Receiver.ProxyTimeout
 	if timeout == 0 {
-		timeout = 30 * time.Second
+		timeout = defaultProxyTimeout
 	}
 	// Use request context with timeout so client cancellation and config timeout both apply.
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)

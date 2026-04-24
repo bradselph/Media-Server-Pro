@@ -14,6 +14,10 @@ import (
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
+// ffmpegCommandTimeout is the timeout for individual ffmpeg command execution.
+// This applies to thumbnail generation, probe, and other ffmpeg-based tasks.
+const ffmpegCommandTimeout = 30 * time.Second
+
 // jpegQuality converts the config quality (1-100, higher=better) to ffmpeg's
 // -q:v scale (2-31, lower=better). Returns "2" at quality=100, "31" at quality=1.
 func jpegQuality(configQuality int) string {
@@ -152,7 +156,7 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 			"q:v":     jpegQuality(cfg.Thumbnails.Quality),
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 	cmd := stream.Compile()
-	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, ffmpegCommandTimeout)
 	defer cancel()
 	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
 	cmdWithContext.Env = cmd.Env
@@ -233,7 +237,7 @@ func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 
 	cmd := stream.Compile()
-	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, ffmpegCommandTimeout)
 	defer cancel()
 
 	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
@@ -270,7 +274,7 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 	cmd := stream.Compile()
 
 	// Apply context for timeout
-	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, ffmpegCommandTimeout)
 	defer cancel()
 
 	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input
@@ -322,7 +326,7 @@ func (m *Module) generateWebPFromAudio(opts *webPFromAudioOpts) error {
 		}).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 
 	cmd := stream.Compile()
-	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, ffmpegCommandTimeout)
 	defer cancel()
 
 	cmdWithContext := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...) //nolint:gosec // G204: cmd.Path is from ffmpeg library, not user input

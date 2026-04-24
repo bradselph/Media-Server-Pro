@@ -23,6 +23,8 @@ import (
 )
 
 const logSeparator = "=============================================="
+const defaultModuleStartTimeout = 30 * time.Second
+const defaultShutdownTimeout = 30 * time.Second
 
 // Module represents a server component that can be started and stopped
 type Module interface {
@@ -290,7 +292,7 @@ func (s *Server) Start() error {
 	var started []Module
 	for _, module := range s.modules {
 		s.log.Info("Starting module: %s", module.Name())
-		startCtx, startCancel := context.WithTimeout(ctx, 30*time.Second)
+		startCtx, startCancel := context.WithTimeout(ctx, defaultModuleStartTimeout)
 		err := module.Start(startCtx)
 		startCancel()
 
@@ -448,7 +450,7 @@ func (s *Server) Shutdown() {
 	cfg := s.config.Get()
 	totalTimeout := cfg.Server.ShutdownTimeout
 	if totalTimeout <= 0 {
-		totalTimeout = 30 * time.Second
+		totalTimeout = defaultShutdownTimeout
 	}
 	// Separate per-phase contexts so HTTP drain and module stop each get a time budget (P1-20).
 	httpPhase := totalTimeout / 2
