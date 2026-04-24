@@ -13,6 +13,10 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+// estimatedHLSJobDuration is used to estimate the start time for HLS jobs
+// that already existed on disk but don't have a recorded start time.
+const estimatedHLSJobDuration = 1 * time.Hour
+
 // copyHLSJob returns a deep copy of the job so callers cannot mutate shared state.
 func copyHLSJob(j *models.HLSJob) *models.HLSJob {
 	if j == nil {
@@ -115,7 +119,7 @@ func (m *Module) tryReuseExistingHLSOnDiskLocked(p *createOrReuseHLSJobParams) (
 		Status:      models.HLSStatusCompleted,
 		Progress:    100,
 		Qualities:   p.Qualities,
-		StartedAt:   now.Add(-1 * time.Hour),
+		StartedAt:   now.Add(-estimatedHLSJobDuration),
 		CompletedAt: &now,
 	}
 	m.jobs[p.JobID] = job
@@ -442,7 +446,7 @@ func (m *Module) tryDiscoverJobFromEntryLocked(entry os.DirEntry) bool {
 		Status:      models.HLSStatusCompleted,
 		Progress:    100,
 		Qualities:   qualities,
-		StartedAt:   completedTime.Add(-1 * time.Hour),
+		StartedAt:   completedTime.Add(-estimatedHLSJobDuration),
 		CompletedAt: &completedTime,
 	}
 	m.jobs[jobID] = job

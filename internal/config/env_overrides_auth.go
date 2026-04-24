@@ -51,7 +51,7 @@ func (m *Manager) applyAdminEnvOverrides() {
 func (m *Manager) applyAdminPasswordOverride() {
 	if val := envGetStr("ADMIN_PASSWORD_HASH", "MEDIA_SERVER_ADMIN_PASSWORD_HASH"); val != "" {
 		if !strings.HasPrefix(val, "$2a$") && !strings.HasPrefix(val, "$2b$") && !strings.HasPrefix(val, "$2y$") {
-			m.log.Error("ADMIN_PASSWORD_HASH does not appear to be a valid bcrypt hash (must start with $2a$, $2b$, or $2y$) — ignoring")
+			m.log.Warn("ADMIN_PASSWORD_HASH does not appear to be a valid bcrypt hash (must start with $2a$, $2b$, or $2y$) — ignoring")
 		} else {
 			m.config.Admin.PasswordHash = val
 		}
@@ -61,7 +61,7 @@ func (m *Manager) applyAdminPasswordOverride() {
 		m.log.Warn("ADMIN_PASSWORD detected: plaintext password remains in Go heap memory after os.Unsetenv. Use ADMIN_PASSWORD_HASH (pre-computed bcrypt) in production.")
 		hash, err := bcrypt.GenerateFromPassword([]byte(val), bcrypt.DefaultCost)
 		if err != nil {
-			m.log.Error("Failed to hash ADMIN_PASSWORD: %v", err)
+			m.log.Warn("Failed to hash ADMIN_PASSWORD: %v", err)
 		} else {
 			m.config.Admin.PasswordHash = string(hash)
 			m.log.Info("Admin password set from ADMIN_PASSWORD environment variable")

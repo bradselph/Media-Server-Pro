@@ -192,6 +192,8 @@ func (h *Handler) runClassifyDirectoryBackground(dirPath string) {
 			h.log.Warn("ClassifyDirectory panic for %s: %v", dirPath, r)
 		}
 	}()
+	// Use context.Background() intentionally: this goroutine outlives the HTTP request and
+	// should not be cancelled when the request context is cancelled.
 	ctx := context.Background()
 	results, err := h.scanner.ClassifyMatureDirectory(ctx, dirPath)
 	if err != nil {
@@ -279,6 +281,8 @@ func (h *Handler) runClassifyAllPendingBackground(paths []string) {
 			h.log.Warn("ClassifyAllPending panic: %v", r)
 		}
 	}()
+	// Use context.Background() intentionally: this goroutine outlives the HTTP request and
+	// should not be cancelled when the request context is cancelled.
 	ctx := context.Background()
 	results := make(map[string][]string, len(paths))
 	for _, path := range paths {

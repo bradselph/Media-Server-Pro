@@ -35,13 +35,14 @@ var ErrNotFound = errors.New("extractor item not found")
 const playlistCacheTTL = 5 * time.Minute
 
 const (
-	errItemNotFound     = "item not found: %s"
-	hlsMasterSuffix     = ":master"
-	mimeHLS             = "application/vnd.apple.mpegurl"
-	headerContentType   = "Content-Type"
-	cacheControlNoCache = "no-cache"
-	headerCacheControl  = "Cache-Control"
-	headerCORSOrigin    = "Access-Control-Allow-Origin"
+	defaultHTTPClientTimeout = 30 * time.Second // used for both httpClient and per-request timeouts
+	errItemNotFound          = "item not found: %s"
+	hlsMasterSuffix          = ":master"
+	mimeHLS                  = "application/vnd.apple.mpegurl"
+	headerContentType        = "Content-Type"
+	cacheControlNoCache      = "no-cache"
+	headerCacheControl       = "Cache-Control"
+	headerCORSOrigin         = "Access-Control-Allow-Origin"
 )
 
 // Module handles HLS stream proxying for external M3U8 URLs.
@@ -107,7 +108,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		dbModule: dbModule,
 		httpClient: &http.Client{
 			Transport: helpers.SafeHTTPTransport(),
-			Timeout:   30 * time.Second,
+			Timeout:   defaultHTTPClientTimeout,
 			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
 					return fmt.Errorf("too many redirects")
@@ -562,7 +563,7 @@ func (m *Module) proxyStream(w http.ResponseWriter, r *http.Request, targetURL, 
 	// (and its connection pool) is reused instead of creating a new client.
 	proxyTimeout := cfg.Extractor.ProxyTimeout
 	if proxyTimeout <= 0 {
-		proxyTimeout = 30 * time.Second
+		proxyTimeout = defaultHTTPClientTimeout
 	}
 	proxyCtx, proxyCancel := context.WithTimeout(req.Context(), proxyTimeout)
 	defer proxyCancel()

@@ -381,10 +381,10 @@ func (s *MatureScanner) ScanFile(path string) *ScanResult {
 		if err := s.scanRepo.Save(context.Background(), repoResult); err != nil {
 			errCount := s.repoErrors.Add(1)
 			if errCount <= 1 {
-				s.log.Error("Failed to save scan result to repository: %v", err)
+				s.log.Warn("Failed to save scan result to repository: %v", err)
 			}
 			if errCount >= 3 {
-				s.log.Error("Repository unavailable after %d consecutive errors, skipping repo saves for this scan cycle", errCount)
+				s.log.Warn("Repository unavailable after %d consecutive errors, skipping repo saves for this scan cycle", errCount)
 				s.repoDown.Store(true)
 			}
 		} else {

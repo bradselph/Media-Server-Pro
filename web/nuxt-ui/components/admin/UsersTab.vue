@@ -164,8 +164,8 @@ async function handleCreate() {
     createError.value = 'Password must be at least 8 characters'
     return
   }
-  createLoading.value = true
   createError.value = ''
+  createLoading.value = true
   try {
     await adminApi.createUser(createForm)
     toast.add({ title: `User ${createForm.username} created`, color: 'success', icon: 'i-lucide-check' })
@@ -213,8 +213,8 @@ async function handleSave() {
     editError.value = 'Password must be at least 8 characters'
     return
   }
-  editLoading.value = true
   editError.value = ''
+  editLoading.value = true
   try {
     await adminApi.updateUser(editUser.value.username, {
       role: editForm.role,
