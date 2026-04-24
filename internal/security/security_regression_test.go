@@ -6,8 +6,7 @@ import (
 )
 
 // FND-0016: Regression test for BanIP ensuring ExpiresAt is non-nil and non-zero
-// when duration > 0 (originally used invalid new(time.Now().Add(duration)) pattern).
-// This tests line 215 and 343 of security.go in the persistBan callback and BanIP method.
+// when duration > 0.
 func TestFND0016_BanIP_ExpiresAtNonNil(t *testing.T) {
 	rl := NewRateLimiter(RateLimitConfig{
 		RequestsPerMinute: 60,

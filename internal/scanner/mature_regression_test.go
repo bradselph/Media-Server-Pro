@@ -6,8 +6,7 @@ import (
 )
 
 // FND-0016: Regression test for SetMatureFlag ensuring ReviewedAt is non-nil and non-zero
-// when manually setting the mature flag (originally used invalid new(time.Now()) pattern at line 946).
-// This test verifies the fix at internal/scanner/mature.go:946
+// when manually setting the mature flag.
 func TestFND0016_SetMatureFlag_ReviewedAtNonNil(t *testing.T) {
 	// Test the actual code path: SetMatureFlag with path and reason
 	isMature := true
@@ -20,9 +19,7 @@ func TestFND0016_SetMatureFlag_ReviewedAtNonNil(t *testing.T) {
 	// but we're focusing on the fix which is in the ResultDetail construction
 	// at the end of that method. We'll test the pattern directly here.
 
-	// Simulate the fix pattern:
-	now := time.Now()
-	reviewedAtPtr := &now
+	reviewedAtPtr := new(time.Now())
 
 	// reviewedAtPtr is always non-nil (assigned above); verify it holds a non-zero time.
 
@@ -62,10 +59,8 @@ func TestFND0016_ReviewedAt_ResultStructure(t *testing.T) {
 	}
 	_ = reason
 
-	// Apply the fix: allocate ReviewedAt with current time
 	beforeSet := time.Now()
-	now := time.Now()
-	result.ReviewedAt = &now
+	result.ReviewedAt = new(time.Now())
 	afterSet := time.Now()
 
 	// FND-0016 regression: ReviewedAt must be non-nil
