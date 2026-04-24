@@ -81,11 +81,44 @@ async function requestForm<T>(method: string, url: string, form: FormData): Prom
     return parseEnvelope<T>(res)
 }
 
+function requestFormWithProgress<T>(
+    method: string,
+    url: string,
+    form: FormData,
+    onProgress: (pct: number) => void,
+): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open(method, url)
+        xhr.withCredentials = true
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+        })
+        xhr.addEventListener('load', async () => {
+            try {
+                // Reconstruct a minimal Response so parseEnvelope can handle it.
+                const res = new Response(xhr.responseText, {
+                    status: xhr.status,
+                    headers: { 'content-type': xhr.getResponseHeader('content-type') ?? 'application/json' },
+                })
+                resolve(await parseEnvelope<T>(res))
+            } catch (err) {
+                reject(err)
+            }
+        })
+        xhr.addEventListener('error', () => reject(new ApiError('Network error', 0)))
+        xhr.addEventListener('abort', () => reject(new ApiError('Upload aborted', 0)))
+        xhr.send(form)
+    })
+}
+
 export function useApi() {
     return {
         get: <T>(url: string) => request<T>('GET', url),
         post: <T>(url: string, body?: unknown) => request<T>('POST', url, body),
         postForm: <T>(url: string, form: FormData) => requestForm<T>('POST', url, form),
+        postFormWithProgress: <T>(url: string, form: FormData, onProgress: (pct: number) => void) =>
+            requestFormWithProgress<T>('POST', url, form, onProgress),
         put: <T>(url: string, body?: unknown) => request<T>('PUT', url, body),
         patch: <T>(url: string, body?: unknown) => request<T>('PATCH', url, body),
         delete: <T>(url: string, body?: unknown) => request<T>('DELETE', url, body),
