@@ -686,6 +686,8 @@ export function useAdminApi() {
         getPlaylistStats: () => api.get<AdminPlaylistStats>(`${base}/playlists/stats`),
         bulkDeletePlaylists: (ids: string[]) =>
             api.post<{ success: number; failed: number; errors: string[] }>(`${base}/playlists/bulk`, {ids}),
+        updatePlaylist: (id: string, data: { name?: string; description?: string; is_public?: boolean }) =>
+            api.put<{ message: string }>(`${base}/playlists/${encodeURIComponent(id)}`, data),
         deletePlaylist: (id: string) => api.delete<void>(`${base}/playlists/${encodeURIComponent(id)}`),
 
         // Updates

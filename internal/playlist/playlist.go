@@ -636,6 +636,45 @@ func (m *Module) ListAllPlaylists() []*models.Playlist {
 	return playlists
 }
 
+// AdminUpdatePlaylist updates playlist metadata without checking ownership (admin only).
+func (m *Module) AdminUpdatePlaylist(ctx context.Context, id PlaylistID, updates map[string]any) error {
+	m.mu.RLock()
+	playlist, exists := m.playlists[id]
+	if !exists {
+		m.mu.RUnlock()
+		return ErrPlaylistNotFound
+	}
+	updated := *playlist
+	m.mu.RUnlock()
+
+	if name, ok := updates["name"].(string); ok {
+		updated.Name = name
+	}
+	if desc, ok := updates["description"].(string); ok {
+		updated.Description = desc
+	}
+	if isPublic, ok := updates["is_public"].(bool); ok {
+		updated.IsPublic = isPublic
+	}
+	updated.ModifiedAt = time.Now()
+
+	if err := m.playlistRepo.Update(ctx, &updated); err != nil {
+		m.log.Error("Failed to update playlist in database: %v", err)
+		return err
+	}
+
+	m.mu.Lock()
+	if p, ok := m.playlists[id]; ok {
+		p.Name = updated.Name
+		p.Description = updated.Description
+		p.IsPublic = updated.IsPublic
+		p.ModifiedAt = updated.ModifiedAt
+	}
+	m.mu.Unlock()
+	m.log.Info("Admin updated playlist: %s", string(id))
+	return nil
+}
+
 // AdminDeletePlaylist deletes a playlist without checking ownership (admin only)
 func (m *Module) AdminDeletePlaylist(ctx context.Context, id PlaylistID) error {
 	m.mu.RLock()

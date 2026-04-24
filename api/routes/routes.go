@@ -628,6 +628,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET(pathPlaylists, h.AdminListPlaylists)
 	adminGrp.GET(pathPlaylists+pathStats, h.AdminPlaylistStats)
 	adminGrp.POST(pathPlaylists+"/bulk", h.AdminBulkDeletePlaylists)
+	adminGrp.PUT(routePlaylistByID, h.AdminUpdatePlaylist)
 	adminGrp.DELETE(routePlaylistByID, h.AdminDeletePlaylist)
 
 	// Admin media scan

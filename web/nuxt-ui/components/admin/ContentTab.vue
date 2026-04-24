@@ -1,17 +1,14 @@
 <script setup lang="ts">
-import type { ReviewQueueItem, HLSJob, HLSValidationResult, ScannerStats, HLSStats, ValidatorStats, HLSCapabilities, AutoTagRule } from '~/types/api'
-import { formatBytes } from '~/utils/format'
+import type { ReviewQueueItem, ScannerStats, ValidatorStats, AutoTagRule } from '~/types/api'
 import { asRecord } from '~/utils/typeGuards'
 
 const adminApi = useAdminApi()
-const hlsApi = useHlsApi()
 const toast = useToast()
 
 const subTab = ref('scanner')
 let scanRefreshTimer: ReturnType<typeof setTimeout> | null = null
 const subTabs = [
-  { label: 'Scanner', value: 'scanner', icon: 'i-lucide-scan' },
-  { label: 'HLS Jobs', value: 'hls', icon: 'i-lucide-video' },
+  { label: 'Mature Scanner', value: 'scanner', icon: 'i-lucide-scan' },
   { label: 'Validator', value: 'validator', icon: 'i-lucide-shield-check' },
   { label: 'Auto-Tags', value: 'autotags', icon: 'i-lucide-tag' },
 ]
@@ -103,92 +100,6 @@ function toggleAll() {
   if (selected.value.length === reviewQueue.value.length) selected.value = []
   else selected.value = reviewQueue.value.map(r => r.id)
 }
-
-// ── HLS ────────────────────────────────────────────────────────────────────────
-const hlsStats = ref<HLSStats | null>(null)
-const hlsJobs = ref<HLSJob[]>([])
-const hlsCaps = ref<HLSCapabilities | null>(null)
-const hlsLoading = ref(false)
-
-async function loadHLS() {
-  hlsLoading.value = true
-  try {
-    const [stats, jobs, caps] = await Promise.allSettled([
-      adminApi.getHLSStats(),
-      adminApi.listHLSJobs(),
-      hlsApi.getCapabilities(),
-    ])
-    if (stats.status === 'fulfilled') hlsStats.value = stats.value
-    if (jobs.status === 'fulfilled') hlsJobs.value = jobs.value ?? []
-    if (caps.status === 'fulfilled') hlsCaps.value = caps.value
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load HLS', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { hlsLoading.value = false }
-}
-
-const deletingHLSId = ref<string | null>(null)
-
-async function deleteHLSJob(id: string) {
-  if (deletingHLSId.value) return
-  deletingHLSId.value = id
-  try {
-    await adminApi.deleteHLSJob(id)
-    hlsJobs.value = hlsJobs.value.filter(j => j.id !== id)
-    toast.add({ title: 'HLS job deleted', color: 'success', icon: 'i-lucide-check' })
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
-  } finally {
-    deletingHLSId.value = null
-  }
-}
-
-const hlsValidating = ref<string | null>(null)
-const hlsValidationResult = ref<HLSValidationResult | null>(null)
-const hlsRefreshing = ref<string | null>(null)
-
-async function refreshJobStatus(id: string) {
-  hlsRefreshing.value = id
-  try {
-    const updated = await hlsApi.getStatus(id)
-    const idx = hlsJobs.value.findIndex(j => j.id === id)
-    if (idx !== -1) hlsJobs.value = hlsJobs.value.map((j, i) => i === idx ? updated : j)
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to refresh status', color: 'error', icon: 'i-lucide-x' })
-  } finally { hlsRefreshing.value = null }
-}
-
-async function validateHLSJob(id: string) {
-  hlsValidating.value = id
-  hlsValidationResult.value = null
-  try {
-    hlsValidationResult.value = await adminApi.validateHLS(id)
-    const ok = hlsValidationResult.value.valid
-    toast.add({ title: ok ? 'HLS output is valid' : 'HLS validation failed', color: ok ? 'success' : 'warning', icon: ok ? 'i-lucide-check' : 'i-lucide-alert-triangle' })
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Validation failed', color: 'error', icon: 'i-lucide-x' })
-  } finally { hlsValidating.value = null }
-}
-
-async function cleanInactiveLocks() {
-  try {
-    await adminApi.cleanHLSStaleLocks()
-    toast.add({ title: 'Stale locks cleaned', color: 'success', icon: 'i-lucide-check' })
-    loadHLS()
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
-  }
-}
-
-async function cleanInactiveJobs() {
-  try {
-    await adminApi.cleanHLSInactive()
-    toast.add({ title: 'Inactive HLS jobs cleaned', color: 'success', icon: 'i-lucide-check' })
-    loadHLS()
-  } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
-  }
-}
-
 
 // ── Validator ──────────────────────────────────────────────────────────────────
 const validatorStats = ref<ValidatorStats | null>(null)
@@ -356,7 +267,6 @@ async function applyAutoTagRules() {
 
 watch(subTab, (v) => {
   if (v === 'scanner') { loadScanner(); loadScannerConfig() }
-  else if (v === 'hls') loadHLS()
   else if (v === 'validator') loadValidator()
   else if (v === 'autotags') loadAutoTagRules()
 }, { immediate: true })
@@ -473,135 +383,6 @@ onUnmounted(() => {
       </UCard>
     </div>
 
-    <!-- HLS Jobs -->
-    <div v-if="item.value === 'hls'" class="space-y-4">
-      <!-- Capabilities -->
-      <UCard v-if="hlsCaps">
-        <div class="flex flex-wrap items-center gap-4 text-sm">
-          <div class="flex items-center gap-1.5">
-            <UIcon
-              :name="hlsCaps.healthy ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
-              :class="hlsCaps.healthy ? 'text-success' : 'text-warning'"
-              class="size-4"
-            />
-            <span class="font-medium">{{ hlsCaps.healthy ? 'HLS Ready' : 'HLS Unavailable' }}</span>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <UBadge :label="hlsCaps.ffmpeg_found ? 'ffmpeg ✓' : 'ffmpeg ✗'" :color="hlsCaps.ffmpeg_found ? 'success' : 'error'" variant="subtle" size="xs" />
-            <UBadge :label="hlsCaps.ffprobe_found ? 'ffprobe ✓' : 'ffprobe ✗'" :color="hlsCaps.ffprobe_found ? 'success' : 'error'" variant="subtle" size="xs" />
-          </div>
-          <div v-if="hlsCaps.qualities.length" class="flex items-center gap-1 flex-wrap">
-            <span class="text-muted">Qualities:</span>
-            <UBadge v-for="q in hlsCaps.qualities" :key="q" :label="q" color="neutral" variant="subtle" size="xs" />
-          </div>
-          <span class="text-muted text-xs">Max concurrent: {{ hlsCaps.max_concurrent }}</span>
-          <span v-if="hlsCaps.message" class="text-muted text-xs ml-auto">{{ hlsCaps.message }}</span>
-        </div>
-      </UCard>
-
-      <!-- Stats -->
-      <div v-if="hlsStats" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <UCard v-for="item in [
-          { label: 'Total Jobs', value: hlsStats.total_jobs },
-          { label: 'Running', value: hlsStats.running_jobs },
-          { label: 'Completed', value: hlsStats.completed_jobs },
-          { label: 'Failed', value: hlsStats.failed_jobs },
-          { label: 'Pending', value: hlsStats.pending_jobs },
-          { label: 'Cache Size', value: formatBytes(hlsStats.cache_size_bytes) },
-        ]" :key="item.label" :ui="{ body: 'p-3' }">
-          <p class="text-xl font-bold text-highlighted">{{ item.value }}</p>
-          <p class="text-xs text-muted">{{ item.label }}</p>
-        </UCard>
-      </div>
-
-      <!-- Actions -->
-      <div class="flex gap-2 flex-wrap">
-        <UButton icon="i-lucide-refresh-cw" label="Refresh" variant="outline" color="neutral" size="sm" @click="loadHLS" />
-        <UButton icon="i-lucide-lock-open" label="Clean Stale Locks" variant="outline" color="warning" size="sm" @click="cleanInactiveLocks" />
-        <UButton icon="i-lucide-trash-2" label="Clean Inactive" variant="outline" color="error" size="sm" @click="cleanInactiveJobs" />
-      </div>
-
-      <!-- Jobs table -->
-      <UCard>
-        <div v-if="hlsLoading" class="flex justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
-        </div>
-        <div v-else-if="hlsJobs.length === 0" class="text-center py-6 text-muted text-sm">No HLS jobs.</div>
-        <UTable
-          v-else
-          :data="hlsJobs"
-          :columns="[
-            { accessorKey: 'id', header: 'Media ID' },
-            { accessorKey: 'status', header: 'Status' },
-            { accessorKey: 'progress', header: 'Progress' },
-            { accessorKey: 'started_at', header: 'Started' },
-            { accessorKey: 'actions', header: '' },
-          ]"
-        >
-          <template #id-cell="{ row }">
-            <span class="font-mono text-xs">{{ row.original.id.slice(0, 8) }}…</span>
-          </template>
-          <template #status-cell="{ row }">
-            <UBadge
-              :label="row.original.status"
-              :color="(({ completed: 'success', running: 'info', failed: 'error', pending: 'neutral', cancelled: 'neutral' } as Record<string, 'success'|'info'|'error'|'neutral'>)[row.original.status] ?? 'neutral')"
-              variant="subtle"
-              size="xs"
-            />
-          </template>
-          <template #progress-cell="{ row }">
-            <div class="flex items-center gap-2 w-24">
-              <UProgress :value="row.original.progress" size="xs" class="flex-1" />
-              <span class="text-xs text-muted w-8">{{ row.original.progress }}%</span>
-            </div>
-          </template>
-          <template #started_at-cell="{ row }">
-            <span class="text-xs text-muted">{{ row.original.started_at ? new Date(row.original.started_at).toLocaleString() : '—' }}</span>
-          </template>
-          <template #actions-cell="{ row }">
-            <div class="flex gap-1">
-              <UButton
-                v-if="row.original.status === 'running' || row.original.status === 'pending'"
-                icon="i-lucide-refresh-cw"
-                aria-label="Refresh job status"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                :loading="hlsRefreshing === row.original.id"
-                @click="refreshJobStatus(row.original.id)"
-              />
-              <UButton
-                v-if="row.original.status === 'completed'"
-                icon="i-lucide-shield-check"
-                aria-label="Validate HLS output"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                :loading="hlsValidating === row.original.id"
-                @click="validateHLSJob(row.original.id)"
-              />
-              <UButton icon="i-lucide-trash-2" aria-label="Delete HLS job" size="xs" variant="ghost" color="error" :loading="deletingHLSId === row.original.id" @click="deleteHLSJob(row.original.id)" />
-            </div>
-          </template>
-        </UTable>
-      </UCard>
-      <!-- Validation result -->
-      <UCard v-if="hlsValidationResult">
-        <template #header>
-          <div class="flex items-center gap-2 font-semibold">
-            <UIcon
-              :name="hlsValidationResult.valid ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
-              :class="hlsValidationResult.valid ? 'text-success' : 'text-warning'"
-              class="size-4"
-            />
-            HLS Validation — {{ hlsValidationResult.valid ? 'Valid' : 'Invalid' }}
-            <span class="text-muted font-normal text-xs ml-2">{{ hlsValidationResult.variant_count }} variant(s)</span>
-            <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" class="ml-auto" @click="hlsValidationResult = null" />
-          </div>
-        </template>
-        <p class="font-mono text-xs text-muted">{{ hlsValidationResult.job_id }}</p>
-      </UCard>
-    </div>
 
     <!-- Validator -->
     <div v-if="item.value === 'validator'" class="space-y-4">

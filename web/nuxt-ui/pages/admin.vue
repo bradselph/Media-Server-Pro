@@ -9,7 +9,7 @@ const TABS = [
   { label: 'Dashboard', value: 'dashboard', icon: 'i-lucide-layout-dashboard' },
   { label: 'Users', value: 'users', icon: 'i-lucide-users' },
   { label: 'Media', value: 'media', icon: 'i-lucide-film' },
-  { label: 'Streaming', value: 'streaming', icon: 'i-lucide-radio' },
+  { label: 'HLS Jobs', value: 'streaming', icon: 'i-lucide-video' },
   { label: 'Analytics', value: 'analytics', icon: 'i-lucide-bar-chart-2' },
   { label: 'Playlists', value: 'playlists', icon: 'i-lucide-list-music' },
   { label: 'Security', value: 'security', icon: 'i-lucide-shield' },

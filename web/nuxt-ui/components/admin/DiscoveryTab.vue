@@ -13,7 +13,7 @@ const subTab = ref('categorizer')
 const subTabs = [
   { label: 'Categorizer', value: 'categorizer', icon: 'i-lucide-tag' },
   { label: 'Auto-Discovery', value: 'discovery', icon: 'i-lucide-compass' },
-  { label: 'Suggestions', value: 'suggestions', icon: 'i-lucide-sparkles' },
+  { label: 'Rec. Engine', value: 'suggestions', icon: 'i-lucide-sparkles' },
   { label: 'Classification', value: 'classify', icon: 'i-lucide-brain' },
 ]
 
