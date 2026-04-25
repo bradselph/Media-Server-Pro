@@ -334,6 +334,14 @@ func connectAndRun(ctx context.Context, cfg *slaveConfig, streamSem chan struct{
 	var wg sync.WaitGroup
 	readErr := make(chan error, 1)
 
+	// Monitor context cancellation and close the connection immediately to unblock
+	// any goroutine stuck in conn.ReadMessage(). This ensures graceful shutdown
+	// without deadlock on wg.Wait().
+	wg.Go(func() {
+		<-ctx.Done()
+		_ = conn.Close()
+	})
+
 	wg.Go(func() {
 		for {
 			_, raw, err := conn.ReadMessage()
