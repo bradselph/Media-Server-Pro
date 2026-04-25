@@ -414,11 +414,11 @@ export function useCategoryBrowseApi() {
 
 export function useUploadApi() {
     return {
-        upload: (files: File[], category?: string): Promise<UploadResult> => {
+        upload: (files: File[], category: string | undefined, onProgress: (pct: number) => void): Promise<UploadResult> => {
             const formData = new FormData()
             files.forEach(f => formData.append('files', f))
             if (category) formData.append('category', category)
-            return api.postForm<UploadResult>('/api/upload', formData)
+            return api.postFormWithProgress<UploadResult>('/api/upload', formData, onProgress)
         },
         getProgress: (id: string) => api.get<UploadProgress>(`/api/upload/${encodeURIComponent(id)}/progress`),
     }
@@ -686,6 +686,8 @@ export function useAdminApi() {
         getPlaylistStats: () => api.get<AdminPlaylistStats>(`${base}/playlists/stats`),
         bulkDeletePlaylists: (ids: string[]) =>
             api.post<{ success: number; failed: number; errors: string[] }>(`${base}/playlists/bulk`, {ids}),
+        updatePlaylist: (id: string, data: { name?: string; description?: string; is_public?: boolean }) =>
+            api.put<{ message: string }>(`${base}/playlists/${encodeURIComponent(id)}`, data),
         deletePlaylist: (id: string) => api.delete<void>(`${base}/playlists/${encodeURIComponent(id)}`),
 
         // Updates

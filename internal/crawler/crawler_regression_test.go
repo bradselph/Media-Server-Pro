@@ -6,8 +6,7 @@ import (
 )
 
 // FND-0016: Regression test for discovery ReviewedAt assignment
-// This test verifies the fix at internal/crawler/crawler.go:624
-// Originally used invalid new(time.Now()) pattern, now uses local variable + address-of
+// This test verifies that ReviewedAt is set to a non-nil, non-zero time on approval.
 func TestFND0016_Discovery_ReviewedAtNonNil(t *testing.T) {
 	// Simulate a discovery struct (would be repositories.DiscoveryRecord in real code)
 	type discoveryStub struct {
@@ -27,9 +26,7 @@ func TestFND0016_Discovery_ReviewedAtNonNil(t *testing.T) {
 		Status: "added",
 	}
 
-	// Apply the fix: local variable + address-of pattern
-	reviewedTime := time.Now()
-	disc.ReviewedAt = &reviewedTime
+	disc.ReviewedAt = new(time.Now())
 
 	// Assertions for FND-0016 regression
 	if disc.ReviewedAt == nil {

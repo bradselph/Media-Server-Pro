@@ -96,6 +96,8 @@ func defaultUserPreferences() models.UserPreferences {
 		ShowContinueWatching: true,
 		ShowRecommended:      true,
 		ShowTrending:         true,
+		ShowBufferBar:        true,
+		DownloadPrompt:       true,
 	}
 }
 

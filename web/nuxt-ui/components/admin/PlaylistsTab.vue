@@ -9,6 +9,11 @@ const loading = ref(true)
 const deleteTarget = ref<Playlist | null>(null)
 const deleting = ref(false)
 const stats = ref<AdminPlaylistStats | null>(null)
+const editTarget = ref<Playlist | null>(null)
+const editName = ref('')
+const editDescription = ref('')
+const editIsPublic = ref(false)
+const editSaving = ref(false)
 
 // Search, filter, sort, pagination
 const search = ref('')
@@ -144,6 +149,37 @@ async function handleDelete() {
   }
 }
 
+function openEdit(p: Playlist) {
+  editTarget.value = p
+  editName.value = p.name
+  editDescription.value = p.description ?? ''
+  editIsPublic.value = p.is_public
+}
+
+async function handleEdit() {
+  if (!editTarget.value || editSaving.value) return
+  const name = editName.value.trim()
+  if (!name) {
+    toast.add({ title: 'Name is required', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
+  editSaving.value = true
+  try {
+    await adminApi.updatePlaylist(editTarget.value.id, {
+      name,
+      description: editDescription.value,
+      is_public: editIsPublic.value,
+    })
+    toast.add({ title: 'Playlist updated', color: 'success', icon: 'i-lucide-check' })
+    editTarget.value = null
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    editSaving.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -259,13 +295,22 @@ onMounted(load)
                 {{ p.created_at ? new Date(p.created_at).toLocaleDateString() : '—' }}
               </td>
               <td class="px-3 py-2 text-right">
-                <UButton
-                  icon="i-lucide-trash-2"
-                  size="xs"
-                  variant="ghost"
-                  color="error"
-                  @click="deleteTarget = p"
-                />
+                <div class="flex gap-1 justify-end">
+                  <UButton
+                    icon="i-lucide-pencil"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    @click="openEdit(p)"
+                  />
+                  <UButton
+                    icon="i-lucide-trash-2"
+                    size="xs"
+                    variant="ghost"
+                    color="error"
+                    @click="deleteTarget = p"
+                  />
+                </div>
               </td>
             </tr>
           </tbody>
@@ -297,6 +342,33 @@ onMounted(load)
       <template #footer>
         <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false" />
         <UButton :loading="bulkDeleting" color="error" label="Delete" @click="executeBulkDelete()" />
+      </template>
+    </UModal>
+
+    <!-- Edit modal -->
+    <UModal
+      v-if="editTarget"
+      :open="!!editTarget"
+      title="Edit Playlist"
+      @update:open="val => { if (!val) editTarget = null }"
+    >
+      <template #body>
+        <div class="space-y-4">
+          <UFormField label="Name" required>
+            <UInput v-model="editName" placeholder="Playlist name" class="w-full" />
+          </UFormField>
+          <UFormField label="Description">
+            <UTextarea v-model="editDescription" placeholder="Optional description" :rows="2" class="w-full" />
+          </UFormField>
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium">Public</span>
+            <USwitch v-model="editIsPublic" />
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="editTarget = null" />
+        <UButton :loading="editSaving" label="Save" @click="handleEdit" />
       </template>
     </UModal>
 

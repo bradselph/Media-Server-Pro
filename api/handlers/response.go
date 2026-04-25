@@ -25,3 +25,13 @@ func writeError(c *gin.Context, status int, message string) {
 func safeContentDisposition(filename string) string {
 	return helpers.SafeContentDispositionFilename(filename)
 }
+
+// truncateQuery caps a user-supplied query string to maxLen runes to prevent
+// pathological LIKE-clause fan-out when the value is split into search tokens.
+func truncateQuery(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen])
+}

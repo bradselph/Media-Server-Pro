@@ -10,7 +10,7 @@ import (
 )
 
 // FND-0016: Regression test for CreateAPIToken ensuring ExpiresAt is non-nil and non-zero
-// when ttl > 0 (originally used invalid new(time.Now().Add(ttl)) pattern).
+// when ttl > 0.
 func TestFND0016_CreateAPIToken_WithTTL_ExpiresAtNonNil(t *testing.T) {
 	// Setup: create a minimal auth module with mock tokenRepo
 	ctx := context.Background()

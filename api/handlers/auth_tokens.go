@@ -45,12 +45,10 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 			CreatedAt: t.CreatedAt.Format(timeFormatRFC3339Ext),
 		}
 		if t.LastUsedAt != nil {
-			lastUsedStr := t.LastUsedAt.Format(timeFormatRFC3339Ext)
-			v.LastUsedAt = &lastUsedStr
+			v.LastUsedAt = new(t.LastUsedAt.Format(timeFormatRFC3339Ext))
 		}
 		if t.ExpiresAt != nil {
-			expiresStr := t.ExpiresAt.Format(timeFormatRFC3339Ext)
-			v.ExpiresAt = &expiresStr
+			v.ExpiresAt = new(t.ExpiresAt.Format(timeFormatRFC3339Ext))
 		}
 		views[i] = v
 	}

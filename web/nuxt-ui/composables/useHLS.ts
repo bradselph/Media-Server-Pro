@@ -380,6 +380,7 @@ export function useHLS(
             jobProgress.value = updated.progress
             if (updated.available && updated.hls_url) {
                 jobRunning.value = false
+                hlsError.value = null
                 hlsAvailable.value = true
                 hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
                 if (pollTimer) {

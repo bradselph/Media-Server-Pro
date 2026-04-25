@@ -851,6 +851,12 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			cleanupSQL: "DELETE FROM user_favorites WHERE media_path NOT IN (SELECT path FROM media_metadata)",
 			alterSQL:   "ALTER TABLE user_favorites ADD CONSTRAINT fk_user_favorites_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
 		},
+		{
+			table:      "media_collection_items",
+			constraint: "fk_media_collection_items_collection",
+			cleanupSQL: "DELETE FROM media_collection_items WHERE collection_id NOT IN (SELECT id FROM media_collections)",
+			alterSQL:   "ALTER TABLE media_collection_items ADD CONSTRAINT fk_media_collection_items_collection FOREIGN KEY (collection_id) REFERENCES media_collections(id) ON DELETE CASCADE",
+		},
 	}
 	for _, fk := range fks {
 		if err := m.ensureForeignKey(ctx, fk.table, fk.constraint, fk.cleanupSQL, fk.alterSQL); err != nil {

@@ -297,7 +297,7 @@ func CheckCLIAvailable(ctx context.Context, cfg config.ClaudeConfig) (path, vers
 	defer cancel()
 	out, runErr := exec.CommandContext(vctx, resolved, "--version").CombinedOutput()
 	if runErr != nil {
-		return resolved, "", fmt.Errorf("`%s --version` failed: %v", resolved, runErr)
+		return resolved, "", fmt.Errorf("`%s --version` failed: %w", resolved, runErr)
 	}
 	return resolved, strings.TrimSpace(string(out)), nil
 }
@@ -339,7 +339,7 @@ func ProbeAuth(ctx context.Context, cfg config.ClaudeConfig) error {
 		if strings.Contains(s, "auth") || strings.Contains(s, "login") || strings.Contains(s, "credential") {
 			return fmt.Errorf("not authenticated — run `claude login` on the host")
 		}
-		return fmt.Errorf("claude config check failed: %v", err)
+		return fmt.Errorf("claude config check failed: %w", err)
 	}
 	return nil
 }

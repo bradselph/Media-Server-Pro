@@ -227,7 +227,7 @@ func (m *Module) Start(_ context.Context) error {
 			Comment:   reason,
 			AddedAt:   time.Now(),
 			AddedBy:   "rate-limiter",
-			ExpiresAt: func() *time.Time { t := time.Now().Add(duration); return &t }(),
+			ExpiresAt: new(time.Now().Add(duration)),
 		}
 		if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 			m.log.Warn("Failed to persist auto-ban for %s: %v", ip, err)
@@ -355,7 +355,7 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 		Comment:   reason,
 		AddedAt:   time.Now(),
 		AddedBy:   "system",
-		ExpiresAt: func() *time.Time { t := time.Now().Add(duration); return &t }(),
+		ExpiresAt: new(time.Now().Add(duration)),
 	}
 	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 		m.log.Warn("Failed to persist ban for %s: %v", ip, err)

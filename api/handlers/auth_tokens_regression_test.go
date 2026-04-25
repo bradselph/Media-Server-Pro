@@ -6,9 +6,7 @@ import (
 )
 
 // FND-0016: Regression test for ListAPITokens JSON response formatting
-// This test verifies the fix at api/handlers/auth_tokens.go:48-54
-// Originally used invalid new(t.LastUsedAt.Format(...)) and new(t.ExpiresAt.Format(...)) patterns
-// Now uses local variable + address-of for string formatting
+// Verifies that LastUsedAt and ExpiresAt are formatted and returned as non-nil, valid RFC3339 strings.
 
 func TestFND0016_TokenView_LastUsedAtFormatting(t *testing.T) {
 	// Simulate the fixed code pattern for LastUsedAt
@@ -17,11 +15,9 @@ func TestFND0016_TokenView_LastUsedAtFormatting(t *testing.T) {
 	// Create a mock time.Time for LastUsedAt
 	lastUsed := time.Now()
 
-	// Apply the fix: local variable + address-of
 	var lastUsedStr *string
 	if true { // Simulating: if t.LastUsedAt != nil
-		formatted := lastUsed.Format(timeFormatRFC3339Ext)
-		lastUsedStr = &formatted
+		lastUsedStr = new(lastUsed.Format(timeFormatRFC3339Ext))
 	}
 
 	// Assertions for FND-0016 regression
@@ -58,11 +54,9 @@ func TestFND0016_TokenView_ExpiresAtFormatting(t *testing.T) {
 	// Create a mock time.Time for ExpiresAt (1 hour from now)
 	expiresAt := time.Now().Add(1 * time.Hour)
 
-	// Apply the fix: local variable + address-of
 	var expiresStr *string
 	if true { // Simulating: if t.ExpiresAt != nil
-		formatted := expiresAt.Format(timeFormatRFC3339Ext)
-		expiresStr = &formatted
+		expiresStr = new(expiresAt.Format(timeFormatRFC3339Ext))
 	}
 
 	// Assertions for FND-0016 regression
@@ -114,7 +108,6 @@ func TestFND0016_TokenView_BothTimestamps(t *testing.T) {
 	}
 	_ = now
 
-	// Simulate tokenView construction (the fixed code pattern)
 	type tokenView struct {
 		ID         string  `json:"id"`
 		Name       string  `json:"name"`
@@ -126,16 +119,12 @@ func TestFND0016_TokenView_BothTimestamps(t *testing.T) {
 	v := tokenView{}
 	_, _ = token.ID, token.Name
 
-	// Apply the fixed pattern for LastUsedAt
 	if token.LastUsedAt != nil {
-		lastUsedStr := token.LastUsedAt.Format(timeFormatRFC3339Ext)
-		v.LastUsedAt = &lastUsedStr
+		v.LastUsedAt = new(token.LastUsedAt.Format(timeFormatRFC3339Ext))
 	}
 
-	// Apply the fixed pattern for ExpiresAt
 	if token.ExpiresAt != nil {
-		expiresStr := token.ExpiresAt.Format(timeFormatRFC3339Ext)
-		v.ExpiresAt = &expiresStr
+		v.ExpiresAt = new(token.ExpiresAt.Format(timeFormatRFC3339Ext))
 	}
 
 	// Assertions for FND-0016 regression
@@ -197,15 +186,12 @@ func TestFND0016_TokenView_NilTimestamps(t *testing.T) {
 	v := tokenView{}
 	_, _ = token.ID, token.Name
 
-	// Apply the fixed pattern (should leave fields nil when source is nil)
 	if token.LastUsedAt != nil {
-		lastUsedStr := token.LastUsedAt.Format(timeFormatRFC3339Ext)
-		v.LastUsedAt = &lastUsedStr
+		v.LastUsedAt = new(token.LastUsedAt.Format(timeFormatRFC3339Ext))
 	}
 
 	if token.ExpiresAt != nil {
-		expiresStr := token.ExpiresAt.Format(timeFormatRFC3339Ext)
-		v.ExpiresAt = &expiresStr
+		v.ExpiresAt = new(token.ExpiresAt.Format(timeFormatRFC3339Ext))
 	}
 
 	// Assertions for FND-0016 regression

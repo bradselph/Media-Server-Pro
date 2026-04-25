@@ -68,9 +68,10 @@ func defaultServerConfig() ServerConfig {
 	return ServerConfig{
 		Host:            "0.0.0.0",
 		Port:            8080,
-		ReadTimeout:     30 * time.Second,
-		WriteTimeout:    0, // no limit; long media streams would be cut off after 60s
-		IdleTimeout:     120 * time.Second,
+		ReadHeaderTimeout: 15 * time.Second, // protect against slowloris; body has no limit
+		ReadTimeout:       0,                 // no limit; large file uploads must not be killed mid-transfer
+		WriteTimeout:      0,                 // no limit; long media streams would be cut off
+		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:  1 << 20,
 		ShutdownTimeout: 30 * time.Second,
 		EnableHTTPS:     false,

@@ -46,10 +46,10 @@ func (h *Handler) requireUploadSessionAndConfig(c *gin.Context) (session *models
 }
 
 // parseUploadFormAndGetFiles parses the multipart form and returns file headers. Caller must call the returned cleanup.
-func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context, cfg *config.Config) ([]*multipart.FileHeader, func(), bool) {
-	if cfg.Uploads.MaxFileSize > 0 {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, cfg.Uploads.MaxFileSize)
-	}
+func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context, _ *config.Config) ([]*multipart.FileHeader, func(), bool) {
+	// No MaxBytesReader here: per-file size is enforced by io.LimitReader inside ProcessFileHeader.
+	// Applying MaxBytesReader(MaxFileSize) at the body level incorrectly rejects any upload
+	// where multipart framing pushes the total body past the per-file limit.
 	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
 		writeError(c, http.StatusBadRequest, "Failed to parse upload form")
 		return nil, func() { /* no cleanup needed after parse failure */ }, false
@@ -83,8 +83,7 @@ func (h *Handler) checkUploadStorageQuota(c *gin.Context, cfg *config.Config, us
 	if userType == nil || userType.StorageQuota <= 0 {
 		return true
 	}
-	// Sum client-reported sizes as an upper bound. The actual bytes written may be
-	// less (truncated by MaxBytesReader), but client-reported 0 is treated as the
+	// Sum client-reported sizes as an upper bound. Client-reported 0 is treated as the
 	// configured max file size to prevent quota bypass via a zero-sized header.
 	maxFileSize := cfg.Uploads.MaxFileSize
 	if maxFileSize <= 0 {
@@ -137,17 +136,19 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		Filename string `json:"filename"`
 		Error    string `json:"error"`
 	}
+	type postEntry struct {
+		path    string
+		size    int64
+		isLocal bool
+	}
 
 	uploaded := make([]uploadedEntry, 0, len(fileHeaders))
 	uploadErrors := make([]errorEntry, 0)
 	var totalAdded int64
 	// uploadedPaths tracks every path that was physically written (local or remote)
-	// so the quota rollback can delete them all, including files that uploaded
-	// successfully but then failed media-index registration.
+	// so the quota rollback can delete them all.
 	var uploadedPaths []string
-	// registeredPaths tracks each successfully registered file path so we can
-	// delete them if the post-upload quota check fails.
-	var registeredPaths []string
+	var postProcess []postEntry
 
 	for _, fh := range fileHeaders {
 		userID := ""
@@ -168,46 +169,10 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		uploaded = append(uploaded, uploadedEntry{UploadID: string(result.UploadID), Filename: result.Filename, Size: result.Size})
 		totalAdded += result.Size
 
-		// Track every successfully written path for rollback — even those that
-		// fail the registration step below. Without this, a file that uploads to
-		// disk but then fails index registration would be orphaned if the
-		// post-upload quota check rolls back the batch.
 		if result.Path != "" {
 			uploadedPaths = append(uploadedPaths, result.Path)
-		}
-
-		// Register the file in the media index immediately so it's visible in the
-		// library without waiting for the next scheduled scan. For remote-store
-		// uploads the path is a storage key (not a local path), so we use the
-		// size-aware variant to skip os.Stat which would fail on remote keys.
-		if result.Path != "" {
-			var regErr error
-			if _, statErr := os.Stat(result.Path); statErr == nil {
-				// Local file — use standard path which runs os.Stat internally.
-				regErr = h.media.RegisterUploadedFile(result.Path)
-			} else {
-				// Remote-store key — provide size from upload result.
-				regErr = h.media.RegisterUploadedFileWithSize(result.Path, result.Size, time.Now())
-			}
-			if regErr != nil {
-				h.log.Warn("Failed to register uploaded file in library: %v", regErr)
-			} else {
-				registeredPaths = append(registeredPaths, result.Path)
-			}
-		}
-
-		// Mature flagging now works because RegisterUploadedFile added the file to
-		// the index above, so GetMedia will find it.
-		if cfg.Uploads.ScanForMature && result.Path != "" && h.scanner != nil {
-			if scanResult := h.scanner.ScanFile(result.Path); scanResult != nil && scanResult.IsMature && cfg.MatureScanner.AutoFlag {
-				updates := map[string]any{"is_mature": true}
-				if len(scanResult.Reasons) > 0 {
-					updates["mature_reason"] = scanResult.Reasons[0]
-				}
-				if err := h.media.UpdateMetadata(result.Path, updates); err != nil {
-					h.log.Error("Failed to flag uploaded file as mature: %v", err)
-				}
-			}
+			_, statErr := os.Stat(result.Path)
+			postProcess = append(postProcess, postEntry{path: result.Path, size: result.Size, isLocal: statErr == nil})
 		}
 	}
 
@@ -222,10 +187,6 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 				freshUsed = freshUser.StorageUsed
 			}
 			if freshUsed+totalAdded > userType.StorageQuota {
-				// Roll back: delete every file that was physically written, not just
-				// those that made it into the media index. Using uploadedPaths (not
-				// registeredPaths) ensures that files uploaded successfully but
-				// failed index registration are not left as orphans on disk/remote.
 				ctx := c.Request.Context()
 				for _, p := range uploadedPaths {
 					if delErr := h.media.DeleteMedia(ctx, p); delErr != nil {
@@ -249,6 +210,36 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		"uploaded": uploaded,
 		"errors":   uploadErrors,
 	})
+
+	// Media-index registration and mature scanning run after the response is sent
+	// so that ffprobe and the content classifier don't block the HTTP round-trip.
+	scanForMature := cfg.Uploads.ScanForMature
+	autoFlag := cfg.MatureScanner.AutoFlag
+	for _, entry := range postProcess {
+		go func() { //nolint:gosec // G118: background context intentional; request is already complete
+			var regErr error
+			if entry.isLocal {
+				regErr = h.media.RegisterUploadedFile(entry.path)
+			} else {
+				regErr = h.media.RegisterUploadedFileWithSize(entry.path, entry.size, time.Now())
+			}
+			if regErr != nil {
+				h.log.Warn("Failed to register uploaded file in library: %v", regErr)
+				return
+			}
+			if scanForMature && h.scanner != nil {
+				if scanResult := h.scanner.ScanFile(entry.path); scanResult != nil && scanResult.IsMature && autoFlag {
+					updates := map[string]any{"is_mature": true}
+					if len(scanResult.Reasons) > 0 {
+						updates["mature_reason"] = scanResult.Reasons[0]
+					}
+					if err := h.media.UpdateMetadata(entry.path, updates); err != nil {
+						h.log.Error("Failed to flag uploaded file as mature: %v", err)
+					}
+				}
+			}
+		}()
+	}
 }
 
 // GetUploadProgress returns upload progress

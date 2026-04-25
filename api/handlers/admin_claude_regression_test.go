@@ -175,7 +175,6 @@ func TestFND0547_AdminClaudeChat_MarshalErrorHandling(t *testing.T) {
 func TestFND0548_AdminClaudeKillSwitch_ConfigReadback(t *testing.T) {
 	// Verify PublicConfig has KillSwitch field that can be read back
 	cfg := claude.PublicConfig{
-		Enabled:   true,
 		KillSwitch: true,
 	}
 

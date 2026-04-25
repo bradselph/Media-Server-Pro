@@ -100,7 +100,7 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 		if err != nil {
 			h.log.Error("Source update failed: %v", err)
 			if h.admin != nil {
-				h.admin.LogAction(context.Background(), &admin.AuditLogParams{
+				h.admin.LogAction(ctx, &admin.AuditLogParams{
 					UserID: actorID, Username: actorName, Action: "apply_source_update",
 					Details: map[string]any{"error": err.Error()}, IPAddress: clientIP, Success: false,
 				})
@@ -108,7 +108,7 @@ func (h *Handler) ApplySourceUpdate(c *gin.Context) {
 			return
 		}
 		if h.admin != nil {
-			h.admin.LogAction(context.Background(), &admin.AuditLogParams{
+			h.admin.LogAction(ctx, &admin.AuditLogParams{
 				UserID: actorID, Username: actorName, Action: "apply_source_update",
 				Resource: status.Stage, Details: nil, IPAddress: clientIP, Success: status.Error == "",
 			})

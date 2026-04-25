@@ -17,6 +17,9 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+const defaultDownloaderTimeout = 30 * time.Second
+const defaultHealthCheckInterval = 30 * time.Second
+
 // Module manages the connection to the external downloader service.
 type Module struct {
 	config      *config.Manager
@@ -69,7 +72,7 @@ func (m *Module) Start(_ context.Context) error {
 
 	timeout := cfg.Downloader.RequestTimeout
 	if timeout <= 0 {
-		timeout = 30 * time.Second
+		timeout = defaultDownloaderTimeout
 	}
 	m.client = NewClient(cfg.Downloader.URL, timeout)
 
@@ -187,7 +190,7 @@ func (m *Module) setOnline(online bool) {
 
 func (m *Module) healthCheckLoop(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
-		interval = 30 * time.Second
+		interval = defaultHealthCheckInterval
 	}
 
 	// Initial check

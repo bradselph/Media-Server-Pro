@@ -153,6 +153,50 @@ func (h *Handler) bulkDeletePlaylistsByIDs(ctx context.Context, ids []string) (s
 	return successCount, failedCount, errs
 }
 
+// AdminUpdatePlaylist updates playlist metadata as admin (no ownership check).
+func (h *Handler) AdminUpdatePlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
+	playlistID, ok := RequireParamID(c, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		IsPublic    *bool   `json:"is_public"`
+	}
+	if !BindJSON(c, &req, errInvalidRequest) {
+		return
+	}
+	updates := map[string]any{}
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			writeError(c, http.StatusBadRequest, "name must not be empty")
+			return
+		}
+		updates["name"] = name
+	}
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	if req.IsPublic != nil {
+		updates["is_public"] = *req.IsPublic
+	}
+	if len(updates) == 0 {
+		writeError(c, http.StatusBadRequest, "no fields to update")
+		return
+	}
+	if err := h.playlist.AdminUpdatePlaylist(c.Request.Context(), playlist.PlaylistID(playlistID), updates); err != nil {
+		writeError(c, http.StatusNotFound, msgPlaylistNotFound)
+		return
+	}
+	h.logAdminAction(c, &adminLogActionParams{Action: "update_playlist", Target: playlistID})
+	writeSuccess(c, map[string]string{"message": "Playlist updated"})
+}
+
 // AdminDeletePlaylist deletes a playlist as admin
 func (h *Handler) AdminDeletePlaylist(c *gin.Context) {
 	if !h.requirePlaylist(c) {

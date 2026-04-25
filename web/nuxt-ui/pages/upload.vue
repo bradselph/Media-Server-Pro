@@ -18,6 +18,7 @@ watchEffect(() => {
 
 const dragOver = ref(false)
 const uploading = ref(false)
+const uploadPct = ref(0)
 const category = ref('')
 const selectedFiles = ref<File[]>([])
 const result = ref<UploadResult | null>(null)
@@ -125,9 +126,12 @@ function removeFile(index: number) {
 async function handleUpload() {
   if (selectedFiles.value.length === 0) return
   uploading.value = true
+  uploadPct.value = 0
   result.value = null
   try {
-    const res = await uploadApi.upload(selectedFiles.value, category.value || undefined)
+    const res = await uploadApi.upload(selectedFiles.value, category.value || undefined, (pct) => {
+      uploadPct.value = pct
+    })
     result.value = res
     progressMap.value = {}
     res.uploaded?.forEach(u => pollProgress(u.upload_id))
@@ -242,6 +246,20 @@ async function handleUpload() {
           :disabled="selectedFiles.length === 0"
           @click="handleUpload"
         />
+      </div>
+
+      <!-- Transfer progress bar (visible while bytes are being sent to the server) -->
+      <div v-if="uploading" class="space-y-1">
+        <div class="flex items-center justify-between text-xs text-muted">
+          <span>{{ uploadPct < 100 ? 'Uploading…' : 'Processing…' }}</span>
+          <span>{{ uploadPct }}%</span>
+        </div>
+        <div class="h-2 rounded-full bg-[var(--surface-elevated)] overflow-hidden">
+          <div
+            class="h-full rounded-full bg-primary transition-all duration-200"
+            :style="{ width: uploadPct + '%' }"
+          />
+        </div>
       </div>
 
       <!-- Results -->

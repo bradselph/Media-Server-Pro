@@ -161,12 +161,13 @@ type UpdaterConfig struct {
 
 // ServerConfig holds server-specific settings
 type ServerConfig struct {
-	Host            string        `json:"host"`
-	Port            int           `json:"port"`
-	ReadTimeout     time.Duration `json:"read_timeout"`
-	WriteTimeout    time.Duration `json:"write_timeout"`
-	IdleTimeout     time.Duration `json:"idle_timeout"`
-	MaxHeaderBytes  int           `json:"max_header_bytes"`
+	Host              string        `json:"host"`
+	Port              int           `json:"port"`
+	ReadHeaderTimeout time.Duration `json:"read_header_timeout"`
+	ReadTimeout       time.Duration `json:"read_timeout"`
+	WriteTimeout      time.Duration `json:"write_timeout"`
+	IdleTimeout       time.Duration `json:"idle_timeout"`
+	MaxHeaderBytes    int           `json:"max_header_bytes"`
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
 	EnableHTTPS     bool          `json:"enable_https"`
 	CertFile        string        `json:"cert_file"`
