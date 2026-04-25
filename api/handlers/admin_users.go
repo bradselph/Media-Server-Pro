@@ -81,6 +81,11 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 	if req.Type == "" {
 		req.Type = "standard"
 	}
+	// FND-0331: whitelist allowed Type values; reject unknown types to prevent persistence of arbitrary strings.
+	if req.Type != "standard" && req.Type != "guest" {
+		writeError(c, http.StatusBadRequest, `type must be "standard" or "guest"`)
+		return
+	}
 	user, err := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{
 		Username: req.Username,
 		Password: req.Password,

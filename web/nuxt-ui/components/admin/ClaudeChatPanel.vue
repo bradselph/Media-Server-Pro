@@ -15,6 +15,7 @@ async function loadConversations() {
     conversations.value = await adminApi.listClaudeConversations(50)
   } catch (e: unknown) {
     console.warn('[claude] loadConversations failed:', e)
+    toast.add({ title: 'Failed to load conversations', color: 'error', icon: 'i-lucide-x' })
   } finally {
     convsLoading.value = false
   }

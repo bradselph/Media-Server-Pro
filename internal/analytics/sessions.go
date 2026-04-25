@@ -76,9 +76,13 @@ func (m *Module) countActiveSessions(timeout time.Duration) int {
 func (m *Module) cleanupStaleSessions(timeout time.Duration) {
 	m.sessionsMu.Lock()
 	defer m.sessionsMu.Unlock()
+	var toDelete []string
 	for id, session := range m.sessions {
 		if time.Since(session.LastActivity) > timeout*2 {
-			delete(m.sessions, id)
+			toDelete = append(toDelete, id)
 		}
+	}
+	for _, id := range toDelete {
+		delete(m.sessions, id)
 	}
 }

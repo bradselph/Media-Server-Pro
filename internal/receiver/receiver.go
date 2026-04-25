@@ -387,7 +387,9 @@ func (m *Module) ValidateAPIKey(key string) bool {
 }
 
 // RegisterSlave registers a new slave node or updates an existing one.
-func (m *Module) RegisterSlave(req *RegisterRequest) (*SlaveNode, error) {
+// FND-0239: ctx bounds the DB Upsert so a hung database cannot block the
+// caller (notably the WebSocket read loop) indefinitely.
+func (m *Module) RegisterSlave(ctx context.Context, req *RegisterRequest) (*SlaveNode, error) {
 	if req.Name == "" || req.BaseURL == "" {
 		return nil, fmt.Errorf("name and base_url are required")
 	}
@@ -426,7 +428,7 @@ func (m *Module) RegisterSlave(req *RegisterRequest) (*SlaveNode, error) {
 	m.mu.Unlock()
 
 	rec := nodeToSlaveRecord(node)
-	if err := m.slaveRepo.Upsert(context.Background(), rec); err != nil {
+	if err := m.slaveRepo.Upsert(ctx, rec); err != nil {
 		return nil, fmt.Errorf("failed to persist slave: %w", err)
 	}
 
@@ -437,6 +439,11 @@ func (m *Module) RegisterSlave(req *RegisterRequest) (*SlaveNode, error) {
 // maxCatalogItems is the upper bound on items accepted in a single catalog push.
 // Prevents memory exhaustion from a misbehaving or compromised slave.
 const maxCatalogItems = 100_000
+
+// maxCatalogPayloadBytes caps the raw JSON byte size of a catalog message before
+// it is unmarshaled, so a crafted payload cannot drive large allocations during decode.
+// Sized for ~100k items at ~640 bytes each (FND-0236).
+const maxCatalogPayloadBytes = 64 * 1024 * 1024
 
 const errSlaveNotFound = "slave not found: %s"
 

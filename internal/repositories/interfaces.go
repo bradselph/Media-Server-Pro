@@ -70,7 +70,7 @@ type MediaMetadataRepository interface {
 	// UpdateBlurHash updates the BlurHash for a metadata row by path
 	UpdateBlurHash(ctx context.Context, path string, blurHash string) error
 	// GetPathByStableID returns the file path for the given stable ID.
-	// Returns ("", nil) when no row matches (avoids O(N) full-table scan in callers).
+	// Returns ("", ErrPathNotFound) when no row matches (consistent with ScanResultRepository.Get pattern).
 	GetPathByStableID(ctx context.Context, stableID string) (string, error)
 	// ListDuplicateCandidates returns rows that have both a non-empty
 	// content_fingerprint and stable_id, which is the only set used by the

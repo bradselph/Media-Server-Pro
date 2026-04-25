@@ -40,6 +40,8 @@ function defaultPreferences(): UserPreferences {
         shuffle_enabled: false,
         show_buffer_bar: true,
         download_prompt: true,
+        // FND-0046: Include custom_eq_presets field (even if undefined) for type consistency
+        // between default and server-normalized preferences.
         custom_eq_presets: undefined,
     }
 }
@@ -65,8 +67,12 @@ export const useAuthStore = defineStore('auth', () => {
             allowGuests.value = res.allow_guests
             user.value = res.authenticated ? (normalizeUser(res.user) ?? null) : null
         } catch (e) {
+            // FND-0045: Log error to distinguish network failures from logged-out state.
+            // Only clear user if server explicitly says "not authenticated"; preserve user
+            // on transient errors so login flow doesn't get disrupted (FND-0044).
             console.warn('[auth] fetchSession failed:', e)
-            user.value = null
+            // Preserve existing user.value on transient errors; don't null it out.
+            // Only null if server explicitly says not-authenticated (handled above in try block).
         } finally {
             isLoading.value = false
         }
@@ -112,8 +118,11 @@ export const useAuthStore = defineStore('auth', () => {
         try {
             await apiLogout()
         } catch (e) {
+            // FND-0043: Log error so failures are observable; we still clear local user state
+            // for UX reasons (best-effort logout) but error is logged for monitoring.
             console.error('[auth] server-side logout failed (session may still be active):', e)
         }
+        // Clear local user state even if server logout failed, for best-effort UX.
         user.value = null
     }
 

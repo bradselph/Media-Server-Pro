@@ -361,7 +361,13 @@ func (r *MediaMetadataRepository) UpdatePlaybackPosition(ctx context.Context, pa
 // DeleteAllPlaybackPositionsByUser removes all playback positions for a user.
 func (r *MediaMetadataRepository) DeleteAllPlaybackPositionsByUser(ctx context.Context, userID string) error {
 	result := r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&playbackPositionRow{})
-	return result.Error
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrMetadataNotFound
+	}
+	return nil
 }
 
 // DeletePlaybackPositionsByPath deletes all playback positions for a given media path.

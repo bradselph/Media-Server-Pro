@@ -205,6 +205,18 @@ func (m *Manager) validateAuth() []error {
 	if m.config.Auth.LockoutDuration == 0 {
 		m.log.Warn("auth lockout_duration is 0 — lockout expires immediately, brute-force protection is ineffective")
 	}
+	if m.config.Auth.DefaultUserType != "" {
+		found := false
+		for _, ut := range m.config.Auth.UserTypes {
+			if ut.Name == m.config.Auth.DefaultUserType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			errs = append(errs, fmt.Errorf("auth default_user_type %q does not match any configured UserType", m.config.Auth.DefaultUserType))
+		}
+	}
 	return errs
 }
 

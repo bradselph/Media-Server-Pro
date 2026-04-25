@@ -91,6 +91,9 @@ func (m *Module) parseProbeDuration(probeJSON string) float64 {
 
 // getSourceHeight probes the source media file and returns the video stream height in pixels.
 func (m *Module) getSourceHeight(ctx context.Context, mediaPath string) int {
+	if mediaPath == "" {
+		return 0
+	}
 	mediaPath = m.resolveMediaInputPath(ctx, mediaPath)
 	if m.ffmpegPath == "" && m.ffprobePath == "" {
 		return 0
