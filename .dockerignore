@@ -1,0 +1,100 @@
+# VCS / CI metadata
+.git
+.gitattributes
+.github
+.gitignore
+.golangci.yml
+.sonarcloud.properties
+
+# Editors / OS
+.idea
+.vscode
+.cursor
+.claude
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local secrets / generated config (must NEVER ship in image)
+.env
+.env.generated
+.env.docker
+.deploy.env
+.slave.env
+config.json
+*.bak
+.media-receiver.pid
+
+# Frontend build artifacts (regenerated inside the image)
+web/nuxt-ui/node_modules
+web/nuxt-ui/.nuxt
+web/nuxt-ui/.output
+web/nuxt-ui/dist
+web/static/react
+web/frontend/node_modules
+web/frontend/dist
+node_modules
+
+# Go build outputs
+/server
+/server.exe
+/media-receiver
+/media-receiver.exe
+*.exe
+/vendor
+dist
+build
+
+# Runtime data — never copy host data into the image
+videos
+music
+thumbnails
+playlists
+uploads
+analytics
+hls_cache
+data
+logs
+temp
+.remember
+
+# Media files
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.m4a
+
+# Reports / scans
+issues
+reports
+problems
+*.sarif
+*.sarif.json
+ANALYSIS_FINDINGS_*.json
+
+# Heavy host-only scripts and docs (the image doesn't need them)
+install.sh
+deploy.sh
+setup.sh
+systemd
+github-runner
+old
+docs/audit-screenshots
+CHANGELOG.md
+CONTRIBUTING.md
+
+# Docker artifacts themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore

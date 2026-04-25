@@ -1,0 +1,184 @@
+# Media Server Pro — Docker Compose stack.
+#
+# Usage:
+#   1. cp .env.docker.example .env.docker  &&  edit .env.docker
+#   2. docker compose --env-file .env.docker up -d --build
+#
+# Optional profiles:
+#   --profile minio     — bring up a local S3-compatible store
+#   --profile receiver  — also run a media-receiver slave node alongside
+
+name: media-server-pro
+
+services:
+  # ───────────────────────────────────────────────────────────────────────
+  # MariaDB — the application's primary datastore.
+  # ───────────────────────────────────────────────────────────────────────
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env.docker}"
+      MARIADB_DATABASE:      "${DATABASE_NAME:-mediaserver}"
+      MARIADB_USER:          "${DATABASE_USERNAME:-mediaserver}"
+      MARIADB_PASSWORD:      "${DATABASE_PASSWORD:?set DATABASE_PASSWORD in .env.docker}"
+      MARIADB_AUTO_UPGRADE:  "1"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=512M
+      - --max-allowed-packet=128M
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [internal]
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Media Server Pro — master server (HTTP API + embedded Nuxt UI).
+  # ───────────────────────────────────────────────────────────────────────
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_VERSION:   "${GO_VERSION:-1.26}"
+        NODE_VERSION: "${NODE_VERSION:-22}"
+        APP_UID:      "${APP_UID:-1000}"
+        APP_GID:      "${APP_GID:-1000}"
+    image: media-server-pro:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # ── Server ───────────────────────────────────────────────────────
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "${SERVER_PORT:-8080}"
+
+      # ── Database ─────────────────────────────────────────────────────
+      DATABASE_ENABLED:  "true"
+      DATABASE_HOST:     "db"
+      DATABASE_PORT:     "3306"
+      DATABASE_NAME:     "${DATABASE_NAME:-mediaserver}"
+      DATABASE_USERNAME: "${DATABASE_USERNAME:-mediaserver}"
+      DATABASE_PASSWORD: "${DATABASE_PASSWORD}"
+
+      # ── Storage paths (match VOLUME /data in the image) ──────────────
+      VIDEOS_DIR:     "/data/videos"
+      MUSIC_DIR:      "/data/music"
+      THUMBNAILS_DIR: "/data/thumbnails"
+      PLAYLISTS_DIR:  "/data/playlists"
+      UPLOADS_DIR:    "/data/uploads"
+      ANALYTICS_DIR:  "/data/analytics"
+      HLS_CACHE_DIR:  "/data/hls_cache"
+      DATA_DIR:       "/data/app"
+      LOGS_DIR:       "/data/logs"
+      TEMP_DIR:       "/data/temp"
+
+      # ── Logging / misc ───────────────────────────────────────────────
+      LOG_LEVEL:    "${LOG_LEVEL:-info}"
+      TZ:           "${TZ:-UTC}"
+      # Compose already waits for service_healthy on db; skip the extra probe.
+      WAIT_FOR_DB:  "0"
+    ports:
+      - "${SERVER_BIND:-0.0.0.0}:${SERVER_PORT:-8080}:${SERVER_PORT:-8080}"
+    volumes:
+      # One mount per logical data directory keeps backup/retention rules simple.
+      - videos:/data/videos
+      - music:/data/music
+      - thumbnails:/data/thumbnails
+      - playlists:/data/playlists
+      - uploads:/data/uploads
+      - analytics:/data/analytics
+      - hls-cache:/data/hls_cache
+      - app-data:/data/app
+      - logs:/data/logs
+      - temp:/data/temp
+    networks: [internal, public]
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Optional: media-receiver slave node, enabled with `--profile receiver`.
+  # ───────────────────────────────────────────────────────────────────────
+  receiver:
+    profiles: ["receiver"]
+    build:
+      context: .
+      dockerfile: Dockerfile.media-receiver
+      args:
+        GO_VERSION: "${GO_VERSION:-1.26}"
+        APP_UID:    "${APP_UID:-1000}"
+        APP_GID:    "${APP_GID:-1000}"
+    image: media-server-pro-receiver:latest
+    restart: unless-stopped
+    environment:
+      MASTER_URL:         "${MASTER_URL:?set MASTER_URL when running the receiver}"
+      RECEIVER_API_KEY:   "${RECEIVER_API_KEY:?set RECEIVER_API_KEY when running the receiver}"
+      SLAVE_ID:           "${SLAVE_ID:-receiver-1}"
+      SLAVE_NAME:         "${SLAVE_NAME:-Docker Receiver}"
+      MEDIA_DIRS:         "/data/videos,/data/music"
+      SCAN_INTERVAL:      "${SCAN_INTERVAL:-15m}"
+      HEARTBEAT_INTERVAL: "${HEARTBEAT_INTERVAL:-30s}"
+      TZ:                 "${TZ:-UTC}"
+    volumes:
+      - receiver-videos:/data/videos
+      - receiver-music:/data/music
+    networks: [public]
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Optional: MinIO for S3-compatible storage, enabled with `--profile minio`.
+  # ───────────────────────────────────────────────────────────────────────
+  minio:
+    profiles: ["minio"]
+    image: minio/minio:latest  # pin to a specific RELEASE tag in production
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     "${MINIO_ROOT_USER:-mediaserver}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD to use the minio profile}"
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [internal]
+
+# ───────────────────────────────────────────────────────────────────────────
+# Networks: `internal` is closed (db, minio); `public` exposes the server.
+# ───────────────────────────────────────────────────────────────────────────
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  public:
+    driver: bridge
+
+# ───────────────────────────────────────────────────────────────────────────
+# Named volumes — swap for bind mounts in your override file if you want
+# to point the server at host directories of existing media.
+# ───────────────────────────────────────────────────────────────────────────
+volumes:
+  db-data:
+  videos:
+  music:
+  thumbnails:
+  playlists:
+  uploads:
+  analytics:
+  hls-cache:
+  app-data:
+  logs:
+  temp:
+  minio-data:
+  receiver-videos:
+  receiver-music:

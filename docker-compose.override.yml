@@ -1,0 +1,42 @@
+# Media Server Pro — local development overrides.
+#
+# Docker Compose automatically merges this file with docker-compose.yml
+# when you run `docker compose up` without an explicit -f flag.
+#
+# This file is intentionally NOT committed with hard-coded paths.
+# Copy to docker-compose.override.yml and edit the volume bind mounts
+# below to point at your actual media directories.
+#
+# Usage:
+#   docker compose up -d --build
+
+services:
+  server:
+    # Expose a debug port — remove in production.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    # Override with bind mounts so the container reads your existing
+    # media library instead of empty named volumes.
+    # Uncomment and set the left-hand paths to your host directories.
+    volumes:
+      # - /path/to/your/videos:/data/videos
+      # - /path/to/your/music:/data/music
+      # Writeable caches / uploads still use named volumes:
+      - thumbnails:/data/thumbnails
+      - playlists:/data/playlists
+      - uploads:/data/uploads
+      - analytics:/data/analytics
+      - hls-cache:/data/hls_cache
+      - app-data:/data/app
+      - logs:/data/logs
+      - temp:/data/temp
+
+    # Log everything locally.
+    environment:
+      LOG_LEVEL: "debug"
+
+  db:
+    # Expose MariaDB for local inspection tools (e.g. TablePlus, DBeaver).
+    ports:
+      - "127.0.0.1:3306:3306"

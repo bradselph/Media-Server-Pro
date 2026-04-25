@@ -1,0 +1,91 @@
+#!/bin/sh
+# Media Server Pro — container entrypoint.
+#
+# Responsibilities:
+#   1. Make sure runtime data directories exist (the binary expects them).
+#   2. Optionally wait for the database before starting (best-effort probe).
+#   3. Hand off to the requested binary via `exec` so PID 1 forwards signals.
+#
+# Usage:
+#   /app/entrypoint.sh server               # default — runs the master server
+#   /app/entrypoint.sh media-receiver ...   # runs the slave with extra args
+#   /app/entrypoint.sh /path/to/binary ...  # passthrough
+set -eu
+
+# ── Directory bootstrap ─────────────────────────────────────────────────────
+# Each path is overridable via its own env var (see internal/config/
+# env_overrides_dirs.go). Honouring the override here means a single shared
+# volume mounted under a different name still gets created.
+ensure_dir() {
+    d="$1"
+    [ -n "$d" ] || return 0
+    if [ ! -d "$d" ]; then
+        mkdir -p "$d" 2>/dev/null || {
+            echo "entrypoint: warning: cannot create $d (continuing)" >&2
+            return 0
+        }
+    fi
+}
+
+ensure_dir "${VIDEOS_DIR:-/data/videos}"
+ensure_dir "${MUSIC_DIR:-/data/music}"
+ensure_dir "${THUMBNAILS_DIR:-/data/thumbnails}"
+ensure_dir "${PLAYLISTS_DIR:-/data/playlists}"
+ensure_dir "${UPLOADS_DIR:-/data/uploads}"
+ensure_dir "${ANALYTICS_DIR:-/data/analytics}"
+ensure_dir "${HLS_CACHE_DIR:-/data/hls_cache}"
+ensure_dir "${DATA_DIR:-/data/app}"
+ensure_dir "${LOGS_DIR:-/data/logs}"
+ensure_dir "${TEMP_DIR:-/data/temp}"
+
+# ── Optional DB wait ────────────────────────────────────────────────────────
+# Compose already orders us behind `db: service_healthy`, so this is mostly
+# useful when running `docker run` directly. Probe with curl, which is in the
+# image, by attempting a connect-only request — exit code 7 means the host
+# is not reachable, anything else means the port answered.
+wait_for_tcp() {
+    host="$1"; port="$2"; timeout_s="${3:-60}"
+    elapsed=0
+    while [ "$elapsed" -lt "$timeout_s" ]; do
+        # MySQL/MariaDB sends a banner; curl will fail to parse it but the
+        # connect itself succeeds, giving us exit code 52 (empty reply).
+        # Anything other than 7 (couldn't connect) means the port is open.
+        rc=0
+        curl --silent --output /dev/null --max-time 2 \
+             "http://${host}:${port}/" || rc=$?
+        if [ "$rc" != "7" ] && [ "$rc" != "28" ] && [ "$rc" != "6" ]; then
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 1
+}
+
+if [ "${WAIT_FOR_DB:-1}" = "1" ] && [ -n "${DATABASE_HOST:-}" ]; then
+    db_port="${DATABASE_PORT:-3306}"
+    echo "entrypoint: waiting for database at ${DATABASE_HOST}:${db_port} ..."
+    if wait_for_tcp "${DATABASE_HOST}" "${db_port}" "${DB_WAIT_TIMEOUT:-60}"; then
+        echo "entrypoint: database reachable."
+    else
+        echo "entrypoint: database not reachable yet — handing off to the app, which will retry." >&2
+    fi
+fi
+
+# ── Dispatch ────────────────────────────────────────────────────────────────
+# Friendly aliases are accepted; anything else is exec'd verbatim so users can
+# drop into a shell with `docker run ... sh`.
+cmd="${1:-server}"
+[ "$#" -gt 0 ] && shift
+
+case "$cmd" in
+    server)
+        exec /app/server "$@"
+        ;;
+    media-receiver|receiver|slave)
+        exec /app/media-receiver "$@"
+        ;;
+    *)
+        exec "$cmd" "$@"
+        ;;
+esac
