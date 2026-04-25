@@ -20,25 +20,30 @@ type Stats struct {
 
 // GetStats returns HLS module statistics. Cache size is computed after releasing
 // the job lock so filepath.Walk does not block job mutations.
+// FND-1161: the locked tally runs inside an anonymous function so its deferred
+// RUnlock fires before calculateCacheSize() walks the disk.
 func (m *Module) GetStats() Stats {
-	m.jobsMu.RLock()
-	defer m.jobsMu.RUnlock()
-	stats := Stats{
-		TotalJobs: len(m.jobs),
-		CacheDir:  m.cacheDir,
-	}
-	for _, job := range m.jobs {
-		switch job.Status {
-		case models.HLSStatusCompleted:
-			stats.CompletedJobs++
-		case models.HLSStatusRunning:
-			stats.RunningJobs++
-		case models.HLSStatusFailed:
-			stats.FailedJobs++
-		case models.HLSStatusPending:
-			stats.PendingJobs++
+	stats := func() Stats {
+		m.jobsMu.RLock()
+		defer m.jobsMu.RUnlock()
+		s := Stats{
+			TotalJobs: len(m.jobs),
+			CacheDir:  m.cacheDir,
 		}
-	}
+		for _, job := range m.jobs {
+			switch job.Status {
+			case models.HLSStatusCompleted:
+				s.CompletedJobs++
+			case models.HLSStatusRunning:
+				s.RunningJobs++
+			case models.HLSStatusFailed:
+				s.FailedJobs++
+			case models.HLSStatusPending:
+				s.PendingJobs++
+			}
+		}
+		return s
+	}()
 
 	stats.CacheSize = m.calculateCacheSize()
 	return stats

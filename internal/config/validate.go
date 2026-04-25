@@ -141,10 +141,34 @@ func (m *Manager) validateHLS() []error {
 	if !m.config.HLS.Enabled {
 		return nil
 	}
-	if m.config.HLS.SegmentDuration < 1 || m.config.HLS.SegmentDuration > 60 {
-		return []error{fmt.Errorf("hls segment_duration must be between 1 and 60 seconds, got: %d", m.config.HLS.SegmentDuration)}
+	var errs []error
+	hls := m.config.HLS
+	if hls.SegmentDuration < 1 || hls.SegmentDuration > 60 {
+		errs = append(errs, fmt.Errorf("hls segment_duration must be between 1 and 60 seconds, got: %d", hls.SegmentDuration))
 	}
-	return nil
+	// FND-1071: enforce positive bounds on numeric runtime knobs.
+	if hls.PlaylistLength < 1 {
+		errs = append(errs, fmt.Errorf("hls playlist_length must be at least 1, got: %d", hls.PlaylistLength))
+	}
+	if hls.ConcurrentLimit < 1 {
+		errs = append(errs, fmt.Errorf("hls concurrent_limit must be at least 1, got: %d", hls.ConcurrentLimit))
+	}
+	if hls.ProbeTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("hls probe_timeout must be positive, got: %v", hls.ProbeTimeout))
+	}
+	// FND-1072: cleanup intervals must have a sane lower bound to avoid tight loops.
+	if hls.CleanupEnabled {
+		if hls.CleanupInterval < time.Minute {
+			errs = append(errs, fmt.Errorf("hls cleanup_interval must be at least 1 minute when cleanup is enabled, got: %v", hls.CleanupInterval))
+		}
+		if hls.RetentionMinutes < 1 {
+			errs = append(errs, fmt.Errorf("hls retention_minutes must be at least 1 when cleanup is enabled, got: %d", hls.RetentionMinutes))
+		}
+	}
+	if hls.StaleLockThreshold < time.Minute {
+		errs = append(errs, fmt.Errorf("hls stale_lock_threshold must be at least 1 minute, got: %v", hls.StaleLockThreshold))
+	}
+	return errs
 }
 
 func (m *Manager) validateDatabase() []error {

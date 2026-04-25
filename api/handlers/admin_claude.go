@@ -191,6 +191,16 @@ func (h *Handler) AdminClaudeChat(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "message is required")
 		return
 	}
+	// FND-1101: validate optional mode override at the API boundary so silent
+	// fallback to default mode does not mask client misconfiguration.
+	if req.ModeOverride != "" {
+		switch req.ModeOverride {
+		case "advisory", "interactive", "autonomous":
+		default:
+			writeError(c, http.StatusBadRequest, `mode_override must be "advisory", "interactive", or "autonomous"`)
+			return
+		}
+	}
 
 	// Prepare SSE headers. Nginx buffering is disabled so events flush promptly.
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
