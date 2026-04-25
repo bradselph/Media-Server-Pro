@@ -134,7 +134,9 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   minio:
     profiles: ["minio"]
-    image: minio/minio:latest  # pin to a specific RELEASE tag in production
+    # Pin to an explicit RELEASE tag — MinIO does not publish semver tags.
+    # Override MINIO_IMAGE_TAG via .env.docker. See https://github.com/minio/minio/releases.
+    image: "minio/minio:${MINIO_IMAGE_TAG:?set MINIO_IMAGE_TAG to a specific RELEASE.YYYY-MM-DDTHH-MM-SSZ tag (avoid :latest in production)}"
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
