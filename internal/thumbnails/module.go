@@ -100,9 +100,10 @@ func (m *Module) Start(ctx context.Context) error {
 	}
 	m.ffprobePath = ffprobePath
 
-	// Start worker pool using the passed context so workers are properly
-	// integrated into the server's context tree for lifecycle management.
-	workerCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
+	// Workers must live beyond the 30-second module-startup timeout that the
+	// server passes as ctx. Using context.Background() here ensures m.ctx is
+	// never canceled by the startup deadline; Stop() cancels it via m.cancel.
+	workerCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
 	m.ctx = workerCtx
 	m.cancel = cancel
 
