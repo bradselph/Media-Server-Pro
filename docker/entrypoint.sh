@@ -43,8 +43,13 @@ ensure_dir "${TEMP_DIR:-/data/temp}"
 # build-time chown in the Dockerfile. Fix it here so the unprivileged
 # `mediaserver` user (created in the runtime stage) can write logs,
 # thumbnails, HLS cache, etc. Idempotent — only runs as root.
-APP_UID="${APP_UID:-1002}"
-APP_GID="${APP_GID:-1004}"
+#
+# Look the user up at runtime instead of trusting env defaults — the
+# Dockerfile's APP_UID/APP_GID build args may set any uid/gid (matched
+# to the host's deploy user), and a stale env default would cause
+# `setpriv --init-groups` to fail with "uid N not found".
+APP_UID="$(id -u mediaserver 2>/dev/null || echo "${APP_UID:-1000}")"
+APP_GID="$(id -g mediaserver 2>/dev/null || echo "${APP_GID:-1000}")"
 if [ "$(id -u)" = "0" ]; then
     chown "${APP_UID}:${APP_GID}" /data 2>/dev/null || true
     for d in \
@@ -114,9 +119,26 @@ cmd="${1:-server}"
 # Drop privileges to the unprivileged mediaserver user before exec'ing the
 # binary. setpriv ships in util-linux (already in debian-slim).
 drop_privs() {
-    if [ "$(id -u)" = "0" ] && command -v setpriv >/dev/null 2>&1; then
-        exec setpriv --reuid="${APP_UID}" --regid="${APP_GID}" --init-groups -- "$@"
+    # Already unprivileged — just exec.
+    [ "$(id -u)" != "0" ] && exec "$@"
+
+    # Prefer dropping by username (always resolves correctly regardless
+    # of how APP_UID/APP_GID were chosen at build time). Fall back to
+    # numeric ids if the user happens to be missing for some reason.
+    if command -v setpriv >/dev/null 2>&1; then
+        if id mediaserver >/dev/null 2>&1; then
+            exec setpriv --reuid=mediaserver --regid=mediaserver --init-groups -- "$@"
+        fi
+        exec setpriv --reuid="${APP_UID}" --regid="${APP_GID}" --clear-groups -- "$@"
     fi
+    if command -v su-exec >/dev/null 2>&1 && id mediaserver >/dev/null 2>&1; then
+        exec su-exec mediaserver "$@"
+    fi
+    if command -v gosu >/dev/null 2>&1 && id mediaserver >/dev/null 2>&1; then
+        exec gosu mediaserver "$@"
+    fi
+    # Last resort: stay as root. The server still runs; just less hardened.
+    echo "entrypoint: warning: no setpriv/su-exec/gosu available — running as root" >&2
     exec "$@"
 }
 
