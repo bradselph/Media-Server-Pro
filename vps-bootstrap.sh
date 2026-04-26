@@ -909,6 +909,16 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     chown "$DEPLOY_USER:$DEPLOY_USER" "$ENV_FILE" || true
   fi
   ok ".env.docker written to $ENV_FILE  (mode 600)"
+
+  # Compose's default env file is `.env` (not `.env.docker`). Symlink so
+  # bare `docker compose ps`/`logs`/etc. work without --env-file.
+  if [[ ! -e "$PROJECT_DIR/.env" ]] || [[ -L "$PROJECT_DIR/.env" ]]; then
+    ln -sf .env.docker "$PROJECT_DIR/.env"
+    ok "Symlinked .env → .env.docker so naked 'docker compose' commands work."
+  else
+    warn "$PROJECT_DIR/.env already exists and is not a symlink — left untouched."
+    warn "  Use --env-file .env.docker on every compose call, or merge files manually."
+  fi
 fi
 mark_done env_file
 
@@ -1084,10 +1094,10 @@ ${C_BOLD}${C_GREEN}Media Server Pro is up.${C_RESET}
 
 ${C_BOLD}Useful commands:${C_RESET}
   cd $PROJECT_DIR
-  docker compose --env-file .env.docker ps
-  docker compose --env-file .env.docker logs -f server
-  docker compose --env-file .env.docker restart server
-  docker compose --env-file .env.docker pull && docker compose --env-file .env.docker up -d   # upgrade
+  docker compose ps
+  docker compose logs -f server
+  docker compose restart server
+  docker compose pull && docker compose up -d   # upgrade
 
 ${C_BOLD}Next steps:${C_RESET}
   1. Visit $PUBLIC_URL in a browser and complete first-run setup.
