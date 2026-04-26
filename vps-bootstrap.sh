@@ -871,15 +871,34 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "DATABASE_NAME=$DB_NAME"
     echo "DATABASE_USERNAME=$DB_USER"
     echo "DATABASE_PASSWORD=$DB_APP_PW"
+
+    # ────────────────────────────────────────────────────────────────────
+    # Compose v2 interpolates env vars for EVERY service at parse time,
+    # even ones gated behind `profiles:`. So we always emit placeholder
+    # values for the receiver + minio services. They're inert until the
+    # corresponding profile is activated.
+    # ────────────────────────────────────────────────────────────────────
+    echo
+    echo "# Receiver profile (only used with --profile receiver)"
+    echo "MASTER_URL=https://master.example.com"
+    echo "RECEIVER_API_KEY=$(generate_secret)"
+    echo "SLAVE_ID=receiver-1"
+    echo "SLAVE_NAME=Docker Receiver"
+    echo "SCAN_INTERVAL=15m"
+    echo "HEARTBEAT_INTERVAL=30s"
+
+    echo
+    echo "# MinIO profile (only used with --profile minio)"
+    echo "MINIO_IMAGE_TAG=RELEASE.2025-09-07T16-13-09Z"
     if [[ "$USE_MINIO" == "true" ]]; then
-      echo
-      echo "# MinIO profile"
-      echo "MINIO_IMAGE_TAG=RELEASE.2025-09-07T16-13-09Z"
       echo "MINIO_ROOT_USER=$MINIO_USER"
       echo "MINIO_ROOT_PASSWORD=$MINIO_PW"
-      echo "MINIO_API_PORT=9000"
-      echo "MINIO_CONSOLE_PORT=9001"
+    else
+      echo "MINIO_ROOT_USER=mediaserver"
+      echo "MINIO_ROOT_PASSWORD=$(generate_secret)"
     fi
+    echo "MINIO_API_PORT=9000"
+    echo "MINIO_CONSOLE_PORT=9001"
   } > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
   if [[ "${CREATE_USER:-false}" == "true" ]]; then
