@@ -78,9 +78,11 @@ HAS_SYSTEMD=true
 #  1. LOGGING / OUTPUT
 # ──────────────────────────────────────────────────────────────────────────────
 if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
-  C_RESET='\033[0m'; C_BOLD='\033[1m'; C_DIM='\033[2m'
-  C_RED='\033[0;31m'; C_GREEN='\033[0;32m'; C_YELLOW='\033[1;33m'
-  C_BLUE='\033[0;34m'; C_CYAN='\033[0;36m'; C_MAGENTA='\033[0;35m'
+  # ANSI-C quoting ($'...') stores the actual ESC byte, so the codes render
+  # correctly in both `printf` format strings AND `cat <<EOF` heredocs.
+  C_RESET=$'\033[0m';   C_BOLD=$'\033[1m';   C_DIM=$'\033[2m'
+  C_RED=$'\033[0;31m';  C_GREEN=$'\033[0;32m'; C_YELLOW=$'\033[1;33m'
+  C_BLUE=$'\033[0;34m'; C_CYAN=$'\033[0;36m';  C_MAGENTA=$'\033[0;35m'
 else
   C_RESET=''; C_BOLD=''; C_DIM=''
   C_RED=''; C_GREEN=''; C_YELLOW=''; C_BLUE=''; C_CYAN=''; C_MAGENTA=''
@@ -93,11 +95,11 @@ _log_raw() {
   printf '[%s] %s\n' "$(_ts)" "$*" >> "$LOG_FILE" 2>/dev/null || true
 }
 
-info()    { printf "${C_CYAN}[i]${C_RESET} %b\n" "$*"; _log_raw "INFO  $*"; }
-ok()      { printf "${C_GREEN}[✓]${C_RESET} %b\n" "$*"; _log_raw "OK    $*"; }
-warn()    { printf "${C_YELLOW}[!]${C_RESET} %b\n" "$*"; _log_raw "WARN  $*"; }
-err()     { printf "${C_RED}[✗]${C_RESET} %b\n" "$*" >&2; _log_raw "ERROR $*"; }
-debug()   { [[ "${VERBOSE_DEBUG:-0}" == "1" ]] && printf "${C_DIM}[d]${C_RESET} %b\n" "$*"; _log_raw "DEBUG $*"; }
+info()    { printf "%s[i]%s %s\n" "$C_CYAN"   "$C_RESET" "$*"; _log_raw "INFO  $*"; }
+ok()      { printf "%s[\xe2\x9c\x93]%s %s\n" "$C_GREEN" "$C_RESET" "$*"; _log_raw "OK    $*"; }
+warn()    { printf "%s[!]%s %s\n" "$C_YELLOW" "$C_RESET" "$*"; _log_raw "WARN  $*"; }
+err()     { printf "%s[\xe2\x9c\x97]%s %s\n" "$C_RED"   "$C_RESET" "$*" >&2; _log_raw "ERROR $*"; }
+debug()   { [[ "${VERBOSE_DEBUG:-0}" == "1" ]] && printf "%s[d]%s %s\n" "$C_DIM" "$C_RESET" "$*"; _log_raw "DEBUG $*"; }
 
 die() {
   err "$*"
@@ -106,9 +108,9 @@ die() {
 }
 
 section() {
-  printf "\n${C_BOLD}${C_BLUE}══════════════════════════════════════════════════════════════════════${C_RESET}\n"
-  printf "${C_BOLD}${C_BLUE}  %s${C_RESET}\n" "$*"
-  printf "${C_BOLD}${C_BLUE}══════════════════════════════════════════════════════════════════════${C_RESET}\n\n"
+  printf "\n%s%s======================================================================%s\n" "$C_BOLD" "$C_BLUE" "$C_RESET"
+  printf   "%s%s  %s%s\n" "$C_BOLD" "$C_BLUE" "$*" "$C_RESET"
+  printf   "%s%s======================================================================%s\n\n" "$C_BOLD" "$C_BLUE" "$C_RESET"
   _log_raw "===== SECTION: $* ====="
 }
 
@@ -463,9 +465,10 @@ if [[ -f "$COMPOSE_FILE" ]]; then
   SKIP_CLONE=true
 fi
 if ! $SKIP_CLONE; then
-  prompt MS_REPO_URL "Git URL to clone" "$REPO_URL_DEFAULT"
-  prompt MS_REPO_DIR "Directory to clone into" "/opt/media-server-pro"
+  prompt MS_REPO_URL    "Git URL to clone" "$REPO_URL_DEFAULT"
+  prompt MS_REPO_DIR    "Directory to clone into" "/opt/media-server-pro"
   prompt MS_REPO_BRANCH "Branch to check out" "main"
+  prompt MS_REPO_TOKEN_TEXT "GitHub token (only if the repo is private; blank for public)" ""
 fi
 
 # 7i. secrets
@@ -735,14 +738,66 @@ elif skip_if_done clone; then
   PROJECT_DIR="$MS_REPO_DIR"
   ok "Already cloned to $PROJECT_DIR (resume)."
 else
+  # Build the effective clone URL — embed a token only if the user provided one.
+  EFFECTIVE_URL="$MS_REPO_URL"
+  if [[ -n "${MS_REPO_TOKEN_TEXT:-}" && "$MS_REPO_URL" =~ ^https://github\.com/ ]]; then
+    EFFECTIVE_URL="${MS_REPO_URL/https:\/\/github.com\//https:\/\/x-access-token:${MS_REPO_TOKEN_TEXT}@github.com/}"
+  fi
+
+  # Pre-probe the URL anonymously so we fail early with a clear diagnostic
+  # instead of letting git open an interactive credential prompt.
+  if [[ "$MS_REPO_URL" =~ ^https?:// ]]; then
+    PROBE_URL="${MS_REPO_URL%.git}/info/refs?service=git-upload-pack"
+    PROBE_CODE=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 10 "$PROBE_URL" 2>/dev/null || echo "000")
+    case "$PROBE_CODE" in
+      200)
+        ok "Repo is reachable anonymously (HTTP $PROBE_CODE)."
+        ;;
+      401|403|404)
+        if [[ -z "${MS_REPO_TOKEN_TEXT:-}" ]]; then
+          warn "Anonymous probe of $MS_REPO_URL returned HTTP $PROBE_CODE."
+          warn "  • If the repo is PRIVATE, re-run the script and paste a GitHub PAT at the token prompt."
+          warn "  • If the URL is wrong, double-check the owner/repo (case-sensitive)."
+          warn "  • A 404 from GitHub for a public repo usually means the URL or branch name is wrong."
+          confirm_or_exit "Try the clone anyway? (it will likely fail)"
+        fi
+        ;;
+      000)
+        warn "Could not reach $MS_REPO_URL at all (network/DNS issue?). Will still try clone."
+        ;;
+      *)
+        warn "Probe returned unexpected HTTP $PROBE_CODE — proceeding cautiously."
+        ;;
+    esac
+  fi
+
   if [[ -d "$MS_REPO_DIR/.git" ]]; then
     info "Updating existing checkout at $MS_REPO_DIR"
-    (cd "$MS_REPO_DIR" && git fetch --all --prune && git checkout "$MS_REPO_BRANCH" && git pull --ff-only) >>"$LOG_FILE" 2>&1 \
-      || warn "git pull failed — see log."
+    (
+      cd "$MS_REPO_DIR" || exit 1
+      GIT_TERMINAL_PROMPT=0 git -c credential.helper= fetch --all --prune \
+        && git checkout "$MS_REPO_BRANCH" \
+        && GIT_TERMINAL_PROMPT=0 git -c credential.helper= pull --ff-only
+    ) >>"$LOG_FILE" 2>&1 || warn "git pull failed — see log."
   else
     install -d -m 755 "$(dirname "$MS_REPO_DIR")"
-    run_cmd_live "clone repo" git clone --branch "$MS_REPO_BRANCH" "$MS_REPO_URL" "$MS_REPO_DIR" \
-      || die "git clone failed."
+    # GIT_TERMINAL_PROMPT=0 + empty credential.helper => fail fast, no prompts.
+    if ! GIT_TERMINAL_PROMPT=0 git -c credential.helper= clone \
+        --branch "$MS_REPO_BRANCH" "$EFFECTIVE_URL" "$MS_REPO_DIR" 2>&1 | tee -a "$LOG_FILE"; then
+      err "git clone failed."
+      err ""
+      err "Common causes:"
+      err "  1) Wrong repo URL — check owner/repo spelling and case."
+      err "     Default was: $REPO_URL_DEFAULT"
+      err "     You entered: $MS_REPO_URL"
+      err "  2) Repo is private — re-run and supply a GitHub Personal Access Token."
+      err "     Create one at: https://github.com/settings/tokens (scope: repo)"
+      err "  3) Wrong branch — '$MS_REPO_BRANCH' may not exist on the remote."
+      err "  4) Network/firewall blocking outbound HTTPS."
+      err ""
+      err "You can re-run with:  sudo $0 --resume"
+      die  "Aborting after clone failure."
+    fi
   fi
   PROJECT_DIR="$MS_REPO_DIR"
   if [[ "${CREATE_USER:-false}" == "true" ]]; then
