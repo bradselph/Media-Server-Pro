@@ -63,7 +63,7 @@ SKIP_FIREWALL=false
 SKIP_TLS=false
 SKIP_CLONE=false
 
-REPO_URL_DEFAULT="https://github.com/susplayer32/Media-Server-Pro-4.git"
+REPO_URL_DEFAULT="https://github.com/bradselph/Media-Server-Pro.git"
 
 # Captured during run
 OS_ID=""
@@ -165,6 +165,25 @@ prompt() {
     done
   fi
   _log_raw "PROMPT $text => ${!var}"
+}
+
+prompt_optional() {
+  # Same as prompt(), but accepts a blank answer (does NOT loop).
+  local var="$1" text="$2" default="${3:-}"
+  local input
+  if $ASSUME_YES; then
+    printf -v "$var" '%s' "$default"
+    [[ -n "$default" ]] && info "  (auto) $text = $default"
+    return
+  fi
+  if [[ -n "$default" ]]; then
+    read -rp "  $text [$default]: " input
+    printf -v "$var" '%s' "${input:-$default}"
+  else
+    read -rp "  $text: " input
+    printf -v "$var" '%s' "$input"
+  fi
+  _log_raw "PROMPT_OPT $text => ${!var:+(set)}"
 }
 
 prompt_secret() {
@@ -468,7 +487,7 @@ if ! $SKIP_CLONE; then
   prompt MS_REPO_URL    "Git URL to clone" "$REPO_URL_DEFAULT"
   prompt MS_REPO_DIR    "Directory to clone into" "/opt/media-server-pro"
   prompt MS_REPO_BRANCH "Branch to check out" "main"
-  prompt MS_REPO_TOKEN_TEXT "GitHub token (only if the repo is private; blank for public)" ""
+  prompt_optional MS_REPO_TOKEN_TEXT "GitHub token (only if the repo is private; press ENTER for public repos)" ""
 fi
 
 # 7i. secrets
