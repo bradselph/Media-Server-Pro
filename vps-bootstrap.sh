@@ -412,6 +412,29 @@ done
 
 mark_done preflight
 
+# 6i. self-update — if this script lives inside a git checkout that has
+# newer commits on origin, pull them and re-exec. Saves operators from
+# running stale copies after we ship a fix (the recurring foot-gun).
+if [[ -z "${VPS_BOOTSTRAP_SELF_UPDATED:-}" ]] \
+   && [[ -d "$SCRIPT_DIR/.git" ]] \
+   && command -v git >/dev/null 2>&1; then
+  if (cd "$SCRIPT_DIR" && git fetch --quiet origin 2>/dev/null); then
+    LOCAL_HEAD=$(cd "$SCRIPT_DIR" && git rev-parse HEAD 2>/dev/null || echo "")
+    REMOTE_HEAD=$(cd "$SCRIPT_DIR" && git rev-parse '@{u}' 2>/dev/null || echo "")
+    if [[ -n "$LOCAL_HEAD" && -n "$REMOTE_HEAD" && "$LOCAL_HEAD" != "$REMOTE_HEAD" ]]; then
+      info "A newer version of this script exists on origin (${LOCAL_HEAD:0:7} → ${REMOTE_HEAD:0:7})."
+      prompt_yn DO_PULL "Pull the latest and re-exec the bootstrap?" "y"
+      if [[ "$DO_PULL" == "true" ]]; then
+        (cd "$SCRIPT_DIR" && git pull --ff-only) && {
+          ok "Updated. Re-executing $0 with the same arguments…"
+          export VPS_BOOTSTRAP_SELF_UPDATED=1
+          exec "$0" "$@"
+        }
+      fi
+    fi
+  fi
+fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  7. UPFRONT QUESTIONS  (collect everything before doing destructive work)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -877,6 +900,16 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "DATABASE_PASSWORD=$DB_APP_PW"
 
     # ────────────────────────────────────────────────────────────────────
+    # Defensive defaults for fields whose internal default historically
+    # failed validation. Setting them here means the server boots even
+    # when running an old image without the upstream defaults fix.
+    # ────────────────────────────────────────────────────────────────────
+    echo
+    echo "# HLS — explicit, satisfies validate.go (>= 1)"
+    echo "HLS_PLAYLIST_LENGTH=6"
+    echo "HLS_SEGMENT_DURATION=6"
+
+    # ────────────────────────────────────────────────────────────────────
     # Compose v2 interpolates env vars for EVERY service at parse time,
     # even ones gated behind `profiles:`. So we always emit placeholder
     # values for the receiver + minio services. They're inert until the
@@ -988,13 +1021,17 @@ fi
 
 cd "$PROJECT_DIR" || die "Cannot cd to $PROJECT_DIR"
 
-# Compose auto-merges docker-compose.override.yml — but the repo ships a
-# *development* override (binds to 127.0.0.1, exposes the DB port, sets
-# debug logging). On a fresh VPS that's not what we want, so we pass the
-# base file explicitly to bypass the override.
+# Compose auto-merges docker-compose.override.yml. On a fresh VPS deploy
+# we explicitly pass `-f docker-compose.yml` to bypass any merge — but
+# also actively rename a stale override left over from a pre-rename
+# clone. The committed version was renamed to .yml.example upstream;
+# this catches operators who pulled before that rename.
 COMPOSE_FILE_ARGS=(-f docker-compose.yml)
 if [[ -f "$PROJECT_DIR/docker-compose.override.yml" ]]; then
-  warn "docker-compose.override.yml found — ignoring it (dev-only). Pass --skip-clean-overrides to keep it."
+  STALE="$PROJECT_DIR/docker-compose.override.yml.disabled-by-bootstrap.$TIMESTAMP"
+  warn "Renaming stale docker-compose.override.yml -> $(basename "$STALE")"
+  warn "  (it's a dev-only file that pins 127.0.0.1 ports and breaks public access)"
+  mv "$PROJECT_DIR/docker-compose.override.yml" "$STALE" || true
 fi
 
 # Tear down any stale stack from a previous failed attempt so its port
@@ -1025,16 +1062,64 @@ if [[ -n "$PORT_HOLDER" ]]; then
   die "Refusing to attempt 'docker compose up' while ${MS_PORT} is held."
 fi
 
+# Helper — dump everything an operator needs to debug a stack failure.
+dump_stack_diagnostics() {
+  local label="$1"
+  warn "=== $label diagnostics ==="
+  warn "--- container status ---"
+  docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+    "${COMPOSE_PROFILES_ARGS[@]}" ps 2>&1 | tee -a "$LOG_FILE" | sed 's/^/    /'
+  warn "--- last 100 lines of server logs ---"
+  docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+    "${COMPOSE_PROFILES_ARGS[@]}" logs --tail=100 server 2>&1 \
+    | tee -a "$LOG_FILE" | sed 's/^/    /'
+  warn "--- last 30 lines of db logs ---"
+  docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+    "${COMPOSE_PROFILES_ARGS[@]}" logs --tail=30 db 2>&1 \
+    | tee -a "$LOG_FILE" | sed 's/^/    /'
+}
+
+# Helper — match common server failure patterns and give targeted hints.
+suggest_fix_from_logs() {
+  local logs
+  logs=$(docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+         "${COMPOSE_PROFILES_ARGS[@]}" logs --tail=200 server 2>&1 || true)
+  if grep -qiE "permission denied.*\.log" <<<"$logs"; then
+    warn "Detected: permission denied writing to /data/logs."
+    warn "  Cause: stale named volumes from a pre-permission-fix container."
+    warn "  Fix:   docker compose down -v   (DESTROYS volumes — only safe pre-data)"
+    warn "         then re-run the bootstrap."
+  fi
+  if grep -qiE "playlist_length must be at least 1" <<<"$logs"; then
+    warn "Detected: HLS playlist_length validation failure."
+    warn "  Fix:   the new .env.docker pins HLS_PLAYLIST_LENGTH=6 — run --resume to regenerate."
+  fi
+  if grep -qiE "configuration validation failed" <<<"$logs"; then
+    warn "Detected: configuration validation failure."
+    warn "  Fix:   inspect the [ERROR] line above; usually a stale config.json."
+    warn "         removing host config.json forces the binary to use defaults."
+  fi
+  if grep -qiE "address already in use" <<<"$logs"; then
+    warn "Detected: server tried to bind a port already held by another process."
+  fi
+  if grep -qiE "access denied for user|connection refused.*3306" <<<"$logs"; then
+    warn "Detected: database auth/connect failure."
+    warn "  Fix:   docker compose down -v   (resets MariaDB so the password takes)"
+    warn "         then re-run."
+  fi
+}
+
 info "Pulling base images and building Media Server Pro image…"
 info "(this can take 5-15 minutes on first run)"
 if ! run_cmd_live "compose build" docker compose --env-file "$ENV_FILE" \
      "${COMPOSE_FILE_ARGS[@]}" "${COMPOSE_PROFILES_ARGS[@]}" build; then
-  warn "Build failed. You can fix the issue and re-run with --resume."
+  warn "Build failed. Re-run with --resume after fixing the underlying issue."
   die  "Aborting after build failure."
 fi
 if ! run_cmd_live "compose up -d" docker compose --env-file "$ENV_FILE" \
      "${COMPOSE_FILE_ARGS[@]}" "${COMPOSE_PROFILES_ARGS[@]}" up -d; then
-  die "docker compose up failed — see log."
+  dump_stack_diagnostics "compose up"
+  die "docker compose up failed — see diagnostics above and full log: $LOG_FILE"
 fi
 mark_done compose_up
 
@@ -1065,8 +1150,19 @@ echo
 if $HEALTHY; then
   ok "Server responded healthy on $HEALTH_URL"
 else
-  warn "Server did not become healthy within 90s. Recent container logs:"
-  docker compose --env-file "$ENV_FILE" logs --tail=80 server 2>&1 | tee -a "$LOG_FILE" | sed 's/^/    /'
+  warn "Server did not become healthy within 5 minutes."
+  # Check for a crash-loop — common when config validation rejects defaults.
+  STATE=$(docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+          "${COMPOSE_PROFILES_ARGS[@]}" ps --format '{{.Service}}\t{{.Status}}' 2>/dev/null \
+          | awk -F'\t' '$1=="server"{print $2; exit}')
+  if [[ -n "$STATE" ]]; then
+    info "  server container status: $STATE"
+    if grep -qiE "restarting" <<<"$STATE"; then
+      warn "  → container is in a CRASH LOOP; collecting logs and matching known patterns…"
+    fi
+  fi
+  dump_stack_diagnostics "health check"
+  suggest_fix_from_logs
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
