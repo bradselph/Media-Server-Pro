@@ -1286,12 +1286,38 @@ ${C_BOLD}Useful commands:${C_RESET}
   docker compose restart server
   docker compose pull && docker compose up -d   # upgrade
 
-${C_BOLD}Next steps:${C_RESET}
-  1. Visit $PUBLIC_URL in a browser and complete first-run setup.
-  2. Point DNS A/AAAA records at this server: ${PUBLIC_IP:-<this server>}.
-  3. Mount your media library into the container — see
-     docker-compose.override.yml.example in the repo.
-  4. Take a backup of $ENV_FILE — losing it means losing DB access.
+${C_BOLD}Login:${C_RESET}
+  Open $PUBLIC_URL/admin-login in a browser and sign in with:
+    Username : $ADMIN_USER
+    Password : (the one you entered during this run — also stored in $ENV_FILE
+               as ADMIN_PASSWORD)
+
+${C_BOLD}Adding media:${C_RESET}
+  The library is empty until you add files. Two options:
+
+  A) Web upload (simplest):
+       Sign in → /upload  (requires the admin user, or a user with
+       can_upload permission). Files are saved to the uploads volume.
+
+  B) Bulk add via host bind mount (for an existing media library):
+       1. Stop the stack:        cd $PROJECT_DIR && docker compose down
+       2. Copy the example:      cp docker-compose.override.yml.example \\
+                                    docker-compose.override.yml
+       3. Edit docker-compose.override.yml and uncomment / set:
+            - /your/host/videos:/data/videos
+            - /your/host/music:/data/music
+       4. Restart:               docker compose up -d
+       The scanner discovers new files automatically (~1 min).
+
+${C_BOLD}DNS / TLS:${C_RESET}
+  Currently reachable via raw IP. To use a domain with HTTPS:
+    1. Point an A record at ${PUBLIC_IP:-<this server>}.
+    2. Re-run this bootstrap with the domain at the first prompt — Caddy
+       will switch to Let's Encrypt automatically.
+
+${C_BOLD}Backup:${C_RESET}
+  Save $ENV_FILE somewhere safe — it has the DB and admin secrets and
+  cannot be recovered if lost.
 
 EOF
 
