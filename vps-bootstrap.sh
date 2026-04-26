@@ -1033,15 +1033,22 @@ mark_done compose_up
 # ──────────────────────────────────────────────────────────────────────────────
 section "Health check"
 HEALTH_URL="http://127.0.0.1:${MS_PORT}/health"
-info "Polling $HEALTH_URL for up to 90s…"
+# First boot does DB migrations + builds the module health map, which can
+# take several minutes on a slow VPS. Poll for up to 5 minutes (60×5s).
+info "Polling $HEALTH_URL — first boot can take several minutes on a fresh DB…"
 HEALTHY=false
-for i in $(seq 1 30); do
+for i in $(seq 1 60); do
   if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
     HEALTHY=true
     break
   fi
-  sleep 3
-  printf "."
+  # Show a status line every 30s so the operator knows it isn't hung.
+  if (( i % 6 == 0 )); then
+    printf " [%ds]" $((i*5))
+  else
+    printf "."
+  fi
+  sleep 5
 done
 echo
 
