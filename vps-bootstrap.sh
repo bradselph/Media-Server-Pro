@@ -428,11 +428,15 @@ prompt MS_DOMAIN "Public domain or hostname (blank = use IP only)" "${PUBLIC_IP:
 if [[ -z "$MS_DOMAIN" ]]; then
   warn "No domain provided — TLS via Let's Encrypt will not be possible."
   SKIP_TLS=true
+elif [[ "$MS_DOMAIN" == "$PUBLIC_IP" ]]; then
+  warn "Domain equals the server IP — Let's Encrypt cannot issue certs for raw IPs."
+  SKIP_TLS=true
 fi
 
-# 7b. ports
-prompt MS_PORT          "Server HTTP port (inside container)" "8080"
-prompt MS_PUBLIC_PORT   "Public port exposed by the host" "$( [[ "$SKIP_TLS" == true ]] && echo "$MS_PORT" || echo "443" )"
+# 7b. ports — single port. With Caddy in front, the container only needs
+# loopback access; without Caddy, the same port is exposed publicly.
+prompt MS_PORT "Server HTTP port" "8080"
+MS_PUBLIC_PORT="$MS_PORT"
 
 # 7c. deploy user
 prompt_yn CREATE_USER "Create a dedicated non-root deploy user?" "y"
@@ -683,7 +687,7 @@ else
       run_cmd "ufw allow http"  ufw allow 80/tcp
       run_cmd "ufw allow https" ufw allow 443/tcp
     else
-      run_cmd "ufw allow app"   ufw allow "${MS_PUBLIC_PORT}/tcp"
+      run_cmd "ufw allow app"   ufw allow "${MS_PORT}/tcp"
     fi
     if ! ufw status 2>/dev/null | grep -q "Status: active"; then
       run_cmd "ufw enable" bash -c "yes | ufw enable" \
@@ -697,7 +701,7 @@ else
       firewall-cmd --permanent --add-service=http  >>"$LOG_FILE" 2>&1
       firewall-cmd --permanent --add-service=https >>"$LOG_FILE" 2>&1
     else
-      firewall-cmd --permanent --add-port="${MS_PUBLIC_PORT}/tcp" >>"$LOG_FILE" 2>&1
+      firewall-cmd --permanent --add-port="${MS_PORT}/tcp" >>"$LOG_FILE" 2>&1
     fi
     firewall-cmd --reload >>"$LOG_FILE" 2>&1
     ok "firewalld configured."
@@ -973,13 +977,53 @@ if [[ "$USE_MINIO" == "true" ]]; then
 fi
 
 cd "$PROJECT_DIR" || die "Cannot cd to $PROJECT_DIR"
+
+# Compose auto-merges docker-compose.override.yml — but the repo ships a
+# *development* override (binds to 127.0.0.1, exposes the DB port, sets
+# debug logging). On a fresh VPS that's not what we want, so we pass the
+# base file explicitly to bypass the override.
+COMPOSE_FILE_ARGS=(-f docker-compose.yml)
+if [[ -f "$PROJECT_DIR/docker-compose.override.yml" ]]; then
+  warn "docker-compose.override.yml found — ignoring it (dev-only). Pass --skip-clean-overrides to keep it."
+fi
+
+# Tear down any stale stack from a previous failed attempt so its port
+# bindings, networks, and orphan containers don't block the new run.
+info "Cleaning up any prior stack state…"
+docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" "${COMPOSE_PROFILES_ARGS[@]}" \
+  down --remove-orphans >>"$LOG_FILE" 2>&1 || true
+
+# Pre-flight: is something already bound to the port we want?
+PORT_HOLDER=""
+if command -v ss >/dev/null 2>&1; then
+  PORT_HOLDER=$(ss -ltnp "( sport = :${MS_PORT} )" 2>/dev/null | tail -n +2 | head -1)
+elif command -v netstat >/dev/null 2>&1; then
+  PORT_HOLDER=$(netstat -ltnp 2>/dev/null | awk -v p=":${MS_PORT}" '$4 ~ p {print; exit}')
+fi
+if [[ -n "$PORT_HOLDER" ]]; then
+  err "Port ${MS_PORT} is already in use:"
+  err "  $PORT_HOLDER"
+  err ""
+  err "Likely candidates:"
+  err "  • A native (non-docker) media-server-pro from a prior install — try:"
+  err "      systemctl stop media-server-pro 2>/dev/null"
+  err "      systemctl disable media-server-pro 2>/dev/null"
+  err "  • A leftover container — try:"
+  err "      docker ps -a"
+  err "      docker rm -f \$(docker ps -aq --filter publish=${MS_PORT})"
+  err "  • Some other service (nginx/apache) — pick a different MS_PORT and re-run."
+  die "Refusing to attempt 'docker compose up' while ${MS_PORT} is held."
+fi
+
 info "Pulling base images and building Media Server Pro image…"
 info "(this can take 5-15 minutes on first run)"
-if ! run_cmd_live "compose build" docker compose --env-file "$ENV_FILE" "${COMPOSE_PROFILES_ARGS[@]}" build; then
+if ! run_cmd_live "compose build" docker compose --env-file "$ENV_FILE" \
+     "${COMPOSE_FILE_ARGS[@]}" "${COMPOSE_PROFILES_ARGS[@]}" build; then
   warn "Build failed. You can fix the issue and re-run with --resume."
   die  "Aborting after build failure."
 fi
-if ! run_cmd_live "compose up -d" docker compose --env-file "$ENV_FILE" "${COMPOSE_PROFILES_ARGS[@]}" up -d; then
+if ! run_cmd_live "compose up -d" docker compose --env-file "$ENV_FILE" \
+     "${COMPOSE_FILE_ARGS[@]}" "${COMPOSE_PROFILES_ARGS[@]}" up -d; then
   die "docker compose up failed — see log."
 fi
 mark_done compose_up
