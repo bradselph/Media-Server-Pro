@@ -60,8 +60,10 @@ independently:
 - `videos`, `music`, `uploads`, `thumbnails`, `playlists`, `analytics`,
   `hls-cache`, `data`, `logs`, `temp` — server state
 
-Switch any of them to bind mounts in `docker-compose.override.yml` if you
-want host-managed paths.
+Switch any of them to bind mounts by copying
+`docker-compose.override.yml.example` to `docker-compose.override.yml`
+(git-ignored) and editing the bind paths there. Compose auto-merges that
+file when present.
 
 ## Healthchecks
 
