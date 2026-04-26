@@ -66,7 +66,7 @@ func (h *Handler) ReceiverRegisterSlave(c *gin.Context) {
 		return
 	}
 
-	node, err := h.receiver.RegisterSlave(&req)
+	node, err := h.receiver.RegisterSlave(c.Request.Context(), &req)
 	if err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return

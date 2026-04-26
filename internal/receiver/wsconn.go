@@ -230,11 +230,14 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			node, err := m.RegisterSlave(&RegisterRequest{
+			// FND-0239: bound DB Upsert so a hung database cannot block the read loop.
+			regCtx, regCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			node, err := m.RegisterSlave(regCtx, &RegisterRequest{
 				SlaveID: data.SlaveID,
 				Name:    data.Name,
 				BaseURL: "ws-connected", // marker — slave doesn't expose an HTTP server
 			})
+			regCancel()
 			if err != nil {
 				m.log.Warn("WS register failed for %s: %v", data.SlaveID, err)
 				continue
@@ -249,6 +252,13 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			setReadDeadline(conn, wsReadDeadline, m.log)
 
 		case msgTypeCatalog:
+			// FND-0236: Reject oversized catalog payloads before json.Unmarshal allocates
+			// memory proportional to the payload. maxCatalogItems caps item count downstream,
+			// but a crafted message could still drive large allocations during decode.
+			if len(msg.Data) > maxCatalogPayloadBytes {
+				m.log.Warn("Catalog message rejected: payload %d bytes exceeds limit %d", len(msg.Data), maxCatalogPayloadBytes)
+				continue
+			}
 			var data wsCatalogData
 			if err := json.Unmarshal(msg.Data, &data); err != nil {
 				m.log.Warn("Invalid catalog data: %v", err)

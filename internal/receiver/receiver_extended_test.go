@@ -1,9 +1,11 @@
 package receiver
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"media-server-pro/internal/logger"
 	"media-server-pro/internal/repositories"
 )
 
@@ -138,5 +140,121 @@ func TestMediaRecordToItem(t *testing.T) {
 	}
 	if item.Width != 1920 || item.Height != 1080 {
 		t.Errorf("Dimensions = %dx%d", item.Width, item.Height)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FND-0236 / FND-0239: RegisterSlave context parameter
+// ---------------------------------------------------------------------------
+
+// mockSlaveRepo is a minimal mock for ReceiverSlaveRepository used in regression tests.
+type mockSlaveRepo struct {
+	upsertCalls int
+	lastCtx     context.Context
+	shouldFail  bool
+	failErr     error
+}
+
+func (m *mockSlaveRepo) Upsert(ctx context.Context, slave *repositories.ReceiverSlaveRecord) error {
+	m.upsertCalls++
+	m.lastCtx = ctx
+	if m.shouldFail {
+		return m.failErr
+	}
+	return nil
+}
+
+func (m *mockSlaveRepo) Get(ctx context.Context, slaveID string) (*repositories.ReceiverSlaveRecord, error) {
+	return nil, nil
+}
+
+func (m *mockSlaveRepo) Delete(ctx context.Context, slaveID string) error {
+	return nil
+}
+
+func (m *mockSlaveRepo) List(ctx context.Context) ([]*repositories.ReceiverSlaveRecord, error) {
+	return nil, nil
+}
+
+// TestFND0239_RegisterSlave_AcceptsContext verifies RegisterSlave accepts and respects a context parameter.
+// FND-0239 required changing RegisterSlave signature from func(req) to func(ctx context.Context, req)
+// to allow callers (especially the WS read loop) to bound database operations with timeouts.
+func TestFND0239_RegisterSlave_AcceptsContext(t *testing.T) {
+	mock := &mockSlaveRepo{}
+	m := &Module{
+		log:       logger.New("receiver"),
+		slaveRepo: mock,
+		slaves:    make(map[string]*SlaveNode),
+		media:     make(map[string]*MediaItem),
+	}
+
+	req := &RegisterRequest{
+		Name:    "Test Slave",
+		BaseURL: "https://example.com:8080",
+	}
+
+	ctx := context.Background()
+	node, err := m.RegisterSlave(ctx, req)
+
+	if err != nil {
+		t.Errorf("RegisterSlave failed: %v", err)
+	}
+	if node == nil {
+		t.Error("RegisterSlave should return a non-nil SlaveNode")
+	}
+	if mock.upsertCalls != 1 {
+		t.Errorf("Upsert called %d times, expected 1", mock.upsertCalls)
+	}
+	// Verify the context was passed through to the repo
+	if mock.lastCtx != ctx {
+		t.Error("RegisterSlave should pass the supplied context to slaveRepo.Upsert")
+	}
+}
+
+// TestFND0239_RegisterSlave_PropagatesCancelledContext verifies that when RegisterSlave is called
+// with a cancelled context, it propagates the cancellation error from the repo.
+// This regression test ensures the fix for FND-0239 (which bounds DB operations with timeouts)
+// works correctly: if the context is already cancelled, the DB Upsert should fail immediately.
+func TestFND0239_RegisterSlave_PropagatesCancelledContext(t *testing.T) {
+	mock := &mockSlaveRepo{}
+	mock.shouldFail = true
+	mock.failErr = context.Canceled
+	m := &Module{
+		log:       logger.New("receiver"),
+		slaveRepo: mock,
+		slaves:    make(map[string]*SlaveNode),
+		media:     make(map[string]*MediaItem),
+	}
+
+	req := &RegisterRequest{
+		Name:    "Test Slave",
+		BaseURL: "https://example.com:8080",
+	}
+
+	// Use an already-cancelled context to simulate what happens when a WS read loop's
+	// 5-second timeout (from FND-0239 fix) expires during a slow DB operation.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	node, err := m.RegisterSlave(ctx, req)
+
+	if err == nil {
+		t.Error("RegisterSlave should return an error when context is cancelled")
+	}
+	if node != nil {
+		t.Error("RegisterSlave should return nil SlaveNode on context cancellation")
+	}
+	if mock.upsertCalls != 1 {
+		t.Errorf("Upsert called %d times, expected 1", mock.upsertCalls)
+	}
+}
+
+// TestFND0236_maxCatalogPayloadBytes verifies the constant exists and has expected size.
+// FND-0236 requires rejecting catalog payloads > 64 MiB before json.Unmarshal,
+// preventing allocation spikes from crafted messages.
+func TestFND0236_maxCatalogPayloadBytes(t *testing.T) {
+	expectedSize := int64(64 * 1024 * 1024)
+	if maxCatalogPayloadBytes != expectedSize {
+		t.Errorf("maxCatalogPayloadBytes = %d, expected %d", maxCatalogPayloadBytes, expectedSize)
 	}
 }

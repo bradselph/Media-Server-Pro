@@ -771,6 +771,14 @@ func (h *Handler) resolvePathForAdmin(c *gin.Context, path string, mustBeDir boo
 	if !ok {
 		return "", false
 	}
+	// FND-1011: Resolve symlinks before the allow-list check so a symlink that
+	// points outside allowedDirs cannot bypass the boundary. Mirrors the pattern
+	// used by DiscoverMedia (admin_discovery.go:43). EvalSymlinks can fail when
+	// the path doesn't exist yet; the validatePathInDirsAndStat call below
+	// surfaces that as the appropriate not-found response.
+	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
+		absPath = resolved
+	}
 	if !validatePathInDirsAndStat(c, absPath, allowedDirs, mustBeDir) {
 		return "", false
 	}

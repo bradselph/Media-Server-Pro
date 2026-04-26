@@ -296,12 +296,23 @@ func (h *Handler) UpdateSmartPlaylist(c *gin.Context) {
 	}
 	var sp models.SmartPlaylist
 	if err := db.First(&sp, "id = ? AND user_id = ?", id, session.UserID).Error; err != nil {
-		writeError(c, http.StatusNotFound, "Smart playlist not found")
+		// FND-0295: distinguish not-found from server errors so 5xx incidents are visible.
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "Smart playlist not found")
+		} else {
+			h.log.Error("UpdateSmartPlaylist: db error: %v", err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 	if req.Name != nil {
 		if *req.Name == "" {
 			writeError(c, http.StatusBadRequest, "name cannot be empty")
+			return
+		}
+		// FND-0297: enforce max length on update path too.
+		if len(*req.Name) > 255 {
+			writeError(c, http.StatusBadRequest, "name too long (max 255)")
 			return
 		}
 		sp.Name = *req.Name
@@ -371,7 +382,13 @@ func (h *Handler) PreviewSmartPlaylist(c *gin.Context) {
 	}
 	var sp models.SmartPlaylist
 	if err := db.First(&sp, "id = ? AND user_id = ?", id, session.UserID).Error; err != nil {
-		writeError(c, http.StatusNotFound, "Smart playlist not found")
+		// FND-0295: distinguish not-found from server errors so 5xx incidents are visible.
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "Smart playlist not found")
+		} else {
+			h.log.Error("PreviewSmartPlaylist: db error: %v", err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 	rules, err := parseSmartRules(sp.Rules)

@@ -1659,7 +1659,9 @@ func (m *Module) DeletePlaybackPositionsByPath(ctx context.Context, path string)
 func (m *Module) ClearAllPlaybackPositions(userID string) {
 	// Persist deletion to DB so positions do not reappear after restart.
 	if m.metadataRepo != nil {
-		_ = m.metadataRepo.DeleteAllPlaybackPositionsByUser(context.Background(), userID)
+		if err := m.metadataRepo.DeleteAllPlaybackPositionsByUser(context.Background(), userID); err != nil && !errors.Is(err, repositories.ErrMetadataNotFound) {
+			m.log.Warn("Failed to clear playback positions for user %s: %v", userID, err)
+		}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

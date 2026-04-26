@@ -31,9 +31,14 @@ async function loadSecurityConfig() {
       fullConfig.value = cfg
       const sec = asRecord(cfg.security)
       const srv = asRecord(cfg.server)
-      corsEnabled.value = sec?.cors_enabled === true
-      hstsEnabled.value = sec?.hsts_enabled === true
-      httpsEnabled.value = srv?.enable_https === true
+      // FND-0212: Validate asRecord() results before property access
+      if (sec) {
+        corsEnabled.value = sec.cors_enabled === true
+        hstsEnabled.value = sec.hsts_enabled === true
+      }
+      if (srv) {
+        httpsEnabled.value = srv.enable_https === true
+      }
     }
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-alert-circle' })
@@ -59,9 +64,14 @@ async function saveSecurityToggle(
     fullConfig.value = updated
     const sec = asRecord(updated.security)
     const srv = asRecord(updated.server)
-    corsEnabled.value = sec?.cors_enabled === true
-    hstsEnabled.value = sec?.hsts_enabled === true
-    httpsEnabled.value = srv?.enable_https === true
+    // FND-0212: Validate asRecord() results before property access
+    if (sec) {
+      corsEnabled.value = sec.cors_enabled === true
+      hstsEnabled.value = sec.hsts_enabled === true
+    }
+    if (srv) {
+      httpsEnabled.value = srv.enable_https === true
+    }
     toast.add({ title: 'Security settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
@@ -118,6 +128,9 @@ async function exportAuditLog() {
 const whitelist = ref<IPListEntry[]>([])
 const blacklist = ref<IPListEntry[]>([])
 const banned = ref<BannedIP[]>([])
+const whitelistLoading = ref(false)
+const blacklistLoading = ref(false)
+const bannedLoading = ref(false)
 const newIP = ref('')
 const newComment = ref('')
 const ipLoading = ref(false)
@@ -131,32 +144,40 @@ function isValidIPCIDR(ip: string): boolean {
 }
 
 async function loadWhitelist() {
+  whitelistLoading.value = true
   try { whitelist.value = (await adminApi.getWhitelist()) ?? [] }
   catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load whitelist', color: 'error', icon: 'i-lucide-alert-circle' }) }
+  finally { whitelistLoading.value = false }
 }
 async function loadBlacklist() {
+  blacklistLoading.value = true
   try { blacklist.value = (await adminApi.getBlacklist()) ?? [] }
   catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load blacklist', color: 'error', icon: 'i-lucide-alert-circle' }) }
+  finally { blacklistLoading.value = false }
 }
 async function loadBanned() {
+  bannedLoading.value = true
   try { banned.value = (await adminApi.getBannedIPs()) ?? [] }
   catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load banned IPs', color: 'error', icon: 'i-lucide-alert-circle' }) }
+  finally { bannedLoading.value = false }
 }
 
 async function addToList(type: 'whitelist' | 'blacklist') {
+  // FND-0214: Clear stale error from previous attempt at entry, so the validation
+  // branch below can set a fresh message that survives the function exit.
+  ipError.value = ''
   if (!newIP.value) return
   if (!isValidIPCIDR(newIP.value.trim())) {
     ipError.value = 'Invalid IP address or CIDR format'
     return
   }
-  ipError.value = ''
   ipLoading.value = true
   try {
     if (type === 'whitelist') await adminApi.addToWhitelist(newIP.value, newComment.value || undefined)
     else await adminApi.addToBlacklist(newIP.value, newComment.value || undefined)
     toast.add({ title: `IP added to ${type}`, color: 'success', icon: 'i-lucide-check' })
     newIP.value = ''; newComment.value = ''
-    if (type === 'whitelist') loadWhitelist(); else loadBlacklist()
+    if (type === 'whitelist') await loadWhitelist(); else await loadBlacklist()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
@@ -213,23 +234,27 @@ async function banIPAddress() {
 // Stats
 const stats = ref<SecurityStats | null>(null)
 const statsError = ref('')
+const statsLoading = ref(false)
 
 async function loadStats() {
+  statsLoading.value = true
   statsError.value = ''
   try {
     stats.value = await adminApi.getSecurityStats()
   } catch (e: unknown) {
     statsError.value = e instanceof Error ? e.message : 'Failed to load security stats'
     toast.add({ title: statsError.value, color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally {
+    statsLoading.value = false
   }
 }
 
 watch(subTab, (v) => {
   if (v === 'audit' && !auditLoading.value) loadAudit()
-  else if (v === 'whitelist') loadWhitelist()
-  else if (v === 'blacklist') loadBlacklist()
-  else if (v === 'banned') loadBanned()
-  else if (v === 'stats') loadStats()
+  else if (v === 'whitelist' && !whitelistLoading.value) loadWhitelist()
+  else if (v === 'blacklist' && !blacklistLoading.value) loadBlacklist()
+  else if (v === 'banned' && !bannedLoading.value) loadBanned()
+  else if (v === 'stats' && !statsLoading.value) loadStats()
   else if (v === 'settings' && !configLoading.value) loadSecurityConfig()
 }, { immediate: true })
 </script>

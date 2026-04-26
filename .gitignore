@@ -5,6 +5,7 @@
 config.json
 .env
 .env.generated
+.env.docker
 .deploy.env
 .slave.env
 .media-receiver.pid

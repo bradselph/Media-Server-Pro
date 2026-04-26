@@ -385,7 +385,7 @@ func (s *MatureScanner) ScanFile(path string) *ScanResult {
 			}
 			if errCount >= 3 {
 				s.log.Warn("Repository unavailable after %d consecutive errors, skipping repo saves for this scan cycle", errCount)
-				s.repoDown.Store(true)
+				s.repoDown.CompareAndSwap(false, true)
 			}
 		} else {
 			s.repoErrors.Store(0)
@@ -401,22 +401,25 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 
 	// Check repository first for persistent cache (only if repo is ready)
 	if s.scanRepo != nil {
-		if repoResult, err := s.scanRepo.Get(context.Background(), path); err == nil {
-			// Parse scanned_at timestamp
-			scannedAt, err := time.Parse(time.RFC3339, repoResult.ScannedAt)
-			if err == nil {
-				// Check if file has been modified since last scan
-				if info, err := os.Stat(path); err == nil && !info.ModTime().After(scannedAt) {
-					// Skip scanning if already reviewed/flagged and file hasn't been modified
-					// This prevents re-scanning content that has already been processed by an admin
-					if repoResult.ReviewedBy != "" || repoResult.ReviewDecision != "" || repoResult.IsMature {
-						s.log.Debug("  Skipping scan - already processed in repository (reviewed: %v, decision: %v, flagged: %v)",
-							repoResult.ReviewedBy != "", repoResult.ReviewDecision != "", repoResult.IsMature)
+		// First verify the file still exists before loading cache (mitigates TOCTOU race)
+		if info, err := os.Stat(path); err == nil {
+			if repoResult, err := s.scanRepo.Get(context.Background(), path); err == nil {
+				// Parse scanned_at timestamp
+				scannedAt, err := time.Parse(time.RFC3339, repoResult.ScannedAt)
+				if err == nil {
+					// Check if file has been modified since last scan
+					if !info.ModTime().After(scannedAt) {
+						// Skip scanning if already reviewed/flagged and file hasn't been modified
+						// This prevents re-scanning content that has already been processed by an admin
+						if repoResult.ReviewedBy != "" || repoResult.ReviewDecision != "" || repoResult.IsMature {
+							s.log.Debug("  Skipping scan - already processed in repository (reviewed: %v, decision: %v, flagged: %v)",
+								repoResult.ReviewedBy != "", repoResult.ReviewDecision != "", repoResult.IsMature)
+							return s.convertRepoToScanner(repoResult)
+						}
+						// For unreviewed content, still use cache to avoid redundant scans
+						s.log.Debug("  Using repository cached scan result (scanned: %v)", scannedAt.Format("2006-01-02 15:04"))
 						return s.convertRepoToScanner(repoResult)
 					}
-					// For unreviewed content, still use cache to avoid redundant scans
-					s.log.Debug("  Using repository cached scan result (scanned: %v)", scannedAt.Format("2006-01-02 15:04"))
-					return s.convertRepoToScanner(repoResult)
 				}
 			}
 		}
