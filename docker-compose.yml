@@ -55,6 +55,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Forward every variable from .env.docker into the container. Without
+    # this, only the explicitly-listed `environment:` keys reach the server
+    # and things like ADMIN_USERNAME/ADMIN_PASSWORD/HLS_* go unread.
+    # Values set in `environment:` below still take precedence (e.g. forcing
+    # SERVER_HOST=0.0.0.0 inside the container regardless of the host bind).
+    env_file:
+      - .env.docker
     environment:
       # ── Server ───────────────────────────────────────────────────────
       SERVER_HOST: "0.0.0.0"
