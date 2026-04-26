@@ -38,6 +38,39 @@ ensure_dir "${DATA_DIR:-/data/app}"
 ensure_dir "${LOGS_DIR:-/data/logs}"
 ensure_dir "${TEMP_DIR:-/data/temp}"
 
+# ── Volume ownership fix ────────────────────────────────────────────────────
+# Docker mounts named volumes as root:root by default, shadowing the
+# build-time chown in the Dockerfile. Fix it here so the unprivileged
+# `mediaserver` user (created in the runtime stage) can write logs,
+# thumbnails, HLS cache, etc. Idempotent — only runs as root.
+APP_UID="${APP_UID:-1002}"
+APP_GID="${APP_GID:-1004}"
+if [ "$(id -u)" = "0" ]; then
+    chown "${APP_UID}:${APP_GID}" /data 2>/dev/null || true
+    for d in \
+        "${VIDEOS_DIR:-/data/videos}" \
+        "${MUSIC_DIR:-/data/music}" \
+        "${THUMBNAILS_DIR:-/data/thumbnails}" \
+        "${PLAYLISTS_DIR:-/data/playlists}" \
+        "${UPLOADS_DIR:-/data/uploads}" \
+        "${ANALYTICS_DIR:-/data/analytics}" \
+        "${HLS_CACHE_DIR:-/data/hls_cache}" \
+        "${DATA_DIR:-/data/app}" \
+        "${LOGS_DIR:-/data/logs}" \
+        "${TEMP_DIR:-/data/temp}"
+    do
+        [ -d "$d" ] || continue
+        # Only chown the top of the tree; recursive chown on a populated
+        # media library is expensive and unnecessary on subsequent boots.
+        # If the dir is wrong-owned, fix it (and one level deep for
+        # children created earlier under the wrong uid).
+        owner=$(stat -c '%u:%g' "$d" 2>/dev/null || echo "")
+        if [ "$owner" != "${APP_UID}:${APP_GID}" ]; then
+            chown -R "${APP_UID}:${APP_GID}" "$d" 2>/dev/null || true
+        fi
+    done
+fi
+
 # ── Optional DB wait ────────────────────────────────────────────────────────
 # Compose already orders us behind `db: service_healthy`, so this is mostly
 # useful when running `docker run` directly. Probe with curl, which is in the
@@ -78,14 +111,23 @@ fi
 cmd="${1:-server}"
 [ "$#" -gt 0 ] && shift
 
+# Drop privileges to the unprivileged mediaserver user before exec'ing the
+# binary. setpriv ships in util-linux (already in debian-slim).
+drop_privs() {
+    if [ "$(id -u)" = "0" ] && command -v setpriv >/dev/null 2>&1; then
+        exec setpriv --reuid="${APP_UID}" --regid="${APP_GID}" --init-groups -- "$@"
+    fi
+    exec "$@"
+}
+
 case "$cmd" in
     server)
-        exec /app/server "$@"
+        drop_privs /app/server "$@"
         ;;
     media-receiver|receiver|slave)
-        exec /app/media-receiver "$@"
+        drop_privs /app/media-receiver "$@"
         ;;
     *)
-        exec "$cmd" "$@"
+        drop_privs "$cmd" "$@"
         ;;
 esac

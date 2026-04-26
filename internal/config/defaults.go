@@ -200,7 +200,7 @@ func defaultHLSConfig() HLSConfig {
 	return HLSConfig{
 		Enabled:                  true,
 		SegmentDuration:          6,
-		PlaylistLength:           0,
+		PlaylistLength:           6,
 		CleanupEnabled:           true,
 		CleanupInterval:          1 * time.Hour,
 		RetentionMinutes:         60,

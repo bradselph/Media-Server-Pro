@@ -136,7 +136,9 @@ COPY --chown=mediaserver:mediaserver docker/entrypoint.sh /app/entrypoint.sh
 
 RUN chmod +x /app/server /app/media-receiver /app/entrypoint.sh
 
-USER mediaserver
+# NOTE: deliberately running PID 1 as root so the entrypoint can fix the
+# ownership of named volumes (mounted as root by Docker) before dropping
+# to the unprivileged `mediaserver` user via setpriv. See entrypoint.sh.
 
 EXPOSE 8080
 
