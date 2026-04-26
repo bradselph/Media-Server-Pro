@@ -1021,13 +1021,14 @@ mark_done env_file
 # 17. CADDY (optional reverse proxy)
 # ──────────────────────────────────────────────────────────────────────────────
 install_caddy_debian() {
-  install -m 0755 -d /etc/apt/keyrings
+  # Use the path Caddy's official source list expects so no rewriting needed.
+  install -m 0755 -d /usr/share/keyrings
   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
-    | gpg --dearmor -o /etc/apt/keyrings/caddy-stable-archive-keyring.gpg \
+    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
     || return 1
+  chmod 0644 /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
-    | sed 's,/etc/apt/trusted.gpg.d/caddy-stable.gpg,/etc/apt/keyrings/caddy-stable-archive-keyring.gpg,g' \
-    > /etc/apt/sources.list.d/caddy-stable.list || return 1
+    -o /etc/apt/sources.list.d/caddy-stable.list || return 1
   $PKG update -y >>"$LOG_FILE" 2>&1 || return 1
   $PKG install -y caddy >>"$LOG_FILE" 2>&1
 }
