@@ -418,6 +418,12 @@ mark_done preflight
 if [[ -z "${VPS_BOOTSTRAP_SELF_UPDATED:-}" ]] \
    && [[ -d "$SCRIPT_DIR/.git" ]] \
    && command -v git >/dev/null 2>&1; then
+  # Git's safe.directory check refuses to operate on a repo owned by a
+  # different user (we're root, but the repo is owned by the deploy user
+  # after step 11). Whitelist it for root globally — idempotent.
+  git config --global --get-all safe.directory 2>/dev/null \
+    | grep -qxF "$SCRIPT_DIR" \
+    || git config --global --add safe.directory "$SCRIPT_DIR" >/dev/null 2>&1
   if (cd "$SCRIPT_DIR" && git fetch --quiet origin 2>/dev/null); then
     LOCAL_HEAD=$(cd "$SCRIPT_DIR" && git rev-parse HEAD 2>/dev/null || echo "")
     REMOTE_HEAD=$(cd "$SCRIPT_DIR" && git rev-parse '@{u}' 2>/dev/null || echo "")
@@ -828,6 +834,10 @@ else
 
   if [[ -d "$MS_REPO_DIR/.git" ]]; then
     info "Updating existing checkout at $MS_REPO_DIR"
+    # Whitelist repo for root (it's chowned to the deploy user later).
+    git config --global --get-all safe.directory 2>/dev/null \
+      | grep -qxF "$MS_REPO_DIR" \
+      || git config --global --add safe.directory "$MS_REPO_DIR" >/dev/null 2>&1
     (
       cd "$MS_REPO_DIR" || exit 1
       GIT_TERMINAL_PROMPT=0 git -c credential.helper= fetch --all --prune \
