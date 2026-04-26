@@ -1039,6 +1039,29 @@ install_caddy_rhel() {
   $PKG install -y caddy              >>"$LOG_FILE" 2>&1
 }
 
+# Helper: when Caddy install/setup fails after we already wrote .env.docker
+# with SERVER_BIND=127.0.0.1 and ufw rules for 80/443, we'd end up with the
+# server listening only on loopback and nothing reachable. Recover by
+# rewriting .env.docker to bind publicly and opening MS_PORT in the firewall.
+caddy_fallback_to_direct_exposure() {
+  warn "Caddy unavailable — falling back to direct port exposure on :${MS_PORT}."
+  INSTALL_CADDY=false
+  CADDY_MODE=""
+  # 1) Rewrite SERVER_BIND in .env.docker.
+  if [[ -f "$ENV_FILE" ]] && grep -q '^SERVER_BIND=' "$ENV_FILE"; then
+    sed -i 's/^SERVER_BIND=.*/SERVER_BIND=0.0.0.0/' "$ENV_FILE"
+    ok "Rewrote $ENV_FILE → SERVER_BIND=0.0.0.0"
+  fi
+  # 2) Open the app port in the firewall (it was previously skipped because
+  #    Caddy was supposed to front 80/443).
+  if command -v ufw >/dev/null 2>&1; then
+    run_cmd "ufw allow app fallback" ufw allow "${MS_PORT}/tcp" || true
+  elif command -v firewall-cmd >/dev/null 2>&1; then
+    firewall-cmd --permanent --add-port="${MS_PORT}/tcp" >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --reload >>"$LOG_FILE" 2>&1 || true
+  fi
+}
+
 section "Caddy reverse proxy"
 if [[ "$INSTALL_CADDY" != "true" ]]; then
   info "Skipping (user opted out or no domain)."
@@ -1048,7 +1071,9 @@ else
     if [[ "$OS_FAMILY" == "debian" ]]; then install_caddy_debian; else install_caddy_rhel; fi
   fi
   if ! command -v caddy >/dev/null 2>&1; then
-    warn "Caddy install failed — see log. You can re-run with --resume after fixing."
+    warn "Caddy install failed — see log."
+    caddy_fallback_to_direct_exposure
+    mark_done caddy
   else
     if [[ "${CADDY_MODE:-https}" == "http" ]]; then
       # IP-only / no-domain mode: listen on :80 plain HTTP, no cert.
@@ -1087,11 +1112,24 @@ EOF
       CADDY_PUBLIC_URL="https://$MS_DOMAIN"
     fi
     if caddy validate --config /etc/caddy/Caddyfile >>"$LOG_FILE" 2>&1; then
-      $HAS_SYSTEMD && systemctl enable --now caddy >>"$LOG_FILE" 2>&1
-      $HAS_SYSTEMD && systemctl reload caddy       >>"$LOG_FILE" 2>&1 || true
-      ok "Caddy configured: $CADDY_PUBLIC_URL → 127.0.0.1:$MS_PORT"
+      caddy_running=false
+      if $HAS_SYSTEMD; then
+        systemctl enable --now caddy >>"$LOG_FILE" 2>&1 \
+          && systemctl reload caddy  >>"$LOG_FILE" 2>&1 \
+          || systemctl restart caddy >>"$LOG_FILE" 2>&1
+        if systemctl is-active --quiet caddy; then
+          caddy_running=true
+        fi
+      fi
+      if $caddy_running; then
+        ok "Caddy configured: $CADDY_PUBLIC_URL → 127.0.0.1:$MS_PORT"
+      else
+        warn "Caddy systemd unit not active — see: systemctl status caddy"
+        caddy_fallback_to_direct_exposure
+      fi
     else
       warn "Caddyfile validation failed — review /etc/caddy/Caddyfile."
+      caddy_fallback_to_direct_exposure
     fi
   fi
   mark_done caddy
