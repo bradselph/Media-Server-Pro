@@ -67,6 +67,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Source tree.
 COPY VERSION ./VERSION
 COPY api ./api
+COPY api_spec ./api_spec
 COPY cmd ./cmd
 COPY internal ./internal
 COPY pkg ./pkg
