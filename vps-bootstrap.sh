@@ -530,6 +530,8 @@ prompt_secret DB_ROOT_PW    "MariaDB root password"
 prompt_secret DB_APP_PW     "MariaDB application user password"
 prompt        DB_NAME       "Database name" "mediaserver"
 prompt        DB_USER       "Database username" "mediaserver"
+prompt        ADMIN_USER    "Admin username (for the web UI)" "admin"
+prompt_secret ADMIN_PW      "Admin password (for the web UI)"
 
 # 7j. optional minio
 prompt_yn USE_MINIO "Enable bundled MinIO (S3) storage profile?" "n"
@@ -915,6 +917,49 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "# HLS — explicit, satisfies validate.go (>= 1)"
     echo "HLS_PLAYLIST_LENGTH=6"
     echo "HLS_SEGMENT_DURATION=6"
+
+    # ────────────────────────────────────────────────────────────────────
+    # Admin credentials. Without ADMIN_PASSWORD (or _HASH), the server
+    # logs "admin enabled but no password hash — admin login will fail".
+    # We write plaintext for simplicity; user may swap to a bcrypt hash
+    # later via ADMIN_PASSWORD_HASH for production.
+    # ────────────────────────────────────────────────────────────────────
+    echo
+    echo "# Admin login (web UI)"
+    echo "ADMIN_ENABLED=true"
+    echo "ADMIN_USERNAME=$ADMIN_USER"
+    echo "ADMIN_PASSWORD=$ADMIN_PW"
+
+    # ────────────────────────────────────────────────────────────────────
+    # Sensible feature defaults that mirror what setup.sh writes for
+    # native installs. The server picks safe defaults for everything
+    # else; these are the ones a fresh deploy actually needs.
+    # ────────────────────────────────────────────────────────────────────
+    echo
+    echo "# Authentication"
+    echo "AUTH_SESSION_TIMEOUT_HOURS=24"
+    echo "AUTH_ALLOW_GUESTS=false"
+    echo "AUTH_SECURE_COOKIES=$( [[ "${CADDY_MODE:-}" == "https" ]] && echo true || echo false )"
+    echo
+    echo "# Streaming / uploads"
+    echo "DOWNLOAD_ENABLED=true"
+    echo "UPLOADS_ENABLED=true"
+    echo "UPLOADS_MAX_FILE_SIZE=10737418240"
+    echo
+    echo "# Thumbnails"
+    echo "THUMBNAILS_ENABLED=true"
+    echo "THUMBNAILS_AUTO_GENERATE=true"
+    echo
+    echo "# Analytics"
+    echo "ANALYTICS_ENABLED=true"
+    echo "ANALYTICS_RETENTION_DAYS=90"
+    echo
+    echo "# Rate limit / CORS"
+    echo "RATE_LIMIT_ENABLED=true"
+    echo "RATE_LIMIT_REQUESTS=100"
+    echo "RATE_LIMIT_WINDOW_SECONDS=60"
+    echo "CORS_ENABLED=true"
+    echo "CORS_ORIGINS=*"
 
     # ────────────────────────────────────────────────────────────────────
     # Compose v2 interpolates env vars for EVERY service at parse time,
