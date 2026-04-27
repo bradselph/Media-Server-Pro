@@ -546,6 +546,51 @@ if [[ "$USE_MINIO" == "true" ]]; then
   prompt_secret MINIO_PW    "MinIO root password"
 fi
 
+# 7k. public-facing policy
+section "Public-deployment policy"
+cat <<EOF
+These choices shape how the server treats anonymous traffic from the
+open internet. Defaults are picked for a typical public deployment.
+
+EOF
+# Closed-by-default: a public site that lets strangers self-register often
+# turns into spam/abuse fast. Operators who want open signup can flip this.
+prompt_yn ALLOW_REGISTRATION_YN "Allow anonymous visitors to self-register accounts?" "n"
+prompt DEFAULT_USER_TYPE_INPUT \
+  "Default user type assigned at registration (standard|premium)" "standard"
+case "${DEFAULT_USER_TYPE_INPUT,,}" in
+  standard|premium) DEFAULT_USER_TYPE_INPUT="${DEFAULT_USER_TYPE_INPUT,,}" ;;
+  *) warn "Unknown user type '$DEFAULT_USER_TYPE_INPUT' — falling back to 'standard'."
+     DEFAULT_USER_TYPE_INPUT="standard" ;;
+esac
+
+# 7l. optional integrations (API keys for the Claude assistant + HF mature
+#     classifier). Both are off by default — provide a key to enable.
+section "Optional integrations (press ENTER to skip any)"
+cat <<EOF
+These are *optional* AI features. Leave the prompts blank to disable them.
+You can always paste a key into .env.docker later and 'docker compose
+restart server' to turn them on.
+
+EOF
+prompt_optional HF_API_KEY \
+  "Hugging Face API key (visual mature-content classifier — blank = disabled)" ""
+prompt_optional CLAUDE_API_KEY_INPUT \
+  "Anthropic Claude API key (Claude assistant module — blank = disabled)" ""
+if [[ -n "$CLAUDE_API_KEY_INPUT" ]]; then
+  prompt CLAUDE_MODEL_INPUT \
+    "Claude model (claude-opus-4-7 | claude-sonnet-4-6 | claude-haiku-4-5)" \
+    "claude-sonnet-4-6"
+  prompt CLAUDE_MODE_INPUT \
+    "Claude execution mode (advisory = read-only suggestions; interactive = approve each write; autonomous = full automation)" \
+    "advisory"
+  case "${CLAUDE_MODE_INPUT,,}" in
+    advisory|interactive|autonomous) CLAUDE_MODE_INPUT="${CLAUDE_MODE_INPUT,,}" ;;
+    *) warn "Unknown Claude mode '$CLAUDE_MODE_INPUT' — using 'advisory'."
+       CLAUDE_MODE_INPUT="advisory" ;;
+  esac
+fi
+
 echo
 info "Configuration captured. Ready to begin."
 confirm_or_exit "Start the bootstrap now?"
@@ -957,7 +1002,14 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "# Authentication"
     echo "AUTH_SESSION_TIMEOUT_HOURS=24"
     echo "AUTH_ALLOW_GUESTS=false"
+    echo "AUTH_ALLOW_REGISTRATION=$( [[ "${ALLOW_REGISTRATION_YN:-false}" == "true" ]] && echo true || echo false )"
+    echo "AUTH_DEFAULT_USER_TYPE=${DEFAULT_USER_TYPE_INPUT:-standard}"
     echo "AUTH_SECURE_COOKIES=$( [[ "${CADDY_MODE:-}" == "https" ]] && echo true || echo false )"
+    echo
+    echo "# HTTP security headers (HSTS only when terminating TLS at Caddy)"
+    echo "CSP_ENABLED=true"
+    echo "HSTS_ENABLED=$( [[ "${CADDY_MODE:-}" == "https" ]] && echo true || echo false )"
+    echo "HSTS_MAX_AGE=15552000"
     echo
     echo "# Streaming / uploads"
     echo "DOWNLOAD_ENABLED=true"
@@ -977,7 +1029,48 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "RATE_LIMIT_REQUESTS=100"
     echo "RATE_LIMIT_WINDOW_SECONDS=60"
     echo "CORS_ENABLED=true"
-    echo "CORS_ORIGINS=*"
+    if [[ "${CADDY_MODE:-}" == "https" && -n "${MS_DOMAIN:-}" ]]; then
+      echo "CORS_ORIGINS=https://${MS_DOMAIN}"
+    elif [[ "${CADDY_MODE:-}" == "http" && -n "${MS_DOMAIN:-}" ]]; then
+      echo "CORS_ORIGINS=http://${MS_DOMAIN}"
+    else
+      # No Caddy / no domain → fall back to permissive while the operator
+      # is still iterating. Tighten this to the eventual public URL ASAP.
+      echo "CORS_ORIGINS=*"
+    fi
+
+    # ────────────────────────────────────────────────────────────────────
+    # Optional AI integrations. The feature flag is the authoritative
+    # toggle (FEATURE_*). Keys are only emitted when the operator pasted
+    # one — leaving them blank keeps these features disabled.
+    # ────────────────────────────────────────────────────────────────────
+    echo
+    echo "# Hugging Face (visual mature-content classification)"
+    if [[ -n "${HF_API_KEY:-}" ]]; then
+      echo "FEATURE_HUGGINGFACE=true"
+      echo "HUGGINGFACE_API_KEY=$HF_API_KEY"
+    else
+      echo "FEATURE_HUGGINGFACE=false"
+      echo "# HUGGINGFACE_API_KEY="
+    fi
+
+    echo
+    echo "# Claude assistant module (admin-only)"
+    if [[ -n "${CLAUDE_API_KEY_INPUT:-}" ]]; then
+      echo "FEATURE_CLAUDE=true"
+      # Both names are accepted by the Anthropic SDK; emit both so the
+      # bundled `claude` CLI and any direct API caller pick it up.
+      echo "ANTHROPIC_API_KEY=$CLAUDE_API_KEY_INPUT"
+      echo "CLAUDE_API_KEY=$CLAUDE_API_KEY_INPUT"
+      echo "CLAUDE_MODEL=${CLAUDE_MODEL_INPUT:-claude-sonnet-4-6}"
+      echo "CLAUDE_MODE=${CLAUDE_MODE_INPUT:-advisory}"
+    else
+      echo "FEATURE_CLAUDE=false"
+      echo "# ANTHROPIC_API_KEY="
+      echo "# CLAUDE_API_KEY="
+      echo "# CLAUDE_MODEL=claude-sonnet-4-6"
+      echo "# CLAUDE_MODE=advisory"
+    fi
 
     # ────────────────────────────────────────────────────────────────────
     # Compose v2 interpolates env vars for EVERY service at parse time,
@@ -1335,6 +1428,30 @@ else
   PUBLIC_URL="http://${PUBLIC_IP:-<server-ip>}:${MS_PUBLIC_PORT}"
 fi
 
+# Pre-format the optional-feature status lines so the heredoc below stays
+# readable (nested ${VAR:+x}${VAR:-y} substitution doesn't do what people
+# usually think it does).
+if [[ -n "${HF_API_KEY:-}" ]]; then
+  HF_STATUS="enabled"
+else
+  HF_STATUS="disabled (set HUGGINGFACE_API_KEY + FEATURE_HUGGINGFACE=true)"
+fi
+if [[ -n "${CLAUDE_API_KEY_INPUT:-}" ]]; then
+  CLAUDE_STATUS="enabled (mode=${CLAUDE_MODE_INPUT:-advisory}, model=${CLAUDE_MODEL_INPUT:-claude-sonnet-4-6})"
+else
+  CLAUDE_STATUS="disabled (set ANTHROPIC_API_KEY + FEATURE_CLAUDE=true)"
+fi
+if [[ "${ALLOW_REGISTRATION_YN:-false}" == "true" ]]; then
+  REG_STATUS="OPEN — anyone can sign up"
+else
+  REG_STATUS="closed (admin-managed accounts only)"
+fi
+if [[ "${CADDY_MODE:-}" == "https" ]]; then
+  HSTS_STATUS="on (TLS terminated at Caddy)"
+else
+  HSTS_STATUS="off (no TLS)"
+fi
+
 cat <<EOF
 
 ${C_BOLD}${C_GREEN}Media Server Pro is up.${C_RESET}
@@ -1398,6 +1515,20 @@ ${C_BOLD}DNS / TLS:${C_RESET}
     1. Point an A record at ${PUBLIC_IP:-<this server>}.
     2. Re-run this bootstrap with the domain at the first prompt — Caddy
        will switch to Let's Encrypt automatically.
+
+${C_BOLD}Optional integrations:${C_RESET}
+  • Hugging Face: $HF_STATUS
+  • Claude:       $CLAUDE_STATUS
+  After editing $ENV_FILE, apply with:
+       cd $PROJECT_DIR && docker compose restart server
+
+${C_BOLD}Public exposure:${C_RESET}
+  • Self-registration:  $REG_STATUS
+  • Default user type:  ${DEFAULT_USER_TYPE_INPUT:-standard}
+  • HSTS:               $HSTS_STATUS
+  • CSP:                on
+  Toggle these in $ENV_FILE (AUTH_ALLOW_REGISTRATION, AUTH_DEFAULT_USER_TYPE,
+  HSTS_ENABLED, CSP_ENABLED) and restart the server.
 
 ${C_BOLD}Backup:${C_RESET}
   Save $ENV_FILE somewhere safe — it has the DB and admin secrets and
