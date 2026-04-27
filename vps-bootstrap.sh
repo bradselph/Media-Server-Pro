@@ -1322,7 +1322,17 @@ ${C_BOLD}Useful commands:${C_RESET}
   docker compose ps
   docker compose logs -f server
   docker compose restart server
-  docker compose pull && docker compose up -d   # upgrade
+  sudo ./update.sh                              # safe in-place update (DB snapshot + git pull + rebuild + health-check + auto-rollback)
+  sudo ./update.sh --rollback                   # revert to the previous image
+
+${C_BOLD}Persistence (what survives an update):${C_RESET}
+  • All media + state lives in named Docker volumes — they are NOT
+    touched by image rebuilds, container recreations, or 'docker compose
+    down'. Only 'docker compose down -v' destroys them.
+       db-data, videos, music, thumbnails, playlists, uploads,
+       analytics, hls-cache, app-data, logs, temp
+  • $ENV_FILE lives on the host filesystem — never inside a container.
+  • update.sh snapshots the DB to ./backups/ before every upgrade.
 
 ${C_BOLD}Login:${C_RESET}
   Open $PUBLIC_URL/admin-login in a browser and sign in with:
