@@ -21,7 +21,7 @@
 #    update — only the application binary inside the image gets replaced.
 #
 #  Modes (default: pull from GHCR):
-#    sudo ./update.sh                  # pull :latest from GHCR + recreate
+#    sudo ./update.sh                  # pull :main from GHCR + recreate
 #    sudo ./update.sh --tag 1.10.32    # pull a specific version
 #    sudo ./update.sh --build          # build the image locally instead
 #                                       (use this when working from source
@@ -31,6 +31,12 @@
 #    sudo ./update.sh --rollback       # revert to the previous image tag
 #    sudo ./update.sh --keep 14        # keep N newest DB snapshots (default 14)
 #    sudo ./update.sh --help
+#
+#  Image naming:
+#    docker-compose.yml pins the server image to
+#    ghcr.io/bradselph/media-server-pro:${IMAGE_TAG:-main}. To follow a
+#    different tag (e.g. a release pin or an `edge` channel), set IMAGE_TAG
+#    in .env.docker or pass --tag on the command line.
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -o pipefail
@@ -134,22 +140,50 @@ ok "Env file: $ENV_FILE"
 ok "Compose: $COMPOSE_BASE_FILE"
 ok "Log: $LOG_FILE"
 
+# ── Resolve the effective server image string ─────────────────────────────────
+# The compose file pins ghcr.io/bradselph/media-server-pro:${IMAGE_TAG:-main}.
+# We ask compose to render the resolved value so this script keeps working if
+# someone pins IMAGE_TAG, swaps registries, or fronts with a mirror — instead
+# of guessing the repo name. The repo half (without the tag) is what
+# `docker image ls` uses to enumerate previous images for rollback.
+resolve_server_image() {
+  local out
+  out=$(docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+        config 2>/dev/null \
+        | awk '/^[[:space:]]*image:/{print $2; exit}')
+  out="${out%\"}"; out="${out#\"}"
+  out="${out%\'}"; out="${out#\'}"
+  printf '%s' "$out"
+}
+
+SERVER_IMAGE_FULL="$(resolve_server_image)"
+if [[ -z "$SERVER_IMAGE_FULL" ]]; then
+  warn "Could not resolve server image from compose config — defaulting to ghcr.io/bradselph/media-server-pro:main"
+  SERVER_IMAGE_FULL="ghcr.io/bradselph/media-server-pro:main"
+fi
+SERVER_IMAGE_REPO="${SERVER_IMAGE_FULL%:*}"
+info "Server image: $SERVER_IMAGE_FULL"
+
 # ── Rollback path ─────────────────────────────────────────────────────────────
 if $ROLLBACK; then
   section "Rollback"
-  PREV_IMAGE="$(docker image ls media-server-pro --format '{{.ID}} {{.CreatedAt}}' \
-                | sort -k 2 -r | awk 'NR==2 {print $1}')"
+  # List the two newest images for this repo (any tag); the second-newest is
+  # the previous version. Skip dangling/untagged unless that's all we have.
+  PREV_IMAGE="$(docker image ls "$SERVER_IMAGE_REPO" \
+                  --format '{{.ID}}\t{{.CreatedAt}}\t{{.Tag}}' 2>/dev/null \
+                | sort -k 2 -r \
+                | awk -F'\t' 'NR==2 {print $1}')"
   if [[ -z "$PREV_IMAGE" ]]; then
-    die "No previous media-server-pro image found to roll back to."
+    die "No previous $SERVER_IMAGE_REPO image found to roll back to."
   fi
-  info "Tagging $PREV_IMAGE as media-server-pro:latest"
-  docker tag "$PREV_IMAGE" media-server-pro:latest >>"$LOG_FILE" 2>&1 \
+  info "Tagging $PREV_IMAGE as $SERVER_IMAGE_FULL"
+  docker tag "$PREV_IMAGE" "$SERVER_IMAGE_FULL" >>"$LOG_FILE" 2>&1 \
     || die "docker tag failed"
   info "Recreating server container with the previous image…"
   docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
     up -d --no-build --force-recreate server >>"$LOG_FILE" 2>&1 \
     || die "Rollback compose up failed"
-  ok "Rolled back to $PREV_IMAGE"
+  ok "Rolled back to $PREV_IMAGE ($SERVER_IMAGE_FULL)"
   exit 0
 fi
 
