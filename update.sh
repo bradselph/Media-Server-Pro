@@ -260,38 +260,44 @@ fi
 # ── Refresh image (pull from GHCR by default) ────────────────────────────────
 section "Refresh image"
 
-# Honour --tag by temporarily overriding IMAGE_TAG in the environment that
-# compose sees. Permanent change: edit IMAGE_TAG in .env.docker yourself.
-COMPOSE_ENV=()
+# Resolve the effective tag and pull the image directly. Same pattern as
+# vps-bootstrap.sh:
+#   1. --tag argument wins (one-shot override)
+#   2. IMAGE_TAG already exported in the shell wins next
+#   3. otherwise default to :main
+# We export IMAGE_TAG so the subsequent `docker compose up` resolves to the
+# same tag we just pulled (without depending on whatever's in .env.docker).
+IMAGE_TAG="${TAG_OVERRIDE:-${IMAGE_TAG:-main}}"
+export IMAGE_TAG
+IMAGE="ghcr.io/bradselph/media-server-pro:${IMAGE_TAG}"
+
 if [[ -n "$TAG_OVERRIDE" ]]; then
-  info "Tag override: pulling :$TAG_OVERRIDE (one-shot — not written to .env.docker)"
-  COMPOSE_ENV=(env "IMAGE_TAG=$TAG_OVERRIDE")
+  info "Tag override: $IMAGE (one-shot — not written to .env.docker)"
 fi
 
 if $BUILD_LOCAL; then
   info "Building image locally (--build) — this can take 5-15 minutes…"
-  if ! "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+  if ! docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
        build server 2>&1 | tee -a "$LOG_FILE"; then
     die "Build failed. Previous image is still in place; nothing was changed."
   fi
   ok "Image built locally."
 else
-  info "Pulling latest image from registry…"
-  if ! "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
-       pull server 2>&1 | tee -a "$LOG_FILE"; then
-    err "docker compose pull failed."
+  info "Pulling $IMAGE from GHCR…"
+  if ! docker pull "$IMAGE" 2>&1 | tee -a "$LOG_FILE"; then
+    err "docker pull $IMAGE failed."
     err "  • Image may not be published yet — check the GitHub Actions tab."
     err "  • For a private/forked repo, run:  docker login ghcr.io"
     err "  • To build from local source instead:  sudo $0 --build"
     die "Aborting; previous image untouched."
   fi
-  ok "Pulled. Compose will use the freshly-pulled image on recreate."
+  ok "Pulled $IMAGE."
 fi
 
 # ── Recreate ──────────────────────────────────────────────────────────────────
 section "Recreate server container"
 info "Stopping + restarting the server container (db, volumes, .env stay in place)…"
-if ! "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+if ! docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
      up -d --no-build --force-recreate server 2>&1 | tee -a "$LOG_FILE"; then
   die "compose up failed."
 fi
