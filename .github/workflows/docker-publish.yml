@@ -1,16 +1,13 @@
 name: Docker Publish
 
 on:
-  # Build and push on every release tag (created by release-version.yml).
+  # Publish on every release tag (created by release-version.yml). Auto.
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-    # Also publish an :edge channel on every push to main so operators
-    # can test the next release before the tag lands.
-    branches:
-      - main
 
-  # Allow a manual trigger for testing or hotfixes.
+  # Manual only — never fires on a main/development push. Use this to
+  # rebuild a release tag, push a hotfix image, or test the workflow.
   workflow_dispatch:
     inputs:
       tag_override:
@@ -43,8 +40,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up Docker (engine + CLI on the self-hosted runner)
-        uses: docker/setup-docker-action@v4
+      - name: Verify Docker is installed on the runner
+        run: |
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "::error::docker not found in PATH on this self-hosted runner."
+            echo "::error::Install it ONCE on the runner host as root, then add the runner user to the docker group:"
+            echo "::error::  curl -fsSL https://get.docker.com | sudo sh"
+            echo "::error::  sudo usermod -aG docker \$(whoami) && newgrp docker"
+            echo "::error::This step does NOT need passwordless sudo from the runner — it's a one-time host install."
+            exit 1
+          fi
+          docker version
+          docker info
 
       - name: Set up QEMU (for cross-arch arm64 builds on amd64 runner)
         uses: docker/setup-qemu-action@v3
@@ -125,8 +132,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up Docker (engine + CLI on the self-hosted runner)
-        uses: docker/setup-docker-action@v4
+      - name: Verify Docker is installed on the runner
+        run: |
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "::error::docker not found in PATH on this self-hosted runner."
+            echo "::error::Install it ONCE on the runner host as root, then add the runner user to the docker group:"
+            echo "::error::  curl -fsSL https://get.docker.com | sudo sh"
+            echo "::error::  sudo usermod -aG docker \$(whoami) && newgrp docker"
+            echo "::error::This step does NOT need passwordless sudo from the runner — it's a one-time host install."
+            exit 1
+          fi
+          docker version
+          docker info
 
       - name: Set up QEMU (for cross-arch arm64 builds on amd64 runner)
         uses: docker/setup-qemu-action@v3
