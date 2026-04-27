@@ -55,7 +55,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   server:
     # Pulled from GHCR by default. `docker compose pull` and the published
-    # tag `:latest` (or pin to `:1.10.32`, `:edge`, etc.) Just Work. The
+    # tag `:main` (or pin to `:1.10.32`, `:edge`, etc.) Just Work. The
     # `build:` block is a fallback so local dev / forks can `docker compose
     # build` from source — when the image already exists locally with the
     # tag below, compose won't re-pull or re-build.
@@ -131,7 +131,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   receiver:
     profiles: ["receiver"]
-    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-bradselph}/media-server-pro-receiver:${IMAGE_TAG:-latest}
+    image: ghcr.io/bradselph/media-server-pro-receiver:${IMAGE_TAG:-main}
     build:
       context: .
       dockerfile: Dockerfile.media-receiver

@@ -951,10 +951,10 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "# ── Docker image source ─────────────────────────────────────"
     echo "# Where to pull pre-built images from. Override IMAGE_OWNER for"
     echo "# forks; pin IMAGE_TAG to a release version (e.g. 1.10.32) to"
-    echo "# stop tracking :latest."
+    echo "# stop tracking :main."
     echo "IMAGE_REGISTRY=ghcr.io"
     echo "IMAGE_OWNER=bradselph"
-    echo "IMAGE_TAG=latest"
+    echo "IMAGE_TAG=main"
     echo
     echo "GO_VERSION=1.26"
     echo "NODE_VERSION=22"
@@ -1340,9 +1340,8 @@ suggest_fix_from_logs() {
 # pull fails (e.g. private fork without auth, no network, or first publish
 # hasn't happened yet for a brand-new owner).
 #
-# The image tag defaults to `main` (the rolling tag the CI publishes for
-# every push to the default branch). Override IMAGE_TAG in $ENV_FILE to
-# pin a release (e.g. IMAGE_TAG=1.10.32) or follow `edge`.
+# The image tag defaults to `main`. Override IMAGE_TAG in $ENV_FILE to pin
+# a release (e.g. IMAGE_TAG=1.10.32) or follow a different channel.
 IMAGE_TAG="${IMAGE_TAG:-main}"
 export IMAGE_TAG
 IMAGE="ghcr.io/bradselph/media-server-pro:${IMAGE_TAG}"
@@ -1467,13 +1466,13 @@ ${C_BOLD}Useful commands:${C_RESET}
   docker compose ps
   docker compose logs -f server
   docker compose restart server
-  sudo ./update.sh                # pull :latest from GHCR + recreate (default)
+  sudo ./update.sh                # pull :main from GHCR + recreate (default)
   sudo ./update.sh --tag 1.10.32  # pin to a specific release version
   sudo ./update.sh --build        # build locally instead (for source changes)
   sudo ./update.sh --rollback     # revert to the previous image
 
 ${C_BOLD}Image source:${C_RESET}
-  Default: ghcr.io/bradselph/media-server-pro:latest (multi-arch).
+  Default: ghcr.io/bradselph/media-server-pro:main (multi-arch).
   Edit IMAGE_REGISTRY / IMAGE_OWNER / IMAGE_TAG in $ENV_FILE to track
   a fork or pin a version (e.g. IMAGE_TAG=1.10.32 or IMAGE_TAG=edge).
 
