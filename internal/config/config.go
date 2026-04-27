@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"media-server-pro/internal/logger"
 )
@@ -84,6 +85,7 @@ func (m *Manager) Load() error {
 	m.resolveAbsolutePaths()
 	m.syncFeatureToggles()
 	m.migrateHLSQualityEnabled()
+	m.normalizeHLSScalars()
 	if err := m.validate(); err != nil {
 		return err
 	}
@@ -180,6 +182,83 @@ func (m *Manager) migrateHLSQualityEnabled() {
 	}
 	m.config.HLS.QualityProfilesMigrated = true
 	m.log.Info("Migrated %d HLS quality profiles to include enabled flag", len(profiles))
+}
+
+// normalizeHLSScalars repairs HLS numeric fields that were persisted as zero
+// or negative values by older builds (or hand-edited configs). The validator
+// rejects these values outright; without this step, an existing install that
+// upgrades into a stricter validator can't start until someone edits the
+// config file by hand. Each field is restored to the same default the
+// initializer would have set.
+//
+// Only fields the validator actually rejects are repaired here. Optional
+// fields that may legitimately be zero (e.g. CDN base URL) are left alone.
+func (m *Manager) normalizeHLSScalars() {
+	if !m.config.HLS.Enabled {
+		return
+	}
+	hls := &m.config.HLS
+	defaults := defaultHLSConfig()
+	type fix struct {
+		field   string
+		repair  func()
+		broken  bool
+		toValue any
+	}
+	fixes := []fix{
+		{
+			field:   "segment_duration",
+			broken:  hls.SegmentDuration < 1 || hls.SegmentDuration > 60,
+			repair:  func() { hls.SegmentDuration = defaults.SegmentDuration },
+			toValue: defaults.SegmentDuration,
+		},
+		{
+			field:   "playlist_length",
+			broken:  hls.PlaylistLength < 1,
+			repair:  func() { hls.PlaylistLength = defaults.PlaylistLength },
+			toValue: defaults.PlaylistLength,
+		},
+		{
+			field:   "concurrent_limit",
+			broken:  hls.ConcurrentLimit < 1,
+			repair:  func() { hls.ConcurrentLimit = defaults.ConcurrentLimit },
+			toValue: defaults.ConcurrentLimit,
+		},
+		{
+			field:   "probe_timeout",
+			broken:  hls.ProbeTimeout <= 0,
+			repair:  func() { hls.ProbeTimeout = defaults.ProbeTimeout },
+			toValue: defaults.ProbeTimeout,
+		},
+		{
+			field:   "stale_lock_threshold",
+			broken:  hls.StaleLockThreshold < time.Minute,
+			repair:  func() { hls.StaleLockThreshold = defaults.StaleLockThreshold },
+			toValue: defaults.StaleLockThreshold,
+		},
+	}
+	if hls.CleanupEnabled {
+		fixes = append(fixes,
+			fix{
+				field:   "cleanup_interval",
+				broken:  hls.CleanupInterval < time.Minute,
+				repair:  func() { hls.CleanupInterval = defaults.CleanupInterval },
+				toValue: defaults.CleanupInterval,
+			},
+			fix{
+				field:   "retention_minutes",
+				broken:  hls.RetentionMinutes < 1,
+				repair:  func() { hls.RetentionMinutes = defaults.RetentionMinutes },
+				toValue: defaults.RetentionMinutes,
+			},
+		)
+	}
+	for _, f := range fixes {
+		if f.broken {
+			f.repair()
+			m.log.Warn("hls.%s was invalid; restored default: %v", f.field, f.toValue)
+		}
+	}
 }
 
 // Save saves the current configuration to file
