@@ -3,6 +3,7 @@ import type { CategoryStats, CategoryBrowseItem } from '~/types/api'
 import { useCategoryBrowseApi } from '~/composables/useApiEndpoints'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration } from '~/utils/format'
+import { iconForCategory, gradientForCategory } from '~/utils/categoryIcon'
 
 definePageMeta({ layout: 'default', title: 'Browse by Category' })
 
@@ -20,20 +21,15 @@ const error = ref('')
 const ITEMS_PER_PAGE = 60
 const categoryPage = ref(1)
 
-// Map category to a lucide icon
-const categoryIcon: Record<string, string> = {
-  'TV Shows': 'i-lucide-tv',
-  'Anime': 'i-lucide-star',
-  'Movies': 'i-lucide-film',
-  'Documentaries': 'i-lucide-book-open',
-  'Music': 'i-lucide-music',
-  'Podcasts': 'i-lucide-mic',
-  'Audiobooks': 'i-lucide-headphones',
-  'Uncategorized': 'i-lucide-folder',
+// The taxonomy is server-driven; the SPA only resolves names to icons
+// and gradient swatches (see utils/categoryIcon.ts). New categories
+// added on the server show up here without code changes.
+function iconFor(cat: string) {
+  return iconForCategory(cat)
 }
 
-function iconFor(cat: string) {
-  return categoryIcon[cat] ?? 'i-lucide-folder'
+function gradientFor(cat: string) {
+  return gradientForCategory(cat)
 }
 
 async function loadStats() {
@@ -122,21 +118,31 @@ watch(() => authStore.user, (user) => {
       <h1 class="text-xl font-semibold">Browse by Category</h1>
     </div>
 
-    <!-- Category tiles -->
+    <!-- Category tiles — gradient swatch + faded icon, item count, type label.
+         The 220×120 ratio comes from the prototype; we let CSS grid scale
+         tiles to fill the row on smaller viewports. -->
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
       <button
         v-for="[cat, count] in availableCategories"
         :key="cat"
-        class="flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-left"
+        class="category-tile relative overflow-hidden h-[120px] rounded-xl border text-left transition-all"
         :class="selectedCategory === cat
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-default hover:border-primary/50 hover:bg-elevated/60'"
+          ? 'border-primary ring-2 ring-primary/40'
+          : 'border-default hover:border-primary/60 hover:-translate-y-0.5'"
+        :style="{ backgroundImage: gradientFor(cat) }"
+        :aria-pressed="selectedCategory === cat"
         @click="loadCategory(cat)"
       >
-        <UIcon :name="iconFor(cat)" class="size-5 shrink-0" />
-        <div>
-          <p class="text-sm font-medium">{{ cat }}</p>
-          <p class="text-xs text-muted">{{ count }} item{{ count !== 1 ? 's' : '' }}</p>
+        <UIcon
+          :name="iconFor(cat)"
+          class="absolute right-3 bottom-2 size-[88px] text-white"
+          style="opacity: 0.18;"
+        />
+        <div class="relative h-full p-3 flex flex-col justify-between">
+          <p class="text-base font-bold text-white drop-shadow-sm">{{ cat }}</p>
+          <p class="text-[11px] font-medium text-white/80 uppercase tracking-wider">
+            {{ count }} item{{ count !== 1 ? 's' : '' }}
+          </p>
         </div>
       </button>
     </div>
@@ -149,9 +155,7 @@ watch(() => authStore.user, (user) => {
         <UBadge v-if="items.length > 0" :label="String(items.length)" color="neutral" variant="subtle" size="xs" />
       </div>
 
-      <div v-if="loading" class="flex justify-center py-12">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
-      </div>
+      <MediaCardSkeleton v-if="loading" :count="10" />
 
       <UAlert v-else-if="error" :title="error" color="error" icon="i-lucide-alert-circle" class="mb-4" />
 

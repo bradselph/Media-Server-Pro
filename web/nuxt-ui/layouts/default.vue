@@ -86,13 +86,16 @@ async function handleLogout() {
 const mobileMenuOpen = ref(false)
 const shortcutsModal = ref<{ open: boolean } | null>(null)
 
-// Main desktop nav — content discovery only. Per handoff §6.1 the main nav
-// is deliberately compact ("Home, Browse, Admin" in the spec). Personal items
-// (Profile, Favorites, History, Admin) now live in the avatar dropdown to
-// reduce nav density and make the library pages the primary tabs.
+// Main desktop nav — content discovery only. The handoff prototype lists
+// Home·Browse·Categories·Playlists·Favorites·History (IMPLEMENTATION_PLAN
+// §2.1). We follow Option B from the plan: keep Favorites + History in the
+// avatar dropdown to reduce nav density, while exposing Browse + Categories +
+// Playlists as the primary discovery tabs. Browse points to `/?view=browse`
+// (plan §4.1 Option A — filters live on the home route, no separate page).
 const navLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
+    { label: 'Browse', to: '/?view=browse', icon: 'i-lucide-compass' },
   ]
   if (authStore.isLoggedIn) {
     links.push(
@@ -110,6 +113,7 @@ const navLinks = computed(() => {
 const mobileNavLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
+    { label: 'Browse', to: '/?view=browse', icon: 'i-lucide-compass' },
   ]
   if (authStore.isLoggedIn) {
     links.push(
@@ -155,10 +159,40 @@ const navSearch = ref('')
 function handleNavSearch() {
   const q = navSearch.value.trim()
   if (!q) return
-  router.push({ path: '/', query: { search: q } })
+  router.push({ path: '/search', query: { q } })
   navSearch.value = ''
   mobileMenuOpen.value = false
 }
+
+const navSearchFormRef = ref<HTMLFormElement | null>(null)
+function focusNavSearch() {
+  // The search field uses Nuxt UI's UInput, which renders a real <input>
+  // inside a wrapper; reach for it through the form's first input descendant
+  // so we don't depend on UInput's internal API.
+  navSearchFormRef.value?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
+}
+
+// `/` focuses the nav search input from anywhere on the page (per
+// IMPLEMENTATION_PLAN §2.1). We bail out when the user is already typing
+// into a form field so we never steal a literal slash they meant to type.
+function handleSlashShortcut(e: KeyboardEvent) {
+  if (e.key !== '/' || e.ctrlKey || e.altKey || e.metaKey) return
+  const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  if ((e.target as HTMLElement | null)?.isContentEditable) return
+  e.preventDefault()
+  focusNavSearch()
+}
+
+onMounted(() => document.addEventListener('keydown', handleSlashShortcut))
+onUnmounted(() => document.removeEventListener('keydown', handleSlashShortcut))
+
+const playbackStore = usePlaybackStore()
+const miniPlayerVisible = computed(() =>
+  !!playbackStore.mediaInfo &&
+  !!playbackStore.currentMediaId &&
+  route.path !== '/player',
+)
 </script>
 
 <template>
@@ -216,15 +250,22 @@ function handleNavSearch() {
           </NuxtLink>
         </nav>
 
-        <!-- Nav search (desktop) -->
-        <form class="hidden md:flex items-center flex-1 max-w-xs" @submit.prevent="handleNavSearch">
+        <!-- Nav search (desktop) — `/` focuses this input from anywhere via
+             handleSlashShortcut. The placeholder copy and route shape match
+             IMPLEMENTATION_PLAN §2.1 / §4.3 (submits to /search?q=…). -->
+        <form
+          ref="navSearchFormRef"
+          class="hidden md:flex items-center flex-1 max-w-xs"
+          @submit.prevent="handleNavSearch"
+        >
           <UInput
             v-model="navSearch"
             icon="i-lucide-search"
-            placeholder="Search titles, tags..."
+            placeholder="Search titles, tags…"
             size="sm"
             class="w-full"
             type="search"
+            aria-label="Search media. Press slash to focus from anywhere."
           />
         </form>
 
@@ -301,7 +342,7 @@ function handleNavSearch() {
             <UInput
               v-model="navSearch"
               icon="i-lucide-search"
-              placeholder="Search media…"
+              placeholder="Search titles, tags…"
               size="sm"
               type="search"
             />
@@ -351,6 +392,20 @@ function handleNavSearch() {
 
     <!-- Mini player (appears when navigating away from player) -->
     <MiniPlayer />
+
+    <!-- Floating help button — discoverability for the keyboard shortcuts
+         modal (per prototype). Lifts above the mini-player when it's
+         visible so the two never overlap. Hidden on /player itself, where
+         shortcuts are already obvious in the controls. -->
+    <button
+      v-if="ageGateChecked && !ageGateOpen && route.path !== '/player'"
+      type="button"
+      class="fixed right-5 z-[60] inline-flex items-center justify-center size-9 rounded-full font-mono text-sm text-muted bg-elevated/85 backdrop-blur border border-default shadow-lg transition-[bottom,color] hover:text-default focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      :style="{ bottom: miniPlayerVisible ? '70px' : '20px' }"
+      aria-label="Keyboard shortcuts (?)"
+      title="Keyboard shortcuts (?)"
+      @click="() => { if (shortcutsModal) shortcutsModal.open = true }"
+    >?</button>
 
     <!-- Global keyboard shortcuts reference (press ? anywhere) -->
     <KeyboardShortcutsModal ref="shortcutsModal" />
