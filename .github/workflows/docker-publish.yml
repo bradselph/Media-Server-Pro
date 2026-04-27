@@ -43,6 +43,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Set up Docker (engine + CLI on the self-hosted runner)
+        uses: docker/setup-docker-action@v4
+
       - name: Set up QEMU (for cross-arch arm64 builds on amd64 runner)
         uses: docker/setup-qemu-action@v3
         with:
@@ -121,6 +124,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Set up Docker (engine + CLI on the self-hosted runner)
+        uses: docker/setup-docker-action@v4
 
       - name: Set up QEMU (for cross-arch arm64 builds on amd64 runner)
         uses: docker/setup-qemu-action@v3
