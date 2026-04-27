@@ -5,6 +5,10 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+    # Also publish an :edge channel on every push to main so operators
+    # can test the next release before the tag lands.
+    branches:
+      - main
 
   # Allow a manual trigger for testing or hotfixes.
   workflow_dispatch:
@@ -59,15 +63,23 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.MASTER_IMAGE }}
+          # Explicit `latest=true` so :latest always tracks the newest semver
+          # tag (don't rely on the action's auto-inference, which only kicks
+          # in for some patterns).
+          flavor: |
+            latest=${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: |
-            # vX.Y.Z → :X.Y.Z and :latest
+            # vX.Y.Z → :X.Y.Z, :X.Y, :X (and :latest via flavor above).
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            # push to main → :edge (pre-release channel for operators)
+            type=raw,value=edge,enable={{is_default_branch}}
             # manual dispatch without a semver tag → :branch-sha
             type=sha,prefix={{branch}}-,enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push master image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -82,6 +94,24 @@ jobs:
           # Layer cache keyed by branch so sequential builds reuse Go/npm layers.
           cache-from: type=gha,scope=master-${{ github.ref_name }}
           cache-to:   type=gha,scope=master-${{ github.ref_name }},mode=max
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Master image"
+            echo ""
+            echo "**Pushed to:** \`${{ env.MASTER_IMAGE }}\`"
+            echo ""
+            echo "**Tags:**"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "**Digest:** \`${{ steps.build.outputs.digest }}\`"
+            echo ""
+            echo "**Pull:** \`docker pull ${{ env.MASTER_IMAGE }}:${{ github.ref_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ─── Build and push the media-receiver (slave) image ─────────────────────
   build-receiver:
@@ -112,13 +142,17 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.RECEIVER_IMAGE }}
+          flavor: |
+            latest=${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=raw,value=edge,enable={{is_default_branch}}
             type=sha,prefix={{branch}}-,enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push receiver image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -131,3 +165,19 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha,scope=receiver-${{ github.ref_name }}
           cache-to:   type=gha,scope=receiver-${{ github.ref_name }},mode=max
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Receiver image"
+            echo ""
+            echo "**Pushed to:** \`${{ env.RECEIVER_IMAGE }}\`"
+            echo ""
+            echo "**Tags:**"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "**Digest:** \`${{ steps.build.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
