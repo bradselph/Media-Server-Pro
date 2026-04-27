@@ -1339,25 +1339,25 @@ suggest_fix_from_logs() {
 # Prefer the published GHCR image. Fall back to a local build only if the
 # pull fails (e.g. private fork without auth, no network, or first publish
 # hasn't happened yet for a brand-new owner).
+#
+# The image tag defaults to `main` (the rolling tag the CI publishes for
+# every push to the default branch). Override IMAGE_TAG in $ENV_FILE to
+# pin a release (e.g. IMAGE_TAG=1.10.32) or follow `edge`.
+IMAGE_TAG="${IMAGE_TAG:-main}"
+export IMAGE_TAG
+IMAGE="ghcr.io/bradselph/media-server-pro:${IMAGE_TAG}"
+
 PULLED=false
-info "Trying to pull pre-built image from GHCR…"
-if run_cmd_live "compose pull" docker compose --env-file "$ENV_FILE" \
-     "${COMPOSE_FILE_ARGS[@]}" "${COMPOSE_PROFILES_ARGS[@]}" pull --ignore-pull-failures server; then
-  # `pull --ignore-pull-failures` exits 0 even when the image doesn't exist,
-  # so verify the local image is actually there before declaring victory.
-  EXPECTED_IMAGE=$(docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
-                   config 2>/dev/null \
-                   | awk '/^[[:space:]]*image:/{print $2; exit}')
-  if [[ -n "$EXPECTED_IMAGE" ]] && docker image inspect "$EXPECTED_IMAGE" >/dev/null 2>&1; then
-    PULLED=true
-    ok "Pulled $EXPECTED_IMAGE"
-  fi
+info "Trying to pull pre-built image from GHCR ($IMAGE)…"
+if run_cmd_live "docker pull" docker pull "$IMAGE"; then
+  PULLED=true
+  ok "Pulled $IMAGE"
 fi
 
 if ! $PULLED; then
   warn "Could not pull from GHCR — falling back to local build (5-15 min)."
-  if ! run_cmd_live "compose build" docker compose --env-file "$ENV_FILE" \
-       "${COMPOSE_FILE_ARGS[@]}" "${COMPOSE_PROFILES_ARGS[@]}" build; then
+  if ! run_cmd_live "compose build server" docker compose --env-file "$ENV_FILE" \
+       "${COMPOSE_FILE_ARGS[@]}" "${COMPOSE_PROFILES_ARGS[@]}" build server; then
     warn "Build failed. Re-run with --resume after fixing the underlying issue."
     die  "Aborting after build failure."
   fi

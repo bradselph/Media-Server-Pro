@@ -59,7 +59,7 @@ services:
     # `build:` block is a fallback so local dev / forks can `docker compose
     # build` from source — when the image already exists locally with the
     # tag below, compose won't re-pull or re-build.
-    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-bradselph}/media-server-pro:${IMAGE_TAG:-latest}
+    image: ghcr.io/bradselph/media-server-pro:${IMAGE_TAG:-main}
     build:
       context: .
       dockerfile: Dockerfile
