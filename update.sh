@@ -29,6 +29,7 @@
 #    sudo ./update.sh --yes            # accept defaults, no prompts
 #    sudo ./update.sh --skip-backup    # skip DB snapshot (faster, riskier)
 #    sudo ./update.sh --rollback       # revert to the previous image tag
+#    sudo ./update.sh --keep 14        # keep N newest DB snapshots (default 14)
 #    sudo ./update.sh --help
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -47,6 +48,9 @@ SKIP_BACKUP=false
 BUILD_LOCAL=false
 ROLLBACK=false
 TAG_OVERRIDE=""
+# How many DB snapshots to keep in $BACKUP_DIR. Older ones are pruned after
+# each successful dump. Override with --keep N or BACKUP_KEEP=N.
+BACKUP_KEEP="${BACKUP_KEEP:-14}"
 
 # Colours
 if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
@@ -93,6 +97,7 @@ while [[ $# -gt 0 ]]; do
     --no-rebuild)   BUILD_LOCAL=false; shift ;;   # accepted for backward compat
     --rollback)     ROLLBACK=true; shift ;;
     --tag)          TAG_OVERRIDE="$2"; shift 2 ;;
+    --keep)         BACKUP_KEEP="$2"; shift 2 ;;
     *) err "Unknown flag: $1"; exit 1 ;;
   esac
 done
@@ -168,6 +173,19 @@ else
       SIZE=$(du -h "$BACKUP_FILE" 2>/dev/null | cut -f1)
       ok "Snapshot saved: $BACKUP_FILE ($SIZE)"
       ok "Restore with: gunzip -c $BACKUP_FILE | docker compose exec -T db mariadb -uroot -p\"\$MARIADB_ROOT_PASSWORD\""
+
+      # Retention: keep the most recent $BACKUP_KEEP snapshots; prune older.
+      if [[ "$BACKUP_KEEP" =~ ^[0-9]+$ ]] && (( BACKUP_KEEP > 0 )); then
+        mapfile -t OLD_BACKUPS < <(
+          ls -1t "$BACKUP_DIR"/db-*.sql.gz 2>/dev/null | tail -n +$((BACKUP_KEEP + 1))
+        )
+        if (( ${#OLD_BACKUPS[@]} > 0 )); then
+          info "Pruning $(( ${#OLD_BACKUPS[@]} )) old snapshot(s) (keeping newest $BACKUP_KEEP)…"
+          for f in "${OLD_BACKUPS[@]}"; do
+            rm -f -- "$f" && _log "PRUNE $f"
+          done
+        fi
+      fi
     else
       warn "DB snapshot FAILED — continuing anyway. Inspect $LOG_FILE."
       rm -f "$BACKUP_FILE"
