@@ -20,11 +20,14 @@
 #    or on the host filesystem (.env.docker). Neither is ever touched by an
 #    update — only the application binary inside the image gets replaced.
 #
-#  Usage:
-#    sudo ./update.sh                  # interactive
+#  Modes (default: pull from GHCR):
+#    sudo ./update.sh                  # pull :latest from GHCR + recreate
+#    sudo ./update.sh --tag 1.10.32    # pull a specific version
+#    sudo ./update.sh --build          # build the image locally instead
+#                                       (use this when working from source
+#                                       or for an unpublished commit)
 #    sudo ./update.sh --yes            # accept defaults, no prompts
 #    sudo ./update.sh --skip-backup    # skip DB snapshot (faster, riskier)
-#    sudo ./update.sh --no-rebuild     # only `up -d`, don't rebuild image
 #    sudo ./update.sh --rollback       # revert to the previous image tag
 #    sudo ./update.sh --help
 # ══════════════════════════════════════════════════════════════════════════════
@@ -41,8 +44,9 @@ COMPOSE_BASE_FILE="$SCRIPT_DIR/docker-compose.yml"
 
 ASSUME_YES=false
 SKIP_BACKUP=false
-NO_REBUILD=false
+BUILD_LOCAL=false
 ROLLBACK=false
+TAG_OVERRIDE=""
 
 # Colours
 if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
@@ -82,11 +86,13 @@ prompt_yn() {
 # ── Args ──────────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -h|--help)      sed -n '/^# ═*$/,/^# ═*$/p' "$0" | head -40; exit 0 ;;
+    -h|--help)      sed -n '/^# ═*$/,/^# ═*$/p' "$0" | head -45; exit 0 ;;
     -y|--yes)       ASSUME_YES=true; shift ;;
     --skip-backup)  SKIP_BACKUP=true; shift ;;
-    --no-rebuild)   NO_REBUILD=true; shift ;;
+    --build)        BUILD_LOCAL=true; shift ;;
+    --no-rebuild)   BUILD_LOCAL=false; shift ;;   # accepted for backward compat
     --rollback)     ROLLBACK=true; shift ;;
+    --tag)          TAG_OVERRIDE="$2"; shift 2 ;;
     *) err "Unknown flag: $1"; exit 1 ;;
   esac
 done
@@ -199,23 +205,41 @@ else
   warn "Not a git checkout — skipping pull, will rebuild current code."
 fi
 
-# ── Build ─────────────────────────────────────────────────────────────────────
-section "Build image"
-if $NO_REBUILD; then
-  info "Skipping rebuild (--no-rebuild)."
-else
-  info "Building media-server-pro:latest (this can take 5-10 minutes)…"
-  if ! docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+# ── Refresh image (pull from GHCR by default) ────────────────────────────────
+section "Refresh image"
+
+# Honour --tag by temporarily overriding IMAGE_TAG in the environment that
+# compose sees. Permanent change: edit IMAGE_TAG in .env.docker yourself.
+COMPOSE_ENV=()
+if [[ -n "$TAG_OVERRIDE" ]]; then
+  info "Tag override: pulling :$TAG_OVERRIDE (one-shot — not written to .env.docker)"
+  COMPOSE_ENV=(env "IMAGE_TAG=$TAG_OVERRIDE")
+fi
+
+if $BUILD_LOCAL; then
+  info "Building image locally (--build) — this can take 5-15 minutes…"
+  if ! "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
        build server 2>&1 | tee -a "$LOG_FILE"; then
-    die "Build failed. The previous image is still tagged :latest, so the next 'compose up' will keep using it."
+    die "Build failed. Previous image is still in place; nothing was changed."
   fi
-  ok "Image built."
+  ok "Image built locally."
+else
+  info "Pulling latest image from registry…"
+  if ! "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+       pull server 2>&1 | tee -a "$LOG_FILE"; then
+    err "docker compose pull failed."
+    err "  • Image may not be published yet — check the GitHub Actions tab."
+    err "  • For a private/forked repo, run:  docker login ghcr.io"
+    err "  • To build from local source instead:  sudo $0 --build"
+    die "Aborting; previous image untouched."
+  fi
+  ok "Pulled. Compose will use the freshly-pulled image on recreate."
 fi
 
 # ── Recreate ──────────────────────────────────────────────────────────────────
 section "Recreate server container"
 info "Stopping + restarting the server container (db, volumes, .env stay in place)…"
-if ! docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
+if ! "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" "${COMPOSE_FILE_ARGS[@]}" \
      up -d --no-build --force-recreate server 2>&1 | tee -a "$LOG_FILE"; then
   die "compose up failed."
 fi

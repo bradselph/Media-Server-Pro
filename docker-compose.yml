@@ -42,6 +42,12 @@ services:
   # Media Server Pro — master server (HTTP API + embedded Nuxt UI).
   # ───────────────────────────────────────────────────────────────────────
   server:
+    # Pulled from GHCR by default. `docker compose pull` and the published
+    # tag `:latest` (or pin to `:1.10.32`, `:edge`, etc.) Just Work. The
+    # `build:` block is a fallback so local dev / forks can `docker compose
+    # build` from source — when the image already exists locally with the
+    # tag below, compose won't re-pull or re-build.
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-bradselph}/media-server-pro:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -50,7 +56,6 @@ services:
         NODE_VERSION: "${NODE_VERSION:-22}"
         APP_UID:      "${APP_UID:-1000}"
         APP_GID:      "${APP_GID:-1000}"
-    image: media-server-pro:latest
     restart: unless-stopped
     depends_on:
       db:
@@ -113,6 +118,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   receiver:
     profiles: ["receiver"]
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-bradselph}/media-server-pro-receiver:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.media-receiver
@@ -120,7 +126,6 @@ services:
         GO_VERSION: "${GO_VERSION:-1.26}"
         APP_UID:    "${APP_UID:-1000}"
         APP_GID:    "${APP_GID:-1000}"
-    image: media-server-pro-receiver:latest
     restart: unless-stopped
     environment:
       MASTER_URL:         "${MASTER_URL:?set MASTER_URL when running the receiver}"
