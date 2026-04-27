@@ -125,9 +125,7 @@ watch(() => authStore.user, (user) => {
     </div>
 
     <!-- Loading -->
-    <div v-if="loading" class="flex justify-center py-16">
-      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
-    </div>
+    <MediaCardSkeleton v-if="loading" :count="10" />
 
     <!-- Empty -->
     <div v-else-if="filtered.length === 0" class="text-center py-16 text-muted">

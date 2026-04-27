@@ -611,8 +611,18 @@ const hoverItemId = ref<string | null>(null)
 const hoverFrameIdx = ref(0)
 let hoverCycleTimer: ReturnType<typeof setInterval> | null = null
 
+// Coarse pointers (touch) get no preview cycling — the animation only
+// fires on a real hover, which touch devices don't have. Without this
+// guard the cycle would fire on first tap and waste an API call before
+// the navigation happens.
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  return window.matchMedia('(pointer: coarse)').matches
+}
+
 async function onMediaHoverEnter(id: string, isAudio: boolean) {
   if (isAudio) return
+  if (isCoarsePointer()) return
   hoverItemId.value = id
   hoverFrameIdx.value = 0
 
@@ -628,7 +638,7 @@ async function onMediaHoverEnter(id: string, isAudio: boolean) {
     if (hoverCycleTimer) clearInterval(hoverCycleTimer)
     hoverCycleTimer = setInterval(() => {
       hoverFrameIdx.value = (hoverFrameIdx.value + 1) % frames.length
-    }, 600)
+    }, 750)
   }
 }
 
@@ -694,21 +704,43 @@ onUnmounted(() => {
       <!-- Bottom gradient fade to page bg -->
       <div class="absolute bottom-0 inset-x-0 h-[70%] pointer-events-none bg-gradient-to-t from-[var(--surface-page)] to-transparent" />
       <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
-        <div class="flex items-center gap-3.5 flex-wrap">
-          <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">Featured</span>
-          <h1 class="text-[clamp(20px,3vw,28px)] font-bold text-white leading-tight line-clamp-1" style="text-wrap: pretty;">
-            {{ getDisplayTitle(authStore.isLoggedIn ? trending[0] : general[0]) }}
-          </h1>
-          <div class="flex gap-2 flex-wrap ml-auto">
+        <div class="flex items-end gap-4 flex-wrap">
+          <div class="flex-1 min-w-0 space-y-2.5">
+            <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">Featured</span>
+            <h1
+              class="font-extrabold text-white leading-tight line-clamp-2"
+              style="font-size: clamp(28px, 4vw, 44px); text-wrap: pretty;"
+            >
+              {{ getDisplayTitle(authStore.isLoggedIn ? trending[0] : general[0]) }}
+            </h1>
+            <!-- Tag chips — pulled from the suggestion's reasons (max 3) so
+                 the hero stays in sync with whichever categorisation the
+                 server is using; if reasons aren't available we fall back
+                 to the single category label. No emoji per plan §3.1. -->
+            <div class="flex gap-1.5 flex-wrap">
+              <template v-if="(authStore.isLoggedIn ? trending[0] : general[0]).reasons?.length">
+                <span
+                  v-for="r in (authStore.isLoggedIn ? trending[0] : general[0]).reasons!.slice(0, 3)"
+                  :key="r"
+                  class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
+                >{{ r }}</span>
+              </template>
+              <span
+                v-else-if="(authStore.isLoggedIn ? trending[0] : general[0]).category"
+                class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
+              >{{ (authStore.isLoggedIn ? trending[0] : general[0]).category }}</span>
+            </div>
+          </div>
+          <div class="flex gap-2 flex-wrap shrink-0">
             <NuxtLink
               :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
-              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-[18px] py-2 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
+              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
             >
-              <UIcon name="i-lucide-play" class="size-3.5" />Watch Now
+              <UIcon name="i-lucide-play" class="size-4" />Play now
             </NuxtLink>
             <NuxtLink
               to="/categories"
-              class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
+              class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2.5 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
             >Browse</NuxtLink>
           </div>
         </div>

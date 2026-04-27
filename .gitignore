@@ -87,3 +87,7 @@ docs/audit-screenshots/lighthouse-desktop/report.json
 docs/audit-screenshots/lighthouse-mobile/report.html
 docs/audit-screenshots/lighthouse-mobile/report.json
 /old
+
+# Claude Design handoff artifacts — local design source-of-truth, not source.
+/.handoff/
+/Media\ Server\ Pro-handoff.zip

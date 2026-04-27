@@ -94,6 +94,10 @@ docs/audit-screenshots
 CHANGELOG.md
 CONTRIBUTING.md
 
+# Claude Design handoff bundle — local-only design reference.
+.handoff
+*-handoff.zip
+
 # Docker artifacts themselves
 Dockerfile*
 docker-compose*.yml

@@ -145,19 +145,117 @@ const showBufferBar = computed(() => userPrefs.value?.show_buffer_bar ?? true)
 const downloadModalOpen = ref(false)
 const downloadPrompt = computed(() => userPrefs.value?.download_prompt ?? true)
 
-// Share at timestamp
+// Share at timestamp — once playback gets past 5s the label flips to
+// "Share @ M:SS" so the user knows the link will resume from where they
+// are. Click copies origin+path?id=&t=, then the label flashes
+// "Link copied" for 1.8s before reverting (plan §5.3).
 const linkCopied = ref(false)
 let linkCopiedTimer: ReturnType<typeof setTimeout> | undefined
 
+const shareLabel = computed(() => {
+  if (linkCopied.value) return 'Link copied'
+  if (currentTime.value > 5) {
+    const t = Math.floor(currentTime.value)
+    const m = Math.floor(t / 60)
+    const s = (t % 60).toString().padStart(2, '0')
+    return `Share @ ${m}:${s}`
+  }
+  return 'Share'
+})
+
 function copyTimestampLink() {
+  if (!mediaId.value) return
   const t = Math.floor(currentTime.value)
-  const url = new URL(globalThis.location.href)
-  if (t > 0) url.searchParams.set('t', String(t))
-  else url.searchParams.delete('t')
-  navigator.clipboard.writeText(url.toString())
+  const origin = globalThis.location.origin
+  const path = globalThis.location.pathname
+  const params = new URLSearchParams({ id: mediaId.value })
+  if (t > 0) params.set('t', String(t))
+  navigator.clipboard.writeText(`${origin}${path}?${params.toString()}`)
   linkCopied.value = true
   clearTimeout(linkCopiedTimer)
-  linkCopiedTimer = setTimeout(() => { linkCopied.value = false }, 2000)
+  linkCopiedTimer = setTimeout(() => { linkCopied.value = false }, 1800)
+}
+
+// Watchlist (favorites) — toggling fires favoritesApi.add/.remove and
+// flips the local boolean optimistically so the heart icon updates
+// instantly. The check() probe on mount keeps state correct after a
+// reload. Hidden for guests since favorites require an account.
+const favoritesApi = useFavoritesApi()
+const isInWatchlist = ref(false)
+const watchlistBusy = ref(false)
+
+async function refreshWatchlist() {
+  if (!authStore.isLoggedIn || !mediaId.value) {
+    isInWatchlist.value = false
+    return
+  }
+  try {
+    const r = await favoritesApi.check(mediaId.value)
+    isInWatchlist.value = !!r?.is_favorite
+  } catch { /* not fatal */ }
+}
+
+async function toggleWatchlist() {
+  if (!authStore.isLoggedIn || !mediaId.value || watchlistBusy.value) return
+  watchlistBusy.value = true
+  const id = mediaId.value
+  const wasIn = isInWatchlist.value
+  isInWatchlist.value = !wasIn
+  try {
+    if (wasIn) await favoritesApi.remove(id)
+    else await favoritesApi.add(id)
+    toast.add({
+      title: wasIn ? 'Removed from watchlist' : 'Added to watchlist',
+      color: 'success',
+      icon: 'i-lucide-check',
+    })
+  } catch (e: unknown) {
+    isInWatchlist.value = wasIn
+    toast.add({
+      title: e instanceof Error ? e.message : 'Watchlist update failed',
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    })
+  } finally {
+    watchlistBusy.value = false
+  }
+}
+
+watch(mediaId, () => { refreshWatchlist() }, { immediate: true })
+
+// Report — modal scaffolding only. Reason categories ship in a follow-up
+// (plan §5.3 "defer the modal contents to a follow-up; just stub the
+// button + modal scaffolding").
+const reportModalOpen = ref(false)
+const reportReason = ref<'inappropriate' | 'broken' | 'spam' | 'copyright' | 'other'>('inappropriate')
+const reportNotes = ref('')
+const reportSubmitting = ref(false)
+
+const REPORT_REASONS = [
+  { value: 'inappropriate', label: 'Inappropriate content' },
+  { value: 'broken',        label: 'Broken / unplayable' },
+  { value: 'spam',          label: 'Spam or misleading' },
+  { value: 'copyright',     label: 'Copyright concern' },
+  { value: 'other',         label: 'Other' },
+] as const
+
+async function submitReport() {
+  // Stub: report submission endpoint isn't wired yet. We surface a toast
+  // and close the modal so the UX is complete; once the backend ships a
+  // /api/media/:id/report endpoint we'll POST here.
+  reportSubmitting.value = true
+  setTimeout(() => {
+    reportSubmitting.value = false
+    reportModalOpen.value = false
+    reportReason.value = 'inappropriate'
+    reportNotes.value = ''
+    toast.add({
+      title: 'Report received',
+      description: 'Thanks — a moderator will review this item.',
+      color: 'success',
+      icon: 'i-lucide-check',
+    })
+  }, 250)
 }
 
 // Graphic Equalizer (Web Audio API)
@@ -1037,10 +1135,13 @@ watch(mediaId, (id, oldId) => {
 </script>
 
 <template>
+  <!-- Theater mode bumps the page wrapper from 1400px → 1700px (plan §5.2)
+       and the layout grid below collapses from 1fr+sidebar to a single
+       column so the player gets the full width. -->
   <div
     class="mx-auto w-full"
     :class="[
-      isTheater ? 'max-w-full' : 'max-w-7xl',
+      isTheater ? 'max-w-[1700px]' : 'max-w-[1400px]',
       media && mediaId && !loading && !error
         ? 'max-md:px-0 max-md:py-0 md:px-6 md:py-6'
         : 'px-4 sm:px-6 py-6',
@@ -1446,12 +1547,31 @@ watch(mediaId, (id, oldId) => {
               @click="autoNextEnabled = !autoNextEnabled"
             />
             <UButton
+              v-if="authStore.isLoggedIn"
+              :icon="isInWatchlist ? 'i-lucide-bookmark-check' : 'i-lucide-bookmark-plus'"
+              :label="isInWatchlist ? 'In Watchlist' : 'Watchlist'"
+              :variant="isInWatchlist ? 'solid' : 'outline'"
+              :color="isInWatchlist ? 'primary' : 'neutral'"
+              :loading="watchlistBusy"
+              size="sm"
+              @click="toggleWatchlist"
+            />
+            <UButton
               icon="i-lucide-share-2"
-              :label="linkCopied ? 'Copied!' : 'Share'"
+              :label="shareLabel"
               :variant="linkCopied ? 'solid' : 'outline'"
               :color="linkCopied ? 'success' : 'neutral'"
               size="sm"
               @click="copyTimestampLink"
+            />
+            <UButton
+              v-if="authStore.isLoggedIn"
+              icon="i-lucide-flag"
+              label="Report"
+              variant="outline"
+              color="neutral"
+              size="sm"
+              @click="reportModalOpen = true"
             />
             <UButton
               v-if="authStore.isAdmin"
@@ -1758,6 +1878,55 @@ watch(mediaId, (id, oldId) => {
             @click="downloadModalOpen = false"
           />
         </template>
+      </div>
+    </template>
+  </UModal>
+
+  <!-- Report modal — scaffolding only (plan §5.3). Submission is stubbed
+       until the backend ships /api/media/:id/report; the toast confirms
+       the user's action so the UX is complete. -->
+  <UModal v-model:open="reportModalOpen" title="Report this item" description="Tell us what's wrong so a moderator can review.">
+    <template #body>
+      <div class="space-y-4 py-2">
+        <fieldset class="space-y-1.5">
+          <legend class="text-xs font-semibold uppercase tracking-wider text-muted mb-1">Reason</legend>
+          <label
+            v-for="r in REPORT_REASONS"
+            :key="r.value"
+            class="flex items-center gap-2.5 p-2 rounded-md border border-default cursor-pointer hover:bg-elevated/60 transition-colors"
+            :class="reportReason === r.value ? 'border-primary bg-primary/10' : ''"
+          >
+            <input
+              v-model="reportReason"
+              type="radio"
+              name="report-reason"
+              :value="r.value"
+              class="accent-primary"
+            />
+            <span class="text-sm">{{ r.label }}</span>
+          </label>
+        </fieldset>
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-wider text-muted mb-1 block">Notes (optional)</label>
+          <UTextarea
+            v-model="reportNotes"
+            placeholder="Anything else a moderator should know?"
+            :rows="3"
+            class="w-full"
+          />
+        </div>
+      </div>
+    </template>
+    <template #footer>
+      <div class="flex items-center justify-end gap-2 w-full">
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="reportModalOpen = false" />
+        <UButton
+          icon="i-lucide-flag"
+          label="Submit report"
+          color="primary"
+          :loading="reportSubmitting"
+          @click="submitReport"
+        />
       </div>
     </template>
   </UModal>

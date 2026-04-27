@@ -75,9 +75,7 @@ watch(() => authStore.user, (user) => {
       <UBadge v-if="favorites.length > 0" :label="String(favorites.length)" color="neutral" variant="subtle" size="xs" />
     </div>
 
-    <div v-if="loading" class="flex justify-center py-16">
-      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
-    </div>
+    <MediaCardSkeleton v-if="loading" :count="10" />
 
     <div v-else-if="favorites.length === 0" class="text-center py-16 text-muted">
       <UIcon name="i-lucide-heart" class="size-10 mb-3 mx-auto opacity-40" />
