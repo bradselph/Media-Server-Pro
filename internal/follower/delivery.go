@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/pkg/helpers"
 )
 
 // streamHTTPClient is reused for stream-push deliveries. No overall timeout
@@ -56,10 +56,7 @@ func (m *Module) deliverStream(ctx context.Context, cfg config.FollowerConfig, r
 		return
 	}
 
-	contentType := mime.TypeByExtension(filepath.Ext(absPath))
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
+	contentType := helpers.MediaContentType(absPath)
 
 	var body io.Reader = file
 	statusCode := http.StatusOK
@@ -254,8 +251,5 @@ func relativizeUnderRoot(absPath string, roots []string) (string, bool) {
 // contentTypeForName maps a filename's extension to a MIME type, falling back
 // to application/octet-stream so the master always has a non-empty value.
 func contentTypeForName(name string) string {
-	if ct := mime.TypeByExtension(filepath.Ext(name)); ct != "" {
-		return ct
-	}
-	return "application/octet-stream"
+	return helpers.MediaContentType(name)
 }

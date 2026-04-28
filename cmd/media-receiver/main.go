@@ -33,7 +33,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -47,6 +46,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"media-server-pro/pkg/helpers"
 )
 
 // catalogItem matches the receiver.CatalogItem struct on the master.
@@ -650,10 +651,7 @@ func deliverStream(ctx context.Context, cfg *slaveConfig, req streamRequest) {
 	}
 
 	// Determine content type
-	contentType := mime.TypeByExtension(filepath.Ext(absPath))
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
+	contentType := helpers.MediaContentType(absPath)
 
 	var body io.Reader = file
 	statusCode := 200
@@ -1222,10 +1220,7 @@ func scanMediaDirs(dirs []string) []catalogItem {
 			}
 
 			id := generateFileID(relPath)
-			contentType := mime.TypeByExtension(filepath.Ext(info.Name()))
-			if contentType == "" {
-				contentType = "application/octet-stream"
-			}
+			contentType := helpers.MediaContentType(info.Name())
 
 			fp := getCachedFingerprint(path, info)
 			discoveredPaths[path] = true
