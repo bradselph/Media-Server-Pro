@@ -100,47 +100,48 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	// Receiver items are indistinguishable from local media to regular users.
 	// Duplicate detection: skip receiver items whose content fingerprint matches a
 	// local item (same file exists on both master and slave — show only the local copy).
+	// Note: merge runs whenever the receiver module is wired in. Slaves that connect
+	// after the master process started are surfaced regardless of the Enabled flag —
+	// the flag only governs whether the master health-check loop and DB load run.
 	hasReceiverItems := false
 	if h.receiver != nil {
-		if h.media.GetConfig().Receiver.Enabled {
-			// Track fingerprints already added from receiver items so that if
-			// the same file exists on two different slaves, only the first is kept.
-			seenFP := make(map[string]bool)
-			for _, ri := range h.receiver.GetAllMedia() {
-				// Skip ID duplicates (same item from multiple sources)
-				if seenIDs[ri.ID] {
-					continue
-				}
-				if ri.ContentFingerprint != "" {
-					// Skip master-vs-slave duplicates
-					if h.media.HasFingerprint(ri.ContentFingerprint) {
-						continue
-					}
-					// Skip slave-vs-slave duplicates
-					if seenFP[ri.ContentFingerprint] {
-						continue
-					}
-					seenFP[ri.ContentFingerprint] = true
-				}
-				item := &models.MediaItem{
-					ID:       ri.ID,
-					Name:     ri.Name,
-					Type:     models.MediaType(ri.MediaType),
-					Size:     ri.Size,
-					Duration: ri.Duration,
-					Width:    ri.Width,
-					Height:   ri.Height,
-					IsMature: h.isReceiverItemMature(ri.ContentFingerprint),
-				}
-				// Apply the exact same filter logic as local media (category,
-				// tags, search, type, is_mature — not just type+search).
-				if !filterNoPagination.Matches(item) {
-					continue
-				}
-				allItems = append(allItems, item)
-				seenIDs[ri.ID] = true
-				hasReceiverItems = true
+		// Track fingerprints already added from receiver items so that if
+		// the same file exists on two different slaves, only the first is kept.
+		seenFP := make(map[string]bool)
+		for _, ri := range h.receiver.GetAllMedia() {
+			// Skip ID duplicates (same item from multiple sources)
+			if seenIDs[ri.ID] {
+				continue
 			}
+			if ri.ContentFingerprint != "" {
+				// Skip master-vs-slave duplicates
+				if h.media.HasFingerprint(ri.ContentFingerprint) {
+					continue
+				}
+				// Skip slave-vs-slave duplicates
+				if seenFP[ri.ContentFingerprint] {
+					continue
+				}
+				seenFP[ri.ContentFingerprint] = true
+			}
+			item := &models.MediaItem{
+				ID:       ri.ID,
+				Name:     ri.Name,
+				Type:     models.MediaType(ri.MediaType),
+				Size:     ri.Size,
+				Duration: ri.Duration,
+				Width:    ri.Width,
+				Height:   ri.Height,
+				IsMature: h.isReceiverItemMature(ri.ContentFingerprint),
+			}
+			// Apply the exact same filter logic as local media (category,
+			// tags, search, type, is_mature — not just type+search).
+			if !filterNoPagination.Matches(item) {
+				continue
+			}
+			allItems = append(allItems, item)
+			seenIDs[ri.ID] = true
+			hasReceiverItems = true
 		}
 	}
 
@@ -556,6 +557,33 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 					release := h.streaming.TrackProxyStream(ipKey)
 					defer release()
 				}
+				// Track view analytics for slave-sourced media so reporting is
+				// source-agnostic. Mirrors the local-media branch: counted once
+				// per initial range request, deduped by tryRecordView. The
+				// receiver MediaItem has no Category, so RecordView gets an
+				// empty category — suggestions still record by ID.
+				rangeHeader := c.Request.Header.Get("Range")
+				isInitialRequest := rangeHeader == "" || strings.HasPrefix(rangeHeader, "bytes=0-")
+				trackUserID := ""
+				trackSessionID := ""
+				if session != nil {
+					trackUserID = session.UserID
+					trackSessionID = session.ID
+				}
+				if isInitialRequest && h.tryRecordView(trackUserID, id) {
+					if h.analytics != nil {
+						h.analytics.TrackView(c.Request.Context(), analytics.ViewParams{
+							MediaID:   id,
+							UserID:    trackUserID,
+							SessionID: trackSessionID,
+							IPAddress: c.ClientIP(),
+							UserAgent: c.Request.UserAgent(),
+						})
+					}
+					if h.suggestions != nil && trackUserID != "" {
+						h.suggestions.RecordView(trackUserID, id, "", item.MediaType, item.Duration)
+					}
+				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
 					if !c.Writer.Written() && !isClientDisconnect(err) {
 						writeError(c, http.StatusBadGateway, "Stream proxy error")
@@ -729,6 +757,20 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
 					writeError(c, http.StatusForbidden, msgMatureContent)
 					return
+				}
+				// Track download analytics for slave-sourced media so reporting
+				// is source-agnostic — mirrors the local-media branch below.
+				if h.analytics != nil {
+					userID := ""
+					sessionID := ""
+					if session != nil {
+						userID = session.UserID
+						sessionID = session.ID
+					}
+					h.analytics.TrackDownload(c.Request.Context(), analytics.ViewParams{
+						MediaID: id, UserID: userID, SessionID: sessionID,
+						IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+					})
 				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
 					if !c.Writer.Written() && !isClientDisconnect(err) {

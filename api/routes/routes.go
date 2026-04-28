@@ -754,6 +754,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/crawler/stats", h.GetCrawlerStats)
 
 	// Receiver (master-slave proxy) routes (admin)
+	adminGrp.GET("/receiver/settings", h.AdminReceiverGetSettings)
 	adminGrp.GET("/receiver/slaves", h.AdminReceiverListSlaves)
 	adminGrp.GET("/receiver/stats", h.AdminReceiverGetStats)
 	adminGrp.DELETE("/receiver/slaves/:id", h.AdminReceiverRemoveSlave)

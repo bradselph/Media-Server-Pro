@@ -70,18 +70,15 @@ func NewModule(cfg *config.Manager, mediaMod *media.Module) *Module {
 // Name implements server.Module.
 func (m *Module) Name() string { return "follower" }
 
-// Start implements server.Module. Spawns the WS loop in a goroutine when
-// enabled and the required URL/key are present; otherwise marks healthy
-// (idle) and returns nil so the server still starts cleanly when the operator
-// hasn't paired this instance yet.
+// Start implements server.Module. Spawns the WS loop in a goroutine when the
+// required URL/key are present; otherwise marks healthy (idle) and returns nil
+// so the server still starts cleanly when the operator hasn't paired this
+// instance yet. The follower auto-enables on configuration completeness — a
+// separate Enabled toggle would diverge from "fill in the form, it pairs".
 func (m *Module) Start(_ context.Context) error {
 	cfg := m.config.Get().Follower
-	if !cfg.Enabled {
-		m.setHealth(true, "Disabled")
-		return nil
-	}
 	if !m.hasRequiredConfig(cfg) {
-		m.setHealth(true, "Enabled but not configured (master_url + api_key required)")
+		m.setHealth(true, "Disabled — not configured (master_url + api_key required)")
 		return nil
 	}
 	if err := m.startLoop(); err != nil {
@@ -143,9 +140,10 @@ func (m *Module) GetStatus() Status {
 	cfg := m.config.Get().Follower
 	m.statusMu.RLock()
 	defer m.statusMu.RUnlock()
+	configured := m.hasRequiredConfig(cfg)
 	return Status{
-		Enabled:         cfg.Enabled,
-		Configured:      m.hasRequiredConfig(cfg),
+		Enabled:         configured,
+		Configured:      configured,
 		Connected:       m.connected,
 		MasterURL:       cfg.MasterURL,
 		SlaveID:         m.resolveSlaveID(cfg),
@@ -164,12 +162,8 @@ func (m *Module) GetStatus() Status {
 func (m *Module) Reload(ctx context.Context) error {
 	m.stopLoop(ctx)
 	cfg := m.config.Get().Follower
-	if !cfg.Enabled {
-		m.setHealth(true, "Disabled")
-		return nil
-	}
 	if !m.hasRequiredConfig(cfg) {
-		m.setHealth(true, "Enabled but not configured (master_url + api_key required)")
+		m.setHealth(true, "Disabled — not configured (master_url + api_key required)")
 		return nil
 	}
 	if err := m.startLoop(); err != nil {

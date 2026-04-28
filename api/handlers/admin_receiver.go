@@ -18,9 +18,15 @@ func (h *Handler) checkDuplicateDetectionEnabled(c *gin.Context) bool {
 	})
 }
 
+// checkReceiverEnabled gates receiver-side admin endpoints. Mirrors the
+// follower's "configured == enabled" rule: the receiver counts as enabled
+// when the explicit flag is set OR at least one API key is configured, so a
+// fresh install with keys provisioned by env/config doesn't have to also
+// toggle a separate flag.
 func (h *Handler) checkReceiverEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.receiver, "Media receiver", func() bool {
-		return h.media.GetConfig().Receiver.Enabled
+		rc := h.media.GetConfig().Receiver
+		return rc.Enabled || len(rc.APIKeys) > 0
 	})
 }
 
@@ -167,6 +173,28 @@ func (h *Handler) ReceiverGetMedia(c *gin.Context) {
 	}
 
 	writeSuccess(c, item)
+}
+
+// receiverAdminSettings is the body of GET /api/admin/receiver/settings.
+// Unlike the follower endpoint (which redacts api_key), this surfaces the
+// configured keys in plain text — admins need them to paste into the
+// Follower form on a paired server. The route is admin-only and the keys
+// are already configured on this server, so no escalation is granted.
+type receiverAdminSettings struct {
+	Enabled bool     `json:"enabled"`
+	APIKeys []string `json:"api_keys"`
+}
+
+// AdminReceiverGetSettings returns the configured receiver API keys so the
+// admin can copy one into another VPS's follower pairing form.
+// GET /api/admin/receiver/settings
+func (h *Handler) AdminReceiverGetSettings(c *gin.Context) {
+	rc := h.config.Get().Receiver
+	keys := append([]string(nil), rc.APIKeys...)
+	writeSuccess(c, receiverAdminSettings{
+		Enabled: rc.Enabled || len(rc.APIKeys) > 0,
+		APIKeys: keys,
+	})
 }
 
 // AdminReceiverListSlaves lists all registered slave nodes.
