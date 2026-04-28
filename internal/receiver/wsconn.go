@@ -433,6 +433,13 @@ func (m *Module) RequestStream(slaveID, token, path, rangeHeader string) (*Pendi
 
 // DeliverStream is called when a slave POSTs file data to /api/receiver/stream-push/:token.
 // It looks up the pending stream and signals the waiting proxy handler.
+//
+// IMPORTANT: must NOT call ps.cancel() here. ps.ctx is the *consumer* context
+// (proxyViaWS) — cancelling it here marks the consumer as exited the moment
+// delivery begins, causing the push handler's watcher to immediately close
+// the pipe with "stream consumer exited" before any bytes are written. The
+// browser then sees ERR_EMPTY_RESPONSE. The consumer's own defer cancels
+// ps when it actually finishes reading.
 func (m *Module) DeliverStream(token string) (*PendingStream, bool) {
 	m.pendingMu.Lock()
 	ps, ok := m.pendingStreams[token]
@@ -440,9 +447,6 @@ func (m *Module) DeliverStream(token string) (*PendingStream, bool) {
 		delete(m.pendingStreams, token)
 	}
 	m.pendingMu.Unlock()
-	if ok {
-		ps.cancel()
-	}
 	return ps, ok
 }
 
