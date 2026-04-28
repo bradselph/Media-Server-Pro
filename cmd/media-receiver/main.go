@@ -24,6 +24,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -36,6 +37,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -143,6 +145,170 @@ func pruneFpCache(keep map[string]bool) {
 	}
 }
 
+// ffprobe metadata cache: avoid re-probing unchanged files between scans.
+// Keyed by absolute path, invalidated when (mtime, size) changes.
+type probeEntry struct {
+	modTime  time.Time
+	size     int64
+	duration float64
+	width    int
+	height   int
+}
+
+const probeCacheMaxEntries = 100_000
+
+var (
+	probeCache   = make(map[string]probeEntry)
+	probeCacheMu sync.Mutex
+
+	// ffprobePath is set once at startup by detectFFprobe(). Empty means
+	// ffprobe is unavailable; metadata extraction is silently skipped.
+	ffprobePath string
+	// ffprobeWarned is set after the one-time "ffprobe not found" warning so
+	// we don't spam stderr on every scan.
+	ffprobeWarned bool
+)
+
+// ffprobeTimeout caps how long a single probe may run. Most files probe in
+// under 200 ms; pathological inputs (DRM-protected files, broken streams)
+// can hang indefinitely without a deadline.
+const ffprobeTimeout = 15 * time.Second
+
+// ffprobeOutputCap bounds the stdout buffer ffprobe is allowed to fill. The
+// default exec.Command output is unbounded; a hostile or corrupted file with
+// thousands of stream tags could otherwise drive a huge allocation.
+const ffprobeOutputCap = 1 * 1024 * 1024 // 1 MB
+
+// ffprobeResult mirrors the subset of ffprobe -show_format -show_streams JSON
+// that the master cares about (Duration, Width, Height).
+type ffprobeResult struct {
+	Format struct {
+		Duration string `json:"duration"`
+	} `json:"format"`
+	Streams []struct {
+		CodecType string `json:"codec_type"`
+		Width     int    `json:"width"`
+		Height    int    `json:"height"`
+	} `json:"streams"`
+}
+
+// detectFFprobe locates the ffprobe binary. Searches PATH first, then the
+// standard system locations used by apt/homebrew/snap so that running under
+// systemd (which strips PATH to a minimal set) still works.
+func detectFFprobe() string {
+	if path, err := exec.LookPath("ffprobe"); err == nil {
+		return path
+	}
+	candidates := []string{
+		"/usr/bin/ffprobe",
+		"/usr/local/bin/ffprobe",
+		"/bin/ffprobe",
+		"/snap/bin/ffprobe",
+		"/opt/homebrew/bin/ffprobe",
+	}
+	for _, p := range candidates {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
+// extractProbeMeta runs ffprobe against path and returns (duration, width, height).
+// All three are zero on any failure — missing ffprobe, timeout, parse error, or
+// the file disappearing between scan and probe. Failures are intentionally
+// non-fatal: a media file with no metadata still streams correctly, the user
+// just sees 0:00 instead of the real length.
+func extractProbeMeta(path string, info os.FileInfo) (float64, int, int) {
+	if ffprobePath == "" {
+		return 0, 0, 0
+	}
+
+	probeCacheMu.Lock()
+	if cached, ok := probeCache[path]; ok {
+		if cached.modTime.Equal(info.ModTime()) && cached.size == info.Size() {
+			probeCacheMu.Unlock()
+			return cached.duration, cached.width, cached.height
+		}
+	}
+	probeCacheMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), ffprobeTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, ffprobePath,
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_format",
+		"-show_streams",
+		path,
+	)
+
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		// ffprobe failed (file vanished, codec error, timeout) — log debug
+		// and return zeros. The catalog item is still pushed, just without
+		// duration/dimensions, exactly the behaviour before this change.
+		return 0, 0, 0
+	}
+	if out.Len() > ffprobeOutputCap {
+		return 0, 0, 0
+	}
+
+	var probe ffprobeResult
+	if err := json.Unmarshal(out.Bytes(), &probe); err != nil {
+		return 0, 0, 0
+	}
+
+	var duration float64
+	if probe.Format.Duration != "" {
+		if d, err := strconv.ParseFloat(probe.Format.Duration, 64); err == nil && d > 0 {
+			duration = d
+		}
+	}
+	var width, height int
+	for _, s := range probe.Streams {
+		if s.CodecType == "video" && s.Width > 0 && s.Height > 0 {
+			width = s.Width
+			height = s.Height
+			break
+		}
+	}
+
+	probeCacheMu.Lock()
+	if len(probeCache) >= probeCacheMaxEntries {
+		// Cache is full — drop one arbitrary entry. The next pruneProbeCache
+		// call will clean up deleted-file entries normally.
+		for k := range probeCache {
+			delete(probeCache, k)
+			break
+		}
+	}
+	probeCache[path] = probeEntry{
+		modTime:  info.ModTime(),
+		size:     info.Size(),
+		duration: duration,
+		width:    width,
+		height:   height,
+	}
+	probeCacheMu.Unlock()
+
+	return duration, width, height
+}
+
+// pruneProbeCache removes probe-cache entries for files that no longer exist.
+func pruneProbeCache(keep map[string]bool) {
+	probeCacheMu.Lock()
+	defer probeCacheMu.Unlock()
+	for path := range probeCache {
+		if !keep[path] {
+			delete(probeCache, path)
+		}
+	}
+}
+
 // streamSem is initialized in main() from cfg.MaxStreams and passed into the run loop.
 
 // streamHTTPClient is reused for stream deliveries (default TLS; no request timeout).
@@ -156,8 +322,19 @@ var streamHTTPClient = &http.Client{
 }
 
 
+// maxCatalogItems is the upper bound on items pushed in a single catalog message.
+// Must match the master-side limit in internal/receiver/receiver.go so that an
+// oversized library is detected (and logged) on the slave instead of silently
+// 400'ing every push at the master.
+const maxCatalogItems = 100_000
+
 func main() {
 	cfg, disc := parseFlags()
+
+	// Locate ffprobe once at startup. If unavailable we silently emit zeros for
+	// duration/dimensions — the slave still streams files correctly, the user
+	// just won't see file length or resolution in the master UI.
+	ffprobePath = detectFFprobe()
 
 	if cfg.MasterURL == "" {
 		fmt.Fprintln(os.Stderr, "Error: master URL is required (-master or MASTER_URL)")
@@ -183,6 +360,12 @@ func main() {
 	}
 
 	fmt.Printf("Media Receiver (Slave) starting\n")
+	if ffprobePath != "" {
+		fmt.Printf("  ffprobe:    %s\n", ffprobePath)
+	} else {
+		fmt.Printf("  ffprobe:    not found — duration/resolution will not be reported\n")
+		ffprobeWarned = true
+	}
 	fmt.Printf("  Master:     %s%s\n", cfg.MasterURL, autoTag(disc.MasterURL))
 	keyPreview := cfg.APIKey
 	if len(keyPreview) > 4 {
@@ -1047,12 +1230,20 @@ func scanMediaDirs(dirs []string) []catalogItem {
 			fp := getCachedFingerprint(path, info)
 			discoveredPaths[path] = true
 
+			// extractProbeMeta is a no-op when ffprobe is unavailable, so this
+			// is safe to call unconditionally. Failures (timeout, codec error,
+			// file vanished after Walk recorded it) return zero values.
+			duration, width, height := extractProbeMeta(path, info)
+
 			items = append(items, catalogItem{
 				ID:                 id,
 				Path:               relPath,
 				Name:               info.Name(),
 				MediaType:          mediaType,
 				Size:               info.Size(),
+				Duration:           duration,
+				Width:              width,
+				Height:             height,
 				ContentType:        contentType,
 				ContentFingerprint: fp,
 			})
@@ -1065,6 +1256,18 @@ func scanMediaDirs(dirs []string) []catalogItem {
 	}
 
 	pruneFpCache(discoveredPaths)
+	pruneProbeCache(discoveredPaths)
+
+	// The master rejects a catalog with more than maxCatalogItems entries.
+	// Detect the overflow here so the operator sees a clear log line instead
+	// of every catalog push silently failing with a 400 at the master.
+	if len(items) > maxCatalogItems {
+		fmt.Fprintf(os.Stderr,
+			"Warning: scan found %d media files; master accepts at most %d per push. "+
+				"Excess files will not be visible. Split your library across multiple slaves.\n",
+			len(items), maxCatalogItems)
+		items = items[:maxCatalogItems]
+	}
 	return items
 }
 
