@@ -123,7 +123,14 @@ func (h *Handler) tryServePlaceholderByType(c *gin.Context, thumbnailType string
 	return true
 }
 
-// tryServeReceiverThumbnail serves a placeholder for receiver (remote) items that have no local file. Returns true if served.
+// tryServeReceiverThumbnail serves a slave-sourced thumbnail by proxying it
+// over the WS pipeline. Falls back to a placeholder when:
+//   - the item is censored for the current user (mature gating),
+//   - the slave is offline or has no thumbnail for that item,
+//   - the proxy fails for any reason (we don't want a black image because
+//     a slave is briefly unreachable).
+//
+// Returns true if any response was written (proxied bytes or placeholder).
 func (h *Handler) tryServeReceiverThumbnail(c *gin.Context, id string) bool {
 	if id == "" || h.receiver == nil {
 		return false
@@ -135,22 +142,47 @@ func (h *Handler) tryServeReceiverThumbnail(c *gin.Context, id string) bool {
 	if ri == nil {
 		return false
 	}
+
+	// Censored gating short-circuits before we contact the slave so a guest
+	// can never observe via cache headers whether a real thumbnail exists.
+	isMature := ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint)
+	if isMature && !h.canViewMatureContent(c) {
+		h.serveReceiverPlaceholder(c, "censored")
+		return true
+	}
+
+	// Try the slave proxy. Only fall back to placeholder on failure so a
+	// healthy pairing surfaces real thumbnails without any extra round-trip.
+	if c.Request.Method != http.MethodHead {
+		preferWebP := acceptsWebP(c.Request)
+		// Cache slave thumbnails the same as local ones — the unified library
+		// is the whole point of the federation.
+		if err := h.receiver.ProxyThumbnail(c.Writer, c.Request, id, preferWebP); err == nil {
+			return true
+		} else {
+			h.log.Debug("Receiver thumbnail proxy failed for %s, serving placeholder: %v", id, err)
+		}
+	}
+
 	placeholderType := "placeholder"
 	if ri.MediaType == "audio" {
 		placeholderType = "audio_placeholder"
 	}
-	if h.isReceiverItemMature(ri.ContentFingerprint) && !h.canViewMatureContent(c) {
-		placeholderType = "censored"
-	}
+	h.serveReceiverPlaceholder(c, placeholderType)
+	return true
+}
+
+// serveReceiverPlaceholder writes the given placeholder type, used when no
+// real thumbnail is available from the slave.
+func (h *Handler) serveReceiverPlaceholder(c *gin.Context, placeholderType string) {
 	ph, pErr := h.thumbnails.GetPlaceholderPath(placeholderType)
 	if pErr != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to get placeholder")
-		return true
+		return
 	}
-	c.Header(headerCacheControl,"public, max-age=86400")
-	c.Header(headerContentType,mimeJPEG)
+	c.Header(headerCacheControl, "public, max-age=86400")
+	c.Header(headerContentType, mimeJPEG)
 	http.ServeFile(c.Writer, c.Request, ph)
-	return true
 }
 
 // serveCensoredPlaceholderOrForbidden serves the censored placeholder image or writes 403 if unavailable.

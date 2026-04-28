@@ -408,6 +408,7 @@ type ReceiverMediaRepository interface {
 type ReceiverMediaRecord struct {
 	ID                 string
 	SlaveID            string
+	RemoteID           string // slave's own item.ID — used by thumbnail proxy to look up the on-slave thumbnail file
 	RemotePath         string
 	Name               string
 	MediaType          string // video, audio
@@ -417,7 +418,15 @@ type ReceiverMediaRecord struct {
 	ContentFingerprint string
 	Width              int
 	Height             int
-	UpdatedAt          time.Time
+	// Display metadata mirrored from the slave's local item so federated content
+	// looks identical to local content in the unified library.
+	Category     string
+	Tags         string // CSV; mirrors models.MediaItem.Tags []string flattened for storage
+	BlurHash     string
+	DateAdded    time.Time
+	DateModified time.Time
+	IsMature     bool
+	UpdatedAt    time.Time
 }
 
 // ReceiverDuplicateRepository provides storage for detected duplicate media pairs.

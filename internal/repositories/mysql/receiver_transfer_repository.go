@@ -115,6 +115,7 @@ func (r *ReceiverSlaveRepository) rowToSlaveRecord(row *receiverSlaveRow) *repos
 type receiverMediaRow struct {
 	ID                 string  `gorm:"column:id;primaryKey"`
 	SlaveID            string  `gorm:"column:slave_id"`
+	RemoteID           string  `gorm:"column:remote_id"`
 	RemotePath         string  `gorm:"column:remote_path"`
 	Name               string  `gorm:"column:name"`
 	MediaType          string  `gorm:"column:media_type"`
@@ -124,6 +125,12 @@ type receiverMediaRow struct {
 	ContentFingerprint string  `gorm:"column:content_fingerprint"`
 	Width              int     `gorm:"column:width"`
 	Height             int     `gorm:"column:height"`
+	Category           string  `gorm:"column:category"`
+	Tags               string  `gorm:"column:tags"`
+	BlurHash           string  `gorm:"column:blur_hash"`
+	DateAdded          *string `gorm:"column:date_added"`
+	DateModified       *string `gorm:"column:date_modified"`
+	IsMature           bool    `gorm:"column:is_mature"`
 	UpdatedAt          string  `gorm:"column:updated_at"`
 }
 
@@ -139,6 +146,54 @@ func NewReceiverMediaRepository(db *gorm.DB) repositories.ReceiverMediaRepositor
 	return &ReceiverMediaRepository{db: db}
 }
 
+// receiverMediaUpdateColumns is the canonical list of columns to overwrite on
+// upsert conflict. Kept as a package-level var so both UpsertBatch and
+// ReplaceSlaveMedia stay in lockstep when the schema gains new federated
+// metadata fields.
+var receiverMediaUpdateColumns = []string{
+	"remote_id", "remote_path", "name", "media_type", "file_size", "duration",
+	"content_type", "content_fingerprint", "width", "height",
+	"category", "tags", "blur_hash", "date_added", "date_modified", "is_mature",
+	"updated_at",
+}
+
+// formatNullableTime returns nil when t is the zero value so the DB stores NULL
+// instead of a sentinel timestamp like "0001-01-01" that confuses sort/compare.
+func formatNullableTime(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	s := t.Format(sqlTimeFormat)
+	return &s
+}
+
+// buildReceiverMediaRow projects a domain ReceiverMediaRecord into a GORM row
+// for the receiver_media table. now should be the same wall-clock for every
+// row in a batch so the table's updated_at column is monotonic per push.
+func buildReceiverMediaRow(slaveID string, item *repositories.ReceiverMediaRecord, now string) receiverMediaRow {
+	return receiverMediaRow{
+		ID:                 item.ID,
+		SlaveID:            slaveID,
+		RemoteID:           item.RemoteID,
+		RemotePath:         item.RemotePath,
+		Name:               item.Name,
+		MediaType:          item.MediaType,
+		Size:               item.Size,
+		Duration:           item.Duration,
+		ContentType:        item.ContentType,
+		ContentFingerprint: item.ContentFingerprint,
+		Width:              item.Width,
+		Height:             item.Height,
+		Category:           item.Category,
+		Tags:               item.Tags,
+		BlurHash:           item.BlurHash,
+		DateAdded:          formatNullableTime(item.DateAdded),
+		DateModified:       formatNullableTime(item.DateModified),
+		IsMature:           item.IsMature,
+		UpdatedAt:          now,
+	}
+}
+
 func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID string, items []*repositories.ReceiverMediaRecord) error {
 	if len(items) == 0 {
 		return nil
@@ -147,20 +202,7 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 	now := time.Now().Format(sqlTimeFormat)
 	rows := make([]receiverMediaRow, len(items))
 	for i, item := range items {
-		rows[i] = receiverMediaRow{
-			ID:                 item.ID,
-			SlaveID:            slaveID,
-			RemotePath:         item.RemotePath,
-			Name:               item.Name,
-			MediaType:          item.MediaType,
-			Size:               item.Size,
-			Duration:           item.Duration,
-			ContentType:        item.ContentType,
-			ContentFingerprint: item.ContentFingerprint,
-			Width:              item.Width,
-			Height:             item.Height,
-			UpdatedAt:          now,
-		}
+		rows[i] = buildReceiverMediaRow(slaveID, item, now)
 	}
 
 	// Batch upsert in chunks of 100 inside a transaction so partial failure rolls back all batches.
@@ -172,11 +214,8 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 				end = len(rows)
 			}
 			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "id"}},
-				DoUpdates: clause.AssignmentColumns([]string{
-					"remote_path", "name", "media_type", "file_size", "duration",
-					"content_type", "content_fingerprint", "width", "height", "updated_at",
-				}),
+				Columns:   []clause.Column{{Name: "id"}},
+				DoUpdates: clause.AssignmentColumns(receiverMediaUpdateColumns),
 			}).Create(rows[start:end]).Error; err != nil {
 				return fmt.Errorf("failed to upsert media batch: %w", err)
 			}
@@ -210,20 +249,7 @@ func (r *ReceiverMediaRepository) ReplaceSlaveMedia(ctx context.Context, slaveID
 	now := time.Now().Format(sqlTimeFormat)
 	rows := make([]receiverMediaRow, len(items))
 	for i, item := range items {
-		rows[i] = receiverMediaRow{
-			ID:                 item.ID,
-			SlaveID:            slaveID,
-			RemotePath:         item.RemotePath,
-			Name:               item.Name,
-			MediaType:          item.MediaType,
-			Size:               item.Size,
-			Duration:           item.Duration,
-			ContentType:        item.ContentType,
-			ContentFingerprint: item.ContentFingerprint,
-			Width:              item.Width,
-			Height:             item.Height,
-			UpdatedAt:          now,
-		}
+		rows[i] = buildReceiverMediaRow(slaveID, item, now)
 	}
 
 	const batchSize = 100
@@ -237,11 +263,8 @@ func (r *ReceiverMediaRepository) ReplaceSlaveMedia(ctx context.Context, slaveID
 				end = len(rows)
 			}
 			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "id"}},
-				DoUpdates: clause.AssignmentColumns([]string{
-					"remote_path", "name", "media_type", "file_size", "duration",
-					"content_type", "content_fingerprint", "width", "height", "updated_at",
-				}),
+				Columns:   []clause.Column{{Name: "id"}},
+				DoUpdates: clause.AssignmentColumns(receiverMediaUpdateColumns),
 			}).Create(rows[start:end]).Error; err != nil {
 				return fmt.Errorf("failed to insert media batch: %w", err)
 			}
@@ -265,6 +288,7 @@ func (r *ReceiverMediaRepository) rowToMediaRecord(row *receiverMediaRow) *repos
 	rec := &repositories.ReceiverMediaRecord{
 		ID:                 row.ID,
 		SlaveID:            row.SlaveID,
+		RemoteID:           row.RemoteID,
 		RemotePath:         row.RemotePath,
 		Name:               row.Name,
 		MediaType:          row.MediaType,
@@ -274,6 +298,20 @@ func (r *ReceiverMediaRepository) rowToMediaRecord(row *receiverMediaRow) *repos
 		ContentFingerprint: row.ContentFingerprint,
 		Width:              row.Width,
 		Height:             row.Height,
+		Category:           row.Category,
+		Tags:               row.Tags,
+		BlurHash:           row.BlurHash,
+		IsMature:           row.IsMature,
+	}
+	if row.DateAdded != nil {
+		if t, err := parseTime(*row.DateAdded); err == nil {
+			rec.DateAdded = t
+		}
+	}
+	if row.DateModified != nil {
+		if t, err := parseTime(*row.DateModified); err == nil {
+			rec.DateModified = t
+		}
 	}
 	if t, err := parseTime(row.UpdatedAt); err == nil {
 		rec.UpdatedAt = t

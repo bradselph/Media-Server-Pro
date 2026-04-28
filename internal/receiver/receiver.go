@@ -50,17 +50,29 @@ type RegisterRequest struct {
 }
 
 // CatalogItem is a single media entry pushed by a slave node.
+//
+// In addition to the basic file properties the slave forwards display
+// metadata (category, tags, dates, blur_hash, is_mature) so federated content
+// renders identically to local content in the unified library. Anything new
+// added here must also flow through ReceiverMediaRecord, MediaItem,
+// PushCatalog, mediaRecordToItem, and the api/handlers/media.go merge.
 type CatalogItem struct {
-	ID                 string  `json:"id"`
-	Path               string  `json:"path"` // relative path served at slave's /media?path=<path>
-	Name               string  `json:"name"`
-	MediaType          string  `json:"media_type"`
-	Size               int64   `json:"size"`
-	Duration           float64 `json:"duration"`
-	ContentType        string  `json:"content_type"`
-	ContentFingerprint string  `json:"content_fingerprint,omitempty"`
-	Width              int     `json:"width"`
-	Height             int     `json:"height"`
+	ID                 string    `json:"id"`
+	Path               string    `json:"path"` // relative path served at slave's /media?path=<path>
+	Name               string    `json:"name"`
+	MediaType          string    `json:"media_type"`
+	Size               int64     `json:"size"`
+	Duration           float64   `json:"duration"`
+	ContentType        string    `json:"content_type"`
+	ContentFingerprint string    `json:"content_fingerprint,omitempty"`
+	Width              int       `json:"width"`
+	Height             int       `json:"height"`
+	Category           string    `json:"category,omitempty"`
+	Tags               []string  `json:"tags,omitempty"`
+	BlurHash           string    `json:"blur_hash,omitempty"`
+	DateAdded          time.Time `json:"date_added,omitempty"`
+	DateModified       time.Time `json:"date_modified,omitempty"`
+	IsMature           bool      `json:"is_mature,omitempty"`
 }
 
 // CatalogPushRequest is the body for POST /api/receiver/catalog.
@@ -84,18 +96,25 @@ type SlaveNode struct {
 
 // MediaItem represents a media entry from a slave's catalog.
 type MediaItem struct {
-	ID                 string  `json:"id"`
-	SlaveID            string  `json:"slave_id"`
-	SlaveName          string  `json:"slave_name,omitempty"`
-	Path               string  `json:"path"`
-	Name               string  `json:"name"`
-	MediaType          string  `json:"media_type"`
-	Size               int64   `json:"size"`
-	Duration           float64 `json:"duration"`
-	ContentType        string  `json:"content_type"`
-	ContentFingerprint string  `json:"content_fingerprint,omitempty"`
-	Width              int     `json:"width"`
-	Height             int     `json:"height"`
+	ID                 string    `json:"id"`
+	SlaveID            string    `json:"slave_id"`
+	SlaveName          string    `json:"slave_name,omitempty"`
+	RemoteID           string    `json:"remote_id,omitempty"` // slave's own item.ID
+	Path               string    `json:"path"`
+	Name               string    `json:"name"`
+	MediaType          string    `json:"media_type"`
+	Size               int64     `json:"size"`
+	Duration           float64   `json:"duration"`
+	ContentType        string    `json:"content_type"`
+	ContentFingerprint string    `json:"content_fingerprint,omitempty"`
+	Width              int       `json:"width"`
+	Height             int       `json:"height"`
+	Category           string    `json:"category,omitempty"`
+	Tags               []string  `json:"tags,omitempty"`
+	BlurHash           string    `json:"blur_hash,omitempty"`
+	DateAdded          time.Time `json:"date_added,omitempty"`
+	DateModified       time.Time `json:"date_modified,omitempty"`
+	IsMature           bool      `json:"is_mature,omitempty"`
 }
 
 // Stats summarizes the receiver module state.
@@ -482,6 +501,7 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 		records = append(records, &repositories.ReceiverMediaRecord{
 			ID:                 opaqueMediaID(req.SlaveID, item.ID),
 			SlaveID:            req.SlaveID,
+			RemoteID:           item.ID,
 			RemotePath:         item.Path,
 			Name:               item.Name,
 			MediaType:          item.MediaType,
@@ -491,6 +511,12 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 			ContentFingerprint: item.ContentFingerprint,
 			Width:              item.Width,
 			Height:             item.Height,
+			Category:           item.Category,
+			Tags:               strings.Join(item.Tags, ","),
+			BlurHash:           item.BlurHash,
+			DateAdded:          item.DateAdded,
+			DateModified:       item.DateModified,
+			IsMature:           item.IsMature,
 		})
 	}
 
@@ -821,6 +847,89 @@ func (m *Module) proxyViaWS(w http.ResponseWriter, r *http.Request, item *MediaI
 	}
 }
 
+// ProxyThumbnail asks the slave for the thumbnail of one of its catalog items
+// and pipes the bytes back to w. Returns an error if the slave is offline,
+// the request times out, or the thumbnail does not exist on the slave (in
+// which case the caller can fall through to a placeholder).
+func (m *Module) ProxyThumbnail(w http.ResponseWriter, r *http.Request, mediaID string, preferWebP bool) error {
+	if m.proxySem != nil {
+		select {
+		case m.proxySem <- struct{}{}:
+			defer func() { <-m.proxySem }()
+		default:
+			return fmt.Errorf("too many concurrent proxy connections")
+		}
+	}
+
+	item := m.GetMediaItem(mediaID)
+	if item == nil {
+		return fmt.Errorf("receiver media not found: %s", mediaID)
+	}
+	if item.RemoteID == "" {
+		// Pre-RemoteID catalog: cannot resolve thumbnail on slave side.
+		// Caller should fall through to placeholder.
+		return fmt.Errorf("receiver item has no remote_id; slave catalog needs re-push")
+	}
+	if m.getSlaveWS(item.SlaveID) == nil {
+		return fmt.Errorf("slave %s is not connected", item.SlaveID)
+	}
+
+	token := uuid.New().String()
+	ps, err := m.RequestThumbnail(item.SlaveID, token, item.RemoteID, preferWebP)
+	if err != nil {
+		return fmt.Errorf("failed to request thumbnail: %w", err)
+	}
+	defer ps.cancel()
+
+	cfg := m.config.Get()
+	timeout := cfg.Receiver.ProxyTimeout
+	if timeout == 0 {
+		timeout = defaultProxyTimeout
+	}
+
+	select {
+	case delivery, ok := <-ps.Ready:
+		if !ok || delivery == nil {
+			return fmt.Errorf("thumbnail delivery failed for %s", mediaID)
+		}
+		if delivery.StatusCode >= 400 {
+			if delivery.Body != nil {
+				_ = delivery.Body.Close()
+			}
+			return fmt.Errorf("slave returned status %d for thumbnail", delivery.StatusCode)
+		}
+		for key, values := range delivery.Headers {
+			if !helpers.AllowedProxyHeaders[key] {
+				continue
+			}
+			for _, v := range values {
+				w.Header().Add(key, v)
+			}
+		}
+		w.WriteHeader(delivery.StatusCode)
+		_, copyErr := io.Copy(w, delivery.Body)
+		_ = delivery.Body.Close()
+		return copyErr
+	case <-time.After(timeout):
+		m.pendingMu.Lock()
+		delete(m.pendingStreams, token)
+		m.pendingMu.Unlock()
+		select {
+		case d := <-ps.Ready:
+			if d != nil && d.Body != nil {
+				_ = d.Body.Close()
+			}
+		default:
+		}
+		return fmt.Errorf("thumbnail request timed out for %s", mediaID)
+	case <-r.Context().Done():
+		m.pendingMu.Lock()
+		delete(m.pendingStreams, token)
+		m.pendingMu.Unlock()
+		return r.Context().Err()
+	}
+}
+
 // proxyViaHTTP fetches the media from the slave's HTTP endpoint and relays it
 // to the client.  This is the fallback when the slave has no active WebSocket.
 func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *SlaveNode, item *MediaItem) error {
@@ -899,9 +1008,18 @@ func nodeToSlaveRecord(node *SlaveNode) *repositories.ReceiverSlaveRecord {
 }
 
 func mediaRecordToItem(rec *repositories.ReceiverMediaRecord) *MediaItem {
+	var tags []string
+	if rec.Tags != "" {
+		for _, t := range strings.Split(rec.Tags, ",") {
+			if v := strings.TrimSpace(t); v != "" {
+				tags = append(tags, v)
+			}
+		}
+	}
 	return &MediaItem{
 		ID:                 rec.ID,
 		SlaveID:            rec.SlaveID,
+		RemoteID:           rec.RemoteID,
 		Path:               rec.RemotePath,
 		Name:               rec.Name,
 		MediaType:          rec.MediaType,
@@ -911,5 +1029,11 @@ func mediaRecordToItem(rec *repositories.ReceiverMediaRecord) *MediaItem {
 		ContentFingerprint: rec.ContentFingerprint,
 		Width:              rec.Width,
 		Height:             rec.Height,
+		Category:           rec.Category,
+		Tags:               tags,
+		BlurHash:           rec.BlurHash,
+		DateAdded:          rec.DateAdded,
+		DateModified:       rec.DateModified,
+		IsMature:           rec.IsMature,
 	}
 }

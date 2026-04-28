@@ -253,3 +253,138 @@ func relativizeUnderRoot(absPath string, roots []string) (string, bool) {
 func contentTypeForName(name string) string {
 	return helpers.MediaContentType(name)
 }
+
+// deliverThumbnail handles a master's thumb_request by reading the local
+// thumbnail file for remoteID under the configured thumbnails directory and
+// POSTing it to the master's stream-push endpoint. The same delivery
+// pipeline as full media files is reused so masters get a uniform flow.
+//
+// remoteID format is validated: only the slave's own item.IDs (UUIDs or
+// fingerprints) are accepted, and the path is composed locally with
+// filepath.Join under thumbnailDir. The master never names a filesystem
+// path here so this cannot be coerced into reading arbitrary files.
+func (m *Module) deliverThumbnail(ctx context.Context, cfg config.FollowerConfig, req thumbRequest) {
+	if !isValidToken(req.Token) {
+		m.log.Warn("Thumb request rejected: invalid token format %q", req.Token)
+		return
+	}
+	if !isValidThumbID(req.RemoteID) {
+		m.log.Warn("Thumb request rejected: invalid remote_id %q", req.RemoteID)
+		return
+	}
+
+	thumbDir := strings.TrimSpace(m.config.Get().Directories.Thumbnails)
+	if thumbDir == "" {
+		m.log.Debug("Thumb request: no thumbnails directory configured on this server")
+		return
+	}
+
+	// Try variants in order of preference. WebP is preferred when the master
+	// hinted that the user accepts it. Master has no fallback to placeholder
+	// here so we hand back the JPEG even when WebP is preferred but missing.
+	candidates := []struct {
+		name        string
+		contentType string
+	}{
+		{req.RemoteID + ".jpg", "image/jpeg"},
+	}
+	if req.PreferWebP {
+		candidates = append([]struct {
+			name        string
+			contentType string
+		}{
+			{req.RemoteID + ".webp", "image/webp"},
+		}, candidates...)
+	}
+
+	var (
+		absPath     string
+		contentType string
+	)
+	for _, c := range candidates {
+		p := filepath.Join(thumbDir, c.name)
+		// Ensure resolved path stays under thumbDir even after symlink eval.
+		// EvalSymlinks fails for non-existent files; check existence first.
+		info, err := os.Stat(p)
+		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			continue
+		}
+		absDir, err := filepath.EvalSymlinks(thumbDir)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(absDir, resolved)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		absPath = resolved
+		contentType = c.contentType
+		break
+	}
+
+	if absPath == "" {
+		m.log.Debug("Thumb request: no thumbnail file for remote_id=%s", req.RemoteID)
+		return
+	}
+
+	file, err := os.Open(absPath)
+	if err != nil {
+		m.log.Warn("Failed to open thumbnail %s: %v", absPath, err)
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	stat, err := file.Stat()
+	if err != nil {
+		m.log.Warn("Failed to stat thumbnail %s: %v", absPath, err)
+		return
+	}
+
+	pushURL := strings.TrimRight(cfg.MasterURL, "/") + "/api/receiver/stream-push/" + req.Token
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, pushURL, file)
+	if err != nil {
+		m.log.Warn("Failed to build thumb push request for %s: %v", req.Token, err)
+		return
+	}
+	httpReq.Header.Set("Content-Type", contentType)
+	httpReq.Header.Set("X-API-Key", cfg.APIKey)
+	httpReq.Header.Set("X-Stream-Status", strconv.Itoa(http.StatusOK))
+	httpReq.Header.Set("Cache-Control", "public, max-age=86400")
+	httpReq.ContentLength = stat.Size()
+
+	resp, err := streamHTTPClient.Do(httpReq)
+	if err != nil {
+		if ctx.Err() == nil {
+			m.log.Warn("Thumb push failed for %s: %v", req.Token, err)
+		}
+		return
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		m.log.Warn("Thumb push %s returned HTTP %d", req.Token, resp.StatusCode)
+	}
+}
+
+// isValidThumbID accepts only [A-Za-z0-9-] so the joined filepath cannot
+// escape the thumbnails directory via "..", path separators, or null bytes.
+// Slave-issued media IDs are UUIDs or hex strings which trivially conform.
+func isValidThumbID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, ch := range id {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+		case ch >= 'A' && ch <= 'Z':
+		case ch >= '0' && ch <= '9':
+		case ch == '-' || ch == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}

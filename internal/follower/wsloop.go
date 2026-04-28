@@ -28,16 +28,22 @@ type wsMessage struct {
 // catalogItem mirrors receiver.CatalogItem (master side). Re-declared here so
 // the follower package doesn't import internal/receiver and create a cycle.
 type catalogItem struct {
-	ID                 string  `json:"id"`
-	Path               string  `json:"path"`
-	Name               string  `json:"name"`
-	MediaType          string  `json:"media_type"`
-	Size               int64   `json:"size"`
-	Duration           float64 `json:"duration"`
-	ContentType        string  `json:"content_type"`
-	ContentFingerprint string  `json:"content_fingerprint,omitempty"`
-	Width              int     `json:"width"`
-	Height             int     `json:"height"`
+	ID                 string    `json:"id"`
+	Path               string    `json:"path"`
+	Name               string    `json:"name"`
+	MediaType          string    `json:"media_type"`
+	Size               int64     `json:"size"`
+	Duration           float64   `json:"duration"`
+	ContentType        string    `json:"content_type"`
+	ContentFingerprint string    `json:"content_fingerprint,omitempty"`
+	Width              int       `json:"width"`
+	Height             int       `json:"height"`
+	Category           string    `json:"category,omitempty"`
+	Tags               []string  `json:"tags,omitempty"`
+	BlurHash           string    `json:"blur_hash,omitempty"`
+	DateAdded          time.Time `json:"date_added,omitempty"`
+	DateModified       time.Time `json:"date_modified,omitempty"`
+	IsMature           bool      `json:"is_mature,omitempty"`
 }
 
 // streamRequest is sent master → follower when a user wants to stream a file.
@@ -45,6 +51,16 @@ type streamRequest struct {
 	Token string `json:"token"`
 	Path  string `json:"path"`
 	Range string `json:"range,omitempty"`
+}
+
+// thumbRequest is sent master → follower to fetch the thumbnail for a media
+// item by the slave's local ID. The slave resolves it under its configured
+// thumbnails directory; master never names a path so this can't be coerced
+// into reading arbitrary files.
+type thumbRequest struct {
+	Token      string `json:"token"`
+	RemoteID   string `json:"remote_id"`
+	PreferWebP bool   `json:"prefer_webp,omitempty"`
 }
 
 // run is the top-level reconnect loop. It dials the master, runs one session,
@@ -197,6 +213,21 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 						m.deliverStream(streamCtx, cfg, req)
 					}
 				})
+			case "thumb_request":
+				var req thumbRequest
+				if err := json.Unmarshal(msg.Data, &req); err != nil {
+					m.log.Warn("Invalid thumb_request: %v", err)
+					continue
+				}
+				wg.Go(func() {
+					select {
+					case <-streamCtx.Done():
+						return
+					case streamSem <- struct{}{}:
+						defer func() { <-streamSem }()
+						m.deliverThumbnail(streamCtx, cfg, req)
+					}
+				})
 			default:
 				m.log.Debug("Unknown message type from master: %q", msg.Type)
 			}
@@ -300,6 +331,12 @@ func (m *Module) buildCatalog() []*catalogItem {
 			ContentFingerprint: fp,
 			Width:              item.Width,
 			Height:             item.Height,
+			Category:           item.Category,
+			Tags:               item.Tags,
+			BlurHash:           item.BlurHash,
+			DateAdded:          item.DateAdded,
+			DateModified:       item.DateModified,
+			IsMature:           item.IsMature,
 		})
 	}
 	return out
