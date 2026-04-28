@@ -30,11 +30,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 COPY VERSION ./VERSION
+# media-receiver is a fully standalone binary — it imports only stdlib and
+# gorilla/websocket, no internal/pkg/api/web packages from the main server.
+# Copying only cmd/media-receiver keeps the build context small and the cache
+# tight: edits to the master server don't bust this image's build cache.
 COPY cmd/media-receiver ./cmd/media-receiver
-COPY internal ./internal
-COPY pkg ./pkg
-COPY api ./api
-COPY web ./web
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

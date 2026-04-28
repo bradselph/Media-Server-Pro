@@ -128,6 +128,10 @@ services:
 
   # ───────────────────────────────────────────────────────────────────────
   # Optional: media-receiver slave node, enabled with `--profile receiver`.
+  # Useful for testing master+slave on a single host. For a real VPS-to-VPS
+  # deployment where the slave runs on a separate machine, prefer the
+  # dedicated `docker-compose.receiver.yml` stack — it bind-mounts existing
+  # host media directories instead of using empty named volumes.
   # ───────────────────────────────────────────────────────────────────────
   receiver:
     profiles: ["receiver"]
