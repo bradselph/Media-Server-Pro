@@ -23,6 +23,7 @@ import (
 	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
+	"media-server-pro/internal/follower"
 	"media-server-pro/internal/hls"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
@@ -247,6 +248,7 @@ type modules struct {
 	remote        *remote.Module
 	duplicates    *duplicates.Module
 	receiver      *receiver.Module
+	follower      *follower.Module
 	downloader    *downloader.Module
 	extractor     *extractor.Module
 	crawler       *crawler.Module
@@ -401,6 +403,11 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	m.receiver.SetDuplicatesModule(m.duplicates)
 	mustRegister(srv, m.receiver)
 
+	// Follower (non-critical — turns this server into a slave of another master
+	// when paired through the admin UI. Requires media for the catalog source.)
+	m.follower = follower.NewModule(cfg, m.media)
+	mustRegister(srv, m.follower)
+
 	// Downloader (non-critical — proxy to external downloader service, gated by feature flag)
 	m.downloader = downloader.NewModule(cfg)
 	m.downloader.SetMediaModule(m.media)
@@ -486,6 +493,7 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 			Updater:       mods.updater,
 			Remote:        mods.remote,
 			Receiver:      mods.receiver,
+			Follower:      mods.follower,
 			Extractor:     mods.extractor,
 			Crawler:       mods.crawler,
 			Duplicates:    mods.duplicates,

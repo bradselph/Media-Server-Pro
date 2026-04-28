@@ -761,6 +761,13 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.POST("/duplicates/scan", h.AdminScanLocalDuplicates)
 	adminGrp.POST("/duplicates/:id/resolve", h.AdminResolveDuplicate)
 
+	// Follower routes (admin) — pair this server with another master so it
+	// pushes its local catalog there as a slave. No separate binary needed.
+	adminGrp.GET("/follower/settings", h.GetFollowerSettings)
+	adminGrp.POST("/follower/settings", h.UpdateFollowerSettings)
+	adminGrp.GET("/follower/status", h.GetFollowerStatus)
+	adminGrp.POST("/follower/test", h.TestFollowerPairing)
+
 	// Downloader routes (admin)
 	adminGrp.GET("/downloader/health", h.AdminDownloaderHealth)
 	adminGrp.POST("/downloader/detect", h.AdminDownloaderDetect)

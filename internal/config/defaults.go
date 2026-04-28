@@ -30,6 +30,7 @@ func DefaultConfig() *Config {
 		HLS:           defaultHLSConfig(),
 		RemoteMedia:   defaultRemoteMediaConfig(),
 		Receiver:      defaultReceiverConfig(),
+		Follower:      defaultFollowerConfig(),
 		Extractor:     defaultExtractorConfig(),
 		Crawler:       defaultCrawlerConfig(),
 		MatureScanner: defaultMatureScannerConfig(),
@@ -242,6 +243,17 @@ func defaultReceiverConfig() ReceiverConfig {
 		WSPingInterval:      25 * time.Second,
 		PendingStreamTTL:    30 * time.Second,
 		HeartbeatDBDebounce: 60 * time.Second,
+	}
+}
+
+func defaultFollowerConfig() FollowerConfig {
+	return FollowerConfig{
+		Enabled:           false,
+		ScanInterval:      5 * time.Minute,
+		HeartbeatInterval: 15 * time.Second,
+		MaxStreams:        10,
+		ReconnectBase:     2 * time.Second,
+		ReconnectMax:      2 * time.Minute,
 	}
 }
 
