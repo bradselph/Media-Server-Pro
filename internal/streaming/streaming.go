@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -316,42 +315,12 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 	return m.streamContent(w, file, start, end, chunkSize, session)
 }
 
-// mediaContentTypes maps common media extensions to their MIME types.
-// Parsed once at package init; supplemented by mime.TypeByExtension for unknown extensions.
-var mediaContentTypes = map[string]string{
-	".mp4":  "video/mp4",
-	".webm": "video/webm",
-	".mkv":  "video/x-matroska",
-	".avi":  "video/x-msvideo",
-	".mov":  "video/quicktime",
-	".wmv":  "video/x-ms-wmv",
-	".flv":  "video/x-flv",
-	".m4v":  "video/x-m4v",
-	".ts":   "video/mp2t",
-	".mp3":  "audio/mpeg",
-	".wav":  "audio/wav",
-	".flac": "audio/flac",
-	".aac":  "audio/aac",
-	".ogg":  "audio/ogg",
-	".m4a":  "audio/mp4",
-	".opus": "audio/opus",
-}
-
-// getContentType returns the MIME type for a file
+// getContentType returns the MIME type for a file. Delegates to the shared
+// helpers.MediaContentType so master and slave (internal/follower,
+// cmd/media-receiver) advertise identical content types — keeping the
+// curated map in one place.
 func (m *Module) getContentType(path string) string {
-	ext := strings.ToLower(filepath.Ext(path))
-
-	if ct, ok := mediaContentTypes[ext]; ok {
-		return ct
-	}
-
-	// Fallback to mime package
-	ct := mime.TypeByExtension(ext)
-	if ct != "" {
-		return ct
-	}
-
-	return "application/octet-stream"
+	return helpers.MediaContentType(path)
 }
 
 // getChunkSize returns appropriate chunk size based on quality and device.

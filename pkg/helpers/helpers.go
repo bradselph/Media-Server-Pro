@@ -3,8 +3,10 @@ package helpers
 
 import (
 	"fmt"
+	"mime"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -111,4 +113,43 @@ var AllowedProxyHeaders = map[string]bool{
 	"Last-Modified":       true,
 	"Etag":                true,
 	"Cache-Control":       true,
+}
+
+// mediaContentTypes maps common media extensions to their MIME types. The Go
+// standard library's mime.TypeByExtension returns "" for several formats we
+// regularly serve (.mkv, .avi, .mov, .flv, .m4v) — without an explicit map a
+// slave node would push files as application/octet-stream and the browser
+// would refuse to play them. Shared so master, slave (internal/follower), and
+// the standalone receiver (cmd/media-receiver) all advertise the same types.
+var mediaContentTypes = map[string]string{
+	".mp4":  "video/mp4",
+	".webm": "video/webm",
+	".mkv":  "video/x-matroska",
+	".avi":  "video/x-msvideo",
+	".mov":  "video/quicktime",
+	".wmv":  "video/x-ms-wmv",
+	".flv":  "video/x-flv",
+	".m4v":  "video/x-m4v",
+	".ts":   "video/mp2t",
+	".mp3":  "audio/mpeg",
+	".wav":  "audio/wav",
+	".flac": "audio/flac",
+	".aac":  "audio/aac",
+	".ogg":  "audio/ogg",
+	".m4a":  "audio/mp4",
+	".opus": "audio/opus",
+}
+
+// MediaContentType returns the MIME type for a file path or name. Tries the
+// curated mediaContentTypes map first, falls back to mime.TypeByExtension, and
+// finally application/octet-stream. Always returns a non-empty value.
+func MediaContentType(pathOrName string) string {
+	ext := strings.ToLower(filepath.Ext(pathOrName))
+	if ct, ok := mediaContentTypes[ext]; ok {
+		return ct
+	}
+	if ct := mime.TypeByExtension(ext); ct != "" {
+		return ct
+	}
+	return "application/octet-stream"
 }
