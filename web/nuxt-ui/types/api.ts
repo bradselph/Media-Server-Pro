@@ -960,6 +960,64 @@ export interface ReceiverDuplicate {
     detected_at: string
 }
 
+// FollowerSettings is the redacted view of the follower (this-server-as-slave)
+// pairing config returned by GET /api/admin/follower/settings. The api_key is
+// never returned — api_key_configured signals whether one is set.
+export interface FollowerSettings {
+    enabled: boolean
+    master_url: string
+    api_key_configured: boolean
+    slave_id: string
+    slave_name: string
+    scan_interval_seconds: number
+    heartbeat_interval_seconds: number
+    max_streams: number
+    reconnect_base_seconds: number
+    reconnect_max_seconds: number
+}
+
+// FollowerSettingsUpdate is the body for POST /api/admin/follower/settings.
+// Leave api_key empty to keep the existing key (lets admins edit other fields
+// without re-entering the secret).
+export interface FollowerSettingsUpdate {
+    enabled: boolean
+    master_url: string
+    api_key?: string
+    slave_id?: string
+    slave_name?: string
+    scan_interval_seconds?: number
+    heartbeat_interval_seconds?: number
+    max_streams?: number
+    reconnect_base_seconds?: number
+    reconnect_max_seconds?: number
+}
+
+export interface FollowerStatus {
+    enabled: boolean
+    configured: boolean
+    connected: boolean
+    master_url?: string
+    slave_id?: string
+    slave_name?: string
+    last_connected_at?: string
+    last_catalog_push?: string
+    last_catalog_size?: number
+    last_error?: string
+    last_error_at?: string
+}
+
+export interface FollowerSaveResult {
+    saved: boolean
+    reload_error?: string
+    reload_status?: FollowerStatus
+}
+
+export interface FollowerTestResult {
+    ok: boolean
+    error?: string
+    http_status?: number
+}
+
 // ── Extractor ─────────────────────────────────────────────────────────────────
 
 export interface ExtractorStats {
