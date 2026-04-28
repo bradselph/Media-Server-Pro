@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -279,5 +282,153 @@ func TestFND0002_ContextCancellationTriggersMonitor(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("FND-0002: wg.Wait() deadlocked after context cancellation")
+	}
+}
+
+// TestExtractProbeMeta_NoFFprobe verifies that extractProbeMeta returns zero
+// values (and does NOT crash) when ffprobe is unavailable. This is the common
+// case on minimal hosts that haven't installed ffmpeg yet — the slave must
+// continue scanning and pushing catalog without metadata rather than failing.
+func TestExtractProbeMeta_NoFFprobe(t *testing.T) {
+	// Force ffprobe unavailable for this test, regardless of host environment.
+	prev := ffprobePath
+	ffprobePath = ""
+	t.Cleanup(func() { ffprobePath = prev })
+
+	tmp := filepath.Join(t.TempDir(), "video.mp4")
+	if err := os.WriteFile(tmp, []byte("not a real video"), 0o644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	info, err := os.Stat(tmp)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	dur, w, h := extractProbeMeta(tmp, info)
+	if dur != 0 || w != 0 || h != 0 {
+		t.Fatalf("expected zero metadata when ffprobe unavailable, got dur=%v w=%d h=%d", dur, w, h)
+	}
+}
+
+// TestExtractProbeMeta_BadFile verifies that extractProbeMeta returns zeros
+// (without panicking) when ffprobe rejects the input. The catalog item must
+// still be pushed — just without duration/dimensions — so a single broken
+// file can't take the whole scan offline.
+func TestExtractProbeMeta_BadFile(t *testing.T) {
+	if _, err := os.Stat("/usr/bin/ffprobe"); err != nil {
+		if _, err := os.Stat("/usr/local/bin/ffprobe"); err != nil {
+			t.Skip("ffprobe not installed; skipping")
+		}
+	}
+	prev := ffprobePath
+	ffprobePath = detectFFprobe()
+	t.Cleanup(func() { ffprobePath = prev })
+	if ffprobePath == "" {
+		t.Skip("ffprobe not found; skipping")
+	}
+
+	// Write a file that ffprobe will fail to parse.
+	tmp := filepath.Join(t.TempDir(), "bad.mp4")
+	if err := os.WriteFile(tmp, []byte("garbage bytes"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	info, err := os.Stat(tmp)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	dur, w, h := extractProbeMeta(tmp, info)
+	if dur != 0 || w != 0 || h != 0 {
+		t.Fatalf("expected zeros for unprobeable file, got dur=%v w=%d h=%d", dur, w, h)
+	}
+}
+
+// TestProbeCache_ReusesUnchangedFile verifies that a second probe of the same
+// file (unchanged mtime + size) is served from cache rather than re-spawning
+// ffprobe. Without this, large libraries would re-probe every file on every
+// scan tick and saturate CPU.
+func TestProbeCache_ReusesUnchangedFile(t *testing.T) {
+	prev := ffprobePath
+	t.Cleanup(func() {
+		ffprobePath = prev
+		probeCacheMu.Lock()
+		probeCache = make(map[string]probeEntry)
+		probeCacheMu.Unlock()
+	})
+
+	// Stub ffprobe path to a non-empty value but the file won't actually be
+	// probed in this test path; we pre-populate the cache directly.
+	ffprobePath = "/nonexistent/ffprobe-stub"
+
+	tmp := filepath.Join(t.TempDir(), "cached.mp4")
+	if err := os.WriteFile(tmp, []byte("content"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	info, err := os.Stat(tmp)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	probeCacheMu.Lock()
+	probeCache[tmp] = probeEntry{
+		modTime: info.ModTime(), size: info.Size(),
+		duration: 123.45, width: 1920, height: 1080,
+	}
+	probeCacheMu.Unlock()
+
+	dur, w, h := extractProbeMeta(tmp, info)
+	if dur != 123.45 || w != 1920 || h != 1080 {
+		t.Fatalf("cache miss: got dur=%v w=%d h=%d, want 123.45/1920/1080", dur, w, h)
+	}
+}
+
+// TestPruneProbeCache verifies that probe-cache entries for vanished files are
+// removed at the end of each scan, mirroring pruneFpCache.
+func TestPruneProbeCache(t *testing.T) {
+	probeCacheMu.Lock()
+	probeCache = map[string]probeEntry{
+		"/still/here":  {duration: 1},
+		"/now/missing": {duration: 2},
+	}
+	probeCacheMu.Unlock()
+
+	pruneProbeCache(map[string]bool{"/still/here": true})
+
+	probeCacheMu.Lock()
+	defer probeCacheMu.Unlock()
+	if _, ok := probeCache["/still/here"]; !ok {
+		t.Fatal("expected /still/here to be retained")
+	}
+	if _, ok := probeCache["/now/missing"]; ok {
+		t.Fatal("expected /now/missing to be pruned")
+	}
+	probeCache = make(map[string]probeEntry) // clean up
+}
+
+// TestFFprobeResult_ParsesMasterShape sanity-checks that the slave's
+// ffprobeResult struct decodes the same JSON shape ffprobe produces with
+// "-show_format -show_streams". If ffprobe ever changes its output format
+// this test catches it before it reaches production.
+func TestFFprobeResult_ParsesMasterShape(t *testing.T) {
+	const sample = `{
+		"format": {"duration": "42.5"},
+		"streams": [
+			{"codec_type": "audio"},
+			{"codec_type": "video", "width": 1280, "height": 720}
+		]
+	}`
+	var probe ffprobeResult
+	if err := json.Unmarshal([]byte(sample), &probe); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if probe.Format.Duration != "42.5" {
+		t.Fatalf("duration: got %q want 42.5", probe.Format.Duration)
+	}
+	if len(probe.Streams) != 2 {
+		t.Fatalf("streams: got %d want 2", len(probe.Streams))
+	}
+	if probe.Streams[1].Width != 1280 || probe.Streams[1].Height != 720 {
+		t.Fatalf("video stream dims: got %dx%d want 1280x720",
+			probe.Streams[1].Width, probe.Streams[1].Height)
 	}
 }

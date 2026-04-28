@@ -1436,6 +1436,20 @@ func (m *Module) HasFingerprint(fp string) bool {
 	return ok
 }
 
+// GetContentFingerprint returns the cached content fingerprint for a media
+// item by absolute path, or "" if no fingerprint has been computed yet (for
+// example, the file was just discovered and the next scan hasn't fingerprinted
+// it). Used by the follower module to push fingerprints to a remote master so
+// that master/slave duplicates can be detected.
+func (m *Module) GetContentFingerprint(path string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if meta, ok := m.metadata[path]; ok && meta != nil {
+		return meta.ContentFingerprint
+	}
+	return ""
+}
+
 // IsFingerprintMature reports whether a content fingerprint matches a local media
 // file that is flagged as mature. Used to gate access to receiver items that
 // correspond to mature local content.

@@ -17,6 +17,7 @@ type Config struct {
 	HLS           HLSConfig           `json:"hls"`
 	RemoteMedia   RemoteMediaConfig   `json:"remote_media"`
 	Receiver      ReceiverConfig      `json:"receiver"`
+	Follower      FollowerConfig      `json:"follower"`
 	Extractor     ExtractorConfig     `json:"extractor"`
 	Crawler       CrawlerConfig       `json:"crawler"`
 	Backup        BackupConfig        `json:"backup"`
@@ -383,6 +384,36 @@ type ReceiverConfig struct {
 	WSPingInterval      time.Duration `json:"ws_ping_interval"`      // server→slave ping cadence; default 25s
 	PendingStreamTTL    time.Duration `json:"pending_stream_ttl"`    // how long to wait for a slave to deliver a stream before cleanup; default 30s
 	HeartbeatDBDebounce time.Duration `json:"heartbeat_db_debounce"` // min interval between heartbeat DB writes; default 60s
+}
+
+// FollowerConfig configures this server to also act as a slave node and push
+// its local catalog to a remote master (another Media Server Pro instance).
+// Lets two full servers sync media without running the standalone media-receiver
+// binary — one server's library appears under the other's "Slave Media" admin
+// panel and is browsable from the unified library.
+type FollowerConfig struct {
+	Enabled bool `json:"enabled"`
+	// MasterURL is the remote master's base URL (https://other-vps.example.com).
+	// The follower derives the WS endpoint as <MasterURL>/ws/receiver.
+	MasterURL string `json:"master_url"`
+	// APIKey must match one of the remote master's Receiver.APIKeys. Stored
+	// here so an admin can configure pairing through the UI without dropping
+	// to the .env file.
+	APIKey string `json:"api_key"`
+	// SlaveID identifies this follower to the master. Default: hostname.
+	SlaveID string `json:"slave_id"`
+	// SlaveName is shown in the master's admin UI. Default: SlaveID.
+	SlaveName string `json:"slave_name"`
+	// ScanInterval is how often the follower re-pushes its catalog to the master.
+	ScanInterval time.Duration `json:"scan_interval"`
+	// HeartbeatInterval keeps the WS connection alive and refreshes LastSeen
+	// in the master's slave registry.
+	HeartbeatInterval time.Duration `json:"heartbeat_interval"`
+	// MaxStreams caps concurrent stream deliveries from this follower to the master.
+	MaxStreams int `json:"max_streams"`
+	// ReconnectBase / ReconnectMax control exponential backoff between WS reconnect attempts.
+	ReconnectBase time.Duration `json:"reconnect_base"`
+	ReconnectMax  time.Duration `json:"reconnect_max"`
 }
 
 // ExtractorConfig holds settings for the stream extractor/proxy.

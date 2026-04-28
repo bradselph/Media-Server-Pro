@@ -59,6 +59,11 @@ import type {
     PlaylistItem,
     QueryResult,
     RatedItem,
+    FollowerSaveResult,
+    FollowerSettings,
+    FollowerSettingsUpdate,
+    FollowerStatus,
+    FollowerTestResult,
     ReceiverDuplicate,
     ReceiverMedia,
     ReceiverStats,
@@ -648,6 +653,14 @@ export function useAdminApi() {
             }>(`${base}/duplicates/${encodeURIComponent(id)}/resolve`, {action}),
         scanDuplicates: () =>
             api.post<{ message: string }>(`${base}/duplicates/scan`, {}),
+
+        // Follower (this server pairing as a slave to another master)
+        getFollowerSettings: () => api.get<FollowerSettings>(`${base}/follower/settings`),
+        updateFollowerSettings: (body: FollowerSettingsUpdate) =>
+            api.post<FollowerSaveResult>(`${base}/follower/settings`, body),
+        getFollowerStatus: () => api.get<FollowerStatus>(`${base}/follower/status`),
+        testFollowerPairing: (master_url: string, api_key: string) =>
+            api.post<FollowerTestResult>(`${base}/follower/test`, { master_url, api_key }),
 
         // Crawler
         listCrawlerTargets: () => api.get<CrawlerTarget[]>(`${base}/crawler/targets`),

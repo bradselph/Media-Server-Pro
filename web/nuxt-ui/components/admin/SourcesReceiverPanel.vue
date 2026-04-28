@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import type { SlaveNode, ReceiverStats, ReceiverDuplicate, ReceiverMedia } from '~/types/api'
+import type {
+  SlaveNode,
+  ReceiverStats,
+  ReceiverDuplicate,
+  ReceiverMedia,
+  FollowerSettings,
+  FollowerStatus,
+} from '~/types/api'
 import { formatBytes } from '~/utils/format'
 
 const adminApi = useAdminApi()
@@ -16,8 +23,28 @@ const selectedSlaveMedia = ref<ReceiverMedia | null>(null)
 const slaveMediaDetailLoading = ref(false)
 const activeDetailRequestId = ref(0)
 
+// Follower (this-server-as-slave) state. Loaded alongside the receiver data
+// so admins see both directions (incoming slaves + this server's outbound
+// pairing) on a single page.
+const followerSettings = ref<FollowerSettings | null>(null)
+const followerStatus = ref<FollowerStatus | null>(null)
+const followerLoading = ref(false)
+const followerSaving = ref(false)
+const followerTesting = ref(false)
+const followerForm = reactive({
+  enabled: false,
+  master_url: '',
+  api_key: '',
+  slave_id: '',
+  slave_name: '',
+})
+
 let destroyed = false
-onUnmounted(() => { destroyed = true })
+let followerStatusTimer: ReturnType<typeof setInterval> | null = null
+onUnmounted(() => {
+  destroyed = true
+  if (followerStatusTimer) clearInterval(followerStatusTimer)
+})
 
 function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral' {
   if (status === 'online' || status === 'active' || status === 'completed') return 'success'
@@ -114,11 +141,206 @@ async function resolveDuplicate(id: string, action: string) {
   }
 }
 
-onMounted(loadReceiver)
+async function loadFollower() {
+  followerLoading.value = true
+  try {
+    const [settings, status] = await Promise.all([
+      adminApi.getFollowerSettings(),
+      adminApi.getFollowerStatus(),
+    ])
+    if (destroyed) return
+    followerSettings.value = settings
+    followerStatus.value = status
+    followerForm.enabled = settings.enabled
+    followerForm.master_url = settings.master_url ?? ''
+    followerForm.slave_id = settings.slave_id ?? ''
+    followerForm.slave_name = settings.slave_name ?? ''
+    // Never pre-populate the api key field — backend redacts it. Empty input
+    // on save means "keep existing key", which is what admins usually want.
+    followerForm.api_key = ''
+  } catch (e: unknown) {
+    if (!destroyed) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed to load follower', color: 'error', icon: 'i-lucide-alert-circle' })
+    }
+  } finally {
+    if (!destroyed) followerLoading.value = false
+  }
+}
+
+async function refreshFollowerStatus() {
+  try {
+    const status = await adminApi.getFollowerStatus()
+    if (!destroyed) followerStatus.value = status
+  } catch {
+    // Silent — status polling, don't toast on every transient failure.
+  }
+}
+
+async function saveFollower() {
+  if (followerSaving.value) return
+  followerSaving.value = true
+  try {
+    const result = await adminApi.updateFollowerSettings({
+      enabled: followerForm.enabled,
+      master_url: followerForm.master_url.trim(),
+      api_key: followerForm.api_key.trim() || undefined,
+      slave_id: followerForm.slave_id.trim() || undefined,
+      slave_name: followerForm.slave_name.trim() || undefined,
+    })
+    if (destroyed) return
+    if (result.reload_status) followerStatus.value = result.reload_status
+    if (result.reload_error) {
+      toast.add({ title: `Saved, but reload failed: ${result.reload_error}`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+    } else {
+      toast.add({ title: 'Follower settings saved', color: 'success', icon: 'i-lucide-check' })
+    }
+    // Re-fetch settings so api_key_configured reflects the new state.
+    await loadFollower()
+  } catch (e: unknown) {
+    if (!destroyed) {
+      toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    }
+  } finally {
+    if (!destroyed) followerSaving.value = false
+  }
+}
+
+async function testFollower() {
+  if (followerTesting.value) return
+  if (!followerForm.master_url.trim() || !followerForm.api_key.trim()) {
+    toast.add({ title: 'Enter master URL and API key first', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    return
+  }
+  followerTesting.value = true
+  try {
+    const result = await adminApi.testFollowerPairing(followerForm.master_url.trim(), followerForm.api_key.trim())
+    if (destroyed) return
+    if (result.ok) {
+      toast.add({ title: 'Connection successful', color: 'success', icon: 'i-lucide-check' })
+    } else {
+      const detail = result.http_status ? ` (HTTP ${result.http_status})` : ''
+      toast.add({ title: `Connection failed: ${result.error ?? 'unknown'}${detail}`, color: 'error', icon: 'i-lucide-x' })
+    }
+  } catch (e: unknown) {
+    if (!destroyed) {
+      toast.add({ title: e instanceof Error ? e.message : 'Test failed', color: 'error', icon: 'i-lucide-x' })
+    }
+  } finally {
+    if (!destroyed) followerTesting.value = false
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadReceiver(), loadFollower()])
+  // Poll follower status every 10s so the admin sees connect/disconnect
+  // transitions without manually refreshing.
+  followerStatusTimer = setInterval(refreshFollowerStatus, 10000)
+})
 </script>
 
 <template>
   <div class="space-y-4">
+    <!-- This Server (follower / outbound pairing) -->
+    <UCard>
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-link-2" class="size-4" />
+            <span class="font-semibold">This Server &rarr; Another Master</span>
+          </div>
+          <UBadge
+            v-if="followerStatus"
+            :label="followerStatus.connected ? 'connected' : (followerStatus.enabled ? 'idle' : 'disabled')"
+            :color="followerStatus.connected ? 'success' : (followerStatus.enabled ? 'warning' : 'neutral')"
+            variant="subtle"
+            size="xs"
+          />
+        </div>
+      </template>
+      <p class="text-xs text-muted mb-3">
+        Push this server's media library to another Media Server Pro instance as a slave.
+        No separate receiver binary needed — paste the other server's URL and a Receiver API key,
+        and the two libraries sync automatically.
+      </p>
+      <div v-if="followerLoading" class="flex justify-center py-4">
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+      </div>
+      <div v-else class="space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <UFormField label="Master URL" hint="https://other-vps.example.com">
+            <UInput
+              v-model="followerForm.master_url"
+              placeholder="https://other-vps.example.com"
+              autocomplete="off"
+            />
+          </UFormField>
+          <UFormField label="Receiver API Key" :hint="followerSettings?.api_key_configured ? 'Leave blank to keep existing key' : 'From the other server\'s admin → Receiver settings'">
+            <UInput
+              v-model="followerForm.api_key"
+              type="password"
+              :placeholder="followerSettings?.api_key_configured ? '••••••••' : 'paste API key'"
+              autocomplete="new-password"
+            />
+          </UFormField>
+          <UFormField label="Slave ID" hint="Leave blank to use hostname">
+            <UInput v-model="followerForm.slave_id" placeholder="auto" />
+          </UFormField>
+          <UFormField label="Display Name" hint="Shown in the master's slave list">
+            <UInput v-model="followerForm.slave_name" placeholder="auto" />
+          </UFormField>
+        </div>
+        <div class="flex items-center gap-3 flex-wrap">
+          <USwitch v-model="followerForm.enabled" label="Enable pairing" />
+          <UButton
+            label="Test Connection"
+            icon="i-lucide-zap"
+            size="sm"
+            variant="outline"
+            color="neutral"
+            :loading="followerTesting"
+            @click="testFollower"
+          />
+          <UButton
+            label="Save"
+            icon="i-lucide-save"
+            size="sm"
+            color="primary"
+            :loading="followerSaving"
+            @click="saveFollower"
+          />
+          <UButton
+            icon="i-lucide-refresh-cw"
+            aria-label="Refresh status"
+            size="sm"
+            variant="ghost"
+            color="neutral"
+            @click="refreshFollowerStatus"
+          />
+        </div>
+        <!-- Live status detail -->
+        <div v-if="followerStatus" class="text-xs text-muted bg-muted/40 rounded px-3 py-2 space-y-1">
+          <div v-if="followerStatus.last_connected_at">
+            Last connected: {{ new Date(followerStatus.last_connected_at).toLocaleString() }}
+          </div>
+          <div v-if="followerStatus.last_catalog_push">
+            Last catalog push: {{ new Date(followerStatus.last_catalog_push).toLocaleString() }}
+            <span v-if="followerStatus.last_catalog_size != null">
+              ({{ followerStatus.last_catalog_size }} items)
+            </span>
+          </div>
+          <div v-if="followerStatus.last_error" class="text-error">
+            Last error: {{ followerStatus.last_error }}
+            <span v-if="followerStatus.last_error_at">
+              ({{ new Date(followerStatus.last_error_at).toLocaleString() }})
+            </span>
+          </div>
+          <div v-if="!followerStatus.last_connected_at && !followerStatus.last_error" class="text-muted">
+            Not paired yet — fill in the form above and click Save to connect.
+          </div>
+        </div>
+      </div>
+    </UCard>
+
     <!-- Stats -->
     <div v-if="receiverStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <UCard>

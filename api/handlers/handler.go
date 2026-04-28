@@ -31,6 +31,7 @@ import (
 	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
+	"media-server-pro/internal/follower"
 	"media-server-pro/internal/hls"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
@@ -123,6 +124,7 @@ type HandlerOptionalDeps struct {
 	Updater       *updater.Module
 	Remote        *remote.Module
 	Receiver      *receiver.Module
+	Follower      *follower.Module
 	Extractor     *extractor.Module
 	Crawler       *crawler.Module
 	Duplicates    *duplicates.Module
@@ -171,6 +173,7 @@ type Handler struct {
 	updater          *updater.Module
 	remote           *remote.Module
 	receiver         *receiver.Module
+	follower         *follower.Module
 	extractor        *extractor.Module
 	crawler          *crawler.Module
 	duplicates       *duplicates.Module
@@ -337,6 +340,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		updater:          o.Updater,
 		remote:           o.Remote,
 		receiver:         o.Receiver,
+		follower:         o.Follower,
 		extractor:        o.Extractor,
 		crawler:          o.Crawler,
 		duplicates:       o.Duplicates,

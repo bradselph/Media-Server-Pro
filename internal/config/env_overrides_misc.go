@@ -130,6 +130,39 @@ func (m *Manager) applyReceiverAPIKeysOverride() {
 	}
 }
 
+func (m *Manager) applyFollowerEnvOverrides() {
+	if val, ok := envGetBool("FOLLOWER_ENABLED"); ok {
+		m.config.Follower.Enabled = val
+	}
+	if val := envGetStr("FOLLOWER_MASTER_URL"); val != "" {
+		m.config.Follower.MasterURL = strings.TrimSpace(val)
+	}
+	if val := envGetStr("FOLLOWER_API_KEY"); val != "" {
+		m.config.Follower.APIKey = strings.TrimSpace(val)
+	}
+	if val := envGetStr("FOLLOWER_SLAVE_ID"); val != "" {
+		m.config.Follower.SlaveID = strings.TrimSpace(val)
+	}
+	if val := envGetStr("FOLLOWER_SLAVE_NAME"); val != "" {
+		m.config.Follower.SlaveName = strings.TrimSpace(val)
+	}
+	if val, ok := envGetDuration(time.Second, "FOLLOWER_SCAN_INTERVAL_SECONDS"); ok {
+		m.config.Follower.ScanInterval = val
+	}
+	if val, ok := envGetDuration(time.Second, "FOLLOWER_HEARTBEAT_INTERVAL_SECONDS"); ok {
+		m.config.Follower.HeartbeatInterval = val
+	}
+	if val, ok := envGetInt("FOLLOWER_MAX_STREAMS"); ok {
+		m.config.Follower.MaxStreams = val
+	}
+	if val, ok := envGetDuration(time.Second, "FOLLOWER_RECONNECT_BASE_SECONDS"); ok {
+		m.config.Follower.ReconnectBase = val
+	}
+	if val, ok := envGetDuration(time.Second, "FOLLOWER_RECONNECT_MAX_SECONDS"); ok {
+		m.config.Follower.ReconnectMax = val
+	}
+}
+
 func (m *Manager) applyExtractorEnvOverrides() {
 	if val, ok := envGetBool("EXTRACTOR_ENABLED"); ok {
 		m.config.Extractor.Enabled = val
