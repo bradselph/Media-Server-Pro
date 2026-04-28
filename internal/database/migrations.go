@@ -640,6 +640,16 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"media_metadata", "content_fingerprint", "VARCHAR(64) NULL"},
 		{"media_metadata", "blur_hash", "VARCHAR(100) NULL"},
 		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
+		// Federated display metadata so slave-sourced items render identically
+		// to local items in the unified library (category, tags, blur_hash, dates,
+		// mature flag, slave's own item.ID for thumbnail proxy lookups).
+		{"receiver_media", "remote_id", "VARCHAR(255) NOT NULL DEFAULT ''"},
+		{"receiver_media", "category", "VARCHAR(100) NOT NULL DEFAULT ''"},
+		{"receiver_media", "tags", "TEXT NULL"},
+		{"receiver_media", "blur_hash", "VARCHAR(100) NULL"},
+		{"receiver_media", "date_added", sqlTimestampNullDefault},
+		{"receiver_media", "date_modified", sqlTimestampNullDefault},
+		{"receiver_media", "is_mature", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"hls_jobs", "last_accessed_at", "TIMESTAMP NULL"},
 		{"user_api_tokens", "expires_at", sqlTimestampNullDefault},
 		// PlaylistItem schema alignment: GORM model expects id and media_id columns

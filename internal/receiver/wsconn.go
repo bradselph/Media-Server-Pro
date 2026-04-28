@@ -23,6 +23,10 @@ const (
 
 	// Master → Slave
 	msgTypeStreamRequest = "stream_request"
+	// Thumbnail proxy. Slave looks up its on-disk thumbnail by RemoteID and
+	// pushes the bytes to the same /api/receiver/stream-push/:token endpoint
+	// the video stream uses, so master and slave share the delivery flow.
+	msgTypeThumbRequest = "thumb_request"
 )
 
 // wsMessage is the envelope for all WebSocket JSON messages.
@@ -54,6 +58,18 @@ type wsStreamRequestData struct {
 	Token string `json:"token"`
 	Path  string `json:"path"`
 	Range string `json:"range,omitempty"`
+}
+
+// wsThumbRequestData is sent master → slave to request the local thumbnail
+// file for a slave-known media ID. The slave resolves the file under its
+// configured thumbnails directory; master never sends a path so slaves
+// cannot be coerced into reading arbitrary files.
+type wsThumbRequestData struct {
+	Token    string `json:"token"`
+	RemoteID string `json:"remote_id"`
+	// PreferWebP lets the master forward the user's Accept header so a slave
+	// with both .jpg and .webp can hand back the better variant.
+	PreferWebP bool `json:"prefer_webp,omitempty"`
 }
 
 // PendingStream holds state for a stream delivery in progress.
@@ -426,6 +442,42 @@ func (m *Module) RequestStream(slaveID, token, path, rangeHeader string) (*Pendi
 		delete(m.pendingStreams, token)
 		m.pendingMu.Unlock()
 		return nil, fmt.Errorf("failed to send stream request: %w", err)
+	}
+
+	return ps, nil
+}
+
+// RequestThumbnail sends a thumb_request to a slave and returns a PendingStream
+// the caller can wait on. Mirrors RequestStream so the same delivery pipeline
+// (DeliverStream + /api/receiver/stream-push/:token) is reused for thumbnails.
+func (m *Module) RequestThumbnail(slaveID, token, remoteID string, preferWebP bool) (*PendingStream, error) {
+	sw := m.getSlaveWS(slaveID)
+	if sw == nil {
+		return nil, fmt.Errorf("slave %s is not connected via WebSocket", slaveID)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in PendingStream.cancel, called on completion/timeout
+	ps := &PendingStream{
+		SlaveID:   slaveID,
+		Ready:     make(chan *StreamDelivery, 1),
+		CreatedAt: time.Now(),
+		ctx:       ctx,
+		cancel:    cancel,
+	}
+
+	m.pendingMu.Lock()
+	m.pendingStreams[token] = ps
+	m.pendingMu.Unlock()
+
+	if err := sw.sendJSON(msgTypeThumbRequest, wsThumbRequestData{
+		Token:      token,
+		RemoteID:   remoteID,
+		PreferWebP: preferWebP,
+	}); err != nil {
+		m.pendingMu.Lock()
+		delete(m.pendingStreams, token)
+		m.pendingMu.Unlock()
+		return nil, fmt.Errorf("failed to send thumb request: %w", err)
 	}
 
 	return ps, nil

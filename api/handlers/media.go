@@ -124,15 +124,24 @@ func (h *Handler) ListMedia(c *gin.Context) {
 				}
 				seenFP[ri.ContentFingerprint] = true
 			}
+			// IsMature combines the slave's own flag with the master's
+			// fingerprint-based detection so an item is hidden from
+			// unauthorized users in either case.
+			isMature := ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint)
 			item := &models.MediaItem{
-				ID:       ri.ID,
-				Name:     ri.Name,
-				Type:     models.MediaType(ri.MediaType),
-				Size:     ri.Size,
-				Duration: ri.Duration,
-				Width:    ri.Width,
-				Height:   ri.Height,
-				IsMature: h.isReceiverItemMature(ri.ContentFingerprint),
+				ID:           ri.ID,
+				Name:         ri.Name,
+				Type:         models.MediaType(ri.MediaType),
+				Size:         ri.Size,
+				Duration:     ri.Duration,
+				Width:        ri.Width,
+				Height:       ri.Height,
+				Category:     ri.Category,
+				Tags:         ri.Tags,
+				BlurHash:     ri.BlurHash,
+				DateAdded:    ri.DateAdded,
+				DateModified: ri.DateModified,
+				IsMature:     isMature,
 			}
 			// Apply the exact same filter logic as local media (category,
 			// tags, search, type, is_mature — not just type+search).
@@ -332,20 +341,25 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		// Try receiver media — return it as a models.MediaItem so it's transparent
 		if h.receiver != nil {
 			if ri := h.receiver.GetMediaItem(id); ri != nil {
-				// Check mature access for receiver items via fingerprint
-				if h.isReceiverItemMature(ri.ContentFingerprint) && !h.canViewMatureContent(c) {
+				isMature := ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint)
+				if isMature && !h.canViewMatureContent(c) {
 					writeError(c, http.StatusForbidden, msgMatureContent)
 					return
 				}
 				writeSuccess(c, &models.MediaItem{
-					ID:       ri.ID,
-					Name:     ri.Name,
-					Type:     models.MediaType(ri.MediaType),
-					Size:     ri.Size,
-					Duration: ri.Duration,
-					Width:    ri.Width,
-					Height:   ri.Height,
-					IsMature: h.isReceiverItemMature(ri.ContentFingerprint),
+					ID:           ri.ID,
+					Name:         ri.Name,
+					Type:         models.MediaType(ri.MediaType),
+					Size:         ri.Size,
+					Duration:     ri.Duration,
+					Width:        ri.Width,
+					Height:       ri.Height,
+					Category:     ri.Category,
+					Tags:         ri.Tags,
+					BlurHash:     ri.BlurHash,
+					DateAdded:    ri.DateAdded,
+					DateModified: ri.DateModified,
+					IsMature:     isMature,
 				})
 				return
 			}
