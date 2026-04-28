@@ -66,6 +66,7 @@ import type {
     FollowerTestResult,
     ReceiverDuplicate,
     ReceiverMedia,
+    ReceiverAdminSettings,
     ReceiverStats,
     RecentItem,
     RemoteMediaItem,
@@ -639,6 +640,7 @@ export function useAdminApi() {
         getSuggestionStats: () => api.get<SuggestionStats>(`${base}/suggestions/stats`),
 
         // Receiver / Slaves
+        getReceiverSettings: () => api.get<ReceiverAdminSettings>(`${base}/receiver/settings`),
         listSlaves: () => api.get<SlaveNode[]>(`${base}/receiver/slaves`),
         getReceiverStats: () => api.get<ReceiverStats>(`${base}/receiver/stats`),
         removeReceiverSlave: (id: string) =>

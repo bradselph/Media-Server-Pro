@@ -947,6 +947,13 @@ export interface ReceiverStats {
     duplicate_count: number
 }
 
+// ReceiverAdminSettings exposes the configured API keys to admins so they
+// can copy a key into another VPS's follower form during pairing setup.
+export interface ReceiverAdminSettings {
+    enabled: boolean
+    api_keys: string[]
+}
+
 export interface ReceiverDuplicate {
     id: string
     fingerprint: string
