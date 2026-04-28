@@ -2,6 +2,7 @@
 import type {
   SlaveNode,
   ReceiverStats,
+  ReceiverAdminSettings,
   ReceiverDuplicate,
   ReceiverMedia,
   FollowerSettings,
@@ -13,6 +14,7 @@ const adminApi = useAdminApi()
 const toast = useToast()
 
 const receiverStats = ref<ReceiverStats | null>(null)
+const receiverSettings = ref<ReceiverAdminSettings | null>(null)
 const slaves = ref<SlaveNode[]>([])
 const duplicates = ref<ReceiverDuplicate[]>([])
 const slaveMedia = ref<ReceiverMedia[]>([])
@@ -22,6 +24,7 @@ const showSlaveMedia = ref(false)
 const selectedSlaveMedia = ref<ReceiverMedia | null>(null)
 const slaveMediaDetailLoading = ref(false)
 const activeDetailRequestId = ref(0)
+const revealedKeys = ref<Set<number>>(new Set())
 
 // Follower (this-server-as-slave) state. Loaded alongside the receiver data
 // so admins see both directions (incoming slaves + this server's outbound
@@ -32,12 +35,32 @@ const followerLoading = ref(false)
 const followerSaving = ref(false)
 const followerTesting = ref(false)
 const followerForm = reactive({
-  enabled: false,
   master_url: '',
   api_key: '',
   slave_id: '',
   slave_name: '',
 })
+
+function toggleKeyReveal(idx: number) {
+  const next = new Set(revealedKeys.value)
+  if (next.has(idx)) next.delete(idx); else next.add(idx)
+  revealedKeys.value = next
+}
+
+async function copyKey(key: string) {
+  try {
+    await navigator.clipboard.writeText(key)
+    toast.add({ title: 'API key copied', color: 'success', icon: 'i-lucide-check' })
+  } catch {
+    toast.add({ title: 'Copy failed — select manually', color: 'warning', icon: 'i-lucide-alert-triangle' })
+  }
+}
+
+function maskKey(key: string): string {
+  if (!key) return ''
+  if (key.length <= 8) return '•'.repeat(key.length)
+  return key.slice(0, 4) + '•'.repeat(Math.max(4, key.length - 8)) + key.slice(-4)
+}
 
 let destroyed = false
 let followerStatusTimer: ReturnType<typeof setInterval> | null = null
@@ -76,13 +99,15 @@ async function openSlaveMediaDetail(id: string) {
 async function loadReceiver() {
   receiverLoading.value = true
   try {
-    const [stats, slaveList, dups] = await Promise.all([
+    const [stats, settings, slaveList, dups] = await Promise.all([
       adminApi.getReceiverStats(),
+      adminApi.getReceiverSettings(),
       adminApi.listSlaves(),
       adminApi.listDuplicates('pending'),
     ])
     if (!destroyed) {
       receiverStats.value = stats
+      receiverSettings.value = settings
       slaves.value = slaveList ?? []
       duplicates.value = dups ?? []
     }
@@ -151,7 +176,6 @@ async function loadFollower() {
     if (destroyed) return
     followerSettings.value = settings
     followerStatus.value = status
-    followerForm.enabled = settings.enabled
     followerForm.master_url = settings.master_url ?? ''
     followerForm.slave_id = settings.slave_id ?? ''
     followerForm.slave_name = settings.slave_name ?? ''
@@ -180,8 +204,11 @@ async function saveFollower() {
   if (followerSaving.value) return
   followerSaving.value = true
   try {
+    // Backend auto-enables when master_url + api_key are populated, so no
+    // explicit enabled field is sent — pairing turns on as soon as the
+    // form is filled in.
     const result = await adminApi.updateFollowerSettings({
-      enabled: followerForm.enabled,
+      enabled: true,
       master_url: followerForm.master_url.trim(),
       api_key: followerForm.api_key.trim() || undefined,
       slave_id: followerForm.slave_id.trim() || undefined,
@@ -289,8 +316,11 @@ onMounted(async () => {
             <UInput v-model="followerForm.slave_name" placeholder="auto" />
           </UFormField>
         </div>
+        <p class="text-xs text-muted">
+          Pairing auto-enables once both Master URL and Receiver API Key are saved.
+          Clear either field to pause it.
+        </p>
         <div class="flex items-center gap-3 flex-wrap">
-          <USwitch v-model="followerForm.enabled" label="Enable pairing" />
           <UButton
             label="Test Connection"
             icon="i-lucide-zap"
@@ -360,6 +390,51 @@ onMounted(async () => {
         <p class="text-xs text-muted mt-1">Duplicates</p>
       </UCard>
     </div>
+
+    <!-- Receiver API keys (for pairing other VPSes as slaves to this server) -->
+    <UCard v-if="receiverSettings">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-key-round" class="size-4" />
+          <span class="font-semibold">Receiver API Keys</span>
+        </div>
+      </template>
+      <p class="text-xs text-muted mb-3">
+        Copy a key into the Master URL + API Key form on another VPS so it pairs as a
+        slave to this server. Keys are configured via <code>RECEIVER_API_KEYS</code>
+        env var or the <code>receiver.api_keys</code> config field.
+      </p>
+      <div v-if="receiverSettings.api_keys.length === 0" class="text-sm text-muted text-center py-3">
+        No API keys configured. Set <code>RECEIVER_API_KEYS=key1,key2</code> on this server and restart.
+      </div>
+      <div v-else class="space-y-2">
+        <div
+          v-for="(key, idx) in receiverSettings.api_keys"
+          :key="idx"
+          class="flex items-center gap-2 bg-muted/40 rounded px-3 py-2"
+        >
+          <code class="flex-1 text-xs font-mono break-all">
+            {{ revealedKeys.has(idx) ? key : maskKey(key) }}
+          </code>
+          <UButton
+            :icon="revealedKeys.has(idx) ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+            :aria-label="revealedKeys.has(idx) ? 'Hide key' : 'Show key'"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            @click="toggleKeyReveal(idx)"
+          />
+          <UButton
+            icon="i-lucide-copy"
+            aria-label="Copy key"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            @click="copyKey(key)"
+          />
+        </div>
+      </div>
+    </UCard>
 
     <!-- Slaves list -->
     <UCard>

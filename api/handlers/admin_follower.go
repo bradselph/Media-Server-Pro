@@ -83,11 +83,7 @@ func (h *Handler) UpdateFollowerSettings(c *gin.Context) {
 	}
 
 	masterURL := strings.TrimSpace(req.MasterURL)
-	if req.Enabled {
-		if masterURL == "" {
-			writeError(c, http.StatusBadRequest, "master_url is required when enabling the follower")
-			return
-		}
+	if masterURL != "" {
 		u, err := url.Parse(masterURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			writeError(c, http.StatusBadRequest, "master_url must be a valid http(s) URL")
@@ -96,7 +92,9 @@ func (h *Handler) UpdateFollowerSettings(c *gin.Context) {
 	}
 
 	if err := h.config.Update(func(cfg *config.Config) {
-		cfg.Follower.Enabled = req.Enabled
+		// Enabled is auto-derived from configuration completeness: pairing turns
+		// on as soon as both master_url and api_key are populated, off otherwise.
+		// The form's req.Enabled is intentionally ignored.
 		cfg.Follower.MasterURL = masterURL
 		// Empty api_key in the request means "keep existing" — required so
 		// admins can edit settings without re-typing the secret every time.
@@ -120,6 +118,7 @@ func (h *Handler) UpdateFollowerSettings(c *gin.Context) {
 		if req.ReconnectMaxSecs > 0 {
 			cfg.Follower.ReconnectMax = time.Duration(req.ReconnectMaxSecs) * time.Second
 		}
+		cfg.Follower.Enabled = cfg.Follower.MasterURL != "" && strings.TrimSpace(cfg.Follower.APIKey) != ""
 	}); err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to save settings: "+err.Error())
 		return
