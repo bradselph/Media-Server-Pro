@@ -251,6 +251,31 @@ generate_secret() {
   fi
 }
 
+# env_value quotes a value for safe inclusion in a Docker Compose .env file.
+# Without this, secrets containing special characters (#, $, ', ", spaces,
+# leading/trailing whitespace) are parsed incorrectly by Compose's env_file
+# reader — most visibly: ADMIN_PASSWORD silently truncates at the first " #",
+# the server bcrypts the truncated string, and login fails for the user who
+# typed the full password they expected.
+#
+# Both Docker Compose and the Go server's parseEnvLine strip outer single
+# quotes, so single-quoted values pass through literally with no surprises.
+# Values containing a literal single quote fall back to double quotes with
+# the standard double-quote and backslash escapes.
+env_value() {
+  local val="$1"
+  if [[ "$val" != *\'* ]]; then
+    printf "'%s'" "$val"
+    return
+  fi
+  # Has a single quote — switch to double quotes and escape \ and " as
+  # required by both compose-go's env_file parser and the Go server's
+  # stripEnvQuotes implementation.
+  local escaped="${val//\\/\\\\}"
+  escaped="${escaped//\"/\\\"}"
+  printf '"%s"' "$escaped"
+}
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  3. STATE TRACKING (for --resume)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -966,10 +991,10 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "LOG_LEVEL=info"
     echo "TZ=$TZ_NOW"
     echo
-    echo "DB_ROOT_PASSWORD=$DB_ROOT_PW"
+    echo "DB_ROOT_PASSWORD=$(env_value "$DB_ROOT_PW")"
     echo "DATABASE_NAME=$DB_NAME"
     echo "DATABASE_USERNAME=$DB_USER"
-    echo "DATABASE_PASSWORD=$DB_APP_PW"
+    echo "DATABASE_PASSWORD=$(env_value "$DB_APP_PW")"
 
     # ────────────────────────────────────────────────────────────────────
     # Defensive defaults for fields whose internal default historically
@@ -990,8 +1015,8 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo
     echo "# Admin login (web UI)"
     echo "ADMIN_ENABLED=true"
-    echo "ADMIN_USERNAME=$ADMIN_USER"
-    echo "ADMIN_PASSWORD=$ADMIN_PW"
+    echo "ADMIN_USERNAME=$(env_value "$ADMIN_USER")"
+    echo "ADMIN_PASSWORD=$(env_value "$ADMIN_PW")"
 
     # ────────────────────────────────────────────────────────────────────
     # Sensible feature defaults that mirror what setup.sh writes for
@@ -1048,7 +1073,7 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "# Hugging Face (visual mature-content classification)"
     if [[ -n "${HF_API_KEY:-}" ]]; then
       echo "FEATURE_HUGGINGFACE=true"
-      echo "HUGGINGFACE_API_KEY=$HF_API_KEY"
+      echo "HUGGINGFACE_API_KEY=$(env_value "$HF_API_KEY")"
     else
       echo "FEATURE_HUGGINGFACE=false"
       echo "# HUGGINGFACE_API_KEY="
@@ -1060,8 +1085,8 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
       echo "FEATURE_CLAUDE=true"
       # Both names are accepted by the Anthropic SDK; emit both so the
       # bundled `claude` CLI and any direct API caller pick it up.
-      echo "ANTHROPIC_API_KEY=$CLAUDE_API_KEY_INPUT"
-      echo "CLAUDE_API_KEY=$CLAUDE_API_KEY_INPUT"
+      echo "ANTHROPIC_API_KEY=$(env_value "$CLAUDE_API_KEY_INPUT")"
+      echo "CLAUDE_API_KEY=$(env_value "$CLAUDE_API_KEY_INPUT")"
       echo "CLAUDE_MODEL=${CLAUDE_MODEL_INPUT:-claude-sonnet-4-6}"
       echo "CLAUDE_MODE=${CLAUDE_MODE_INPUT:-advisory}"
     else
@@ -1081,7 +1106,7 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo
     echo "# Receiver profile (only used with --profile receiver)"
     echo "MASTER_URL=https://master.example.com"
-    echo "RECEIVER_API_KEY=$(generate_secret)"
+    echo "RECEIVER_API_KEY=$(env_value "$(generate_secret)")"
     echo "SLAVE_ID=receiver-1"
     echo "SLAVE_NAME=Docker Receiver"
     echo "SCAN_INTERVAL=15m"
@@ -1091,11 +1116,11 @@ if [[ "${SKIP_ENV_GEN:-false}" != "true" ]]; then
     echo "# MinIO profile (only used with --profile minio)"
     echo "MINIO_IMAGE_TAG=RELEASE.2025-09-07T16-13-09Z"
     if [[ "$USE_MINIO" == "true" ]]; then
-      echo "MINIO_ROOT_USER=$MINIO_USER"
-      echo "MINIO_ROOT_PASSWORD=$MINIO_PW"
+      echo "MINIO_ROOT_USER=$(env_value "$MINIO_USER")"
+      echo "MINIO_ROOT_PASSWORD=$(env_value "$MINIO_PW")"
     else
       echo "MINIO_ROOT_USER=mediaserver"
-      echo "MINIO_ROOT_PASSWORD=$(generate_secret)"
+      echo "MINIO_ROOT_PASSWORD=$(env_value "$(generate_secret)")"
     fi
     echo "MINIO_API_PORT=9000"
     echo "MINIO_CONSOLE_PORT=9001"
