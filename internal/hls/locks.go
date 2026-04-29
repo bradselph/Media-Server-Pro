@@ -88,9 +88,13 @@ func (m *Module) processEntryForStaleLocks(entry os.DirEntry) bool {
 	}
 	jobID := entry.Name()
 	exists, stale, lock := m.checkLock(jobID)
-	shouldSkip := !exists || !stale || lock == nil
-	if shouldSkip {
+	if !exists || !stale {
 		return false
+	}
+	if lock == nil {
+		m.log.Warn("Found corrupt lock for job %s, removing", jobID)
+		m.removeLock(jobID)
+		return true
 	}
 	m.handleStaleLock(jobID, lock)
 	return true

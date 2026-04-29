@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"media-server-pro/internal/repositories"
 	"media-server-pro/pkg/models"
@@ -105,15 +106,18 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 // marshalJSONParam marshals a value to a JSON string for use in GORM Updates maps.
 // database/sql cannot bind complex Go types (maps, slices) directly; they must be
 // pre-serialized to JSON strings. Returns nil (SQL NULL) if v is nil.
-func marshalJSONParam(v any) any {
+func marshalJSONParam(v any) (any, error) {
 	if v == nil {
-		return nil
+		return nil, nil
 	}
 	b, err := json.Marshal(v)
-	if err != nil || string(b) == "null" {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("marshal JSON param: %w", err)
 	}
-	return string(b)
+	if string(b) == "null" {
+		return nil, nil
+	}
+	return string(b), nil
 }
 
 // Update updates an existing user and related data using selective Updates()
@@ -121,6 +125,14 @@ func marshalJSONParam(v any) any {
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// JSON fields must be pre-serialized: database/sql cannot bind map/slice types directly.
+		metadataJSON, err := marshalJSONParam(user.Metadata)
+		if err != nil {
+			return fmt.Errorf("serialize metadata: %w", err)
+		}
+		watchHistoryJSON, err := marshalJSONParam(user.WatchHistory)
+		if err != nil {
+			return fmt.Errorf("serialize watch_history: %w", err)
+		}
 		userUpdates := map[string]any{
 			"username":            user.Username,
 			"email":               user.Email,
@@ -131,8 +143,8 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			"previous_last_login": user.PreviousLastLogin,
 			"storage_used":        user.StorageUsed,
 			"active_streams":      user.ActiveStreams,
-			"metadata":            marshalJSONParam(user.Metadata),
-			"watch_history":       marshalJSONParam(user.WatchHistory),
+			"metadata":            metadataJSON,
+			"watch_history":       watchHistoryJSON,
 		}
 		// password_hash and salt are intentionally excluded here.
 		// Use UpdatePasswordHash for password changes to avoid snapshot races.

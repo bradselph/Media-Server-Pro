@@ -176,6 +176,9 @@ func (m *Module) AddTarget(name, rawURL string) (*CrawlTarget, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return nil, fmt.Errorf("invalid URL: must be HTTP/HTTPS")
 	}
+	if err := helpers.ValidateURLForSSRF(rawURL); err != nil {
+		return nil, fmt.Errorf("URL rejected: %w", err)
+	}
 
 	id := generateTargetID(rawURL)
 	site := u.Hostname()

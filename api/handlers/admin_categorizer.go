@@ -32,7 +32,9 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 
 	result, saveErr := h.categorizer.CategorizeFile(absPath)
 	if saveErr != nil {
-		h.log.Warn("CategorizeFile: DB persist failed for %s: %v", absPath, saveErr)
+		h.log.Error("CategorizeFile: DB persist failed for %s: %v", absPath, saveErr)
+		writeError(c, http.StatusInternalServerError, "Categorization failed to persist")
+		return
 	}
 	if result != nil && string(result.Category) != "" {
 		if err := h.media.UpdateMetadata(absPath, map[string]any{

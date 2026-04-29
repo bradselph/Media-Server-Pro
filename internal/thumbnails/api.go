@@ -84,8 +84,8 @@ func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (st
 	m.stats.Pending--
 	m.statsMu.Unlock()
 	m.log.Warn("Job queue full, generating thumbnail synchronously: %s", req.MediaPath)
+	defer m.inFlight.Delete(outputPath)
 	err := m.generateThumbnail(job)
-	m.inFlight.Delete(outputPath)
 	return outputPath, err
 }
 

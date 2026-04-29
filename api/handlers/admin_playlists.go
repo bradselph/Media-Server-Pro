@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -190,7 +191,12 @@ func (h *Handler) AdminUpdatePlaylist(c *gin.Context) {
 		return
 	}
 	if err := h.playlist.AdminUpdatePlaylist(c.Request.Context(), playlist.PlaylistID(playlistID), updates); err != nil {
-		writeError(c, http.StatusNotFound, msgPlaylistNotFound)
+		if errors.Is(err, playlist.ErrPlaylistNotFound) {
+			writeError(c, http.StatusNotFound, msgPlaylistNotFound)
+		} else {
+			h.log.Error("AdminUpdatePlaylist %s: %v", playlistID, err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 	h.logAdminAction(c, &adminLogActionParams{Action: "update_playlist", Target: playlistID})

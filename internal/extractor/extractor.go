@@ -653,6 +653,9 @@ func (m *Module) rewriteMasterPlaylist(body, baseURL, itemID string) (string, []
 		if prevLineIsStreamInf {
 			prevLineIsStreamInf = false
 			variantURL := resolveURL(baseURL, strings.TrimSpace(line))
+			if err := helpers.ValidateURLForSSRF(variantURL); err != nil {
+				continue
+			}
 			variants = append(variants, playlistVariant{
 				originalURL: variantURL,
 				info:        prevStreamInf,
@@ -701,6 +704,9 @@ func (m *Module) rewriteVariantPlaylist(body, baseURL, itemID string, qualityIdx
 
 		// This is a segment URI line
 		segmentURL := resolveURL(baseURL, strings.TrimSpace(line))
+		if err := helpers.ValidateURLForSSRF(segmentURL); err != nil {
+			continue
+		}
 		filename := extractSegmentFilename(line)
 
 		segments = append(segments, playlistSegment{

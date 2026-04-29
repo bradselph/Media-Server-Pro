@@ -231,8 +231,8 @@ func (m *Module) ValidateFile(path string) (*ValidationResult, error) {
 
 // probeFile runs ffprobe on a file (ffmpeg-go first; raw ffprobe fallback uses m.ffprobePath).
 func (m *Module) probeFile(path string) (*ProbeData, error) {
-	// Try ffmpeg-go Probe first
-	probeJSON, probeErr := ffmpeg.Probe(path)
+	// Try ffmpeg-go Probe first (with timeout to prevent indefinite hangs on corrupt files)
+	probeJSON, probeErr := ffmpeg.ProbeWithTimeout(path, 30*time.Second, nil)
 	if probeErr == nil {
 		var data ProbeData
 		parseErr := json.Unmarshal([]byte(probeJSON), &data)

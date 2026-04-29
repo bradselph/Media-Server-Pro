@@ -314,8 +314,9 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 		used, err := h.upload.GetUserStorageUsed(userID)
 		if err != nil {
 			h.log.Warn("Error getting user storage for %s: %v", userID, err)
+		} else {
+			totalSize = used
 		}
-		totalSize = used
 	} else {
 		cfg := h.media.GetConfig()
 		uploadsDir := cfg.Directories.Uploads

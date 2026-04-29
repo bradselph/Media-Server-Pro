@@ -137,8 +137,12 @@ func (m *Module) Start(ctx context.Context) error {
 	m.favoriteRepo = mysql.NewFavoritesRepository(m.dbModule.GORM())
 	m.tokenRepo = mysql.NewAPITokenRepository(m.dbModule.GORM())
 
-	m.loadUsersIntoMap(ctx)
-	m.loadSessionsFromRepo(ctx)
+	if err := m.loadUsersIntoMap(ctx); err != nil {
+		return fmt.Errorf("failed to load users: %w", err)
+	}
+	if err := m.loadSessionsFromRepo(ctx); err != nil {
+		return fmt.Errorf("failed to load sessions: %w", err)
+	}
 
 	if err := m.ensureDefaultAdminWithHealth(ctx); err != nil {
 		return err
@@ -150,12 +154,11 @@ func (m *Module) Start(ctx context.Context) error {
 	return nil
 }
 
-// loadUsersIntoMap loads users from the repository into the in-memory map (logs on error).
-func (m *Module) loadUsersIntoMap(ctx context.Context) {
+// loadUsersIntoMap loads users from the repository into the in-memory map.
+func (m *Module) loadUsersIntoMap(ctx context.Context) error {
 	users, err := m.userRepo.List(ctx)
 	if err != nil {
-		m.log.Warn("Failed to load users from repository: %v", err)
-		return
+		return fmt.Errorf("list users: %w", err)
 	}
 	m.usersMu.Lock()
 	for _, user := range users {
@@ -163,19 +166,20 @@ func (m *Module) loadUsersIntoMap(ctx context.Context) {
 		m.usersByID[user.ID] = user
 	}
 	m.usersMu.Unlock()
+	return nil
 }
 
 // loadSessionsFromRepo loads sessions from the repository into in-memory maps and cleans invalid ones.
-func (m *Module) loadSessionsFromRepo(ctx context.Context) {
+func (m *Module) loadSessionsFromRepo(ctx context.Context) error {
 	sessions, err := m.sessionRepo.List(ctx)
 	if err != nil {
-		m.log.Warn("Failed to load sessions from repository: %v", err)
-		return
+		return fmt.Errorf("list sessions: %w", err)
 	}
 	invalidCount := m.loadSessionsIntoMaps(ctx, sessions)
 	if invalidCount > 0 {
 		m.log.Info("Cleaned up %d old sessions with invalid format - users will need to log in again", invalidCount)
 	}
+	return nil
 }
 
 // loadSessionsIntoMaps loads sessions into in-memory maps, deletes invalid sessions
@@ -188,8 +192,9 @@ func (m *Module) loadSessionsIntoMaps(ctx context.Context, sessions []*models.Se
 			m.log.Info("Deleting old session %s with invalid user_id format (username instead of UUID)", session.ID)
 			if err := m.sessionRepo.Delete(ctx, session.ID); err != nil {
 				m.log.Warn("Failed to delete invalid session: %v", err)
+			} else {
+				invalidCount++
 			}
-			invalidCount++
 			continue
 		}
 		if session.Role == models.RoleAdmin {

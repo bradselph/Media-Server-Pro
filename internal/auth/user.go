@@ -530,14 +530,16 @@ func (m *Module) UpdateUserPreferences(ctx context.Context, username string, pre
 	}
 	userCopy := *user
 	userCopy.Preferences = prefs
-	// ShowMature preference only takes effect when user already holds CanViewMature
-	// (admin-granted). Never auto-elevate permissions from a preference update.
-	m.usersMu.Unlock()
 
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
+		m.usersMu.Unlock()
 		m.log.Error("Failed to save user after preference update: %v", err)
 		return err
 	}
-	m.cacheUser(&userCopy)
+	m.users[username] = &userCopy
+	if userCopy.ID != "" {
+		m.usersByID[userCopy.ID] = &userCopy
+	}
+	m.usersMu.Unlock()
 	return nil
 }

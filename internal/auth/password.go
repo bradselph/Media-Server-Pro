@@ -40,35 +40,30 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 		return fmt.Errorf(errHashPasswordFmt, err)
 	}
 
-	// Work on a copy; only update cache after DB success to avoid cache/DB divergence.
-	m.usersMu.RLock()
+	newHash := string(hash)
+
+	// Hold write lock through CAS check + DB write + cache update to prevent
+	// concurrent password changes from racing on the DB write.
+	m.usersMu.Lock()
 	user, exists = m.users[username]
 	if !exists || user == nil {
-		m.usersMu.RUnlock()
+		m.usersMu.Unlock()
 		return ErrUserNotFound
 	}
 	if user.PasswordHash != currentHash {
-		// Hash changed between the two reads — another goroutine updated the
-		// password concurrently. Return ErrInvalidCredentials (not ErrUserNotFound)
-		// so the handler returns HTTP 401 rather than HTTP 500.
-		m.usersMu.RUnlock()
+		m.usersMu.Unlock()
 		return ErrInvalidCredentials
 	}
-	m.usersMu.RUnlock()
-
-	newHash := string(hash)
 
 	m.log.Info("Password updated for user: %s", username)
 
 	if err := m.userRepo.UpdatePasswordHash(ctx, username, newHash, salt); err != nil {
+		m.usersMu.Unlock()
 		m.log.Error("Failed to save user after password update: %v", err)
 		return fmt.Errorf("password update failed to persist: %w", err)
 	}
-	m.usersMu.Lock()
-	if u, ok := m.users[username]; ok && u.PasswordHash == currentHash {
-		u.PasswordHash = newHash
-		u.Salt = salt
-	}
+	user.PasswordHash = newHash
+	user.Salt = salt
 	m.usersMu.Unlock()
 
 	// Evict all sessions so the old password cannot be reused via an existing session.
@@ -97,30 +92,26 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 		return fmt.Errorf(errHashPasswordFmt, err)
 	}
 
-	// Re-read user under lock and copy atomically to avoid data race with concurrent mutations.
-	m.usersMu.RLock()
+	newHash := string(hash)
+
+	// Hold write lock through DB write + cache update to prevent concurrent
+	// password changes from racing.
+	m.usersMu.Lock()
 	user, exists := m.users[username]
 	if !exists || user == nil {
-		m.usersMu.RUnlock()
+		m.usersMu.Unlock()
 		return ErrUserNotFound
 	}
-	currentHash := user.PasswordHash
-	m.usersMu.RUnlock()
-
-	newHash := string(hash)
 
 	m.log.Info("Password set for user: %s (admin action)", username)
 
 	if err := m.userRepo.UpdatePasswordHash(ctx, username, newHash, salt); err != nil {
+		m.usersMu.Unlock()
 		m.log.Error("Failed to save user after password set: %v", err)
 		return fmt.Errorf("password set failed to persist: %w", err)
 	}
-	// Only update cache fields if the hash hasn't changed since our read (CAS pattern).
-	m.usersMu.Lock()
-	if u, ok := m.users[username]; ok && u.PasswordHash == currentHash {
-		u.PasswordHash = newHash
-		u.Salt = salt
-	}
+	user.PasswordHash = newHash
+	user.Salt = salt
 	m.usersMu.Unlock()
 
 	// Evict all sessions so the old password cannot be reused via an existing session.

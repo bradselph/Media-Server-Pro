@@ -234,10 +234,13 @@ func (a *turnAggregator) handle(ev Event) {
 				tc.Input = prior.Input
 			}
 		}
-		if b, err := json.Marshal(tc); err == nil {
-			if err := a.m.appendMessage(a.ctx, a.convID, "tool", "", nil, b); err != nil {
-				a.m.log.Warn("persist tool message: %v", err)
-			}
+		b, marshalErr := json.Marshal(tc)
+		if marshalErr != nil {
+			a.m.log.Warn("marshal tool result for %s: %v", tc.Name, marshalErr)
+			b = []byte(fmt.Sprintf(`{"id":%q,"name":%q,"error":"marshal failure"}`, tc.ID, tc.Name))
+		}
+		if err := a.m.appendMessage(a.ctx, a.convID, "tool", "", nil, b); err != nil {
+			a.m.log.Warn("persist tool message: %v", err)
 		}
 		a.m.auditToolCall(a.ctx, a.rc, &tc, tc.Error == "")
 	}

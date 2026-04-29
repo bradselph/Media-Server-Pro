@@ -205,7 +205,14 @@ func (h *Handler) GetRegistrationToken(c *gin.Context) {
 		return
 	}
 	token := hex.EncodeToString(raw)
-	h.regTokens.Store(token, time.Now())
+	now := time.Now()
+	h.regTokens.Range(func(k, v any) bool {
+		if now.Sub(v.(time.Time)) > regTokenTTL {
+			h.regTokens.Delete(k)
+		}
+		return true
+	})
+	h.regTokens.Store(token, now)
 	writeSuccess(c, map[string]string{"token": token})
 }
 

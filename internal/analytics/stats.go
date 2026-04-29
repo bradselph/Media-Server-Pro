@@ -148,7 +148,7 @@ func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent) {
 
 func (m *Module) applyViewToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats) {
 	stats.TotalViews++
-	stats.LastViewed = time.Now()
+	stats.LastViewed = event.Timestamp
 	if event.UserID != "" {
 		m.ensureMediaViewersLocked(event.MediaID)
 		m.mediaViewers[event.MediaID][event.UserID] = struct{}{}

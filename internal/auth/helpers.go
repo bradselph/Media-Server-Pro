@@ -36,6 +36,9 @@ func generateSalt() string {
 
 // generateRandomPassword creates a cryptographically random password of the given length.
 func generateRandomPassword(length int) (string, error) {
+	if length < 1 || length > 1024 {
+		return "", fmt.Errorf("password length must be between 1 and 1024")
+	}
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
 	b := make([]byte, length)
 	charsetLen := big.NewInt(int64(len(charset)))

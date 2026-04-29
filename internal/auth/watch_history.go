@@ -4,6 +4,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 
 	"media-server-pro/pkg/models"
 )
@@ -14,6 +15,10 @@ import (
 // (correct ordering) but have its DB write arrive after caller B's, leaving the
 // DB with a stale snapshot while the cache holds the newer one.
 func (m *Module) AddToWatchHistory(ctx context.Context, username string, item models.WatchHistoryItem) error {
+	if item.MediaPath == "" {
+		return fmt.Errorf("media path is required")
+	}
+
 	m.usersMu.Lock()
 	defer m.usersMu.Unlock()
 
@@ -67,37 +72,23 @@ func (m *Module) AddToWatchHistory(ctx context.Context, username string, item mo
 // the DB write fails, avoiding cache/DB divergence.
 func (m *Module) ClearWatchHistory(ctx context.Context, username string) error {
 	m.usersMu.Lock()
+	defer m.usersMu.Unlock()
 
 	user, exists := m.users[username]
 	if !exists {
-		m.usersMu.Unlock()
 		return ErrUserNotFound
 	}
 
-	// Deep-copy old history for rollback. A plain slice-header copy shares the
-	// backing array; if any concurrent writer (e.g. AddToWatchHistory) appended
-	// to the old slice in-place before the rollback, the restored slice header
-	// would point into a partially-overwritten array. Matches the defensive
-	// pattern used in RemoveWatchHistoryItem.
 	oldHistory := append([]models.WatchHistoryItem(nil), user.WatchHistory...)
 
-	// Update cache optimistically.
 	user.WatchHistory = make([]models.WatchHistoryItem, 0)
 
-	// Build a copy to pass to the DB write (lock released before IO).
 	userCopy := *user
 	userCopy.WatchHistory = nil
 
-	m.usersMu.Unlock()
-
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Error("Failed to save user after clearing watch history: %v", err)
-		// Roll the cache back to avoid cache/DB divergence.
-		m.usersMu.Lock()
-		if u, ok := m.users[username]; ok {
-			u.WatchHistory = oldHistory
-		}
-		m.usersMu.Unlock()
+		user.WatchHistory = oldHistory
 		return err
 	}
 	return nil
