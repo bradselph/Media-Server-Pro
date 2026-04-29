@@ -559,6 +559,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	receiverSlave.POST("/register", h.ReceiverRegisterSlave)
 	receiverSlave.POST("/catalog", h.ReceiverPushCatalog)
 	receiverSlave.POST("/heartbeat", h.ReceiverHeartbeat)
+	// Cross-server pairing — caller (a peer that wants to receive content)
+	// asks this server to point its follower at them.
+	receiverSlave.POST("/pair", h.ReceiverPair)
 	// Stream push — slave delivers file data in response to a WS stream_request.
 	// Part of the receiver slave group: RequireReceiverWithAPIKey middleware handles auth.
 	receiverSlave.POST("/stream-push/:token", h.ReceiverStreamPush)
@@ -758,6 +761,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/receiver/slaves", h.AdminReceiverListSlaves)
 	adminGrp.GET("/receiver/stats", h.AdminReceiverGetStats)
 	adminGrp.DELETE("/receiver/slaves/:id", h.AdminReceiverRemoveSlave)
+	// Cross-server pairing helper. Admin enters peer URL+key here and this
+	// server reaches out to the peer's /api/receiver/pair to configure the
+	// pairing without the admin having to log into both servers.
+	adminGrp.POST("/peer/connect", h.AdminPeerConnect)
 	adminGrp.GET("/duplicates", h.AdminListDuplicates)
 	adminGrp.POST("/duplicates/scan", h.AdminScanLocalDuplicates)
 	adminGrp.POST("/duplicates/:id/resolve", h.AdminResolveDuplicate)

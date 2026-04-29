@@ -119,8 +119,8 @@ var AllowedProxyHeaders = map[string]bool{
 // standard library's mime.TypeByExtension returns "" for several formats we
 // regularly serve (.mkv, .avi, .mov, .flv, .m4v) — without an explicit map a
 // slave node would push files as application/octet-stream and the browser
-// would refuse to play them. Shared so master, slave (internal/follower), and
-// the standalone receiver (cmd/media-receiver) all advertise the same types.
+// would refuse to play them. Shared so master and slave (internal/follower)
+// always advertise the same types.
 var mediaContentTypes = map[string]string{
 	".mp4":  "video/mp4",
 	".webm": "video/webm",

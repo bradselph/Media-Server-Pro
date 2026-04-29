@@ -1,13 +1,19 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/config"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/pkg/helpers"
 )
@@ -194,6 +200,198 @@ func (h *Handler) AdminReceiverGetSettings(c *gin.Context) {
 	writeSuccess(c, receiverAdminSettings{
 		Enabled: rc.Enabled || len(rc.APIKeys) > 0,
 		APIKeys: keys,
+	})
+}
+
+// receiverPairRequest is the body for POST /api/receiver/pair. Mirrors the
+// admin-side follower settings form but is invoked cross-server: the calling
+// server tells THIS server "follow me at master_url using api_key so your
+// catalog flows to me." Authentication is the receiver API key (X-API-Key
+// header), enforced by the route group's RequireReceiverWithAPIKey middleware.
+//
+// This is what makes the user-facing "add a peer to pull from" flow possible
+// without forcing the operator to log into both servers and manually configure
+// the follower form on the source side. The caller, who is the consumer of
+// content, configures the producer remotely.
+type receiverPairRequest struct {
+	MasterURL string `json:"master_url"`
+	APIKey    string `json:"api_key"`
+}
+
+// ReceiverPair configures THIS server's follower to push its catalog to the
+// master_url specified in the request body. Auth is the X-API-Key the route
+// group already validates. Used by the cross-server "pair to pull" flow.
+// POST /api/receiver/pair
+func (h *Handler) ReceiverPair(c *gin.Context) {
+	if h.follower == nil {
+		writeError(c, http.StatusServiceUnavailable, "Follower module not available")
+		return
+	}
+	var req receiverPairRequest
+	if !BindJSON(c, &req, errInvalidRequest) {
+		return
+	}
+	masterURL := strings.TrimSpace(req.MasterURL)
+	apiKey := strings.TrimSpace(req.APIKey)
+	if masterURL == "" || apiKey == "" {
+		writeError(c, http.StatusBadRequest, "master_url and api_key are required")
+		return
+	}
+	u, err := url.Parse(masterURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		writeError(c, http.StatusBadRequest, "master_url must be a valid http(s) URL")
+		return
+	}
+
+	// Reject pairings that would point this server back at itself — protects
+	// against accidental loops where the user supplied their own URL.
+	if u.Host == c.Request.Host {
+		writeError(c, http.StatusBadRequest, "master_url points to this server (self-pairing not supported)")
+		return
+	}
+
+	if err := h.config.Update(func(cfg *config.Config) {
+		cfg.Follower.MasterURL = masterURL
+		cfg.Follower.APIKey = apiKey
+		cfg.Follower.Enabled = true
+	}); err != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to save pairing: "+err.Error())
+		return
+	}
+
+	reloadCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+	if err := h.follower.Reload(reloadCtx); err != nil {
+		// Settings saved but the loop didn't restart cleanly. Surface the reload
+		// error so the caller knows the WS may still be using stale config.
+		writeSuccess(c, gin.H{
+			"saved":         true,
+			"reload_error":  err.Error(),
+			"reload_status": h.follower.GetStatus(),
+		})
+		return
+	}
+	writeSuccess(c, gin.H{
+		"saved":         true,
+		"reload_status": h.follower.GetStatus(),
+	})
+}
+
+// adminPeerConnectRequest is the body for POST /api/admin/peer/connect.
+// Drives the cross-server pairing flow: this admin asks a remote peer to
+// configure ITS follower to push to us. peer_url + peer_api_key authenticate
+// against the peer's receiver. our_url defaults to the request's Host so the
+// admin doesn't have to type their own URL; can be overridden when the
+// public URL differs from the host the admin reaches the panel through.
+type adminPeerConnectRequest struct {
+	PeerURL    string `json:"peer_url"`
+	PeerAPIKey string `json:"peer_api_key"`
+	OurURL     string `json:"our_url,omitempty"`
+}
+
+// AdminPeerConnect tells a remote peer to start pushing its catalog to this
+// server. Authenticates with peer_api_key against the peer's
+// /api/receiver/pair endpoint and hands it (our_url, one of our receiver
+// keys) so the peer's follower can reach us. Admin-only.
+//
+// This is the user-facing complement to /api/receiver/pair: the admin does
+// not have to log into both servers — they configure the pairing on the
+// receiving side ("I want to pull from this peer") and this handler does
+// the cross-server call.
+//
+// POST /api/admin/peer/connect
+func (h *Handler) AdminPeerConnect(c *gin.Context) {
+	if h.receiver == nil {
+		writeError(c, http.StatusServiceUnavailable, "Receiver module not available")
+		return
+	}
+	var req adminPeerConnectRequest
+	if !BindJSON(c, &req, errInvalidRequest) {
+		return
+	}
+	peerURL := strings.TrimRight(strings.TrimSpace(req.PeerURL), "/")
+	peerKey := strings.TrimSpace(req.PeerAPIKey)
+	if peerURL == "" || peerKey == "" {
+		writeError(c, http.StatusBadRequest, "peer_url and peer_api_key are required")
+		return
+	}
+	pu, err := url.Parse(peerURL)
+	if err != nil || (pu.Scheme != "http" && pu.Scheme != "https") || pu.Host == "" {
+		writeError(c, http.StatusBadRequest, "peer_url must be a valid http(s) URL")
+		return
+	}
+	if err := helpers.ValidateURLForSSRF(peerURL); err != nil {
+		writeError(c, http.StatusBadRequest, "peer_url rejected: "+err.Error())
+		return
+	}
+
+	rc := h.config.Get().Receiver
+	if len(rc.APIKeys) == 0 {
+		writeError(c, http.StatusBadRequest, "No receiver API keys configured on this server. Set RECEIVER_API_KEYS first.")
+		return
+	}
+	ourKey := rc.APIKeys[0]
+
+	ourURL := strings.TrimRight(strings.TrimSpace(req.OurURL), "/")
+	if ourURL == "" {
+		// Derive from the request the admin hit. Trust the proxy's forwarded
+		// proto when present so we don't downgrade to http behind TLS-terminating
+		// load balancers.
+		scheme := "http"
+		if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
+			scheme = "https"
+		}
+		ourURL = scheme + "://" + c.Request.Host
+	}
+	ouru, err := url.Parse(ourURL)
+	if err != nil || (ouru.Scheme != "http" && ouru.Scheme != "https") || ouru.Host == "" {
+		writeError(c, http.StatusBadRequest, "our_url must be a valid http(s) URL")
+		return
+	}
+	if pu.Host == ouru.Host {
+		writeError(c, http.StatusBadRequest, "peer_url and our_url match — self-pairing not supported")
+		return
+	}
+
+	body, err := json.Marshal(receiverPairRequest{
+		MasterURL: ourURL,
+		APIKey:    ourKey,
+	})
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to encode pair request: "+err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL+"/api/receiver/pair", strings.NewReader(string(body)))
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "Failed to build pair request: "+err.Error())
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-API-Key", peerKey)
+
+	client := &http.Client{Transport: helpers.SafeHTTPTransport(), Timeout: 20 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		writeError(c, http.StatusBadGateway, "Failed to reach peer: "+err.Error())
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		// Forward the peer's error so the admin sees what went wrong (auth,
+		// validation, etc.) without having to inspect the peer's logs.
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		writeError(c, http.StatusBadGateway, fmt.Sprintf("Peer rejected pairing (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes))))
+		return
+	}
+
+	writeSuccess(c, gin.H{
+		"paired":   true,
+		"peer_url": peerURL,
+		"our_url":  ourURL,
 	})
 }
 

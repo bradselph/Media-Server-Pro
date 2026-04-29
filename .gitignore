@@ -8,8 +8,6 @@ config.json
 .env.docker
 .deploy.env
 docker-compose.override.yml
-.slave.env
-.media-receiver.pid
 dev-tools/
 
 /web/static/react/

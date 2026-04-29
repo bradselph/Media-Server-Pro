@@ -1952,22 +1952,6 @@ step_build_backend() {
   log_debug "server -version: $version_out"
   log_success "Server binary built ($(stat -c %s "$SCRIPT_DIR/server" 2>/dev/null || stat -f %z "$SCRIPT_DIR/server") bytes)."
 
-  # Also build the media-receiver binary (optional, only if the dir exists).
-  if [[ -d "$SCRIPT_DIR/cmd/media-receiver" ]]; then
-    log_info "Compiling media-receiver..."
-    (
-      cd "$SCRIPT_DIR" && \
-      CGO_ENABLED=0 go build \
-        -trimpath \
-        -ldflags "$ldflags" \
-        -o "$SCRIPT_DIR/media-receiver" \
-        ./cmd/media-receiver
-    ) >> "$LOG_FILE" 2>&1 || log_warn "media-receiver build failed — master is still usable."
-    if [[ -x "$SCRIPT_DIR/media-receiver" ]]; then
-      log_success "media-receiver binary built."
-    fi
-  fi
-
   return 0
 }
 
@@ -2181,7 +2165,7 @@ run_uninstall() {
     sudo_run rm -f "/etc/systemd/system/${svc}.service" || true
     sudo_run systemctl daemon-reload 2>/dev/null || true
   fi
-  rm -f "$SCRIPT_DIR/server" "$SCRIPT_DIR/media-receiver" 2>/dev/null || true
+  rm -f "$SCRIPT_DIR/server" 2>/dev/null || true
   rm -f "$SCRIPT_DIR/config.json" 2>/dev/null || true
   log_success "Service removed and binaries deleted."
 

@@ -7,8 +7,7 @@
 #   3. Hand off to the requested binary via `exec` so PID 1 forwards signals.
 #
 # Usage:
-#   /app/entrypoint.sh server               # default — runs the master server
-#   /app/entrypoint.sh media-receiver ...   # runs the slave with extra args
+#   /app/entrypoint.sh server               # default — runs the server
 #   /app/entrypoint.sh /path/to/binary ...  # passthrough
 set -eu
 
@@ -145,9 +144,6 @@ drop_privs() {
 case "$cmd" in
     server)
         drop_privs /app/server "$@"
-        ;;
-    media-receiver|receiver|slave)
-        drop_privs /app/media-receiver "$@"
         ;;
     *)
         drop_privs "$cmd" "$@"

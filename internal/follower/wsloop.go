@@ -19,7 +19,7 @@ import (
 )
 
 // wsMessage is the envelope all follower↔master messages share.
-// Identical shape to receiver.wsMessage / cmd/media-receiver.wsMessage.
+// Identical shape to receiver.wsMessage on the master side.
 type wsMessage struct {
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data,omitempty"`

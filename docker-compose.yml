@@ -6,7 +6,7 @@
 #
 # Optional profiles:
 #   --profile minio     — bring up a local S3-compatible store
-#   --profile receiver  — also run a media-receiver slave node alongside
+#   (the in-server follower handles slave duties — no separate binary needed)
 
 name: media-server-pro
 
@@ -127,39 +127,6 @@ services:
     networks: [internal, public]
 
   # ───────────────────────────────────────────────────────────────────────
-  # Optional: media-receiver slave node, enabled with `--profile receiver`.
-  # Useful for testing master+slave on a single host. For a real VPS-to-VPS
-  # deployment where the slave runs on a separate machine, prefer the
-  # dedicated `docker-compose.receiver.yml` stack — it bind-mounts existing
-  # host media directories instead of using empty named volumes.
-  # ───────────────────────────────────────────────────────────────────────
-  receiver:
-    profiles: ["receiver"]
-    image: ghcr.io/bradselph/media-server-pro-receiver:${IMAGE_TAG:-main}
-    build:
-      context: .
-      dockerfile: Dockerfile.media-receiver
-      args:
-        GO_VERSION: "${GO_VERSION:-1.26}"
-        APP_UID:    "${APP_UID:-1000}"
-        APP_GID:    "${APP_GID:-1000}"
-    restart: unless-stopped
-    logging: *default-logging
-    environment:
-      MASTER_URL:         "${MASTER_URL:?set MASTER_URL when running the receiver}"
-      RECEIVER_API_KEY:   "${RECEIVER_API_KEY:?set RECEIVER_API_KEY when running the receiver}"
-      SLAVE_ID:           "${SLAVE_ID:-receiver-1}"
-      SLAVE_NAME:         "${SLAVE_NAME:-Docker Receiver}"
-      MEDIA_DIRS:         "/data/videos,/data/music"
-      SCAN_INTERVAL:      "${SCAN_INTERVAL:-15m}"
-      HEARTBEAT_INTERVAL: "${HEARTBEAT_INTERVAL:-30s}"
-      TZ:                 "${TZ:-UTC}"
-    volumes:
-      - receiver-videos:/data/videos
-      - receiver-music:/data/music
-    networks: [public]
-
-  # ───────────────────────────────────────────────────────────────────────
   # Optional: MinIO for S3-compatible storage, enabled with `--profile minio`.
   # ───────────────────────────────────────────────────────────────────────
   minio:
@@ -213,5 +180,3 @@ volumes:
   logs:
   temp:
   minio-data:
-  receiver-videos:
-  receiver-music:
