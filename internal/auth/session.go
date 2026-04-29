@@ -133,22 +133,25 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 	if err != nil {
 		return nil, nil, err
 	}
+	// Read and update session fields under write lock to prevent data race
+	// with concurrent ValidateSession calls that write LastActivity.
+	m.sessionsMu.Lock()
 	if session.IsExpired() {
+		m.sessionsMu.Unlock()
 		m.removeExpiredSession(ctx, sessionID)
 		return nil, nil, ErrSessionExpired
 	}
-	user, err := m.GetUserByID(ctx, session.UserID)
+	userID := session.UserID
+	session.LastActivity = time.Now()
+	sessionCopy := *session
+	m.sessionsMu.Unlock()
+	user, err := m.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !user.Enabled {
 		return nil, nil, ErrAccountDisabled
 	}
-	// Update LastActivity under write lock to avoid data race with concurrent ValidateSession calls
-	m.sessionsMu.Lock()
-	session.LastActivity = time.Now()
-	sessionCopy := *session
-	m.sessionsMu.Unlock()
 	// Persist LastActivity in background using the safe copy, bounded by a
 	// semaphore to prevent goroutine accumulation under sustained load.
 	// ErrSessionNotFound is suppressed: the cleanup ticker may have deleted the
@@ -162,8 +165,7 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 			}
 		}()
 	default:
-		// Semaphore full — skip this persist to avoid goroutine buildup.
-		// LastActivity will be updated on the next request.
+		m.log.Debug("Session LastActivity persist skipped for %s (semaphore full)", sessionCopy.Username)
 	}
 	// Return the copy, not the shared pointer from the map, to prevent concurrent
 	// callers from racing on the same *Session after the lock is released.

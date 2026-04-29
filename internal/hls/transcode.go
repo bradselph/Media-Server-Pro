@@ -157,6 +157,7 @@ func (m *Module) transcodeQuality(ctx context.Context, job *models.HLSJob, quali
 		return err
 	}
 	if err := cmdWithContext.Start(); err != nil {
+		stderrPipe.Close()
 		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Failed to start ffmpeg: %v", err), Progress: 0})
 		return err
 	}

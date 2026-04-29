@@ -1,7 +1,9 @@
 package config
 
 import (
+	"net"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -36,7 +38,7 @@ func (m *Manager) applySecurityBurstOverrides() {
 	if val, ok := envGetInt("SECURITY_BURST_LIMIT"); ok {
 		m.config.Security.BurstLimit = val
 	}
-	if val, ok := envGetDuration(time.Second, "SECURITY_BURST_WINDOW_SECONDS"); ok {
+	if val, ok := envGetDuration(time.Second, "SECURITY_BURST_WINDOW_SECONDS"); ok && val > 0 {
 		m.config.Security.BurstWindow = val
 	}
 }
@@ -45,7 +47,7 @@ func (m *Manager) applySecurityBanOverrides() {
 	if val, ok := envGetInt("SECURITY_VIOLATIONS_FOR_BAN"); ok {
 		m.config.Security.ViolationsForBan = val
 	}
-	if val, ok := envGetDuration(time.Minute, "BAN_DURATION_MINUTES"); ok {
+	if val, ok := envGetDuration(time.Minute, "BAN_DURATION_MINUTES"); ok && val > 0 {
 		m.config.Security.BanDuration = val
 	}
 }
@@ -84,7 +86,7 @@ func (m *Manager) applySecurityCSPOverrides() {
 	if val, ok := envGetBool("HSTS_ENABLED"); ok {
 		m.config.Security.HSTSEnabled = val
 	}
-	if val, ok := envGetInt("HSTS_MAX_AGE"); ok {
+	if val, ok := envGetInt("HSTS_MAX_AGE"); ok && val >= 0 {
 		m.config.Security.HSTSMaxAge = val
 	}
 	if val := envGetStr("CSP_POLICY"); val != "" {
@@ -97,18 +99,32 @@ func (m *Manager) applySecurityIPOverrides() {
 		m.config.Security.EnableIPWhitelist = val
 	}
 	if val := envGetStr("SECURITY_IP_WHITELIST"); val != "" {
-		m.config.Security.IPWhitelist = splitTrimmed(val)
+		m.config.Security.IPWhitelist = filterValidIPs(splitTrimmed(val))
 	}
 	if val, ok := envGetBool("SECURITY_ENABLE_IP_BLACKLIST"); ok {
 		m.config.Security.EnableIPBlacklist = val
 	}
 	if val := envGetStr("SECURITY_IP_BLACKLIST"); val != "" {
-		m.config.Security.IPBlacklist = splitTrimmed(val)
+		m.config.Security.IPBlacklist = filterValidIPs(splitTrimmed(val))
 	}
 }
 
 func (m *Manager) applySecurityUploadOverrides() {
-	if val, ok := envGetInt("SECURITY_MAX_FILE_SIZE_MB"); ok {
+	if val, ok := envGetInt("SECURITY_MAX_FILE_SIZE_MB"); ok && val > 0 {
 		m.config.Security.MaxFileSizeMB = val
 	}
+}
+
+func filterValidIPs(entries []string) []string {
+	valid := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if strings.Contains(e, "/") {
+			if _, _, err := net.ParseCIDR(e); err == nil {
+				valid = append(valid, e)
+			}
+		} else if net.ParseIP(e) != nil {
+			valid = append(valid, e)
+		}
+	}
+	return valid
 }

@@ -1,8 +1,8 @@
 package config
 
 import (
+	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -42,32 +42,33 @@ func (m *Manager) applyAdminEnvOverrides() {
 	if val := envGetStr("ADMIN_USERNAME", "MEDIA_SERVER_ADMIN_USER"); val != "" {
 		m.config.Admin.Username = val
 	}
-	m.applyAdminPasswordOverride()
+	if err := m.applyAdminPasswordOverride(); err != nil {
+		m.log.Error("Admin password override failed: %v — admin login will not work", err)
+	}
 	if val, ok := envGetDuration(time.Hour, "ADMIN_SESSION_TIMEOUT_HOURS"); ok {
 		m.config.Admin.SessionTimeout = val
 	}
 }
 
-func (m *Manager) applyAdminPasswordOverride() {
+func (m *Manager) applyAdminPasswordOverride() error {
 	if val := envGetStr("ADMIN_PASSWORD_HASH", "MEDIA_SERVER_ADMIN_PASSWORD_HASH"); val != "" {
-		if !strings.HasPrefix(val, "$2a$") && !strings.HasPrefix(val, "$2b$") && !strings.HasPrefix(val, "$2y$") {
-			m.log.Warn("ADMIN_PASSWORD_HASH does not appear to be a valid bcrypt hash (must start with $2a$, $2b$, or $2y$) — ignoring")
+		if _, err := bcrypt.Cost([]byte(val)); err != nil {
+			m.log.Warn("ADMIN_PASSWORD_HASH is not a valid bcrypt hash: %v — ignoring", err)
 		} else {
 			m.config.Admin.PasswordHash = val
 		}
-		return
+		return nil
 	}
 	if val := envGetStr("ADMIN_PASSWORD"); val != "" {
 		m.log.Warn("ADMIN_PASSWORD detected: plaintext password remains in Go heap memory after os.Unsetenv. Use ADMIN_PASSWORD_HASH (pre-computed bcrypt) in production.")
 		hash, err := bcrypt.GenerateFromPassword([]byte(val), bcrypt.DefaultCost)
 		if err != nil {
-			m.log.Warn("Failed to hash ADMIN_PASSWORD: %v", err)
-		} else {
-			m.config.Admin.PasswordHash = string(hash)
-			m.log.Info("Admin password set from ADMIN_PASSWORD environment variable")
+			_ = os.Unsetenv("ADMIN_PASSWORD")
+			return fmt.Errorf("failed to hash ADMIN_PASSWORD: %w", err)
 		}
-		// Clear plaintext password from process environment to prevent leakage
-		// via /proc/PID/environ or process inspection tools.
+		m.config.Admin.PasswordHash = string(hash)
+		m.log.Info("Admin password set from ADMIN_PASSWORD environment variable")
 		_ = os.Unsetenv("ADMIN_PASSWORD")
 	}
+	return nil
 }

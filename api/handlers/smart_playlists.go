@@ -63,14 +63,16 @@ func parseSmartRules(raw string) (*SmartPlaylistRules, error) {
 // other media endpoints operate and avoids any dependency on the DB having a separate
 // denormalised "media" table (which does not exist; media metadata lives in media_metadata).
 func applySmartRules(all []*models.MediaItem, rules *SmartPlaylistRules) []*models.MediaItem {
-	if len(rules.Conditions) == 0 {
-		return []*models.MediaItem{}
-	}
 	matchAll := rules.Match != "any"
 	var out []*models.MediaItem
-	for _, item := range all {
-		if matchesSmartRules(item, rules.Conditions, matchAll) {
-			out = append(out, item)
+	if len(rules.Conditions) == 0 {
+		out = make([]*models.MediaItem, len(all))
+		copy(out, all)
+	} else {
+		for _, item := range all {
+			if matchesSmartRules(item, rules.Conditions, matchAll) {
+				out = append(out, item)
+			}
 		}
 	}
 	col := rules.OrderBy

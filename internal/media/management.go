@@ -136,6 +136,7 @@ func crossStoreMove(ctx context.Context, srcStore storage.Backend, srcRel string
 	defer func() { _ = r.Close() }()
 
 	if _, err := dstStore.Create(ctx, dstRel, r); err != nil {
+		_ = dstStore.Remove(ctx, dstRel)
 		return fmt.Errorf("write destination: %w", err)
 	}
 

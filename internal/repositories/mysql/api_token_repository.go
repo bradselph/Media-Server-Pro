@@ -85,9 +85,16 @@ func (r *APITokenRepositoryImpl) Delete(ctx context.Context, id, userID string) 
 
 func (r *APITokenRepositoryImpl) UpdateLastUsed(ctx context.Context, tokenHash string) error {
 	now := time.Now()
-	return r.db.WithContext(ctx).Model(&apiTokenRow{}).
+	result := r.db.WithContext(ctx).Model(&apiTokenRow{}).
 		Where("token_hash = ?", tokenHash).
-		Update("last_used_at", now).Error
+		Update("last_used_at", now)
+	if result.Error != nil {
+		return fmt.Errorf("update api token last_used_at: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrAPITokenNotFound
+	}
+	return nil
 }
 
 func rowToAPITokenRecord(row *apiTokenRow) *repositories.APITokenRecord {

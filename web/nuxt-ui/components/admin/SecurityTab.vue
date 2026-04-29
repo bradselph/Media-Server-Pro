@@ -136,11 +136,19 @@ const newComment = ref('')
 const ipLoading = ref(false)
 const ipError = ref('')
 
-// Basic IP/CIDR format validation (split into two regexes to stay under complexity limit)
-const IP_V4_RE = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/
 const IP_V6_RE = /^[0-9a-fA-F:]+(\/\d{1,3})?$/
+function isValidIPv4(s: string): boolean {
+  const parts = s.split('.')
+  if (parts.length !== 4) return false
+  return parts.every(p => { const n = Number(p); return /^\d{1,3}$/.test(p) && n >= 0 && n <= 255 })
+}
 function isValidIPCIDR(ip: string): boolean {
-  return IP_V4_RE.test(ip) || IP_V6_RE.test(ip)
+  if (IP_V6_RE.test(ip)) return true
+  const [addr, cidr, ...rest] = ip.split('/')
+  if (rest.length > 0) return false
+  if (!isValidIPv4(addr)) return false
+  if (cidr !== undefined) { const n = Number(cidr); if (!/^\d{1,2}$/.test(cidr) || n < 0 || n > 32) return false }
+  return true
 }
 
 async function loadWhitelist() {

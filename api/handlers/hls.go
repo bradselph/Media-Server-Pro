@@ -38,6 +38,12 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 		return
 	}
 
+	if item, err := h.media.GetMedia(absPath); err == nil && item != nil {
+		if !h.checkMatureAccess(c, item.IsMature) {
+			return
+		}
+	}
+
 	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), &hls.CheckOrGenerateHLSParams{MediaPath: absPath, MediaID: id})
 	if err != nil {
 		h.log.Debug("HLS check/generate failed for media %s: %v", id, err)

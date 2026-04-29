@@ -68,7 +68,10 @@ func (m *Module) verifyPasswordWithCacheRefresh(ctx context.Context, user *model
 		return nil
 	}
 	dbUser, dbErr := m.userRepo.GetByUsername(ctx, c.Username)
-	if dbErr != nil || dbUser.PasswordHash == "" {
+	if dbErr != nil {
+		return dbErr
+	}
+	if dbUser.PasswordHash == "" {
 		return err
 	}
 	if bcrypt.CompareHashAndPassword([]byte(dbUser.PasswordHash), []byte(c.Password+dbUser.Salt)) != nil {
@@ -113,11 +116,11 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		m.log.Debug("Login failed - invalid password for: %s", req.Username)
 		return nil, ErrInvalidCredentials
 	}
-	m.clearAttempts(req.IPAddress)
 	session, err := m.createSession(ctx, user, &sessionRequestContext{IPAddress: req.IPAddress, UserAgent: req.UserAgent})
 	if err != nil {
 		return nil, fmt.Errorf("session creation failed: %w", err)
 	}
+	m.clearAttempts(req.IPAddress)
 	// Copy user before mutation to avoid data race on shared pointer.
 	// Only update LastLogin/PreviousLastLogin fields on the existing cached pointer
 	// under the lock (instead of replacing the entire pointer) to avoid clobbering
@@ -165,13 +168,12 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 		return nil, ErrAdminWrongPassword
 	}
 
-	m.clearAttempts(req.IPAddress)
-
 	adminUser, err := m.GetUser(ctx, req.Username)
 	if err != nil {
 		m.log.Error("Failed to get admin user record: %v", err)
 		return nil, fmt.Errorf("failed to get admin user record: %w", err)
 	}
+	m.clearAttempts(req.IPAddress)
 
 	// Return a minimal AdminSession carrying just the username so the handler can
 	// call CreateSessionForUser. The AdminSession is NOT stored in adminSessions or

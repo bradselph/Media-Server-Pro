@@ -1,3 +1,5 @@
+import { THEMES, type ThemeValue } from '~/stores/theme'
+
 // Initialize auth state on app startup by checking the session
 export default defineNuxtPlugin(async () => {
     const authStore = useAuthStore()
@@ -6,6 +8,9 @@ export default defineNuxtPlugin(async () => {
     // new devices/browsers where localStorage doesn't already have a value.
     if (import.meta.client && authStore.user?.preferences?.theme) {
         const themeStore = useThemeStore()
-        themeStore.setTheme(authStore.user.preferences.theme as import('~/stores/theme').ThemeValue)
+        const serverTheme = authStore.user.preferences.theme
+        if (THEMES.some(t => t.value === serverTheme)) {
+            themeStore.setTheme(serverTheme as ThemeValue)
+        }
     }
 })

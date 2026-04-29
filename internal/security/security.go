@@ -636,7 +636,9 @@ func (m *Module) loadIPLists() {
 	}
 
 	// Load whitelist entries
-	if entries, err := m.repo.GetEntries(ctx, "whitelist"); err == nil {
+	if entries, err := m.repo.GetEntries(ctx, "whitelist"); err != nil {
+		m.log.Warn("Failed to load whitelist entries: %v", err)
+	} else {
 		for _, rec := range entries {
 			entry := IPEntry{
 				Value:     rec.Value,
@@ -660,7 +662,9 @@ func (m *Module) loadIPLists() {
 	}
 
 	// Load blacklist entries
-	if entries, err := m.repo.GetEntries(ctx, "blacklist"); err == nil {
+	if entries, err := m.repo.GetEntries(ctx, "blacklist"); err != nil {
+		m.log.Warn("Failed to load blacklist entries: %v", err)
+	} else {
 		for _, rec := range entries {
 			entry := IPEntry{
 				Value:     rec.Value,
@@ -687,8 +691,9 @@ func (m *Module) loadIPLists() {
 	if banEntries, err := m.repo.GetEntries(ctx, "ban"); err == nil {
 		for _, rec := range banEntries {
 			if rec.ExpiresAt != nil && rec.ExpiresAt.Before(now) {
-				// Expired — clean up silently
-				_ = m.repo.RemoveEntry(ctx, "ban", rec.Value)
+				if err := m.repo.RemoveEntry(ctx, "ban", rec.Value); err != nil {
+					m.log.Warn("Failed to remove expired ban for %s: %v", rec.Value, err)
+				}
 				continue
 			}
 			var remaining time.Duration
@@ -723,7 +728,8 @@ func (m *Module) parseIPEntry(entry *IPEntry) error {
 func (m *Module) saveIPLists() error {
 	ctx := context.Background()
 
-	// Save whitelist
+	// Save whitelist — hold RLock through both config and entries persist to prevent
+	// a concurrent writer from inserting entries that get overwritten by our snapshot.
 	m.whitelist.mu.RLock()
 	if err := m.repo.SaveListConfig(ctx, "whitelist", m.whitelist.Name, m.whitelist.Enabled); err != nil {
 		m.whitelist.mu.RUnlock()
@@ -736,12 +742,13 @@ func (m *Module) saveIPLists() error {
 			AddedBy: e.AddedBy, ExpiresAt: e.ExpiresAt,
 		}
 	}
-	m.whitelist.mu.RUnlock()
 	if err := m.repo.SaveEntries(ctx, "whitelist", entries); err != nil {
+		m.whitelist.mu.RUnlock()
 		return fmt.Errorf("failed to save whitelist entries: %w", err)
 	}
+	m.whitelist.mu.RUnlock()
 
-	// Save blacklist (config and entries in separate calls; single transaction would reduce TOCTOU risk).
+	// Save blacklist — same lock-through-persist pattern.
 	m.blacklist.mu.RLock()
 	if err := m.repo.SaveListConfig(ctx, "blacklist", m.blacklist.Name, m.blacklist.Enabled); err != nil {
 		m.blacklist.mu.RUnlock()
@@ -754,10 +761,11 @@ func (m *Module) saveIPLists() error {
 			AddedBy: e.AddedBy, ExpiresAt: e.ExpiresAt,
 		}
 	}
-	m.blacklist.mu.RUnlock()
 	if err := m.repo.SaveEntries(ctx, "blacklist", entries); err != nil {
+		m.blacklist.mu.RUnlock()
 		return fmt.Errorf("failed to save blacklist entries: %w", err)
 	}
+	m.blacklist.mu.RUnlock()
 
 	return nil
 }
@@ -870,7 +878,7 @@ func (r *RateLimiter) CheckRequest(ip string) (allowed bool, remaining int, rese
 
 	// Check rate limit
 	remaining = r.config.RequestsPerMinute - len(client.Requests)
-	resetAt = now.Add(1 * time.Minute)
+	resetAt = now.Add(rateLimitWindow)
 
 	if len(client.Requests) >= r.config.RequestsPerMinute {
 		r.recordViolation(client, ip, now)
