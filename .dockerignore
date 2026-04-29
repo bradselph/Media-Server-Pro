@@ -22,10 +22,8 @@ Thumbs.db
 .env.generated
 .env.docker
 .deploy.env
-.slave.env
 config.json
 *.bak
-.media-receiver.pid
 
 # Frontend build artifacts (regenerated inside the image)
 web/nuxt-ui/node_modules
@@ -40,8 +38,6 @@ node_modules
 # Go build outputs
 /server
 /server.exe
-/media-receiver
-/media-receiver.exe
 *.exe
 /vendor
 dist

@@ -1,34 +1,25 @@
 #!/usr/bin/env bash
-# deploy.sh — Deploy Media Server Pro (master server or slave node).
+# deploy.sh — Deploy Media Server Pro to a VPS.
 #
-# MASTER SERVER (default):
+# Usage:
 #   ./deploy.sh                         # pull + build + restart on VPS (branch from .env or main)
 #   ./deploy.sh --branch main           # deploy from the stable main branch
 #   ./deploy.sh --branch development    # deploy from the development branch
 #   ./deploy.sh --dev                   # shorthand for --branch development
 #   ./deploy.sh --setup                 # first-time VPS provisioning
-#   ./deploy.sh --setup-receiver        # configure master receiver for slave nodes
+#   ./deploy.sh --setup-receiver        # configure receiver API keys for federated peers
 #   ./deploy.sh --fix-env               # patch .env on VPS (incl. optional: receiver, Hugging Face)
 #   ./deploy.sh --rollback              # restore server.bak on VPS
 #   ./deploy.sh --dry-run               # preview commands without executing
 #
-# SLAVE NODE (--slave):
-#   ./deploy.sh --slave --local         # build and run slave on this machine
-#   ./deploy.sh --slave --local --stop  # stop the local slave process
-#   ./deploy.sh --slave --setup         # first-time setup on remote slave device
-#   ./deploy.sh --slave                 # update slave binary on remote device
-#   ./deploy.sh --slave --fix-env       # re-write .env on remote slave
-#   ./deploy.sh --slave --rollback      # restore backup on remote slave
-#   ./deploy.sh --slave --dry-run       # preview without executing
+# Federated peers (multi-server libraries) are configured at runtime through
+# the admin UI or POST /api/admin/peer/connect — no separate slave binary or
+# deploy step is needed.
 #
 # INTERACTIVE SETUP:
 #   ./setup.sh                          # guided first-time setup wizard
 #
-# Configuration (set in shell or config files):
-#   .deploy.env    VPS connection + GitHub credentials
-#   .slave.env     Slave node settings (overrides .deploy.env)
-#
-# Master variables:
+# Configuration (set in shell or .deploy.env):
 #   VPS_HOST       SSH host          (required)
 #   VPS_USER       SSH user          (default: root)
 #   VPS_PORT       SSH port          (default: 22)
@@ -37,20 +28,6 @@
 #   SERVICE        systemd service   (default: media-server)
 #   GITHUB_TOKEN   GitHub PAT        (required for private repos)
 #   REPO_URL       Repository URL    (default: github.com/bradselph/Media-Server-Pro.git)
-#
-# Slave variables:
-#   MASTER_URL         Master server URL       (required)
-#   RECEIVER_API_KEY   API key from master      (required)
-#   MEDIA_DIRS         Comma-separated dirs     (required for --setup/--local)
-#   SLAVE_HOST         SSH host of slave device (required for remote)
-#   SLAVE_USER         SSH user      (default: pi)
-#   SLAVE_PORT         SSH port      (default: 22)
-#   SLAVE_DIR          Install dir   (default: /opt/media-receiver)
-#   SLAVE_SERVICE      systemd unit  (default: media-receiver)
-#   SLAVE_ID           Unique ID     (default: hostname)
-#   SLAVE_NAME         Display name  (default: SLAVE_ID)
-#   SCAN_INTERVAL      Rescan rate   (default: 5m)
-#   HEARTBEAT_INTERVAL Ping rate     (default: 15s)
 
 set -euo pipefail
 
@@ -66,7 +43,6 @@ die()     { echo -e "${RED}[deploy] ERROR:${RESET} $*" >&2; exit 1; }
 # ── Load config files ────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
-[[ -f "$SCRIPT_DIR/.slave.env" ]]  && source "$SCRIPT_DIR/.slave.env"
 
 # ── Helper: Extract Go version from go.mod ──────────────────────────────────
 get_go_version() {
@@ -113,29 +89,12 @@ MASTER_URL="${MASTER_URL:-}"
 GO_VERSION="$(get_go_version)"
 NODE_MAJOR="$(get_node_version)"
 
-# ── Slave defaults ───────────────────────────────────────────────────────────
-SLAVE_HOST="${SLAVE_HOST:-}"
-SLAVE_USER="${SLAVE_USER:-pi}"
-SLAVE_PORT="${SLAVE_PORT:-22}"
-SLAVE_DIR="${SLAVE_DIR:-/opt/media-receiver}"
-SLAVE_SERVICE="${SLAVE_SERVICE:-media-receiver}"
-SLAVE_ARCH="${SLAVE_ARCH:-}"
-RECEIVER_API_KEY="${RECEIVER_API_KEY:-}"
-MEDIA_DIRS="${MEDIA_DIRS:-}"
-SLAVE_ID="${SLAVE_ID:-}"
-SLAVE_NAME="${SLAVE_NAME:-}"
-SCAN_INTERVAL="${SCAN_INTERVAL:-5m}"
-HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-15s}"
-
 # ── Flags ────────────────────────────────────────────────────────────────────
 DRY_RUN=false
 FIX_ENV=false
 ROLLBACK=false
 SETUP=false
 SETUP_RECEIVER=false
-SLAVE_MODE=false
-SLAVE_LOCAL=false
-SLAVE_STOP=false
 
 # Default branch: read from .env UPDATER_BRANCH, fall back to "main"
 # Can be overridden by --branch or --dev flags (parsed after this block).
@@ -153,17 +112,10 @@ while [[ $# -gt 0 ]]; do
     --rollback)        ROLLBACK=true         ; shift ;;
     --setup)           SETUP=true            ; shift ;;
     --setup-receiver)  SETUP_RECEIVER=true   ; shift ;;
-    --slave)           SLAVE_MODE=true       ; shift ;;
-    --local)           SLAVE_LOCAL=true      ; shift ;;
-    --stop)            SLAVE_STOP=true       ; shift ;;
     --branch)          BRANCH="$2"           ; shift 2 ;;
     --dev)             BRANCH="development"  ; shift ;;
     --help|-h)
-      sed -n '/^# MASTER/,/^[^#]/p' "$0" | head -n -1
-      echo ""
-      sed -n '/^# SLAVE/,/^[^#]/p' "$0" | head -n -1
-      echo ""
-      sed -n '/^# INTERACTIVE/,/^[^#]/p' "$0" | head -n -1
+      sed -n '/^# Usage/,/^[^#]/p' "$0" | head -n -1
       exit 0
       ;;
     *) die "Unknown option: $1 (use --help)" ;;
@@ -171,19 +123,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Validation ───────────────────────────────────────────────────────────────
-if $SLAVE_MODE; then
-  if ! $SLAVE_LOCAL && ! $SLAVE_STOP && ! $SETUP; then
-    [[ -z "$SLAVE_HOST" ]] && die "SLAVE_HOST is not set. Export it or add to .slave.env"
-  fi
-else
-  [[ -z "$VPS_HOST" ]]     && die "VPS_HOST is not set. Export it or add to .deploy.env"
-  [[ -z "$GITHUB_TOKEN" ]] && die "GITHUB_TOKEN is not set. Export it or add to .deploy.env"
-fi
+[[ -z "$VPS_HOST" ]]     && die "VPS_HOST is not set. Export it or add to .deploy.env"
+[[ -z "$GITHUB_TOKEN" ]] && die "GITHUB_TOKEN is not set. Export it or add to .deploy.env"
 
-# ── Interactive branch selection (master mode, non-slave, no flag given) ──────
+# ── Interactive branch selection (no flag given) ──────────────────────────────
 # If BRANCH wasn't set by a --branch/--dev flag, prompt the user to choose.
 # Falls back to the default silently when stdin is not a terminal (CI/pipe).
-if ! $SLAVE_MODE && [[ "$BRANCH" == "$_BRANCH_DEFAULT" ]] && [[ -t 0 ]]; then
+if [[ "$BRANCH" == "$_BRANCH_DEFAULT" ]] && [[ -t 0 ]]; then
   echo -e "${CYAN}[deploy]${RESET} Branch to deploy from [${BOLD}${_BRANCH_DEFAULT}${RESET}]:"
   echo "  1) main         — stable releases"
   echo "  2) development  — latest features"
@@ -303,347 +249,6 @@ save_to_deploy_env() {
 #   SLAVE MODE
 #
 # ══════════════════════════════════════════════════════════════════════════════
-if $SLAVE_MODE; then
-
-  # ── Slave local mode ──────────────────────────────────────────────────────
-  if $SLAVE_LOCAL; then
-    PID_FILE="${SCRIPT_DIR}/.media-receiver.pid"
-
-    # --stop: kill running instance
-    if $SLAVE_STOP; then
-      if [[ -f "$PID_FILE" ]]; then
-        PID=$(cat "$PID_FILE")
-        if kill -0 "$PID" 2>/dev/null; then
-          info "Stopping media-receiver (PID $PID)..."
-          kill "$PID"
-          rm -f "$PID_FILE"
-          success "Stopped."
-        else
-          warn "Process $PID not running. Removing stale PID file."
-          rm -f "$PID_FILE"
-        fi
-      else
-        warn "No PID file found — slave may not be running."
-      fi
-      exit 0
-    fi
-
-    # Validate required vars for local mode
-    [[ -z "$MASTER_URL" ]]       && die "MASTER_URL is required. Set it in .slave.env or export it."
-    [[ -z "$RECEIVER_API_KEY" ]] && die "RECEIVER_API_KEY is required. Set it in .slave.env or export it."
-    [[ -z "$MEDIA_DIRS" ]]       && die "MEDIA_DIRS is required. Set it in .slave.env or export it."
-
-    LOCAL_ID="${SLAVE_ID:-$(hostname -s 2>/dev/null || hostname)}"
-    LOCAL_NAME="${SLAVE_NAME:-$LOCAL_ID}"
-
-    echo -e "\n${BOLD}=== Media Server Pro — Slave (Local) ===${RESET}\n"
-    info "Master:     $MASTER_URL"
-    info "Slave ID:   $LOCAL_ID"
-    info "Media dirs: $MEDIA_DIRS"
-    echo ""
-
-    # Build native binary
-    info "Building media-receiver..."
-    EXT=""
-    [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] && EXT=".exe"
-    OUT="${SCRIPT_DIR}/media-receiver${EXT}"
-
-    if ! $DRY_RUN; then
-      go build -o "$OUT" ./cmd/media-receiver
-      success "Built → $OUT"
-    else
-      info "[dry-run] go build -o $OUT ./cmd/media-receiver"
-      exit 0
-    fi
-
-    # Stop previous instance
-    if [[ -f "$PID_FILE" ]]; then
-      OLD_PID=$(cat "$PID_FILE")
-      if kill -0 "$OLD_PID" 2>/dev/null; then
-        info "Stopping previous instance (PID $OLD_PID)..."
-        kill "$OLD_PID" 2>/dev/null || true
-        sleep 1
-      fi
-      rm -f "$PID_FILE"
-    fi
-
-    # Start in background
-    MASTER_URL="$MASTER_URL" \
-    RECEIVER_API_KEY="$RECEIVER_API_KEY" \
-    SLAVE_ID="$LOCAL_ID" \
-    SLAVE_NAME="$LOCAL_NAME" \
-    MEDIA_DIRS="$MEDIA_DIRS" \
-    SCAN_INTERVAL="$SCAN_INTERVAL" \
-    HEARTBEAT_INTERVAL="$HEARTBEAT_INTERVAL" \
-      "$OUT" &
-
-    echo $! > "$PID_FILE"
-    success "Started media-receiver (PID $(cat "$PID_FILE"))"
-    info "To stop: ./deploy.sh --slave --local --stop"
-    echo ""
-    echo "Press Ctrl+C to stop."
-    echo ""
-    wait
-    exit 0
-  fi
-
-  # ── Remote slave mode ─────────────────────────────────────────────────────
-  echo -e "\n${BOLD}=== Media Server Pro — Slave Deploy ===${RESET}\n"
-  info "Slave      : $SLAVE_USER@$SLAVE_HOST:$SLAVE_PORT"
-  info "Install dir: $SLAVE_DIR"
-  info "Service    : $SLAVE_SERVICE"
-  $DRY_RUN && warn "DRY RUN — no commands will execute"
-  echo ""
-
-  # SSH auth for slave device
-  if ! $DRY_RUN; then
-    setup_ssh_auth "$SLAVE_HOST" "$SLAVE_USER" "$SLAVE_PORT" "$KEY_FILE"
-    REMOTE_HOST="$SLAVE_HOST"
-    REMOTE_USER="$SLAVE_USER"
-  else
-    # Dry-run: set up minimal SSH_OPTS for logging
-    KEY_FILE_SSH="$KEY_FILE"
-    SSH_OPTS=(-i "$KEY_FILE_SSH" -p "$SLAVE_PORT")
-    SCP_OPTS=(-i "$KEY_FILE_SSH" -P "$SLAVE_PORT")
-    REMOTE_HOST="$SLAVE_HOST"
-    REMOTE_USER="$SLAVE_USER"
-  fi
-
-  # ── Detect slave architecture ─────────────────────────────────────────────
-  detect_arch() {
-    if [[ -n "$SLAVE_ARCH" ]]; then echo "$SLAVE_ARCH"; return; fi
-    local raw
-    raw=$(remote "uname -m" 2>/dev/null || echo "x86_64")
-    case "$raw" in
-      x86_64|amd64)  echo "amd64"  ;;
-      aarch64|arm64) echo "arm64"  ;;
-      armv7l|armv6l) echo "arm"    ;;
-      *)             echo "amd64"  ;;
-    esac
-  }
-
-  # ── Cross-compile slave binary ────────────────────────────────────────────
-  build_slave_binary() {
-    local arch="$1"
-    goarm=""
-    goarch="$arch"
-    if [[ "$arch" == "arm" ]]; then
-      goarch="arm"; goarm="6"
-    fi
-    info "Cross-compiling media-receiver for linux/$goarch${goarm:+ (GOARM=$goarm)}..."
-    local out="$SCRIPT_DIR/media-receiver-linux-${goarch}"
-    if $DRY_RUN; then
-      info "[dry-run] CGO_ENABLED=0 GOOS=linux GOARCH=$goarch${goarm:+ GOARM=$goarm} go build -o $out ./cmd/media-receiver"
-    else
-      CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" ${goarm:+GOARM="$goarm"} \
-        go build -o "$out" ./cmd/media-receiver
-      success "Built → $out"
-    fi
-    echo "$out"
-  }
-
-  # ── Slave rollback ────────────────────────────────────────────────────────
-  if $ROLLBACK; then
-    info "Rolling back to media-receiver.bak..."
-    remote "
-      if [ ! -f '$SLAVE_DIR/media-receiver.bak' ]; then
-        echo 'ERROR: no media-receiver.bak found'; exit 1
-      fi
-      sudo systemctl stop '$SLAVE_SERVICE' 2>/dev/null || true
-      sudo mv '$SLAVE_DIR/media-receiver.bak' '$SLAVE_DIR/media-receiver'
-      sudo chmod +x '$SLAVE_DIR/media-receiver'
-      sudo systemctl start '$SLAVE_SERVICE'
-      echo 'Rollback complete'
-    "
-    exit 0
-  fi
-
-  # ── Slave first-time setup ───────────────────────────────────────────────
-  if $SETUP; then
-    [[ -z "$MASTER_URL" ]]       && die "MASTER_URL is required for --setup"
-    [[ -z "$RECEIVER_API_KEY" ]] && die "RECEIVER_API_KEY is required for --setup"
-    [[ -z "$MEDIA_DIRS" ]]       && die "MEDIA_DIRS is required for --setup"
-
-    info "Running first-time slave setup on $SLAVE_HOST..."
-
-    # Detect arch and build
-    ARCH=$(detect_arch)
-    info "Detected arch: $ARCH"
-    BINARY=$(build_slave_binary "$ARCH")
-
-    run_or_dry remote "
-      set -euo pipefail
-      # Create system user
-      if ! id mediareceiver &>/dev/null 2>&1; then
-        echo '[setup] Creating mediareceiver system user...'
-        sudo useradd -r -s /usr/sbin/nologin -d '$SLAVE_DIR' -m mediareceiver 2>/dev/null || \
-        sudo adduser --system --no-create-home --shell /usr/sbin/nologin mediareceiver 2>/dev/null || true
-      else
-        echo '[setup] mediareceiver user already exists'
-      fi
-      echo '[setup] Creating directories...'
-      sudo mkdir -p '$SLAVE_DIR'
-      sudo chown mediareceiver:mediareceiver '$SLAVE_DIR' 2>/dev/null || \
-      sudo chown mediareceiver '$SLAVE_DIR' 2>/dev/null || true
-    "
-
-    # Copy binary
-    info "Copying binary to slave..."
-    if ! $DRY_RUN; then
-      scp "${SCP_OPTS[@]}" "$BINARY" "$SLAVE_USER@$SLAVE_HOST:/tmp/media-receiver"
-      remote "
-        sudo mv /tmp/media-receiver '$SLAVE_DIR/media-receiver'
-        sudo chmod +x '$SLAVE_DIR/media-receiver'
-        sudo chown mediareceiver '$SLAVE_DIR/media-receiver' 2>/dev/null || true
-        echo '[setup] Binary installed'
-      "
-    else
-      info "[dry-run] scp $BINARY $SLAVE_USER@$SLAVE_HOST:$SLAVE_DIR/media-receiver"
-    fi
-
-    # Write .env on slave
-    info "Writing .env on slave..."
-    RESOLVED_ID="${SLAVE_ID:-}"
-    RESOLVED_NAME="${SLAVE_NAME:-}"
-    if [[ -z "$RESOLVED_ID" ]] && ! $DRY_RUN; then
-      RESOLVED_ID=$(remote "hostname -s 2>/dev/null || hostname" | tr -d '[:space:]')
-    fi
-    [[ -z "$RESOLVED_ID" ]] && RESOLVED_ID="slave-$(date +%s)"
-    [[ -z "$RESOLVED_NAME" ]] && RESOLVED_NAME="$RESOLVED_ID"
-
-    ENV_CONTENT="# Media Receiver Slave — configuration
-# Generated by deploy.sh on $(date)
-
-MASTER_URL=$MASTER_URL
-RECEIVER_API_KEY=$RECEIVER_API_KEY
-SLAVE_ID=$RESOLVED_ID
-SLAVE_NAME=$RESOLVED_NAME
-MEDIA_DIRS=$MEDIA_DIRS
-SCAN_INTERVAL=$SCAN_INTERVAL
-HEARTBEAT_INTERVAL=$HEARTBEAT_INTERVAL
-"
-
-    if ! $DRY_RUN; then
-      echo "$ENV_CONTENT" | remote "sudo tee '$SLAVE_DIR/.env' > /dev/null && sudo chmod 600 '$SLAVE_DIR/.env'"
-      success ".env written"
-    else
-      info "[dry-run] Would write .env to $SLAVE_DIR/.env"
-    fi
-
-    # Install systemd service
-    info "Installing systemd service..."
-    if [[ -f "$SCRIPT_DIR/systemd/media-receiver.service" ]]; then
-      SERVICE_CONTENT=$(sed "s|__SLAVE_DIR__|$SLAVE_DIR|g" "$SCRIPT_DIR/systemd/media-receiver.service")
-      if ! $DRY_RUN; then
-        echo "$SERVICE_CONTENT" | remote "sudo tee '/etc/systemd/system/$SLAVE_SERVICE.service' > /dev/null"
-        remote "
-          sudo systemctl daemon-reload
-          sudo systemctl enable '$SLAVE_SERVICE'
-          sudo systemctl start '$SLAVE_SERVICE'
-          echo '[setup] Service enabled and started'
-        "
-      else
-        info "[dry-run] Would install systemd unit at /etc/systemd/system/$SLAVE_SERVICE.service"
-      fi
-    else
-      warn "systemd/media-receiver.service not found — skipping service install"
-    fi
-
-    # Clean up local cross-compiled binary
-    [[ -f "$BINARY" ]] && rm -f "$BINARY"
-
-    echo ""
-    success "Slave setup complete."
-    if ! $DRY_RUN; then
-      info "Status: $(remote "systemctl is-active '$SLAVE_SERVICE' 2>/dev/null || echo unknown")"
-      info "Logs:   ssh -p $SLAVE_PORT $SLAVE_USER@$SLAVE_HOST 'journalctl -u $SLAVE_SERVICE -f'"
-    fi
-    echo ""
-    exit 0
-  fi
-
-  # ── Slave fix-env ─────────────────────────────────────────────────────────
-  if $FIX_ENV; then
-    [[ -z "$MASTER_URL" ]]       && die "MASTER_URL is required for --fix-env"
-    [[ -z "$RECEIVER_API_KEY" ]] && die "RECEIVER_API_KEY is required for --fix-env"
-
-    info "Updating .env on slave..."
-    run_or_dry remote "
-      ENV='$SLAVE_DIR/.env'
-      patch_or_add() {
-        local key=\$1 val=\$2
-        if grep -q \"^\$key=\" \"\$ENV\" 2>/dev/null; then
-          sudo sed -i \"s|^\$key=.*|\$key=\$val|\" \"\$ENV\"
-        else
-          echo \"\$key=\$val\" | sudo tee -a \"\$ENV\" > /dev/null
-        fi
-        echo \"  \$key=\$val\"
-      }
-      patch_or_add MASTER_URL '$MASTER_URL'
-      patch_or_add RECEIVER_API_KEY '$RECEIVER_API_KEY'
-      ${MEDIA_DIRS:+patch_or_add MEDIA_DIRS "$MEDIA_DIRS"}
-      ${SLAVE_ID:+patch_or_add SLAVE_ID "$SLAVE_ID"}
-      ${SLAVE_NAME:+patch_or_add SLAVE_NAME "$SLAVE_NAME"}
-      patch_or_add SCAN_INTERVAL '$SCAN_INTERVAL'
-      patch_or_add HEARTBEAT_INTERVAL '$HEARTBEAT_INTERVAL'
-      sudo systemctl restart '$SLAVE_SERVICE' 2>/dev/null || true
-      echo 'Done — service restarted'
-    "
-    echo ""
-    exit 0
-  fi
-
-  # ── Slave normal deploy (update binary) ──────────────────────────────────
-  info "Detecting slave architecture..."
-  ARCH=$(detect_arch)
-  info "Detected arch: $ARCH"
-
-  BINARY=$(build_slave_binary "$ARCH")
-
-  info "Stopping service on slave..."
-  run_or_dry remote "sudo systemctl stop '$SLAVE_SERVICE' 2>/dev/null || true"
-
-  info "Backing up old binary..."
-  run_or_dry remote "[ -f '$SLAVE_DIR/media-receiver' ] && sudo cp '$SLAVE_DIR/media-receiver' '$SLAVE_DIR/media-receiver.bak' && echo 'Backed up → media-receiver.bak' || true"
-
-  info "Copying new binary..."
-  if ! $DRY_RUN; then
-    scp "${SCP_OPTS[@]}" "$BINARY" "$SLAVE_USER@$SLAVE_HOST:/tmp/media-receiver"
-    remote "
-      sudo mv /tmp/media-receiver '$SLAVE_DIR/media-receiver'
-      sudo chmod +x '$SLAVE_DIR/media-receiver'
-      sudo chown mediareceiver '$SLAVE_DIR/media-receiver' 2>/dev/null || true
-      echo 'Binary updated'
-    "
-  else
-    info "[dry-run] scp $BINARY $SLAVE_USER@$SLAVE_HOST:$SLAVE_DIR/media-receiver"
-  fi
-
-  info "Starting service..."
-  run_or_dry remote "
-    sudo systemctl start '$SLAVE_SERVICE'
-    sleep 2
-    STATUS=\$(systemctl is-active '$SLAVE_SERVICE' 2>/dev/null || echo unknown)
-    echo \"Service status: \$STATUS\"
-    if [ \"\$STATUS\" != 'active' ]; then
-      echo '--- Last 20 log lines ---'
-      journalctl -u '$SLAVE_SERVICE' --no-pager -n 20 2>/dev/null || true
-      exit 1
-    fi
-  "
-
-  # Clean up local cross-compiled binary
-  [[ -f "$BINARY" ]] && rm -f "$BINARY"
-
-  echo ""
-  success "Slave deploy complete."
-  if ! $DRY_RUN; then
-    info "Status: $(remote "systemctl is-active '$SLAVE_SERVICE' 2>/dev/null || echo unknown")"
-    info "Logs:   ssh -p $SLAVE_PORT $SLAVE_USER@$SLAVE_HOST 'journalctl -u $SLAVE_SERVICE -f'"
-  fi
-  echo ""
-  exit 0
-fi
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -981,7 +586,7 @@ if $SETUP_RECEIVER; then
       info "  MASTER_URL=$MASTER_URL"
       info "  RECEIVER_API_KEY=$RECV_KEY"
       echo ""
-      success "Start slave on this machine: ./deploy.sh --slave --local"
+      success "Hand the API key to a peer's admin → Sources → Pair from peer (or POST /api/admin/peer/connect)."
     fi
   fi
   exit 0
@@ -1138,7 +743,7 @@ run_or_dry remote "
   # Backup old binary
   [ -f server ] && cp server server.bak && echo '[deploy] Backed up server -> server.bak'
 
-  # Build Go binary (server only — slave binary is built by --slave deploy)
+  # Build Go binary (server)
   echo '[deploy] Building Go binary...'
   VERSION=\$(cat VERSION 2>/dev/null || echo 0.0.0)
   go build \\

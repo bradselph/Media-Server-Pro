@@ -209,25 +209,12 @@ jobs:
 
           go build -ldflags "${LDFLAGS}" -o "media-server-pro-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}" ./cmd/server
 
-      - name: Build media-receiver binary
-        env:
-          CGO_ENABLED: '0'
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          VERSION="${{ needs.bump-release.outputs.new_version }}"
-          BUILD_DATE=$(date -u +%Y-%m-%d)
-          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}"
-
-          go build -ldflags "${LDFLAGS}" -o "media-receiver-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}" ./cmd/media-receiver
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
             media-server-pro-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
-            media-receiver-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
           retention-days: 1
 
   # ─── Create GitHub Release with all binaries ────────────────────────────────

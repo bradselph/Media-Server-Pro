@@ -386,11 +386,10 @@ type ReceiverConfig struct {
 	HeartbeatDBDebounce time.Duration `json:"heartbeat_db_debounce"` // min interval between heartbeat DB writes; default 60s
 }
 
-// FollowerConfig configures this server to also act as a slave node and push
-// its local catalog to a remote master (another Media Server Pro instance).
-// Lets two full servers sync media without running the standalone media-receiver
-// binary — one server's library appears under the other's "Slave Media" admin
-// panel and is browsable from the unified library.
+// FollowerConfig configures this server to push its local catalog to a peer
+// (another Media Server Pro instance). The peer's "Slave Media" admin panel
+// then shows this server's library and the unified /api/media listing
+// includes its items as if they were local.
 type FollowerConfig struct {
 	Enabled bool `json:"enabled"`
 	// MasterURL is the remote master's base URL (https://other-vps.example.com).

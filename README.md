@@ -2,7 +2,7 @@
 
 A self-hosted media streaming server. Go backend, Nuxt frontend, MariaDB datastore. Ships as a single binary for native installs and as a published OCI image for Docker. Designed to run on a VPS in front of Caddy or nginx and stream a personal video/audio library to any device.
 
-The bundled `media-receiver` slave node lets you split the library across multiple hosts: each slave scans local media and pushes its catalog to a master, which proxies the actual byte stream to users on demand. No public IP or inbound port is needed on the slave.
+Two Media Server Pro instances can federate: enter a peer's URL + receiver API key in the admin UI and the two libraries appear as one to users, with the master proxying byte streams from the slave on demand.
 
 ---
 
@@ -28,10 +28,9 @@ The bundled `media-receiver` slave node lets you split the library across multip
 - Hot-reloadable rate limits, CORS origins, security headers, trusted-proxy CIDRs.
 - Built-in backup/restore with pre-upgrade DB snapshots taken by `update.sh`.
 
-**Distributed deployment**
-- `media-receiver` slave nodes push catalog over WebSocket and serve byte streams via outbound HTTP push.
-- In-server **follower** mode lets a full Media Server Pro instance act as a slave to another instance — no separate binary required.
-- Receiver pairing configurable from the admin UI (`Sources → This Server → Another Master`) with a Test Connection button.
+**Distributed deployment (federated peers)**
+- A full Media Server Pro instance can act as a slave to another by entering the peer's URL + receiver API key in the admin UI; catalog flows over WebSocket and byte streams via outbound HTTP push.
+- Cross-server pairing helper (`Sources → Pair from peer`) configures the remote side from this admin so you don't have to log into both servers.
 - Duplicate detection across slaves with admin-resolved conflict workflow.
 
 **Optional integrations**
@@ -105,42 +104,16 @@ docker compose pull && docker compose up -d   # Docker: rolling pull
 
 ---
 
-## Master / slave deployment
+## Federated peers
 
-Three deployment shapes are supported for splitting the library across hosts. The master is always a full Media Server Pro instance with `RECEIVER_ENABLED=true`; the slave is one of:
+Two full Media Server Pro instances can pair so each one's media appears on both servers as if local. Setup is entirely runtime — no separate slave binary, no extra deploy:
 
-| Mode | Slave runs | Best for |
-|---|---|---|
-| Standalone bare-metal | `media-receiver` binary + systemd | Lightweight slave on a NAS / RPi / minimal VPS |
-| Standalone Docker | `docker-compose.receiver.yml` | Slave VPS that already runs Docker |
-| In-server follower | Full Media Server Pro with `FOLLOWER_*` set | Two full servers paired for library sync |
+1. On the **source** server (the one with the media): `admin → Sources → Receiver` — copy any configured API key.
+2. On the **receiving** server: `admin → Sources → Pair from peer` — paste the source's URL + API key.
 
-**Standalone slave (bare-metal)** — from a developer workstation:
+The receiving server's helper hits `POST /api/admin/peer/connect`, which calls back to the source's `/api/receiver/pair` and configures the source's follower to push its catalog to the receiver. From then on, slave items appear seamlessly in the unified `/api/media` listing, with thumbnails proxied on demand and byte streams pushed over WebSocket-controlled HTTP.
 
-```bash
-./deploy.sh --setup-receiver       # configure master to accept slaves; saves .deploy.env
-./deploy.sh --slave --setup        # cross-compile, scp binary, install systemd unit
-./deploy.sh --slave                # subsequent updates
-```
-
-**Standalone slave (Docker)** — on the slave VPS:
-
-```bash
-git clone https://github.com/bradselph/Media-Server-Pro
-cd Media-Server-Pro
-cp .env.docker.example .env.docker.receiver
-# set MASTER_URL, RECEIVER_API_KEY, VIDEOS_HOST_PATH, MUSIC_HOST_PATH
-docker compose -f docker-compose.receiver.yml --env-file .env.docker.receiver up -d
-```
-
-The slave makes only outbound connections to the master; no inbound port needs opening.
-
-**In-server follower** — pair from the master's admin UI:
-
-1. On the master: copy a Receiver API key from `admin → Sources → Receiver`.
-2. On the second server: open `admin → Sources` → fill the *This Server → Another Master* card → Test Connection → Save.
-
-That's it. The follower registers as a slave over the same `/ws/receiver` protocol and pushes its local catalog. Settings can also be pre-seeded with `FOLLOWER_*` env vars (see `.env.docker.example`).
+Either side can also pre-seed pairing through env (`FOLLOWER_MASTER_URL`, `FOLLOWER_API_KEY`, `RECEIVER_API_KEYS`) — see `.env.docker.example`. The source makes only outbound connections; no inbound port needs opening on it.
 
 ---
 
@@ -169,8 +142,8 @@ For Docker, env vars are set via `.env.docker` (forwarded to the container by `e
 | `AUTH_ALLOW_REGISTRATION` | `false` | Public self-registration |
 | `AUTH_ALLOW_GUESTS` | `false` | Anonymous browsing without login |
 | `AUTH_SECURE_COOKIES` | `false` | Set `true` once HTTPS is live |
-| `RECEIVER_ENABLED` / `RECEIVER_API_KEYS` | off | Accept slave nodes |
-| `FOLLOWER_ENABLED` / `FOLLOWER_MASTER_URL` / `FOLLOWER_API_KEY` | off | This server pushes to another master |
+| `RECEIVER_ENABLED` / `RECEIVER_API_KEYS` | off | Accept federated peers (slave catalog ingest) |
+| `FOLLOWER_MASTER_URL` / `FOLLOWER_API_KEY` | off | This server pushes its catalog to a peer |
 | `FEATURE_HUGGINGFACE` / `HUGGINGFACE_API_KEY` | off | Visual mature-content classifier |
 | `FEATURE_CLAUDE` / `ANTHROPIC_API_KEY` / `CLAUDE_MODE` | off | Admin-only Claude assistant |
 | `STORAGE_BACKEND` (`local`/`s3`) + `S3_ENDPOINT` / `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | `local` | Object-storage backend |
@@ -203,7 +176,6 @@ WebSocket endpoints are intentionally outside the OpenAPI spec — see `api/rout
 ```
 cmd/
   server/              # main server binary
-  media-receiver/      # standalone slave binary (stdlib + gorilla/websocket only)
 api/
   handlers/            # gin handlers, one file per concern
   routes/              # route registration + middleware composition
@@ -239,10 +211,9 @@ web/
 api_spec/openapi.yaml  # Authoritative API contract
 patches/               # Vendored dependency patches (ffmpeg-go without aws-sdk-go-v1)
 systemd/               # Service unit templates
-docker-compose*.yml    # Master, master+optional-receiver, slave-only
-Dockerfile             # Master server image (Go + Nuxt build, single image)
-Dockerfile.media-receiver  # Slave-only image
-deploy.sh              # SSH-based deploy/update for native master + slave
+docker-compose.yml     # Compose stack (server + MariaDB, optional MinIO profile)
+Dockerfile             # Server image (Go + Nuxt build, single image)
+deploy.sh              # SSH-based deploy/update for the server
 setup.sh / install.sh  # Interactive native setup
 update.sh              # Native upgrade with DB snapshot + rollback
 vps-bootstrap.sh       # End-to-end fresh-VPS bootstrap (Docker mode)

@@ -316,9 +316,8 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 }
 
 // getContentType returns the MIME type for a file. Delegates to the shared
-// helpers.MediaContentType so master and slave (internal/follower,
-// cmd/media-receiver) advertise identical content types — keeping the
-// curated map in one place.
+// helpers.MediaContentType so master and slave (internal/follower)
+// advertise identical content types — keeping the curated map in one place.
 func (m *Module) getContentType(path string) string {
 	return helpers.MediaContentType(path)
 }

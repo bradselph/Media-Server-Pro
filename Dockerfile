@@ -4,8 +4,8 @@
 #
 # Multi-stage build:
 #   1. frontend  — node:22 builds the Nuxt UI into web/static/react/
-#   2. backend   — golang:1.26 builds the server + media-receiver binaries
-#                  with the frontend embedded via //go:embed
+#   2. backend   — golang:1.26 builds the server binary with the Nuxt
+#                  frontend embedded via //go:embed
 #   3. runtime   — debian:bookworm-slim with ffmpeg + ca-certificates,
 #                  running as a non-root user
 #
@@ -76,18 +76,15 @@ COPY web ./web
 # Pull the Nuxt build into web/static/react/ so //go:embed picks it up.
 COPY --from=frontend /src/web/static/react ./web/static/react
 
-# Build both binaries with version info baked in. The ldflag pattern matches
-# what install.sh / deploy.sh use on the host.
+# Build the server binary with version info baked in. The ldflag pattern
+# matches what install.sh / deploy.sh use on the host.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]')" \
  && BUILD_DATE="$(date -u +%Y-%m-%d)" \
  && go build -trimpath \
       -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
-      -o /out/server ./cmd/server \
- && go build -trimpath \
-      -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
-      -o /out/media-receiver ./cmd/media-receiver
+      -o /out/server ./cmd/server
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: runtime image
@@ -130,11 +127,10 @@ RUN apt-get update \
 
 WORKDIR ${APP_HOME}
 
-COPY --from=backend /out/server          /app/server
-COPY --from=backend /out/media-receiver  /app/media-receiver
+COPY --from=backend /out/server /app/server
 COPY --chown=mediaserver:mediaserver docker/entrypoint.sh /app/entrypoint.sh
 
-RUN chmod +x /app/server /app/media-receiver /app/entrypoint.sh
+RUN chmod +x /app/server /app/entrypoint.sh
 
 # NOTE: deliberately running PID 1 as root so the entrypoint can fix the
 # ownership of named volumes (mounted as root by Docker) before dropping

@@ -4,9 +4,7 @@
 // When enabled, the follower opens a persistent WebSocket connection to a
 // remote master, registers as a slave, pushes its local media catalog
 // (sourced from the existing media.Module — no separate scan), and serves
-// stream-push requests by reading files from the local filesystem. From the
-// remote master's perspective the connection is indistinguishable from the
-// standalone cmd/media-receiver binary, so no master-side changes are needed.
+// stream-push requests by reading files from the local filesystem.
 //
 // This eliminates the need to deploy and maintain a separate receiver binary
 // when both sides are running the full server. Pairing is configured through
