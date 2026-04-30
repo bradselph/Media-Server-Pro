@@ -22,6 +22,7 @@ import (
 )
 
 const regTokenTTL = 15 * time.Minute
+const maxRegTokens = 1000
 
 // Login authenticates a user or admin using the same endpoint
 func (h *Handler) Login(c *gin.Context) {
@@ -206,12 +207,19 @@ func (h *Handler) GetRegistrationToken(c *gin.Context) {
 	}
 	token := hex.EncodeToString(raw)
 	now := time.Now()
+	var count int
 	h.regTokens.Range(func(k, v any) bool {
 		if now.Sub(v.(time.Time)) > regTokenTTL {
 			h.regTokens.Delete(k)
+		} else {
+			count++
 		}
 		return true
 	})
+	if count >= maxRegTokens {
+		writeError(c, http.StatusTooManyRequests, "Too many pending registrations")
+		return
+	}
 	h.regTokens.Store(token, now)
 	writeSuccess(c, map[string]string{"token": token})
 }
