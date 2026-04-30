@@ -219,7 +219,7 @@ func TestStartUsesPassedContextNotBackground(t *testing.T) {
 
 	// The module's worker context should be derived from ctx (not Background)
 	// Verify this by checking that when our ctx is cancelled, the workers
-	// are also signalled to stop.
+	// are also signaled to stop.
 	cancel()
 
 	// Give workers a moment to observe ctx.Done()

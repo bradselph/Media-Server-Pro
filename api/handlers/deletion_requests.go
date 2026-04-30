@@ -15,7 +15,7 @@ import (
 const errDeletionRequestsUnavailable = "Data deletion request service unavailable"
 
 // requireDeletionRepo ensures the deletion-request repository is ready.
-// Lazy-initialises on first call so that GORM() is not captured before the
+// Lazy-initializes on first call so that GORM() is not captured before the
 // database module's Start() runs (which would leave r.db nil and cause a panic).
 func (h *Handler) requireDeletionRepo(c *gin.Context) bool {
 	if h.deletionRequests == nil {

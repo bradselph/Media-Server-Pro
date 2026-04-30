@@ -103,7 +103,7 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 		return nil, ErrInvalidCredentials
 	}
 	if !user.Enabled {
-		// Perform a dummy bcrypt comparison to equalise response time with the
+		// Perform a dummy bcrypt comparison to equalize response time with the
 		// "user not found" path above, preventing timing-based username enumeration
 		// by distinguishing "disabled" (fast map lookup) from "not found" (slow bcrypt).
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))

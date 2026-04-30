@@ -458,7 +458,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	queryStripped := strings.TrimSpace(stripSQLBlockComments(queryUpper))
 
 	// Block file-access functions: LOAD_FILE reads arbitrary server-side files and
-	// is not neutralised by a READ ONLY transaction or execution-time limits.
+	// is not neutralized by a READ ONLY transaction or execution-time limits.
 	// Block INTO OUTFILE/DUMPFILE: SELECT INTO OUTFILE passes the SELECT prefix check
 	// but writes files if the DB user has FILE privilege.
 	for _, banned := range []string{"LOAD_FILE", "INTO OUTFILE", "INTO DUMPFILE"} {
@@ -468,7 +468,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		}
 	}
 
-	// SLEEP and BENCHMARK are neutralised below via MAX_EXECUTION_TIME rather than
+	// SLEEP and BENCHMARK are neutralized below via MAX_EXECUTION_TIME rather than
 	// fragile keyword matching that can be bypassed via SQL comment injection.
 
 	isSelect := strings.HasPrefix(queryStripped, "SELECT") ||

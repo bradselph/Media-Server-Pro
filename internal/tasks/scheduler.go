@@ -15,8 +15,6 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-const errTaskNotFoundFmt = "task not found: %s"
-
 // Sentinel errors for typed error checking by callers.
 var (
 	ErrTaskNotFound    = errors.New("task not found")
@@ -400,7 +398,7 @@ func (m *Module) RunNow(taskID string) error {
 		defer m.wg.Done()
 		// Re-check ctx after the goroutine starts — the scheduler may have been
 		// stopped between the RLock release above and this goroutine being scheduled.
-		// Tasks that don't honour context cancellation would otherwise run to
+		// Tasks that don't honor context cancellation would otherwise run to
 		// completion after shutdown.
 		if ctx.Err() != nil {
 			return

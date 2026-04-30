@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	fmtExpect200       = "expected 200, got %d"
+	fmtExpect200         = "expected 200, got %d"
 	msgExpectSuccessTrue = "expected success=true, got %v"
 )
 

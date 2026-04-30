@@ -700,17 +700,6 @@ func (m *Module) saveItems(ctx context.Context) error {
 	return nil
 }
 
-// saveItemsLocked persists all in-memory items to the database.
-// Caller must already hold mu (at least RLock).
-func (m *Module) saveItemsLocked(ctx context.Context) error {
-	for path, item := range m.items {
-		if err := m.repo.Upsert(ctx, m.itemToRecord(path, item)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // saveItem persists a single item to the database.
 func (m *Module) saveItem(path string, item *CategorizedItem) error {
 	if err := m.repo.Upsert(context.Background(), m.itemToRecord(path, item)); err != nil {
