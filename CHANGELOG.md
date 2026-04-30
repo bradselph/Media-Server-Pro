@@ -1,5 +1,81 @@
 # Changelog
 
+## [1.11.0] - 2026-04-30 (minor)
+
+- test: add repository test coverage for 9 untested MySQL repos
+- fix: repair CI pipeline — golangci-lint config + lint cleanup
+- fix: remove deprecated golangci-lint v2.11 config properties to unbreak CI
+- fix: cap registration token accumulation to prevent unbounded memory growth
+- fix: improve error handling and resource management across modules
+- Create .slave.env
+- feat(federation): cross-server pair endpoint + remove standalone receiver binary
+- feat(receiver,follower): seamless metadata + thumbnail proxy
+- fix(receiver): don't cancel consumer ctx when delivery starts
+- fix(receiver,follower): share media MIME map so .mkv/.avi/.mov play
+- feat(admin): expose receiver API keys, drop redundant follower toggle
+- feat(receiver,follower): auto-enable from config and source-agnostic analytics
+- chore(deps): bump minio-go to v7.1.0
+- chore(deps): bump frontend patch versions
+- Create README.md
+- fix(vps-bootstrap): single-quote secrets in .env.docker so admin login works
+- chore(receiver): docker deploy paths for VPS-to-VPS slave
+- feat(admin/sources): pair this server with another master from the receiver tab
+- feat(follower): add in-server follower so the full server can act as a slave
+- fix(media-receiver): extract ffprobe duration/dimensions on slave scan
+- fix(update): force IMAGE_TAG=:main default on the pull path
+- fix(deploy): default IMAGE_TAG to :main everywhere, hard-code receiver to bradselph
+- chore(update): align update.sh with pinned ghcr image
+- fix(config): self-heal stale HLS scalars instead of crashing on load
+- feat(ui): implement design-handoff plan for prototype parity
+- fix(deploy): pin GHCR image to bradselph and default IMAGE_TAG to main
+- feat(deploy): public-deployment hardening + optional API-key prompts
+- Delete ANALYSIS_FINDINGS_2026_04_24.json
+- chore(ci): add fix-runner-docker.sh to grant runner Docker access
+- ci(docker-publish): manual trigger only + drop sudo-needing setup-docker
+- feat(deploy): pull pre-built images from GHCR by default
+- ci(docker-publish): install Docker on the self-hosted runner
+- ci(docker-publish): explicit :latest, add :edge channel, build summaries
+- feat(deploy): add update.sh + correct upgrade story in bootstrap summary
+- fix(compose): pass .env.docker into the server container via env_file
+- fix(vps-bootstrap): fall back to direct exposure when Caddy fails
+- fix(vps-bootstrap): replace fabricated 'first-run setup' with real next steps
+- fix(vps-bootstrap): correct Caddy keyring path on Debian/Ubuntu
+- fix(vps-bootstrap): whitelist repo for root in git safe.directory
+- fix(docker): drop privileges by username, look up uid at runtime
+- fix(vps-bootstrap): write admin credentials + parity with setup.sh
+- feat(vps-bootstrap): Caddy reverse proxy works in IP-only mode too
+- chore(vps-bootstrap): self-update + auto-diagnostics for known failure modes
+- fix: HLS playlist_length default + container volume permissions
+- chore(vps-bootstrap): symlink .env -> .env.docker
+- chore(vps-bootstrap): extend health-check window to 5 minutes
+- build(docker): rename committed dev override to .example
+- fix(vps-bootstrap): bypass dev override, pre-check port, clean stale stack
+- fix(docker): copy api_spec into the backend build stage
+- fix(vps-bootstrap): always emit placeholders for profile-gated env vars
+- fix(vps-bootstrap): allow blank GitHub token, correct default repo URL
+- Update vps-bootstrap.sh
+- Create vps-bootstrap.sh
+- docker: pin MinIO tag, build multi-arch images, add deployment guide
+- fix(audit): final pass — close remaining backend bug-fix findings
+- fix(audit): apply backend + frontend bug fixes from audit pass
+- chore: ignore .env.docker (local secrets file for compose)
+- feat(docker): complete dockerization with CI publish workflow
+- test(auth): simplify FND-0041 concurrent bootstrap tests
+- Create bootstrap_concurrent_test.go
+- fix(receiver): close WebSocket connection on context cancel to unblock ReadMessage
+- fix(thumbnails): use context.Background() for worker pool context
+- feat(admin): remove HLS tab redundancy, add playlist edit, clarify tab labels
+- fix(upload): remove MaxBytesReader body limit; make post-processing async
+- refactor(go126): replace temp-var address-of with new(expr) across codebase
+- fix(models): revert c55caf00 GORM default:true on 9 bool fields
+- fix(consistency): extract named timeout constants in receiver, server, thumbnails
+- fix(backend-audit): fix error wrapping and document background context usage
+- fix(audit): source update context leak; HLS stale error; collection FK constraint
+- fix(models): restore GORM default:true for 9 bool fields; add claude to health; fix tab guard
+- fix(upload): real-time progress bar and remove 30s upload timeout
+- fix(handlers): cap search query at 200 chars; fix admin timer leak
+
+
 ## [1.10.1] - 2026-04-24 (patch)
 
 
