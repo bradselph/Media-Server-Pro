@@ -89,7 +89,7 @@ func (m *Manager) SetValue(path string, value any) error {
 // SetValuesBatch applies multiple configuration updates and persists once atomically.
 // On save failure, in-memory changes are rolled back so the config stays consistent with disk.
 // After saving, feature toggles are synced so runtime module enable/disable matches config.
-// Watchers are called synchronously after the lock is released, matching Update()'s behaviour
+// Watchers are called synchronously after the lock is released, matching Update()'s behavior
 // so that module side-effects (rate-limiter reconfiguration, security headers, etc.) are
 // applied before the handler returns and cannot accumulate as unbounded goroutines.
 func (m *Manager) SetValuesBatch(updates map[string]any) error {

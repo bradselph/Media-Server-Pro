@@ -487,7 +487,7 @@ func (m *Module) RequestThumbnail(slaveID, token, remoteID string, preferWebP bo
 // It looks up the pending stream and signals the waiting proxy handler.
 //
 // IMPORTANT: must NOT call ps.cancel() here. ps.ctx is the *consumer* context
-// (proxyViaWS) — cancelling it here marks the consumer as exited the moment
+// (proxyViaWS) — canceling it here marks the consumer as exited the moment
 // delivery begins, causing the push handler's watcher to immediately close
 // the pipe with "stream consumer exited" before any bytes are written. The
 // browser then sees ERR_EMPTY_RESPONSE. The consumer's own defer cancels

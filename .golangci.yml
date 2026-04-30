@@ -135,10 +135,6 @@ linters:
         - "-SA1019"
 
   exclusions:
-    # Show all issues (don't cap per-linter)
-    max-issues-per-linter: 0
-    max-same-issues: 0
-
     rules:
       # Test files get relaxed rules
       - path: _test\.go
@@ -173,7 +169,6 @@ output:
   formats:
     text:
       path: stdout
-  sort-results: true
   sort-order:
     - linter
     - severity

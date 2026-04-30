@@ -212,9 +212,9 @@ func TestFND0239_RegisterSlave_AcceptsContext(t *testing.T) {
 }
 
 // TestFND0239_RegisterSlave_PropagatesCancelledContext verifies that when RegisterSlave is called
-// with a cancelled context, it propagates the cancellation error from the repo.
+// with a canceled context, it propagates the cancellation error from the repo.
 // This regression test ensures the fix for FND-0239 (which bounds DB operations with timeouts)
-// works correctly: if the context is already cancelled, the DB Upsert should fail immediately.
+// works correctly: if the context is already canceled, the DB Upsert should fail immediately.
 func TestFND0239_RegisterSlave_PropagatesCancelledContext(t *testing.T) {
 	mock := &mockSlaveRepo{}
 	mock.shouldFail = true
@@ -231,7 +231,7 @@ func TestFND0239_RegisterSlave_PropagatesCancelledContext(t *testing.T) {
 		BaseURL: "https://example.com:8080",
 	}
 
-	// Use an already-cancelled context to simulate what happens when a WS read loop's
+	// Use an already-canceled context to simulate what happens when a WS read loop's
 	// 5-second timeout (from FND-0239 fix) expires during a slow DB operation.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -239,7 +239,7 @@ func TestFND0239_RegisterSlave_PropagatesCancelledContext(t *testing.T) {
 	node, err := m.RegisterSlave(ctx, req)
 
 	if err == nil {
-		t.Error("RegisterSlave should return an error when context is cancelled")
+		t.Error("RegisterSlave should return an error when context is canceled")
 	}
 	if node != nil {
 		t.Error("RegisterSlave should return nil SlaveNode on context cancellation")

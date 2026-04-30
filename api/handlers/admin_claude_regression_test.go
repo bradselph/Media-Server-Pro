@@ -2,29 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"media-server-pro/internal/claude"
 )
-
-// Helper to parse SSE stream into events
-func parseSSEEvents(body string) []map[string]interface{} {
-	var events []map[string]interface{}
-	lines := strings.Split(body, "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "data: ") {
-			jsonStr := strings.TrimPrefix(line, "data: ")
-			var event map[string]interface{}
-			if err := json.Unmarshal([]byte(jsonStr), &event); err == nil {
-				events = append(events, event)
-			}
-		}
-	}
-	return events
-}
 
 // FND-0542: Regression test for AdminClaudeChat SSE completion event pattern
 //

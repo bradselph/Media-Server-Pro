@@ -144,7 +144,7 @@ type UserPreferences struct {
 	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"not null"`
 	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"not null"`
 	ShowTrending         bool `json:"show_trending" db:"show_trending" gorm:"not null"`
-	// Player behaviour
+	// Player behavior
 	SkipInterval    int  `json:"skip_interval" db:"skip_interval" gorm:"default:10"`
 	ShuffleEnabled  bool `json:"shuffle_enabled" db:"shuffle_enabled" gorm:"default:false"`
 	ShowBufferBar   bool `json:"show_buffer_bar" db:"show_buffer_bar" gorm:"not null"`

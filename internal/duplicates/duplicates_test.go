@@ -62,7 +62,7 @@ func TestBuildLocalFingerprintGroups_SkipsEmptyStableID(t *testing.T) {
 
 func TestBuildLocalFingerprintGroups_GroupsByFingerprint(t *testing.T) {
 	all := map[string]*repositories.MediaMetadata{
-		testPathA: {ContentFingerprint: "fp1", StableID: "id-a"},
+		testPathA:     {ContentFingerprint: "fp1", StableID: "id-a"},
 		"/path/b.mp4": {ContentFingerprint: "fp1", StableID: "id-b"},
 		"/path/c.mp4": {ContentFingerprint: "fp2", StableID: "id-c"},
 	}

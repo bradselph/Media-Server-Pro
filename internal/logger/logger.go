@@ -357,7 +357,9 @@ func (l *Logger) logWithRID(level Level, requestID, msg string, args ...any) {
 
 // logWithRIDSkip is the actual implementation; extraSkip is added to runtime.Caller depth.
 // Frame depths from runtime.Caller's perspective inside the format functions:
-//   0 = format function, 1 = logWithRIDSkip, 2 = logWithRID/log, 3 = public method or user code.
+//
+//	0 = format function, 1 = logWithRIDSkip, 2 = logWithRID/log, 3 = public method or user code.
+//
 // For Info/Debug/Warn/Error: public method (3) → log (2, +1 skip) → logWithRIDSkip → format → Caller(3+1)=user.
 // For InfoCtx/DebugCtx/WarnCtx/ErrorCtx: public method=user (3) → logWithRID (2) → logWithRIDSkip → format → Caller(3+0)=user.
 func (l *Logger) logWithRIDSkip(level Level, requestID string, extraSkip int, msg string, args ...any) {
