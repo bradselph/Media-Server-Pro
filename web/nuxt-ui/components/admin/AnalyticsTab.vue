@@ -1760,6 +1760,7 @@ const hasTrafficActivity = computed(() =>
           { accessorKey: 'quality', header: 'Quality' },
           { accessorKey: 'position', header: 'Position' },
           { accessorKey: 'bytes_sent', header: 'Bytes' },
+          { accessorKey: 'throughput', header: 'Throughput' },
           { accessorKey: 'started_at', header: 'Started' },
         ]"
       >
@@ -1770,6 +1771,17 @@ const hasTrafficActivity = computed(() =>
         </template>
         <template #position-cell="{ row }">{{ formatWatchTime(row.original.position) }}</template>
         <template #bytes_sent-cell="{ row }">{{ formatBytes(row.original.bytes_sent) }}</template>
+        <!-- Throughput is averaged over the session lifetime: bytes_sent /
+             (now - started_at). Cheap client-side compute — no extra
+             backend field needed. Falls back to "—" when started_at is
+             unavailable (extremely fresh streams that haven't logged yet). -->
+        <template #throughput-cell="{ row }">
+          <span class="text-sm">
+            {{ row.original.started_at && row.original.bytes_sent > 0
+              ? formatBytes(row.original.bytes_sent / Math.max(1, (Date.now() / 1000 - row.original.started_at))) + '/s'
+              : '—' }}
+          </span>
+        </template>
         <template #started_at-cell="{ row }">{{ new Date(row.original.started_at * 1000).toLocaleTimeString() }}</template>
         <template #user_id-cell="{ row }">
           <span v-if="row.original.user_id" class="text-sm">{{ row.original.user_id }}</span>
@@ -2156,10 +2168,18 @@ const hasTrafficActivity = computed(() =>
               <UIcon name="i-lucide-loader-2" class="animate-spin size-5 text-muted" />
             </div>
             <div v-else-if="mediaDetail">
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
                 <UCard :ui="{ body: 'p-2' }">
                   <p class="text-base font-bold text-highlighted">{{ (mediaDetail.stats.total_views ?? 0).toLocaleString() }}</p>
                   <p class="text-[11px] text-muted">Views</p>
+                </UCard>
+                <UCard :ui="{ body: 'p-2' }">
+                  <p class="text-base font-bold text-highlighted">{{ (mediaDetail.stats.total_playbacks ?? 0).toLocaleString() }}</p>
+                  <p class="text-[11px] text-muted">Playbacks</p>
+                </UCard>
+                <UCard :ui="{ body: 'p-2' }">
+                  <p class="text-base font-bold text-highlighted">{{ (mediaDetail.stats.total_completions ?? 0).toLocaleString() }}</p>
+                  <p class="text-[11px] text-muted">Completions</p>
                 </UCard>
                 <UCard :ui="{ body: 'p-2' }">
                   <p class="text-base font-bold text-highlighted">{{ (mediaDetail.stats.unique_viewers ?? 0).toLocaleString() }}</p>

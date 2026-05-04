@@ -615,6 +615,8 @@ export interface MediaDetail {
     media_id: string
     stats: {
         total_views: number
+        total_playbacks: number
+        total_completions: number
         completion_rate: number
         last_viewed: string
         unique_viewers: number
