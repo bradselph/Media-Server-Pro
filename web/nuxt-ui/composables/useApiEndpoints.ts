@@ -111,6 +111,7 @@ import type {
     IPSummary,
     ModuleDiagnostics,
     MetricForecast,
+    RangeComparison,
     UpdateInfo,
     UserAnalytics,
     UpdateStatus,
@@ -984,6 +985,9 @@ export function useAnalyticsApi() {
             api.get<MetricForecast>(`/api/admin/analytics/forecast${buildQS({metric, days: days || undefined})}`),
         // Export-all bundle URL for <a download>.
         exportAllUrl: () => '/api/admin/analytics/export-all',
+        // A/B comparison across two arbitrary date ranges.
+        getRangeComparison: (aStart: string, aEnd: string, bStart: string, bEnd: string) =>
+            api.get<RangeComparison>(`/api/admin/analytics/range-compare${buildQS({a_start: aStart, a_end: aEnd, b_start: bStart, b_end: bEnd})}`),
         // Export-panel URL builder. Used by <a download> links so the
         // browser handles the file save dialog rather than the JS layer.
         exportPanelUrl: (panel: string, format: 'csv' | 'json' = 'csv', extra: Record<string, string | number | undefined> = {}) =>

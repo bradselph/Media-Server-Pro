@@ -6,6 +6,7 @@ import type {
   MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
   PeriodComparison, Funnel, DeviceBucket, MediaDetail, RetentionGrid,
   AnomalyReport, IPSummary, ModuleDiagnostics, MetricForecast,
+  RangeComparison,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
@@ -73,6 +74,33 @@ const forecastStreams = ref<MetricForecast | null>(null)
 const forecastBandwidth = ref<MetricForecast | null>(null)
 const forecastErrors = ref<MetricForecast | null>(null)
 
+// A/B range comparison — admin picks two date ranges and the panel shows
+// per-metric deltas. Reused for "did the new feature move the needle"
+// analyses without leaving the dashboard.
+const rangeAStart = ref('')
+const rangeAEnd = ref('')
+const rangeBStart = ref('')
+const rangeBEnd = ref('')
+const rangeResult = ref<RangeComparison | null>(null)
+const rangeLoading = ref(false)
+async function runRangeCompare() {
+  if (!rangeAStart.value || !rangeAEnd.value || !rangeBStart.value || !rangeBEnd.value) {
+    toast.add({ title: 'All four dates required', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    return
+  }
+  rangeLoading.value = true
+  try {
+    rangeResult.value = await analyticsApi.getRangeComparison(
+      rangeAStart.value, rangeAEnd.value,
+      rangeBStart.value, rangeBEnd.value,
+    )
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Comparison failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    rangeLoading.value = false
+  }
+}
+
 // Funnel + device/browser breakdown + per-media drill + retention grid.
 const funnel = ref<Funnel | null>(null)
 const devices = ref<DeviceBucket[]>([])
@@ -91,7 +119,7 @@ const PANEL_KEYS = [
   'traffic', 'distribution', 'hourly', 'heatmap', 'funnel', 'quality',
   'gaps', 'devices', 'retention', 'topUsers', 'topSearches', 'activeStreams',
   'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
-  'contentPerf', 'daily', 'ips', 'diagnostics', 'forecast',
+  'contentPerf', 'daily', 'ips', 'diagnostics', 'forecast', 'rangeCompare',
 ] as const
 type PanelKey = typeof PANEL_KEYS[number]
 const panelVisibility = ref<Record<PanelKey, boolean>>(
@@ -2045,6 +2073,76 @@ const hasTrafficActivity = computed(() =>
         <template #hls_starts-cell="{ row }">{{ (row.original.hls_starts ?? 0).toLocaleString() }}</template>
         <template #admin_actions-cell="{ row }">{{ (row.original.admin_actions ?? 0).toLocaleString() }}</template>
       </UTable>
+    </UCard>
+
+    <!-- A/B range comparison — pick two arbitrary date ranges and see
+         per-metric deltas side-by-side. Useful for "did the new search
+         algo move the needle" or "Black Friday vs prior week". -->
+    <UCard v-if="panelVisibility.rangeCompare">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-arrow-left-right" class="size-4" />
+          A / B Range Comparison
+        </div>
+      </template>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div class="space-y-1.5">
+          <p class="text-xs font-semibold text-muted">Range A</p>
+          <div class="flex items-center gap-2">
+            <UInput v-model="rangeAStart" type="date" size="xs" placeholder="Start" />
+            <span class="text-xs text-muted">to</span>
+            <UInput v-model="rangeAEnd" type="date" size="xs" placeholder="End" />
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <p class="text-xs font-semibold text-muted">Range B</p>
+          <div class="flex items-center gap-2">
+            <UInput v-model="rangeBStart" type="date" size="xs" placeholder="Start" />
+            <span class="text-xs text-muted">to</span>
+            <UInput v-model="rangeBEnd" type="date" size="xs" placeholder="End" />
+          </div>
+        </div>
+      </div>
+      <UButton
+        :loading="rangeLoading"
+        size="xs"
+        icon="i-lucide-play"
+        label="Compare"
+        :disabled="!rangeAStart || !rangeAEnd || !rangeBStart || !rangeBEnd"
+        @click="runRangeCompare"
+      />
+      <div v-if="rangeResult" class="mt-4">
+        <UTable
+          :data="rangeResult.metrics"
+          :columns="[
+            { accessorKey: 'metric', header: 'Metric' },
+            { accessorKey: 'a', header: `A (${rangeResult.a_start} → ${rangeResult.a_end})` },
+            { accessorKey: 'b', header: `B (${rangeResult.b_start} → ${rangeResult.b_end})` },
+            { accessorKey: 'delta_absolute', header: 'Δ' },
+            { accessorKey: 'delta_pct', header: '%' },
+          ]"
+        >
+          <template #metric-cell="{ row }">
+            <span class="text-xs font-mono">{{ row.original.metric }}</span>
+          </template>
+          <template #a-cell="{ row }">{{ Math.round(row.original.a).toLocaleString() }}</template>
+          <template #b-cell="{ row }">{{ Math.round(row.original.b).toLocaleString() }}</template>
+          <template #delta_absolute-cell="{ row }">
+            <span :class="row.original.delta_absolute > 0 ? 'text-success' : row.original.delta_absolute < 0 ? 'text-error' : 'text-muted'">
+              {{ row.original.delta_absolute > 0 ? '+' : '' }}{{ Math.round(row.original.delta_absolute).toLocaleString() }}
+            </span>
+          </template>
+          <template #delta_pct-cell="{ row }">
+            <UBadge
+              :color="row.original.delta_pct > 0 ? 'success' : row.original.delta_pct < 0 ? 'error' : 'neutral'"
+              variant="subtle"
+              size="xs"
+            >
+              {{ row.original.delta_pct > 0 ? '+' : '' }}{{ row.original.delta_pct.toFixed(0) }}%
+            </UBadge>
+          </template>
+        </UTable>
+      </div>
     </UCard>
 
     <!-- Module diagnostics — analytics module's own internal counters.

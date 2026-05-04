@@ -753,6 +753,19 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 		// validation_results is filtered by status in health-check and backfill queries.
 		{"validation_results", "idx_validation_status",
 			"ALTER TABLE validation_results ADD INDEX idx_validation_status (status)"},
+		// analytics_events is hit hard by the dashboard's aggregation queries.
+		// The single-column idx_type / idx_user_id / idx_timestamp indexes
+		// each work alone, but every aggregation (top-users, top-searches,
+		// failed-logins, error-paths) filters by (type, timestamp >= cutoff)
+		// or (user_id, timestamp >= cutoff). Composite indexes let MySQL use
+		// the timestamp range scan after the equality probe instead of an
+		// index merge or filesort.
+		{"analytics_events", "idx_type_timestamp",
+			"ALTER TABLE analytics_events ADD INDEX idx_type_timestamp (type, timestamp)"},
+		{"analytics_events", "idx_user_timestamp",
+			"ALTER TABLE analytics_events ADD INDEX idx_user_timestamp (user_id, timestamp)"},
+		{"analytics_events", "idx_media_timestamp",
+			"ALTER TABLE analytics_events ADD INDEX idx_media_timestamp (media_id, timestamp)"},
 	}
 	for _, idx := range indexes {
 		if err := m.ensureIndex(ctx, idx.table, idx.index, idx.sql); err != nil {

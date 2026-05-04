@@ -511,6 +511,24 @@ export interface ModuleDiagnostics {
     healthy: boolean
 }
 
+// One row of an A/B range comparison: each metric's totals across two
+// arbitrary date ranges plus the absolute and percent delta.
+export interface RangeMetric {
+    metric: string
+    a: number
+    b: number
+    delta_absolute: number
+    delta_pct: number
+}
+
+export interface RangeComparison {
+    a_start: string
+    a_end: string
+    b_start: string
+    b_end: string
+    metrics: RangeMetric[]
+}
+
 // Linear-trend projection for one metric — slope per day, tomorrow's
 // projected value, and a residual-stddev confidence band. Direction is
 // "up" / "down" / "flat" based on a small threshold around the mean so a

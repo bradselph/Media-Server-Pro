@@ -1916,6 +1916,87 @@ func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) M
 	return out
 }
 
+// RangeMetric is one row of an A/B comparison: the metric's totals in
+// each of the two ranges plus the absolute and percent delta. The frontend
+// renders rows side-by-side in a sortable table.
+type RangeMetric struct {
+	Metric        string  `json:"metric"`
+	A             float64 `json:"a"`
+	B             float64 `json:"b"`
+	DeltaAbsolute float64 `json:"delta_absolute"`
+	DeltaPct      float64 `json:"delta_pct"`
+}
+
+// RangeComparison holds the A/B response: both ranges echoed back so the
+// frontend can label its columns, plus a row per metric with absolute and
+// percent deltas.
+type RangeComparison struct {
+	AStart  string        `json:"a_start"`
+	AEnd    string        `json:"a_end"`
+	BStart  string        `json:"b_start"`
+	BEnd    string        `json:"b_end"`
+	Metrics []RangeMetric `json:"metrics"`
+}
+
+// GetRangeComparison sums every DailyStats metric over [aStart, aEnd] and
+// [bStart, bEnd] (inclusive YYYY-MM-DD) and returns per-metric deltas.
+// Used for ad-hoc "Black Friday week vs prior week" reports without the
+// admin needing to do their own arithmetic.
+func (m *Module) GetRangeComparison(aStart, aEnd, bStart, bEnd string) RangeComparison {
+	out := RangeComparison{AStart: aStart, AEnd: aEnd, BStart: bStart, BEnd: bEnd}
+	// Sum each window separately under a single read lock to avoid
+	// inconsistent reads if the flush ticker is racing.
+	m.statsMu.RLock()
+	defer m.statsMu.RUnlock()
+	sums := func(start, end string) map[string]float64 {
+		totals := make(map[string]float64)
+		for date, ds := range m.dailyStats {
+			if start != "" && date < start {
+				continue
+			}
+			if end != "" && date > end {
+				continue
+			}
+			if ds == nil {
+				continue
+			}
+			for _, metric := range comparedMetrics {
+				totals[metric] += dailyStatField(ds, metric)
+			}
+		}
+		return totals
+	}
+	sumsA := sums(aStart, aEnd)
+	sumsB := sums(bStart, bEnd)
+	for _, metric := range comparedMetrics {
+		row := RangeMetric{Metric: metric, A: sumsA[metric], B: sumsB[metric]}
+		row.DeltaAbsolute = row.B - row.A
+		switch {
+		case row.A > 0:
+			row.DeltaPct = (row.B - row.A) / row.A * 100
+		case row.B > 0:
+			row.DeltaPct = 100 // sentinel — frontend can flag as "no baseline"
+		}
+		out.Metrics = append(out.Metrics, row)
+	}
+	return out
+}
+
+// comparedMetrics is the set of DailyStats columns the A/B comparison
+// surfaces. Kept centralised so adding a column to DailyStats only requires
+// one edit here. Same JSON-tag values dailyStatField recognises.
+var comparedMetrics = []string{
+	"total_views", "unique_users", "total_watch_time",
+	"logins", "logins_failed", "logouts", "registrations",
+	"downloads", "searches",
+	"favorites_added", "ratings_set",
+	"playlists_created", "uploads_succeeded", "uploads_failed",
+	"hls_starts", "hls_errors",
+	"stream_starts", "stream_ends", "bytes_served",
+	"server_errors", "admin_actions",
+	"mature_blocked", "permission_denied",
+}
+
 // MetricForecast holds the linear-trend projection for one metric.
 // Slope is per-day; the projected value is "tomorrow's" point on the line.
 // ConfidenceBand is one standard deviation of the residuals — a rough

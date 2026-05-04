@@ -759,6 +759,33 @@ func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]an
 	}
 }
 
+// AdminGetRangeComparison returns A/B totals for every supported metric
+// across two arbitrary date ranges. Query params: a_start, a_end, b_start,
+// b_end (all YYYY-MM-DD). Empty bounds disable that side of the range.
+//
+// Use case: "Did the new search algo (deployed 2026-04-15) move any
+// metrics?" — the admin sets A=2026-04-08…2026-04-14 and B=2026-04-15…
+// 2026-04-21 and reads the deltas off a single table.
+func (h *Handler) AdminGetRangeComparison(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	aStart := c.Query("a_start")
+	aEnd := c.Query("a_end")
+	bStart := c.Query("b_start")
+	bEnd := c.Query("b_end")
+	if aStart == "" && aEnd == "" {
+		writeError(c, http.StatusBadRequest, "a_start and/or a_end required")
+		return
+	}
+	if bStart == "" && bEnd == "" {
+		writeError(c, http.StatusBadRequest, "b_start and/or b_end required")
+		return
+	}
+	writeSuccess(c, h.analytics.GetRangeComparison(aStart, aEnd, bStart, bEnd))
+}
+
 // AdminGetMetricForecast returns a linear-trend projection for one metric.
 // Query: metric (DailyStats JSON tag, default total_views), days (1-90,
 // default 14). The response includes slope, projection (tomorrow's value),
