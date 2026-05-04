@@ -31,7 +31,7 @@ async function loadSecurityConfig() {
       fullConfig.value = cfg
       const sec = asRecord(cfg.security)
       const srv = asRecord(cfg.server)
-      // FND-0212: Validate asRecord() results before property access
+      // FND-0014: Validate asRecord() results before property access (check if not null)
       if (sec) {
         corsEnabled.value = sec.cors_enabled === true
         hstsEnabled.value = sec.hsts_enabled === true
@@ -95,12 +95,10 @@ async function loadAudit() {
     // Backend reads `offset` (not `page`); offset = (page - 1) * limit
     const offset = (auditPage.value - 1) * auditLimit
     const res = await adminApi.getAuditLog({ offset, limit: auditLimit })
-    // API returns a plain array, not a paginated object
-    auditEntries.value = Array.isArray(res) ? res : []
-    const count = auditEntries.value.length
-    auditTotal.value = count === auditLimit
-      ? auditPage.value * auditLimit + 1
-      : (auditPage.value - 1) * auditLimit + count
+    // API returns a paginated object with items and total count
+    auditEntries.value = res?.items ?? []
+    // Use actual total count from server instead of inferring from response size
+    auditTotal.value = res?.total ?? 0
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load audit log', color: 'error', icon: 'i-lucide-alert-circle' })
   } finally { auditLoading.value = false }

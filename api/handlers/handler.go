@@ -714,6 +714,15 @@ func resolveRelativeInDir(path, dir string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	// Re-validate that the resolved path stays within the directory boundary.
+	// This prevents path traversal attacks via ../ sequences in the input path.
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	if !strings.HasPrefix(absPath, absDir+string(filepath.Separator)) && absPath != absDir {
+		return "", false
+	}
 	return absPath, true
 }
 

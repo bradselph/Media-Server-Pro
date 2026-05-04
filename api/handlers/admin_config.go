@@ -131,9 +131,11 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 		return
 	}
 
-	// Apply runtime config changes to in-memory modules
+	// Apply runtime config changes to in-memory modules. Read from admin (the
+	// module that just persisted the update) instead of media (which keeps its
+	// own snapshot that may not have refreshed yet).
 	if h.security != nil {
-		updatedCfg := h.media.GetConfig()
+		updatedCfg := h.admin.GetConfig()
 		h.security.SetWhitelistEnabled(updatedCfg.Security.EnableIPWhitelist)
 		h.security.SetBlacklistEnabled(updatedCfg.Security.EnableIPBlacklist)
 	}

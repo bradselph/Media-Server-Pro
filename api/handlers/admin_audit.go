@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AdminGetAuditLog returns audit log, optionally filtered by user_id query param.
+// AdminGetAuditLog returns audit log with pagination, optionally filtered by user_id query param.
 func (h *Handler) AdminGetAuditLog(c *gin.Context) {
 	if !h.requireAdminModule(c) {
 		return
@@ -18,8 +18,8 @@ func (h *Handler) AdminGetAuditLog(c *gin.Context) {
 	offset := ParseQueryInt(c, "offset", QueryIntOpts{Default: 0, Min: 0, Max: 100000})
 	userID := strings.TrimSpace(c.Query("user_id"))
 
-	log := h.admin.GetAuditLog(c.Request.Context(), limit, offset, userID)
-	writeSuccess(c, log)
+	response := h.admin.GetAuditLog(c.Request.Context(), limit, offset, userID)
+	writeSuccess(c, response)
 }
 
 // AdminExportAuditLog exports the audit log as a CSV file download

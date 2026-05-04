@@ -109,10 +109,13 @@ func adminPermissions() models.UserPermissions {
 }
 
 // cacheUser stores a user in both in-memory caches (must hold no locks).
+// Users without IDs are skipped in the byID cache — they should not exist in normal operation.
 func (m *Module) cacheUser(user *models.User) {
 	m.usersMu.Lock()
 	m.users[user.Username] = user
-	m.usersByID[user.ID] = user
+	if user.ID != "" {
+		m.usersByID[user.ID] = user
+	}
 	m.usersMu.Unlock()
 }
 

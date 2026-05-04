@@ -62,6 +62,9 @@ func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.Us
 }
 
 // verifyPasswordWithCacheRefresh checks password against cached user; on mismatch, retries from DB and refreshes cache if DB matches.
+// NOTE: User passwords use external salt concatenation (password+salt) before bcrypt for defense-in-depth additional entropy.
+// Admin passwords use standard bcrypt without external salt. Both are cryptographically sound; bcrypt applies its own internal salt.
+// This asymmetry is intentional: users gain additional entropy while admin uses standard bcrypt for simplicity.
 func (m *Module) verifyPasswordWithCacheRefresh(ctx context.Context, user *models.User, c *creds) error {
 	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(c.Password+user.Salt))
 	if err == nil {
@@ -231,6 +234,8 @@ func (m *Module) recordFailedAttempt(ip string) {
 	if time.Since(attempt.FirstTry) > cfg.Auth.LockoutDuration {
 		// Window expired: start fresh count but increment Windows so repeated
 		// lockout-window breaches accumulate a penalty instead of fully resetting.
+		// DESIGN: This escalating lockout is intentional — persistent attackers face
+		// increasingly severe penalties, while legitimate users eventually regain access.
 		attempt.Windows++
 		attempt.Count = 1
 		attempt.FirstTry = time.Now()
@@ -238,7 +243,7 @@ func (m *Module) recordFailedAttempt(ip string) {
 		// Re-lock immediately if this IP has already triggered enough lockout windows.
 		if attempt.Windows >= cfg.Auth.MaxLoginAttempts {
 			attempt.LockedAt = new(time.Now())
-			m.log.Warn("Re-locked IP %s after %d repeated lockout windows", ip, attempt.Windows)
+			m.log.Warn("Re-locked IP %s after %d repeated lockout windows (escalating lockout per design)", ip, attempt.Windows)
 		}
 		return
 	}

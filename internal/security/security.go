@@ -57,6 +57,10 @@ func init() {
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err == nil {
 			privateCIDRs = append(privateCIDRs, ipNet)
+		} else {
+			// NOTE: This should never happen since privateRanges contains hardcoded valid CIDR strings.
+			// If this occurs (e.g., due to code corruption), TrustedProxyIPs will silently fail to parse these ranges.
+			// No logger available at init time; consider adding an error handler during Module startup.
 		}
 	}
 }
