@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/analytics"
 )
 
 // ValidateMedia validates a media file
@@ -29,6 +31,7 @@ func (h *Handler) ValidateMedia(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventValidatorRun, map[string]any{"scope": "validate", "media_id": req.ID})
 	writeSuccess(c, result)
 }
 
@@ -55,6 +58,7 @@ func (h *Handler) FixMedia(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventValidatorRun, map[string]any{"scope": "fix", "media_id": req.ID})
 	writeSuccess(c, result)
 }
 

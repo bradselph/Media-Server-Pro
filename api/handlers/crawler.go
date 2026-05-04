@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/pkg/helpers"
 )
 
@@ -37,6 +38,11 @@ func (h *Handler) AddCrawlerTarget(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventCrawlerRun, map[string]any{
+		"action": "add_target",
+		"url":    req.URL,
+		"name":   req.Name,
+	})
 	writeSuccess(c, target)
 }
 
@@ -71,6 +77,7 @@ func (h *Handler) RemoveCrawlerTarget(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.trackServerEvent(c, analytics.EventCrawlerRun, map[string]any{"action": "remove_target", "id": id})
 	writeSuccess(c, map[string]string{"status": "removed"})
 }
 
@@ -93,6 +100,11 @@ func (h *Handler) CrawlTarget(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventCrawlerRun, map[string]any{
+		"action":          "crawl",
+		"target_id":       id,
+		"new_discoveries": newCount,
+	})
 	writeSuccess(c, map[string]any{
 		"new_discoveries": newCount,
 	})
@@ -139,6 +151,7 @@ func (h *Handler) ApproveCrawlerDiscovery(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.trackServerEvent(c, analytics.EventCrawlerRun, map[string]any{"action": "approve_discovery", "id": id})
 	writeSuccess(c, disc)
 }
 
@@ -164,6 +177,7 @@ func (h *Handler) IgnoreCrawlerDiscovery(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.trackServerEvent(c, analytics.EventCrawlerRun, map[string]any{"action": "ignore_discovery", "id": id})
 	writeSuccess(c, map[string]string{"status": "ignored"})
 }
 
@@ -183,6 +197,7 @@ func (h *Handler) DeleteCrawlerDiscovery(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.trackServerEvent(c, analytics.EventCrawlerRun, map[string]any{"action": "delete_discovery", "id": id})
 	writeSuccess(c, map[string]string{"status": "deleted"})
 }
 

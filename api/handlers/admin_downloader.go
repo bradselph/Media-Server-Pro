@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/downloader"
 	"media-server-pro/pkg/helpers"
 )
@@ -163,6 +164,11 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventDownloaderJobCreate, map[string]any{
+		"url":              req.URL,
+		"is_youtube":       req.IsYouTube,
+		"is_youtube_music": req.IsYouTubeMusic,
+	})
 	writeSuccess(c, result)
 }
 
@@ -186,6 +192,7 @@ func (h *Handler) AdminDownloaderCancel(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventDownloaderJobCancel, map[string]any{"job_id": id})
 	writeSuccess(c, map[string]string{"status": "canceled"})
 }
 
@@ -244,6 +251,7 @@ func (h *Handler) AdminDownloaderDeleteDownload(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventDownloaderJobCancel, map[string]any{"filename": filename, "scope": "delete"})
 	writeSuccess(c, map[string]string{"status": "deleted"})
 }
 
@@ -313,6 +321,13 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventPlaylistImport, map[string]any{
+		"scope":          "downloader",
+		"source":         req.Filename,
+		"destination":    destPath,
+		"scan_triggered": req.TriggerScan,
+		"source_deleted": sourceDeleted,
+	})
 	writeSuccess(c, map[string]any{
 		"source":        req.Filename,
 		"destination":   destPath,

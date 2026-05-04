@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/autodiscovery"
 )
 
@@ -56,6 +57,10 @@ func (h *Handler) DiscoverMedia(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
+	h.trackServerEvent(c, analytics.EventDiscoveryRun, map[string]any{
+		"directory": resolvedDir,
+		"results":   len(scanResults),
+	})
 	writeSuccess(c, scanResults)
 }
 
@@ -89,6 +94,7 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventDiscoveryRun, map[string]any{"scope": "apply", "path": absPath})
 	writeSuccess(c, map[string]string{"message": "Suggestion applied"})
 }
 
@@ -109,5 +115,6 @@ func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
 	}
 
 	h.autodiscovery.ClearSuggestion(autodiscovery.FilePath(absPath))
+	h.trackServerEvent(c, analytics.EventDiscoveryRun, map[string]any{"scope": "dismiss", "path": absPath})
 	writeSuccess(c, map[string]string{"message": "Suggestion dismissed"})
 }

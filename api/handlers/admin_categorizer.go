@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/categorizer"
 )
 
@@ -81,6 +82,10 @@ func (h *Handler) CategorizeDirectory(c *gin.Context) {
 		}
 	}
 
+	h.trackServerEvent(c, analytics.EventCategorizerRun, map[string]any{
+		"directory": absDir,
+		"count":     len(results),
+	})
 	writeSuccess(c, results)
 }
 
@@ -124,6 +129,11 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 			h.log.Warn(fmtCategorizerUpdateFailed, absPath, updateErr)
 		}
 	}
+	h.trackServerEvent(c, analytics.EventCategorizerRun, map[string]any{
+		"scope":    "single",
+		"path":     absPath,
+		"category": string(req.Category),
+	})
 	writeSuccess(c, map[string]string{"message": "Category set"})
 }
 
@@ -143,5 +153,9 @@ func (h *Handler) CleanStaleCategories(c *gin.Context) {
 		return
 	}
 	removed := h.categorizer.CleanStale()
+	h.trackServerEvent(c, analytics.EventCategorizerRun, map[string]any{
+		"scope":   "clean_stale",
+		"removed": removed,
+	})
 	writeSuccess(c, map[string]int{"removed": removed})
 }
