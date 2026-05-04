@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.12.0] - 2026-05-04 (minor)
+
+- fix(docker): persist config.json in app-data volume
+- analytics: surface hidden stats and stream throughput
+- analytics: track pipeline + security + remote/receiver actions
+- analytics: dedupe audit writes and convert legacy admin actions
+- analytics: admin actions panel in dashboard
+- analytics: tests for backfill, IP truncation, diagnostics
+- analytics: search-clickthrough panel in per-media drill
+- analytics: add /admin/analytics/health monitoring endpoint
+- analytics: track admin infrastructure events
+- analytics: track curation + governance events
+- analytics: forecast/range/alert tests + event detail modal + day backfill
+- analytics: custom alert rules with persistent localStorage definitions
+- analytics: A/B range comparison + composite event indexes
+- analytics: forecasting + export-all ZIP + 12 more regression tests
+- analytics: per-IP panel + diagnostics + abandonment + preset layouts
+- analytics: per-user analytics modal embedded in UsersTab
+- analytics: tests for cache, subscriptions, retention, anomalies
+- analytics: anomaly detection — flag spikes/dips vs rolling baseline
+- analytics: cohort retention grid (week-N retention by signup cohort)
+- analytics: SSE live event tail
+- analytics: generic export-panel endpoint + CSV/JSON downloads
+- analytics: TTL cache for hot aggregations + selective invalidation
+- analytics: funnel + device + per-media drill, panel toggles, regression tests
+- analytics: cohort + heatmap + quality + gaps panels, click-to-drill
+- analytics: time-window filters + DAU/WAU/MAU + heatmap + quality + gaps
+- analytics: rich UI — line charts, leaderboards, filters, live streams
+- analytics: top-users, top-searches, failed-logins, error-paths, timeline
+- analytics: emit stream_start/stream_end with bandwidth payload
+- analytics: stream/bandwidth/access events + audit-log mirror + 5xx tracking
+- analytics: surface new traffic counters and per-user view in AdminTab
+- analytics: persist daily stats, expand traffic coverage, kill forge vector
+
+
 ## [1.11.1] - 2026-05-04 (patch)
 
 - ci: stop duplicate CI runs and unblock release pipeline
