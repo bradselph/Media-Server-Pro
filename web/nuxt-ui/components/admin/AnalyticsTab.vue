@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts, AnalyticsEvent, ContentPerformanceItem } from '~/types/api'
+import type { AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts, AnalyticsEvent, ContentPerformanceItem, UserAnalytics } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime } from '~/utils/format'
 
@@ -16,6 +16,12 @@ const eventStats = ref<EventStats | null>(null)
 const eventTypeCounts = ref<EventTypeCounts | null>(null)
 const loading = ref(true)
 const period = ref('7d')
+
+// Per-user aggregate, populated on demand from the drill-down's "By User" tab
+// so admins can see totals/watch-time/etc. for a specific user without
+// scrolling raw events.
+const userAggregate = ref<UserAnalytics | null>(null)
+const userAggregateLoading = ref(false)
 
 // Auto-refresh
 const autoRefresh = ref(false)
@@ -66,11 +72,32 @@ async function drillByMedia() {
 async function drillByUser() {
   if (!drillUserId.value.trim()) return
   drillLoading.value = true
+  userAggregate.value = null
   try {
+    // Fire both the raw-events query (event drill stream) and the aggregate
+    // (per-user totals card) in parallel so admins see both views. The
+    // aggregate endpoint takes a username, the events endpoint takes a user
+    // ID — same URL string handles both because most operators use either.
     drillEvents.value = (await analyticsApi.getEventsByUser(drillUserId.value.trim(), 50)) ?? []
+    void loadUserAggregate(drillUserId.value.trim())
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
   } finally { drillLoading.value = false }
+}
+
+async function loadUserAggregate(usernameOrID: string) {
+  if (!usernameOrID) return
+  userAggregateLoading.value = true
+  try {
+    userAggregate.value = await analyticsApi.getUserAnalytics(usernameOrID)
+  } catch {
+    // Aggregate is best-effort; non-existent users or non-username queries
+    // (raw user IDs) will 404. Don't toast — the events list itself surfaces
+    // useful info, and an empty aggregate is a valid signal.
+    userAggregate.value = null
+  } finally {
+    userAggregateLoading.value = false
+  }
 }
 
 // Computed: event type distribution for visual bar chart
@@ -135,7 +162,76 @@ const EVENT_COLORS: Record<string, string> = {
   play: 'bg-green-500', pause: 'bg-yellow-500', resume: 'bg-blue-500',
   seek: 'bg-purple-500', complete: 'bg-emerald-500', error: 'bg-red-500',
   quality_change: 'bg-cyan-500', view: 'bg-indigo-500', playback: 'bg-teal-500',
+  favorite_add: 'bg-pink-500', favorite_remove: 'bg-pink-300', rating_set: 'bg-amber-500',
+  playlist_create: 'bg-sky-500', playlist_delete: 'bg-sky-300', playlist_item_add: 'bg-sky-400',
+  upload_success: 'bg-lime-500', upload_failed: 'bg-orange-500',
+  password_change: 'bg-violet-500', account_delete: 'bg-rose-500',
+  hls_start: 'bg-teal-400', hls_error: 'bg-red-400',
+  media_deleted: 'bg-red-300', api_token_create: 'bg-fuchsia-500',
+  api_token_revoke: 'bg-fuchsia-300', admin_action: 'bg-slate-500',
+  server_error: 'bg-red-600',
 }
+
+// Today's traffic metrics — split into semantic groups so a busy day doesn't
+// just produce a wall of identical cards. Each entry is hidden when the count
+// is zero (filtered by template) so admins only see what's actually happening.
+type TrafficGroup = { title: string; items: { label: string; value: number; icon: string; color: string }[] }
+const trafficGroups = computed<TrafficGroup[]>(() => {
+  const s = summary.value
+  if (!s) return []
+  return [
+    {
+      title: 'Auth',
+      items: [
+        { label: 'Logins', value: s.today_logins ?? 0, icon: 'i-lucide-log-in', color: 'text-success' },
+        { label: 'Failed Logins', value: s.today_logins_failed ?? 0, icon: 'i-lucide-shield-alert', color: 'text-error' },
+        { label: 'Logouts', value: s.today_logouts ?? 0, icon: 'i-lucide-log-out', color: 'text-muted' },
+        { label: 'Registrations', value: s.today_registrations ?? 0, icon: 'i-lucide-user-plus', color: 'text-primary' },
+        { label: 'Age Gate', value: s.today_age_gate_passes ?? 0, icon: 'i-lucide-shield-check', color: 'text-warning' },
+        { label: 'Password Changes', value: s.today_password_changes ?? 0, icon: 'i-lucide-key', color: 'text-info' },
+        { label: 'Account Deletions', value: s.today_account_deletions ?? 0, icon: 'i-lucide-user-x', color: 'text-error' },
+      ],
+    },
+    {
+      title: 'Content',
+      items: [
+        { label: 'Downloads', value: s.today_downloads ?? 0, icon: 'i-lucide-download', color: 'text-info' },
+        { label: 'Searches', value: s.today_searches ?? 0, icon: 'i-lucide-search', color: 'text-muted' },
+        { label: 'Favorites Added', value: s.today_favorites_added ?? 0, icon: 'i-lucide-heart', color: 'text-pink-500' },
+        { label: 'Favorites Removed', value: s.today_favorites_removed ?? 0, icon: 'i-lucide-heart-off', color: 'text-muted' },
+        { label: 'Ratings Set', value: s.today_ratings_set ?? 0, icon: 'i-lucide-star', color: 'text-amber-500' },
+        { label: 'Uploads OK', value: s.today_uploads_succeeded ?? 0, icon: 'i-lucide-upload', color: 'text-success' },
+        { label: 'Uploads Failed', value: s.today_uploads_failed ?? 0, icon: 'i-lucide-alert-triangle', color: 'text-warning' },
+      ],
+    },
+    {
+      title: 'Playlists & Streaming',
+      items: [
+        { label: 'Playlists Created', value: s.today_playlists_created ?? 0, icon: 'i-lucide-list-plus', color: 'text-sky-500' },
+        { label: 'Playlists Deleted', value: s.today_playlists_deleted ?? 0, icon: 'i-lucide-list-x', color: 'text-muted' },
+        { label: 'Items Added', value: s.today_playlist_items_added ?? 0, icon: 'i-lucide-list', color: 'text-sky-400' },
+        { label: 'HLS Starts', value: s.today_hls_starts ?? 0, icon: 'i-lucide-play-circle', color: 'text-teal-500' },
+        { label: 'HLS Errors', value: s.today_hls_errors ?? 0, icon: 'i-lucide-x-circle', color: 'text-error' },
+      ],
+    },
+    {
+      title: 'Admin & System',
+      items: [
+        { label: 'Admin Actions', value: s.today_admin_actions ?? 0, icon: 'i-lucide-shield', color: 'text-slate-500' },
+        { label: 'Tokens Created', value: s.today_api_tokens_created ?? 0, icon: 'i-lucide-key-round', color: 'text-fuchsia-500' },
+        { label: 'Tokens Revoked', value: s.today_api_tokens_revoked ?? 0, icon: 'i-lucide-key-square', color: 'text-muted' },
+        { label: 'Media Deletions', value: s.today_media_deletions ?? 0, icon: 'i-lucide-trash-2', color: 'text-error' },
+        { label: 'Server Errors', value: s.today_server_errors ?? 0, icon: 'i-lucide-alert-octagon', color: 'text-red-600' },
+      ],
+    },
+  ]
+})
+
+// Whether ANY traffic metric has activity today — used to gate the whole
+// breakdown section so a fresh DB doesn't render a long empty header.
+const hasTrafficActivity = computed(() =>
+  trafficGroups.value.some(g => g.items.some(it => it.value > 0))
+)
 </script>
 
 <template>
@@ -205,28 +301,29 @@ const EVENT_COLORS: Record<string, string> = {
       </UCard>
     </div>
 
-    <!-- Today's Traffic Breakdown -->
-    <div v-if="summary && (summary.today_logins || summary.today_logins_failed || summary.today_registrations || summary.today_age_gate_passes || summary.today_downloads || summary.today_searches)" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-      <UCard
-        v-for="item in [
-          { label: 'Logins', value: summary.today_logins ?? 0, icon: 'i-lucide-log-in', color: 'text-success' },
-          { label: 'Failed Logins', value: summary.today_logins_failed ?? 0, icon: 'i-lucide-shield-alert', color: 'text-error' },
-          { label: 'Registrations', value: summary.today_registrations ?? 0, icon: 'i-lucide-user-plus', color: 'text-primary' },
-          { label: 'Age Gate', value: summary.today_age_gate_passes ?? 0, icon: 'i-lucide-shield-check', color: 'text-warning' },
-          { label: 'Downloads', value: summary.today_downloads ?? 0, icon: 'i-lucide-download', color: 'text-info' },
-          { label: 'Searches', value: summary.today_searches ?? 0, icon: 'i-lucide-search', color: 'text-muted' },
-        ].filter(i => i.value > 0)"
-        :key="item.label"
-        :ui="{ body: 'p-3' }"
-      >
-        <div class="flex items-center gap-2">
-          <UIcon :name="item.icon" :class="[item.color, 'size-4 shrink-0']" />
-          <div class="min-w-0">
-            <p class="text-lg font-bold text-highlighted truncate">{{ item.value.toLocaleString() }}</p>
-            <p class="text-xs text-muted">{{ item.label }}</p>
+    <!-- Today's Traffic Breakdown — grouped, only shows non-zero counters so
+         a quiet day stays visually quiet instead of rendering 24 zero cards. -->
+    <div v-if="summary && hasTrafficActivity" class="space-y-3">
+      <template v-for="group in trafficGroups" :key="group.title">
+        <div v-if="group.items.some(i => i.value > 0)">
+          <h4 class="text-xs font-semibold uppercase tracking-wide text-muted mb-2">{{ group.title }}</h4>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <UCard
+              v-for="item in group.items.filter(i => i.value > 0)"
+              :key="item.label"
+              :ui="{ body: 'p-3' }"
+            >
+              <div class="flex items-center gap-2">
+                <UIcon :name="item.icon" :class="[item.color, 'size-4 shrink-0']" />
+                <div class="min-w-0">
+                  <p class="text-lg font-bold text-highlighted truncate">{{ item.value.toLocaleString() }}</p>
+                  <p class="text-xs text-muted">{{ item.label }}</p>
+                </div>
+              </div>
+            </UCard>
           </div>
         </div>
-      </UCard>
+      </template>
     </div>
 
     <!-- Charts row: Event Distribution + Hourly Activity -->
@@ -376,8 +473,63 @@ const EVENT_COLORS: Record<string, string> = {
         <UButton :loading="drillLoading" icon="i-lucide-search" label="Search" :disabled="!drillMediaId.trim()" @click="drillByMedia" />
       </div>
       <div v-else class="flex gap-2">
-        <UInput v-model="drillUserId" placeholder="User ID" class="flex-1" @keyup.enter="drillByUser" />
+        <UInput v-model="drillUserId" placeholder="Username (preferred) or User ID" class="flex-1" @keyup.enter="drillByUser" />
         <UButton :loading="drillLoading" icon="i-lucide-search" label="Search" :disabled="!drillUserId.trim()" @click="drillByUser" />
+      </div>
+
+      <!-- Per-user aggregate (only renders when the lookup-by-username
+           endpoint resolved). Shows totals plus first/last seen so admins can
+           gauge engagement without scrolling raw events. -->
+      <div v-if="drillMode === 'user' && (userAggregate || userAggregateLoading)" class="mt-3">
+        <div v-if="userAggregateLoading" class="flex justify-center py-3">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-4 text-muted" />
+        </div>
+        <div v-else-if="userAggregate" class="space-y-2">
+          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+            <UCard
+              v-for="m in [
+                { label: 'Views', value: userAggregate.total_views, icon: 'i-lucide-eye' },
+                { label: 'Playbacks', value: userAggregate.total_playbacks, icon: 'i-lucide-play' },
+                { label: 'Completions', value: userAggregate.total_completions, icon: 'i-lucide-check-circle' },
+                { label: 'Watch Time', value: userAggregate.total_watch_time, icon: 'i-lucide-clock', isTime: true },
+                { label: 'Downloads', value: userAggregate.total_downloads, icon: 'i-lucide-download' },
+                { label: 'Searches', value: userAggregate.total_searches, icon: 'i-lucide-search' },
+                { label: 'Favorites +', value: userAggregate.favorites_added, icon: 'i-lucide-heart' },
+                { label: 'Favorites −', value: userAggregate.favorites_removed, icon: 'i-lucide-heart-off' },
+                { label: 'Ratings', value: userAggregate.ratings_set, icon: 'i-lucide-star' },
+                { label: 'Playlists +', value: userAggregate.playlists_created, icon: 'i-lucide-list-plus' },
+                { label: 'Uploads OK', value: userAggregate.uploads_succeeded, icon: 'i-lucide-upload' },
+                { label: 'Uploads Fail', value: userAggregate.uploads_failed, icon: 'i-lucide-alert-triangle' },
+                { label: 'Logins', value: userAggregate.logins, icon: 'i-lucide-log-in' },
+                { label: 'Failed Logins', value: userAggregate.logins_failed, icon: 'i-lucide-shield-alert' },
+                { label: 'Logouts', value: userAggregate.logouts, icon: 'i-lucide-log-out' },
+                { label: 'Unique Media', value: userAggregate.unique_media, icon: 'i-lucide-clapperboard' },
+              ]"
+              :key="m.label"
+              :ui="{ body: 'p-2' }"
+            >
+              <div class="flex items-center gap-2">
+                <UIcon :name="m.icon" class="size-3.5 text-muted shrink-0" />
+                <div class="min-w-0">
+                  <p class="text-sm font-bold text-highlighted truncate">
+                    {{ m.isTime ? formatWatchTime(m.value) : (m.value ?? 0).toLocaleString() }}
+                  </p>
+                  <p class="text-[10px] text-muted leading-tight">{{ m.label }}</p>
+                </div>
+              </div>
+            </UCard>
+          </div>
+          <div class="flex items-center gap-4 text-xs text-muted flex-wrap">
+            <span v-if="userAggregate.first_seen">First seen: {{ new Date(userAggregate.first_seen).toLocaleString() }}</span>
+            <span v-if="userAggregate.last_seen">Last seen: {{ new Date(userAggregate.last_seen).toLocaleString() }}</span>
+            <span v-if="userAggregate.most_viewed_media_id">
+              Most-viewed:
+              <span class="font-mono">{{ userAggregate.most_viewed_media_id.slice(0, 8) }}…</span>
+              <span class="ml-1">({{ userAggregate.most_viewed_count }})</span>
+            </span>
+            <span>Total events scanned: {{ userAggregate.total_events.toLocaleString() }}</span>
+          </div>
+        </div>
       </div>
       <div v-if="drillLoading" class="flex justify-center py-4 mt-2">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
@@ -459,6 +611,15 @@ const EVENT_COLORS: Record<string, string> = {
           { accessorKey: 'total_views', header: 'Views' },
           { accessorKey: 'unique_users', header: 'Unique Users' },
           { accessorKey: 'total_watch_time', header: 'Watch Time' },
+          { accessorKey: 'logins', header: 'Logins' },
+          { accessorKey: 'registrations', header: 'Signups' },
+          { accessorKey: 'downloads', header: 'Downloads' },
+          { accessorKey: 'searches', header: 'Searches' },
+          { accessorKey: 'uploads_succeeded', header: 'Uploads' },
+          { accessorKey: 'favorites_added', header: 'Favorites' },
+          { accessorKey: 'ratings_set', header: 'Ratings' },
+          { accessorKey: 'hls_starts', header: 'HLS' },
+          { accessorKey: 'admin_actions', header: 'Admin' },
         ]"
       >
         <template #date-cell="{ row }">
@@ -467,6 +628,15 @@ const EVENT_COLORS: Record<string, string> = {
         <template #total_views-cell="{ row }">{{ (row.original.total_views ?? 0).toLocaleString() }}</template>
         <template #unique_users-cell="{ row }">{{ (row.original.unique_users ?? 0).toLocaleString() }}</template>
         <template #total_watch_time-cell="{ row }">{{ formatWatchTime(row.original.total_watch_time) }}</template>
+        <template #logins-cell="{ row }">{{ (row.original.logins ?? 0).toLocaleString() }}</template>
+        <template #registrations-cell="{ row }">{{ (row.original.registrations ?? 0).toLocaleString() }}</template>
+        <template #downloads-cell="{ row }">{{ (row.original.downloads ?? 0).toLocaleString() }}</template>
+        <template #searches-cell="{ row }">{{ (row.original.searches ?? 0).toLocaleString() }}</template>
+        <template #uploads_succeeded-cell="{ row }">{{ (row.original.uploads_succeeded ?? 0).toLocaleString() }}</template>
+        <template #favorites_added-cell="{ row }">{{ (row.original.favorites_added ?? 0).toLocaleString() }}</template>
+        <template #ratings_set-cell="{ row }">{{ (row.original.ratings_set ?? 0).toLocaleString() }}</template>
+        <template #hls_starts-cell="{ row }">{{ (row.original.hls_starts ?? 0).toLocaleString() }}</template>
+        <template #admin_actions-cell="{ row }">{{ (row.original.admin_actions ?? 0).toLocaleString() }}</template>
       </UTable>
     </UCard>
 
