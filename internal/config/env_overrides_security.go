@@ -26,7 +26,7 @@ func (m *Manager) applySecurityRateLimitCoreOverrides() {
 	if val, ok := envGetBool("RATE_LIMIT_ENABLED"); ok {
 		m.config.Security.RateLimitEnabled = val
 	}
-	if val, ok := envGetInt("RATE_LIMIT_REQUESTS"); ok {
+	if val, ok := envGetInt("RATE_LIMIT_REQUESTS"); ok && val > 0 {
 		m.config.Security.RateLimitRequests = val
 	}
 	if val, ok := envGetDuration(time.Second, "RATE_LIMIT_WINDOW_SECONDS"); ok && val > 0 {
@@ -35,7 +35,7 @@ func (m *Manager) applySecurityRateLimitCoreOverrides() {
 }
 
 func (m *Manager) applySecurityBurstOverrides() {
-	if val, ok := envGetInt("SECURITY_BURST_LIMIT"); ok {
+	if val, ok := envGetInt("SECURITY_BURST_LIMIT"); ok && val > 0 {
 		m.config.Security.BurstLimit = val
 	}
 	if val, ok := envGetDuration(time.Second, "SECURITY_BURST_WINDOW_SECONDS"); ok && val > 0 {
@@ -44,7 +44,7 @@ func (m *Manager) applySecurityBurstOverrides() {
 }
 
 func (m *Manager) applySecurityBanOverrides() {
-	if val, ok := envGetInt("SECURITY_VIOLATIONS_FOR_BAN"); ok {
+	if val, ok := envGetInt("SECURITY_VIOLATIONS_FOR_BAN"); ok && val > 0 {
 		m.config.Security.ViolationsForBan = val
 	}
 	if val, ok := envGetDuration(time.Minute, "BAN_DURATION_MINUTES"); ok && val > 0 {
@@ -53,10 +53,10 @@ func (m *Manager) applySecurityBanOverrides() {
 }
 
 func (m *Manager) applySecurityAuthRateOverrides() {
-	if val, ok := envGetInt("AUTH_RATE_LIMIT"); ok {
+	if val, ok := envGetInt("AUTH_RATE_LIMIT"); ok && val > 0 {
 		m.config.Security.AuthRateLimit = val
 	}
-	if val, ok := envGetInt("AUTH_BURST_LIMIT"); ok {
+	if val, ok := envGetInt("AUTH_BURST_LIMIT"); ok && val > 0 {
 		m.config.Security.AuthBurstLimit = val
 	}
 }
@@ -98,8 +98,33 @@ func (m *Manager) applySecurityCSPOverrides() {
 		m.config.Security.HSTSMaxAge = val
 	}
 	if val := envGetStr("CSP_POLICY"); val != "" {
-		m.config.Security.CSPPolicy = val
+		if isValidCSPPolicy(val) {
+			m.config.Security.CSPPolicy = val
+		} else if m.log != nil {
+			m.log.Warn("CSP_POLICY: ignoring policy that contains no recognized directive name")
+		}
 	}
+}
+
+// isValidCSPPolicy performs a lightweight syntax sanity check: the policy must
+// reference at least one well-known CSP directive name. This catches obvious
+// typos and pasted nonsense without trying to be a full CSP parser.
+func isValidCSPPolicy(policy string) bool {
+	knownDirectives := []string{
+		"default-src", "script-src", "style-src", "img-src", "connect-src",
+		"font-src", "object-src", "media-src", "frame-src", "child-src",
+		"worker-src", "frame-ancestors", "form-action", "base-uri",
+		"manifest-src", "prefetch-src", "report-uri", "report-to",
+		"upgrade-insecure-requests", "block-all-mixed-content", "sandbox",
+		"require-trusted-types-for", "trusted-types",
+	}
+	lower := strings.ToLower(policy)
+	for _, d := range knownDirectives {
+		if strings.Contains(lower, d) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) applySecurityIPOverrides() {

@@ -21,10 +21,10 @@ func (m *Manager) applyAuthEnvOverrides() {
 	if val, ok := envGetDuration(time.Hour, "AUTH_SESSION_TIMEOUT_HOURS"); ok {
 		m.config.Auth.SessionTimeout = val
 	}
-	if val, ok := envGetInt("AUTH_MAX_LOGIN_ATTEMPTS"); ok {
+	if val, ok := envGetInt("AUTH_MAX_LOGIN_ATTEMPTS"); ok && val > 0 {
 		m.config.Auth.MaxLoginAttempts = val
 	}
-	if val, ok := envGetDuration(time.Minute, "AUTH_LOCKOUT_DURATION_MINUTES"); ok {
+	if val, ok := envGetDuration(time.Minute, "AUTH_LOCKOUT_DURATION_MINUTES"); ok && val > 0 {
 		m.config.Auth.LockoutDuration = val
 	}
 	if val, ok := envGetBool("AUTH_SECURE_COOKIES"); ok {

@@ -31,7 +31,7 @@ async function loadSecurityConfig() {
       fullConfig.value = cfg
       const sec = asRecord(cfg.security)
       const srv = asRecord(cfg.server)
-      // FND-0212: Validate asRecord() results before property access
+      // FND-0014: Validate asRecord() results before property access (check if not null)
       if (sec) {
         corsEnabled.value = sec.cors_enabled === true
         hstsEnabled.value = sec.hsts_enabled === true

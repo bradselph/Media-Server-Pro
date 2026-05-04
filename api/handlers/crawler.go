@@ -63,6 +63,10 @@ func (h *Handler) RemoveCrawlerTarget(c *gin.Context) {
 	}
 
 	id := c.Param("id")
+	if id == "" {
+		writeError(c, http.StatusBadRequest, "id is required")
+		return
+	}
 	if err := h.crawler.RemoveTarget(id); err != nil {
 		writeError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -78,6 +82,10 @@ func (h *Handler) CrawlTarget(c *gin.Context) {
 	}
 
 	id := c.Param("id")
+	if id == "" {
+		writeError(c, http.StatusBadRequest, "id is required")
+		return
+	}
 	newCount, err := h.crawler.CrawlTarget(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("Crawl failed: %v", err)
@@ -116,6 +124,10 @@ func (h *Handler) ApproveCrawlerDiscovery(c *gin.Context) {
 	}
 
 	id := c.Param("id")
+	if id == "" {
+		writeError(c, http.StatusBadRequest, "id is required")
+		return
+	}
 	user := getUser(c)
 	reviewedBy := ""
 	if user != nil {
@@ -138,6 +150,10 @@ func (h *Handler) IgnoreCrawlerDiscovery(c *gin.Context) {
 	}
 
 	id := c.Param("id")
+	if id == "" {
+		writeError(c, http.StatusBadRequest, "id is required")
+		return
+	}
 	user := getUser(c)
 	reviewedBy := ""
 	if user != nil {
@@ -159,6 +175,10 @@ func (h *Handler) DeleteCrawlerDiscovery(c *gin.Context) {
 	}
 
 	id := c.Param("id")
+	if id == "" {
+		writeError(c, http.StatusBadRequest, "id is required")
+		return
+	}
 	if err := h.crawler.DeleteDiscovery(id); err != nil {
 		writeError(c, http.StatusInternalServerError, err.Error())
 		return

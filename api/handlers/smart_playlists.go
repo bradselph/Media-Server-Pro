@@ -320,6 +320,11 @@ func (h *Handler) UpdateSmartPlaylist(c *gin.Context) {
 		sp.Name = *req.Name
 	}
 	if req.Description != nil {
+		// FND-0059: Validate description length for consistency with name validation.
+		if len(*req.Description) > 1000 {
+			writeError(c, http.StatusBadRequest, "description too long (max 1000)")
+			return
+		}
 		sp.Description = *req.Description
 	}
 	if req.Rules != nil {
