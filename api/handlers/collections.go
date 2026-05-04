@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/pkg/models"
 )
 
@@ -97,13 +98,10 @@ func (h *Handler) CreateCollection(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to create collection: "+err.Error())
 		return
 	}
-	session := getSession(c)
-	if session != nil {
-		h.logAdminAction(c, &adminLogActionParams{
-			UserID: session.UserID, Username: session.Username,
-			Action: "create_collection", Target: col.ID,
-		})
-	}
+	h.trackServerEvent(c, analytics.EventCollectionCreate, map[string]any{
+		"collection_id": col.ID,
+		"name":          col.Name,
+	})
 	writeSuccess(c, col)
 }
 
@@ -148,6 +146,9 @@ func (h *Handler) UpdateCollection(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to update collection: "+err.Error())
 		return
 	}
+	h.trackServerEvent(c, analytics.EventCollectionUpdate, map[string]any{
+		"collection_id": col.ID,
+	})
 	writeSuccess(c, col)
 }
 
@@ -173,13 +174,9 @@ func (h *Handler) DeleteCollection(c *gin.Context) {
 		writeError(c, http.StatusNotFound, "Collection not found")
 		return
 	}
-	session := getSession(c)
-	if session != nil {
-		h.logAdminAction(c, &adminLogActionParams{
-			UserID: session.UserID, Username: session.Username,
-			Action: "delete_collection", Target: id,
-		})
-	}
+	h.trackServerEvent(c, analytics.EventCollectionDelete, map[string]any{
+		"collection_id": id,
+	})
 	writeSuccess(c, gin.H{"message": "Collection deleted"})
 }
 
@@ -222,6 +219,10 @@ func (h *Handler) AddCollectionItems(c *gin.Context) {
 			return
 		}
 	}
+	h.trackServerEvent(c, analytics.EventCollectionItemsAdd, map[string]any{
+		"collection_id": collectionID,
+		"count":         len(body.MediaIDs),
+	})
 	writeSuccess(c, gin.H{"message": "Items added", "count": len(body.MediaIDs)})
 }
 
@@ -241,6 +242,10 @@ func (h *Handler) RemoveCollectionItem(c *gin.Context) {
 		writeError(c, http.StatusNotFound, "Item not found in collection")
 		return
 	}
+	h.trackServerEvent(c, analytics.EventCollectionItemRemove, map[string]any{
+		"collection_id": collectionID,
+		"media_id":      mediaID,
+	})
 	writeSuccess(c, gin.H{"message": "Item removed"})
 }
 

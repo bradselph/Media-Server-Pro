@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/pkg/models"
 )
 
@@ -102,6 +103,10 @@ func (h *Handler) CreateChapter(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventChapterCreate, map[string]any{
+		"chapter_id": chapter.ID,
+		"media_id":   chapter.MediaID,
+	})
 	writeSuccess(c, chapter)
 }
 
@@ -197,6 +202,10 @@ func (h *Handler) UpdateChapter(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventChapterUpdate, map[string]any{
+		"chapter_id": chapter.ID,
+		"media_id":   chapter.MediaID,
+	})
 	writeSuccess(c, chapter)
 }
 
@@ -237,5 +246,8 @@ func (h *Handler) DeleteChapter(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventChapterDelete, map[string]any{
+		"chapter_id": id,
+	})
 	writeSuccess(c, nil)
 }

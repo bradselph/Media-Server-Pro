@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/media"
 	"media-server-pro/pkg/models"
 )
@@ -242,6 +243,10 @@ func (h *Handler) CreateSmartPlaylist(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
+	h.trackServerEvent(c, analytics.EventSmartPlaylistCreate, map[string]any{
+		"playlist_id": sp.ID,
+		"name":        sp.Name,
+	})
 	writeSuccess(c, sp)
 }
 
@@ -339,6 +344,9 @@ func (h *Handler) UpdateSmartPlaylist(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
+	h.trackServerEvent(c, analytics.EventSmartPlaylistUpdate, map[string]any{
+		"playlist_id": sp.ID,
+	})
 	writeSuccess(c, sp)
 }
 
@@ -367,6 +375,9 @@ func (h *Handler) DeleteSmartPlaylist(c *gin.Context) {
 		writeError(c, http.StatusNotFound, "Smart playlist not found")
 		return
 	}
+	h.trackServerEvent(c, analytics.EventSmartPlaylistDelete, map[string]any{
+		"playlist_id": id,
+	})
 	writeSuccess(c, nil)
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/auth"
 	"media-server-pro/internal/repositories"
 	repoMysql "media-server-pro/internal/repositories/mysql"
@@ -91,6 +92,10 @@ func (h *Handler) RequestDataDeletion(c *gin.Context) {
 	}
 
 	h.log.Info("Data deletion request created by user %s (id: %s)", user.Username, id)
+	h.trackServerEvent(c, analytics.EventDeletionRequestSubmit, map[string]any{
+		"request_id": id,
+		"username":   user.Username,
+	})
 	writeSuccess(c, map[string]string{
 		"status":  "submitted",
 		"message": "Your data deletion request has been submitted and will be reviewed by an administrator.",
@@ -205,5 +210,13 @@ func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
 	}
 
 	h.log.Info("Admin %s %s data deletion request %s for user %s", adminSession.Username, req.Action+"d", requestID, dr.Username)
+	eventType := analytics.EventDeletionRequestDeny
+	if req.Action == "approve" {
+		eventType = analytics.EventDeletionRequestApprove
+	}
+	h.trackServerEvent(c, eventType, map[string]any{
+		"request_id": requestID,
+		"username":   dr.Username,
+	})
 	writeSuccess(c, map[string]string{"status": newStatus})
 }
