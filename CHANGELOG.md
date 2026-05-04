@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.1] - 2026-05-04 (patch)
+
+- ci: stop duplicate CI runs and unblock release pipeline
+- fix(audit): batch D + cleanup — 7 deferred findings
+- fix(audit): batches A/B/C — 15 deferred findings
+- fix(audit): resolve FND-0011, FND-0016, FND-0022, FND-0044
+
+
 ## [1.11.0] - 2026-04-30 (minor)
 
 - test: add repository test coverage for 9 untested MySQL repos
