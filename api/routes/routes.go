@@ -692,6 +692,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/analytics/export-all", h.AdminExportAll)
 	adminGrp.GET("/analytics/range-compare", h.AdminGetRangeComparison)
 	adminGrp.POST("/analytics/evaluate-alerts", h.AdminEvaluateAlerts)
+	adminGrp.POST("/analytics/backfill", h.AdminBackfillDailyStats)
 	adminGrp.GET(routeUserByName+"/analytics", h.AdminGetUserAnalytics)
 
 	// Configuration management routes

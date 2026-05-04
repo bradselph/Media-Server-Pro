@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -1914,6 +1915,160 @@ func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) M
 		}
 	}
 	return out
+}
+
+// BackfillDailyStats recomputes the DailyStats for the given date from raw
+// analytics_events. Used when persisted values drift (e.g. a flush failed
+// silently, or someone manually mutated the daily_stats row). The recomputed
+// totals replace the in-memory entry AND mark it dirty so the flush ticker
+// writes back to disk.
+//
+// Returns the rebuilt DailyStats so the admin UI can show what changed.
+func (m *Module) BackfillDailyStats(ctx context.Context, date string) (*models.DailyStats, error) {
+	if date == "" {
+		return nil, fmt.Errorf("date required")
+	}
+	// Validate the date string — defends against operator typos that would
+	// otherwise sneak through into the SQL filter.
+	if _, err := time.Parse(dateFormat, date); err != nil {
+		return nil, fmt.Errorf("date must be YYYY-MM-DD: %w", err)
+	}
+	if m.eventRepo == nil {
+		return nil, fmt.Errorf("analytics module not started")
+	}
+	// Load every event from that calendar day. Use day-bracketed timestamps
+	// so the repo's BETWEEN filter does the right thing — startOfDay
+	// inclusive, endOfDay exclusive.
+	loc := time.Now().Location()
+	start, _ := time.ParseInLocation(dateFormat, date, loc)
+	end := start.AddDate(0, 0, 1)
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		StartDate: start.Format(time.RFC3339),
+		EndDate:   end.Format(time.RFC3339),
+		Limit:     200000,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load events for %s: %w", date, err)
+	}
+
+	// Reset the in-memory entry so we don't double-count what's already
+	// there from the live counter path.
+	rebuilt := &models.DailyStats{Date: date}
+	usersForDay := make(map[string]struct{})
+
+	for _, ev := range events {
+		// Per-event arithmetic mirrors updateDailyStatsLocked + the
+		// reconstruction switch in rebuildStatsFromEvent. Keeping a third
+		// copy of this switch is fragile, so we route through the same
+		// helper used during reconstruction by temporarily binding a
+		// dailyUsers entry for the date.
+		switch ev.Type {
+		case "view":
+			rebuilt.TotalViews++
+			if ev.UserID != "" {
+				usersForDay[ev.UserID] = struct{}{}
+				rebuilt.UniqueUsers = len(usersForDay)
+			}
+		case "playback":
+			pos, _ := ev.Data["position"].(float64)
+			dur, _ := ev.Data["duration"].(float64)
+			watch := pos
+			if watch > dur && dur > 0 {
+				watch = dur
+			}
+			if watch > 0 {
+				rebuilt.TotalWatchTime += watch
+			}
+		case EventLogin:
+			rebuilt.Logins++
+		case EventLoginFailed:
+			rebuilt.LoginsFailed++
+		case EventLogout:
+			rebuilt.Logouts++
+		case EventRegister:
+			rebuilt.NewUsers++
+			rebuilt.Registrations++
+		case EventAgeGatePass:
+			rebuilt.AgeGatePasses++
+		case EventDownload:
+			rebuilt.Downloads++
+		case EventSearch:
+			rebuilt.Searches++
+		case EventFavoriteAdd:
+			rebuilt.FavoritesAdded++
+		case EventFavoriteRemove:
+			rebuilt.FavoritesRemoved++
+		case EventRatingSet:
+			rebuilt.RatingsSet++
+		case EventPlaylistCreate:
+			rebuilt.PlaylistsCreated++
+		case EventPlaylistDelete:
+			rebuilt.PlaylistsDeleted++
+		case EventPlaylistItemAdd:
+			rebuilt.PlaylistItemsAdded++
+		case EventUploadSuccess:
+			rebuilt.UploadsSucceeded++
+		case EventUploadFailed:
+			rebuilt.UploadsFailed++
+		case EventPasswordChange:
+			rebuilt.PasswordChanges++
+		case EventAccountDelete:
+			rebuilt.AccountDeletions++
+		case EventHLSStart:
+			rebuilt.HLSStarts++
+		case EventHLSError:
+			rebuilt.HLSErrors++
+		case EventMediaDeleted:
+			rebuilt.MediaDeletions++
+		case EventAPITokenCreate:
+			rebuilt.APITokensCreated++
+		case EventAPITokenRevoke:
+			rebuilt.APITokensRevoked++
+		case EventAdminAction:
+			rebuilt.AdminActions++
+		case EventServerError:
+			rebuilt.ServerErrors++
+		case EventStreamStart:
+			rebuilt.StreamStarts++
+		case EventStreamEnd:
+			rebuilt.StreamEnds++
+			if bs, ok := ev.Data["bytes_sent"].(float64); ok && bs > 0 {
+				rebuilt.BytesServed += int64(bs)
+			}
+			if bs, ok := ev.Data["bytes_sent"].(int64); ok && bs > 0 {
+				rebuilt.BytesServed += bs
+			}
+		case EventMatureBlocked:
+			rebuilt.MatureBlocked++
+		case EventPermissionDenied:
+			rebuilt.PermissionDenied++
+		case EventPreferencesChange:
+			rebuilt.PreferencesChanges++
+		case EventBulkDelete:
+			rebuilt.BulkDeletes++
+		case EventBulkUpdate:
+			rebuilt.BulkUpdates++
+		case EventUserRoleChange:
+			rebuilt.UserRoleChanges++
+		}
+	}
+
+	m.statsMu.Lock()
+	m.dailyStats[date] = rebuilt
+	m.dailyUsers[date] = usersForDay
+	m.statsMu.Unlock()
+	m.markDailyDirty(date)
+	// Force a flush right now so the persisted row matches the in-memory
+	// rebuild before we return — the caller wants the durability to be
+	// committed when the request completes, not 30s later.
+	flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	m.flushDirtyDailyStats(flushCtx)
+	// Bust caches so the dashboard's next refresh reads fresh numbers.
+	if m.cache != nil {
+		m.cache.invalidate("")
+	}
+	return rebuilt, nil
 }
 
 // AlertRule defines a threshold check against a DailyStats metric. Operator

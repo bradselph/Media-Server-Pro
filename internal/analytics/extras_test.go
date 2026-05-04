@@ -471,3 +471,173 @@ func TestGetMetricTimeline_UnknownMetric(t *testing.T) {
 		}
 	}
 }
+
+// ── Forecast ──────────────────────────────────────────────────────────────
+
+func TestGetMetricForecast_TrendDirection(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	now := time.Now()
+	// Strictly increasing values over 7 days → forecast should call this "up".
+	for i := 0; i < 7; i++ {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		// Today (i=0) is the highest, going back gets smaller.
+		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 100 - i*10}
+	}
+	f := m.GetMetricForecast("total_views", 7)
+	if f.Direction != "up" {
+		t.Errorf("expected up direction on rising series, got %s", f.Direction)
+	}
+	if f.Slope <= 0 {
+		t.Errorf("expected positive slope, got %f", f.Slope)
+	}
+}
+
+func TestGetMetricForecast_FlatSeriesIsFlat(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	now := time.Now()
+	// Constant value → slope ~0 → direction "flat".
+	for i := 0; i < 7; i++ {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 50}
+	}
+	f := m.GetMetricForecast("total_views", 7)
+	if f.Direction != "flat" {
+		t.Errorf("expected flat direction on constant series, got %s", f.Direction)
+	}
+}
+
+func TestGetMetricForecast_NegativeProjectionClampedToZero(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	now := time.Now()
+	// A line so steep downward that the projection would naturally land
+	// below zero. Forecast must clamp to 0 — negative event counts are
+	// nonsense and would render as a confusing "-12 views tomorrow".
+	for i := 0; i < 7; i++ {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: i * 5}
+	}
+	f := m.GetMetricForecast("total_views", 7)
+	if f.Projection < 0 {
+		t.Errorf("expected projection clamped to 0, got %f", f.Projection)
+	}
+}
+
+// ── Range comparison ──────────────────────────────────────────────────────
+
+func TestGetRangeComparison_Math(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	// Range A: 2026-04-01..2026-04-03 (3 days × 10 views = 30)
+	for d := 1; d <= 3; d++ {
+		date := time.Date(2026, 4, d, 0, 0, 0, 0, time.Local).Format(dateFormat)
+		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 10}
+	}
+	// Range B: 2026-04-04..2026-04-06 (3 days × 25 views = 75)
+	for d := 4; d <= 6; d++ {
+		date := time.Date(2026, 4, d, 0, 0, 0, 0, time.Local).Format(dateFormat)
+		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 25}
+	}
+	r := m.GetRangeComparison("2026-04-01", "2026-04-03", "2026-04-04", "2026-04-06")
+	var views *RangeMetric
+	for i := range r.Metrics {
+		if r.Metrics[i].Metric == "total_views" {
+			views = &r.Metrics[i]
+		}
+	}
+	if views == nil {
+		t.Fatalf("expected total_views row in result")
+	}
+	if views.A != 30 {
+		t.Errorf("expected A=30, got %f", views.A)
+	}
+	if views.B != 75 {
+		t.Errorf("expected B=75, got %f", views.B)
+	}
+	if views.DeltaAbsolute != 45 {
+		t.Errorf("expected delta=45, got %f", views.DeltaAbsolute)
+	}
+	// 45/30 = 150% increase
+	if views.DeltaPct < 149 || views.DeltaPct > 151 {
+		t.Errorf("expected ~150%% delta, got %f", views.DeltaPct)
+	}
+}
+
+func TestGetRangeComparison_ZeroABehavesSensibly(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	// Only range B has data → delta_pct sentinel = 100 (frontend treats specially)
+	date := time.Date(2026, 4, 4, 0, 0, 0, 0, time.Local).Format(dateFormat)
+	m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 50}
+	r := m.GetRangeComparison("2026-04-01", "2026-04-03", "2026-04-04", "2026-04-04")
+	for _, row := range r.Metrics {
+		if row.Metric == "total_views" {
+			if row.A != 0 || row.B != 50 || row.DeltaPct != 100 {
+				t.Errorf("expected A=0 B=50 delta_pct=100, got %+v", row)
+			}
+			return
+		}
+	}
+	t.Fatalf("total_views row missing from result")
+}
+
+// ── Custom alerts ─────────────────────────────────────────────────────────
+
+func TestEvaluateAlerts_OperatorsTrigger(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	today := time.Now().Format(dateFormat)
+	m.dailyStats[today] = &models.DailyStats{Date: today, ServerErrors: 10}
+
+	rules := []AlertRule{
+		{ID: "1", Name: "gt-trip", Metric: "server_errors", Operator: "gt", Threshold: 5, Window: 1},
+		{ID: "2", Name: "gt-noop", Metric: "server_errors", Operator: "gt", Threshold: 50, Window: 1},
+		{ID: "3", Name: "le-trip", Metric: "server_errors", Operator: "le", Threshold: 10, Window: 1},
+		{ID: "4", Name: "eq-trip", Metric: "server_errors", Operator: "eq", Threshold: 10, Window: 1},
+		{ID: "5", Name: "lt-trip", Metric: "server_errors", Operator: "lt", Threshold: 11, Window: 1},
+	}
+	results := m.EvaluateAlerts(rules)
+	wants := map[string]bool{"1": true, "2": false, "3": true, "4": true, "5": true}
+	for _, r := range results {
+		want, ok := wants[r.Rule.ID]
+		if !ok {
+			t.Fatalf("unexpected rule id %s", r.Rule.ID)
+		}
+		if r.Triggered != want {
+			t.Errorf("rule %s (%s %s %f): expected triggered=%v got %v (value=%f)",
+				r.Rule.ID, r.Rule.Metric, r.Rule.Operator, r.Rule.Threshold, want, r.Triggered, r.Value)
+		}
+	}
+}
+
+func TestEvaluateAlerts_WindowSumsTrailingDays(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	now := time.Now()
+	// Today=2, yesterday=3 — sum over a 2-day window should be 5.
+	m.dailyStats[now.Format(dateFormat)] = &models.DailyStats{Date: now.Format(dateFormat), Logins: 2}
+	yesterday := now.AddDate(0, 0, -1).Format(dateFormat)
+	m.dailyStats[yesterday] = &models.DailyStats{Date: yesterday, Logins: 3}
+
+	results := m.EvaluateAlerts([]AlertRule{
+		{ID: "w", Metric: "logins", Operator: "ge", Threshold: 5, Window: 2},
+	})
+	if len(results) != 1 || !results[0].Triggered || results[0].Value != 5 {
+		t.Errorf("expected triggered=true value=5, got %+v", results[0])
+	}
+}
+
+func TestEvaluateAlerts_EmptyRulesReturnsEmpty(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	results := m.EvaluateAlerts(nil)
+	if len(results) != 0 {
+		t.Errorf("expected empty result for empty rule list, got %+v", results)
+	}
+}
+
+func TestEvaluateAlerts_UnknownOperatorDoesNotTrigger(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	today := time.Now().Format(dateFormat)
+	m.dailyStats[today] = &models.DailyStats{Date: today, ServerErrors: 100}
+	results := m.EvaluateAlerts([]AlertRule{
+		{ID: "x", Metric: "server_errors", Operator: "BOGUS", Threshold: 1, Window: 1},
+	})
+	if len(results) != 1 || results[0].Triggered {
+		t.Errorf("unknown operator should not trigger, got %+v", results)
+	}
+}

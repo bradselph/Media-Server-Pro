@@ -995,6 +995,10 @@ export function useAnalyticsApi() {
         // the comparisons.
         evaluateAlerts: (rules: AlertRule[]) =>
             api.post<AlertResult[]>('/api/admin/analytics/evaluate-alerts', { rules }),
+        // Recompute a single date's DailyStats from raw events. Use when
+        // the persisted values look wrong (drift, partial flush, etc.).
+        backfillDailyStats: (date: string) =>
+            api.post<DailyStats>(`/api/admin/analytics/backfill${buildQS({date})}`),
         // Export-panel URL builder. Used by <a download> links so the
         // browser handles the file save dialog rather than the JS layer.
         exportPanelUrl: (panel: string, format: 'csv' | 'json' = 'csv', extra: Record<string, string | number | undefined> = {}) =>

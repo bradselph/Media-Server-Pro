@@ -759,6 +759,38 @@ func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]an
 	}
 }
 
+// AdminBackfillDailyStats recomputes one date's DailyStats from raw events
+// and writes it back. Path: POST /admin/analytics/backfill?date=YYYY-MM-DD.
+//
+// Use cases:
+//   - the flush ticker errored on a transient DB hiccup and the persisted
+//     row drifted from the live counters;
+//   - someone manually edited daily_stats and wants to roll back to truth;
+//   - retention pruned events on day N+30, but the day-N row got partially
+//     wiped and looks suspect.
+func (h *Handler) AdminBackfillDailyStats(c *gin.Context) {
+	if h.analytics == nil {
+		writeError(c, http.StatusServiceUnavailable, "Analytics is not available")
+		return
+	}
+	date := strings.TrimSpace(c.Query("date"))
+	if date == "" {
+		writeError(c, http.StatusBadRequest, "date query param required (YYYY-MM-DD)")
+		return
+	}
+	rebuilt, err := h.analytics.BackfillDailyStats(c.Request.Context(), date)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.logAdminAction(c, &adminLogActionParams{
+		Action:  "analytics_backfill_daily_stats",
+		Target:  date,
+		Details: map[string]any{"date": date},
+	})
+	writeSuccess(c, rebuilt)
+}
+
 // AdminEvaluateAlerts evaluates a list of admin-defined alert rules
 // against the current DailyStats. Rules live in browser localStorage on
 // the dashboard side; we don't persist them server-side because the

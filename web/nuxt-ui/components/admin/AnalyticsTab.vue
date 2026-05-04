@@ -63,6 +63,45 @@ const cmpLogins = ref<PeriodComparison | null>(null)
 // is happening today.
 const anomalies = ref<AnomalyReport | null>(null)
 
+// Backfill — recompute one date's DailyStats from raw events and reload
+// the daily breakdown to show the fresh numbers. Used when persisted
+// values drift (caught a flush failure, migrated data, etc.).
+const backfilling = ref<string | null>(null)
+async function backfillDate(date: string) {
+  backfilling.value = date
+  try {
+    await analyticsApi.backfillDailyStats(date)
+    toast.add({ title: `Recomputed ${date} from raw events`, color: 'success', icon: 'i-lucide-check' })
+    // Reload everything so the daily breakdown + dependent panels
+    // (period comparison, timeline, etc.) all reflect the new totals.
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Backfill failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    backfilling.value = null
+  }
+}
+
+// Per-event detail modal — opened when clicking any drill-row or live-tail
+// row. Shows the full event, including the data JSON formatted for reading.
+const eventDetail = ref<AnalyticsEvent | null>(null)
+function openEventDetail(ev: AnalyticsEvent) {
+  eventDetail.value = ev
+}
+function eventDataPretty(ev: AnalyticsEvent | null): string {
+  if (!ev || !ev.data) return ''
+  try { return JSON.stringify(ev.data, null, 2) } catch { return '' }
+}
+async function copyEventJson() {
+  if (!eventDetail.value || !import.meta.client) return
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(eventDetail.value, null, 2))
+    toast.add({ title: 'Event JSON copied', color: 'success', icon: 'i-lucide-clipboard-check' })
+  } catch {
+    toast.add({ title: 'Clipboard unavailable', color: 'warning', icon: 'i-lucide-alert-triangle' })
+  }
+}
+
 // Custom alert rules — admin-defined threshold checks. Persisted to
 // localStorage so each admin keeps their own alert set; evaluated on
 // every dashboard load + auto-refresh.
@@ -1831,7 +1870,12 @@ const hasTrafficActivity = computed(() =>
         Waiting for events…
       </div>
       <div v-else class="divide-y divide-default max-h-72 overflow-y-auto">
-        <div v-for="(ev, i) in liveTail" :key="`${ev.id}-${i}`" class="py-1.5 flex items-start gap-3 text-sm">
+        <div
+          v-for="(ev, i) in liveTail"
+          :key="`${ev.id}-${i}`"
+          class="py-1.5 flex items-start gap-3 text-sm cursor-pointer hover:bg-muted/10 rounded px-1"
+          @click="openEventDetail(ev)"
+        >
           <UBadge
             :color="ev.type === 'server_error' || ev.type === 'login_failed' || ev.type === 'error' ? 'error' :
                     ev.type === 'login' || ev.type === 'register' ? 'success' :
@@ -1940,7 +1984,12 @@ const hasTrafficActivity = computed(() =>
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
       </div>
       <div v-else-if="drillEvents.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
-        <div v-for="ev in drillEvents" :key="ev.id" class="py-2 text-sm flex items-start gap-3">
+        <div
+          v-for="ev in drillEvents"
+          :key="ev.id"
+          class="py-2 text-sm flex items-start gap-3 cursor-pointer hover:bg-muted/10 rounded px-1"
+          @click="openEventDetail(ev)"
+        >
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               <UBadge :label="ev.type" color="neutral" variant="subtle" size="xs" />
@@ -2107,16 +2156,23 @@ const hasTrafficActivity = computed(() =>
       </template>
 
       <!-- CSS bar chart — views per day. Clickable rows so admins can
-           drill the daily breakdown by clicking the bar instead of typing. -->
+           drill the daily breakdown by clicking the bar instead of typing.
+           A right-side button recomputes that day's DailyStats from raw
+           events — useful when persisted values look wrong. -->
       <div class="mb-4 space-y-1">
         <div
           v-for="row in dailyReversed"
           :key="row.date"
-          class="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/10 rounded px-1 py-0.5"
-          @click="drillDateFilter = row.date === drillDateFilter ? '' : row.date"
+          class="flex items-center gap-2 text-xs hover:bg-muted/10 rounded px-1 py-0.5 group"
         >
-          <span class="w-24 shrink-0 font-mono text-muted text-right">{{ row.date }}</span>
-          <div class="flex-1 bg-muted/20 rounded-full h-4 overflow-hidden">
+          <span
+            class="w-24 shrink-0 font-mono text-muted text-right cursor-pointer"
+            @click="drillDateFilter = row.date === drillDateFilter ? '' : row.date"
+          >{{ row.date }}</span>
+          <div
+            class="flex-1 bg-muted/20 rounded-full h-4 overflow-hidden cursor-pointer"
+            @click="drillDateFilter = row.date === drillDateFilter ? '' : row.date"
+          >
             <div
               class="h-full rounded-full bg-primary transition-all duration-300"
               :class="drillDateFilter && row.date !== drillDateFilter ? 'opacity-30' : ''"
@@ -2124,6 +2180,16 @@ const hasTrafficActivity = computed(() =>
             />
           </div>
           <span class="w-12 shrink-0 text-right text-muted">{{ (row.total_views ?? 0).toLocaleString() }}</span>
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-refresh-cw"
+            class="opacity-0 group-hover:opacity-100 transition-opacity"
+            :loading="backfilling === row.date"
+            :title="`Recompute ${row.date} from raw events`"
+            @click.stop="backfillDate(row.date)"
+          />
         </div>
       </div>
 
@@ -2274,6 +2340,49 @@ const hasTrafficActivity = computed(() =>
         </div>
       </div>
     </UCard>
+
+    <!-- Per-event detail modal — opens when an admin clicks a row in the
+         drill panel or the live tail. Shows the full event (id, type,
+         media/user/session/IP/UA, timestamp, data JSON) formatted for
+         reading. Copy-to-clipboard for the whole JSON so the event can
+         be pasted into a bug report. -->
+    <UModal :open="!!eventDetail" :ui="{ content: 'max-w-2xl' }" @update:open="val => { if (!val) eventDetail = null }">
+      <template #content>
+        <UCard v-if="eventDetail">
+          <template #header>
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-semibold flex items-center gap-2">
+                <UIcon name="i-lucide-info" class="size-4" />
+                Event Detail
+                <UBadge color="neutral" variant="subtle" size="xs">{{ eventDetail.type }}</UBadge>
+              </div>
+              <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-clipboard-copy" label="Copy JSON" @click="copyEventJson" />
+            </div>
+          </template>
+          <div class="space-y-3 text-sm">
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div><span class="text-muted">ID:</span> <span class="font-mono">{{ eventDetail.id }}</span></div>
+              <div><span class="text-muted">Time:</span> {{ new Date(eventDetail.timestamp).toLocaleString() }}</div>
+              <div v-if="eventDetail.media_id"><span class="text-muted">Media:</span> <span class="font-mono">{{ eventDetail.media_id }}</span></div>
+              <div v-if="eventDetail.user_id"><span class="text-muted">User:</span> <span class="font-mono">{{ eventDetail.user_id }}</span></div>
+              <div v-if="eventDetail.session_id"><span class="text-muted">Session:</span> <span class="font-mono">{{ eventDetail.session_id }}</span></div>
+              <div v-if="eventDetail.ip_address"><span class="text-muted">IP:</span> <span class="font-mono">{{ eventDetail.ip_address }}</span></div>
+            </div>
+            <div v-if="eventDetail.user_agent">
+              <p class="text-xs text-muted mb-1">User-Agent</p>
+              <p class="text-xs font-mono break-all bg-muted/10 rounded p-2">{{ eventDetail.user_agent }}</p>
+            </div>
+            <div v-if="eventDetail.data && Object.keys(eventDetail.data).length > 0">
+              <p class="text-xs text-muted mb-1">Data</p>
+              <pre class="text-xs bg-muted/10 rounded p-2 overflow-x-auto whitespace-pre-wrap">{{ eventDataPretty(eventDetail) }}</pre>
+            </div>
+          </div>
+          <template #footer>
+            <UButton variant="ghost" color="neutral" label="Close" @click="eventDetail = null" />
+          </template>
+        </UCard>
+      </template>
+    </UModal>
 
     <!-- Alert rule edit modal -->
     <UModal v-model:open="alertsEditOpen" :ui="{ content: 'max-w-md' }">
