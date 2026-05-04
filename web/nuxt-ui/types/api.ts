@@ -412,6 +412,42 @@ export interface MetricTimelineEntry {
     value: number
 }
 
+// Rolling unique-user counts. Stickiness ratios are 0..1 (DAU/WAU and
+// DAU/MAU) — useful to detect engagement decay independent of absolute
+// install size.
+export interface CohortMetrics {
+    dau: number
+    wau: number
+    mau: number
+    stickiness_dau_wau: number
+    stickiness_dau_mau: number
+}
+
+// One cell on the day-of-week × hour heatmap. day_of_week follows
+// time.Weekday (0=Sunday … 6=Saturday); hour is 0..23 in server local time.
+export interface HourlyHeatmapCell {
+    day_of_week: number
+    hour: number
+    count: number
+}
+
+// One row of the stream-quality breakdown.
+export interface QualityBucket {
+    quality: string
+    streams: number
+    bytes_sent: number
+}
+
+// Period-over-period comparison for a single DailyStats metric.
+export interface PeriodComparison {
+    metric: string
+    current: number
+    previous: number
+    delta_absolute: number
+    delta_pct: number
+    window_days: number
+}
+
 // Per-user aggregated analytics returned by /admin/users/:username/analytics.
 // Field names mirror the Go UserStats struct so the codegen pipeline doesn't
 // need a translation step. All counts default to 0 for inactive users.

@@ -324,10 +324,30 @@ func (h *Handler) GetEventsByMedia(c *gin.Context) {
 	writeSuccess(c, events)
 }
 
+// resolveAnalyticsTimeWindow turns ?days=N (and optional explicit
+// ?since=&until= ISO timestamps) into a (since, until) RFC3339 pair the
+// repository can apply as WHERE clauses. Empty pair = no time filter.
+//
+// Precedence: explicit since/until > days > none. days is the easy case for
+// the dashboard ("last 7 days"); since/until is the escape hatch for ad-hoc
+// reports that need a specific calendar range.
+func resolveAnalyticsTimeWindow(c *gin.Context) (since, until string) {
+	since = c.Query("since")
+	until = c.Query("until")
+	if since == "" && until == "" {
+		if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+			since = time.Now().AddDate(0, 0, -d).Format(time.RFC3339)
+		}
+	}
+	return since, until
+}
+
 // AdminGetTopUsers returns a leaderboard of users ranked by the chosen
 // metric. Query params: metric (views|watch_time|uploads|downloads|events,
-// default views), limit (1-200, default 10). Resolves user_id → username
-// best-effort so the dashboard can render names.
+// default views), limit (1-200, default 10), days (1-365, optional time
+// window — defaults to retention window when absent), since/until (ISO
+// timestamps, override days). Resolves user_id → username best-effort so
+// the dashboard can render names.
 func (h *Handler) AdminGetTopUsers(c *gin.Context) {
 	if h.analytics == nil {
 		writeSuccess(c, []any{})
@@ -338,7 +358,8 @@ func (h *Handler) AdminGetTopUsers(c *gin.Context) {
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l
 	}
-	rows := h.analytics.GetTopUsers(c.Request.Context(), metric, limit)
+	since, until := resolveAnalyticsTimeWindow(c)
+	rows := h.analytics.GetTopUsers(c.Request.Context(), metric, since, until, limit)
 	if h.auth != nil {
 		for i := range rows {
 			if rows[i].UserID == "" {
@@ -354,7 +375,8 @@ func (h *Handler) AdminGetTopUsers(c *gin.Context) {
 
 // AdminGetTopSearches returns the most-frequent search queries with the
 // empty-result share alongside, so admins can see what users want and what
-// the catalog is missing. Query params: limit (1-100, default 20).
+// the catalog is missing. Query params: limit (1-100, default 20),
+// days (optional time window).
 func (h *Handler) AdminGetTopSearches(c *gin.Context) {
 	if h.analytics == nil {
 		writeSuccess(c, []any{})
@@ -364,11 +386,12 @@ func (h *Handler) AdminGetTopSearches(c *gin.Context) {
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
 		limit = l
 	}
-	writeSuccess(c, h.analytics.GetTopSearches(c.Request.Context(), limit))
+	since, until := resolveAnalyticsTimeWindow(c)
+	writeSuccess(c, h.analytics.GetTopSearches(c.Request.Context(), since, until, limit))
 }
 
 // AdminGetFailedLogins returns recent login_failed events for security review.
-// Query params: limit (1-200, default 50).
+// Query params: limit (1-200, default 50), days (optional time window).
 func (h *Handler) AdminGetFailedLogins(c *gin.Context) {
 	if h.analytics == nil {
 		writeSuccess(c, []any{})
@@ -378,12 +401,14 @@ func (h *Handler) AdminGetFailedLogins(c *gin.Context) {
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l
 	}
-	writeSuccess(c, h.analytics.GetRecentFailedLogins(c.Request.Context(), limit))
+	since, until := resolveAnalyticsTimeWindow(c)
+	writeSuccess(c, h.analytics.GetRecentFailedLogins(c.Request.Context(), since, until, limit))
 }
 
 // AdminGetErrorPaths returns a (method, path, status) breakdown of recent
 // 5xx responses so operators can see which routes are misbehaving without
-// drilling raw events. Query params: limit (1-200, default 25).
+// drilling raw events. Query params: limit (1-200, default 25), days
+// (optional time window).
 func (h *Handler) AdminGetErrorPaths(c *gin.Context) {
 	if h.analytics == nil {
 		writeSuccess(c, []any{})
@@ -393,7 +418,85 @@ func (h *Handler) AdminGetErrorPaths(c *gin.Context) {
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l
 	}
-	writeSuccess(c, h.analytics.GetErrorPaths(c.Request.Context(), limit))
+	since, until := resolveAnalyticsTimeWindow(c)
+	writeSuccess(c, h.analytics.GetErrorPaths(c.Request.Context(), since, until, limit))
+}
+
+// AdminGetCohortMetrics returns DAU / WAU / MAU plus stickiness ratios.
+func (h *Handler) AdminGetCohortMetrics(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	writeSuccess(c, h.analytics.GetCohortMetrics(c.Request.Context()))
+}
+
+// AdminGetHourlyHeatmap returns a 7×24 grid of event counts in the local
+// timezone. Query: days (1-365, default 30).
+func (h *Handler) AdminGetHourlyHeatmap(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	writeSuccess(c, h.analytics.GetHourlyHeatmap(c.Request.Context(), days))
+}
+
+// AdminGetQualityBreakdown groups stream activity by reported quality.
+// Query: days (1-365, default 30).
+func (h *Handler) AdminGetQualityBreakdown(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	writeSuccess(c, h.analytics.GetQualityBreakdown(c.Request.Context(), days))
+}
+
+// AdminGetContentGaps returns search queries that mostly returned no
+// results, sorted by frequency. Query: days, limit (1-50, default 15),
+// min_empty (default 2), min_empty_share (0..1, default 0.5).
+func (h *Handler) AdminGetContentGaps(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	limit := 15
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 50 {
+		limit = l
+	}
+	minEmpty := 2
+	if m, err := strconv.Atoi(c.Query("min_empty")); err == nil && m > 0 {
+		minEmpty = m
+	}
+	minShare := 0.5
+	if s, err := strconv.ParseFloat(c.Query("min_empty_share"), 64); err == nil && s >= 0 && s <= 1 {
+		minShare = s
+	}
+	since, until := resolveAnalyticsTimeWindow(c)
+	writeSuccess(c, h.analytics.GetContentGaps(c.Request.Context(), since, until, minEmpty, minShare, limit))
+}
+
+// AdminGetPeriodComparison returns current vs previous totals for one
+// metric over a rolling window. Query: metric (DailyStats JSON tag,
+// default total_views), days (1-365, default 7).
+func (h *Handler) AdminGetPeriodComparison(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	metric := strings.TrimSpace(c.DefaultQuery("metric", "total_views"))
+	days := 7
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	writeSuccess(c, h.analytics.GetPeriodComparison(metric, days))
 }
 
 // AdminGetMetricTimeline returns a per-day series for charting.

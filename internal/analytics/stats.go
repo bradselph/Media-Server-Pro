@@ -491,11 +491,13 @@ type TopUserEntry struct {
 }
 
 // GetTopUsers returns the top N users by the given metric. metric is one of:
-// "views", "watch_time", "uploads", "downloads", "events". Computed by
-// scanning recent events under the analytics retention window — not perfect
-// for full-history reports but matches the rest of the dashboard's window
-// and avoids a separate per-user persistence layer.
-func (m *Module) GetTopUsers(ctx context.Context, metric string, limit int) []TopUserEntry {
+// "views", "watch_time", "uploads", "downloads", "events". `since` and
+// `until` are RFC3339 timestamps; empty disables that side. Computed by
+// scanning events in [since, until] — without time bounds the query falls
+// back to the retention window. SQL GROUP BY isn't a good fit here because
+// the metric switch (views vs watch-time vs uploads) needs per-event payload
+// inspection, so the aggregation stays in Go.
+func (m *Module) GetTopUsers(ctx context.Context, metric, since, until string, limit int) []TopUserEntry {
 	if m.eventRepo == nil {
 		return nil
 	}
@@ -505,7 +507,11 @@ func (m *Module) GetTopUsers(ctx context.Context, metric string, limit int) []To
 	// Pull a generous window — repo caps at 10k internally so this is a
 	// soft request, not an unbounded scan. retention pruning is the real
 	// upper bound on row count.
-	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{Limit: 50000})
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		StartDate: since,
+		EndDate:   until,
+		Limit:     50000,
+	})
 	if err != nil {
 		m.log.Error("GetTopUsers: list events: %v", err)
 		return nil
@@ -590,11 +596,12 @@ type SearchQueryEntry struct {
 	EmptyCount int    `json:"empty_count"` // how many of those occurrences returned 0 results
 }
 
-// GetTopSearches returns the most frequent search queries seen in recent
-// events, with the empty-result share alongside. limit caps the rows returned
-// (default 20). Queries are case-insensitive and trimmed; the original casing
-// of the most-recent occurrence is preserved for display.
-func (m *Module) GetTopSearches(ctx context.Context, limit int) []SearchQueryEntry {
+// GetTopSearches returns the most frequent search queries seen in
+// [since, until], with the empty-result share alongside. limit caps the rows
+// returned (default 20). Queries are case-insensitive and trimmed; the
+// original casing of the most-recent occurrence is preserved for display.
+// Empty since/until disables that side of the filter.
+func (m *Module) GetTopSearches(ctx context.Context, since, until string, limit int) []SearchQueryEntry {
 	if m.eventRepo == nil {
 		return nil
 	}
@@ -602,8 +609,10 @@ func (m *Module) GetTopSearches(ctx context.Context, limit int) []SearchQueryEnt
 		limit = 20
 	}
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
-		Type:  EventSearch,
-		Limit: 10000,
+		Type:      EventSearch,
+		StartDate: since,
+		EndDate:   until,
+		Limit:     10000,
 	})
 	if err != nil {
 		m.log.Error("GetTopSearches: list events: %v", err)
@@ -659,9 +668,10 @@ type FailedLoginEntry struct {
 	Reason    string    `json:"reason,omitempty"`
 }
 
-// GetRecentFailedLogins returns up to limit recent login_failed events.
-// Sorted newest first — same order the repo returns from List.
-func (m *Module) GetRecentFailedLogins(ctx context.Context, limit int) []FailedLoginEntry {
+// GetRecentFailedLogins returns up to limit recent login_failed events
+// in [since, until]. Sorted newest first — same order the repo returns from
+// List.
+func (m *Module) GetRecentFailedLogins(ctx context.Context, since, until string, limit int) []FailedLoginEntry {
 	if m.eventRepo == nil {
 		return nil
 	}
@@ -669,8 +679,10 @@ func (m *Module) GetRecentFailedLogins(ctx context.Context, limit int) []FailedL
 		limit = 50
 	}
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
-		Type:  EventLoginFailed,
-		Limit: limit,
+		Type:      EventLoginFailed,
+		StartDate: since,
+		EndDate:   until,
+		Limit:     limit,
 	})
 	if err != nil {
 		m.log.Error("GetRecentFailedLogins: list events: %v", err)
@@ -702,9 +714,9 @@ type ErrorPathEntry struct {
 }
 
 // GetErrorPaths aggregates server_error events into a (method, path, status)
-// table sorted by count descending. Recent N events scanned (default 1000),
-// returned rows capped by limit (default 25).
-func (m *Module) GetErrorPaths(ctx context.Context, limit int) []ErrorPathEntry {
+// table sorted by count descending. Events are scanned in [since, until]
+// (default = retention window). Returned rows capped by limit (default 25).
+func (m *Module) GetErrorPaths(ctx context.Context, since, until string, limit int) []ErrorPathEntry {
 	if m.eventRepo == nil {
 		return nil
 	}
@@ -712,8 +724,10 @@ func (m *Module) GetErrorPaths(ctx context.Context, limit int) []ErrorPathEntry 
 		limit = 25
 	}
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
-		Type:  EventServerError,
-		Limit: 1000,
+		Type:      EventServerError,
+		StartDate: since,
+		EndDate:   until,
+		Limit:     1000,
 	})
 	if err != nil {
 		m.log.Error("GetErrorPaths: list events: %v", err)
@@ -773,6 +787,266 @@ func (m *Module) GetErrorPaths(ctx context.Context, limit int) []ErrorPathEntry 
 type MetricTimelineEntry struct {
 	Date  string  `json:"date"`
 	Value float64 `json:"value"`
+}
+
+// CohortMetrics holds rolling unique-user counts. DAU = unique active users
+// in the last 24h, WAU = last 7 days, MAU = last 30 days. Computed from raw
+// events so any user-attributed event counts as activity.
+type CohortMetrics struct {
+	DAU       int     `json:"dau"`
+	WAU       int     `json:"wau"`
+	MAU       int     `json:"mau"`
+	StickinessDAUWAU float64 `json:"stickiness_dau_wau"` // DAU/WAU, 0..1
+	StickinessDAUMAU float64 `json:"stickiness_dau_mau"` // DAU/MAU, 0..1
+}
+
+// GetCohortMetrics computes DAU, WAU, MAU and stickiness ratios from the raw
+// event stream. Events without a user_id (anonymous traffic) are excluded —
+// those numbers belong on a separate "unique IPs" metric.
+func (m *Module) GetCohortMetrics(ctx context.Context) CohortMetrics {
+	out := CohortMetrics{}
+	if m.eventRepo == nil {
+		return out
+	}
+	now := time.Now()
+	cutoff := now.AddDate(0, 0, -30).Format(time.RFC3339)
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		StartDate: cutoff,
+		Limit:     50000,
+	})
+	if err != nil {
+		m.log.Error("GetCohortMetrics: list events: %v", err)
+		return out
+	}
+	dayCutoff := now.AddDate(0, 0, -1)
+	weekCutoff := now.AddDate(0, 0, -7)
+	dau, wau, mau := make(map[string]struct{}), make(map[string]struct{}), make(map[string]struct{})
+	for _, ev := range events {
+		if ev.UserID == "" {
+			continue
+		}
+		mau[ev.UserID] = struct{}{}
+		if ev.Timestamp.After(weekCutoff) {
+			wau[ev.UserID] = struct{}{}
+		}
+		if ev.Timestamp.After(dayCutoff) {
+			dau[ev.UserID] = struct{}{}
+		}
+	}
+	out.DAU = len(dau)
+	out.WAU = len(wau)
+	out.MAU = len(mau)
+	if out.WAU > 0 {
+		out.StickinessDAUWAU = float64(out.DAU) / float64(out.WAU)
+	}
+	if out.MAU > 0 {
+		out.StickinessDAUMAU = float64(out.DAU) / float64(out.MAU)
+	}
+	return out
+}
+
+// HourlyHeatmapCell is one (day-of-week, hour) bucket. DayOfWeek follows
+// time.Weekday: 0=Sunday … 6=Saturday. Hour is 0..23 in the server's local
+// timezone (matches GetEventStats).
+type HourlyHeatmapCell struct {
+	DayOfWeek int `json:"day_of_week"`
+	Hour      int `json:"hour"`
+	Count     int `json:"count"`
+}
+
+// GetHourlyHeatmap returns a 7×24 grid of event counts, scanned over the
+// last `days` days (default 30). The frontend renders this as a calendar
+// heatmap so admins can see traffic peak hours per weekday at a glance.
+func (m *Module) GetHourlyHeatmap(ctx context.Context, days int) []HourlyHeatmapCell {
+	if m.eventRepo == nil {
+		return nil
+	}
+	if days <= 0 {
+		days = 30
+	}
+	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		StartDate: cutoff,
+		Limit:     100000,
+	})
+	if err != nil {
+		m.log.Error("GetHourlyHeatmap: list events: %v", err)
+		return nil
+	}
+	// 7 days × 24 hours = 168 cells, always emit the full grid (zero-filled)
+	// so the frontend can render a clean rectangle without per-cell guards.
+	grid := make([]HourlyHeatmapCell, 7*24)
+	for d := 0; d < 7; d++ {
+		for h := 0; h < 24; h++ {
+			grid[d*24+h] = HourlyHeatmapCell{DayOfWeek: d, Hour: h}
+		}
+	}
+	loc := time.Now().Location()
+	for _, ev := range events {
+		t := ev.Timestamp.In(loc)
+		dow := int(t.Weekday())
+		hour := t.Hour()
+		if dow >= 0 && dow < 7 && hour >= 0 && hour < 24 {
+			grid[dow*24+hour].Count++
+		}
+	}
+	return grid
+}
+
+// QualityBucket captures stream count and bytes-served per quality tier.
+// Sourced from stream_start / stream_end events whose Data carries quality.
+type QualityBucket struct {
+	Quality    string `json:"quality"`
+	Streams    int    `json:"streams"`
+	BytesSent  int64  `json:"bytes_sent"`
+}
+
+// GetQualityBreakdown groups stream activity by reported quality tier so
+// admins can see how much of their bandwidth is going to which resolution.
+// Empty / unknown quality buckets under "(unspecified)" rather than being
+// dropped — bytes still need to be accounted for somewhere.
+func (m *Module) GetQualityBreakdown(ctx context.Context, days int) []QualityBucket {
+	if m.eventRepo == nil {
+		return nil
+	}
+	if days <= 0 {
+		days = 30
+	}
+	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
+	starts, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		Type:      EventStreamStart,
+		StartDate: cutoff,
+		Limit:     50000,
+	})
+	if err != nil {
+		m.log.Error("GetQualityBreakdown: list start events: %v", err)
+		return nil
+	}
+	ends, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		Type:      EventStreamEnd,
+		StartDate: cutoff,
+		Limit:     50000,
+	})
+	if err != nil {
+		m.log.Error("GetQualityBreakdown: list end events: %v", err)
+	}
+	buckets := make(map[string]*QualityBucket)
+	get := func(q string) *QualityBucket {
+		if q == "" {
+			q = "(unspecified)"
+		}
+		b, ok := buckets[q]
+		if !ok {
+			b = &QualityBucket{Quality: q}
+			buckets[q] = b
+		}
+		return b
+	}
+	for _, ev := range starts {
+		q, _ := ev.Data["quality"].(string)
+		get(q).Streams++
+	}
+	for _, ev := range ends {
+		q, _ := ev.Data["quality"].(string)
+		bs, _ := ev.Data["bytes_sent"].(float64)
+		if bs <= 0 {
+			if v, ok := ev.Data["bytes_sent"].(int64); ok {
+				bs = float64(v)
+			}
+		}
+		if bs > 0 {
+			get(q).BytesSent += int64(bs)
+		}
+	}
+	out := make([]QualityBucket, 0, len(buckets))
+	for _, b := range buckets {
+		out = append(out, *b)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Streams != out[j].Streams {
+			return out[i].Streams > out[j].Streams
+		}
+		return out[i].BytesSent > out[j].BytesSent
+	})
+	return out
+}
+
+// PeriodComparison captures an absolute current value, an absolute previous
+// value (same window length, ending where the current window begins), and
+// the percent change. Metric is one of the JSON tags on DailyStats.
+type PeriodComparison struct {
+	Metric        string  `json:"metric"`
+	Current       float64 `json:"current"`
+	Previous      float64 `json:"previous"`
+	DeltaAbsolute float64 `json:"delta_absolute"`
+	DeltaPct      float64 `json:"delta_pct"` // (current - previous) / max(1, previous)
+	WindowDays    int     `json:"window_days"`
+}
+
+// GetPeriodComparison sums the named DailyStats metric over the last
+// `windowDays` days and the prior `windowDays` days, returning both totals
+// plus the delta. Use to render "vs last week" indicators on summary cards.
+func (m *Module) GetPeriodComparison(metric string, windowDays int) PeriodComparison {
+	if windowDays <= 0 {
+		windowDays = 7
+	}
+	out := PeriodComparison{Metric: metric, WindowDays: windowDays}
+	m.statsMu.RLock()
+	defer m.statsMu.RUnlock()
+	now := time.Now()
+	for i := 0; i < windowDays; i++ {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		if d, ok := m.dailyStats[date]; ok && d != nil {
+			out.Current += dailyStatField(d, metric)
+		}
+	}
+	for i := windowDays; i < 2*windowDays; i++ {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		if d, ok := m.dailyStats[date]; ok && d != nil {
+			out.Previous += dailyStatField(d, metric)
+		}
+	}
+	out.DeltaAbsolute = out.Current - out.Previous
+	if out.Previous > 0 {
+		out.DeltaPct = (out.Current - out.Previous) / out.Previous * 100
+	} else if out.Current > 0 {
+		// Previous = 0, current > 0 — percent is meaningless ("∞%").
+		// Emit a sentinel large value the frontend can detect.
+		out.DeltaPct = 100
+	}
+	return out
+}
+
+// GetContentGaps surfaces the popular-but-unanswered searches separately so
+// the dashboard can render them as a "things users want we don't have" panel.
+// Returns search queries whose empty_count >= minEmpty AND empty share >=
+// minEmptyShare (0..1). limit caps the rows.
+func (m *Module) GetContentGaps(ctx context.Context, since, until string, minEmpty int, minEmptyShare float64, limit int) []SearchQueryEntry {
+	if minEmpty < 1 {
+		minEmpty = 2
+	}
+	if minEmptyShare < 0 {
+		minEmptyShare = 0.5
+	}
+	if limit <= 0 {
+		limit = 15
+	}
+	all := m.GetTopSearches(ctx, since, until, 200)
+	out := make([]SearchQueryEntry, 0, len(all))
+	for _, q := range all {
+		if q.EmptyCount < minEmpty {
+			continue
+		}
+		share := float64(q.EmptyCount) / float64(q.Count)
+		if share < minEmptyShare {
+			continue
+		}
+		out = append(out, q)
+	}
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
+	}
+	return out
 }
 
 // GetMetricTimeline returns a per-day series of the named metric over the

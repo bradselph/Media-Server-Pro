@@ -99,6 +99,10 @@ import type {
     FailedLoginEntry,
     ErrorPathEntry,
     MetricTimelineEntry,
+    CohortMetrics,
+    HourlyHeatmapCell,
+    QualityBucket,
+    PeriodComparison,
     UpdateInfo,
     UserAnalytics,
     UpdateStatus,
@@ -915,20 +919,37 @@ export function useAnalyticsApi() {
         getUserAnalytics: (username: string, limit?: number) =>
             api.get<UserAnalytics>(`/api/admin/users/${encodeURIComponent(username)}/analytics${buildQS({limit: limit || undefined})}`),
         // User leaderboard. metric: views | watch_time | uploads | downloads | events.
-        getTopUsers: (metric?: string, limit?: number) =>
-            api.get<TopUserEntry[]>(`/api/admin/analytics/top-users${buildQS({metric: metric || undefined, limit: limit || undefined})}`),
+        // days narrows the time window (default = retention window). Optional
+        // since/until ISO timestamps override days.
+        getTopUsers: (metric?: string, limit?: number, days?: number) =>
+            api.get<TopUserEntry[]>(`/api/admin/analytics/top-users${buildQS({metric: metric || undefined, limit: limit || undefined, days: days || undefined})}`),
         // Top search queries with empty-result share.
-        getTopSearches: (limit?: number) =>
-            api.get<SearchQueryEntry[]>(`/api/admin/analytics/top-searches${buildQS({limit: limit || undefined})}`),
+        getTopSearches: (limit?: number, days?: number) =>
+            api.get<SearchQueryEntry[]>(`/api/admin/analytics/top-searches${buildQS({limit: limit || undefined, days: days || undefined})}`),
         // Recent failed login events (security review).
-        getFailedLogins: (limit?: number) =>
-            api.get<FailedLoginEntry[]>(`/api/admin/analytics/failed-logins${buildQS({limit: limit || undefined})}`),
+        getFailedLogins: (limit?: number, days?: number) =>
+            api.get<FailedLoginEntry[]>(`/api/admin/analytics/failed-logins${buildQS({limit: limit || undefined, days: days || undefined})}`),
         // 5xx grouped by (method, path, status).
-        getErrorPaths: (limit?: number) =>
-            api.get<ErrorPathEntry[]>(`/api/admin/analytics/error-paths${buildQS({limit: limit || undefined})}`),
+        getErrorPaths: (limit?: number, days?: number) =>
+            api.get<ErrorPathEntry[]>(`/api/admin/analytics/error-paths${buildQS({limit: limit || undefined, days: days || undefined})}`),
         // Gap-filled per-day timeline for any DailyStats metric.
         getMetricTimeline: (metric: string, days?: number) =>
             api.get<MetricTimelineEntry[]>(`/api/admin/analytics/timeline${buildQS({metric, days: days || undefined})}`),
+        // DAU / WAU / MAU + stickiness.
+        getCohortMetrics: () =>
+            api.get<CohortMetrics>('/api/admin/analytics/cohorts'),
+        // 7×24 day-of-week × hour event-count grid.
+        getHourlyHeatmap: (days?: number) =>
+            api.get<HourlyHeatmapCell[]>(`/api/admin/analytics/heatmap${buildQS({days: days || undefined})}`),
+        // Stream activity grouped by reported quality (resolution).
+        getQualityBreakdown: (days?: number) =>
+            api.get<QualityBucket[]>(`/api/admin/analytics/quality${buildQS({days: days || undefined})}`),
+        // Popular-but-unanswered searches.
+        getContentGaps: (days?: number, limit?: number) =>
+            api.get<SearchQueryEntry[]>(`/api/admin/analytics/content-gaps${buildQS({days: days || undefined, limit: limit || undefined})}`),
+        // Current-vs-previous-window totals for one metric.
+        getPeriodComparison: (metric: string, days?: number) =>
+            api.get<PeriodComparison>(`/api/admin/analytics/comparison${buildQS({metric, days: days || undefined})}`),
         // Live snapshot of active streaming sessions (already enriched with filename).
         getActiveStreams: () =>
             api.get<Array<{ id: string; media_id: string; filename: string; user_id: string; ip_address: string; quality: string; position: number; started_at: number; last_update: number; bytes_sent: number }>>(`/api/admin/streams`),
