@@ -99,6 +99,55 @@ watch(panelVisibility, (v) => {
   try { localStorage.setItem('analytics:panelVisibility', JSON.stringify(v)) } catch { /* quota / privacy mode — ignore */ }
 }, { deep: true })
 
+// ── Live event tail (SSE) ───────────────────────────────────────────────────
+// Opens an EventSource against /api/admin/analytics/stream and pushes new
+// events into a ring buffer. Capped at 100 entries so the panel doesn't
+// grow unbounded for an admin who leaves it open all day.
+const liveTailOpen = ref(false)
+const liveTail = ref<AnalyticsEvent[]>([])
+const liveTailMax = 100
+let liveTailSource: EventSource | null = null
+
+function startLiveTail() {
+  if (!import.meta.client) return
+  if (liveTailSource) return
+  try {
+    liveTailSource = new EventSource('/api/admin/analytics/stream', { withCredentials: true })
+    liveTailSource.addEventListener('analytics', (e) => {
+      try {
+        const ev = JSON.parse(e.data) as AnalyticsEvent
+        liveTail.value.unshift(ev)
+        if (liveTail.value.length > liveTailMax) liveTail.value.length = liveTailMax
+      } catch { /* ignore malformed */ }
+    })
+    liveTailSource.addEventListener('error', () => {
+      // EventSource auto-reconnects on network errors; only act if the
+      // connection is in a permanently-failed state.
+      if (liveTailSource && liveTailSource.readyState === EventSource.CLOSED) {
+        toast.add({ title: 'Live tail disconnected', color: 'warning', icon: 'i-lucide-wifi-off' })
+        stopLiveTail()
+      }
+    })
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed to open live tail', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+function stopLiveTail() {
+  if (liveTailSource) {
+    liveTailSource.close()
+    liveTailSource = null
+  }
+}
+
+function toggleLiveTail() {
+  liveTailOpen.value = !liveTailOpen.value
+  if (liveTailOpen.value) startLiveTail()
+  else stopLiveTail()
+}
+
+onUnmounted(() => stopLiveTail())
+
 // Open the per-media analytics modal for a specific media item.
 async function openMediaDetail(mediaId: string, title: string) {
   mediaDetailTitle.value = title
@@ -547,6 +596,16 @@ const hasTrafficActivity = computed(() =>
           :color="autoRefresh ? 'primary' : 'neutral'"
           size="xs"
           @click="toggleAutoRefresh"
+        />
+        <!-- Live tail toggle — opens an SSE connection. While open, every
+             tracked event flows into a ring buffer the panel below renders. -->
+        <UButton
+          :icon="liveTailOpen ? 'i-lucide-radio' : 'i-lucide-radio-tower'"
+          :label="liveTailOpen ? 'Live' : 'Tail'"
+          :variant="liveTailOpen ? 'solid' : 'outline'"
+          :color="liveTailOpen ? 'success' : 'neutral'"
+          size="xs"
+          @click="toggleLiveTail"
         />
         <UButton
           icon="i-lucide-download"
@@ -1364,6 +1423,50 @@ const hasTrafficActivity = computed(() =>
             <span v-if="a.username && a.ip_address" class="ml-2 font-mono text-xs text-muted/70">{{ a.ip_address }}</span>
           </span>
           <span class="text-xs text-muted shrink-0">{{ a.timestamp ? new Date(a.timestamp * 1000).toLocaleTimeString() : '' }}</span>
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Live event tail — only visible while the SSE connection is active.
+         Streams every tracked event in real time so admins can watch the
+         server breathe. Capped at 100 rows in-memory; the live tail
+         intentionally has no auto-scroll-to-bottom because admins
+         frequently want to read recent rows without being yanked. -->
+    <UCard v-if="liveTailOpen">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-radio" class="size-4 text-emerald-500" />
+            Live Event Tail
+            <span class="relative flex h-2 w-2 ml-1">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span class="text-xs font-normal text-muted">{{ liveTail.length }} / {{ liveTailMax }}</span>
+          </div>
+          <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-trash" label="Clear" @click="liveTail = []" />
+        </div>
+      </template>
+      <div v-if="liveTail.length === 0" class="text-center text-sm text-muted py-3 italic">
+        Waiting for events…
+      </div>
+      <div v-else class="divide-y divide-default max-h-72 overflow-y-auto">
+        <div v-for="(ev, i) in liveTail" :key="`${ev.id}-${i}`" class="py-1.5 flex items-start gap-3 text-sm">
+          <UBadge
+            :color="ev.type === 'server_error' || ev.type === 'login_failed' || ev.type === 'error' ? 'error' :
+                    ev.type === 'login' || ev.type === 'register' ? 'success' :
+                    ev.type === 'mature_blocked' || ev.type === 'permission_denied' ? 'warning' : 'neutral'"
+            variant="subtle"
+            size="xs"
+          >
+            {{ ev.type }}
+          </UBadge>
+          <div class="flex-1 min-w-0 text-xs text-muted flex items-center gap-2 flex-wrap">
+            <span v-if="ev.user_id" class="font-medium">{{ ev.user_id }}</span>
+            <span v-if="ev.ip_address" class="font-mono">{{ ev.ip_address }}</span>
+            <span v-if="ev.media_id" class="font-mono">{{ ev.media_id.slice(0, 8) }}…</span>
+          </div>
+          <span class="text-xs text-muted shrink-0">{{ new Date(ev.timestamp).toLocaleTimeString() }}</span>
         </div>
       </div>
     </UCard>

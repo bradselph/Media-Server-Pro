@@ -146,6 +146,9 @@ func (m *Module) TrackEvent(ctx context.Context, event models.AnalyticsEvent) {
 	// flush-everything would mean every event causes a 50k-event scan on
 	// the next dashboard refresh, defeating the cache entirely.
 	m.invalidateCachesFor(event.Type)
+	// Broadcast to live subscribers (SSE listeners). Best-effort: a slow
+	// subscriber doesn't block the hot event path.
+	m.broadcastEvent(event)
 	m.log.Debug("Tracked event: %s for %s", event.Type, event.MediaID)
 }
 

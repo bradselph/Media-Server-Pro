@@ -53,6 +53,9 @@ type Module struct {
 	// error-paths, heatmap, devices, etc.) for ~30s so dashboard refreshes
 	// don't hammer the analytics_events table with the same scan repeatedly.
 	cache *aggCache
+	// subs tracks active SSE / live-tail subscribers. Each tracked event is
+	// broadcast (non-blocking) to every subscriber channel.
+	subs *subscriberRegistry
 }
 
 // NewModule creates a new analytics module.
@@ -76,6 +79,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		maxEvents:            cfg.Get().Analytics.MaxReconstructEvents,
 		dirtyDays:            make(map[string]struct{}),
 		cache:                newAggCache(),
+		subs:                 newSubscriberRegistry(),
 	}, nil
 }
 
@@ -142,6 +146,9 @@ func (m *Module) Stop(_ context.Context) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		m.flushDirtyDailyStats(ctx)
+		// Cleanly close any live SSE subscribers so handlers exit fast
+		// instead of waiting for the request context cancellation.
+		m.closeAllSubscribers()
 	})
 
 	m.healthMu.Lock()

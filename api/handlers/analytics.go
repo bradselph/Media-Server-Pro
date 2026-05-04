@@ -424,6 +424,71 @@ func (h *Handler) AdminGetErrorPaths(c *gin.Context) {
 	writeSuccess(c, h.analytics.GetErrorPaths(c.Request.Context(), since, until, limit))
 }
 
+// AdminStreamEvents serves a Server-Sent Events feed of live analytics
+// events. Each new TrackEvent broadcasts to every active subscriber; the
+// frontend opens an EventSource and renders a live tail panel.
+//
+// SSE was chosen over WebSocket because:
+//   - one-way (server → client) traffic only, which is exactly what SSE does;
+//   - native EventSource API works with cookies (CSRF-protected by same-origin
+//     since we don't enable CORS for /api by default);
+//   - no need for a websocket upgrade handler or per-connection ping/pong.
+//
+// Backpressure: each subscriber has a 64-event buffer; if the client is
+// slow the broadcaster drops events for that subscriber rather than
+// blocking other subscribers or the analytics hot path. The dashboard
+// will see freshness recover as soon as the consumer catches up.
+func (h *Handler) AdminStreamEvents(c *gin.Context) {
+	if h.analytics == nil {
+		writeError(c, http.StatusServiceUnavailable, "Analytics is not available")
+		return
+	}
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no") // disable nginx response buffering
+
+	sub := h.analytics.Subscribe(64)
+	defer sub.Cancel()
+
+	// Send an initial comment so the EventSource fires `open` immediately,
+	// which frontends often rely on to update their connection-state UI.
+	if _, err := c.Writer.WriteString(": connected\n\n"); err != nil {
+		return
+	}
+	c.Writer.Flush()
+
+	// Heartbeat every 25s — keeps proxies (nginx, Caddy, ingress) from
+	// idling-out the connection. SSE comments are ignored by the client.
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case <-heartbeat.C:
+			if _, err := c.Writer.WriteString(": heartbeat\n\n"); err != nil {
+				return
+			}
+			c.Writer.Flush()
+		case ev, ok := <-sub.Events:
+			if !ok {
+				// Module shutting down — close cleanly.
+				return
+			}
+			payload, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(c.Writer, "event: analytics\ndata: %s\n\n", payload); err != nil {
+				return
+			}
+			c.Writer.Flush()
+		}
+	}
+}
+
 // AdminExportPanel exports the named analytics panel as either JSON or CSV.
 // Query: panel (required — top-users | top-searches | failed-logins |
 // error-paths | active-streams | quality | devices | content-gaps |
