@@ -759,6 +759,32 @@ func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]an
 	}
 }
 
+// AdminEvaluateAlerts evaluates a list of admin-defined alert rules
+// against the current DailyStats. Rules live in browser localStorage on
+// the dashboard side; we don't persist them server-side because the
+// matching is cheap (in-memory lookup) and this keeps the surface area
+// small.
+//
+// POST body: {"rules": [{ id, name, metric, operator, threshold, window }, …]}
+// Response: per-rule {triggered, value, message}.
+func (h *Handler) AdminEvaluateAlerts(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	var req struct {
+		Rules []analytics.AlertRule `json:"rules"`
+	}
+	if !BindJSON(c, &req, "") {
+		return
+	}
+	if len(req.Rules) > 100 {
+		writeError(c, http.StatusBadRequest, "too many rules (max 100)")
+		return
+	}
+	writeSuccess(c, h.analytics.EvaluateAlerts(req.Rules))
+}
+
 // AdminGetRangeComparison returns A/B totals for every supported metric
 // across two arbitrary date ranges. Query params: a_start, a_end, b_start,
 // b_end (all YYYY-MM-DD). Empty bounds disable that side of the range.

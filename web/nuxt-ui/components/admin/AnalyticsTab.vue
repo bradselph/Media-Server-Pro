@@ -6,7 +6,7 @@ import type {
   MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
   PeriodComparison, Funnel, DeviceBucket, MediaDetail, RetentionGrid,
   AnomalyReport, IPSummary, ModuleDiagnostics, MetricForecast,
-  RangeComparison,
+  RangeComparison, AlertRule, AlertResult,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
@@ -62,6 +62,67 @@ const cmpLogins = ref<PeriodComparison | null>(null)
 // Anomaly report — banner at the top of the page when something unusual
 // is happening today.
 const anomalies = ref<AnomalyReport | null>(null)
+
+// Custom alert rules — admin-defined threshold checks. Persisted to
+// localStorage so each admin keeps their own alert set; evaluated on
+// every dashboard load + auto-refresh.
+const alertRules = ref<AlertRule[]>([])
+const alertResults = ref<AlertResult[]>([])
+const alertsEditOpen = ref(false)
+const alertEdit = ref<AlertRule>({
+  id: '', name: '', metric: 'server_errors', operator: 'gt', threshold: 5, window: 1,
+})
+
+function loadAlertRules() {
+  if (!import.meta.client) return
+  try {
+    const raw = localStorage.getItem('analytics:alertRules')
+    if (raw) alertRules.value = JSON.parse(raw) as AlertRule[]
+  } catch { /* ignore — corrupted JSON falls through to empty list */ }
+}
+function persistAlertRules() {
+  if (!import.meta.client) return
+  try { localStorage.setItem('analytics:alertRules', JSON.stringify(alertRules.value)) } catch { /* quota / privacy mode */ }
+}
+async function evaluateAlerts() {
+  if (alertRules.value.length === 0) {
+    alertResults.value = []
+    return
+  }
+  try {
+    alertResults.value = (await analyticsApi.evaluateAlerts(alertRules.value)) ?? []
+  } catch { /* silent — alerts are best-effort */ }
+}
+function addOrUpdateAlertRule() {
+  if (!alertEdit.value.name || !alertEdit.value.metric) {
+    toast.add({ title: 'Name and metric required', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    return
+  }
+  if (alertEdit.value.id) {
+    const idx = alertRules.value.findIndex(r => r.id === alertEdit.value.id)
+    if (idx >= 0) alertRules.value[idx] = { ...alertEdit.value }
+  } else {
+    alertRules.value.push({ ...alertEdit.value, id: 'a' + Date.now() })
+  }
+  persistAlertRules()
+  alertsEditOpen.value = false
+  alertEdit.value = { id: '', name: '', metric: 'server_errors', operator: 'gt', threshold: 5, window: 1 }
+  evaluateAlerts()
+}
+function removeAlertRule(id: string) {
+  alertRules.value = alertRules.value.filter(r => r.id !== id)
+  persistAlertRules()
+  evaluateAlerts()
+}
+function startEditAlertRule(r: AlertRule) {
+  alertEdit.value = { ...r }
+  alertsEditOpen.value = true
+}
+const triggeredAlerts = computed(() => alertResults.value.filter(a => a.triggered))
+onMounted(() => {
+  loadAlertRules()
+  evaluateAlerts()
+})
 
 // Per-IP traffic summary + analytics module's own diagnostics.
 const ipSummary = ref<IPSummary | null>(null)
@@ -120,6 +181,7 @@ const PANEL_KEYS = [
   'gaps', 'devices', 'retention', 'topUsers', 'topSearches', 'activeStreams',
   'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
   'contentPerf', 'daily', 'ips', 'diagnostics', 'forecast', 'rangeCompare',
+  'alerts',
 ] as const
 type PanelKey = typeof PANEL_KEYS[number]
 const panelVisibility = ref<Record<PanelKey, boolean>>(
@@ -810,6 +872,32 @@ const hasTrafficActivity = computed(() =>
     <div v-if="loading && !summary" class="flex justify-center py-8">
       <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
     </div>
+
+    <!-- Custom alerts banner — admin-defined threshold rules. Renders only
+         when at least one rule is currently triggered. Each pill shows the
+         rule name + the current value vs threshold. -->
+    <UAlert
+      v-if="triggeredAlerts.length > 0"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-bell-ring"
+      :title="`${triggeredAlerts.length} alert${triggeredAlerts.length === 1 ? '' : 's'} triggered`"
+    >
+      <template #description>
+        <div class="flex flex-wrap gap-2 mt-1.5">
+          <UBadge
+            v-for="a in triggeredAlerts"
+            :key="a.rule.id"
+            color="error"
+            variant="subtle"
+            size="xs"
+            :title="a.message"
+          >
+            {{ a.rule.name }}: {{ a.value.toLocaleString() }}
+          </UBadge>
+        </div>
+      </template>
+    </UAlert>
 
     <!-- Anomalies banner — appears only when at least one watched metric
          is statistically far from its rolling baseline. Each anomaly gets
@@ -2144,6 +2232,111 @@ const hasTrafficActivity = computed(() =>
         </UTable>
       </div>
     </UCard>
+
+    <!-- Custom alerts management — list of admin-defined threshold rules
+         with add/edit/remove. Persisted to localStorage; evaluated on the
+         backend (cheap in-memory lookup) and the triggered-alerts banner
+         at the top of the page is driven by the same data. -->
+    <UCard v-if="panelVisibility.alerts">
+      <template #header>
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-bell" class="size-4" />
+            Custom Alerts
+            <UBadge color="neutral" variant="subtle" size="xs">{{ alertRules.length }}</UBadge>
+          </div>
+          <UButton size="xs" icon="i-lucide-plus" label="New rule"
+                   @click="alertEdit = { id: '', name: '', metric: 'server_errors', operator: 'gt', threshold: 5, window: 1 }; alertsEditOpen = true" />
+        </div>
+      </template>
+      <div v-if="alertRules.length === 0" class="text-center text-sm text-muted py-4 italic">
+        No alert rules defined. Create one to get notified when a metric
+        crosses your threshold (e.g. "server_errors > 10 in last 1 day").
+      </div>
+      <div v-else class="divide-y divide-default">
+        <div v-for="r in alertRules" :key="r.id" class="py-2 flex items-center gap-2 text-sm">
+          <UIcon
+            :name="alertResults.find(a => a.rule.id === r.id)?.triggered ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
+            :class="alertResults.find(a => a.rule.id === r.id)?.triggered ? 'text-error' : 'text-muted'"
+            class="size-4 shrink-0"
+          />
+          <div class="flex-1 min-w-0">
+            <p class="font-medium truncate">{{ r.name }}</p>
+            <p class="text-xs text-muted font-mono">
+              {{ r.metric }} {{ r.operator }} {{ r.threshold }} (last {{ r.window }}d)
+              <span v-if="alertResults.find(a => a.rule.id === r.id)" class="ml-2">
+                = {{ alertResults.find(a => a.rule.id === r.id)?.value?.toLocaleString() ?? '?' }}
+              </span>
+            </p>
+          </div>
+          <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-pencil" @click="startEditAlertRule(r)" />
+          <UButton size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" @click="removeAlertRule(r.id)" />
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Alert rule edit modal -->
+    <UModal v-model:open="alertsEditOpen" :ui="{ content: 'max-w-md' }">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="font-semibold">{{ alertEdit.id ? 'Edit alert rule' : 'New alert rule' }}</div>
+          </template>
+          <div class="space-y-3">
+            <UFormField label="Name" hint="Shown in the triggered-alert banner">
+              <UInput v-model="alertEdit.name" placeholder="e.g. High error rate" />
+            </UFormField>
+            <UFormField label="Metric" hint="DailyStats column to watch">
+              <USelect
+                v-model="alertEdit.metric"
+                :items="[
+                  { label: 'Server errors', value: 'server_errors' },
+                  { label: 'HLS errors', value: 'hls_errors' },
+                  { label: 'Failed logins', value: 'logins_failed' },
+                  { label: 'Mature blocked', value: 'mature_blocked' },
+                  { label: 'Permission denied', value: 'permission_denied' },
+                  { label: 'Upload failures', value: 'uploads_failed' },
+                  { label: 'Total views', value: 'total_views' },
+                  { label: 'Stream starts', value: 'stream_starts' },
+                  { label: 'Bandwidth bytes', value: 'bytes_served' },
+                  { label: 'Logins', value: 'logins' },
+                  { label: 'Registrations', value: 'registrations' },
+                  { label: 'Downloads', value: 'downloads' },
+                  { label: 'Searches', value: 'searches' },
+                  { label: 'Account deletions', value: 'account_deletions' },
+                ]"
+              />
+            </UFormField>
+            <div class="grid grid-cols-2 gap-2">
+              <UFormField label="Operator">
+                <USelect
+                  v-model="alertEdit.operator"
+                  :items="[
+                    { label: '>', value: 'gt' },
+                    { label: '≥', value: 'ge' },
+                    { label: '<', value: 'lt' },
+                    { label: '≤', value: 'le' },
+                    { label: '=', value: 'eq' },
+                  ]"
+                />
+              </UFormField>
+              <UFormField label="Threshold">
+                <UInput v-model.number="alertEdit.threshold" type="number" />
+              </UFormField>
+            </div>
+            <UFormField label="Window (days)" hint="Sum the metric over this many trailing days before comparing">
+              <UInput v-model.number="alertEdit.window" type="number" :min="1" :max="365" />
+            </UFormField>
+          </div>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" label="Cancel" @click="alertsEditOpen = false" />
+              <UButton color="primary" :label="alertEdit.id ? 'Save' : 'Create'" @click="addOrUpdateAlertRule" />
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
 
     <!-- Module diagnostics — analytics module's own internal counters.
          Helps debug "why is the dashboard slow / stale" without server

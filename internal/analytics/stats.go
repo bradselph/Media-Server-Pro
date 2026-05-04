@@ -1916,6 +1916,83 @@ func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) M
 	return out
 }
 
+// AlertRule defines a threshold check against a DailyStats metric. Operator
+// is one of "gt", "ge", "lt", "le", "eq". Window is how many trailing days
+// to sum before the comparison — Window=1 means "today only", Window=7
+// means "last 7 days inclusive".
+type AlertRule struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Metric    string  `json:"metric"`
+	Operator  string  `json:"operator"`
+	Threshold float64 `json:"threshold"`
+	Window    int     `json:"window"`
+}
+
+// AlertResult is one rule's evaluation outcome. Triggered means the rule's
+// comparison was true; Value is the actual metric sum the rule was tested
+// against. The frontend renders a banner for every triggered alert.
+type AlertResult struct {
+	Rule      AlertRule `json:"rule"`
+	Triggered bool      `json:"triggered"`
+	Value     float64   `json:"value"`
+	Message   string    `json:"message,omitempty"`
+}
+
+// EvaluateAlerts runs each rule against the current DailyStats and returns
+// the results. Cheap — sums are over the in-memory dailyStats map under a
+// read lock; no event scan involved.
+func (m *Module) EvaluateAlerts(rules []AlertRule) []AlertResult {
+	out := make([]AlertResult, 0, len(rules))
+	if len(rules) == 0 {
+		return out
+	}
+	m.statsMu.RLock()
+	defer m.statsMu.RUnlock()
+	now := time.Now()
+	for _, r := range rules {
+		win := r.Window
+		if win <= 0 {
+			win = 1
+		}
+		if win > 365 {
+			win = 365
+		}
+		var sum float64
+		for i := 0; i < win; i++ {
+			date := now.AddDate(0, 0, -i).Format(dateFormat)
+			if d, ok := m.dailyStats[date]; ok && d != nil {
+				sum += dailyStatField(d, r.Metric)
+			}
+		}
+		triggered := false
+		switch r.Operator {
+		case "gt":
+			triggered = sum > r.Threshold
+		case "ge":
+			triggered = sum >= r.Threshold
+		case "lt":
+			triggered = sum < r.Threshold
+		case "le":
+			triggered = sum <= r.Threshold
+		case "eq":
+			triggered = sum == r.Threshold
+		}
+		msg := ""
+		if triggered {
+			msg = r.Metric + " " + r.Operator + " " + ftoa(r.Threshold) +
+				" (last " + itoa(win) + "d): " + ftoa(sum)
+		}
+		out = append(out, AlertResult{Rule: r, Triggered: triggered, Value: sum, Message: msg})
+	}
+	return out
+}
+
+// ftoa / itoa are tiny helpers so EvaluateAlerts doesn't drag strconv
+// formatting through every call site.
+func ftoa(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
+func itoa(i int) string     { return strconv.Itoa(i) }
+
 // RangeMetric is one row of an A/B comparison: the metric's totals in
 // each of the two ranges plus the absolute and percent delta. The frontend
 // renders rows side-by-side in a sortable table.

@@ -511,6 +511,24 @@ export interface ModuleDiagnostics {
     healthy: boolean
 }
 
+// Admin-defined threshold check against a DailyStats metric. Persisted
+// to browser localStorage and re-evaluated on every dashboard load.
+export interface AlertRule {
+    id: string
+    name: string
+    metric: string
+    operator: 'gt' | 'ge' | 'lt' | 'le' | 'eq'
+    threshold: number
+    window: number
+}
+
+export interface AlertResult {
+    rule: AlertRule
+    triggered: boolean
+    value: number
+    message?: string
+}
+
 // One row of an A/B range comparison: each metric's totals across two
 // arbitrary date ranges plus the absolute and percent delta.
 export interface RangeMetric {
