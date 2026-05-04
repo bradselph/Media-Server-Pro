@@ -475,6 +475,21 @@ export interface DeviceBucket {
     unique_users: number
 }
 
+// Cohort retention grid. Rows are signup-week cohorts (oldest first);
+// each row carries the percentage of users still active in week-N. The
+// matrix is upper-triangular by construction — older cohorts have more
+// retention buckets than younger ones.
+export interface RetentionCohort {
+    cohort_start: string
+    cohort_size: number
+    retention: number[]
+}
+
+export interface RetentionGrid {
+    cohort_weeks: number
+    weeks: RetentionCohort[]
+}
+
 // Per-media analytics drill payload — the cached stats plus a 30-day
 // view + playback timeline so the modal can render a sparkline.
 export interface MediaDetail {

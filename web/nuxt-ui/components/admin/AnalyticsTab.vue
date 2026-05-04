@@ -4,7 +4,7 @@ import type {
   AnalyticsEvent, ContentPerformanceItem, UserAnalytics,
   TopUserEntry, SearchQueryEntry, FailedLoginEntry, ErrorPathEntry,
   MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
-  PeriodComparison, Funnel, DeviceBucket, MediaDetail,
+  PeriodComparison, Funnel, DeviceBucket, MediaDetail, RetentionGrid,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
@@ -57,10 +57,11 @@ const cmpStreams = ref<PeriodComparison | null>(null)
 const cmpBandwidth = ref<PeriodComparison | null>(null)
 const cmpLogins = ref<PeriodComparison | null>(null)
 
-// Funnel + device/browser breakdown + per-media drill.
+// Funnel + device/browser breakdown + per-media drill + retention grid.
 const funnel = ref<Funnel | null>(null)
 const devices = ref<DeviceBucket[]>([])
 const browsers = ref<DeviceBucket[]>([])
+const retention = ref<RetentionGrid | null>(null)
 const mediaDetail = ref<MediaDetail | null>(null)
 const mediaDetailLoading = ref(false)
 const mediaDetailOpen = ref(false)
@@ -72,7 +73,7 @@ const mediaDetailTitle = ref('')
 const PANEL_KEYS = [
   'cohort', 'comparison', 'timeline', 'bandwidth', 'errorsChart',
   'traffic', 'distribution', 'hourly', 'heatmap', 'funnel', 'quality',
-  'gaps', 'devices', 'topUsers', 'topSearches', 'activeStreams',
+  'gaps', 'devices', 'retention', 'topUsers', 'topSearches', 'activeStreams',
   'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
   'contentPerf', 'daily',
 ] as const
@@ -316,6 +317,7 @@ async function load() {
       analyticsApi.getPeriodComparison('logins', days),             // 24
       analyticsApi.getFunnel(30),                                   // 25
       analyticsApi.getDeviceBreakdown(30),                          // 26
+      analyticsApi.getRetention(12),                                // 27
     ])
     if (period.value !== capturedPeriod) return
     const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
@@ -350,6 +352,7 @@ async function load() {
       devices.value = d.devices ?? []
       browsers.value = d.browsers ?? []
     }
+    if (r(27) !== null) retention.value = r(27) as RetentionGrid
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
@@ -543,6 +546,21 @@ function funnelTone(pct: number): 'success' | 'warning' | 'error' | 'neutral' {
 // Total events across the device breakdown, used for percentage labels.
 const deviceTotalEvents = computed(() => devices.value.reduce((a, b) => a + b.events, 0))
 const browserTotalEvents = computed(() => browsers.value.reduce((a, b) => a + b.events, 0))
+
+// Retention cell shading. 5 buckets keep the visual discrete; gaps in the
+// upper triangle (cells beyond the cohort's age) render as muted/transparent
+// instead of a misleading 0% block.
+const retentionPalette = ['bg-muted/10', 'bg-emerald-500/15', 'bg-emerald-500/30', 'bg-emerald-500/50', 'bg-emerald-500/70', 'bg-emerald-500/90']
+function retentionCellClass(pct: number, weekIndex: number, cohortAge: number): string {
+  if (weekIndex > cohortAge) return 'bg-transparent'
+  if (pct === 0) return retentionPalette[0]
+  // Buckets: 0-5, 5-15, 15-30, 30-50, 50-75, 75+.
+  if (pct >= 75) return retentionPalette[5]
+  if (pct >= 50) return retentionPalette[4]
+  if (pct >= 30) return retentionPalette[3]
+  if (pct >= 15) return retentionPalette[2]
+  return retentionPalette[1]
+}
 
 // Server-health summary — surfaces failure-side counters in one place so
 // operators can see at a glance whether the server is misbehaving today
@@ -1066,6 +1084,58 @@ const hasTrafficActivity = computed(() =>
           <span class="ml-2">peak: {{ heatmapMax.toLocaleString() }} events/hour</span>
         </div>
       </div>
+    </UCard>
+
+    <!-- Retention grid (week-N retention by signup cohort). Upper-triangular
+         by construction — younger cohorts have fewer cells. Empty cells in
+         the upper triangle are rendered transparent (not 0%) so admins
+         don't read a "drop-off" where there's just no data yet. -->
+    <UCard v-if="panelVisibility.retention && retention && retention.weeks?.length > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-table-2" class="size-4" />
+          Cohort Retention ({{ retention.cohort_weeks }} weeks)
+        </div>
+      </template>
+      <div class="overflow-x-auto">
+        <table class="text-xs">
+          <thead>
+            <tr>
+              <th class="px-2 py-1 text-left font-semibold text-muted">Cohort</th>
+              <th class="px-2 py-1 text-right font-semibold text-muted">Size</th>
+              <th
+                v-for="w in retention.cohort_weeks"
+                :key="`wh-${w - 1}`"
+                class="px-1.5 py-1 text-center font-semibold text-muted"
+              >W{{ w - 1 }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in retention.weeks" :key="row.cohort_start" class="hover:bg-muted/5">
+              <td class="px-2 py-1 font-mono text-muted whitespace-nowrap">{{ row.cohort_start }}</td>
+              <td class="px-2 py-1 text-right font-mono text-muted">{{ row.cohort_size.toLocaleString() }}</td>
+              <td
+                v-for="w in retention.cohort_weeks"
+                :key="`c-${i}-${w - 1}`"
+                :class="[
+                  retentionCellClass(row.retention[w - 1] ?? 0, w - 1, retention.weeks.length - 1 - i),
+                  'px-1.5 py-1 text-center font-mono',
+                  (w - 1) > (retention.weeks.length - 1 - i) ? 'text-transparent' : 'text-highlighted'
+                ]"
+                :title="(w - 1) > (retention.weeks.length - 1 - i) ?
+                  '(cohort younger than this week)' :
+                  `${row.cohort_start} → week ${w - 1}: ${(row.retention[w - 1] ?? 0).toFixed(1)}%`"
+              >
+                {{ ((w - 1) > (retention.weeks.length - 1 - i)) ? '·' : (row.retention[w - 1] ?? 0).toFixed(0) + '%' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-xs text-muted mt-2 italic">
+        Each cell is the % of the signup-week cohort that returned in week N.
+        Active = any user-attributed event that week (login, view, search…).
+      </p>
     </UCard>
 
     <!-- Device + Browser breakdown — two side-by-side panels showing how

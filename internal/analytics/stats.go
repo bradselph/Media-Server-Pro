@@ -1386,6 +1386,151 @@ type MediaDetail struct {
 	PlaybackTimeline []MetricTimelineEntry `json:"playback_timeline"`
 }
 
+// RetentionGrid is a classic week-over-week retention table. Rows are
+// signup cohorts (weeks since the cohort started); columns are weeks
+// elapsed since signup; cells are the % of the cohort that returned in
+// that week. Cell [0][0] is always 100% (everyone was active in week 0
+// because that's when they signed up).
+type RetentionGrid struct {
+	CohortWeeks int               `json:"cohort_weeks"` // number of cohort rows
+	Weeks       []RetentionCohort `json:"weeks"`
+}
+
+// RetentionCohort is one signup-week row in the retention grid.
+type RetentionCohort struct {
+	CohortStart string    `json:"cohort_start"`  // YYYY-MM-DD of the cohort week's Monday
+	CohortSize  int       `json:"cohort_size"`   // unique users who signed up that week
+	Retention   []float64 `json:"retention"`     // % retained per week-N (0..100); index 0 is the signup week
+}
+
+// GetRetentionGrid builds the cohort retention table over the last
+// `cohortWeeks` weeks. Both the X and Y dimensions equal cohortWeeks —
+// the matrix is upper-triangular by construction (a cohort that signed
+// up 3 weeks ago can have at most 4 retention buckets: weeks 0..3).
+//
+// Sourced from raw events: the "register" event marks signup; any
+// user-attributed event in a later week marks return-activity. This
+// captures real engagement (active users) rather than bare login —
+// users who watch via a long-lived session are still counted.
+func (m *Module) GetRetentionGrid(ctx context.Context, cohortWeeks int) RetentionGrid {
+	if cohortWeeks <= 0 {
+		cohortWeeks = 12
+	}
+	if m.eventRepo == nil {
+		return RetentionGrid{CohortWeeks: cohortWeeks}
+	}
+	cacheKey := "retention|" + strconv.Itoa(cohortWeeks)
+	return memo(m.cache, cacheKey, 5*time.Minute, func() RetentionGrid {
+		return m.computeRetentionGrid(ctx, cohortWeeks)
+	})
+}
+
+func (m *Module) computeRetentionGrid(ctx context.Context, cohortWeeks int) RetentionGrid {
+	out := RetentionGrid{CohortWeeks: cohortWeeks, Weeks: make([]RetentionCohort, 0, cohortWeeks)}
+	// Pull events for the entire window. retention is bounded by the events
+	// that survive analytics retention pruning, so cohorts beyond that cliff
+	// will appear empty rather than wrong.
+	cutoff := time.Now().AddDate(0, 0, -7*cohortWeeks).Format(time.RFC3339)
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		StartDate: cutoff,
+		Limit:     200000,
+	})
+	if err != nil {
+		m.log.Error("GetRetentionGrid: list events: %v", err)
+		return out
+	}
+	// Index 0 = the most recent cohort (this week); higher indexes = older.
+	// The first day of each cohort week is the Monday of that week.
+	now := time.Now()
+	thisMonday := startOfWeek(now)
+	cohorts := make([]map[string]struct{}, cohortWeeks)
+	for i := range cohorts {
+		cohorts[i] = make(map[string]struct{})
+	}
+	// activity[cohortIdx][weekN] = set of user IDs from cohortIdx active in week N.
+	activity := make([][]map[string]struct{}, cohortWeeks)
+	for i := range activity {
+		activity[i] = make([]map[string]struct{}, cohortWeeks)
+		for j := range activity[i] {
+			activity[i][j] = make(map[string]struct{})
+		}
+	}
+	// First pass: build the cohort membership from register events.
+	userCohort := make(map[string]int)
+	for _, ev := range events {
+		if ev.Type != EventRegister || ev.UserID == "" {
+			continue
+		}
+		idx := weeksBetween(thisMonday, startOfWeek(ev.Timestamp))
+		if idx < 0 || idx >= cohortWeeks {
+			continue
+		}
+		cohorts[idx][ev.UserID] = struct{}{}
+		userCohort[ev.UserID] = idx
+	}
+	// Second pass: bucket every user-attributed event into the right
+	// (cohortIdx, weekN) cell. Week N is the difference between the cohort
+	// signup week and the event week.
+	for _, ev := range events {
+		if ev.UserID == "" {
+			continue
+		}
+		cIdx, ok := userCohort[ev.UserID]
+		if !ok {
+			continue
+		}
+		evWeek := weeksBetween(thisMonday, startOfWeek(ev.Timestamp))
+		// Week N = cohort age - event age (older cohort + recent event = larger N).
+		weekN := cIdx - evWeek
+		if weekN < 0 || weekN >= cohortWeeks {
+			continue
+		}
+		activity[cIdx][weekN][ev.UserID] = struct{}{}
+	}
+	// Render the grid with oldest cohort first (top of table), newest last,
+	// because that's how retention tables are conventionally displayed.
+	for i := cohortWeeks - 1; i >= 0; i-- {
+		size := len(cohorts[i])
+		row := RetentionCohort{
+			CohortStart: thisMonday.AddDate(0, 0, -7*i).Format(dateFormat),
+			CohortSize:  size,
+			Retention:   make([]float64, cohortWeeks),
+		}
+		// Only weeks 0..i make sense for cohort i; cells beyond that are
+		// always zero (the cohort hasn't lived long enough). The upper-tri
+		// shape is intentional and rendered as gaps in the frontend.
+		for w := 0; w <= i && w < cohortWeeks; w++ {
+			if size == 0 {
+				row.Retention[w] = 0
+				continue
+			}
+			row.Retention[w] = float64(len(activity[i][w])) / float64(size) * 100
+		}
+		out.Weeks = append(out.Weeks, row)
+	}
+	return out
+}
+
+// startOfWeek returns the Monday 00:00 in the local zone for the given time.
+// Using Monday-anchored weeks because most SaaS retention tools do.
+func startOfWeek(t time.Time) time.Time {
+	wd := int(t.Weekday()) // 0 = Sunday
+	// Convert so Monday = 0, Sunday = 6.
+	mondayOffset := wd - 1
+	if mondayOffset < 0 {
+		mondayOffset = 6
+	}
+	monday := t.AddDate(0, 0, -mondayOffset)
+	return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, monday.Location())
+}
+
+// weeksBetween returns how many full weeks earlier `then` is than `now`.
+// Both inputs must already be week-aligned (use startOfWeek).
+func weeksBetween(now, then time.Time) int {
+	d := now.Sub(then)
+	return int(d.Hours()/24) / 7
+}
+
 // GetMediaDetail returns the per-media analytics drill panel. Builds
 // per-day timelines from raw events filtered to this MediaID, falling
 // back to zeros when the day has no activity.

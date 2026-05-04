@@ -106,6 +106,7 @@ import type {
     Funnel,
     DeviceBucket,
     MediaDetail,
+    RetentionGrid,
     UpdateInfo,
     UserAnalytics,
     UpdateStatus,
@@ -962,6 +963,9 @@ export function useAnalyticsApi() {
         // Per-media analytics drill-down.
         getMediaAnalytics: (mediaId: string, days?: number) =>
             api.get<MediaDetail>(`/api/admin/analytics/media/${encodeURIComponent(mediaId)}${buildQS({days: days || undefined})}`),
+        // Cohort retention grid (rows = signup weeks, cells = % retained).
+        getRetention: (weeks?: number) =>
+            api.get<RetentionGrid>(`/api/admin/analytics/retention${buildQS({weeks: weeks || undefined})}`),
         // Export-panel URL builder. Used by <a download> links so the
         // browser handles the file save dialog rather than the JS layer.
         exportPanelUrl: (panel: string, format: 'csv' | 'json' = 'csv', extra: Record<string, string | number | undefined> = {}) =>

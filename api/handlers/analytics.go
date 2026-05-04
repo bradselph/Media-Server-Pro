@@ -692,6 +692,21 @@ func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]an
 	}
 }
 
+// AdminGetRetention returns the week-over-week retention grid: rows are
+// signup-week cohorts, columns are weeks elapsed since signup, cells are
+// % of the cohort still active that week. Query: weeks (1-52, default 12).
+func (h *Handler) AdminGetRetention(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	weeks := 12
+	if w, err := strconv.Atoi(c.Query("weeks")); err == nil && w > 0 && w <= 52 {
+		weeks = w
+	}
+	writeSuccess(c, h.analytics.GetRetentionGrid(c.Request.Context(), weeks))
+}
+
 // AdminGetFunnel returns the view → playback → completion conversion funnel.
 // Query: days (1-365, default 30).
 func (h *Handler) AdminGetFunnel(c *gin.Context) {
